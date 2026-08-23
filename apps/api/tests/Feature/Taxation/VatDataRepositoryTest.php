@@ -370,6 +370,83 @@ class VatDataRepositoryTest extends TestCase
         $this->assertSame('700.000', $results[0]->baseAmount);
         // 190.000 − |19.000| − |38.000|
         $this->assertSame('133.000', $results[0]->vatAmount);
+
+        // B-6(i) RULED 2026-08-23 — refund receipts COUNT as declared documents.
+        // 1 sale + 2 refunds = 3, NOT 1. Count population and money population are
+        // deliberately different: the SUM() carries the receipt_type predicate, the
+        // COUNT(DISTINCT r.id) deliberately does not. Pinning it here so a future
+        // edit that "helpfully" adds `WHERE receipt_type = 'sale'` to the count is
+        // caught — the money assertions above would not notice.
+        $this->assertSame(3, $results[0]->documentCount);
+    }
+
+    /**
+     * B-6(i) document-arm MIRROR of the POS count pin above.
+     *
+     * Arm symmetry is a REQUIREMENT, not a coincidence: the union in
+     * EloquentVatDataRepository SUMs both arms' `document_count` into one figure,
+     * so the two arms must agree on what a "declared document" is. TN grounding:
+     * CDET art. 126 counts "les factures ... documents", and DGELF prise de
+     * position n° 99188 makes a facture d'avoir dutiable AS a facture — an avoir
+     * is a counted document. Comparative: SAF-T PT's NumberOfEntries includes
+     * documents its money totals exclude.
+     *
+     * If someone changes one arm's count semantics without the other, exactly one
+     * of these two tests goes red.
+     */
+    public function test_credit_notes_count_as_declared_documents_while_netting_the_money(): void
+    {
+        $this->createTaxConfiguration('19.00', true);
+
+        $invoice = $this->createDocument(DocumentType::Invoice, '2026-02-15');
+        DocumentTaxDetail::create([
+            'document_id' => $invoice->id,
+            'sequence_order' => 1,
+            'tax_code' => 'TVA19',
+            'tax_type' => TaxType::Percentage,
+            'tax_name' => 'TVA 19%',
+            'tax_rate' => '19.00',
+            'tax_base' => '1000.000',
+            'tax_amount' => '190.000',
+            'is_stamp_duty' => false,
+        ]);
+
+        // The avoir. Its document_tax_details row is stored POSITIVE (immutable
+        // snapshot convention, V2 ruling) and negated at aggregation.
+        $creditNote = $this->createDocument(
+            DocumentType::CreditNote,
+            '2026-02-20',
+            FiscalCategory::CreditNote,
+        );
+        DocumentTaxDetail::create([
+            'document_id' => $creditNote->id,
+            'sequence_order' => 1,
+            'tax_code' => 'TVA19',
+            'tax_type' => TaxType::Percentage,
+            'tax_name' => 'TVA 19%',
+            'tax_rate' => '19.00',
+            'tax_base' => '300.000',
+            'tax_amount' => '57.000',
+            'is_stamp_duty' => false,
+        ]);
+
+        $results = $this->repository->aggregateByRateAndDirection(
+            $this->company->id,
+            '2026-02-01',
+            '2026-02-28'
+        );
+
+        $this->assertCount(1, $results);
+        $this->assertSame('OUTPUT', $results[0]->direction);
+        $this->assertSame('19.00', $results[0]->taxRate);
+
+        // MONEY nets: 1000.000 − 300.000
+        $this->assertSame('700.000', $results[0]->baseAmount);
+        // 190.000 − 57.000
+        $this->assertSame('133.000', $results[0]->vatAmount);
+
+        // COUNT does NOT net: invoice + credit note = 2 declared documents.
+        $this->assertSame(2, $results[0]->documentCount);
     }
 
     /**
@@ -540,8 +617,11 @@ class VatDataRepositoryTest extends TestCase
         ]);
     }
 
-    private function createDocument(DocumentType $type, string $documentDate): Document
-    {
+    private function createDocument(
+        DocumentType $type,
+        string $documentDate,
+        ?FiscalCategory $fiscalCategory = null,
+    ): Document {
         $prefix = $type->getPrefix();
         $number = $prefix.'-'.now()->format('Y').'-'.str_pad((string) random_int(1, 9999), 4, '0', STR_PAD_LEFT);
 
@@ -550,7 +630,7 @@ class VatDataRepositoryTest extends TestCase
             'company_id' => $this->company->id,
             'partner_id' => $this->partner->id,
             'type' => $type,
-            'fiscal_category' => FiscalCategory::TaxInvoice,
+            'fiscal_category' => $fiscalCategory ?? FiscalCategory::TaxInvoice,
             'fiscal_status' => FiscalStatus::Sealed,
             'status' => DocumentStatus::Confirmed,
             'document_number' => $number,

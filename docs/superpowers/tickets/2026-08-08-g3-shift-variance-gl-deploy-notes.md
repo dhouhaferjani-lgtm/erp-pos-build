@@ -46,7 +46,7 @@ Migration in this batch: `2026_08_08_140000_unique_repository_adjustments_pos_sh
 shipped NULL-only with the V3 table in the same undeployed batch, so no backfill is possible and no
 tenant can hold a conflicting pair.
 
-## 3. HARD PRE-ENABLE GATES — do not flip the flag until all four are closed
+## 3. HARD PRE-ENABLE GATES — do not flip the flag until all five are closed
 
 ### G-1 — Book the whole-drawer basis in Treasury before enabling
 Cashiers count the **whole drawer**. The remaining gate is Treasury representation: the opening float
@@ -89,6 +89,70 @@ repository by UUID, which may be a bank account. The listener refuses that case
 correctness risk, but an unseeded tenant will simply get **no GL leg at all**, silently except for
 the audit row. Seed the mappings before enabling, or the flag will look like it did nothing.
 
+### G-5 — Queue reachability and durability at Z-close (added by R-8, gate round 1 P3-6)
+
+R-8 made `PostShiftCashVarianceAdjustment` a **queued** listener (`ShouldQueue`, `$tries = 3`,
+`$backoff = [5,15]`, `$queue = 'default'`). That buys retries and a dead letter, and it moves two
+things out of the request and into the infrastructure. Both must be checked **before** the flag is
+flipped, because neither is visible until the lane is live.
+
+- [ ] **`QUEUE_CONNECTION` is explicitly `redis` in every environment that serves POS.**
+      `config/queue.php:16` defaults to **`database`** when the var is unset, and Horizon consumes
+      **redis only** (`config/horizon.php:202`). An environment that forgets the var would enqueue
+      into the `jobs` table and never consume it — silent, permanent loss of every variance, with a
+      perfectly healthy-looking Horizon. Same class of failure as the 2026-06-12
+      `fiscal-projections` incident. **The error-reporting reach depends on this too:**
+      `PostShiftCashVarianceAdjustment` deliberately does not call `report()` — exception-shaped
+      faults reach Sentry because `retryOrDeadLetter()` re-throws them and `Worker::runJob()`
+      reports whatever escapes a job. On `sync` (or any path with no queue job) the fault
+      dead-letters WITHOUT re-throwing, so nothing reports it — durable in `audit_events`, but
+      invisible to Sentry. That is byte-identical to the pre-R-8 disposition and is not a
+      regression; it simply means "run this listener on redis" is an alerting requirement, not only
+      a throughput one.
+- [ ] **Horizon is actually consuming `default`** on the target environment (`horizon:status`, and
+      confirm `APP_ENV` matches a `horizon.environments` key — a non-matching env starts **zero**
+      supervisors).
+- [ ] **`TREASURY_SHIFT_VARIANCE_GL_ENABLED` is set identically in the API and the Horizon
+      containers.** The flag is read in both processes — `shouldQueue()` decides whether to push,
+      the belt in `handle()` decides whether to book. A skew is now AUDITED rather than silent
+      (`treasury.shift_variance_gl_skipped`, reason `feature_disabled_after_enqueue`), but an
+      audited drop is still a drop. Flip both together, and flip the WORKER first when enabling.
+- [ ] **Accept, or mitigate, the retry durability window.** Between attempts the ONLY record of the
+      variance is the queued job in Redis. Before R-8 the refusal row was written inline and
+      durably; now a transient fault writes nothing until the retries are exhausted (deliberate — a
+      refusal row per transient blip is noise). If the job is lost in that window (eviction,
+      `horizon:clear`, a Redis restart without persistence) the variance disappears with no row
+      anywhere. `failed_jobs` covers **exhaustion**, not **job loss**. Mitigation: Redis persistence
+      (AOF/RDB) on the queue instance, and no `horizon:clear` during a close-of-day window.
+- [ ] **Queue reachability at Z-close is guarded, not assumed.** A push failure no longer 500s a
+      sealed Z report — both producers raise the event through
+      `POS\Application\Services\CashCountDispatcher`, which `report()`s the fault (so it still
+      reaches Sentry, as it did when it was an unhandled 500) and degrades it to a durable
+      `pos.cash_count_consumers_failed` audit row. Alert on that event type.
+- [ ] **Understand what that row means — the guard is ALL-OR-NOTHING, and the two faults are NOT
+      symmetrical.** `Dispatcher::invokeListeners()` has no per-listener try/catch, so the first
+      consumer to throw aborts the rest, and consumers run in provider-registration order:
+      **(1) the queue push (Treasury) → (2) the fraud alert + its email (Compliance) → (3) the
+      Spatie stored-event write** (a wildcard listener, always last). So read the `exception` field
+      on the row before concluding anything:
+      - a **push failure** (Redis down) throws in (1) and therefore suppresses the fraud alert, the
+        fraud email AND the stored-event write. The audit row is the only survivor — **no** consumer
+        ran, and the variance is only in that row.
+      - a **fraud-listener failure** throws in (2). The GL job is **already enqueued** and will
+        still run; only the stored-event write is lost. Do NOT re-drive the GL leg by hand here or
+        you will chase a booking that is on its way.
+      The ordering is pinned by `CashCountDispatchGuardTest`, so a provider reshuffle is a test
+      failure rather than a silent inversion — but if you deliberately reorder, update this list and
+      the `CashCountDispatcher` docblock together.
+- [ ] **Decide on per-listener isolation before enabling.** The asymmetry above exists only because
+      the guard wraps the whole dispatch. Case (1) is unreachable while the flag is false
+      (`shouldQueue()` short-circuits before the push), which is why it was left alone at R-8 time.
+      Once the flag flips with synchronous consumers still attached to `CashCountRecorded`, either
+      accept that a Redis outage also costs the fraud alert and the stored event, or isolate each
+      consumer in its own `try/catch` inside `CashCountDispatcher` (iterate
+      `Event::getListeners(CashCountRecorded::class)`) and pin "unreachable queue ⇒ the fraud alert
+      still lands".
+
 ## 4. After enabling — what to watch
 
 Both outcomes are durable in `audit_events`, so verification is a query, not a log grep:
@@ -96,7 +160,21 @@ Both outcomes are durable in `audit_events`, so verification is a query, not a l
 ```sql
 SELECT event_type, payload->>'reason' AS reason, count(*)
 FROM audit_events
-WHERE event_type IN ('treasury.shift_variance_gl_booked','treasury.shift_variance_gl_skipped')
+WHERE event_type IN (
+  'treasury.shift_variance_gl_booked',
+  'treasury.shift_variance_gl_skipped',
+  -- R-8: the queue gave up on this variance after $tries attempts. Every field
+  -- needed to re-book it by hand is in the payload, including the derived
+  -- `adjustment_document_id`. Read `attempts` (exact, or NULL when the queue's
+  -- own failed() handler wrote the row) — NOT `tries`, which is the budget.
+  'treasury.shift_variance_gl_dead_lettered',
+  -- R-8 gate P2-1: the close succeeded but a consumer threw and aborted the
+  -- ones after it. Written by POS\Application\Services\CashCountDispatcher.
+  -- Read the payload's `exception` to know WHICH: a push failure means nothing
+  -- ran at all; a fraud-listener failure means the GL job is already enqueued.
+  -- See the G-5 all-or-nothing checkbox in §3.
+  'pos.cash_count_consumers_failed'
+)
 GROUP BY 1, 2 ORDER BY 3 DESC;
 ```
 
@@ -113,6 +191,7 @@ Refusal reasons and what each means:
 | `unattributable_tolerance_writeoff` | belt-and-braces guard, see the report §A.2 correction — **can refuse a whole shift**; if this appears at any volume, investigate before assuming a double-count risk |
 | `currency_mismatch` | repository currency ≠ counted currency |
 | `exception` | a genuine fault — investigate |
+| `feature_disabled_after_enqueue` | R-8 gate P2-2: a job was enqueued while the flag was true but the WORKER sees it false — the API and Horizon environments disagree, or the flag flipped mid-flight. The variance is NOT booked. Reconcile the env and re-drive from the payload |
 
 A `treasury.shift_variance_gl_booked` row carries `truncated_residual`: the scale-4 → money-scale
 remainder that was NOT booked. Non-zero values are expected and explain any last-digit

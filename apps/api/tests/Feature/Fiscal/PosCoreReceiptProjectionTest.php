@@ -34,6 +34,7 @@ use App\Modules\Voucher\Domain\Enums\VoucherStatus;
 use App\Modules\Voucher\Domain\Voucher;
 use App\Modules\Voucher\Domain\VoucherLedger;
 use App\Shared\Domain\ByteaBinding;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -75,6 +76,40 @@ use Tests\TestCase;
  * combined, voucher-rollback-on-failure, cross-tenant payment-method
  * rejection (F3), and the F1-BLOCKER legacy `pos:verify-chains` regression
  * gate.
+ *
+ * ---------------------------------------------------------------------
+ * **Read scoping — LEDGER row C-7 (committed-state bleed).**
+ *
+ * This class must NEVER assume the projection tables are empty at the start
+ * of a test. A sibling class in this very directory —
+ * `PosCoreReceiptProjectionRefundDispositionStockTest` — overrides
+ * `connectionsToTransact()` to return `[]` (that file, lines 63-66), which
+ * disables the `RefreshDatabase` wrapping transaction, so every fixture and
+ * projection row it writes is COMMITTED and survives for the rest of the PHP
+ * process. It sorts alphabetically BEFORE this file, so in any multi-class
+ * run of `tests/Feature/Fiscal/` its rows are already in `pos_receipts` /
+ * `pos_receipt_lines` / `stock_movements` when this class starts.
+ *
+ * Consequence: an unscoped `DB::table('pos_receipts')->first()` picks an
+ * arbitrary leaked row (PostgreSQL has no implicit ordering), and an
+ * unscoped `->count()` counts leaked rows — which is exactly why this class
+ * was 31/31 standalone but 35-41 assertions red, with a *different* count on
+ * every run, inside a directory run.
+ *
+ * Every read below is therefore scoped to the rows THIS test created:
+ *   - `myReceipts()`         — `pos_receipts` filtered by this test's tenant
+ *                              (`setUp()` mints a fresh `Tenant` per test).
+ *   - `myReceiptChildren()`  — `pos_receipt_*` child tables have no tenant
+ *                              column, so the scope walks the `receipt_id` FK.
+ *   - `myStockMovements()`   — `stock_movements` filtered by this test's tenant.
+ *   - `projectionTableCounts()` + `assertNoProjectionRowsWritten()` — the
+ *                              leaked-row-tolerant form of "the transaction
+ *                              rolled back and NOTHING landed", used where a
+ *                              receipt-scoped subquery would be vacuous
+ *                              (no parent receipt ⇒ no child rows by
+ *                              construction, which would silently weaken the
+ *                              rollback claim).
+ * Explicit `orderBy('id')` accompanies every single-row read.
  */
 final class PosCoreReceiptProjectionTest extends TestCase
 {
@@ -98,7 +133,19 @@ final class PosCoreReceiptProjectionTest extends TestCase
     {
         parent::setUp();
 
-        $tenant = Tenant::factory()->create();
+        // LEDGER C-7, second face of the same committed-state bleed. The
+        // default `TenantFactory` slug is `Str::slug($faker->unique()->company())`
+        // — `unique()` de-dupes the COMPANY NAME, but `Str::slug()` collapses
+        // distinct names onto the same slug ("Collier PLC" / "Collier, PLC" →
+        // `collier-plc`). Against the tenants COMMITTED by
+        // `PosCoreReceiptProjectionRefundDispositionStockTest` (see the class
+        // docblock) that lands a random `tenants_slug_unique` violation in
+        // setUp — observed once in three directory runs, killing an otherwise
+        // green test. An explicitly unique slug removes the coupling; same
+        // pattern as VerifyEventChainFleetCommandDbPerTenantTest.
+        $tenant = Tenant::factory()->create([
+            'slug' => 'poscore-projection-'.Str::lower(Str::random(16)),
+        ]);
         $this->tenantId = $tenant->id;
 
         $company = Company::factory()->create(['tenant_id' => $this->tenantId]);
@@ -163,13 +210,16 @@ final class PosCoreReceiptProjectionTest extends TestCase
         // Exactly one pos_receipts row with canonical_bytes mirrored from the event.
         $this->assertSame(
             1,
-            DB::table('pos_receipts')->whereNotNull('canonical_bytes')->count(),
+            $this->myReceipts()->whereNotNull('canonical_bytes')->count(),
         );
 
-        $this->assertGreaterThan(0, DB::table('pos_receipt_lines')->count());
-        $this->assertGreaterThan(0, DB::table('pos_receipt_payments')->count());
+        $this->assertGreaterThan(0, $this->myReceiptChildren('pos_receipt_lines')->count());
+        $this->assertGreaterThan(0, $this->myReceiptChildren('pos_receipt_payments')->count());
 
-        $receipt = DB::table('pos_receipts')->first();
+        // The count above is filtered on canonical_bytes, so it does not bound
+        // the unfiltered tenant-scoped set — guard the single-row read.
+        $this->assertSame(1, $this->myReceipts()->count());
+        $receipt = $this->myReceipts()->orderBy('id')->first();
         $this->assertNotNull($receipt);
         // Mirror columns populated from the authoritative fiscal_events row.
         $this->assertSame($event->current_hash, $receipt->fiscal_hash);
@@ -219,7 +269,11 @@ final class PosCoreReceiptProjectionTest extends TestCase
 
         $this->app->make(PosCoreReceiptProjection::class)->apply($event);
 
-        $receipt = DB::table('pos_receipts')->first();
+        // Scoped by tenant (NOT by fiscal_event_id — that would make the
+        // assertion below tautological); this test's tenant owns exactly one
+        // receipt, so the row read here is the one apply() just wrote.
+        $this->assertSame(1, $this->myReceipts()->count());
+        $receipt = $this->myReceipts()->orderBy('id')->first();
         $this->assertNotNull($receipt);
         // The Task 11 fiscal_event_id linkage column is the idempotency anchor.
         $this->assertSame($event->id, $receipt->fiscal_event_id);
@@ -231,21 +285,21 @@ final class PosCoreReceiptProjectionTest extends TestCase
         $projector = $this->app->make(PosCoreReceiptProjection::class);
 
         $projector->apply($event);
-        $paymentRowsAfterFirst = DB::table('pos_receipt_payments')->count();
-        $lineRowsAfterFirst = DB::table('pos_receipt_lines')->count();
-        $vatRowsAfterFirst = DB::table('pos_receipt_vat_details')->count();
-        $stockMovementsAfterFirst = DB::table('stock_movements')->count();
+        $paymentRowsAfterFirst = $this->myReceiptChildren('pos_receipt_payments')->count();
+        $lineRowsAfterFirst = $this->myReceiptChildren('pos_receipt_lines')->count();
+        $vatRowsAfterFirst = $this->myReceiptChildren('pos_receipt_vat_details')->count();
+        $stockMovementsAfterFirst = $this->myStockMovements()->count();
 
         // Second run — the atomic INSERT ... ON CONFLICT path resolves to
         // a no-op because the existing row owns the fiscal_event_id slot.
         // No exceptions, no duplicate rows.
         $projector->apply($event);
 
-        $this->assertSame(1, DB::table('pos_receipts')->count());
-        $this->assertSame($paymentRowsAfterFirst, DB::table('pos_receipt_payments')->count());
-        $this->assertSame($lineRowsAfterFirst, DB::table('pos_receipt_lines')->count());
-        $this->assertSame($vatRowsAfterFirst, DB::table('pos_receipt_vat_details')->count());
-        $this->assertSame($stockMovementsAfterFirst, DB::table('stock_movements')->count());
+        $this->assertSame(1, $this->myReceipts()->count());
+        $this->assertSame($paymentRowsAfterFirst, $this->myReceiptChildren('pos_receipt_payments')->count());
+        $this->assertSame($lineRowsAfterFirst, $this->myReceiptChildren('pos_receipt_lines')->count());
+        $this->assertSame($vatRowsAfterFirst, $this->myReceiptChildren('pos_receipt_vat_details')->count());
+        $this->assertSame($stockMovementsAfterFirst, $this->myStockMovements()->count());
     }
 
     public function test_runs_to_completion_with_treasury_inactive(): void
@@ -259,10 +313,10 @@ final class PosCoreReceiptProjectionTest extends TestCase
 
         $this->app->make(PosCoreReceiptProjection::class)->apply($event);
 
-        $this->assertSame(1, DB::table('pos_receipts')->count());
+        $this->assertSame(1, $this->myReceipts()->count());
         // ZERO Treasury Payment rows — that's the TreasuryReceiptBridge's job
         // (Task 22), which runs only when the Treasury module is active.
-        $this->assertSame(0, DB::table('payments')->count());
+        $this->assertSame(0, DB::table('payments')->where('tenant_id', $this->tenantId)->count());
     }
 
     // =================================================================
@@ -311,10 +365,15 @@ final class PosCoreReceiptProjectionTest extends TestCase
         $orphanTerminalId = Str::uuid()->toString();
         $event = $this->storeSaleReceiptFiscalEvent(terminalId: $orphanTerminalId);
 
+        $before = $this->projectionTableCounts();
+
         $this->app->make(PosCoreReceiptProjection::class)->apply($event);
 
-        $this->assertSame(0, DB::table('pos_receipts')->count());
-        $this->assertSame(0, DB::table('pos_receipt_payments')->count());
+        $this->assertSame(0, $this->myReceipts()->count());
+        // No separate child-table assertion here: with zero parent receipts a
+        // receipt-scoped subquery is vacuously empty. The snapshot delta below
+        // is the load-bearing "nothing landed" claim.
+        $this->assertNoProjectionRowsWritten($before, 'fail-closed terminal lookup must write nothing');
     }
 
     public function test_unknown_method_code_rolls_projection_back(): void
@@ -332,6 +391,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
             ],
         );
 
+        $before = $this->projectionTableCounts();
+
         try {
             $this->app->make(PosCoreReceiptProjection::class)->apply($event);
             $this->fail('Expected RuntimeException from PaymentMethodResolver resolution failure');
@@ -339,9 +400,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
             $this->assertStringContainsString('payment_method_not_found', $e->getMessage());
         }
 
-        $this->assertSame(0, DB::table('pos_receipts')->count());
-        $this->assertSame(0, DB::table('pos_receipt_payments')->count());
-        $this->assertSame(0, DB::table('pos_receipt_lines')->count());
+        $this->assertSame(0, $this->myReceipts()->count());
+        $this->assertNoProjectionRowsWritten($before, 'transaction must roll back');
     }
 
     // =================================================================
@@ -364,6 +424,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
             ],
         );
 
+        $before = $this->projectionTableCounts();
+
         try {
             $this->app->make(PosCoreReceiptProjection::class)->apply($event);
             $this->fail('Expected RuntimeException for unresolved method_code');
@@ -372,10 +434,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
             $this->assertStringContainsString('XENO_CODE', $e->getMessage());
         }
 
-        $this->assertSame(0, DB::table('pos_receipts')->count(), 'transaction must roll back');
-        $this->assertSame(0, DB::table('pos_receipt_payments')->count());
-        $this->assertSame(0, DB::table('pos_receipt_lines')->count());
-        $this->assertSame(0, DB::table('pos_receipt_vat_details')->count());
+        $this->assertSame(0, $this->myReceipts()->count(), 'transaction must roll back');
+        $this->assertNoProjectionRowsWritten($before, 'transaction must roll back');
     }
 
     // =================================================================
@@ -397,7 +457,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
 
         // First apply lands the row.
         $projector->apply($event);
-        $firstReceiptId = DB::table('pos_receipts')->value('id');
+        $this->assertSame(1, $this->myReceipts()->count());
+        $firstReceiptId = $this->myReceipts()->orderBy('id')->value('id');
         $this->assertNotNull($firstReceiptId);
 
         // Bypass the fast-path probe by directly invoking apply() — the
@@ -407,8 +468,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
         // through the full path is a clean no-op.
         $projector->apply($event);
 
-        $this->assertSame(1, DB::table('pos_receipts')->count());
-        $this->assertSame($firstReceiptId, DB::table('pos_receipts')->value('id'));
+        $this->assertSame(1, $this->myReceipts()->count());
+        $this->assertSame($firstReceiptId, $this->myReceipts()->orderBy('id')->value('id'));
     }
 
     // =================================================================
@@ -430,8 +491,11 @@ final class PosCoreReceiptProjectionTest extends TestCase
 
         $this->app->make(PosCoreReceiptProjection::class)->apply($event);
 
-        $this->assertSame(1, DB::table('pos_receipts')->count());
-        $paymentRows = DB::table('pos_receipt_payments')->orderBy('amount', 'desc')->get();
+        $this->assertSame(1, $this->myReceipts()->count());
+        $paymentRows = $this->myReceiptChildren('pos_receipt_payments')
+            ->orderBy('amount', 'desc')
+            ->orderBy('id')
+            ->get();
         $this->assertCount(2, $paymentRows);
 
         // Sum-of-amounts must equal the receipt total (10.00). Use bcadd
@@ -474,8 +538,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
         $this->app->make(PosCoreReceiptProjection::class)->apply($event);
 
         // Receipt + payment row written.
-        $this->assertSame(1, DB::table('pos_receipts')->count());
-        $this->assertSame(1, DB::table('pos_receipt_payments')->count());
+        $this->assertSame(1, $this->myReceipts()->count());
+        $this->assertSame(1, $this->myReceiptChildren('pos_receipt_payments')->count());
 
         // Voucher redeemed: ledger row written, balance decremented.
         $voucher->refresh();
@@ -530,8 +594,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
         $this->app->make(PosCoreReceiptProjection::class)->apply($event);
 
         // StockMovement row written.
-        $this->assertSame(1, DB::table('stock_movements')->count());
-        $movement = DB::table('stock_movements')->first();
+        $this->assertSame(1, $this->myStockMovements()->count());
+        $movement = $this->myStockMovements()->orderBy('id')->first();
         $this->assertNotNull($movement);
         $this->assertSame($product->id, $movement->product_id);
         $this->assertSame('issue', $movement->movement_type);
@@ -590,7 +654,7 @@ final class PosCoreReceiptProjectionTest extends TestCase
         $this->app->make(PosCoreReceiptProjection::class)->apply($event);
 
         // Receipt projection row landed despite the shortfall.
-        $this->assertSame(1, DB::table('pos_receipts')->count());
+        $this->assertSame(1, $this->myReceipts()->count());
 
         // Stock went negative (1 - 2 = -1) — warn-and-continue, never throw.
         $stockLevel->refresh();
@@ -638,7 +702,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
 
         $this->app->make(PosCoreReceiptProjection::class)->apply($event);
 
-        $line = DB::table('pos_receipt_lines')->first();
+        $this->assertSame(1, $this->myReceiptChildren('pos_receipt_lines')->count());
+        $line = $this->myReceiptChildren('pos_receipt_lines')->orderBy('line_number')->orderBy('id')->first();
         $this->assertNotNull($line);
         $this->assertSame($product->id, $line->product_id);
         $this->assertSame($variant->id, $line->variant_id);
@@ -682,7 +747,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
 
         $this->app->make(PosCoreReceiptProjection::class)->apply($event);
 
-        $line = DB::table('pos_receipt_lines')->first();
+        $this->assertSame(1, $this->myReceiptChildren('pos_receipt_lines')->count());
+        $line = $this->myReceiptChildren('pos_receipt_lines')->orderBy('line_number')->orderBy('id')->first();
         $this->assertNotNull($line);
         $this->assertSame($product->id, $line->product_id);
         $this->assertNull($line->variant_id);
@@ -740,7 +806,7 @@ final class PosCoreReceiptProjectionTest extends TestCase
         $projector->apply($event);
 
         // First apply — both side-effects fired exactly once.
-        $this->assertSame(1, DB::table('stock_movements')->count());
+        $this->assertSame(1, $this->myStockMovements()->count());
         $stockLevel->refresh();
         $this->assertSame('4.0000', $stockLevel->quantity);
         $voucher->refresh();
@@ -754,7 +820,7 @@ final class PosCoreReceiptProjectionTest extends TestCase
         // Second apply — atomic ON CONFLICT no-op, no double-decrement
         // and no double-redemption.
         $projector->apply($event);
-        $this->assertSame(1, DB::table('stock_movements')->count(), 'stock movement must not duplicate on replay');
+        $this->assertSame(1, $this->myStockMovements()->count(), 'stock movement must not duplicate on replay');
         $stockLevel->refresh();
         $this->assertSame('4.0000', $stockLevel->quantity, 'stock level must not double-decrement');
         $voucher->refresh();
@@ -787,9 +853,9 @@ final class PosCoreReceiptProjectionTest extends TestCase
 
         $this->app->make(PosCoreReceiptProjection::class)->apply($event);
 
-        $this->assertSame(1, DB::table('pos_receipts')->count());
-        $this->assertSame(0, DB::table('pos_receipt_payments')->count());
-        $this->assertGreaterThan(0, DB::table('pos_receipt_lines')->count());
+        $this->assertSame(1, $this->myReceipts()->count());
+        $this->assertSame(0, $this->myReceiptChildren('pos_receipt_payments')->count());
+        $this->assertGreaterThan(0, $this->myReceiptChildren('pos_receipt_lines')->count());
     }
 
     public function test_voucher_redemption_failure_rolls_back_the_entire_projection(): void
@@ -810,6 +876,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
             ],
         );
 
+        $before = $this->projectionTableCounts();
+
         try {
             $this->app->make(PosCoreReceiptProjection::class)->apply($event);
             $this->fail('Expected voucher redemption to throw for unknown serial');
@@ -818,10 +886,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
             // wrapping transaction rolls back atomically.
         }
 
-        $this->assertSame(0, DB::table('pos_receipts')->count());
-        $this->assertSame(0, DB::table('pos_receipt_payments')->count());
-        $this->assertSame(0, DB::table('pos_receipt_lines')->count());
-        $this->assertSame(0, DB::table('pos_receipt_vat_details')->count());
+        $this->assertSame(0, $this->myReceipts()->count());
+        $this->assertNoProjectionRowsWritten($before, 'voucher-redemption failure must roll back atomically');
     }
 
     // =================================================================
@@ -842,7 +908,10 @@ final class PosCoreReceiptProjectionTest extends TestCase
         // that ONLY exists in another tenant must not resolve in this
         // tenant — the resolver returns null because the unique
         // `(tenant_id, code)` constraint partitions by tenant.
-        $otherTenant = Tenant::factory()->create();
+        // Explicit slug — see the setUp() note on tenants_slug_unique.
+        $otherTenant = Tenant::factory()->create([
+            'slug' => 'poscore-foreign-'.Str::lower(Str::random(16)),
+        ]);
         $otherCompany = Company::factory()->create(['tenant_id' => $otherTenant->id]);
         PaymentMethod::factory()->create([
             'tenant_id' => $otherTenant->id,
@@ -858,6 +927,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
             ],
         );
 
+        $before = $this->projectionTableCounts();
+
         try {
             $this->app->make(PosCoreReceiptProjection::class)->apply($event);
             $this->fail('Expected RuntimeException for cross-tenant method_code');
@@ -866,8 +937,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
             $this->assertStringContainsString('CASH_FX_X', $e->getMessage());
         }
 
-        $this->assertSame(0, DB::table('pos_receipts')->count());
-        $this->assertSame(0, DB::table('pos_receipt_payments')->count());
+        $this->assertSame(0, $this->myReceipts()->count());
+        $this->assertNoProjectionRowsWritten($before, 'cross-tenant method_code must roll back');
     }
 
     // =================================================================
@@ -905,6 +976,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
             ],
         );
 
+        $before = $this->projectionTableCounts();
+
         try {
             $this->app->make(PosCoreReceiptProjection::class)->apply($event);
             $this->fail('Expected InstrumentRequiredException for missing instrument_type on store_voucher tender');
@@ -913,9 +986,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
         }
 
         // Projection transaction rolled back atomically — no partial rows.
-        $this->assertSame(0, DB::table('pos_receipts')->count());
-        $this->assertSame(0, DB::table('pos_receipt_payments')->count());
-        $this->assertSame(0, DB::table('pos_receipt_lines')->count());
+        $this->assertSame(0, $this->myReceipts()->count());
+        $this->assertNoProjectionRowsWritten($before, 'missing instrument_type must roll back atomically');
     }
 
     public function test_voucher_payment_line_without_instrument_serial_is_rejected_by_projection(): void
@@ -937,6 +1009,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
             ],
         );
 
+        $before = $this->projectionTableCounts();
+
         try {
             $this->app->make(PosCoreReceiptProjection::class)->apply($event);
             $this->fail('Expected InstrumentRequiredException for missing instrument_serial on store_voucher tender');
@@ -944,9 +1018,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
             $this->assertStringContainsString('store_voucher', $e->getMessage());
         }
 
-        $this->assertSame(0, DB::table('pos_receipts')->count());
-        $this->assertSame(0, DB::table('pos_receipt_payments')->count());
-        $this->assertSame(0, DB::table('pos_receipt_lines')->count());
+        $this->assertSame(0, $this->myReceipts()->count());
+        $this->assertNoProjectionRowsWritten($before, 'missing instrument_serial must roll back atomically');
     }
 
     // =================================================================
@@ -1007,7 +1080,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
         $event = $this->storeSaleReceiptFiscalEvent();
         $this->app->make(PosCoreReceiptProjection::class)->apply($event);
 
-        $row = DB::table('pos_receipts')->first();
+        $this->assertSame(1, $this->myReceipts()->count());
+        $row = $this->myReceipts()->orderBy('id')->first();
         $this->assertNotNull($row);
         $this->assertNotSame(str_repeat('0', 64), $row->vat_breakdown_hash, 'vat_breakdown_hash must be a real hash, not the round-1 zero sentinel');
         $this->assertNotSame(str_repeat('0', 64), $row->payment_methods_hash, 'payment_methods_hash must be a real hash');
@@ -1031,7 +1105,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
         $event = $this->storeSaleReceiptFiscalEvent();
         $this->app->make(PosCoreReceiptProjection::class)->apply($event);
 
-        $row = DB::table('pos_receipts')->first();
+        $this->assertSame(1, $this->myReceipts()->count());
+        $row = $this->myReceipts()->orderBy('id')->first();
         $this->assertNotNull($row);
 
         // The id stored is what Receipt::query()->find() returns; both
@@ -1062,7 +1137,10 @@ final class PosCoreReceiptProjectionTest extends TestCase
         // projector must NOT bind X (it lives in another tenant) — the
         // sealed snapshot stays in the canonical payload, and the column
         // is written as null.
-        $foreignTenant = Tenant::factory()->create();
+        // Explicit slug — see the setUp() note on tenants_slug_unique.
+        $foreignTenant = Tenant::factory()->create([
+            'slug' => 'poscore-foreign-'.Str::lower(Str::random(16)),
+        ]);
         $foreignCompany = Company::factory()->create(['tenant_id' => $foreignTenant->id]);
         $foreignProduct = Product::factory()->create([
             'tenant_id' => $foreignTenant->id,
@@ -1087,10 +1165,10 @@ final class PosCoreReceiptProjectionTest extends TestCase
 
         $this->app->make(PosCoreReceiptProjection::class)->apply($event);
 
-        $this->assertSame(1, DB::table('pos_receipts')->count());
-        $this->assertSame(1, DB::table('pos_receipt_lines')->count());
+        $this->assertSame(1, $this->myReceipts()->count());
+        $this->assertSame(1, $this->myReceiptChildren('pos_receipt_lines')->count());
 
-        $line = DB::table('pos_receipt_lines')->first();
+        $line = $this->myReceiptChildren('pos_receipt_lines')->orderBy('line_number')->orderBy('id')->first();
         $this->assertNotNull($line);
         // Sealed canonical snapshot still carries the original product_id
         // inside fiscal_events.payload.line_items[0].product_id — the FK
@@ -1158,6 +1236,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
             ],
         );
 
+        $before = $this->projectionTableCounts();
+
         try {
             $this->app->make(PosCoreReceiptProjection::class)->apply($event);
             $this->fail('Expected OriginalReceiptUnresolvableException for unresolvable REFUND original');
@@ -1174,10 +1254,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
         }
 
         // Atomic rollback — no partial rows survive.
-        $this->assertSame(0, DB::table('pos_receipts')->count(), 'transaction must roll back atomically');
-        $this->assertSame(0, DB::table('pos_receipt_lines')->count());
-        $this->assertSame(0, DB::table('pos_receipt_payments')->count());
-        $this->assertSame(0, DB::table('pos_receipt_vat_details')->count());
+        $this->assertSame(0, $this->myReceipts()->count(), 'transaction must roll back atomically');
+        $this->assertNoProjectionRowsWritten($before, 'transaction must roll back atomically');
     }
 
     public function test_void_projection_throws_when_original_receipt_unresolvable(): void
@@ -1199,6 +1277,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
             ],
         );
 
+        $before = $this->projectionTableCounts();
+
         try {
             $this->app->make(PosCoreReceiptProjection::class)->apply($event);
             $this->fail('Expected OriginalReceiptUnresolvableException for unresolvable VOID original');
@@ -1210,10 +1290,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
             $this->assertInstanceOf(ProjectionDependencyMissingException::class, $e);
         }
 
-        $this->assertSame(0, DB::table('pos_receipts')->count(), 'transaction must roll back atomically');
-        $this->assertSame(0, DB::table('pos_receipt_lines')->count());
-        $this->assertSame(0, DB::table('pos_receipt_payments')->count());
-        $this->assertSame(0, DB::table('pos_receipt_vat_details')->count());
+        $this->assertSame(0, $this->myReceipts()->count(), 'transaction must roll back atomically');
+        $this->assertNoProjectionRowsWritten($before, 'transaction must roll back atomically');
     }
 
     // =================================================================
@@ -1299,7 +1377,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
         $projector = $this->app->make(PosCoreReceiptProjection::class);
         $projector->apply($event);
 
-        $receipt = DB::table('pos_receipts')->first();
+        $this->assertSame(1, $this->myReceipts()->count());
+        $receipt = $this->myReceipts()->orderBy('id')->first();
         $this->assertNotNull($receipt);
         $this->assertSame($partner->id, $receipt->partner_id);
         // R3-tightened — these assertions now PROVE the projector reads
@@ -1324,7 +1403,7 @@ final class PosCoreReceiptProjectionTest extends TestCase
         Partner::query()->where('id', $partner->id)->delete();
         DB::table('pos_receipts')->where('id', $receipt->id)->update(['partner_id' => null]);
 
-        $refreshed = DB::table('pos_receipts')->first();
+        $refreshed = $this->myReceipts()->orderBy('id')->first();
         $this->assertNotNull($refreshed);
         $this->assertNull($refreshed->partner_id, 'partner FK null after deletion + cascade');
         // Snapshot columns are sealed copies — partner deletion must NOT
@@ -1352,11 +1431,11 @@ final class PosCoreReceiptProjectionTest extends TestCase
         // resurrected partner_id value.
         $projector->apply($event);
 
-        $afterReplay = DB::table('pos_receipts')->first();
+        $afterReplay = $this->myReceipts()->orderBy('id')->first();
         $this->assertNotNull($afterReplay);
         // Idempotent — single row, unchanged snapshot, NULL partner_id
         // not resurrected from any runtime lookup.
-        $this->assertSame(1, DB::table('pos_receipts')->count());
+        $this->assertSame(1, $this->myReceipts()->count());
         $this->assertNull(
             $afterReplay->partner_id,
             'idempotent replay must not re-populate partner_id from a runtime lookup — '.
@@ -1373,7 +1452,99 @@ final class PosCoreReceiptProjectionTest extends TestCase
     }
 
     // =================================================================
-    // Helpers
+    // Helpers — scoped reads (LEDGER C-7, see the class docblock)
+    // =================================================================
+
+    /**
+     * `pos_receipts` rows created by THIS test.
+     *
+     * `setUp()` mints a fresh `Tenant` per test, so a `tenant_id` filter is an
+     * exact "the rows I created" scope — it excludes the committed rows leaked
+     * by `PosCoreReceiptProjectionRefundDispositionStockTest` (and any other
+     * `connectionsToTransact() === []` sibling) without weakening any claim.
+     */
+    private function myReceipts(): Builder
+    {
+        return DB::table('pos_receipts')->where('tenant_id', $this->tenantId);
+    }
+
+    /**
+     * Child rows of THIS test's receipts. `pos_receipt_lines`,
+     * `pos_receipt_payments` and `pos_receipt_vat_details` carry no tenant
+     * column, so the scope walks the `receipt_id` FK back to the
+     * tenant-scoped parent.
+     */
+    private function myReceiptChildren(string $table): Builder
+    {
+        return DB::table($table)->whereIn(
+            'receipt_id',
+            DB::table('pos_receipts')->select('id')->where('tenant_id', $this->tenantId),
+        );
+    }
+
+    /** `stock_movements` rows created by THIS test. */
+    private function myStockMovements(): Builder
+    {
+        return DB::table('stock_movements')->where('tenant_id', $this->tenantId);
+    }
+
+    /**
+     * Whole-table counts of every table the projection writes.
+     *
+     * Rows leaked by an earlier class are COMMITTED and therefore constant for
+     * the duration of this test, so comparing this snapshot before/after a
+     * failing `apply()` proves "the transaction rolled back and nothing
+     * landed" — the leaked-row-tolerant equivalent of the original
+     * `assertSame(0, DB::table(...)->count())`, and strictly stronger than a
+     * receipt-scoped subquery (which is vacuously empty when no parent
+     * receipt row survives).
+     *
+     * **Single-process only.** The snapshot is sound because the leaked rows
+     * are committed by an EARLIER test in the SAME PHP process and nothing
+     * else writes these tables while this test runs. If this suite is ever
+     * moved onto parallel workers (paratest / `--parallel`) sharing one
+     * database, a concurrent worker could change the whole-table count
+     * mid-test and these assertions would go flaky — at that point the
+     * snapshot form must be replaced by a per-worker database or a
+     * tenant-scoped equivalent.
+     *
+     * @return array<string, int>
+     */
+    private function projectionTableCounts(): array
+    {
+        $counts = [];
+        foreach ([
+            'pos_receipts',
+            'pos_receipt_lines',
+            'pos_receipt_payments',
+            'pos_receipt_vat_details',
+            'stock_movements',
+        ] as $table) {
+            $counts[$table] = DB::table($table)->count();
+        }
+
+        return $counts;
+    }
+
+    /**
+     * Assert that not a single new row landed in any projection table since
+     * the `$before` snapshot was taken.
+     *
+     * @param  array<string, int>  $before
+     */
+    private function assertNoProjectionRowsWritten(array $before, string $because): void
+    {
+        foreach ($before as $table => $count) {
+            $this->assertSame(
+                $count,
+                DB::table($table)->count(),
+                $because.' — no new '.$table.' row may survive',
+            );
+        }
+    }
+
+    // =================================================================
+    // Helpers — fixtures
     // =================================================================
 
     /**

@@ -14,8 +14,10 @@ use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Exceptions\AdjustmentAmountBelowCurrencyPrecisionException;
 use App\Modules\Treasury\Domain\Exceptions\AdjustmentToleranceAccountMissingException;
+use App\Modules\Treasury\Domain\Exceptions\RepositoryNotSeededException;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\RepositoryAdjustment;
+use App\Modules\Treasury\Domain\RepositoryMovement;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Treasury\DTOs\RepositoryAdjustmentResult;
 use App\Shared\Contracts\Treasury\RepositoryAdjustmentServiceInterface;
@@ -34,6 +36,48 @@ use Illuminate\Support\Facades\DB;
  *
  * See {@see RepositoryAdjustmentServiceInterface} for the contract, the
  * ordering guarantees and the "no CompanyContext" rule.
+ *
+ * ── B-2: THE GO-LIVE SEEDING GUARD AND ITS SHIFT-VARIANCE CARVE-OUT ─────────
+ * post() refuses an adjustment on a repository Treasury has never seen hold
+ * money ({@see RepositoryNotSeededException}, predicate on isNeverSeeded()),
+ * because the only operator-facing path to that state is someone typing their
+ * opening cash float into "Adjust balance" — which books it as REVENUE (7580).
+ *
+ * The refusal is scoped to `$intent->posShiftId === null`, and that carve-out
+ * is load-bearing, not cosmetic. There are exactly TWO callers of post():
+ *
+ *   - RepositoryAdjustmentController::store() — the interactive endpoint. Never
+ *     sets `posShiftId`. This is the misuse surface, and the ONLY one.
+ *   - PostShiftCashVarianceAdjustment — the POS shift-close listener. ALWAYS
+ *     sets `posShiftId: $event->shiftId` (it is also the listener's document-id
+ *     and idempotency-leg discriminator, so it cannot go missing without
+ *     breaking that listener's replay contract first).
+ *
+ * The edge case the carve-out exists for is REAL: a first shift close on a till
+ * that was never seeded — no float, no cash sales, but a non-zero counted
+ * variance (someone put money in or took money out of the drawer). That till is
+ * "never seeded" by every conjunct of the predicate, and refusing it would
+ * re-create the exact defect lane G3 was built to fix: a cash variance that
+ * moves the drawer and books NOTHING to the GL, silently.
+ *
+ * DECISION: FAIL OPEN for the shift-variance path — book it. Rationale from the
+ * code's own reality rather than preference: (a) the listener's amount is
+ * SERVER-COMPUTED from a committed physical cash count, never operator-typed,
+ * so it cannot be a disguised float entry; (b) it books through 658/758 as a
+ * variance, which is what a variance IS — there is no misclassification to
+ * prevent; (c) that whole leg ships behind `treasury.shift_variance_gl_enabled`
+ * = false and the launch posture keeps it false (runbook step 5), so the case is
+ * unreachable at launch anyway; and (d) the listener already refuses-and-audits
+ * six distinct ways and adding a seventh silent refusal there would be exactly
+ * the "missing GL leg nobody notices" failure mode it was written against.
+ *
+ * MERGE NOTE (parallel lane R-8, .worktrees/r8-sv-queue): that lane is changing
+ * PostShiftCashVarianceAdjustment (queueing / retry disposition). This guard
+ * does NOT touch the listener — it discriminates on the intent DTO field the
+ * listener already passes, so the two are orthogonal and merge in either order.
+ * The one thing R-8 must not do is drop `posShiftId` from the intent; if it ever
+ * did, the listener's own UUIDv5/idempotency contract would break first, and
+ * ShiftCashVarianceAdjustmentTest would go red before this guard mattered.
  */
 final readonly class RepositoryAdjustmentService implements RepositoryAdjustmentServiceInterface
 {
@@ -96,6 +140,20 @@ final readonly class RepositoryAdjustmentService implements RepositoryAdjustment
         // point and every downstream consumer receives the already-normalized
         // string.
         $scale = $this->scaleResolver->getScale($repository->currency);
+
+        // B-2 GO-LIVE SEEDING GUARD (owner sheet B-2, research §1.2 Case 1/Case 3,
+        // Recommendation 2). See the predicate rationale on isNeverSeeded() and
+        // RepositoryNotSeededException. Placed after the scale is resolved (the
+        // balance comparison needs it — rule 19 forbids a hardcoded bcmath scale)
+        // and before ANY write, so a refused seeding attempt leaves nothing behind.
+        if ($intent->posShiftId === null && $this->isNeverSeeded($repository, $scale)) {
+            throw new RepositoryNotSeededException(
+                $repository->id,
+                $repository->name,
+                $repository->code,
+            );
+        }
+
         /** @var numeric-string $amount */
         $amount = CurrencyScale::bcformatStrict($intent->amount, $scale);
 
@@ -218,5 +276,70 @@ final readonly class RepositoryAdjustmentService implements RepositoryAdjustment
                 normalizedAmount: $amount,
             );
         });
+    }
+
+    /**
+     * "Treasury has no record of this repository ever holding money."
+     *
+     * ── The three conjuncts, and why each one is there ───────────────────────
+     *
+     * 1. NO MOVEMENTS. `repository_movements` is append-only and is the ONLY
+     *    way money enters or leaves a repository (the port is the sole writer;
+     *    2026_07_08_160000_forbid_direct_payment_repository_balance_writes.php
+     *    is the pgsql backstop). A till that has processed even one cash sale
+     *    has a `fiscal_event` movement from TreasuryReceiptBridge; a bank
+     *    account that has taken one payment has a `payment` movement. So "zero
+     *    movements" is exactly "this repository has never traded" — which is
+     *    what separates the go-live seeding misuse from a genuine first
+     *    variance on a working till. A real first variance happens at the close
+     *    of a shift that sold something, and that shift laid down movements.
+     *
+     * 2. NO PRIOR ADJUSTMENTS. Redundant with (1) in the happy path — post()
+     *    is transactional, so an adjustment always leaves a movement behind —
+     *    but it is the belt: any repository that has already been adjusted has
+     *    demonstrably been "activated", and a second correction on it must not
+     *    be refused. Cheap, and it makes the refusal strictly narrower.
+     *
+     * 3. ZERO CACHED BALANCE. In PRODUCTION this conjunct can never change the
+     *    outcome, and that is the point of stating it. A repository is BORN at
+     *    balance 0 (PaymentRepositoryController::store passes '0.00';
+     *    PaymentRepository::$attributes carries `balance => 0`; the column is
+     *    NOT fillable) and the INSERT trigger above rejects a non-zero balance
+     *    minted with no backing movement — so `balance != 0` IMPLIES movements
+     *    exist, and (1) has already returned false. Its job is to keep the
+     *    guard from firing on a repository whose balance was scaffolded by some
+     *    OTHER means (the test/seed factory brackets its INSERT with
+     *    `app.treasury_movement_port = 'on'` precisely to do this without
+     *    laying down a phantom opening movement). Such a repository HAS been
+     *    seeded — just not through the movement port — and refusing a
+     *    correction on it would be wrong. Fail-open on ambiguity: this guard's
+     *    only job is to catch the empty-till-plus-float shape.
+     *
+     * ── What it deliberately does NOT discriminate on ────────────────────────
+     * Not the reason code. Research Recommendation 2 scoped the refusal to
+     * `correction`/`other`, but the reason code is operator-chosen free choice
+     * on a dropdown, so scoping by it would let the same misuse through under
+     * `count_variance`. On a repository that has never held money there is no
+     * honest reading of ANY inbound adjustment other than "I am seeding this
+     * till" — an OUT adjustment is refused by the insufficient-balance rule
+     * anyway. The caller-origin carve-out below is what keeps the guard narrow.
+     */
+    private function isNeverSeeded(PaymentRepository $repository, int $scale): bool
+    {
+        if (bccomp($repository->balance, '0', $scale) !== 0) {
+            return false;
+        }
+
+        $hasMovement = RepositoryMovement::query()
+            ->where('payment_repository_id', $repository->id)
+            ->exists();
+
+        if ($hasMovement) {
+            return false;
+        }
+
+        return ! RepositoryAdjustment::query()
+            ->where('payment_repository_id', $repository->id)
+            ->exists();
     }
 }

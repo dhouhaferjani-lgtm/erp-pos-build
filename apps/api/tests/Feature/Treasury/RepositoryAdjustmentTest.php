@@ -20,6 +20,8 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Application\DTOs\RepositoryAdjustmentIntent;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementReasonCode;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
@@ -27,6 +29,8 @@ use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\RepositoryAdjustment;
 use App\Modules\Treasury\Domain\RepositoryMovement;
+use App\Shared\Contracts\Treasury\RepositoryAdjustmentServiceInterface;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -960,8 +964,214 @@ final class RepositoryAdjustmentTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // B-2 — the go-live seeding guard
+    // -------------------------------------------------------------------------
+
+    /**
+     * THE MISUSE (owner sheet B-2; research §1.2 Case 1/Case 3).
+     *
+     * A brand-new till and 500 TND of physical opening float. The operator
+     * reaches for the only cash-shaped control the UI offers and types the float
+     * into "Adjust balance". An IN adjustment credits PaymentToleranceIncome
+     * (`7580` on the seeded TN chart) — so the float would be booked as REVENUE
+     * and sealed immutably into the fiscal hash chain.
+     *
+     * A repository in this state (zero movements, zero prior adjustments, zero
+     * balance) has never held money, so there is no balance to adjust and no
+     * honest reading of the request other than "I am seeding this till".
+     */
+    public function test_adjustment_on_a_never_seeded_repository_is_refused_with_a_named_code(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);
+        app(CompanyContext::class)->setCompanyId($company->id);
+        app(ChartOfAccountsService::class)->seedForCompany($company);
+
+        $glAccount = $this->accountFor($user, $company, SystemAccountPurpose::Cash);
+
+        // A virgin till: exactly how PaymentRepositoryController::store mints one.
+        $repo = PaymentRepository::factory()->create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'balance' => '0.000',
+            'currency' => 'TND',
+            'type' => RepositoryType::CashRegister,
+            'gl_account_id' => $glAccount->id,
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/payment-repositories/{$repo->id}/adjustments", [
+                'direction' => 'in',
+                'amount' => '500.000',
+                'reason_code' => 'correction',
+                'reason_text' => 'Opening cash float for the new till.',
+            ]);
+
+        $response->assertStatus(422);
+        $this->assertSame('REPOSITORY_NOT_SEEDED', $response->json('code'));
+        // The message must route the operator to the RIGHT rail, not just say no.
+        $this->assertStringContainsString('Opening balances', (string) $response->json('error'));
+
+        // Refused BEFORE any write: no document, no journal entry, no movement,
+        // and the balance is untouched — the phantom 7580 credit never happens.
+        $this->assertSame(0, RepositoryAdjustment::query()->count());
+        $this->assertSame(0, RepositoryMovement::query()->where('payment_repository_id', $repo->id)->count());
+        $this->assertSame(0, JournalEntry::query()->where('source_type', 'repository_adjustment')->count());
+        $fresh = $repo->fresh();
+        $this->assertNotNull($fresh);
+        $this->assertSame(0, bccomp($fresh->balance, '0.000', 3));
+    }
+
+    /**
+     * THE LEGITIMATE CASE the guard must not break: a genuine first cash-count
+     * variance on a till that has traded.
+     *
+     * This fixture isolates the MOVEMENT conjunct deliberately. The till's
+     * balance is back to exactly 0.000 (money in, money out, drawer swept) — so
+     * the only thing separating it from the virgin till above is that
+     * `repository_movements` remembers it. If the guard were written on the
+     * balance alone, this test would go red and every swept till in production
+     * would become un-adjustable.
+     *
+     * A till that has processed shifts HAS movements: TreasuryReceiptBridge
+     * records a `fiscal_event` movement per POS cash payment. That is what makes
+     * "zero movements" a sound proxy for "never traded".
+     */
+    public function test_adjustment_on_a_repository_with_prior_movements_is_accepted_unchanged(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);
+        app(CompanyContext::class)->setCompanyId($company->id);
+        app(ChartOfAccountsService::class)->seedForCompany($company);
+
+        $glAccount = $this->accountFor($user, $company, SystemAccountPurpose::Cash);
+
+        $repo = PaymentRepository::factory()->create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'balance' => '0.000',
+            'currency' => 'TND',
+            'type' => RepositoryType::CashRegister,
+            'gl_account_id' => $glAccount->id,
+        ]);
+
+        // It traded: a cash sale in, a close-of-day sweep out. Net balance 0.000,
+        // two movements on record. Written through the port, never by hand — the
+        // port is the only writer the balance trigger permits.
+        $movementService = app(TreasuryMovementServiceInterface::class);
+        $movementService->record($this->tradeMovement($repo, $user, MovementDirection::In, '120.000', 'sale'));
+        $movementService->record($this->tradeMovement($repo, $user, MovementDirection::Out, '120.000', 'sweep'));
+
+        $freshBefore = $repo->fresh();
+        $this->assertNotNull($freshBefore);
+        $this->assertSame(0, bccomp($freshBefore->balance, '0.000', 3));
+        $this->assertSame(2, RepositoryMovement::query()->where('payment_repository_id', $repo->id)->count());
+
+        // The first REAL variance on this till. Must behave exactly as before the
+        // guard existed.
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/payment-repositories/{$repo->id}/adjustments", [
+                'direction' => 'in',
+                'amount' => '3.000',
+                'reason_code' => 'count_variance',
+                'reason_text' => 'Till was over at close.',
+            ])
+            ->assertCreated();
+
+        $this->assertSame(1, RepositoryAdjustment::query()->count());
+        $freshAfter = $repo->fresh();
+        $this->assertNotNull($freshAfter);
+        $this->assertSame(0, bccomp($freshAfter->balance, '3.000', 3));
+    }
+
+    /**
+     * The carve-out, asserted at the seam rather than assumed.
+     *
+     * A first shift close on a till that was never seeded (no float, no cash
+     * sales, but a non-zero counted variance) is "never seeded" by every conjunct
+     * of the predicate. The shift-variance listener must still be able to book
+     * it — refusing there would re-create the exact defect lane G3 exists to fix:
+     * a cash variance that moves the drawer and books NOTHING to the GL.
+     *
+     * The discriminator is `posShiftId`, which the listener ALWAYS sets and the
+     * interactive controller NEVER sets. Driven through the service directly
+     * because that is the layer the carve-out lives at; the listener's own
+     * end-to-end coverage is ShiftCashVarianceAdjustmentTest.
+     */
+    public function test_a_shift_originated_adjustment_is_exempt_on_a_never_seeded_till(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);
+        app(CompanyContext::class)->setCompanyId($company->id);
+        app(ChartOfAccountsService::class)->seedForCompany($company);
+
+        $glAccount = $this->accountFor($user, $company, SystemAccountPurpose::Cash);
+
+        $repo = PaymentRepository::factory()->create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'balance' => '0.000',
+            'currency' => 'TND',
+            'type' => RepositoryType::CashRegister,
+            'gl_account_id' => $glAccount->id,
+        ]);
+
+        $result = app(RepositoryAdjustmentServiceInterface::class)->post(
+            new RepositoryAdjustmentIntent(
+                repositoryId: $repo->id,
+                tenantId: (string) $user->tenant_id,
+                companyId: $company->id,
+                direction: MovementDirection::In,
+                amount: '5.000',
+                reasonCode: MovementReasonCode::CountVariance,
+                reasonText: 'Shift-close cash count variance (over).',
+                userId: $user->id,
+                adjustmentId: (string) Str::uuid(),
+                posShiftId: (string) Str::uuid(),
+                idempotencyLeg: 'shift:first-close',
+            )
+        );
+
+        $this->assertNotSame('', $result->movementId);
+        $this->assertSame(1, RepositoryAdjustment::query()->count());
+        $fresh = $repo->fresh();
+        $this->assertNotNull($fresh);
+        $this->assertSame(0, bccomp($fresh->balance, '5.000', 3));
+    }
+
+    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * A plain trading movement through the port — the shape TreasuryReceiptBridge
+     * lays down for a POS cash payment. No journal entry: this fixture exists to
+     * establish movement HISTORY, which is the only thing the guard reads.
+     *
+     * @param  numeric-string  $amount
+     */
+    private function tradeMovement(
+        PaymentRepository $repo,
+        User $user,
+        MovementDirection $direction,
+        string $amount,
+        string $leg,
+    ): MovementIntent {
+        return new MovementIntent(
+            repositoryId: $repo->id,
+            tenantId: (string) $user->tenant_id,
+            companyId: (string) $repo->company_id,
+            direction: $direction,
+            amount: $amount,
+            currency: $repo->currency,
+            sourceType: MovementSourceType::FiscalEvent,
+            sourceId: (string) Str::uuid(),
+            idempotencyLeg: $leg,
+            journalEntryId: null,
+            occurredAt: null,
+            reasonCode: null,
+            reversesMovementId: null,
+            createdBy: $user->id,
+            notes: null,
+        );
+    }
 
     protected function tearDown(): void
     {

@@ -7,6 +7,7 @@ namespace App\Modules\POS\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\POS\Application\Services\CashCountDispatcher;
 use App\Modules\POS\Domain\DTOs\CashCountBreakdownDTO;
 use App\Modules\POS\Domain\DTOs\VarianceAmount;
 use App\Modules\POS\Domain\Events\CashCountRecorded;
@@ -23,7 +24,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 
@@ -46,6 +46,7 @@ final class ZReportSyncController extends Controller
         private readonly ZReportHashService $zReportHashService,
         private readonly ZReportCountRepository $zReportCountRepository,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly CashCountDispatcher $cashCountDispatcher,
     ) {}
 
     /**
@@ -545,7 +546,13 @@ final class ZReportSyncController extends Controller
 
         $cashierId = (string) (auth()->id() ?? $zReport->generated_by);
 
-        Event::dispatch(new CashCountRecorded(
+        // Gate round 1 P2-1 — guarded, never a bare Event::dispatch(): the
+        // transaction has already committed and sealed the Z report by the time
+        // this runs, so a consumer fault (including the queue push for the
+        // ShouldQueue treasury listener) must degrade to a durable audit row
+        // rather than 500 a sync that succeeded. A device cannot re-raise it:
+        // a re-sync short-circuits at `200 duplicate` above this block.
+        $this->cashCountDispatcher->dispatch(new CashCountRecorded(
             zReportId: $zReport->id,
             shiftId: (string) $validated['shift_id'],
             terminalId: $terminal->id,
