@@ -13,6 +13,8 @@ import {
 import type { Shift } from '@/stores/terminalStore';
 import type { EndOfDayPreview } from '@/lib/offline/endOfDayPreview';
 import { ToleranceDrillDown } from '@/components/pos/molecules/ToleranceDrillDown';
+import { VatDisclosureSummary } from './VatDisclosureSummary';
+import { deriveVatDisclosure } from '@/lib/reports/vatDisclosure';
 // The §8.1 cap, imported rather than written as `10`: paymentStore's gate and
 // two test suites already bind to this constant, so a literal here would fork
 // the displayed limit from the enforced one on the next tuning change.
@@ -76,7 +78,7 @@ export function EndOfDayPreviewModal({
   onManagerPinThrottleUpdate,
 }: EndOfDayPreviewModalProps) {
   const { t } = useTranslation('pos');
-  const { format, currency } = useCurrency();
+  const { format, currency, decimals } = useCurrency();
 
   const [phase, setPhase] = useState<ModalPhase>('loading');
   const [preview, setPreview] = useState<EndOfDayPreview | null>(null);
@@ -129,6 +131,15 @@ export function EndOfDayPreviewModal({
     cashCountEnabled &&
     fraudSettings?.require_blind_cash_count === true &&
     !cashCountsCommitted;
+
+  // B-6(ii)/A1 — the preview's `tax_amount` is SALE-ONLY while its
+  // `vat_breakdown` is NET, so the two disagree by the refund VAT on any shift
+  // that took a return. Derived from those same two fields (never a new field
+  // on the shape that feeds the signed Z) and masked by the SAME blind-count
+  // boundary as every other amount on this screen: VAT is not tender, but
+  // B-13(i) showed a concealed cash figure can be re-derived from visible
+  // siblings, and these are new siblings.
+  const vatDisclosure = preview ? deriveVatDisclosure(preview, decimals) : null;
 
   // Load preview data when modal opens
   useEffect(() => {
@@ -307,10 +318,45 @@ export function EndOfDayPreviewModal({
               value={hideFinancialAmounts ? '—' : format(preview.net_sales)}
             />
             <SummaryCard
-              label={t('reports.endOfDay.taxAmount')}
-              value={hideFinancialAmounts ? '—' : format(preview.tax_amount)}
+              label={
+                vatDisclosure?.hasRefundVat
+                  ? `${t('reports.endOfDay.taxAmount')} (${t('reports.endOfDay.vatNetOfRefunds')})`
+                  : t('reports.endOfDay.taxAmount')
+              }
+              value={
+                hideFinancialAmounts
+                  ? '—'
+                  : format(
+                      vatDisclosure?.hasRefundVat ? vatDisclosure.netVat : preview.tax_amount,
+                    )
+              }
             />
           </div>
+
+          {/* Refunds — this modal had NO refunds block at all before B-6(ii),
+              so a cashier closing a shift that took a return saw no trace of it
+              outside the netted per-rate table. */}
+          {preview.refunds_count > 0 && (
+            <div className="rounded-tile bg-warning-surface px-4 py-3">
+              <div className="flex justify-between text-sm font-medium text-warning-strong">
+                <span>
+                  {t('reports.endOfDay.refundsCount')}: {preview.refunds_count}
+                </span>
+                <span className="tabular-nums">
+                  {hideFinancialAmounts ? '—' : format(preview.refunds_amount)}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {vatDisclosure !== null && (
+            <VatDisclosureSummary
+              disclosure={vatDisclosure}
+              format={format}
+              masked={hideFinancialAmounts}
+              keyPrefix="reports.endOfDay"
+            />
+          )}
 
           {/* Cash reconciliation summary card (legacy parity). SECURITY: this
               card shows expected_cash unconditionally, which would DEFEAT the
@@ -343,6 +389,9 @@ export function EndOfDayPreviewModal({
               <div>
                 <h4 className="mb-2 text-sm font-semibold text-ink-muted">
                   {t('reports.endOfDay.vatBreakdown')}
+                  {vatDisclosure?.hasRefundVat
+                    ? ` — ${t('reports.endOfDay.vatNetOfRefunds')}`
+                    : ''}
                 </h4>
                 <table className="w-full text-sm">
                   <thead>

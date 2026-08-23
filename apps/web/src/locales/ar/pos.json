@@ -7,6 +7,13 @@
   },
   "zReports": {
     "location": "الموقع",
-    "terminalColumn": "المحطة"
+    "terminalColumn": "المحطة",
+    "taxCollectedSalesOnly": "الضريبة (المبيعات فقط)",
+    "detail": {
+      "vatOnSales": "ضريبة القيمة المضافة على المبيعات",
+      "vatOnRefunds": "ضريبة القيمة المضافة على المرتجعات",
+      "netVat": "صافي ضريبة القيمة المضافة",
+      "vatNetOfRefunds": "بعد خصم المرتجعات"
+    }
   }
 }

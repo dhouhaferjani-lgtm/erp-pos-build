@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useCurrency } from '@/lib/currency';
 import { formatPercent } from '@/lib/format';
 import { Modal } from './Modal';
+import { VatDisclosureSummary } from './VatDisclosureSummary';
+import { deriveVatDisclosure } from '@/lib/reports/vatDisclosure';
 import { Loader2, Info, AlertTriangle } from 'lucide-react';
 import type { ZReportResponse } from '@/api/reportApi';
 
@@ -24,8 +26,14 @@ export function ZReportModal({
   error,
 }: ZReportModalProps) {
   const { t } = useTranslation('pos');
-  const { format } = useCurrency();
+  const { format, decimals } = useCurrency();
   const [confirmed, setConfirmed] = useState(false);
+
+  // B-6(ii): derived from `report_data`'s own SIGNED fields at render time.
+  // Deliberately not an extra key on `report_data` — that object IS the legacy
+  // Z hash input (`zReportService.ts:445-450`), so a new key would move the
+  // fiscal hash. See lib/reports/vatDisclosure.ts.
+  const vatDisclosure = report ? deriveVatDisclosure(report.report_data, decimals) : null;
 
   const handleClose = useCallback(() => {
     setConfirmed(false);
@@ -157,8 +165,24 @@ export function ZReportModal({
             <SummaryCard label={t('reports.salesCount')} value={String(report.report_data.sales_count)} />
             <SummaryCard label={t('reports.grossSales')} value={format(report.report_data.gross_sales)} />
             <SummaryCard label={t('reports.netSales')} value={format(report.report_data.net_sales)} />
-            <SummaryCard label={t('reports.taxAmount')} value={format(report.report_data.tax_amount)} />
+            {/* B-6(ii)/A1: net-of-refunds VAT here, so this card and the
+                per-rate table below stop being two numbers on one signed Z that
+                disagree by exactly the refund VAT. */}
+            <SummaryCard
+              label={
+                vatDisclosure?.hasRefundVat
+                  ? `${t('reports.taxAmount')} (${t('reports.vatNetOfRefunds')})`
+                  : t('reports.taxAmount')
+              }
+              value={format(
+                vatDisclosure?.hasRefundVat ? vatDisclosure.netVat : report.report_data.tax_amount,
+              )}
+            />
           </div>
+
+          {vatDisclosure !== null && (
+            <VatDisclosureSummary disclosure={vatDisclosure} format={format} keyPrefix="reports" />
+          )}
 
           {/* Refunds */}
           {report.report_data.refunds_count > 0 && (
@@ -175,7 +199,10 @@ export function ZReportModal({
             {/* VAT Breakdown */}
             {report.report_data.vat_breakdown.length > 0 && (
               <div>
-                <h4 className="mb-2 text-sm font-semibold text-ink-muted">{t('reports.vatBreakdown')}</h4>
+                <h4 className="mb-2 text-sm font-semibold text-ink-muted">
+                  {t('reports.vatBreakdown')}
+                  {vatDisclosure?.hasRefundVat ? ` — ${t('reports.vatNetOfRefunds')}` : ''}
+                </h4>
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border-subtle text-left text-xs text-ink-muted">

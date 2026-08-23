@@ -6,6 +6,7 @@ namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\DTOs\RefundVatDisclosureData;
@@ -18,7 +19,10 @@ use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Domain\ZReport;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /**
@@ -266,10 +270,51 @@ class ZReportRefundVatDisclosureTest extends TestCase
     }
 
     /**
+     * The web Z-report detail page reads the disclosure off the DETAIL endpoint.
+     * The list endpoint deliberately does not carry it (one aggregate query per
+     * row would be an N+1 for a figure no list row renders).
+     */
+    public function test_detail_endpoint_exposes_the_disclosure(): void
+    {
+        $this->seed(RolesAndPermissionsSeeder::class);
+        $this->app->make(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
+        Permission::findOrCreate('pos.view_reports', 'sanctum');
+        $this->cashier->givePermissionTo('pos.view_reports');
+        UserCompanyMembership::create([
+            'user_id' => $this->cashier->id,
+            'company_id' => $this->company->id,
+            'role' => 'admin',
+        ]);
+
+        $sale = $this->createSale('300.000', '57.000');
+        $this->createVatDetail($sale, '19.00', '300.000', '57.000');
+        $return = $this->createReturn($sale, '50.000', '9.500');
+        $this->createVatDetail($return, '19.00', '50.000', '9.500');
+
+        $zReport = $this->createZReport([
+            ['tax_rate' => '19.00', 'net_amount' => '250.000', 'vat_amount' => '47.500', 'gross_amount' => '297.500'],
+        ], salesVat: '57.000');
+
+        $response = $this->actingAs($this->cashier)
+            ->withHeaders(['X-Company-Id' => $this->company->id])
+            ->getJson("/api/v1/pos/reports/z/{$zReport->z_number}?terminal_id={$this->terminal->id}");
+
+        $response->assertOk();
+        $response->assertJsonPath('data.refund_vat_disclosure.sales_vat', '57.000');
+        $response->assertJsonPath('data.refund_vat_disclosure.refund_vat', '9.500');
+        $response->assertJsonPath('data.refund_vat_disclosure.net_vat', '47.500');
+        $response->assertJsonPath('data.refund_vat_disclosure.has_refund_vat', true);
+        $response->assertJsonPath('data.refund_vat_disclosure.is_reconciled', true);
+        $response->assertJsonPath('data.refund_vat_disclosure.rows.0.vat_amount', '9.500');
+    }
+
+    /**
      * @param  list<array<string, string>>  $vatBreakdown
      */
     private function createZReport(array $vatBreakdown, string $salesVat): ZReport
     {
+        // `closed_at` + `closed_by` are NOT decoration: the PostgreSQL
+        // `pos_shifts_closed_logic` CHECK requires both on a CLOSED shift.
         $shift = Shift::create([
             'terminal_id' => $this->terminal->id,
             'cashier_id' => $this->cashier->id,
@@ -277,6 +322,8 @@ class ZReportRefundVatDisclosureTest extends TestCase
             'opened_at' => now()->subHours(8),
             'opening_cash' => '100.000',
             'status' => 'CLOSED',
+            'closed_at' => now(),
+            'closed_by' => $this->cashier->id,
         ]);
 
         return ZReport::create([

@@ -50,6 +50,12 @@ final class ZReportResource extends JsonResource
             // Full report data for detailed view
             'report_data' => $this->report_data,
 
+            // B-6(ii) — DERIVED (never signed) refund-VAT disclosure. Present only
+            // on the detail endpoint, which is the only caller that attaches it;
+            // null on the list, where deriving per row would be an N+1 for a
+            // figure no list row renders.
+            'refund_vat_disclosure' => $this->getAttribute('refund_vat_disclosure'),
+
             // Per-tender cash count rows (only when relation is eager-loaded)
             'counts' => $this->whenLoaded('counts', fn () => CashCountResource::collection($this->counts)),
 

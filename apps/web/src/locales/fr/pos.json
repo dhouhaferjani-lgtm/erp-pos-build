@@ -403,8 +403,13 @@
       "variance": "Écart",
       "currentHash": "Hachage Actuel",
       "previousHash": "Hachage Précédent",
-      "genesisReport": "Ceci est le premier rapport Z (genèse) pour ce terminal"
-    }
+      "genesisReport": "Ceci est le premier rapport Z (genèse) pour ce terminal",
+      "vatOnSales": "TVA sur ventes",
+      "vatOnRefunds": "TVA sur remboursements",
+      "netVat": "TVA nette",
+      "vatNetOfRefunds": "nette des remboursements"
+    },
+    "taxCollectedSalesOnly": "Taxe (ventes seules)"
   },
   "receipts": {
     "title": "Tickets",

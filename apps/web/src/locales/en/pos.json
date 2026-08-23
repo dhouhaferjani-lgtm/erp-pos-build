@@ -403,8 +403,13 @@
       "variance": "Variance",
       "currentHash": "Current Hash",
       "previousHash": "Previous Hash",
-      "genesisReport": "This is the first Z-report (genesis) for this terminal"
-    }
+      "genesisReport": "This is the first Z-report (genesis) for this terminal",
+      "vatOnSales": "VAT on sales",
+      "vatOnRefunds": "VAT on refunds",
+      "netVat": "Net VAT",
+      "vatNetOfRefunds": "net of refunds"
+    },
+    "taxCollectedSalesOnly": "Tax (sales only)"
   },
   "receipts": {
     "title": "Receipts",

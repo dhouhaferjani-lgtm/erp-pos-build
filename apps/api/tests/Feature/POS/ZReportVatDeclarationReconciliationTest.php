@@ -115,29 +115,22 @@ class ZReportVatDeclarationReconciliationTest extends TestCase
         $terminalB = $this->createTerminal('POS02');
 
         // Terminal A: two sales at 19%, one refund at 19% (positive-signed era).
-        $a1 = $this->createSale($terminalA, '2026-02-10 09:00:00');
-        $this->createVatRow($a1, '19.00', '1000.000', '190.000');
-        $a2 = $this->createSale($terminalA, '2026-02-10 11:00:00');
-        $this->createVatRow($a2, '19.00', '500.000', '95.000');
-        $aReturn = $this->createReturn($terminalA, $a1, '2026-02-10 15:00:00');
-        $this->createVatRow($aReturn, '19.00', '200.000', '38.000');
+        $a1 = $this->createSale($terminalA, '2026-02-10 09:00:00', [['19.00', '1000.000', '190.000']]);
+        $this->createSale($terminalA, '2026-02-10 11:00:00', [['19.00', '500.000', '95.000']]);
+        $this->createReturn($terminalA, $a1, '2026-02-10 15:00:00', [['19.00', '200.000', '38.000']]);
 
         // Terminal B: one sale at 19%, one refund at 19% (legacy NEGATIVE-signed
         // era) — the two writers really do store opposite signs for the same
         // event, which is why both sides normalise with ABS().
-        $b1 = $this->createSale($terminalB, '2026-02-11 10:00:00');
-        $this->createVatRow($b1, '19.00', '300.000', '57.000');
-        $bReturn = $this->createReturn($terminalB, $b1, '2026-02-11 16:00:00');
-        $this->createVatRow($bReturn, '19.00', '-100.000', '-19.000');
+        $b1 = $this->createSale($terminalB, '2026-02-11 10:00:00', [['19.00', '300.000', '57.000']]);
+        $this->createReturn($terminalB, $b1, '2026-02-11 16:00:00', [['19.00', '-100.000', '-19.000']]);
 
         // A zero-rated sale: present on the Z's table, EXCLUDED from the
         // declaration (§3.2 wedge 1). The identity holds only for r > 0.
-        $b2 = $this->createSale($terminalB, '2026-02-11 12:00:00');
-        $this->createVatRow($b2, '0.00', '80.000', '0.000');
+        $this->createSale($terminalB, '2026-02-11 12:00:00', [['0.00', '80.000', '0.000']]);
 
         // Excluded on BOTH sides — pinned rather than assumed (§3.2 wedge 4).
-        $training = $this->createReturn($terminalB, $b1, '2026-02-11 17:00:00', ['is_training' => true]);
-        $this->createVatRow($training, '19.00', '999.000', '189.810');
+        $this->createReturn($terminalB, $b1, '2026-02-11 17:00:00', [['19.00', '999.000', '189.810']], ['is_training' => true]);
 
         // ── LEFT SIDE: what every terminal's Z prints, summed. ────────────────
         $zVatByRate = [];
@@ -190,10 +183,8 @@ class ZReportVatDeclarationReconciliationTest extends TestCase
     {
         $terminal = $this->createTerminal('POS01');
 
-        $sale = $this->createSale($terminal, '2026-02-12 09:00:00');
-        $this->createVatRow($sale, '19.00', '1000.000', '190.000');
-        $return = $this->createReturn($terminal, $sale, '2026-02-12 14:00:00');
-        $this->createVatRow($return, '19.00', '250.000', '47.500');
+        $sale = $this->createSale($terminal, '2026-02-12 09:00:00', [['19.00', '1000.000', '190.000']]);
+        $this->createReturn($terminal, $sale, '2026-02-12 14:00:00', [['19.00', '250.000', '47.500']]);
 
         $totals = $this->shiftTotalsFor($terminal);
         /** @var list<array<string, mixed>> $breakdown */
@@ -220,10 +211,8 @@ class ZReportVatDeclarationReconciliationTest extends TestCase
     {
         $terminal = $this->createTerminal('POS01');
 
-        $sale = $this->createSale($terminal, '2026-02-13 09:00:00');
-        $this->createVatRow($sale, '19.00', '1000.000', '190.000');
-        $return = $this->createReturn($terminal, $sale, '2026-02-13 14:00:00');
-        $this->createVatRow($return, '19.00', '200.000', '38.000');
+        $sale = $this->createSale($terminal, '2026-02-13 09:00:00', [['19.00', '1000.000', '190.000']]);
+        $this->createReturn($terminal, $sale, '2026-02-13 14:00:00', [['19.00', '200.000', '38.000']]);
 
         $totals = $this->shiftTotalsFor($terminal);
         $declared = $this->declaredOutputByRate();
@@ -282,20 +271,35 @@ class ZReportVatDeclarationReconciliationTest extends TestCase
         ]);
     }
 
-    private function createSale(Terminal $terminal, string $postedAt): Receipt
+    /**
+     * A sale receipt whose headline columns are derived from its VAT rows, both
+     * written in ONE insert.
+     *
+     * The receipt's own totals must agree with its VAT rows or the sale-only
+     * `tax_amount` assertions would be testing the fixture rather than the
+     * aggregation. They are computed BEFORE the insert rather than patched
+     * afterwards because the PostgreSQL `prevent_receipt_modification()` trigger
+     * rejects any UPDATE to a fiscalized receipt — the same reason
+     * `ReportGenerationServiceTest::createReceipt()` writes `created_at` at
+     * insert time.
+     *
+     * @param  list<array{0: numeric-string, 1: numeric-string, 2: numeric-string}>  $vatRows  [rate, net, vat]
+     */
+    private function createSale(Terminal $terminal, string $postedAt, array $vatRows): Receipt
     {
-        return $this->createReceipt($terminal, [
+        return $this->createReceiptWithVat($terminal, $vatRows, [
             'receipt_type' => ReceiptType::Sale,
             'posted_at' => $postedAt,
         ]);
     }
 
     /**
+     * @param  list<array{0: numeric-string, 1: numeric-string, 2: numeric-string}>  $vatRows
      * @param  array<string, mixed>  $overrides
      */
-    private function createReturn(Terminal $terminal, Receipt $original, string $postedAt, array $overrides = []): Receipt
+    private function createReturn(Terminal $terminal, Receipt $original, string $postedAt, array $vatRows, array $overrides = []): Receipt
     {
-        return $this->createReceipt($terminal, array_merge([
+        return $this->createReceiptWithVat($terminal, $vatRows, array_merge([
             'receipt_type' => ReceiptType::Return,
             'original_receipt_id' => $original->id,
             'return_reason' => ReturnReason::Defective,
@@ -304,49 +308,44 @@ class ZReportVatDeclarationReconciliationTest extends TestCase
     }
 
     /**
+     * @param  list<array{0: numeric-string, 1: numeric-string, 2: numeric-string}>  $vatRows
      * @param  array<string, mixed>  $attributes
      */
-    private function createReceipt(Terminal $terminal, array $attributes): Receipt
+    private function createReceiptWithVat(Terminal $terminal, array $vatRows, array $attributes): Receipt
     {
-        return Receipt::factory()->create(array_merge([
+        $subtotal = '0.000';
+        $taxAmount = '0.000';
+        foreach ($vatRows as [$rate, $net, $vat]) {
+            unset($rate);
+            $subtotal = bcadd($subtotal, $net, 3);
+            $taxAmount = bcadd($taxAmount, $vat, 3);
+        }
+
+        $receipt = Receipt::factory()->create(array_merge([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'location_id' => $this->location->id,
             'terminal_id' => $terminal->id,
             'cashier_id' => $this->cashier->id,
             'currency' => 'TND',
-            'subtotal' => '0.000',
-            'tax_amount' => '0.000',
             'discount_amount' => '0.000',
-            'total' => '0.000',
             'is_training' => false,
             'is_voided' => false,
+            'subtotal' => $subtotal,
+            'tax_amount' => $taxAmount,
+            'total' => bcadd($subtotal, $taxAmount, 3),
         ], $attributes));
-    }
 
-    /**
-     * @param  numeric-string  $taxRate
-     * @param  numeric-string  $netAmount
-     * @param  numeric-string  $vatAmount
-     */
-    private function createVatRow(Receipt $receipt, string $taxRate, string $netAmount, string $vatAmount): ReceiptVatDetail
-    {
-        // The receipt's own headline columns must agree with its VAT rows, or the
-        // sale-only `tax_amount` assertion above would be testing the fixture
-        // rather than the aggregation. Written before the row so a multi-rate
-        // receipt accumulates correctly.
-        $receipt->forceFill([
-            'subtotal' => bcadd((string) $receipt->subtotal, $netAmount, 3),
-            'tax_amount' => bcadd((string) $receipt->tax_amount, $vatAmount, 3),
-            'total' => bcadd((string) $receipt->total, bcadd($netAmount, $vatAmount, 3), 3),
-        ])->saveQuietly();
+        foreach ($vatRows as [$rate, $net, $vat]) {
+            ReceiptVatDetail::create([
+                'receipt_id' => $receipt->id,
+                'tax_rate' => $rate,
+                'net_amount' => $net,
+                'vat_amount' => $vat,
+                'gross_amount' => bcadd($net, $vat, 3),
+            ]);
+        }
 
-        return ReceiptVatDetail::create([
-            'receipt_id' => $receipt->id,
-            'tax_rate' => $taxRate,
-            'net_amount' => $netAmount,
-            'vat_amount' => $vatAmount,
-            'gross_amount' => bcadd($netAmount, $vatAmount, 3),
-        ]);
+        return $receipt;
     }
 }
