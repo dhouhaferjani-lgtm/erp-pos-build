@@ -17,7 +17,7 @@
 import type Database from '@tauri-apps/plugin-sql';
 import { queryAll } from '@/lib/db';
 import { toSqliteUtc } from '@/lib/db/sqliteTime';
-import { bcadd, bcsub, bcformat, bccomp } from '@/lib/decimal';
+import { bcadd, bcsub, bcformat, bccomp, bcabs } from '@/lib/decimal';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { getCashDrawerOpsForShift } from '@/lib/db/repositories/cashDrawerRepository';
 import { getAccountPaymentRecordsForShift } from '@/lib/db/repositories/localAccountPaymentRecordRepository';
@@ -99,6 +99,30 @@ export interface EndOfDayPreview {
   drawer_movements_net: string;
   expected_cash: string;
   variance: string | null;
+  /**
+   * Refunds taken in the shift (B-6(ii) / Option A2). The preview had NO
+   * refunds block at all before this — scoping doc §1.6 — even though its
+   * `tax_amount` is SALE-ONLY and its `vat_breakdown` is NET of refunds, so a
+   * cashier reconciling a refund-bearing shift saw two VAT figures that
+   * disagreed with nothing on screen to explain the gap.
+   */
+  refunds_count: number;
+  /**
+   * POSITIVE magnitude of the refunds' gross TTC, matching the signed Z's own
+   * `refunds_amount` semantics (server-pinned by `ZReportV3AggregationTest`,
+   * consumed by `GrandtotalService` as `gross − refunds`). NEVER a signed delta.
+   */
+  refunds_amount: string;
+  /**
+   * POSITIVE magnitude of the VAT those refunds reversed — the bridge between
+   * the sale-only `tax_amount` and the net `vat_breakdown` below.
+   *
+   * Accumulated here rather than derived because this preview is unsigned,
+   * unhashed and unpersisted. On the SIGNED Z the same figure must be DERIVED
+   * instead ({@link ../reports/vatDisclosure}), because `report_data` IS the
+   * hash input there and a new key would change the legacy Z fiscal hash.
+   */
+  refund_vat_amount: string;
   vat_breakdown: VatBreakdownItem[];
   payment_methods: PaymentMethodItem[];
   /**
@@ -202,6 +226,16 @@ export async function buildEndOfDayPreview(
   // a SALE while the three sale aggregates right below deliberately skipped
   // it — an internally inconsistent preview.
   let salesCount = 0;
+  // B-6(ii) — refunds block. `refundsAmount`/`refundVatAmount` are POSITIVE
+  // magnitudes on both sign eras: `bcabs`-then-ADD, never an add that relies on
+  // the row already being negative-signed. That matters here specifically —
+  // this file's VAT loop below DOES rely on the row's sign (§7.2, see its own
+  // comment), which is era-safe on the v4 path but would silently invert on a
+  // positive-signed legacy refund row. These two accumulators do not inherit
+  // that exposure, matching `zReportService.ts:867-869`'s shape.
+  let refundsCount = 0;
+  let refundsAmount = '0';
+  let refundVatAmount = '0';
   let cashTenderedSum = '0';
   let cashChangeDueSum = '0';
   let toleranceTotal = '0';
@@ -258,6 +292,11 @@ export async function buildEndOfDayPreview(
       // the close is disputed at the counter.
       netSales = bcadd(netSales, bcsub(receipt.subtotal, receipt.tax_amount, scale), scale);
       taxAmount = bcadd(taxAmount, receipt.tax_amount, scale);
+    } else {
+      // B-6(ii) — the refunds block the preview never had. Gross TTC magnitude
+      // only; nothing here touches the three sale-only totals above.
+      refundsCount += 1;
+      refundsAmount = bcadd(refundsAmount, bcabs(receipt.total, scale), scale);
     }
 
     // Receipt-level rounding / tolerance columns (Task 9), written inside the
@@ -317,6 +356,16 @@ export async function buildEndOfDayPreview(
       if (isRefund) {
         // Already negative-signed on the row (§7.2), so these stay
         // additive — only the net DECOMPOSITION changes.
+        //
+        // B-6(ii) NOTE (latent, deliberately NOT changed here): this is the one
+        // of the three consumers that ADDS a sign-carrying row where
+        // `zReportService.ts:867-869` and `reportApi.ts:541-543` `bcabs`-then-
+        // SUBTRACT. On the v4 path all three agree; a POSITIVE-signed legacy
+        // refund row would make this file add where the other two subtract.
+        // Left as-is because changing it would move the per-rate NET figures on
+        // a surface the C-2 ruling settled 72 hours ago, and no owed test in
+        // the B-6(ii) ledger asks for it. Recorded as a residual for the C-2
+        // lane rather than fixed in passing.
         const lineGross = line.line_total ?? '0';
         const lineVat = line.tax_amount ?? '0';
         const lineNet = bcsub(lineGross, lineVat, scale);
@@ -324,6 +373,9 @@ export async function buildEndOfDayPreview(
         existing.vat = bcadd(existing.vat, lineVat, scale);
         existing.gross = bcadd(existing.gross, lineGross, scale);
         vatByRate.set(rate, existing);
+
+        // The disclosure figure itself IS era-safe: magnitude, then add.
+        refundVatAmount = bcadd(refundVatAmount, bcabs(lineVat, scale), scale);
         continue;
       }
 
@@ -482,6 +534,42 @@ export async function buildEndOfDayPreview(
     const refundRecords = await getRefundRecordsForShift(db, shiftId);
     for (const r of refundRecords) {
       cashRefundImpact = bcadd(cashRefundImpact, r.cash_impact, scale);
+
+      // GATE r1 F-3 — and they count in the REFUNDS TILE too.
+      //
+      // A legacy refund never writes an `offline_receipts` row at all (its sole
+      // device write is this `local_refund_records` table — see the wave-2
+      // TREASURY-CRITICAL note above), and that path is still live for every
+      // terminal that has not completed its v4 capability rollout. Counting
+      // only the v4 loop above meant a pre-v4 terminal rendered "no refunds"
+      // beside an `expected_cash` this very loop had just reduced — a fresh
+      // instance of the two-disagreeing-figures defect this lane exists to close.
+      //
+      // It also restores parity with the SIGNED Z, which has always counted
+      // both: `zReportService.ts` seeds `refundsCount = refundRecords.length`
+      // and sums `bcabs(record.total)` BEFORE its receipts loop. The two
+      // sources are disjoint by construction (a refund is either era, never
+      // both), so this cannot double-count.
+      //
+      // `record.total` is signed negative for a return, so `bcabs` recovers the
+      // positive-magnitude semantics `refunds_amount` carries everywhere —
+      // the same treatment the signed Z gives it.
+      refundsCount += 1;
+      refundsAmount = bcadd(refundsAmount, bcabs(r.total, scale), scale);
+
+      // NOT folded into `refundVatAmount`: a legacy record carries `total` and
+      // `cash_impact` only, with no per-rate VAT split to attribute. The VAT
+      // disclosure therefore stays a v4-only figure, and on a mixed shift it
+      // under-reports refund VAT — and `isReconciled` will NOT catch it: both
+      // the per-rate table and this accumulator are built from the same
+      // `offline_receipts` loop, so both are blind to a legacy record in the
+      // same way, the wedge equals the accumulator, and the flag comes out
+      // true. The refunds tile above is the only surface that shows the legacy
+      // refund at all. Recorded as a residual of the §9.3 coexistence window.
+      //
+      // (Gate r2-1 corrected this note: it previously claimed `isReconciled`
+      // reported the gap, which is exactly the "advertised safety net that
+      // cannot fire" class the r1 round existed to close.)
     }
   }
   const cashSalesNet = bcsub(
@@ -525,6 +613,9 @@ export async function buildEndOfDayPreview(
     drawer_movements_net: bcformat(drawerNet, scale),
     expected_cash: bcformat(expectedCash, scale),
     variance: null,
+    refunds_count: refundsCount,
+    refunds_amount: bcformat(refundsAmount, scale),
+    refund_vat_amount: bcformat(refundVatAmount, scale),
     vat_breakdown: vatBreakdown,
     payment_methods: paymentMethodsResult,
     tolerance_summary:

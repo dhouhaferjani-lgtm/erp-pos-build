@@ -31,6 +31,18 @@ export interface ZReportReportData {
   payment_methods: PaymentMethodEntry[]
 }
 
+/**
+ * B-6(ii) — DERIVED refund-VAT disclosure, computed server-side at render time
+ * from `pos_receipt_vat_details` x return receipts using the same normalisation
+ * as the VAT declaration. NOT part of the signed Z payload.
+ *
+ * Present only on the DETAIL endpoint (`fetchZReport`); the list endpoint omits
+ * it deliberately, since deriving it per row would be an N+1 for a figure no
+ * list row renders.
+ */
+export type RefundVatDisclosureRow = App.Modules.POS.Application.DTOs.RefundVatDisclosureRowData
+export type RefundVatDisclosure = App.Modules.POS.Application.DTOs.RefundVatDisclosureData
+
 export interface ZReportItem {
   id: string
   z_number: number
@@ -53,6 +65,8 @@ export interface ZReportItem {
   variance: string
   has_variance: boolean
   report_data: ZReportReportData
+  /** Detail endpoint only — null on list rows. */
+  refund_vat_disclosure?: RefundVatDisclosure | null
   terminal?: {
     id: string
     code: string

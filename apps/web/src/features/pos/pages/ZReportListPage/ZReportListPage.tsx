@@ -230,7 +230,14 @@ export function ZReportListPage() {
                     <th className={`px-4 py-3 text-start text-xs font-medium ${textColors.tertiary} uppercase`}>{t('pos:zReports.generatedBy')}</th>
                     <th className={`px-4 py-3 text-end text-xs font-medium ${textColors.tertiary} uppercase`}>{t('pos:zReports.grossSales')}</th>
                     <th className={`px-4 py-3 text-end text-xs font-medium ${textColors.tertiary} uppercase`}>{t('pos:zReports.netSales')}</th>
-                    <th className={`px-4 py-3 text-end text-xs font-medium ${textColors.tertiary} uppercase`}>{t('pos:zReports.taxCollected')}</th>
+                    {/* B-6(ii): this column is `report_data.tax_amount`, which is
+                        SALE-ONLY on every Z — it is NOT the declared figure and
+                        it is gross of refunds. Relabelled rather than switched
+                        to the net figure: the net-of-refunds bridge is derived
+                        per Z and the list deliberately does not carry it (one
+                        aggregate query per row would be an N+1). The Z detail
+                        page shows the full three-line disclosure. */}
+                    <th className={`px-4 py-3 text-end text-xs font-medium ${textColors.tertiary} uppercase`}>{t('pos:zReports.taxCollectedSalesOnly')}</th>
                     <th className={`px-4 py-3 text-end text-xs font-medium ${textColors.tertiary} uppercase`}>{t('pos:zReports.receiptCount')}</th>
                     <th className={`px-4 py-3 text-end text-xs font-medium ${textColors.tertiary} uppercase`}>{t('pos:zReports.variance')}</th>
                     <th className="px-4 py-3 w-8"></th>

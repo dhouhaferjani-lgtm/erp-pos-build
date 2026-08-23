@@ -8,6 +8,8 @@ use App\Modules\Company\Application\Services\TaxIdentityResolver;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\DTOs\CashCountValidationResultDTO;
+use App\Modules\POS\Application\DTOs\RefundVatDisclosureData;
+use App\Modules\POS\Application\DTOs\RefundVatDisclosureRowData;
 use App\Modules\POS\Application\Exceptions\CashCountValidationException;
 use App\Modules\POS\Application\Exceptions\UnauthorizedManagerException;
 use App\Modules\POS\Domain\DTOs\CashCountBreakdownDTO;
@@ -782,6 +784,195 @@ final class ReportGenerationService
     }
 
     /**
+     * DERIVED refund-VAT disclosure for a Z report (owner ruling B-6(ii),
+     * Option A2). Display only — nothing here is signed, hashed, or persisted.
+     *
+     * WHY IT IS DERIVED RATHER THAN READ OFF THE Z. The signed payload cannot be
+     * decomposed back into "sales VAT" and "refund VAT": `refunds_totals` carries
+     * `{count, amount}` only (a gross TTC magnitude with no VAT split) and
+     * `vat_breakdown` is ALREADY net. Adding a key to fix that would either fail
+     * `ZReportPayload::PAYLOAD_KEYS` retroactively over the whole sealed corpus,
+     * or change canonical bytes and the Z hash. So the split is recovered from
+     * the PROJECTIONS instead.
+     *
+     * WHY THIS SOURCE. `pos_receipt_vat_details` joined to return receipts over
+     * the Z's window is the EXACT source and predicate the VAT declaration's
+     * OUTPUT arm uses (`EloquentVatDataRepository::aggregateByRateAndDirection`,
+     * the POS sub-query) — same table, same `receipt_type = 'return'` selector,
+     * same `is_voided` / `is_training` exclusions, same per-row `ABS()`
+     * normalisation across the two refund sign eras. The declaration books this
+     * figure NEGATIVE (`-ABS(...)`); the Z discloses the same magnitude
+     * POSITIVE. The two therefore reconcile by construction rather than by
+     * coincidence — which is the whole point of the ruling.
+     *
+     * WINDOW. `period_start`/`period_end` from `report_data` when the Z is
+     * device-authored (v3 — `ZReportProjection::legacyReportData()` stamps them),
+     * falling back to the shift's own `opened_at`/`closed_at` for the legacy
+     * v1/v2 server-authored shape. Receipts carry no `shift_id`, so the
+     * canonical shift→receipts derivation is terminal + `posted_at` window,
+     * mirroring `calculateShiftTotals()` and `ZReportProjection::cashRoundingSummary()`.
+     *
+     * KNOWN WEDGES, stated rather than glossed:
+     * - Rates are NOT filtered to `> 0` here (the declaration arm filters them):
+     *   a Z's own table carries its rate-0 group and this disclosure has to line
+     *   up with the table it sits under. The §3.1 identity against the
+     *   declaration holds only for `r > 0`; the reconciliation test pins that
+     *   restriction explicitly.
+     * - The Z is TERMINAL-scoped, the declaration is COMPANY-scoped. Comparing
+     *   the two means summing every terminal's Z over the period.
+     * - The last-day-of-period boundary defect
+     *   (`docs/superpowers/tickets/2026-08-21-vat-period-last-day-boundary.md`)
+     *   is out of scope and untouched here.
+     */
+    public function refundVatDisclosureFor(ZReport $zReport): RefundVatDisclosureData
+    {
+        $reportData = $zReport->report_data;
+        $scale = $this->scale();
+
+        $salesVat = $this->numericOrZero($reportData['tax_amount'] ?? null);
+
+        // The SIGNED, authoritative net figure — the one a declaration reads.
+        $netVat = bcadd('0', '0', $scale);
+        $breakdown = $reportData['vat_breakdown'] ?? [];
+        if (is_array($breakdown)) {
+            foreach ($breakdown as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                // Two key shapes are in the wild for the same field: the device
+                // payload uses `vat_amount`, the legacy server shape `vat`. The
+                // blade already reads both; so must this.
+                $netVat = bcadd($netVat, $this->numericOrZero($row['vat_amount'] ?? $row['vat'] ?? null), $scale);
+            }
+        }
+
+        [$windowStart, $windowEnd] = $this->disclosureWindowFor($zReport);
+
+        $rows = [];
+        $refundVat = bcadd('0', '0', $scale);
+
+        if ($windowStart !== null && $windowEnd !== null) {
+            $aggregated = DB::table('pos_receipt_vat_details as prvd')
+                ->join('pos_receipts as r', 'prvd.receipt_id', '=', 'r.id')
+                ->where('r.terminal_id', $zReport->terminal_id)
+                ->whereBetween('r.posted_at', [$windowStart, $windowEnd])
+                ->where('r.is_voided', false)
+                ->where('r.is_training', false)
+                ->where('r.receipt_type', ReceiptType::Return->value)
+                ->selectRaw('
+                    prvd.tax_rate as tax_rate,
+                    SUM(ABS(prvd.net_amount)) as net_amount,
+                    SUM(ABS(prvd.vat_amount)) as vat_amount,
+                    SUM(ABS(prvd.gross_amount)) as gross_amount
+                ')
+                ->groupBy('prvd.tax_rate')
+                ->orderBy('prvd.tax_rate')
+                ->get();
+
+            foreach ($aggregated as $row) {
+                $vatAmount = $this->numericOrZero($row->vat_amount ?? null);
+                $rows[] = new RefundVatDisclosureRowData(
+                    // A tax RATE is a percentage, not money — it is never
+                    // currency-scaled. `pos_receipt_vat_details.tax_rate` is
+                    // decimal(5,2) and `VatAggregation::taxRate` is formatted at
+                    // the same 2, which is what lets a caller key both sides of
+                    // the §3.1 identity by the same string.
+                    // precision-ok: percentage column scale, not a currency scale.
+                    tax_rate: bcadd($this->numericOrZero($row->tax_rate ?? null), '0', 2),
+                    net_amount: bcadd($this->numericOrZero($row->net_amount ?? null), '0', $scale),
+                    vat_amount: bcadd($vatAmount, '0', $scale),
+                    gross_amount: bcadd($this->numericOrZero($row->gross_amount ?? null), '0', $scale),
+                );
+                $refundVat = bcadd($refundVat, $vatAmount, $scale);
+            }
+        }
+
+        return new RefundVatDisclosureData(
+            rows: $rows,
+            sales_vat: bcadd($salesVat, '0', $scale),
+            refund_vat: $refundVat,
+            net_vat: $netVat,
+            has_refund_vat: bccomp($refundVat, '0', $scale) !== 0,
+            is_reconciled: bccomp(bcsub($salesVat, $refundVat, $scale), $netVat, $scale) === 0,
+        );
+    }
+
+    /**
+     * Resolve the `posted_at` window a Z's derived disclosures are scoped to.
+     *
+     * @return array{0: ?Carbon, 1: ?Carbon}
+     */
+    private function disclosureWindowFor(ZReport $zReport): array
+    {
+        $reportData = $zReport->report_data;
+
+        $start = $this->windowBoundary($reportData['period_start'] ?? null);
+        $end = $this->windowBoundary($reportData['period_end'] ?? null);
+
+        if ($start !== null && $end !== null) {
+            return [$start, $end];
+        }
+
+        // Legacy v1/v2 server-authored Z: no period stamps in report_data.
+        // `generated_at` closes the window for a shift still marked open (a Z
+        // exists, so the shift is over even if `closed_at` was never written).
+        //
+        // Looked up rather than read off `$zReport->shift`: the relation is
+        // declared non-nullable on the model, so a null check against it is
+        // dead code to the analyser while still being reachable at runtime (a Z
+        // whose shift row was never projected). `find()` is honestly `?Shift`.
+        $shift = Shift::query()->find($zReport->shift_id);
+        if ($shift === null) {
+            return [null, null];
+        }
+
+        return [$shift->opened_at, $shift->closed_at ?? $zReport->generated_at];
+    }
+
+    private function windowBoundary(mixed $value): ?Carbon
+    {
+        if ($value instanceof Carbon) {
+            return $value;
+        }
+
+        if (! is_string($value) || $value === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Coerce a `report_data` entry or a query-aggregate column to a numeric
+     * string for bcmath. Non-numeric (including null and the JSONB shapes that
+     * legitimately omit a key) reads as '0' rather than throwing: this feeds
+     * DISPLAY, and a missing key must degrade to a zero line, never a 500 on a
+     * fiscal report.
+     *
+     * Scalars are stringified rather than rejected because the DB drivers
+     * disagree about `SUM()`'s PHP type (pdo_pgsql returns a numeric string,
+     * pdo_sqlite an int/float) — the same accommodation
+     * `ZReportProjection::cashRoundingSummary()` makes. The value goes straight
+     * into bcmath afterwards; no float arithmetic happens on it (rule 19).
+     *
+     * @return numeric-string
+     */
+    private function numericOrZero(mixed $value): string
+    {
+        if (! is_scalar($value)) {
+            return '0';
+        }
+
+        $string = is_bool($value) ? '0' : (string) $value;
+
+        return is_numeric($string) ? $string : '0';
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function preparePdfData(ZReport $zReport, Company $company): array
@@ -813,6 +1004,10 @@ final class ReportGenerationService
             'reportData' => $reportData,
             'vatBreakdown' => $reportData['vat_breakdown'] ?? [],
             'paymentMethods' => $reportData['payment_methods'] ?? [],
+            // B-6(ii)/A1+A2: the printed Z stops contradicting itself — the
+            // sale-only headline is now labelled as such and shown beside the
+            // derived refund VAT and the net figure the declaration reads.
+            'refundVatDisclosure' => $this->refundVatDisclosureFor($zReport),
             'averageTicket' => $averageTicket,
             'hasVariance' => $zReport->hasVariance($this->scale()),
             'locale' => $locale,
@@ -992,7 +1187,13 @@ final class ReportGenerationService
      *   reconciliation figure showed the net — two numbers on the same Z that
      *   disagreed by the refund.
      *
-     * VAT breakdown stays SALE-ONLY, unchanged: refunds are their own block.
+     * VAT breakdown is NET of refunds (B-6(ii) / Option A3, 2026-08-23). It used
+     * to be SALE-ONLY here while the device authored a NET one, so the same
+     * `vat_breakdown` key meant two different things depending on which terminal
+     * wrote the Z. Refund rows are now normalised with magnitude()-then-subtract,
+     * matching `EloquentVatDataRepository`'s `-ABS()` so the Z and the VAT
+     * declaration reconcile by construction (§3.1). The headline `tax_amount`
+     * remains SALE-ONLY by design — see the return branch's own comment.
      *
      * Shift window driven by pos_receipts.posted_at — see REALIGNMENT-LOG 2026-04-26.
      *
@@ -1036,11 +1237,54 @@ final class ReportGenerationService
 
             if ($receipt->receipt_type === ReceiptType::Return) {
                 // Return receipts: their own POSITIVE-MAGNITUDE block (both
-                // sign eras), never folded into gross/net sales or VAT.
+                // sign eras), never folded into gross/net sales.
                 $refundsCount++;
                 $refundsAmount = bcadd($refundsAmount, $this->magnitude($receipt->total), $this->scale());
 
-                // ... but their payout legs DO move the drawer, so the payment
+                // B-6(ii) / Option A3 — but their VAT IS netted into the per-rate
+                // table, because that table is the DECLARATION surface (§3.1) and
+                // a refund reverses VAT already collected.
+                //
+                // Until this fix the loop below did not exist: a return `continue`d
+                // straight past the sale branch's `vatDetails` aggregation, so a
+                // LEGACY (v1/v2, server-authored) Z reported a SALE-ONLY per-rate
+                // table while every DEVICE-authored Z reported a NET one
+                // (`zReportService.ts:872-874`) — two incompatible meanings for the
+                // same `vat_breakdown` key depending on which terminal wrote the Z,
+                // and the §3.1 identity against `EloquentVatDataRepository` (whose
+                // OUTPUT arm deducts return rows) failed on every legacy terminal
+                // that took a return.
+                //
+                // `magnitude()`-then-SUBTRACT, never a bare `bcsub` of the raw row:
+                // the two POS writers store OPPOSITE signs for the same refund —
+                // `PosCoreReceiptProjection::writeVatBreakdown` mirrors the
+                // canonical non-negative `vat_breakdown[]` (POSITIVE rows) while the
+                // legacy `ReceiptReturnService::buildReturnLines` derives from a
+                // negated line total (NEGATIVE rows). This is the same reason
+                // `EloquentVatDataRepository.php:112-113` normalises with `-ABS()`
+                // rather than `-`, and it is why this arm must not be "simplified"
+                // into the sale branch's plain `bcadd`.
+                //
+                // The sale-only headline `tax_amount` is deliberately left
+                // untouched (§3.2 wedge 6): it is never a declaration input, and
+                // the refund VAT is exactly the wedge between it and this table —
+                // which is what {@see self::refundVatDisclosureFor()} discloses.
+                foreach ($receipt->vatDetails as $vatDetail) {
+                    $rate = (string) $vatDetail->tax_rate;
+                    if (! isset($vatBreakdown[$rate])) {
+                        $vatBreakdown[$rate] = [
+                            'tax_rate' => $vatDetail->tax_rate,
+                            'net_amount' => '0.00',
+                            'vat_amount' => '0.00',
+                            'gross_amount' => '0.00',
+                        ];
+                    }
+                    $vatBreakdown[$rate]['net_amount'] = bcsub($vatBreakdown[$rate]['net_amount'], $this->magnitude($vatDetail->net_amount), $this->scale());
+                    $vatBreakdown[$rate]['vat_amount'] = bcsub($vatBreakdown[$rate]['vat_amount'], $this->magnitude($vatDetail->vat_amount), $this->scale());
+                    $vatBreakdown[$rate]['gross_amount'] = bcsub($vatBreakdown[$rate]['gross_amount'], $this->magnitude($vatDetail->gross_amount), $this->scale());
+                }
+
+                // ... and their payout legs DO move the drawer, so the payment
                 // breakdown is net of them.
                 foreach ($receipt->payments as $payment) {
                     $method = $payment->payment_type;

@@ -13,6 +13,8 @@ import {
 import type { Shift } from '@/stores/terminalStore';
 import type { EndOfDayPreview } from '@/lib/offline/endOfDayPreview';
 import { ToleranceDrillDown } from '@/components/pos/molecules/ToleranceDrillDown';
+import { VatDisclosureSummary } from './VatDisclosureSummary';
+import { deriveVatDisclosure } from '@/lib/reports/vatDisclosure';
 // The §8.1 cap, imported rather than written as `10`: paymentStore's gate and
 // two test suites already bind to this constant, so a literal here would fork
 // the displayed limit from the enforced one on the next tuning change.
@@ -76,7 +78,7 @@ export function EndOfDayPreviewModal({
   onManagerPinThrottleUpdate,
 }: EndOfDayPreviewModalProps) {
   const { t } = useTranslation('pos');
-  const { format, currency } = useCurrency();
+  const { format, currency, decimals } = useCurrency();
 
   const [phase, setPhase] = useState<ModalPhase>('loading');
   const [preview, setPreview] = useState<EndOfDayPreview | null>(null);
@@ -129,6 +131,33 @@ export function EndOfDayPreviewModal({
     cashCountEnabled &&
     fraudSettings?.require_blind_cash_count === true &&
     !cashCountsCommitted;
+
+  // B-6(ii)/A1 — the preview's `tax_amount` is SALE-ONLY while its
+  // `vat_breakdown` is NET, so the two disagree by the refund VAT on any shift
+  // that took a return. Masked by the SAME blind-count boundary as every other
+  // amount on this screen: VAT is not tender, but B-13(i) showed a concealed
+  // cash figure can be re-derived from visible siblings, and these are new
+  // siblings.
+  //
+  // GATE r1 F-4/M-1 — `refund_vat_amount` is passed EXPLICITLY rather than left
+  // to structural typing, because which of the two available figures feeds the
+  // screen is a fiscal decision, not an accident of shape. This preview is
+  // unsigned and unhashed, so it can afford a real `bcabs`-then-add accumulator
+  // (`endOfDayPreview.ts`), and that accumulator is era-safe where the wedge is
+  // not — this file's own per-rate loop ADDS a sign-carrying row where the two
+  // signed consumers `bcabs`-then-subtract. Shipping the era-safe number while
+  // computing it and rendering the other one was two sources of truth with the
+  // wrong one on screen.
+  const vatDisclosure = preview
+    ? deriveVatDisclosure(
+        {
+          tax_amount: preview.tax_amount,
+          vat_breakdown: preview.vat_breakdown,
+          refund_vat_amount: preview.refund_vat_amount,
+        },
+        decimals,
+      )
+    : null;
 
   // Load preview data when modal opens
   useEffect(() => {
@@ -307,10 +336,51 @@ export function EndOfDayPreviewModal({
               value={hideFinancialAmounts ? '—' : format(preview.net_sales)}
             />
             <SummaryCard
-              label={t('reports.endOfDay.taxAmount')}
-              value={hideFinancialAmounts ? '—' : format(preview.tax_amount)}
+              label={
+                vatDisclosure?.hasRefundVat
+                  ? t('reports.endOfDay.taxAmountNetOfRefunds')
+                  : t('reports.endOfDay.taxAmount')
+              }
+              value={
+                hideFinancialAmounts
+                  ? '—'
+                  : format(
+                      vatDisclosure?.hasRefundVat ? vatDisclosure.netVat : preview.tax_amount,
+                    )
+              }
             />
           </div>
+
+          {/* Refunds — this modal had NO refunds block at all before B-6(ii),
+              so a cashier closing a shift that took a return saw no trace of it
+              outside the netted per-rate table. */}
+          {preview.refunds_count > 0 && (
+            <div className="rounded-tile bg-warning-surface px-4 py-3">
+              <div className="flex justify-between text-sm font-medium text-warning-strong">
+                {/* gate r1 m-5 — the COUNT renders unmasked while the amount
+                    beside it honours `hideFinancialAmounts`. A count is not a
+                    tender figure and B-13(i)'s re-derivation concern does not
+                    reach it, so this is deliberate, not an oversight. Flagged to
+                    the B-13 owner: if counts come into scope for that regime,
+                    this is the line to change. */}
+                <span>
+                  {t('reports.endOfDay.refundsCount')}: {preview.refunds_count}
+                </span>
+                <span className="tabular-nums">
+                  {hideFinancialAmounts ? '—' : format(preview.refunds_amount)}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {vatDisclosure !== null && (
+            <VatDisclosureSummary
+              disclosure={vatDisclosure}
+              format={format}
+              masked={hideFinancialAmounts}
+              keyPrefix="reports.endOfDay"
+            />
+          )}
 
           {/* Cash reconciliation summary card (legacy parity). SECURITY: this
               card shows expected_cash unconditionally, which would DEFEAT the
@@ -342,7 +412,9 @@ export function EndOfDayPreviewModal({
             {preview.vat_breakdown.length > 0 && (
               <div>
                 <h4 className="mb-2 text-sm font-semibold text-ink-muted">
-                  {t('reports.endOfDay.vatBreakdown')}
+                  {vatDisclosure?.hasRefundVat
+                    ? t('reports.endOfDay.vatBreakdownNetOfRefunds')
+                    : t('reports.endOfDay.vatBreakdown')}
                 </h4>
                 <table className="w-full text-sm">
                   <thead>

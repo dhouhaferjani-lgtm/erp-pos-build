@@ -366,7 +366,6 @@
     "totalSales": "Total Sales",
     "grossSales": "Gross Sales",
     "netSales": "Net Sales",
-    "taxCollected": "Tax Collected",
     "receiptCount": "Receipts",
     "variance": "Variance",
     "verifyChain": "Verify Chain",
@@ -405,8 +404,16 @@
       "variance": "Variance",
       "currentHash": "Current Hash",
       "previousHash": "Previous Hash",
-      "genesisReport": "This is the first Z-report (genesis) for this terminal"
-    }
+      "genesisReport": "This is the first Z-report (genesis) for this terminal",
+      "vatOnSales": "VAT on sales",
+      "vatOnRefunds": "VAT on refunds",
+      "netVat": "Net VAT",
+      "vatNetOfRefunds": "net of refunds",
+      "vatUnreconciled": "VAT figures could not be reconciled for this report",
+      "refundRateLabel": "{{rate}}% — VAT on refunds",
+      "vatBreakdownNetOfRefunds": "VAT Breakdown (net of refunds)"
+    },
+    "taxCollectedSalesOnly": "Tax (sales only)"
   },
   "receipts": {
     "title": "Receipts",

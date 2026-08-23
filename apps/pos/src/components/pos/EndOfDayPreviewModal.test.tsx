@@ -39,6 +39,13 @@ vi.mock('react-i18next', () => ({
           `${String(opts?.used ?? '')} / ${String(opts?.limit ?? '')}`,
         'reports.endOfDay.toleranceAutoAcceptsUnknown': `Unknown / ${String(opts?.limit ?? '')}`,
         'reports.endOfDay.netCashRounding': 'Net cash rounding',
+        'reports.endOfDay.refundsCount': 'Refunds',
+        'reports.endOfDay.vatOnSales': 'VAT on sales',
+        'reports.endOfDay.vatOnRefunds': 'VAT on refunds',
+        'reports.endOfDay.netVat': 'Net VAT',
+        'reports.endOfDay.taxAmountNetOfRefunds': 'VAT (net of refunds)',
+        'reports.endOfDay.vatBreakdownNetOfRefunds': 'VAT Breakdown (net of refunds)',
+        'reports.endOfDay.vatUnreconciled': 'VAT could not be reconciled',
         'reports.vatRate': 'Rate',
         'reports.vatNet': 'Net',
         'reports.vatVat': 'VAT',
@@ -103,6 +110,9 @@ const samplePreview = {
   opening_cash: '100.00',
   expected_cash: '130.00',
   variance: null,
+  refunds_count: 0,
+  refunds_amount: '0.00',
+  refund_vat_amount: '0.00',
   tolerance_summary: null,
   cash_rounding_summary: null,
   tolerance_auto_accept_count: 0,
@@ -872,5 +882,140 @@ describe('EndOfDayPreviewModal', () => {
       expect(row).toHaveTextContent(`Unknown / ${String(TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT)}`);
       expect(row).not.toHaveTextContent(`0 / ${String(TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT)}`);
     });
+  });
+});
+
+/**
+ * B-6(ii) / Option A1+A2 — the EOD preview modal had no refunds block at all
+ * and showed a SALE-ONLY VAT card above a NET per-rate table.
+ */
+describe('EndOfDayPreviewModal — refund VAT disclosure (B-6(ii))', () => {
+  /** 7.18 sale VAT, 5.18 net table ⇒ 2.00 refund VAT. */
+  const refundBearingPreview = {
+    ...samplePreview,
+    tax_amount: '7.18',
+    refunds_count: 1,
+    refunds_amount: '12.00',
+    refund_vat_amount: '2.00',
+    vat_breakdown: [
+      { tax_rate: 19, net_amount: '27.82', vat_amount: '5.18', gross_amount: '33.00' },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    modalI18nState.locale = 'en';
+    mockBuildEndOfDayPreview.mockResolvedValue(refundBearingPreview);
+  });
+
+  it('shows the refunds row and the three-line VAT bridge', async () => {
+    renderModal();
+
+    expect(await screen.findByText('VAT on sales')).toBeInTheDocument();
+    expect(screen.getByText('VAT on refunds')).toBeInTheDocument();
+    expect(screen.getByText('Net VAT')).toBeInTheDocument();
+    expect(screen.getByText('-2.00')).toBeInTheDocument();
+    expect(screen.getByText('Refunds: 1')).toBeInTheDocument();
+    expect(screen.getByText('12.00')).toBeInTheDocument();
+    expect(screen.getByText('VAT (net of refunds)')).toBeInTheDocument();
+  });
+
+  /**
+   * B-13 cross-check (scoping doc §3.3): VAT is not a tender figure, so this
+   * block does not widen the blind-count leak — but it must honour the same
+   * commit boundary as every other amount, because B-13(i) established that a
+   * concealed cash figure can be re-derived from visible siblings.
+   */
+  it('SECURITY: masks every new amount behind the blind-count commit boundary', async () => {
+    renderModalWithCashCount({
+      fraudSettings: { ...baseFraudSettings, require_blind_cash_count: true },
+      cashCountPolicyResolved: true,
+    });
+
+    expect(await screen.findByText('VAT on sales')).toBeInTheDocument();
+    // Labels render; amounts do not.
+    expect(screen.queryByText('7.18')).not.toBeInTheDocument();
+    expect(screen.queryByText('-2.00')).not.toBeInTheDocument();
+    expect(screen.queryByText('5.18')).not.toBeInTheDocument();
+    expect(screen.queryByText('12.00')).not.toBeInTheDocument();
+  });
+
+  it('renders no disclosure on a refund-free shift', async () => {
+    mockBuildEndOfDayPreview.mockResolvedValue(samplePreview);
+    renderModal();
+
+    expect(await screen.findByText('Gross Sales')).toBeInTheDocument();
+    expect(screen.queryByText('VAT on refunds')).not.toBeInTheDocument();
+    expect(screen.queryByText('Refunds: 0')).not.toBeInTheDocument();
+    expect(screen.queryByText('VAT (net of refunds)')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * GATE r1 F-4/M-1 — the EOD modal must render the ERA-SAFE accumulator
+ * (`refund_vat_amount`, `bcabs`-then-add) and not the wedge it can also
+ * compute. The previous fixture set both sources to the same value, so the
+ * assertion passed either way — a non-discriminating green.
+ */
+describe('EndOfDayPreviewModal — refund VAT source discrimination (gate r1 F-4)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    modalI18nState.locale = 'en';
+  });
+
+  it('renders the accumulator, not the wedge, when the two disagree', async () => {
+    mockBuildEndOfDayPreview.mockResolvedValue({
+      ...samplePreview,
+      tax_amount: '7.18',
+      refunds_count: 1,
+      refunds_amount: '12.00',
+      // Wedge would be 7.18 − 5.18 = 2.00. The era-safe accumulator says 1.50.
+      refund_vat_amount: '1.50',
+      vat_breakdown: [
+        { tax_rate: 19, net_amount: '27.82', vat_amount: '5.18', gross_amount: '33.00' },
+      ],
+    });
+
+    renderModal();
+
+    expect(await screen.findByText('-1.50')).toBeInTheDocument();
+    expect(screen.queryByText('-2.00')).not.toBeInTheDocument();
+  });
+
+  it('surfaces the disagreement as unreconciled rather than hiding it', async () => {
+    mockBuildEndOfDayPreview.mockResolvedValue({
+      ...samplePreview,
+      tax_amount: '7.18',
+      refunds_count: 1,
+      refunds_amount: '12.00',
+      refund_vat_amount: '1.50',
+      vat_breakdown: [
+        { tax_rate: 19, net_amount: '27.82', vat_amount: '5.18', gross_amount: '33.00' },
+      ],
+    });
+
+    renderModal();
+
+    // 7.18 − 1.50 = 5.68 ≠ 5.18: two independent sources disagree, and this is
+    // the state the device could never previously reach.
+    expect(await screen.findByText('VAT could not be reconciled')).toBeInTheDocument();
+  });
+
+  it('stays reconciled and silent when the accumulator agrees with the table', async () => {
+    mockBuildEndOfDayPreview.mockResolvedValue({
+      ...samplePreview,
+      tax_amount: '7.18',
+      refunds_count: 1,
+      refunds_amount: '12.00',
+      refund_vat_amount: '2.00',
+      vat_breakdown: [
+        { tax_rate: 19, net_amount: '27.82', vat_amount: '5.18', gross_amount: '33.00' },
+      ],
+    });
+
+    renderModal();
+
+    expect(await screen.findByText('-2.00')).toBeInTheDocument();
+    expect(screen.queryByText('VAT could not be reconciled')).not.toBeInTheDocument();
   });
 });

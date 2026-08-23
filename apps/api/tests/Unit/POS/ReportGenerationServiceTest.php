@@ -13,7 +13,10 @@ use App\Modules\POS\Application\Services\CashCountValidationService;
 use App\Modules\POS\Application\Services\FraudSettingsResolver;
 use App\Modules\POS\Application\Services\ReportGenerationService;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
+use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Receipt;
+use App\Modules\POS\Domain\ReceiptVatDetail;
 use App\Modules\POS\Domain\Services\CashDrawerService;
 use App\Modules\POS\Domain\Services\GrandtotalService;
 use App\Modules\POS\Domain\Services\ShiftManagementService;
@@ -185,6 +188,72 @@ class ReportGenerationServiceTest extends TestCase
     }
 
     /**
+     * B-6(ii) / Option A3 — the LEGACY (v1/v2 server-authored) aggregation must
+     * NET refund VAT into `vat_breakdown`, exactly as the device does.
+     *
+     * Before this fix the return branch `continue`d before the `vatDetails`
+     * loop, so a server-authored Z reported a SALE-ONLY per-rate table while
+     * every device-authored Z reported a NET one — and the §3.1 reconciliation
+     * against `EloquentVatDataRepository` (which deducts return rows via
+     * `-ABS()`) failed on every legacy terminal that took a return.
+     *
+     * The sign-era normalization is `magnitude()`-then-SUBTRACT (never a bare
+     * `bcadd` of a possibly-negative row): the two POS writers store OPPOSITE
+     * signs for the same refund (canonical projection positive, legacy
+     * `ReceiptReturnService` negative), the same reason
+     * `EloquentVatDataRepository.php:112-113` uses `-ABS()` rather than `-`.
+     */
+    public function test_return_receipt_vat_details_are_netted_into_vat_breakdown(): void
+    {
+        $terminal = $this->createPersistedTerminal();
+
+        $sale = $this->createReceipt($terminal, [
+            'subtotal' => '100.00',
+            'tax_amount' => '19.00',
+            'total' => '119.00',
+            'is_voided' => false,
+        ]);
+        $this->createVatDetail($sale, '19.00', '100.000', '19.000');
+
+        // POSITIVE-signed return rows (canonical projection era).
+        $returnPositive = $this->createReturnReceipt($terminal, $sale, [
+            'subtotal' => '30.00',
+            'tax_amount' => '5.70',
+            'total' => '35.70',
+        ]);
+        $this->createVatDetail($returnPositive, '19.00', '30.000', '5.700');
+
+        // NEGATIVE-signed return rows (legacy ReceiptReturnService era).
+        $returnNegative = $this->createReturnReceipt($terminal, $sale, [
+            'subtotal' => '-10.00',
+            'tax_amount' => '-1.90',
+            'total' => '-11.90',
+        ]);
+        $this->createVatDetail($returnNegative, '19.00', '-10.000', '-1.900');
+
+        $method = new \ReflectionMethod(ReportGenerationService::class, 'calculateShiftTotals');
+        $method->setAccessible(true);
+
+        /** @var array<string, mixed> $result */
+        $result = $method->invoke($this->service, $terminal, now()->subHour(), now()->addHour());
+
+        /** @var list<array<string, mixed>> $breakdown */
+        $breakdown = $result['vat_breakdown'];
+        $this->assertCount(1, $breakdown, 'Both eras must fold into the single 19% group');
+
+        $row = $breakdown[0];
+        $this->assertEquals('11.400', $row['vat_amount'], 'Net VAT = 19.000 − 5.700 − 1.900');
+        $this->assertEquals('60.000', $row['net_amount'], 'Net base = 100.000 − 30.000 − 10.000');
+        $this->assertEquals('71.400', $row['gross_amount'], 'Net gross = 119.000 − 35.700 − 11.900');
+
+        // The sale-only headline stays sale-only (§3.2 wedge 6): it is NEVER a
+        // declaration input, and the refund VAT is exactly the wedge between it
+        // and the net table.
+        $this->assertEquals('19.000', $result['tax_amount']);
+        $this->assertSame(2, $result['refunds_count']);
+    }
+
+    /**
      * Test empty period returns zeros
      */
     public function test_empty_period_returns_zeros(): void
@@ -290,6 +359,37 @@ class ReportGenerationServiceTest extends TestCase
     }
 
     private int $receiptSequence = 0;
+
+    /**
+     * A return receipt carrying the two columns the PostgreSQL
+     * `pos_receipts_return_logic` CHECK requires (original receipt + reason).
+     *
+     * @param  array<string, mixed>  $overrides
+     */
+    private function createReturnReceipt(Terminal $terminal, Receipt $original, array $overrides = []): Receipt
+    {
+        return $this->createReceipt($terminal, array_merge([
+            'receipt_type' => ReceiptType::Return,
+            'original_receipt_id' => $original->id,
+            'return_reason' => ReturnReason::Defective,
+        ], $overrides));
+    }
+
+    /**
+     * @param  numeric-string  $taxRate
+     * @param  numeric-string  $netAmount
+     * @param  numeric-string  $vatAmount
+     */
+    private function createVatDetail(Receipt $receipt, string $taxRate, string $netAmount, string $vatAmount): ReceiptVatDetail
+    {
+        return ReceiptVatDetail::create([
+            'receipt_id' => $receipt->id,
+            'tax_rate' => $taxRate,
+            'net_amount' => $netAmount,
+            'vat_amount' => $vatAmount,
+            'gross_amount' => bcadd($netAmount, $vatAmount, 3),
+        ]);
+    }
 
     /**
      * @param  array<string, mixed>  $overrides

@@ -513,7 +513,14 @@
       "toleranceAutoAcceptsUsed": "Auto-accepts used",
       "toleranceAutoAcceptsValue": "{{used}} / {{limit}}",
       "toleranceAutoAcceptsUnknown": "Unknown / {{limit}}",
-      "netCashRounding": "Net cash rounding"
+      "netCashRounding": "Net cash rounding",
+      "refundsCount": "Refunds",
+      "vatOnSales": "VAT on sales",
+      "vatOnRefunds": "VAT on refunds",
+      "netVat": "Net VAT",
+      "vatUnreconciled": "VAT figures could not be reconciled for this shift",
+      "taxAmountNetOfRefunds": "VAT Amount (net of refunds)",
+      "vatBreakdownNetOfRefunds": "VAT Breakdown (net of refunds)"
     },
     "zList": {
       "title": "Z Reports",
@@ -538,7 +545,13 @@
     "subtotal": "Subtotal",
     "taxLabel": "VAT",
     "paymentLabel": "Payment",
-    "voided": "Voided"
+    "voided": "Voided",
+    "vatOnSales": "VAT on sales",
+    "vatOnRefunds": "VAT on refunds",
+    "netVat": "Net VAT",
+    "vatUnreconciled": "VAT figures could not be reconciled for this shift",
+    "taxAmountNetOfRefunds": "VAT Amount (net of refunds)",
+    "vatBreakdownNetOfRefunds": "VAT Breakdown (net of refunds)"
   },
   "productDetail": {
     "title": "Product Details",

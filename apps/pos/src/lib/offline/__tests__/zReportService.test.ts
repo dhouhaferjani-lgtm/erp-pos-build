@@ -90,6 +90,7 @@ import { insertZReportCounts } from '@/lib/db/repositories/zReportCountRepositor
 import { advanceZChain, updateGrandTotals } from '@/lib/db/repositories/terminalStateRepository';
 import { getFiscalEventEngine } from '@/lib/fiscal/instance';
 import { appendZSessionCloseAndZReport } from '@/lib/fiscal/zSessionAuthoring';
+import { deriveVatDisclosure } from '@/lib/reports/vatDisclosure';
 
 import type Database from '@tauri-apps/plugin-sql';
 
@@ -951,6 +952,117 @@ describe('generateZReport', () => {
           perpetual_grand_total: '534.500',
         },
       });
+    });
+
+    /**
+     * B-6(ii) / Option A — THE safety test for the whole lane.
+     *
+     * The ruling's fix is display/derivation only, so the SIGNED surface must be
+     * byte-identical on a refund-bearing shift: no key added to `report_data`
+     * (which IS the legacy Z hash input, `zReportService.ts:445-450`, and is
+     * persisted verbatim at `:504`), and no key added to what the payload
+     * builders receive. Any red here means the lane has drifted into Option B —
+     * a schema change that would need a versioned key set, a `schema_version`
+     * bump, and would quarantine the sealed corpus against
+     * `ZReportPayload::PAYLOAD_KEYS`.
+     *
+     * Asserted as an EXACT key set, not `toMatchObject`: a superset would pass
+     * a partial match while still moving the hash.
+     */
+    it('B-6(ii): a refund-bearing shift adds NO key to report_data or to the signed totals', async () => {
+      mockQueryAll(db, [...makeReceiptRows(), ...makeRefundOfflineReceiptRows()]);
+
+      const report = await generateZReport(
+        db,
+        'term-1',
+        'shift-1',
+        '2026-04-23T08:00:00+00:00',
+        '100.00',
+        {
+          tenantId: 'tenant-1',
+          fiscalShiftId: '33333333-3333-4333-8333-333333333333',
+          fiscalSessionId: '44444444-4444-4444-8444-444444444444',
+          terminalLabel: 'T001',
+          operatorId: '22222222-2222-4222-8222-222222222222',
+          operatorName: 'Alice',
+          isTraining: false,
+        },
+      );
+
+      expect(Object.keys(report.report_data).sort()).toEqual([
+        'expected_cash',
+        'gross_sales',
+        'net_sales',
+        'opening_cash',
+        'payment_methods',
+        'refunds_amount',
+        'refunds_count',
+        'sales_count',
+        'tax_amount',
+        'variance',
+        'vat_breakdown',
+        'voided_count',
+      ]);
+
+      const [, , closeInput] = vi.mocked(appendZSessionCloseAndZReport).mock.calls[0]!;
+      expect(Object.keys(closeInput.reportTotals).sort()).toEqual([
+        'gross_sales',
+        'net_sales',
+        'refunds_amount',
+        'refunds_count',
+        'sales_count',
+        'tax_amount',
+        'voided_count',
+      ]);
+      for (const row of closeInput.vatBreakdown) {
+        expect(Object.keys(row).sort()).toEqual([
+          'gross_amount',
+          'net_amount',
+          'tax_rate',
+          'vat_amount',
+        ]);
+      }
+    });
+
+    /**
+     * B-6(ii) — and the DERIVED disclosure, computed from exactly those
+     * unchanged signed fields, must reproduce the refund VAT.
+     */
+    it('B-6(ii): the derived disclosure bridges the sale-only headline and the net table', async () => {
+      // A refund row carrying real VAT (the shared fixture is 0%-rated).
+      const refundWithVat = {
+        ...makeRefundOfflineReceiptRow('rr-vat', '-11.90', 2, '2026-04-23T11:00:00+00:00'),
+        tax_amount: '-1.90',
+        lines: JSON.stringify([
+          {
+            name: 'Refunded Widget',
+            quantity: -1,
+            unit_price: '11.90',
+            line_total: '-11.90',
+            tax_rate: '19',
+            tax_amount: '-1.90',
+            discount_amount: null,
+          },
+        ]),
+      };
+      mockQueryAll(db, [...makeReceiptRows(), refundWithVat]);
+
+      const report = await generateZReport(
+        db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00',
+      );
+
+      // Sale-only headline: the sale's 8.00, refund excluded.
+      expect(report.report_data.tax_amount).toBe('8.00');
+      // Net per-rate table at 19%: 8.00 − 1.90.
+      const rate19 = report.report_data.vat_breakdown.find((r) => r.tax_rate === 19);
+      expect(rate19?.vat_amount).toBe('6.10');
+
+      const disclosure = deriveVatDisclosure(report.report_data, 2);
+      expect(disclosure.salesVat).toBe('8.00');
+      expect(disclosure.refundVat).toBe('1.90');
+      expect(disclosure.netVat).toBe('6.10');
+      expect(disclosure.hasRefundVat).toBe(true);
+      expect(disclosure.isReconciled).toBe(true);
     });
 
     it('authors SESSION_CLOSE and Z_REPORT fiscal events when fiscal session context is supplied', async () => {

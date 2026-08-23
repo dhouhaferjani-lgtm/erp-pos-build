@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
 import { ZReportDetailPage } from './ZReportDetailPage'
 
@@ -61,8 +61,13 @@ const report = {
   },
 }
 
+// Mutable holder so a test can swap in a refund-bearing Z without re-hoisting
+// the whole module mock. `report` above stays the default for every existing
+// assertion.
+const queryState = vi.hoisted(() => ({ data: null as unknown }))
+
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: () => ({ data: report, isLoading: false, error: null }),
+  useQuery: () => ({ data: queryState.data, isLoading: false, error: null }),
   useMutation: () => ({
     mutate: vi.fn(),
     isPending: false,
@@ -72,6 +77,10 @@ vi.mock('@tanstack/react-query', () => ({
 }))
 
 describe('ZReportDetailPage', () => {
+  beforeEach(() => {
+    queryState.data = report
+  })
+
   it('renders its detail title (color-tokenized, no drift)', () => {
     const { getByText } = render(<ZReportDetailPage />)
     expect(getByText('pos:zReports.detailTitle')).toBeInTheDocument()
@@ -81,5 +90,113 @@ describe('ZReportDetailPage', () => {
     const { container } = render(<ZReportDetailPage />)
     const moneyCells = container.querySelectorAll('.tabular-nums')
     expect(moneyCells.length).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * B-6(ii) / Option A1+A2 — the detail page used to show the SALE-ONLY
+ * `tax_amount` beside a per-rate table that is NET of refunds. The derived
+ * disclosure (server-side, from the same source the VAT declaration reads)
+ * replaces that single line with the three-line bridge.
+ */
+describe('ZReportDetailPage — refund VAT disclosure', () => {
+  const refundBearing = {
+    ...report,
+    report_data: {
+      ...report.report_data,
+      tax_amount: '234.560',
+      refunds_count: 1,
+      refunds_amount: '120.000',
+      vat_breakdown: [{ rate: 20, net: '780.000', vat: '156.000', gross: '936.000' }],
+    },
+    refund_vat_disclosure: {
+      rows: [
+        { tax_rate: '20.00', net_amount: '20.000', vat_amount: '78.560', gross_amount: '98.560' },
+      ],
+      sales_vat: '234.560',
+      refund_vat: '78.560',
+      net_vat: '156.000',
+      has_refund_vat: true,
+      is_reconciled: true,
+    },
+  }
+
+  it('renders the three-line bridge instead of the bare sale-only VAT row', () => {
+    queryState.data = refundBearing
+    const { getByText, getAllByText, queryByText } = render(<ZReportDetailPage />)
+
+    expect(getByText('pos:zReports.detail.vatOnSales')).toBeInTheDocument()
+    expect(getByText('pos:zReports.detail.netVat')).toBeInTheDocument()
+    // Two occurrences by design: the summary bridge line and the per-rate
+    // refund row in the VAT table below (single rate in this fixture).
+    expect(getAllByText('-78.560').length).toBe(2)
+    expect(getAllByText('156.000').length).toBeGreaterThan(0)
+    // The sale-only row no longer stands alone.
+    expect(queryByText('pos:zReports.detail.taxAmount')).not.toBeInTheDocument()
+  })
+
+  it('adds the per-rate refund VAT row to the VAT table', () => {
+    queryState.data = refundBearing
+    const { getByText } = render(<ZReportDetailPage />)
+
+    expect(getByText('-98.560')).toBeInTheDocument()
+  })
+
+  it('keeps the single sale-only VAT row on a refund-free Z', () => {
+    queryState.data = report
+    const { getByText, queryByText } = render(<ZReportDetailPage />)
+
+    expect(getByText('pos:zReports.detail.taxAmount')).toBeInTheDocument()
+    expect(queryByText('pos:zReports.detail.vatOnSales')).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * GATE r1 B-2/F-5 — the page destructured the disclosure but read only
+ * `has_refund_vat`, so when the server reported `is_reconciled: false` it
+ * presented three rows that visibly do not add up as authoritative, with no
+ * explanation. Server-side that state genuinely occurs: `refund_vat` is
+ * aggregated from projected rows independently of the signed `net_vat`, so a
+ * refund that has not projected yet produces exactly it.
+ */
+describe('ZReportDetailPage — unreconciled disclosure (gate r1 B-2)', () => {
+  const unreconciled = {
+    ...report,
+    report_data: {
+      ...report.report_data,
+      tax_amount: '234.560',
+      refunds_count: 1,
+      refunds_amount: '120.000',
+      vat_breakdown: [{ rate: 20, net: '780.000', vat: '156.000', gross: '936.000' }],
+    },
+    refund_vat_disclosure: {
+      rows: [
+        { tax_rate: '20.00', net_amount: '20.000', vat_amount: '50.000', gross_amount: '70.000' },
+      ],
+      sales_vat: '234.560',
+      // 234.560 − 50.000 = 184.560 ≠ 156.000 — the projections and the signed
+      // table disagree.
+      refund_vat: '50.000',
+      net_vat: '156.000',
+      has_refund_vat: true,
+      is_reconciled: false,
+    },
+  }
+
+  it('renders the unreconciled warning when the server reports a disagreement', () => {
+    queryState.data = unreconciled
+    const { getByText } = render(<ZReportDetailPage />)
+
+    expect(getByText('pos:zReports.detail.vatUnreconciled')).toBeInTheDocument()
+  })
+
+  it('does not warn when the server reports the figures reconcile', () => {
+    queryState.data = {
+      ...unreconciled,
+      refund_vat_disclosure: { ...unreconciled.refund_vat_disclosure, is_reconciled: true },
+    }
+    const { queryByText } = render(<ZReportDetailPage />)
+
+    expect(queryByText('pos:zReports.detail.vatUnreconciled')).not.toBeInTheDocument()
   })
 })

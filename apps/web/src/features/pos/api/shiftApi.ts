@@ -59,8 +59,17 @@ export interface XReportResponse {
   sales_count: number
   gross_sales: string
   net_sales: string
+  /**
+   * SALE-ONLY (B-6(ii)): the server X aggregation never folds refunds into this
+   * figure, while `vat_breakdown` below IS net of them. The two differ by
+   * exactly the refund VAT on any shift that took a return — never treat this
+   * as the declared VAT.
+   */
   tax_amount: string
   refunds_count: number
+  /** Positive magnitude. The server sends it; this type used to omit it. */
+  refunds_amount: string
+  /** NET of refunds, per rate. This is the declaration-facing figure. */
   vat_breakdown: VatBreakdownEntry[]
   payment_methods: PaymentMethodEntry[]
 }

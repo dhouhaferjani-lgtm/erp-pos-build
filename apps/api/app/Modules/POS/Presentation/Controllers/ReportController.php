@@ -235,6 +235,17 @@ final class ReportController extends Controller
             ], 403);
         }
 
+        // B-6(ii) / Option A2 — the DERIVED refund-VAT disclosure, attached on the
+        // DETAIL endpoint only. Deliberately not on `listZReports`: the derivation
+        // runs one aggregate query per Z, which on a paginated list would be a
+        // straight N+1 for a figure no list row renders. Set as an attribute
+        // rather than passed through the resource constructor, matching the
+        // `was_reused` precedent the resource already reads.
+        $zReport->setAttribute(
+            'refund_vat_disclosure',
+            $this->reportGenerationService->refundVatDisclosureFor($zReport)->toArray(),
+        );
+
         return response()->json([
             'data' => ZReportResource::make($zReport),
         ]);

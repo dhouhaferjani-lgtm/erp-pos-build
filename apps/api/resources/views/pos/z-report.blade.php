@@ -288,10 +288,71 @@
                 <span class="row-label">{{ __('pos.z_report_net_sales') }}:</span>
                 <span class="row-value">{{ $formatMoney($reportData['net_sales'] ?? '0.00') }}</span>
             </div>
-            <div class="summary-row">
-                <span class="row-label">{{ __('pos.z_report_tax_amount') }}:</span>
-                <span class="row-value">{{ $formatMoney($reportData['tax_amount'] ?? '0.00') }}</span>
-            </div>
+            {{--
+                B-6(ii) / Option A1 — VAT is disclosed in THREE lines whenever the
+                shift took a refund, because the headline `tax_amount` is SALE-ONLY
+                while the per-rate table below is NET of refunds. Printing the
+                headline alone next to that table put two numbers on one document
+                that disagree by exactly the refund VAT.
+
+                With no refunds the two are equal by construction (the F-4 tripwire
+                asserts it), so the single historical line is kept verbatim — a
+                refund-free Z renders byte-identically to before this change.
+            --}}
+            {{--
+                GATE r1 F-2 — the unreconciled warning is NOT nested inside the
+                has_refund_vat branch. It used to be, which made it unreachable in
+                the most ordinary unreconciled state there is: a v3 Z whose refund
+                receipts have not yet synced/projected. There `has_refund_vat` is
+                false (no projected return rows) while the SIGNED table is already
+                net, so the report printed the sale-only headline directly beneath
+                a table this lane had just labelled "net of refunds" — with no
+                warning. The two decisions are now independent: WHICH VAT shape to
+                print, and WHETHER to warn.
+            --}}
+            @php($vatDisclosure = $refundVatDisclosure ?? null)
+            @php($vatUnreconciled = $vatDisclosure !== null && ! $vatDisclosure->is_reconciled)
+            @if($vatDisclosure !== null && $vatDisclosure->has_refund_vat)
+                <div class="summary-row">
+                    <span class="row-label">{{ __('pos.z_report_vat_on_sales') }}:</span>
+                    <span class="row-value">{{ $formatMoney($vatDisclosure->sales_vat) }}</span>
+                </div>
+                <div class="summary-row">
+                    <span class="row-label">{{ __('pos.z_report_vat_on_refunds') }}:</span>
+                    <span class="row-value">-{{ $formatMoney($vatDisclosure->refund_vat) }}</span>
+                </div>
+                <div class="summary-row">
+                    <span class="row-label">{{ __('pos.z_report_net_vat') }}:</span>
+                    <span class="row-value">{{ $formatMoney($vatDisclosure->net_vat) }}</span>
+                </div>
+            @elseif($vatUnreconciled)
+                {{-- Unreconciled with no refund magnitude to state: print BOTH real
+                     figures so the reader can see the disagreement the warning names,
+                     and no "-0.00" refund line, which would assert a refund that did
+                     not happen. --}}
+                <div class="summary-row">
+                    <span class="row-label">{{ __('pos.z_report_vat_on_sales') }}:</span>
+                    <span class="row-value">{{ $formatMoney($vatDisclosure->sales_vat) }}</span>
+                </div>
+                <div class="summary-row">
+                    <span class="row-label">{{ __('pos.z_report_net_vat') }}:</span>
+                    <span class="row-value">{{ $formatMoney($vatDisclosure->net_vat) }}</span>
+                </div>
+            @else
+                <div class="summary-row">
+                    <span class="row-label">{{ __('pos.z_report_tax_amount') }}:</span>
+                    <span class="row-value">{{ $formatMoney($reportData['tax_amount'] ?? '0.00') }}</span>
+                </div>
+            @endif
+            @if($vatUnreconciled)
+                {{-- Surfaced, never hidden, and independent of which shape printed
+                     above: the figures on this window do not add up, so the report
+                     says so instead of implying they do. --}}
+                <div class="summary-row">
+                    <span class="row-label">{{ __('pos.z_report_vat_unreconciled') }}</span>
+                    <span class="row-value"></span>
+                </div>
+            @endif
             <div class="summary-row">
                 <span class="row-label">{{ __('pos.z_report_refunds') }}:</span>
                 <span class="row-value">{{ $reportData['refunds_count'] ?? 0 }} ({{ $formatMoney($reportData['refunds_amount'] ?? '0.00') }})</span>
@@ -334,7 +395,11 @@
         {{-- VAT Breakdown --}}
         @if(!empty($vatBreakdown))
             <div class="section">
-                <div class="section-title">{{ __('pos.vat_breakdown') }}</div>
+                {{-- Label states the netting explicitly: this table is NET of
+                     refunds on every surface (device-authored since C-2, and
+                     server-authored since B-6(ii)/A3), and it is the figure the
+                     VAT declaration reads. --}}
+                <div class="section-title">{{ __('pos.vat_breakdown') }} — {{ __('pos.z_report_vat_net_of_refunds') }}</div>
                 <table>
                     <thead>
                         <tr>
@@ -351,6 +416,37 @@
                                 <td class="text-right">{{ $formatMoney($vat['net'] ?? $vat['net_amount'] ?? '0.00') }}</td>
                                 <td class="text-right">{{ $formatMoney($vat['vat'] ?? $vat['vat_amount'] ?? '0.00') }}</td>
                                 <td class="text-right">{{ $formatMoney($vat['gross'] ?? $vat['gross_amount'] ?? '0.00') }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+
+        {{-- Refund VAT (derived, B-6(ii)/A2) — the per-rate bridge between the
+             sale-only headline and the net table above. Sourced from
+             pos_receipt_vat_details × receipt_type='return' with the same
+             normalisation the VAT declaration uses, so the deduction shown here
+             is the deduction the declaration books. --}}
+        @if(($refundVatDisclosure ?? null) !== null && $refundVatDisclosure->has_refund_vat)
+            <div class="section">
+                <div class="section-title">{{ __('pos.z_report_refund_vat_breakdown') }}</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>{{ __('pos.z_report_vat_rate') }}</th>
+                            <th class="text-right">{{ __('pos.z_report_vat_net') }}</th>
+                            <th class="text-right">{{ __('pos.z_report_vat_amount') }}</th>
+                            <th class="text-right">{{ __('pos.z_report_vat_gross') }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($refundVatDisclosure->rows as $refundVat)
+                            <tr>
+                                <td>{{ $formatNumber($refundVat->tax_rate, 2) }}%</td>
+                                <td class="text-right">-{{ $formatMoney($refundVat->net_amount) }}</td>
+                                <td class="text-right">-{{ $formatMoney($refundVat->vat_amount) }}</td>
+                                <td class="text-right">-{{ $formatMoney($refundVat->gross_amount) }}</td>
                             </tr>
                         @endforeach
                     </tbody>

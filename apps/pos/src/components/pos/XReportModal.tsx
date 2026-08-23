@@ -2,6 +2,8 @@ import { useTranslation } from 'react-i18next';
 import { useCurrency } from '@/lib/currency';
 import { formatPercent } from '@/lib/format';
 import { Modal } from './Modal';
+import { VatDisclosureSummary } from './VatDisclosureSummary';
+import { deriveVatDisclosure } from '@/lib/reports/vatDisclosure';
 import { Loader2 } from 'lucide-react';
 import type { XReportResponse } from '@/api/reportApi';
 
@@ -15,7 +17,11 @@ interface XReportModalProps {
 
 export function XReportModal({ isOpen, onClose, report, isLoading, error }: XReportModalProps) {
   const { t } = useTranslation('pos');
-  const { format } = useCurrency();
+  const { format, decimals } = useCurrency();
+
+  // B-6(ii): derived from the report's own signed/stored fields. The X payload
+  // is byte-identical to before — nothing here reaches `appendXReport`.
+  const vatDisclosure = report ? deriveVatDisclosure(report, decimals) : null;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={t('reports.xReportTitle')} size="xl">
@@ -45,22 +51,46 @@ export function XReportModal({ isOpen, onClose, report, isLoading, error }: XRep
             <SummaryCard label={t('reports.salesCount')} value={String(report.sales_count)} />
             <SummaryCard label={t('reports.grossSales')} value={format(report.gross_sales)} />
             <SummaryCard label={t('reports.netSales')} value={format(report.net_sales)} />
-            <SummaryCard label={t('reports.taxAmount')} value={format(report.tax_amount)} />
+            {/* B-6(ii)/A1: on a refund-bearing shift this card shows the NET
+                figure — the same number the per-rate table below totals to and
+                the one the VAT declaration reads — instead of the sale-only
+                `tax_amount`, which used to sit here disagreeing with that table
+                by exactly the refund VAT. The full three-line bridge follows. */}
+            <SummaryCard
+              label={
+                vatDisclosure?.hasRefundVat
+                  ? t('reports.taxAmountNetOfRefunds')
+                  : t('reports.taxAmount')
+              }
+              value={format(vatDisclosure?.hasRefundVat ? vatDisclosure.netVat : report.tax_amount)}
+            />
           </div>
 
-          {/* Refunds */}
+          {vatDisclosure !== null && (
+            <VatDisclosureSummary disclosure={vatDisclosure} format={format} keyPrefix="reports" />
+          )}
+
+          {/* Refunds — `refunds_amount` is sent by both the local and server X
+              builders and was silently dropped here until B-6(ii). */}
           {report.refunds_count > 0 && (
             <div className="rounded-tile bg-warning-surface px-4 py-3">
-              <span className="text-sm font-medium text-warning-strong">
-                {t('reports.refundsCount')}: {report.refunds_count}
-              </span>
+              <div className="flex justify-between text-sm font-medium text-warning-strong">
+                <span>
+                  {t('reports.refundsCount')}: {report.refunds_count}
+                </span>
+                <span className="tabular-nums">{format(report.refunds_amount)}</span>
+              </div>
             </div>
           )}
 
           {/* VAT Breakdown */}
           {report.vat_breakdown.length > 0 && (
             <div>
-              <h4 className="mb-2 text-sm font-semibold text-ink-muted">{t('reports.vatBreakdown')}</h4>
+              <h4 className="mb-2 text-sm font-semibold text-ink-muted">
+                {vatDisclosure?.hasRefundVat
+                  ? t('reports.vatBreakdownNetOfRefunds')
+                  : t('reports.vatBreakdown')}
+              </h4>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border-subtle text-left text-xs text-ink-muted">

@@ -80,6 +80,11 @@ function makePreview(
     drawer_movements_net: '0.00',
     expected_cash: '100.00',
     variance: null,
+    // B-6(ii) refunds block — zero-shape: this fixture exercises tender
+    // reconciliation, not refunds.
+    refunds_count: 0,
+    refunds_amount: '0.00',
+    refund_vat_amount: '0.00',
     vat_breakdown: [],
     payment_methods: methods as EndOfDayPreview['payment_methods'],
     tolerance_summary: null,

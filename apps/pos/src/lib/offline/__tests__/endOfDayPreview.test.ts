@@ -888,3 +888,216 @@ describe('buildEndOfDayPreview — cash rounding + tolerance (Task 10)', () => {
       expect(preview.tolerance_auto_accept_count).toBeNull();
     });
 });
+
+/**
+ * B-6(ii) / Option A1+A2 — the EOD preview had NO refunds block at all
+ * (scoping doc §1.6), yet its `tax_amount` is SALE-ONLY while its
+ * `vat_breakdown` is NET. A cashier reconciling a refund-bearing shift saw two
+ * VAT figures that disagreed with nothing to explain the gap.
+ *
+ * The preview is unsigned, unhashed and unpersisted, so these are plain
+ * accumulators — unlike the signed Z, where the same fields would change the
+ * legacy fiscal hash and must be DERIVED instead (see vatDisclosure.ts).
+ */
+describe('buildEndOfDayPreview — refunds block (B-6(ii))', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function mockShiftWithRefund(): void {
+    vi.mocked(queryAll).mockImplementation(async (_db, sql) => {
+      const s = String(sql);
+      if (s.includes('offline_receipts')) {
+        return [
+          {
+            id: 'sale-1',
+            total: '119.00',
+            subtotal: '119.00',
+            tax_amount: '19.00',
+            change_due: '0.00',
+            payment_method_id: 'pm-cash',
+            payments_json: JSON.stringify([{ method_code: 'CASH', amount: '119.00' }]),
+            lines: JSON.stringify([{ tax_rate: '19', tax_amount: '19.00', line_total: '119.00' }]),
+            created_at: '2026-06-10 10:00:00',
+            receipt_kind: 'sale',
+            cash_rounding_adjustment: null,
+            tolerance_shortfall: null,
+          },
+          {
+            // §7.2 negative-signed refund row.
+            id: 'refund-1',
+            total: '-23.80',
+            subtotal: '-23.80',
+            tax_amount: '-3.80',
+            change_due: null,
+            payment_method_id: 'pm-cash',
+            payments_json: JSON.stringify([{ method_code: 'CASH', amount: '23.80' }]),
+            lines: JSON.stringify([{ tax_rate: '19', tax_amount: '-3.80', line_total: '-23.80' }]),
+            created_at: '2026-06-10 11:00:00',
+            receipt_kind: 'refund',
+            cash_rounding_adjustment: null,
+            tolerance_shortfall: null,
+          },
+        ] as unknown as never[];
+      }
+      if (s.includes('payment_methods')) {
+        return [{ id: 'pm-cash', code: 'CASH', name: 'Cash', is_physical: 1 }] as unknown as never[];
+      }
+      return [] as never[];
+    });
+  }
+
+  it('counts refunds and reports their gross magnitude', async () => {
+    mockShiftWithRefund();
+
+    const preview = await buildEndOfDayPreview(
+      mockDb, 'term-1', '2026-06-10T08:00:00Z', '0', 'EUR',
+    );
+
+    expect(preview.refunds_count).toBe(1);
+    // POSITIVE magnitude, matching the signed Z's own `refunds_amount`
+    // semantics (server-pinned by ZReportV3AggregationTest).
+    expect(preview.refunds_amount).toBe('23.80');
+  });
+
+  it('keeps the sale-only headline and the net table reconcilable', async () => {
+    mockShiftWithRefund();
+
+    const preview = await buildEndOfDayPreview(
+      mockDb, 'term-1', '2026-06-10T08:00:00Z', '0', 'EUR',
+    );
+
+    // tax_amount is SALE-ONLY …
+    expect(preview.tax_amount).toBe('19.00');
+    // … while the per-rate table is NET of the refund …
+    expect(preview.vat_breakdown[0]?.vat_amount).toBe('15.20');
+    // … and their difference is exactly the refund VAT the disclosure shows.
+    expect(preview.refund_vat_amount).toBe('3.80');
+  });
+
+  it('reports a zero refunds block on a refund-free shift rather than omitting it', async () => {
+    vi.mocked(queryAll).mockImplementation(async (_db, sql) => {
+      const s = String(sql);
+      if (s.includes('offline_receipts')) {
+        return [{
+          id: 'sale-1', total: '119.00', subtotal: '119.00', tax_amount: '19.00',
+          change_due: '0.00', payment_method_id: 'pm-cash',
+          payments_json: JSON.stringify([{ method_code: 'CASH', amount: '119.00' }]),
+          lines: JSON.stringify([{ tax_rate: '19', tax_amount: '19.00', line_total: '119.00' }]),
+          created_at: '2026-06-10 10:00:00', receipt_kind: 'sale',
+          cash_rounding_adjustment: null, tolerance_shortfall: null,
+        }] as unknown as never[];
+      }
+      if (s.includes('payment_methods')) {
+        return [{ id: 'pm-cash', code: 'CASH', name: 'Cash', is_physical: 1 }] as unknown as never[];
+      }
+      return [] as never[];
+    });
+
+    const preview = await buildEndOfDayPreview(
+      mockDb, 'term-1', '2026-06-10T08:00:00Z', '0', 'EUR',
+    );
+
+    expect(preview.refunds_count).toBe(0);
+    expect(preview.refunds_amount).toBe('0.00');
+    expect(preview.refund_vat_amount).toBe('0.00');
+  });
+});
+
+/**
+ * GATE r1 F-3 — the new refunds tile counted v4 `offline_receipts` rows ONLY,
+ * while `expected_cash` on the same screen is reduced by LEGACY refunds too.
+ *
+ * Legacy refunds never write an `offline_receipts` row at all — their sole
+ * device write is `local_refund_records` (this file's own wave-2
+ * TREASURY-CRITICAL note) — and that path is still live for every terminal that
+ * has not completed its v4 capability rollout. So a pre-v4 terminal that took a
+ * cash refund rendered "no refunds" beside a drawer figure the refund moved.
+ *
+ * The signed Z has always counted BOTH (`zReportService.ts` seeds
+ * `refundsCount = refundRecords.length` before its receipts loop), so a v4-only
+ * tile also made the preview contradict the Z it previews.
+ */
+describe('buildEndOfDayPreview — legacy refunds in the refunds tile (gate r1 F-3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function mockLegacyRefundShift(): void {
+    vi.mocked(queryAll).mockImplementation(async (_db, sql, params) => {
+      const s = String(sql);
+      if (s.includes('local_refund_records')) {
+        const shiftId = (params as unknown[] | undefined)?.[0];
+        return (shiftId === 'shift-1'
+          ? [{
+              id: 'legacy-1',
+              receipt_number: 'T001-9901',
+              original_receipt_number: 'T001-0001',
+              shift_id: 'shift-1',
+              terminal_id: 'term-1',
+              destination: 'cash',
+              // Signed negative exactly as the server returned it.
+              total: '-15.00',
+              cash_impact: '15.00',
+              currency: 'EUR',
+              settled_at: '2026-06-10T11:00:00Z',
+            }]
+          : []) as unknown as never[];
+      }
+      if (s.includes('offline_cash_drawer_ops') || s.includes('local_account_payment_records')) {
+        return [] as never[];
+      }
+      if (s.includes('offline_receipts')) {
+        return [{
+          id: 'sale-1', total: '119.00', subtotal: '119.00', tax_amount: '19.00',
+          change_due: '0.00', payment_method_id: 'pm-cash',
+          payments_json: JSON.stringify([{ method_code: 'CASH', amount: '119.00' }]),
+          lines: JSON.stringify([{ tax_rate: '19', tax_amount: '19.00', line_total: '119.00' }]),
+          created_at: '2026-06-10 10:00:00', receipt_kind: 'sale',
+          cash_rounding_adjustment: null, tolerance_shortfall: null,
+        }] as unknown as never[];
+      }
+      if (s.includes('payment_methods')) {
+        return [{ id: 'pm-cash', code: 'CASH', name: 'Cash', is_physical: 1 }] as unknown as never[];
+      }
+      return [] as never[];
+    });
+  }
+
+  it('counts a LEGACY refund in the tile, matching the signed Z', async () => {
+    mockLegacyRefundShift();
+
+    const preview = await buildEndOfDayPreview(
+      mockDb, 'term-1', '2026-06-10T08:00:00Z', '0', 'EUR', 'shift-1',
+    );
+
+    expect(preview.refunds_count).toBe(1);
+    expect(preview.refunds_amount).toBe('15.00');
+  });
+
+  it('keeps the tile consistent with the expected_cash the same refund moved', async () => {
+    mockLegacyRefundShift();
+
+    const preview = await buildEndOfDayPreview(
+      mockDb, 'term-1', '2026-06-10T08:00:00Z', '0', 'EUR', 'shift-1',
+    );
+
+    // 0 opening + 119.00 cash in − 15.00 legacy cash refund out.
+    expect(preview.expected_cash).toBe('104.00');
+    // The tile must not say "no refunds" beside that.
+    expect(preview.refunds_count).toBeGreaterThan(0);
+  });
+
+  it('leaves refund_vat_amount at the v4-only figure — legacy records carry no VAT split', async () => {
+    mockLegacyRefundShift();
+
+    const preview = await buildEndOfDayPreview(
+      mockDb, 'term-1', '2026-06-10T08:00:00Z', '0', 'EUR', 'shift-1',
+    );
+
+    // A legacy record has `total`/`cash_impact` and no per-rate VAT, so it
+    // cannot contribute to the VAT disclosure. Stating that explicitly so the
+    // asymmetry is a recorded decision rather than an oversight.
+    expect(preview.refund_vat_amount).toBe('0.00');
+  });
+});

@@ -395,6 +395,27 @@ const resources = {
       // only the two B-3 strings under `terminal`, so without this merge the
       // other 31 English `terminal.*` fallbacks would vanish for Arabic.
       terminal: { ...enPos.terminal, ...arPos.terminal },
+      // Spreading `arPos` over `enPos` is SHALLOW: a nested object present in
+      // both wholesale-REPLACES the English one. `arPos.zReports` carries 4 keys
+      // against English's 30, and `arPos.zReports.detail` 5 against English's 25,
+      // so both levels need merging — including the rows the B-6(ii) VAT
+      // disclosure sits beside on the same card.
+      //
+      // HONEST SCOPE, because the original report overstated it: this is NOT
+      // currently a raw-key bug. `fallbackLng: 'en'` below resolves fallback PER
+      // KEY at lookup time, so a shadowed key is already served in English —
+      // the same string this merge produces. What the merge fixes is the
+      // wholesale read: `t('pos:zReports', { returnObjects: true })` bypasses
+      // per-key fallback and would hand back only the 4 AR keys. That pattern is
+      // live in this codebase (`RegisterBrandPanel.tsx:10`), so the hazard is
+      // real even though the screens are fine today. Pinned by
+      // `src/lib/__tests__/i18nPosZReportsShadowing.test.ts`.
+      zReports: {
+        ...enPos.zReports,
+        ...arPos.zReports,
+        detail: { ...enPos.zReports.detail, ...arPos.zReports.detail },
+      },
+
     },
     catalog: enCatalog,
     menu: arMenu,
