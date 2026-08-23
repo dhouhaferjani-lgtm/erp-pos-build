@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryPostException;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
@@ -374,6 +375,80 @@ final class ReceiptController extends Controller
             // (ReceiptReturnRefactorV3Test) was written to catch. PHP
             // dispatches to the first matching catch clause, so this
             // narrower clause must be declared before the broad one.
+            throw $e;
+        } catch (UnbalancedJournalEntryPostException $e) {
+            // enforcement-P3 M1 §6 R-10 — PER-SITE CATCH NARROWING.
+            //
+            // The GL posting chokepoint (`GeneralLedgerService::sealAndPersistEntry`)
+            // refused to seal an entry whose Sigma(debits) != Sigma(credits). That
+            // refusal is an `\InvalidArgumentException` by parentage — deliberately,
+            // so that naming it left the chokepoint's blast radius byte-identical to
+            // its pre-M1 bare throw — which means the broad
+            // `catch (\InvalidArgumentException)` clause below used to intercept it
+            // and render **400 `INVALID_RETURN_DATA`**: a fiscal-integrity fault
+            // reported to the cashier as "your return payload is wrong". It is not.
+            // Nothing about the request can fix it and no client should retry it.
+            //
+            // It is REACHABLE here, and the VOUCHER-ISSUANCE PATH ALONE makes it so
+            // (gate r1 finding P2-1 corrected an earlier draft of this comment that
+            // also claimed an OriginalPayment chain — see the disclaimer below):
+            //   `executeVoucherIssuance` (`ReceiptReturnService:882`)
+            //     -> `VoucherIssuanceService::issueFromRefund`
+            //     -> `GeneralLedgerService::createVoucherLedgerEntry` (`:2641`)
+            //     -> `postEntryAndDispatchPostedEventAfterCommit` (`:96`, called at `:2765`)
+            // That helper defers via `DB::afterCommit` because the outer
+            // `DB::transaction` at `ReceiptReturnService:198` keeps the transaction
+            // level above zero. Deferring does NOT put it out of reach: Laravel's
+            // `ManagesTransactions::transaction()` calls
+            // `$this->transactionsManager?->commit(...)` at `:66` — OUTSIDE the
+            // try/catch that wraps only the PDO commit (`:51-64`) — and
+            // `DatabaseTransactionsManager::commit()` runs the deferred callbacks at
+            // `:94`. So the refusal propagates uncaught out of `DB::transaction()`
+            // and lands in THIS method's `try`. (Census §5.5 / M1-D8 say the same;
+            // the red-first run proves it empirically — on base this request
+            // returned 400.)
+            //
+            // NOT a GL path, despite the name: the OriginalPayment settlement
+            // (`executePaymentRefund`, `:906` -> `PaymentRefundService::refundReceiptPayments`,
+            // `:2007-2226`) posts NO journal entry at all. It writes negative
+            // `Payment` rows and dispatches `PaymentRefunded` from `DB::afterCommit`
+            // (`:2208-2222`), whose only listener is the Compliance audit subscriber
+            // (`DomainEventSubscriber:1084`). `postRefundGlAndMovement` — the method
+            // that would post synchronously — is called only from `refundPayment`
+            // (`:235`) and `partialRefund` (`:377`), neither of which the POS return
+            // path reaches. Do not "restore" that chain: it does not exist.
+            //
+            // Nor is the inventory batch at `ReceiptReturnService:513-524` a source
+            // — it is swallowed there, reported as R-11 for the projection-discipline
+            // lane.
+            //
+            // CLIENT-VISIBLE CONSEQUENCE OF 4xx -> 5xx, recorded so nobody later reads
+            // the "500" above as what the cashier sees (gate r1 finding P3-4). The POS
+            // device retries any status >= 500 (`apps/pos/src/lib/refundFlow/
+            // refundSettlementService.ts:205-210, :248`, `isRetryableServerError`),
+            // replaying a byte-identical payload with the same `refund_request_id`.
+            // The return receipt is ALREADY COMMITTED when this refusal fires (the PDO
+            // commit precedes the afterCommit callback, above), so the retry hits the
+            // idempotency replay at `ReceiptReturnService:218-223` / `:241-247` and
+            // returns the existing receipt as 201. Net: NO data-outcome change versus
+            // base and no double refund (the unique partial index on
+            // `(company_id, refund_request_id)` plus those two replay checks make it
+            // safe) — but the cashier now ultimately sees SUCCESS after one 500 plus
+            // backoff, where base showed a terminal 400, and a genuinely broken GL
+            // costs MAX_RETRIES x backoff of extra latency. The server-side alert
+            // still fires on the FIRST attempt (`bootstrap/app.php:212`), which is
+            // where the "500 + alert" contract actually has to hold.
+            //
+            // Re-throwing hands it to the global renderer in `bootstrap/app.php`,
+            // which has no mapping for it and so emits the catch-all
+            // `500 {code: INTERNAL_ERROR, request_id}` envelope. That is the
+            // disposition the sibling type's docblocks pin as "an unmapped
+            // exception (a 500 + alert), never a 4xx". PHP dispatches to the FIRST
+            // matching clause, so this narrower arm must stay ABOVE both broad ones.
+            //
+            // Genuine argument-validation refusals from this flow are untouched and
+            // keep their 400 contract — e.g. `ReceiptReturnService:138/1124/1131/
+            // 1140/1153/1163/1167/1177` and `PaymentRefundService:2021/2075`.
             throw $e;
         } catch (\RuntimeException $e) {
             return response()->json([

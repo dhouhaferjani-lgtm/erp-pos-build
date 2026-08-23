@@ -121,8 +121,14 @@ final class ChokepointUnbalancedGuardTest extends TestCase
      *    that render 400/422;
      *  - parenting it under `\RuntimeException` newly exposed the CHOKEPOINT's
      *    refusal to `catch (\RuntimeException)` blocks that render **422**
-     *    (`DeliveryNoteController:587`, `DocumentConversionController:432`,
-     *    `POS/ReceiptController:378`) — the exact downgrade "never a 422" forbids.
+     *    (`DeliveryNoteController:587`, `DocumentConversionController:471`,
+     *    `POS/ReceiptController:453`) — the exact downgrade "never a 422" forbids.
+     *    (Those two `DocumentConversion`/`ReceiptController` coordinates were `:432`
+     *    and `:378` until the R-10 narrowing lane, 2026-08-23, added a
+     *    `catch (UnbalancedJournalEntryPostException)` arm above them and shifted
+     *    them down. The ARMS THEMSELVES are byte-identical — that lane's diff has
+     *    zero deletions — so this reasoning is unchanged; only the line numbers
+     *    moved.)
      *
      * So: the post-seal type stays a `\RuntimeException`, and the chokepoint type
      * stays an `\InvalidArgumentException` (which is what the chokepoint threw before
