@@ -170,6 +170,60 @@ final class VoucherSchemaTest extends TestCase
         );
     }
 
+    /**
+     * Lane Q-5 — DB backstop for the void edge: a voucher may carry at most one
+     * `voided` ledger row. VoucherVoidService enforces this under a row lock;
+     * the partial unique index catches anything that races or bypasses it.
+     */
+    public function test_voucher_ledger_has_partial_unique_index_on_voided_event(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('Partial unique index is PostgreSQL-only.');
+        }
+
+        $indexes = DB::select(
+            "SELECT indexname FROM pg_indexes WHERE tablename = 'voucher_ledger'"
+        );
+        $indexNames = array_map(fn ($r) => $r->indexname, $indexes);
+
+        $this->assertContains(
+            'uniq_voucher_ledger_voided_per_voucher',
+            $indexNames,
+            'Missing partial unique index uniq_voucher_ledger_voided_per_voucher.'
+        );
+    }
+
+    public function test_voucher_ledger_rejects_a_second_voided_row_for_the_same_voucher(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('Partial unique index is PostgreSQL-only.');
+        }
+
+        $voucherRow = $this->baseVoucherRow();
+        DB::table('vouchers')->insert($voucherRow);
+
+        $ledgerRow = [
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $voucherRow['tenant_id'],
+            'company_id' => $voucherRow['company_id'],
+            'voucher_id' => $voucherRow['id'],
+            'event' => VoucherEvent::Voided->value,
+            'amount' => '-50.00000',
+            'currency' => 'EUR',
+            'user_id' => $voucherRow['issued_by_user_id'],
+            'occurred_at' => now(),
+        ];
+
+        DB::table('voucher_ledger')->insert($ledgerRow);
+
+        // A second Voided row for the same voucher must be rejected.
+        $this->expectException(QueryException::class);
+
+        DB::table('voucher_ledger')->insert(array_merge($ledgerRow, [
+            'id' => (string) Str::uuid(),
+        ]));
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------

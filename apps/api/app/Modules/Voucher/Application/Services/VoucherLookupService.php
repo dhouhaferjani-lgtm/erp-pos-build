@@ -4,27 +4,25 @@ declare(strict_types=1);
 
 namespace App\Modules\Voucher\Application\Services;
 
-use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Voucher\Application\DTOs\GenericLookupResult;
 use App\Modules\Voucher\Application\DTOs\InSessionLookupResult;
+use App\Modules\Voucher\Application\DTOs\VoucherVoidRequest;
 use App\Modules\Voucher\Domain\Enums\RedemptionMode;
 use App\Modules\Voucher\Domain\Enums\VoucherEvent;
 use App\Modules\Voucher\Domain\Enums\VoucherStatus;
 use App\Modules\Voucher\Domain\Events\VoucherFraudAlert;
-use App\Modules\Voucher\Domain\Events\VoucherVoided;
+use App\Modules\Voucher\Domain\Exceptions\VoucherInvalidStatusException;
 use App\Modules\Voucher\Domain\Exceptions\VoucherRateLimitedException;
 use App\Modules\Voucher\Domain\Voucher;
 use App\Modules\Voucher\Domain\VoucherLedger;
 use App\Modules\Voucher\Infrastructure\RateLimit\VoucherLookupRateLimiter;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 
 /**
  * Voucher lookup service — controls disclosure boundary between in-session and out-of-session
@@ -35,7 +33,10 @@ use Illuminate\Support\Str;
  *      responses, preventing enumeration attacks.
  *   2. Full balance/expiry details are ONLY disclosed inside an active payment session
  *      (open receipt with FiscalStatus::PendingSeal).
- *   3. Five consecutive failed voucher-code attempts trigger auto-void + VoucherFraudAlert.
+ *   3. Five consecutive failed voucher-code attempts trigger VoucherFraudAlert, plus an
+ *      auto-void through VoucherVoidService when the voucher is still voidable. See
+ *      autoVoidVoucher() for the two alert-only degradations (redemptions present, or the
+ *      voucher already terminal for the void edge).
  */
 final class VoucherLookupService
 {
@@ -47,7 +48,7 @@ final class VoucherLookupService
 
     public function __construct(
         private readonly VoucherLookupRateLimiter $rateLimiter,
-        private readonly GeneralLedgerService $generalLedger,
+        private readonly VoucherVoidService $voidService,
         private readonly Dispatcher $events,
     ) {}
 
@@ -209,8 +210,17 @@ final class VoucherLookupService
     /**
      * Auto-void a voucher that has accumulated >= 5 failed lookup attempts.
      *
-     * Pre-condition: the voucher must have NO prior Redeemed events. If it does,
-     * we emit only the fraud alert (do not void) and log an error.
+     * Pre-conditions (both enforced, both degrade to alert-only):
+     *   - the voucher must have NO prior Redeemed events;
+     *   - the voucher must still be on the open side of the void edge. Lane Q-5
+     *     routes this through VoucherVoidService, which refuses a void of a
+     *     FullyRedeemed / Expired voucher and short-circuits an already-Voided
+     *     one. Before that, a voucher that had already reached a terminal state
+     *     collected a FRESH Voided ledger row on every fraud trigger — the
+     *     double-void this lane closes (sweep findings #22 / #24).
+     *
+     * The fraud alert is dispatched in every branch: it is the security signal,
+     * and it does not depend on whether a void was still available as remediation.
      */
     private function autoVoidVoucher(Voucher $voucher, string $terminalId, string $cashierId, int $attempts): void
     {
@@ -224,100 +234,37 @@ final class VoucherLookupService
                 'voucher_id' => $voucher->id,
                 'attempts' => $attempts,
             ]);
-
-            $this->events->dispatch(new VoucherFraudAlert(
-                voucherId: $voucher->id,
-                tenantId: $voucher->tenant_id,
-                companyId: $voucher->company_id,
-                terminalId: $terminalId,
-                cashierId: $cashierId,
-                attemptsCount: $attempts,
-                occurredAt: Carbon::now()->toIso8601String(),
-            ));
-
-            return;
+        } else {
+            try {
+                $this->voidService->void(new VoucherVoidRequest(
+                    voucherId: $voucher->id,
+                    userId: $cashierId,
+                    policyTrigger: 'auto_fraud_void',
+                    reason: null,
+                    receiptId: null,
+                    terminalId: $terminalId,
+                    tenantId: $voucher->tenant_id,
+                    companyId: $voucher->company_id,
+                ));
+            } catch (VoucherInvalidStatusException $e) {
+                Log::error('Voucher fraud-auto-void refused: voucher is terminal for the void edge.', [
+                    'voucher_id' => $voucher->id,
+                    'status' => $voucher->status->value,
+                    'attempts' => $attempts,
+                    'reason' => $e->getMessage(),
+                ]);
+            }
         }
 
-        DB::transaction(function () use ($voucher, $terminalId, $cashierId, $attempts): void {
-            $now = Carbon::now();
-            $voidedBalance = $voucher->current_balance;
-
-            // Build unsaved Voided ledger row; create GL entry first if needed; then INSERT.
-            $voidedAmount = bccomp($voidedBalance, '0', 5) > 0
-                ? bcmul($voidedBalance, '-1', 5)
-                : '0.00000';
-
-            $voidedId = (string) Str::uuid();
-            $glEntry = null;
-
-            if (bccomp($voidedBalance, '0', 5) > 0) {
-                $unsavedVoided = new VoucherLedger;
-                $unsavedVoided->id = $voidedId;
-                $unsavedVoided->tenant_id = $voucher->tenant_id;
-                $unsavedVoided->company_id = $voucher->company_id;
-                $unsavedVoided->voucher_id = $voucher->id;
-                $unsavedVoided->event = VoucherEvent::Voided;
-                $unsavedVoided->amount = $voidedAmount;
-                $unsavedVoided->currency = $voucher->currency;
-                $unsavedVoided->receipt_id = null;
-                $unsavedVoided->terminal_id = $terminalId;
-                $unsavedVoided->user_id = $cashierId;
-                $unsavedVoided->gl_journal_entry_id = null;
-                $unsavedVoided->authorized_by_user_id = null;
-                $unsavedVoided->policy_trigger = 'auto_fraud_void';
-                $unsavedVoided->reverses_voucher_ledger_id = null;
-                $unsavedVoided->occurred_at = $now;
-
-                // Write GL reversal (only if there's something to reverse)
-                $glEntry = $this->generalLedger->createVoucherLedgerEntry($unsavedVoided, $voucher);
-            }
-
-            // INSERT the Voided ledger row with gl_journal_entry_id already set (no UPDATE).
-            /** @var VoucherLedger $ledgerRow */
-            $ledgerRow = VoucherLedger::forceCreate([
-                'id' => $voidedId,
-                'tenant_id' => $voucher->tenant_id,
-                'company_id' => $voucher->company_id,
-                'voucher_id' => $voucher->id,
-                'event' => VoucherEvent::Voided,
-                'amount' => $voidedAmount,
-                'currency' => $voucher->currency,
-                'receipt_id' => null,
-                'terminal_id' => $terminalId,
-                'user_id' => $cashierId,
-                'gl_journal_entry_id' => $glEntry !== null ? $glEntry->id : null,
-                'authorized_by_user_id' => null,
-                'policy_trigger' => 'auto_fraud_void',
-                'reverses_voucher_ledger_id' => null,
-                'occurred_at' => $now,
-            ]);
-
-            // Update voucher status and balance
-            $voucher->status = VoucherStatus::Voided;
-            $voucher->current_balance = '0.00000';
-            $voucher->save();
-
-            $this->events->dispatch(new VoucherFraudAlert(
-                voucherId: $voucher->id,
-                tenantId: $voucher->tenant_id,
-                companyId: $voucher->company_id,
-                terminalId: $terminalId,
-                cashierId: $cashierId,
-                attemptsCount: $attempts,
-                occurredAt: $now->toIso8601String(),
-            ));
-
-            $this->events->dispatch(new VoucherVoided(
-                voucherId: $voucher->id,
-                tenantId: $voucher->tenant_id,
-                companyId: $voucher->company_id,
-                code: $voucher->code,
-                voidedBalance: $voidedBalance,
-                voidReason: 'auto_fraud_void',
-                glJournalEntryId: $glEntry !== null ? $glEntry->id : '',
-                occurredAt: $now->toIso8601String(),
-            ));
-        });
+        $this->events->dispatch(new VoucherFraudAlert(
+            voucherId: $voucher->id,
+            tenantId: $voucher->tenant_id,
+            companyId: $voucher->company_id,
+            terminalId: $terminalId,
+            cashierId: $cashierId,
+            attemptsCount: $attempts,
+            occurredAt: Carbon::now()->toIso8601String(),
+        ));
     }
 
     /**

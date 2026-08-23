@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Voucher;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
@@ -451,6 +452,10 @@ final class VoucherControllerTest extends TestCase
     {
         Sanctum::actingAs($this->user);
 
+        // The manual void now posts a GL reversal (Q-5) — the chart of accounts
+        // must exist for the GeneralLedgerService call to resolve its accounts.
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
         $voucher = Voucher::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -473,9 +478,203 @@ final class VoucherControllerTest extends TestCase
         ]);
     }
 
+    /**
+     * Q-5 / sweep finding #22 — the manual void extinguishes a liability, so it
+     * MUST post the same GL reversal the cascade and auto-fraud voids post.
+     */
+    public function test_void_with_positive_balance_posts_gl_reversal_and_stores_reference(): void
+    {
+        Sanctum::actingAs($this->user);
+
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        $voucher = Voucher::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'issued_by_user_id' => $this->user->id,
+            'status' => VoucherStatus::Issued,
+            'current_balance' => '50.00000',
+        ]);
+
+        $this->withHeader('X-Company-Id', $this->company->id)
+            ->postJson("/api/v1/vouchers/{$voucher->id}/void", [
+                'reason' => 'Issued in error by cashier',
+            ])->assertOk();
+
+        /** @var VoucherLedger|null $voidedRow */
+        $voidedRow = VoucherLedger::where('voucher_id', $voucher->id)
+            ->where('event', VoucherEvent::Voided->value)
+            ->first();
+
+        $this->assertNotNull($voidedRow);
+        $this->assertNotNull(
+            $voidedRow->gl_journal_entry_id,
+            'Manual void must carry a GL journal entry reference (finding #22).'
+        );
+        $this->assertSame('manual_void', $voidedRow->policy_trigger);
+
+        $entry = JournalEntry::with('lines')->find($voidedRow->gl_journal_entry_id);
+        $this->assertNotNull($entry, 'The referenced GL journal entry must exist.');
+        $this->assertSame('voucher_ledger', $entry->source_type);
+        $this->assertSame($voidedRow->id, $entry->source_id);
+        $this->assertCount(2, $entry->lines);
+    }
+
+    /**
+     * Q-5 / sweep finding #24 — Expired is terminal for the void edge.
+     * Before the fix the controller only refused Voided + FullyRedeemed, so an
+     * Expired voucher had a live outgoing edge into Voided.
+     */
+    public function test_void_of_expired_voucher_is_refused_and_writes_nothing(): void
+    {
+        Sanctum::actingAs($this->user);
+
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        $voucher = Voucher::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'issued_by_user_id' => $this->user->id,
+            'status' => VoucherStatus::Expired,
+            'expires_at' => now()->subDay(),
+            'current_balance' => '50.00000',
+        ]);
+
+        $response = $this->withHeader('X-Company-Id', $this->company->id)
+            ->postJson("/api/v1/vouchers/{$voucher->id}/void", [
+                'reason' => 'Housekeeping on an expired voucher',
+            ]);
+
+        $response->assertUnprocessable();
+        $response->assertJsonPath('error.code', 'VOUCHER_NOT_VOIDABLE');
+
+        $voucher->refresh();
+        $this->assertSame(VoucherStatus::Expired, $voucher->status);
+        $this->assertEquals(0, bccomp($voucher->current_balance, '50.00000', 5));
+        $this->assertDatabaseMissing('voucher_ledger', [
+            'voucher_id' => $voucher->id,
+            'event' => VoucherEvent::Voided->value,
+        ]);
+    }
+
+    /**
+     * Q-5 / sweep finding #24 — FullyRedeemed is terminal for the void edge.
+     */
+    public function test_void_of_fully_redeemed_voucher_is_refused_and_writes_nothing(): void
+    {
+        Sanctum::actingAs($this->user);
+
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        $voucher = Voucher::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'issued_by_user_id' => $this->user->id,
+            'status' => VoucherStatus::FullyRedeemed,
+            'current_balance' => '0.00000',
+        ]);
+
+        $response = $this->withHeader('X-Company-Id', $this->company->id)
+            ->postJson("/api/v1/vouchers/{$voucher->id}/void", [
+                'reason' => 'Manager wants this off the list',
+            ]);
+
+        $response->assertUnprocessable();
+
+        $voucher->refresh();
+        $this->assertSame(VoucherStatus::FullyRedeemed, $voucher->status);
+        $this->assertDatabaseMissing('voucher_ledger', [
+            'voucher_id' => $voucher->id,
+            'event' => VoucherEvent::Voided->value,
+        ]);
+    }
+
+    /**
+     * Q-5 — a re-entered void (double-clicked Void button) must leave exactly ONE
+     * Voided ledger row and exactly ONE GL journal entry.
+     */
+    public function test_repeated_void_writes_exactly_one_voided_ledger_row_and_one_gl_entry(): void
+    {
+        Sanctum::actingAs($this->user);
+
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        $voucher = Voucher::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'issued_by_user_id' => $this->user->id,
+            'status' => VoucherStatus::Issued,
+            'current_balance' => '50.00000',
+        ]);
+
+        $payload = ['reason' => 'Issued in error by cashier'];
+
+        $this->withHeader('X-Company-Id', $this->company->id)
+            ->postJson("/api/v1/vouchers/{$voucher->id}/void", $payload)
+            ->assertOk();
+
+        $this->withHeader('X-Company-Id', $this->company->id)
+            ->postJson("/api/v1/vouchers/{$voucher->id}/void", $payload)
+            ->assertUnprocessable();
+
+        $this->assertSame(
+            1,
+            VoucherLedger::where('voucher_id', $voucher->id)
+                ->where('event', VoucherEvent::Voided->value)
+                ->count(),
+            'A re-entered void must not append a second Voided ledger row.'
+        );
+
+        $this->assertSame(
+            1,
+            JournalEntry::where('source_type', 'voucher_ledger')
+                ->whereIn(
+                    'source_id',
+                    VoucherLedger::where('voucher_id', $voucher->id)->pluck('id')->all()
+                )
+                ->count(),
+            'A re-entered void must not post a second GL reversal.'
+        );
+    }
+
+    /**
+     * Q-5 — a zero-balance voucher has nothing to reverse: the ledger row is still
+     * appended (audit trail) but no GL entry is created. Mirrors the bccomp guard
+     * the auto-fraud void already had.
+     */
+    public function test_void_of_zero_balance_voucher_writes_ledger_row_without_gl_entry(): void
+    {
+        Sanctum::actingAs($this->user);
+
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        $voucher = Voucher::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'issued_by_user_id' => $this->user->id,
+            'status' => VoucherStatus::Issued,
+            'current_balance' => '0.00000',
+        ]);
+
+        $this->withHeader('X-Company-Id', $this->company->id)
+            ->postJson("/api/v1/vouchers/{$voucher->id}/void", [
+                'reason' => 'Zero balance cleanup',
+            ])->assertOk();
+
+        /** @var VoucherLedger|null $voidedRow */
+        $voidedRow = VoucherLedger::where('voucher_id', $voucher->id)
+            ->where('event', VoucherEvent::Voided->value)
+            ->first();
+
+        $this->assertNotNull($voidedRow);
+        $this->assertNull($voidedRow->gl_journal_entry_id);
+    }
+
     public function test_void_persists_reason_to_override_reason_and_notes(): void
     {
         Sanctum::actingAs($this->user);
+
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
 
         $voucher = Voucher::factory()->create([
             'tenant_id' => $this->tenant->id,

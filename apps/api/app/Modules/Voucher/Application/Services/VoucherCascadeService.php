@@ -4,19 +4,15 @@ declare(strict_types=1);
 
 namespace App\Modules\Voucher\Application\Services;
 
-use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\POS\Domain\Receipt;
+use App\Modules\Voucher\Application\DTOs\VoucherVoidRequest;
 use App\Modules\Voucher\Domain\Enums\VoucherEvent;
-use App\Modules\Voucher\Domain\Enums\VoucherStatus;
-use App\Modules\Voucher\Domain\Events\VoucherVoided;
 use App\Modules\Voucher\Domain\Exceptions\VoucherCascadeBlockedException;
 use App\Modules\Voucher\Domain\Voucher;
 use App\Modules\Voucher\Domain\VoucherLedger;
-use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 /**
  * VoucherCascadeService — Phase 1 cascade logic when a credit note is voided (spec §3.1, §4.9).
@@ -32,8 +28,7 @@ use Illuminate\Support\Str;
 final class VoucherCascadeService
 {
     public function __construct(
-        private readonly GeneralLedgerService $generalLedger,
-        private readonly Dispatcher $events,
+        private readonly VoucherVoidService $voidService,
     ) {}
 
     /**
@@ -95,76 +90,25 @@ final class VoucherCascadeService
     }
 
     /**
-     * Void a single unredeemed voucher: write ledger row, reverse GL, dispatch event.
+     * Void a single unredeemed voucher through the canonical void write path.
      *
-     * Must be called within a DB transaction.
+     * Must be called within a DB transaction. VoucherVoidService takes its own
+     * row lock, re-checks the status + redemption guards under it, posts the GL
+     * reversal and dispatches VoucherVoided (lane Q-5) — this method only
+     * supplies the credit note's provenance.
      */
     private function voidSingleVoucher(Voucher $voucher, Receipt $creditNote, Carbon $now): void
     {
-        $voidedBalance = $voucher->current_balance;
-
-        // Build unsaved Voided ledger row; create GL entry first; then INSERT with id set.
-        $voidedId = (string) Str::uuid();
-        $voidedAmount = bccomp($voidedBalance, '0', 5) > 0
-            ? bcmul($voidedBalance, '-1', 5)
-            : '0.00000';
-        $userId = $creditNote->voided_by ?? $creditNote->cashier_id;
-
-        $unsavedVoided = new VoucherLedger;
-        $unsavedVoided->id = $voidedId;
-        $unsavedVoided->tenant_id = $voucher->tenant_id;
-        $unsavedVoided->company_id = $voucher->company_id;
-        $unsavedVoided->voucher_id = $voucher->id;
-        $unsavedVoided->event = VoucherEvent::Voided;
-        $unsavedVoided->amount = $voidedAmount;
-        $unsavedVoided->currency = $voucher->currency;
-        $unsavedVoided->receipt_id = $creditNote->id;
-        $unsavedVoided->terminal_id = $creditNote->terminal_id;
-        $unsavedVoided->user_id = $userId;
-        $unsavedVoided->gl_journal_entry_id = null;
-        $unsavedVoided->authorized_by_user_id = null;
-        $unsavedVoided->policy_trigger = 'cascade_credit_note_void';
-        $unsavedVoided->reverses_voucher_ledger_id = null;
-        $unsavedVoided->occurred_at = $now;
-
-        // Write GL reversal entry (mirror of issuance)
-        $glEntry = $this->generalLedger->createVoucherLedgerEntry($unsavedVoided, $voucher);
-
-        // INSERT the VoucherLedger row with gl_journal_entry_id already populated (no UPDATE).
-        /** @var VoucherLedger $ledgerRow */
-        $ledgerRow = VoucherLedger::forceCreate([
-            'id' => $voidedId,
-            'tenant_id' => $voucher->tenant_id,
-            'company_id' => $voucher->company_id,
-            'voucher_id' => $voucher->id,
-            'event' => VoucherEvent::Voided,
-            'amount' => $voidedAmount,
-            'currency' => $voucher->currency,
-            'receipt_id' => $creditNote->id,
-            'terminal_id' => $creditNote->terminal_id,
-            'user_id' => $userId,
-            'gl_journal_entry_id' => $glEntry->id,
-            'authorized_by_user_id' => null,
-            'policy_trigger' => 'cascade_credit_note_void',
-            'reverses_voucher_ledger_id' => null,
-            'occurred_at' => $now,
-        ]);
-
-        // Update voucher status and zero balance
-        $voucher->status = VoucherStatus::Voided;
-        $voucher->current_balance = '0.00000';
-        $voucher->save();
-
-        // Dispatch domain event
-        $this->events->dispatch(new VoucherVoided(
+        $this->voidService->void(new VoucherVoidRequest(
             voucherId: $voucher->id,
+            userId: $creditNote->voided_by ?? $creditNote->cashier_id,
+            policyTrigger: 'cascade_credit_note_void',
+            reason: null,
+            receiptId: $creditNote->id,
+            terminalId: $creditNote->terminal_id,
             tenantId: $voucher->tenant_id,
             companyId: $voucher->company_id,
-            code: $voucher->code,
-            voidedBalance: $voidedBalance,
-            voidReason: 'cascade_credit_note_void',
-            glJournalEntryId: $glEntry->id,
-            occurredAt: $now->toIso8601String(),
+            occurredAt: $now,
         ));
     }
 }
