@@ -77,8 +77,9 @@ final class DraftPersistenceService
             // read `Draft`, a concurrent session commit `confirm`, and the guard
             // below would then wave through a line-strip on a now-Confirmed
             // document. The confirm side already locks
-            // (`InvoiceController.php:591-595`) and so does the draft-service
-            // precedent this guard follows (`DraftPurchaseOrderService.php:78`);
+            // (`InvoiceController::confirm()` re-fetches with `lockForUpdate()`
+            // inside its transaction) and so does the draft-service precedent
+            // this guard follows (`DraftPurchaseOrderService::appendLines()`);
             // auto-save was the only participant that did not, so the pair did
             // not serialise.
             $document = $draftId !== null
@@ -93,6 +94,11 @@ final class DraftPersistenceService
                 // Create new draft
                 $document = $this->createNewDraft($tenantId, $companyId, $userId, $data);
             } else {
+                // Gate R2-1: the request's `type` must describe the document it
+                // is aimed at. It is checked FIRST because it is the
+                // authorization-carrying one — see assertTypeMatches().
+                $this->assertTypeMatches($document, $data);
+
                 // P1 (ticket 2026-08-22 §1): refuse anything that is no longer a
                 // draft BEFORE touching its lines. `updateDraftLines()` replaces
                 // the whole line set with whatever arrived, so an unguarded
@@ -108,6 +114,50 @@ final class DraftPersistenceService
 
             return $document;
         });
+    }
+
+    /**
+     * Refuse an auto-save whose `type` disagrees with the document it names.
+     *
+     * Gate R2-1. This is what makes the per-type `*.create` gate real on the
+     * UPDATE branch. `AutoSaveDraftRequest::authorize()` resolves the required
+     * ability from the CLIENT-supplied `type`, and this method is the only thing
+     * that reads that field on an update — `createNewDraft()` is otherwise its
+     * sole consumer. Without it, a caller holding `quotes.create` and nothing
+     * else could point `draft_id` at an INVOICE draft, claim `type: quote`, pass
+     * the gate, and have every line stripped; a correcting-entry draft
+     * (created `Draft`/`Draft`, so the editability guard waves it through) was
+     * reachable the same way.
+     *
+     * With the check, "authorized for the claimed type" AND "claimed type ==
+     * persisted type" together mean "authorized for the actual type" — which is
+     * what the CREATE branch gets for free, since there the claimed type IS the
+     * new document's type. Same shape, both branches.
+     *
+     * LENIENT ONLY when `type` is absent, which the HTTP surface cannot produce:
+     * `AutoSaveDraftRequest` declares it `required` (pinned by
+     * `AutoSaveRouteHardeningTest::test_auto_save_rejects_a_missing_document_type`),
+     * so every routed request carries one. The absent arm exists for the
+     * in-process callers that predate this contract and legitimately omit it on
+     * updates (the service's own unit tests), which are not the spoof threat
+     * model — the threat is a value a client chooses.
+     *
+     * @param  array<string, mixed>  $data
+     *
+     * @throws DraftNotEditableException
+     */
+    private function assertTypeMatches(Document $document, array $data): void
+    {
+        if (! array_key_exists('type', $data)) {
+            return;
+        }
+
+        $rawType = $data['type'];
+        $suppliedType = is_string($rawType) ? DocumentType::tryFrom($rawType) : null;
+
+        if ($suppliedType !== $document->type) {
+            throw DraftNotEditableException::typeMismatch($suppliedType, $document->type);
+        }
     }
 
     /**
@@ -181,8 +231,8 @@ final class DraftPersistenceService
         // Eager load partner before event.
         //
         // Gate P1-1: null-safe. `partner_id` is legitimately null on the
-        // editor's first keystrokes — DocumentForm.tsx:262 defaults it to null
-        // and :286 emits `watchedPartnerId || null`, while the debounce fires as
+        // editor's first keystrokes — DocumentForm.tsx:263 defaults it to null
+        // and :290 emits `watchedPartnerId || null`, while the debounce fires as
         // soon as one line exists (useDraftAutoSave.ts:227). A bare
         // `$partner->name` raised an ErrorException on the null relation, which
         // the controller's blanket `catch (\Throwable) → 200` turned into

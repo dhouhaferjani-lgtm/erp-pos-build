@@ -118,12 +118,7 @@ class RolesAndPermissionsSeeder extends Seeder
 
             // Sales Documents (Quotes, Orders, Invoices)
             'documents.view',  // Unified document view
-            // Document attachments (Media module) AND — since the 2026-08-23 P1
-            // hardening — the coarse gate on `POST /documents/auto-save`
-            // (Document/Presentation/routes.php). Auto-save additionally
-            // requires the per-type `*.create` ability, so this permission alone
-            // does not authorise authoring any document family.
-            'documents.update',
+            'documents.update',  // Media attachments + the coarse gate on /documents/auto-save (which also demands the per-type *.create)
             // R2-F4 (owner ruling c4) — create and post a CORRECTING ENTRY
             // against a posted document. Deliberately its own admin-tier
             // permission and NOT granted to any non-admin role below: a

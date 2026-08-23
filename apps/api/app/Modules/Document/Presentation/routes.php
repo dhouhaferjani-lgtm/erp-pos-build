@@ -45,23 +45,31 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // `type`:
     //
     //  1. `can:documents.update` here — the coarse document-write gate. Its only
-    //     other write user in this file is `documents.revert` (:62); the
-    //     additional-cost WRITES use `can:purchase-orders.update` (:350, :354,
-    //     :358), not this permission, and its seeder annotation still reads
-    //     "Document attachments (Media module)"
-    //     (RolesAndPermissionsSeeder.php:121) — the precedent is narrower than
-    //     an earlier revision of this comment claimed. It excludes the read-only
-    //     roles (`viewer`, `technician`) and admits admin/manager/operator/
-    //     cashier/accountant.
+    //     other write user in this file is the `documents.revert` route; the
+    //     additional-cost WRITES (`documents.additional-costs.store` /
+    //     `.update` / `.destroy`) use `can:purchase-orders.update`, NOT this
+    //     permission, and before this lane the permission's only seeder
+    //     annotation was "Document attachments (Media module)". So the
+    //     precedent is narrower than an earlier revision of this comment
+    //     claimed. It excludes the read-only roles (`viewer`, `technician`) and
+    //     admits admin/manager/operator/cashier/accountant.
     //
     //  2. The per-TYPE `*.create` ability, enforced in
-    //     `AutoSaveDraftRequest::authorize()` against the map in that class.
+    //     `AutoSaveDraftRequest::authorize()` against the map in that class,
+    //     PAIRED with `DraftPersistenceService::assertTypeMatches()` — which is
+    //     what makes it real on the update branch, where `authorize()` can only
+    //     see the type the CLIENT claims (gate R2-1).
     //     Layer 1 alone was a universal authoring bypass around the whole
     //     per-type `*.create` catalogue — a `cashier` (no `purchase-orders.*`
     //     at all) could author `PO-2026-0001` here and burn a PO number. The
     //     same class also narrows `type` to the seven the editor auto-saves, so
-    //     `correcting_entry` — admin-tier by owner ruling, see :365-388 below —
-    //     can no longer be authored through this route.
+    //     `correcting_entry` — admin-tier by owner ruling, see the
+    //     `correcting-entries.*` block below — can neither be authored nor,
+    //     via a spoofed `type`, have an existing CE draft stripped.
+    //
+    // Citations here name ROUTES and SYMBOLS, never line numbers into this file:
+    // round 2 (R2-2) caught every line number in the previous revision drifted
+    // by 15 the moment this very comment grew.
     //
     // Residuals: docs/superpowers/tickets/2026-08-23-autosave-residuals.md
     Route::post('/documents/auto-save', [DraftController::class, 'autoSave'])

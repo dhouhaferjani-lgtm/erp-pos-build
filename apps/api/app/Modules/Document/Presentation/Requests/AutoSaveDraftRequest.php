@@ -72,15 +72,19 @@ class AutoSaveDraftRequest extends FormRequest
      *   the set because it is part of the declared contract and is gated by
      *   `deliveries.create` either way.
      *
-     * - The VALUES are the `can:` of each type's `Route::post` store sibling:
-     *   quotes `:80`, orders `:113`, invoices `:150`, credit-notes `:234`,
-     *   purchase-orders `:264`, delivery-notes `:307`, return-notes `:329`.
+     * - The VALUES are the `can:` middleware of each type's `Route::post` store
+     *   sibling in `Document/Presentation/routes.php`, cited by ROUTE NAME
+     *   because line numbers in that file drift with every edit to it (gate
+     *   R2-2): `quotes.store`, `orders.store`, `invoices.store`,
+     *   `credit-notes.store`, `purchase-orders.store`, `delivery-notes.store`,
+     *   `return-notes.store`.
      *
      * The six `DocumentType` cases NOT listed are refused by the validator, not
      * by authorization — they have no auto-save flow to preserve. The one that
      * matters most is `correcting_entry`: every correcting-entry route,
      * including the reads, is gated on the admin-tier `documents.correct`
-     * (`routes.php:365-388`) precisely because it "both exposes and writes raw
+     * (the `documents.correcting-entries.*` / `correcting-entries.*` block in
+     * `Document/Presentation/routes.php`) precisely because it "both exposes and writes raw
      * general-ledger accounts and amounts, which is strictly more powerful than
      * anything those permissions buy". A bare `Rule::enum(DocumentType::class)`
      * let any `documents.update` holder author a `CE-`numbered document through
@@ -119,6 +123,28 @@ class AutoSaveDraftRequest extends FormRequest
      * the six families, so requiring `.create` regresses no seeded role, and the
      * editor's own edit routes already demand `<family>.update`
      * (`routes/index.tsx:669, :711, :755, :960`) which those roles hold too.
+     *
+     * ⚠️ DELIBERATE SEMANTIC DIVERGENCE, awaiting a ruling (gate R2-3).
+     * The sibling MANUAL edits gate on `<family>.update` / `deliveries.edit`;
+     * auto-save's update branch demands `<family>.create`. The no-regression
+     * argument above only covers one direction. The converse is real: a
+     * `.create`-only principal may line-replace an EXISTING draft that the
+     * matching `PATCH` would refuse them — concretely `cashier`
+     * (`quotes.create`, `invoices.create`, neither `.update`) and `operator`
+     * (`invoices.create`, no `invoices.update`). It is not FE-reachable, since
+     * the editor's edit routes are `<family>.update`-gated, and it is not a
+     * regression — before this lane the endpoint had no per-type gate at all.
+     * `.create` was chosen because auto-save's characteristic act is AUTHORING
+     * (it is what allocates the document number), and because it is the stricter
+     * of the two for the create branch. Recorded as R-11 in
+     * `docs/superpowers/tickets/2026-08-23-autosave-residuals.md`; whoever rules
+     * on it should decide `.create` vs `.update` per branch.
+     *
+     * The claimed `type` is only half the control — `authorize()` cannot see the
+     * target document, so on the update branch
+     * `DraftPersistenceService::assertTypeMatches()` refuses a `type` that
+     * disagrees with the persisted one. Without that pairing this gate is
+     * decorative on updates (gate R2-1).
      *
      * A missing / unknown / non-auto-savable `type` returns TRUE here on
      * purpose: the answer to a bad shape is the validator's 422, not a 403 that
