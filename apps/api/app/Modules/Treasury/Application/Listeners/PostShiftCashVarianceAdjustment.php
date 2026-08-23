@@ -21,6 +21,9 @@ use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Treasury\RepositoryAdjustmentServiceInterface;
 use App\Shared\Domain\CurrencyScale;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Jobs\SyncJob;
 use Illuminate\Support\Facades\Log;
 use Ramsey\Uuid\Uuid;
 use Throwable;
@@ -106,12 +109,73 @@ use Throwable;
  * GL leg is queryable and alertable instead of living in a log file — the lane
  * exists precisely because a missing GL leg went unnoticed for months, and
  * re-creating that failure mode behind a `Log::` line would be the same defect.
- * Nothing is ever rethrown: a shift close must not fail because the GL leg could
- * not be booked, and the service's single transaction means a failure writes
- * nothing rather than a document without its entry.
+ * A refusal never reaches the caller: a shift close must not fail because the GL
+ * leg could not be booked, and the service's single transaction means a failure
+ * writes nothing rather than a document without its entry.
+ *
+ * ── QUEUED: retry + dead letter (R-8) ───────────────────────────────────────
+ * This listener used to be plain and synchronous, which cost it the only two
+ * dispositions a fiscal-integrity fault actually wants: a RETRY, and a DEAD
+ * LETTER when the retries run out. enforcement-P3 M1 closed the swallow (the
+ * unbalanced post got its own queryable reason) and reported the missing retry
+ * story as R-8 (`docs/handoff/reviews/enforcement-p3/M1-census.md` §6). This is
+ * that story.
+ *
+ * `ShouldQueue` is the right shape here and does NOT double-queue: BOTH
+ * producers of `CashCountRecorded` raise it from an ordinary HTTP request and
+ * never from inside a job — the live one from a `DB::afterCommit` callback
+ * (`ReportGenerationService.php:415`) and the offline one plainly after its
+ * transaction returns (`ZReportSyncController.php:269`). No enclosing job means
+ * no enclosing retry semantics to collide with.
+ *
+ * What changed, precisely:
+ *   - the two EXCEPTION-shaped arms (`unbalanced_journal_entry` and the generic
+ *     crash bucket) now RE-THROW so the worker counts the attempt, applies the
+ *     backoff and re-runs `handle()`. The POLICY refusals are untouched: a
+ *     shortfall larger than the till, a frozen till, a non-cash repository, an
+ *     aggregate/breakdown disagreement — retrying those is guaranteed to produce
+ *     the same answer, so they stay terminal, durably-audited refusals.
+ *   - {@see failed()} writes a DEAD LETTER: the pre-R-8 refusal row (unchanged
+ *     event type and reason, so existing queries and alerts keep working) plus a
+ *     `treasury.shift_variance_gl_dead_lettered` row carrying every field needed
+ *     to re-book the variance by hand once the event itself is gone.
+ *   - on a connection that CANNOT retry (`sync`, or a direct call with no job)
+ *     nothing is thrown at all — the fault dead-letters immediately. Throwing
+ *     under `sync` would put the exception back on the shift-close request
+ *     stack, which is the exact 500-on-a-successful-close this file has always
+ *     refused. Production runs redis + Horizon (`config/queue.php:16`,
+ *     `.env QUEUE_CONNECTION=redis`), so there the retries are real.
+ *
+ * Tenancy across the queue boundary is carried the way every other queued
+ * listener in this codebase carries it — by `QueueTenancyBootstrapper`
+ * (`config/tenancy.php:42`), which stamps `tenant_id` into the job payload and
+ * re-initializes tenancy on `JobProcessing`. Nothing is passed by hand, exactly
+ * as `Loyalty\…\EarnPointsOnReceiptCompleted` and
+ * `Inventory\…\ApplyStockAdjustmentsOnCountingCompleted` do. Every query below
+ * is additionally scoped by the tenant/company ids carried ON the event, so it
+ * is correct even with no tenancy bound at all.
+ *
+ * ── Retry safety (rule 19 + idempotency) ────────────────────────────────────
+ * A worker has NO CompanyContext, so every scale resolution in this path already
+ * passes an explicit currency: this listener's own
+ * `getScale($repository->currency)`, RepositoryAdjustmentService
+ * at :98, and `createRepositoryAdjustmentJournalEntry` forwards `$currencyCode`
+ * into `postEntryNow` rather than falling back to the bare no-arg
+ * `GeneralLedgerService::scale()`. A retry cannot double-post: the document id is
+ * UUIDv5-derived from the shift id and taken with `firstOrCreate`
+ * (RepositoryAdjustmentService.php:131), a replay reuses that document's existing
+ * journal entry instead of posting a second one (:156), the movement port is
+ * keyed `adjustment:{documentId}:shift:{shiftId}`, and two partial unique indexes
+ * back all of it in the database — `repository_adjustments.pos_shift_id` and
+ * `journal_entries (source_type, source_id) WHERE source_type =
+ * 'repository_adjustment' AND status = 'posted'`. That last one matters
+ * specifically here: `journal_entries` has no GLOBAL (source_type, source_id)
+ * uniqueness, so the guard has to be — and is — explicit per source type.
  */
-final readonly class PostShiftCashVarianceAdjustment
+final class PostShiftCashVarianceAdjustment implements ShouldQueue
 {
+    use InteractsWithQueue;
+
     /**
      * Namespace for the derived, per-shift adjustment document id. Frozen — a
      * change here would make every already-booked shift replay as a NEW
@@ -134,6 +198,15 @@ final readonly class PostShiftCashVarianceAdjustment
     private const BOOKED_EVENT = 'treasury.shift_variance_gl_booked';
 
     /**
+     * The DEAD LETTER (R-8). Written once, when the retry budget is spent (or
+     * immediately on a connection that cannot retry), and deliberately its OWN
+     * event type rather than a `reason` on the refusal type: "we gave up on this
+     * variance" is an operator action item, not one of the six ordinary
+     * no-GL-leg outcomes, and it must be alertable on its own.
+     */
+    private const DEAD_LETTER_EVENT = 'treasury.shift_variance_gl_dead_lettered';
+
+    /**
      * A physical cash count belongs in a cash till, never a bank account. The
      * shared resolver's historical fallback filters on `gl_account_id IS NOT
      * NULL` only (gate finding I7), so the caller asserts the type itself
@@ -141,13 +214,58 @@ final readonly class PostShiftCashVarianceAdjustment
      */
     private const CASH_REPOSITORY_TYPES = [RepositoryType::CashRegister, RepositoryType::Safe];
 
+    /**
+     * A GL write, not a network call: retry a small number of times and stop.
+     * Three attempts covers the transient faults this path can actually hit (a
+     * lock timeout on the company advisory lock, a deadlock, a connection blip)
+     * without keeping a fiscal-integrity fault circulating.
+     */
+    public int $tries = 3;
+
+    /**
+     * Seconds before each retry. Short enough that a shift close still
+     * reconciles within the same close-of-day, long enough for a contended
+     * advisory lock to clear.
+     *
+     * @var list<int>
+     */
+    public array $backoff = [5, 15];
+
+    /**
+     * The `default` queue — listed in `config/horizon.php` `defaults.*.queue`
+     * and therefore actually consumed (CLAUDE.md rule 20). No new named queue is
+     * warranted: this is a single small GL write, not a projection stream, and
+     * an unlisted queue would silently never run.
+     */
+    public string $queue = 'default';
+
     public function __construct(
-        private RepositoryAdjustmentServiceInterface $adjustmentService,
-        private TenderRepositoryResolver $repositoryResolver,
-        private CurrencyScaleResolverInterface $scaleResolver,
-        private PaymentToleranceQueryService $toleranceQuery,
-        private AuditService $auditService,
+        private readonly RepositoryAdjustmentServiceInterface $adjustmentService,
+        private readonly TenderRepositoryResolver $repositoryResolver,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly PaymentToleranceQueryService $toleranceQuery,
+        private readonly AuditService $auditService,
     ) {}
+
+    /**
+     * Gate finding I1, preserved across the ShouldQueue conversion.
+     *
+     * The kill switch's contract is "nothing at all runs while it is off". Left
+     * only in handle(), queueing would have eroded that into "a no-op job is
+     * enqueued, carried through Redis and then discarded" for every single shift
+     * close on every tenant. `Dispatcher::handlerWantsToBeQueued`
+     * (Dispatcher.php:634) consults this BEFORE pushing, so a disabled lane
+     * enqueues nothing again.
+     *
+     * The identical check stays in handle() as the belt: it keeps the flag
+     * runtime-evaluable for a job already in flight when the switch is thrown,
+     * and it is the check the existing gate tests pin. Same flag, same
+     * condition, same default — this only moves the decision earlier.
+     */
+    public function shouldQueue(CashCountRecorded $event): bool
+    {
+        return config('treasury.shift_variance_gl_enabled') === true;
+    }
 
     public function handle(CashCountRecorded $event): void
     {
@@ -193,31 +311,179 @@ final readonly class PostShiftCashVarianceAdjustment
             // swallowed into the generic `exception` bucket below, where it was
             // indistinguishable from a crash and nothing could alert on it.
             //
-            // Re-throwing is deliberately NOT the disposition. This listener is a
-            // plain synchronous listener (TreasuryServiceProvider.php:185, not
-            // ShouldQueue) that runs after the shift is closed and the Z report
-            // sealed, so a throw would surface as a 500 on a close that actually
-            // succeeded and would still not retry anything. The available
-            // protection here is the one this file already established for the
-            // riskiest inputs (gate re-review N4): a distinct, queryable,
-            // alertable reason at `error` level. The residual — no retry or
-            // dead-letter until this listener becomes queued — is recorded at
-            // docs/handoff/reviews/enforcement-p3/M1-census.md §6 R-8.
-            $this->refuse($event, 'unbalanced_journal_entry', [
-                'exception' => $e::class,
-                'message' => $e->getMessage(),
-            ], level: 'error');
+            // R-8 — this is now RETRYABLE. P3 recorded the reason it could not
+            // be: "this listener is a plain synchronous listener
+            // (TreasuryServiceProvider, not ShouldQueue) … so a throw
+            // would surface as a 500 on a close that actually succeeded and
+            // would still not retry anything". Both halves of that objection
+            // died with the ShouldQueue conversion above — the throw now lands
+            // on a worker, and it buys real attempts. The distinct, queryable,
+            // alertable reason (gate re-review N4) survives: it is what the
+            // dead letter is labelled with once the attempts are spent.
+            $this->retryOrDeadLetter($event, 'unbalanced_journal_entry', $e);
         } catch (Throwable $e) {
-            // Log-never-block: the shift is already closed and the Z report
-            // already sealed by the time this runs (the live path dispatches
-            // from a DB::afterCommit callback; the offline path dispatches
-            // after its transaction returns). Failing here would surface as a
-            // 500 on a close that actually succeeded.
-            $this->refuse($event, 'exception', [
-                'exception' => $e::class,
-                'message' => $e->getMessage(),
-            ], level: 'error');
+            // The generic crash bucket — a deadlock, a lock timeout on the
+            // company advisory lock, a connection blip. This is the arm retries
+            // exist for: today a transient fault burned a shift's GL leg
+            // permanently and left an alarming `exception` refusal behind it.
+            $this->retryOrDeadLetter($event, 'exception', $e);
         }
+    }
+
+    /**
+     * The R-8 disposition for an exception-shaped fault: hand it back to the
+     * worker while attempts remain, otherwise dead-letter it.
+     *
+     * The attempt COUNTING is the queue's job, not this method's — the worker
+     * compares `attempts()` against `$tries`, applies `$backoff`, and calls
+     * {@see failed()} on the last one. All this method decides is whether there
+     * is a worker at all.
+     */
+    private function retryOrDeadLetter(CashCountRecorded $event, string $reason, Throwable $e): void
+    {
+        if (! $this->connectionCanRetry()) {
+            $this->deadLetter($event, $reason, $e);
+
+            return;
+        }
+
+        Log::warning('Shift-close cash variance GL leg failed; returning it to the queue for retry', [
+            'shift_id' => $event->shiftId,
+            'z_report_id' => $event->zReportId,
+            'company_id' => $event->companyId,
+            'reason' => $reason,
+            'attempt' => $this->attempts(),
+            'tries' => $this->tries,
+            'exception' => $e::class,
+            'message' => $e->getMessage(),
+        ]);
+
+        throw $e;
+    }
+
+    /**
+     * Is there a worker behind this invocation that will actually retry, and
+     * then fail, the job?
+     *
+     * `sync` is not one — there the "queue" IS the shift-close request stack, so
+     * a throw would resurface as a 500 on a close that succeeded, the failure
+     * mode this whole file is organised around. A null `$this->job` (a direct
+     * call, never the registered path) is not one either. On both, an
+     * exception-shaped fault goes straight to the dead letter, which is strictly
+     * more than the pre-R-8 behaviour, never less.
+     */
+    private function connectionCanRetry(): bool
+    {
+        return $this->job !== null && ! $this->job instanceof SyncJob;
+    }
+
+    /**
+     * The queue has spent every attempt on this variance.
+     *
+     * Invoked by the framework through `CallQueuedListener::failed()` with the
+     * original event and the last exception — so this is the ONLY place that
+     * needs to know how to turn a dead job back into an actionable record.
+     */
+    public function failed(CashCountRecorded $event, Throwable $e): void
+    {
+        $this->deadLetter($event, $this->reasonFor($e), $e);
+    }
+
+    /**
+     * Write the dead letter. Two rows, deliberately:
+     *
+     *  1. the pre-R-8 refusal row — SAME event type, SAME machine-readable
+     *     reason, same `error` level. Every dashboard, query and alert built on
+     *     `treasury.shift_variance_gl_skipped` keeps working unchanged, and a
+     *     shift whose GL leg is missing is still findable by the one query the
+     *     lane was designed around.
+     *  2. the dead-letter row — the recovery record. The event object dies with
+     *     the job, so everything needed to re-book this variance by hand is
+     *     copied out of it verbatim, including the DERIVED document id, so an
+     *     operator can check whether a later replay already landed it.
+     *
+     * Never throws. A failing audit write must not turn a dead-lettered GL leg
+     * into a dead-lettered job that also crashes its own failure handler — under
+     * `sync` that exception would travel straight back to the shift close.
+     */
+    private function deadLetter(CashCountRecorded $event, string $reason, Throwable $e): void
+    {
+        $this->refuse($event, $reason, [
+            'exception' => $e::class,
+            'message' => $e->getMessage(),
+            'dead_lettered' => true,
+        ], level: 'error');
+
+        try {
+            $this->auditService->record(
+                companyId: $event->companyId,
+                userId: $event->cashierId,
+                eventType: self::DEAD_LETTER_EVENT,
+                aggregateType: 'pos_shift',
+                aggregateId: $event->shiftId,
+                payload: [
+                    'reason' => $reason,
+                    'exception' => $e::class,
+                    'message' => $e->getMessage(),
+                    'tries' => $this->tries,
+                    'tenant_id' => $event->tenantId,
+                    'company_id' => $event->companyId,
+                    'shift_id' => $event->shiftId,
+                    'z_report_id' => $event->zReportId,
+                    'terminal_id' => $event->terminalId,
+                    'cashier_id' => $event->cashierId,
+                    'currency' => $event->currencyCode,
+                    'aggregate_variance' => $event->aggregateVariance->amount,
+                    'variance_direction' => $event->varianceDirection->value,
+                    'severity' => $event->severity->value,
+                    // The document a manual re-book MUST use, so a retry, a
+                    // later offline replay and an operator all address the same
+                    // `repository_adjustments` row.
+                    'adjustment_document_id' => $this->documentIdFor($event->shiftId),
+                    'tender_breakdown' => array_map(
+                        fn (CashCountBreakdownDTO $b): array => [
+                            'payment_method_id' => $b->paymentMethodId,
+                            'currency_code' => $b->currencyCode,
+                            'expected_amount' => $b->expectedAmount,
+                            'actual_amount' => $b->actualAmount,
+                            'variance_amount' => $b->varianceAmount,
+                        ],
+                        $event->tenderBreakdown,
+                    ),
+                    'recorded_at' => $event->recordedAt,
+                ],
+                metadata: [
+                    'z_report_id' => $event->zReportId,
+                    'terminal_id' => $event->terminalId,
+                    'severity' => 'error',
+                ],
+            );
+        } catch (Throwable $auditFailure) {
+            Log::critical('Shift-close cash variance was DEAD-LETTERED and its dead-letter record could not be written', [
+                'shift_id' => $event->shiftId,
+                'z_report_id' => $event->zReportId,
+                'company_id' => $event->companyId,
+                'reason' => $reason,
+                'aggregate_variance' => $event->aggregateVariance->amount,
+                'original_exception' => $e::class,
+                'original_message' => $e->getMessage(),
+                'audit_exception' => $auditFailure::class,
+            ]);
+        }
+    }
+
+    /**
+     * Recover the machine-readable refusal reason from the exception alone.
+     *
+     * {@see failed()} is handed only the exception, and the framework may also
+     * call it for a fault that never passed through handle()'s catch arms at all
+     * (a timeout, a `maxExceptions` trip). One discriminator, in one place.
+     */
+    private function reasonFor(Throwable $e): string
+    {
+        return $e instanceof UnbalancedJournalEntryPostException
+            ? 'unbalanced_journal_entry'
+            : 'exception';
     }
 
     private function post(CashCountRecorded $event): void

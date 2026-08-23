@@ -169,11 +169,15 @@ class TreasuryServiceProvider extends ServiceProvider
         // usage (policed by tests/Architecture/TreasuryBalanceWritePortTest.php),
         // so the consumer of this POS domain event lives here. Registered the
         // same way Compliance registers its own CashCountRecorded consumer
-        // (OpenFraudAlertForShiftVariance) — synchronous, and internally
-        // log-never-block: the live path raises the event from a DB::afterCommit
+        // (OpenFraudAlertForShiftVariance), but the listener itself implements
+        // ShouldQueue (R-8), so this array-form Event::listen resolves through
+        // Dispatcher::createClassCallable -> handlerShouldBeQueued and PUSHES a
+        // CallQueuedListener rather than calling handle() inline. That is the
+        // whole point: the live path raises the event from a DB::afterCommit
         // callback and the offline path dispatches plainly after its transaction
         // returns, so in BOTH cases the shift close has already succeeded by the
-        // time this runs and a throw here would surface as a spurious 500.
+        // time this runs — a fault must retry on a worker, never surface as a
+        // spurious 500 on the close.
         //
         // The listener itself is gated on `treasury.shift_variance_gl_enabled`
         // (default FALSE — gate finding I1, pending the owner ruling on POS
