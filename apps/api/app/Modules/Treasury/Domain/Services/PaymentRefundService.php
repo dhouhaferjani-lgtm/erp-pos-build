@@ -460,6 +460,26 @@ class PaymentRefundService
      *
      * @throws OverRefundException
      */
+    private function assertWithinRefundableBalance(Payment $original, string $thisRefund): void
+    {
+        $scale = $this->scaleResolver->getScale($original->currency);
+        $alreadyRefunded = $this->alreadyRefundedForOriginal($original, $scale);
+
+        /** @var numeric-string $originalAmount */
+        $originalAmount = CurrencyScale::bcformat((string) $original->amount, $scale);
+        /** @var numeric-string $projected */
+        $projected = bcadd($alreadyRefunded, $thisRefund, $scale);
+
+        if (bccomp($projected, $originalAmount, $scale) > 0) {
+            throw new OverRefundException(
+                originalPaymentId: $original->id,
+                alreadyRefunded: $alreadyRefunded,
+                requestedRefund: $thisRefund,
+                originalAmount: $originalAmount,
+            );
+        }
+    }
+
     /**
      * N-6 fix round r2 / treasury gate R2-C1 [CRITICAL] — REFUSE TO REFUND AN
      * ADVANCE-BACKED PAYMENT. Fail closed; do not guess the shape.
@@ -519,26 +539,6 @@ class PaymentRefundService
             .'411 and leave the advance standing. Reverse the payment instead — reversal selects the '
             .'account from the ledger and unwinds the advance.'
         );
-    }
-
-    private function assertWithinRefundableBalance(Payment $original, string $thisRefund): void
-    {
-        $scale = $this->scaleResolver->getScale($original->currency);
-        $alreadyRefunded = $this->alreadyRefundedForOriginal($original, $scale);
-
-        /** @var numeric-string $originalAmount */
-        $originalAmount = CurrencyScale::bcformat((string) $original->amount, $scale);
-        /** @var numeric-string $projected */
-        $projected = bcadd($alreadyRefunded, $thisRefund, $scale);
-
-        if (bccomp($projected, $originalAmount, $scale) > 0) {
-            throw new OverRefundException(
-                originalPaymentId: $original->id,
-                alreadyRefunded: $alreadyRefunded,
-                requestedRefund: $thisRefund,
-                originalAmount: $originalAmount,
-            );
-        }
     }
 
     /**

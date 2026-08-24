@@ -303,9 +303,7 @@ final class RepairPaidNeverPostedDocumentsCommand extends Command
                 ];
             }
 
-            $ownDate = $paymentEntry->entry_date instanceof Carbon
-                ? $paymentEntry->entry_date
-                : Carbon::parse((string) $paymentEntry->entry_date);
+            $ownDate = $paymentEntry->entry_date;
 
             if ($this->fiscalPeriodLock->isDateInClosedFiscalPeriod((string) $invoice->company_id, $ownDate)) {
                 return [
