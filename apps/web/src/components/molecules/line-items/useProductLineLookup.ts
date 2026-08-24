@@ -10,9 +10,14 @@ export interface ProductLineProduct {
   /**
    * `products.purchase_price` — the operator-maintained buying price. Purchase
    * documents default their line price from THIS field, never `sale_price`
-   * (campaign defect W2-6). Redacted to null by the API for callers lacking
-   * `pricing.view_cost_prices` (ProductData::withoutCostFields), which the
-   * resolver treats as "absent" → the operator types the price.
+   * (campaign defect W2-6).
+   *
+   * Cost confidentiality is enforced SERVER-side, per endpoint: both the typed
+   * search (`/products`, ProductController::index) and this hook's scan lookup
+   * (`/line-entry/resolve-code`, LineEntryController::productPayload) null this
+   * field via `ProductData::withoutCostFields()` for callers lacking
+   * `pricing.view_cost_prices`. The FE never assumes a value is present — an
+   * absent price simply means "the operator types it".
    */
   purchase_price?: string | number | null
   tax_rate?: string | number | null

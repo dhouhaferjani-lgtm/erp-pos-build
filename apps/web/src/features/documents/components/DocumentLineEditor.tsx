@@ -26,6 +26,7 @@ import { NotesCell } from './NotesCell'
 import { useLineDesignationFeature } from '../hooks/useLineDesignationFeature'
 import { getQuantityDecimals } from '../../../lib/quantityScale'
 import { borderColors, colors, textColors, tokens } from '../../../lib/designTokens'
+import type { DocumentType } from '../DocumentListPage'
 
 // Map frontend document type strings to backend applicable_document_types format
 const DOCUMENT_TYPE_MAP: Record<string, string> = {
@@ -55,16 +56,30 @@ function moneyInputValue(value: string | number | null | undefined): string {
 }
 
 /**
- * Document types whose lines are PURCHASES (money leaving the company). Their
- * unit price is a BUYING price and must never be seeded from the retail
- * `sale_price` — see {@link resolveLineUnitPriceDefault}.
+ * Is this document type a PURCHASE (money leaving the company)? Its line price is
+ * then a BUYING price and must never be seeded from the retail `sale_price` —
+ * see {@link resolveLineUnitPriceDefault}.
  *
- * `purchase_order` is currently the only purchase type routed through this
- * editor (DocumentForm.tsx documentTypeToApiEndpoint); RFQ lines have their own
+ * An EXHAUSTIVE `Record` over the document-type union on purpose (gate r1
+ * finding 4): a `Set<string>` let a newly added or renamed purchase type fall
+ * silently through to the sale-price branch — the exact defect this file fixes.
+ * Adding a member to `DocumentType` now fails to compile until it is classified
+ * here.
+ *
+ * `purchase_order` is the only purchase type actually routed through this editor
+ * today (DocumentForm.tsx documentTypeToApiEndpoint); RFQ lines have their own
  * page and the RFQ → PO award carries the supplier's QUOTED price across
  * (PurchaseQuoteRequestAwardService.php:136), so it needs no default here.
  */
-const PURCHASE_DOCUMENT_TYPES: ReadonlySet<string> = new Set(['purchase_order'])
+const IS_PURCHASE_DOCUMENT_TYPE: Record<DocumentType, boolean> = {
+  quote: false,
+  sales_order: false,
+  invoice: false,
+  credit_note: false,
+  delivery_note: false,
+  return_note: false,
+  purchase_order: true,
+}
 
 /** Where a freshly added line's unit price came from — surfaced to the operator. */
 type UnitPriceDefaultSource = 'product_purchase_price' | 'product_sale_price' | 'none'
@@ -222,8 +237,13 @@ interface DocumentLineEditorProps {
   lines: DocumentLine[]
   onChange: (lines: DocumentLine[]) => void
   readonly?: boolean
-  documentType?: string
+  documentType?: DocumentType
   partnerId?: string | null
+  /**
+   * Lines whose unit price the parent form refused to submit (blank price).
+   * Escalates the blank-price hint from advisory to error and marks the input.
+   */
+  invalidLineIds?: ReadonlySet<string>
 }
 
 interface PricingContextLineRequest {
@@ -281,7 +301,7 @@ function pricingContextKey(line: Pick<DocumentLine, 'product_id' | 'variant_id'>
   return `${line.product_id}:${line.variant_id}`
 }
 
-export function DocumentLineEditor({ lines, onChange, readonly = false, documentType, partnerId = null }: DocumentLineEditorProps) {
+export function DocumentLineEditor({ lines, onChange, readonly = false, documentType, partnerId = null, invalidLineIds }: DocumentLineEditorProps) {
   const { t } = useTranslation(['sales', 'common'])
   const queryClient = useQueryClient()
   const { config: companyConfig, hasModule } = useCompanyConfig()
@@ -316,7 +336,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   const companyCurrency = currentCompany?.currency ?? 'EUR'
   const companyLocale = currentCompany?.locale.replace('_', '-') ?? 'en-US'
   const taxDocumentType = taxSelectorDocumentType(documentType)
-  const isPurchaseDocument = documentType !== undefined && PURCHASE_DOCUMENT_TYPES.has(documentType)
+  const isPurchaseDocument = documentType !== undefined && IS_PURCHASE_DOCUMENT_TYPE[documentType]
   const purchaseBonusEnabled =
     documentType === 'purchase_order' &&
     hasModule('PurchaseBonus') &&
@@ -749,15 +769,26 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
             ? t('sales:lineItems.pricing.policyWarning')
             : null
         const detailsOpen = openPricingLineId === line.id
-        // W2-6: on a purchase document the price the operator sees was NOT
-        // typed by them — say where it came from (or that nothing was on file)
-        // in the same small hint slot the sale-side pricing facts already use.
-        const priceSource = isPurchaseDocument ? priceSourceByLineId[line.id] : undefined
-        const priceSourceMessage = priceSource === 'product_purchase_price'
-          ? t('sales:lineItems.priceSource.productPurchasePrice', { amount: decimalValue(line.unit_price) })
-          : priceSource === 'none'
-            ? t('sales:lineItems.priceSource.none')
-            : null
+        // W2-6 + gate r1 finding 3. Two distinct hints, both derived from the
+        // line's CURRENT state so neither can be stranded by an edit:
+        //   • blank price  → always warn, on every document type. This is the
+        //     affordance that backs the submit block, so it must survive the
+        //     operator typing a digit and deleting it again (the earlier
+        //     version read add-time provenance, which `handleUpdateLine` drops
+        //     on any price edit — the warning vanished in exactly the state it
+        //     exists to flag).
+        //   • priced from purchase_price → informational provenance, dropped
+        //     as soon as the operator overtypes it (it stops being true).
+        const priceIsBlank = isBlankMoney(line.unit_price)
+        const priceRefused = invalidLineIds?.has(line.id) === true
+        const priceHintId = `line-price-hint-${line.id}`
+        const priceHintMessage = priceIsBlank
+          ? (isPurchaseDocument && priceSourceByLineId[line.id] === 'none'
+              ? t('sales:lineItems.priceSource.none')
+              : t('sales:lineItems.priceSource.required'))
+          : (isPurchaseDocument && priceSourceByLineId[line.id] === 'product_purchase_price'
+              ? t('sales:lineItems.priceSource.productPurchasePrice')
+              : null)
 
         if (readonly) {
           return <span className={`text-sm ${textColors.primary}`}>{formatAmount(deriveUnitPrice(line))}</span>
@@ -785,7 +816,8 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                 <MoneyInput
                   currency={companyCurrency}
                   min="0"
-                  error={isBlocked}
+                  error={isBlocked || priceRefused}
+                  {...(priceHintMessage !== null ? { 'aria-describedby': priceHintId } : {})}
                   value={moneyInputValue(line.unit_price)}
                   onFocus={() => {
                     setFocusedPriceLineId(line.id)
@@ -815,9 +847,13 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
               )}
             </div>
 
-            {priceSourceMessage !== null && (
-              <div className={`max-w-72 text-end text-[11px] leading-4 ${priceSource === 'none' ? textColors.warning : textColors.secondary}`}>
-                {priceSourceMessage}
+            {priceHintMessage !== null && (
+              <div
+                id={priceHintId}
+                {...(priceRefused ? { role: 'alert' } : {})}
+                className={`max-w-72 text-end text-[11px] leading-4 ${priceRefused ? textColors.error : priceIsBlank ? textColors.warning : textColors.secondary}`}
+              >
+                {priceHintMessage}
               </div>
             )}
 
@@ -1034,6 +1070,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
     companyCurrency,
     designationFeatureEnabled,
     deriveUnitPrice,
+    invalidLineIds,
     isPurchaseDocument,
     priceSourceByLineId,
     formatAmount,

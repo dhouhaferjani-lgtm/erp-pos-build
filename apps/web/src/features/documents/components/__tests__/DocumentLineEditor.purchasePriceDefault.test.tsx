@@ -22,6 +22,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { DocumentLineEditor, type DocumentLine } from '../DocumentLineEditor'
 import type { ProductLineProduct } from '../../../../components/molecules/line-items/useProductLineLookup'
+import type { DocumentType } from '../../DocumentListPage'
 
 const PRODUCT: ProductLineProduct = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -100,7 +101,7 @@ vi.mock('../../../../components/molecules/line-items/LineItemEntryBar', () => ({
 
 let addedProduct: ProductLineProduct = PRODUCT
 
-function Harness({ documentType }: { documentType: string }) {
+function Harness({ documentType }: { documentType: DocumentType }) {
   const [lines, setLines] = useState<DocumentLine[]>([])
   return <DocumentLineEditor lines={lines} onChange={setLines} documentType={documentType} />
 }
@@ -110,7 +111,7 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 }
 
-async function addLine(documentType: string, product: ProductLineProduct): Promise<HTMLInputElement> {
+async function addLine(documentType: DocumentType, product: ProductLineProduct): Promise<HTMLInputElement> {
   addedProduct = product
   render(<Harness documentType={documentType} />, { wrapper })
   await userEvent.click(screen.getByText('add-product'))
@@ -126,7 +127,7 @@ function setPrice(value: string): void {
   fireEvent.change(priceInput(), { target: { value } })
 }
 
-async function clearPriceOn(documentType: string, product: ProductLineProduct): Promise<HTMLInputElement> {
+async function clearPriceOn(documentType: DocumentType, product: ProductLineProduct): Promise<HTMLInputElement> {
   await addLine(documentType, product)
   setPrice('')
   return priceInput()

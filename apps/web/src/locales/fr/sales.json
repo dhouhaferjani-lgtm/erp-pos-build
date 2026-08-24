@@ -277,7 +277,10 @@
     "deliveryDate": "Date de livraison",
     "returnDate": "Date de retour",
     "notesPlaceholder": "Notes supplémentaires…",
-    "draftSavedAt": "Brouillon enregistré {{time}}"
+    "draftSavedAt": "Brouillon enregistré {{time}}",
+    "errors": {
+      "unitPriceRequired": "Saisissez un prix unitaire sur chaque ligne avant d'enregistrer."
+    }
   },
   "lineItems": {
     "title": "Lignes",
@@ -306,8 +309,9 @@
       "policyWarning": "Avertissement de marge"
     },
     "priceSource": {
-      "productPurchasePrice": "D'après le prix d'achat {{amount}}",
-      "none": "Aucun prix d'achat enregistré — saisissez le prix fournisseur"
+      "productPurchasePrice": "D'après le prix d'achat",
+      "none": "Aucun prix d'achat enregistré — saisissez le prix unitaire",
+      "required": "Saisissez le prix unitaire"
     },
     "discount": "Remise",
     "discountAmountPerLine": "Montant de remise (par ligne)",

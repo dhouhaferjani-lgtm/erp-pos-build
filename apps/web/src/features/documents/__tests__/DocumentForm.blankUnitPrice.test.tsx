@@ -20,7 +20,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { DocumentForm, buildLinePayload, buildAutoSaveLinePayload } from '../DocumentForm'
+import { DocumentForm } from '../DocumentForm'
+import { buildAutoSaveLinePayload, buildLinePayload } from '../linePayload'
 import type { DocumentLine } from '@/components/documents/DocumentLineEditor'
 
 const draftAutoSaveState = vi.hoisted(() => ({
@@ -149,6 +150,11 @@ vi.mock('../components/PurchaseOrderAdditionalCosts', () => ({
   PurchaseOrderAdditionalCosts: () => null,
 }))
 
+/** Type guard — keeps the captured payloads out of unchecked assertions. */
+function isLinesPayload(value: unknown): value is { lines: { unit_price?: unknown }[] } {
+  return typeof value === 'object' && value !== null && Array.isArray((value as { lines?: unknown }).lines)
+}
+
 function makeLine(overrides: Partial<DocumentLine> = {}): DocumentLine {
   return {
     id: 'line-1',
@@ -234,8 +240,8 @@ describe('DocumentForm — a blank unit price blocks the submit', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add mocked line' }))
 
     await waitFor(() => {
-      const draft = autoSaveState.lastDraftData as { lines: Array<{ unit_price: unknown }> } | null
-      expect(draft?.lines[0]?.unit_price).toBe('0')
+      const draft = autoSaveState.lastDraftData
+      expect(isLinesPayload(draft) ? draft.lines[0]?.unit_price : undefined).toBe('0')
     })
   })
 
@@ -250,8 +256,8 @@ describe('DocumentForm — a blank unit price blocks the submit', () => {
     await waitFor(() => {
       expect(reactQueryState.mutationPayloads).toHaveLength(1)
     })
-    const payload = reactQueryState.mutationPayloads[0] as { lines: Array<{ unit_price: unknown }> }
-    expect(payload.lines[0].unit_price).toBe('15.000')
+    const payload = reactQueryState.mutationPayloads[0]
+    expect(isLinesPayload(payload) ? payload.lines[0]?.unit_price : undefined).toBe('15.000')
     expect(screen.queryByText('sales:documents.errors.unitPriceRequired')).not.toBeInTheDocument()
   })
 })

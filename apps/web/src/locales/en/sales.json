@@ -277,7 +277,10 @@
     "deliveryDate": "Delivery Date",
     "returnDate": "Return Date",
     "notesPlaceholder": "Additional notes…",
-    "draftSavedAt": "Draft saved {{time}}"
+    "draftSavedAt": "Draft saved {{time}}",
+    "errors": {
+      "unitPriceRequired": "Enter a unit price on every line before saving."
+    }
   },
   "lineItems": {
     "title": "Line Items",
@@ -306,8 +309,9 @@
       "policyWarning": "Margin warning"
     },
     "priceSource": {
-      "productPurchasePrice": "From purchase price {{amount}}",
-      "none": "No purchase price on file — enter the supplier price"
+      "productPurchasePrice": "From purchase price",
+      "none": "No purchase price on file — enter the unit price",
+      "required": "Enter the unit price"
     },
     "discount": "Discount",
     "discountAmountPerLine": "Discount amount (per line)",
