@@ -1789,6 +1789,16 @@ final class GeneralLedgerService
             throw new \LogicException('clearCustomerAdvanceToReceivable: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
         }
 
+        // N-6 fix round r1 / treasury gate I-8 (rule 19) — the ceiling arithmetic
+        // below used the bare no-arg `$this->scale()`, which resolves from
+        // `CompanyContext` and THROWS outside a request. The lane routes a new
+        // caller through here from inside `DocumentPostingService::post()`, so
+        // the moment posting is driven from a queue or a console command the
+        // clearing would throw and — being inside the posting transaction —
+        // refuse the posting itself. It also compared a DOCUMENT-currency amount
+        // at the COMPANY's scale. The entity currency is already a parameter.
+        $scale = $this->scaleResolver->getScaleSafe($currencyCode, 3);
+
         $advanceAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerAdvance);
         $receivableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerReceivable);
         $user = null;
@@ -1799,7 +1809,7 @@ final class GeneralLedgerService
 
         $entry = DB::transaction(function () use (
             $companyId, $partnerId, $invoiceId, $amount,
-            $date, $description, $advanceAccount, $receivableAccount
+            $date, $description, $advanceAccount, $receivableAccount, $scale
         ): JournalEntry {
             Partner::query()
                 ->whereKey($partnerId)
@@ -1807,7 +1817,7 @@ final class GeneralLedgerService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            if (bccomp($amount, '0', $this->scale()) <= 0) {
+            if (bccomp($amount, '0', $scale) <= 0) {
                 throw new \InvalidArgumentException('Customer advance clearing amount must be positive.');
             }
 
@@ -1815,9 +1825,9 @@ final class GeneralLedgerService
             // holds the Partner lock and already resolved the advance account
             // above, so it keeps using the private helper directly rather than
             // re-resolving through availableCustomerAdvance().
-            $availableAdvance = $this->availableCustomerAdvanceMagnitude($companyId, $partnerId, $advanceAccount->id, $this->scale());
+            $availableAdvance = $this->availableCustomerAdvanceMagnitude($companyId, $partnerId, $advanceAccount->id, $scale);
 
-            if (bccomp($amount, $availableAdvance, $this->scale()) > 0) {
+            if (bccomp($amount, $availableAdvance, $scale) > 0) {
                 throw new \InvalidArgumentException(
                     "Cannot clear customer advance beyond available balance ({$availableAdvance})."
                 );

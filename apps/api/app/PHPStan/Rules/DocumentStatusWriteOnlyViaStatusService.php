@@ -45,6 +45,17 @@ use PHPStan\Type\VerbosityLevel;
  * `Posted` writers above use `forceFill()`, and two of the `Paid` writers use
  * `update()`. This rule covers all four forms.
  *
+ * WHAT IS *NOT* COVERED, AND WHY THE DB CHECK IS NOT A BACKSTOP FOR IT
+ * (treasury gate r1 I-7 corrected an earlier, false claim here).
+ * `chk_documents_status_enum` pins the VALUE DOMAIN only — `'paid'` is a legal
+ * value, so a raw `UPDATE documents SET status='paid' WHERE status='confirmed'`
+ * satisfies the constraint and reproduces N-6. The CHECK backstops values, never
+ * EDGES; there is no edge backstop below the application layer (widening
+ * `trg_document_immutability` is the separate, owner-tracked C-8 lane). Also
+ * uncovered, measured rather than assumed: a non-literal array
+ * (`$attrs = [...]; $doc->update($attrs)`), `setAttribute('status', …)`, and
+ * `DB::table('documents')->update(...)`.
+ *
  * VALUE MATCHING IS TYPE-BASED, NOT SYNTAX-BASED: the assigned expression's
  * PHPStan type is compared against the enum case, so an indirection through a
  * local variable or a ternary (`$x ? DocumentStatus::Paid : $doc->status`) is
@@ -75,6 +86,18 @@ final class DocumentStatusWriteOnlyViaStatusService implements Rule
      * literal array.
      */
     private const ARRAY_WRITE_METHODS = ['update', 'fill', 'forceFill'];
+
+    /**
+     * Receivers whose generic parameter is the Document model — a mass-update
+     * through any of these writes `documents.status` just as directly as the
+     * model does (treasury gate r1 I-7).
+     *
+     * @var list<string>
+     */
+    private const BUILDER_FQCNS = [
+        'Illuminate\\Database\\Eloquent\\Builder',
+        'Illuminate\\Database\\Eloquent\\Relations\\Relation',
+    ];
 
     public function getNodeType(): string
     {
@@ -205,6 +228,26 @@ final class DocumentStatusWriteOnlyViaStatusService implements Rule
      */
     private function isDocument(Expr $expr, Scope $scope): bool
     {
-        return $scope->getType($expr)->describe(VerbosityLevel::typeOnly()) === self::DOCUMENT_FQCN;
+        $described = $scope->getType($expr)->describe(VerbosityLevel::typeOnly());
+
+        if ($described === self::DOCUMENT_FQCN) {
+            return true;
+        }
+
+        // N-6 fix round r1 / treasury gate I-7 — BUILDER RECEIVERS.
+        //
+        // `Document::query()->whereKey($id)->update(['status' => Paid])` is
+        // ordinary Laravel and reproduces N-6 with no guard firing: the receiver
+        // is an Eloquent Builder/Relation, not the model, so exact-FQCN matching
+        // never saw it. The generic parameter names the model, which is what
+        // makes this decidable rather than a substring guess — and it keeps
+        // `Builder<SomeOtherModel>` out.
+        foreach (self::BUILDER_FQCNS as $builder) {
+            if (str_starts_with($described, $builder.'<') && str_contains($described, self::DOCUMENT_FQCN)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

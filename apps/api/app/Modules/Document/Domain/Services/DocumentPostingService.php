@@ -14,6 +14,7 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\PostingContext;
+use App\Modules\Document\Domain\Events\DocumentFullyPaid;
 use App\Modules\Document\Domain\Events\InvoiceCancelled;
 use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Document\Domain\Events\SalesOrderCancelled;
@@ -277,6 +278,42 @@ final class DocumentPostingService
         }
 
         $this->documentStatus->markPaid($invoice);
+
+        // N-6 fix round r1 / treasury gate I-4 — the AUDIT EVENT.
+        //
+        // Every pre-N-6 writer that flipped a document to `Paid` also dispatched
+        // `DocumentFullyPaid`, and `Compliance\Listeners\DomainEventSubscriber`
+        // persists it into the audit event store. Settling at posting is a new
+        // way to reach `Paid`, so without this a fully-prepaid invoice became
+        // `Paid` with no audit event at all — a hole in the chain that records
+        // WHY a document is settled.
+        //
+        // Rule 8: the EXISTING event is reused, never versioned — its shape is
+        // unchanged and its meaning here is identical (this document is now
+        // fully paid). Deferred to `afterCommit` like every other dispatch site,
+        // so no listener observes an uncommitted settlement.
+        $invoiceId = $invoice->id;
+        $tenantId = $invoice->tenant_id;
+        $companyId = $invoice->company_id;
+        $documentNumber = $invoice->document_number;
+        $documentType = $invoice->type->value;
+        $partnerId = $invoice->partner_id;
+        $total = $invoice->total ?? '0.00';
+
+        DB::afterCommit(function () use (
+            $invoiceId, $tenantId, $companyId, $documentNumber, $documentType, $partnerId, $total
+        ): void {
+            event(new DocumentFullyPaid(
+                documentId: $invoiceId,
+                tenantId: $tenantId,
+                companyId: $companyId,
+                documentNumber: $documentNumber,
+                documentType: $documentType,
+                partnerId: $partnerId,
+                totalPaid: $total,
+                paidAt: now()->toIso8601String(),
+            ));
+        });
     }
 
     /**

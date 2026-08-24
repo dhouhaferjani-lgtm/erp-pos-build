@@ -12,6 +12,7 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Shared\Contracts\Accounting\FiscalPeriodLockReaderInterface;
+use App\Shared\Contracts\Accounting\PaymentLedgerPartitionReaderInterface;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
@@ -73,6 +74,13 @@ use Illuminate\Support\Facades\Schema;
  */
 final class RepairPaidNeverPostedDocumentsCommand extends Command
 {
+    /**
+     * `journal_entries.source_type` for an AR customer payment — see
+     * `GeneralLedgerService::createPaymentReceivedJournalEntry()`. NOT `'payment'`
+     * (treasury gate r1 C-1).
+     */
+    private const CUSTOMER_PAYMENT_SOURCE_TYPE = 'customer_payment';
+
     protected $signature = 'documents:repair-paid-never-posted
         {--dry-run : Report only (the default; no write is performed)}
         {--execute : Perform the repair}';
@@ -84,6 +92,7 @@ final class RepairPaidNeverPostedDocumentsCommand extends Command
         private readonly GeneralLedgerService $generalLedger,
         private readonly FiscalPeriodLockReaderInterface $fiscalPeriodLock,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly PaymentLedgerPartitionReaderInterface $partitionReader,
     ) {
         parent::__construct();
     }
@@ -220,19 +229,74 @@ final class RepairPaidNeverPostedDocumentsCommand extends Command
             return [...$empty, 'reason' => 'SKIP — a reclassification entry already exists for this payment'];
         }
 
-        // The ORIGINAL payment entry decides the date, because the repair
-        // restates what that entry booked. Dating it `now()` instead would leave
-        // the misstatement standing in its own period.
+        // N-6 fix round r1 / treasury gate C-1 [CRITICAL] — THE SOURCE TYPE.
+        //
+        // This read used `source_type = 'payment'`. AR customer payments are
+        // written with `source_type = 'customer_payment'`
+        // (`GeneralLedgerService::createPaymentReceivedJournalEntry()`); the only
+        // writer of `'payment'` is `createPaymentEntry()`, which sets no
+        // `source_id` at all. So the lookup was ALWAYS null for the population
+        // this command targets, and the code below silently fell back to the
+        // INVOICE's `document_date` — which meant (a) the correcting entry landed
+        // in the wrong accounting period, the very thing the comment above forbids,
+        // and (b) the brief's evidence gate ("refuses if the JE is in a locked
+        // period") was evaluated against the wrong date entirely, so a payment
+        // booked into a now-CLOSED period could be repaired straight into it.
+        //
+        // AND THE FALLBACK IS GONE. A repair that cannot find the entry it is
+        // restating has no business choosing a date for it: that is now a named
+        // SKIP, not a guess.
         $paymentEntry = JournalEntry::query()
             ->where('company_id', $invoice->company_id)
-            ->where('source_type', 'payment')
+            ->where('source_type', self::CUSTOMER_PAYMENT_SOURCE_TYPE)
             ->whereIn('source_id', $paymentIds)
             ->orderBy('entry_date')
             ->first();
 
-        $entryDate = $paymentEntry?->entry_date instanceof Carbon
-            ? $paymentEntry->entry_date
-            : Carbon::parse((string) ($invoice->document_date ?? now()));
+        if (! $paymentEntry instanceof JournalEntry || ! $paymentEntry->entry_date instanceof Carbon) {
+            return [
+                ...$empty,
+                'reason' => 'SKIP — no posted customer-payment journal entry found for this invoice; nothing to restate (needs a human)',
+            ];
+        }
+
+        $entryDate = $paymentEntry->entry_date;
+
+        // N-6 fix round r1 / treasury gate I-2 — TAKE EVIDENCE THAT THE MONEY IS
+        // ACTUALLY IN 411 BEFORE MOVING IT OUT.
+        //
+        // The repair unconditionally writes Dr 411 / Cr 419. If the money was
+        // never in 411 that INVENTS a receivable debit and DOUBLES the advance.
+        // That population is live: a customer deposit applied pre-N-6 through
+        // `MultiPaymentService::applyDepositToDocument()` posted no GL at all
+        // while the deposit's money already sat in 419, and the old type-only
+        // writer still flipped the invoice to `Paid` — giving exactly the
+        // paid + unsealed + not-historical shape this command selects.
+        //
+        // `PaymentLedgerPartitionReader` is the existing primitive for the
+        // question, and it is the same one the refund path uses to choose which
+        // account to reverse against, so the two can never disagree.
+        /** @var numeric-string $arBacked */
+        $arBacked = '0';
+        foreach ($paymentIds as $paymentId) {
+            $partition = $this->partitionReader->read(
+                (string) $invoice->company_id,
+                $paymentId,
+                (string) $invoice->currency,
+            );
+            $arBacked = bcadd($arBacked, $partition->arBacked, $scale);
+        }
+
+        if (bccomp($arBacked, $amount, $scale) < 0) {
+            return [
+                ...$empty,
+                'reason' => sprintf(
+                    'SKIP — only %s of %s is backed by a posted receivable credit; the rest is not in 411 and must not be moved out of it (needs a human)',
+                    $arBacked,
+                    $amount,
+                ),
+            ];
+        }
 
         if ($this->fiscalPeriodLock->isDateInClosedFiscalPeriod((string) $invoice->company_id, $entryDate)) {
             return [

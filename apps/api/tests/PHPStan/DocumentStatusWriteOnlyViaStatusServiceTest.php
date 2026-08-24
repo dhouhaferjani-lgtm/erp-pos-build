@@ -59,11 +59,15 @@ final class DocumentStatusWriteOnlyViaStatusServiceTest extends RuleTestCase
                 __DIR__.'/Fixtures/DocumentStatusPaidUpdateArrayFixture.php',
                 __DIR__.'/Fixtures/DocumentStatusPaidForceFillFixture.php',
                 __DIR__.'/Fixtures/DocumentStatusPaidViaVariableFixture.php',
+                __DIR__.'/Fixtures/DocumentStatusPaidFillFixture.php',
+                __DIR__.'/Fixtures/DocumentStatusPaidBuilderUpdateFixture.php',
             ],
             [
                 [self::PAID_MESSAGE, 14],
                 [self::PAID_MESSAGE, 18],
                 [self::PAID_MESSAGE, 14],
+                [self::PAID_MESSAGE, 19],
+                [self::PAID_MESSAGE, 18],
                 [self::PAID_MESSAGE, 19],
             ],
         );

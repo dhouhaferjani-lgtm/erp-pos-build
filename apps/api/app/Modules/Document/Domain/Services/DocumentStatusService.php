@@ -7,7 +7,6 @@ namespace App\Modules\Document\Domain\Services;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Exceptions\DocumentTransitionException;
-use App\PHPStan\Rules\DocumentStatusWriteOnlyViaStatusService;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -16,7 +15,7 @@ use Illuminate\Support\Facades\Log;
  * Every caller that needs to move `documents.status` asks this service; it
  * consults {@see DocumentStatusMachine} and refuses a forbidden edge with
  * {@see DocumentTransitionException} (422 `DOCUMENT_TRANSITION_REFUSED`).
- * The custom PHPStan rule {@see DocumentStatusWriteOnlyViaStatusService}
+ * The custom PHPStan rule `App\PHPStan\Rules\DocumentStatusWriteOnlyViaStatusService`
  * enforces the Phase-1 half of that at static-analysis time.
  *
  * WHY THIS EXISTS. Seven treasury writers flipped a document to `Paid` on a
