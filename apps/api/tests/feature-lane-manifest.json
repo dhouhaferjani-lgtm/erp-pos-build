@@ -6,7 +6,7 @@
     "deferred": "CAN run, but no lane runs it yet. Requires `reason`. Counted loudly on every CI run. After O-29 exactly one group is left here — `(root files)`, which no whole-directory selector can address."
   },
   "debt_ceiling": 1,
-  "gated_ceiling": 1162,
+  "gated_ceiling": 1163,
   "lanes": {
     "security-regression": {
       "job": "security-regression",
@@ -1025,8 +1025,8 @@
     },
     "Voucher": {
       "lane": "feature-lane-pos/Voucher",
-      "classes": 10,
-      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
+      "classes": 11,
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped. DELIBERATE RAISE 10 -> 11 (2026-08-24 at merge, Session B lane Q-5 fix/sb-q5-voucher-void-service): VoucherVoidServiceTest — the single void write path (VoucherVoidService: lock + status precondition + GL reversal + idempotency), authored 94ec615bf which never registered the raise; gate records docs/superpowers/reviews/2026-08-23-sb-q5-voucher-gate-r1-{treasury,fiscal}.md, micro-round 12ee4c81d parent-verified. Not in any live --filter allowlist; run BY PATH on sqlite + PG 5433 in-lane."
     },
     "Workshop": {
       "lane": "feature-lane-documents/Workshop",
