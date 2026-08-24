@@ -46,8 +46,11 @@ Wave 1 contributed 2 of the 54 COVERED (`pos_terminals.type`, `pos_held_orders.s
 `vouchers_status_check`). Two columns are un-gateable by construction and go to a cast/model lane, not a CHECK lane:
 `bank_reconciliations.status` (CHECK exists, NO Eloquent model) and `fiscal_event_quarantine.payload_parse_status` (no enum cast).
 
-**Immediate finding (already-divergent, not debt):** `fiscal_event_quarantine.integrity_exception_class` — CHECK admits 2 of the enum's
-6 cases → INSERT bomb on 4 quarantine classes. Fiscal-pos gate ruling ⏳.
+**The one NARROWER row is INTENDED, not a defect (fiscal gate ruling):** `fiscal_event_quarantine.integrity_exception_class` CHECK admits exactly the two
+classes `IntegrityExceptionClass::isAdmissibleToLedger()` routes to quarantine; the other four go to `fiscal_events`. The register must label it
+INTENDED-narrower (D-1 fix round) — widening that CHECK would destroy the ledger/quarantine partition. Two hard preconditions before the first
+CHECK-adding batch (fiscal gate F-2/F-4): the parser must see `NOT VALID` CHECKs (the mandated batch idiom is invisible to it today), and
+cross-column CHECKs that pin a value set (`pos_receipts.receipt_type` via `pos_receipts_return_logic`) must not read as MISSING.
 
 The artifact the owner reads is `apps/api/tests/Architecture/baselines/enum-check-parity-register.md` (column → enum → verdict);
 the ratchet is `EnumCheckParityTest` (PG-only, shrink-only baseline `enum-check-parity-baseline.json`, 190 keys) + 18 liveness/tamper
