@@ -21,12 +21,14 @@ use App\Modules\Document\Domain\Services\DocumentPostingService;
 use App\Modules\Document\Domain\Services\DocumentStatusMachine;
 use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\Services\DocumentAllocationClassifier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 use Tests\Traits\BuildsDeliveryPolicyFixtures;
@@ -346,6 +348,85 @@ final class N6PaymentOnUnpostedInvoiceTest extends TestCase
         $reopened = app(DocumentStatusService::class)->reopenFromPaid($posted->fresh(), ['balance_due' => '50.000']);
 
         $this->assertSame(DocumentStatus::Posted, $reopened->fresh()->status);
+    }
+
+    // ── Refunding a prepayment (fix round r2, treasury gate R2-C1) ───────────
+
+    /**
+     * R2-C1 [CRITICAL] — refunding an N-6 prepayment through the LIVE route.
+     *
+     * `refundPayment()` posts the AR-ONLY shape unconditionally
+     * (`postRefundGlAndMovement()` -> `createPaymentRefundJournalEntry()`).
+     * Before N-6 that was right: a customer payment credited 411 and the refund
+     * debited it straight back. N-6 moved the credit to 419 and left the debit
+     * on 411, so a refund produced `411 = +200 / 419 = -200` — a receivable that
+     * does not exist AND an advance already paid out in cash.
+     *
+     * Phase 1 FAILS CLOSED rather than inventing a proration rule the reversal
+     * lane deliberately refused to invent (its OQ-3). The supported path is
+     * named in the refusal, and the ledger must not move.
+     */
+    public function test_refunding_a_prepayment_is_refused_and_moves_no_money(): void
+    {
+        $invoice = $this->dpConfirmedInvoice([$this->dpPhysicalLine()]);
+        $this->payFull($invoice)->assertCreated();
+
+        $payment = Payment::query()->where('company_id', $this->dpCompany->id)->sole();
+
+        $receivableBefore = $this->accountBalance(SystemAccountPurpose::CustomerReceivable);
+        $advanceBefore = $this->accountBalance(SystemAccountPurpose::CustomerAdvance);
+
+        $response = $this->actingAs($this->dpUser)->postJson("/api/v1/payments/{$payment->id}/refund", [
+            'reason' => 'customer changed their mind',
+            'refund_request_id' => (string) Str::uuid(),
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertStringContainsString('customer advance', (string) $response->json('error'));
+
+        $this->assertSame(
+            $receivableBefore,
+            $this->accountBalance(SystemAccountPurpose::CustomerReceivable),
+            'a refused refund must not debit a receivable that does not exist',
+        );
+        $this->assertSame(
+            $advanceBefore,
+            $this->accountBalance(SystemAccountPurpose::CustomerAdvance),
+            'and it must not leave the advance standing while cash walks out',
+        );
+        $this->assertSame(
+            '-'.$this->invoiceTotal($invoice),
+            $advanceBefore,
+            'precondition: the money really is in 419',
+        );
+    }
+
+    /**
+     * The SUPPORTED path still works, and unwinds the advance rather than a
+     * receivable — so the refusal above points somewhere real.
+     */
+    public function test_reversing_a_prepayment_unwinds_the_advance(): void
+    {
+        $invoice = $this->dpConfirmedInvoice([$this->dpPhysicalLine()]);
+        $this->payFull($invoice)->assertCreated();
+
+        $payment = Payment::query()->where('company_id', $this->dpCompany->id)->sole();
+
+        $this->actingAs($this->dpUser)->postJson("/api/v1/payments/{$payment->id}/reverse", [
+            'reason' => 'customer changed their mind',
+            'refund_request_id' => (string) Str::uuid(),
+        ])->assertOk();
+
+        $this->assertSame(
+            '0.000',
+            $this->accountBalance(SystemAccountPurpose::CustomerAdvance),
+            'reversal selects the account from the ledger and clears 419',
+        );
+        $this->assertSame(
+            '0.000',
+            $this->accountBalance(SystemAccountPurpose::CustomerReceivable),
+            'and never touches the receivable',
+        );
     }
 
     // ── Order-originated prepayments must not be cleared twice ───────────────
