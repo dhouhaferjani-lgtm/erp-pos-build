@@ -29,8 +29,10 @@ migration-bearing pins execute somewhere while their lanes are parked (B-3 prece
 
 ## (b) CHECK burn-down — 76 → n
 ⏳ Filled by Slice D-1 (`fix/sb-d1-pg-constraint-parity-test`): the `pg_constraint` enum↔CHECK parity test + shrink-only baseline + the
-derived register artifact. Wave 1 already added CHECKs on `pos_terminals.type`, `pos_terminals` lifecycle, `pos_held_orders.status`
-(+ the `vouchers_status_check` from Q-5 if it landed — see the register) — the baseline records the exact remaining count.
+derived register artifact. Wave 1 added exactly THREE status-column CHECKs (grep-verified on dev): `pos_terminals.type` + the `pos_terminals` lifecycle CHECK
+(Q-7, `2026_08_23_140000`) and `pos_held_orders.status` (Q-8, `2026_08_23_163000`). Q-5 did NOT ship `vouchers_status_check` (brief item
+deferred to Slice D). Q-6 replaced a trigger, not a CHECK. So the expected D-1 denominator is 76 − 2 enum-backed status columns
+(`pos_terminals.type`, `pos_held_orders.status`) = **74 uncovered** before Slice D batches; D-1's derived register is the authority.
 
 ## (c) Program spec + owner questions
 `docs/superpowers/specs/2026-08-23-state-machine-program-spec-skeleton.md` — workstreams G0/A/B/C/V/I/D/E; §R ratification questions
