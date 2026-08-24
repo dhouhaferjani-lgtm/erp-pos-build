@@ -35,7 +35,11 @@ final class RequestTerminalRequest extends FormRequest
                 'uuid',
                 ScopedExists::company('locations', $companyId),
             ],
-            'hardware_identifier' => ['required', 'string', 'max:255'],
+            // T-6: `pos_terminals.hardware_identifier` is varchar(100)
+            // (`2026_01_08_190429_create_pos_terminals_table.php:51`). Validating
+            // max:255 let an over-long device id reach the INSERT, where it became
+            // an unhandled 22001 rather than a field error the caller can act on.
+            'hardware_identifier' => ['required', 'string', 'max:100'],
             'suggested_name' => ['required', 'string', 'max:255'],
         ];
     }
