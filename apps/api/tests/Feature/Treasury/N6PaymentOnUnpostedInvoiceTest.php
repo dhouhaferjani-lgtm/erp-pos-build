@@ -20,6 +20,8 @@ use App\Modules\Document\Domain\Exceptions\DocumentTransitionException;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
 use App\Modules\Document\Domain\Services\DocumentStatusMachine;
 use App\Modules\Document\Domain\Services\DocumentStatusService;
+use App\Modules\Treasury\Application\Services\PaymentAllocationService;
+use App\Modules\Treasury\Domain\Enums\AllocationMethod;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
@@ -466,6 +468,72 @@ final class N6PaymentOnUnpostedInvoiceTest extends TestCase
                 ->count(),
             'An advance already cleared at conversion must not be cleared a second time at posting.',
         );
+    }
+
+    // ── FIFO membership (fix round r2, treasury gate R2-I2) ──────────────────
+
+    /**
+     * R2-I2 — widening `getOpenInvoices()` to admit `Invoice + Confirmed` is a
+     * BEHAVIOUR CHANGE on the FIFO auto-allocation set, and the bridges
+     * (`TreasuryAccountPaymentBridge`, `TreasuryDepositBridge`) drive
+     * `applyAllocationFromCommand()` with `AllocationMethod::FIFO`. A
+     * device-authored ACCOUNT_PAYMENT or a back-office DEPOSIT_RECEIPT can now
+     * park cash in 419 against an OLDER confirmed-but-unposted invoice ahead of
+     * a genuinely due posted one.
+     *
+     * That is the intended model — money offered against the oldest open
+     * document — but it had no test. This pins the membership AND the ledger
+     * consequence, which is the part that would otherwise silently regress: FIFO
+     * order decides WHICH document absorbs, and posted-ness decides WHICH
+     * ACCOUNT it lands in. The two are independent, and this asserts both at
+     * once.
+     */
+    public function test_fifo_offers_an_older_confirmed_invoice_and_parks_the_cash_in_419(): void
+    {
+        $older = $this->dpConfirmedInvoice([$this->dpPhysicalLine()], [
+            'document_date' => now()->subDays(30),
+        ]);
+        $newer = $this->dpConfirmedInvoice([$this->dpPhysicalLine()], [
+            'document_date' => now(),
+        ]);
+        $newer->forceFill([
+            'status' => DocumentStatus::Posted,
+            'fiscal_status' => FiscalStatus::Sealed,
+            'fiscal_hash' => str_repeat('d', 64),
+            'chain_sequence' => 1,
+        ])->save();
+
+        $preview = app(PaymentAllocationService::class)
+            ->previewAllocation(
+                companyId: $this->dpCompany->id,
+                partnerId: $this->dpPartner->id,
+                paymentAmount: $this->invoiceTotal($older),
+                allocationMethod: AllocationMethod::FIFO,
+            );
+
+        $offered = array_column($preview['allocations'], 'document_id');
+
+        $this->assertSame(
+            [$older->id],
+            $offered,
+            'FIFO offers the OLDEST open document — the confirmed one is now in the set',
+        );
+
+        // And the money lands in 419, not 411, because the older document has no
+        // posted receivable. Driven through the same execute path the bridges use.
+        $this->payFull($older)->assertCreated();
+
+        $this->assertSame(
+            '-'.$this->invoiceTotal($older),
+            $this->accountBalance(SystemAccountPurpose::CustomerAdvance),
+        );
+        $this->assertSame(
+            '0.000',
+            $this->accountBalance(SystemAccountPurpose::CustomerReceivable),
+            'the genuinely due POSTED invoice keeps its receivable untouched',
+        );
+        $this->assertSame(DocumentStatus::Confirmed, $older->fresh()->status);
+        $this->assertSame(DocumentStatus::Posted, $newer->fresh()->status);
     }
 
     // ── AR readers ───────────────────────────────────────────────────────────
