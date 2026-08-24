@@ -2971,15 +2971,17 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
-          {/* Orders */}
+          {/* Orders — F&B only, vertical-gated (mirrors Sidebar nav + the KDS route) */}
           <Route
             path="orders"
             element={
-              <RequirePermission permission="pos.operate_terminal">
-                <SuspenseWrapper>
-                  <OrdersPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Menu">
+                <RequirePermission permission="pos.operate_terminal">
+                  <SuspenseWrapper>
+                    <OrdersPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           {/* Table Management — F&B only, vertical-gated (mirrors Sidebar nav) */}

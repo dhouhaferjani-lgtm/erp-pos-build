@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Enums\Vertical;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Domain\Entities\Modifier;
 use App\Modules\Catalog\Domain\Entities\ModifierGroup;
@@ -201,12 +202,20 @@ final class PosStabilizationTenantIsolationTest extends TestCase
 
     private function makeTenant(string $slug): Tenant
     {
+        // Session B lane Q-9: the live order/kitchen routes are now gated on
+        // `module:Menu` (rule 12). The column default vertical is `retail`,
+        // which has no Menu, so the cross-tenant order/kitchen probes below
+        // would 403 before ever reaching the tenant-scope check they exist to
+        // pin. `restaurant` is a strict module superset of `retail` here — it
+        // adds Menu/Tables/CompositeItems and, via the compatible `Inventory`
+        // extra, keeps the Inventory module retail had by default.
         return Tenant::create([
             'name' => "Tenant {$slug}",
             'slug' => $slug,
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
-            'enabled_extras' => ['Loyalty'],
+            'vertical' => Vertical::Restaurant,
+            'enabled_extras' => ['Loyalty', 'Inventory'],
         ]);
     }
 
