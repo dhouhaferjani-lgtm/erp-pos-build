@@ -43,6 +43,15 @@ final class CouponValidationService
             throw CouponInvalidException::exhausted($coupon->code);
         }
 
+        // Global usage cap — Lane Q-4. Enforced HERE, where the discount is
+        // granted, instead of only by the post-hoc auto-exhaust in
+        // CouponApplicationService::recordUsage. Placed ahead of isValid()
+        // because isValid() folds the cap into its boolean and would surface a
+        // capped-but-in-date coupon as "expired" to the cashier.
+        if ($coupon->max_uses !== null && $coupon->use_count >= $coupon->max_uses) {
+            throw CouponInvalidException::exhausted($coupon->code);
+        }
+
         // Date validation
         if (! $coupon->isValid()) {
             throw CouponInvalidException::expired($coupon->code);

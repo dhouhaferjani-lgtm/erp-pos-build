@@ -28,6 +28,7 @@ import { openingBatchTypeKey } from '../i18nKeys'
 import type { OpeningBatchType } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { useCurrency } from '@/hooks/useCurrency'
 
 type WizardStep = 'setup' | 'upload' | 'validate' | 'preview' | 'post' | 'lock' | 'complete'
 
@@ -98,6 +99,9 @@ export function OpeningBalanceWizardPage() {
   const { type } = useParams<{ type: string }>()
   const batchType = type?.toUpperCase() as OpeningBatchType
   const { t } = useTranslation()
+  // Gate r1 F-5: the post-step amount is a raw decimal string from the
+  // preview payload; format it with the company currency like every sibling.
+  const { format: formatMoney } = useCurrency()
 
   // State
   const [currentStep, setCurrentStep] = useState<WizardStep>('setup')
@@ -129,6 +133,39 @@ export function OpeningBalanceWizardPage() {
   const { data: previewData, isLoading: previewLoading } = useOpeningBatchPreview(
     currentStep === 'preview' || currentStep === 'post' ? (batchId ?? existingStatus?.batch?.id ?? undefined) : undefined
   )
+
+  // N-3: the three preview variants carry DIFFERENT totals keys — ACCOUNTING
+  // has {debit,credit,is_balanced}, INVENTORY {total_lines,total_quantity,
+  // total_value}, AR/AP {total_documents,total_amount,total_open_amount}. The
+  // post step used to read `total_lines ?? total_documents ?? 0` plus optional
+  // `total_value`/`total_debit` off one flattened shape, so an ACCOUNTING batch
+  // showed "Total Rows 0" and no amount at all. Narrow on the discriminator.
+  const postSummary = ((): { rows: number; amountLabelKey: string; amount: string } | null => {
+    if (previewData === undefined) {
+      return null
+    }
+
+    switch (previewData.batch_type) {
+      case 'ACCOUNTING':
+        return {
+          rows: previewData.lines.length,
+          amountLabelKey: 'openingBalances.wizard.post.totalDebit',
+          amount: previewData.totals.debit,
+        }
+      case 'INVENTORY':
+        return {
+          rows: previewData.totals.total_lines,
+          amountLabelKey: 'openingBalances.wizard.post.totalValue',
+          amount: previewData.totals.total_value,
+        }
+      default:
+        return {
+          rows: previewData.totals.total_documents,
+          amountLabelKey: 'openingBalances.wizard.post.totalValue',
+          amount: previewData.totals.total_amount,
+        }
+    }
+  })()
 
   // Mutations
   const createBatch = useCreateOpeningBatch()
@@ -432,7 +469,7 @@ export function OpeningBalanceWizardPage() {
                 <Loader2 className={`h-8 w-8 animate-spin ${colorTokens.intent.primary.textSubtle}`} />
               </div>
             ) : previewData ? (
-              <BatchPreview preview={previewData} batchType={batchType} />
+              <BatchPreview preview={previewData} />
             ) : null}
 
             <div className={`flex items-center justify-between border-t ${colorTokens.border.subtle} pt-4`}>
@@ -482,7 +519,7 @@ export function OpeningBalanceWizardPage() {
               </div>
             </div>
 
-            {previewData && (
+            {postSummary !== null && (
               <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-4`}>
                 <h3 className={`font-medium ${colorTokens.text.primary} mb-3`}>
                   {t('openingBalances.wizard.post.summary')}
@@ -490,22 +527,14 @@ export function OpeningBalanceWizardPage() {
                 <dl className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <dt className={colorTokens.text.subtle}>{t('openingBalances.wizard.post.totalRows')}</dt>
+                    <dd className={`font-medium ${colorTokens.text.primary}`}>{postSummary.rows}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className={colorTokens.text.subtle}>{t(postSummary.amountLabelKey)}</dt>
                     <dd className={`font-medium ${colorTokens.text.primary}`}>
-                      {previewData.totals.total_lines ?? previewData.totals.total_documents ?? 0}
+                      {formatMoney(postSummary.amount, { symbol: false })}
                     </dd>
                   </div>
-                  {previewData.totals.total_value && (
-                    <div className="flex justify-between">
-                      <dt className={colorTokens.text.subtle}>{t('openingBalances.wizard.post.totalValue')}</dt>
-                      <dd className={`font-medium ${colorTokens.text.primary}`}>{previewData.totals.total_value}</dd>
-                    </div>
-                  )}
-                  {previewData.totals.total_debit && (
-                    <div className="flex justify-between">
-                      <dt className={colorTokens.text.subtle}>{t('openingBalances.wizard.post.totalDebit')}</dt>
-                      <dd className={`font-medium ${colorTokens.text.primary}`}>{previewData.totals.total_debit}</dd>
-                    </div>
-                  )}
                 </dl>
               </div>
             )}

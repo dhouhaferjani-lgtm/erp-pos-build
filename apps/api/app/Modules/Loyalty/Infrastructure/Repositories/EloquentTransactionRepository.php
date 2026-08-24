@@ -76,6 +76,21 @@ final readonly class EloquentTransactionRepository implements TransactionReposit
     }
 
     /**
+     * Find the redeem transaction carrying an idempotency key.
+     *
+     * Reads the dedicated redemption_key column so the pre-check aligns exactly
+     * with the loyalty_txn_redeem_key_unique index that backstops it.
+     */
+    public function findRedeemByIdempotencyKey(string $enrollmentId, string $redemptionKey): ?Transaction
+    {
+        return Transaction::query()
+            ->where('enrollment_id', $enrollmentId)
+            ->where('transaction_type', TransactionType::Redeem)
+            ->where('redemption_key', $redemptionKey)
+            ->first();
+    }
+
+    /**
      * Save transaction
      */
     public function save(Transaction $transaction): Transaction
