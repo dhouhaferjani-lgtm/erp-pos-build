@@ -33,15 +33,21 @@ use Illuminate\Support\Facades\DB;
  * named transitions, `ELSE RAISE EXCEPTION` default, so a newly-admitted
  * `fiscal_status` value can never fall through silently again.
  *
- * ## Every branch of the old body, and where it went (no behaviour dropped)
+ * ## Every branch of the old body, and where it went
+ *
+ * No allowance is dropped. Exactly two allowances are TIGHTENED, both ruled
+ * by the fiscal-pos gate r1 record
+ * (`docs/superpowers/reviews/2026-08-23-sb-q6-trigger-gate-r1.md`): F-1 on
+ * the FK-cleanup branch and F-4 on the `sealed_hash_algorithm` branch. Both
+ * are marked in the table and explained at their branch.
  *
  * | old body                                    | new body |
  * |---------------------------------------------|----------|
  * | DELETE -> always raise (`:54-57`)            | unchanged, verbatim |
  * | `pending_seal -> fiscalized` allow (`:60-62`)| `pending_seal` arm, first check |
  * | `fiscalized -> voided` + immutable-field diff (`:64-76`) | `fiscalized` arm, first check, condition and message verbatim |
- * | `fiscalized` FK-cleanup allow (`:78-96`)    | `fiscalized` arm, second check, verbatim |
- * | `fiscalized` one-time `sealed_hash_algorithm` allow (`:120-141`) | `fiscalized` arm, third check, verbatim |
+ * | `fiscalized` FK-cleanup allow (`:78-96`)    | `fiscalized` arm, second check — verbatim PLUS the two `fiscal_status`/`is_voided` invariance lines (gate r1 / F-1, the one deliberate tightening; see below) |
+ * | `fiscalized` one-time `sealed_hash_algorithm` allow (`:120-141`) | `fiscalized` arm, third check — same entry condition, 18-column enumeration replaced by the strictly-stronger `to_jsonb - keys` comparison (gate r1 / F-4) |
  * | `fiscalized` catch-all raise (`:143-146`)   | `fiscalized` arm, `ELSE` — same message |
  * | `pending_seal` narrow raise (`:148-152`)    | `pending_seal` arm, `ELSE` — same message |
  * | `pending_seal -> pending_seal` (unrestricted, reached the bare `RETURN NEW` at `:155`) | `pending_seal` arm, explicit `RETURN NEW` — deliberately preserved: an un-sealed receipt is still being built |
@@ -87,6 +93,43 @@ use Illuminate\Support\Facades\DB;
  * `fiscal_status` into their own column — requires a deliberate migration
  * that re-defines this function; it must never be done by relaxing the
  * `ELSE`.**
+ *
+ * ## PG's own FK cascade is a DELIBERATELY-REFUSED writer on frozen rows
+ *
+ * (Gate r1 / F-2 — PARENT RULING: keep the freeze.)
+ *
+ * The frozen arm does NOT carry the `fiscalized` arm's FK-cleanup allowance,
+ * and that has a consequence beyond application code: `pos_receipts`
+ * references `partners(id)` and `contacts(id)` with `ON DELETE SET NULL`, so
+ * a HARD delete of a partner or contact makes PostgreSQL itself issue an
+ * UPDATE against every referencing receipt. On a frozen row that UPDATE is
+ * refused and the parent DELETE aborts. Under the previous body it silently
+ * succeeded, nulling `partner_id` on a voided fiscal receipt.
+ *
+ * That refusal is intended. A fiscal archival row must fail CLOSED: the void
+ * has to stay exactly as it was written, and a hard-delete path that would
+ * mutate one must abort loudly rather than change an archived receipt behind
+ * the operator's back. The exposure is latent today — `Partner`
+ * (`app/Modules/Partner/Domain/Partner.php:88`) and `Contact`
+ * (`app/Modules/Contact/Domain/Contact.php:53`) both use `SoftDeletes`, and
+ * no `forceDelete()` call site anywhere in `app/` touches either model (the
+ * ones that exist are terminals, media assets, documents and tenants) — so
+ * no live writer hits this. Pinned by
+ * `PosReceiptFrozenStateImmutabilityTriggerTest::test_hard_deleting_a_partner_referenced_by_a_frozen_receipt_is_refused`.
+ * If a GDPR-style hard-erase path is ever built it must handle frozen
+ * receipts explicitly (deliberate migration widening this arm, or an
+ * erase strategy that does not rewrite sealed rows) — it must not be
+ * "fixed" by relaxing the freeze.
+ *
+ * ## `down()` restores the KNOWN-VULNERABLE body — deliberately
+ *
+ * `down()` re-installs the previous definition VERBATIM, fall-through and
+ * all: the four unguarded states, the FK-cleanup branch without its
+ * `fiscal_status`/`is_voided` invariance (F-1), and the 18-column
+ * enumeration (F-4). Rolling this migration back therefore RE-OPENS every
+ * hole it closes. That is the correct semantic for a `down()` — it must
+ * restore the prior state, not a half-hardened invention — but it means a
+ * rollback is a fiscal-integrity regression, never a routine step.
  *
  * ## MIGRATION-BEARING — census obligation (S-16 pattern)
  *
@@ -167,9 +210,30 @@ return new class extends Migration
 
                         -- (2) nulling the query-only customer FKs
                         --     (2026_05_26_100001_allow_pos_receipt_fk_cleanup.php).
+                        --
+                        --     GATE r1 / F-1 (Critical, folded into lane Q-6):
+                        --     the two `fiscal_status` / `is_voided` lines
+                        --     below are NEW. Without them this branch guarded
+                        --     12 columns but neither of those two, so a
+                        --     status downgrade could ride along on an
+                        --     otherwise-legitimate customer-FK cleanup:
+                        --     fiscalized -> pending_seal (where column edits
+                        --     are unrestricted) -> rewrite totals + forge
+                        --     fiscal_hash -> back to fiscalized. The gate
+                        --     reproduced that full round trip with no
+                        --     exception at any step; it was pre-existing
+                        --     across all four prior bodies of this function,
+                        --     copied forward each time. It is the ONLY
+                        --     behavioural change this migration makes to the
+                        --     `fiscalized` arm's allowances, and it brings
+                        --     this branch to parity with the §6.2 branch
+                        --     below, which has pinned both columns since
+                        --     final-review condition I-1.
                         IF (OLD.partner_id IS NOT NULL OR OLD.contact_id IS NOT NULL)
                            AND NEW.partner_id IS NULL
                            AND NEW.contact_id IS NULL
+                           AND NEW.fiscal_status = OLD.fiscal_status
+                           AND NEW.is_voided IS NOT DISTINCT FROM OLD.is_voided
                            AND NEW.fiscal_hash IS NOT DISTINCT FROM OLD.fiscal_hash
                            AND NEW.receipt_number = OLD.receipt_number
                            AND NEW.total = OLD.total
@@ -188,28 +252,33 @@ return new class extends Migration
 
                         -- (3) v3-refund-chain-integration spec §6.2: the
                         --     one-time sealed_hash_algorithm NULL -> value
-                        --     transition ALONE. Column list carried forward
-                        --     verbatim (FINAL-REVIEW CONDITION 1 / I-1 —
-                        --     see PosReceiptImmutabilityTriggerSealedHashAlgorithmTest).
+                        --     transition ALONE.
+                        --
+                        --     GATE r1 / F-4 (folded): the previous body
+                        --     enumerated 18 columns here, which left every
+                        --     column NOT on that list rewritable alongside
+                        --     the discriminator — `previous_hash` above all,
+                        --     the chain link the v3 verifier reads, on every
+                        --     pre-feature row (`OLD.sealed_hash_algorithm IS
+                        --     NULL` matches the entire installed base). The
+                        --     `to_jsonb - keys` comparison below is the same
+                        --     technique the frozen arm uses: it subsumes all
+                        --     18 enumerated columns, closes the rest by
+                        --     construction, and keeps covering columns added
+                        --     to pos_receipts in future without editing this
+                        --     function. Strictly stronger than the list it
+                        --     replaces, so FINAL-REVIEW CONDITION 1 (I-1)
+                        --     still holds a fortiori — see
+                        --     PosReceiptImmutabilityTriggerSealedHashAlgorithmTest,
+                        --     which stays green unchanged.
+                        --     `updated_at` is excluded because Eloquent bumps
+                        --     it on save(); that is the exact statement
+                        --     BackfillSealedHashAlgorithmCommand issues.
                         IF OLD.sealed_hash_algorithm IS NULL
                            AND NEW.sealed_hash_algorithm IS NOT NULL
-                           AND NEW.fiscal_hash IS NOT DISTINCT FROM OLD.fiscal_hash
-                           AND NEW.receipt_number = OLD.receipt_number
-                           AND NEW.total = OLD.total
-                           AND NEW.subtotal = OLD.subtotal
-                           AND NEW.tax_amount = OLD.tax_amount
-                           AND NEW.chain_sequence IS NOT DISTINCT FROM OLD.chain_sequence
-                           AND NEW.posted_at = OLD.posted_at
-                           AND NEW.vat_breakdown_hash IS NOT DISTINCT FROM OLD.vat_breakdown_hash
-                           AND NEW.payment_methods_hash IS NOT DISTINCT FROM OLD.payment_methods_hash
-                           AND NEW.customer_name IS NOT DISTINCT FROM OLD.customer_name
-                           AND NEW.customer_identifier IS NOT DISTINCT FROM OLD.customer_identifier
-                           AND NEW.partner_id IS NOT DISTINCT FROM OLD.partner_id
-                           AND NEW.contact_id IS NOT DISTINCT FROM OLD.contact_id
-                           AND NEW.fiscal_status = OLD.fiscal_status
-                           AND NEW.is_voided IS NOT DISTINCT FROM OLD.is_voided
-                           AND NEW.canonical_bytes IS NOT DISTINCT FROM OLD.canonical_bytes
-                           AND NEW.fiscal_event_id IS NOT DISTINCT FROM OLD.fiscal_event_id THEN
+                           AND (to_jsonb(NEW) - 'sealed_hash_algorithm' - 'updated_at')
+                               IS NOT DISTINCT FROM
+                               (to_jsonb(OLD) - 'sealed_hash_algorithm' - 'updated_at') THEN
                             RETURN NEW;
                         END IF;
 

@@ -553,6 +553,146 @@ final class PosReceiptFrozenStateImmutabilityTriggerTest extends TestCase
         self::assertNull($fresh->partner_id);
     }
 
+    /**
+     * F-1 (gate r1, Critical — folded into this lane).
+     *
+     * The FK-cleanup branch guarded 12 columns but NOT `fiscal_status` /
+     * `is_voided` (unlike the §6.2 branch, which pins both per final-review
+     * condition I-1). A caller could therefore piggyback a status downgrade
+     * on a legitimate-looking customer-FK cleanup and walk a SEALED receipt
+     * back to `pending_seal` — where the trigger allows unrestricted column
+     * edits — then rewrite the totals, forge `fiscal_hash`, and re-seal.
+     * The gate reproduced that full round trip with no exception at any
+     * step; it is pre-existing across all four prior function bodies.
+     *
+     * This test walks the same round trip. STEP 1 must now raise, which
+     * makes steps 2 and 3 unreachable.
+     */
+    public function test_a_status_downgrade_cannot_piggyback_on_the_fk_cleanup_branch(): void
+    {
+        $partner = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $receipt = $this->fiscalizedReceipt(['partner_id' => $partner->id]);
+
+        $this->expectException(QueryException::class);
+        $this->expectExceptionMessageMatches('/fiscally sealed and cannot be modified/');
+
+        // STEP 1 — the bypass: a customer-FK cleanup carrying a status
+        // downgrade. Everything else is byte-identical, so this matched the
+        // FK-cleanup branch verbatim.
+        // STEP 2 would have been: UPDATE ... SET total = '9999.000',
+        //   subtotal = '9999.000', tax_amount = '0.000',
+        //   fiscal_hash = repeat('e', 64)   -- allowed on a pending_seal row
+        // STEP 3 would have been: UPDATE ... SET fiscal_status = 'fiscalized'
+        //   -- re-sealed, with forged bytes and no trace.
+        DB::table('pos_receipts')->where('id', $receipt->id)->update([
+            'partner_id' => null,
+            'contact_id' => null,
+            'fiscal_status' => FiscalStatus::PendingSeal->value,
+        ]);
+    }
+
+    /**
+     * F-1 companion: the same branch must still refuse an `is_voided` flip
+     * smuggled through a customer-FK cleanup (flipping the flag WITHOUT
+     * `fiscal_status = 'voided'` never reaches the void branch, so it would
+     * skip the void edge's immutable-field check entirely).
+     */
+    public function test_an_is_voided_flip_cannot_piggyback_on_the_fk_cleanup_branch(): void
+    {
+        $partner = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $voider = User::factory()->create(['tenant_id' => $this->tenant->id]);
+        $receipt = $this->fiscalizedReceipt(['partner_id' => $partner->id]);
+
+        $this->expectException(QueryException::class);
+        $this->expectExceptionMessageMatches('/fiscally sealed and cannot be modified/');
+
+        // voided_at/voided_by are set only to satisfy the
+        // `pos_receipts_void_logic` CHECK, so the rejection can only come
+        // from the trigger.
+        DB::table('pos_receipts')->where('id', $receipt->id)->update([
+            'partner_id' => null,
+            'contact_id' => null,
+            'is_voided' => true,
+            'voided_at' => now(),
+            'voided_by' => $voider->id,
+        ]);
+    }
+
+    /**
+     * F-2 (gate r1 — PARENT RULING: KEEP the freeze; pin the refusal).
+     *
+     * `pos_receipts.partner_id` carries `ON DELETE SET NULL`, so a HARD
+     * delete of a partner makes PG itself issue an UPDATE against every
+     * referencing receipt. On a frozen row the freeze refuses it and the
+     * partner DELETE aborts. That is deliberate: a fiscal archival row must
+     * fail closed, and a future hard-delete path must abort loudly rather
+     * than silently mutate a voided receipt.
+     *
+     * Latent today — `Partner` and `Contact` both use `SoftDeletes` and no
+     * `forceDelete()` call site in `app/` touches either — so this test
+     * uses a raw DELETE to simulate the hard-delete path that does not yet
+     * exist.
+     */
+    public function test_hard_deleting_a_partner_referenced_by_a_frozen_receipt_is_refused(): void
+    {
+        $partner = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        // The partner is attached at INSERT (the trigger is BEFORE UPDATE OR
+        // DELETE, and no branch permits NULL -> value on partner_id), then
+        // the row crosses the legal void edge, which does not guard
+        // partner_id.
+        $receipt = $this->fiscalizedReceipt(['partner_id' => $partner->id]);
+        $voider = User::factory()->create(['tenant_id' => $this->tenant->id]);
+        DB::table('pos_receipts')->where('id', $receipt->id)->update([
+            'is_voided' => true,
+            'fiscal_status' => FiscalStatus::Voided->value,
+            'voided_at' => now(),
+            'voided_by' => $voider->id,
+        ]);
+
+        $this->expectException(QueryException::class);
+        $this->expectExceptionMessageMatches('/frozen/');
+
+        DB::table('partners')->where('id', $partner->id)->delete();
+    }
+
+    /**
+     * F-1 safety / F-2 asymmetry, in its realest form: the FK-cleanup branch
+     * exists for PG's own `ON DELETE SET NULL` cascade — no application code
+     * nulls `pos_receipts.partner_id`/`contact_id` (grep: zero writers). The
+     * two invariance lines added for F-1 must therefore NOT break the
+     * cascade on a still-`fiscalized` receipt: the cascade only touches
+     * `partner_id`, never `fiscal_status`/`is_voided`.
+     *
+     * Contrast `test_hard_deleting_a_partner_referenced_by_a_frozen_receipt_is_refused`:
+     * same DELETE, frozen receipt, refused. The asymmetry is deliberate and
+     * recorded in the migration docblock.
+     */
+    public function test_hard_deleting_a_partner_referenced_by_a_fiscalized_receipt_still_succeeds(): void
+    {
+        $partner = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $receipt = $this->fiscalizedReceipt(['partner_id' => $partner->id]);
+
+        $deleted = DB::table('partners')->where('id', $partner->id)->delete();
+
+        self::assertSame(1, $deleted);
+        $fresh = $receipt->fresh();
+        self::assertNotNull($fresh);
+        self::assertNull($fresh->partner_id, 'the ON DELETE SET NULL cascade must still reach a fiscalized receipt');
+        self::assertSame(FiscalStatus::Fiscalized, $fresh->fiscal_status);
+    }
+
     public function test_the_sealed_hash_algorithm_branch_on_a_fiscalized_row_still_succeeds(): void
     {
         $receipt = $this->fiscalizedReceipt();
@@ -563,6 +703,52 @@ final class PosReceiptFrozenStateImmutabilityTriggerTest extends TestCase
         $fresh = $receipt->fresh();
         self::assertNotNull($fresh);
         self::assertSame('canonical_json_v3', $fresh->sealed_hash_algorithm);
+    }
+
+    /**
+     * F-4 (gate r1, Minor — folded because the technique swap is a
+     * three-line replacement of an 18-column enumeration and is provably
+     * byte-compatible with the two green backfill suites).
+     *
+     * The `fiscalized` backfill branch enumerated 18 columns, so every
+     * column NOT on that list — `previous_hash` above all, which is the
+     * chain link the v3 verifier reads — stayed rewritable on every
+     * pre-feature row (`sealed_hash_algorithm IS NULL` matches the entire
+     * installed base). Replacing the enumeration with the frozen arm's
+     * `to_jsonb - keys` comparison closes it by construction, and keeps
+     * closing it for columns added to `pos_receipts` in future.
+     */
+    public function test_the_fiscalized_backfill_branch_cannot_smuggle_previous_hash(): void
+    {
+        $receipt = $this->fiscalizedReceipt(['previous_hash' => str_repeat('1', 64)]);
+
+        $this->expectException(QueryException::class);
+        $this->expectExceptionMessageMatches('/fiscally sealed and cannot be modified/');
+
+        DB::table('pos_receipts')->where('id', $receipt->id)->update([
+            'sealed_hash_algorithm' => 'legacy_pipe_v1',
+            'previous_hash' => str_repeat('9', 64),
+        ]);
+    }
+
+    /**
+     * F-4 companion — the same swap must not close the transition it exists
+     * to permit: the discriminator write PLUS Eloquent's `updated_at` bump,
+     * which is exactly the statement
+     * `BackfillSealedHashAlgorithmCommand` issues, still passes on a row
+     * carrying a non-null `previous_hash`.
+     */
+    public function test_the_fiscalized_backfill_branch_still_permits_the_discriminator_write(): void
+    {
+        $receipt = $this->fiscalizedReceipt(['previous_hash' => str_repeat('1', 64)]);
+
+        $receipt->sealed_hash_algorithm = 'legacy_pipe_v1';
+        $receipt->save();
+
+        $fresh = $receipt->fresh();
+        self::assertNotNull($fresh);
+        self::assertSame('legacy_pipe_v1', $fresh->sealed_hash_algorithm);
+        self::assertSame(str_repeat('1', 64), $fresh->previous_hash);
     }
 
     public function test_changing_total_on_a_fiscalized_receipt_is_still_rejected(): void
