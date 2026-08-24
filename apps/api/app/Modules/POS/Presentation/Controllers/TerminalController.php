@@ -505,6 +505,17 @@ final class TerminalController extends Controller
      * `forced` and `reason` are carried into {@see TerminalReleased} and thence
      * into the audit register: the operator must confront the orphan, and
      * whoever resolves it must be able to find out which shift it was.
+     *
+     * STATUS CODE, deliberately 409 and NOT the 422 its two namesakes use.
+     * `archive()` (`:193-200`) and `toggleTrainingMode()` (`:770-777`) answer
+     * 422 for the same `TERMINAL_HAS_OPEN_SHIFT` code, because there the open
+     * shift is a hard precondition the caller must go and fix. Here it is a
+     * state CONFLICT with a documented override, which is what 409 means, and
+     * it matches the idiom of this endpoint's own family — `claim()` answers 409
+     * for `TERMINAL_ALREADY_CLAIMED` (`:387-393`, `:437-444`) and
+     * `DEVICE_ALREADY_BOUND` (`:940-947`). One shared code string across two
+     * statuses is a wart; a client that branches on the code (which every caller
+     * in this tree does) reads it correctly either way.
      */
     public function release(string $id, ReleaseTerminalRequest $request): JsonResponse
     {
