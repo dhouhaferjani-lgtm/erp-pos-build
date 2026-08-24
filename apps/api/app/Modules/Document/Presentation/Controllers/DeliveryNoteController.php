@@ -23,6 +23,7 @@ use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\InventoryGlPostingBuffer;
+use App\Modules\Inventory\Domain\Exceptions\InsufficientStockForFulfilmentException;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
@@ -582,6 +583,16 @@ class DeliveryNoteController extends Controller
 
                 return $confirmed;
             });
+        } catch (InsufficientStockForFulfilmentException $e) {
+            // Campaign N-2: a stock shortfall — including a tuple with NO
+            // `stock_levels` row at all — is a 422 refusal with its own machine
+            // code, never the raw 404 `ModelNotFoundException` used to produce
+            // and never `INVALID_STATUS_TRANSITION`. Caught BEFORE the broader
+            // handlers below because it is a subclass of `\RuntimeException`.
+            return $this->validationErrorResponse(
+                InsufficientStockForFulfilmentException::ERROR_CODE,
+                $e->getMessage(),
+            );
         } catch (\DomainException $e) {
             return $this->validationErrorResponse('INVALID_STATUS_TRANSITION', $e->getMessage());
         } catch (\RuntimeException $e) {

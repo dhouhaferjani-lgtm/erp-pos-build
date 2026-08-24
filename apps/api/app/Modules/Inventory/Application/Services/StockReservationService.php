@@ -8,6 +8,7 @@ use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Inventory\Application\Contracts\InventoryReservationServiceInterface;
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
@@ -17,6 +18,7 @@ use App\Modules\Inventory\Domain\Events\ReservationExpired;
 use App\Modules\Inventory\Domain\Events\ReservationExpiredV2;
 use App\Modules\Inventory\Domain\Events\ReservationReleased;
 use App\Modules\Inventory\Domain\Events\ReservationReleasedV2;
+use App\Modules\Inventory\Domain\Exceptions\InsufficientStockForFulfilmentException;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockReservation;
 use App\Modules\Product\Domain\Product;
@@ -62,7 +64,15 @@ class StockReservationService implements InventoryReservationServiceInterface, R
      *
      * @param  int|null  $batchId  Optional batch ID for batch-specific reservation
      *
-     * @throws \RuntimeException If insufficient stock available
+     * @throws InsufficientStockForFulfilmentException If the tuple cannot cover the
+     *                                                 request — including when it has
+     *                                                 NO `stock_levels` row at all,
+     *                                                 which reads as available 0
+     *                                                 (campaign N-2). Extends
+     *                                                 `\RuntimeException`, so the
+     *                                                 pre-existing contract on this
+     *                                                 method is unchanged.
+     * @throws \RuntimeException If insufficient BATCH stock available
      */
     public function reserve(
         Company $company,
@@ -111,18 +121,37 @@ class StockReservationService implements InventoryReservationServiceInterface, R
                     );
                 }
             } else {
-                // Lock aggregate stock level to prevent concurrent reservations
+                // Lock aggregate stock level to prevent concurrent reservations.
+                //
+                // 🚨 Campaign N-2: `first()`, NOT `firstOrFail()`. Every day-one
+                // product has no `stock_levels` row, and `firstOrFail()` turned
+                // that into a `ModelNotFoundException` — a raw 404 out of
+                // `SalesOrderController::confirm()`, whose only catch is
+                // `\DomainException`. An absent row is not a missing resource:
+                // the product and the location both exist and the tuple simply
+                // holds nothing, so it is read as available 0 and refused by the
+                // SAME predicate an existing row at quantity 0 already fails.
+                // Deliberately NOT `firstOrCreate`: a refused reservation must
+                // not write a phantom row (and the row it would create would be
+                // refused on the very next line anyway).
                 $stockLevel = StockLevel::where('product_id', $productId)
                     ->where('location_id', $locationId)
                     ->where('company_id', $company->id)
                     ->lockForUpdate()
-                    ->firstOrFail();
+                    ->first();
 
                 // Validate sufficient available stock
-                $available = bcsub((string) $stockLevel->quantity, (string) $stockLevel->reserved, 4);
-                if (bccomp($available, $quantity, 4) < 0) {
-                    throw new \RuntimeException(
-                        "Insufficient stock. Available: {$available}, Requested: {$quantity}"
+                $available = $stockLevel === null
+                    ? '0.0000'
+                    : bcsub((string) $stockLevel->quantity, (string) $stockLevel->reserved, 4);
+
+                if ($stockLevel === null || bccomp($available, $quantity, 4) < 0) {
+                    throw $this->insufficientStock(
+                        company: $company,
+                        productId: $productId,
+                        locationId: $locationId,
+                        available: $available,
+                        requested: $quantity,
                     );
                 }
             }
@@ -217,13 +246,23 @@ class StockReservationService implements InventoryReservationServiceInterface, R
             return null;
         }
 
+        // 🚨 Campaign N-2: `first()`, NOT `firstOrFail()`. This runs BEFORE the
+        // aggregate branch's own lookup, so on a batch-tracked day-one product it
+        // was the FIRST `firstOrFail()` to fire and produced the same raw 404.
+        // With no stock row there is no quantity to seed a default batch from, so
+        // there is no implicit batch to resolve: return null and let the
+        // aggregate branch raise the honest INSUFFICIENT_STOCK refusal.
         $stockLevel = StockLevel::query()
             ->where('product_id', $productId)
             ->where('location_id', $locationId)
             ->where('company_id', $company->id)
             ->whereNull('variant_id')
             ->lockForUpdate()
-            ->firstOrFail();
+            ->first();
+
+        if ($stockLevel === null) {
+            return null;
+        }
 
         $batch = $this->batchStockService->ensureDefaultBatch(
             companyId: $company->id,
@@ -237,6 +276,44 @@ class StockReservationService implements InventoryReservationServiceInterface, R
         );
 
         return $batch?->id;
+    }
+
+    /**
+     * Build the typed refusal for "this tuple cannot cover the request".
+     *
+     * The product and location names are resolved HERE, on the cold path only, so
+     * the operator reads "Insufficient stock for 'Brake pad' at 'Main Warehouse'"
+     * instead of two UUIDs, and the happy path pays nothing for it.
+     *
+     * @param  numeric-string  $available
+     * @param  numeric-string  $requested
+     */
+    private function insufficientStock(
+        Company $company,
+        string $productId,
+        string $locationId,
+        string $available,
+        string $requested,
+    ): InsufficientStockForFulfilmentException {
+        $productName = Product::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->whereKey($productId)
+            ->value('name');
+
+        $locationName = Location::query()
+            ->where('company_id', $company->id)
+            ->whereKey($locationId)
+            ->value('name');
+
+        return new InsufficientStockForFulfilmentException(
+            productId: $productId,
+            productName: is_string($productName) ? $productName : null,
+            locationId: $locationId,
+            locationName: is_string($locationName) ? $locationName : null,
+            available: $available,
+            requested: $requested,
+        );
     }
 
     /**

@@ -21,6 +21,7 @@ use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\Exceptions\InsufficientStockForFulfilmentException;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
 use App\Modules\Vehicle\Application\Services\VehicleContextBuilder;
@@ -520,6 +521,16 @@ class SalesOrderController extends Controller
                 // Use the SalesOrderService for proper lifecycle management with stock reservations
                 return $this->salesOrderService->confirm($lockedDocument);
             });
+        } catch (InsufficientStockForFulfilmentException $e) {
+            // Campaign N-2: a stock shortfall — including a tuple with NO
+            // `stock_levels` row at all — is a 422 refusal with its own machine
+            // code, never the raw 404 `ModelNotFoundException` used to produce
+            // and never `INVALID_STATUS_TRANSITION`. Caught BEFORE the broader
+            // handlers below because it is a subclass of `\RuntimeException`.
+            return $this->validationErrorResponse(
+                InsufficientStockForFulfilmentException::ERROR_CODE,
+                $e->getMessage(),
+            );
         } catch (\DomainException $e) {
             return $this->validationErrorResponse('INVALID_STATUS_TRANSITION', $e->getMessage());
         }
