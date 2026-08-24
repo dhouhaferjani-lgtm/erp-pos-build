@@ -44,7 +44,7 @@ use App\Shared\Domain\QuantityScale;
  * ── EXCEPTION TEXT vs OPERATOR TEXT (gate r1 I-3 / M-3) ──
  * `getMessage()` is the DEVELOPER/log string and stays English by design — it is
  * what lands in logs and in `expectExceptionMessage` pins. The OPERATOR text is
- * built by the controllers from `translationKey()` + `translationReplacements()`,
+ * built by the controllers from `self::TRANSLATION_KEY` + `translationReplacements()`,
  * so the 422 body is rendered in the requesting tenant's locale (house rule 11).
  * The quantities in `translationReplacements()` are rendered at the product unit's
  * own `decimal_places` via `QuantityScale::formatForUnit` (rule 19, display leg);
