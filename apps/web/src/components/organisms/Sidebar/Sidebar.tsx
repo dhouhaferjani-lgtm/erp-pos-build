@@ -233,7 +233,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
         // Web new-sale POS is retired — checkout runs in the IziPOS desktop app.
         // The /pos/transactions route stays registered as a translated info page
         // for deep links, but is intentionally not surfaced in the web nav.
-        { key: 'posOrders', href: '/pos/orders', icon: ClipboardList, permission: 'pos.operate_terminal' },
+        { key: 'posOrders', href: '/pos/orders', icon: ClipboardList, module: 'Menu', permission: 'pos.operate_terminal' },
         { key: 'tables', href: '/pos/tables', icon: LayoutGrid, module: 'Tables', permission: 'pos.manage_tables' },
         { key: 'kitchen', href: '/pos/kitchen', icon: ChefHat, module: 'Menu', permission: 'pos.operate_terminal' },
         { key: 'terminals', href: '/pos/terminals', icon: Monitor, permission: 'pos.manage_terminals' },

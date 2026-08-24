@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Enums\Vertical;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Domain\Entities\Modifier;
 use App\Modules\Catalog\Domain\Entities\ModifierGroup;
@@ -201,12 +202,30 @@ final class PosStabilizationTenantIsolationTest extends TestCase
 
     private function makeTenant(string $slug): Tenant
     {
+        // Session B lane Q-9: the live order/kitchen routes are now gated on
+        // `module:Menu` (rule 12). The column default vertical is `retail`,
+        // which has no Menu, so the cross-tenant order/kitchen probes below
+        // would 403 before ever reaching the tenant-scope check they exist to
+        // pin. `coffee_shop` + the extras `Loyalty`/`Inventory` is a strict
+        // module superset of `retail` AND product-valid: both extras sit in
+        // coffee_shop's `compatible_extras` (config/verticals.php), so
+        // `tenant:reconcile-modules` would keep them. (`restaurant` was the
+        // first choice — tenancy gate r1 C-1: `Loyalty` is NOT a compatible
+        // extra of restaurant, so reconcile would prune it and 403 the
+        // module:Loyalty cross-tenant probes below.)
+        //
+        // Session B lane Q-13 appends `Tables`: the floors/tables routes are now
+        // gated on `module:Tables` too, and the Group-3/Group-5 probes at
+        // /pos/tables* would 403 without it. `Tables` IS in coffee_shop's
+        // `compatible_extras` (config/verticals.php), so the fixture stays
+        // product-valid and reconcile-safe.
         return Tenant::create([
             'name' => "Tenant {$slug}",
             'slug' => $slug,
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
-            'enabled_extras' => ['Loyalty'],
+            'vertical' => Vertical::CoffeeShop,
+            'enabled_extras' => ['Loyalty', 'Inventory', 'Tables'],
         ]);
     }
 

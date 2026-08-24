@@ -524,7 +524,7 @@ final class VoucherLookupServiceTest extends TestCase
     // Auto-void after 5 failed attempts
     // -------------------------------------------------------------------------
 
-    public function test_5_failed_attempts_auto_voids_voucher_and_emits_fraud_alert(): void
+    public function test_5_failed_attempts_on_terminal_voucher_emits_fraud_alert_without_voiding(): void
     {
         Event::fake([VoucherFraudAlert::class]);
 
@@ -570,23 +570,96 @@ final class VoucherLookupServiceTest extends TestCase
         $this->assertInstanceOf(GenericLookupResult::class, $result);
         $this->assertFalse($result->exists);
 
-        // The voucher should now be Voided (auto-void triggered)
+        // Q-5: the auto-void now routes through VoucherVoidService, which refuses the
+        // void edge on a terminal status (finding #24). An Expired voucher is therefore
+        // NOT flipped to Voided any more — the fraud alert is the whole remediation, and
+        // the expired liability stays visible for the (unbuilt) expiry/breakage engine.
         $fresh = $voucher->fresh();
         $this->assertNotNull($fresh);
-        $this->assertSame(VoucherStatus::Voided, $fresh->status);
-        $this->assertEquals(0, bccomp($fresh->current_balance, '0', 5));
+        $this->assertSame(VoucherStatus::Expired, $fresh->status);
+        $this->assertEquals(0, bccomp($fresh->current_balance, '50.00000', 5));
 
-        // Voucher ledger must have a Voided event
+        // No Voided ledger row may be appended for a terminal-status voucher.
         $voidedEntry = VoucherLedger::where('voucher_id', $voucher->id)
             ->where('event', VoucherEvent::Voided->value)
             ->first();
-        $this->assertNotNull($voidedEntry);
+        $this->assertNull($voidedEntry);
 
         // VoucherFraudAlert event must have been dispatched
         Event::assertDispatched(VoucherFraudAlert::class, function (VoucherFraudAlert $event) use ($voucher): bool {
             return $event->voucherId === $voucher->id
                 && $event->attemptsCount >= VoucherLookupRateLimiter::PER_VOUCHER_FAILED_24H;
         });
+    }
+
+    /**
+     * Q-5 — an ALREADY-VOIDED voucher that keeps being scanned reaches
+     * autoVoidVoucher() on every failed in-session lookup (the status guard at
+     * lookupForPayment() sends every non-active status down that path). Before the
+     * fix it appended a SECOND Voided ledger row each time, breaking the
+     * SUM(voucher_ledger.amount) == vouchers.current_balance reconciliation.
+     */
+    public function test_5_failed_attempts_on_already_voided_voucher_does_not_append_a_second_voided_row(): void
+    {
+        Event::fake([VoucherFraudAlert::class]);
+
+        $voucher = $this->issueVoucher('50.00000');
+        $openReceipt = $this->makeOpenReceipt();
+
+        // Voucher is already voided (one Voided ledger row on record).
+        VoucherLedger::forceCreate([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $voucher->tenant_id,
+            'company_id' => $voucher->company_id,
+            'voucher_id' => $voucher->id,
+            'event' => VoucherEvent::Voided,
+            'amount' => '-50.00000',
+            'currency' => $voucher->currency,
+            'receipt_id' => null,
+            'terminal_id' => null,
+            'user_id' => $this->cashier->id,
+            'gl_journal_entry_id' => null,
+            'authorized_by_user_id' => null,
+            'policy_trigger' => 'manual_void',
+            'reverses_voucher_ledger_id' => null,
+            'occurred_at' => Carbon::now(),
+        ]);
+        $voucher->update([
+            'status' => VoucherStatus::Voided,
+            'current_balance' => '0.00000',
+        ]);
+
+        $this->assertSame(
+            1,
+            VoucherLedger::where('voucher_id', $voucher->id)
+                ->where('event', VoucherEvent::Voided->value)
+                ->count()
+        );
+
+        // Now drive the fraud counter to the auto-void threshold.
+        $rateLimiter = app(RateLimiter::class);
+        $voucherKey = "voucher_lookup:voucher_failed:{$voucher->id}";
+        for ($i = 0; $i < 4; $i++) {
+            $rateLimiter->hit($voucherKey, 86400);
+        }
+
+        $this->makeService()->lookupForPayment(
+            $voucher->code,
+            $openReceipt,
+            $this->terminal,
+            $this->cashier,
+            '127.0.0.1',
+        );
+
+        $this->assertSame(
+            1,
+            VoucherLedger::where('voucher_id', $voucher->id)
+                ->where('event', VoucherEvent::Voided->value)
+                ->count(),
+            'An already-voided voucher must never receive a second Voided ledger row.'
+        );
+
+        Event::assertDispatched(VoucherFraudAlert::class);
     }
 
     // -------------------------------------------------------------------------
