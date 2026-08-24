@@ -579,8 +579,6 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
 
         // Create GL entry to clear the advance when the invoice is posted
         if (bccomp($totalPrepaid, '0.00', $this->scale()) > 0) {
-            $clearingEntry = null;
-
             try {
                 // N-6 fix round r1 / fiscal gate F-3 — SYNCHRONOUS, and the reason
                 // is the marker written below, not tidiness.
@@ -684,14 +682,15 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
             // posting path would then skip a 419 that is still credited. When the
             // entry is not posted the marker records only WHICH entry was
             // attempted, and the advance stays OPEN for the posting path to clear.
-            $clearingPosted = $clearingEntry instanceof JournalEntry
-                && $clearingEntry->fresh()?->status === JournalEntryStatus::Posted;
+            /** @var JournalEntry|null $reread */
+            $reread = JournalEntry::query()->find($clearingEntry->id);
+            $clearingPosted = $reread?->status === JournalEntryStatus::Posted;
 
             PaymentAllocation::query()
                 ->whereIn('id', $allocations->pluck('id')->all())
                 ->update([
                     'booked_as_advance' => true,
-                    'advance_journal_entry_id' => $clearingEntry?->id,
+                    'advance_journal_entry_id' => $clearingEntry->id,
                     'advance_cleared_at' => $clearingPosted ? now() : null,
                 ]);
         }

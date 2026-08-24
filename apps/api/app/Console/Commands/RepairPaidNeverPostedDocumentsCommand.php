@@ -253,7 +253,7 @@ final class RepairPaidNeverPostedDocumentsCommand extends Command
             ->orderBy('entry_date')
             ->first();
 
-        if (! $paymentEntry instanceof JournalEntry || ! $paymentEntry->entry_date instanceof Carbon) {
+        if (! $paymentEntry instanceof JournalEntry) {
             return [
                 ...$empty,
                 'reason' => 'SKIP — no posted customer-payment journal entry found for this invoice; nothing to restate (needs a human)',

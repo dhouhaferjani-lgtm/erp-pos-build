@@ -17,8 +17,8 @@ return [
     'posting_marker' => [
         'title' => 'Non comptabilisée — aucun scellement fiscal',
         'detail' => "Ce document n'a pas été comptabilisé. Il ne porte aucun scellement fiscal ni entrée dans la chaîne de hachage, et ne constitue pas une facture fiscale définitive.",
-        'cancelled_title' => "Annulée — ce document a été annulé",
-        'cancelled_detail' => "Ce document a été comptabilisé et scellé, puis annulé. Son scellement fiscal demeure dans la chaîne de hachage ; le document lui-même est nul et ne peut être utilisé comme justificatif.",
+        'cancelled_title' => 'Annulée — ce document a été annulé',
+        'cancelled_detail' => 'Ce document a été comptabilisé et scellé, puis annulé. Son scellement fiscal demeure dans la chaîne de hachage ; le document lui-même est nul et ne peut être utilisé comme justificatif.',
     ],
 
     'discount' => [

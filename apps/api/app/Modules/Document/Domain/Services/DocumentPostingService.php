@@ -226,6 +226,14 @@ final class DocumentPostingService
             return;
         }
 
+        // M-5 (treasury gate r1): `auth()` is the same shape rule 13 forbids in
+        // `app()`. It is kept here, deliberately and narrowly: `post()` takes no
+        // actor and threading one through every caller is a signature change
+        // across the posting surface, out of scope for a fix round. The value is
+        // ADVISORY only — `clearCustomerAdvanceForDocument()` accepts null and
+        // the entry posts either way (`postEntryNow` is null-actor safe), so a
+        // console or queued post loses attribution, never the entry. Recorded as
+        // a named residual rather than silently left.
         $actorId = auth()->id();
         $journalEntryId = $this->advanceClearing->clearCustomerAdvanceForDocument(
             $invoice,

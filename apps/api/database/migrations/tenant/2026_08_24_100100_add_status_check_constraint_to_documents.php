@@ -103,6 +103,22 @@ return new class extends Migration
      * `DocumentStatus` without touching this file would otherwise be rejected by
      * a constraint written from memory.
      */
+    /**
+     * FROZEN AT MIGRATION-RUN TIME — the follow-up obligation, stated because
+     * the r1 docblock's "derived from the enum, never hand-listed" was read as
+     * meaning the constraint tracks the enum (treasury gate r1 M-3).
+     *
+     * It does not. The value list is materialised into SQL when THIS migration
+     * runs on THIS tenant. Adding a `DocumentStatus` case later leaves every
+     * already-migrated tenant with the OLD constraint, which will then reject
+     * the new value at INSERT time, per tenant, at runtime — while the
+     * application happily accepts it.
+     *
+     * **A new `DocumentStatus` case therefore needs its own widening migration**
+     * (`DROP CONSTRAINT IF EXISTS` + `ADD CONSTRAINT`, the same two statements
+     * `up()` runs). `DocumentStatusCheckConstraintParityTest` fails the moment
+     * the two disagree, so the obligation is enforced, not merely documented.
+     */
     private function quotedValues(): string
     {
         return implode(', ', array_map(

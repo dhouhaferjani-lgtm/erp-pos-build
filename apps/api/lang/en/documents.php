@@ -17,8 +17,8 @@ return [
     'posting_marker' => [
         'title' => 'Not yet posted — no fiscal seal',
         'detail' => 'This document has not been posted to the accounts. It carries no fiscal seal and no hash-chain entry, and is not a definitive fiscal invoice.',
-        'cancelled_title' => "Cancelled — this document has been voided",
-        'cancelled_detail' => "This document was posted and sealed, and has since been cancelled. Its fiscal seal remains in the hash chain; the document itself is void and must not be used as a claim.",
+        'cancelled_title' => 'Cancelled — this document has been voided',
+        'cancelled_detail' => 'This document was posted and sealed, and has since been cancelled. Its fiscal seal remains in the hash chain; the document itself is void and must not be used as a claim.',
     ],
 
     /*
