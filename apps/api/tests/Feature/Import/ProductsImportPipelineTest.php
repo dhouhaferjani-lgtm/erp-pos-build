@@ -20,6 +20,7 @@ use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\Product\Domain\Category;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -247,5 +248,94 @@ final class ProductsImportPipelineTest extends TestCase
         $row = ImportJob::findOrFail($jobId)->rows()->firstOrFail();
         $this->assertSame('ok', $row->data['_results']['opening_stock'] ?? null);
         $this->assertNull($row->warnings);
+    }
+
+    public function test_missing_category_is_created_linked_and_reported_instead_of_silently_dropped(): void
+    {
+        // W2-3: the products import used to LOOK UP category_name and drop it on
+        // miss. On a day-one tenant `categories` is empty and there is no
+        // categories ImportType (ImportType.php:125 lists category_name as a
+        // PRODUCTS column), so lookup-only meant every category was discarded.
+        $file = UploadedFile::fake()->createWithContent('products-cat.csv', implode("\n", [
+            'name,sku,type,category_name',
+            'Creme hydratante Bebe 200ml,CREM-BEBE_200,part,Soins Bebe',
+            'Lingettes Bebe,LING-BEBE_72,part,Soins Bebe',
+            'Elixir apaisant,ELIX-APAI_50,part,Aromatherapie',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', ['file' => $file, 'type' => 'products']);
+        $createResponse->assertCreated();
+        $jobId = $createResponse->json('data.id');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.successful_rows', 3)
+            ->assertJsonPath('data.failed_rows', 0);
+
+        $soins = Category::where('company_id', $this->company->id)->where('name', 'Soins Bebe')->first();
+        $this->assertNotNull($soins, 'category_name must create the missing category, not drop it');
+        $aroma = Category::where('company_id', $this->company->id)->where('name', 'Aromatherapie')->first();
+        $this->assertNotNull($aroma);
+        $this->assertSame(2, Category::where('company_id', $this->company->id)->count());
+
+        $this->assertSame($soins->id, Product::where('sku', 'CREM-BEBE_200')->firstOrFail()->category_id);
+        $this->assertSame($soins->id, Product::where('sku', 'LING-BEBE_72')->firstOrFail()->category_id);
+        $this->assertSame($aroma->id, Product::where('sku', 'ELIX-APAI_50')->firstOrFail()->category_id);
+
+        $rows = ImportJob::findOrFail($jobId)->rows()->orderBy('row_number')->get()->keyBy('row_number');
+
+        // Row 1 created the category -> reported. Row 2 reused it -> matched, no warning.
+        $this->assertSame('category_created', $rows[1]->warnings[0]['code'] ?? null);
+        $this->assertStringContainsString('Soins Bebe', (string) ($rows[1]->warnings[0]['detail'] ?? ''));
+        $this->assertSame('created', $rows[1]->data['_results']['category'] ?? null);
+        $this->assertNull($rows[2]->warnings);
+        $this->assertSame('matched', $rows[2]->data['_results']['category'] ?? null);
+        $this->assertSame('category_created', $rows[3]->warnings[0]['code'] ?? null);
+    }
+
+    public function test_re_importing_the_same_categories_reuses_them_without_duplicates_or_warnings(): void
+    {
+        $existing = Category::create([
+            'company_id' => $this->company->id,
+            'name' => 'Hygiene',
+        ]);
+
+        $rowsCsv = [
+            'name,sku,type,category_name',
+            'Gel douche,GEL-CAVA_500,part,Hygiene',
+            // Slug-equivalent spelling of the SAME category: must match, never
+            // collide on the unique (company_id, slug) index.
+            'Savon doux,SAVO-DOUX_100,part,hygiene',
+        ];
+
+        foreach ([1, 2] as $pass) {
+            $file = UploadedFile::fake()->createWithContent("products-cat-{$pass}.csv", implode("\n", $rowsCsv));
+
+            $createResponse = $this->actingAs($this->user, 'sanctum')
+                ->postJson('/api/v1/imports', ['file' => $file, 'type' => 'products']);
+            $createResponse->assertCreated();
+            $jobId = $createResponse->json('data.id');
+
+            $this->actingAs($this->user, 'sanctum')
+                ->postJson("/api/v1/imports/{$jobId}/execute")
+                ->assertOk()
+                ->assertJsonPath('data.failed_rows', 0)
+                ->assertJsonPath('data.warning_rows', 0);
+
+            $this->assertSame(
+                1,
+                Category::where('company_id', $this->company->id)->count(),
+                "pass {$pass}: re-import must not duplicate an existing category"
+            );
+
+            foreach (['GEL-CAVA_500', 'SAVO-DOUX_100'] as $sku) {
+                $this->assertSame($existing->id, Product::where('sku', $sku)->firstOrFail()->category_id);
+            }
+
+            $row = ImportJob::findOrFail($jobId)->rows()->orderBy('row_number')->firstOrFail();
+            $this->assertSame('matched', $row->data['_results']['category'] ?? null);
+        }
     }
 }

@@ -15,6 +15,7 @@ use App\Shared\Contracts\CompositeItemServiceInterface;
 use App\Shared\Contracts\PartnerServiceInterface;
 use App\Shared\Contracts\ProductServiceInterface;
 use App\Shared\Contracts\TaxDefaultResolverInterface;
+use App\Shared\Enums\CategoryResolutionOutcome;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -519,6 +520,14 @@ final class ImportService
             $data['_results'] = array_merge($data['_results'] ?? [], ['tax_source' => 'default']);
         }
 
+        // W2-3: resolve the category BEFORE the upsert so the row can report what
+        // happened. The upsert resolves the same name through the same idempotent
+        // service and therefore finds this row; nothing is created twice.
+        $categoryOutcome = $this->resolveRowCategory($companyId, $data);
+        if ($categoryOutcome !== null) {
+            $data['_results'] = array_merge($data['_results'] ?? [], ['category' => $categoryOutcome->value]);
+        }
+
         $row->update(['data' => $data]);
 
         $productId = $this->productService->upsert($job->tenant_id, $companyId, $data);
@@ -527,9 +536,38 @@ final class ImportService
             $this->addRowWarning($row, $warning['code'], $warning['detail']);
         }
 
+        if ($categoryOutcome !== null && $categoryOutcome->isStateChange()) {
+            $this->addRowWarning(
+                $row,
+                'category_'.$categoryOutcome->value,
+                sprintf(
+                    'category "%s" did not exist and was %s from this row',
+                    trim((string) $data['category_name']),
+                    $categoryOutcome->value,
+                ),
+            );
+        }
+
         $this->productPlacementImportService->commitRow($job, $row, $productId);
 
         return $productId;
+    }
+
+    /**
+     * Resolve a product row's `category_name` to a company category, creating it
+     * on a miss (W2-3). Returns null when the row carries no category at all.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function resolveRowCategory(string $companyId, array $data): ?CategoryResolutionOutcome
+    {
+        $name = trim((string) ($data['category_name'] ?? ''));
+
+        if ($name === '') {
+            return null;
+        }
+
+        return $this->productService->resolveCategoryByName($companyId, $name)->outcome;
     }
 
     /**
