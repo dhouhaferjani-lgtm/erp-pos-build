@@ -35,9 +35,11 @@ was wrong in both directions**:
 
 | Population | columns | COVERED | MISSING | NARROWER | baselined |
 |---|---|---|---|---|---|
-| enum-governed tenant columns (asserted) | **244** | 54 | 189 | 1 | **190** |
+| enum-governed tenant columns (asserted) | **245**¹ | 54 | 190 | 1 | **191** → ⏳ final after the D-1 fix round (rows moving to INTENDED / COVERED_BY_COMPOSITE) |
 | of which `*status`-suffixed (comparable to §#26) | 74 | 15 | 59 | 0 | 59 |
-| central-DB columns (reported, not asserted) | 20 | — | — | — | — |
+| central-DB columns (reported, not asserted) | 20 | 9 | — | — | — (central assertion added in the fix round, T-3) |
+
+¹ 244 at `70adfcb2e`; the tenancy gate found `products.enrichment_status` (cast to `App\Shared\Enums\EnrichmentStatus`, no CHECK) silently excluded by the `Domain/Enums` filter — population widened to `Shared/Enums` in the fix round.
 
 Why §#26 was wrong: it grepped for `ADD CONSTRAINT … CHECK` and so missed every `$table->enum()` column (Laravel renders varchar +
 an auto-named `{table}_{column}_check` on PG) — `pos_receipts.fiscal_status`, `impersonation_grants.status`,
