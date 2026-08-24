@@ -537,7 +537,15 @@ final class OrderManagementService
      * Validates transitions: Sent→Preparing→Ready, any→Cancelled.
      * When all non-cancelled lines are Ready, auto-transitions order to Ready.
      *
-     * @throws \RuntimeException If transition is invalid
+     * Refuses outright when the OWNING order is in a terminal state (Cancelled
+     * or Closed). Session B lane Q-9 / triage SM-1: cancelOrder deliberately
+     * leaves lines at their pre-cancellation status, so a `sent` line survives
+     * on a Cancelled order; without this guard a line PATCH to `ready` flowed
+     * into checkAndTransitionOrderToReady and flipped the order back to Ready
+     * — stamping ready_at next to a populated cancelled_at, re-entering the KDS
+     * feed, and broadcasting a spurious OrderReady.
+     *
+     * @throws \RuntimeException If transition is invalid or the order is terminal
      */
     public function updateLineStatus(string $orderId, string $lineId, OrderLineStatus $newStatus): OrderLine
     {
@@ -551,6 +559,16 @@ final class OrderManagementService
                 ->where('id', $orderId)
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            // Terminal-state guard (Session B lane Q-9 / triage SM-1). A
+            // Cancelled or Closed order is done: no line of it may change
+            // status, because checkAndTransitionOrderToReady below would then
+            // resurrect the order into Ready.
+            if (! $order->status->isActive()) {
+                throw new \RuntimeException(
+                    "Order lines cannot be updated on a {$order->status->value} order."
+                );
+            }
 
             /** @var OrderLine $line */
             $line = OrderLine::where('order_id', $order->id)->findOrFail($lineId);
@@ -709,6 +727,11 @@ final class OrderManagementService
 
     /**
      * Check if all non-cancelled lines are Ready and auto-transition order.
+     *
+     * Defence in depth for the same hole `updateLineStatus` guards (Session B
+     * lane Q-9 / triage SM-1): the transition fires only out of an ACTIVE
+     * status. A Cancelled or Closed order must never flip to Ready, and Ready
+     * itself must not be re-stamped.
      */
     private function checkAndTransitionOrderToReady(Order $order): void
     {
@@ -722,7 +745,7 @@ final class OrderManagementService
 
         $allReady = $nonCancelledLines->every(fn (OrderLine $line): bool => $line->status === OrderLineStatus::Ready);
 
-        if ($allReady && $order->status !== OrderStatus::Ready) {
+        if ($allReady && $order->status->isActive() && $order->status !== OrderStatus::Ready) {
             $order->update([
                 'status' => OrderStatus::Ready,
                 'ready_at' => Carbon::now(),
