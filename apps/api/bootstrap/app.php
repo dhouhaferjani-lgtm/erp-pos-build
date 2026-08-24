@@ -32,6 +32,7 @@ use App\Modules\Inventory\Domain\Exceptions\BatchNotApplicableException;
 use App\Modules\Inventory\Domain\Exceptions\BatchRequiredForLineException;
 use App\Modules\Inventory\Domain\Exceptions\CannotCorrectACorrectionException;
 use App\Modules\Inventory\Domain\Exceptions\ContraLinesImmutableException;
+use App\Modules\Inventory\Domain\Exceptions\CountingTransitionException;
 use App\Modules\Inventory\Domain\Exceptions\LineTenantMismatchException;
 use App\Modules\Inventory\Domain\Exceptions\StockAdjustmentStateException;
 use App\Modules\Inventory\Domain\Exceptions\StockMovedSinceAuthoringException;
@@ -911,6 +912,30 @@ return Application::configure(basePath: dirname(__DIR__))
                         'code' => $e->refusalCode->value,
                         'message' => $e->getMessage(),
                         'document_number' => $e->documentNumber,
+                    ],
+                ], 422);
+            }
+        });
+
+        // Session B lane Q-2 — an inventory-counting status transition refused.
+        // Registered BEFORE the generic DomainException handler, which it
+        // extends: Laravel 11 matches render callbacks in REGISTRATION ORDER, so
+        // below it the typed code would collapse into BUSINESS_ERROR.
+        //
+        // Typed because the counting UI has to branch on WHY. "Another
+        // supervisor already finalized this count" is a reload-and-move-on, and
+        // "this phase has already closed" sends the counter back to the
+        // worklist — the current/attempted pair is the discriminator, so it is
+        // surfaced as fields rather than left for the FE to parse out of prose.
+        $exceptions->render(function (CountingTransitionException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => CountingTransitionException::CODE,
+                        'message' => $e->getMessage(),
+                        'counting_id' => $e->countingId,
+                        'current_status' => $e->currentStatus->value,
+                        'attempted_status' => $e->attemptedStatus->value,
                     ],
                 ], 422);
             }

@@ -10,6 +10,7 @@ use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Enums\TransferStatus;
 use App\Modules\Inventory\Domain\Events\StockMovementRecorded;
 use App\Modules\Inventory\Domain\Events\StockMovementRecordedV2;
+use App\Modules\Inventory\Domain\Exceptions\InsufficientStockForFulfilmentException;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
@@ -20,6 +21,8 @@ use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use App\Shared\Domain\Enums\StockMovementReferenceType;
+use App\Shared\Domain\QuantityScale;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -389,12 +392,40 @@ class WeightedAverageCostService
         return DB::transaction(function () use ($product, $location, $quantity, $reference, $referenceType, $referenceId): StockMovement {
             // Lock stock level to prevent concurrent modifications.
             // company_id added to the tuple (api.inventory.032).
-            $stockLevel = StockLevel::where('product_id', $product->id)
-                ->where('location_id', $location->id)
-                ->where('tenant_id', $product->tenant_id)
-                ->where('company_id', $product->company_id)
-                ->lockForUpdate()
-                ->firstOrFail();
+            //
+            // 🚨 Campaign N-2: `firstOrFail()` STAYS — this method must never
+            // create a `stock_levels` row (pinned by
+            // `InventoryCostLockCoverageTest::test_lock_free_methods_operate_only_on_existing_rows`:
+            // being lock-free is only safe because it mutates an already-existing
+            // row and cannot produce the phantom rows a pure row-lock strategy
+            // would miss). What changes is only how the absence is REPORTED: a
+            // day-one product has no row, and letting `ModelNotFoundException`
+            // escape produced a raw 404 on the two invoice convenience endpoints
+            // (and on sales-order confirm, via the reservation lane), while on
+            // delivery-note confirm the controller's pre-existing
+            // `catch (\RuntimeException)` arm swallowed it into a misleading 422
+            // `CONFIGURATION_ERROR` — `ModelNotFoundException` IS a
+            // `\RuntimeException` (gate r1 M-1). An absent row is available 0,
+            // which is exactly the negative-residual refusal below.
+            try {
+                $stockLevel = StockLevel::where('product_id', $product->id)
+                    ->where('location_id', $location->id)
+                    ->where('tenant_id', $product->tenant_id)
+                    ->where('company_id', $product->company_id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+            } catch (ModelNotFoundException) {
+                throw new InsufficientStockForFulfilmentException(
+                    productId: $product->id,
+                    productName: $product->name,
+                    locationId: $location->id,
+                    locationName: $location->name,
+                    available: '0.0000',
+                    requested: QuantityScale::formatForUnit($quantity, null),
+                    quantityDecimals: $product->unitOfMeasure?->decimal_places,
+                    roundingMethod: $product->unitOfMeasure?->rounding_method->value,
+                );
+            }
 
             // Lock product to get consistent cost price — scoped to the
             // input product's own tenant + company.
@@ -415,10 +446,24 @@ class WeightedAverageCostService
             $currentQty = CurrencyScale::bcformat($stockLevel->quantity, 4);
             $newQty = bcsub($currentQty, $quantityStr, 4);
 
-            // Validate sufficient stock
+            // Validate sufficient stock.
+            //
+            // Campaign N-2: this refusal and the absent-row refusal above are the
+            // SAME business answer, so they now raise the SAME typed exception and
+            // reach the operator as one `INSUFFICIENT_STOCK` 422. It used to be a
+            // bare `\DomainException`, which the delivery-note controller
+            // mistranslated into `INVALID_STATUS_TRANSITION` — a stock shortfall
+            // is not a status-transition error.
             if (bccomp($newQty, '0', 4) < 0) {
-                throw new \DomainException(
-                    "Insufficient stock for product {$product->id}. Available: {$currentQty}, Requested: {$quantityStr}"
+                throw new InsufficientStockForFulfilmentException(
+                    productId: $product->id,
+                    productName: $product->name,
+                    locationId: $location->id,
+                    locationName: $location->name,
+                    available: $currentQty,
+                    requested: $quantityStr,
+                    quantityDecimals: $product->unitOfMeasure?->decimal_places,
+                    roundingMethod: $product->unitOfMeasure?->rounding_method->value,
                 );
             }
 

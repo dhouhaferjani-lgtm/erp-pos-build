@@ -21,6 +21,7 @@ use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\Exceptions\InsufficientStockForFulfilmentException;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
 use App\Modules\Vehicle\Application\Services\VehicleContextBuilder;
@@ -520,6 +521,21 @@ class SalesOrderController extends Controller
                 // Use the SalesOrderService for proper lifecycle management with stock reservations
                 return $this->salesOrderService->confirm($lockedDocument);
             });
+        } catch (InsufficientStockForFulfilmentException $e) {
+            // Campaign N-2: a stock shortfall — including a tuple with NO
+            // `stock_levels` row at all — is a 422 refusal with its own machine
+            // code. On base this endpoint answered a raw 404 for the absent row
+            // (`ModelNotFoundException` escaping the reservation lane) and a 500
+            // for an existing row at quantity 0 (a bare `\RuntimeException` that
+            // no arm here caught). Never `INVALID_STATUS_TRANSITION`. Caught
+            // BEFORE the broader handlers below because it is a subclass of
+            // `\RuntimeException`.
+            return $this->validationErrorResponse(
+                InsufficientStockForFulfilmentException::ERROR_CODE,
+                // Gate r1 I-3: the OPERATOR reads this in the tenant's locale
+                // (house rule 11). `$e->getMessage()` stays the English log text.
+                __(InsufficientStockForFulfilmentException::TRANSLATION_KEY, $e->translationReplacements()),
+            );
         } catch (\DomainException $e) {
             return $this->validationErrorResponse('INVALID_STATUS_TRANSITION', $e->getMessage());
         }
