@@ -41,9 +41,8 @@ vi.mock('react-i18next', () => ({
         'sales:lineItems.priceSource.none': 'No purchase price on file',
       }
       const resolved = map[key] ?? key
-      return options !== undefined && typeof options.amount === 'string'
-        ? `${resolved} ${options.amount}`
-        : resolved
+      const amount = options?.['amount']
+      return typeof amount === 'string' ? `${resolved} ${amount}` : resolved
     },
   }),
 }))
@@ -114,7 +113,7 @@ async function addLine(documentType: string, product: ProductLineProduct): Promi
   addedProduct = product
   render(<Harness documentType={documentType} />, { wrapper })
   await userEvent.click(screen.getByText('add-product'))
-  return screen.getByLabelText('Unit price') as HTMLInputElement
+  return screen.getByLabelText<HTMLInputElement>('Unit price')
 }
 
 describe('DocumentLineEditor — purchase-document unit-price default (W2-6)', () => {

@@ -45,6 +45,89 @@ function decimalValue(value: string | number | null | undefined): string {
   return String(value)
 }
 
+/**
+ * Display value for a money input. Identical to {@link decimalValue} except it
+ * lets a deliberately EMPTY price stay empty instead of showing a fabricated
+ * `0` — the operator must see a blank field and type the real price (W2-6).
+ */
+function moneyInputValue(value: string | number | null | undefined): string {
+  return value === '' ? '' : decimalValue(value)
+}
+
+/**
+ * Document types whose lines are PURCHASES (money leaving the company). Their
+ * unit price is a BUYING price and must never be seeded from the retail
+ * `sale_price` — see {@link resolveLineUnitPriceDefault}.
+ *
+ * `purchase_order` is currently the only purchase type routed through this
+ * editor (DocumentForm.tsx documentTypeToApiEndpoint); RFQ lines have their own
+ * page and the RFQ → PO award carries the supplier's QUOTED price across
+ * (PurchaseQuoteRequestAwardService.php:136), so it needs no default here.
+ */
+const PURCHASE_DOCUMENT_TYPES: ReadonlySet<string> = new Set(['purchase_order'])
+
+/** Where a freshly added line's unit price came from — surfaced to the operator. */
+type UnitPriceDefaultSource = 'product_purchase_price' | 'product_sale_price' | 'none'
+
+interface UnitPriceDefault {
+  /** Canonical decimal string, or '' meaning "no default — operator must type". */
+  price: string
+  source: UnitPriceDefaultSource
+}
+
+function isBlankMoney(value: string | number | null | undefined): boolean {
+  return value === null || value === undefined || String(value).trim() === ''
+}
+
+/**
+ * Unit-price default for a newly added line — campaign defect W2-6 (P1).
+ *
+ * A purchase-order line used to inherit `products.sale_price`: an operator who
+ * accepted the default booked the goods receipt at RETAIL, inflating stock
+ * valuation and WAC by ~64% on the wave-2 tenant (Dr 37 1 852,000 instead of
+ * 1 130,000) and matching the supplier invoice against the wrong money.
+ *
+ * PURCHASE precedence (in order):
+ *   1. Supplier-specific purchase price — NOT AVAILABLE. `price_lists` /
+ *      `partner_price_lists` carry no purchase/sale discriminator and are
+ *      consumed sale-side only (PricingService::getPrice falls back to
+ *      `sale_price` as `base_price`), so they cannot be read as supplier
+ *      buying prices without a schema change. There is no supplier-product
+ *      price table. When one lands, it plugs in HERE, ahead of step 2.
+ *   2. `products.purchase_price` — the canonical buying price. Same field the
+ *      server-side PO builder already uses
+ *      (DraftPurchaseOrderService.php:142 `$product->purchase_price ?? '0'`)
+ *      and the supplier-DN committer falls back to
+ *      (SupplierDeliveryNoteCommitter.php:137).
+ *   3. EMPTY — the operator types the price. Reached when the product carries
+ *      no purchase price, and also when the API redacted it for a caller
+ *      without `pricing.view_cost_prices` (ProductData::withoutCostFields).
+ *      Empty is correct in both cases: a blank field is honest, a retail price
+ *      is not.
+ *
+ * DELIBERATELY EXCLUDED as purchase sources:
+ *   - `products.cost_price` — the perpetual weighted-average COST (a
+ *     valuation, not a price): WeightedAverageCostService.php:291.
+ *   - `products.last_purchase_cost` — the LANDED unit cost, freight/duty
+ *     already allocated in (WeightedAverageCostService.php:292-294). Seeding a
+ *     PO line with it would bake landed costs into the price the supplier is
+ *     asked to invoice and then fail the three-way match against it.
+ *
+ * Sale documents are untouched: they still default to `sale_price`.
+ */
+function resolveLineUnitPriceDefault(
+  product: Pick<Product, 'sale_price' | 'purchase_price'>,
+  isPurchaseDocument: boolean,
+): UnitPriceDefault {
+  if (!isPurchaseDocument) {
+    return { price: decimalValue(product.sale_price), source: 'product_sale_price' }
+  }
+  if (!isBlankMoney(product.purchase_price)) {
+    return { price: String(product.purchase_price), source: 'product_purchase_price' }
+  }
+  return { price: '', source: 'none' }
+}
+
 function calculateDiscountedSubtotal(
   quantity: string | number,
   unitPrice: string | number,
@@ -96,6 +179,7 @@ interface Product {
   sku?: string | null
   barcode?: string | null
   sale_price?: string | number | null
+  purchase_price?: string | number | null
   tax_rate?: string | number | null
   default_tax_configuration_id?: string | null
   quantity_decimals?: number | null
@@ -217,6 +301,11 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   // arrived from the API/an import defaults to amount mode instead of being
   // silently clobbered by touching the percent cell.
   const [discountModeOverrides, setDiscountModeOverrides] = useState<Record<string, 'percent' | 'amount' | undefined>>({})
+  // Where each freshly added line's unit price came from, so the operator can
+  // see the provenance of a number they did not type (W2-6). UI-only state on
+  // purpose: it must never reach the API line payload. Dropped for a line as
+  // soon as the operator edits that line's price.
+  const [priceSourceByLineId, setPriceSourceByLineId] = useState<Record<string, UnitPriceDefaultSource | undefined>>({})
   const linesRef = useRef(lines)
 
   useEffect(() => {
@@ -227,6 +316,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   const companyCurrency = currentCompany?.currency ?? 'EUR'
   const companyLocale = currentCompany?.locale.replace('_', '-') ?? 'en-US'
   const taxDocumentType = taxSelectorDocumentType(documentType)
+  const isPurchaseDocument = documentType !== undefined && PURCHASE_DOCUMENT_TYPES.has(documentType)
   const purchaseBonusEnabled =
     documentType === 'purchase_order' &&
     hasModule('PurchaseBonus') &&
@@ -359,7 +449,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
         return
       }
 
-      const salePrice = decimalValue(product.sale_price)
+      const priceDefault = resolveLineUnitPriceDefault(product, isPurchaseDocument)
       const taxRate = decimalValue(product.tax_rate)
       const newLine: DocumentLine = {
         id: generateId(),
@@ -373,19 +463,20 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
         designation_default_snapshot: product.name,
         notes: null,
         quantity: String(incrementBy),
-        unit_price: salePrice,
+        unit_price: priceDefault.price,
         discount_percent: null,
         discount_amount: null,
         tax_rate: taxRate,
         tax_configuration_id: product.default_tax_configuration_id ?? null,
-        line_total: calculateLineTotal(incrementBy, salePrice, taxRate, null, null),
+        line_total: calculateLineTotal(incrementBy, priceDefault.price, taxRate, null, null),
         free_quantity: '0',
         price_entry_mode: 'unit',
         quantity_decimals: product.quantity_decimals ?? null,
       }
+      setPriceSourceByLineId((current) => ({ ...current, [newLine.id]: priceDefault.source }))
       onChange([...linesRef.current, newLine])
     },
-    [onChange]
+    [isPurchaseDocument, onChange]
   )
 
   const handleAddService = useCallback(
@@ -440,6 +531,15 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   // Update line
   const handleUpdateLine = useCallback(
     (lineId: string, updates: Partial<DocumentLine>) => {
+      // The provenance hint describes a price the operator did NOT type. Once
+      // they touch the price cell it stops being true, so it is dropped.
+      if ('unit_price' in updates || 'line_total' in updates || 'price_entry_mode' in updates) {
+        setPriceSourceByLineId((current) => {
+          if (current[lineId] === undefined) return current
+          const { [lineId]: _dropped, ...rest } = current
+          return rest
+        })
+      }
       onChange(
         linesRef.current.map((line) => {
           if (line.id !== lineId) return line
@@ -494,6 +594,11 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   // Remove line
   const handleRemoveLine = useCallback(
     (lineId: string) => {
+      setPriceSourceByLineId((current) => {
+        if (current[lineId] === undefined) return current
+        const { [lineId]: _dropped, ...rest } = current
+        return rest
+      })
       onChange(linesRef.current.filter((line) => line.id !== lineId))
     },
     [onChange]
@@ -644,6 +749,15 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
             ? t('sales:lineItems.pricing.policyWarning')
             : null
         const detailsOpen = openPricingLineId === line.id
+        // W2-6: on a purchase document the price the operator sees was NOT
+        // typed by them — say where it came from (or that nothing was on file)
+        // in the same small hint slot the sale-side pricing facts already use.
+        const priceSource = isPurchaseDocument ? priceSourceByLineId[line.id] : undefined
+        const priceSourceMessage = priceSource === 'product_purchase_price'
+          ? t('sales:lineItems.priceSource.productPurchasePrice', { amount: decimalValue(line.unit_price) })
+          : priceSource === 'none'
+            ? t('sales:lineItems.priceSource.none')
+            : null
 
         if (readonly) {
           return <span className={`text-sm ${textColors.primary}`}>{formatAmount(deriveUnitPrice(line))}</span>
@@ -672,7 +786,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                   currency={companyCurrency}
                   min="0"
                   error={isBlocked}
-                  value={decimalValue(line.unit_price)}
+                  value={moneyInputValue(line.unit_price)}
                   onFocus={() => {
                     setFocusedPriceLineId(line.id)
                   }}
@@ -700,6 +814,12 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                 </button>
               )}
             </div>
+
+            {priceSourceMessage !== null && (
+              <div className={`max-w-72 text-end text-[11px] leading-4 ${priceSource === 'none' ? textColors.warning : textColors.secondary}`}>
+                {priceSourceMessage}
+              </div>
+            )}
 
             {pricingItem !== undefined && (
               <div className={`max-w-72 text-end text-[11px] leading-4 ${isBlocked ? textColors.error : isWarning ? textColors.warning : textColors.secondary}`}>
@@ -914,6 +1034,8 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
     companyCurrency,
     designationFeatureEnabled,
     deriveUnitPrice,
+    isPurchaseDocument,
+    priceSourceByLineId,
     formatAmount,
     getDiscountMode,
     handleRemoveLine,

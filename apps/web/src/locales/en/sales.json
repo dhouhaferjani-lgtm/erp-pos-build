@@ -305,6 +305,10 @@
       "policyBlocked": "Margin blocked: {{permission}}",
       "policyWarning": "Margin warning"
     },
+    "priceSource": {
+      "productPurchasePrice": "From purchase price {{amount}}",
+      "none": "No purchase price on file — enter the supplier price"
+    },
     "discount": "Discount",
     "discountAmountPerLine": "Discount amount (per line)",
     "discountMaxHint": "Max {{amount}}",

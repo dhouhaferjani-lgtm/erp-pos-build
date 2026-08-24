@@ -24,6 +24,10 @@
       "policyBlocked": "الهامش محظور: {{permission}}",
       "policyWarning": "تحذير الهامش"
     },
+    "priceSource": {
+      "productPurchasePrice": "من سعر الشراء {{amount}}",
+      "none": "لا يوجد سعر شراء مسجّل — أدخل سعر المورّد"
+    },
     "discount": "الخصم",
     "discountAmountPerLine": "مبلغ الخصم (لكل بند)",
     "discountMaxHint": "الحد الأقصى {{amount}}",

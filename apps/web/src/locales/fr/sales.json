@@ -305,6 +305,10 @@
       "policyBlocked": "Marge bloquée : {{permission}}",
       "policyWarning": "Avertissement de marge"
     },
+    "priceSource": {
+      "productPurchasePrice": "D'après le prix d'achat {{amount}}",
+      "none": "Aucun prix d'achat enregistré — saisissez le prix fournisseur"
+    },
     "discount": "Remise",
     "discountAmountPerLine": "Montant de remise (par ligne)",
     "discountMaxHint": "Max {{amount}}",

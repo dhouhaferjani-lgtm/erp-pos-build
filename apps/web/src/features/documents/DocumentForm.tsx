@@ -226,7 +226,14 @@ function isZeroFreeQuantity(value: DocumentLine['free_quantity']): boolean {
 export function buildLinePayload(line: DocumentLine): LinePayload {
   const payload: LinePayload = {
     quantity: line.quantity,
-    unit_price: line.unit_price,
+    // W2-6: a purchase line whose product carries no purchase price starts
+    // EMPTY so the operator must type it. '' is a UI state, not a wire value —
+    // `lines.*.unit_price` is `required|numeric` server-side, and the draft
+    // autosave fires on every keystroke, so an empty cell would otherwise turn
+    // into a stream of 422s. Normalised to '0' on the wire ONLY: an unpriced
+    // draft line is visibly worth nothing, which is the honest state, and it
+    // never becomes the retail price.
+    unit_price: isBlank(line.unit_price) ? '0' : line.unit_price,
     line_total: line.line_total,
     price_entry_mode: line.price_entry_mode ?? 'unit',
     discount_percent: line.discount_percent ?? null,

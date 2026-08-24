@@ -7,6 +7,14 @@ export interface ProductLineProduct {
   sku?: string | null
   barcode?: string | null
   sale_price?: string | number | null
+  /**
+   * `products.purchase_price` — the operator-maintained buying price. Purchase
+   * documents default their line price from THIS field, never `sale_price`
+   * (campaign defect W2-6). Redacted to null by the API for callers lacking
+   * `pricing.view_cost_prices` (ProductData::withoutCostFields), which the
+   * resolver treats as "absent" → the operator types the price.
+   */
+  purchase_price?: string | number | null
   tax_rate?: string | number | null
   default_tax_configuration_id?: string | null
   quantity_decimals?: number | null
