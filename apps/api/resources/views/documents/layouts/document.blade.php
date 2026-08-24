@@ -324,6 +324,12 @@
             letter-spacing: 0.4px;
         }
 
+        .posting-marker--void {
+            border-color: #b91c1c;
+            background-color: #fef2f2;
+            color: #7f1d1d;
+        }
+
         /* Page Break */
         .page-break {
             page-break-after: always;
