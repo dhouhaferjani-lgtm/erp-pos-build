@@ -475,6 +475,22 @@ export function PartnerDetailPage() {
                   </div>
                 )}
 
+                {/* N-6: money collected on a CONFIRMED (unposted) invoice is an
+                    ADVANCE (Cr 419), not a settlement — the receivable above is
+                    correctly 0 for it. Without this line the cash would be
+                    invisible on the partner: `getNetBalance()` NETS
+                    `credit_balance` against `receivable_balance`, so an advance
+                    silently pushed the list-page figure negative with nothing
+                    naming it. */}
+                {isCustomerContext && bccomp(partner.credit_balance ?? '0', '0') > 0 && (
+                  <div className="flex justify-between">
+                    <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('fields.customerAdvances')}</dt>
+                    <dd className={`text-sm font-medium ${colorTokens.text.primary}`}>
+                      {formatAmount(partner.credit_balance ?? '0')}
+                    </dd>
+                  </div>
+                )}
+
                 {showDeliveryNotesTab && (
                   <PartnerUnbilledBalanceLine partnerId={partner.id} />
                 )}

@@ -142,6 +142,7 @@
     "year": "Year",
     "vin": "VIN",
     "totalReceivable": "Total Receivable",
+    "customerAdvances": "Advances held",
     "totalPayable": "Total Payable",
     "description": "Description",
     "currency": "Currency",
