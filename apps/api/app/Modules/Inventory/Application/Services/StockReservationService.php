@@ -295,24 +295,31 @@ class StockReservationService implements InventoryReservationServiceInterface, R
         string $available,
         string $requested,
     ): InsufficientStockForFulfilmentException {
-        $productName = Product::query()
+        $product = Product::query()
+            ->with('unitOfMeasure')
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->whereKey($productId)
-            ->value('name');
+            ->first();
 
         $locationName = Location::query()
             ->where('company_id', $company->id)
             ->whereKey($locationId)
             ->value('name');
 
+        // Gate r1 M-3: quantities reach the operator at the product UNIT's own
+        // precision (rule 19, display leg), not at the storage scale of 4.
+        $unit = $product?->unitOfMeasure;
+
         return new InsufficientStockForFulfilmentException(
             productId: $productId,
-            productName: is_string($productName) ? $productName : null,
+            productName: $product?->name,
             locationId: $locationId,
             locationName: is_string($locationName) ? $locationName : null,
             available: $available,
             requested: $requested,
+            quantityDecimals: $unit?->decimal_places,
+            roundingMethod: $unit?->rounding_method->value,
         );
     }
 

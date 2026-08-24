@@ -21,6 +21,7 @@ use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use App\Shared\Domain\Enums\StockMovementReferenceType;
+use App\Shared\Domain\QuantityScale;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -399,9 +400,13 @@ class WeightedAverageCostService
             // row and cannot produce the phantom rows a pure row-lock strategy
             // would miss). What changes is only how the absence is REPORTED: a
             // day-one product has no row, and letting `ModelNotFoundException`
-            // escape turned that into a raw 404 on delivery-note confirm and on
-            // the two invoice convenience endpoints. An absent row is available
-            // 0, which is exactly the negative-residual refusal below.
+            // escape produced a raw 404 on the two invoice convenience endpoints
+            // (and on sales-order confirm, via the reservation lane), while on
+            // delivery-note confirm the controller's pre-existing
+            // `catch (\RuntimeException)` arm swallowed it into a misleading 422
+            // `CONFIGURATION_ERROR` — `ModelNotFoundException` IS a
+            // `\RuntimeException` (gate r1 M-1). An absent row is available 0,
+            // which is exactly the negative-residual refusal below.
             try {
                 $stockLevel = StockLevel::where('product_id', $product->id)
                     ->where('location_id', $location->id)
@@ -416,7 +421,9 @@ class WeightedAverageCostService
                     locationId: $location->id,
                     locationName: $location->name,
                     available: '0.0000',
-                    requested: CurrencyScale::bcformat($quantity, 4),
+                    requested: QuantityScale::formatForUnit($quantity, null),
+                    quantityDecimals: $product->unitOfMeasure?->decimal_places,
+                    roundingMethod: $product->unitOfMeasure?->rounding_method->value,
                 );
             }
 
@@ -455,6 +462,8 @@ class WeightedAverageCostService
                     locationName: $location->name,
                     available: $currentQty,
                     requested: $quantityStr,
+                    quantityDecimals: $product->unitOfMeasure?->decimal_places,
+                    roundingMethod: $product->unitOfMeasure?->rounding_method->value,
                 );
             }
 
