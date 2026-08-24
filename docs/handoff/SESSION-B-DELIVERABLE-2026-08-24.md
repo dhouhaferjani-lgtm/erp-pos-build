@@ -27,14 +27,34 @@ non-waivable before the first forced release in prod). Green-field ruling 2026-0
 post-migrate `BLOCKED|FAILED` grep on the Q-7 token. `ci.yml` backend-pgsql `--filter` allowlist grew by 4 classes (Q-6, Q-7×2, Q-10) so the
 migration-bearing pins execute somewhere while their lanes are parked (B-3 precedent; S-14 leg applies to the promotion).
 
-## (b) CHECK burn-down — 76 → n
-⏳ Filled by Slice D-1 (`fix/sb-d1-pg-constraint-parity-test`): the `pg_constraint` enum↔CHECK parity test + shrink-only baseline + the
-derived register artifact. Wave 1 added exactly THREE status-column CHECKs (grep-verified on dev): `pos_terminals.type` + the `pos_terminals` lifecycle CHECK
-(Q-7, `2026_08_23_140000`) and `pos_held_orders.status` (Q-8, `2026_08_23_163000`). Q-5 did NOT ship `vouchers_status_check` (brief item
-deferred to Slice D). Q-6 replaced a trigger, not a CHECK. So the expected D-1 denominator is 76 − 2 enum-backed status columns
-(`pos_terminals.type`, `pos_held_orders.status`) = **74 uncovered** before Slice D batches; D-1's derived register is the authority.
+## (b) CHECK burn-down — the honest denominator (D-1 `70adfcb2e`, ⏳ dual gate in flight)
+
+D-1 derives the population MECHANICALLY (every Eloquent model's `$casts` → `app/**/Domain/Enums/*`, plus the governed audit columns)
+and reads `pg_constraint` on a freshly-migrated tenant schema. Result — **the audit's §#26 census (90 / 76 uncovered / 14 constrained)
+was wrong in both directions**:
+
+| Population | columns | COVERED | MISSING | NARROWER | baselined |
+|---|---|---|---|---|---|
+| enum-governed tenant columns (asserted) | **244** | 54 | 189 | 1 | **190** |
+| of which `*status`-suffixed (comparable to §#26) | 74 | 15 | 59 | 0 | 59 |
+| central-DB columns (reported, not asserted) | 20 | — | — | — | — |
+
+Why §#26 was wrong: it grepped for `ADD CONSTRAINT … CHECK` and so missed every `$table->enum()` column (Laravel renders varchar +
+an auto-named `{table}_{column}_check` on PG) — `pos_receipts.fiscal_status`, `impersonation_grants.status`,
+`impersonation_elevations.status` were ALREADY constrained; conversely the enum-governed population is 244, not 90.
+Wave 1 contributed 2 of the 54 COVERED (`pos_terminals.type`, `pos_held_orders.status`; Q-6 replaced a trigger, Q-5 did not ship
+`vouchers_status_check`). Two columns are un-gateable by construction and go to a cast/model lane, not a CHECK lane:
+`bank_reconciliations.status` (CHECK exists, NO Eloquent model) and `fiscal_event_quarantine.payload_parse_status` (no enum cast).
+
+**Immediate finding (already-divergent, not debt):** `fiscal_event_quarantine.integrity_exception_class` — CHECK admits 2 of the enum's
+6 cases → INSERT bomb on 4 quarantine classes. Fiscal-pos gate ruling ⏳.
+
+The artifact the owner reads is `apps/api/tests/Architecture/baselines/enum-check-parity-register.md` (column → enum → verdict);
+the ratchet is `EnumCheckParityTest` (PG-only, shrink-only baseline `enum-check-parity-baseline.json`, 190 keys) + 18 liveness/tamper
+tests. It runs in NO CI job yet (S-14): proposed home `treasury-spine-pgsql` + `backend-architecture`. Burn-down batches (Slice D
+proper) start from 190, money/fiscal-first, each censused + `NOT VALID`/`VALIDATE`.
 
 ## (c) Program spec + owner questions
 `docs/superpowers/specs/2026-08-23-state-machine-program-spec-skeleton.md` — workstreams G0/A/B/C/V/I/D/E; §R ratification questions
-outstanding. Additions from this session's gates: WS-A gains the KDS 422-swallow + `OrderCancelled` event gap (C-19); WS-V gains the
+outstanding. **Erratum for the spec:** §#26's 90/76/14 census is superseded by D-1's 244/190 (see (b)); the spec's Slice D sizing must be re-based. Additions from this session's gates: WS-A gains the KDS 422-swallow + `OrderCancelled` event gap (C-19); WS-V gains the
 fraud-counter / expiry-engine obligations (C-18 ii-iii); a Company-lane item for the manual single-period close (Q-10 residual).
