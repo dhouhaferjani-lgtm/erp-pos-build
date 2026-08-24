@@ -206,15 +206,19 @@ final class PosStabilizationTenantIsolationTest extends TestCase
         // `module:Menu` (rule 12). The column default vertical is `retail`,
         // which has no Menu, so the cross-tenant order/kitchen probes below
         // would 403 before ever reaching the tenant-scope check they exist to
-        // pin. `restaurant` is a strict module superset of `retail` here — it
-        // adds Menu/Tables/CompositeItems and, via the compatible `Inventory`
-        // extra, keeps the Inventory module retail had by default.
+        // pin. `coffee_shop` + the extras `Loyalty`/`Inventory` is a strict
+        // module superset of `retail` AND product-valid: both extras sit in
+        // coffee_shop's `compatible_extras` (config/verticals.php), so
+        // `tenant:reconcile-modules` would keep them. (`restaurant` was the
+        // first choice — tenancy gate r1 C-1: `Loyalty` is NOT a compatible
+        // extra of restaurant, so reconcile would prune it and 403 the
+        // module:Loyalty cross-tenant probes below.)
         return Tenant::create([
             'name' => "Tenant {$slug}",
             'slug' => $slug,
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
-            'vertical' => Vertical::Restaurant,
+            'vertical' => Vertical::CoffeeShop,
             'enabled_extras' => ['Loyalty', 'Inventory'],
         ]);
     }
