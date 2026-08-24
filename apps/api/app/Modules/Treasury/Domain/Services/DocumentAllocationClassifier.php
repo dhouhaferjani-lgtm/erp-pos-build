@@ -7,7 +7,6 @@ namespace App\Modules\Treasury\Domain\Services;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
-use App\Modules\Treasury\Application\Services\DocumentAllocationStateGuard;
 use App\Modules\Treasury\Domain\Enums\AllocationTreatment;
 use App\Modules\Treasury\Domain\Exceptions\DocumentNotAllocatableException;
 
@@ -45,7 +44,7 @@ use App\Modules\Treasury\Domain\Exceptions\DocumentNotAllocatableException;
  *   everything else                → `DocumentNotAllocatableException` (422)
  *
  * A DRAFT has committed nothing to the customer; a CANCELLED document is
- * withdrawn (W-7 F-6 — {@see DocumentAllocationStateGuard} covers the same
+ * withdrawn (W-7 F-6 — `App\Modules\Treasury\Application\Services\DocumentAllocationStateGuard` (R2-F4: FQCN text, not a Domain->Application `use`) covers the same
  * ground from the fiscal side and keeps its own refusal); a CREDIT NOTE is money
  * owed BY us and is never settled by a customer receipt on this path; a SUPPLIER
  * INVOICE is payable only through the supplier-aware `PaymentController::store()`

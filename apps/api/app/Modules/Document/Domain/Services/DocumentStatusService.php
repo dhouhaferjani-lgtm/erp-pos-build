@@ -12,22 +12,51 @@ use Illuminate\Support\Facades\Log;
 /**
  * The single write path for document lifecycle-status changes (N-6, Phase 1).
  *
- * WHAT IS AND IS NOT ROUTED THROUGH IT TODAY (fiscal gate r1 F-6 — the r1
- * docblock claimed more than the code delivered). ROUTED: the whole
- * `DocumentPostingService` (seal, non-fiscal post, cancel, sales-order cancel,
- * the three reverts), all seven treasury writers, and the four `Draft → Posted`
- * posting services (supplier invoice, supplier credit note, expense, income).
- * NOT ROUTED, and named so nobody has to re-derive it: `CorrectingEntryService`
- * (`Draft → Confirmed`, `Confirmed → Posted` — both edges ARE legal in the map,
- * it simply writes them itself), and every `create([... 'status' => …])` BIRTH
- * state, which is not a transition and is legitimately exempt
- * (`ArApOpeningService` is the load-bearing example).
+ * WHAT IS AND IS NOT ROUTED THROUGH IT TODAY — the r1 docblock claimed more
+ * than the code delivered (fiscal gate F-6), and the r2 correction of it still
+ * over-claimed (R2-F3). This list is measured, not remembered:
+ * `grep -rn "'status' => DocumentStatus::" app/` with each context read.
  *
- * Every caller that needs to move `documents.status` asks this service; it
- * consults {@see DocumentStatusMachine} and refuses a forbidden edge with
- * {@see DocumentTransitionException} (422 `DOCUMENT_TRANSITION_REFUSED`).
- * The custom PHPStan rule `App\PHPStan\Rules\DocumentStatusWriteOnlyViaStatusService`
- * enforces the Phase-1 half of that at static-analysis time.
+ * ROUTED (every edge below goes through `transition()`):
+ *   - `DocumentPostingService` — the seal, the non-fiscal post, cancel,
+ *     sales-order cancel, and the three reverts.
+ *   - all seven treasury writers (`PaymentAllocationService`,
+ *     `PaymentController` ×4, `MultiPaymentService` ×2,
+ *     `CloseInvoiceWithToleranceService`) plus the two re-open writers
+ *     (`PaymentRefundService`, `OutboundInstrumentService`).
+ *   - the four `Draft -> Posted` posting services: supplier invoice, supplier
+ *     credit note, expense, income.
+ *
+ * NOT ROUTED — real, live, non-birth transitions that still write `status`
+ * directly. Phase 2 owns them; naming them is the point, so the next reader
+ * does not have to re-derive the list and does not mistake this class for a
+ * complete write path:
+ *   - `RefundService:140`, `:289`, `:864` — `-> Cancelled` on an UNPOSTED
+ *     invoice or credit note. This is the writer that produces the
+ *     cancelled-but-never-sealed document the print marker has to describe
+ *     honestly (R2-F1); its `Posted` arm delegates to
+ *     `DocumentPostingService::cancel()`, so only the unsealed edge is loose.
+ *   - `DeliveryNoteService:180` and `ReturnNoteService:674` — `-> Confirmed`
+ *     written together with the SEAL columns (`fiscal_hash`, `previous_hash`,
+ *     `chain_sequence`). Called out explicitly because this lane edited both
+ *     methods (their chain predecessor is now keyed on the seal, F-1) without
+ *     routing the writes: these are hash-chain seals in their own right, and
+ *     moving them belongs with a DN/RN posting-service lane, not here.
+ *   - `SalesOrderService:96`, `:177`, `PurchaseOrderService:80`,
+ *     `InvoiceController:614`, `QuoteController:536`,
+ *     `CreditNoteController:279` — five `-> Confirmed` confirm sites.
+ *   - every `create([... 'status' => ...])` BIRTH state, which is not a
+ *     transition and is legitimately exempt (`ArApOpeningService` is the
+ *     load-bearing example — its rows are exactly what `wasNeverSealed()`
+ *     exempts).
+ *   - `CorrectingEntryService:115`, `:173` — `Draft -> Confirmed` and
+ *     `Confirmed -> Posted`; both edges ARE legal in the map, the service
+ *     simply writes them itself.
+ *
+ * NEITHER GUARD COVERS THAT REMAINDER, and the r1 claim that they did was
+ * wrong: the PHPStan rule scopes to `Paid` anywhere and `Posted` under
+ * `App\Modules\Treasury\`, and `chk_documents_status_enum` is a VALUE
+ * backstop, never an edge one.
  *
  * WHY THIS EXISTS. Seven treasury writers flipped a document to `Paid` on a
  * pure TYPE test (`DocumentType::canTransitionToPaid()`), which says nothing

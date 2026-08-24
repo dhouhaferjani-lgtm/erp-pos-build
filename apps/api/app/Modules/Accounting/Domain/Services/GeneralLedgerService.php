@@ -1880,7 +1880,42 @@ final class GeneralLedgerService
             // deterministic and independent of who triggered it, and posting
             // runs from `DocumentPostingService::post()` which has no actor of
             // its own.
-            $this->postEntryNow($entry, $user, $currencyCode);
+            //
+            // R2-F5 — NO ORPHAN DRAFT MAY SURVIVE A FAILED POST.
+            //
+            // The entry above was created inside its own `DB::transaction`.
+            // Under an enclosing transaction that is a SAVEPOINT which has
+            // already been released, so if `postEntryNow()` throws and the
+            // CALLER catches it (the converter downgrades a non-balance failure
+            // to a payload note), the draft entry stays durable — a journal
+            // entry that discharges nothing, that no reconcile consumes, and
+            // that nothing links to, since the caller returns before recording
+            // `advance_journal_entry_id`. That is the same orphan-Draft class
+            // F-3 just closed, minus the marker that would let anyone find it.
+            //
+            // Deleting it here fixes it for EVERY caller rather than asking each
+            // one to clean up: the entry is still DRAFT (unchained), so
+            // `JournalEntryObserver::deleting()` permits it, and a chained entry
+            // would refuse — which is the correct direction. The original
+            // exception is always re-thrown; the cleanup never masks it.
+            try {
+                $this->postEntryNow($entry, $user, $currencyCode);
+            } catch (\Throwable $postFailure) {
+                try {
+                    $entry->lines()->delete();
+                    $entry->delete();
+                } catch (\Throwable $cleanupFailure) {
+                    Log::warning('Could not remove the unposted customer-advance clearing entry', [
+                        'entry_id' => $entry->id,
+                        'entry_number' => $entry->entry_number,
+                        'company_id' => $companyId,
+                        'post_failure' => $postFailure->getMessage(),
+                        'cleanup_failure' => $cleanupFailure->getMessage(),
+                    ]);
+                }
+
+                throw $postFailure;
+            }
         } elseif ($user !== null) {
             $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
         }

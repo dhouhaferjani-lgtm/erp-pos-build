@@ -7,8 +7,6 @@ namespace App\Modules\Document\Domain\Services;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Exceptions\DocumentTransitionException;
-use App\Modules\Procurement\Application\SupplierCreditNotePostingService;
-use App\Modules\Procurement\Application\SupplierInvoicePostingService;
 use App\Modules\Workshop\WorkOrder\Domain\Services\StatusMachine;
 
 /**
@@ -90,9 +88,17 @@ final class DocumentStatusMachine
     }
 
     /**
-     * Types whose posting service takes them straight from `Draft` to `Posted`:
-     * {@see SupplierInvoicePostingService},
-     * {@see SupplierCreditNotePostingService},
+     * Types whose posting service takes them straight from `Draft` to `Posted`.
+     *
+     * R2-F4 — these are named as FQCN TEXT, never as `use` imports. A Domain
+     * class that imports an Application class is a rule-6 (and deptrac
+     * Domain->Application) edge even when the import exists only to satisfy a
+     * `{@see}`, and deptrac's configured emitters do NOT report docblock-only
+     * imports — so a green ratchet would not have caught it. Same edit F-9
+     * already applied to `DocumentStatusService`.
+     *
+     * `App\Modules\Procurement\Application\SupplierInvoicePostingService`,
+     * `App\Modules\Procurement\Application\SupplierCreditNotePostingService`,
      * `ExpenseService::post()` and `IncomeService::post()`.
      */
     private function postsDirectlyFromDraft(DocumentType $type): bool
