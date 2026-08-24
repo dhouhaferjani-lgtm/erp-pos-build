@@ -18,7 +18,7 @@
 | Q-8 | Held-order recall under txn+lock, typed 409, soft-delete discard, status CHECK | `5de9affe2` | fiscal r1 ACCEPT-w/-cond → 1-line sanctioned fix parent-verified | YES (CHECK) | C-16 |
 | Q-9 | F1 kitchen/order `module:Menu` both layers + SM-1 terminal-state guard (Cancelled→Ready chain closed) | `5e4a0af3e` | tenancy r1 CHANGES → fixture fix → fiscal r1 APPROVED | no | C-19 |
 | Q-13 | `module:Tables` backend gate (none existed) + device `pullTables` skip — owner go-ahead | `0a3b629ff` | tenancy r1 APPROVED | no | C-20 |
-| Q-10 | Fiscal-period quick fixes — per-company country rules (fail-safe skip), per-row audit stamps, permissioned Closed→Open reopen; scheduler respects reopens on all three arms | `f5cae1f12` | treasury r1 ACCEPT-w/-cond → fix round `8a285c495` → r2 ACCEPT | YES (additive-only) | C-23, S-20 |
+| Q-10 | Fiscal-period quick fixes — per-company country rules (fail-safe skip), per-row audit stamps, permissioned Closed→Open reopen; scheduler respects reopens on all three arms | `f5cae1f12` | treasury r1 ACCEPT-w/-cond → fix round `8a285c495` → r2 ACCEPT | YES (additive-only) | C-24, S-20 |
 | Q-11 | SupplierInvoice `match()` draft-guard + expense-number advisory lock | ⏳ queued (B-19 confirmed not in flight) | treasury | no | |
 | Q-12 | Treasury orphan census command (F5, read-only) | ⏳ queued | treasury | no | |
 
