@@ -77,6 +77,12 @@ return [
             '#/pos/shifts/[^/]+/(?:close|sync-close)(?:/|$)#i',
             '#/pos/voucher-ledger/sync(?:/|$)#i',
             '#/payments/[^/]+/(?:void|refund|partial-refund|reverse)(?:/|$)#i',
+            // Voucher void extinguishes an outstanding voucher liability and posts
+            // the GL reversal (Session B lane Q-5). It lives in the Voucher module,
+            // so the POS/Fiscal/Accounting controller-namespace arm of
+            // ImpersonationActionClassifier does not reach it; without this pattern
+            // it was hard-blocked only indirectly, via the permission intersection.
+            '#/vouchers/[^/]+/void(?:/|$)#i',
         ],
     ],
 ];

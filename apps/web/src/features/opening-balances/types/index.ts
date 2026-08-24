@@ -86,68 +86,109 @@ export interface ValidationResult {
   total_open_amount?: string
 }
 
-export interface PostPreview {
+/**
+ * Preview payloads for `GET /companies/{companyId}/opening-batches/{batchId}/preview`.
+ *
+ * N-3 (campaign report 2026-08-23 §N-3): the three variants are STRUCTURALLY
+ * DIFFERENT — ACCOUNTING carries an `entry` header, INVENTORY and AR/AP carry a
+ * `batch` header — and the previous single optional-everything interface claimed
+ * a `batch` key on all three, so `preview.batch.cutover_date` crashed the wizard
+ * on ACCOUNTING batches. These interfaces mirror the API EXACTLY (nothing
+ * optional that the API always sends, nothing declared that it never sends) and
+ * narrow on the server-sent `batch_type` discriminator.
+ *
+ * The exact key set of each variant is pinned server-side by
+ * `apps/api/tests/Feature/Accounting/OpeningBalancePreviewContractTest.php`.
+ */
+export interface AccountingPreviewLine {
+  row_number: number
+  account_code: string
+  account_name: string
+  debit: string
+  credit: string
+  description: string
+}
+
+export interface InventoryPreviewLine {
+  row_number: number
+  product_sku: string
+  product_name: string
+  location_code: string
+  location_name: string
+  quantity: string
+  quantity_decimals: number
+  unit_cost: string
+  line_value: string
+}
+
+export interface ArApPreviewDocument {
+  row_number: number
+  partner_code: string
+  partner_name: string
+  external_invoice_number: string
+  document_type: string
+  document_date: string
+  due_date: string
+  currency: string
+  total: string
+  open_amount: string
+}
+
+export interface AccountingPostPreview {
+  batch_type: 'ACCOUNTING'
+  entry: {
+    entry_date: string
+    description: string
+    is_historical: boolean
+    source_type: string
+  }
+  lines: AccountingPreviewLine[]
+  totals: {
+    debit: string
+    credit: string
+    is_balanced: boolean
+  }
+}
+
+export interface InventoryPostPreview {
+  batch_type: 'INVENTORY'
   batch: {
     cutover_date: string
     description: string
     is_historical: boolean
-    source_type?: string
-    batch_type?: string
+    source_type: string
   }
-  lines?: Array<{
-    row_number: number
-    account_code?: string
-    account_name?: string
-    product_sku?: string
-    product_name?: string
-    partner_code?: string
-    partner_name?: string
-    location_code?: string
-    location_name?: string
-    debit?: string
-    credit?: string
-    quantity?: string
-    quantity_decimals?: number
-    unit_cost?: string
-    line_value?: string
-    total?: string
-    open_amount?: string
-  }>
-  documents?: Array<{
-    row_number: number
-    partner_code: string
-    partner_name: string
-    external_invoice_number: string
-    document_type: string
-    document_date: string
-    due_date: string
-    currency: string
-    total: string
-    open_amount: string
-  }>
+  lines: InventoryPreviewLine[]
   totals: {
-    total_lines?: number
-    total_documents?: number
-    total_quantity?: string
-    total_value?: string
-    total_debit?: string
-    total_credit?: string
-    total_amount?: string
-    total_open_amount?: string
+    total_lines: number
+    total_quantity: string
+    total_value: string
   }
-  gl_entry?: {
+  gl_entry: {
     debit_account: string
     credit_account: string
     amount: string
   }
-  obe_offset?: {
-    account_code: string
-    account_name: string
-    debit: string
-    credit: string
-  }
-  note?: string
 }
+
+export interface ArApPostPreview {
+  batch_type: 'AR_OPEN_ITEMS' | 'AP_OPEN_ITEMS'
+  batch: {
+    cutover_date: string
+    description: string
+    is_historical: boolean
+    batch_type: 'AR_OPEN_ITEMS' | 'AP_OPEN_ITEMS'
+  }
+  documents: ArApPreviewDocument[]
+  totals: {
+    total_documents: number
+    total_amount: string
+    total_open_amount: string
+  }
+  note: string
+}
+
+export type PostPreview = AccountingPostPreview | InventoryPostPreview | ArApPostPreview
 
 export interface PostResult {
   success: boolean

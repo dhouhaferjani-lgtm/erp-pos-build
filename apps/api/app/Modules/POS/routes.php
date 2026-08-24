@@ -67,6 +67,11 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::patch('/pos/terminals/{id}/activate', [TerminalController::class, 'activate'])
         ->middleware('throttle:pos-terminal-activation');
     Route::patch('/pos/terminals/{id}/deactivate', [TerminalController::class, 'deactivate']);
+    // Q-7: the reverse of `claim`. Admin-only (`pos.manage_terminals`, asserted
+    // in the controller like every sibling here), because it is the remedial
+    // path for a dead or replaced till — it re-opens the terminal, and its
+    // fiscal chain, to a different device.
+    Route::post('/pos/terminals/{id}/release', [TerminalController::class, 'release']);
     Route::patch('/pos/terminals/{id}/archive', [TerminalController::class, 'archive']);
     Route::post('/pos/terminals/{id}/toggle-training', [TerminalController::class, 'toggleTrainingMode']);
     Route::get('/pos/terminals/{id}/z-chain-state', [TerminalController::class, 'zChainState']);

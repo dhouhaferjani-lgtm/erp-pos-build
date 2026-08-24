@@ -21,18 +21,22 @@ vi.mock('react-i18next', () => ({
 
 const mockBreakdowns: VatRateBreakdown[] = [
   {
+    direction: 'INPUT',
     tax_rate: '20.00',
     base_amount: '10000.00',
     vat_amount: '2000.00',
     document_count: 15,
     is_recoverable: true,
+    tax_configuration_id: null,
   },
   {
+    direction: 'OUTPUT',
     tax_rate: '7.00',
     base_amount: '5000.00',
     vat_amount: '350.00',
     document_count: 8,
     is_recoverable: false,
+    tax_configuration_id: null,
   },
 ]
 

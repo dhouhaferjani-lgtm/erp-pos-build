@@ -153,6 +153,17 @@ final class VoucherCascadeServiceTest extends TestCase
         $this->assertNotNull($voidedEntry, 'Expected Voided ledger entry');
         $this->assertNotNull($voidedEntry->gl_journal_entry_id, 'Voided entry must have a GL reference');
 
+        // Session B lane Q-5 micro-round, fiscal lens F-3. `receipt_id` is what
+        // binds a voucher_ledger row to a receipt, and therefore what governs
+        // hash-payload membership on the fiscal side: the cascade MUST anchor the
+        // voided row to the credit note it cascaded from, and to that credit
+        // note's terminal. A regression that dropped the provenance here would
+        // leave the row unanchored (receipt_id null) and still pass every
+        // GL/status assertion above, so it is pinned explicitly.
+        $this->assertSame($creditNote->id, $voidedEntry->receipt_id, 'Voided row must be anchored to the credit note');
+        $this->assertSame($creditNote->terminal_id, $voidedEntry->terminal_id, "Voided row must carry the credit note's terminal");
+        $this->assertSame('cascade_credit_note_void', $voidedEntry->policy_trigger);
+
         // GL journal entry has reversal legs
         $entry = JournalEntry::with('lines')->find($voidedEntry->gl_journal_entry_id);
         $this->assertNotNull($entry);

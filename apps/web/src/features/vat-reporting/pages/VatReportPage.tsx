@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { QueryError } from '@/components/QueryError'
 import { useVatReport } from '../hooks/useVatReport'
+import { useVatPeriod } from '../hooks/useVatPeriods'
 import { VatSummaryCards } from '../components/VatSummaryCards'
 import { VatBreakdownTable } from '../components/VatBreakdownTable'
 import { VatSpecialItems } from '../components/VatSpecialItems'
@@ -23,6 +24,25 @@ export function VatReportPage() {
   const { format: formatAmount } = useCurrency()
 
   const { data: report, isLoading, error, refetch } = useVatReport(id)
+  // N-4: the summary payload carries amounts only — no `period` key. The header
+  // (label / status / id) comes from the period endpoint.
+  //
+  // Gate r1 F-2: this screen depends on BOTH queries, so both must drive the
+  // loading and error states. Taking them from the summary alone left a failing
+  // period fetch as a bare back-link with no error and no way to retry.
+  const {
+    data: period,
+    isLoading: isPeriodLoading,
+    error: periodError,
+    refetch: refetchPeriod,
+  } = useVatPeriod(id)
+
+  const isAnyLoading = isLoading || isPeriodLoading
+  const anyError = error ?? periodError
+  const retryAll = () => {
+    void refetch()
+    void refetchPeriod()
+  }
 
   return (
     <div className="p-6">
@@ -37,25 +57,25 @@ export function VatReportPage() {
       </button>
 
       {/* Loading */}
-      {isLoading ? (
+      {isAnyLoading ? (
         <div className={`py-12 text-center ${colorTokens.text.subtle}`}>
           {t('finance:reports.common.loading')}
         </div>
-      ) : error ? (
+      ) : anyError ? (
         <QueryError
-          error={error}
-          onRetry={() => { void refetch(); }}
+          error={anyError}
+          onRetry={retryAll}
           title={t('finance:vatReporting.title')}
         />
-      ) : report ? (
+      ) : report && period ? (
         <div className="space-y-6">
           {/* Header */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <PageHeaderTitle className="text-2xl font-bold">{report.period.label}</PageHeaderTitle>
-              <VatPeriodStatusBadge status={report.period.status} />
+              <PageHeaderTitle className="text-2xl font-bold">{period.label}</PageHeaderTitle>
+              <VatPeriodStatusBadge status={period.status} />
             </div>
-            <VatExportMenu periodId={report.period.id} />
+            <VatExportMenu periodId={period.id} />
           </div>
 
           {/* Summary Cards */}
@@ -98,7 +118,7 @@ export function VatReportPage() {
           {/* Special Items */}
           <VatSpecialItems
             specialItems={report.special_items}
-            countryCode={typeof report.declaration['country_code'] === 'string' ? report.declaration['country_code'] : ''}
+            countryCode={period.country_code}
           />
 
           {/* Bottom summary */}

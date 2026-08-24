@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Presentation\Requests;
 
+use App\Modules\Catalog\Presentation\Rules\TaxConfigurationCountryCoherent;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Shared\Presentation\Validation\ScopedExists;
@@ -215,6 +216,27 @@ class AutoSaveDraftRequest extends FormRequest
             'lines.*.quantity' => ['nullable', 'numeric', 'regex:/^-?\d+(\.\d{1,4})?$/'],
             'lines.*.unit_price' => ['nullable', 'numeric', 'regex:/^-?\d+(\.\d{1,3})?$/'],
             'lines.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
+
+            // Campaign defect N-1, gate r1 finding 1. DECLARED, not optional:
+            // after the N-1 frontend fix `buildLinePayload()` sends this id
+            // INSTEAD OF `tax_rate` whenever the line knows its configuration —
+            // which on a correctly-configured tenant is every product line.
+            // Undeclared, `validated()` dropped the key before it reached
+            // `DraftPersistenceService`, which then wrote `tax_rate ?? 0` and
+            // persisted a 0 % draft line. Copied column-for-column from
+            // `CreateDocumentRequest` so the two document write paths accept
+            // exactly the same tax payload, country scope included: a
+            // configuration from another country, or one that is not a
+            // LINE_ITEMS configuration, is refused rather than silently
+            // resolving to a different rate.
+            'lines.*.tax_configuration_id' => [
+                'nullable',
+                'uuid',
+                Rule::exists('tax_configurations', 'id')
+                    ->where('country_code', $company->country_code)
+                    ->where('applies_to', 'LINE_ITEMS'),
+                new TaxConfigurationCountryCoherent($company->country_code),
+            ],
         ];
     }
 

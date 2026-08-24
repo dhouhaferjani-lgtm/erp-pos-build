@@ -7,9 +7,15 @@ namespace App\Modules\Voucher\Domain\Events;
 /**
  * Dispatched after a voucher is successfully voided.
  *
- * Voiding paths in Phase 1:
- *   - Auto-void via fraud detection (5 failed lookup attempts).
- *   - Cascade void when the source credit note is voided (VoucherCascadeService).
+ * Every void path dispatches this event, because every void path is the same
+ * write: VoucherVoidService (lane Q-5). The originating path is carried in
+ * $voidReason, which is the ledger row's policy_trigger:
+ *   - 'manual_void'               — back-office operator void
+ *   - 'cascade_credit_note_void'  — the source credit note was voided
+ *   - 'auto_fraud_void'           — fraud detection (5 failed lookup attempts)
+ *
+ * $glJournalEntryId is the empty string when the voided balance was zero and no
+ * GL reversal was required.
  *
  * This event is immutable — never rename, restructure, or delete it.
  * Create a VoucherVoidedV2 if the contract must change.

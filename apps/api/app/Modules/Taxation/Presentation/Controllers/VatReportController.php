@@ -77,13 +77,19 @@ class VatReportController extends Controller
         $inputBase = '0.000';
 
         foreach ($period->breakdowns as $breakdown) {
+            // N-4: this snapshot branch used to emit `rate` and omit
+            // `tax_configuration_id`, so a CLOSED/FILED period produced breakdown
+            // rows the frontend (typed off the OPEN branch's VatAggregation shape)
+            // could not read. The two branches must emit the SAME row keys —
+            // VatReportSummaryContractTest pins that.
             $row = [
-                'rate' => $breakdown->tax_rate,
+                'direction' => $breakdown->direction->value,
+                'tax_rate' => $breakdown->tax_rate,
                 'base_amount' => $breakdown->base_amount,
                 'vat_amount' => $breakdown->vat_amount,
                 'document_count' => $breakdown->document_count,
                 'is_recoverable' => $breakdown->is_recoverable,
-                'direction' => $breakdown->direction->value,
+                'tax_configuration_id' => $breakdown->tax_configuration_id,
             ];
 
             if ($breakdown->direction === VatDirection::Output) {
