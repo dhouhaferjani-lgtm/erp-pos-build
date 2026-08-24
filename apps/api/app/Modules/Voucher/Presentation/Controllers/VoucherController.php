@@ -322,12 +322,20 @@ final class VoucherController extends Controller
                 companyId: $companyId,
             ));
         } catch (VoucherInvalidStatusException $e) {
+            // VOUCHER_NOT_FOUND is a scope/existence refusal, not a state
+            // refusal: the row vanished (or was never in scope) between the
+            // pre-check above and the service's locked re-read. It must render
+            // as 404, matching the pre-check's own response, rather than as a
+            // 422 the client would read as "voucher exists but is unvoidable"
+            // (Session B lane Q-5 micro-round, fiscal lens F-8).
+            $code = $e->errorCode ?? 'VOUCHER_NOT_VOIDABLE';
+
             return response()->json([
                 'error' => [
-                    'code' => $e->errorCode ?? 'VOUCHER_NOT_VOIDABLE',
+                    'code' => $code,
                     'message' => $e->getMessage(),
                 ],
-            ], 422);
+            ], $code === 'VOUCHER_NOT_FOUND' ? 404 : 422);
         }
 
         // Idempotent re-entry (double-clicked Void): the voucher was already
@@ -342,7 +350,15 @@ final class VoucherController extends Controller
             ], 422);
         }
 
-        return response()->json(['data' => $result->voucher->fresh()?->toArray()]);
+        // The void committed; `fresh()` can still return null if the row is
+        // deleted between the commit and this re-read. Falling back to the
+        // in-memory aggregate keeps a successful void from rendering as
+        // `{"data": null}` with a 200 (Session B lane Q-5 micro-round, fiscal
+        // lens F-7). The in-memory instance already carries the post-void
+        // status, zeroed balance, notes and override_reason.
+        $voided = $result->voucher->fresh() ?? $result->voucher;
+
+        return response()->json(['data' => $voided->toArray()]);
     }
 
     /**

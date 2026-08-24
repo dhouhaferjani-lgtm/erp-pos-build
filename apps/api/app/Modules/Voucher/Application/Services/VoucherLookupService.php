@@ -33,10 +33,23 @@ use Illuminate\Support\Facades\Log;
  *      responses, preventing enumeration attacks.
  *   2. Full balance/expiry details are ONLY disclosed inside an active payment session
  *      (open receipt with FiscalStatus::PendingSeal).
- *   3. Five consecutive failed voucher-code attempts trigger VoucherFraudAlert, plus an
- *      auto-void through VoucherVoidService when the voucher is still voidable. See
- *      autoVoidVoucher() for the two alert-only degradations (redemptions present, or the
- *      voucher already terminal for the void edge).
+ *   3. Five consecutive failed voucher-code attempts trigger VoucherFraudAlert. In
+ *      PRACTICE that alert is the ENTIRE remediation: the per-voucher failure counter is
+ *      only ever incremented from lookupInSession() :156-158, i.e. for a voucher whose
+ *      status is already NOT Issued/PartiallyRedeemed, and every such status
+ *      (FullyRedeemed, Expired, Voided) is terminal for the void edge. The
+ *      VoucherVoidService call in autoVoidVoucher() therefore refuses or idempotently
+ *      short-circuits on every reachable input — this arm is ALERT-ONLY. It is retained
+ *      as a fail-closed backstop, not as live protection.
+ *
+ *      Session B lane Q-5 verified this disjointness rather than assuming it: the
+ *      pre-Q-5 code took the same unreachable branch WITHOUT a status guard, so all it
+ *      could do was append a second `voided` ledger row to an already-voided voucher
+ *      (sweep findings #22/#24). No protection was lost by closing it, because none
+ *      existed. REGISTERED PROGRAM GAP (treasury lens r1, ruling R1): a brute-force
+ *      campaign against a LIVE voucher increments no per-voucher counter at all and is
+ *      invisible here; remediation for a live voucher under attack is a freeze/hold
+ *      edge, which does not exist yet, and is NOT a void.
  */
 final class VoucherLookupService
 {
@@ -208,19 +221,28 @@ final class VoucherLookupService
     }
 
     /**
-     * Auto-void a voucher that has accumulated >= 5 failed lookup attempts.
+     * Fraud response for a voucher that has accumulated >= 5 failed lookup
+     * attempts. Despite the name, NO REACHABLE INPUT REACHES THE VOID.
      *
-     * Pre-conditions (both enforced, both degrade to alert-only):
-     *   - the voucher must have NO prior Redeemed events;
-     *   - the voucher must still be on the open side of the void edge. Lane Q-5
-     *     routes this through VoucherVoidService, which refuses a void of a
-     *     FullyRedeemed / Expired voucher and short-circuits an already-Voided
-     *     one. Before that, a voucher that had already reached a terminal state
-     *     collected a FRESH Voided ledger row on every fraud trigger — the
-     *     double-void this lane closes (sweep findings #22 / #24).
+     * The only caller is handleVoucherFailedAttempt(), reached only from
+     * lookupInSession() :156-158, which fires precisely when the voucher's
+     * status is NOT Issued/PartiallyRedeemed. Every remaining status
+     * (FullyRedeemed, Expired, Voided) is terminal for the void edge, so
+     * VoucherVoidService refuses (FullyRedeemed/Expired) or idempotently
+     * short-circuits (Voided) on 100% of live traffic. Both branches below are
+     * therefore alert-only in practice:
+     *   - redemptions present            → log + alert, no void attempted;
+     *   - void edge closed for the status → log + alert, void refused.
+     *
+     * The call is kept as a fail-closed backstop against a future caller that
+     * does feed active vouchers in; it must NOT be read as live protection.
+     * Before lane Q-5 this same unreachable branch ran with no status guard and
+     * appended a FRESH `voided` ledger row on every fraud trigger against an
+     * already-terminal voucher — the double-void this lane closes (sweep
+     * findings #22 / #24). Nothing that ever protected a voucher was removed.
      *
      * The fraud alert is dispatched in every branch: it is the security signal,
-     * and it does not depend on whether a void was still available as remediation.
+     * and it does not depend on whether a void was available as remediation.
      */
     private function autoVoidVoucher(Voucher $voucher, string $terminalId, string $cashierId, int $attempts): void
     {

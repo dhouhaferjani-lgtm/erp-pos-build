@@ -216,15 +216,24 @@ final class VoucherVoidServiceTest extends TestCase
     }
 
     /**
-     * A partially-redeemed voucher is still voidable by status, but the
-     * redemption guard (re-checked under the lock) refuses it.
+     * PINS THE EFFECTIVE VOIDABLE SET (Session B lane Q-5 micro-round, treasury
+     * F-1 / fiscal F-5). `VOIDABLE_STATUSES` names PartiallyRedeemed, but a
+     * voucher only reaches that status through VoucherRedemptionService, which
+     * writes a `Redeemed` ledger row in the same transaction — so the redemption
+     * guard behind the status guard always fires and the effective voidable set
+     * is `{Issued}`.
+     *
+     * The discriminator matters operationally: the refusal MUST carry the
+     * redemption guard's `VOUCHER_HAS_REDEMPTIONS`, never the status guard's
+     * `VOUCHER_NOT_VOIDABLE`. If a future change narrowed the constant to
+     * `[Issued]` the code would silently flip and this test would go red.
      */
-    public function test_void_of_partially_redeemed_voucher_with_redemptions_is_refused(): void
+    public function test_void_of_partially_redeemed_voucher_is_refused_by_the_redemption_guard(): void
     {
         $voucher = $this->makeVoucher('30.00000', VoucherStatus::PartiallyRedeemed);
         $this->appendLedgerRow($voucher, VoucherEvent::Redeemed, '-20.00000');
 
-        $this->expectException(VoucherInvalidStatusException::class);
+        $caught = null;
 
         try {
             $this->service()->void(new VoucherVoidRequest(
@@ -232,15 +241,48 @@ final class VoucherVoidServiceTest extends TestCase
                 userId: $this->user->id,
                 policyTrigger: 'manual_void',
             ));
-        } finally {
-            $voucher->refresh();
-            $this->assertSame(VoucherStatus::PartiallyRedeemed, $voucher->status);
-            $this->assertSame(
-                0,
-                VoucherLedger::where('voucher_id', $voucher->id)
-                    ->where('event', VoucherEvent::Voided->value)
-                    ->count()
-            );
+        } catch (VoucherInvalidStatusException $e) {
+            $caught = $e;
+        }
+
+        $this->assertInstanceOf(VoucherInvalidStatusException::class, $caught);
+        $this->assertSame('VOUCHER_HAS_REDEMPTIONS', $caught->errorCode);
+
+        $voucher->refresh();
+        $this->assertSame(VoucherStatus::PartiallyRedeemed, $voucher->status);
+        $this->assertSame(0, bccomp($voucher->current_balance, '30.00000', 5));
+        $this->assertSame(
+            0,
+            VoucherLedger::where('voucher_id', $voucher->id)
+                ->where('event', VoucherEvent::Voided->value)
+                ->count()
+        );
+    }
+
+    /**
+     * The companion half of the pin: the two statuses that genuinely trip the
+     * STATUS guard carry `VOUCHER_NOT_VOIDABLE`, so the two refusals stay
+     * distinguishable to an operator and to the API contract.
+     */
+    public function test_terminal_statuses_are_refused_by_the_status_guard(): void
+    {
+        foreach ([VoucherStatus::FullyRedeemed, VoucherStatus::Expired] as $status) {
+            $voucher = $this->makeVoucher('30.00000', $status);
+
+            $caught = null;
+
+            try {
+                $this->service()->void(new VoucherVoidRequest(
+                    voucherId: $voucher->id,
+                    userId: $this->user->id,
+                    policyTrigger: 'manual_void',
+                ));
+            } catch (VoucherInvalidStatusException $e) {
+                $caught = $e;
+            }
+
+            $this->assertInstanceOf(VoucherInvalidStatusException::class, $caught);
+            $this->assertSame('VOUCHER_NOT_VOIDABLE', $caught->errorCode, $status->value);
         }
     }
 

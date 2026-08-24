@@ -38,8 +38,16 @@ final class VoucherCascadeService
      */
     public function onCreditNoteVoided(Receipt $creditNote): void
     {
+        // orderBy('id') is a LOCK-ORDER guard, not cosmetics (Session B lane Q-5
+        // micro-round, fiscal lens F-6): VoucherVoidService takes a FOR UPDATE
+        // row lock per voucher inside the loop below, so two cascades touching
+        // an overlapping voucher set must acquire those locks in the same
+        // sequence or they can deadlock. Unordered, the sequence is whatever the
+        // planner returns.
         /** @var Collection<int, Voucher> $vouchers */
-        $vouchers = Voucher::where('source_receipt_id', $creditNote->id)->get();
+        $vouchers = Voucher::where('source_receipt_id', $creditNote->id)
+            ->orderBy('id')
+            ->get();
 
         // No vouchers linked to this credit note → no-op
         if ($vouchers->isEmpty()) {

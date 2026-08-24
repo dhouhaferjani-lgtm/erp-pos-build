@@ -51,6 +51,43 @@ use Illuminate\Support\Facades\DB;
  * accounting decision (drop-trigger + surgical delete of the un-posted
  * duplicate, or ship this index only to tenants that come back clean). Do not
  * deploy this migration until the census returns empty on every tenant.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * CENSUS 2 — THE #22 MONEY HOLE (accounting remediation, NOT a migration gate)
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Separate from the duplicate census above, and it does NOT abort this
+ * migration: the partial unique index is indifferent to it. It measures the
+ * liability that `VoucherController::void()` extinguished with
+ * `'gl_journal_entry_id' => null` hardcoded (sweep finding #22, HIGH) — every
+ * back-office manual void ever performed zeroed `vouchers.current_balance`
+ * while posting NO journal entry, so the voucher liability account still
+ * carries the balance and the P&L never took the release.
+ *
+ * Run per tenant database, alongside census 1, before the promotion that
+ * carries this migration (treasury lens r1, correction F-2):
+ *
+ *   SELECT COUNT(*), SUM(ABS(amount)) FROM voucher_ledger WHERE event='voided' AND gl_journal_entry_id IS NULL AND amount <> 0;
+ *
+ * Fleet-wide sweep (from the central DB host, per tenant_<uuid> database):
+ *
+ *   for db in $(psql -At -c "SELECT 'tenant_'||id FROM tenants"); do
+ *     echo "== $db"; psql -d "$db" -At -c "SELECT COUNT(*), SUM(ABS(amount))
+ *       FROM voucher_ledger WHERE event='voided' AND gl_journal_entry_id IS NULL
+ *       AND amount <> 0";
+ *   done
+ *
+ * Note `amount <> 0` is load-bearing: a zero-balance void legitimately carries
+ * no GL entry (there is nothing to reverse), on this lane's code path as on the
+ * two pre-existing ones. Only non-zero rows are holes.
+ *
+ * REMEDIATION IS FORWARD-ONLY AND UNREPAIRABLE IN PLACE. The same
+ * `enforce_voucher_ledger_immutability` trigger rejects UPDATE, so a historical
+ * row's NULL `gl_journal_entry_id` can NEVER be backfilled — not by this
+ * migration, not by a data script. The only remediation is a forward CORRECTING
+ * JOURNAL ENTRY per tenant for the summed amount this census returns, dated in
+ * an open period, reversing the stranded voucher liability. Hand the census
+ * output to the accounting owner with the promotion checklist; do not attempt a
+ * silent fix.
  */
 return new class extends Migration
 {

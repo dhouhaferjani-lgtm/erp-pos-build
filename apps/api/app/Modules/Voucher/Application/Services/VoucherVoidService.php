@@ -40,10 +40,17 @@ use Illuminate\Support\Str;
  *    its `gl_journal_entry_id`. A zero balance has nothing to reverse, so it
  *    appends the audit row and posts no GL entry.
  *
- * 2. STATE MACHINE. The void edge is open from `Issued` and `PartiallyRedeemed`
- *    only. `FullyRedeemed`, `Expired` and `Voided` are terminal for it. A void
- *    of an already-`Voided` voucher is an idempotent no-op (see 4); the other
- *    two refuse with a typed `VoucherInvalidStatusException`.
+ * 2. STATE MACHINE. Two guards run in series, and the SECOND one dominates:
+ *    the status allow-list (`VOIDABLE_STATUSES` = Issued + PartiallyRedeemed)
+ *    followed by the redemption guard (no `Redeemed` ledger row). Because every
+ *    redemption — partial included — writes `VoucherEvent::Redeemed`, a
+ *    `PartiallyRedeemed` voucher can never clear the redemption guard. The
+ *    EFFECTIVE voidable set is therefore `{Issued}`; see the VOIDABLE_STATUSES
+ *    docblock for why the constant still names two states. `FullyRedeemed` and
+ *    `Expired` refuse with a typed `VoucherInvalidStatusException`
+ *    (`VOUCHER_NOT_VOIDABLE`); `PartiallyRedeemed` refuses with the same
+ *    exception type carrying `VOUCHER_HAS_REDEMPTIONS`; an already-`Voided`
+ *    voucher is an idempotent no-op (see 4).
  *
  * 3. CONCURRENCY. The voucher is (re-)loaded INSIDE the transaction with
  *    `lockForUpdate()`, and both the status and the redemption guard are
@@ -57,7 +64,7 @@ use Illuminate\Support\Str;
  *    redelivered job, repeated fraud trigger) short-circuits under the lock and
  *    returns `alreadyVoided`. The DB backstop is the partial unique index
  *    `uniq_voucher_ledger_voided_per_voucher` (migration
- *    2026_08_23_140000_unique_voucher_ledger_voided_per_voucher).
+ *    2026_08_23_150000_unique_voucher_ledger_voided_per_voucher).
  *
  * Provenance (`policy_trigger`, `receipt_id`, `terminal_id`, `user_id`) is passed
  * through verbatim, so `manual_void`, `cascade_credit_note_void` and
@@ -66,10 +73,36 @@ use Illuminate\Support\Str;
 final class VoucherVoidService
 {
     /**
-     * The void edge's allow-list. Kept here, on the single write path, rather
-     * than on VoucherStatus: the state-machine slice that gives VoucherStatus a
-     * full adjacency map plus the `vouchers_status_check` DB constraint owns
-     * that hoist, and lands separately.
+     * The void edge's STATUS allow-list — not, on its own, the set of vouchers
+     * this service will void.
+     *
+     * Read together with REDEMPTION_EVENTS below: `PartiallyRedeemed` passes this
+     * allow-list and is then ALWAYS refused by the redemption guard, because
+     * `VoucherRedemptionService` writes `VoucherEvent::Redeemed` for every
+     * redemption, partial ones included (VoucherRedemptionService.php:191, :213),
+     * and sets the `PartiallyRedeemed` STATUS in the same transaction (:280).
+     * The like-named ledger event `VoucherEvent::PartiallyRedeemed` is persisted
+     * by NO path: the offline device push accepts it as a payload kind but hands
+     * the row to `VoucherRedemptionService::redeem()`, which writes `Redeemed`
+     * (VoucherLedgerPushService.php:82, :161). A voucher therefore cannot hold
+     * the `PartiallyRedeemed` status without a `Redeemed` ledger row.
+     *
+     * The EFFECTIVE voidable set is therefore `{Issued}`, and a
+     * `PartiallyRedeemed` void refuses with `VOUCHER_HAS_REDEMPTIONS`, never with
+     * `VOUCHER_NOT_VOIDABLE`. Pinned by
+     * VoucherVoidServiceTest::test_void_of_partially_redeemed_voucher_is_refused_by_the_redemption_guard.
+     *
+     * The constant deliberately keeps both entries rather than narrowing to
+     * `[Issued]` (Session B lane Q-5 micro-round, treasury F-1 / fiscal F-5):
+     * narrowing would move the refusal from the redemption guard to the status
+     * guard and silently change the operator-facing error code, while the guard
+     * that actually protects the liability — the redemption guard — is the one
+     * that must not be loosened. The honest statement of the effective set lives
+     * here in prose; the code path stays as reviewed.
+     *
+     * Kept on the single write path rather than on VoucherStatus: the
+     * state-machine slice that gives VoucherStatus a full adjacency map plus the
+     * `vouchers_status_check` DB constraint owns that hoist, and lands separately.
      *
      * @var list<VoucherStatus>
      */
@@ -122,7 +155,9 @@ final class VoucherVoidService
             }
 
             // Re-checked UNDER the lock: a redemption that committed while this
-            // caller was deciding is visible here.
+            // caller was deciding is visible here. This guard — not the status
+            // allow-list above — is what closes the void edge for every
+            // PartiallyRedeemed voucher (see VOIDABLE_STATUSES).
             $hasRedemptions = VoucherLedger::query()
                 ->where('voucher_id', $voucher->id)
                 ->whereIn('event', array_map(

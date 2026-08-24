@@ -36,14 +36,20 @@ final class VoucherInvalidStatusException extends RuntimeException
     }
 
     /**
-     * The void edge is open only from Issued / PartiallyRedeemed. FullyRedeemed,
-     * Expired and Voided are terminal for it (sweep finding #24).
+     * Raised by VoucherVoidService's STATUS guard: FullyRedeemed, Expired and
+     * Voided are terminal for the void edge (sweep finding #24).
+     *
+     * The status allow-list also admits PartiallyRedeemed, but such a voucher is
+     * then always stopped by the redemption guard behind it, so this refusal is
+     * never the one a PartiallyRedeemed voucher gets — see VOIDABLE_STATUSES in
+     * VoucherVoidService. The message states the EFFECTIVE set accordingly
+     * (Session B lane Q-5 micro-round, treasury F-1 / fiscal F-5).
      */
     public static function notVoidable(string $voucherCode, VoucherStatus $actualStatus): self
     {
         return new self(sprintf(
             "Voucher '%s' cannot be voided: current status is '%s'. "
-            .'Only Issued or PartiallyRedeemed vouchers are voidable.',
+            .'Only an unredeemed Issued voucher is voidable.',
             $voucherCode,
             $actualStatus->value
         ), 'VOUCHER_NOT_VOIDABLE');
