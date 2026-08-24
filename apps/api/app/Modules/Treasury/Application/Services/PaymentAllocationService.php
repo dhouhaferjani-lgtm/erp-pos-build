@@ -23,6 +23,7 @@ use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Events\PaymentAllocated;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Modules\Treasury\Domain\Services\DocumentAllocationClassifier;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use Illuminate\Http\Exceptions\HttpResponseException;

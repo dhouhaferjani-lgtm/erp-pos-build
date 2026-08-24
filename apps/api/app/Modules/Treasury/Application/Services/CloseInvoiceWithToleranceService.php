@@ -15,6 +15,7 @@ use App\Modules\Treasury\Domain\Events\InvoiceClosedWithTolerance;
 use App\Modules\Treasury\Domain\Exceptions\InvoiceAlreadyPaidException;
 use App\Modules\Treasury\Domain\Exceptions\ToleranceExceededException;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Modules\Treasury\Domain\Services\DocumentAllocationClassifier;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use DateTimeImmutable;
 use Illuminate\Http\Exceptions\HttpResponseException;

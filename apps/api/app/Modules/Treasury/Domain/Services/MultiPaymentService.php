@@ -10,7 +10,6 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
-use App\Modules\Treasury\Application\Services\DocumentAllocationClassifier;
 use App\Modules\Treasury\Domain\Enums\AllocationTreatment;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;

@@ -50,6 +50,7 @@ use App\Modules\SupportAccess\Presentation\Middleware\ImpersonationContext;
 use App\Modules\SupportAccess\Presentation\Middleware\ImpersonationResponseMasking;
 use App\Modules\SupportAccess\Presentation\Middleware\ImpersonationWriteGuard;
 use App\Modules\Taxation\Domain\Exceptions\DocumentPeriodLockedException;
+use App\Modules\Treasury\Domain\Exceptions\DocumentNotAllocatableException;
 use App\Modules\Treasury\Domain\Exceptions\InsufficientRepositoryBalanceException;
 use App\Modules\Voucher\Domain\Exceptions\VoucherDuplicateInTransactionException;
 use App\Modules\Voucher\Domain\Exceptions\VoucherExpiredException;
@@ -951,6 +952,23 @@ return Application::configure(basePath: dirname(__DIR__))
         // `DocumentTransitionException extends DomainException`, so below it the
         // frontend would receive BUSINESS_ERROR and lose the code it routes on.
         // ---------------------------------------------------------------------
+        $exceptions->render(function (DocumentNotAllocatableException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'DOCUMENT_NOT_ALLOCATABLE',
+                        'message' => 'This document cannot receive a customer payment allocation in its current state.',
+                        'details' => [
+                            'document_id' => $e->documentId,
+                            'document_number' => $e->documentNumber,
+                            'document_type' => $e->documentType->value,
+                            'status' => $e->documentStatus->value,
+                        ],
+                    ],
+                ], 422);
+            }
+        });
+
         $exceptions->render(function (DocumentTransitionException $e, Request $request) {
             if ($request->expectsJson() || $request->is('api/*')) {
                 return response()->json([
