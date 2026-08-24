@@ -371,6 +371,104 @@ final class RepairPaidNeverPostedDocumentsCommandTest extends TestCase
         $this->assertSame(0, $this->reclassEntryCount());
     }
 
+    /**
+     * R2-I1 — a MULTI-PAYMENT invoice must leave EVERY payment reversible.
+     *
+     * r1 wrote one reclass for the whole invoice keyed on `paymentIds[0]` while
+     * the amount summed every payment's allocations. The partition reader joins
+     * on `journal_entries.source_id = payment.id`, so that attribution made
+     * payment 0 read as 2x its own value — `PaymentRefundService`'s coverage
+     * belt 1 then refuses it FOREVER — while payment 1 read as fully AR-backed
+     * and would reverse a 411 the repair had already discharged.
+     */
+    public function test_a_two_payment_invoice_gets_one_reclass_per_payment_and_both_stay_reversible(): void
+    {
+        [$invoice, $paymentIds, $half] = $this->legacyPaidNeverPostedInvoiceWithTwoPayments();
+
+        $this->artisan('documents:repair-paid-never-posted', ['--execute' => true])
+            ->expectsOutputToContain('PAID-NEVER-POSTED REPAIR: candidates=1 repaired=1 skipped=0')
+            ->assertSuccessful();
+
+        $this->assertSame(2, $this->reclassEntryCount(), 'one reclass entry per payment, not one per invoice');
+
+        foreach ($paymentIds as $paymentId) {
+            $this->assertSame(
+                1,
+                JournalEntry::query()
+                    ->where('company_id', $this->dpCompany->id)
+                    ->where('source_type', GeneralLedgerService::PAYMENT_ADVANCE_RECLASS_SOURCE_TYPE)
+                    ->where('source_id', $paymentId)
+                    ->count(),
+                "payment {$paymentId} must carry its OWN reclass entry",
+            );
+
+            $partition = app(PaymentLedgerPartitionReaderInterface::class)
+                ->read($this->dpCompany->id, $paymentId, 'TND');
+
+            $this->assertSame(
+                '0.000',
+                bcadd($partition->arBacked, '0', 3),
+                "payment {$paymentId} must have nothing left in 411 to reverse",
+            );
+            $this->assertSame(
+                $half,
+                bcadd($partition->advanceBacked, '0', 3),
+                "payment {$paymentId} must read as advance-backed for exactly ITS OWN amount",
+            );
+            $this->assertSame(
+                $half,
+                bcadd($partition->total(), '0', 3),
+                'and its partition must total its own amount — the coverage belt compares against exactly this',
+            );
+        }
+
+        $this->assertSame(DocumentStatus::Confirmed, $invoice->fresh()->status);
+    }
+
+    /**
+     * Two payments of half the invoice each, both booked the pre-N-6 way.
+     *
+     * @return array{Document, list<string>, numeric-string}
+     */
+    private function legacyPaidNeverPostedInvoiceWithTwoPayments(): array
+    {
+        $invoice = $this->dpConfirmedInvoice([$this->dpPhysicalLine()]);
+        /** @var numeric-string $total */
+        $total = bcadd((string) $invoice->total, '0', 3);
+        /** @var numeric-string $half */
+        $half = bcdiv($total, '2', 3);
+
+        $paymentIds = [];
+
+        foreach ([0, 1] as $index) {
+            $payment = $this->legacyPayment($half, Carbon::now()->subDays($index));
+
+            app(GeneralLedgerService::class)->createPaymentReceivedJournalEntry(
+                companyId: $this->dpCompany->id,
+                partnerId: $this->dpPartner->id,
+                paymentId: $payment->id,
+                amount: $half,
+                paymentMethodAccountId: (string) $this->cashRegister->gl_account_id,
+                date: Carbon::now()->subDays($index),
+                description: 'Legacy customer payment '.$index,
+                user: $this->dpUser,
+                currencyCode: 'TND',
+            );
+
+            PaymentAllocation::create([
+                'payment_id' => $payment->id,
+                'document_id' => $invoice->id,
+                'amount' => $half,
+            ]);
+
+            $paymentIds[] = $payment->id;
+        }
+
+        $invoice->forceFill(['status' => DocumentStatus::Paid, 'balance_due' => '0.000'])->save();
+
+        return [$invoice->fresh(), $paymentIds, $half];
+    }
+
     private function closeFiscalPeriodCovering(Carbon $date): void
     {
         $year = FiscalYear::create([

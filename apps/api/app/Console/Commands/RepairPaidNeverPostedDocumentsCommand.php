@@ -173,7 +173,7 @@ final class RepairPaidNeverPostedDocumentsCommand extends Command
      * Decide whether this invoice can be repaired, and gather what the repair
      * needs. Read-only — this is exactly what `--dry-run` reports.
      *
-     * @return array{repairable: bool, reason: string, amount: numeric-string, allocationIds: list<string>, paymentIds: list<string>, entryDate: Carbon|null}
+     * @return array{repairable: bool, reason: string, amount: numeric-string, allocationIds: list<string>, paymentIds: list<string>, entryDate: Carbon|null, plan: list<array{paymentId: string, amount: numeric-string, allocationIds: list<string>, entryDate: Carbon}>}
      */
     private function assess(Document $invoice): array
     {
@@ -191,6 +191,7 @@ final class RepairPaidNeverPostedDocumentsCommand extends Command
             'allocationIds' => [],
             'paymentIds' => [],
             'entryDate' => null,
+            'plan' => [],
         ];
 
         if ($allocations->isEmpty()) {
@@ -246,64 +247,116 @@ final class RepairPaidNeverPostedDocumentsCommand extends Command
         // AND THE FALLBACK IS GONE. A repair that cannot find the entry it is
         // restating has no business choosing a date for it: that is now a named
         // SKIP, not a guess.
-        $paymentEntry = JournalEntry::query()
-            ->where('company_id', $invoice->company_id)
-            ->where('source_type', self::CUSTOMER_PAYMENT_SOURCE_TYPE)
-            ->whereIn('source_id', $paymentIds)
-            ->orderBy('entry_date')
-            ->first();
-
-        if (! $paymentEntry instanceof JournalEntry) {
-            return [
-                ...$empty,
-                'reason' => 'SKIP — no posted customer-payment journal entry found for this invoice; nothing to restate (needs a human)',
-            ];
-        }
-
-        $entryDate = $paymentEntry->entry_date;
-
-        // N-6 fix round r1 / treasury gate I-2 — TAKE EVIDENCE THAT THE MONEY IS
-        // ACTUALLY IN 411 BEFORE MOVING IT OUT.
+        // N-6 fix round r2 / treasury gate R2-I1 — ONE RECLASS PER PAYMENT.
         //
-        // The repair unconditionally writes Dr 411 / Cr 419. If the money was
-        // never in 411 that INVENTS a receivable debit and DOUBLES the advance.
-        // That population is live: a customer deposit applied pre-N-6 through
-        // `MultiPaymentService::applyDepositToDocument()` posted no GL at all
-        // while the deposit's money already sat in 419, and the old type-only
-        // writer still flipped the invoice to `Paid` — giving exactly the
-        // paid + unsealed + not-historical shape this command selects.
+        // r1 wrote a SINGLE reclass entry for the whole invoice, keyed on
+        // `paymentIds[0]` while the amount summed EVERY payment's allocations.
+        // Measured on a 2 x 100.000 legacy invoice, that corrupts the reversal
+        // partition for BOTH payments:
         //
-        // `PaymentLedgerPartitionReader` is the existing primitive for the
-        // question, and it is the same one the refund path uses to choose which
-        // account to reverse against, so the two can never disagree.
-        /** @var numeric-string $arBacked */
-        $arBacked = '0';
+        //   payment 0: arBacked 0.000  advanceBacked 200.000  (= 2x its own
+        //              100.000, so `PaymentRefundService`'s coverage belt 1
+        //              refuses it FOREVER — permanently unreversible)
+        //   payment 1: arBacked 100.000 advanceBacked 0.000   (reverses a 411
+        //              the repair already discharged, leaving 419 standing —
+        //              exactly the defect I-3 was written to remove)
+        //
+        // The partition is keyed on `journal_entries.source_id = payment.id`, so
+        // the ONLY attribution that keeps every payment reversible is one entry
+        // per payment for that payment's own allocated amount. Each payment then
+        // carries its own date, its own period verdict and its own 411 evidence
+        // — all strictly stronger than the aggregate they replace.
+        /** @var list<array{paymentId: string, amount: numeric-string, allocationIds: list<string>, entryDate: Carbon}> $plan */
+        $plan = [];
+
         foreach ($paymentIds as $paymentId) {
+            $ownAllocations = $allocations->filter(
+                static fn (PaymentAllocation $row): bool => $row->payment_id === $paymentId,
+            );
+
+            /** @var numeric-string $ownAmount */
+            $ownAmount = '0';
+            foreach ($ownAllocations as $ownAllocation) {
+                /** @var numeric-string $ownRow */
+                $ownRow = (string) $ownAllocation->amount;
+                $ownAmount = bcadd($ownAmount, $ownRow, $scale);
+            }
+
+            if (bccomp($ownAmount, '0', $scale) <= 0) {
+                return [
+                    ...$empty,
+                    'reason' => "SKIP — payment {$paymentId} allocates zero to this invoice; refusing to attribute a reclass to it",
+                ];
+            }
+
+            $paymentEntry = JournalEntry::query()
+                ->where('company_id', $invoice->company_id)
+                ->where('source_type', self::CUSTOMER_PAYMENT_SOURCE_TYPE)
+                ->where('source_id', $paymentId)
+                ->orderBy('entry_date')
+                ->first();
+
+            if (! $paymentEntry instanceof JournalEntry) {
+                return [
+                    ...$empty,
+                    'reason' => 'SKIP — no posted customer-payment journal entry found for this invoice; nothing to restate (needs a human)',
+                ];
+            }
+
+            $ownDate = $paymentEntry->entry_date instanceof Carbon
+                ? $paymentEntry->entry_date
+                : Carbon::parse((string) $paymentEntry->entry_date);
+
+            if ($this->fiscalPeriodLock->isDateInClosedFiscalPeriod((string) $invoice->company_id, $ownDate)) {
+                return [
+                    ...$empty,
+                    'reason' => 'SKIP — the payment entry falls in a CLOSED/LOCKED fiscal period ('.$ownDate->toDateString().')',
+                ];
+            }
+
+            // N-6 fix round r1 / treasury gate I-2 — TAKE EVIDENCE THAT THE MONEY
+            // IS ACTUALLY IN 411 BEFORE MOVING IT OUT, now PER PAYMENT.
+            //
+            // The repair writes Dr 411 / Cr 419. If the money was never in 411
+            // that INVENTS a receivable debit and DOUBLES the advance. That
+            // population is live: a customer deposit applied pre-N-6 through
+            // `MultiPaymentService::applyDepositToDocument()` posted no GL at all
+            // while the deposit's money already sat in 419, and the old type-only
+            // writer still flipped the invoice to `Paid`.
+            //
+            // `PaymentLedgerPartitionReader` is the existing primitive, and the
+            // same one the refund/reversal path uses — so the two can never
+            // disagree about what a payment's ledger says.
             $partition = $this->partitionReader->read(
                 (string) $invoice->company_id,
                 $paymentId,
                 (string) $invoice->currency,
             );
-            $arBacked = bcadd($arBacked, $partition->arBacked, $scale);
-        }
 
-        if (bccomp($arBacked, $amount, $scale) < 0) {
-            return [
-                ...$empty,
-                'reason' => sprintf(
-                    'SKIP — only %s of %s is backed by a posted receivable credit; the rest is not in 411 and must not be moved out of it (needs a human)',
-                    $arBacked,
-                    $amount,
-                ),
+            if (bccomp($partition->arBacked, $ownAmount, $scale) < 0) {
+                return [
+                    ...$empty,
+                    'reason' => sprintf(
+                        'SKIP — payment %s has only %s of %s backed by a posted receivable credit; the rest is not in 411 and must not be moved out of it (needs a human)',
+                        $paymentId,
+                        $partition->arBacked,
+                        $ownAmount,
+                    ),
+                ];
+            }
+
+            $plan[] = [
+                'paymentId' => $paymentId,
+                'amount' => $ownAmount,
+                'allocationIds' => array_values(array_map(
+                    static fn (PaymentAllocation $row): string => $row->id,
+                    $ownAllocations->all(),
+                )),
+                'entryDate' => $ownDate,
             ];
         }
 
-        if ($this->fiscalPeriodLock->isDateInClosedFiscalPeriod((string) $invoice->company_id, $entryDate)) {
-            return [
-                ...$empty,
-                'reason' => 'SKIP — the payment entry falls in a CLOSED/LOCKED fiscal period ('.$entryDate->toDateString().')',
-            ];
-        }
+        $entryDate = $plan[0]['entryDate'];
 
         return [
             'repairable' => true,
@@ -320,11 +373,12 @@ final class RepairPaidNeverPostedDocumentsCommand extends Command
             )),
             'paymentIds' => $paymentIds,
             'entryDate' => $entryDate,
+            'plan' => $plan,
         ];
     }
 
     /**
-     * @param  array{repairable: bool, reason: string, amount: numeric-string, allocationIds: list<string>, paymentIds: list<string>, entryDate: Carbon|null}  $verdict
+     * @param  array{repairable: bool, reason: string, amount: numeric-string, allocationIds: list<string>, paymentIds: list<string>, entryDate: Carbon|null, plan: list<array{paymentId: string, amount: numeric-string, allocationIds: list<string>, entryDate: Carbon}>}  $verdict
      */
     private function repair(Document $invoice, array $verdict): void
     {
@@ -335,24 +389,30 @@ final class RepairPaidNeverPostedDocumentsCommand extends Command
             // Re-check under the lock: a concurrent post could have sealed it.
             $this->documentStatus->repairNeverPostedToConfirmed($locked);
 
-            $entry = $this->generalLedger->reclassifyCustomerPaymentToAdvance(
-                companyId: (string) $locked->company_id,
-                partnerId: (string) $locked->partner_id,
-                paymentId: $verdict['paymentIds'][0],
-                amount: $verdict['amount'],
-                date: $verdict['entryDate'] ?? Carbon::now(),
-                description: "N-6 repair: payment on unposted invoice {$locked->document_number} re-booked as customer advance",
-                postedByUserId: null,
-                currencyCode: (string) $locked->currency,
-            );
+            // R2-I1 — ONE entry per payment, each keyed on its OWN payment id
+            // and carrying its OWN amount and date, so `PaymentLedgerPartition-
+            // Reader` (which joins on `source_id = payment.id`) reports each
+            // payment's real position and every one of them stays reversible.
+            foreach ($verdict['plan'] as $leg) {
+                $entry = $this->generalLedger->reclassifyCustomerPaymentToAdvance(
+                    companyId: (string) $locked->company_id,
+                    partnerId: (string) $locked->partner_id,
+                    paymentId: $leg['paymentId'],
+                    amount: $leg['amount'],
+                    date: $leg['entryDate'],
+                    description: "N-6 repair: payment on unposted invoice {$locked->document_number} re-booked as customer advance",
+                    postedByUserId: null,
+                    currencyCode: (string) $locked->currency,
+                );
 
-            PaymentAllocation::query()
-                ->whereIn('id', $verdict['allocationIds'])
-                ->update([
-                    'booked_as_advance' => true,
-                    'advance_journal_entry_id' => $entry->id,
-                    'advance_cleared_at' => null,
-                ]);
+                PaymentAllocation::query()
+                    ->whereIn('id', $leg['allocationIds'])
+                    ->update([
+                        'booked_as_advance' => true,
+                        'advance_journal_entry_id' => $entry->id,
+                        'advance_cleared_at' => null,
+                    ]);
+            }
         });
     }
 }
