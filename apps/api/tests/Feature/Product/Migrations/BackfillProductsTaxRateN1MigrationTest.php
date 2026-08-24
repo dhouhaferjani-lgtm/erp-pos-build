@@ -20,6 +20,7 @@ use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 use Tests\Traits\ProvesTenantMigrationRoundTrip;
 
@@ -49,6 +50,11 @@ final class BackfillProductsTaxRateN1MigrationTest extends TestCase
     private const MIGRATION = '2026_08_24_100000_backfill_products_tax_rate_from_tax_configuration_n1.php';
 
     private const GATE_TOKEN = 'PRODUCT TAX-RATE N1 BACKFILL MIGRATION:';
+
+    private const CENSUS_TOKEN = 'PRODUCT TAX-RATE N1 UNPOSTED-DOC CENSUS:';
+
+    /** @var array<int, string> */
+    private array $censusLinesFromLastRun = [];
 
     private Tenant $tenant;
 
@@ -168,70 +174,161 @@ final class BackfillProductsTaxRateN1MigrationTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
-    // Second half (gate r1 finding 3): unposted document lines
+    // Second half — REPORT ONLY (r2 decision; treasury gate CRITICAL 1/2/3,
+    // fiscal gate r2 finding 1). It must name the repairable lines and MUTATE
+    // NOTHING. Every case below is a MIXED fixture: a drifted sales draft that
+    // the census certainly reports sits alongside the row under test, so the
+    // statement genuinely executes and the assertion is not vacuous.
     // -------------------------------------------------------------------------
 
-    public function test_an_unposted_document_line_is_repaired_and_its_document_re_totalled(): void
+    public function test_it_reports_an_unposted_sales_line_without_writing_to_it(): void
     {
-        // The campaign tenant's real shape: a quote written from a product whose
-        // rate had drifted. Conversion copies a line's tax_rate verbatim, so
-        // leaving this at 19 % would mint a wrong-VAT invoice one click later.
         $product = $this->productOn($this->percentageConfig('TVA_7', '7.00'), '7.00');
         [$document, $line] = $this->unpostedDocumentLine($product, '19.00');
 
-        $this->runMigration();
+        $before = $this->documentFingerprint($document, $line);
 
-        $this->assertSame('7.00', (string) $line->fresh()?->tax_rate);
+        $gate = $this->captureGateLine();
 
-        $fresh = $document->fresh();
-        $this->assertSame(
-            '7.000',
-            (string) $fresh?->tax_amount,
-            'The header must be re-totalled from the repaired lines, or the document contradicts itself.',
-        );
-        $this->assertSame('107.000', (string) $fresh?->total);
-    }
-
-    public function test_a_posted_document_line_is_never_touched(): void
-    {
-        $product = $this->productOn($this->percentageConfig('TVA_7', '7.00'), '7.00');
-        [, $line] = $this->unpostedDocumentLine($product, '19.00', DocumentStatus::Posted);
-
-        $this->runMigration();
+        $this->assertStringContainsString('flagged_doc_lines=1', $gate);
+        $this->assertStringContainsString('flagged_docs=1', $gate);
 
         $this->assertSame(
-            '19.00',
-            (string) $line->fresh()?->tax_rate,
-            'A posted document has GL entries derived from its tax — a migration must not rewrite it.',
+            $before,
+            $this->documentFingerprint($document, $line),
+            'The second half REPORTS. A single byte of document state changing here is the r1 defect returning.',
         );
     }
 
-    public function test_a_sealed_document_line_is_never_touched(): void
+    public function test_the_worklist_line_names_the_document_type_status_and_rates(): void
     {
         $product = $this->productOn($this->percentageConfig('TVA_7', '7.00'), '7.00');
-        [, $line] = $this->unpostedDocumentLine(
+        [$document] = $this->unpostedDocumentLine($product, '19.00');
+
+        $census = $this->captureCensusLines();
+
+        $this->assertCount(1, $census);
+        $this->assertStringContainsString('document='.$document->document_number, $census[0]);
+        $this->assertStringContainsString('type=quote', $census[0]);
+        $this->assertStringContainsString('status=draft', $census[0]);
+        $this->assertStringContainsString('19.00->7.00', $census[0]);
+        $this->assertStringContainsString('NOT REPAIRED BY THIS MIGRATION', $census[0]);
+    }
+
+    /**
+     * The types an earlier revision REWROTE and must never touch again. A
+     * credit note mirrors a SEALED invoice and disagrees with the product by
+     * design; a supplier invoice carries what the SUPPLIER charged, not what
+     * our sale-side product master says. Now that nothing is written, the proof
+     * is that their rows are byte-identical after the migration runs — while
+     * the sales draft beside them is reported, so the census really ran.
+     *
+     * @return array<string, array{0: DocumentType}>
+     */
+    public static function excludedTypeProvider(): array
+    {
+        return [
+            'credit note' => [DocumentType::CreditNote],
+            'supplier invoice' => [DocumentType::SupplierInvoice],
+            'supplier credit note' => [DocumentType::SupplierCreditNote],
+            'expense' => [DocumentType::Expense],
+            'return note' => [DocumentType::ReturnNote],
+            'delivery note' => [DocumentType::DeliveryNote],
+            'purchase order' => [DocumentType::PurchaseOrder],
+        ];
+    }
+
+    #[DataProvider('excludedTypeProvider')]
+    public function test_a_non_sales_document_is_never_written_to(DocumentType $type): void
+    {
+        $product = $this->productOn($this->percentageConfig('TVA_7', '7.00'), '7.00');
+
+        // The mixed half: a sales draft the census certainly reports.
+        $this->unpostedDocumentLine($product, '19.00');
+
+        [$document, $line] = $this->unpostedDocumentLine($product, '19.00', type: $type);
+        $before = $this->documentFingerprint($document, $line);
+
+        $gate = $this->captureGateLine();
+
+        $this->assertStringContainsString('status=ok', $gate);
+        $this->assertSame(
+            $before,
+            $this->documentFingerprint($document, $line),
+            $type->value.' must never be rewritten from the sale-side product master.',
+        );
+    }
+
+    public function test_a_posted_document_line_is_neither_written_nor_reported(): void
+    {
+        $product = $this->productOn($this->percentageConfig('TVA_7', '7.00'), '7.00');
+
+        // Mixed fixture (fiscal gate r1 finding 4): without this repairable
+        // draft beside it the census would return zero rows and the assertion
+        // below would pass no matter what the predicate said.
+        $this->unpostedDocumentLine($product, '19.00');
+
+        [$document, $line] = $this->unpostedDocumentLine($product, '19.00', DocumentStatus::Posted);
+        $before = $this->documentFingerprint($document, $line);
+
+        $gate = $this->captureGateLine();
+
+        $this->assertStringContainsString('flagged_doc_lines=1', $gate);
+        $this->assertSame($before, $this->documentFingerprint($document, $line));
+        $this->assertStringNotContainsString(
+            (string) $document->document_number,
+            implode(' ', $this->censusLinesFromLastRun),
+            'A posted document has GL entries derived from its tax; it is not on an operator worklist.',
+        );
+    }
+
+    public function test_a_sealed_document_line_is_neither_written_nor_reported(): void
+    {
+        $product = $this->productOn($this->percentageConfig('TVA_7', '7.00'), '7.00');
+        $this->unpostedDocumentLine($product, '19.00');
+
+        [$document, $line] = $this->unpostedDocumentLine(
             $product,
             '19.00',
             DocumentStatus::Draft,
             FiscalStatus::Sealed,
             'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2',
         );
+        $before = $this->documentFingerprint($document, $line);
 
-        $this->runMigration();
+        $gate = $this->captureGateLine();
 
-        $this->assertSame(
-            '19.00',
-            (string) $line->fresh()?->tax_rate,
-            'Anything hash-chained is untouchable: correcting it is a credit note, not an UPDATE.',
+        $this->assertStringContainsString('flagged_doc_lines=1', $gate);
+        $this->assertSame($before, $this->documentFingerprint($document, $line));
+    }
+
+    public function test_a_soft_deleted_document_is_not_on_the_worklist(): void
+    {
+        // r1 treasury finding 6. A trashed document is not something an
+        // operator can open and repair, and the declaration query filters it —
+        // putting it on the worklist would send someone chasing a ghost.
+        $product = $this->productOn($this->percentageConfig('TVA_7', '7.00'), '7.00');
+        $this->unpostedDocumentLine($product, '19.00');
+
+        [$trashed] = $this->unpostedDocumentLine($product, '19.00');
+        $trashed->delete();
+
+        $gate = $this->captureGateLine();
+
+        $this->assertStringContainsString(
+            'flagged_doc_lines=1',
+            $gate,
+            'Only the live document counts; the soft-deleted one is excluded by deleted_at IS NULL.',
         );
     }
 
-    public function test_a_free_text_line_with_no_product_is_left_alone(): void
+    public function test_a_free_text_line_with_no_product_is_not_reported(): void
     {
-        $this->productOn($this->percentageConfig('TVA_7', '7.00'), '7.00');
+        $product = $this->productOn($this->percentageConfig('TVA_7', '7.00'), '7.00');
+        $this->unpostedDocumentLine($product, '19.00');
 
         $document = $this->unpostedDocument();
-        $line = DocumentLine::create([
+        DocumentLine::create([
             'document_id' => $document->id,
             'line_number' => 1,
             'product_id' => null,
@@ -242,22 +339,13 @@ final class BackfillProductsTaxRateN1MigrationTest extends TestCase
             'line_total' => '100.000',
         ]);
 
-        $this->runMigration();
-
-        $this->assertSame('19.00', (string) $line->fresh()?->tax_rate);
-    }
-
-    public function test_the_gate_line_reports_the_document_counters(): void
-    {
-        $product = $this->productOn($this->percentageConfig('TVA_7', '7.00'), '19.00');
-        $this->unpostedDocumentLine($product, '19.00');
-
         $gate = $this->captureGateLine();
 
-        $this->assertStringContainsString('status=ok', $gate);
-        $this->assertStringContainsString('repaired=1', $gate);
-        $this->assertStringContainsString('doc_lines=1', $gate);
-        $this->assertStringContainsString('docs_retotalled=1', $gate);
+        $this->assertStringContainsString(
+            'flagged_doc_lines=1',
+            $gate,
+            'A line with no product states its own rate and has no configuration to disagree with.',
+        );
     }
 
     // -------------------------------------------------------------------------
@@ -337,20 +425,64 @@ final class BackfillProductsTaxRateN1MigrationTest extends TestCase
             static fn (string $line): bool => str_contains($line, self::GATE_TOKEN),
         ));
 
+        // The per-document worklist carries its OWN token precisely so this
+        // assertion can stay exact however long the worklist is.
+        $this->censusLinesFromLastRun = array_values(array_filter(
+            $lines,
+            static fn (string $line): bool => str_contains($line, self::CENSUS_TOKEN),
+        ));
+
         $this->assertCount(1, $gate, 'Exactly one gate line per tenant, or a deploy grep cannot be trusted.');
 
         return $gate[0];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function captureCensusLines(): array
+    {
+        $this->captureGateLine();
+
+        return $this->censusLinesFromLastRun;
+    }
+
+    /**
+     * Every column the withdrawn r1 repair could have moved, as one string.
+     * Comparing the whole fingerprint (not just `tax_rate`) is what makes these
+     * cases catch a re-introduced UPDATE anywhere on the document.
+     */
+    private function documentFingerprint(Document $document, DocumentLine $line): string
+    {
+        $freshDocument = $document->fresh();
+        $freshLine = $line->fresh();
+
+        return implode('|', [
+            (string) $freshLine?->tax_rate,
+            (string) $freshLine?->line_total,
+            (string) $freshLine?->recoverable_tax_amount,
+            (string) $freshLine?->non_recoverable_tax_amount,
+            (string) $freshLine?->updated_at,
+            (string) $freshDocument?->subtotal,
+            (string) $freshDocument?->tax_amount,
+            (string) $freshDocument?->line_tax_amount,
+            (string) $freshDocument?->stamp_duty_amount,
+            (string) $freshDocument?->total,
+            (string) $freshDocument?->balance_due,
+            (string) $freshDocument?->updated_at,
+        ]);
     }
 
     private function unpostedDocument(
         DocumentStatus $status = DocumentStatus::Draft,
         FiscalStatus $fiscalStatus = FiscalStatus::Draft,
         ?string $fiscalHash = null,
+        DocumentType $type = DocumentType::Quote,
     ): Document {
         return Document::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
-            'type' => DocumentType::Quote,
+            'type' => $type,
             'status' => $status,
             'fiscal_status' => $fiscalStatus,
             'fiscal_hash' => $fiscalHash,
@@ -379,8 +511,9 @@ final class BackfillProductsTaxRateN1MigrationTest extends TestCase
         DocumentStatus $status = DocumentStatus::Draft,
         FiscalStatus $fiscalStatus = FiscalStatus::Draft,
         ?string $fiscalHash = null,
+        DocumentType $type = DocumentType::Quote,
     ): array {
-        $document = $this->unpostedDocument($status, $fiscalStatus, $fiscalHash);
+        $document = $this->unpostedDocument($status, $fiscalStatus, $fiscalHash, $type);
 
         $line = DocumentLine::create([
             'document_id' => $document->id,

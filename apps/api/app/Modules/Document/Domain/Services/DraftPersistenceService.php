@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\Document\Domain\Services;
 
 use App\Modules\Company\Domain\Company;
-use App\Modules\Document\Application\Services\DocumentLineTaxResolver;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -27,7 +26,6 @@ use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\ProductVariantLookup;
 use App\Shared\Domain\CurrencyScale;
 use App\Shared\DTOs\ProductVariantSummary;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -50,7 +48,6 @@ final class DraftPersistenceService
         private readonly DocumentTotalsCalculator $totalsCalculator,
         private readonly ProductVariantLookup $variantLookup,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
-        private readonly DocumentLineTaxResolver $lineTaxResolver,
     ) {}
 
     /**
@@ -71,13 +68,6 @@ final class DraftPersistenceService
         array $data
     ): Document {
         return DB::transaction(function () use ($tenantId, $companyId, $userId, $draftId, $data) {
-            // Campaign defect N-1, gate r1 finding 1. Resolve every line's tax
-            // BEFORE either branch, so `addLine()` / `addLinesBatch()` receive a
-            // resolved rate instead of falling back to `?? 0`. See
-            // resolveLineTaxRates() for why this is the same resolver the
-            // manual create path uses and not a second implementation.
-            $data = $this->resolveLineTaxRates($tenantId, $companyId, $data);
-
             // api.document.011: scope by tenant + company so a cross-tenant
             // draftId surfaces as null and a fresh draft is created instead
             // of mutating a foreign tenant's row.
@@ -124,72 +114,6 @@ final class DraftPersistenceService
 
             return $document;
         });
-    }
-
-    /**
-     * Resolve every incoming line's `tax_rate` through the SAME resolver the
-     * manual document-create path uses (campaign defect N-1, gate r1 finding 1).
-     *
-     * WHY THIS EXISTS. `addLine()` and `addLinesBatch()` wrote
-     * `$lineData['tax_rate'] ?? 0`, and nothing on the draft path ever consulted
-     * a tax configuration. That was survivable only while the editor always sent
-     * a rate. The N-1 frontend fix changed the payload — a line that knows its
-     * configuration now sends `tax_configuration_id` and NO `tax_rate`, so the
-     * `?? 0` fallback started persisting 0 % lines. A draft is a real
-     * `documents` row whose rate is copied verbatim on conversion, so a 0 %
-     * draft becomes a 0 % invoice.
-     *
-     * WHY THE SHARED RESOLVER AND NOT A LOCAL LOOKUP. Two implementations of
-     * "what rate does this line carry" is the shape of the original defect. The
-     * draft path and the create path must agree line for line, including the
-     * branch order (explicit rate > line configuration > product configuration >
-     * product rate > company configuration > company rate) and the country +
-     * `LINE_ITEMS` + percentage scope filters. Any change to that policy — such
-     * as the open question of whether a client-echoed rate should outrank a
-     * configuration — belongs in the resolver, where it applies to both.
-     *
-     * DEFENSIVE, BECAUSE AUTO-SAVE MUST NOT 500. Missing/blank lines and an
-     * unresolvable company both return the payload untouched: the caller keeps
-     * whatever it stated, exactly as before. The product lookup is scoped by
-     * tenant + company like every other lookup in this service, so a foreign
-     * product id contributes no rate.
-     *
-     * @param  array<string, mixed>  $data
-     * @return array<string, mixed>
-     */
-    private function resolveLineTaxRates(string $tenantId, string $companyId, array $data): array
-    {
-        $rawLines = $data['lines'] ?? null;
-
-        if (! is_array($rawLines) || $rawLines === []) {
-            return $data;
-        }
-
-        /** @var Company|null $company */
-        $company = Company::query()
-            ->where('tenant_id', $tenantId)
-            ->find($companyId);
-
-        if (! $company instanceof Company) {
-            return $data;
-        }
-
-        /** @var array<int, array{description: string, quantity: string, unit_price: string, product_id?: string, service_id?: string, tax_rate?: string|null, tax_configuration_id?: string|null, discount_percent?: string|null, discount_amount?: string|null, notes?: string|null}> $lines */
-        $lines = array_values($rawLines);
-
-        $productIds = collect($lines)->pluck('product_id')->filter()->unique()->values()->toArray();
-
-        /** @var Collection<array-key, Product> $products */
-        $products = Product::query()
-            ->where('tenant_id', $tenantId)
-            ->where('company_id', $companyId)
-            ->whereIn('id', $productIds)
-            ->get()
-            ->keyBy('id');
-
-        $data['lines'] = $this->lineTaxResolver->resolve($lines, $company, $products);
-
-        return $data;
     }
 
     /**

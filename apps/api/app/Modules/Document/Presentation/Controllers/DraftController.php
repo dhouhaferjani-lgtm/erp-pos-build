@@ -6,11 +6,14 @@ namespace App\Modules\Document\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Application\Services\DocumentLineTaxResolver;
 use App\Modules\Document\Domain\Exceptions\DraftNotEditableException;
 use App\Modules\Document\Domain\Services\DraftPersistenceService;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\AutoSaveDraftRequest;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Product\Domain\Product;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -40,11 +43,82 @@ class DraftController extends Controller
     public function __construct(
         private readonly DraftPersistenceService $draftService,
         protected readonly CompanyContext $companyContext,
+        private readonly DocumentLineTaxResolver $lineTaxResolver,
     ) {}
 
     protected function getCompanyContext(): CompanyContext
     {
         return $this->companyContext;
+    }
+
+    /**
+     * Resolve every incoming line's `tax_rate` through the SAME resolver the
+     * manual document-create path uses, BEFORE the payload reaches the
+     * persistence service (campaign defect N-1; fiscal gate r1 finding 1,
+     * relocated here by fiscal gate r2 finding 2).
+     *
+     * WHY IT IS NEEDED AT ALL. `DraftPersistenceService` writes
+     * `$lineData['tax_rate'] ?? 0` and never consulted a tax configuration.
+     * That was survivable only while the editor always sent a rate; the N-1
+     * frontend fix made a line that knows its configuration send
+     * `tax_configuration_id` and NO `tax_rate`, so the `?? 0` fallback started
+     * persisting 0 % draft lines — and a draft is a real `documents` row whose
+     * rate conversion copies verbatim into an invoice.
+     *
+     * WHY IT LIVES IN THE CONTROLLER AND NOT IN THE SERVICE. The first attempt
+     * constructor-injected `DocumentLineTaxResolver` (Application tier) into
+     * `DraftPersistenceService` (Domain tier) and turned
+     * `tools/deptrac-ratchet.php` red — `ModuleDomain on ModuleApplication`
+     * 54 → 55, which that tool classifies as a BLOCKER by name, not a ratchet.
+     * This repo had already refused the identical injection once, in writing:
+     * `Domain/Services/Conversion/Converters/PurchaseQuoteRequestToPurchaseOrderConverter.php`
+     * resolves nothing itself and takes rates from its caller, with
+     * `PurchaseQuoteRequestAwardService::resolveTaxRates()` (Application tier)
+     * doing the work. This method is that same pattern: Presentation may depend
+     * on Application, so the resolution happens here and the Domain service
+     * keeps receiving a plain resolved payload.
+     *
+     * DEFENSIVE, BECAUSE AUTO-SAVE MUST NOT 500. No lines, or a company that
+     * cannot be resolved, returns the payload untouched. The product lookup is
+     * tenant+company scoped exactly like every lookup inside the persistence
+     * service, so a foreign product id contributes no rate.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function resolveLineTaxRates(array $data): array
+    {
+        $rawLines = $data['lines'] ?? null;
+
+        if (! is_array($rawLines) || $rawLines === []) {
+            return $data;
+        }
+
+        $company = $this->companyContext->getCompany();
+
+        if ($company === null) {
+            return $data;
+        }
+
+        $tenantId = (string) $company->tenant_id;
+        $companyId = (string) $company->id;
+
+        /** @var array<int, array{description: string, quantity: string, unit_price: string, product_id?: string, service_id?: string, tax_rate?: string|null, tax_configuration_id?: string|null, discount_percent?: string|null, discount_amount?: string|null, notes?: string|null}> $lines */
+        $lines = array_values($rawLines);
+
+        $productIds = collect($lines)->pluck('product_id')->filter()->unique()->values()->toArray();
+
+        /** @var Collection<array-key, Product> $products */
+        $products = Product::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->whereIn('id', $productIds)
+            ->get()
+            ->keyBy('id');
+
+        $data['lines'] = $this->lineTaxResolver->resolve($lines, $company, $products);
+
+        return $data;
     }
 
     /**
@@ -83,6 +157,8 @@ class DraftController extends Controller
 
         /** @var array<string, mixed> $data */
         $data = $request->validated();
+
+        $data = $this->resolveLineTaxRates($data);
 
         $rawDraftId = $data['draft_id'] ?? null;
         $draftId = is_string($rawDraftId) ? $rawDraftId : null;

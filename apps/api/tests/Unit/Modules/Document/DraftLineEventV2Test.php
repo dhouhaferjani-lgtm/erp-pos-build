@@ -7,7 +7,6 @@ namespace Tests\Unit\Modules\Document;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Services\CompanyContext;
-use App\Modules\Document\Application\Services\DocumentLineTaxResolver;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\DraftLineAdded;
 use App\Modules\Document\Domain\Events\DraftLineAddedV2;
@@ -93,12 +92,6 @@ class DraftLineEventV2Test extends TestCase
             // updated, so all 6 cases died with an ArgumentCountError before
             // reaching an assertion.
             app(CurrencyScaleResolverInterface::class),
-            // Same failure mode, second occurrence (N-1 gate r1 finding 1): the
-            // draft path now resolves line tax through the shared
-            // DocumentLineTaxResolver, which is a 5th constructor argument.
-            // This hand-wired construction has to track the real signature or
-            // every case here dies with an ArgumentCountError again.
-            app(DocumentLineTaxResolver::class),
         );
     }
 
