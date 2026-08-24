@@ -66,9 +66,25 @@ final class PosReceiptVatAllocator
     {
         $receiptId = (string) $receipt->id;
         $sealed = $this->loadSealedRows($receiptId);
+        $declaredVat = $this->declaredVat($receipt, $receiptId, $currencyScale);
 
+        // No sealed rows is only survivable when the receipt itself declares no
+        // VAT — then there is genuinely nothing to split and the whole tender IS
+        // revenue. If the receipt says VAT was collected, the ledger cannot post
+        // it and must NOT fall back to booking the gross: that fallback is
+        // precisely the W4-9 defect.
         if ($sealed === []) {
-            throw PosVatProjectionRefusedException::missingSealedVatDetails($receiptId);
+            if (bccomp($declaredVat, '0', $currencyScale) > 0) {
+                throw PosVatProjectionRefusedException::missingSealedVatDetails($receiptId);
+            }
+
+            return array_map(
+                static fn (string $amount): PosRevenueVatSplit => PosRevenueVatSplit::vatFree(
+                    is_numeric($amount) ? $amount : '0',
+                    $currencyScale,
+                ),
+                array_values($legAmounts),
+            );
         }
 
         /** @var numeric-string $tenderTotal */
@@ -91,6 +107,18 @@ final class PosReceiptVatAllocator
         $vatTotal = bcadd('0', '0', $currencyScale);
         foreach ($sealed as $row) {
             $vatTotal = bcadd($vatTotal, $row['vat_amount'], $currencyScale);
+        }
+
+        // Two authorities for one number: the sealed rows and the receipt's own
+        // `tax_amount` (both written by the same projector from the same signed
+        // payload). If they ever disagree, refuse rather than pick — a silent
+        // pick is how a wrong VAT figure gets sealed into the chain.
+        if (bccomp($vatTotal, $declaredVat, $currencyScale) !== 0) {
+            throw PosVatProjectionRefusedException::sealedVatDisagreesWithReceipt(
+                $receiptId,
+                $vatTotal,
+                $declaredVat,
+            );
         }
 
         if (bccomp($vatTotal, $tenderTotal, $currencyScale) > 0) {
@@ -142,6 +170,21 @@ final class PosReceiptVatAllocator
         }
 
         return $splits;
+    }
+
+    /**
+     * The VAT the receipt row itself declares, normalised to the currency scale.
+     *
+     * @return numeric-string
+     */
+    private function declaredVat(Receipt $receipt, string $receiptId, int $currencyScale): string
+    {
+        $declared = (string) ($receipt->tax_amount ?? '0');
+        if (! is_numeric($declared)) {
+            throw PosVatProjectionRefusedException::nonNumericAmount($receiptId, 'pos_receipts.tax_amount', $declared);
+        }
+
+        return bcadd($declared, '0', $currencyScale);
     }
 
     /**

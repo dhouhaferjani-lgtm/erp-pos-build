@@ -36,7 +36,36 @@ final readonly class PosRevenueVatSplit
         public string $netRevenueAmount,
         public array $vatAllocations,
         public int $currencyScale,
+        /**
+         * True ONLY for a receipt the allocator has positively established
+         * carries no VAT at all (no sealed rows AND `tax_amount` zero).
+         *
+         * It exists so `assertReconciles()` can keep treating an EMPTY
+         * `$vatAllocations` as "someone handed me a split with the VAT missing"
+         * — the W4-9 failure mode — while still letting a genuinely VAT-free
+         * sale post. Silence and zero must not look alike here.
+         */
+        public bool $isVatFree = false,
     ) {}
+
+    /**
+     * The whole tender is revenue because the receipt carries no VAT — asserted
+     * by the allocator, not assumed by a caller.
+     *
+     * @param  numeric-string  $tenderAmount
+     */
+    public static function vatFree(string $tenderAmount, int $currencyScale): self
+    {
+        $normalised = bcadd($tenderAmount, '0', $currencyScale);
+
+        return new self(
+            tenderAmount: $normalised,
+            netRevenueAmount: $normalised,
+            vatAllocations: [],
+            currencyScale: $currencyScale,
+            isVatFree: true,
+        );
+    }
 
     /** @return numeric-string */
     public function totalVat(): string
@@ -77,7 +106,7 @@ final readonly class PosRevenueVatSplit
      */
     public function assertReconciles(string $receiptId, string $expectedTender): void
     {
-        if ($this->vatAllocations === []) {
+        if ($this->vatAllocations === [] && ! $this->isVatFree) {
             throw PosVatProjectionRefusedException::missingSealedVatDetails($receiptId);
         }
 

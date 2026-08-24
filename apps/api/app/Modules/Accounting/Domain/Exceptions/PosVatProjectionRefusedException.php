@@ -94,6 +94,30 @@ final class PosVatProjectionRefusedException extends RuntimeException
         );
     }
 
+    /**
+     * @param  numeric-string  $sealedVat
+     * @param  numeric-string  $receiptTaxAmount
+     */
+    public static function sealedVatDisagreesWithReceipt(
+        string $receiptId,
+        string $sealedVat,
+        string $receiptTaxAmount,
+    ): self {
+        return new self(
+            PosVatRefusalReason::SealedVatDisagreesWithReceipt,
+            $receiptId,
+            sprintf(
+                'pos_vat_projection_refused:%s:receipt=%s:sealed_vat=%s:receipt_tax_amount=%s — the sealed '
+                .'pos_receipt_vat_details rows and pos_receipts.tax_amount disagree; the ledger will not pick '
+                .'a winner.',
+                PosVatRefusalReason::SealedVatDisagreesWithReceipt->value,
+                $receiptId,
+                $sealedVat,
+                $receiptTaxAmount,
+            ),
+        );
+    }
+
     public static function nonNumericAmount(string $receiptId, string $field, string $value): self
     {
         return new self(

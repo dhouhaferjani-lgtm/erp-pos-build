@@ -39,6 +39,7 @@ use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use App\Shared\Domain\CashRoundingCutover;
+use Closure;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -446,10 +447,17 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
 
             $totalLines = count($view->payments);
 
-            // W4-9 — decide the revenue/VAT decomposition ONCE, for the whole
-            // receipt, from the amounts the legs will actually retain. It has to
-            // happen here rather than per leg: the sealed VAT is a receipt-level
-            // fact and apportioning it needs every leg's amount at once.
+            // W4-9 — the revenue/VAT decomposition is decided ONCE for the whole
+            // receipt (the sealed VAT is a receipt-level fact and apportioning it
+            // needs every leg's amount at once) but resolved LAZILY, at the
+            // moment a leg is actually about to post.
+            //
+            // The laziness is load-bearing, not an optimisation: the per-leg
+            // fail-closed gates below — a cross-tenant `method_code`, a missing
+            // or GL-unlinked repository — must keep throwing THEIR errors. An
+            // eager allocation here would preempt them, so a cross-tenant
+            // payload would be reported as a VAT problem and the security gate
+            // would stop being the thing that names the refusal.
             //
             // A refusal (no sealed rows, VAT above the tender, a split that will
             // not reconcile) throws out of the enclosing DB::transaction, so the
@@ -460,7 +468,13 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             for ($i = 0; $i < $totalLines; $i++) {
                 $legAmounts[] = $nettedAmounts[$i] ?? $view->payments[$i]->amount;
             }
-            $vatSplits = $this->vatAllocator->allocate($receipt, $legAmounts, $currencyScale);
+            /** @var ?list<PosRevenueVatSplit> $vatSplits */
+            $vatSplits = null;
+            $resolveVatSplit = function (int $legIndex) use (&$vatSplits, $receipt, $legAmounts, $currencyScale): PosRevenueVatSplit {
+                $vatSplits ??= $this->vatAllocator->allocate($receipt, $legAmounts, $currencyScale);
+
+                return $vatSplits[$legIndex];
+            };
 
             $index = 0;
             foreach ($view->payments as $payment) {
@@ -475,7 +489,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                     $terminalLocationId,
                     $nettedAmounts[$index] ?? $payment->amount,
                     $currencyScale,
-                    $vatSplits[$index],
+                    $resolveVatSplit,
                 );
                 $index++;
             }
@@ -1160,6 +1174,11 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
      * unusable mappings. The canonical payload deliberately carries no
      * mutable operational repository selection.
      */
+    /**
+     * @param  Closure(int): PosRevenueVatSplit  $resolveVatSplit  memoised receipt-level revenue/VAT
+     *                                                             decomposition, resolved only when this
+     *                                                             leg is about to post (see apply())
+     */
     private function projectPaymentLineFromCanonical(
         FiscalEvent $event,
         Receipt $receipt,
@@ -1171,7 +1190,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         ?string $terminalLocationId,
         string $nettedAmount,
         int $currencyScale,
-        PosRevenueVatSplit $vatSplit,
+        Closure $resolveVatSplit,
     ): void {
         // RETAINED amount (spec §4.6 two-semantics rule) — this is what the
         // Treasury Payment row, the GL entry and the repository movement all
@@ -1462,13 +1481,13 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                     payment: $payment,
                     receipt: $receipt,
                     repository: $repository,
-                    vatSplit: $vatSplit,
+                    vatSplit: $resolveVatSplit($index),
                 )
                 : $this->generalLedgerService->createPOSPaymentEntry(
                     payment: $payment,
                     receipt: $receipt,
                     repository: $repository,
-                    vatSplit: $vatSplit,
+                    vatSplit: $resolveVatSplit($index),
                     cashAccountOverrideId: $cashAccountOverrideId,
                 );
 

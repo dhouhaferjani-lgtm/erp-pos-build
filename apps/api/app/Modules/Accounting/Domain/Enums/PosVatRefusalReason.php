@@ -32,6 +32,13 @@ enum PosVatRefusalReason: string
      */
     case SplitDoesNotReconcile = 'split_does_not_reconcile';
 
+    /**
+     * The sealed rows exist but their VAT does not add up to the receipt's own
+     * `tax_amount`. Two authorities for the same number disagreeing is exactly
+     * the shape W4-9 was; posting either of them would be a guess.
+     */
+    case SealedVatDisagreesWithReceipt = 'sealed_vat_disagrees_with_receipt';
+
     /** A tender or sealed VAT amount is not a plain decimal string. */
     case NonNumericAmount = 'non_numeric_amount';
 }
