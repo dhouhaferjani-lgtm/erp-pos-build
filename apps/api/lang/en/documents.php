@@ -26,6 +26,17 @@ return [
     'guided_delivery' => [
         'fefo_allocation_failed' => 'Automatic FEFO allocation failed. Confirm the delivery manually and choose the batch explicitly.',
     ],
+
+    /*
+     | Campaign N-2. The refusal an operator meets on day one, when a product has
+     | no stock_levels row at all: the reservation lane (sales-order confirm) and
+     | the WAC sale lane (delivery-note confirm, the two invoice convenience
+     | endpoints) both answer with this, code INSUFFICIENT_STOCK. Quantities are
+     | pre-rendered at the product unit's decimal_places by the exception.
+     */
+    'stock' => [
+        'insufficient' => "Not enough stock for ':product' at ':location'. Available: :available, requested: :requested. Receive or transfer the goods first, then confirm.",
+    ],
     'pre_delivery_invoicing' => [
         /*
          | Wave 3 T25b/T25d. GUIDED-REQUIRE: the refusal must name where the
