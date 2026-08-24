@@ -113,10 +113,36 @@ final class ProcessImportJob implements ShouldQueue
      */
     private function processImport(ImportJob $job, ImportService $importService, Company $company): void
     {
-        $job->update([
-            'status' => ImportStatus::Importing,
-            'started_at' => now(),
-        ]);
+        // CLAIM the job rather than asserting ownership of it. handle()'s
+        // canStart() check above is a read; between that read and this write a
+        // second worker (queue redelivery, a duplicate dispatch) can have claimed
+        // and advanced the same job. A conditional update makes the claim atomic:
+        // only a job still sitting in a start-eligible status can be taken, and an
+        // affected-row count of 0 means somebody else already owns it — log and
+        // return without touching a single row. Tenant is re-asserted here for the
+        // same defence-in-depth reason as every other query in this job.
+        $claimed = ImportJob::query()
+            ->where('tenant_id', $this->tenantId)
+            ->where('id', $job->id)
+            ->whereIn('status', [
+                ImportStatus::Pending->value,
+                ImportStatus::Validated->value,
+            ])
+            ->update([
+                'status' => ImportStatus::Importing->value,
+                'started_at' => now(),
+            ]);
+
+        if ($claimed === 0) {
+            Log::warning('ProcessImportJob: Import job already claimed by another worker', [
+                'id' => $job->id,
+                'tenant_id' => $this->tenantId,
+            ]);
+
+            return;
+        }
+
+        $job->refresh();
 
         // Rows that failed validation are skipped at execution but still count as
         // failed in the final tally (sync-path parity) — they never reach

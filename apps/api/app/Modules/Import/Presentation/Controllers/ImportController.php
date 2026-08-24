@@ -487,6 +487,24 @@ class ImportController extends Controller
             return $this->openingBalancesForbidden();
         }
 
+        // Status precondition, separate from the "no valid rows" refusal below.
+        // A Completed/Failed/Importing/Validating job must be refused for what it
+        // is, not with a misleading "no valid rows" message — executing this
+        // endpoint twice re-applies the whole file, and this is the tenant-#1
+        // onboarding path. Only Validated/Pending are start-eligible
+        // (ImportStatus::canStartImport).
+        if (! $job->status->canStartImport()) {
+            return response()->json([
+                'error' => [
+                    'code' => 'IMPORT_NOT_EXECUTABLE',
+                    'message' => 'This import has already been executed or is currently running, and cannot be executed again.',
+                    'details' => [
+                        'status' => $job->status->value,
+                    ],
+                ],
+            ], 422);
+        }
+
         if (! $job->canStart()) {
             return response()->json([
                 'error' => 'Import cannot be started. No valid rows to import.',
@@ -529,14 +547,20 @@ class ImportController extends Controller
             ]);
         }
 
+        // Mark as queued BEFORE dispatching. On a warm `imports` queue the worker
+        // can claim the job and advance it (Importing, then a terminal status)
+        // before this line would otherwise run, and the write would then clobber
+        // the worker's status back to a start-eligible Pending — leaving a
+        // finished job re-executable. Order matters; do not move this below the
+        // dispatch. See ProcessImportJob::processImport()'s conditional claim,
+        // which allows exactly the Pending written here.
+        $job->update(['status' => ImportStatus::Pending]);
+
         // Large imports: dispatch to queue for async processing.
         // tenantId is passed so the worker can rebind tenant context via
         // BindsTenantContext::withTenantContext() before any DB access
         // (api.scheduled-jobs.001).
         ProcessImportJob::dispatch($job->id, $companyId, $tenantId);
-
-        // Mark as queued (before actual processing begins)
-        $job->update(['status' => ImportStatus::Pending]);
 
         /** @var ImportJob $freshJob */
         $freshJob = $job->fresh();
@@ -746,14 +770,17 @@ class ImportController extends Controller
             totalRows: 0 // Will be set after ZIP extraction
         );
 
+        // Mark as pending BEFORE dispatching — same ordering rule as execute():
+        // ProcessProductImageImport advances the job to Importing as soon as a
+        // worker picks it up, and a status write after the dispatch can clobber
+        // that back to Pending.
+        $job->update(['status' => ImportStatus::Pending]);
+
         // Dispatch queue job for async ZIP processing.
         // tenantId is passed so the worker can rebind tenant context via
         // BindsTenantContext::withTenantContext() before any DB access
         // (api.scheduled-jobs.002).
         ProcessProductImageImport::dispatch($job->id, $fullPath, $tenantId);
-
-        // Mark as pending
-        $job->update(['status' => ImportStatus::Pending]);
 
         /** @var ImportJob $freshJob */
         $freshJob = $job->fresh();
