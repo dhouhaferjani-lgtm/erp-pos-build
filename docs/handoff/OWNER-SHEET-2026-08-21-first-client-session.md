@@ -90,6 +90,8 @@ candidate before any promotion.
 Still open elsewhere: Dokploy deploy pipeline (yours) · staging owes S-1..S-13 once deploys work.
 
 ## E. Merges under the CI-blind window (S-17 register — every row locally verified)
+
+> **IN-FLIGHT NOTICE (Session B, 2026-08-24):** lane Q-9 (`fix/sb-q9-kitchen-order-gating`) will make a MINIMAL edit to the shared web files `apps/web/src/routes/index.tsx` (wrap the Orders route in `ModuleGuard module="Menu"`, ~:2976-2984) and `apps/web/src/components/layout/Sidebar.tsx` (Orders entry `module: 'Menu'`, ~:236) — nothing else in `apps/web`. Session A lanes touching those files (`fix/campaign-fe-contract`) should expect a trivial merge; Session B will merge from the fresh dev tip.
 | Lane | Branch | Merged at | Local verification |
 |---|---|---|---|
 | G-4 VAT refund netting | `fix/g4-vat-pos-refund-netting` | `efa2282dd` | treasury gate r1 (revert-probe red-proof) + fix round (probe-verified CI token, voided-return pin); PG 7/31 + sqlite 7/31 by path; manifest checker exit 0 re-run on MERGED dev; actionlint OWED (not installed) at next CI-sighted window |
