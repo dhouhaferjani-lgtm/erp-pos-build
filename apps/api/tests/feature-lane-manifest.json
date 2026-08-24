@@ -6,7 +6,7 @@
     "deferred": "CAN run, but no lane runs it yet. Requires `reason`. Counted loudly on every CI run. After O-29 exactly one group is left here — `(root files)`, which no whole-directory selector can address."
   },
   "debt_ceiling": 1,
-  "gated_ceiling": 1162,
+  "gated_ceiling": 1163,
   "lanes": {
     "security-regression": {
       "job": "security-regression",
@@ -736,8 +736,8 @@
     },
     "Company": {
       "lane": "feature-lane-tenancy/Company",
-      "classes": 30,
-      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
+      "classes": 31,
+      "note": "DELIBERATE RAISE 30 -> 31 (2026-08-24, Session B lane Q-10): FiscalPeriodReopenEndpointTest \u2014 the permissioned Closed -> Open fiscal-period edge added by fix/sb-q10-fiscal-period-quickfixes (tenancy sub-report HIGH #2: PeriodStatus had zero in-product outgoing edges from Closed/Locked). gated_ceiling 1162 -> 1163 for this one class. The class is NOT named in either live --filter allowlist in .github/workflows/ci.yml, so it executes nowhere until this parked lane's gate is flipped \u2014 flagged to the parent as a CI-reachability residual, since it is the only regression pin on the reopen guards (Locked terminal, closed-successor ordering invariant, accountant/admin-only permission). Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "CompanyConfig": {
       "lane": "feature-lane-tenancy/CompanyConfig",

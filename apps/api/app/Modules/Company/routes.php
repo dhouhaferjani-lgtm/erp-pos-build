@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Company\Presentation\Controllers\CompanyController;
+use App\Modules\Company\Presentation\Controllers\FiscalPeriodController;
 use App\Modules\Company\Presentation\Controllers\LocationController;
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
@@ -46,6 +47,25 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::put('companies/{companyId}/receipt-settings', [CompanyController::class, 'updateReceiptSettings'])
         ->middleware('can:settings.update')
         ->name('companies.receipt-settings.update');
+
+    // Fiscal-period lifecycle — Session B lane Q-10 (c).
+    //
+    // The nightly auto-lock (FiscalPeriodAutoLockService) drives periods
+    // Open -> Closed -> Locked and, before this lane, nothing in the product
+    // drove them back: `PeriodStatus::Open` was written at fiscal-year creation
+    // and nowhere else, so an opening-period correction one month after go-live
+    // required a manual `UPDATE fiscal_periods`.
+    //
+    // Gated on the dedicated `fiscal-periods.reopen`, seeded in
+    // RolesAndPermissionsSeeder and held by `admin` (via Permission::all()) and
+    // `accountant`. Naming mirrors the sibling `bank-statements.reopen`; the role
+    // choice mirrors `reports.manage` (the VAT-period generate/close/reopen/file
+    // family), which the 2026-08-06 gate finding I-1 ruling deliberately kept on
+    // accountant and removed from manager because it is financial-lifecycle
+    // mutation. Locked periods are NOT reopenable — the service refuses.
+    Route::post('fiscal-periods/{id}/reopen', [FiscalPeriodController::class, 'reopen'])
+        ->middleware('can:fiscal-periods.reopen')
+        ->name('fiscal-periods.reopen');
 
     Route::get('company/locations', [LocationController::class, 'scopedIndex'])
         ->name('company.locations.scoped');
