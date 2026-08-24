@@ -1284,6 +1284,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                 $paymentMethod,
                 $receipt,
                 $originalEventId,
+                $resolveVatSplit,
             )) {
                 return;
             }
@@ -1592,6 +1593,12 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
      * Return true when the maturity refund is fully handled without cash.
      * False means the caller must use the standard refund JE + movement path.
      */
+    /**
+     * @param  Closure(int): PosRevenueVatSplit  $resolveVatSplit  W4-9 gate r1 (F-1) — the instrument
+     *        cancellation reverses a POS SALE, so it needs the same net + per-rate-VAT decomposition the sale
+     *        recognised. Resolved HERE, not in `apply()`: this is the moment that leg is about to post, and the
+     *        cross-tenant `method_code` gate has already run above.
+     */
     private function handleMaturityRefundLeg(
         FiscalEvent $event,
         PaymentDTO $line,
@@ -1599,6 +1606,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         PaymentMethod $method,
         Receipt $receipt,
         string $originalEventId,
+        Closure $resolveVatSplit,
     ): bool {
         $matches = PaymentInstrument::query()
             ->where('tenant_id', $event->tenant_id)
@@ -1632,6 +1640,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                 $receipt->cashier_id,
                 sprintf('POS refund/void fiscal event %s', $event->id),
                 CancellationShape::PosRevenue,
+                $resolveVatSplit($index),
             );
 
             return true;

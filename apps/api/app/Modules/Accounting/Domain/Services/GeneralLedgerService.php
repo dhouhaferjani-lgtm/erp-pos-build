@@ -11,6 +11,7 @@ use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\DTOs\CreatePOSChargeJournalEntryCommand;
 use App\Modules\Accounting\Domain\DTOs\PosRevenueVatSplit;
+use App\Modules\Accounting\Domain\Exceptions\PosVatProjectionRefusedException;
 use App\Modules\Accounting\Domain\Enums\JournalCode;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\PostingMode;
@@ -3287,9 +3288,26 @@ final class GeneralLedgerService
         CancellationShape $shape,
         \DateTimeInterface $date,
         ?PaymentLedgerPartition $partition = null,
+        ?PosRevenueVatSplit $posRevenueSplit = null,
     ): JournalEntry {
         if (DB::transactionLevel() < 1) {
             throw new \LogicException('Instrument cancellation entries require an enclosing transaction.');
+        }
+
+        // W4-9 gate r1 (F-1) — the PosRevenue shape reverses a POS SALE, and a
+        // POS sale now recognises revenue NET with its output VAT on `4457`.
+        // Reversing it needs the same decomposition, so the split is REQUIRED on
+        // that arm and refused (typed) when absent. Checked before the entry row
+        // is created: an unreversible instrument must leave no orphan Draft.
+        if ($shape === CancellationShape::PosRevenue) {
+            if ($posRevenueSplit === null) {
+                throw PosVatProjectionRefusedException::missingSealedVatDetails($instrumentId);
+            }
+            // The instrument NOMINAL is what the cancellation reverses, and the
+            // refund leg's tender must be that same figure (the bridge matched
+            // the paper on it). If they ever diverge, refuse rather than post a
+            // reversal that does not undo the sale.
+            $posRevenueSplit->assertReconciles($instrumentId, $amount);
         }
 
         return DB::transaction(function () use (
@@ -3302,6 +3320,7 @@ final class GeneralLedgerService
             $shape,
             $date,
             $partition,
+            $posRevenueSplit,
         ): JournalEntry {
             $entry = JournalEntry::query()->create([
                 'tenant_id' => $tenantId,
@@ -3320,16 +3339,35 @@ final class GeneralLedgerService
             // partner_id, description), which is how a fourth shape gets added
             // wrongly. A future `CancellationShape` case is now a compile error.
             $debitLines = match ($shape) {
-                // UNCHANGED, byte for byte: one Dr ProductRevenue, partner_id
-                // null. Only its SELECTION narrowed — under A-D7 it is reachable
-                // solely through an explicit caller-supplied shape (the POS void
-                // lane), never from a reversal.
-                CancellationShape::PosRevenue => [[
-                    'account_id' => $this->getAccountByPurpose($companyId, SystemAccountPurpose::ProductRevenue)->id,
-                    'partner_id' => null,
-                    'amount' => $amount,
-                    'description' => 'POS revenue reversed',
-                ]],
+                // Reachable solely through an explicit caller-supplied shape
+                // (the POS void/refund lane), never from a B2B reversal.
+                //
+                // W4-9 gate r1 (F-1): this was a SINGLE `Dr ProductRevenue` at
+                // the GROSS instrument nominal. That was symmetric while the sale
+                // also credited revenue gross; once the sale started crediting
+                // `70x` NET and `4457` per rate, a cheque/effet-tendered POS
+                // refund reversed revenue by the gross and reversed no VAT at
+                // all — leaving `4457` permanently overstated on a live tender,
+                // while the DGI declaration nets that refund
+                // (`EloquentVatDataRepository`, `receipt_type='return'` →
+                // `-ABS(vat_amount)`). Books and filing diverged again on exactly
+                // the transaction this lane exists to fix. It now takes the SAME
+                // decomposition every other POS revenue leg takes.
+                CancellationShape::PosRevenue => array_map(
+                    static fn (array $spec): array => [
+                        'account_id' => $spec['account_id'],
+                        'partner_id' => null,
+                        'amount' => $spec['amount'],
+                        'description' => $spec['description'],
+                    ],
+                    $this->posRevenueAndVatLineSpecs(
+                        $companyId,
+                        // Non-null on this arm: asserted before the transaction opened.
+                        $posRevenueSplit ?? throw PosVatProjectionRefusedException::missingSealedVatDetails($instrumentId),
+                        'POS revenue reversed',
+                        'POS output VAT reversed (instrument cancellation)',
+                    ),
+                ),
 
                 CancellationShape::B2b => $this->b2bCancellationDebits(
                     $companyId,
@@ -3695,9 +3733,6 @@ final class GeneralLedgerService
         $entry = DB::transaction(function () use ($payment, $receipt, $repository, $cashAccountOverrideId, $vatSplit, $tender): JournalEntry {
             $companyId = $payment->company_id;
 
-            // Get revenue account by system purpose
-            $revenueAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::ProductRevenue);
-
             $entryNumber = $this->generateEntryNumber($companyId);
 
             // Get tenant_id from payment
@@ -3785,36 +3820,70 @@ final class GeneralLedgerService
     ): void {
         $lineOrder = 1;
 
-        if ($vatSplit->hasNetRevenue()) {
-            $revenueAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::ProductRevenue);
+        foreach ($this->posRevenueAndVatLineSpecs($companyId, $vatSplit, $revenueDescription, $vatDescriptionPrefix) as $spec) {
             JournalLine::create([
                 'journal_entry_id' => $entry->id,
-                'account_id' => $revenueAccount->id,
+                'account_id' => $spec['account_id'],
                 'partner_id' => null,
-                'debit' => $onDebitSide ? $vatSplit->netRevenueAmount : '0',
-                'credit' => $onDebitSide ? '0' : $vatSplit->netRevenueAmount,
-                'description' => $revenueDescription,
+                'debit' => $onDebitSide ? $spec['amount'] : '0',
+                'credit' => $onDebitSide ? '0' : $spec['amount'],
+                'description' => $spec['description'],
                 'line_order' => $lineOrder++,
             ]);
+        }
+    }
+
+    /**
+     * THE POS revenue/VAT decomposition, as data (W4-9 gate r1 / F-1).
+     *
+     * One net `ProductRevenue` line plus one `VatCollected` line per sealed rate
+     * that actually carries money. Zero-valued lines are skipped, so a
+     * fully-exempt sale posts no `4457` line at all — and the `VatCollected`
+     * purpose is resolved ONLY when a rate carries money, so a chart without the
+     * account can still book an exempt sale.
+     *
+     * It exists as SPECS rather than as writes because the POS reverses revenue
+     * on three different entry shapes — the sale, the cash/card refund reversal,
+     * and the maturity-instrument cancellation — each of which persists its lines
+     * differently (line ordering, an enclosing portfolio credit). Gate r1 F-1 was
+     * exactly what happens when one of those three hand-writes its own version:
+     * the sale credited `70x` NET while the cheque/effet cancellation debited it
+     * GROSS, leaving `4457` permanently overstated by every instrument-tendered
+     * POS refund. There is now ONE place that decides what the decomposition is.
+     *
+     * @return list<array{account_id: string, amount: numeric-string, description: string}>
+     */
+    private function posRevenueAndVatLineSpecs(
+        string $companyId,
+        PosRevenueVatSplit $vatSplit,
+        string $revenueDescription,
+        string $vatDescriptionPrefix,
+    ): array {
+        $specs = [];
+
+        if ($vatSplit->hasNetRevenue()) {
+            $specs[] = [
+                'account_id' => (string) $this->getAccountByPurpose($companyId, SystemAccountPurpose::ProductRevenue)->id,
+                'amount' => $vatSplit->netRevenueAmount,
+                'description' => $revenueDescription,
+            ];
         }
 
         $allocations = $vatSplit->nonZeroVatAllocations();
         if ($allocations === []) {
-            return;
+            return $specs;
         }
 
         $vatAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::VatCollected);
         foreach ($allocations as $allocation) {
-            JournalLine::create([
-                'journal_entry_id' => $entry->id,
-                'account_id' => $vatAccount->id,
-                'partner_id' => null,
-                'debit' => $onDebitSide ? $allocation->vatAmount : '0',
-                'credit' => $onDebitSide ? '0' : $allocation->vatAmount,
+            $specs[] = [
+                'account_id' => (string) $vatAccount->id,
+                'amount' => $allocation->vatAmount,
                 'description' => sprintf('%s %s%%', $vatDescriptionPrefix, $allocation->taxRate),
-                'line_order' => $lineOrder++,
-            ]);
+            ];
         }
+
+        return $specs;
     }
 
     /**
