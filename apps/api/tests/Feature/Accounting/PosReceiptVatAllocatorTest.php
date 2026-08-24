@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Accounting;
 
+use App\Modules\Accounting\Domain\DTOs\PosVatRateAllocation;
 use App\Modules\Accounting\Domain\Enums\PosVatRefusalReason;
 use App\Modules\Accounting\Domain\Exceptions\PosVatProjectionRefusedException;
 use App\Modules\Accounting\Domain\Services\PosReceiptVatAllocator;
@@ -214,7 +215,7 @@ final class PosReceiptVatAllocatorTest extends TestCase
     }
 
     /**
-     * @param  list<\App\Modules\Accounting\Domain\DTOs\PosVatRateAllocation>  $allocations
+     * @param  list<PosVatRateAllocation>  $allocations
      * @return array<string, string>
      */
     private function byRate(array $allocations): array

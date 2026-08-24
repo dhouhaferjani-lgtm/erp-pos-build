@@ -57,7 +57,7 @@ final class PosReceiptVatAllocator
 {
     /**
      * @param  list<string>  $legAmounts  RETAINED amount per tender leg, index-aligned with the canonical
-     *                                     `payments[]` order (a fully-netted leg is '0')
+     *                                    `payments[]` order (a fully-netted leg is '0')
      * @return list<PosRevenueVatSplit> index-aligned with $legAmounts
      *
      * @throws PosVatProjectionRefusedException
@@ -67,25 +67,6 @@ final class PosReceiptVatAllocator
         $receiptId = (string) $receipt->id;
         $sealed = $this->loadSealedRows($receiptId);
         $declaredVat = $this->declaredVat($receipt, $receiptId, $currencyScale);
-
-        // No sealed rows is only survivable when the receipt itself declares no
-        // VAT — then there is genuinely nothing to split and the whole tender IS
-        // revenue. If the receipt says VAT was collected, the ledger cannot post
-        // it and must NOT fall back to booking the gross: that fallback is
-        // precisely the W4-9 defect.
-        if ($sealed === []) {
-            if (bccomp($declaredVat, '0', $currencyScale) > 0) {
-                throw PosVatProjectionRefusedException::missingSealedVatDetails($receiptId);
-            }
-
-            return array_map(
-                static fn (string $amount): PosRevenueVatSplit => PosRevenueVatSplit::vatFree(
-                    is_numeric($amount) ? $amount : '0',
-                    $currencyScale,
-                ),
-                array_values($legAmounts),
-            );
-        }
 
         /** @var numeric-string $tenderTotal */
         $tenderTotal = bcadd('0', '0', $currencyScale);
@@ -101,6 +82,28 @@ final class PosReceiptVatAllocator
             }
             $amounts[] = $amount;
             $tenderTotal = bcadd($tenderTotal, $amount, $currencyScale);
+        }
+
+        // No sealed rows is only survivable when the receipt itself declares no
+        // VAT — then there is genuinely nothing to split and the whole tender IS
+        // revenue. If the receipt says VAT was collected, the ledger cannot post
+        // it and must NOT fall back to booking the gross: that fallback is
+        // precisely the W4-9 defect.
+        //
+        // Placed AFTER the numeric narrowing above so a malformed leg amount is
+        // still reported as a malformed leg amount on a VAT-free receipt.
+        if ($sealed === []) {
+            if (bccomp($declaredVat, '0', $currencyScale) > 0) {
+                throw PosVatProjectionRefusedException::missingSealedVatDetails($receiptId);
+            }
+
+            return array_map(
+                static fn (string $amount): PosRevenueVatSplit => PosRevenueVatSplit::vatFree(
+                    $amount,
+                    $currencyScale,
+                ),
+                $amounts,
+            );
         }
 
         /** @var numeric-string $vatTotal */
@@ -179,10 +182,13 @@ final class PosReceiptVatAllocator
      */
     private function declaredVat(Receipt $receipt, string $receiptId, int $currencyScale): string
     {
+        // `$receiptId` is carried for symmetry with the other refusal sites and
+        // for the message a future non-numeric arm would need; the column is
+        // `decimal(N,3)` and the model casts it, so there is no parse to fail.
+        unset($receiptId);
+
+        /** @var numeric-string $declared */
         $declared = (string) ($receipt->tax_amount ?? '0');
-        if (! is_numeric($declared)) {
-            throw PosVatProjectionRefusedException::nonNumericAmount($receiptId, 'pos_receipts.tax_amount', $declared);
-        }
 
         return bcadd($declared, '0', $currencyScale);
     }
@@ -225,7 +231,7 @@ final class PosReceiptVatAllocator
                 // PostgreSQL returns '19.00', SQLite returns '19'. The rate is
                 // the LABEL an accountant groups the 4457 lines by, so it must
                 // read the same on both.
-                'tax_rate' => bcadd($rate, '0', 2),
+                'tax_rate' => bcadd($rate, '0', 2), // precision-ok: a VAT RATE is a percentage, not money — `tax_rate` is decimal(5,2) and rule 19 keeps percents off the currency scale.
                 'vat_amount' => $vat,
                 'tax_category' => is_string($category) ? $category : null,
             ];

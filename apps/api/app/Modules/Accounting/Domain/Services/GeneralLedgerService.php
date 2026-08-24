@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Accounting\Domain\Services;
 
+use App\Modules\Accounting\Application\Services\AccountingService;
 use App\Modules\Accounting\Application\Services\FiscalPeriodResolverService;
 use App\Modules\Accounting\Application\Services\GeneralLedgerHashService;
 use App\Modules\Accounting\Application\Services\PartnerBalanceService;
@@ -15,7 +16,6 @@ use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
-use App\Modules\Accounting\Domain\Exceptions\PosVatProjectionRefusedException;
 use App\Modules\Accounting\Domain\Exceptions\ClosedFiscalPeriodException;
 use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryPostException;
 use App\Modules\Accounting\Domain\JournalEntry;
@@ -3657,13 +3657,13 @@ final class GeneralLedgerService
      * split: the books and the filing disagreed from receipt #1, revenue was
      * overstated by exactly the VAT, and the trial balance still closed — so
      * nothing surfaced it. Document-arm sales
-     * ({@see \App\Modules\Accounting\Application\Services\AccountingService::createInvoiceGLEntries})
+     * ({@see AccountingService::createInvoiceGLEntries})
      * always posted the VAT leg, so the two sales channels disagreed about the
      * same kind of transaction.
      *
      * The VAT numbers arrive ALREADY DECIDED in `$vatSplit`, apportioned from
      * the SEALED `pos_receipt_vat_details` rows by
-     * {@see \App\Modules\Accounting\Domain\Services\PosReceiptVatAllocator}.
+     * {@see PosReceiptVatAllocator}.
      * Nothing here multiplies a net by a rate: the sealed breakdown is the
      * fiscal fact and this method is forbidden a second opinion about it.
      * `assertReconciles()` runs BEFORE the first `journal_lines` insert, so a
@@ -3754,14 +3754,8 @@ final class GeneralLedgerService
      */
     private function posTenderAmount(Payment $payment, Receipt $receipt): string
     {
+        /** @var numeric-string $amount */
         $amount = (string) $payment->amount;
-        if (! is_numeric($amount)) {
-            throw PosVatProjectionRefusedException::nonNumericAmount(
-                (string) $receipt->id,
-                'payments.amount',
-                $amount,
-            );
-        }
 
         return bcadd($amount, '0', $this->scaleResolver->getScale((string) $receipt->currency));
     }

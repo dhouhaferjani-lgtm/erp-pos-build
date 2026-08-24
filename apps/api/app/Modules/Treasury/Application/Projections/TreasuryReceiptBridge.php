@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Application\Projections;
 
-use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\DTOs\PosRevenueVatSplit;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Accounting\Domain\Services\PosReceiptVatAllocator;
 use App\Modules\Compliance\Services\AuditService;
