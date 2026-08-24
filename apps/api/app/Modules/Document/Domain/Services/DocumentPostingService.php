@@ -79,8 +79,15 @@ final class DocumentPostingService
      */
     public function post(Document $document, PostingContext $context = PostingContext::Standard): Document
     {
-        // Idempotent: if already posted, return success
-        if ($document->isPosted()) {
+        // Idempotent: if already posted, return success.
+        //
+        // N-6 — `Paid` counts as already posted here when the document carries a
+        // seal. Posting a fully-prepaid invoice now settles it in the same
+        // transaction (`settleIfFullyPrepaid()`), so `Posted` is a state it
+        // passes THROUGH; a re-post that landed in the `! isConfirmed()` refusal
+        // below would report "cannot post a paid document" about a document this
+        // very method had just posted.
+        if ($document->isPosted() || $this->isSealedAndSettled($document)) {
             /** @var Document */
             return $document->fresh(['lines']);
         }
@@ -151,6 +158,17 @@ final class DocumentPostingService
             /** @var Document */
             return $document->fresh(['lines']);
         });
+    }
+
+    /**
+     * A document that is `Paid` AND sealed reached `Paid` through `Posted` — it
+     * has been posted, and a second `post()` must be a no-op rather than a
+     * refusal. A `Paid` document with NO seal is the legacy pre-N-6 dead end and
+     * is deliberately NOT covered: it must not be treated as posted by anything.
+     */
+    private function isSealedAndSettled(Document $document): bool
+    {
+        return $document->status === DocumentStatus::Paid && $document->fiscal_hash !== null;
     }
 
     /**
