@@ -17,6 +17,9 @@ final readonly class CategoryResolutionDTO
 {
     public function __construct(
         public int $categoryId,
+        /** The RESOLVED category's own name — which differs from the incoming
+         *  value on a MatchedBySlug, and is what the operator needs to see. */
+        public string $categoryName,
         public CategoryResolutionOutcome $outcome,
     ) {}
 }

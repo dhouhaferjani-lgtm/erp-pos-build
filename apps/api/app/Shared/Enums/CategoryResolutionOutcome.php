@@ -14,8 +14,17 @@ namespace App\Shared\Enums;
  */
 enum CategoryResolutionOutcome: string
 {
-    /** An existing, live category already carried this name (or its slug). */
+    /** An existing, live category carried exactly this name. */
     case Matched = 'matched';
+
+    /**
+     * No category carried this name, but a live one carried its SLUG under a
+     * different name (`Creme` -> `Creme`, `Soins & Beaute` -> `Soins Beaute`).
+     * The link is made — the unique (company_id, slug) index leaves no choice —
+     * but it is a master-data merge decided from a spreadsheet cell, so it is
+     * reported rather than done quietly.
+     */
+    case MatchedBySlug = 'matched_by_slug';
 
     /** No category carried this name — one was created. */
     case Created = 'created';

@@ -15,6 +15,7 @@ use App\Shared\Contracts\CompositeItemServiceInterface;
 use App\Shared\Contracts\PartnerServiceInterface;
 use App\Shared\Contracts\ProductServiceInterface;
 use App\Shared\Contracts\TaxDefaultResolverInterface;
+use App\Shared\DTOs\CategoryResolutionDTO;
 use App\Shared\Enums\CategoryResolutionOutcome;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -523,9 +524,9 @@ final class ImportService
         // W2-3: resolve the category BEFORE the upsert so the row can report what
         // happened. The upsert resolves the same name through the same idempotent
         // service and therefore finds this row; nothing is created twice.
-        $categoryOutcome = $this->resolveRowCategory($companyId, $data);
-        if ($categoryOutcome !== null) {
-            $data['_results'] = array_merge($data['_results'] ?? [], ['category' => $categoryOutcome->value]);
+        $category = $this->resolveRowCategory($companyId, $data);
+        if ($category !== null) {
+            $data['_results'] = array_merge($data['_results'] ?? [], ['category' => $category->outcome->value]);
         }
 
         $row->update(['data' => $data]);
@@ -536,15 +537,11 @@ final class ImportService
             $this->addRowWarning($row, $warning['code'], $warning['detail']);
         }
 
-        if ($categoryOutcome !== null && $categoryOutcome->isStateChange()) {
+        if ($category !== null && $category->outcome->isStateChange()) {
             $this->addRowWarning(
                 $row,
-                'category_'.$categoryOutcome->value,
-                sprintf(
-                    'category "%s" did not exist and was %s from this row',
-                    trim((string) $data['category_name']),
-                    $categoryOutcome->value,
-                ),
+                'category_'.$category->outcome->value,
+                $this->categoryWarningDetail($category, trim((string) $data['category_name'])),
             );
         }
 
@@ -554,12 +551,40 @@ final class ImportService
     }
 
     /**
+     * Spell out what the resolution actually DID to master data. A restore is not
+     * a fresh category: `categories` carries default tax, margin overrides,
+     * max discount and restock policy (Product/Domain/Category.php), so bringing
+     * a deleted one back re-applies all of it to the imported products.
+     */
+    private function categoryWarningDetail(CategoryResolutionDTO $category, string $name): string
+    {
+        return match ($category->outcome) {
+            CategoryResolutionOutcome::Created => sprintf(
+                'category "%s" did not exist and was created from this row',
+                $name,
+            ),
+            CategoryResolutionOutcome::Restored => sprintf(
+                'category "%s" had been deleted and was reactivated from this row, '
+                .'together with its existing tax, margin, discount and restock policy',
+                $name,
+            ),
+            CategoryResolutionOutcome::MatchedBySlug => sprintf(
+                'category "%s" was linked to the existing category "%s" (same slug); '
+                .'if these are meant to be different categories, rename one and re-import',
+                $name,
+                $category->categoryName,
+            ),
+            CategoryResolutionOutcome::Matched => sprintf('category "%s" matched', $name),
+        };
+    }
+
+    /**
      * Resolve a product row's `category_name` to a company category, creating it
      * on a miss (W2-3). Returns null when the row carries no category at all.
      *
      * @param  array<string, mixed>  $data
      */
-    private function resolveRowCategory(string $companyId, array $data): ?CategoryResolutionOutcome
+    private function resolveRowCategory(string $companyId, array $data): ?CategoryResolutionDTO
     {
         $name = trim((string) ($data['category_name'] ?? ''));
 
@@ -567,7 +592,7 @@ final class ImportService
             return null;
         }
 
-        return $this->productService->resolveCategoryByName($companyId, $name)->outcome;
+        return $this->productService->resolveCategoryByName($companyId, $name);
     }
 
     /**

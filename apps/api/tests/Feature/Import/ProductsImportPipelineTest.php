@@ -342,7 +342,9 @@ final class ProductsImportPipelineTest extends TestCase
                 ->postJson("/api/v1/imports/{$jobId}/execute")
                 ->assertOk()
                 ->assertJsonPath('data.failed_rows', 0)
-                ->assertJsonPath('data.warning_rows', 0);
+                // Row 1 hits the category by exact name -> silent. Row 2 spells it
+                // differently and merges on the slug -> reported (gate r1 finding 3).
+                ->assertJsonPath('data.warning_rows', 1);
 
             $this->assertSame(
                 1,
@@ -354,8 +356,137 @@ final class ProductsImportPipelineTest extends TestCase
                 $this->assertSame($existing->id, Product::where('sku', $sku)->firstOrFail()->category_id);
             }
 
-            $row = ImportJob::findOrFail($jobId)->rows()->orderBy('row_number')->firstOrFail();
-            $this->assertSame('matched', $row->data['_results']['category'] ?? null);
+            $passRows = ImportJob::findOrFail($jobId)->rows()->orderBy('row_number')->get()->keyBy('row_number');
+            $this->assertSame('matched', $passRows[1]->data['_results']['category'] ?? null);
+            $this->assertNull($passRows[1]->warnings, "pass {$pass}: an exact-name match must stay silent");
+            $this->assertSame('matched_by_slug', $passRows[2]->data['_results']['category'] ?? null);
+            $this->assertSame('category_matched_by_slug', $passRows[2]->warnings[0]['code'] ?? null);
         }
+    }
+
+    /**
+     * Gate r1 finding 1 (PROBE-A). `categories` soft-deletes and the unique
+     * (company_id, slug) index is NOT partial, so a trashed row keeps its slug.
+     * Every import row runs inside DB::transaction (ImportService.php importRow),
+     * and on PostgreSQL a failed INSERT aborts that transaction (25P02) — so a
+     * recovery SELECT after a caught QueryException cannot run. Must be handled
+     * BEFORE any statement is allowed to fail. RUN THIS ON PG.
+     */
+    public function test_soft_deleted_category_holding_the_slug_is_restored_and_linked(): void
+    {
+        $trashed = Category::create([
+            'company_id' => $this->company->id,
+            'name' => 'Hygiene',
+        ]);
+        $trashed->delete();
+        $this->assertSoftDeleted('categories', ['id' => $trashed->id]);
+
+        $file = UploadedFile::fake()->createWithContent('products-trashed-cat.csv', implode("\n", [
+            'name,sku,type,category_name',
+            'Gel douche,GEL-CAVA_500,part,Hygiene',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', ['file' => $file, 'type' => 'products']);
+        $createResponse->assertCreated();
+        $jobId = $createResponse->json('data.id');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.successful_rows', 1)
+            ->assertJsonPath('data.failed_rows', 0);
+
+        $row = ImportJob::findOrFail($jobId)->rows()->firstOrFail();
+        $this->assertNull($row->import_error, 'a trashed slug holder must not poison the row transaction');
+        $this->assertSame('restored', $row->data['_results']['category'] ?? null);
+        $this->assertSame('category_restored', $row->warnings[0]['code'] ?? null);
+        // The operator must be told a deleted category came back WITH its policy:
+        // categories carry default_tax_rate / margin / discount / restock policy.
+        $this->assertStringContainsString('tax', strtolower((string) ($row->warnings[0]['detail'] ?? '')));
+
+        $this->assertSame(1, Category::where('company_id', $this->company->id)->count());
+        $this->assertNotNull(Category::find($trashed->id));
+        $this->assertSame($trashed->id, Product::where('sku', 'GEL-CAVA_500')->firstOrFail()->category_id);
+    }
+
+    /**
+     * Gate r1 finding 2 (PROBE-C). `categories.name`/`slug` are varchar(255); an
+     * over-long cell used to be ignored and now reaches an INSERT, so on PG it
+     * rejects the whole product row with a raw SQLSTATE. It must be caught at
+     * VALIDATION, with the row number, like every other over-long column.
+     */
+    public function test_over_long_category_name_is_a_row_validation_error_not_a_database_error(): void
+    {
+        $file = UploadedFile::fake()->createWithContent('products-long-cat.csv', implode("\n", [
+            'name,sku,type,category_name',
+            'Gel douche,GEL-CAVA_500,part,'.str_repeat('A', 300),
+            'Savon doux,SAVO-DOUX_100,part,Hygiene',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', ['file' => $file, 'type' => 'products']);
+        $createResponse->assertCreated();
+        $jobId = $createResponse->json('data.id');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.successful_rows', 1)
+            ->assertJsonPath('data.failed_rows', 1);
+
+        $rows = ImportJob::findOrFail($jobId)->rows()->orderBy('row_number')->get()->keyBy('row_number');
+        $this->assertFalse((bool) $rows[1]->is_valid);
+        $this->assertArrayHasKey('category_name', $rows[1]->errors ?? []);
+        $this->assertNull($rows[1]->import_error, 'must fail validation, never mid-import with a SQLSTATE');
+        $this->assertSame(1, $rows[1]->row_number);
+        $this->assertTrue((bool) $rows[2]->is_valid);
+        $this->assertSame(0, Product::where('sku', 'GEL-CAVA_500')->count());
+    }
+
+    /**
+     * Gate r1 finding 3. Matching on the slug is what keeps the unique index
+     * survivable, but Str::slug collapses more than case+accents, so two
+     * genuinely different names can merge into one category. Merging is right;
+     * doing it silently is not — it is a master-data decision taken from a cell.
+     */
+    public function test_slug_match_on_a_different_name_is_reported_not_silently_merged(): void
+    {
+        $file = UploadedFile::fake()->createWithContent('products-slug-merge.csv', implode("\n", [
+            'name,sku,type,category_name',
+            'Creme hydratante,CREM-1,part,Crème',
+            'Creme legere,CREM-2,part,Creme',
+            'Serum eclat,SERU-1,part,Soins & Beauté',
+            'Serum nuit,SERU-2,part,Soins Beauté',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', ['file' => $file, 'type' => 'products']);
+        $createResponse->assertCreated();
+        $jobId = $createResponse->json('data.id');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.failed_rows', 0);
+
+        // Two categories, not four — the merge itself is the intended behaviour.
+        $this->assertSame(2, Category::where('company_id', $this->company->id)->count());
+
+        $rows = ImportJob::findOrFail($jobId)->rows()->orderBy('row_number')->get()->keyBy('row_number');
+        $this->assertSame('created', $rows[1]->data['_results']['category'] ?? null);
+        $this->assertSame('matched_by_slug', $rows[2]->data['_results']['category'] ?? null);
+        $this->assertSame('category_matched_by_slug', $rows[2]->warnings[0]['code'] ?? null);
+
+        $detail = (string) ($rows[2]->warnings[0]['detail'] ?? '');
+        $this->assertStringContainsString('Creme', $detail, 'the warning must name the incoming value');
+        $this->assertStringContainsString('Crème', $detail, 'and the category it was merged into');
+
+        $this->assertSame('created', $rows[3]->data['_results']['category'] ?? null);
+        $this->assertSame('matched_by_slug', $rows[4]->data['_results']['category'] ?? null);
+        $this->assertSame('category_matched_by_slug', $rows[4]->warnings[0]['code'] ?? null);
+
+        // An EXACT name hit stays silent — no new noise on ordinary re-imports.
+        $this->assertNull($rows[1]->warnings[1] ?? null);
     }
 }
