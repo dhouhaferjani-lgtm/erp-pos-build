@@ -50,6 +50,15 @@ use Illuminate\Support\Facades\Log;
  */
 final class GeneralLedgerService
 {
+    /**
+     * `journal_entries.source_type` for the N-6 repair entry that re-books a
+     * customer payment from the receivable (411) to the customer advance (419).
+     * Deliberately distinct from `'payment'` so the repair can never be mistaken
+     * for the payment it corrects — and so the repair command can detect that a
+     * payment has already been repaired.
+     */
+    public const PAYMENT_ADVANCE_RECLASS_SOURCE_TYPE = 'payment_advance_reclass';
+
     public const string INVENTORY_MOVEMENT_REVERSAL_SOURCE_TYPE = 'inventory_movement_reversal';
 
     public function __construct(
@@ -386,6 +395,104 @@ final class GeneralLedgerService
 
             return $entry->load('lines');
         });
+
+        return $entry;
+    }
+
+    /**
+     * N-6 REPAIR — re-book a customer payment that was credited to the
+     * receivable (411) when no receivable existed, as a customer advance (419).
+     *
+     * Dr Customer Receivable (411, partner-tagged) — undo the wrong credit
+     * Cr Customer Advance   (419, partner-tagged) — state the real liability
+     *
+     * WHY A NEW ENTRY AND NOT AN EDIT. The original payment entry is posted and
+     * hash-chained; it is never mutated. This is a correcting movement in its own
+     * right, keyed on its own `source_type` so it can never be mistaken for the
+     * payment it repairs, nor double-applied (the command checks for an existing
+     * one before writing).
+     *
+     * WHY IT IS NOT A `CorrectingEntry` DOCUMENT (owner ruling c4's mechanism).
+     * `AccountingService::assertCorrectingEntryIsPostable()` refuses with
+     * `targetHasNoLedgerEntry` when the target document's ledger footprint is
+     * EMPTY — and a never-posted invoice has exactly that: no entry at all. The
+     * document-per-action mechanism structurally cannot express "the invoice was
+     * never booked, and the payment against it was mis-booked", because the
+     * misbooking lives on the PAYMENT's entry, not the document's. Recorded for
+     * the owner in the N-6 handback.
+     *
+     * @param  numeric-string  $amount
+     */
+    public function reclassifyCustomerPaymentToAdvance(
+        string $companyId,
+        string $partnerId,
+        string $paymentId,
+        string $amount,
+        \DateTimeInterface $date,
+        string $description,
+        ?string $postedByUserId = null,
+        ?string $currencyCode = null,
+    ): JournalEntry {
+        $scale = $this->scaleResolver->getScaleSafe($currencyCode, 3);
+
+        if (bccomp($amount, '0', $scale) <= 0) {
+            throw new \InvalidArgumentException('A payment reclassification amount must be positive.');
+        }
+
+        $receivableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerReceivable);
+        $advanceAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerAdvance);
+
+        $user = null;
+        if ($postedByUserId !== null) {
+            /** @var User $user */
+            $user = User::query()->findOrFail($postedByUserId);
+        }
+
+        $entry = DB::transaction(function () use (
+            $companyId, $partnerId, $paymentId, $amount, $date, $description,
+            $receivableAccount, $advanceAccount
+        ): JournalEntry {
+            $company = Company::findOrFail($companyId);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $company->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_date' => $date,
+                'description' => $description,
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => self::PAYMENT_ADVANCE_RECLASS_SOURCE_TYPE,
+                'journal_code' => JournalCode::fromSourceType(self::PAYMENT_ADVANCE_RECLASS_SOURCE_TYPE)->value,
+                'source_id' => $paymentId,
+            ]);
+
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $receivableAccount->id,
+                'partner_id' => $partnerId,
+                'debit' => $amount,
+                'credit' => '0',
+                'description' => 'Reverse receivable credit booked without a posted invoice',
+                'line_order' => 0,
+            ]);
+
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $advanceAccount->id,
+                'partner_id' => $partnerId,
+                'debit' => '0',
+                'credit' => $amount,
+                'description' => 'Customer advance liability',
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+
+        // Synchronous, null-actor safe: the command that drives this runs on the
+        // console with no authenticated user, and leaving a DRAFT entry behind
+        // would be worse than the misclassification it repairs.
+        $this->postEntryNow($entry, $user, $currencyCode);
 
         return $entry;
     }

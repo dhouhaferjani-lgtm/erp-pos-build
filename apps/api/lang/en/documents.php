@@ -3,6 +3,22 @@
 declare(strict_types=1);
 
 return [
+
+    /*
+    |----------------------------------------------------------------------
+    | N-6 — printout marker for a confirmed (not yet posted) fiscal document
+    |----------------------------------------------------------------------
+    | Dotted keys on purpose. The documents blade tree calls `__()` with
+    | ENGLISH NATURAL keys everywhere else (`__('Tax ID')`, `__('Qty')`), and
+    | no `lang/*.json` file exists, so every one of those renders as literal
+    | English regardless of locale. Only dotted keys reach these PHP arrays
+    | and actually translate — and this line has to translate.
+    */
+    'posting_marker' => [
+        'title' => 'Not yet posted — no fiscal seal',
+        'detail' => 'This document has not been posted to the accounts. It carries no fiscal seal and no hash-chain entry, and is not a definitive fiscal invoice.',
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Document Validation Messages

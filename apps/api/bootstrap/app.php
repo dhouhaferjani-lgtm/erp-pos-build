@@ -15,6 +15,7 @@ use App\Modules\BatchExpiry\Domain\Exceptions\InsufficientBatchStockException;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\CountryDefaults\Domain\Exceptions\CountryDefaultsProvisioningUnavailableException;
 use App\Modules\Document\Domain\Exceptions\DocumentHasPaymentsException;
+use App\Modules\Document\Domain\Exceptions\DocumentTransitionException;
 use App\Modules\Document\Domain\Exceptions\ReturnDecisionConflictException;
 use App\Modules\Document\Domain\Exceptions\ReturnDecisionForbiddenException;
 use App\Modules\Document\Domain\Exceptions\ReturnDecisionMismatchesGoodsException;
@@ -942,6 +943,31 @@ return Application::configure(basePath: dirname(__DIR__))
         });
 
         // Return JSON 422 for domain/business logic errors
+        // ---------------------------------------------------------------------
+        // N-6 — document lifecycle-status transition refusals.
+        //
+        // MUST stay above the generic DomainException handler below: Laravel 11
+        // matches render callbacks in REGISTRATION ORDER (first match wins), and
+        // `DocumentTransitionException extends DomainException`, so below it the
+        // frontend would receive BUSINESS_ERROR and lose the code it routes on.
+        // ---------------------------------------------------------------------
+        $exceptions->render(function (DocumentTransitionException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'DOCUMENT_TRANSITION_REFUSED',
+                        'message' => $e->getMessage(),
+                        'details' => [
+                            'document_id' => $e->documentId,
+                            'document_number' => $e->documentNumber,
+                            'from' => $e->from->value,
+                            'to' => $e->to->value,
+                        ],
+                    ],
+                ], 422);
+            }
+        });
+
         $exceptions->render(function (DomainException $e, Request $request) {
             if ($request->expectsJson() || $request->is('api/*')) {
                 return response()->json([

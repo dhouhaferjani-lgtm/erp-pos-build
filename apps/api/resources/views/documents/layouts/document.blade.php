@@ -303,6 +303,27 @@
         .status-paid { background-color: #d1fae5; color: #059669; }
         .status-cancelled { background-color: #fee2e2; color: #dc2626; }
 
+        /* N-6 — the not-yet-posted marker. Deliberately loud: this is the one
+           line that distinguishes a printout the ledger has never seen from a
+           sealed fiscal invoice. */
+        .posting-marker {
+            margin: 0 0 16px 0;
+            padding: 8px 12px;
+            border: 1.5px solid #b45309;
+            border-radius: 4px;
+            background-color: #fffbeb;
+            color: #7c2d12;
+            font-size: 9pt;
+            line-height: 1.4;
+        }
+
+        .posting-marker strong {
+            display: block;
+            font-size: 10pt;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
         /* Page Break */
         .page-break {
             page-break-after: always;
