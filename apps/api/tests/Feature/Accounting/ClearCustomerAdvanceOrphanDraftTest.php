@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\Exceptions\ImmutableJournalEntryException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
@@ -122,6 +123,64 @@ final class ClearCustomerAdvanceOrphanDraftTest extends TestCase
             $before,
             JournalEntry::query()->where('company_id', $this->dpCompany->id)->count(),
         );
+
+        // R3 — and its LINES with it. The r2 cleanup removed them with a builder
+        // mass-delete, which is what the gate found; they must go through the
+        // models now, and they must still actually go.
+        $this->assertSame(
+            0,
+            JournalLine::query()
+                ->whereIn('journal_entry_id', JournalEntry::query()
+                    ->where('company_id', $this->dpCompany->id)
+                    ->where('source_type', 'prepayment_application')
+                    ->pluck('id'))
+                ->count(),
+            'no orphan clearing LINES may survive either',
+        );
+    }
+
+    /**
+     * R3 (treasury gate r3) — the cleanup must delete through the MODELS, so the
+     * guard that protects a chained entry's lines actually runs.
+     *
+     * `$entry->lines()->delete()` is a builder mass-delete: one
+     * `DELETE ... WHERE journal_entry_id = ?`, no model events, so
+     * `JournalLineObserver::deleting()` never fires. The gate probed it against a
+     * POSTED, hash-chained entry and it SUCCEEDED — while `$entry->delete()`, a
+     * model delete, was correctly refused by its own observer. The header was
+     * protected and its lines were not.
+     *
+     * This asserts the guard from both sides on a real chained entry.
+     */
+    public function test_a_chained_entrys_lines_cannot_be_removed_through_a_model_delete(): void
+    {
+        $this->seedAdvance('100.000');
+
+        $entry = JournalEntry::query()
+            ->where('company_id', $this->dpCompany->id)
+            ->where('source_type', 'advance')
+            ->sole();
+
+        $this->assertSame(JournalEntryStatus::Posted, $entry->status, 'precondition: the entry is posted');
+        $this->assertTrue($entry->isChained(), 'precondition: and hash-chained');
+
+        $line = $entry->lines()->firstOrFail();
+
+        try {
+            $line->delete();
+            $this->fail('a chained entry\'s line must not be deletable');
+        } catch (ImmutableJournalEntryException $e) {
+            $this->assertStringContainsString((string) $entry->entry_number, $e->getMessage());
+        }
+
+        try {
+            $entry->delete();
+            $this->fail('a chained entry must not be deletable');
+        } catch (ImmutableJournalEntryException $e) {
+            $this->assertStringContainsString((string) $entry->entry_number, $e->getMessage());
+        }
+
+        $this->assertSame(2, $entry->lines()->count(), 'nothing was removed');
     }
 
     private function seedAdvance(string $amount): void

@@ -1902,8 +1902,48 @@ final class GeneralLedgerService
                 $this->postEntryNow($entry, $user, $currencyCode);
             } catch (\Throwable $postFailure) {
                 try {
-                    $entry->lines()->delete();
-                    $entry->delete();
+                    // R3 (treasury gate r3) — DELETE THROUGH THE MODELS, AND
+                    // PROVE THE ENTRY IS STILL A DRAFT FIRST.
+                    //
+                    // `$entry->lines()->delete()` is a BUILDER mass-delete: it
+                    // emits one `DELETE ... WHERE journal_entry_id = ?` and fires
+                    // NO model events, so `JournalLineObserver::deleting()` —
+                    // the guard that refuses to remove a line of a chained entry
+                    // — never runs. A probe confirmed it succeeds against a
+                    // POSTED, hash-chained entry. `$entry->delete()` below IS a
+                    // model delete and its own observer does fire, so the entry
+                    // header was protected while its lines were not: exactly the
+                    // wrong half.
+                    //
+                    // The re-read is the belt: `$entry` is the in-memory object
+                    // that failed to post, and this cleanup runs on the failure
+                    // path, so the row is re-read and its status asserted before
+                    // anything is removed. Not-Draft means something else posted
+                    // it between the failure and here — refuse and let the outer
+                    // catch log it, rather than delete a chained entry through a
+                    // path that was only ever meant to remove a stillborn draft.
+                    /** @var JournalEntry|null $reread */
+                    $reread = JournalEntry::query()->find($entry->id);
+
+                    if (! $reread instanceof JournalEntry) {
+                        throw new \RuntimeException(
+                            "clearing entry {$entry->id} vanished before cleanup could remove it."
+                        );
+                    }
+
+                    if ($reread->status !== JournalEntryStatus::Draft) {
+                        throw new \RuntimeException(
+                            "refusing to clean up clearing entry {$reread->entry_number}: it is "
+                            ."{$reread->status->value}, not a draft, so it is no longer this path's to remove."
+                        );
+                    }
+
+                    // Model deletes, one per line, so the observer fires on each.
+                    foreach ($reread->lines()->get() as $line) {
+                        $line->delete();
+                    }
+
+                    $reread->delete();
                 } catch (\Throwable $cleanupFailure) {
                     Log::warning('Could not remove the unposted customer-advance clearing entry', [
                         'entry_id' => $entry->id,

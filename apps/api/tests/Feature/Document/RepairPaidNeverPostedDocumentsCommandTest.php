@@ -271,8 +271,12 @@ final class RepairPaidNeverPostedDocumentsCommandTest extends TestCase
     public function test_an_invoice_only_partly_backed_by_a_receivable_credit_is_skipped(): void
     {
         // The allocation says the full amount; the ledger evidence says half.
-        // (Built at fixture time — journal lines are immutable by design, which
-        // is itself the reason this evidence gate has to exist.)
+        //
+        // Built at FIXTURE time rather than by editing the posted entry: journal
+        // lines of a chained entry are immutable (`JournalLineObserver`), so the
+        // shape has to be created, not mutated into existence. That immutability
+        // is also why the evidence gate must exist — the ledger cannot be
+        // retro-fitted to match an allocation that disagrees with it.
         $probe = $this->dpConfirmedInvoice([$this->dpPhysicalLine()]);
         $half = bcdiv(bcadd((string) $probe->total, '0', 3), '2', 3);
         $probe->forceDelete();

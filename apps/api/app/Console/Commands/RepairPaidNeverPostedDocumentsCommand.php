@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Document\Domain\Document;
@@ -289,10 +290,17 @@ final class RepairPaidNeverPostedDocumentsCommand extends Command
                 ];
             }
 
+            // R3 minor — `status = Posted`. A DRAFT customer-payment entry has
+            // booked nothing, so dating the reclass on it, and gating the period
+            // on it, would both key off an entry the ledger does not yet carry.
+            // `PaymentLedgerPartitionReader` already filters on Posted, so
+            // without this predicate the two halves of the same verdict could
+            // read different rows.
             $paymentEntry = JournalEntry::query()
                 ->where('company_id', $invoice->company_id)
                 ->where('source_type', self::CUSTOMER_PAYMENT_SOURCE_TYPE)
                 ->where('source_id', $paymentId)
+                ->where('status', JournalEntryStatus::Posted)
                 ->orderBy('entry_date')
                 ->first();
 
