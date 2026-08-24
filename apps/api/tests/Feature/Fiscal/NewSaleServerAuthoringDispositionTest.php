@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Fiscal;
 
+use App\Enums\Vertical;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -83,7 +84,11 @@ final class NewSaleServerAuthoringDispositionTest extends TestCase
 
         $this->seed(RolesAndPermissionsSeeder::class);
 
-        $this->tenant = Tenant::factory()->create();
+        // Session B lane Q-9: the surviving (non-close) order routes are now
+        // gated on `module:Menu` (rule 12). The default factory vertical is
+        // `retail`, which has no Menu, so `test_order_crud_non_close_routes_
+        // still_function` would 403 instead of proving the route is un-retired.
+        $this->tenant = Tenant::factory()->create(['vertical' => Vertical::Restaurant]);
         $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
         $this->location = Location::factory()->create(['company_id' => $this->company->id]);
         $this->terminal = Terminal::factory()->create([

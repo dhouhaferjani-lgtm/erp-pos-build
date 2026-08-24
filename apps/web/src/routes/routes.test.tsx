@@ -69,6 +69,23 @@ describe('route module guards', () => {
     expect(fragment).toContain('<ModuleGuard module="Menu">')
   })
 
+  // Session B lane Q-9 / triage F1: the POS Orders surface is the same F&B
+  // cluster as the KDS and must carry the same Menu gate on BOTH layers (rule
+  // 12) — the backend now gates `routes_orders.php` on `module:Menu` too.
+  it('guards the pos orders route and its sidebar entry with the Menu module', () => {
+    const idx = routesSource.indexOf('<OrdersPage />')
+    expect(idx).toBeGreaterThanOrEqual(0)
+    const fragment = routesSource.slice(Math.max(0, idx - 400), idx)
+    expect(fragment).toContain('<ModuleGuard module="Menu">')
+    expect(fragment).toContain('permission="pos.operate_terminal"')
+
+    const sidebarEntry = sidebarSource
+      .split('\n')
+      .find((line) => line.includes("key: 'posOrders'"))
+    expect(sidebarEntry).toBeDefined()
+    expect(sidebarEntry).toContain("module: 'Menu'")
+  })
+
   it('keeps shift history reachable while the retired web shift console is absent', () => {
     const retiredShiftPath = ['/pos', '/shifts'].join('')
     const retiredShiftPage = ['POS', 'Shifts', 'Page'].join('')

@@ -13,18 +13,30 @@ use Illuminate\Support\Facades\Route;
  * Separate route file to avoid merge conflicts with the main POS routes.
  */
 Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function () {
-    // Order CRUD
-    Route::post('/pos/orders', [OrderController::class, 'store']);
-    Route::get('/pos/orders', [OrderController::class, 'index']);
-    Route::get('/pos/orders/{id}', [OrderController::class, 'show']);
+    // Live F&B order-workflow routes — module-gated (rule 12, Session B lane
+    // Q-9 / triage F1). The web layer gates the Orders surface and the KDS on
+    // `ModuleGuard module="Menu"` (apps/web/src/routes/index.tsx, Sidebar.tsx);
+    // the backend now mirrors it. `Menu` (not `Tables`) is the correct key:
+    // `coffee_shop` has Menu but NOT Tables (config/verticals.php) and must keep
+    // the order/kitchen workflow, while a retail/parapharmacy tenant — which has
+    // neither — becomes structurally unable to author `pos_orders` at all.
+    // The retired /close tombstone below is DELIBERATELY outside this gate.
+    Route::middleware('module:Menu')->group(function () {
+        // Order CRUD
+        Route::post('/pos/orders', [OrderController::class, 'store']);
+        Route::get('/pos/orders', [OrderController::class, 'index']);
+        Route::get('/pos/orders/{id}', [OrderController::class, 'show']);
 
-    // Order Line Management
-    Route::post('/pos/orders/{id}/lines', [OrderController::class, 'addLine']);
-    Route::patch('/pos/orders/{id}/lines/{lineId}', [OrderController::class, 'modifyLine']);
-    Route::delete('/pos/orders/{id}/lines/{lineId}', [OrderController::class, 'removeLine']);
+        // Order Line Management
+        Route::post('/pos/orders/{id}/lines', [OrderController::class, 'addLine']);
+        Route::patch('/pos/orders/{id}/lines/{lineId}', [OrderController::class, 'modifyLine']);
+        Route::delete('/pos/orders/{id}/lines/{lineId}', [OrderController::class, 'removeLine']);
 
-    // Order Workflow
-    Route::post('/pos/orders/{id}/send-to-kitchen', [OrderController::class, 'sendToKitchen']);
+        // Order Workflow
+        Route::post('/pos/orders/{id}/send-to-kitchen', [OrderController::class, 'sendToKitchen']);
+        Route::post('/pos/orders/{id}/cancel', [OrderController::class, 'cancel']);
+    });
+
     // §14.2 — Order-close → SALE_RECEIPT path retired. The order-close
     // controller chain (OrderManagementService::closeOrder →
     // OrderToReceiptService::convertToReceipt →
@@ -40,6 +52,11 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // routes.php. Anonymous callers receive 401 BEFORE reaching the
     // closure — by design on an authenticated POS/API surface. Both
     // reviewers acknowledged. (Task 29 R2)
+    //
+    // Module-gate contract (Session B lane Q-9): the tombstone stays OUTSIDE
+    // the `module:Menu` group above so its 410 answer is identical on every
+    // vertical. Gating it would turn the retirement signal into a 403 for
+    // non-Menu tenants and lose the tombstone semantics.
     Route::post('/pos/orders/{id}/close', function (string $id) {
         return response()->json([
             'error' => [
@@ -48,5 +65,4 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
             ],
         ], 410);
     });
-    Route::post('/pos/orders/{id}/cancel', [OrderController::class, 'cancel']);
 });
