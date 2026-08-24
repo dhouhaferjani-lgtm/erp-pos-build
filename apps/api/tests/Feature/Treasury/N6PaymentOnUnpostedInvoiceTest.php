@@ -15,6 +15,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Document\Domain\Events\DocumentFullyPaid;
 use App\Modules\Document\Domain\Exceptions\DocumentTransitionException;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
 use App\Modules\Document\Domain\Services\DocumentStatusMachine;
@@ -25,6 +26,7 @@ use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\Services\DocumentAllocationClassifier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 use Tests\Traits\BuildsDeliveryPolicyFixtures;
@@ -147,6 +149,30 @@ final class N6PaymentOnUnpostedInvoiceTest extends TestCase
             'A clearing entry (Dr 419 / Cr 411) must exist for this invoice.',
         );
 
+        // I-9 — the test's name promises revenue recognition; assert it rather
+        // than only asserting that 419 and 411 net out.
+        //
+        // REVENUE: credited for the full invoice value at posting.
+        $this->assertSame(
+            '-'.$this->invoiceTotal($posted),
+            $this->accountBalance(SystemAccountPurpose::ProductRevenue),
+            'revenue must be CREDITED for the invoice value at posting (a credit balance reads negative)',
+        );
+
+        // VAT: `BuildsDeliveryPolicyFixtures` builds ZERO-RATED lines
+        // (`dpCreateDocument()` hardcodes `tax_amount => '0.000'`), so there is
+        // structurally no output-VAT leg to assert here and pretending otherwise
+        // would be a vacuous assertion. What IS asserted is the invariant that
+        // makes VAT recognition meaningful — the invoice's tax_amount and the
+        // VAT credited agree — plus the whole-footprint balance below. VAT
+        // recognition on a taxed invoice is proved by
+        // `ConversionChainVatIntegrityTest`, not re-proved here.
+        $this->assertSame(
+            bcmul($this->invoiceTax($posted), '-1', 3),
+            $this->accountBalance(SystemAccountPurpose::VatCollected),
+            'output VAT credited must equal the invoice tax_amount',
+        );
+
         $allocation = PaymentAllocation::query()->where('document_id', $posted->id)->firstOrFail();
         $this->assertNotNull($allocation->advance_cleared_at, 'The advance must be stamped cleared exactly once.');
     }
@@ -172,6 +198,95 @@ final class N6PaymentOnUnpostedInvoiceTest extends TestCase
                 ->where('source_id', $posted->id)
                 ->count(),
             'A second clearing entry would drain another advance of the same partner.',
+        );
+    }
+
+    // ── Fiscal chain + re-post guard (fix round r1: F-1, F-2) ────────────────
+
+    /**
+     * F-1 [CRITICAL] — the chain predecessor is a FISCAL fact, not a lifecycle one.
+     *
+     * The predecessor query used to filter `status = Posted`. A sealed invoice
+     * that had moved on to `Paid` was invisible to it, so the NEXT invoice was
+     * treated as GENESIS: `previous_hash = NULL`, `chain_sequence` back to 1 —
+     * a silently FORKED fiscal chain (no unique index on
+     * (company_id, type, chain_sequence), no chain verifier anywhere).
+     *
+     * This lane makes it deterministic: `settleIfFullyPrepaid()` moves a
+     * fully-prepaid invoice to `Paid` INSIDE the sealing transaction, so every
+     * prepaid invoice would fork the chain for the next one.
+     */
+    public function test_the_fiscal_chain_continues_across_an_invoice_that_has_moved_on_to_paid(): void
+    {
+        $first = $this->postedPrepaidInvoice();
+
+        $this->assertSame(DocumentStatus::Paid, $first->status, 'precondition: the sealed invoice has left Posted');
+        $this->assertNotNull($first->fiscal_hash);
+
+        $secondDeliveryNote = $this->dpConfirmedDeliveryNote([$this->dpPhysicalLine()]);
+        $second = $this->dpConfirmedInvoice([$this->dpPhysicalLine()]);
+        $this->dpLinkOrderShape($second, [$secondDeliveryNote]);
+
+        $second = app(DocumentPostingService::class)->post($second)->fresh();
+
+        $this->assertSame(
+            $first->fiscal_hash,
+            $second->previous_hash,
+            'the next invoice must chain onto the sealed one even though it is now Paid',
+        );
+        $this->assertSame(
+            ($first->chain_sequence ?? 0) + 1,
+            $second->chain_sequence,
+            'chain_sequence must continue, never restart at genesis',
+        );
+    }
+
+    /**
+     * F-2 [IMPORTANT] — the in-transaction re-post guard must use the SAME
+     * widened predicate as the outer probe.
+     *
+     * The race, made deterministic: a caller holds a STALE in-memory document
+     * (still `Confirmed`) while another request posts and settles it. The outer
+     * probe reads the stale object and lets the caller through; the guard inside
+     * the transaction refreshes and sees `Paid`. Asking only `isPosted()` there
+     * judged the invoice un-posted and sealed it a SECOND time — a second
+     * chain_sequence, a second InvoicePosted, a second GL entry on one invoice.
+     */
+    public function test_a_stale_caller_cannot_seal_an_already_settled_invoice_twice(): void
+    {
+        $invoice = $this->postedPrepaidInvoice();
+        $sealedHash = $invoice->fiscal_hash;
+        $sealedSequence = $invoice->chain_sequence;
+
+        // The stale replica: the same row, with the status this caller last saw.
+        // Never saved — only this in-memory object is behind.
+        $stale = (new Document)->newFromBuilder($invoice->getRawOriginal());
+        $stale->setRawAttributes(
+            array_merge($invoice->getRawOriginal(), ['status' => DocumentStatus::Confirmed->value]),
+            true,
+        );
+
+        app(DocumentPostingService::class)->post($stale);
+
+        $reread = $invoice->fresh();
+        $this->assertSame($sealedHash, $reread->fiscal_hash, 'the seal must not be rewritten');
+        $this->assertSame($sealedSequence, $reread->chain_sequence, 'no second chain_sequence may be minted');
+        $this->assertSame(DocumentStatus::Paid, $reread->status);
+    }
+
+    /**
+     * I-4 — settling at posting is a NEW way to reach `Paid`, and every other
+     * way dispatches `DocumentFullyPaid` into the audit event store.
+     */
+    public function test_settling_at_posting_dispatches_document_fully_paid(): void
+    {
+        Event::fake([DocumentFullyPaid::class]);
+
+        $invoice = $this->postedPrepaidInvoice();
+
+        Event::assertDispatched(
+            DocumentFullyPaid::class,
+            fn (DocumentFullyPaid $event): bool => $event->documentId === $invoice->id,
         );
     }
 
@@ -274,6 +389,13 @@ final class N6PaymentOnUnpostedInvoiceTest extends TestCase
 
     // ── AR readers ───────────────────────────────────────────────────────────
 
+    /**
+     * CHARACTERISATION, NOT RED-FIRST — and the distinction matters, so it lives
+     * here rather than only in the handback. This test passes on BASE too:
+     * `AgedReceivablesService` already filters `status = Posted`, so a confirmed
+     * invoice was never in aged AR. It pins that the N-6 change does not drag
+     * one in, nothing more.
+     */
     public function test_aged_receivables_reads_zero_while_the_advance_is_open(): void
     {
         $invoice = $this->dpConfirmedInvoice([$this->dpPhysicalLine()]);
@@ -316,6 +438,11 @@ final class N6PaymentOnUnpostedInvoiceTest extends TestCase
                 ['document_id' => $document->id, 'amount' => $this->invoiceTotal($document)],
             ],
         ]);
+    }
+
+    private function invoiceTax(Document $document): string
+    {
+        return bcadd((string) ($document->tax_amount ?? '0'), '0', 3);
     }
 
     private function invoiceTotal(Document $document): string
