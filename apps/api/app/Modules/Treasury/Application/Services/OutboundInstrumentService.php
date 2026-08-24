@@ -683,10 +683,10 @@ final readonly class OutboundInstrumentService
                 // must not DECIDE that the document was ever posted.
                 // `reopenFromPaid()` consents only when the row proves it
                 // (`fiscal_hash` present for a fiscal type).
+                $document->forceFill(['balance_due' => $balanceDue])->save();
+
                 if ($document->status === DocumentStatus::Paid && bccomp($balanceDue, '0', $scale) > 0) {
-                    $this->documentStatus->reopenFromPaid($document, ['balance_due' => $balanceDue]);
-                } else {
-                    $document->forceFill(['balance_due' => $balanceDue])->save();
+                    $this->documentStatus->reopenFromPaid($document);
                 }
             }
             if ($payment instanceof Payment) {

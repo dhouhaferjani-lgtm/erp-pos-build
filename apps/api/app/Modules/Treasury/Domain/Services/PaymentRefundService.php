@@ -1969,10 +1969,13 @@ class PaymentRefundService
             // no VAT — a fiscal document fabricated by a refund.
             // `reopenFromPaid()` checks `fiscal_hash` before consenting, and
             // leaves a never-sealed document exactly where it is.
+            // The BALANCE is written unconditionally — it is a fact about the
+            // allocations and is never in doubt. Only the STATUS half is
+            // conditional, and `reopenFromPaid()` may legitimately decline it.
+            $document->forceFill(['balance_due' => $balanceDue])->save();
+
             if ($document->status === DocumentStatus::Paid && bccomp($balanceDue, '0', $scale) > 0) {
-                $this->documentStatus->reopenFromPaid($document, ['balance_due' => $balanceDue]);
-            } else {
-                $document->forceFill(['balance_due' => $balanceDue])->save();
+                $this->documentStatus->reopenFromPaid($document);
             }
         }
     }

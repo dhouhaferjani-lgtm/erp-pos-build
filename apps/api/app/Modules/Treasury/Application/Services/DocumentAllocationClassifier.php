@@ -63,19 +63,25 @@ final class DocumentAllocationClassifier
     public function classifyOrNull(Document $document): ?AllocationTreatment
     {
         return match (true) {
-            $document->type === DocumentType::Invoice
-                && in_array($document->status, [DocumentStatus::Posted, DocumentStatus::Paid], true)
-                => AllocationTreatment::ReceivableClearing,
+            // Refusals first — they are unconditional and must not be shadowed
+            // by the legacy fall-through at the bottom.
+            in_array($document->status, [DocumentStatus::Draft, DocumentStatus::Cancelled], true) => null,
+            $document->type === DocumentType::CreditNote => null,
+            $document->type === DocumentType::SupplierInvoice => null,
 
             $document->type === DocumentType::Invoice
-                && $document->status === DocumentStatus::Confirmed
-                => AllocationTreatment::Prepayment,
+                && in_array($document->status, [DocumentStatus::Posted, DocumentStatus::Paid], true) => AllocationTreatment::ReceivableClearing,
+
+            // THE N-6 EDGE: a confirmed invoice has no receivable yet.
+            $document->type === DocumentType::Invoice
+                && $document->status === DocumentStatus::Confirmed => AllocationTreatment::Prepayment,
 
             $document->type === DocumentType::SalesOrder
-                && $document->status === DocumentStatus::Confirmed
-                => AllocationTreatment::Prepayment,
+                && $document->status === DocumentStatus::Confirmed => AllocationTreatment::Prepayment,
 
-            default => null,
+            // Legacy fall-through — see the class docblock. Unchanged behaviour
+            // for every (type, status) pair Phase 1 does not rule on.
+            default => AllocationTreatment::ReceivableClearing,
         };
     }
 

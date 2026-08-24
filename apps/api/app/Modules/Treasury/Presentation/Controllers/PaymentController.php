@@ -1530,6 +1530,7 @@ class PaymentController extends Controller
                 $tenantId,
                 $companyId,
                 $primaryDocument,
+                $primaryIsPrepayment,
                 $documentBalance,
                 $totalPaymentAmount,
                 $excessAmount,
