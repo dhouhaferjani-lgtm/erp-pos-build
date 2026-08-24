@@ -12,11 +12,15 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\HeldOrderService;
 use App\Modules\POS\Domain\Enums\HeldOrderStatus;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
+use App\Modules\POS\Domain\Exceptions\HeldOrderDiscardRefusedException;
+use App\Modules\POS\Domain\Exceptions\HeldOrderRecallConflictException;
 use App\Modules\POS\Domain\HeldOrder;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -181,15 +185,164 @@ final class HeldOrderServiceTest extends TestCase
         $this->service->recallOrder($heldOrder->id);
     }
 
-    public function test_discard_order_deletes_from_database(): void
+    // =========================================================================
+    // Q-8 — held-order recall hardening (POS-till sub-report MEDIUM)
+    // =========================================================================
+
+    /**
+     * Q-8 (a) — the check-then-set window.
+     *
+     * Pre-fix `recallOrder()` was `findOrFail()` (no lock, no transaction) →
+     * `canBeRecalled()` → `update(['status' => Recalled])`. Two tills racing on
+     * the same parked basket both pass the guard on a stale read and both get
+     * the full `cart_snapshot` back, so the basket is rung up (and stock
+     * decremented) twice.
+     *
+     * A real two-connection race cannot be staged inside `RefreshDatabase`
+     * (the second connection cannot see the uncommitted fixture), so the
+     * interleaving is staged deterministically: the `retrieved` model event
+     * fires immediately after the service's SELECT, and the hook flips the row
+     * to `recalled` from underneath it. The in-memory model the service is
+     * holding is now stale, `canBeRecalled()` still returns true, and the only
+     * thing that can save the basket is the conditional
+     * `UPDATE ... WHERE status = 'held'` asserting exactly one affected row.
+     *
+     * On PostgreSQL the `lockForUpdate()` added by the same fix serialises the
+     * two tills before they ever reach this branch; the conditional update is
+     * the belt to that braces (and the only defence on SQLite, where
+     * `FOR UPDATE` is a no-op).
+     */
+    public function test_recall_refuses_when_the_row_is_flipped_after_the_read(): void
     {
         $heldOrder = $this->createHeldOrder();
 
-        $this->service->discardOrder($heldOrder->id);
+        $flipped = false;
+        HeldOrder::retrieved(function (HeldOrder $model) use ($heldOrder, &$flipped): void {
+            if ($flipped || $model->id !== $heldOrder->id) {
+                return;
+            }
+            $flipped = true;
 
-        $this->assertDatabaseMissing('pos_held_orders', [
-            'id' => $heldOrder->id,
+            // Simulates till B winning the race between our SELECT and our UPDATE.
+            DB::table('pos_held_orders')
+                ->where('id', $heldOrder->id)
+                ->update([
+                    'status' => HeldOrderStatus::Recalled->value,
+                    'recalled_at' => now(),
+                ]);
+        });
+
+        try {
+            $this->expectException(HeldOrderRecallConflictException::class);
+
+            $this->service->recallOrder($heldOrder->id);
+        } finally {
+            HeldOrder::flushEventListeners();
+        }
+    }
+
+    /**
+     * Q-8 (b) — recall must honour the terminal the caller claims.
+     *
+     * `listHeldOrders()` has always been terminal-scoped, so a basket parked on
+     * till A is never *shown* on till B; the recall lookup was tenant+company
+     * only, so till B could still take it by id. When the caller supplies the
+     * terminal it is operating, a mismatch must miss the scope entirely (404,
+     * same shape as a cross-tenant miss) rather than succeed.
+     */
+    public function test_recall_with_a_mismatched_terminal_id_is_scoped_out(): void
+    {
+        $heldOrder = $this->createHeldOrder();
+        $otherTerminal = $this->createSecondTerminal();
+
+        $this->expectException(ModelNotFoundException::class);
+
+        $this->service->recallOrder($heldOrder->id, $otherTerminal->id);
+    }
+
+    /**
+     * Q-8 (b) — happy path: hold → list → recall on the SAME terminal works,
+     * and the basket leaves the list exactly once.
+     */
+    public function test_recall_on_the_holding_terminal_succeeds_and_consumes_the_basket_once(): void
+    {
+        $heldOrder = $this->service->holdOrder(
+            terminalId: $this->terminal->id,
+            shiftId: $this->shift->id,
+            cashierId: $this->user->id,
+            cartSnapshot: $this->makeCartSnapshot(),
+            label: 'Table 5',
+        );
+
+        $this->assertCount(1, $this->service->listHeldOrders($this->terminal->id));
+
+        $recalled = $this->service->recallOrder($heldOrder->id, $this->terminal->id);
+
+        $this->assertEquals(HeldOrderStatus::Recalled, $recalled->status);
+        $this->assertNotNull($recalled->recalled_at);
+        $this->assertCount(0, $this->service->listHeldOrders($this->terminal->id));
+
+        // Second till (or a double-tap) gets a refusal, not a second snapshot.
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('already been recalled');
+        $this->service->recallOrder($heldOrder->id, $this->terminal->id);
+    }
+
+    /**
+     * Q-8 (d) — a recalled order is the only trace of what was parked and rung
+     * up. Discarding it must be refused, not silently destroy the evidence.
+     */
+    public function test_discard_of_a_recalled_order_is_refused(): void
+    {
+        $heldOrder = $this->createHeldOrder([
+            'status' => HeldOrderStatus::Recalled,
+            'recalled_at' => now(),
         ]);
+
+        try {
+            $this->service->discardOrder($heldOrder->id, $this->user->id);
+            $this->fail('Expected HeldOrderDiscardRefusedException.');
+        } catch (HeldOrderDiscardRefusedException) {
+            // expected
+        }
+
+        $this->assertDatabaseHas('pos_held_orders', [
+            'id' => $heldOrder->id,
+            'deleted_at' => null,
+        ]);
+    }
+
+    /**
+     * Q-8 (d) — discard soft-deletes and records the actor.
+     */
+    public function test_discard_soft_deletes_and_records_the_actor(): void
+    {
+        $heldOrder = $this->createHeldOrder();
+
+        $this->service->discardOrder($heldOrder->id, $this->user->id);
+
+        $this->assertSoftDeleted('pos_held_orders', ['id' => $heldOrder->id]);
+
+        $row = DB::table('pos_held_orders')->where('id', $heldOrder->id)->first();
+        $this->assertNotNull($row);
+        $this->assertNotNull($row->deleted_at);
+        $this->assertSame($this->user->id, $row->discarded_by);
+
+        // Soft-deleted baskets disappear from the till's list and from recall.
+        $this->assertCount(0, $this->service->listHeldOrders($this->terminal->id));
+        $this->expectException(ModelNotFoundException::class);
+        $this->service->recallOrder($heldOrder->id, $this->terminal->id);
+    }
+
+    public function test_discard_order_soft_deletes_and_hides_the_row(): void
+    {
+        $heldOrder = $this->createHeldOrder();
+
+        $this->service->discardOrder($heldOrder->id, $this->user->id);
+
+        // The row survives (audit trail) but is invisible to every model query.
+        $this->assertSoftDeleted('pos_held_orders', ['id' => $heldOrder->id]);
+        $this->assertNull(HeldOrder::find($heldOrder->id));
     }
 
     public function test_list_held_orders_returns_only_active(): void
@@ -303,6 +456,43 @@ final class HeldOrderServiceTest extends TestCase
         ]);
     }
 
+    /**
+     * Q-8 — the expiry sweep must not resurrect a discarded basket.
+     *
+     * `discardOrder()` now soft-deletes, so `expireOrders()` (an Eloquent mass
+     * UPDATE, therefore under the SoftDeletingScope) must skip the row: it is
+     * neither counted nor flipped to `expired`, and its `deleted_at` survives.
+     * A hard-`DELETE`d row could not have been touched either; a soft-deleted
+     * one is still physically present, which is exactly the new hazard.
+     */
+    public function test_expire_orders_skips_soft_deleted_orders(): void
+    {
+        $discarded = $this->createHeldOrder([
+            'label' => 'Discarded then past its TTL',
+            'expires_at' => now()->subMinutes(10),
+        ]);
+        $this->createHeldOrder([
+            'label' => 'Live and past its TTL',
+            'expires_at' => now()->subMinutes(10),
+        ]);
+
+        $this->service->discardOrder($discarded->id, $this->user->id);
+
+        $count = $this->service->expireOrders($this->tenant->id, $this->company->id);
+
+        $this->assertSame(1, $count, 'Only the live basket may be expired.');
+
+        $row = DB::table('pos_held_orders')->where('id', $discarded->id)->first();
+        $this->assertNotNull($row);
+        $this->assertSame(HeldOrderStatus::Held->value, $row->status, 'A discarded basket must not be re-expired.');
+        $this->assertNotNull($row->deleted_at);
+
+        $this->assertDatabaseHas('pos_held_orders', [
+            'label' => 'Live and past its TTL',
+            'status' => HeldOrderStatus::Expired->value,
+        ]);
+    }
+
     public function test_expire_orders_returns_zero_when_none_expired(): void
     {
         $this->createHeldOrder(['expires_at' => now()->addHours(4)]);
@@ -354,6 +544,22 @@ final class HeldOrderServiceTest extends TestCase
             'held_at' => now(),
             'expires_at' => now()->addHours(4),
         ], $overrides));
+    }
+
+    /**
+     * A second till in the same company, used by the terminal-scoping tests.
+     */
+    private function createSecondTerminal(): Terminal
+    {
+        $location = Location::factory()->create([
+            'company_id' => $this->company->id,
+        ]);
+
+        return Terminal::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $location->id,
+        ]);
     }
 
     private function setupTestData(): void

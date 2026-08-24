@@ -8,6 +8,8 @@ use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\HeldOrderService;
+use App\Modules\POS\Domain\Exceptions\HeldOrderDiscardRefusedException;
+use App\Modules\POS\Domain\Exceptions\HeldOrderRecallConflictException;
 use App\Modules\POS\Domain\HeldOrder;
 use App\Modules\POS\Presentation\Requests\HoldOrderRequest;
 use App\Modules\POS\Presentation\Resources\HeldOrderResource;
@@ -124,8 +126,20 @@ final class HeldOrderController extends Controller
      */
     public function recall(Request $request, string $id): JsonResponse
     {
+        // Q-8 — `terminal_id` is OPTIONAL on the wire: no shipped client sends
+        // a body on this route today (`apps/web/src/features/pos/api/heldOrderApi.ts`
+        // and `apps/pos/src/api/holdApi.ts` both POST bare), so requiring it
+        // would 404 every live recall. When a caller does declare the till it
+        // is operating, the service scopes the lookup to it the same way
+        // `listHeldOrders` has always been scoped.
+        $request->validate([
+            'terminal_id' => ['nullable', 'string', 'uuid'],
+        ]);
+
+        $terminalId = $request->filled('terminal_id') ? (string) $request->input('terminal_id') : null;
+
         try {
-            $heldOrder = $this->heldOrderService->recallOrder($id);
+            $heldOrder = $this->heldOrderService->recallOrder($id, $terminalId);
 
             return response()->json([
                 'data' => new HeldOrderResource($heldOrder),
@@ -140,6 +154,17 @@ final class HeldOrderController extends Controller
             // broader RuntimeException catch below (ModelNotFoundException
             // extends RuntimeException).
             throw $e;
+        } catch (HeldOrderRecallConflictException $e) {
+            // Q-8 — a concurrent till consumed the basket between our read and
+            // our write. 409, not 422: the request was well-formed, the
+            // resource moved underneath it, and the client's remedy is to
+            // refresh the held-orders list.
+            return response()->json([
+                'error' => [
+                    'code' => 'HELD_ORDER_RECALL_CONFLICT',
+                    'message' => $e->getMessage(),
+                ],
+            ], 409);
         } catch (\RuntimeException $e) {
             return response()->json([
                 'error' => [
@@ -157,7 +182,20 @@ final class HeldOrderController extends Controller
      */
     public function destroy(Request $request, string $id): JsonResponse
     {
-        $this->heldOrderService->discardOrder($id);
+        /** @var User $user */
+        $user = Auth::user();
+
+        try {
+            $this->heldOrderService->discardOrder($id, $user->id);
+        } catch (HeldOrderDiscardRefusedException $e) {
+            // Q-8 — a recalled basket is the only trace of what was rung up.
+            return response()->json([
+                'error' => [
+                    'code' => 'HELD_ORDER_DISCARD_REFUSED',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        }
 
         return response()->json([
             'data' => [

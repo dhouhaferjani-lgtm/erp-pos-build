@@ -350,6 +350,13 @@ final class HeldOrderTest extends TestCase
         $response->assertJsonPath('error.code', 'RECALL_FAILED');
     }
 
+    /**
+     * Q-8 — discard is a SOFT delete since
+     * `2026_08_23_163000_harden_pos_held_orders_status_and_discard`: the row is
+     * the only server-side trace of what was parked, so it survives with
+     * `deleted_at` set and is merely invisible to every model query. The
+     * pre-Q-8 assertion here was `assertDatabaseMissing`.
+     */
     public function test_discard_held_order(): void
     {
         $heldOrder = $this->createHeldOrder(['label' => 'Discard Me']);
@@ -359,9 +366,10 @@ final class HeldOrderTest extends TestCase
         $response->assertStatus(200);
         $response->assertJsonPath('data.success', true);
 
-        $this->assertDatabaseMissing('pos_held_orders', [
+        $this->assertSoftDeleted('pos_held_orders', [
             'id' => $heldOrder->id,
         ]);
+        $this->assertNull(HeldOrder::find($heldOrder->id));
     }
 
     public function test_discard_nonexistent_order_returns_404(): void

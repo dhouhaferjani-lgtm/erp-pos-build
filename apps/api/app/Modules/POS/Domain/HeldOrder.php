@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
 /**
@@ -32,6 +33,8 @@ use Illuminate\Support\Carbon;
  * @property Carbon $held_at
  * @property Carbon|null $expires_at
  * @property Carbon|null $recalled_at
+ * @property string|null $discarded_by
+ * @property Carbon|null $deleted_at
  * @property Carbon $created_at
  * @property Carbon $updated_at
  * @property-read Tenant $tenant
@@ -48,6 +51,7 @@ use Illuminate\Support\Carbon;
 class HeldOrder extends Model
 {
     use HasUuids;
+    use SoftDeletes;
 
     /**
      * @var string
@@ -69,6 +73,7 @@ class HeldOrder extends Model
         'held_at',
         'expires_at',
         'recalled_at',
+        'discarded_by',
     ];
 
     /**
@@ -82,6 +87,7 @@ class HeldOrder extends Model
             'held_at' => 'datetime',
             'expires_at' => 'datetime',
             'recalled_at' => 'datetime',
+            'deleted_at' => 'datetime',
         ];
     }
 
