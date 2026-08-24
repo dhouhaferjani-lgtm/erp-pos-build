@@ -670,6 +670,150 @@ class DocumentConversionScenarioTest extends TestCase
         $this->assertEquals($vehicle->id, $invoice->vehicle_id);
     }
 
+    /**
+     * N-6 fix round r1 — gate C-2 / F-3 [CRITICAL].
+     *
+     * The converter used to stamp `advance_cleared_at` on the strength of
+     * `clearCustomerAdvanceToReceivable()` returning without throwing. With the
+     * legacy `PostingMode::AfterCommit` and a NULL actor that call takes NEITHER
+     * posting branch: the entry is created DRAFT and never posted, while the
+     * allocation is marked cleared anyway. `clearAdvancesAllocatedToInvoice()`
+     * filters `whereNull('advance_cleared_at')` and therefore SKIPS at posting —
+     * so 419 stays credited forever, the invoice's fresh 411 is never
+     * discharged, and nothing errors. The lane's own safety net, disarmed in
+     * exactly its documented failure mode.
+     */
+    #[Test]
+    public function it_posts_the_prepayment_clearing_even_without_an_actor_and_only_then_marks_it_cleared(): void
+    {
+        $service = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => ProductType::Service,
+            'is_physical' => false,
+        ]);
+        $cashAccount = $this->seedPrepaymentApplicationAccounts();
+        $order = $this->createConfirmedOrder([
+            ['product_id' => $service->id, 'description' => 'Oil Change Service'],
+        ]);
+
+        app(GeneralLedgerService::class)->createCustomerAdvanceJournalEntry(
+            companyId: $this->company->id,
+            partnerId: $this->partner->id,
+            advanceId: (string) Str::uuid(),
+            amount: '40.000',
+            paymentMethodAccountId: $cashAccount->id,
+            date: now(),
+            user: null,
+            description: 'Customer advance payment, no resolvable actor',
+            currencyCode: $this->company->currency,
+        );
+        $allocation = PaymentAllocation::create([
+            'payment_id' => null,
+            'document_id' => $order->id,
+            'amount' => '40.000',
+            'booked_as_advance' => true,
+        ]);
+
+        // NO `actor_user_id` — the nullable path.
+        $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice);
+
+        $entry = JournalEntry::query()
+            ->where('source_type', 'prepayment_application')
+            ->where('source_id', $invoice->id)
+            ->firstOrFail();
+
+        $this->assertSame(
+            JournalEntryStatus::Posted,
+            $entry->status,
+            'a clearing entry left DRAFT discharges nothing — it must post synchronously',
+        );
+
+        $allocation->refresh();
+        $this->assertNotNull(
+            $allocation->advance_cleared_at,
+            'cleared-ness is claimed from a POSTED entry, and this one posted',
+        );
+        $this->assertSame($entry->id, $allocation->advance_journal_entry_id);
+    }
+
+    /**
+     * The REAL converter probe (gate I-9). The r1 suite simulated this by
+     * hand-writing `advance_cleared_at`, which is how C-2 survived.
+     *
+     * SCOPE, stated rather than implied: this class's fixture builds a MINIMAL
+     * chart (bank / 411 / 419 only), so the invoice cannot be posted here — the
+     * GL pre-flight needs revenue and VAT accounts. What this proves is the
+     * converter's whole contribution: exactly ONE clearing entry, POSTED, and
+     * the marker that the posting path reads. The other half — that posting
+     * does NOT clear a second time once that marker is set — is proved on the
+     * full TN chart by
+     * `N6PaymentOnUnpostedInvoiceTest::test_a_prepayment_transferred_from_an_order_is_not_cleared_again_at_posting`.
+     */
+    #[Test]
+    public function it_clears_an_order_prepayment_exactly_once_at_conversion(): void
+    {
+        $service = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => ProductType::Service,
+            'is_physical' => false,
+        ]);
+        $user = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Conversion User',
+            'email' => 'single-clearing-'.bin2hex(random_bytes(3)).'@example.com',
+            'password' => bcrypt('password'),
+            'status' => UserStatus::Active,
+        ]);
+        $cashAccount = $this->seedPrepaymentApplicationAccounts();
+        $order = $this->createConfirmedOrder([
+            ['product_id' => $service->id, 'description' => 'Oil Change Service'],
+        ]);
+
+        app(GeneralLedgerService::class)->createCustomerAdvanceJournalEntry(
+            companyId: $this->company->id,
+            partnerId: $this->partner->id,
+            advanceId: (string) Str::uuid(),
+            amount: '40.000',
+            paymentMethodAccountId: $cashAccount->id,
+            date: now(),
+            user: $user,
+            description: 'Customer advance payment',
+            currencyCode: $this->company->currency,
+        );
+        PaymentAllocation::create([
+            'payment_id' => null,
+            'document_id' => $order->id,
+            'amount' => '40.000',
+            'booked_as_advance' => true,
+        ]);
+
+        $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice, [
+            'actor_user_id' => $user->id,
+        ]);
+
+        $entries = JournalEntry::query()
+            ->where('company_id', $this->company->id)
+            ->where('source_type', 'prepayment_application')
+            ->where('source_id', $invoice->id)
+            ->get();
+
+        $this->assertCount(
+            1,
+            $entries,
+            'a second clearing would drain another advance of the same partner (the ceiling is partner-pool-level)',
+        );
+        $this->assertSame(JournalEntryStatus::Posted, $entries->first()?->status);
+
+        $allocation = PaymentAllocation::query()->where('document_id', $invoice->id)->sole();
+        $this->assertTrue($allocation->booked_as_advance);
+        $this->assertNotNull(
+            $allocation->advance_cleared_at,
+            'the marker the posting path reads must be set, and only because the entry POSTED',
+        );
+    }
+
     private function seedPrepaymentApplicationAccounts(): Account
     {
         $cashAccount = Account::create([
