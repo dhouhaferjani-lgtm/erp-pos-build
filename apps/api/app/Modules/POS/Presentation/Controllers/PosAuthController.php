@@ -14,6 +14,7 @@ use App\Modules\POS\Domain\Enums\ApprovalScope;
 use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Services\DiscountPermissionResolver;
 use App\Modules\POS\Presentation\Requests\VerifyPinRequest;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -40,9 +41,9 @@ final class PosAuthController extends Controller
      * CompanyContext company, ACTIVE user account (the offboarding belt), and
      * a PIN actually set.
      *
-     * @return \Illuminate\Database\Eloquent\Builder<User>
+     * @return Builder<User>
      */
-    private function pinHolders(string $tenantId, string $companyId): \Illuminate\Database\Eloquent\Builder
+    private function pinHolders(string $tenantId, string $companyId): Builder
     {
         $companyUserIds = UserCompanyMembership::query()
             ->where('company_id', $companyId)
@@ -193,23 +194,16 @@ final class PosAuthController extends Controller
         // approval permission must not appear in the offline operator/approval
         // list — keeping it in lockstep with the online
         // AuthorizedManagersController (active-only).
-        $companyUserIds = UserCompanyMembership::query()
-            ->where('company_id', $company->id)
-            ->where('status', MembershipStatus::Active->value)
-            ->pluck('user_id');
-
         // Offboarding belt: only ACTIVE accounts are mirrored. The membership
-        // filter above is the primary gate, but a deactivated user whose
-        // membership row is stale (pre-cascade data, a hand-edited row) would
-        // otherwise still land in the device's operator_pins and keep approving
-        // overrides offline. Excluding them here also makes the device prune
+        // filter is the primary gate, but a deactivated user whose membership
+        // row is stale (pre-cascade data, a hand-edited row) would otherwise
+        // still land in the device's operator_pins and keep approving
+        // overrides offline. Excluding them also makes the device prune
         // (`pruneOperatorsExcept`) drop them from the local cache on the next
-        // non-empty pull.
-        $operators = User::where('tenant_id', $currentUser->tenant_id)
-            ->where('status', UserStatus::Active->value)
-            ->whereIn('id', $companyUserIds)
-            ->whereNotNull('pos_pin')
-            ->get();
+        // non-empty pull. Both belts live in `pinHolders()` — the query below
+        // is unchanged, it just no longer keeps a second copy of the
+        // definition that N-5's has-pins drift grew out of.
+        $operators = $this->pinHolders($currentUser->tenant_id, $company->id)->get();
 
         $data = $operators->map(function (User $user) use ($company, $terminalIds, $serverTime): array {
             $isAdmin = $this->permissionResolver->isAdmin($user);
@@ -324,9 +318,20 @@ final class PosAuthController extends Controller
     }
 
     /**
-     * Check if any user in the tenant has a POS PIN set.
+     * Check whether this terminal has any operator PIN it could actually verify.
      *
      * GET /api/v1/pos/auth/has-pins
+     *
+     * N-5: this used to ask "does ANY row in this tenant carry a pos_pin?" —
+     * no company scope, no membership belt, no account belt — while
+     * `verifyPin`/`pinData` answered from the ACTIVE-member/ACTIVE-account
+     * population of the CompanyContext company. The device routes `false` to
+     * the first-run PinSetupPage and `true` to PinEntryPage, so every row the
+     * other two surfaces reject but this one counted was a hard lockout: a
+     * shop whose only PIN holder was offboarded (or whose only PIN holder sits
+     * in a sibling company) got the PIN prompt for an empty roster, with no
+     * path to set a PIN. Share `pinHolders()` so the three surfaces admit
+     * exactly the same population.
      */
     public function hasPins(Request $request): JsonResponse
     {
@@ -334,10 +339,9 @@ final class PosAuthController extends Controller
 
         /** @var User $currentUser */
         $currentUser = $request->user();
+        $company = $this->companyContext->requireCompany();
 
-        $hasPins = User::where('tenant_id', $currentUser->tenant_id)
-            ->whereNotNull('pos_pin')
-            ->exists();
+        $hasPins = $this->pinHolders($currentUser->tenant_id, $company->id)->exists();
 
         return response()->json([
             'data' => [
