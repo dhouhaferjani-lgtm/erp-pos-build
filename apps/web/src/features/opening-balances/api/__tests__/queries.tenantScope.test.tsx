@@ -200,12 +200,15 @@ const validationFixture: ValidationResult = {
 }
 
 const previewFixture: PostPreview = {
-  batch: {
-    cutover_date: '2026-01-01',
-    description: 'Preview',
+  batch_type: 'ACCOUNTING',
+  entry: {
+    entry_date: '2026-01-01',
+    description: 'GL Opening Balance - Preview',
     is_historical: true,
+    source_type: 'opening_balance',
   },
-  totals: {},
+  lines: [],
+  totals: { debit: '0.000', credit: '0.000', is_balanced: true },
 }
 
 const postFixture: PostResult = { success: true }

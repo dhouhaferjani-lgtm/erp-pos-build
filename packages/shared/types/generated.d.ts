@@ -564,6 +564,7 @@ export type DiscountFloorMode = 'Advisory' | 'WarnRequiresPermission' | 'Block';
 export type DocumentReviewStatus = 'pending' | 'in_review' | 'approved' | 'rejected' | 'expired';
 export type HashChainType = 'invoice' | 'credit_note' | 'delivery_note' | 'return_note' | 'receipt' | 'payment' | 'journal_entry' | 'z_report';
 export type LocationType = 'shop' | 'warehouse' | 'office' | 'mobile';
+export type MembershipRevocationReason = 'user_deactivated';
 export type MembershipRole = 'owner' | 'admin' | 'manager' | 'accountant' | 'cashier' | 'technician' | 'viewer';
 export type MembershipStatus = 'active' | 'pending' | 'suspended' | 'revoked';
 export type PeriodStatus = 'open' | 'closed' | 'locked';

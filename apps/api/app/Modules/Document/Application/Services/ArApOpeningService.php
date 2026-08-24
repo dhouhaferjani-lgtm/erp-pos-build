@@ -408,6 +408,10 @@ class ArApOpeningService
         );
 
         return [
+            // N-3 discriminator — see AccountingOpeningService::getPostPreview().
+            // The pre-existing nested `batch.batch_type` is kept as-is: removing it
+            // would be a breaking change for any consumer already reading it.
+            'batch_type' => $batch->type->value,
             'batch' => [
                 'cutover_date' => $batch->cutover_date->toDateString(),
                 'description' => ($isAr ? 'AR' : 'AP')." Open Items - {$batch->name}",
