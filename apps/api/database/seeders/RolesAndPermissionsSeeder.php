@@ -278,6 +278,18 @@ class RolesAndPermissionsSeeder extends Seeder
 
             'ledger.view',  // General ledger access
 
+            // Fiscal-period lifecycle (Session B lane Q-10). The nightly
+            // auto-lock drives fiscal periods Open -> Closed -> Locked; this
+            // gates the ONLY in-product edge back (Closed -> Open). Naming
+            // mirrors the sibling `bank-statements.reopen` above. Held by
+            // `admin` (via Permission::all()) and `accountant` only — the role
+            // set of `reports.manage`, the VAT-period generate/close/reopen/file
+            // family, which the 2026-08-06 gate finding I-1 ruling deliberately
+            // removed from `manager` because reversing a period close is
+            // financial-lifecycle mutation, not day-to-day operations.
+            // Locked periods stay terminal: the service refuses them.
+            'fiscal-periods.reopen',
+
             // DEPRECATED (W-6 D5, 2026-08-05 owner ruling "Option B split") —
             // reports.view no longer gates any route as of this release; the
             // reports/* endpoints now check reports.financial or
@@ -798,6 +810,10 @@ class RolesAndPermissionsSeeder extends Seeder
                 'accounts.view', 'accounts.manage',
                 'ledger.view',
                 'reports.financial', 'reports.operational', 'reports.manage',
+                // Session B lane Q-10 (c): the Closed -> Open fiscal-period edge.
+                // Same rationale as reports.manage above — accountant holds it,
+                // manager deliberately does not (2026-08-06 gate finding I-1).
+                'fiscal-periods.reopen',
                 'taxation.tax_configurations.manage',
                 'taxation.withholding_rules.manage',
                 'withholding.view', 'withholding.create', 'withholding.update',

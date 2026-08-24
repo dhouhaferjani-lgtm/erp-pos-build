@@ -26,12 +26,21 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property Carbon $end_date End date of period
  * @property PeriodStatus $status Period status
  * @property Carbon|null $closed_at When the period was closed
- * @property string|null $closed_by UUID of user who closed
+ * @property string|null $closed_by UUID of user who closed (null for the nightly system lock)
+ * @property Carbon|null $locked_at When the period was locked
+ * @property string|null $locked_by UUID of user who locked (null for the nightly system lock)
+ * @property Carbon|null $reopened_at When the period was last reopened (Closed -> Open)
+ * @property string|null $reopened_by UUID of user who reopened
+ * @property string|null $reopen_reason Operator justification supplied on the reopen
+ * @property string|null $status_actor Actor label of the LAST status transition ('system:auto-lock' | 'user:<uuid>')
+ * @property string|null $status_changed_from From-state of the LAST status transition
  * @property Carbon $created_at
  * @property Carbon $updated_at
  * @property-read FiscalYear $fiscalYear
  * @property-read Company $company
  * @property-read User|null $closedBy
+ * @property-read User|null $lockedBy
+ * @property-read User|null $reopenedBy
  */
 class FiscalPeriod extends Model
 {
@@ -57,6 +66,13 @@ class FiscalPeriod extends Model
         'status',
         'closed_at',
         'closed_by',
+        'locked_at',
+        'locked_by',
+        'reopened_at',
+        'reopened_by',
+        'reopen_reason',
+        'status_actor',
+        'status_changed_from',
     ];
 
     /**
@@ -72,6 +88,8 @@ class FiscalPeriod extends Model
             'end_date' => 'date',
             'status' => PeriodStatus::class,
             'closed_at' => 'datetime',
+            'locked_at' => 'datetime',
+            'reopened_at' => 'datetime',
         ];
     }
 
@@ -103,6 +121,26 @@ class FiscalPeriod extends Model
     public function closedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'closed_by');
+    }
+
+    /**
+     * Get the user who locked this period (null when the nightly scheduler did).
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function lockedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'locked_by');
+    }
+
+    /**
+     * Get the user who last reopened this period.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function reopenedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reopened_by');
     }
 
     /**

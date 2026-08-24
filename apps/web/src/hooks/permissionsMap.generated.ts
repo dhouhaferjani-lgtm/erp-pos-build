@@ -1,6 +1,6 @@
 // This file is generated. Do not edit it by hand.
 // Source: apps/api/database/seeders/RolesAndPermissionsSeeder.php
-// Source hash: sha256:0d119fd9f7fa2bfeee4b4b246d03a949df975ccfa17dfed06b692d67633ca1aa
+// Source hash: sha256:2afca599e3ee1293201dadfcbff2db7685e395bbbe0306b832e462c44f672146
 
 export const PERMISSIONS = {
   'accounts.manage': ['accountant', 'admin', 'manager'],
@@ -80,6 +80,7 @@ export const PERMISSIONS = {
   'expenses.post': ['accountant', 'admin', 'manager'],
   'expenses.update': ['accountant', 'admin', 'manager', 'operator'],
   'expenses.view': ['accountant', 'admin', 'cashier', 'manager', 'operator', 'viewer'],
+  'fiscal-periods.reopen': ['accountant', 'admin'],
   'fiscal.events.resolve_quarantine': ['admin'],
   'fiscal.events.verify_chain': ['admin'],
   'fiscal.refunds.manage_dead_letters': ['admin', 'manager'],
