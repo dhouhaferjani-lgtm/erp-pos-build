@@ -130,6 +130,39 @@ export function OpeningBalanceWizardPage() {
     currentStep === 'preview' || currentStep === 'post' ? (batchId ?? existingStatus?.batch?.id ?? undefined) : undefined
   )
 
+  // N-3: the three preview variants carry DIFFERENT totals keys — ACCOUNTING
+  // has {debit,credit,is_balanced}, INVENTORY {total_lines,total_quantity,
+  // total_value}, AR/AP {total_documents,total_amount,total_open_amount}. The
+  // post step used to read `total_lines ?? total_documents ?? 0` plus optional
+  // `total_value`/`total_debit` off one flattened shape, so an ACCOUNTING batch
+  // showed "Total Rows 0" and no amount at all. Narrow on the discriminator.
+  const postSummary = ((): { rows: number; amountLabelKey: string; amount: string } | null => {
+    if (previewData === undefined) {
+      return null
+    }
+
+    switch (previewData.batch_type) {
+      case 'ACCOUNTING':
+        return {
+          rows: previewData.lines.length,
+          amountLabelKey: 'openingBalances.wizard.post.totalDebit',
+          amount: previewData.totals.debit,
+        }
+      case 'INVENTORY':
+        return {
+          rows: previewData.totals.total_lines,
+          amountLabelKey: 'openingBalances.wizard.post.totalValue',
+          amount: previewData.totals.total_value,
+        }
+      default:
+        return {
+          rows: previewData.totals.total_documents,
+          amountLabelKey: 'openingBalances.wizard.post.totalValue',
+          amount: previewData.totals.total_amount,
+        }
+    }
+  })()
+
   // Mutations
   const createBatch = useCreateOpeningBatch()
   const importRows = useImportOpeningRows()
@@ -432,7 +465,7 @@ export function OpeningBalanceWizardPage() {
                 <Loader2 className={`h-8 w-8 animate-spin ${colorTokens.intent.primary.textSubtle}`} />
               </div>
             ) : previewData ? (
-              <BatchPreview preview={previewData} batchType={batchType} />
+              <BatchPreview preview={previewData} />
             ) : null}
 
             <div className={`flex items-center justify-between border-t ${colorTokens.border.subtle} pt-4`}>
@@ -482,7 +515,7 @@ export function OpeningBalanceWizardPage() {
               </div>
             </div>
 
-            {previewData && (
+            {postSummary !== null && (
               <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-4`}>
                 <h3 className={`font-medium ${colorTokens.text.primary} mb-3`}>
                   {t('openingBalances.wizard.post.summary')}
@@ -490,22 +523,12 @@ export function OpeningBalanceWizardPage() {
                 <dl className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <dt className={colorTokens.text.subtle}>{t('openingBalances.wizard.post.totalRows')}</dt>
-                    <dd className={`font-medium ${colorTokens.text.primary}`}>
-                      {previewData.totals.total_lines ?? previewData.totals.total_documents ?? 0}
-                    </dd>
+                    <dd className={`font-medium ${colorTokens.text.primary}`}>{postSummary.rows}</dd>
                   </div>
-                  {previewData.totals.total_value && (
-                    <div className="flex justify-between">
-                      <dt className={colorTokens.text.subtle}>{t('openingBalances.wizard.post.totalValue')}</dt>
-                      <dd className={`font-medium ${colorTokens.text.primary}`}>{previewData.totals.total_value}</dd>
-                    </div>
-                  )}
-                  {previewData.totals.total_debit && (
-                    <div className="flex justify-between">
-                      <dt className={colorTokens.text.subtle}>{t('openingBalances.wizard.post.totalDebit')}</dt>
-                      <dd className={`font-medium ${colorTokens.text.primary}`}>{previewData.totals.total_debit}</dd>
-                    </div>
-                  )}
+                  <div className="flex justify-between">
+                    <dt className={colorTokens.text.subtle}>{t(postSummary.amountLabelKey)}</dt>
+                    <dd className={`font-medium ${colorTokens.text.primary}`}>{postSummary.amount}</dd>
+                  </div>
                 </dl>
               </div>
             )}

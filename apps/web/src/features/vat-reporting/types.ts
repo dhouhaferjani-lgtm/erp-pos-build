@@ -20,12 +20,23 @@ export interface VatPeriod {
   filing_reference: string | null
 }
 
+/**
+ * One per-rate row of a VAT summary.
+ *
+ * N-4: this mirrors `VatAggregation::toArray()` EXACTLY. The CLOSED/FILED
+ * snapshot branch of `VatReportController::periodSummary()` used to emit `rate`
+ * here instead of `tax_rate` and omit `tax_configuration_id`; both branches now
+ * emit these keys and only these, pinned by
+ * `apps/api/tests/Feature/Taxation/VatReportSummaryContractTest.php`.
+ */
 export interface VatRateBreakdown {
+  direction: VatDirection
   tax_rate: string
   base_amount: string
   vat_amount: string
   document_count: number
   is_recoverable: boolean
+  tax_configuration_id: string | null
 }
 
 export interface VatDirectionSummary {
@@ -34,8 +45,15 @@ export interface VatDirectionSummary {
   breakdowns: VatRateBreakdown[]
 }
 
+/**
+ * The payload of `GET /vat/reports/{periodId}/summary`.
+ *
+ * N-4 (campaign report 2026-08-23 §N-4): there is NO `period` key here and there
+ * never has been — this type used to declare one, so VatReportPage read
+ * `report.period.label` and crashed the whole declaration screen. The period
+ * header (id / label / status) comes from `GET /vat/periods/{id}`.
+ */
 export interface VatReportSummary {
-  period: VatPeriod
   output_vat: VatDirectionSummary
   input_vat: VatDirectionSummary
   net_vat: string
