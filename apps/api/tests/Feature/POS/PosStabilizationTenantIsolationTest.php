@@ -213,13 +213,19 @@ final class PosStabilizationTenantIsolationTest extends TestCase
         // first choice — tenancy gate r1 C-1: `Loyalty` is NOT a compatible
         // extra of restaurant, so reconcile would prune it and 403 the
         // module:Loyalty cross-tenant probes below.)
+        //
+        // Session B lane Q-13 appends `Tables`: the floors/tables routes are now
+        // gated on `module:Tables` too, and the Group-3/Group-5 probes at
+        // /pos/tables* would 403 without it. `Tables` IS in coffee_shop's
+        // `compatible_extras` (config/verticals.php), so the fixture stays
+        // product-valid and reconcile-safe.
         return Tenant::create([
             'name' => "Tenant {$slug}",
             'slug' => $slug,
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
             'vertical' => Vertical::CoffeeShop,
-            'enabled_extras' => ['Loyalty', 'Inventory'],
+            'enabled_extras' => ['Loyalty', 'Inventory', 'Tables'],
         ]);
     }
 

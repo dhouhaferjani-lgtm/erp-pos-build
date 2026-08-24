@@ -1438,7 +1438,7 @@ describe('syncService', () => {
       useProductStore.setState({
         companyConfig: {
           company_id: 'company-1',
-          all_enabled_modules: ['POS'],
+          all_enabled_modules: ['POS', 'Tables'],  // Q-13: Tables keeps the /pos/floors pull in the sequence
         } as never,
       });
       vi.mocked(apiGet)
@@ -1602,7 +1602,24 @@ describe('pullReceiptQrIndex', () => {
 describe('pullTables', () => {
   const db = {} as import('@tauri-apps/plugin-sql').default;
 
-  beforeEach(() => { vi.clearAllMocks(); });
+  // Session B lane Q-13: `pullTables` now short-circuits (without touching the
+  // network) when the companyConfig is KNOWN not to carry the `Tables` module,
+  // because `/pos/floors` is gated on `module:Tables` server-side. The
+  // `runFullSync` describe above leaves a `['POS']` config in the store, and a
+  // skipped pull would leave this describe's `mockResolvedValueOnce` unconsumed
+  // and cascade into every later describe. Pin a Tables tenant here — these two
+  // cases exercise the NETWORK path; the gate itself is covered by
+  // `syncService.pullTablesModuleGate.test.ts`.
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const { useProductStore } = await import('@/stores/productStore');
+    useProductStore.setState({
+      companyConfig: {
+        company_id: 'company-1',
+        all_enabled_modules: ['POS', 'Menu', 'Tables'],
+      } as never,
+    });
+  });
 
   it('pulls floors + tables from the server and upserts them', async () => {
     const { pullTables } = await import('../syncService');
