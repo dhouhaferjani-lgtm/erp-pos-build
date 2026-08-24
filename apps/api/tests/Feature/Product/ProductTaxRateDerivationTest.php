@@ -262,6 +262,42 @@ final class ProductTaxRateDerivationTest extends TestCase
         $this->assertSame('7.00', (string) $product->fresh()?->tax_rate);
     }
 
+    // -------------------------------------------------------------------------
+    // the refusal (gate r1 finding 5)
+    // -------------------------------------------------------------------------
+
+    public function test_create_refuses_a_configuration_that_states_no_line_item_percentage(): void
+    {
+        // This is a real API CONTRACT CHANGE and it is pinned deliberately.
+        // Before N-1 such a payload saved fine (the rate silently came from the
+        // company default); now it is refused, because deriving a VAT rate from
+        // a fixed-amount stamp duty is not possible and inventing one is how the
+        // wrong number got sealed in the first place. Unreachable from the UI —
+        // TaxConfigurationSelect filters out non-LINE_ITEMS configurations — but
+        // reachable from the API, imports and integrations, which is precisely
+        // why it needs a test rather than an accident.
+        $stamp = TaxConfiguration::query()
+            ->where('country_code', 'TN')
+            ->where('applies_to', 'DOCUMENT_TOTAL')
+            ->firstOrFail();
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/products', [
+                'name' => 'Attached to a stamp duty',
+                'sku' => 'N1-STAMP-001',
+                'sale_price' => '10.000',
+                'default_tax_configuration_id' => $stamp->id,
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.errors.default_tax_configuration_id.0', fn (mixed $message): bool => is_string($message) && $message !== '');
+
+        $this->assertNull(
+            Product::query()->where('sku', 'N1-STAMP-001')->first(),
+            'The refusal must be a refusal — no product written with an unjustified rate.',
+        );
+    }
+
     private function config(string $code): TaxConfiguration
     {
         return TaxConfiguration::query()

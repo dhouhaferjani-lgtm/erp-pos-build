@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\Services\DocumentTotalsCalculator;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use Illuminate\Database\Connection;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -109,13 +113,23 @@ use Illuminate\Support\Facades\Schema;
  *      OR tc.tax_type <> 'PERCENTAGE'
  *      OR tc.percentage_rate IS NULL;
  *
- * WHAT THIS MIGRATION DOES NOT REPAIR. Receipts and document lines already
- * written keep the wrong rate. The POS rows are hash-chained and must not be
- * rewritten; correcting a sealed receipt is a fiscal correction (credit
- * note / refund), never an UPDATE. This migration fixes the SOURCE so no
- * further wrong rate is sealed. Any tenant with a non-zero census count above
- * has mis-declared VAT for the affected products and needs that handled
- * through the fiscal correction path.
+ * IT HAS A SECOND HALF. Repairing the product alone leaves the quotes and
+ * orders already written from it carrying the stale rate on their own lines,
+ * and conversion copies a line's `tax_rate` verbatim — so converting one after
+ * this deploy would mint a NEW wrong-VAT invoice. {@see repairUnpostedDocumentLines()}
+ * therefore also repairs UNPOSTED (`draft`/`confirmed`, `fiscal_status=DRAFT`,
+ * no `fiscal_hash`) document lines whose product carries a configuration, and
+ * re-totals those documents through the module's own calculator. It has its own
+ * savepoint and its own counters in the gate line.
+ *
+ * WHAT THIS MIGRATION DOES NOT REPAIR. Anything already SEALED: POS receipts,
+ * and any posted/sealed/voided document. Those rows are hash-chained or carry
+ * GL entries derived from their tax; correcting one is a fiscal correction
+ * (credit note / refund), never an UPDATE. This migration fixes the SOURCE and
+ * everything still legally repairable, so no further wrong rate is sealed. Any
+ * tenant with a non-zero census count above has mis-declared VAT for the
+ * affected products and needs the sealed part handled through the fiscal
+ * correction path.
  *
  * PORTABILITY. Written as one raw statement per driver rather than the query
  * builder: `UPDATE ... FROM` (PostgreSQL) and `UPDATE ... SET x = (SELECT ...)`
@@ -135,6 +149,27 @@ return new class extends Migration
      * would let a checklist's grep pass against an empty log.
      */
     private const GATE_TOKEN = 'PRODUCT TAX-RATE N1 BACKFILL MIGRATION:';
+
+    /**
+     * The documents holding at least one repairable line, read BEFORE the
+     * update so they can be re-totalled after it. Identical predicate to the
+     * UPDATE in {@see repairUnpostedDocumentIds}; `IS DISTINCT FROM` is spelled
+     * out longhand so the one statement runs unchanged on both drivers.
+     */
+    private const AFFECTED_DOCUMENT_IDS_SQL = <<<'SQL'
+        SELECT DISTINCT dl.document_id AS document_id
+        FROM document_lines dl
+        JOIN documents d ON d.id = dl.document_id
+        JOIN products p ON p.id = dl.product_id
+        JOIN tax_configurations tc ON tc.id = p.default_tax_configuration_id
+        WHERE tc.applies_to = 'LINE_ITEMS'
+          AND tc.tax_type = 'PERCENTAGE'
+          AND tc.percentage_rate IS NOT NULL
+          AND d.status IN ('draft', 'confirmed')
+          AND d.fiscal_status = 'DRAFT'
+          AND d.fiscal_hash IS NULL
+          AND (dl.tax_rate IS NULL OR dl.tax_rate <> tc.percentage_rate)
+        SQL;
 
     public function up(): void
     {
@@ -200,11 +235,15 @@ return new class extends Migration
                     );
             });
 
+            $documentLines = $this->repairUnpostedDocumentLines($connection);
+
             Log::warning(sprintf(
-                '%s tenant=%s status=ok repaired=%d.',
+                '%s tenant=%s status=ok repaired=%d doc_lines=%d docs_retotalled=%d.',
                 self::GATE_TOKEN,
                 $tenantKey,
                 $repaired,
+                $documentLines['lines'],
+                $documentLines['documents'],
             ));
         } catch (Throwable $e) {
             // One tenant's failure must not brick the unattended run for every
@@ -220,6 +259,200 @@ return new class extends Migration
                 $e->getMessage(),
             ));
         }
+    }
+
+    /**
+     * SECOND HALF (gate r1 finding 3): repair the UNPOSTED document lines that
+     * already copied the wrong rate, and re-total the documents that held them.
+     *
+     * WHY THIS IS NOT OPTIONAL. Repairing `products.tax_rate` alone leaves the
+     * quotes and orders that were written from the stale product carrying the
+     * company default on their own lines, and conversion copies a line's
+     * `tax_rate` VERBATIM into the destination document
+     * (`Conversion/Concerns/CopiesDocumentData::copyLine()`). Converting one of
+     * those after this deploy would MINT A NEW WRONG-VAT INVOICE — a fresh
+     * fiscal document created after the fix shipped, which is worse than the
+     * historical rows. On the campaign tenant these are four real documents
+     * (QT-2026-0002/0003/0004, SO-2026-0001) sitting one click from that.
+     *
+     * WHAT IS DELIBERATELY OUT OF REACH — three independent guards, all of
+     * which must hold, because a repaired row here is a rewritten fiscal
+     * number:
+     *  - `documents.status IN ('draft','confirmed')`: never `posted`, `paid`,
+     *    `received` or `cancelled`. A posted document has GL entries derived
+     *    from its tax; rewriting the line under them would desynchronise the
+     *    ledger.
+     *  - `documents.fiscal_status = 'DRAFT'`: never `SEALED`, never `VOIDED`.
+     *  - `documents.fiscal_hash IS NULL`: belt and braces. Anything that has
+     *    ever been hash-chained is untouchable by a migration; correcting a
+     *    sealed document is a credit note, not an UPDATE.
+     *
+     * THE RATE COMES FROM THE PRODUCT'S CONFIGURATION, not from
+     * `products.tax_rate` — even though the first half has just aligned the
+     * two. Reading the configuration directly makes this half independent of
+     * the first half's outcome and keeps one single source of truth for "what
+     * rate is this?", which is the whole point of N-1. Lines with no product
+     * (free-text/service lines) state their own rate and are never touched.
+     *
+     * RE-TOTALLING IS PART OF THE REPAIR, not a nicety. Leaving the header at
+     * the 19 %-derived `tax_amount` / `total` while the lines say 7 % would
+     * ship a document that contradicts itself on screen and on paper. The
+     * module's OWN calculator does it — `DocumentTotalsCalculator::recalculate()`,
+     * the same one the draft path calls — so stamp duty (TN timbre fiscal),
+     * line discounts and partner exemptions are handled by the code that owns
+     * them rather than re-derived in SQL here. It is context-free: the scale
+     * comes from the document's own currency, exactly as
+     * `CopiesDocumentData::recalculateTotals()` resolves it, so this is safe in
+     * the no-CompanyContext world of `tenants:migrate` (agent rule 20). The
+     * container is used to build it — a migration is a script, not an injected
+     * service, and hand-wiring the tax engine here would be a second copy of
+     * its dependency graph.
+     *
+     * IDEMPOTENT: the line predicate is "the two disagree", so a second run
+     * matches nothing; and `recalculate()` writes through Eloquent, which
+     * issues no UPDATE when the recomputed totals equal the stored ones.
+     *
+     * ITS OWN SAVEPOINT. A failure here rolls back only this half and is
+     * reported by the caller's `status=FAILED` line — the product repair, which
+     * is the part that stops NEW wrong rates, has already committed.
+     *
+     * PRE-FLIGHT CENSUS (per tenant, before deploying):
+     *
+     *   SELECT d.document_number, d.type, d.status, dl.tax_rate AS stale_rate,
+     *          tc.code, tc.percentage_rate AS correct_rate
+     *   FROM document_lines dl
+     *   JOIN documents d ON d.id = dl.document_id
+     *   JOIN products p ON p.id = dl.product_id
+     *   JOIN tax_configurations tc ON tc.id = p.default_tax_configuration_id
+     *   WHERE tc.applies_to = 'LINE_ITEMS' AND tc.tax_type = 'PERCENTAGE'
+     *     AND tc.percentage_rate IS NOT NULL
+     *     AND d.status IN ('draft','confirmed')
+     *     AND d.fiscal_status = 'DRAFT'
+     *     AND d.fiscal_hash IS NULL
+     *     AND dl.tax_rate IS DISTINCT FROM tc.percentage_rate
+     *   ORDER BY d.document_number;
+     *
+     * @return array{lines: int, documents: int}
+     */
+    private function repairUnpostedDocumentLines(Connection $connection): array
+    {
+        foreach (['documents', 'document_lines'] as $table) {
+            if (! Schema::hasTable($table)) {
+                return ['lines' => 0, 'documents' => 0];
+            }
+        }
+
+        $result = ['lines' => 0, 'documents' => 0];
+
+        $connection->transaction(function () use ($connection, &$result): void {
+            // The ids are read BEFORE the update, with the same predicate: once
+            // the rates agree the rows no longer match, so there would be
+            // nothing left to identify for re-totalling afterwards.
+            /** @var array<int, string> $documentIds */
+            $documentIds = array_values(array_unique(array_map(
+                // `select()` hands back stdClass rows; reading the single
+                // aliased column through an array view keeps this honest under
+                // static analysis without asserting a shape.
+                static fn (object $row): string => (string) ((array) $row)['document_id'],
+                $connection->select(self::AFFECTED_DOCUMENT_IDS_SQL),
+            )));
+
+            if ($documentIds === []) {
+                return;
+            }
+
+            $result['lines'] = $connection->getDriverName() === 'pgsql'
+                ? $connection->affectingStatement(
+                    <<<'SQL'
+                    UPDATE document_lines
+                    SET tax_rate = tc.percentage_rate,
+                        updated_at = CURRENT_TIMESTAMP
+                    FROM products p, tax_configurations tc, documents d
+                    WHERE p.id = document_lines.product_id
+                      AND tc.id = p.default_tax_configuration_id
+                      AND d.id = document_lines.document_id
+                      AND tc.applies_to = 'LINE_ITEMS'
+                      AND tc.tax_type = 'PERCENTAGE'
+                      AND tc.percentage_rate IS NOT NULL
+                      AND d.status IN ('draft', 'confirmed')
+                      AND d.fiscal_status = 'DRAFT'
+                      AND d.fiscal_hash IS NULL
+                      AND document_lines.tax_rate IS DISTINCT FROM tc.percentage_rate
+                    SQL
+                )
+                : $connection->affectingStatement(
+                    <<<'SQL'
+                    UPDATE document_lines
+                    SET tax_rate = (
+                            SELECT tc.percentage_rate
+                            FROM products p
+                            JOIN tax_configurations tc ON tc.id = p.default_tax_configuration_id
+                            WHERE p.id = document_lines.product_id
+                        ),
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE EXISTS (
+                        SELECT 1
+                        FROM products p
+                        JOIN tax_configurations tc ON tc.id = p.default_tax_configuration_id
+                        JOIN documents d ON d.id = document_lines.document_id
+                        WHERE p.id = document_lines.product_id
+                          AND tc.applies_to = 'LINE_ITEMS'
+                          AND tc.tax_type = 'PERCENTAGE'
+                          AND tc.percentage_rate IS NOT NULL
+                          AND d.status IN ('draft', 'confirmed')
+                          AND d.fiscal_status = 'DRAFT'
+                          AND d.fiscal_hash IS NULL
+                          AND (
+                                document_lines.tax_rate IS NULL
+                             OR document_lines.tax_rate <> tc.percentage_rate
+                          )
+                    )
+                    SQL
+                );
+
+            $result['documents'] = $this->retotal($documentIds);
+        });
+
+        return $result;
+    }
+
+    /**
+     * Re-total the documents whose lines were just repaired, through the
+     * module's own calculator. Returns how many were actually rewritten.
+     *
+     * @param  array<int, string>  $documentIds
+     */
+    private function retotal(array $documentIds): int
+    {
+        /** @var DocumentTotalsCalculator $calculator */
+        $calculator = app(DocumentTotalsCalculator::class);
+        /** @var CurrencyScaleResolverInterface $scaleResolver */
+        $scaleResolver = app(CurrencyScaleResolverInterface::class);
+
+        $retotalled = 0;
+
+        Document::query()
+            ->whereIn('id', $documentIds)
+            ->with('lines')
+            ->each(function (Document $document) use ($calculator, $scaleResolver, &$retotalled): void {
+                // Same guard as CopiesDocumentData::recalculateTotals(): a blank
+                // currency must not reach getScale(), which would silently
+                // compute at scale 2 instead of the company's true scale.
+                $currency = $document->currency;
+                $scale = $currency !== ''
+                    ? $scaleResolver->getScale($currency)
+                    : $scaleResolver->getScaleSafe(null, 3);
+
+                $before = [$document->subtotal, $document->tax_amount, $document->total];
+
+                $calculator->recalculate($document, $scale);
+
+                if ([$document->subtotal, $document->tax_amount, $document->total] !== $before) {
+                    $retotalled++;
+                }
+            });
+
+        return $retotalled;
     }
 
     public function down(): void
