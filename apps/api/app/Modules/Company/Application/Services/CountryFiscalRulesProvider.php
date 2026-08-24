@@ -29,6 +29,31 @@ final class CountryFiscalRulesProvider
     }
 
     /**
+     * Does this country have DEDICATED (country-specific) fiscal rules?
+     *
+     * FALSE means {@see getRulesForCountry()} would answer with
+     * {@see getGenericRules()} — a sensible default for a UI form, but a GUESS
+     * about a legal calendar. Callers that make a compliance statement on the
+     * customer's behalf must branch on this rather than consume the guess:
+     * {@see FiscalPeriodAutoLockService} skips such a company entirely rather
+     * than auto-locking its periods on a window nobody configured for it.
+     *
+     * (Before Session B lane Q-10 the auto-lock did worse than consume the
+     * guess: it hard-coded `getRulesForCountry('TN')` and applied Tunisia's
+     * window to every company in the tenant regardless of country.)
+     */
+    public function hasDedicatedRules(string $countryCode): bool
+    {
+        $countryCode = trim($countryCode);
+
+        if ($countryCode === '') {
+            return false;
+        }
+
+        return method_exists($this, 'getRulesFor'.strtoupper($countryCode));
+    }
+
+    /**
      * Tunisia: Calendar year (Jan-Dec) required.
      */
     private function getRulesForTN(): FiscalYearRules
