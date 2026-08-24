@@ -108,6 +108,13 @@ final class RepairPaidNeverPostedDocumentsCommand extends Command
             ->where('type', DocumentType::Invoice)
             ->where('status', DocumentStatus::Paid)
             ->whereNull('fiscal_hash')
+            // Historical opening-balance invoices are Posted-without-a-seal BY
+            // DESIGN (`ArApOpeningService`): they were posted in the customer's
+            // previous system. They are not the N-6 dead end and must never be
+            // moved back to Confirmed.
+            ->where(function ($query): void {
+                $query->where('is_historical', false)->orWhereNull('is_historical');
+            })
             ->orderBy('document_date')
             ->orderBy('document_number')
             ->get();

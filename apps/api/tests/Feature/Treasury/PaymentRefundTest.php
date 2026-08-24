@@ -192,7 +192,10 @@ class PaymentRefundTest extends TestCase
     public function test_full_refund_reverses_allocation(): void
     {
         $invoice = $this->makeInvoice('500.00', '0.00');
-        $invoice->update(['status' => DocumentStatus::Paid]);
+        // N-6: `reopenFromPaid()` refuses to promote a NEVER-sealed document to
+        // `Posted`. A document that reached `Paid` legitimately came through
+        // `Posted` and carries a seal — state it.
+        $invoice->update(['status' => DocumentStatus::Paid, 'fiscal_hash' => str_repeat('a', 64)]);
         $payment = $this->createPaymentAllocatedTo($invoice, '500.00');
 
         $refund = $this->refundService->refundPayment(
@@ -259,7 +262,10 @@ class PaymentRefundTest extends TestCase
     public function test_partial_refund_unwinds_allocation_and_reopens_document_balance(): void
     {
         $invoice = $this->makeInvoice('600.00', '0.00');
-        $invoice->update(['status' => DocumentStatus::Paid]);
+        // N-6: `reopenFromPaid()` refuses to promote a NEVER-sealed document to
+        // `Posted`. A document that reached `Paid` legitimately came through
+        // `Posted` and carries a seal — state it.
+        $invoice->update(['status' => DocumentStatus::Paid, 'fiscal_hash' => str_repeat('a', 64)]);
         $payment = $this->createPaymentAllocatedTo($invoice, '600.00');
 
         $refund = $this->refundService->partialRefund(
@@ -315,7 +321,10 @@ class PaymentRefundTest extends TestCase
     public function test_reverse_after_partial_refund_mirrors_the_net_lineage_and_keeps_every_row(): void
     {
         $invoice = $this->makeInvoice('1000.00', '0.00');
-        $invoice->update(['status' => DocumentStatus::Paid]);
+        // N-6: `reopenFromPaid()` refuses to promote a NEVER-sealed document to
+        // `Posted`. A document that reached `Paid` legitimately came through
+        // `Posted` and carries a seal — state it.
+        $invoice->update(['status' => DocumentStatus::Paid, 'fiscal_hash' => str_repeat('a', 64)]);
         $payment = $this->createPaymentAllocatedTo($invoice, '1000.00');
 
         $refund = $this->refundService->partialRefund(

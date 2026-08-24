@@ -151,6 +151,18 @@ final readonly class DocumentStatusService
      */
     private function wasNeverSealed(Document $document): bool
     {
+        // HISTORICAL documents are the deliberate exception, and they are real
+        // production data: `ArApOpeningService` creates opening-balance AR/AP
+        // invoices `Posted` with `fiscal_category = NON_FISCAL`,
+        // `fiscal_status = DRAFT` and NO hash — they were posted in the
+        // customer's PREVIOUS system, and this one records them as already
+        // standing. Such an invoice can legitimately be paid, refunded, and must
+        // re-open to `Posted`. `is_historical` is the flag that says so, set at
+        // exactly that one creation site.
+        if ($document->isHistorical()) {
+            return false;
+        }
+
         return in_array($document->type, DocumentPostingService::getFiscalDocumentTypes(), true)
             && $document->fiscal_hash === null;
     }
