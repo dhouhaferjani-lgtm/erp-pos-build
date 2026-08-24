@@ -14,6 +14,13 @@ return [
     'guided_delivery' => [
         'fefo_allocation_failed' => "L'allocation FEFO automatique a échoué. Confirmez la livraison manuellement et choisissez explicitement le lot.",
     ],
+
+    /*
+     | Campagne N-2 — refus « stock insuffisant » (code INSUFFICIENT_STOCK).
+     */
+    'stock' => [
+        'insufficient' => 'Stock insuffisant pour « :product » à « :location ». Disponible : :available, demandé : :requested. Réceptionnez ou transférez la marchandise avant de confirmer.',
+    ],
     'pre_delivery_invoicing' => [
         'refused' => "Cette facture contient des marchandises qui n'ont pas été livrées. Selon les règles comptables de ce pays, une facture définitive de marchandises ne peut pas être émise avant la livraison : elle ne peut donc pas encore être comptabilisée.",
         'alternative_delivery_note' => 'Créez et confirmez maintenant un bon de livraison pour les marchandises, puis comptabilisez la facture.',
