@@ -20,6 +20,7 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Domain\ZReport;
 use App\Modules\POS\Presentation\Requests\ClaimTerminalRequest;
 use App\Modules\POS\Presentation\Requests\CreateTerminalRequest;
+use App\Modules\POS\Presentation\Requests\ReleaseTerminalRequest;
 use App\Modules\POS\Presentation\Requests\RequestTerminalRequest;
 use App\Modules\POS\Presentation\Requests\UpdateTerminalRequest;
 use App\Modules\POS\Presentation\Resources\TerminalResource;
@@ -471,21 +472,43 @@ final class TerminalController extends Controller
      * whose hardware died could not be re-homed onto its replacement — the
      * terminal row, and therefore its fiscal chain, was stranded.
      *
-     * DELIBERATELY NOT BLOCKED BY AN OPEN SHIFT, unlike `archive()` and
-     * `toggleTrainingMode()`. The reason to release is usually that the device
-     * is gone (lost, stolen, bricked), and a gone device's shift can no longer
-     * be closed from the device — an open-shift guard would make precisely the
-     * terminals that need re-homing the ones that can never be re-homed, which
-     * is the state this endpoint exists to remove. Closing out the orphaned
-     * shift is the shift surface's job, not this one.
+     * REFUSED BY DEFAULT WHILE A SHIFT IS OPEN — 409 `TERMINAL_HAS_OPEN_SHIFT`,
+     * naming the shift — with a `force` + mandatory `reason` override
+     * ({@see ReleaseTerminalRequest}).
+     *
+     * A HARD block (the `archive()` / `toggleTrainingMode()` shape) would be
+     * wrong here: the reason to release is usually that the device is gone
+     * (lost, stolen, bricked), and there is NO server-side way to close that
+     * shift. Every shift-close surface refuses a `fiscal_schema_version >= 3`
+     * terminal without the authoring device — `ShiftController::open()` at
+     * `:63` and `close()` at `:127` return `SHIFT_DEVICE_AUTHORITY_REQUIRED`,
+     * `SyncController::syncCloseShift()` likewise at `:56` — and `store()`
+     * (`:136`) and `requestTerminal()` (`:569`) provision EVERY terminal at v3.
+     * `device_loss_incidents` is a schema-only register with no production
+     * writer and no endpoint. So a hard block would make precisely the terminals
+     * that need re-homing the ones that can never be re-homed.
+     *
+     * What is NOT true — and what the pre-fix docblock asserted — is that
+     * "closing out the orphaned shift is the shift surface's job". That remedy
+     * DOES NOT EXIST for v3 terminals. A forced release therefore ORPHANS the
+     * open shift, and the consequence lands on the REPLACEMENT device:
+     * `ZSessionLifecycleProjection::projectPosShiftOpen()` sees a different OPEN
+     * shift already on the terminal and silently `return`s (`:146-153`), so the
+     * new device's SESSION_OPEN never projects; its SESSION_CLOSE then throws
+     * and retries to exhaustion (`:205-216`); and its Z_REPORT cannot land
+     * because `pos_z_reports.shift_id` is FK-RESTRICTed to a `pos_shifts` row
+     * that will never exist. The fiscal chain in `fiscal_events` stays intact,
+     * but the replacement till's shifts and Z reports are absent from every
+     * server projection until the orphaned shift is resolved manually.
+     *
+     * That is why forcing demands a written reason and why `open_shift_id`,
+     * `forced` and `reason` are carried into {@see TerminalReleased} and thence
+     * into the audit register: the operator must confront the orphan, and
+     * whoever resolves it must be able to find out which shift it was.
      */
-    public function release(string $id, Request $request): JsonResponse
+    public function release(string $id, ReleaseTerminalRequest $request): JsonResponse
     {
         Gate::authorize('pos.manage_terminals');
-
-        $request->validate([
-            'reason' => 'nullable|string|max:255',
-        ]);
 
         $terminal = Terminal::forCompany($this->companyContext->requireCompanyId())
             ->findOrFail($id);
@@ -495,11 +518,34 @@ final class TerminalController extends Controller
         // Idempotent: releasing an unclaimed terminal is a no-op that answers
         // 200 (a retried request must not fail) and writes NO audit event — an
         // audit register that records releases which never happened is worse
-        // than one that records none.
+        // than one that records none. Checked BEFORE the open-shift guard on
+        // purpose: a no-op breaks no binding, so it orphans nothing, and there
+        // is nothing for the operator to confront.
         if ($previousHardwareIdentifier === null) {
             return response()->json([
                 'data' => TerminalResource::make($terminal->load(['location', 'company'])),
             ]);
+        }
+
+        $forced = $request->boolean('force');
+
+        /** @var string|null $openShiftId */
+        $openShiftId = $terminal->shifts()
+            ->where('status', ShiftStatus::Open)
+            ->orderBy('opened_at')
+            ->value('id');
+
+        if ($openShiftId !== null && ! $forced) {
+            return response()->json([
+                'error' => [
+                    'code' => 'TERMINAL_HAS_OPEN_SHIFT',
+                    'message' => 'This terminal still has an open shift. Close it from the device first. '
+                        .'If the device is gone and the shift can no longer be closed, re-send with '
+                        .'force=true and a reason — the shift will be orphaned and the replacement '
+                        .'device will not project shifts or Z reports until it is resolved.',
+                    'open_shift_id' => $openShiftId,
+                ],
+            ], 409);
         }
 
         $reason = (string) $request->input('reason', '');
@@ -515,6 +561,8 @@ final class TerminalController extends Controller
             hardwareIdentifier: $previousHardwareIdentifier,
             reason: $reason,
             releasedBy: (string) auth()->id(),
+            forced: $forced,
+            openShiftId: $openShiftId,
         ));
 
         return response()->json([

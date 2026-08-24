@@ -7,6 +7,7 @@ namespace Tests\Feature\POS;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Events\TerminalClaimed;
@@ -311,9 +312,13 @@ final class TerminalClaimHardeningTest extends TestCase
      * 2026-08-23 sweep records that TOCTOU separately and this lane does not fix
      * it. What this lane must not do is MIS-ATTRIBUTE it: telling an operator
      * "release your other terminal" when the real cause is a duplicate code
-     * sends them to fix something unrelated. The 500 asserted here is the
-     * pre-existing behaviour of the unfixed code-collision path, unchanged —
-     * the assertion of value is that it is not a 409.
+     * sends them to fix something unrelated. The assertion of value is that it
+     * is not a 409.
+     *
+     * The exact 5xx is deliberately NOT pinned (tenancy gate r1 finding 8):
+     * `generateTerminalCode()`'s count()-derived TOCTOU is an open follow-up
+     * from the 2026-08-23 sweep, and whoever finally fixes it must not be handed
+     * a red test in a file about device binding.
      */
     public function test_a_code_collision_is_not_mis_reported_as_a_device_binding_collision(): void
     {
@@ -328,7 +333,7 @@ final class TerminalClaimHardeningTest extends TestCase
         ]);
 
         $this->assertNotSame(409, $response->getStatusCode());
-        $response->assertStatus(500);
+        $this->assertGreaterThanOrEqual(500, $response->getStatusCode());
     }
 
     public function test_request_terminal_still_provisions_for_an_unbound_device(): void
@@ -342,6 +347,43 @@ final class TerminalClaimHardeningTest extends TestCase
         $response->assertStatus(201);
         $response->assertJsonPath('data.hardware_identifier', 'HW-FRESH-DEVICE');
         $response->assertJsonPath('data.is_active', false);
+    }
+
+    /**
+     * T-6 — `pos_terminals.hardware_identifier` is `varchar(100)`
+     * (`2026_01_08_190429_create_pos_terminals_table.php:51`) while both
+     * FormRequests validated `max:255`. An over-long identifier therefore
+     * reached the INSERT and surfaced as an unhandled 22001 (PostgreSQL) or was
+     * silently truncated/stored oversize (SQLite, which does not enforce
+     * varchar length) — neither is an answer an operator can act on.
+     */
+    public function test_claim_refuses_a_hardware_identifier_longer_than_the_column(): void
+    {
+        $terminal = $this->claimableTerminal();
+
+        $response = $this->postJson('/api/v1/pos/terminals/claim', [
+            'terminal_id' => $terminal->id,
+            'hardware_identifier' => str_repeat('H', 101),
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertArrayHasKey('hardware_identifier', $response->json('error.errors'));
+        $this->assertNull($terminal->fresh()?->hardware_identifier);
+    }
+
+    public function test_request_terminal_refuses_a_hardware_identifier_longer_than_the_column(): void
+    {
+        $before = Terminal::withTrashed()->count();
+
+        $response = $this->postJson('/api/v1/pos/terminals/request', [
+            'location_id' => $this->location->id,
+            'hardware_identifier' => str_repeat('H', 101),
+            'suggested_name' => 'Device id longer than the column',
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertArrayHasKey('hardware_identifier', $response->json('error.errors'));
+        $this->assertSame($before, Terminal::withTrashed()->count());
     }
 
     // ------------------------------------------------------------ findByDevice()
@@ -403,11 +445,30 @@ final class TerminalClaimHardeningTest extends TestCase
         );
     }
 
+    /**
+     * F-3 — the SINGLE fiscal contract of this endpoint: a re-homed terminal
+     * CONTINUES its NF525 chain, it never restarts it. `release()` must write
+     * `hardware_identifier` and NOTHING else. This is exactly what a
+     * well-meaning future refactor ("release should reset the terminal for the
+     * new device") would break — silently, and irreversibly, because every
+     * receipt the replacement till then seals would chain off a fresh genesis.
+     * Read raw through the query builder so no Eloquent cast can launder a
+     * difference.
+     */
     public function test_release_clears_the_binding_and_emits_the_audit_event(): void
     {
         Event::fake([TerminalReleased::class]);
 
-        $terminal = $this->claimableTerminal(['hardware_identifier' => 'HW-DEAD-DEVICE']);
+        $terminal = $this->claimableTerminal([
+            'hardware_identifier' => 'HW-DEAD-DEVICE',
+            'genesis_seed' => str_repeat('b', 64),
+            'current_sequence' => 4242,
+            'current_year' => 2026,
+            'last_hash' => str_repeat('c', 64),
+        ]);
+
+        $chainBefore = $this->rawChainState($terminal->id);
+        $this->assertSame(str_repeat('b', 64), $chainBefore['genesis_seed'], 'Fixture drift: the chain head was never seeded.');
 
         $response = $this->postJson("/api/v1/pos/terminals/{$terminal->id}/release", [
             'reason' => 'Device destroyed in the back office flood',
@@ -418,6 +479,12 @@ final class TerminalClaimHardeningTest extends TestCase
 
         $this->assertNull($terminal->fresh()?->hardware_identifier);
 
+        $chainAfter = $this->rawChainState($terminal->id);
+        $this->assertSame($chainBefore['current_sequence'], $chainAfter['current_sequence'], 'release() must not move the chain sequence.');
+        $this->assertSame($chainBefore['last_hash'], $chainAfter['last_hash'], 'release() must not clear the chain head hash.');
+        $this->assertSame($chainBefore['genesis_seed'], $chainAfter['genesis_seed'], 'release() must never re-seed the chain — the replacement device CONTINUES it.');
+        $this->assertSame($chainBefore['current_year'], $chainAfter['current_year'], 'release() must not move the sequence-reset year.');
+
         Event::assertDispatched(
             TerminalReleased::class,
             fn (TerminalReleased $event): bool => $event->terminalId === $terminal->id
@@ -425,7 +492,49 @@ final class TerminalClaimHardeningTest extends TestCase
                 && $event->companyId === $this->company->id
                 && $event->hardwareIdentifier === 'HW-DEAD-DEVICE'
                 && $event->reason === 'Device destroyed in the back office flood'
-                && $event->releasedBy === (string) $this->user->id,
+                && $event->releasedBy === (string) $this->user->id
+                && $event->forced === false
+                && $event->openShiftId === null,
+        );
+    }
+
+    /**
+     * T-5 — the information-leak contract. A terminal belonging to ANOTHER
+     * company of the same tenant must answer 404, NOT 403: a 403 would confirm
+     * the id exists and turn the endpoint into an existence oracle across the
+     * tenant's legal entities. Mirrors
+     * {@see TerminalLocationPosEnabledTest::test_claim_fails_closed_when_the_terminal_points_at_another_companys_location}.
+     */
+    public function test_release_of_another_companys_terminal_is_a_404_and_leaves_the_binding_intact(): void
+    {
+        $otherCompany = Company::factory()->create(['tenant_id' => $this->tenant->id]);
+        $foreignLocation = Location::factory()->create([
+            'company_id' => $otherCompany->id,
+            'type' => 'shop',
+            'pos_enabled' => true,
+        ]);
+
+        $foreign = Terminal::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+            'location_id' => $foreignLocation->id,
+            'type' => TerminalType::Physical,
+            'code' => 'POS77',
+            'is_active' => true,
+            'hardware_identifier' => 'HW-FOREIGN',
+        ]);
+
+        $response = $this->postJson("/api/v1/pos/terminals/{$foreign->id}/release", [
+            'reason' => 'Must never take effect',
+        ]);
+
+        $this->assertNotSame(403, $response->getStatusCode(), 'A cross-company terminal must not be confirmed to exist by a 403.');
+        $response->assertStatus(404);
+
+        $this->assertSame(
+            'HW-FOREIGN',
+            $foreign->fresh()?->hardware_identifier,
+            'A cross-company release must not clear another company\'s binding.',
         );
     }
 
@@ -464,19 +573,116 @@ final class TerminalClaimHardeningTest extends TestCase
     }
 
     /**
-     * Release is deliberately NOT blocked by an open shift, unlike `archive()`
-     * and `toggleTrainingMode()`. The primary reason to release is that the
-     * device is gone (lost, stolen, bricked) — and a lost device's shift can no
-     * longer be closed from the device, so an open-shift guard would make
-     * exactly the terminals that need re-homing the ones that can never be
-     * re-homed. That is the state this lane exists to remove.
+     * F-1 — releasing a terminal that still has an OPEN shift is refused BY
+     * DEFAULT.
+     *
+     * The r1 fiscal gate proved the consequence of allowing it silently: the
+     * replacement device's SESSION_OPEN is DROPPED by
+     * `ZSessionLifecycleProjection.php:146-153` (a different OPEN shift already
+     * sits on the terminal, so it silently `return`s), its SESSION_CLOSE then
+     * retries to exhaustion at `:205-216`, and its Z_REPORT can never land
+     * because `pos_z_reports.shift_id` is FK-RESTRICTed to a `pos_shifts` row
+     * that does not exist. The till sells; the server projects nothing.
      */
-    public function test_release_is_allowed_while_a_shift_is_open(): void
+    public function test_release_is_refused_while_a_shift_is_open(): void
+    {
+        Event::fake([TerminalReleased::class]);
+
+        $terminal = $this->claimableTerminal(['hardware_identifier' => 'HW-LOST-BOX']);
+        $shiftId = $this->openShiftOn($terminal);
+
+        $response = $this->postJson("/api/v1/pos/terminals/{$terminal->id}/release", [
+            'reason' => 'Till stolen mid-shift',
+        ]);
+
+        $response->assertStatus(409);
+        $response->assertJsonPath('error.code', 'TERMINAL_HAS_OPEN_SHIFT');
+        $response->assertJsonPath('error.open_shift_id', $shiftId);
+
+        $this->assertSame(
+            'HW-LOST-BOX',
+            $terminal->fresh()?->hardware_identifier,
+            'A refused release must leave the binding exactly as it was.',
+        );
+
+        Event::assertNotDispatched(TerminalReleased::class);
+    }
+
+    /**
+     * The override is not a checkbox. A lost device's shift genuinely cannot be
+     * closed from the device (`ShiftController.php:63,127`,
+     * `SyncController.php:56` all hard-409 for `fiscal_schema_version >= 3`,
+     * which is every terminal this controller provisions), so the remedy must
+     * stay reachable — but the operator must say WHY, on the record, because
+     * the act knowingly orphans a fiscal shift.
+     */
+    public function test_a_forced_release_without_a_reason_is_refused(): void
     {
         $terminal = $this->claimableTerminal(['hardware_identifier' => 'HW-LOST-BOX']);
+        $this->openShiftOn($terminal);
+
+        $response = $this->postJson("/api/v1/pos/terminals/{$terminal->id}/release", [
+            'force' => true,
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertArrayHasKey('reason', $response->json('error.errors'));
+
+        $this->assertSame('HW-LOST-BOX', $terminal->fresh()?->hardware_identifier);
+    }
+
+    /**
+     * Forced release succeeds, and the audit register records WHICH shift it
+     * orphaned — the only artefact an auditor (or the operator who has to
+     * resolve the orphan) can work from once the binding is gone.
+     */
+    public function test_a_forced_release_proceeds_and_records_the_orphaned_shift_in_the_audit_row(): void
+    {
+        $terminal = $this->claimableTerminal(['hardware_identifier' => 'HW-LOST-BOX']);
+        $shiftId = $this->openShiftOn($terminal);
+
+        $this->postJson("/api/v1/pos/terminals/{$terminal->id}/release", [
+            'force' => true,
+            'reason' => 'Till stolen mid-shift; shift cannot be closed from the device',
+        ])->assertStatus(200);
+
+        $this->assertNull($terminal->fresh()?->hardware_identifier);
+
+        $audit = AuditEvent::query()
+            ->where('company_id', $this->company->id)
+            ->where('aggregate_type', 'Terminal')
+            ->where('aggregate_id', $terminal->id)
+            ->where('event_type', 'terminal.released')
+            ->first();
+
+        $this->assertNotNull($audit, 'A forced release must leave an audit row.');
+
+        $payload = $audit->payload;
+        $this->assertSame($shiftId, $payload['open_shift_id']);
+        $this->assertTrue($payload['forced']);
+        $this->assertSame('Till stolen mid-shift; shift cannot be closed from the device', $payload['reason']);
+
+        // The shift really IS orphaned — forcing does not close it, and no
+        // server surface can (v3 terminals refuse device-less shift closure).
+        $this->assertSame(
+            'OPEN',
+            DB::table('pos_shifts')->where('id', $shiftId)->value('status'),
+            'A forced release orphans the shift; it must not pretend to have closed it.',
+        );
+    }
+
+    // ------------------------------------------------------------------ helpers
+
+    /**
+     * Projects the shape a device's SESSION_OPEN leaves behind: an OPEN
+     * `pos_shifts` row on the terminal.
+     */
+    private function openShiftOn(Terminal $terminal): string
+    {
+        $shiftId = (string) Str::uuid();
 
         DB::table('pos_shifts')->insert([
-            'id' => (string) Str::uuid(),
+            'id' => $shiftId,
             'terminal_id' => $terminal->id,
             'cashier_id' => $this->user->id,
             'shift_number' => 1,
@@ -487,14 +693,25 @@ final class TerminalClaimHardeningTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $this->postJson("/api/v1/pos/terminals/{$terminal->id}/release", [
-            'reason' => 'Till stolen mid-shift',
-        ])->assertStatus(200);
-
-        $this->assertNull($terminal->fresh()?->hardware_identifier);
+        return $shiftId;
     }
 
-    // ------------------------------------------------------------------ helpers
+    /**
+     * The four chain-identity columns, read RAW so an Eloquent cast cannot
+     * launder a difference between two reads.
+     *
+     * @return array<string, mixed>
+     */
+    private function rawChainState(string $terminalId): array
+    {
+        $row = DB::table('pos_terminals')
+            ->where('id', $terminalId)
+            ->first(['current_sequence', 'last_hash', 'genesis_seed', 'current_year']);
+
+        $this->assertNotNull($row, 'The terminal row vanished.');
+
+        return (array) $row;
+    }
 
     /**
      * @param  array<string, mixed>  $overrides

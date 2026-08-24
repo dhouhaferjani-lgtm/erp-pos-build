@@ -118,6 +118,29 @@ use Illuminate\Support\Facades\Schema;
  * deploy checklist's grep target, and the per-tenant census query in the lane
  * report is how the fleet is measured BEFORE the deploy rather than after.
  *
+ * ── BOTH FAILURE STATUSES ARE PERMANENT UNTIL A HUMAN ACTS (C-2) ─────────────
+ * A leg reports exactly one of `status=ok`, `status=BLOCKED` or `status=FAILED`.
+ * `BLOCKED` is the pre-flight scan refusing to attempt DDL it knows existing
+ * rows would reject; `FAILED` is the DDL itself throwing (`run()` catches
+ * `Throwable`, logs, and returns — `:339-347`). THE TWO END IN THE SAME PLACE:
+ * `up()` completes normally either way, so the migrator writes the `migrations`
+ * bookkeeping row and NEITHER leg is ever retried on any later deploy. A FAILED
+ * leg is therefore not "will be picked up next time" — it is a permanently
+ * absent constraint on that tenant until it is re-applied by hand, exactly like
+ * a BLOCKED one. The swallow is deliberate and stays (see the fleet-abort
+ * reasoning above); what must not happen is a deploy that greps only for
+ * BLOCKED and reports the fleet clean.
+ *
+ * DEPLOY-CHECKLIST GREP — run over the tenants:migrate log, verbatim:
+ *
+ *   grep -E 'POS TERMINAL IDENTITY/LIFECYCLE HARDENING:.*status=(BLOCKED|FAILED)' <log>
+ *
+ * Any hit names `tenant=<key> leg=<leg>`; resolve the offending rows (BLOCKED)
+ * or the underlying error (FAILED) and re-apply that leg's DDL manually for
+ * that tenant. `up()` is idempotent (`CREATE … IF NOT EXISTS`, `DROP CONSTRAINT
+ * IF EXISTS` before each `ADD`), so a manual re-run is safe. Until then the
+ * application-layer guards in `TerminalController` are the only enforcement.
+ *
  * `NOT VALID` + a later `VALIDATE CONSTRAINT` was considered for the two CHECKs
  * and rejected: `NOT VALID` admits the constraint while permanently exempting
  * the rows that violate it, so the tenant would carry an invariant that is a
@@ -320,6 +343,13 @@ return new class extends Migration
      * Runs one leg's DDL inside a SAVEPOINT and reports the outcome. Never
      * throws: one leg's failure must leave the other legs — and every other
      * tenant in the unattended run — untouched.
+     *
+     * C-2: swallowing means `up()` completes and the `migrations` bookkeeping
+     * row is written, so a `status=FAILED` leg is PERMANENT UNTIL MANUALLY
+     * RE-APPLIED — identical in consequence to `status=BLOCKED`, and never
+     * retried by a later deploy. The deploy checklist must grep for both:
+     *
+     *   grep -E 'POS TERMINAL IDENTITY/LIFECYCLE HARDENING:.*status=(BLOCKED|FAILED)' <log>
      */
     private function run(string $tenantKey, string $leg, string ...$statements): void
     {
@@ -347,6 +377,15 @@ return new class extends Migration
         }
     }
 
+    /**
+     * Reports a leg the pre-flight scan refused to attempt.
+     *
+     * C-2: same permanence as `status=FAILED` above — the leg is skipped, `up()`
+     * completes, the migration is recorded as applied, and nothing re-runs it.
+     * Both statuses share one grep:
+     *
+     *   grep -E 'POS TERMINAL IDENTITY/LIFECYCLE HARDENING:.*status=(BLOCKED|FAILED)' <log>
+     */
     private function blocked(string $tenantKey, string $leg, int $groups, string $sample): void
     {
         Log::error(sprintf(

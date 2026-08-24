@@ -871,6 +871,14 @@ final class DomainEventSubscriber
      *
      * The counterpart to a claim: `hardware_identifier` records the binding that
      * was BROKEN, since the column is null on the row afterwards.
+     *
+     * `forced` / `open_shift_id` (fix round F-1): a release is refused by
+     * default while the terminal still has an OPEN shift, because no server
+     * surface can close a v3 terminal's shift without the authoring device. An
+     * operator who overrides that refusal knowingly ORPHANS the shift, and the
+     * replacement device's shifts and Z reports will not project until it is
+     * resolved. The audit row is the only place that record survives, so it
+     * carries which shift was abandoned and the reason given for abandoning it.
      */
     public function handleTerminalReleased(TerminalReleased $event): void
     {
@@ -885,6 +893,8 @@ final class DomainEventSubscriber
                 'hardware_identifier' => $event->hardwareIdentifier,
                 'reason' => $event->reason,
                 'released_by' => $event->releasedBy,
+                'forced' => $event->forced,
+                'open_shift_id' => $event->openShiftId,
             ]
         );
     }
