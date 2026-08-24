@@ -322,7 +322,7 @@ describe('Task 22 — pullCustomers wired into runFullSync', () => {
       useProductStore.setState({
         companyConfig: {
           company_id: 'company-1',
-          all_enabled_modules: ['POS'],
+          all_enabled_modules: ['POS', 'Tables'],  // Q-13: Tables keeps the /pos/floors pull in the sequence
         } as never,
       });
     })();
@@ -404,7 +404,7 @@ describe('T-0001 — pushPendingCustomers wired into runFullSync', () => {
       useProductStore.setState({
         companyConfig: {
           company_id: 'company-1',
-          all_enabled_modules: ['POS'],
+          all_enabled_modules: ['POS', 'Tables'],  // Q-13: Tables keeps the /pos/floors pull in the sequence
         } as never,
       });
     })();
@@ -488,7 +488,7 @@ describe('GB-3 — outbox retention sweep wired into runFullSync', () => {
       useProductStore.setState({
         companyConfig: {
           company_id: 'company-1',
-          all_enabled_modules: ['POS'],
+          all_enabled_modules: ['POS', 'Tables'],  // Q-13: Tables keeps the /pos/floors pull in the sequence
         } as never,
       });
     })();
@@ -556,7 +556,7 @@ describe('runFullSync pull-phase alignment (setupApiGetSequence positional fixtu
       useProductStore.setState({
         companyConfig: {
           company_id: 'company-1',
-          all_enabled_modules: ['POS'],
+          all_enabled_modules: ['POS', 'Tables'],  // Q-13: Tables keeps the /pos/floors pull in the sequence
         } as never,
       });
     })();
