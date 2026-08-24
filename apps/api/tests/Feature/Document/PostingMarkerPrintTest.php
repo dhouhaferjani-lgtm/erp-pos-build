@@ -7,6 +7,7 @@ namespace Tests\Feature\Document;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -88,6 +89,51 @@ final class PostingMarkerPrintTest extends TestCase
             __('documents.posting_marker.title'),
             $html,
             'a sealed-then-cancelled invoice must never be described as unsealed',
+        );
+    }
+
+    /**
+     * R2-F1 [BLOCKING] — F-4 with the sign flipped.
+     *
+     * `RefundService::cancelInvoiceWithoutDecision()` writes `status = Cancelled`
+     * directly onto a DRAFT or CONFIRMED invoice that was NEVER sealed (its
+     * `Posted` arm delegates to `DocumentPostingService::cancel()`; its `Paid`
+     * arm throws). The r1 branch was seal-AGNOSTIC, so such a document printed
+     * "was posted and sealed … its fiscal seal remains in the hash chain" — a
+     * false fiscal statement claiming a chain entry that does not exist.
+     */
+    public function test_a_cancelled_but_never_sealed_invoice_claims_no_seal(): void
+    {
+        $html = $this->renderMarker($this->invoice(DocumentStatus::Cancelled));
+
+        $this->assertStringContainsString(__('documents.posting_marker.cancelled_title'), $html);
+        $this->assertStringContainsString(__('documents.posting_marker.cancelled_unsealed_detail'), $html);
+        $this->assertStringNotContainsString(
+            __('documents.posting_marker.cancelled_detail'),
+            $html,
+            'a document that was never sealed must not be described as sealed and hash-chained',
+        );
+        $this->assertStringNotContainsString(__('documents.posting_marker.title'), $html);
+    }
+
+    /**
+     * R2-F2 — opening-balance rows are real migrated production data
+     * (`ArApOpeningService`: Posted, NON_FISCAL, no hash). "No fiscal seal" is
+     * true of them; "has not been posted to the accounts" is not — they were
+     * posted in the customer's previous system.
+     */
+    public function test_a_historical_opening_balance_invoice_is_not_called_unposted(): void
+    {
+        $html = $this->renderMarker($this->invoice(DocumentStatus::Posted, [
+            'is_historical' => true,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+        ]));
+
+        $this->assertStringContainsString(__('documents.posting_marker.historical_title'), $html);
+        $this->assertStringNotContainsString(
+            __('documents.posting_marker.detail'),
+            $html,
+            'a Posted opening-balance row must not be told it "has not been posted to the accounts"',
         );
     }
 

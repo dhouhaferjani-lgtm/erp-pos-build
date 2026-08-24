@@ -19,6 +19,9 @@ return [
         'detail' => "Ce document n'a pas été comptabilisé. Il ne porte aucun scellement fiscal ni entrée dans la chaîne de hachage, et ne constitue pas une facture fiscale définitive.",
         'cancelled_title' => 'Annulée — ce document a été annulé',
         'cancelled_detail' => 'Ce document a été comptabilisé et scellé, puis annulé. Son scellement fiscal demeure dans la chaîne de hachage ; le document lui-même est nul et ne peut être utilisé comme justificatif.',
+        'cancelled_unsealed_detail' => "Ce document a été annulé et ne peut être utilisé comme justificatif. Il n'a jamais été comptabilisé et ne porte aucun scellement fiscal.",
+        'historical_title' => "Solde d'ouverture — repris d'un système précédent",
+        'historical_detail' => "Ce document constate un solde déjà existant à l'ouverture des comptes ici. Il a été comptabilisé dans le système précédent et ne porte aucun scellement fiscal dans celui-ci.",
     ],
 
     'discount' => [

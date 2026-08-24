@@ -19,6 +19,9 @@ return [
         'detail' => 'This document has not been posted to the accounts. It carries no fiscal seal and no hash-chain entry, and is not a definitive fiscal invoice.',
         'cancelled_title' => 'Cancelled — this document has been voided',
         'cancelled_detail' => 'This document was posted and sealed, and has since been cancelled. Its fiscal seal remains in the hash chain; the document itself is void and must not be used as a claim.',
+        'cancelled_unsealed_detail' => "This document has been cancelled and must not be used as a claim. It was never posted to the accounts and carries no fiscal seal.",
+        'historical_title' => "Opening balance — carried over from a previous system",
+        'historical_detail' => "This document records a balance that was already standing when the accounts were opened here. It was posted in the previous system and carries no fiscal seal in this one.",
     ],
 
     /*

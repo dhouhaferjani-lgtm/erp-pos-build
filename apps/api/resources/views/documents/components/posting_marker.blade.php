@@ -42,12 +42,46 @@
     $isSealed = $document->fiscal_hash !== null;
     $isVoided = $document->fiscal_status === \App\Modules\Document\Domain\Enums\FiscalStatus::Voided
         || $document->status === \App\Modules\Document\Domain\Enums\DocumentStatus::Cancelled;
+
+    // R2-F1 — CANCELLED IS TWO DIFFERENT FACTS, and only one of them involves a
+    // seal. `RefundService::cancelInvoiceWithoutDecision()` writes
+    // `status = Cancelled` straight onto a DRAFT or CONFIRMED invoice that was
+    // never sealed (its `Posted` arm delegates to `DocumentPostingService::cancel()`
+    // instead, and its `Paid` arm throws). A seal-agnostic branch therefore
+    // printed "was posted and sealed … its fiscal seal remains in the hash
+    // chain" about a document with `fiscal_hash = NULL` — F-4 with the sign
+    // flipped, claiming a chain entry that does not exist. The FE sibling
+    // (`CreditNoteDetail.tsx`) already words this without any seal claim; the
+    // blade now matches it.
+    //
+    // R2-F2 — HISTORICAL OPENING BALANCES. `ArApOpeningService` creates opening
+    // AR/AP invoices `status = Posted`, `fiscal_category = NON_FISCAL`,
+    // `fiscal_status = DRAFT`, no hash: real migrated production data, and the
+    // same rows `DocumentStatusService::wasNeverSealed()` exempts. "No fiscal
+    // seal" is true of them, but "has not been posted to the accounts" is false
+    // — they were posted, in the customer's PREVIOUS system, which is what
+    // `is_historical` records. They get their own line rather than a lie or a
+    // silence. `fiscal_category === NonFiscal` is carried alongside
+    // `isHistorical()` so the arm also holds for the next non-fiscal row of a
+    // fiscal TYPE, whatever writes it.
+    $isHistorical = $document->isHistorical()
+        || $document->fiscal_category === \App\Modules\Document\Domain\Enums\FiscalCategory::NonFiscal;
 @endphp
 
-@if($isFiscalType && $isVoided)
+@if($isFiscalType && $isVoided && $isSealed)
 <div class="posting-marker posting-marker--void">
     <strong>{{ __('documents.posting_marker.cancelled_title') }}</strong>
     <span>{{ __('documents.posting_marker.cancelled_detail') }}</span>
+</div>
+@elseif($isFiscalType && $isVoided)
+<div class="posting-marker posting-marker--void">
+    <strong>{{ __('documents.posting_marker.cancelled_title') }}</strong>
+    <span>{{ __('documents.posting_marker.cancelled_unsealed_detail') }}</span>
+</div>
+@elseif($isFiscalType && $isHistorical)
+<div class="posting-marker">
+    <strong>{{ __('documents.posting_marker.historical_title') }}</strong>
+    <span>{{ __('documents.posting_marker.historical_detail') }}</span>
 </div>
 @elseif($isFiscalType && ! $isSealed)
 <div class="posting-marker">
