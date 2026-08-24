@@ -148,16 +148,42 @@ final class HeldOrderService
      *      one affected row, which is the only defence on SQLite (where
      *      `FOR UPDATE` is a no-op) and the belt to (2)'s braces on PG.
      *
+     * WHICH REFUSAL THE LOSER GETS (fix round after gate r1 — the earlier
+     * shape advertised a 409 that production could never reach):
+     *
+     * | observed state under the lock        | raised                              | HTTP |
+     * |--------------------------------------|-------------------------------------|------|
+     * | `recalled` (another actor consumed)  | `HeldOrderRecallConflictException`  | 409  |
+     * | conditional UPDATE affected 0 rows   | `HeldOrderRecallConflictException`  | 409  |
+     * | `expired`, or TTL lapsed while held  | `\RuntimeException`                 | 422  |
+     * | soft-deleted / wrong tenant/terminal | `ModelNotFoundException`            | 404  |
+     *
+     * The 409/422 split is "was it consumed by another actor, or did it lapse
+     * on its own timer": 409's remedy is refresh-the-list-and-pick-another,
+     * 422's is that the basket is simply gone. On PostgreSQL under READ
+     * COMMITTED the loser's `SELECT ... FOR UPDATE` blocks on the winner and
+     * then re-reads the NEW row version (EvalPlanQual), so it observes
+     * `recalled` and lands on the FIRST row of the table above — which is why
+     * the `isRecalled()` branch, not the conditional UPDATE, is the production
+     * conflict site. The conditional UPDATE remains the second backstop and
+     * raises the same typed conflict, so the 409 contract holds on every
+     * driver.
+     *
      * `$expectedTerminalId` scopes the lookup the way `listHeldOrders()` has
      * always been scoped — a basket parked on till A is never listed on till
-     * B, so a recall claiming till B must miss. It is optional because the
-     * wire contract (`POST /pos/held-orders/{id}/recall`) carries no body
-     * today; see the controller for the client-side follow-up.
+     * B, so a recall claiming till B must miss. It is OPTIONAL ON THE WIRE for
+     * BACKWARD COMPATIBILITY: the live web client
+     * (`apps/web/src/features/pos/api/heldOrderApi.ts:106`) POSTs bare, so
+     * making the field required today would 404 every live recall.
+     * Consequently the audit item "held-order recall is not terminal-scoped"
+     * is NOT closed by this lane — the capability exists but nothing exercises
+     * it. The follow-up (web `useRecallOrder` sends `terminal_id`, then the
+     * validation flips to `required`) is booked separately by the parent.
      *
      * @param  string|null  $expectedTerminalId  Terminal the caller is operating, when known
      *
-     * @throws HeldOrderRecallConflictException If the order was consumed concurrently
-     * @throws \RuntimeException If the order cannot be recalled
+     * @throws HeldOrderRecallConflictException If another actor already consumed the basket
+     * @throws \RuntimeException If the order lapsed and cannot be recalled
      * @throws ModelNotFoundException If order not found (or not on this terminal)
      */
     public function recallOrder(string $heldOrderId, ?string $expectedTerminalId = null): HeldOrder
@@ -178,7 +204,11 @@ final class HeldOrderService
 
             if (! $heldOrder->canBeRecalled()) {
                 if ($heldOrder->isRecalled()) {
-                    throw new \RuntimeException('This order has already been recalled.');
+                    // The production lost-race site on PostgreSQL: the loser's
+                    // locking SELECT re-read the winner's committed row
+                    // version. Same refusal as the conditional-UPDATE backstop
+                    // below, so the 409 contract is true on every driver.
+                    throw HeldOrderRecallConflictException::forOrder($heldOrderId);
                 }
                 if ($heldOrder->isExpired() || ($heldOrder->expires_at !== null && $heldOrder->expires_at->isPast())) {
                     throw new \RuntimeException('This held order has expired and cannot be recalled.');
@@ -199,6 +229,8 @@ final class HeldOrderService
                 ]);
 
             if ($affected !== 1) {
+                // Second backstop, and the only defence on SQLite: the row
+                // moved out of `held` between our read and our write.
                 throw HeldOrderRecallConflictException::forOrder($heldOrderId);
             }
 

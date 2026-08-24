@@ -182,6 +182,36 @@ final class PosHeldOrdersStatusCheckTest extends TestCase
         $this->assertCount(1, DB::select('SELECT 1 FROM pg_constraint WHERE conname = ?', [self::CHECK]));
     }
 
+    /**
+     * Q-8 fix round — `down()` must be guarded symmetrically with `up()`.
+     *
+     * `up()` adds `discarded_by` / `deleted_at` only when they are absent, and
+     * the docblock claims the migration is re-entrant. `down()` used to drop
+     * the index and both columns unconditionally, so a rollback on a tenant
+     * where the adds had been skipped (or a second rollback) threw. Rolling
+     * back twice must be a no-op the second time.
+     */
+    public function test_down_is_symmetric_with_up_and_can_run_twice(): void
+    {
+        $migration = require __DIR__.'/../../../database/migrations/tenant/2026_08_23_163000_harden_pos_held_orders_status_and_discard.php';
+
+        $migration->down();
+
+        $this->assertFalse(Schema::hasColumn('pos_held_orders', 'deleted_at'));
+        $this->assertFalse(Schema::hasColumn('pos_held_orders', 'discarded_by'));
+
+        // Second rollback: the columns are already gone, and this must not throw.
+        $migration->down();
+
+        $this->assertFalse(Schema::hasColumn('pos_held_orders', 'deleted_at'));
+
+        // Restore the schema so the rest of the run is unaffected.
+        $migration->up();
+
+        $this->assertTrue(Schema::hasColumn('pos_held_orders', 'deleted_at'));
+        $this->assertTrue(Schema::hasColumn('pos_held_orders', 'discarded_by'));
+    }
+
     private function insertHeldOrder(string $id, ?string $status): void
     {
         DB::table('pos_held_orders')->insert([

@@ -19,6 +19,7 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Database\ConnectionInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -32,20 +33,26 @@ use Tests\TestCase;
  * pins what Q-8 added on top of them:
  *
  *   - `terminal_id` is an OPTIONAL body field on `POST .../{id}/recall`. It is
- *     optional because no shipped client sends a body on this route
- *     (`apps/web/src/features/pos/api/heldOrderApi.ts:106`,
- *     `apps/pos/src/api/holdApi.ts:40`), so requiring it would 404 every live
- *     recall. When supplied it must be honoured: a basket parked on till A is
- *     never listed on till B, so a recall claiming till B must miss the scope.
- *   - a lost race is a 409 `HELD_ORDER_RECALL_CONFLICT`, not a second copy of
- *     the cart snapshot and not the 422 used for stale-but-well-defined
- *     refusals.
+ *     optional for BACKWARD COMPATIBILITY: the one live client
+ *     (`apps/web/src/features/pos/api/heldOrderApi.ts:106`) POSTs bare, so
+ *     requiring the field would 404 every live recall today. When supplied it
+ *     must be honoured: a basket parked on till A is never listed on till B,
+ *     so a recall claiming till B must miss the scope. Because no live client
+ *     sends it, the audit item "recall is not terminal-scoped" is NOT closed
+ *     by this lane — see `HeldOrderService::recallOrder()`.
+ *   - a basket another actor already consumed is a 409
+ *     `HELD_ORDER_RECALL_CONFLICT`, on BOTH drivers, never a second copy of the
+ *     cart snapshot. A basket that merely lapsed on its own TTL is a 422
+ *     `RECALL_FAILED` — see the status→code table on
+ *     `HeldOrderService::recallOrder()`.
  *   - discard soft-deletes and records the authenticated actor, and refuses a
  *     RECALLED order with 422 rather than destroying the evidence.
  */
 final class HeldOrderRecallContractTest extends TestCase
 {
     use RefreshDatabase;
+
+    private const RACE_CONNECTION = 'q8_recall_race';
 
     private Tenant $tenant;
 
@@ -159,13 +166,112 @@ final class HeldOrderRecallContractTest extends TestCase
     }
 
     /**
-     * A lost race is 409, not a second snapshot. The interleaving is staged
-     * deterministically via the `retrieved` model event, which fires between
-     * the service's locking SELECT and its conditional UPDATE — see
-     * `HeldOrderServiceTest::test_recall_refuses_when_the_row_is_flipped_after_the_read`
-     * for why a two-connection race cannot be staged under RefreshDatabase.
+     * The PRODUCTION lost-race shape, staged the way PostgreSQL actually
+     * produces it.
+     *
+     * Under READ COMMITTED, the loser's `SELECT ... FOR UPDATE` blocks on the
+     * winner's row lock and, once the winner commits, re-reads the NEW row
+     * version (EvalPlanQual) — i.e. it observes `status = 'recalled'` and the
+     * guard at `HeldOrderService::recallOrder()` fires BEFORE the conditional
+     * UPDATE can. So the loser's observation is reproduced faithfully by
+     * letting a SECOND DATABASE CONNECTION commit the claim first: same row
+     * version, same guard branch, same response.
+     *
+     * The fixture row is planted on that second connection (FK triggers
+     * suspended, since this test's parents live in the uncommitted
+     * RefreshDatabase transaction) so both connections can see it, and is
+     * deleted again after the test transaction rolls back.
+     *
+     * The old shape of this test flipped the row from a `retrieved` model hook
+     * on the SAME connection and SAME transaction, which bypasses the row lock
+     * entirely — an interleaving two real tills cannot produce on PostgreSQL.
+     * That variant survives, honestly renamed, as the SQLite backstop test
+     * below.
      */
-    public function test_a_lost_recall_race_is_a_409_conflict(): void
+    public function test_a_lost_recall_race_against_a_second_connection_is_a_409_conflict(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('A two-connection race needs PostgreSQL row locks; SQLite is covered by the backstop test.');
+        }
+
+        $race = $this->raceConnection();
+        $id = (string) Str::uuid();
+
+        // Till A parks the basket (committed, so both connections see it).
+        $race->statement("SET session_replication_role = 'replica'");
+        $race->table('pos_held_orders')->insert([
+            'id' => $id,
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'terminal_id' => $this->terminal->id,
+            'shift_id' => $this->shift->id,
+            'cashier_id' => $this->user->id,
+            'label' => 'Race basket',
+            'cart_snapshot' => json_encode(['lines' => [[
+                'product_id' => 'prod-001',
+                'product_name' => 'Espresso',
+                'quantity' => '2.0000',
+                'unit_price' => '3.500',
+                'discount_amount' => '0.000',
+                'tax_rate' => '20.00',
+            ]]], JSON_THROW_ON_ERROR),
+            'status' => HeldOrderStatus::Held->value,
+            'held_at' => now(),
+            'expires_at' => now()->addHours(4),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $race->statement("SET session_replication_role = 'origin'");
+
+        $this->beforeApplicationDestroyed(function () use ($id): void {
+            DB::connection(self::RACE_CONNECTION)->table('pos_held_orders')->where('id', $id)->delete();
+            DB::purge(self::RACE_CONNECTION);
+        });
+
+        // Till A wins: it takes the row lock and commits the claim.
+        $race->transaction(function () use ($race, $id): void {
+            $locked = $race->table('pos_held_orders')->where('id', $id)->lockForUpdate()->first();
+            $this->assertNotNull($locked);
+            $this->assertSame(HeldOrderStatus::Held->value, $locked->status);
+
+            $race->table('pos_held_orders')
+                ->where('id', $id)
+                ->where('status', HeldOrderStatus::Held->value)
+                ->update([
+                    'status' => HeldOrderStatus::Recalled->value,
+                    'recalled_at' => now(),
+                    'updated_at' => now(),
+                ]);
+        });
+
+        // Till B (this request) resumes and re-reads the committed row version.
+        $this->actingAsCashier()
+            ->postJson('/api/v1/pos/held-orders/'.$id.'/recall', [
+                'terminal_id' => $this->terminal->id,
+            ])
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'HELD_ORDER_RECALL_CONFLICT');
+
+        // The loser wrote nothing: the basket is still till A's single claim.
+        $after = $race->table('pos_held_orders')->where('id', $id)->first();
+        $this->assertNotNull($after);
+        $this->assertSame(HeldOrderStatus::Recalled->value, $after->status);
+        $this->assertNull($after->deleted_at);
+    }
+
+    /**
+     * The SECOND backstop, which is the ONLY defence on SQLite (where
+     * `FOR UPDATE` is a no-op): the conditional `UPDATE ... WHERE status =
+     * 'held'` affecting zero rows must also surface as 409, never as a silent
+     * success and never as 422.
+     *
+     * The interleaving is staged from a `retrieved` model hook — same
+     * connection, same transaction — which is exactly why it reaches the
+     * conditional UPDATE instead of the guard: it is NOT how PostgreSQL
+     * produces a lost race (see the two-connection test above), it is how the
+     * lockless driver does.
+     */
+    public function test_the_conditional_update_backstop_also_yields_409(): void
     {
         $heldOrder = $this->createHeldOrder();
 
@@ -191,6 +297,27 @@ final class HeldOrderRecallContractTest extends TestCase
         } finally {
             HeldOrder::flushEventListeners();
         }
+    }
+
+    /**
+     * The other half of the status→code split: a basket that lapsed on its own
+     * TTL was consumed by nobody, so it is a 422 `RECALL_FAILED`, not a 409.
+     * Refreshing the list will not make it recallable.
+     */
+    public function test_a_lapsed_basket_is_422_not_409(): void
+    {
+        $heldOrder = $this->createHeldOrder(['expires_at' => now()->subMinutes(10)]);
+
+        $this->actingAsCashier()
+            ->postJson('/api/v1/pos/held-orders/'.$heldOrder->id.'/recall')
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'RECALL_FAILED');
+
+        $this->assertDatabaseHas('pos_held_orders', [
+            'id' => $heldOrder->id,
+            'status' => HeldOrderStatus::Held->value,
+            'recalled_at' => null,
+        ]);
     }
 
     public function test_discard_soft_deletes_and_records_the_authenticated_actor(): void
@@ -243,6 +370,24 @@ final class HeldOrderRecallContractTest extends TestCase
         $this->actingAsCashier()
             ->postJson('/api/v1/pos/held-orders/'.$heldOrder->id.'/recall')
             ->assertStatus(404);
+    }
+
+    /**
+     * A SECOND physical database connection onto the same test database, used
+     * to stage the winner of the recall race. `lock_timeout` is bounded so a
+     * lock the test failed to release surfaces as an error instead of a hang.
+     */
+    private function raceConnection(): ConnectionInterface
+    {
+        /** @var array<string, mixed> $config */
+        $config = config('database.connections.'.config('database.default'));
+        config(['database.connections.'.self::RACE_CONNECTION => $config]);
+        DB::purge(self::RACE_CONNECTION);
+
+        $race = DB::connection(self::RACE_CONNECTION);
+        $race->statement("SET lock_timeout = '10s'");
+
+        return $race;
     }
 
     private function actingAsCashier(): self

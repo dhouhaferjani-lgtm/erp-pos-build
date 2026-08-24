@@ -38,9 +38,15 @@ use Illuminate\Support\Facades\Schema;
  *   GROUP BY status
  *   ORDER BY offending_rows DESC;
  *
- * Fleet sweep (from the central DB host, one line per tenant database):
+ * Fleet sweep (from the central DB host, one line per tenant database). The
+ * pattern is `LIKE 'tenant%'`, NOT `LIKE 'tenant\_%'`: tenant databases are
+ * named `tenant<uuid>` with no separator (e.g.
+ * `tenant019fbe86-944a-7252-8a3b-8c341dfa9de9`), so escaping the underscore
+ * makes the sweep enumerate ZERO databases — measured on local PG 5433, where
+ * `LIKE 'tenant%'` returns 10 tenant databases and `LIKE 'tenant\_%'` returns
+ * none:
  *
- *   for db in $(psql -Atc "SELECT datname FROM pg_database WHERE datname LIKE 'tenant_%'"); do
+ *   for db in $(psql -Atc "SELECT datname FROM pg_database WHERE datname LIKE 'tenant%'"); do
  *     echo -n "$db: ";
  *     psql -d "$db" -Atc "SELECT COALESCE(string_agg(status || '=' || n, ', '), 'clean')
  *       FROM (SELECT COALESCE(status,'<null>') AS status, COUNT(*) AS n
@@ -69,6 +75,8 @@ return new class extends Migration
 {
     private const CHECK = 'pos_held_orders_status_check';
 
+    private const COMPANY_DELETED_INDEX = 'pos_held_orders_company_deleted_idx';
+
     /**
      * Re-entrant on purpose: a tenant whose columns landed but whose CHECK
      * aborted on the pre-flight scan must be able to re-run this migration
@@ -82,7 +90,7 @@ return new class extends Migration
             }
             if (! Schema::hasColumn('pos_held_orders', 'deleted_at')) {
                 $table->softDeletes();
-                $table->index(['company_id', 'deleted_at'], 'pos_held_orders_company_deleted_idx');
+                $table->index(['company_id', 'deleted_at'], self::COMPANY_DELETED_INDEX);
             }
         });
 
@@ -99,16 +107,29 @@ return new class extends Migration
         );
     }
 
+    /**
+     * Symmetric with `up()`'s guards: a tenant where the column adds were
+     * skipped (or a second rollback) must be a no-op, not a throw.
+     */
     public function down(): void
     {
         if (DB::connection()->getDriverName() === 'pgsql') {
             DB::statement('ALTER TABLE pos_held_orders DROP CONSTRAINT IF EXISTS '.self::CHECK);
         }
 
+        if (Schema::hasIndex('pos_held_orders', self::COMPANY_DELETED_INDEX)) {
+            Schema::table('pos_held_orders', function (Blueprint $table): void {
+                $table->dropIndex(self::COMPANY_DELETED_INDEX);
+            });
+        }
+
         Schema::table('pos_held_orders', function (Blueprint $table): void {
-            $table->dropIndex('pos_held_orders_company_deleted_idx');
-            $table->dropSoftDeletes();
-            $table->dropColumn('discarded_by');
+            if (Schema::hasColumn('pos_held_orders', 'deleted_at')) {
+                $table->dropSoftDeletes();
+            }
+            if (Schema::hasColumn('pos_held_orders', 'discarded_by')) {
+                $table->dropColumn('discarded_by');
+            }
         });
     }
 

@@ -160,29 +160,43 @@ final class HeldOrderServiceTest extends TestCase
         $this->assertNotNull($recalled->recalled_at);
     }
 
-    public function test_recall_already_recalled_order_throws(): void
+    /**
+     * Q-8 fix round — an already-recalled basket IS the production lost-race
+     * observation (on PostgreSQL the loser's locking SELECT re-reads exactly
+     * this row version under EvalPlanQual), so the guard raises the typed
+     * conflict, not a bare RuntimeException. See the status -> code table on
+     * `HeldOrderService::recallOrder()`.
+     */
+    public function test_recall_already_recalled_order_throws_the_typed_conflict(): void
     {
         $heldOrder = $this->createHeldOrder([
             'status' => HeldOrderStatus::Recalled,
             'recalled_at' => now(),
         ]);
 
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('already been recalled');
+        $this->expectException(HeldOrderRecallConflictException::class);
 
         $this->service->recallOrder($heldOrder->id);
     }
 
-    public function test_recall_expired_order_throws(): void
+    /**
+     * The other half of the split: a lapsed TTL was consumed by nobody, so it
+     * must NOT be the typed conflict (the controller maps it to 422
+     * `RECALL_FAILED`, whose remedy is not "refresh and retry").
+     */
+    public function test_recall_expired_order_throws_a_plain_runtime_exception(): void
     {
         $heldOrder = $this->createHeldOrder([
             'expires_at' => now()->subMinutes(10),
         ]);
 
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('expired');
-
-        $this->service->recallOrder($heldOrder->id);
+        try {
+            $this->service->recallOrder($heldOrder->id);
+            $this->fail('Expected the expired basket to be refused.');
+        } catch (\RuntimeException $e) {
+            $this->assertNotInstanceOf(HeldOrderRecallConflictException::class, $e);
+            $this->assertStringContainsString('expired', $e->getMessage());
+        }
     }
 
     // =========================================================================
@@ -198,19 +212,20 @@ final class HeldOrderServiceTest extends TestCase
      * the full `cart_snapshot` back, so the basket is rung up (and stock
      * decremented) twice.
      *
-     * A real two-connection race cannot be staged inside `RefreshDatabase`
-     * (the second connection cannot see the uncommitted fixture), so the
-     * interleaving is staged deterministically: the `retrieved` model event
-     * fires immediately after the service's SELECT, and the hook flips the row
-     * to `recalled` from underneath it. The in-memory model the service is
-     * holding is now stale, `canBeRecalled()` still returns true, and the only
-     * thing that can save the basket is the conditional
-     * `UPDATE ... WHERE status = 'held'` asserting exactly one affected row.
+     * This case pins the SECOND backstop, which is the ONLY defence on SQLite
+     * (where `FOR UPDATE` is a no-op): the `retrieved` model event fires
+     * immediately after the service's SELECT and the hook flips the row to
+     * `recalled` from underneath it, on the SAME connection and transaction.
+     * The in-memory model the service holds is now stale, `canBeRecalled()`
+     * still returns true, and the only thing that can save the basket is the
+     * conditional `UPDATE ... WHERE status = 'held'` asserting exactly one
+     * affected row — which must raise the same typed conflict the guard does.
      *
-     * On PostgreSQL the `lockForUpdate()` added by the same fix serialises the
-     * two tills before they ever reach this branch; the conditional update is
-     * the belt to that braces (and the only defence on SQLite, where
-     * `FOR UPDATE` is a no-op).
+     * That interleaving is NOT how PostgreSQL produces a lost race: there the
+     * loser's `SELECT ... FOR UPDATE` blocks and re-reads the committed
+     * `recalled` row version (EvalPlanQual), so the guard fires first. The
+     * production shape is staged against a real second connection in
+     * `HeldOrderRecallContractTest::test_a_lost_recall_race_against_a_second_connection_is_a_409_conflict`.
      */
     public function test_recall_refuses_when_the_row_is_flipped_after_the_read(): void
     {
@@ -282,9 +297,9 @@ final class HeldOrderServiceTest extends TestCase
         $this->assertNotNull($recalled->recalled_at);
         $this->assertCount(0, $this->service->listHeldOrders($this->terminal->id));
 
-        // Second till (or a double-tap) gets a refusal, not a second snapshot.
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('already been recalled');
+        // Second till (or a double-tap) gets the typed conflict (409), not a
+        // second snapshot.
+        $this->expectException(HeldOrderRecallConflictException::class);
         $this->service->recallOrder($heldOrder->id, $this->terminal->id);
     }
 
