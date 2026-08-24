@@ -8,6 +8,7 @@ use App\Modules\Catalog\Infrastructure\Adapters\EloquentProductVariantLookup;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Application\Services\DocumentLineTaxResolver;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\DocumentTotalsCalculator;
@@ -85,6 +86,10 @@ class DraftPersistenceServiceTest extends TestCase
             new DocumentTotalsCalculator(app(TaxCalculationService::class)),
             new EloquentProductVariantLookup,
             app(CurrencyScaleResolverInterface::class),
+            // N-1 gate r1 finding 1: the draft path resolves line tax through
+            // the shared DocumentLineTaxResolver, so it is a constructor
+            // dependency here too.
+            app(DocumentLineTaxResolver::class),
         );
     }
 
