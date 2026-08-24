@@ -10,14 +10,10 @@ import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { bccomp, formatQuantity } from '@/lib/decimal'
 import { getQuantityDecimals } from '@/lib/quantityScale'
+import { useCurrency } from '@/hooks/useCurrency'
 
 interface BatchPreviewProps {
   preview: PostPreview
-}
-
-/** Blank out a zero amount without ever parsing it as a float (rule 19). */
-function amountOrBlank(value: string): string {
-  return bccomp(value, '0') === 0 ? '' : value
 }
 
 /**
@@ -29,6 +25,15 @@ function amountOrBlank(value: string): string {
  */
 export function BatchPreview({ preview }: BatchPreviewProps) {
   const { t } = useTranslation()
+  // Gate r1 F-5: the API returns unscaled decimal strings here (the reducer
+  // seeds '0'), so a TND tenant was shown a bare `0` / `10000.000` with no
+  // grouping and no millimes while every sibling screen formats through the
+  // company currency. Same class as campaign N-8.
+  const { format: formatMoney } = useCurrency()
+
+  /** Blank a zero amount, else format it — never parsing it as a float (rule 19). */
+  const amountOrBlank = (value: string): string =>
+    bccomp(value, '0') === 0 ? '' : formatMoney(value, { symbol: false })
 
   const renderAccountingPreview = (accounting: AccountingPostPreview) => (
     <div className="space-y-6">
@@ -75,10 +80,10 @@ export function BatchPreview({ preview }: BatchPreviewProps) {
                     {t('openingBalances.preview.total')}
                   </td>
                   <td className={`px-4 py-2 text-sm text-right font-bold ${colorTokens.intent.success.textStrong}`}>
-                    {accounting.totals.debit}
+                    {formatMoney(accounting.totals.debit, { symbol: false })}
                   </td>
                   <td className={`px-4 py-2 text-sm text-right font-bold ${colorTokens.intent.danger.textStrong}`}>
-                    {accounting.totals.credit}
+                    {formatMoney(accounting.totals.credit, { symbol: false })}
                   </td>
                 </tr>
               </tfoot>

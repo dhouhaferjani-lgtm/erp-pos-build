@@ -8,10 +8,21 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FiscalCategory;
+use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Enums\PartnerType;
+use App\Modules\Partner\Domain\Partner;
+use App\Modules\Taxation\Domain\Entities\DocumentTaxDetail;
+use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Taxation\Domain\Entities\VatPeriod;
 use App\Modules\Taxation\Domain\Entities\VatPeriodBreakdown;
+use App\Modules\Taxation\Domain\Enums\TaxApplicationLevel;
+use App\Modules\Taxation\Domain\Enums\TaxType;
 use App\Modules\Taxation\Domain\Enums\VatDirection;
 use App\Modules\Taxation\Domain\Enums\VatPeriodStatus;
 use App\Modules\Taxation\Domain\Enums\VatPeriodType;
@@ -159,13 +170,50 @@ final class VatReportSummaryContractTest extends TestCase
     }
 
     /**
+     * Gate r1 F-1: the OPEN/live branch is the ONLY branch a first tenant is ever
+     * served — the campaign tenant has 12 VAT periods and every one of them is
+     * OPEN. This test therefore drives a REAL aggregated row out of the live
+     * branch (a sealed TN invoice with a document_tax_details row) through the
+     * HTTP route, and pins its key set.
+     *
+     * Before this test existed, renaming `tax_rate` -> `rate` in
+     * VatAggregation::toArray() — the exact drift class N-4 was — left the whole
+     * of tests/Feature/Taxation green.
+     */
+    public function test_open_branch_breakdown_row_key_set_is_exact(): void
+    {
+        $period = $this->createPeriod(VatPeriodStatus::Open);
+        $this->createTaxedInvoice('2026-01-15', '19.00', '10000.000', '1900.000');
+
+        $data = $this->fetchSummary($period);
+
+        $this->assertCount(
+            1,
+            $data['output_vat']['breakdowns'],
+            'The live branch aggregated no row — the fixture no longer reaches aggregateByRateAndDirection().'
+        );
+        $this->assertSame(
+            self::BREAKDOWN_KEYS,
+            $this->sortedKeys($data['output_vat']['breakdowns'][0]),
+            'OPEN/live breakdown row keys drifted.'
+        );
+        $this->assertSame('19.00', $data['output_vat']['breakdowns'][0]['tax_rate']);
+        $this->assertSame('OUTPUT', $data['output_vat']['breakdowns'][0]['direction']);
+        $this->assertSame(1, $data['output_vat']['breakdowns'][0]['document_count']);
+    }
+
+    /**
      * The snapshot branch used to emit `rate` where the live branch emits
      * `tax_rate`, so the FE breakdown table rendered blank rate cells (and
      * duplicate `undefined` React keys) for every CLOSED/FILED period.
+     *
+     * The live branch is the REFERENCE shape, so this asserts the two against the
+     * SAME constant rather than against each other's emptiness.
      */
     public function test_breakdown_rows_use_the_same_keys_in_both_branches(): void
     {
         $openPeriod = $this->createPeriod(VatPeriodStatus::Open);
+        $this->createTaxedInvoice('2026-01-15', '19.00', '10000.000', '1900.000');
         $openData = $this->fetchSummary($openPeriod);
 
         $closedPeriod = $this->createPeriod(VatPeriodStatus::Closed, 'February 2026', '2026-02-01', '2026-02-28');
@@ -180,9 +228,12 @@ final class VatReportSummaryContractTest extends TestCase
         $this->assertSame('19.00', $closedData['output_vat']['breakdowns'][0]['tax_rate']);
         $this->assertSame('OUTPUT', $closedData['output_vat']['breakdowns'][0]['direction']);
 
-        // The live branch has nothing to aggregate here, but its contract is the
-        // reference: assert the snapshot row keys are a subset-free exact match.
-        $this->assertSame([], $openData['output_vat']['breakdowns']);
+        // The load-bearing assertion: BOTH branches, key for key.
+        $this->assertSame(
+            $this->sortedKeys($openData['output_vat']['breakdowns'][0]),
+            $this->sortedKeys($closedData['output_vat']['breakdowns'][0]),
+            'The live and snapshot branches emit different breakdown row keys.'
+        );
     }
 
     /**
@@ -232,6 +283,78 @@ final class VatReportSummaryContractTest extends TestCase
             'total_input_vat' => '500.000',
             'net_vat' => '1400.000',
             'amount_payable' => '1400.000',
+        ]);
+    }
+
+    /**
+     * A sealed TN invoice with one document_tax_details row — the minimum that
+     * makes EloquentVatDataRepository::aggregateByRateAndDirection() emit a real
+     * OUTPUT aggregation, so the OPEN branch has something to serialise.
+     *
+     * @param  numeric-string  $base
+     * @param  numeric-string  $vat
+     */
+    private function createTaxedInvoice(
+        string $documentDate,
+        string $rate,
+        string $base,
+        string $vat,
+    ): void {
+        TaxConfiguration::firstOrCreate(
+            ['country_code' => 'TN', 'code' => 'TVA'.str_replace('.', '', $rate)],
+            [
+                'tax_type' => TaxType::Percentage,
+                'name' => "TVA {$rate}%",
+                'percentage_rate' => $rate,
+                'applies_to' => TaxApplicationLevel::LineItems,
+                'is_default' => false,
+                'is_active' => true,
+                'sequence_order' => 1,
+                'applicable_document_types' => [],
+                'is_stamp_duty' => false,
+                'is_recoverable' => false,
+            ]
+        );
+
+        $partner = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Client Contrat',
+            'type' => PartnerType::Customer,
+        ]);
+
+        $number = 'INV-2026-'.str_pad((string) random_int(1, 9999), 4, '0', STR_PAD_LEFT);
+
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $partner->id,
+            'type' => DocumentType::Invoice,
+            'fiscal_category' => FiscalCategory::TaxInvoice,
+            'fiscal_status' => FiscalStatus::Sealed,
+            'status' => DocumentStatus::Confirmed,
+            'document_number' => $number,
+            'document_date' => $documentDate,
+            'currency' => 'TND',
+            'subtotal' => $base,
+            'tax_amount' => $vat,
+            'total' => bcadd($base, $vat, 3),
+            // A SEALED fiscal document must carry fiscal core
+            // (chk_fiscal_mandatory_core, enforced by PostgreSQL).
+            'fiscal_hash' => hash('sha256', 'vat-contract-'.$number),
+            'chain_sequence' => 1,
+        ]);
+
+        DocumentTaxDetail::create([
+            'document_id' => $invoice->id,
+            'sequence_order' => 1,
+            'tax_code' => 'TVA'.str_replace('.', '', $rate),
+            'tax_type' => TaxType::Percentage,
+            'tax_name' => "TVA {$rate}%",
+            'tax_rate' => $rate,
+            'tax_base' => $base,
+            'tax_amount' => $vat,
+            'is_stamp_duty' => false,
         ]);
     }
 

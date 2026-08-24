@@ -6,7 +6,7 @@
     "deferred": "CAN run, but no lane runs it yet. Requires `reason`. Counted loudly on every CI run. After O-29 exactly one group is left here — `(root files)`, which no whole-directory selector can address."
   },
   "debt_ceiling": 1,
-  "gated_ceiling": 1153,
+  "gated_ceiling": 1154,
   "lanes": {
     "security-regression": {
       "job": "security-regression",
@@ -1002,7 +1002,7 @@
     "Taxation": {
       "lane": "feature-lane-fiscal-finance/Taxation",
       "classes": 32,
-      "note": "DELIBERATE RAISE 31 -> 32 (2026-08-24, Session A): VatReportSummaryContractTest \u2014 lane fix/campaign-fe-contract (N-4, API\u2194FE contract lock on GET /vat/reports/{periodId}/summary; the class also pins the OPEN-vs-CLOSED breakdown-row key parity it fixed). Runs BY PATH on sqlite; not named in any live --filter allowlist, so it executes nowhere until the parked lane's gate is flipped. Prior: Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
+      "note": "MERGE UNION RECONCILIATION (2026-08-24, gate r1 F-3): gated_ceiling 1153 -> 1154. Both dev and this lane were individually green at 1153 because each consumed the SAME unit of headroom with a DIFFERENT class \u2014 dev with Document 77 -> 78 (N-2 MissingStockLevelConfirmRefusalTest), this lane with Taxation 31 -> 32. Document and Taxation are both F-2-parked lanes, so the post-merge union is 1154; git auto-merged the two group counts but left the scalar ceiling at 1153, which is why the checker went red on the merged tree. DELIBERATE RAISE 31 -> 32 (2026-08-24, Session A): VatReportSummaryContractTest \u2014 lane fix/campaign-fe-contract (N-4, API\u2194FE contract lock on GET /vat/reports/{periodId}/summary; the class also pins the OPEN-vs-CLOSED breakdown-row key parity it fixed). Runs BY PATH on sqlite; not named in any live --filter allowlist, so it executes nowhere until the parked lane's gate is flipped. Prior: Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Tenant": {
       "lane": "feature-lane-tenancy/Tenant",

@@ -28,6 +28,7 @@ import { openingBatchTypeKey } from '../i18nKeys'
 import type { OpeningBatchType } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { useCurrency } from '@/hooks/useCurrency'
 
 type WizardStep = 'setup' | 'upload' | 'validate' | 'preview' | 'post' | 'lock' | 'complete'
 
@@ -98,6 +99,9 @@ export function OpeningBalanceWizardPage() {
   const { type } = useParams<{ type: string }>()
   const batchType = type?.toUpperCase() as OpeningBatchType
   const { t } = useTranslation()
+  // Gate r1 F-5: the post-step amount is a raw decimal string from the
+  // preview payload; format it with the company currency like every sibling.
+  const { format: formatMoney } = useCurrency()
 
   // State
   const [currentStep, setCurrentStep] = useState<WizardStep>('setup')
@@ -527,7 +531,9 @@ export function OpeningBalanceWizardPage() {
                   </div>
                   <div className="flex justify-between">
                     <dt className={colorTokens.text.subtle}>{t(postSummary.amountLabelKey)}</dt>
-                    <dd className={`font-medium ${colorTokens.text.primary}`}>{postSummary.amount}</dd>
+                    <dd className={`font-medium ${colorTokens.text.primary}`}>
+                      {formatMoney(postSummary.amount, { symbol: false })}
+                    </dd>
                   </div>
                 </dl>
               </div>

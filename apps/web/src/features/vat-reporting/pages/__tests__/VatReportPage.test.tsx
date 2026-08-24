@@ -1,7 +1,9 @@
 import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { renderWithProviders } from '@/test/renderWithProviders'
+import { createTestQueryClient, renderWithProviders } from '@/test/renderWithProviders'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { VatReportPage } from '../VatReportPage'
@@ -142,5 +144,46 @@ describe('VatReportPage', () => {
     expect(await screen.findByText('Janvier 2026')).toBeInTheDocument()
     expect(screen.getByText('Special Items')).toBeInTheDocument()
     expect(screen.getByText('Timbre Fiscal Count')).toBeInTheDocument()
+  })
+
+  // Gate r1 F-2: the page took isLoading/error/refetch from the SUMMARY query
+  // only and gated the render on `report && period`, so a failing period fetch
+  // (retry: 1, i.e. two attempts and done) left a bare back-link — no error, no
+  // retry affordance. That is a silent blank replacing a crash, which is worse
+  // to diagnose in the field.
+  it('surfaces a period-query failure through QueryError with a retry', async () => {
+    const user = userEvent.setup()
+
+    mockGetVatPeriod.mockRejectedValue(new Error('period fetch exploded'))
+
+    renderWithProviders(<VatReportPage />, { route: '/finance/vat-reports/period-1' })
+
+    expect(await screen.findByText('VAT Reporting')).toBeInTheDocument()
+    expect(screen.queryByText('Janvier 2026')).not.toBeInTheDocument()
+
+    const retry = screen.getByRole('button', { name: /retry|try again|réessayer/i })
+    mockGetVatPeriod.mockResolvedValue(periodFixture)
+    await user.click(retry)
+
+    expect(await screen.findByText('Janvier 2026')).toBeInTheDocument()
+  })
+
+  // Same gate finding, loading half: the summary can resolve while the period is
+  // still in flight. That window used to render nothing at all.
+  it('keeps showing the loading state while only the period query is in flight', () => {
+    // Seed the summary so `useVatReport` is settled from the cache on the FIRST
+    // render — otherwise the assertion would pass off the summary's own pending
+    // state and prove nothing about the period query.
+    const queryClient = createTestQueryClient()
+    queryClient.setQueryData(tenantScopedKey(['vat-report', 'period-1']), summaryFixture)
+    mockGetVatPeriod.mockImplementation(() => new Promise(() => { /* never settles */ }))
+
+    renderWithProviders(<VatReportPage />, {
+      route: '/finance/vat-reports/period-1',
+      queryClient,
+    })
+
+    expect(screen.getByText('Loading…')).toBeInTheDocument()
+    expect(screen.queryByText('Janvier 2026')).not.toBeInTheDocument()
   })
 })

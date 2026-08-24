@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BatchPreview } from './BatchPreview'
+import { useCompanyStore } from '@/stores/companyStore'
 import type { AccountingPostPreview, ArApPostPreview, InventoryPostPreview } from '../types'
 
 vi.mock('react-i18next', () => ({
@@ -103,6 +104,27 @@ const arPreview: ArApPostPreview = {
 }
 
 describe('BatchPreview', () => {
+  beforeEach(() => {
+    // Gate r1 F-5: amounts render through the company currency, so the tenant
+    // under test is the campaign's TND one — millimes and fr-TN grouping.
+    useCompanyStore.setState({
+      currentCompanyId: 'company-1',
+      companies: [
+        {
+          id: 'company-1',
+          name: 'ParaBio Tunisie SARL',
+          legalName: 'ParaBio Tunisie SARL',
+          taxId: null,
+          countryCode: 'TN',
+          currency: 'TND',
+          locale: 'fr_TN',
+          timezone: 'Africa/Tunis',
+        },
+      ],
+      isLoading: false,
+    })
+  })
+
   // N-3: this render used to throw
   // "Cannot read properties of undefined (reading 'cutover_date')" and take the
   // whole wizard to the ErrorBoundary, because the ACCOUNTING payload has no
@@ -120,11 +142,17 @@ describe('BatchPreview', () => {
   it('renders the ACCOUNTING totals from totals.debit / totals.credit', () => {
     render(<BatchPreview preview={accountingPreview} />)
 
-    // once in the line row, once in the tfoot total
-    expect(screen.getAllByText('10000.000')).toHaveLength(2)
+    // once in the line row, once in the tfoot total — TND, so millimes and
+    // fr-TN grouping ("10 000,000"), never the raw '10000.000' the API sends.
+    // The grouping separator is a non-breaking space of some flavour, so match
+    // on the whitespace-stripped text rather than reproducing Intl's exact bytes.
+    const groupedTenThousand = (_content: string, element: Element | null): boolean =>
+      element !== null && element.tagName === 'TD' && element.textContent.replace(/\s/gu, '') === '10000,000'
+    expect(screen.getAllByText(groupedTenThousand)).toHaveLength(2)
+    expect(screen.queryByText('10000.000')).not.toBeInTheDocument()
     // credit is '0.000' on both the line and the total; a zero LINE amount is
     // blanked (never float-parsed), so only the tfoot total prints it
-    expect(screen.getAllByText('0.000')).toHaveLength(1)
+    expect(screen.getAllByText('0,000')).toHaveLength(1)
     expect(screen.getByText('5310')).toBeInTheDocument()
     expect(screen.getByText('Caisse')).toBeInTheDocument()
   })
