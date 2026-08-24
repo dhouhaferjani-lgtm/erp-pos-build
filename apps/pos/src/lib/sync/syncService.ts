@@ -1806,8 +1806,42 @@ interface PulledActiveMenuResponse {
 /**
  * Pull floor/table layout from server into SQLite cache.
  * The cached layout is consulted by tableApi.getFloors() when the API is unreachable.
+ *
+ * Session B lane Q-13 — device half of the `module:Tables` backend gate.
+ * `/pos/floors` is now behind `module:Tables` (`app/Modules/POS/routes_tables.php`),
+ * so on a retail/parapharmacy tenant the unconditional pull below would answer 403
+ * on EVERY sync cycle and be recorded as a `pull/tables` **error** row — a
+ * permanent red in the sync log for a tenant that simply has no table surface.
+ * A tenant that is KNOWN not to have the module therefore short-circuits with a
+ * success-logged deliberate skip, leaving the cached SQLite layout untouched.
  */
 export async function pullTables(db: Database): Promise<boolean> {
+  // Mirrors the Menu gate in `pullActiveMenu` (dynamic import — `productStore`
+  // already imports from this module, so a static import would cycle).
+  let tablesModuleKnownAbsent = false;
+  try {
+    const { useProductStore, hasModule } = await import('@/stores/productStore');
+    const config = useProductStore.getState().companyConfig;
+    // config === null means the config has not been fetched yet (pre-boot tick).
+    // Fail OPEN on that unknown: fall through to the network call exactly as
+    // before, so a Tables tenant is never starved of its layout while booting.
+    // Only a KNOWN config that lacks `Tables` skips.
+    tablesModuleKnownAbsent = config !== null && !hasModule(config, 'Tables');
+  } catch {
+    // Defensive: dynamic-import failure (test harness, module-resolution edge
+    // case). Fail open — behave exactly as before the gate.
+  }
+
+  if (tablesModuleKnownAbsent) {
+    // A deliberate skip is NOT a failed pull. `logSyncOperation` accepts only
+    // 'success' | 'error' (lib/db/repositories/syncLogRepository.ts), so the
+    // no-op is recorded as 'success' with an explanatory detail — the same
+    // convention the other deliberate no-ops in this file use. Returning true
+    // keeps `tablesPulled` truthy in the sync report (nothing failed).
+    await logSyncOperation(db, 'pull', 'tables', null, 'success', 'skipped — module Tables not enabled');
+    return true;
+  }
+
   try {
     const response = await apiGet<FloorData[] | { data: FloorData[] }>('/pos/floors');
     const floors = Array.isArray(response) ? response : response.data;

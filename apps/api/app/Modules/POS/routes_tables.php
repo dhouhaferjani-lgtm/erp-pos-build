@@ -11,8 +11,18 @@ use Illuminate\Support\Facades\Route;
  * POS Table Management Routes
  *
  * Separate route file to avoid merge conflicts with the main POS routes.
+ *
+ * Module gate (rule 12, Session B lane Q-13; sibling of the Q-9 kitchen hole
+ * recorded as Finding 2 of the Q-9 tenancy gate): table management is an F&B
+ * surface. The web layer has gated it on `ModuleGuard module="Tables"`
+ * (`apps/web/src/routes/index.tsx`) and `module: 'Tables'` on the sidebar entry
+ * (`Sidebar.tsx`), but the backend mirrored nothing - every route below was
+ * reachable by any holder of `pos.manage_tables` on ANY vertical, retail and
+ * parapharmacy included. `Tables` is the right key per `config/verticals.php`:
+ * it is a DEFAULT module of `restaurant`, a COMPATIBLE EXTRA of `coffee_shop`,
+ * and neither for `retail`/`parapharmacy`.
  */
-Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function () {
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class, 'module:Tables'])->group(function () {
     // Floor CRUD (admin)
     Route::get('/pos/floors', [TableController::class, 'indexFloors']);
     Route::post('/pos/floors', [TableController::class, 'storeFloor']);

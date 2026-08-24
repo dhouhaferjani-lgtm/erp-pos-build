@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Enums\Vertical;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
@@ -313,7 +314,16 @@ final class TableManagementTest extends TestCase
 
     private function setupTestData(): void
     {
-        $this->tenant = Tenant::factory()->create();
+        // Session B lane Q-13: the floors/tables routes are now gated on
+        // `module:Tables` (rule 12). The tenant column default vertical is
+        // `retail`, which has Tables neither as a default module nor as a
+        // compatible extra, so every request below would 403 before reaching
+        // the behaviour this suite exists to pin. `restaurant` carries Tables
+        // as a DEFAULT module (`config/verticals.php`), so no `enabled_extras`
+        // are needed and `tenant:reconcile-modules` cannot prune it.
+        $this->tenant = Tenant::factory()->create([
+            'vertical' => Vertical::Restaurant,
+        ]);
         $this->company = Company::factory()->create([
             'tenant_id' => $this->tenant->id,
         ]);
