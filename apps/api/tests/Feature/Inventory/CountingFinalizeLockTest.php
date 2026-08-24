@@ -217,7 +217,18 @@ final class CountingFinalizeLockTest extends TestCase
             ->postJson("/api/v1/inventory/countings/{$counting->id}/finalize");
 
         $response->assertStatus(422);
-        $response->assertJsonPath('error.code', 'BUSINESS_ERROR');
+        // Typed, not the generic BUSINESS_ERROR: the FE has to tell
+        // "already finalized by someone else" apart from every other business
+        // refusal, and it reads the pair from fields rather than the message.
+        $response->assertJsonPath('error.code', CountingTransitionException::CODE);
+        $response->assertJsonPath('error.current_status', CountingStatus::Count1InProgress->value);
+        $response->assertJsonPath('error.attempted_status', CountingStatus::Finalized->value);
+        $response->assertJsonPath('error.counting_id', $counting->id);
+        $this->assertStringNotContainsString(
+            $counting->id,
+            (string) $response->json('error.message'),
+            'The human-facing message must not lead with a bare UUID.'
+        );
 
         $this->assertSame(CountingStatus::Count1InProgress, $this->freshStatus($counting));
     }

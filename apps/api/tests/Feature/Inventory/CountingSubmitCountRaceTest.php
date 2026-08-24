@@ -16,6 +16,7 @@ use App\Modules\Inventory\Domain\Enums\AssignmentStatus;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
+use App\Modules\Inventory\Domain\Exceptions\CountingTransitionException;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryCountingAssignment;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
@@ -241,7 +242,9 @@ final class CountingSubmitCountRaceTest extends TestCase
             );
 
         $response->assertStatus(422);
-        $response->assertJsonPath('error.code', 'BUSINESS_ERROR');
+        $response->assertJsonPath('error.code', CountingTransitionException::CODE);
+        $response->assertJsonPath('error.current_status', CountingStatus::PendingReview->value);
+        $response->assertJsonPath('error.attempted_status', CountingStatus::Count1InProgress->value);
 
         $this->assertNull(
             InventoryCountingItem::findOrFail($item->id)->count_1_qty,

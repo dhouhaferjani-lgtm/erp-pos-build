@@ -741,7 +741,7 @@ class InventoryCountingService
 
         $userId = (string) $user->id;
 
-        DB::transaction(function () use ($item, $countNumber, $quantity, $notes, $userId, $counting, $countedAtDevice, $deviceNow): void {
+        DB::transaction(function () use ($item, $countNumber, $quantity, $notes, $userId, $counting, $expectedStatus, $countedAtDevice, $deviceNow): void {
             // H-2: lock the counting header FIRST, so the count-then-act in
             // checkPhaseCompletion() below serializes against every other
             // submitter. Two counters finishing the last items of a phase
@@ -750,22 +750,25 @@ class InventoryCountingService
             // wedged fully-counted but in_progress) or the loser re-drove the
             // transition on a stale status, silently regressing the counting and
             // re-running the phase's side effects.
+            $lockedCounting = $this->lockCounting($counting->id);
+
+            // TERMINAL re-assert (gate r1 BLOCKER-1). The lock WAIT is itself
+            // the window: this request passed the pre-transaction phase guard on
+            // a live snapshot, then blocked here while another request finalized
+            // or cancelled the counting, and now resumes holding the lock. An
+            // earlier revision of this method argued the pre-transaction guard
+            // made a re-assert unnecessary — that was WRONG, and probe A proved
+            // it by writing count_1_qty = 99.0000 into a FINALIZED counting
+            // whose variance had already been posted to stock.
             //
-            // DELIBERATELY no hard status re-assert here. The phase gate is the
-            // pre-transaction check above, on the instance the request loaded;
-            // re-refusing under the lock would resurrect the very rollback this
-            // fix removes — the counter's physically-counted quantity, its audit
-            // row and the assignment increment would all be discarded for an
-            // interleave the lock has already made safe. A counting that really
-            // did move on is caught by the pre-transaction guard (the controller
-            // loads the counting fresh per request); what survives to here is
-            // the in-flight snapshot case, whose count must be kept. The
-            // tolerant transition in checkPhaseCompletion() is the backstop.
-            /** @var InventoryCounting $lockedCounting */
-            $lockedCounting = InventoryCounting::query()
-                ->whereKey($counting->id)
-                ->lockForUpdate()
-                ->firstOrFail();
+            // Terminal statuses ONLY. Finalized and Cancelled have no outgoing
+            // edge (CountingStatus::allowedTransitions() => []), so a write
+            // against them can never be repaired in-product. Every FORWARD phase
+            // difference stays tolerated below — re-asserting the phase here is
+            // what would resurrect the rollback this lane exists to remove
+            // (the counter's quantity, its audit row and the assignment
+            // increment all discarded for an interleave the lock made safe).
+            $this->assertNotTerminal($lockedCounting, $expectedStatus);
 
             // Submit the count
             $item->submitCount($countNumber, $quantity, $notes, $countedAtDevice, $deviceNow);
@@ -795,6 +798,45 @@ class InventoryCountingService
             // status is the committed truth rather than the caller's snapshot.
             $this->checkPhaseCompletion($lockedCounting, $countNumber);
         });
+    }
+
+    /**
+     * Re-read a counting header FOR UPDATE inside the caller's transaction.
+     *
+     * Gate r1: every mutating counting path takes this before it writes, so the
+     * status it decides on is the committed truth rather than the snapshot the
+     * request loaded — the lock WAIT is long enough for another request to
+     * finalize or cancel the same counting.
+     */
+    private function lockCounting(string $countingId): InventoryCounting
+    {
+        /** @var InventoryCounting $locked */
+        $locked = InventoryCounting::query()
+            ->whereKey($countingId)
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        return $locked;
+    }
+
+    /**
+     * Refuse the attempted action when the LOCKED counting has already reached a
+     * terminal status.
+     *
+     * Finalized and Cancelled have no outgoing edge, so anything written against
+     * them is unreachable by any in-product repair: a finalized counting has
+     * already posted its variance to stock (and, since lane Q-2, holds a unique
+     * counting-apply movement per grain, so the correction cannot be re-posted),
+     * and a cancelled one asserts that nothing was posted at all.
+     *
+     * Deliberately terminal-ONLY. Forward-phase differences are the ordinary
+     * concurrent-counter case and must stay tolerated by the caller.
+     */
+    private function assertNotTerminal(InventoryCounting $locked, CountingStatus $attempted): void
+    {
+        if ($locked->status === CountingStatus::Finalized || $locked->status === CountingStatus::Cancelled) {
+            throw new CountingTransitionException($locked->id, $locked->status, $attempted);
+        }
     }
 
     /**
@@ -983,6 +1025,20 @@ class InventoryCountingService
         }
 
         DB::transaction(function () use ($counting, $itemIds, $triggeredBy): void {
+            // Gate r1 BLOCKER-2. This path had NO lock and tested the caller's
+            // snapshot, so a reviewer holding a pending_review handle could send
+            // an already-FINALIZED counting back to a third count: probe B
+            // regressed finalized -> count_3_in_progress. The re-finalize that
+            // follows double-fires InventoryCountingCompleted, the listener's
+            // applied-markers skip every item, and the counting-apply unique
+            // index makes re-posting the corrected quantities impossible — the
+            // stock correction is silently lost.
+            //
+            // Lock FIRST, so neither the item reset below nor the assignment
+            // write can touch a terminal counting.
+            $lockedCounting = $this->lockCounting($counting->id);
+            $this->assertNotTerminal($lockedCounting, CountingStatus::Count3InProgress);
+
             // Update items to require third count
             InventoryCountingItem::whereIn('id', $itemIds)
                 ->where('counting_id', $counting->id)
@@ -993,7 +1049,7 @@ class InventoryCountingService
                 ]);
 
             // Update count 3 assignment
-            $assignment = $counting->assignments()
+            $assignment = $lockedCounting->assignments()
                 ->where('count_number', 3)
                 ->first();
 
@@ -1002,9 +1058,10 @@ class InventoryCountingService
                 $assignment->save();
             }
 
-            // Transition to count 3 in progress
-            if ($counting->status === CountingStatus::PendingReview) {
-                $counting->transitionTo(CountingStatus::Count3InProgress);
+            // Transition to count 3 in progress — decided on the LOCKED
+            // instance's committed status, not the caller's snapshot.
+            if ($lockedCounting->status === CountingStatus::PendingReview) {
+                $lockedCounting->transitionTo(CountingStatus::Count3InProgress);
                 $assignment?->start();
             }
 
@@ -1199,14 +1256,25 @@ class InventoryCountingService
     {
         if ($counting->status === CountingStatus::Finalized ||
             $counting->status === CountingStatus::Cancelled) {
-            throw new \InvalidArgumentException('Cannot cancel finalized or already cancelled counting');
+            // Typed for the same reason as the locked re-assert below: leaving
+            // this bare would mean the COMMON path (a fresh load of an already
+            // terminal counting) 500s while the rare lost race 422s, for one
+            // and the same refusal.
+            throw new CountingTransitionException($counting->id, $counting->status, CountingStatus::Cancelled);
         }
 
         DB::transaction(function () use ($counting, $reason, $user): void {
-            $previousStatus = $counting->status->value;
-            $counting->cancellation_reason = $reason;
-            $counting->save();
-            $counting->transitionTo(CountingStatus::Cancelled);
+            // Gate r1 IMPORTANT-3. The guard above reads the caller's snapshot,
+            // so a stale handle cancelled a FINALIZED counting (probe C): the
+            // stock had already moved, but the document then read `cancelled`.
+            // Re-assert under the lock, before the cancellation_reason write.
+            $lockedCounting = $this->lockCounting($counting->id);
+            $this->assertNotTerminal($lockedCounting, CountingStatus::Cancelled);
+
+            $previousStatus = $lockedCounting->status->value;
+            $lockedCounting->cancellation_reason = $reason;
+            $lockedCounting->save();
+            $lockedCounting->transitionTo(CountingStatus::Cancelled);
 
             InventoryCountingEvent::create([
                 'counting_id' => $counting->id,
