@@ -91,4 +91,31 @@ class CountryFiscalRulesProviderTest extends TestCase
 
     // Note: getAvailableCountries() and isCountrySupported() now query the DB
     // and require a Feature test with RefreshDatabase. See Feature tests.
+
+    // ── Session B lane Q-10 (a) ─────────────────────────────────────────
+    //
+    // hasDedicatedRules() is the predicate FiscalPeriodAutoLockService branches on
+    // before it auto-locks a company's periods: TRUE means a real country entry,
+    // FALSE means getRulesForCountry() would answer with the GENERIC guess, which is
+    // fine for a settings form and not fine for a compliance statement.
+    //
+    // (Written after the implementation; the behaviour itself was driven red-first
+    // through FiscalPeriodAutoLockServiceTest, where the DE/blank-country companies
+    // were being locked on Tunisia's window before the fix.)
+
+    public function test_has_dedicated_rules_is_true_only_for_countries_with_a_dedicated_method(): void
+    {
+        $this->assertTrue($this->provider->hasDedicatedRules('TN'));
+        $this->assertTrue($this->provider->hasDedicatedRules('tn'));
+        $this->assertTrue($this->provider->hasDedicatedRules('FR'));
+
+        $this->assertFalse($this->provider->hasDedicatedRules('DE'));
+        $this->assertFalse($this->provider->hasDedicatedRules('GB'));
+    }
+
+    public function test_has_dedicated_rules_is_false_for_a_blank_country_code(): void
+    {
+        $this->assertFalse($this->provider->hasDedicatedRules(''));
+        $this->assertFalse($this->provider->hasDedicatedRules('  '));
+    }
 }

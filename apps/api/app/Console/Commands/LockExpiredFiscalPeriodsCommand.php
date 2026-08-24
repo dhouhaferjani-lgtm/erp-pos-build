@@ -13,8 +13,10 @@ use App\Modules\Tenant\Domain\Tenant;
  * Automatically lock expired fiscal periods and close ended fiscal years.
  *
  * THREE-STEP AUTO-LOCK PROCESS (unchanged — see FiscalPeriodAutoLockService):
- * - STEP 1: Lock periods that ended more than the country threshold ago (Open → Closed)
- * - STEP 2: Mark fiscal years as closed when their end_date has passed
+ * - STEP 1: Close periods that ended more than the COMPANY's own country threshold ago
+ *   (Open → Closed), skipping any period a human reopened
+ * - STEP 2: Mark fiscal years as closed when their end_date has passed, unless one of
+ *   their periods is open for correction
  * - STEP 3: Lock all periods in closed fiscal years (Open/Closed → Locked)
  *
  * SCHEDULING:
@@ -44,13 +46,23 @@ use App\Modules\Tenant\Domain\Tenant;
  * so one broken tenant no longer costs the fleet its nightly lock, and the
  * failure reaches the scheduler's onFailure() hook.
  *
- * **The locking business logic is deliberately untouched.** The service's bulk
- * updates carry no `tenant_id` predicate and none was added: `fiscal_periods` /
- * `fiscal_years` have no such column (they are anchored by `company_id`), and
+ * **The 2026-08-05 tenant conversion left the locking business logic untouched.**
+ * The service carries no `tenant_id` predicate and none was added: `fiscal_periods`
+ * / `fiscal_years` have no such column (they are anchored by `company_id`), and
  * every step is idempotent, so the redundant re-run under legacy row-level mode
  * (`tenancy_resolver.db_per_tenant=false`, where forEachTenant does not switch
  * databases) is a no-op after the first pass. Changing the predicates would be
- * a fiscal-behaviour change, which this conversion is explicitly not.
+ * a fiscal-behaviour change, which that conversion explicitly was not.
+ *
+ * Idempotency survived the Session B lane Q-10 rewrite (2026-08-24), which replaced
+ * the three set-based bulk `->update(['status' => …])` statements this docblock used
+ * to describe with a per-company, per-row `chunkById` walk that stamps the transition
+ * audit columns. The bulk updates are GONE; the per-row path excludes an
+ * already-transitioned row by the same status predicates, so a second run in the same
+ * night still changes nothing (`FiscalPeriodAutoLockServiceTest
+ * ::test_it_does_not_modify_already_locked_periods` asserts `updated_at` is not even
+ * bumped). The same rewrite made the country window per-company and made the scheduler
+ * step around a human reopen — see FiscalPeriodAutoLockService's docblock.
  *
  * TROUBLESHOOTING:
  * - Manual execution: php artisan fiscal:lock-expired-periods

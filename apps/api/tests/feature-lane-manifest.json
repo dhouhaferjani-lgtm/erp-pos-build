@@ -6,7 +6,7 @@
     "deferred": "CAN run, but no lane runs it yet. Requires `reason`. Counted loudly on every CI run. After O-29 exactly one group is left here — `(root files)`, which no whole-directory selector can address."
   },
   "debt_ceiling": 1,
-  "gated_ceiling": 1163,
+  "gated_ceiling": 1164,
   "lanes": {
     "security-regression": {
       "job": "security-regression",
@@ -736,8 +736,8 @@
     },
     "Company": {
       "lane": "feature-lane-tenancy/Company",
-      "classes": 30,
-      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
+      "classes": 31,
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped. DELIBERATE RAISE 30 -> 31 (2026-08-24 at merge, Session B lane Q-10 fix/sb-q10-fiscal-period-quickfixes): FiscalPeriodReopenEndpointTest — the only pin on the four reopen guards (Locked terminal / not Closed / fiscal year closed / Closed-or-Locked successor) + permission deny paths; gate docs/superpowers/reviews/2026-08-24-sb-q10-fiscal-periods-gate-r1.md. Named in the backend-pgsql --filter allowlist (gate C-3, B-3/Q-6/Q-7 precedent) because feature-lane-tenancy/Company is PARKED."
     },
     "CompanyConfig": {
       "lane": "feature-lane-tenancy/CompanyConfig",
