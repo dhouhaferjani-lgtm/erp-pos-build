@@ -63,7 +63,13 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // family), which the 2026-08-06 gate finding I-1 ruling deliberately kept on
     // accountant and removed from manager because it is financial-lifecycle
     // mutation. Locked periods are NOT reopenable — the service refuses.
+    // `whereUuid` (gate r1, M-2): without it a malformed `{id}` reaches
+    // `findOrFail()` and PostgreSQL raises 22P01/22P02 `invalid input syntax for
+    // type uuid` — a 500, because no QueryException renderable is registered. The
+    // constraint turns it into the 404 it always was. Same shape as
+    // app/Modules/Partner/routes.php:29.
     Route::post('fiscal-periods/{id}/reopen', [FiscalPeriodController::class, 'reopen'])
+        ->whereUuid('id')
         ->middleware('can:fiscal-periods.reopen')
         ->name('fiscal-periods.reopen');
 

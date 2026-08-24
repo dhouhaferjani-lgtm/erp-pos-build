@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Company;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\FiscalPeriodReopenRefusalCode;
 use App\Modules\Company\Domain\Enums\PeriodStatus;
 use App\Modules\Company\Domain\FiscalPeriod;
 use App\Modules\Company\Domain\FiscalYear;
@@ -151,6 +152,7 @@ final class FiscalPeriodReopenEndpointTest extends TestCase
             ->postJson("/api/v1/fiscal-periods/{$period->id}/reopen", ['reason' => 'Correction needed.']);
 
         $response->assertStatus(422);
+        $response->assertJsonPath('error.code', FiscalPeriodReopenRefusalCode::SuccessorSettled->value);
         $this->assertSame(PeriodStatus::Closed, $period->refresh()->status);
     }
 
@@ -163,6 +165,7 @@ final class FiscalPeriodReopenEndpointTest extends TestCase
             ->postJson("/api/v1/fiscal-periods/{$period->id}/reopen", ['reason' => 'Correction needed.']);
 
         $response->assertStatus(422);
+        $response->assertJsonPath('error.code', FiscalPeriodReopenRefusalCode::SuccessorSettled->value);
         $this->assertSame(PeriodStatus::Closed, $period->refresh()->status);
     }
 
@@ -174,6 +177,7 @@ final class FiscalPeriodReopenEndpointTest extends TestCase
             ->postJson("/api/v1/fiscal-periods/{$period->id}/reopen", ['reason' => 'Correction needed.']);
 
         $response->assertStatus(422);
+        $response->assertJsonPath('error.code', FiscalPeriodReopenRefusalCode::PeriodLocked->value);
         $this->assertSame(PeriodStatus::Locked, $period->refresh()->status);
     }
 
@@ -185,6 +189,7 @@ final class FiscalPeriodReopenEndpointTest extends TestCase
             ->postJson("/api/v1/fiscal-periods/{$period->id}/reopen", ['reason' => 'Correction needed.']);
 
         $response->assertStatus(422);
+        $response->assertJsonPath('error.code', FiscalPeriodReopenRefusalCode::PeriodNotClosed->value);
     }
 
     public function test_it_refuses_when_the_fiscal_year_is_closed(): void
@@ -203,6 +208,7 @@ final class FiscalPeriodReopenEndpointTest extends TestCase
             ->postJson("/api/v1/fiscal-periods/{$period->id}/reopen", ['reason' => 'Correction needed.']);
 
         $response->assertStatus(422);
+        $response->assertJsonPath('error.code', FiscalPeriodReopenRefusalCode::FiscalYearClosed->value);
         $this->assertSame(PeriodStatus::Closed, $period->refresh()->status);
     }
 
@@ -276,5 +282,48 @@ final class FiscalPeriodReopenEndpointTest extends TestCase
 
         $response->assertNotFound();
         $this->assertSame(PeriodStatus::Closed, $foreignPeriod->refresh()->status);
+    }
+
+    // ── Session B lane Q-10 fix round: un-doctored fixture (gate r1, ruling on item 5) ──
+
+    public function test_a_freshly_created_company_reopens_its_newest_closed_period(): void
+    {
+        // Every other case in this class runs on a hand-built fixture, because setUp()
+        // drops the years CreateFiscalYearsForNewCompany seeded. This one does NOT:
+        // it reopens the newest auto-created Closed period of a company created the
+        // ordinary way, which is the shape a real tenant presents. TN's
+        // `autoClosePastYears = false` (CountryFiscalRulesProvider::getRulesForTN)
+        // means that period always lives in an OPEN fiscal year and its successors are
+        // all Open, so the production path must SUCCEED — and must not need any of the
+        // auto-created years deleted to do so.
+        $freshCompany = Company::factory()->for($this->tenant)->create([
+            'country_code' => 'TN',
+            'fiscal_year_start_month' => 1,
+        ]);
+
+        $yearsBefore = $freshCompany->fiscalYears()->count();
+        $this->assertGreaterThan(0, $yearsBefore, 'the company-created listener seeded fiscal years');
+
+        $newestClosed = FiscalPeriod::query()
+            ->where('company_id', $freshCompany->id)
+            ->where('status', PeriodStatus::Closed)
+            ->orderByDesc('start_date')
+            ->first();
+
+        $this->assertNotNull($newestClosed, 'an auto-created company has at least one elapsed, Closed period');
+
+        $response = $this->actingAs($this->userWithRole('accountant', $freshCompany))
+            ->postJson("/api/v1/fiscal-periods/{$newestClosed->id}/reopen", [
+                'reason' => 'Supplier invoice arrived after the nightly auto-lock.',
+            ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('data.status', PeriodStatus::Open->value);
+        $this->assertSame(PeriodStatus::Open, $newestClosed->refresh()->status);
+        $this->assertSame(
+            $yearsBefore,
+            $freshCompany->fiscalYears()->count(),
+            'the reopen touches fiscal_periods only — no auto-created year is dropped'
+        );
     }
 }

@@ -24,6 +24,8 @@ use Illuminate\Support\Facades\Log;
  * - The threshold is resolved from the COMPANY's own country, not a hard-coded one.
  * - A company whose country has no DEDICATED fiscal rules is SKIPPED entirely — all
  *   three steps — and the skip is logged. See "FAIL SAFE" below.
+ * - A period a HUMAN reopened is never re-closed and never locked by this service.
+ *   See "REOPEN IS RESPECTED" below.
  * - Already locked periods are not modified (idempotent).
  * - Every transition stamps the acting party, the from-state and a timestamp on the row.
  * - Operates across all companies in the current tenant database; the command
@@ -57,6 +59,27 @@ use Illuminate\Support\Facades\Log;
  *
  * Rows are walked in `chunkById(500)` batches inside the transaction so a tenant with
  * thousands of periods does not hydrate them all at once.
+ *
+ * REOPEN IS RESPECTED (Session B lane Q-10 fix round — gate r1 finding I-1 / C-2)
+ * ------------------------------------------------------------------------------
+ * A period reopened through {@see FiscalPeriodReopenService} carries `reopened_at`,
+ * `reopened_by`, `reopen_reason` and a `status_actor` of `user:<uuid>`. Such a period is
+ * CLOSED AGAIN ONLY BY A HUMAN:
+ *
+ *   - STEP 1 excludes it (`whereNull('reopened_at')`). Its `end_date` is by construction
+ *     older than the country window — that is why it was closed before the reopen — so
+ *     without the predicate the 01:00 scheduler silently undid every reopen the next
+ *     night AND overwrote `status_actor` back to `system:auto-lock`, destroying the
+ *     record of who reversed the close.
+ *   - STEP 2 holds the close of the fiscal YEAR that contains such a period, and STEP 3
+ *     excludes the period itself. Locking is worse than re-closing: `Locked` is terminal
+ *     (the reopen refuses on it), so a swept correction could not be recovered at all.
+ *
+ * KNOWN GAP, stated rather than hidden: the product has NO manual close endpoint for a
+ * single period — the only closers are this scheduler and the fiscal-year close, and both
+ * now step around a reopened period. A reopened period therefore stays Open (and holds its
+ * year open) until a manual close lands. That is the deliberate trade: an un-closed period
+ * is recoverable, a wrongly re-locked one is not.
  *
  * @see CountryFiscalRulesProvider For country-specific thresholds
  * @see FiscalPeriodReopenService For the permissioned Closed → Open edge
@@ -142,7 +165,8 @@ final class FiscalPeriodAutoLockService
      * STEP 1: Close periods that ended more than the company's threshold ago.
      *
      * Open → Closed, one row at a time, each stamping actor / from-state / closed_at.
-     * Periods already Closed or Locked are not touched.
+     * Periods already Closed or Locked are not touched, and NEITHER IS A PERIOD A HUMAN
+     * REOPENED (`reopened_at IS NOT NULL`) — see REOPEN IS RESPECTED in the class docblock.
      *
      * @param  int  $thresholdMonths  The company's own country lock window
      * @return int Number of periods closed
@@ -157,6 +181,11 @@ final class FiscalPeriodAutoLockService
             ->where('company_id', $companyId)
             ->where('status', PeriodStatus::Open)
             ->where('end_date', '<', $cutoffDate)
+            // A reopened period is closed again ONLY by a human (parent ruling on gate
+            // r1 finding I-1). Its `end_date` is by construction older than the window —
+            // that is why it was closed in the first place — so without this predicate
+            // the scheduler re-closed every reopen within 24h.
+            ->whereNull('reopened_at')
             ->orderBy('id')
             ->chunkById(self::CHUNK_SIZE, function ($periods) use (&$closed, $now): void {
                 foreach ($periods as $period) {
@@ -180,7 +209,13 @@ final class FiscalPeriodAutoLockService
      * STEP 2: Mark this company's fiscal years as closed when their end_date has passed.
      *
      * Fiscal years are never reopened once closed (the reopen edge added by lane Q-10
-     * is period-level and refuses inside a closed year).
+     * is period-level and refuses inside a closed year) — which is exactly why the close
+     * is HELD while one of the year's periods is Open because of a reopen. Closing the
+     * year would (a) let STEP 3 lock that period into the terminal `Locked` state and
+     * (b) make the correction permanently unreachable, since neither the year nor a
+     * Locked period has an in-product reopen. One period under correction therefore
+     * delays its year's close until the correction is closed; that is the intended
+     * trade (parent ruling on gate r1 finding I-1).
      *
      * @return int Number of fiscal years closed
      */
@@ -193,6 +228,15 @@ final class FiscalPeriodAutoLockService
             ->where('company_id', $companyId)
             ->where('is_closed', false)
             ->where('end_date', '<', $now)
+            // Hold the close of a year that still holds a period a human reopened.
+            // Same sub-select idiom as STEP 3 below; `fiscal_periods.fiscal_year_id`
+            // is NOT NULL (2025_11_30_132000_create_compliance_tables.php:107), so the
+            // NOT IN cannot be poisoned by a NULL in the subquery.
+            ->whereNotIn('id', FiscalPeriod::query()
+                ->where('company_id', $companyId)
+                ->where('status', PeriodStatus::Open)
+                ->whereNotNull('reopened_at')
+                ->select('fiscal_year_id'))
             ->orderBy('id')
             ->chunkById(self::CHUNK_SIZE, function ($years) use (&$count, $now): void {
                 foreach ($years as $year) {
@@ -217,6 +261,13 @@ final class FiscalPeriodAutoLockService
      * locked_at. Already Locked periods are excluded by the status predicate, so the
      * step is idempotent and does not bump `updated_at` on a settled row.
      *
+     * A period that is Open BECAUSE OF A REOPEN is excluded here too. STEP 2 already
+     * refuses to close a year holding one, so this predicate is belt-and-braces for a
+     * year closed by any other path (a seeded/imported `is_closed = true`, or a future
+     * manual year close): `Locked` is terminal, so getting this wrong is unrecoverable.
+     * A period whose `reopened_at` is set but which is Closed again (a human settled the
+     * correction) is NOT excluded — it locks with the rest of its year.
+     *
      * @return int Number of periods locked
      */
     private function lockPeriodsInClosedFiscalYears(string $companyId): int
@@ -227,6 +278,10 @@ final class FiscalPeriodAutoLockService
         FiscalPeriod::query()
             ->where('company_id', $companyId)
             ->whereIn('status', [PeriodStatus::Open, PeriodStatus::Closed])
+            ->whereNot(function ($query): void {
+                $query->where('status', PeriodStatus::Open)
+                    ->whereNotNull('reopened_at');
+            })
             ->whereIn('fiscal_year_id', FiscalYear::query()
                 ->where('company_id', $companyId)
                 ->where('is_closed', true)

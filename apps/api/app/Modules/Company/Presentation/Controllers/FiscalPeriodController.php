@@ -6,6 +6,7 @@ namespace App\Modules\Company\Presentation\Controllers;
 
 use App\Modules\Company\Application\Services\FiscalPeriodAutoLockService;
 use App\Modules\Company\Application\Services\FiscalPeriodReopenService;
+use App\Modules\Company\Domain\Exceptions\FiscalPeriodReopenRefusedException;
 use App\Modules\Company\Domain\FiscalPeriod;
 use App\Modules\Company\Presentation\Requests\ReopenFiscalPeriodRequest;
 use App\Modules\Company\Services\CompanyContext;
@@ -22,8 +23,8 @@ use Illuminate\Routing\Controller;
  * Shape copied from `VatPeriodController::reopen()`
  * (app/Modules/Taxation/Presentation/Controllers/VatPeriodController.php:116):
  * resolve the company from context, scope the lookup to it (a period belonging to another
- * company 404s rather than 403s — it is not addressable), let the service's
- * `\DomainException` become a 422.
+ * company 404s rather than 403s — it is not addressable), turn the service's typed
+ * {@see FiscalPeriodReopenRefusedException} into a 422 carrying its refusal code.
  */
 final class FiscalPeriodController extends Controller
 {
@@ -50,9 +51,17 @@ final class FiscalPeriodController extends Controller
                 (string) $request->user()?->id,
                 (string) $request->validated('reason'),
             );
-        } catch (\DomainException $e) {
+        } catch (FiscalPeriodReopenRefusedException $e) {
+            // House `{error: {code, message, ...}}` envelope with the TYPED code
+            // (gate r1, M-1): a front end branches on `error.code`, never on the
+            // prose. Caught here rather than in `bootstrap/app.php` because the
+            // exception is raised on exactly one route.
             return response()->json([
-                'message' => $e->getMessage(),
+                'error' => [
+                    'code' => $e->refusalCode->value,
+                    'message' => $e->getMessage(),
+                    'fiscal_period_id' => $e->fiscalPeriodId,
+                ],
             ], 422);
         }
 

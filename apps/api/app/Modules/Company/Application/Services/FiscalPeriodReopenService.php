@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Company\Application\Services;
 
+use App\Modules\Company\Domain\Enums\FiscalPeriodReopenRefusalCode;
 use App\Modules\Company\Domain\Enums\PeriodStatus;
+use App\Modules\Company\Domain\Exceptions\FiscalPeriodReopenRefusedException;
 use App\Modules\Company\Domain\FiscalPeriod;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -12,6 +14,21 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Permissioned `Closed → Open` edge for a fiscal period (Session B lane Q-10 (c)).
+ *
+ * ONCE REOPENED, THE PERIOD STAYS OPEN UNTIL A HUMAN CLOSES IT — THE SCHEDULER SKIPS IT.
+ * ------------------------------------------------------------------------------------
+ * Parent ruling on gate r1 finding I-1 (C-2): {@see FiscalPeriodAutoLockService} excludes
+ * a period with a `reopened_at` stamp from its nightly close, and holds the close of the
+ * fiscal YEAR that contains it, so the scheduler can neither re-close it 24 h later nor
+ * sweep it into the terminal `Locked` state. The reopen exists for corrections; a silent
+ * re-close would defeat it and would overwrite the human `status_actor` with
+ * `system:auto-lock`.
+ *
+ * HONEST CONSEQUENCE: there is currently NO manual close endpoint for a single period —
+ * the only closers in the product are the nightly scheduler (which now skips this row)
+ * and the fiscal-year close (which is now held for this row's year). Until a manual close
+ * lands, a reopened period stays Open, and its fiscal year stays open with it. That is the
+ * deliberate trade: an un-closed period is recoverable, a wrongly re-locked one is not.
  *
  * WHY THIS EXISTS
  * ---------------
@@ -52,7 +69,10 @@ final class FiscalPeriodReopenService
      * @param  string  $userId  UUID of the acting user (the route is permission-gated)
      * @param  string  $reason  Operator justification, persisted on the row
      *
-     * @throws \DomainException When the period cannot be reopened
+     * @throws FiscalPeriodReopenRefusedException When the period cannot be reopened.
+     *                                            Carries a typed
+     *                                            {@see FiscalPeriodReopenRefusalCode}
+     *                                            so the caller does not string-match the prose (gate r1, M-1).
      */
     public function reopen(FiscalPeriod $period, string $userId, string $reason): FiscalPeriod
     {
@@ -64,21 +84,21 @@ final class FiscalPeriodReopenService
                 ->firstOrFail();
 
             if ($fresh->status === PeriodStatus::Locked) {
-                throw new \DomainException('Locked periods cannot be reopened: the fiscal year they belong to is closed.');
+                throw FiscalPeriodReopenRefusedException::periodLocked((string) $fresh->id);
             }
 
             if ($fresh->status !== PeriodStatus::Closed) {
-                throw new \DomainException('Only closed periods can be reopened');
+                throw FiscalPeriodReopenRefusedException::periodNotClosed((string) $fresh->id);
             }
 
             $fiscalYear = $fresh->fiscalYear()->first();
 
             if ($fiscalYear !== null && $fiscalYear->is_closed) {
-                throw new \DomainException('Cannot reopen: the fiscal year this period belongs to is closed.');
+                throw FiscalPeriodReopenRefusedException::fiscalYearClosed((string) $fresh->id);
             }
 
             if ($this->hasClosedOrLockedSuccessor($fresh)) {
-                throw new \DomainException('Cannot reopen: a successor period is already closed or locked');
+                throw FiscalPeriodReopenRefusedException::successorSettled((string) $fresh->id);
             }
 
             $fresh->fill([

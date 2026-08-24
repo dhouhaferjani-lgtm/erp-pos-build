@@ -10,6 +10,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\PeriodStatus;
 use App\Modules\Company\Domain\FiscalPeriod;
 use App\Modules\Company\Domain\FiscalYear;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -557,5 +558,122 @@ class FiscalPeriodAutoLockServiceTest extends TestCase
         $this->assertNull($closedPeriod->locked_by, 'the nightly scheduler is not a user');
         $this->assertSame('system:auto-lock', $closedPeriod->status_actor);
         $this->assertSame(PeriodStatus::Closed->value, $closedPeriod->status_changed_from);
+    }
+
+    // ── Session B lane Q-10 fix round (C-2 / gate r1 finding I-1) ───────
+    //
+    // A period a HUMAN reopened is closed again only by a human. Before this
+    // round the nightly scheduler re-closed it within 24h and overwrote its
+    // `status_actor` with `system:auto-lock`, so the recovery edge had a
+    // one-night life and the record of who reversed the close was lost.
+
+    public function test_it_does_not_re_close_a_period_a_human_reopened(): void
+    {
+        $accountant = User::factory()->for($this->tenant)->create();
+
+        $fiscalYear = FiscalYear::create([
+            'company_id' => $this->company->id,
+            'name' => '2025',
+            'start_date' => Carbon::now()->startOfYear(),
+            'end_date' => Carbon::now()->endOfYear(),
+            'is_closed' => false,
+        ]);
+
+        $reopened = FiscalPeriod::create([
+            'fiscal_year_id' => $fiscalYear->id,
+            'company_id' => $this->company->id,
+            'name' => 'Reopened Period',
+            'period_number' => 9,
+            'start_date' => Carbon::now()->subMonths(3)->startOfMonth(),
+            'end_date' => Carbon::now()->subMonths(3)->endOfMonth(),
+            'status' => PeriodStatus::Open,
+            // Exactly what FiscalPeriodReopenService::reopen() writes.
+            'closed_at' => null,
+            'closed_by' => null,
+            'reopened_at' => Carbon::now()->subDay(),
+            'reopened_by' => $accountant->id,
+            'reopen_reason' => 'Supplier invoice arrived after the nightly auto-lock.',
+            'status_actor' => 'user:'.$accountant->id,
+            'status_changed_from' => PeriodStatus::Closed->value,
+        ]);
+
+        $this->service->lockExpiredPeriods();
+
+        $reopened->refresh();
+        $this->assertEquals(
+            PeriodStatus::Open,
+            $reopened->status,
+            'STEP 1 must skip a reopened period: only a human closes it again'
+        );
+        $this->assertSame(
+            'user:'.$accountant->id,
+            $reopened->status_actor,
+            'the human actor must not be overwritten by system:auto-lock'
+        );
+        $this->assertNull($reopened->closed_at);
+        $this->assertNotNull($reopened->reopened_at);
+    }
+
+    public function test_it_does_not_lock_a_reopened_period_when_its_fiscal_year_has_ended(): void
+    {
+        // STEP 2 + STEP 3 are the second way the scheduler could undo a reopen —
+        // and a worse one: Locked is TERMINAL, so the correction window would be
+        // destroyed rather than merely re-closed. The fiscal-year close is held
+        // while one of its periods is Open because of a reopen.
+        $accountant = User::factory()->for($this->tenant)->create();
+
+        $endedYear = FiscalYear::create([
+            'company_id' => $this->company->id,
+            'name' => '2023',
+            'start_date' => Carbon::now()->subYears(2)->startOfYear(),
+            'end_date' => Carbon::now()->subYears(2)->endOfYear(),
+            'is_closed' => false,
+        ]);
+
+        $reopened = FiscalPeriod::create([
+            'fiscal_year_id' => $endedYear->id,
+            'company_id' => $this->company->id,
+            'name' => 'Reopened Period',
+            'period_number' => 1,
+            'start_date' => Carbon::now()->subYears(2)->startOfYear(),
+            'end_date' => Carbon::now()->subYears(2)->startOfYear()->endOfMonth(),
+            'status' => PeriodStatus::Open,
+            'reopened_at' => Carbon::now()->subDay(),
+            'reopened_by' => $accountant->id,
+            'reopen_reason' => 'Correction in progress.',
+            'status_actor' => 'user:'.$accountant->id,
+            'status_changed_from' => PeriodStatus::Closed->value,
+        ]);
+
+        $sibling = FiscalPeriod::create([
+            'fiscal_year_id' => $endedYear->id,
+            'company_id' => $this->company->id,
+            'name' => 'Untouched Period',
+            'period_number' => 2,
+            'start_date' => Carbon::now()->subYears(2)->startOfYear()->addMonth()->startOfMonth(),
+            'end_date' => Carbon::now()->subYears(2)->startOfYear()->addMonth()->endOfMonth(),
+            'status' => PeriodStatus::Open,
+        ]);
+
+        $this->service->lockExpiredPeriods();
+
+        $reopened->refresh();
+        $this->assertEquals(
+            PeriodStatus::Open,
+            $reopened->status,
+            'a reopened period must never be swept into the terminal Locked state'
+        );
+        $this->assertSame('user:'.$accountant->id, $reopened->status_actor);
+        $this->assertNull($reopened->locked_at);
+
+        $this->assertFalse(
+            $endedYear->refresh()->is_closed,
+            'the year close is held while one of its periods is open for correction'
+        );
+        $this->assertEquals(
+            PeriodStatus::Closed,
+            $sibling->refresh()->status,
+            'the hold is on the YEAR close only — STEP 1 still closes the untouched sibling'
+        );
     }
 }
