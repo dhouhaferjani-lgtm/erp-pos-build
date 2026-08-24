@@ -5,16 +5,18 @@ declare(strict_types=1);
 namespace App\Modules\Document\Domain\Services;
 
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Exceptions\DocumentTransitionException;
+use App\Modules\Workshop\WorkOrder\Domain\Services\StatusMachine;
 
 /**
  * Pure domain service encoding the document lifecycle-status adjacency map.
  *
  * Same shape as the WorkOrder precedent
- * ({@see \App\Modules\Workshop\WorkOrder\Domain\Services\StatusMachine}):
+ * ({@see StatusMachine}):
  * side-effect free, answers only "is this edge legal?".
  * {@see DocumentStatusService} is the single write path — it consults this
  * machine before every mutation and raises
- * {@see \App\Modules\Document\Domain\Exceptions\DocumentTransitionException}
+ * {@see DocumentTransitionException}
  * (422 `DOCUMENT_TRANSITION_REFUSED`) when the edge is forbidden.
  *
  * PHASE 1 SCOPE (N-6). `paid` is still a row in the `status` column — removing

@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Document\Domain\CreditNoteAllocation;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Application\DTOs\InstrumentEventPayload;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
@@ -43,6 +44,7 @@ final readonly class OutboundInstrumentService
         private InstrumentAccountResolver $accountResolver,
         private OutboundRepositoryValidator $repositoryValidator,
         private CurrencyScaleResolverInterface $scaleResolver,
+        private DocumentStatusService $documentStatus,
     ) {}
 
     public function clear(
@@ -676,12 +678,16 @@ final readonly class OutboundInstrumentService
                         '0',
                     );
                 $balanceDue = bcsub(bcsub($documentTotal, $allocated, $scale), $credited, $scale);
-                $document->forceFill([
-                    'balance_due' => $balanceDue,
-                    'status' => $document->status === DocumentStatus::Paid && bccomp($balanceDue, '0', $scale) > 0
-                        ? DocumentStatus::Posted
-                        : $document->status,
-                ])->save();
+                // N-6 — same fix as `PaymentRefundService`: cancelling an
+                // outbound instrument re-opens the document's balance, but it
+                // must not DECIDE that the document was ever posted.
+                // `reopenFromPaid()` consents only when the row proves it
+                // (`fiscal_hash` present for a fiscal type).
+                if ($document->status === DocumentStatus::Paid && bccomp($balanceDue, '0', $scale) > 0) {
+                    $this->documentStatus->reopenFromPaid($document, ['balance_due' => $balanceDue]);
+                } else {
+                    $document->forceFill(['balance_due' => $balanceDue])->save();
+                }
             }
             if ($payment instanceof Payment) {
                 $payment->forceFill(['status' => PaymentStatus::Reversed])->save();

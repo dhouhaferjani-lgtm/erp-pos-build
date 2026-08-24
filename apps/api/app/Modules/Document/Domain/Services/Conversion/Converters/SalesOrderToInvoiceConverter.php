@@ -622,7 +622,25 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
                 $invoicePayload['prepayments_transferred']['gl_entry_skipped'] = true;
                 $invoicePayload['prepayments_transferred']['gl_skip_reason'] = $e->getMessage();
                 $invoice->update(['payload' => $invoicePayload]);
+
+                // The clearing did NOT happen, so the advance stays OPEN and
+                // `DocumentPostingService::post()` will clear it when the
+                // invoice is posted. Deliberately no marker write here.
+                return;
             }
+
+            // N-6 — the 419 for these allocations has just been discharged
+            // against the invoice's receivable. Stamp them CLEARED so
+            // `DocumentPostingService::post()` does not clear the same advance a
+            // second time when this invoice is posted (the clearing ceiling is
+            // partner-pool-level, so a double clear would silently drain another
+            // advance of the same partner instead of failing loudly).
+            PaymentAllocation::query()
+                ->whereIn('id', $allocations->pluck('id')->all())
+                ->update([
+                    'booked_as_advance' => true,
+                    'advance_cleared_at' => now(),
+                ]);
         }
     }
 

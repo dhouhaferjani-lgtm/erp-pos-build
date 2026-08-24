@@ -8,13 +8,16 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Treasury\Application\Results\CloseInvoiceWithToleranceResult;
+use App\Modules\Treasury\Domain\Enums\AllocationTreatment;
 use App\Modules\Treasury\Domain\Events\InvoiceClosedWithTolerance;
 use App\Modules\Treasury\Domain\Exceptions\InvoiceAlreadyPaidException;
 use App\Modules\Treasury\Domain\Exceptions\ToleranceExceededException;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use DateTimeImmutable;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -44,6 +47,8 @@ final class CloseInvoiceWithToleranceService
         private readonly PaymentToleranceService $toleranceService,
         private readonly GeneralLedgerService $glService,
         private readonly DocumentAllocationStateGuard $allocationStateGuard,
+        private readonly DocumentAllocationClassifier $allocationClassifier,
+        private readonly DocumentStatusService $documentStatus,
     ) {}
 
     public function close(string $invoiceId, string $closedBy): CloseInvoiceWithToleranceResult
@@ -61,6 +66,26 @@ final class CloseInvoiceWithToleranceService
             // a GL write-off and `DocumentStatus::Paid` — a withdrawn document
             // reappearing as collected revenue.
             $this->allocationStateGuard->assertAllocatable($invoice);
+
+            // N-6 — closing with tolerance writes off a RECEIVABLE residual, so
+            // it presupposes a posted receivable. On a confirmed (unposted)
+            // invoice there is nothing in 411 to write off and nothing to
+            // settle: the money sits in 419 and the invoice still owes its
+            // posting. Refuse before the write-off JE is created rather than
+            // letting `markPaid()` roll the whole transaction back at the end.
+            if ($this->allocationClassifier->classify($invoice) !== AllocationTreatment::ReceivableClearing) {
+                throw new HttpResponseException(response()->json([
+                    'error' => [
+                        'code' => 'INVOICE_NOT_POSTED',
+                        'message' => 'Only a posted invoice can be closed with a tolerance write-off.',
+                        'details' => [
+                            'document_id' => $invoiceId,
+                            'document_number' => $invoice->document_number,
+                            'status' => $invoice->status->value,
+                        ],
+                    ],
+                ], 422));
+            }
 
             // Treasury gate IMPORTANT (W-6 D2 consumer sweep): this used to be
             // `$invoice->balance_due ?? '0'`. `outstandingBalance()` treats a
@@ -131,9 +156,9 @@ final class CloseInvoiceWithToleranceService
                 'tolerance_writeoff' => $balance,
             ]);
 
-            $invoice->balance_due = '0.000';
-            $invoice->status = DocumentStatus::Paid;
-            $invoice->save();
+            // N-6 — the single write path. `markPaid()` re-checks the edge on
+            // the LOCKED row and writes `balance_due` in the SAME statement.
+            $this->documentStatus->markPaid($invoice, ['balance_due' => '0.000']);
 
             event(new InvoiceClosedWithTolerance(
                 invoiceId: $invoiceId,

@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Document\Domain\CreditNoteAllocation;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
@@ -65,6 +66,7 @@ class PaymentRefundService
         // Shared contract only (rule 6) — Treasury never imports the concrete
         // reader or an Accounting model.
         private readonly PaymentLedgerPartitionReaderInterface $partitionReader,
+        private readonly DocumentStatusService $documentStatus,
     ) {}
 
     private function scale(): int
@@ -1960,12 +1962,18 @@ class PaymentRefundService
             /** @var numeric-string $balanceDue */
             $balanceDue = bcsub(bcsub($documentTotal, $allocatedSum, $scale), $creditedSum, $scale);
 
-            $document->forceFill([
-                'balance_due' => $balanceDue,
-                'status' => $document->status === DocumentStatus::Paid && bccomp($balanceDue, '0', $scale) > 0
-                    ? DocumentStatus::Posted
-                    : $document->status,
-            ])->save();
+            // N-6 — this used to write `Posted` UNCONDITIONALLY whenever a
+            // `Paid` document's balance re-opened. On a document that reached
+            // `Paid` through the pre-N-6 `Confirmed -> Paid` hole that
+            // MANUFACTURES a posted invoice: no seal, no chain sequence, no GL,
+            // no VAT — a fiscal document fabricated by a refund.
+            // `reopenFromPaid()` checks `fiscal_hash` before consenting, and
+            // leaves a never-sealed document exactly where it is.
+            if ($document->status === DocumentStatus::Paid && bccomp($balanceDue, '0', $scale) > 0) {
+                $this->documentStatus->reopenFromPaid($document, ['balance_due' => $balanceDue]);
+            } else {
+                $document->forceFill(['balance_due' => $balanceDue])->save();
+            }
         }
     }
 

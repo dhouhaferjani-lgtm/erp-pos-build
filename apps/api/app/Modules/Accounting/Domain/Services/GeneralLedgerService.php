@@ -1669,7 +1669,19 @@ final class GeneralLedgerService
         ?string $description = null,
         ?string $postedByUserId = null,
         ?string $currencyCode = null,
+        PostingMode $mode = PostingMode::AfterCommit,
     ): JournalEntry {
+        // N-6 — `SynchronousInTransaction` exists for the INVOICE POSTING path.
+        // Clearing must be atomic with the seal: if the 419 -> 411 entry cannot
+        // be written the posting is refused with it, never left half-done with
+        // a sealed invoice and a stranded advance. It also closes a real trap in
+        // the legacy signature — with a NULL `$postedByUserId` the AfterCommit
+        // branch below creates the entry and never posts it, leaving a DRAFT
+        // journal entry that no reconcile would ever consume.
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('clearCustomerAdvanceToReceivable: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
         $advanceAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerAdvance);
         $receivableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerReceivable);
         $user = null;
@@ -1746,7 +1758,13 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        if ($user !== null) {
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            // Null-actor safe: the GL consequence of clearing an advance is
+            // deterministic and independent of who triggered it, and posting
+            // runs from `DocumentPostingService::post()` which has no actor of
+            // its own.
+            $this->postEntryNow($entry, $user, $currencyCode);
+        } elseif ($user !== null) {
             $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
         }
 

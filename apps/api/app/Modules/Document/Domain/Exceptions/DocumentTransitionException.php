@@ -5,12 +5,13 @@ declare(strict_types=1);
 namespace App\Modules\Document\Domain\Exceptions;
 
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Services\DocumentStatusMachine;
 use DomainException;
 
 /**
  * Raised when a requested document lifecycle-status transition is refused by
  * the adjacency map encoded in
- * {@see \App\Modules\Document\Domain\Services\DocumentStatusMachine}.
+ * {@see DocumentStatusMachine}.
  *
  * Maps to HTTP 422 `DOCUMENT_TRANSITION_REFUSED` at the API boundary
  * (`bootstrap/app.php`). Registered ABOVE the generic `DomainException`

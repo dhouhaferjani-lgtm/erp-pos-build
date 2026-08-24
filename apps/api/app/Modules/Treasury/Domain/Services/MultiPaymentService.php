@@ -7,9 +7,11 @@ namespace App\Modules\Treasury\Domain\Services;
 use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Document\Domain\Document;
-use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Application\Services\DocumentAllocationClassifier;
+use App\Modules\Treasury\Domain\Enums\AllocationTreatment;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
@@ -29,6 +31,8 @@ class MultiPaymentService
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly GeneralLedgerService $glService,
         private readonly TreasuryMovementServiceInterface $movementService,
+        private readonly DocumentAllocationClassifier $allocationClassifier,
+        private readonly DocumentStatusService $documentStatus,
     ) {}
 
     /**
@@ -75,6 +79,12 @@ class MultiPaymentService
         return DB::transaction(function () use ($document, $paymentSplits, $userId, $idempotencyKey): array {
             $payments = [];
 
+            // N-6 — one classification for the whole split: every line settles
+            // the SAME document, so posted-ness cannot differ between them.
+            // Refuses a draft / cancelled / credit-note target with 422
+            // DOCUMENT_NOT_ALLOCATABLE before any payment row is written.
+            $treatment = $this->allocationClassifier->classify($document);
+
             // Resolve the acting user once — synchronous in-transaction GL posting
             // (Task 19) requires an actor. Only the ledgered cash-line branch below
             // needs it; unledgered/nocash lines never touch it.
@@ -111,12 +121,15 @@ class MultiPaymentService
                         : null,
                 ]);
 
-                // Create allocation
-                PaymentAllocation::create([
+                // Create allocation. N-6 — the marker records what the LEDGER
+                // did with this line: 419 while the document has no posted
+                // receivable, 411 once it has one.
+                $allocationRow = PaymentAllocation::create([
                     'id' => Str::uuid()->toString(),
                     'payment_id' => $payment->id,
                     'document_id' => $document->id,
                     'amount' => $lineAmount,
+                    'booked_as_advance' => $treatment === AllocationTreatment::Prepayment,
                 ]);
 
                 // Task 19: a split line that carries a ledgered repository is REAL cash
@@ -133,16 +146,21 @@ class MultiPaymentService
                     amount: $lineAmount,
                     idempotencyLeg: "line:{$index}",
                     actingUser: $actingUser,
+                    treatment: $treatment,
+                    allocation: $allocationRow,
                 );
 
                 $payments[] = $payment;
             }
 
-            // Update document balance
-            $document->update([
-                'balance_due' => '0.00',
-                'status' => $this->getDocumentStatusAfterPayment($document),
-            ]);
+            // Update document balance. N-6 — a PREPAYMENT clears the balance
+            // but moves NO lifecycle status: the document still owes its
+            // posting, and `confirmed → paid` is refused by the status machine.
+            if ($treatment === AllocationTreatment::ReceivableClearing && $document->type->canTransitionToPaid()) {
+                $this->documentStatus->markPaid($document, ['balance_due' => '0.00']);
+            } else {
+                $document->update(['balance_due' => '0.00']);
+            }
 
             return $payments;
         });
@@ -278,23 +296,39 @@ class MultiPaymentService
         }
 
         return DB::transaction(function () use ($deposit, $document, $amount): PaymentAllocation {
+            // N-6 — refuses a draft / cancelled / credit-note target (422
+            // DOCUMENT_NOT_ALLOCATABLE) and decides whether the deposit settles
+            // a receivable or stays an advance against an unposted document.
+            $treatment = $this->allocationClassifier->classify($document);
+
             $allocation = PaymentAllocation::create([
                 'id' => Str::uuid()->toString(),
                 'payment_id' => $deposit->id,
                 'document_id' => $document->id,
                 'amount' => $amount,
+                // The deposit's own 419 entry was posted by
+                // `RecordCustomerDepositService` when the money came in; there
+                // is no per-allocation entry to link. The marker still records
+                // that this allocation is sitting in 419, which is what the
+                // posting path needs in order to clear it.
+                'booked_as_advance' => $treatment === AllocationTreatment::Prepayment,
             ]);
 
             // Update document balance
             /** @var numeric-string $docBal */
             $docBal = $document->balance_due ?? $document->total;
             $newBalance = bcsub($docBal, $amount, $this->scale());
-            $document->update([
-                'balance_due' => $newBalance,
-                'status' => bccomp($newBalance, '0', $this->scale()) === 0
-                    ? $this->getDocumentStatusAfterPayment($document)
-                    : $document->status,
-            ]);
+            $isSettled = bccomp($newBalance, '0', $this->scale()) === 0;
+
+            if (
+                $isSettled
+                && $treatment === AllocationTreatment::ReceivableClearing
+                && $document->type->canTransitionToPaid()
+            ) {
+                $this->documentStatus->markPaid($document, ['balance_due' => $newBalance]);
+            } else {
+                $document->update(['balance_due' => $newBalance]);
+            }
 
             return $allocation;
         });
@@ -482,6 +516,8 @@ class MultiPaymentService
         string $amount,
         string $idempotencyLeg,
         ?User $actingUser,
+        AllocationTreatment $treatment,
+        PaymentAllocation $allocation,
     ): void {
         if ($repositoryId === null) {
             return;
@@ -496,19 +532,39 @@ class MultiPaymentService
             return;
         }
 
-        // Customer AR payment received against the document: Dr Bank / Cr AR.
-        $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
-            companyId: $document->company_id,
-            partnerId: $document->partner_id,
-            paymentId: $payment->id,
-            amount: $amount,
-            paymentMethodAccountId: $repository->gl_account_id,
-            date: new \DateTimeImmutable,
-            description: "Split payment - {$payment->reference}",
-            user: $this->requireActor($actingUser),
-            currencyCode: $payment->currency,
-            mode: PostingMode::SynchronousInTransaction,
-        );
+        // N-6 — Dr Bank / Cr AR only when a RECEIVABLE exists. On a confirmed
+        // (unposted) document there is no 411 debit to settle, so the money is
+        // a customer advance: Dr Bank / Cr 419, cleared to 411 when the invoice
+        // is posted.
+        if ($treatment === AllocationTreatment::Prepayment) {
+            $journalEntry = $this->glService->createCustomerAdvanceJournalEntry(
+                companyId: $document->company_id,
+                partnerId: $document->partner_id,
+                advanceId: $payment->id,
+                amount: $amount,
+                paymentMethodAccountId: $repository->gl_account_id,
+                date: new \DateTimeImmutable,
+                user: $this->requireActor($actingUser),
+                description: "Split prepayment (customer advance) - {$payment->reference}",
+                currencyCode: $payment->currency,
+                mode: PostingMode::SynchronousInTransaction,
+            );
+
+            $allocation->update(['advance_journal_entry_id' => $journalEntry->id]);
+        } else {
+            $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
+                companyId: $document->company_id,
+                partnerId: $document->partner_id,
+                paymentId: $payment->id,
+                amount: $amount,
+                paymentMethodAccountId: $repository->gl_account_id,
+                date: new \DateTimeImmutable,
+                description: "Split payment - {$payment->reference}",
+                user: $this->requireActor($actingUser),
+                currencyCode: $payment->currency,
+                mode: PostingMode::SynchronousInTransaction,
+            );
+        }
 
         $payment->journal_entry_id = $journalEntry->id;
         $payment->save();
@@ -571,16 +627,6 @@ class MultiPaymentService
         }
 
         return $actingUser;
-    }
-
-    /**
-     * Get document status after full payment
-     */
-    private function getDocumentStatusAfterPayment(Document $document): DocumentStatus
-    {
-        return $document->type->canTransitionToPaid()
-            ? DocumentStatus::Paid
-            : $document->status;
     }
 
     private function scale(): int
