@@ -4,13 +4,20 @@ Purpose: the steps Playwright cannot (or should not) drive — physical POS devi
 that need a human eye. Run on the local stack (API :8010, web :5173, Tauri POS) on a FRESH tenant. Tick each row; note amounts as shown.
 Legend: 🟢 automated in wave 4 (verify only) · 🟠 manual.
 
+**Updated 2026-08-24 after wave 4** — evidence for every 🟢 row is in
+`docs/handoff/PLAYWRIGHT-first-tenant-campaign-wave4-critical-path-2026-08-24.md`. A 🟢 row is *covered*, not
+necessarily *passing*: rows marked **FAIL** below were automated and found broken, so do not spend bench time
+re-confirming them. Rows 3.12–3.14 are 🟠 permanently — the server-side X/Z/shift-close routes are retired by
+design (409 `Z_SESSION_DEVICE_AUTHORITY_REQUIRED` / `SHIFT_DEVICE_AUTHORITY_REQUIRED`), so only the device can
+exercise them.
+
 ## 0. Setup
 | # | Step | Expect | Check where it lands |
 |---|---|---|---|
 | 0.1 🟢 | Signup TN parapharmacy, 2 locations POS-enabled | company TND, TVA 19/13/7/exo, 141-row chart | `/settings/setup` 5/7+ |
-| 0.2 🟠 | Opening float: drawer 200.000, safe 1 000.000 | repositories show balances | Treasury › repositories; GL 53x = 1 200.000 |
+| 0.2 🟢 **FAIL W4-2 (P0)** | Opening float: drawer 200.000, safe 1 000.000 | repositories show balances | **No working path exists.** GL 53 = 1 200.000 but both repositories stay 0.000; adjustment refuses `REPOSITORY_NOT_SEEDED`, transfer refuses `INSUFFICIENT_REPOSITORY_BALANCE`. Do not re-run. |
 | 0.3 🟢 | Import products (accents, lots/expiry) + opening stock per branch | qty per location; lots with expiry | Inventory per branch; GL Dr 37 / Cr opening |
-| 0.4 🟠 | AR/AP opening: customer owes 150.000; we owe supplier 500.000 | partner balances | Customer page "Total receivable" 150.000; supplier page 500.000; aged AR/AP |
+| 0.4 🟢 **FAIL W4-4 (P1)** | AR/AP opening: customer owes 150.000; we owe supplier 500.000 | partner balances | Documents post, but **both partner pages read 0,000** — opening GL lines carry no `partner_id` and the AR/AP batches post no GL. |
 
 ## 1. Purchasing → supplier balance
 | # | Step | Expect | Money/stock lands |
@@ -18,8 +25,8 @@ Legend: 🟢 automated in wave 4 (verify only) · 🟠 manual.
 | 1.1 🟢 | PO 3 products (check unit price is PURCHASE price — W2-6) | confirmed | none |
 | 1.2 🟢 | GRN partial → remainder | stock ↑ per branch, lots created | Dr 37 / Cr 408 |
 | 1.3 🟢 | Supplier invoice (3-way) with VAT | supplier balance = 500 + invoice | Dr 408 + 4456 / Cr 401 |
-| 1.4 🟠 | Pay supplier from SAFE (cash) | safe ↓, supplier balance ↓ | Dr 401 / Cr 53-safe; Treasury safe balance |
-| 1.5 🟠 | Pay supplier by bank transfer | bank ↓ | Dr 401 / Cr 512; bank reconciliation queue |
+| 1.4 🟢 **BLOCKED by W4-2** | Pay supplier from SAFE (cash) | safe ↓, supplier balance ↓ | Refused `INSUFFICIENT_REPOSITORY_BALANCE` — the safe holds 0.000 because the float cannot be seeded. Unreachable until W4-2 is fixed. |
+| 1.5 🟢 **PASS** | Pay supplier by bank transfer | bank ↓ | Verified: `Dr 401 / Cr 512` 1 289.950, one repository movement, supplier payable → 0. |
 | 1.6 🟠 | Supplier return / supplier credit note (if shipped) | balance ↓ | Dr 401 / Cr 37 (+VAT) |
 
 ## 2. Transfers between branches
@@ -37,7 +44,7 @@ Legend: 🟢 automated in wave 4 (verify only) · 🟠 manual.
 | 3.3 🟠 | Cash sale 3 lines (7/13/19 %) | receipt VAT per rate; lot decremented (FEFO) | drawer ↑; stock ↓ branch; fiscal chain seq +1 |
 | 3.4 🟠 | Card sale | drawer unchanged | card clearing account ↑ |
 | 3.5 🟠 | Mixed cash+card, discount | totals reconcile | — |
-| 3.6 🟠 | **B2C refund** of a line (cash back) | refund receipt linked to original; stock ↑ | drawer ↓ by refund; GL reversal of the line incl. VAT |
+| 3.6 🟠 (contract half 🟢 **PASS**) | **B2C refund** of a line (cash back) | refund receipt linked to original; stock ↑ | Verified at contract level: chain seq 2 `verified`, stock +2, drawer −42.800, COGS reversed. **But the GL reversal carries no VAT** (W4-9). Physical cash-in-hand half still manual. |
 | 3.7 🟠 | Exchange | net zero cash | stock both ways |
 | 3.8 🟠 | Held order → recall → complete | one receipt | — |
 | 3.9 🟠 | Void before seal / after seal | after-seal = refund path only | chain intact |
@@ -58,9 +65,9 @@ Legend: 🟢 automated in wave 4 (verify only) · 🟠 manual.
 ## 5. Where the cash lands
 | # | Step | Expect | Lands |
 |---|---|---|---|
-| 5.1 🟠 | Remit drawer → safe after close | drawer 200.000 float, safe ↑ | Dr 53-safe / Cr 53-drawer |
-| 5.2 🟠 | Safe → bank deposit | safe ↓ bank ↑ | Dr 512 / Cr 53-safe; deposit slip |
-| 5.3 🟠 | Expense paid from drawer mid-shift | drawer ↓; count expects it | Dr 6xx (+4456) / Cr 53-drawer |
+| 5.1 🟢 **PASS (with a caveat)** | Remit drawer → safe after close | drawer 200.000 float, safe ↑ | Balances move correctly and the float is retained — but **no journal entry posts**: the seeded drawer and safe share GL account `53`, so "Dr 53-safe / Cr 53-drawer" cannot happen. Owner decision needed on separate accounts. |
+| 5.2 🟢 **PASS** | Safe → bank deposit | safe ↓ bank ↑ | Verified: `Dr 512 / Cr 53` 200.000 (posts because the accounts differ). |
+| 5.3 🟢 **FAIL W4-10 (P1)** | Expense paid from drawer mid-shift | drawer ↓; count expects it | GL posts `Dr 65 + Dr 4456 / Cr 53` but **no repository moves** — the expense is born `is_paid=true` with a NULL repository and `/pay` is then refused. |
 | 5.4 🟢 | Per-branch cash visibility + consolidated | numbers add up | Treasury dashboards |
 | 5.5 🟢 | Trial balance closes; VAT declaration per rate | Dr = Cr; 4457 by rate | Accounting reports |
 
@@ -74,9 +81,9 @@ must be readable on ONE screen per entity and equal the GL sub-ledger. Record an
 |---|---|---|---|
 | 7.1 🟢 | Start a count (cycle or full) on branch A while the shift is OPEN | count opens; expected qty snapshot semantics visible (frozen at start vs live) | — |
 | 7.2 🟠 | While the count is open: sell one counted product at the POS; refund another | sale/refund go through normally | stock ↓/↑ branch A |
-| 7.3 🟠 | Enter counted quantities: one exact, one short, one over (incl. per-lot for a batch-tracked product) | variance list per product/lot | — |
+| 7.3 🟠 (per-lot **NOT SUPPORTED**, W4-8) | Enter counted quantities: one exact, one short, one over | variance list per product | Aggregate entry verified. Counting has no `batch_id` grain, so the per-lot half is not implementable. |
 | 7.4 🟢 | Submit → third count if variance → finalize; then try finalize AGAIN and cancel-after-finalize | typed 422 `COUNTING_TRANSITION_REFUSED` on both | — |
-| 7.5 🟢 | Adjustments = counted − expected with the in-count sale/refund counted EXACTLY once | no double decrement, no lost sale | one `stock_movements` row per adjustment; GL Dr/Cr 6xx / 37 |
+| 7.5 🟢 **FAIL W4-6 (P1)** | Adjustments = counted − expected with the in-count sale/refund counted EXACTLY once | no double decrement, no lost sale | Sale counted exactly once ✅ — but **every real variance was suppressed** (`basket_window`) and the report summary says `items_with_variance: 0`. Count-correction GL posting is also OFF by default. |
 | 7.6 🟢 | Branch B stock untouched; `stock_levels.reserved` untouched | — | — |
 | 7.7 🟠 | Count report per branch (printable) | matches 7.5 | — |
 | 7.8 🟠 | Batch-tracked product: what the count shows for the DEFAULT lot (W2-7 known) | note it | — |

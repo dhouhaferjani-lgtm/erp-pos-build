@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace App\Modules\Product\Application\Services;
 
 use App\Modules\Company\Domain\Company;
-use App\Modules\Product\Domain\Category;
 use App\Modules\Product\Domain\Enums\BrandSource;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Services\TaxResolutionService;
 use App\Shared\Contracts\ProductServiceInterface;
+use App\Shared\DTOs\CategoryResolutionDTO;
 use Illuminate\Support\Str;
 
 /**
@@ -23,6 +23,7 @@ final class ProductService implements ProductServiceInterface
     public function __construct(
         private readonly TaxResolutionService $taxResolution,
         private readonly BrandResolutionService $brandResolution,
+        private readonly CategoryResolutionService $categoryResolution,
     ) {}
 
     /**
@@ -79,13 +80,13 @@ final class ProductService implements ProductServiceInterface
             );
         }
 
-        if (isset($data['category_name']) && $data['category_name'] !== '') {
-            $category = Category::where('company_id', $companyId)
-                ->where('name', $data['category_name'])
-                ->first();
-            if ($category !== null) {
-                $attributes['category_id'] = $category->id;
-            }
+        // W2-3: create on miss, exactly as the brand block below does. Lookup-only
+        // meant a day-one tenant (empty `categories`, and no categories import
+        // exists) lost every category_name with no warning anywhere.
+        if (isset($data['category_name']) && trim((string) $data['category_name']) !== '') {
+            $attributes['category_id'] = $this->categoryResolution
+                ->resolve($companyId, (string) $data['category_name'])
+                ->categoryId;
         }
 
         if (isset($data['brand']) && trim((string) $data['brand']) !== '') {
@@ -126,6 +127,11 @@ final class ProductService implements ProductServiceInterface
         );
 
         return $product->id;
+    }
+
+    public function resolveCategoryByName(string $companyId, string $name): CategoryResolutionDTO
+    {
+        return $this->categoryResolution->resolve($companyId, $name);
     }
 
     private function skuFromName(string $name): string

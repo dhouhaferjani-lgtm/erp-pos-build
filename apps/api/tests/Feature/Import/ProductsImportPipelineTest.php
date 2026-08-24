@@ -20,6 +20,7 @@ use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\Product\Domain\Category;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -29,6 +30,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -247,5 +249,244 @@ final class ProductsImportPipelineTest extends TestCase
         $row = ImportJob::findOrFail($jobId)->rows()->firstOrFail();
         $this->assertSame('ok', $row->data['_results']['opening_stock'] ?? null);
         $this->assertNull($row->warnings);
+    }
+
+    public function test_missing_category_is_created_linked_and_reported_instead_of_silently_dropped(): void
+    {
+        // W2-3: the products import used to LOOK UP category_name and drop it on
+        // miss. On a day-one tenant `categories` is empty and there is no
+        // categories ImportType (ImportType.php:125 lists category_name as a
+        // PRODUCTS column), so lookup-only meant every category was discarded.
+        $file = UploadedFile::fake()->createWithContent('products-cat.csv', implode("\n", [
+            'name,sku,type,category_name',
+            'Creme hydratante Bebe 200ml,CREM-BEBE_200,part,Soins Bebe',
+            'Lingettes Bebe,LING-BEBE_72,part,Soins Bebe',
+            'Elixir apaisant,ELIX-APAI_50,part,Aromatherapie',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', ['file' => $file, 'type' => 'products']);
+        $createResponse->assertCreated();
+        $jobId = $createResponse->json('data.id');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.successful_rows', 3)
+            ->assertJsonPath('data.failed_rows', 0);
+
+        $soins = Category::where('company_id', $this->company->id)->where('name', 'Soins Bebe')->first();
+        $this->assertNotNull($soins, 'category_name must create the missing category, not drop it');
+        $aroma = Category::where('company_id', $this->company->id)->where('name', 'Aromatherapie')->first();
+        $this->assertNotNull($aroma);
+        $this->assertSame(2, Category::where('company_id', $this->company->id)->count());
+
+        $this->assertSame($soins->id, Product::where('sku', 'CREM-BEBE_200')->firstOrFail()->category_id);
+        $this->assertSame($soins->id, Product::where('sku', 'LING-BEBE_72')->firstOrFail()->category_id);
+        $this->assertSame($aroma->id, Product::where('sku', 'ELIX-APAI_50')->firstOrFail()->category_id);
+
+        $rows = ImportJob::findOrFail($jobId)->rows()->orderBy('row_number')->get()->keyBy('row_number');
+
+        // Row 1 created the category -> reported. Row 2 reused it -> matched, no warning.
+        $this->assertSame('category_created', $rows[1]->warnings[0]['code'] ?? null);
+        $this->assertStringContainsString('Soins Bebe', (string) ($rows[1]->warnings[0]['detail'] ?? ''));
+        $this->assertSame('created', $rows[1]->data['_results']['category'] ?? null);
+        $this->assertNull($rows[2]->warnings);
+        $this->assertSame('matched', $rows[2]->data['_results']['category'] ?? null);
+        $this->assertSame('category_created', $rows[3]->warnings[0]['code'] ?? null);
+
+        // ...and it reaches the operator's result workbook, which is the only
+        // artefact they keep after the wizard closes.
+        $workbook = $this->actingAs($this->user, 'sanctum')
+            ->get("/api/v1/imports/{$jobId}/result-workbook");
+        $workbook->assertOk();
+
+        $path = tempnam(sys_get_temp_dir(), 'w23-workbook-');
+        $this->assertIsString($path);
+        file_put_contents($path, $workbook->streamedContent());
+        $spreadsheet = IOFactory::load($path);
+        unlink($path);
+
+        $imported = $spreadsheet->getSheetByName('Imported');
+        $this->assertNotNull($imported);
+        $cells = json_encode($imported->toArray(), JSON_UNESCAPED_UNICODE);
+        $this->assertIsString($cells);
+        $this->assertStringContainsString('category_created', $cells);
+        $this->assertStringContainsString('Soins Bebe', $cells);
+    }
+
+    public function test_re_importing_the_same_categories_reuses_them_without_duplicates_or_warnings(): void
+    {
+        $existing = Category::create([
+            'company_id' => $this->company->id,
+            'name' => 'Hygiene',
+        ]);
+
+        $rowsCsv = [
+            'name,sku,type,category_name',
+            'Gel douche,GEL-CAVA_500,part,Hygiene',
+            // Slug-equivalent spelling of the SAME category: must match, never
+            // collide on the unique (company_id, slug) index.
+            'Savon doux,SAVO-DOUX_100,part,hygiene',
+        ];
+
+        foreach ([1, 2] as $pass) {
+            $file = UploadedFile::fake()->createWithContent("products-cat-{$pass}.csv", implode("\n", $rowsCsv));
+
+            $createResponse = $this->actingAs($this->user, 'sanctum')
+                ->postJson('/api/v1/imports', ['file' => $file, 'type' => 'products']);
+            $createResponse->assertCreated();
+            $jobId = $createResponse->json('data.id');
+
+            $this->actingAs($this->user, 'sanctum')
+                ->postJson("/api/v1/imports/{$jobId}/execute")
+                ->assertOk()
+                ->assertJsonPath('data.failed_rows', 0)
+                // Row 1 hits the category by exact name -> silent. Row 2 spells it
+                // differently and merges on the slug -> reported (gate r1 finding 3).
+                ->assertJsonPath('data.warning_rows', 1);
+
+            $this->assertSame(
+                1,
+                Category::where('company_id', $this->company->id)->count(),
+                "pass {$pass}: re-import must not duplicate an existing category"
+            );
+
+            foreach (['GEL-CAVA_500', 'SAVO-DOUX_100'] as $sku) {
+                $this->assertSame($existing->id, Product::where('sku', $sku)->firstOrFail()->category_id);
+            }
+
+            $passRows = ImportJob::findOrFail($jobId)->rows()->orderBy('row_number')->get()->keyBy('row_number');
+            $this->assertSame('matched', $passRows[1]->data['_results']['category'] ?? null);
+            $this->assertNull($passRows[1]->warnings, "pass {$pass}: an exact-name match must stay silent");
+            $this->assertSame('matched_by_slug', $passRows[2]->data['_results']['category'] ?? null);
+            $this->assertSame('category_matched_by_slug', $passRows[2]->warnings[0]['code'] ?? null);
+        }
+    }
+
+    /**
+     * Gate r1 finding 1 (PROBE-A). `categories` soft-deletes and the unique
+     * (company_id, slug) index is NOT partial, so a trashed row keeps its slug.
+     * Every import row runs inside DB::transaction (ImportService.php importRow),
+     * and on PostgreSQL a failed INSERT aborts that transaction (25P02) — so a
+     * recovery SELECT after a caught QueryException cannot run. Must be handled
+     * BEFORE any statement is allowed to fail. RUN THIS ON PG.
+     */
+    public function test_soft_deleted_category_holding_the_slug_is_restored_and_linked(): void
+    {
+        $trashed = Category::create([
+            'company_id' => $this->company->id,
+            'name' => 'Hygiene',
+        ]);
+        $trashed->delete();
+        $this->assertSoftDeleted('categories', ['id' => $trashed->id]);
+
+        $file = UploadedFile::fake()->createWithContent('products-trashed-cat.csv', implode("\n", [
+            'name,sku,type,category_name',
+            'Gel douche,GEL-CAVA_500,part,Hygiene',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', ['file' => $file, 'type' => 'products']);
+        $createResponse->assertCreated();
+        $jobId = $createResponse->json('data.id');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.successful_rows', 1)
+            ->assertJsonPath('data.failed_rows', 0);
+
+        $row = ImportJob::findOrFail($jobId)->rows()->firstOrFail();
+        $this->assertNull($row->import_error, 'a trashed slug holder must not poison the row transaction');
+        $this->assertSame('restored', $row->data['_results']['category'] ?? null);
+        $this->assertSame('category_restored', $row->warnings[0]['code'] ?? null);
+        // The operator must be told a deleted category came back WITH its policy:
+        // categories carry default_tax_rate / margin / discount / restock policy.
+        $this->assertStringContainsString('tax', strtolower((string) ($row->warnings[0]['detail'] ?? '')));
+
+        $this->assertSame(1, Category::where('company_id', $this->company->id)->count());
+        $this->assertNotNull(Category::find($trashed->id));
+        $this->assertSame($trashed->id, Product::where('sku', 'GEL-CAVA_500')->firstOrFail()->category_id);
+    }
+
+    /**
+     * Gate r1 finding 2 (PROBE-C). `categories.name`/`slug` are varchar(255); an
+     * over-long cell used to be ignored and now reaches an INSERT, so on PG it
+     * rejects the whole product row with a raw SQLSTATE. It must be caught at
+     * VALIDATION, with the row number, like every other over-long column.
+     */
+    public function test_over_long_category_name_is_a_row_validation_error_not_a_database_error(): void
+    {
+        $file = UploadedFile::fake()->createWithContent('products-long-cat.csv', implode("\n", [
+            'name,sku,type,category_name',
+            'Gel douche,GEL-CAVA_500,part,'.str_repeat('A', 300),
+            'Savon doux,SAVO-DOUX_100,part,Hygiene',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', ['file' => $file, 'type' => 'products']);
+        $createResponse->assertCreated();
+        $jobId = $createResponse->json('data.id');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.successful_rows', 1)
+            ->assertJsonPath('data.failed_rows', 1);
+
+        $rows = ImportJob::findOrFail($jobId)->rows()->orderBy('row_number')->get()->keyBy('row_number');
+        $this->assertFalse((bool) $rows[1]->is_valid);
+        $this->assertArrayHasKey('category_name', $rows[1]->errors ?? []);
+        $this->assertNull($rows[1]->import_error, 'must fail validation, never mid-import with a SQLSTATE');
+        $this->assertSame(1, $rows[1]->row_number);
+        $this->assertTrue((bool) $rows[2]->is_valid);
+        $this->assertSame(0, Product::where('sku', 'GEL-CAVA_500')->count());
+    }
+
+    /**
+     * Gate r1 finding 3. Matching on the slug is what keeps the unique index
+     * survivable, but Str::slug collapses more than case+accents, so two
+     * genuinely different names can merge into one category. Merging is right;
+     * doing it silently is not — it is a master-data decision taken from a cell.
+     */
+    public function test_slug_match_on_a_different_name_is_reported_not_silently_merged(): void
+    {
+        $file = UploadedFile::fake()->createWithContent('products-slug-merge.csv', implode("\n", [
+            'name,sku,type,category_name',
+            'Creme hydratante,CREM-1,part,Crème',
+            'Creme legere,CREM-2,part,Creme',
+            'Serum eclat,SERU-1,part,Soins & Beauté',
+            'Serum nuit,SERU-2,part,Soins Beauté',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', ['file' => $file, 'type' => 'products']);
+        $createResponse->assertCreated();
+        $jobId = $createResponse->json('data.id');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.failed_rows', 0);
+
+        // Two categories, not four — the merge itself is the intended behaviour.
+        $this->assertSame(2, Category::where('company_id', $this->company->id)->count());
+
+        $rows = ImportJob::findOrFail($jobId)->rows()->orderBy('row_number')->get()->keyBy('row_number');
+        $this->assertSame('created', $rows[1]->data['_results']['category'] ?? null);
+        $this->assertSame('matched_by_slug', $rows[2]->data['_results']['category'] ?? null);
+        $this->assertSame('category_matched_by_slug', $rows[2]->warnings[0]['code'] ?? null);
+
+        $detail = (string) ($rows[2]->warnings[0]['detail'] ?? '');
+        $this->assertStringContainsString('Creme', $detail, 'the warning must name the incoming value');
+        $this->assertStringContainsString('Crème', $detail, 'and the category it was merged into');
+
+        $this->assertSame('created', $rows[3]->data['_results']['category'] ?? null);
+        $this->assertSame('matched_by_slug', $rows[4]->data['_results']['category'] ?? null);
+        $this->assertSame('category_matched_by_slug', $rows[4]->warnings[0]['code'] ?? null);
+
+        // An EXACT name hit stays silent — no new noise on ordinary re-imports.
+        $this->assertNull($rows[1]->warnings[1] ?? null);
     }
 }

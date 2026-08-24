@@ -171,6 +171,10 @@ enum ImportType: string
                 'location_code' => ['nullable', 'string', 'max:100'],
                 'placement_path' => ['nullable', 'string', 'max:1000'],
                 'brand' => ['nullable', 'string', 'max:255'],
+                // categories.name and categories.slug are varchar(255): an
+                // over-long cell must be rejected HERE, with its row number,
+                // not mid-import as a raw SQLSTATE (gate r1 finding 2).
+                'category_name' => ['nullable', 'string', 'max:255'],
                 'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
                 'unit' => ['nullable', 'string', 'max:50'],
                 'is_active' => ['nullable', 'in:true,false,1,0,yes,no'],
