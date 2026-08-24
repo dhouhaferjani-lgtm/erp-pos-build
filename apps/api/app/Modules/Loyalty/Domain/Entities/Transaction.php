@@ -27,6 +27,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $earning_rule_id
  * @property string|null $source_type
  * @property string|null $source_id
+ * @property string|null $redemption_key
  * @property string|null $description
  * @property array<string, mixed>|null $metadata
  * @property string|null $created_by
@@ -61,6 +62,7 @@ class Transaction extends Model
         'earning_rule_id',
         'source_type',
         'source_id',
+        'redemption_key',
         'description',
         'metadata',
         'created_by',
