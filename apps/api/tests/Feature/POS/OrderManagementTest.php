@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Enums\Vertical;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -450,7 +451,11 @@ final class OrderManagementTest extends TestCase
 
     private function setupTestData(): void
     {
-        $this->tenant = Tenant::factory()->create();
+        // Session B lane Q-9: the live order-workflow routes are now gated on
+        // `module:Menu` (rule 12, mirroring the FE ModuleGuard). The default
+        // factory vertical is `retail`, which has no Menu — the fixture must
+        // name an F&B vertical for this suite to exercise its own surface.
+        $this->tenant = Tenant::factory()->create(['vertical' => Vertical::Restaurant]);
         $this->company = Company::factory()->create([
             'tenant_id' => $this->tenant->id,
         ]);

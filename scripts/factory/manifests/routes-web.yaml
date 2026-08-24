@@ -557,7 +557,7 @@ routes:
     permission: loyalty.manage
   - path: /pos/orders
     component: OrdersPage
-    module_gate: null
+    module_gate: Menu
     permission: pos.operate_terminal
   - path: /pos/promotions
     component: PromotionListPage
