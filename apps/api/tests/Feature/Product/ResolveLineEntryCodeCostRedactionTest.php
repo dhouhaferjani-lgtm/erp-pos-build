@@ -45,8 +45,6 @@ final class ResolveLineEntryCodeCostRedactionTest extends TestCase
 
     private Company $company;
 
-    private Product $product;
-
     protected function setUp(): void
     {
         parent::setUp();
@@ -74,7 +72,7 @@ final class ResolveLineEntryCodeCostRedactionTest extends TestCase
         $this->seed(RolesAndPermissionsSeeder::class);
         app(CompanyContext::class)->setCompanyId($this->company->id);
 
-        $this->product = Product::create([
+        Product::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'name' => 'Scanned Costed Product',
