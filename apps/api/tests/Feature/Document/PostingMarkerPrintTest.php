@@ -22,6 +22,10 @@ use Tests\Traits\BuildsDeliveryPolicyFixtures;
  * "carries no fiscal seal and no hash-chain entry" about a document that WAS
  * posted, sealed and chained. A false fiscal statement, in writing, on the one
  * output an auditor reads.
+ *
+ * The sealed fixtures carry `chain_sequence` as well as `fiscal_hash`: on
+ * PostgreSQL `chk_fiscal_mandatory_core` requires BOTH for any non-NON_FISCAL
+ * document, and a fixture that cannot exist in the database proves nothing.
  */
 final class PostingMarkerPrintTest extends TestCase
 {
@@ -53,7 +57,7 @@ final class PostingMarkerPrintTest extends TestCase
     {
         $html = $this->renderMarker($this->invoice(
             DocumentStatus::Posted,
-            ['fiscal_hash' => str_repeat('a', 64), 'fiscal_status' => FiscalStatus::Sealed],
+            ['fiscal_hash' => str_repeat('a', 64), 'fiscal_status' => FiscalStatus::Sealed, 'chain_sequence' => 1],
         ));
 
         $this->assertSame('', trim($html), 'a posted reprint must be byte-unchanged');
@@ -63,7 +67,7 @@ final class PostingMarkerPrintTest extends TestCase
     {
         $html = $this->renderMarker($this->invoice(
             DocumentStatus::Paid,
-            ['fiscal_hash' => str_repeat('b', 64), 'fiscal_status' => FiscalStatus::Sealed],
+            ['fiscal_hash' => str_repeat('b', 64), 'fiscal_status' => FiscalStatus::Sealed, 'chain_sequence' => 2],
         ));
 
         $this->assertSame('', trim($html));
@@ -76,7 +80,7 @@ final class PostingMarkerPrintTest extends TestCase
     {
         $html = $this->renderMarker($this->invoice(
             DocumentStatus::Cancelled,
-            ['fiscal_hash' => str_repeat('c', 64), 'fiscal_status' => FiscalStatus::Voided],
+            ['fiscal_hash' => str_repeat('c', 64), 'fiscal_status' => FiscalStatus::Voided, 'chain_sequence' => 3],
         ));
 
         $this->assertStringContainsString(__('documents.posting_marker.cancelled_title'), $html);
@@ -115,7 +119,21 @@ final class PostingMarkerPrintTest extends TestCase
      */
     private function invoice(DocumentStatus $status, array $overrides = []): Document
     {
-        return $this->dpConfirmedInvoice([$this->dpPhysicalLine()], array_merge(['status' => $status], $overrides));
+        // The SEAL columns are applied in a SECOND write, on purpose. The shared
+        // fixture builds the document, then adds lines, then re-totals it — and
+        // on PostgreSQL `trg_document_immutability` refuses that re-total once
+        // `fiscal_status` is SEALED/VOIDED. Sealing after the document is whole
+        // passes, because the trigger reads OLD.fiscal_status (still DRAFT).
+        $seal = array_intersect_key($overrides, array_flip(['fiscal_hash', 'fiscal_status', 'chain_sequence']));
+        $rest = array_diff_key($overrides, $seal);
+
+        $document = $this->dpConfirmedInvoice([$this->dpPhysicalLine()], array_merge(['status' => $status], $rest));
+
+        if ($seal !== []) {
+            $document->forceFill($seal)->save();
+        }
+
+        return $document->fresh();
     }
 
     private function renderMarker(Document $document): string
