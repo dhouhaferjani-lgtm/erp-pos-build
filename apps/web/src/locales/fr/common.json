@@ -584,19 +584,23 @@
     "types": {
       "accounting": {
         "title": "Comptabilité générale",
-        "description": "Importez les soldes des comptes (actifs, passifs, capitaux propres)"
+        "description": "Importez les soldes des comptes (actifs, passifs, capitaux propres)",
+        "uploadHelp": "Une ligne par compte du plan comptable, avec son solde d'ouverture au débit ou au crédit."
       },
       "inventory": {
         "title": "Stock initial",
-        "description": "Importez les quantités et coûts des produits par emplacement"
+        "description": "Importez les quantités et coûts des produits par emplacement",
+        "uploadHelp": "Une ligne par produit et emplacement, avec la quantité en stock et le coût unitaire."
       },
       "arOpenItems": {
         "title": "Créances clients",
-        "description": "Importez les factures clients impayées"
+        "description": "Importez les factures clients impayées",
+        "uploadHelp": "Une ligne par facture client impayée, avec son total et le montant restant dû."
       },
       "apOpenItems": {
         "title": "Dettes fournisseurs",
-        "description": "Importez les factures fournisseurs impayées"
+        "description": "Importez les factures fournisseurs impayées",
+        "uploadHelp": "Une ligne par facture fournisseur impayée, avec son total et le montant restant dû."
       }
     },
     "status": {
@@ -660,7 +664,8 @@
         "invalid": "Invalide",
         "skipped": "Ignorée",
         "noErrors": "Aucune erreur de validation trouvée",
-        "hasErrors": "Veuillez corriger les erreurs avant de continuer"
+        "hasErrors": "Veuillez corriger les erreurs avant de continuer",
+        "validateButton": "Valider les lignes"
       },
       "preview": {
         "title": "Aperçu des modifications",
@@ -739,7 +744,16 @@
       "lockSuccess": "Lot verrouillé avec succès",
       "error": "Une erreur est survenue",
       "deleteConfirm": "Êtes-vous sûr de vouloir supprimer ce lot ?",
-      "deleted": "Lot supprimé avec succès"
+      "deleted": "Lot supprimé avec succès",
+      "batchDeleted": "Lot supprimé",
+      "createError": "Le lot n'a pas pu être créé",
+      "deleteError": "Le lot n'a pas pu être supprimé",
+      "importError": "Le fichier n'a pas pu être importé",
+      "lockError": "Le lot n'a pas pu être verrouillé",
+      "postError": "Le lot n'a pas pu être comptabilisé",
+      "rowsImported": "{{count}} lignes importées",
+      "validationError": "La validation a échoué",
+      "validationHasErrors": "La validation a trouvé {{count}} lignes invalides"
     },
     "columns": {
       "accounting": {
@@ -770,6 +784,73 @@
         "currency": "Devise",
         "total": "Total",
         "openAmount": "Montant ouvert"
+      }
+    },
+    "preview": {
+      "entryDate": "Date d'écriture",
+      "cutoverDate": "Date de reprise",
+      "description": "Description",
+      "glEntry": "Écriture comptable",
+      "glEntryCreated": "Écriture comptable à créer",
+      "debit": "Débit",
+      "credit": "Crédit",
+      "total": "Total",
+      "accountCode": "Code compte",
+      "accountName": "Libellé du compte",
+      "debitCredit": "Débit {{debit}} / Crédit {{credit}} pour {{amount}}",
+      "products": "Produits",
+      "product": "Produit",
+      "sku": "Référence",
+      "location": "Emplacement",
+      "quantity": "Quantité",
+      "unitCost": "Coût unitaire",
+      "value": "Valeur",
+      "totalQuantity": "Quantité totale",
+      "totalValue": "Valeur totale",
+      "documents": "Documents",
+      "partner": "Partenaire",
+      "externalRef": "Référence externe",
+      "type": "Type",
+      "dueDate": "Date d'échéance",
+      "open": "Encours",
+      "openAmount": "Montant encours",
+      "totalAmount": "Montant total",
+      "moreRows": "+{{count}} lignes non affichées"
+    },
+    "upload": {
+      "expectedColumns": "Colonnes attendues",
+      "downloadTemplate": "Télécharger le modèle",
+      "dragDropText": "Déposez votre fichier CSV ici, ou cliquez pour parcourir",
+      "supportedFormats": "Fichiers CSV jusqu'à 10 Mo",
+      "rowsFound": "{{count}} lignes trouvées",
+      "moreRows": "+{{count}} lignes non affichées",
+      "uploadButton": "Importer {{count}} lignes",
+      "uploading": "Import en cours…",
+      "errors": {
+        "emptyFile": "Ce fichier ne contient aucune ligne de données.",
+        "missingColumns": "Colonnes obligatoires manquantes : {{columns}}",
+        "parseError": "Ce fichier n'a pas pu être lu. Vérifiez qu'il s'agit d'un CSV valide."
+      }
+    },
+    "validation": {
+      "allValid": "Toutes les lignes sont valides",
+      "hasErrors": "Certaines lignes doivent être corrigées",
+      "summary": "{{valid}} valides, {{invalid}} invalides sur {{total}} lignes",
+      "totalRows": "{{count}} lignes",
+      "valid": "valides",
+      "invalid": "invalides",
+      "pending": "en attente",
+      "showOnlyErrors": "Afficher uniquement les lignes en erreur",
+      "row": "Ligne",
+      "statusLabel": "Statut",
+      "data": "Données",
+      "noErrors": "Aucune erreur de validation",
+      "noRows": "Aucune ligne à afficher",
+      "status": {
+        "valid": "Valide",
+        "invalid": "Invalide",
+        "pending": "En attente",
+        "posted": "Comptabilisée"
       }
     }
   },

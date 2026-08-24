@@ -269,7 +269,12 @@ final class ImportService
     }
 
     /**
-     * Get valid rows for an import job
+     * Get valid rows still awaiting application for an import job.
+     *
+     * `is_imported = false` is part of the filter, not an afterthought: it makes
+     * every re-entry into the execution loop resume-shaped instead of
+     * replay-shaped. A row that already landed is never applied a second time,
+     * whatever the job's status column happens to say.
      *
      * @return Collection<int, ImportRow>
      */
@@ -277,6 +282,7 @@ final class ImportService
     {
         return $job->rows()
             ->where('is_valid', true)
+            ->where('is_imported', false)
             ->orderBy('row_number')
             ->get();
     }

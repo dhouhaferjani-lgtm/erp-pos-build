@@ -371,6 +371,8 @@ class InventoryOpeningService
         );
 
         return [
+            // N-3 discriminator — see AccountingOpeningService::getPostPreview().
+            'batch_type' => OpeningBatchType::Inventory->value,
             'batch' => [
                 'cutover_date' => $batch->cutover_date->toDateString(),
                 'description' => "Inventory Opening Balance - {$batch->name}",

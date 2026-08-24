@@ -9,6 +9,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\CountingExecutionMode;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
+use App\Modules\Inventory\Domain\Exceptions\CountingTransitionException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -226,14 +227,17 @@ class InventoryCounting extends Model
     /**
      * Transition to the given status.
      *
-     * @throws \InvalidArgumentException
+     * @throws CountingTransitionException when the edge does not exist. Typed
+     *                                     (and a `DomainException`) so a
+     *                                     refused transition renders as the
+     *                                     module's 422 BUSINESS_ERROR envelope
+     *                                     instead of the bare 500 the previous
+     *                                     `\InvalidArgumentException` produced.
      */
     public function transitionTo(CountingStatus $status): void
     {
         if (! $this->canTransitionTo($status)) {
-            throw new \InvalidArgumentException(
-                "Cannot transition from {$this->status->value} to {$status->value}"
-            );
+            throw new CountingTransitionException($this->id, $this->status, $status);
         }
 
         $this->status = $status;

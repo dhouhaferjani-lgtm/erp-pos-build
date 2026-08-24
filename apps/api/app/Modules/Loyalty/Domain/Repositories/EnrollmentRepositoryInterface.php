@@ -18,6 +18,31 @@ interface EnrollmentRepositoryInterface
     public function findById(string $id): ?Enrollment;
 
     /**
+     * Find enrollment by ID under a row lock (SELECT ... FOR UPDATE).
+     *
+     * MUST be called inside an open transaction. Every balance-mutating path
+     * reads through this, never through findById(): an unlocked read is what
+     * let two concurrent redemptions each compute their new balance from the
+     * same stale snapshot.
+     */
+    public function findByIdForUpdate(string $id): ?Enrollment;
+
+    /**
+     * Conditionally debit an enrollment for a redemption.
+     *
+     * Issues a single relative UPDATE — `SET current_balance = current_balance
+     * - :points ... WHERE id = :id AND current_balance >= :points` — so the
+     * committed row, not an in-memory model, is the authority on whether the
+     * points are there. Also advances lifetime_redeemed and last_transaction_at
+     * in the same statement.
+     *
+     * @param  numeric-string  $points  Positive redemption cost
+     * @return bool true when exactly one row was debited; false when the
+     *              committed balance did not cover the cost (caller refuses)
+     */
+    public function debitForRedemption(string $id, string $points, int $scale): bool;
+
+    /**
      * Find enrollment by member and program
      */
     public function findByMemberAndProgram(string $memberId, string $programId): ?Enrollment;
