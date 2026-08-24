@@ -68,3 +68,15 @@ Legend: 🟢 automated in wave 4 (verify only) · 🟠 manual.
 Supplier balance = opening + invoices − payments − credits. Customer balance = opening + account sales − payments − refunds. Drawer =
 float + cash sales − cash refunds − expenses − remittance. Safe = opening + remittances − supplier cash payments − deposits. Each of these
 must be readable on ONE screen per entity and equal the GL sub-ledger. Record any screen where the number shown ≠ the computed one.
+
+## 7. Inventory counting WITH sales running (owner addition, 2026-08-24)
+| # | Step | Expect | Lands |
+|---|---|---|---|
+| 7.1 🟢 | Start a count (cycle or full) on branch A while the shift is OPEN | count opens; expected qty snapshot semantics visible (frozen at start vs live) | — |
+| 7.2 🟠 | While the count is open: sell one counted product at the POS; refund another | sale/refund go through normally | stock ↓/↑ branch A |
+| 7.3 🟠 | Enter counted quantities: one exact, one short, one over (incl. per-lot for a batch-tracked product) | variance list per product/lot | — |
+| 7.4 🟢 | Submit → third count if variance → finalize; then try finalize AGAIN and cancel-after-finalize | typed 422 `COUNTING_TRANSITION_REFUSED` on both | — |
+| 7.5 🟢 | Adjustments = counted − expected with the in-count sale/refund counted EXACTLY once | no double decrement, no lost sale | one `stock_movements` row per adjustment; GL Dr/Cr 6xx / 37 |
+| 7.6 🟢 | Branch B stock untouched; `stock_levels.reserved` untouched | — | — |
+| 7.7 🟠 | Count report per branch (printable) | matches 7.5 | — |
+| 7.8 🟠 | Batch-tracked product: what the count shows for the DEFAULT lot (W2-7 known) | note it | — |
