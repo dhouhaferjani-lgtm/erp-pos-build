@@ -4,6 +4,8 @@ export type VatDirection = 'OUTPUT' | 'INPUT'
 
 export interface VatPeriod {
   id: string
+  /** ISO country code the declaration is filed under — drives the special-items panel. */
+  country_code: string
   label: string
   period_type: VatPeriodType
   period_start: string
@@ -60,8 +62,15 @@ export interface VatReportSummary {
   credit_brought_forward: string
   credit_carried_forward: string
   amount_payable: string
-  special_items: Record<string, unknown>
-  declaration: Record<string, unknown>
+  special_items: Record<string, string | number | null>
+  /**
+   * `VatDeclarationData::toArray()` — a form reference and the country's field
+   * block. It carries NO country code: read that from the period.
+   */
+  declaration: {
+    form_reference: string
+    fields: Record<string, string>
+  }
 }
 
 export interface VatExportFormat {

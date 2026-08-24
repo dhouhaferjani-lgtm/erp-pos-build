@@ -4,6 +4,7 @@ import type { VatPeriod } from '../types'
 function makePeriod(overrides: Partial<VatPeriod>): VatPeriod {
   return {
     id: overrides.id ?? 'period-1',
+    country_code: overrides.country_code ?? 'TN',
     label: overrides.label ?? 'Period',
     period_type: overrides.period_type ?? 'MONTHLY',
     period_start: overrides.period_start ?? '2026-01-01',

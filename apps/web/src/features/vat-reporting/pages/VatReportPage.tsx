@@ -102,7 +102,7 @@ export function VatReportPage() {
           {/* Special Items */}
           <VatSpecialItems
             specialItems={report.special_items}
-            countryCode={typeof report.declaration['country_code'] === 'string' ? report.declaration['country_code'] : ''}
+            countryCode={period.country_code}
           />
 
           {/* Bottom summary */}

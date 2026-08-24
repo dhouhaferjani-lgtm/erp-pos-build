@@ -53,13 +53,24 @@ const summaryFixture: VatReportSummary = {
   credit_brought_forward: '0.000',
   credit_carried_forward: '0.000',
   amount_payable: '7296.000',
-  special_items: {},
-  declaration: { country_code: 'TN' },
+  // captured live 2026-08-24 from the campaign tenant: `declaration` carries
+  // form_reference + fields, and NO country_code — the page used to read
+  // `declaration['country_code']` and always got undefined
+  special_items: {
+    stamp_duty_count: 2,
+    stamp_duty_total: '2.000',
+    retenue_source_total: '0.000',
+  },
+  declaration: {
+    form_reference: 'DGI',
+    fields: { total_output_vat: '7296.000', total_deductible_vat: '0.000' },
+  },
 }
 
 /** The REAL payload of `GET /vat/periods/{id}` (VatPeriodData::toArray()). */
 const periodFixture: VatPeriod = {
   id: 'period-1',
+  country_code: 'TN',
   label: 'Janvier 2026',
   period_type: 'MONTHLY',
   period_start: '2026-01-01',
@@ -118,5 +129,18 @@ describe('VatReportPage', () => {
 
     expect(await screen.findByText('Janvier 2026')).toBeInTheDocument()
     expect(screen.getAllByText(/19/).length).toBeGreaterThan(0)
+  })
+
+  // The special-items panel keys on a country code the page took from
+  // `report.declaration['country_code']` — a key the declaration payload has
+  // never carried, so `countryItemConfigs['']` was undefined and the TN stamp
+  // duty / retenue-a-la-source block never rendered for any tenant. The country
+  // code lives on the period.
+  it('renders the TN special items panel using the period country code', async () => {
+    renderWithProviders(<VatReportPage />, { route: '/finance/vat-reports/period-1' })
+
+    expect(await screen.findByText('Janvier 2026')).toBeInTheDocument()
+    expect(screen.getByText('Special Items')).toBeInTheDocument()
+    expect(screen.getByText('Timbre Fiscal Count')).toBeInTheDocument()
   })
 })
