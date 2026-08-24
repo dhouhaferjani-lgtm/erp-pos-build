@@ -15,16 +15,30 @@ use Illuminate\Database\ConnectionInterface;
  * `pos_terminals_code_format`, length and range checks — is deliberately NOT a
  * value-set constraint and is ignored: those express invariants BETWEEN columns
  * or on a column's shape, not its admissible enumeration, and folding them in
- * would make the parity comparison meaningless.
+ * would make the parity comparison meaningless. A cross-column constraint that
+ * nevertheless PINS a column's value set (`pos_receipts_return_logic`) is not
+ * parsed here either — it is acknowledged explicitly, see
+ * `EnumCheckParityAcknowledgements` (verdict `COVERED_BY_COMPOSITE`).
  *
  * The recognised shapes, as PostgreSQL renders them in
- * `pg_get_constraintdef()` (all four are live in this schema):
+ * `pg_get_constraintdef()` (all of them are live in this schema):
  *
  *   CHECK (((status)::text = ANY ((ARRAY['a'::character varying, 'b'::character varying])::text[])))
  *   CHECK (((col IS NULL) OR ((col)::text = ANY ((ARRAY[…])::text[]))))
  *   CHECK ((col)::text = ANY (ARRAY['a'::text]))
  *   CHECK ((col = ANY (ARRAY[1, 2, 3])))          -- integer-backed enums
  *   CHECK (((col)::text = 'a'::text))             -- degenerate single-value set
+ *   CHECK (((col)::text = 'a'::text) OR ((col)::text = 'b'::text))
+ *                                                 -- OR-chain of equalities (F-5)
+ *   … any of the above with a trailing ` NOT VALID` (F-2)
+ *
+ * `NOT VALID` MATTERS AND IS NOT COSMETIC. The slice-D burn-down batches are
+ * mandated to add every CHECK as `NOT VALID` first and `VALIDATE CONSTRAINT` in a
+ * second step. PostgreSQL enforces a `NOT VALID` CHECK on every NEW write from the
+ * moment it lands — only pre-existing rows are exempt — so a parser that returns
+ * null for that shape is blind exactly while a freshly added (and possibly WRONG)
+ * CHECK is already rejecting production writes. The suffix is therefore stripped
+ * and reported as a distinct `not_validated` flag, never as absence.
  *
  * The parser is a PURE static function so its liveness can be pinned on
  * synthetic definitions without a database (conv. 08): a reader that silently
@@ -33,20 +47,31 @@ use Illuminate\Database\ConnectionInterface;
 final class PgValueSetCheckReader
 {
     /**
-     * table => column => array{accepted: list<string>, constraints: list<string>, nullable: bool}
+     * table => column => array{accepted: list<string>, constraints: list<string>, nullable: bool, not_validated: bool}
      *
      * When a column carries MORE THAN ONE value-set CHECK the effective admissible
      * set is their INTERSECTION — every constraint must hold — so that is what is
      * reported, together with every contributing constraint name.
      *
-     * @return array<string, array<string, array{accepted: list<string>, constraints: list<string>, nullable: bool}>>
+     * `not_validated` is true when ANY contributing constraint is `NOT VALID`:
+     * the column's guarantee over EXISTING rows is only as strong as its weakest
+     * constraint.
+     *
+     * @return array<string, array<string, array{accepted: list<string>, constraints: list<string>, nullable: bool, not_validated: bool}>>
      */
     public function read(ConnectionInterface $connection): array
     {
+        // `convalidated` is selected explicitly rather than inferred only from the
+        // rendered text: the catalogue column is the authoritative statement of
+        // whether the constraint was validated against existing rows, and reading
+        // it means a rendering change cannot turn a NOT VALID CHECK into a
+        // silently-validated-looking one. There is deliberately NO filter on it —
+        // an unvalidated CHECK is still enforced on every new write.
         $rows = $connection->select(
             <<<'SQL'
             SELECT rel.relname AS table_name,
                    con.conname AS constraint_name,
+                   con.convalidated AS validated,
                    pg_get_constraintdef(con.oid) AS definition
               FROM pg_constraint con
               JOIN pg_class rel ON rel.oid = con.conrelid
@@ -59,7 +84,7 @@ final class PgValueSetCheckReader
 
         $out = [];
         foreach ($rows as $row) {
-            /** @var object{table_name: string, constraint_name: string, definition: string} $row */
+            /** @var object{table_name: string, constraint_name: string, validated: bool, definition: string} $row */
             $parsed = self::parseValueSet($row->definition);
             if ($parsed === null) {
                 continue;
@@ -67,12 +92,14 @@ final class PgValueSetCheckReader
 
             $table = $row->table_name;
             $column = $parsed['column'];
+            $notValidated = $parsed['not_validated'] || ! (bool) $row->validated;
 
             if (! isset($out[$table][$column])) {
                 $out[$table][$column] = [
                     'accepted' => $parsed['values'],
                     'constraints' => [$row->constraint_name],
                     'nullable' => $parsed['nullable'],
+                    'not_validated' => $notValidated,
                 ];
 
                 continue;
@@ -86,6 +113,7 @@ final class PgValueSetCheckReader
                 'accepted' => $intersection,
                 'constraints' => [...$existing['constraints'], $row->constraint_name],
                 'nullable' => $existing['nullable'] && $parsed['nullable'],
+                'not_validated' => $existing['not_validated'] || $notValidated,
             ];
         }
 
@@ -95,21 +123,23 @@ final class PgValueSetCheckReader
     /**
      * PURE. Returns null when the definition is not a single-column value-set CHECK.
      *
-     * @return array{column: string, values: list<string>, nullable: bool}|null
+     * @return array{column: string, values: list<string>, nullable: bool, not_validated: bool}|null
      */
     public static function parseValueSet(string $definition): ?array
     {
-        // 1. Drop every explicit cast — `::text`, `::character varying`,
-        //    `::character varying[]`, `::bpchar` — they carry no information
-        //    about the admissible set.
-        $normalised = (string) preg_replace('/::[a-z][a-z ]*(\[\])?/', '', $definition);
+        $flat = self::flatten($definition);
 
-        // 2. Parentheses in a rendered constraintdef are pure noise for these
-        //    shapes (PostgreSQL over-parenthesises), so flatten them and collapse
-        //    whitespace. Literals are extracted from the ORIGINAL bracket body
-        //    below, so this cannot corrupt a value containing a parenthesis.
-        $flat = str_replace(['(', ')'], ' ', $normalised);
-        $flat = trim((string) preg_replace('/\s+/', ' ', $flat));
+        // `… ) NOT VALID` is a validation-state suffix, not part of the predicate.
+        // Stripped BEFORE matching (every shape regex anchors on end-of-string) and
+        // reported as a flag. The pattern requires the suffix to be unquoted, so a
+        // constraint whose last literal is the string 'NOT VALID' — which flattens
+        // to a trailing apostrophe — is not mistaken for one.
+        $notValidated = false;
+        $stripped = (string) preg_replace('/\s+NOT VALID$/', '', $flat, 1, $count);
+        if ($count === 1) {
+            $notValidated = true;
+            $flat = $stripped;
+        }
 
         // ARRAY form, with an optional `col IS NULL OR` prefix.
         if (preg_match('/^CHECK (?:(\w+) IS NULL OR )?(\w+) = ANY ARRAY\[(.*)\]\s*$/', $flat, $m) === 1) {
@@ -123,6 +153,7 @@ final class PgValueSetCheckReader
                 'column' => $column,
                 'values' => self::literals($m[3]),
                 'nullable' => $nullGuard !== null,
+                'not_validated' => $notValidated,
             ];
         }
 
@@ -132,24 +163,176 @@ final class PgValueSetCheckReader
                 return null;
             }
 
-            return ['column' => $m[1], 'values' => self::literals($m[2]), 'nullable' => true];
-        }
-
-        // Degenerate single-value form.
-        if (preg_match('/^CHECK (?:(\w+) IS NULL OR )?(\w+) = \'((?:[^\']|\'\')*)\'\s*$/', $flat, $m) === 1) {
-            $nullGuard = $m[1] === '' ? null : $m[1];
-            if ($nullGuard !== null && $nullGuard !== $m[2]) {
-                return null;
-            }
-
             return [
-                'column' => $m[2],
-                'values' => [str_replace("''", "'", $m[3])],
-                'nullable' => $nullGuard !== null,
+                'column' => $m[1],
+                'values' => self::literals($m[2]),
+                'nullable' => true,
+                'not_validated' => $notValidated,
             ];
         }
 
-        return null;
+        // OR-chain of single-column equalities, with an optional `IS NULL` branch
+        // anywhere in the chain. This subsumes the degenerate single-value form
+        // (`CHECK ((kind)::text = 'only'::text)`), which is a one-element chain.
+        //
+        // Every branch must be either `col = 'literal'` or `col IS NULL` for the
+        // SAME column. A branch carrying an AND clause (`pos_receipts_return_logic`)
+        // or naming a second column is a cross-column invariant, not a value set,
+        // and yields null — which reads as MISSING, i.e. the safe direction.
+        return self::parseOrChain($flat, $notValidated);
+    }
+
+    /**
+     * @return array{column: string, values: list<string>, nullable: bool, not_validated: bool}|null
+     */
+    private static function parseOrChain(string $flat, bool $notValidated): ?array
+    {
+        if (! str_starts_with($flat, 'CHECK ')) {
+            return null;
+        }
+
+        $column = null;
+        $values = [];
+        $nullable = false;
+
+        foreach (explode(' OR ', substr($flat, 6)) as $branch) {
+            $branch = trim($branch);
+
+            if (preg_match('/^(\w+) IS NULL$/', $branch, $m) === 1) {
+                if ($column !== null && $m[1] !== $column) {
+                    return null;
+                }
+                $column ??= $m[1];
+                $nullable = true;
+
+                continue;
+            }
+
+            if (preg_match('/^(\w+) = \'((?:[^\']|\'\')*)\'$/', $branch, $m) === 1) {
+                if ($column !== null && $m[1] !== $column) {
+                    return null;
+                }
+                $column = $m[1];
+                $values[] = str_replace("''", "'", $m[2]);
+
+                continue;
+            }
+
+            return null;
+        }
+
+        if ($column === null || $values === []) {
+            return null;
+        }
+
+        $values = array_values(array_unique($values));
+        sort($values, SORT_STRING);
+
+        return ['column' => $column, 'values' => $values, 'nullable' => $nullable, 'not_validated' => $notValidated];
+    }
+
+    /**
+     * QUOTE-AWARE normalisation.
+     *
+     * Outside single-quoted literals: explicit casts (`::text`,
+     * `::character varying[]`, `::bpchar`) are dropped, PostgreSQL's
+     * over-parenthesisation is flattened to whitespace, and whitespace runs are
+     * collapsed. INSIDE a literal nothing is touched — the previous
+     * implementation flattened parens across the whole string and then extracted
+     * literals from the flattened body, so `'a(b)'` was silently read as `a b `
+     * (a corrupted accepted-set, i.e. a false COVERED / false DIVERGENT vector).
+     */
+    private static function flatten(string $definition): string
+    {
+        $out = '';
+        $pendingSpace = false;
+        $length = strlen($definition);
+
+        for ($i = 0; $i < $length;) {
+            $char = $definition[$i];
+
+            if ($char === "'") {
+                if ($pendingSpace) {
+                    $out .= ' ';
+                    $pendingSpace = false;
+                }
+                [$literal, $i] = self::consumeLiteral($definition, $i);
+                $out .= $literal;
+
+                continue;
+            }
+
+            if ($char === ':' && ($definition[$i + 1] ?? '') === ':') {
+                $consumed = self::consumeCast($definition, $i);
+                if ($consumed !== null) {
+                    $i = $consumed;
+
+                    continue;
+                }
+            }
+
+            if ($char === '(' || $char === ')' || ctype_space($char)) {
+                $pendingSpace = $out !== '';
+                $i++;
+
+                continue;
+            }
+
+            if ($pendingSpace) {
+                $out .= ' ';
+                $pendingSpace = false;
+            }
+            $out .= $char;
+            $i++;
+        }
+
+        return trim($out);
+    }
+
+    /**
+     * Copies a single-quoted literal verbatim, `''` escapes included.
+     *
+     * @return array{0: string, 1: int} the literal (quotes included) and the offset just past it
+     */
+    private static function consumeLiteral(string $definition, int $offset): array
+    {
+        $literal = "'";
+        $i = $offset + 1;
+        $length = strlen($definition);
+
+        while ($i < $length) {
+            if ($definition[$i] === "'") {
+                if (($definition[$i + 1] ?? '') === "'") {
+                    $literal .= "''";
+                    $i += 2;
+
+                    continue;
+                }
+                $literal .= "'";
+                $i++;
+                break;
+            }
+            $literal .= $definition[$i];
+            $i++;
+        }
+
+        return [$literal, $i];
+    }
+
+    /**
+     * `::` followed by a lowercase type name (which may contain spaces, as in
+     * `character varying`) and an optional `[]`. Mirrors the previous
+     * `/::[a-z][a-z ]*(\[\])?/` exactly, but only ever applied outside literals.
+     *
+     * @return int|null the offset just past the cast, or null when this `::` does not start one
+     */
+    private static function consumeCast(string $definition, int $offset): ?int
+    {
+        if (preg_match('/\G::[a-z][a-z ]*(\[\])?/', $definition, $m, 0, $offset) !== 1) {
+            return null;
+        }
+
+        return $offset + strlen($m[0]);
     }
 
     /**

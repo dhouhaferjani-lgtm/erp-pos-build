@@ -1,0 +1,35 @@
+[
+    {
+        "key": "fiscal_event_quarantine.integrity_exception_class::NARROWER",
+        "kind": "INTENDED_NARROWER",
+        "table": "fiscal_event_quarantine",
+        "column": "integrity_exception_class",
+        "enum": "App\\Modules\\Fiscal\\Domain\\Enums\\IntegrityExceptionClass",
+        "constraints": ["fiscal_event_quarantine_class_phase1_allowed"],
+        "intended_set": ["malformed_envelope", "sequence_conflict"],
+        "enum_cases_at_acknowledgement": [
+            "canonical_hash_mismatch",
+            "canonical_parse_failure",
+            "malformed_envelope",
+            "sequence_conflict",
+            "sequence_gap",
+            "time_anomaly"
+        ],
+        "predicate": {
+            "method": "isAdmissibleToLedger",
+            "expects": false,
+            "ref": "app/Modules/Fiscal/Domain/Enums/IntegrityExceptionClass.php:26-29"
+        },
+        "reason": "fiscal_event_quarantine is the NON-ledger-admissible half of a partition. IntegrityExceptionClass::isAdmissibleToLedger() returns false for exactly sequence_conflict and malformed_envelope, and those are exactly the two values the only INSERT path (OutboxIngestor::insertQuarantineRow(), app/Modules/Fiscal/Application/Services/OutboxIngestor.php:925, callers :359 and :1154) can write. The other four classes are quarantined IN-TABLE on fiscal_events.integrity_exception_class, a different table and a different column. WIDENING THIS CHECK DESTROYS THE PARTITION: it would let a sequence_gap or a canonical_hash_mismatch be written into the non-admissible quarantine table. This row is NOT burn-down debt and must never be 'closed' by adding the other four values."
+    },
+    {
+        "key": "pos_receipts.receipt_type::MISSING",
+        "kind": "COVERED_BY_COMPOSITE",
+        "table": "pos_receipts",
+        "column": "receipt_type",
+        "enum": "App\\Modules\\POS\\Domain\\Enums\\ReceiptType",
+        "constraint": "pos_receipts_return_logic",
+        "pinned_set": ["return", "sale"],
+        "reason": "pos_receipts_return_logic is a CROSS-COLUMN invariant (receipt_type = 'sale' OR (receipt_type = 'return' AND original_receipt_id IS NOT NULL AND return_reason IS NOT NULL)), so PgValueSetCheckReader correctly refuses to parse it as a value set. It nevertheless pins receipt_type to exactly {sale, return}, which is exactly ReceiptType's cases, so the column is NOT an open gap: filing it MISSING overstates the burn-down. The real exposure is the other direction and it is pinned here: the day ReceiptType gains a third case, this constraint becomes a live NARROWER write bomb on a fiscal table while the MISSING key stays baselined and green. The acknowledgement asserts the constraint still exists and still names every enum case, so that day fails the gate instead. The fix then is an explicit pos_receipts_receipt_type_check value-set CHECK plus deletion of this entry."
+    }
+]

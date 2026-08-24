@@ -24,7 +24,13 @@ final class EnumCheckParityAnalyzer
     /** The CHECK admits values the enum cannot hydrate — a latent READ bomb. */
     public const VERDICT_WIDER = 'WIDER';
 
-    /** The CHECK rejects values the enum can produce — a latent WRITE bomb. */
+    /**
+     * The CHECK rejects values the enum can produce — a latent WRITE bomb, UNLESS
+     * the column is one side of a deliberate partition, in which case it is
+     * declared in `EnumCheckParityAcknowledgements` and rendered
+     * `INTENDED_NARROWER`. Read that file before "closing" any NARROWER row:
+     * widening the CHECK is the wrong fix for a partition gate.
+     */
     public const VERDICT_NARROWER = 'NARROWER';
 
     /** The two sets overlap but neither contains the other. */
@@ -34,12 +40,43 @@ final class EnumCheckParityAnalyzer
     public const VERDICT_ABSENT = 'ABSENT';
 
     /**
-     * @param  list<array{table: string, column: string, enum: class-string, cases: list<string>, backing: string, origin: string, model: string|null, scope: string}>  $columns
-     * @param  array<string, array<string, array{accepted: list<string>, constraints: list<string>, nullable: bool}>>  $checks
-     * @param  array<string, list<string>>  $schemaColumns  table => list of column names present in the live schema
-     * @return list<array{key: string, table: string, column: string, enum: class-string, verdict: string, enum_cases: list<string>, accepted: list<string>|null, constraints: list<string>, extra: list<string>, absent_from_check: list<string>, origin: string}>
+     * A DELIBERATELY narrower CHECK — one side of a partition, acknowledged in
+     * `EnumCheckParityAcknowledgements` and asserted clause-by-clause there. NOT
+     * burn-down debt: "closing" it by widening the CHECK breaks the partition.
      */
-    public function analyze(array $columns, array $checks, array $schemaColumns): array
+    public const VERDICT_INTENDED_NARROWER = 'INTENDED_NARROWER';
+
+    /**
+     * No parseable value-set CHECK, but a CROSS-COLUMN constraint pins the column
+     * to exactly its enum's cases — acknowledged and asserted. NOT an open gap.
+     */
+    public const VERDICT_COVERED_BY_COMPOSITE = 'COVERED_BY_COMPOSITE';
+
+    /**
+     * The verdicts that are NOT failures. Every other verdict is carried in the
+     * baseline or fails the ratchet.
+     *
+     * @var list<string>
+     */
+    public const PASSING_VERDICTS = [
+        self::VERDICT_COVERED,
+        self::VERDICT_INTENDED_NARROWER,
+        self::VERDICT_COVERED_BY_COMPOSITE,
+    ];
+
+    /**
+     * @param  list<array{table: string, column: string, enum: class-string, cases: list<string>, backing: string, origin: string, model: string|null, scope: string}>  $columns
+     * @param  array<string, array<string, array{accepted: list<string>, constraints: list<string>, nullable: bool, not_validated: bool}>>  $checks
+     * @param  array<string, list<string>>  $schemaColumns  table => list of column names present in the live schema
+     * @param  array<string, string>  $acknowledgements  RAW verdict key => the verdict it is rendered as.
+     *                                                   See `EnumCheckParityAcknowledgements::verdictMap()`. Keying on
+     *                                                   the RAW verdict is what stops an acknowledgement from covering
+     *                                                   anything but the exact situation it was written for: change the
+     *                                                   CHECK and the key stops matching, so the column falls straight
+     *                                                   back into the ratchet.
+     * @return list<array{key: string, table: string, column: string, enum: class-string, verdict: string, enum_cases: list<string>, accepted: list<string>|null, constraints: list<string>, extra: list<string>, absent_from_check: list<string>, origin: string, nullable: bool, not_validated: bool, acknowledged_as: string|null}>
+     */
+    public function analyze(array $columns, array $checks, array $schemaColumns, array $acknowledgements = []): array
     {
         $findings = [];
 
@@ -52,14 +89,14 @@ final class EnumCheckParityAnalyzer
             $present = isset($schemaColumns[$table]) && in_array($column, $schemaColumns[$table], true);
 
             if (! $present) {
-                $findings[] = $this->finding($entry, self::VERDICT_ABSENT, $enumCases, null, [], [], []);
+                $findings[] = $this->finding($entry, self::VERDICT_ABSENT, $enumCases, null, [], [], [], false, false, $acknowledgements);
 
                 continue;
             }
 
             $check = $checks[$table][$column] ?? null;
             if ($check === null) {
-                $findings[] = $this->finding($entry, self::VERDICT_MISSING, $enumCases, null, [], [], []);
+                $findings[] = $this->finding($entry, self::VERDICT_MISSING, $enumCases, null, [], [], [], false, false, $acknowledgements);
 
                 continue;
             }
@@ -77,7 +114,18 @@ final class EnumCheckParityAnalyzer
                 default => self::VERDICT_DIVERGENT,
             };
 
-            $findings[] = $this->finding($entry, $verdict, $enumCases, $accepted, $check['constraints'], $extra, $unreachable);
+            $findings[] = $this->finding(
+                $entry,
+                $verdict,
+                $enumCases,
+                $accepted,
+                $check['constraints'],
+                $extra,
+                $unreachable,
+                $check['nullable'] ?? false,
+                $check['not_validated'] ?? false,
+                $acknowledgements,
+            );
         }
 
         usort($findings, static fn (array $a, array $b): int => strcmp($a['key'], $b['key']));
@@ -90,14 +138,14 @@ final class EnumCheckParityAnalyzer
      * a baselined MISSING column that later grows a WRONG (wider / narrower)
      * CHECK produces a key the baseline does not contain and fails.
      *
-     * @param  list<array{key: string, table: string, column: string, enum: class-string, verdict: string, enum_cases: list<string>, accepted: list<string>|null, constraints: list<string>, extra: list<string>, absent_from_check: list<string>, origin: string}>  $findings
-     * @return list<array{key: string, table: string, column: string, enum: class-string, verdict: string, enum_cases: list<string>, accepted: list<string>|null, constraints: list<string>, extra: list<string>, absent_from_check: list<string>, origin: string}>
+     * @param  list<array{key: string, table: string, column: string, enum: class-string, verdict: string, enum_cases: list<string>, accepted: list<string>|null, constraints: list<string>, extra: list<string>, absent_from_check: list<string>, origin: string, nullable: bool, not_validated: bool, acknowledged_as: string|null}>  $findings
+     * @return list<array{key: string, table: string, column: string, enum: class-string, verdict: string, enum_cases: list<string>, accepted: list<string>|null, constraints: list<string>, extra: list<string>, absent_from_check: list<string>, origin: string, nullable: bool, not_validated: bool, acknowledged_as: string|null}>
      */
     public function failures(array $findings): array
     {
         return array_values(array_filter(
             $findings,
-            static fn (array $f): bool => $f['verdict'] !== self::VERDICT_COVERED,
+            static fn (array $f): bool => ! in_array($f['verdict'], self::PASSING_VERDICTS, true),
         ));
     }
 
@@ -109,7 +157,7 @@ final class EnumCheckParityAnalyzer
      *          column/verdict changed): the entry must be REMOVED, because a
      *          baseline that never shrinks is a permanent waiver.
      *
-     * @param  list<array{key: string, table: string, column: string, enum: class-string, verdict: string, enum_cases: list<string>, accepted: list<string>|null, constraints: list<string>, extra: list<string>, absent_from_check: list<string>, origin: string}>  $findings
+     * @param  list<array{key: string, table: string, column: string, enum: class-string, verdict: string, enum_cases: list<string>, accepted: list<string>|null, constraints: list<string>, extra: list<string>, absent_from_check: list<string>, origin: string, nullable: bool, not_validated: bool, acknowledged_as: string|null}>  $findings
      * @param  list<string>  $baseline
      * @return array{new: list<array<string, mixed>>, stale: list<string>}
      */
@@ -145,10 +193,27 @@ final class EnumCheckParityAnalyzer
      * @param  list<string>  $constraints
      * @param  list<string>  $extra
      * @param  list<string>  $unreachable
-     * @return array{key: string, table: string, column: string, enum: class-string, verdict: string, enum_cases: list<string>, accepted: list<string>|null, constraints: list<string>, extra: list<string>, absent_from_check: list<string>, origin: string}
+     * @param  array<string, string>  $acknowledgements
+     * @return array{key: string, table: string, column: string, enum: class-string, verdict: string, enum_cases: list<string>, accepted: list<string>|null, constraints: list<string>, extra: list<string>, absent_from_check: list<string>, origin: string, nullable: bool, not_validated: bool, acknowledged_as: string|null}
      */
-    private function finding(array $entry, string $verdict, array $enumCases, ?array $accepted, array $constraints, array $extra, array $unreachable): array
-    {
+    private function finding(
+        array $entry,
+        string $verdict,
+        array $enumCases,
+        ?array $accepted,
+        array $constraints,
+        array $extra,
+        array $unreachable,
+        bool $nullable,
+        bool $notValidated,
+        array $acknowledgements,
+    ): array {
+        $rawKey = $entry['table'].'.'.$entry['column'].'::'.$verdict;
+        $acknowledgedAs = $acknowledgements[$rawKey] ?? null;
+        if ($acknowledgedAs !== null) {
+            $verdict = $acknowledgedAs;
+        }
+
         return [
             'key' => $entry['table'].'.'.$entry['column'].'::'.$verdict,
             'table' => $entry['table'],
@@ -161,6 +226,9 @@ final class EnumCheckParityAnalyzer
             'extra' => $extra,
             'absent_from_check' => $unreachable,
             'origin' => $entry['origin'],
+            'nullable' => $nullable,
+            'not_validated' => $notValidated,
+            'acknowledged_as' => $acknowledgedAs,
         ];
     }
 }
