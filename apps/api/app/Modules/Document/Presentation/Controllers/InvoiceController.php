@@ -33,6 +33,7 @@ use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\InventoryGlPostingBuffer;
+use App\Modules\Inventory\Domain\Exceptions\InsufficientStockForFulfilmentException;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
@@ -839,6 +840,17 @@ class InvoiceController extends Controller
 
                 return $response;
             });
+        } catch (InsufficientStockForFulfilmentException $e) {
+            // Campaign N-2: a stock shortfall — including a tuple with NO
+            // `stock_levels` row at all — is a 422 refusal with its own machine
+            // code, never the raw 404 `ModelNotFoundException` used to produce on
+            // this endpoint. Caught BEFORE the broader handlers below.
+            return $this->validationErrorResponse(
+                InsufficientStockForFulfilmentException::ERROR_CODE,
+                // Gate r1 I-3: the OPERATOR reads this in the tenant's locale
+                // (house rule 11). `$e->getMessage()` stays the English log text.
+                __(InsufficientStockForFulfilmentException::TRANSLATION_KEY, $e->translationReplacements()),
+            );
         } catch (\DomainException $e) {
             return $this->validationErrorResponse('OPERATION_FAILED', $e->getMessage());
         }
@@ -1043,6 +1055,17 @@ class InvoiceController extends Controller
                     ],
                 ]);
             });
+        } catch (InsufficientStockForFulfilmentException $e) {
+            // Campaign N-2: a stock shortfall — including a tuple with NO
+            // `stock_levels` row at all — is a 422 refusal with its own machine
+            // code, never the raw 404 `ModelNotFoundException` used to produce on
+            // this endpoint. Caught BEFORE the broader handlers below.
+            return $this->validationErrorResponse(
+                InsufficientStockForFulfilmentException::ERROR_CODE,
+                // Gate r1 I-3: the OPERATOR reads this in the tenant's locale
+                // (house rule 11). `$e->getMessage()` stays the English log text.
+                __(InsufficientStockForFulfilmentException::TRANSLATION_KEY, $e->translationReplacements()),
+            );
         } catch (GuidedDeliveryCannotBeGeneratedException $e) {
             $message = $e->reason === 'FEFO_ALLOCATION_FAILED_CONFIRM_MANUALLY_WITH_BATCH'
                 ? __('documents.guided_delivery.fefo_allocation_failed')
