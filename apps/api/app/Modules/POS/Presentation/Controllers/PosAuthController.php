@@ -30,6 +30,32 @@ final class PosAuthController extends Controller
     ) {}
 
     /**
+     * The single definition of "an operator PIN this terminal may act on".
+     *
+     * Three surfaces answer questions about POS PINs — `verifyPin` (online
+     * operator switch), `pinData` (offline mirror) and `hasPins` (device
+     * bootstrap) — and they MUST admit exactly the same population, or the
+     * device is told a PIN exists that no surface will ever accept. The
+     * population is: the caller's tenant, ACTIVE membership of the
+     * CompanyContext company, ACTIVE user account (the offboarding belt), and
+     * a PIN actually set.
+     *
+     * @return \Illuminate\Database\Eloquent\Builder<User>
+     */
+    private function pinHolders(string $tenantId, string $companyId): \Illuminate\Database\Eloquent\Builder
+    {
+        $companyUserIds = UserCompanyMembership::query()
+            ->where('company_id', $companyId)
+            ->where('status', MembershipStatus::Active->value)
+            ->pluck('user_id');
+
+        return User::where('tenant_id', $tenantId)
+            ->where('status', UserStatus::Active->value)
+            ->whereIn('id', $companyUserIds)
+            ->whereNotNull('pos_pin');
+    }
+
+    /**
      * Verify a POS PIN and return the matching operator.
      *
      * POST /api/v1/pos/auth/verify-pin
@@ -57,16 +83,7 @@ final class PosAuthController extends Controller
         // identity, roles and permissions to the terminal.
         $company = $this->companyContext->requireCompany();
 
-        $companyUserIds = UserCompanyMembership::query()
-            ->where('company_id', $company->id)
-            ->where('status', MembershipStatus::Active->value)
-            ->pluck('user_id');
-
-        $users = User::where('tenant_id', $currentUser->tenant_id)
-            ->where('status', UserStatus::Active->value)
-            ->whereIn('id', $companyUserIds)
-            ->whereNotNull('pos_pin')
-            ->get();
+        $users = $this->pinHolders($currentUser->tenant_id, $company->id)->get();
 
         foreach ($users as $user) {
             if ($user->pos_pin !== null && Hash::check($pin, $user->pos_pin)) {
