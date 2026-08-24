@@ -7,6 +7,8 @@ namespace Tests\Feature\Treasury;
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\Accounting\Domain\Services\PosReceiptVatAllocator;
+use App\Shared\Domain\CurrencyScale;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
@@ -402,10 +404,20 @@ final class PosBridgeInstrumentTest extends TestCase
             'reference' => "POS Receipt {$receipt->receipt_number} - Payment 1",
             'notes' => 'pre-cutover fixture',
         ]);
+        // W4-9 — the prior-write fixture must produce the SAME entry shape the
+        // bridge produces today (net revenue + output VAT per sealed rate), or
+        // the replay branch under test would be exercised against a shape that
+        // no longer exists.
+        $vatSplit = $this->app->make(PosReceiptVatAllocator::class)->allocate(
+            $receipt,
+            [$amount],
+            CurrencyScale::for((string) $receipt->currency),
+        )[0];
         $entry = $this->app->make(GeneralLedgerService::class)->createPOSPaymentEntry(
             $payment,
             $receipt,
             $repository,
+            $vatSplit,
             $debitOverrideId,
         );
         $payment->journal_entry_id = $entry->id;

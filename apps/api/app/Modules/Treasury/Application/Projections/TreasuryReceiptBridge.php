@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Application\Projections;
 
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\DTOs\PosRevenueVatSplit;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\Accounting\Domain\Services\PosReceiptVatAllocator;
 use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
@@ -191,6 +193,11 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         // DPA lane G3 requirement 4 — the shared tender→repository rule, so the
         // shift-variance listener and this projection cannot drift apart.
         private readonly TenderRepositoryResolver $tenderRepositoryResolver,
+        // W4-9 — apportions the SEALED `pos_receipt_vat_details` across this
+        // event's tender legs. Injected (never `app()`), and it takes the
+        // currency scale as an argument because this projector runs with no
+        // CompanyContext bound.
+        private readonly PosReceiptVatAllocator $vatAllocator,
     ) {}
 
     public function name(): string
@@ -438,6 +445,23 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             $originalEventId = $view->originalReceiptReference?->fiscalEventId;
 
             $totalLines = count($view->payments);
+
+            // W4-9 — decide the revenue/VAT decomposition ONCE, for the whole
+            // receipt, from the amounts the legs will actually retain. It has to
+            // happen here rather than per leg: the sealed VAT is a receipt-level
+            // fact and apportioning it needs every leg's amount at once.
+            //
+            // A refusal (no sealed rows, VAT above the tender, a split that will
+            // not reconcile) throws out of the enclosing DB::transaction, so the
+            // projection row stays pending and Horizon retries — the projector
+            // never acknowledges a receipt it cannot book correctly.
+            /** @var list<string> $legAmounts */
+            $legAmounts = [];
+            for ($i = 0; $i < $totalLines; $i++) {
+                $legAmounts[] = $nettedAmounts[$i] ?? $view->payments[$i]->amount;
+            }
+            $vatSplits = $this->vatAllocator->allocate($receipt, $legAmounts, $currencyScale);
+
             $index = 0;
             foreach ($view->payments as $payment) {
                 $this->projectPaymentLineFromCanonical(
@@ -451,6 +475,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                     $terminalLocationId,
                     $nettedAmounts[$index] ?? $payment->amount,
                     $currencyScale,
+                    $vatSplits[$index],
                 );
                 $index++;
             }
@@ -1146,6 +1171,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         ?string $terminalLocationId,
         string $nettedAmount,
         int $currencyScale,
+        PosRevenueVatSplit $vatSplit,
     ): void {
         // RETAINED amount (spec §4.6 two-semantics rule) — this is what the
         // Treasury Payment row, the GL entry and the repository movement all
@@ -1436,11 +1462,13 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                     payment: $payment,
                     receipt: $receipt,
                     repository: $repository,
+                    vatSplit: $vatSplit,
                 )
                 : $this->generalLedgerService->createPOSPaymentEntry(
                     payment: $payment,
                     receipt: $receipt,
                     repository: $repository,
+                    vatSplit: $vatSplit,
                     cashAccountOverrideId: $cashAccountOverrideId,
                 );
 
