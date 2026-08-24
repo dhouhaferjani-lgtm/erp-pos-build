@@ -6,7 +6,7 @@
     "deferred": "CAN run, but no lane runs it yet. Requires `reason`. Counted loudly on every CI run. After O-29 exactly one group is left here — `(root files)`, which no whole-directory selector can address."
   },
   "debt_ceiling": 1,
-  "gated_ceiling": 1149,
+  "gated_ceiling": 1153,
   "lanes": {
     "security-regression": {
       "job": "security-regression",
@@ -801,8 +801,8 @@
     },
     "Fiscal": {
       "lane": "feature-lane-fiscal-finance/Fiscal",
-      "classes": 79,
-      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
+      "classes": 80,
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped. DELIBERATE RAISE 79 -> 80 (2026-08-23, Session B lane Q-6): PosReceiptFrozenStateImmutabilityTriggerTest \u2014 lane fix/sb-q6-voided-receipt-trigger (pos_receipts immutability trigger becomes whitelist-with-ELSE-RAISE), authored ad2c13325, which landed the class WITHOUT the accompanying raise and left the checker red; caught and attributed in the same lane's gate-r1 fix round. Gate record docs/superpowers/reviews/2026-08-23-sb-q6-trigger-gate-r1.md. The class is NOT named in either live --filter allowlist in .github/workflows/ci.yml (grep-verified; its sibling PosReceiptImmutabilityTriggerSealedHashAlgorithmTest IS), so it executes nowhere until this parked lane's gate is flipped \u2014 flagged to the parent as a CI-reachability residual, since it is the only regression pin on the fiscal receipt trigger's whitelist. gated_ceiling 1151 -> 1152 at merge (union: dev's 1151 after Q-2 merge 850e86217 + this one Fiscal class; POS/Inventory entries taken from dev verbatim; gate r2 docs/superpowers/reviews/2026-08-24-sb-q6-trigger-gate-r2.md). The class IS now named in the backend-pgsql --filter allowlist (gate r2 F-7, B-3 precedent)."
     },
     "Http": {
       "lane": "feature-lane-platform-misc/Http",
@@ -826,8 +826,8 @@
     },
     "Inventory": {
       "lane": "feature-lane-inventory/Inventory",
-      "classes": 108,
-      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped. 106 -> 108 raised by lane dpa-v8-supplier-goods-return (DPA V8) for SupplierGoodsReturnNoteTest and SupplierGoodsReturnNotesSchemaTest, the only guards on the new supplier goods-return note document. BOTH are also named in the backend-pgsql job's --filter allowlist (gate P2-2), for the same reason r2f4 named CorrectingEntryEndpointTest: while this lane is parked they would otherwise execute on no event, and SupplierGoodsReturnNoteTest carries the two deliberately failing-visible C-11 residual pins (:601, :656) whose whole purpose is to go red when F-9 derives the ceiling from a real cost basis. An unarmed tripwire is not a tripwire. Remove the allowlist entries when the lane's gate is flipped, not before."
+      "classes": 111,
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped. 106 -> 108 raised by lane dpa-v8-supplier-goods-return (DPA V8) for SupplierGoodsReturnNoteTest and SupplierGoodsReturnNotesSchemaTest, the only guards on the new supplier goods-return note document. BOTH are also named in the backend-pgsql job's --filter allowlist (gate P2-2), for the same reason r2f4 named CorrectingEntryEndpointTest: while this lane is parked they would otherwise execute on no event, and SupplierGoodsReturnNoteTest carries the two deliberately failing-visible C-11 residual pins (:601, :656) whose whole purpose is to go red when F-9 derives the ceiling from a real cost basis. An unarmed tripwire is not a tripwire. Remove the allowlist entries when the lane's gate is flipped, not before. DELIBERATE RAISE 108 -> 111 (2026-08-24, Session B lane Q-2, fix/sb-q2-counting-finalize-lock): CountingFinalizeLockTest + CountingSubmitCountRaceTest (authored 1ec42fc43, which landed on the lane branch WITHOUT the accompanying raise) + CountingTerminalStateGuardTest (fix round 600ccbc28; gate r1 terminal-state probes A/B/C for submitCount/triggerThirdCount/cancel plus the FOR-UPDATE structural sentinel). Gate records docs/superpowers/reviews/2026-08-23-sb-q2-counting-gate-r1.md + 2026-08-24-sb-q2-counting-gate-r2.md. None of the three is named in any live --filter allowlist, so all three execute nowhere in CI until this parked lane's gate is flipped — they are run BY PATH on sqlite and on PostgreSQL (DB_PORT=5433) in-lane, per the Session B lane protocol. gated_ceiling 1148 -> 1151 at merge (union arithmetic per gate r2 NEW-1: dev's 1148 after Session A's N-5 raise + these three Inventory classes; POS entry taken from dev verbatim)."
     },
     "Jobs": {
       "lane": "feature-lane-platform-misc/Jobs",
