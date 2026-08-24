@@ -144,7 +144,7 @@ final class DocumentStatusWriteOnlyViaStatusService implements Rule
         }
 
         foreach ($argument->items as $item) {
-            if ($item === null || ! $item->key instanceof String_ || $item->key->value !== 'status') {
+            if (! $item->key instanceof String_ || $item->key->value !== 'status') {
                 continue;
             }
 
