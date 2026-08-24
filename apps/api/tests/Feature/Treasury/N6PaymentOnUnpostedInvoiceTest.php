@@ -287,6 +287,22 @@ final class N6PaymentOnUnpostedInvoiceTest extends TestCase
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
+    /**
+     * A fully-prepaid invoice, posted: sealed AND settled to `Paid` in one
+     * transaction — the state this lane introduces, and the one the chain and
+     * the re-post guard both have to cope with.
+     */
+    private function postedPrepaidInvoice(): Document
+    {
+        $deliveryNote = $this->dpConfirmedDeliveryNote([$this->dpPhysicalLine()]);
+        $invoice = $this->dpConfirmedInvoice([$this->dpPhysicalLine()]);
+        $this->dpLinkOrderShape($invoice, [$deliveryNote]);
+
+        $this->payFull($invoice)->assertCreated();
+
+        return app(DocumentPostingService::class)->post($invoice->fresh())->fresh();
+    }
+
     private function payFull(Document $document): TestResponse
     {
         return $this->actingAs($this->dpUser)->postJson('/api/v1/payments', [
