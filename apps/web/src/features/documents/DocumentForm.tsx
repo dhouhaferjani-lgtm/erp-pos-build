@@ -152,6 +152,48 @@ interface LinePayload {
   discount_percent: string | null
   discount_amount: string | null
   free_quantity?: string | number
+  tax_rate?: string | number
+  tax_configuration_id?: string
+}
+
+/**
+ * True when a value is absent or blank — used for the tax fields, where an
+ * empty string means "the line says nothing", not "zero".
+ */
+function isBlank(value: string | number | null | undefined): boolean {
+  return value === null || value === undefined || String(value).trim() === ''
+}
+
+/**
+ * Campaign defect N-1 (P0): decide what a line says about tax.
+ *
+ * `DocumentLineTaxResolver` prefers the tax CONFIGURATION over any
+ * denormalised rate — but its FIRST branch short-circuits on an explicit
+ * `tax_rate`, so sending both means the configuration is never consulted. The
+ * form used to send `tax_rate` on every line and `tax_configuration_id` on
+ * none, which is how a product on the 7 % band came out of the API taxed at the
+ * company's 19 % default with the right rate showing on screen throughout.
+ *
+ * So the line states ONE thing:
+ *  - It knows its configuration (picked from the per-line selector, or
+ *    inherited from the product's `default_tax_configuration_id`): send the id
+ *    and let the server read the rate off the configuration itself. The rate
+ *    displayed here came from that same configuration, so nothing is lost —
+ *    but the server no longer has to trust a number the client copied.
+ *  - It does not (a free-text service line, a document loaded from the server
+ *    before configurations were tracked on lines): send the rate, exactly as
+ *    before. `'0.00'` is a stated exemption and IS sent; only a truly blank
+ *    rate is omitted, which lets the backend resolve from the product.
+ */
+function applyLineTax(payload: LinePayload, line: DocumentLine): void {
+  const configurationId = line.tax_configuration_id
+  if (typeof configurationId === 'string' && configurationId.trim() !== '') {
+    payload.tax_configuration_id = configurationId
+    return
+  }
+  if (!isBlank(line.tax_rate)) {
+    payload.tax_rate = line.tax_rate
+  }
 }
 
 /**
@@ -175,6 +217,11 @@ function isZeroFreeQuantity(value: DocumentLine['free_quantity']): boolean {
  * default '0' fails every document creation with a 422
  * ("Le champ lines.0.free_quantity est interdit."). A real non-zero bonus
  * quantity (purchase flow with the module enabled) is sent exactly as entered.
+ *
+ * The TAX half lives here too (campaign defect N-1) rather than at the two call
+ * sites, which had already drifted apart — the autosave payload sent
+ * `line.tax_rate || 0` while submit sent `line.tax_rate` raw. One decision, one
+ * place. See {@link applyLineTax}.
  */
 export function buildLinePayload(line: DocumentLine): LinePayload {
   const payload: LinePayload = {
@@ -195,6 +242,7 @@ export function buildLinePayload(line: DocumentLine): LinePayload {
   if (!isZeroFreeQuantity(line.free_quantity)) {
     payload.free_quantity = line.free_quantity as string | number
   }
+  applyLineTax(payload, line)
   return payload
 }
 
@@ -291,10 +339,12 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
       notes: watchedNotes || null,
       document_date: watchedDocumentDate,
       due_date: watchedDueDate || null,
+      // N-1: the tax fields come from buildLinePayload now — an autosaved draft
+      // must resolve tax the same way the saved document does, or the operator
+      // sees one number while the draft holds another.
       lines: lines.map(line => ({
         id: line.id,
         ...buildLinePayload(line),
-        tax_rate: line.tax_rate || 0,
       })),
     }
   }, [effectiveType, watchedPartnerId, watchedNotes, watchedDocumentDate, watchedDueDate, lines])
@@ -503,7 +553,6 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
       lines: lines.map((line) => ({
         ...buildLinePayload(line),
         description: line.description,
-        tax_rate: line.tax_rate,
       })),
       // Include external document fields for purchase orders
       external_document_number: data.external_document_number || null,

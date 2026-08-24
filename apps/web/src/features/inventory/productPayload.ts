@@ -8,8 +8,20 @@ import type { ProductFormData } from './ProductForm'
  *    only tax-config key the API validates/persists. Sending the form's name
  *    silently dropped the chosen tax configuration on create/update.
  *  - `tax_rate` is omitted — the form copies the tax configuration's 4-decimal
- *    `percentage_rate`, which the API rejects (max 2dp) and re-derives anyway
- *    from `default_tax_configuration_id`.
+ *    `percentage_rate`, which the API rejects (max 2dp). The API re-derives the
+ *    rate from `default_tax_configuration_id` instead.
+ *
+ *    That last clause used to be a LIE, and it was campaign defect N-1 (P0):
+ *    `ProductController` derived `tax_rate` from the category/company defaults
+ *    only and never once read `tax_configurations.percentage_rate`, so omitting
+ *    it here meant a product the operator put on the 7 % band was stored — and
+ *    then sold, and hash-chained — at the company's 19 % default. The omission
+ *    was always the right call; the backend just wasn't holding up its end.
+ *    `ProductController::applyTaxRateFromConfiguration()` now does, on create
+ *    AND update, so this comment is finally true. Do not "fix" this by sending
+ *    `tax_rate` again: the backend is the source of truth for the number, and
+ *    a client-supplied rate is deliberately discarded when a configuration is
+ *    present.
  *  - `parapharmacy_metadata` is included only for the parapharmacy vertical.
  *    The API authorizes it by vertical and 422-rejects it (even when empty) for
  *    any other business type, which blocked product creation for retail tenants.

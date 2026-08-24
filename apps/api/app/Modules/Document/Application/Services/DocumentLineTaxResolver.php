@@ -40,15 +40,36 @@ final class DocumentLineTaxResolver
      */
     private function resolveTaxRate(array $line, Company $company, ?Product $product): string
     {
-        if ($this->hasNumericValue($line['tax_rate'] ?? null)) {
-            return $this->formatRate((string) $line['tax_rate']);
-        }
-
+        // Campaign defect N-1 (fiscal gate r2 finding 4): THE CONFIGURATION THE
+        // LINE NAMES OUTRANKS ANY RATE THE CLIENT ECHOED ALONGSIDE IT.
+        //
+        // This branch used to sit BELOW the explicit-rate branch, so a payload
+        // carrying both `tax_rate: '19.00'` and `tax_configuration_id: TVA_7`
+        // resolved to 19 % — the client's stale copy winning over the band the
+        // operator actually picked. That IS N-1, arriving by a second route: the
+        // shipped web bundle no longer sends both, but a mobile/integration
+        // caller can, and a browser still running a pre-deploy cached bundle
+        // does until it refreshes.
+        //
+        // A configuration id is a STATEMENT ABOUT WHICH BAND THIS LINE IS ON;
+        // a rate is a number that may be a stale copy of one. When the caller
+        // supplies both, the server reads the band off the configuration itself
+        // rather than trusting the copy. An id that resolves to nothing (not a
+        // LINE_ITEMS percentage row, wrong country, deleted) falls through to
+        // the rate exactly as before, so no caller loses a working path.
+        //
+        // Ordering below, highest first: line configuration > explicit line
+        // rate > product configuration > product rate > company configuration >
+        // company rate > '0.00'.
         if ($this->hasStringValue($line['tax_configuration_id'] ?? null)) {
             $rate = $this->rateFromConfigurationId((string) $line['tax_configuration_id'], $company);
             if ($rate !== null) {
                 return $rate;
             }
+        }
+
+        if ($this->hasNumericValue($line['tax_rate'] ?? null)) {
+            return $this->formatRate((string) $line['tax_rate']);
         }
 
         if ($product !== null && $this->hasStringValue($product->default_tax_configuration_id)) {
