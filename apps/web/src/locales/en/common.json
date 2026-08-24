@@ -579,19 +579,23 @@
     "types": {
       "accounting": {
         "title": "GL Accounting",
-        "description": "Import account balances (assets, liabilities, equity)"
+        "description": "Import account balances (assets, liabilities, equity)",
+        "uploadHelp": "One row per GL account, with its opening debit or credit."
       },
       "inventory": {
         "title": "Initial Inventory",
-        "description": "Import product quantities and costs per location"
+        "description": "Import product quantities and costs per location",
+        "uploadHelp": "One row per product and location, with quantity on hand and unit cost."
       },
       "arOpenItems": {
         "title": "AR Open Items",
-        "description": "Import unpaid customer invoices"
+        "description": "Import unpaid customer invoices",
+        "uploadHelp": "One row per unpaid customer invoice, with its total and the amount still open."
       },
       "apOpenItems": {
         "title": "AP Open Items",
-        "description": "Import unpaid supplier invoices"
+        "description": "Import unpaid supplier invoices",
+        "uploadHelp": "One row per unpaid supplier invoice, with its total and the amount still open."
       }
     },
     "status": {
@@ -655,7 +659,8 @@
         "invalid": "Invalid",
         "skipped": "Skipped",
         "noErrors": "No validation errors found",
-        "hasErrors": "Please fix the errors before proceeding"
+        "hasErrors": "Please fix the errors before proceeding",
+        "validateButton": "Validate rows"
       },
       "preview": {
         "title": "Preview Changes",
@@ -734,7 +739,16 @@
       "lockSuccess": "Batch locked successfully",
       "error": "An error occurred",
       "deleteConfirm": "Are you sure you want to delete this batch?",
-      "deleted": "Batch deleted successfully"
+      "deleted": "Batch deleted successfully",
+      "batchDeleted": "Batch deleted",
+      "createError": "The batch could not be created",
+      "deleteError": "The batch could not be deleted",
+      "importError": "The file could not be imported",
+      "lockError": "The batch could not be locked",
+      "postError": "The batch could not be posted",
+      "rowsImported": "{{count}} rows imported",
+      "validationError": "Validation failed",
+      "validationHasErrors": "Validation found {{count}} invalid rows"
     },
     "columns": {
       "accounting": {
@@ -765,6 +779,73 @@
         "currency": "Currency",
         "total": "Total",
         "openAmount": "Open Amount"
+      }
+    },
+    "preview": {
+      "entryDate": "Entry date",
+      "cutoverDate": "Cutover date",
+      "description": "Description",
+      "glEntry": "Journal entry",
+      "glEntryCreated": "Journal entry to be created",
+      "debit": "Debit",
+      "credit": "Credit",
+      "total": "Total",
+      "accountCode": "Account code",
+      "accountName": "Account name",
+      "debitCredit": "Debit {{debit}} / Credit {{credit}} for {{amount}}",
+      "products": "Products",
+      "product": "Product",
+      "sku": "SKU",
+      "location": "Location",
+      "quantity": "Quantity",
+      "unitCost": "Unit cost",
+      "value": "Value",
+      "totalQuantity": "Total quantity",
+      "totalValue": "Total value",
+      "documents": "Documents",
+      "partner": "Partner",
+      "externalRef": "External reference",
+      "type": "Type",
+      "dueDate": "Due date",
+      "open": "Open",
+      "openAmount": "Open amount",
+      "totalAmount": "Total amount",
+      "moreRows": "+{{count}} more rows not shown"
+    },
+    "upload": {
+      "expectedColumns": "Expected columns",
+      "downloadTemplate": "Download template",
+      "dragDropText": "Drop your CSV file here, or click to browse",
+      "supportedFormats": "CSV files up to 10 MB",
+      "rowsFound": "{{count}} rows found",
+      "moreRows": "+{{count}} more rows not shown",
+      "uploadButton": "Import {{count}} rows",
+      "uploading": "Importing…",
+      "errors": {
+        "emptyFile": "This file contains no data rows.",
+        "missingColumns": "Missing required columns: {{columns}}",
+        "parseError": "This file could not be read. Check that it is a valid CSV."
+      }
+    },
+    "validation": {
+      "allValid": "All rows are valid",
+      "hasErrors": "Some rows need attention",
+      "summary": "{{valid}} valid, {{invalid}} invalid out of {{total}} rows",
+      "totalRows": "{{count}} rows",
+      "valid": "valid",
+      "invalid": "invalid",
+      "pending": "pending",
+      "showOnlyErrors": "Show only rows with errors",
+      "row": "Row",
+      "statusLabel": "Status",
+      "data": "Data",
+      "noErrors": "No validation errors found",
+      "noRows": "No rows to display",
+      "status": {
+        "valid": "Valid",
+        "invalid": "Invalid",
+        "pending": "Pending",
+        "posted": "Posted"
       }
     }
   },

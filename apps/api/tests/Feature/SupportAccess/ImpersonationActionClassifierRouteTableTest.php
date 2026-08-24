@@ -40,6 +40,34 @@ final class ImpersonationActionClassifierRouteTableTest extends TestCase
         self::assertSame([], $misses, "Protected write routes escaped the impersonation hard block:\n".implode("\n", $misses));
     }
 
+    /**
+     * Session B lane Q-5, fiscal lens F-4. `POST /api/v1/vouchers/{id}/void`
+     * extinguishes a voucher liability and posts a GL reversal, but it lives in
+     * the Voucher module, so neither the POS/Fiscal/Accounting controller-namespace
+     * arm nor the route-name arm of the classifier reaches it. Before the explicit
+     * path pattern it was blocked only INDIRECTLY, via the permission intersection
+     * a support grant happens to lack — a guard that moves the day a grant profile
+     * changes. This pins the direct hard block.
+     */
+    public function test_voucher_void_route_is_hard_blocked_for_impersonation(): void
+    {
+        $classifier = $this->app->make(ImpersonationActionClassifier::class);
+
+        $route = collect(RouteFacade::getRoutes()->getRoutes())
+            ->first(static fn (Route $candidate): bool => $candidate->getName() === 'vouchers.void');
+
+        self::assertInstanceOf(Route::class, $route, 'Route vouchers.void is not registered.');
+
+        $request = Request::create('/'.$route->uri(), 'POST');
+        $request->setRouteResolver(static fn (): Route => $route);
+
+        self::assertSame(
+            ImpersonationActionDecision::HardBlocked,
+            $classifier->classify($request),
+            'POST /'.$route->uri().' must be hard-blocked under impersonation.'
+        );
+    }
+
     private function isProtectedMutation(Route $route): bool
     {
         $action = $route->getActionName();

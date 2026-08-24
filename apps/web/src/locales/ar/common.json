@@ -562,19 +562,23 @@
     "types": {
       "accounting": {
         "title": "المحاسبة (GL)",
-        "description": "استورد أرصدة الحسابات (الأصول، الالتزامات، حقوق الملكية)"
+        "description": "استورد أرصدة الحسابات (الأصول، الالتزامات، حقوق الملكية)",
+        "uploadHelp": "صف واحد لكل حساب في دليل الحسابات، مع رصيده الافتتاحي المدين أو الدائن."
       },
       "inventory": {
         "title": "المخزون الابتدائي",
-        "description": "استورد كميّات المنتجات وتكاليفها حسب الموقع"
+        "description": "استورد كميّات المنتجات وتكاليفها حسب الموقع",
+        "uploadHelp": "صف واحد لكل منتج وموقع، مع الكمية المتوفرة وتكلفة الوحدة."
       },
       "arOpenItems": {
         "title": "ذمم العملاء المفتوحة",
-        "description": "استورد فواتير العملاء غير المسدّدة"
+        "description": "استورد فواتير العملاء غير المسدّدة",
+        "uploadHelp": "صف واحد لكل فاتورة عميل غير مسددة، مع إجماليها والمبلغ المتبقي."
       },
       "apOpenItems": {
         "title": "ذمم المورّدين المفتوحة",
-        "description": "استورد فواتير المورّدين غير المسدّدة"
+        "description": "استورد فواتير المورّدين غير المسدّدة",
+        "uploadHelp": "صف واحد لكل فاتورة مورّد غير مسددة، مع إجماليها والمبلغ المتبقي."
       }
     },
     "status": {
@@ -638,7 +642,8 @@
         "invalid": "غير صالح",
         "skipped": "متخطّى",
         "noErrors": "لم يُعثَر على أخطاء تحقّق",
-        "hasErrors": "يرجى تصحيح الأخطاء قبل المتابعة"
+        "hasErrors": "يرجى تصحيح الأخطاء قبل المتابعة",
+        "validateButton": "التحقق من الصفوف"
       },
       "preview": {
         "title": "معاينة التغييرات",
@@ -717,7 +722,16 @@
       "lockSuccess": "تمّ قفل الدفعة بنجاح",
       "error": "حدث خطأ",
       "deleteConfirm": "هل أنت متأكد من حذف هذه الدفعة؟",
-      "deleted": "تمّ حذف الدفعة بنجاح"
+      "deleted": "تمّ حذف الدفعة بنجاح",
+      "batchDeleted": "تم حذف الدفعة",
+      "createError": "تعذّر إنشاء الدفعة",
+      "deleteError": "تعذّر حذف الدفعة",
+      "importError": "تعذّر استيراد الملف",
+      "lockError": "تعذّر قفل الدفعة",
+      "postError": "تعذّر ترحيل الدفعة",
+      "rowsImported": "تم استيراد {{count}} صفوف",
+      "validationError": "فشل التحقق",
+      "validationHasErrors": "وجد التحقق {{count}} صفوف غير صالحة"
     },
     "columns": {
       "accounting": {
@@ -748,6 +762,73 @@
         "currency": "العملة",
         "total": "المجموع",
         "openAmount": "المبلغ المفتوح"
+      }
+    },
+    "preview": {
+      "entryDate": "تاريخ القيد",
+      "cutoverDate": "تاريخ بداية الاستخدام",
+      "description": "الوصف",
+      "glEntry": "قيد محاسبي",
+      "glEntryCreated": "القيد المحاسبي المزمع إنشاؤه",
+      "debit": "مدين",
+      "credit": "دائن",
+      "total": "الإجمالي",
+      "accountCode": "رمز الحساب",
+      "accountName": "اسم الحساب",
+      "debitCredit": "مدين {{debit}} / دائن {{credit}} بمبلغ {{amount}}",
+      "products": "المنتجات",
+      "product": "المنتج",
+      "sku": "رمز المنتج",
+      "location": "الموقع",
+      "quantity": "الكمية",
+      "unitCost": "تكلفة الوحدة",
+      "value": "القيمة",
+      "totalQuantity": "إجمالي الكمية",
+      "totalValue": "إجمالي القيمة",
+      "documents": "المستندات",
+      "partner": "الشريك",
+      "externalRef": "المرجع الخارجي",
+      "type": "النوع",
+      "dueDate": "تاريخ الاستحقاق",
+      "open": "المتبقي",
+      "openAmount": "المبلغ المتبقي",
+      "totalAmount": "المبلغ الإجمالي",
+      "moreRows": "+{{count}} صفوف غير معروضة"
+    },
+    "upload": {
+      "expectedColumns": "الأعمدة المتوقعة",
+      "downloadTemplate": "تنزيل القالب",
+      "dragDropText": "أفلت ملف CSV هنا، أو انقر للاختيار",
+      "supportedFormats": "ملفات CSV حتى 10 ميغابايت",
+      "rowsFound": "تم العثور على {{count}} صفوف",
+      "moreRows": "+{{count}} صفوف غير معروضة",
+      "uploadButton": "استيراد {{count}} صفوف",
+      "uploading": "جارٍ الاستيراد…",
+      "errors": {
+        "emptyFile": "لا يحتوي هذا الملف على أي صفوف بيانات.",
+        "missingColumns": "أعمدة إلزامية ناقصة: {{columns}}",
+        "parseError": "تعذّرت قراءة هذا الملف. تأكد من أنه ملف CSV صالح."
+      }
+    },
+    "validation": {
+      "allValid": "جميع الصفوف صالحة",
+      "hasErrors": "بعض الصفوف تحتاج إلى تصحيح",
+      "summary": "{{valid}} صالحة، {{invalid}} غير صالحة من أصل {{total}} صفوف",
+      "totalRows": "{{count}} صفوف",
+      "valid": "صالحة",
+      "invalid": "غير صالحة",
+      "pending": "قيد الانتظار",
+      "showOnlyErrors": "إظهار الصفوف التي بها أخطاء فقط",
+      "row": "الصف",
+      "statusLabel": "الحالة",
+      "data": "البيانات",
+      "noErrors": "لا توجد أخطاء تحقق",
+      "noRows": "لا توجد صفوف للعرض",
+      "status": {
+        "valid": "صالح",
+        "invalid": "غير صالح",
+        "pending": "قيد الانتظار",
+        "posted": "مُرحَّل"
       }
     }
   },

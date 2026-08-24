@@ -430,6 +430,11 @@ class AccountingOpeningService
         );
 
         return [
+            // N-3 discriminator: the three preview variants are structurally
+            // different (ACCOUNTING has `entry`, the others have `batch`), so the
+            // frontend needs a top-level tag to narrow the union on. Nothing else
+            // in this payload may be assumed common across variants.
+            'batch_type' => OpeningBatchType::Accounting->value,
             'entry' => [
                 'entry_date' => $batch->cutover_date->toDateString(),
                 'description' => "GL Opening Balance - {$batch->name}",

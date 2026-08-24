@@ -35,7 +35,9 @@ use App\Modules\POS\Domain\Events\ReceiptVoided;
 use App\Modules\POS\Domain\Events\ShiftClosed;
 use App\Modules\POS\Domain\Events\ShiftOpened;
 use App\Modules\POS\Domain\Events\TerminalActivatedAudit;
+use App\Modules\POS\Domain\Events\TerminalClaimed;
 use App\Modules\POS\Domain\Events\TerminalDeactivated;
+use App\Modules\POS\Domain\Events\TerminalReleased;
 use App\Modules\POS\Domain\Events\TerminalSoftwareUpdated;
 use App\Modules\POS\Domain\Events\TerminalTrainingModeChanged;
 use App\Modules\POS\Domain\Events\ZReportGenerated;
@@ -842,6 +844,62 @@ final class DomainEventSubscriber
     }
 
     /**
+     * Handle TerminalClaimed events (Q-7).
+     *
+     * Binding a device to a terminal binds it to that terminal's fiscal chain.
+     * Until Q-7 this act wrote no audit row at all, so "prove nobody re-pointed
+     * this till" could only be answered from `updated_at` and Horizon logs.
+     */
+    public function handleTerminalClaimed(TerminalClaimed $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Terminal',
+            aggregateId: $event->terminalId,
+            eventType: $event->getEventName(),
+            payload: [
+                'terminal_code' => $event->terminalCode,
+                'hardware_identifier' => $event->hardwareIdentifier,
+                'claimed_by' => $event->claimedBy,
+            ]
+        );
+    }
+
+    /**
+     * Handle TerminalReleased events (Q-7).
+     *
+     * The counterpart to a claim: `hardware_identifier` records the binding that
+     * was BROKEN, since the column is null on the row afterwards.
+     *
+     * `forced` / `open_shift_id` (fix round F-1): a release is refused by
+     * default while the terminal still has an OPEN shift, because no server
+     * surface can close a v3 terminal's shift without the authoring device. An
+     * operator who overrides that refusal knowingly ORPHANS the shift, and the
+     * replacement device's shifts and Z reports will not project until it is
+     * resolved. The audit row is the only place that record survives, so it
+     * carries which shift was abandoned and the reason given for abandoning it.
+     */
+    public function handleTerminalReleased(TerminalReleased $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Terminal',
+            aggregateId: $event->terminalId,
+            eventType: $event->getEventName(),
+            payload: [
+                'terminal_code' => $event->terminalCode,
+                'hardware_identifier' => $event->hardwareIdentifier,
+                'reason' => $event->reason,
+                'released_by' => $event->releasedBy,
+                'forced' => $event->forced,
+                'open_shift_id' => $event->openShiftId,
+            ]
+        );
+    }
+
+    /**
      * Handle TerminalDeactivated events.
      *
      * NF525 DESACTIVATION_TERMINAL event - terminal deactivations for JET export.
@@ -1140,7 +1198,9 @@ final class DomainEventSubscriber
 
             // Terminal lifecycle events (NF525 compliance)
             TerminalActivatedAudit::class => 'handleTerminalActivatedAudit',
+            TerminalClaimed::class => 'handleTerminalClaimed',
             TerminalDeactivated::class => 'handleTerminalDeactivated',
+            TerminalReleased::class => 'handleTerminalReleased',
             TerminalSoftwareUpdated::class => 'handleTerminalSoftwareUpdated',
             TerminalTrainingModeChanged::class => 'handleTerminalTrainingModeChanged',
         ];

@@ -8,13 +8,16 @@ use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Voucher\Application\DTOs\VoucherIssuanceRequest;
+use App\Modules\Voucher\Application\DTOs\VoucherVoidRequest;
 use App\Modules\Voucher\Application\Services\VoucherIssuanceService;
+use App\Modules\Voucher\Application\Services\VoucherVoidService;
 use App\Modules\Voucher\Domain\Enums\RedemptionMode;
 use App\Modules\Voucher\Domain\Enums\VoucherEvent;
 use App\Modules\Voucher\Domain\Enums\VoucherSource;
 use App\Modules\Voucher\Domain\Enums\VoucherStatus;
 use App\Modules\Voucher\Domain\Exceptions\GoodwillFourEyesRequiredException;
 use App\Modules\Voucher\Domain\Exceptions\GoodwillRequiresNamedCustomerException;
+use App\Modules\Voucher\Domain\Exceptions\VoucherInvalidStatusException;
 use App\Modules\Voucher\Domain\Voucher;
 use App\Modules\Voucher\Domain\VoucherLedger;
 use App\Modules\Voucher\Presentation\Requests\ExtendExpiryRequest;
@@ -41,6 +44,7 @@ final class VoucherController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly VoucherIssuanceService $issuanceService,
+        private readonly VoucherVoidService $voidService,
     ) {}
 
     /**
@@ -270,8 +274,14 @@ final class VoucherController extends Controller
     /**
      * POST /api/v1/vouchers/{id}/void
      *
-     * Void a voucher. Writes a Voided ledger event.
-     * Returns 422 when the voucher has redemptions (cascade block).
+     * Void a voucher through VoucherVoidService — the single void write path
+     * shared with the credit-note cascade and the fraud auto-void (lane Q-5,
+     * sweep findings #22 + #24). The service owns the row lock, the status
+     * precondition, the redemption guard, the GL reversal and idempotency; this
+     * method only resolves scope and renders the refusal.
+     *
+     * Returns 422 when the voucher is terminal for the void edge or has
+     * redemptions, 404 when it is not in the caller's tenant/company scope.
      */
     public function void(VoidVoucherRequest $request, string $id): JsonResponse
     {
@@ -286,37 +296,15 @@ final class VoucherController extends Controller
             ], 422);
         }
 
-        $voucher = Voucher::where('tenant_id', $tenantId)
+        $exists = Voucher::where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
-            ->find($id);
+            ->whereKey($id)
+            ->exists();
 
-        if ($voucher === null) {
+        if (! $exists) {
             return response()->json([
                 'error' => ['code' => 'VOUCHER_NOT_FOUND', 'message' => 'Voucher not found.'],
             ], 404);
-        }
-
-        if (in_array($voucher->status, [VoucherStatus::Voided, VoucherStatus::FullyRedeemed], true)) {
-            return response()->json([
-                'error' => [
-                    'code' => 'VOUCHER_ALREADY_TERMINAL',
-                    'message' => 'Voucher is already voided or fully redeemed.',
-                ],
-            ], 422);
-        }
-
-        // Block if any redemptions exist (cascade-block logic, Phase 1).
-        $hasRedemptions = VoucherLedger::where('voucher_id', $voucher->id)
-            ->whereIn('event', [VoucherEvent::Redeemed->value, VoucherEvent::PartiallyRedeemed->value])
-            ->exists();
-
-        if ($hasRedemptions) {
-            return response()->json([
-                'error' => [
-                    'code' => 'VOUCHER_HAS_REDEMPTIONS',
-                    'message' => 'Cannot void a voucher that has been partially or fully redeemed.',
-                ],
-            ], 422);
         }
 
         $validated = $request->validated();
@@ -324,45 +312,53 @@ final class VoucherController extends Controller
         /** @var string $reason */
         $reason = $validated['reason'];
 
-        DB::transaction(function () use ($voucher, $user, $reason): void {
-            $now = Carbon::now();
-            $voidedBalance = $voucher->current_balance;
+        try {
+            $result = $this->voidService->void(new VoucherVoidRequest(
+                voucherId: $id,
+                userId: $user->id,
+                policyTrigger: 'manual_void',
+                reason: $reason,
+                tenantId: $tenantId,
+                companyId: $companyId,
+            ));
+        } catch (VoucherInvalidStatusException $e) {
+            // VOUCHER_NOT_FOUND is a scope/existence refusal, not a state
+            // refusal: the row vanished (or was never in scope) between the
+            // pre-check above and the service's locked re-read. It must render
+            // as 404, matching the pre-check's own response, rather than as a
+            // 422 the client would read as "voucher exists but is unvoidable"
+            // (Session B lane Q-5 micro-round, fiscal lens F-8).
+            $code = $e->errorCode ?? 'VOUCHER_NOT_VOIDABLE';
 
-            $voidedAmount = bccomp((string) $voidedBalance, '0', 5) > 0
-                ? bcmul((string) $voidedBalance, '-1', 5)
-                : '0.00000';
+            return response()->json([
+                'error' => [
+                    'code' => $code,
+                    'message' => $e->getMessage(),
+                ],
+            ], $code === 'VOUCHER_NOT_FOUND' ? 404 : 422);
+        }
 
-            VoucherLedger::forceCreate([
-                'id' => (string) Str::uuid(),
-                'tenant_id' => $voucher->tenant_id,
-                'company_id' => $voucher->company_id,
-                'voucher_id' => $voucher->id,
-                'event' => VoucherEvent::Voided,
-                'amount' => $voidedAmount,
-                'currency' => $voucher->currency,
-                'receipt_id' => null,
-                'terminal_id' => null,
-                'user_id' => $user->id,
-                'gl_journal_entry_id' => null,
-                'authorized_by_user_id' => null,
-                'policy_trigger' => 'manual_void',
-                'reverses_voucher_ledger_id' => null,
-                'occurred_at' => $now,
-            ]);
+        // Idempotent re-entry (double-clicked Void): the voucher was already
+        // voided, nothing was appended. Keep the pre-existing operator-facing
+        // refusal rather than reporting a void this request did not perform.
+        if ($result->alreadyVoided) {
+            return response()->json([
+                'error' => [
+                    'code' => 'VOUCHER_ALREADY_TERMINAL',
+                    'message' => 'Voucher is already voided.',
+                ],
+            ], 422);
+        }
 
-            $noteEntry = '[VOID '.now()->toDateString().'] '.$reason;
-            $voucher->notes = $voucher->notes !== null
-                ? $voucher->notes."\n".$noteEntry
-                : $noteEntry;
-            $voucher->override_reason = $reason;
-            $voucher->status = VoucherStatus::Voided;
-            $voucher->current_balance = '0.00000';
-            $voucher->save();
-        });
+        // The void committed; `fresh()` can still return null if the row is
+        // deleted between the commit and this re-read. Falling back to the
+        // in-memory aggregate keeps a successful void from rendering as
+        // `{"data": null}` with a 200 (Session B lane Q-5 micro-round, fiscal
+        // lens F-7). The in-memory instance already carries the post-void
+        // status, zeroed balance, notes and override_reason.
+        $voided = $result->voucher->fresh() ?? $result->voucher;
 
-        $voucher->refresh();
-
-        return response()->json(['data' => $voucher->toArray()]);
+        return response()->json(['data' => $voided->toArray()]);
     }
 
     /**

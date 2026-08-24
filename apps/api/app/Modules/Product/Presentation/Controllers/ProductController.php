@@ -7,6 +7,7 @@ namespace App\Modules\Product\Presentation\Controllers;
 use App\Enums\Vertical;
 use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\Catalog\Application\DTOs\ProductMediaData;
+use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -52,6 +53,7 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class ProductController extends Controller
 {
@@ -411,8 +413,11 @@ class ProductController extends Controller
             unset($validated['automotive_metadata']);
         }
 
-        // Resolve default tax rate when the caller did not supply one.
-        // Priority: category default_tax_rate > company default_tax_rate > '0.00'.
+        // Campaign defect N-1: the chosen tax configuration is the source of
+        // truth for `tax_rate`; it outranks anything the client echoed.
+        // Otherwise fall back to category default_tax_rate > company
+        // default_tax_rate > '0.00', exactly as before.
+        $validated = $this->applyTaxRateFromConfiguration($validated, $company);
         if (($validated['tax_rate'] ?? null) === null) {
             $validated['tax_rate'] = $this->taxResolution->getDefaultTaxForNewProduct(
                 $company,
@@ -751,6 +756,14 @@ class ProductController extends Controller
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
         $validated = $this->resolveUnitId($validated, $company->tenant_id);
+
+        // Campaign defect N-1: `::update()` had NO tax handling whatsoever, so
+        // a product whose `tax_rate` drifted from its configuration could never
+        // self-heal — not even by re-picking the same rate in the form. When a
+        // configuration is submitted it now re-derives the denormalised rate;
+        // when none is submitted nothing fiscal is touched.
+        $validated = $this->applyTaxRateFromConfiguration($validated, $company);
+
         $wasBatchTracked = $productModel->requires_batch_tracking;
 
         // Extract parapharmacy metadata if provided
@@ -1075,6 +1088,74 @@ class ProductController extends Controller
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
             ],
         ]);
+    }
+
+    /**
+     * Campaign defect N-1 — make the chosen tax configuration authoritative
+     * over the denormalised `products.tax_rate`, on BOTH create and update.
+     *
+     * WHY THE COLUMN CANNOT BE LEFT STALE. `products.tax_rate` is what
+     * `ReceiptCreationService` reads for every POS line (unconditionally —
+     * `StoreReceiptRequest` has no `lines.*.tax_rate` rule, so a till cannot
+     * correct it) and what `DocumentLineTaxResolver` falls back to. Before this
+     * lane the create path derived it from `categories`/`companies` defaults
+     * only and the update path never touched it at all, so a Tunisian
+     * parapharmacy that picked "TVA 7 %" sold at 19 % and sealed 19 % into the
+     * fiscal hash chain, with the correct rate shown on screen throughout.
+     *
+     * THE THREE CASES, and why the third does nothing:
+     *  - KEY ABSENT (`sometimes` on update, omitted on create): the caller made
+     *    no statement about the configuration. Leave `tax_rate` exactly as the
+     *    caller left it — the create path's category/company ladder still runs
+     *    below, the update path leaves the stored value alone. This is what
+     *    keeps "PATCH the name" from re-pricing a product.
+     *  - KEY PRESENT AND NON-EMPTY: derive and OVERWRITE, discarding any
+     *    `tax_rate` the client sent. The frontend already omits `tax_rate` from
+     *    the product payload for this reason; a client that sends both is
+     *    stating two things at once and the configuration is the one the
+     *    operator actually clicked.
+     *  - KEY PRESENT AND NULL: the operator is DETACHING the configuration,
+     *    which says nothing about the rate. An explicit `tax_rate` in the same
+     *    request is honoured (it falls through untouched); with no rate, the
+     *    last derived number stands. Substituting the company default here
+     *    would silently re-price the product — the same failure mode as N-1,
+     *    pointed the other way.
+     *
+     * A configuration that cannot state a line-item percentage is REFUSED, not
+     * silently defaulted: {@see TaxResolutionService::resolveRateFromTaxConfiguration()}
+     * returns null for a fixed-amount or `DOCUMENT_TOTAL` configuration, and
+     * inventing a rate at that point is exactly how the wrong number got
+     * chained in the first place. A wrong-COUNTRY id never reaches here — the
+     * Create/Update requests refuse it 422 via `TaxConfigurationCountryCoherent`.
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>
+     */
+    private function applyTaxRateFromConfiguration(array $validated, Company $company): array
+    {
+        if (! array_key_exists('default_tax_configuration_id', $validated)) {
+            return $validated;
+        }
+
+        $configurationId = $validated['default_tax_configuration_id'];
+
+        if (! is_string($configurationId) || trim($configurationId) === '') {
+            return $validated;
+        }
+
+        $rate = $this->taxResolution->resolveRateFromTaxConfiguration($company, $configurationId);
+
+        if ($rate === null) {
+            throw ValidationException::withMessages([
+                'default_tax_configuration_id' => [
+                    __('The selected tax configuration does not define a line-item percentage rate.'),
+                ],
+            ]);
+        }
+
+        $validated['tax_rate'] = $rate;
+
+        return $validated;
     }
 
     /**
