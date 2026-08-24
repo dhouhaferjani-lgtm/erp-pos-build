@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace App\Modules\Document\Domain\Services;
 
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Exceptions\DocumentTransitionException;
+use App\Modules\Procurement\Application\SupplierCreditNotePostingService;
+use App\Modules\Procurement\Application\SupplierInvoicePostingService;
 use App\Modules\Workshop\WorkOrder\Domain\Services\StatusMachine;
 
 /**
@@ -48,13 +51,13 @@ final class DocumentStatusMachine
      * concern (it must short-circuit BEFORE asking for a transition), never a
      * legal edge.
      */
-    public function isAllowed(DocumentStatus $from, DocumentStatus $to): bool
+    public function isAllowed(DocumentStatus $from, DocumentStatus $to, ?DocumentType $type = null): bool
     {
         if ($from === $to) {
             return false;
         }
 
-        return in_array($to, $this->allowedTargetsOf($from), true);
+        return in_array($to, $this->allowedTargetsOf($from, $type), true);
     }
 
     /**
@@ -62,7 +65,53 @@ final class DocumentStatusMachine
      *
      * @return list<DocumentStatus>
      */
-    public function allowedTargetsOf(DocumentStatus $from): array
+    public function allowedTargetsOf(DocumentStatus $from, ?DocumentType $type = null): array
+    {
+        $targets = $this->salesLifecycleTargetsOf($from);
+
+        // N-6 fix round r1 / fiscal gate F-6 — TYPE-AWARE EDGES.
+        //
+        // Four live production services post their document DIRECTLY from
+        // `Draft`, with no `Confirmed` step at all: supplier invoices, supplier
+        // credit notes, expenses and incomes. The r1 map forbade `draft → posted`
+        // outright while calling itself "the document lifecycle", so routing
+        // those writers through the service — which a later lane will do — would
+        // have 422'd four daily flows in production. They are not a hole in the
+        // model; they are a DIFFERENT lifecycle, and the map now says so.
+        //
+        // The sales lifecycle keeps `draft → posted` FORBIDDEN: for an invoice
+        // or credit note, `Confirmed` is where the delivery-compliance gate, the
+        // GL pre-flight and the numbering decision all live.
+        if ($from === DocumentStatus::Draft && $type !== null && $this->postsDirectlyFromDraft($type)) {
+            $targets[] = DocumentStatus::Posted;
+        }
+
+        return $targets;
+    }
+
+    /**
+     * Types whose posting service takes them straight from `Draft` to `Posted`:
+     * {@see SupplierInvoicePostingService},
+     * {@see SupplierCreditNotePostingService},
+     * `ExpenseService::post()` and `IncomeService::post()`.
+     */
+    private function postsDirectlyFromDraft(DocumentType $type): bool
+    {
+        return in_array($type, [
+            DocumentType::SupplierInvoice,
+            DocumentType::SupplierCreditNote,
+            DocumentType::Expense,
+            DocumentType::Income,
+        ], true);
+    }
+
+    /**
+     * The SALES document lifecycle — quotes, orders, delivery/return notes,
+     * invoices, credit notes.
+     *
+     * @return list<DocumentStatus>
+     */
+    private function salesLifecycleTargetsOf(DocumentStatus $from): array
     {
         return match ($from) {
             DocumentStatus::Draft => [

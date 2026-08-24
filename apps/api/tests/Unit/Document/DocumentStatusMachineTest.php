@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Document;
 
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\DocumentStatusMachine;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -83,6 +84,48 @@ final class DocumentStatusMachineTest extends TestCase
         foreach (DocumentStatus::cases() as $status) {
             $this->assertFalse($this->machine->isAllowed($status, $status), "{$status->value} self-loop must be refused");
         }
+    }
+
+    /**
+     * F-6 — the four live `Draft -> Posted` posting services (supplier invoice,
+     * supplier credit note, expense, income) are a DIFFERENT lifecycle, not a
+     * hole. The sales lifecycle must keep the edge forbidden: `Confirmed` is
+     * where the delivery-compliance gate, the GL pre-flight and the numbering
+     * decision live for an invoice.
+     */
+    public function test_draft_to_posted_is_legal_only_for_the_types_that_post_directly(): void
+    {
+        foreach ([
+            DocumentType::SupplierInvoice,
+            DocumentType::SupplierCreditNote,
+            DocumentType::Expense,
+            DocumentType::Income,
+        ] as $type) {
+            $this->assertTrue(
+                $this->machine->isAllowed(DocumentStatus::Draft, DocumentStatus::Posted, $type),
+                "{$type->value} posts directly from draft",
+            );
+        }
+
+        foreach ([DocumentType::Invoice, DocumentType::CreditNote, DocumentType::SalesOrder, DocumentType::Quote] as $type) {
+            $this->assertFalse(
+                $this->machine->isAllowed(DocumentStatus::Draft, DocumentStatus::Posted, $type),
+                "{$type->value} must go through Confirmed",
+            );
+        }
+
+        $this->assertFalse(
+            $this->machine->isAllowed(DocumentStatus::Draft, DocumentStatus::Posted),
+            'with no type in hand the edge stays forbidden — fail closed',
+        );
+    }
+
+    public function test_a_direct_posting_type_still_cannot_jump_from_confirmed_to_paid(): void
+    {
+        $this->assertFalse(
+            $this->machine->isAllowed(DocumentStatus::Confirmed, DocumentStatus::Paid, DocumentType::SupplierInvoice),
+            'type-awareness must not widen the one edge this lane exists to close',
+        );
     }
 
     public function test_every_status_has_a_defined_row(): void

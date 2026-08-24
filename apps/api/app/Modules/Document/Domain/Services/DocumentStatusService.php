@@ -12,6 +12,17 @@ use Illuminate\Support\Facades\Log;
 /**
  * The single write path for document lifecycle-status changes (N-6, Phase 1).
  *
+ * WHAT IS AND IS NOT ROUTED THROUGH IT TODAY (fiscal gate r1 F-6 — the r1
+ * docblock claimed more than the code delivered). ROUTED: the whole
+ * `DocumentPostingService` (seal, non-fiscal post, cancel, sales-order cancel,
+ * the three reverts), all seven treasury writers, and the four `Draft → Posted`
+ * posting services (supplier invoice, supplier credit note, expense, income).
+ * NOT ROUTED, and named so nobody has to re-derive it: `CorrectingEntryService`
+ * (`Draft → Confirmed`, `Confirmed → Posted` — both edges ARE legal in the map,
+ * it simply writes them itself), and every `create([... 'status' => …])` BIRTH
+ * state, which is not a transition and is legitimately exempt
+ * (`ArApOpeningService` is the load-bearing example).
+ *
  * Every caller that needs to move `documents.status` asks this service; it
  * consults {@see DocumentStatusMachine} and refuses a forbidden edge with
  * {@see DocumentTransitionException} (422 `DOCUMENT_TRANSITION_REFUSED`).
@@ -68,7 +79,7 @@ final readonly class DocumentStatusService
 
         $from = $document->status;
 
-        if (! $this->machine->isAllowed($from, $to)) {
+        if (! $this->machine->isAllowed($from, $to, $document->type)) {
             throw DocumentTransitionException::forbiddenEdge(
                 $document->id,
                 $document->document_number,
