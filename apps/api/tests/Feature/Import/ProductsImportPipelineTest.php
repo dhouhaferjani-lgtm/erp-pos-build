@@ -30,6 +30,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -293,6 +294,25 @@ final class ProductsImportPipelineTest extends TestCase
         $this->assertNull($rows[2]->warnings);
         $this->assertSame('matched', $rows[2]->data['_results']['category'] ?? null);
         $this->assertSame('category_created', $rows[3]->warnings[0]['code'] ?? null);
+
+        // ...and it reaches the operator's result workbook, which is the only
+        // artefact they keep after the wizard closes.
+        $workbook = $this->actingAs($this->user, 'sanctum')
+            ->get("/api/v1/imports/{$jobId}/result-workbook");
+        $workbook->assertOk();
+
+        $path = tempnam(sys_get_temp_dir(), 'w23-workbook-');
+        $this->assertIsString($path);
+        file_put_contents($path, $workbook->streamedContent());
+        $spreadsheet = IOFactory::load($path);
+        unlink($path);
+
+        $imported = $spreadsheet->getSheetByName('Imported');
+        $this->assertNotNull($imported);
+        $cells = json_encode($imported->toArray(), JSON_UNESCAPED_UNICODE);
+        $this->assertIsString($cells);
+        $this->assertStringContainsString('category_created', $cells);
+        $this->assertStringContainsString('Soins Bebe', $cells);
     }
 
     public function test_re_importing_the_same_categories_reuses_them_without_duplicates_or_warnings(): void
