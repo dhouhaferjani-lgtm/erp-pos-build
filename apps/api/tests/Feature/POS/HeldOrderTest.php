@@ -325,7 +325,14 @@ final class HeldOrderTest extends TestCase
         ]);
     }
 
-    public function test_recall_already_recalled_order_fails(): void
+    /**
+     * Q-8 fix round — an already-recalled basket is the production lost-race
+     * observation (on PostgreSQL the loser's `SELECT ... FOR UPDATE` re-reads
+     * exactly this row version), so it is a 409 `HELD_ORDER_RECALL_CONFLICT`.
+     * It was 422 `RECALL_FAILED` until the contract was made true; see the
+     * status→code table on `HeldOrderService::recallOrder()`.
+     */
+    public function test_recall_already_recalled_order_is_a_409_conflict(): void
     {
         $heldOrder = $this->createHeldOrder([
             'status' => HeldOrderStatus::Recalled,
@@ -334,10 +341,13 @@ final class HeldOrderTest extends TestCase
 
         $response = $this->postJson('/api/v1/pos/held-orders/'.$heldOrder->id.'/recall');
 
-        $response->assertStatus(422);
-        $response->assertJsonPath('error.code', 'RECALL_FAILED');
+        $response->assertStatus(409);
+        $response->assertJsonPath('error.code', 'HELD_ORDER_RECALL_CONFLICT');
     }
 
+    /**
+     * A basket that lapsed on its own TTL was consumed by nobody: 422, not 409.
+     */
     public function test_recall_expired_order_fails(): void
     {
         $heldOrder = $this->createHeldOrder([
@@ -350,6 +360,13 @@ final class HeldOrderTest extends TestCase
         $response->assertJsonPath('error.code', 'RECALL_FAILED');
     }
 
+    /**
+     * Q-8 — discard is a SOFT delete since
+     * `2026_08_23_163000_harden_pos_held_orders_status_and_discard`: the row is
+     * the only server-side trace of what was parked, so it survives with
+     * `deleted_at` set and is merely invisible to every model query. The
+     * pre-Q-8 assertion here was `assertDatabaseMissing`.
+     */
     public function test_discard_held_order(): void
     {
         $heldOrder = $this->createHeldOrder(['label' => 'Discard Me']);
@@ -359,9 +376,10 @@ final class HeldOrderTest extends TestCase
         $response->assertStatus(200);
         $response->assertJsonPath('data.success', true);
 
-        $this->assertDatabaseMissing('pos_held_orders', [
+        $this->assertSoftDeleted('pos_held_orders', [
             'id' => $heldOrder->id,
         ]);
+        $this->assertNull(HeldOrder::find($heldOrder->id));
     }
 
     public function test_discard_nonexistent_order_returns_404(): void
