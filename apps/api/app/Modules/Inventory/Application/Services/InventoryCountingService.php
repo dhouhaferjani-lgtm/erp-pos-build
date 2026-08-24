@@ -803,10 +803,13 @@ class InventoryCountingService
     /**
      * Re-read a counting header FOR UPDATE inside the caller's transaction.
      *
-     * Gate r1: every mutating counting path takes this before it writes, so the
-     * status it decides on is the committed truth rather than the snapshot the
-     * request loaded — the lock WAIT is long enough for another request to
-     * finalize or cancel the same counting.
+     * Gate r1: the lifecycle-mutating paths (submitCount, triggerThirdCount,
+     * finalize, cancel) take this before they write, so the status they decide
+     * on is the committed truth rather than the snapshot the request loaded —
+     * the lock WAIT is long enough for another request to finalize or cancel
+     * the same counting. NOT yet covered (gate r2 NEW-2, pre-existing, out of
+     * lane Q-2 scope — LEDGER): manualOverride() writes item quantities with
+     * neither this lock nor a terminal-state guard.
      */
     private function lockCounting(string $countingId): InventoryCounting
     {
