@@ -171,6 +171,25 @@ return new class extends Migration
     private const CENSUS_REPORT_CAP = 50;
 
     /**
+     * Sales-side ORIGINATING types — the only ones whose stale rate is repaired
+     * by re-picking the product, because on these the product master IS the
+     * authority for the band (r3 finding 1).
+     *
+     * Everything else that can reach the worklist is a purchase or a reversal:
+     * a supplier invoice's rate is what the VENDOR charged on their paper
+     * (`CreateSupplierInvoiceService` writes the supplier's stated VAT), and a
+     * credit note's rate mirrors the SEALED invoice it reverses. For those, the
+     * product's configuration is not "correct" and the line is not "stale" —
+     * telling an operator to re-pick the product there is the withdrawn r1
+     * repair handed to a human, and it would not re-derive
+     * `document_lines.recoverable_tax_amount` either.
+     *
+     * `invoice` is on the list only while it is still a DRAFT — see
+     * remedyFor().
+     */
+    private const SALES_ORIGINATING_TYPES = ['quote', 'sales_order', 'invoice'];
+
+    /**
      * Lines a human can still legally repair: product carries a LINE_ITEMS
      * percentage configuration that disagrees with the stored rate, on a
      * document that is not sealed (`fiscal_status`/`fiscal_hash`), not posted
@@ -181,15 +200,23 @@ return new class extends Migration
      * DELIBERATELY NOT TYPE-FILTERED, because this statement no longer WRITES.
      * A drifted draft supplier invoice or credit note must never be rewritten
      * from the sale-side product master — but it is still worth NAMING in the
-     * worklist, with its type, so whoever reads the log can route it to the
-     * right correction path instead of discovering it later. Every line is
-     * emitted with `type=` for exactly that reason.
+     * worklist so whoever reads the log can route it to the right correction
+     * path instead of discovering it later. What the worklist TELLS them to do
+     * is type-aware; see remedyFor().
+     *
+     * KEYED ON `d.id`, NOT `d.document_number` (r3 finding 4). The unique
+     * constraint is `(tenant_id, type, document_number)`, so the same number is
+     * legal on two different types, and the column is nullable until a document
+     * seals — grouping on it would collapse unrelated documents into one
+     * worklist entry and make `flagged_docs` under-report the very list a
+     * checklist greps.
      *
      * `IS DISTINCT FROM` is spelled out longhand so the one statement runs
      * unchanged on both drivers.
      */
     private const CENSUS_SQL = <<<'SQL'
-        SELECT d.document_number AS document_number,
+        SELECT d.id AS document_id,
+               d.document_number AS document_number,
                d.type AS type,
                d.status AS status,
                dl.tax_rate AS stale_rate,
@@ -206,7 +233,30 @@ return new class extends Migration
           AND d.fiscal_hash IS NULL
           AND d.deleted_at IS NULL
           AND (dl.tax_rate IS NULL OR dl.tax_rate <> tc.percentage_rate)
-        ORDER BY d.document_number
+        ORDER BY d.id
+        SQL;
+
+    /**
+     * Exact counters for the gate line, taken from the SAME predicate as
+     * CENSUS_SQL (r3 finding 5). The enumeration below is capped and takes a
+     * LIMIT; these two numbers must stay exact regardless, so a checklist can
+     * trust them, and neither is derived by counting PHP array entries.
+     */
+    private const CENSUS_COUNT_SQL = <<<'SQL'
+        SELECT COUNT(*) AS line_count,
+               COUNT(DISTINCT d.id) AS document_count
+        FROM document_lines dl
+        JOIN documents d ON d.id = dl.document_id
+        JOIN products p ON p.id = dl.product_id
+        JOIN tax_configurations tc ON tc.id = p.default_tax_configuration_id
+        WHERE tc.applies_to = 'LINE_ITEMS'
+          AND tc.tax_type = 'PERCENTAGE'
+          AND tc.percentage_rate IS NOT NULL
+          AND d.status IN ('draft', 'confirmed')
+          AND d.fiscal_status = 'DRAFT'
+          AND d.fiscal_hash IS NULL
+          AND d.deleted_at IS NULL
+          AND (dl.tax_rate IS NULL OR dl.tax_rate <> tc.percentage_rate)
         SQL;
 
     public function up(): void
@@ -398,64 +448,130 @@ return new class extends Migration
         // a schema-drifted tenant's failure contained to this half. Proven on
         // PostgreSQL: without it, the failure-path test dies with 25P02 on the
         // NEXT query instead of reading the FAILED gate line.
-        /** @var array<int, object> $rows */
-        $rows = $connection->transaction(
-            static fn (): array => $connection->select(self::CENSUS_SQL),
-        );
+        //
+        // BOUNDED (r3 finding 5): the counters come from a COUNT query and the
+        // enumeration takes a LIMIT, so a tenant with a large drift population
+        // (a bad import, a re-rated configuration) never materialises every row
+        // in PHP during an unattended `tenants:migrate`.
+        /** @var array{counts: array<int, object>, rows: array<int, object>} $result */
+        $result = $connection->transaction(static fn (): array => [
+            'counts' => $connection->select(self::CENSUS_COUNT_SQL),
+            'rows' => $connection->select(self::CENSUS_SQL.' LIMIT '.(self::CENSUS_REPORT_CAP * 25 + 1)),
+        ]);
 
-        if ($rows === []) {
+        $counts = (array) ($result['counts'][0] ?? new stdClass);
+
+        $lineCount = (int) ($counts['line_count'] ?? 0);
+        $documentCount = (int) ($counts['document_count'] ?? 0);
+
+        if ($lineCount === 0) {
             return ['lines' => 0, 'documents' => 0];
         }
 
         $documents = [];
 
-        foreach ($rows as $row) {
+        foreach ($result['rows'] as $row) {
             /** @var array<string, mixed> $columns */
             $columns = (array) $row;
 
-            $number = (string) ($columns['document_number'] ?? 'unknown');
+            // Keyed on the id, printed by number (r3 finding 4).
+            $id = (string) ($columns['document_id'] ?? '');
 
-            $documents[$number] ??= [
+            $documents[$id] ??= [
+                'number' => (string) ($columns['document_number'] ?? '(no number yet)'),
                 'type' => (string) ($columns['type'] ?? 'unknown'),
                 'status' => (string) ($columns['status'] ?? 'unknown'),
                 'rates' => [],
             ];
 
-            $documents[$number]['rates'][] = sprintf(
+            $documents[$id]['rates'][] = sprintf(
                 '%s->%s',
                 $this->formatRate($columns['stale_rate'] ?? null),
                 $this->formatRate($columns['correct_rate'] ?? null),
             );
+
+            if (count($documents) > self::CENSUS_REPORT_CAP) {
+                break;
+            }
         }
 
         $reported = 0;
 
-        foreach ($documents as $number => $document) {
+        foreach ($documents as $document) {
             if ($reported >= self::CENSUS_REPORT_CAP) {
-                Log::warning(sprintf(
-                    '%s truncated=true reported=%d of documents=%d. Run the census query in this migration\'s docblock for the full list.',
-                    self::CENSUS_TOKEN,
-                    $reported,
-                    count($documents),
-                ));
-
                 break;
             }
 
             Log::warning(sprintf(
-                '%s document=%s type=%s status=%s lines=%d rates=%s NOT REPAIRED BY THIS MIGRATION - re-pick the product on each line in the editor.',
+                '%s document=%s type=%s status=%s lines=%d rates=%s %s',
                 self::CENSUS_TOKEN,
-                $number,
+                $document['number'],
                 $document['type'],
                 $document['status'],
                 count($document['rates']),
                 implode(',', $document['rates']),
+                $this->remedyFor($document['type'], $document['status']),
             ));
 
             $reported++;
         }
 
-        return ['lines' => count($rows), 'documents' => count($documents)];
+        if ($reported < $documentCount) {
+            Log::warning(sprintf(
+                '%s truncated=true reported=%d of documents=%d. Run the census query in this migration\'s docblock for the full list.',
+                self::CENSUS_TOKEN,
+                $reported,
+                $documentCount,
+            ));
+        }
+
+        return ['lines' => $lineCount, 'documents' => $documentCount];
+    }
+
+    /**
+     * What the operator should actually DO about this document — branched on
+     * its type and status, because the same sentence is wrong for three of
+     * them (r3 findings 1 and 2).
+     *
+     * PURCHASE AND REVERSAL DOCUMENTS get review-only advice. On a supplier
+     * invoice the stored rate is what the VENDOR charged; on a credit note it
+     * mirrors the SEALED invoice being reversed. For those the product's
+     * configuration is not the authority, `stale->correct` in the line above is
+     * only a difference and not a verdict, and re-picking the product would be
+     * the withdrawn r1 repair performed by hand — it would also leave
+     * `document_lines.recoverable_tax_amount` behind, which is what makes a
+     * repaired draft supplier invoice unpostable.
+     *
+     * CONFIRMED DOCUMENTS carry the snapshot caveat. `document_tax_details` is
+     * written ONLY on a draft→confirmed transition (`snapshotTaxDetails()` has
+     * no caller on any update path) and re-confirming an already-confirmed
+     * document returns silently without re-snapshotting, so an edit moves the
+     * lines and the header while the snapshot keeps the old rate. The VAT
+     * declaration reads that snapshot with no status predicate for
+     * invoice/credit-note/expense, so a confirmed INVOICE repaired off this
+     * worklist would still declare the old rate. There is no revert-to-draft
+     * route; the working remedy is the owner-executed
+     * `php artisan vat:backfill-tax-details` (dry-run by default, `--apply` to
+     * write). A confirmed quote or sales order needs no such step — the
+     * declaration never reads those types.
+     *
+     * THE OVERRIDE CAVEAT (r3 finding 3) rides on the repair advice:
+     * `document_lines` stores only a rate, never the configuration the line was
+     * put on, so a deliberately overridden line (an exemption, a product sold
+     * on another band) is indistinguishable here from N-1 drift — and re-picking
+     * the product would silently replace that override.
+     */
+    private function remedyFor(string $type, string $status): string
+    {
+        $confirmedCaveat = $status === 'confirmed'
+            ? ' CONFIRMED: an edit does NOT refresh the document_tax_details snapshot (nothing re-snapshots outside the draft->confirmed transition, and re-confirming is a silent no-op); for an invoice, rebuild it afterwards with `php artisan vat:backfill-tax-details --apply` (owner-executed).'
+            : '';
+
+        if (! in_array($type, self::SALES_ORIGINATING_TYPES, true)) {
+            return 'action=review-only - purchase or reversal document: the stored rate is the supplier\'s, or the original invoice\'s, and must NOT be re-derived from the product master. Route it to the AP or credit-note correction path.';
+        }
+
+        return 'action=repair - re-pick the product on each line in the editor (verify first that the line was not a deliberate band override; the line stores no configuration, only a rate).'.$confirmedCaveat;
     }
 
     /**

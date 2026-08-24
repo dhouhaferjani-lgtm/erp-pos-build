@@ -158,12 +158,18 @@ class DraftController extends Controller
         /** @var array<string, mixed> $data */
         $data = $request->validated();
 
-        $data = $this->resolveLineTaxRates($data);
-
         $rawDraftId = $data['draft_id'] ?? null;
         $draftId = is_string($rawDraftId) ? $rawDraftId : null;
 
         try {
+            // INSIDE the try, deliberately (r3 finding 6). This method issues
+            // two queries plus one per line, on an endpoint the editor calls
+            // every three seconds; a QueryException from any of them must reach
+            // the silent-failure arm below, not a 500. Before the tier
+            // relocation the resolution ran inside saveDraft(), i.e. inside
+            // this same try — moving it up must not widen the 500 window.
+            $data = $this->resolveLineTaxRates($data);
+
             $document = $this->draftService->saveDraft(
                 tenantId: $tenantId,
                 companyId: $companyId,

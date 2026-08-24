@@ -212,7 +212,8 @@ final class BackfillProductsTaxRateN1MigrationTest extends TestCase
         $this->assertStringContainsString('type=quote', $census[0]);
         $this->assertStringContainsString('status=draft', $census[0]);
         $this->assertStringContainsString('19.00->7.00', $census[0]);
-        $this->assertStringContainsString('NOT REPAIRED BY THIS MIGRATION', $census[0]);
+        $this->assertStringContainsString('action=repair', $census[0]);
+        $this->assertStringContainsString('re-pick the product', $census[0]);
     }
 
     /**
@@ -257,6 +258,49 @@ final class BackfillProductsTaxRateN1MigrationTest extends TestCase
             $this->documentFingerprint($document, $line),
             $type->value.' must never be rewritten from the sale-side product master.',
         );
+
+        // r3 finding 1: naming the row is right, but the REMEDY printed beside
+        // it must not be the sales one. On a supplier invoice the stored rate
+        // is what the vendor charged; on a credit note it mirrors the sealed
+        // invoice being reversed. Telling an operator to re-pick the product
+        // there is the withdrawn r1 repair, performed by hand.
+        $worklistLine = $this->censusLineFor($document);
+
+        $this->assertStringContainsString('action=review-only', $worklistLine);
+        $this->assertStringNotContainsString(
+            're-pick the product',
+            $worklistLine,
+            $type->value.' must never be given the sales-side remedy.',
+        );
+    }
+
+    public function test_a_confirmed_document_carries_the_tax_snapshot_caveat(): void
+    {
+        // r3 finding 2. `document_tax_details` is written ONLY on the
+        // draft->confirmed transition; no update path re-snapshots, and
+        // re-confirming an already-confirmed document returns silently without
+        // one. So the repair advice on a CONFIRMED row is incomplete unless it
+        // says how to rebuild the snapshot — otherwise treasury CRITICAL 3
+        // survives the withdrawal, relocated onto the operator.
+        $product = $this->productOn($this->percentageConfig('TVA_7', '7.00'), '7.00');
+        [$document] = $this->unpostedDocumentLine($product, '19.00', DocumentStatus::Confirmed);
+
+        $line = $this->censusLineFor($document);
+
+        $this->assertStringContainsString('action=repair', $line);
+        $this->assertStringContainsString('CONFIRMED:', $line);
+        $this->assertStringContainsString('document_tax_details', $line);
+        $this->assertStringContainsString('vat:backfill-tax-details', $line);
+    }
+
+    public function test_a_draft_document_does_not_carry_the_confirmed_caveat(): void
+    {
+        // The caveat has to be conditional, or it is noise on every line and
+        // stops being read on the lines that need it.
+        $product = $this->productOn($this->percentageConfig('TVA_7', '7.00'), '7.00');
+        [$document] = $this->unpostedDocumentLine($product, '19.00');
+
+        $this->assertStringNotContainsString('CONFIRMED:', $this->censusLineFor($document));
     }
 
     public function test_a_posted_document_line_is_neither_written_nor_reported(): void
@@ -445,6 +489,26 @@ final class BackfillProductsTaxRateN1MigrationTest extends TestCase
         $this->captureGateLine();
 
         return $this->censusLinesFromLastRun;
+    }
+
+    /**
+     * The worklist line for one document, from a run of the migration.
+     *
+     * Matched on the document NUMBER inside the line, which is what the
+     * operator reads; the aggregate itself is keyed on the id.
+     */
+    private function censusLineFor(Document $document): string
+    {
+        $number = (string) $document->document_number;
+
+        $matches = array_values(array_filter(
+            $this->captureCensusLines(),
+            static fn (string $line): bool => str_contains($line, 'document='.$number.' '),
+        ));
+
+        $this->assertCount(1, $matches, "Expected exactly one worklist line for {$number}.");
+
+        return $matches[0];
     }
 
     /**
