@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
@@ -39,6 +39,7 @@ vi.mock('react-i18next', () => ({
         'sales:lineItems.unitPrice': 'Unit price',
         'sales:lineItems.priceSource.productPurchasePrice': 'From purchase price',
         'sales:lineItems.priceSource.none': 'No purchase price on file',
+        'sales:lineItems.priceSource.required': 'Enter the unit price',
       }
       const resolved = map[key] ?? key
       const amount = options?.['amount']
@@ -115,6 +116,80 @@ async function addLine(documentType: string, product: ProductLineProduct): Promi
   await userEvent.click(screen.getByText('add-product'))
   return screen.getByLabelText<HTMLInputElement>('Unit price')
 }
+
+function priceInput(): HTMLInputElement {
+  return screen.getByLabelText<HTMLInputElement>('Unit price')
+}
+
+/** Types into the price cell without relying on focus (the row remounts on change). */
+function setPrice(value: string): void {
+  fireEvent.change(priceInput(), { target: { value } })
+}
+
+async function clearPriceOn(documentType: string, product: ProductLineProduct): Promise<HTMLInputElement> {
+  await addLine(documentType, product)
+  setPrice('')
+  return priceInput()
+}
+
+/**
+ * Gate r1 finding 3 (MAJOR). The blank-price warning was rendered from add-time
+ * provenance state, which `handleUpdateLine` drops on ANY price edit. So the one
+ * affordance protecting the EMPTY default vanished in exactly the state it exists
+ * to flag: type a digit, delete it, and the field is blank and silent. The warning
+ * must come from CURRENT line state.
+ */
+describe('DocumentLineEditor — blank-price warning survives an edit (W2-6 r1 #3)', () => {
+  it('keeps warning after the operator types then clears a seeded purchase price', async () => {
+    const input = await clearPriceOn('purchase_order', PRODUCT)
+
+    expect(input.value).toBe('')
+    expect(screen.getByText(/Enter the unit price/)).toBeInTheDocument()
+  })
+
+  it('keeps warning on a purchase line that never had a price and was then touched', async () => {
+    const input = await clearPriceOn('purchase_order', { ...PRODUCT, purchase_price: null })
+
+    expect(input.value).toBe('')
+    expect(screen.getByText(/Enter the unit price|No purchase price on file/)).toBeInTheDocument()
+  })
+
+  it('warns on a SALES line whose price the operator cleared', async () => {
+    const input = await clearPriceOn('invoice', PRODUCT)
+
+    expect(input.value).toBe('')
+    expect(screen.getByText(/Enter the unit price/)).toBeInTheDocument()
+  })
+
+  it('drops the provenance label once the operator overtypes the seeded price', async () => {
+    await addLine('purchase_order', PRODUCT)
+    setPrice('16')
+
+    expect(screen.queryByText(/From purchase price/)).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * Gate r1 findings 5 + 6 (MINOR): the provenance label must not echo the amount
+ * already rendered in the adjacent MoneyInput, and the hint must be associated
+ * with its input for screen readers.
+ */
+describe('DocumentLineEditor — price hint presentation (W2-6 r1 #5/#6)', () => {
+  it('does not repeat the price figure in the provenance label', async () => {
+    await addLine('purchase_order', PRODUCT)
+
+    expect(screen.getByText('From purchase price')).toBeInTheDocument()
+    expect(screen.queryByText(/From purchase price\s+15\.000/)).not.toBeInTheDocument()
+  })
+
+  it('associates the hint with the price input via aria-describedby', async () => {
+    const input = await addLine('purchase_order', { ...PRODUCT, purchase_price: null })
+
+    const describedBy = input.getAttribute('aria-describedby')
+    expect(describedBy).not.toBeNull()
+    expect(document.getElementById(describedBy ?? '')).toHaveTextContent(/No purchase price on file/)
+  })
+})
 
 describe('DocumentLineEditor — purchase-document unit-price default (W2-6)', () => {
   it('defaults a purchase-order line to products.purchase_price, never the sale price', async () => {
