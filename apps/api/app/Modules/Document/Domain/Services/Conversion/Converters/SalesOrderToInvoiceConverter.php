@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Domain\Services\Conversion\Converters;
 
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Enums\PostingMode;
+use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryPostException;
+use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\LocationContext;
@@ -576,7 +580,28 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
         // Create GL entry to clear the advance when the invoice is posted
         if (bccomp($totalPrepaid, '0.00', $this->scale()) > 0) {
             try {
-                $this->glService->clearCustomerAdvanceToReceivable(
+                // N-6 fix round r1 / fiscal gate F-3 — SYNCHRONOUS, and the reason
+                // is the marker written below, not tidiness.
+                //
+                // With the legacy default (`PostingMode::AfterCommit`) this call
+                // posts ONLY when an actor could be resolved
+                // (`GeneralLedgerService`'s `elseif ($user !== null)` branch), and
+                // `$actorUserId` is genuinely nullable on this path
+                // (`$options['actor_user_id'] ?? null`). With a null actor the
+                // clearing entry was CREATED and left DRAFT forever — while the
+                // code below stamped `advance_cleared_at`, telling the posting
+                // path that 419 had already been discharged. `clearAdvances-
+                // AllocatedToInvoice()` then skips it, and the advance stays
+                // credited forever with no error anywhere. The lane's own safety
+                // net was disarmed in exactly its documented failure mode.
+                //
+                // `transferPrepayments()` always runs inside
+                // `billingConcurrencyRetrier->run()`'s transaction, so the
+                // enclosing-transaction precondition of `SynchronousInTransaction`
+                // is satisfied; the returned entry is already POSTED, and the
+                // stamp below is conditioned on that fact rather than on the mere
+                // absence of a throw.
+                $clearingEntry = $this->glService->clearCustomerAdvanceToReceivable(
                     $invoice->company_id,
                     $invoice->partner_id,
                     $invoice->id,
@@ -585,8 +610,23 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
                     "Prepayment applied from order {$order->document_number} to invoice {$invoice->document_number}",
                     $actorUserId,
                     (string) $invoice->currency,
+                    PostingMode::SynchronousInTransaction,
                 );
             } catch (\InvalidArgumentException|\RuntimeException $e) {
+                // F-3 — THE NARROWING THE COMMENT BELOW PREDICTED, now due.
+                // `UnbalancedJournalEntryPostException` extends
+                // `\InvalidArgumentException`. While the post was deferred through
+                // `DB::afterCommit` an imbalance was raised after this frame had
+                // returned and propagated PAST this catch — which is what
+                // `DocumentConversionScenarioTest::it_pins_the_deferral_that_keeps_an_unbalanced_prepayment_post_loud`
+                // measures. Making the post synchronous brings that refusal INSIDE
+                // the try, where this catch would silently downgrade it to a
+                // payload note. Re-throw it: an unbalanced GL post must abort the
+                // conversion, exactly as it did before.
+                if ($e instanceof UnbalancedJournalEntryPostException) {
+                    throw $e;
+                }
+
                 // enforcement-P3 M1 (round 1, finding 2) — DOCUMENTATION ONLY, no
                 // behaviour change. A BALANCE refusal from the chokepoint does NOT
                 // reach this catch today, and the reason is worth stating because it
@@ -622,7 +662,37 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
                 $invoicePayload['prepayments_transferred']['gl_entry_skipped'] = true;
                 $invoicePayload['prepayments_transferred']['gl_skip_reason'] = $e->getMessage();
                 $invoice->update(['payload' => $invoicePayload]);
+
+                // The clearing did NOT happen, so the advance stays OPEN and
+                // `DocumentPostingService::post()` will clear it when the
+                // invoice is posted. Deliberately no marker write here.
+                return;
             }
+
+            // N-6 — the 419 for these allocations has just been discharged
+            // against the invoice's receivable. Stamp them CLEARED so
+            // `DocumentPostingService::post()` does not clear the same advance a
+            // second time when this invoice is posted (the clearing ceiling is
+            // partner-pool-level, so a double clear would silently drain another
+            // advance of the same partner instead of failing loudly).
+            //
+            // F-3 — CLEARED-NESS IS CLAIMED FROM THE ENTRY'S STATUS, never from
+            // "the call did not throw". A DRAFT entry has discharged nothing, and
+            // stamping on its behalf is worse than not stamping at all: the
+            // posting path would then skip a 419 that is still credited. When the
+            // entry is not posted the marker records only WHICH entry was
+            // attempted, and the advance stays OPEN for the posting path to clear.
+            /** @var JournalEntry|null $reread */
+            $reread = JournalEntry::query()->find($clearingEntry->id);
+            $clearingPosted = $reread?->status === JournalEntryStatus::Posted;
+
+            PaymentAllocation::query()
+                ->whereIn('id', $allocations->pluck('id')->all())
+                ->update([
+                    'booked_as_advance' => true,
+                    'advance_journal_entry_id' => $clearingEntry->id,
+                    'advance_cleared_at' => $clearingPosted ? now() : null,
+                ]);
         }
     }
 

@@ -378,6 +378,11 @@ final class DeferredTenderGuardsTest extends TestCase
             'company_id' => $this->company->id,
             'partner_id' => $this->partner->id,
             'status' => DocumentStatus::Posted,
+            // N-6: posting an invoice ALWAYS writes the seal
+            // (`DocumentPostingService::postWithFiscalChain()`), and
+            // `reopenFromPaid()` refuses to restore `Posted` on a document that
+            // never carried one. The fixture now states what posting implies.
+            'fiscal_hash' => str_repeat('a', 64),
             'currency' => 'TND',
             'total' => '40.000',
             'balance_due' => '40.000',

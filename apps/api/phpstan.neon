@@ -33,6 +33,7 @@ parameters:
 rules:
     - App\PHPStan\Rules\DeliveryNoteBillingWritesOnlyViaClaimService
     - App\PHPStan\Rules\WorkOrderStatusWriteOnlyViaTransitionService
+    - App\PHPStan\Rules\DocumentStatusWriteOnlyViaStatusService
     - App\PHPStan\Rules\ForbidHardcodedBcmathScale
     - App\PHPStan\Rules\ForbidFixedScaleQuantityLiteralRule
     - App\PHPStan\Rules\ForbidQuantityScaleConstantInPresentationRule

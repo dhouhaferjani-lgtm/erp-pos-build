@@ -777,6 +777,12 @@ final class PaymentReversalDocumentTest extends TestCase
             'partner_id' => $this->customer->id,
             'document_date' => now(),
             'status' => DocumentStatus::Paid,
+            // N-6: a document that reached `Paid` legitimately did so THROUGH
+            // `Posted`, so it carries a seal. `DocumentStatusService::reopenFromPaid()`
+            // refuses to promote a NEVER-sealed document to `Posted` (that is the
+            // pre-N-6 dead end the repair command exists for), so this fixture
+            // states the seal it always implied.
+            'fiscal_hash' => str_repeat('a', 64),
             'subtotal' => $total,
             'tax_amount' => '0.00',
             'total' => $total,

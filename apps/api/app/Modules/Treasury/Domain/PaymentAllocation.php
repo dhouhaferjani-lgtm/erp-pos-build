@@ -18,6 +18,9 @@ use Illuminate\Support\Carbon;
  * @property string $document_id
  * @property numeric-string $amount
  * @property numeric-string|null $tolerance_writeoff
+ * @property bool $booked_as_advance N-6: TRUE when this allocation was booked Cr 419 (customer advance) because the document had no posted receivable yet.
+ * @property string|null $advance_journal_entry_id The 419 entry that booked it.
+ * @property Carbon|null $advance_cleared_at Set when the advance was cleared to 411 — at invoice posting, or at order→invoice conversion. Guards against a double clear.
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Payment|null $payment
@@ -34,6 +37,9 @@ class PaymentAllocation extends Model
         'document_id',
         'amount',
         'tolerance_writeoff',
+        'booked_as_advance',
+        'advance_journal_entry_id',
+        'advance_cleared_at',
     ];
 
     /**
@@ -44,6 +50,8 @@ class PaymentAllocation extends Model
         return [
             'amount' => 'decimal:3',
             'tolerance_writeoff' => 'decimal:4',
+            'booked_as_advance' => 'boolean',
+            'advance_cleared_at' => 'datetime',
         ];
     }
 
