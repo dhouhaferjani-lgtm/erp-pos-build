@@ -37,7 +37,8 @@ ORDER RULE: `tenants:migrate` BEFORE any manual `accounting:backfill-chart-purpo
 - [ ] Web: no build coupling beyond the deploy.
 
 ## 6. Post-deploy verification (staging, per tenant) — read-only commands
-- [ ] `php artisan pos:census-vat-legs --tenant=…` → exit 0 (2 = unprovisioned purposes, 1 = drift)
+- [ ] `php artisan tenants:run pos:census-vat-legs --tenants=…` → exit 0 (2 = unprovisioned purposes, 1 = drift) — MUST run under `tenants:run`; a bare `--tenant` reports a false 'chart not provisioned'
+- [ ] `php artisan tenants:run inventory:lot-drift-census --tenants=… --option=fail-on-drift` → 0 drift on a fresh tenant
 - [ ] `php artisan inventory:repair-phantom-default-batches --tenant=… --dry-run` → 0 phantom / 0 drift on a fresh tenant
 - [ ] `php artisan treasury:reconcile --tenant=…` → 0 frozen
 - [ ] `php artisan documents:repair-paid-never-posted --tenant=… --dry-run` → 0 candidates
