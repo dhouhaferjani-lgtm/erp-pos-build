@@ -51,52 +51,287 @@
     "noActiveCounts": "لا توجد عمليات جرد نشطة",
     "noPendingReview": "لا توجد عمليات جرد بانتظار المراجعة",
     "status": {
-      "draft": "مسودة", "scheduled": "مجدول", "count_1_in_progress": "العدّ الأول جارٍ", "count_1_completed": "اكتمل العدّ الأول", "count_2_in_progress": "العدّ الثاني جارٍ", "count_2_completed": "اكتمل العدّ الثاني", "count_3_in_progress": "العدّ الثالث جارٍ", "count_3_completed": "اكتمل العدّ الثالث", "pending_review": "بانتظار المراجعة", "finalized": "مُعتمد", "cancelled": "ملغى"
+      "draft": "مسودة",
+      "scheduled": "مجدول",
+      "count_1_in_progress": "العدّ الأول جارٍ",
+      "count_1_completed": "اكتمل العدّ الأول",
+      "count_2_in_progress": "العدّ الثاني جارٍ",
+      "count_2_completed": "اكتمل العدّ الثاني",
+      "count_3_in_progress": "العدّ الثالث جارٍ",
+      "count_3_completed": "اكتمل العدّ الثالث",
+      "pending_review": "بانتظار المراجعة",
+      "finalized": "مُعتمد",
+      "cancelled": "ملغى"
     },
     "scopeTypes": {
-      "product_location": "المنتج + الموقع", "product": "المنتج", "location": "الموقع", "category": "الفئة", "zone": "عقدة / منطقة", "full_inventory": "المخزون بالكامل"
+      "product_location": "المنتج + الموقع",
+      "product": "المنتج",
+      "location": "الموقع",
+      "category": "الفئة",
+      "zone": "عقدة / منطقة",
+      "full_inventory": "المخزون بالكامل"
     },
     "scopeDescriptions": {
-      "product_location": "عدّ منتجات محددة في مواقع محددة", "product": "عدّ منتجات محددة في جميع المواقع", "location": "عدّ جميع المنتجات في مواقع محددة", "category": "عدّ جميع المنتجات ضمن فئات محددة", "zone": "عدّ المنتجات المخزنة في العقد المحددة وجميع العقد المتفرعة منها داخل موقع واحد", "full_inventory": "عدّ جميع المنتجات في جميع المواقع"
+      "product_location": "عدّ منتجات محددة في مواقع محددة",
+      "product": "عدّ منتجات محددة في جميع المواقع",
+      "location": "عدّ جميع المنتجات في مواقع محددة",
+      "category": "عدّ جميع المنتجات ضمن فئات محددة",
+      "zone": "عدّ المنتجات المخزنة في العقد المحددة وجميع العقد المتفرعة منها داخل موقع واحد",
+      "full_inventory": "عدّ جميع المنتجات في جميع المواقع"
     },
-    "executionModes": { "parallel": "متوازٍ", "sequential": "متسلسل" },
-    "summary": { "active": "نشط", "pendingReview": "بانتظار المراجعة", "completedThisMonth": "المكتمل هذا الشهر", "overdue": "متأخر" },
+    "executionModes": {
+      "parallel": "متوازٍ",
+      "sequential": "متسلسل"
+    },
+    "summary": {
+      "active": "نشط",
+      "pendingReview": "بانتظار المراجعة",
+      "completedThisMonth": "المكتمل هذا الشهر",
+      "overdue": "متأخر"
+    },
     "list": {
-      "title": "جميع عمليات الجرد", "description": "عرض جميع عمليات جرد المخزون وإدارتها", "searchPlaceholder": "البحث بالمعرّف أو الوصف…", "empty": "لم يتم العثور على عمليات جرد", "createFirst": "أنشئ أول عملية جرد", "errorLoading": "تعذر تحميل عمليات الجرد",
-      "columns": { "id": "المعرّف", "scope": "النطاق", "status": "الحالة", "progress": "التقدم", "created": "تاريخ الإنشاء" },
-      "mobileBadge": "الجوال", "sourceFilter": { "all": "كل المصادر", "mobileOnly": "الجوال فقط", "webOnly": "الويب فقط" }
+      "title": "جميع عمليات الجرد",
+      "description": "عرض جميع عمليات جرد المخزون وإدارتها",
+      "searchPlaceholder": "البحث بالمعرّف أو الوصف…",
+      "empty": "لم يتم العثور على عمليات جرد",
+      "createFirst": "أنشئ أول عملية جرد",
+      "errorLoading": "تعذر تحميل عمليات الجرد",
+      "columns": {
+        "id": "المعرّف",
+        "scope": "النطاق",
+        "status": "الحالة",
+        "progress": "التقدم",
+        "created": "تاريخ الإنشاء"
+      },
+      "mobileBadge": "الجوال",
+      "sourceFilter": {
+        "all": "كل المصادر",
+        "mobileOnly": "الجوال فقط",
+        "webOnly": "الويب فقط"
+      }
     },
     "create": {
-      "title": "إنشاء عملية جرد", "description": "إعداد عملية جديدة لجرد المخزون", "submit": "إنشاء الجرد",
-      "steps": { "scope": "النطاق", "selection": "الاختيار", "configuration": "الإعداد", "assignment": "التكليف", "review": "المراجعة" },
-      "selection": "اختيار العناصر", "selectionDescriptionProduct": "اختر المنتجات المراد عدّها", "selectionDescriptionProductLocation": "اختر المنتجات المراد عدّها في مواقع محددة", "selectionDescriptionLocation": "اختر المواقع المراد جردها", "selectionTitleCategory": "اختيار الفئات", "selectionDescriptionCategory": "اختر فئات المنتجات المراد عدّها", "selectionTitleZone": "اختيار الموقع والعقد", "selectionDescriptionZone": "اختر موقعًا ثم حدد العقد من تسلسل مواقع التخزين",
-      "productSelectionHelper": "ابحث عن المنتجات واخترها بالاسم أو الرمز أو الباركود", "locationSelectionHelper": "ابحث عن المواقع المراد إدراجها في الجرد واخترها",
-      "zoneLocationLabel": "الموقع", "zoneLocationHelper": "تنتمي عقد التخزين إلى موقع واحد؛ اختر الموقع المراد عدّه أولًا", "zoneSelectLabel": "العقد / المناطق", "zoneLoadingZones": "جار تحميل عقد التخزين…", "noZonesForLocation": "لا يحتوي هذا الموقع على عقد تخزين بعد. حدّد تسلسل التخزين قبل إنشاء عملية العدّ.", "zoneSelectionHelper": "اختر عقدة واحدة أو أكثر. يشمل كل اختيار جميع العقد المتفرعة منه.",
-      "scopeTitle": "اختيار نطاق الجرد", "scopeDescription": "اختر ما تريد عدّه", "scopeType": "نوع النطاق", "configTitle": "إعداد الجرد", "configDescription": "حدّد قواعد الجرد ومتطلباته", "executionMode": "نمط التنفيذ", "countRequirements": "متطلبات العدّ", "requiresCount2": "طلب عدّ ثانٍ (عدّ مزدوج)", "requiresCount3": "طلب عدّ ثالث (عند وجود فروقات)", "allowUnexpectedItems": "السماح بعناصر غير متوقعة", "allowUnexpectedItemsHelp": "يمكن للقائمين بالعدّ إضافة عناصر غير موجودة في القائمة المتوقعة", "blockSales": "حظر المبيعات أثناء هذا الجرد", "blockSalesHelp": "منع المبيعات في المواقع الجاري جردها طوال مدة الجرد", "blockSalesZoneDisabledHint": "لا يتوفر حظر المبيعات لعمليات العدّ حسب العقدة / المنطقة؛ تستمر المبيعات وتُسوّى حسب التوقيت", "ambiguityWindowMinutes": "نافذة الالتباس (بالدقائق)", "ambiguityWindowMinutesHelp": "هامش زمني لتسوية اختلاف العدّ عبر إعادة تطبيق المبيعات والحركات بين أوقات العدّ", "instructions": "تعليمات القائمين بالعدّ", "instructionsPlaceholder": "أدخل أي تعليمات خاصة للقائمين بالعدّ…",
-      "assignmentTitle": "تكليف القائمين بالعدّ", "assignmentDescription": "اختر من سينفذ عمليات العدّ", "counter1": "القائم بالعدّ الأساسي", "counter1Help": "سينفذ هذا الشخص العدّ الأول", "counter2": "القائم بالعدّ الثاني", "counter3": "القائم بالعدّ الثالث (للحسم)", "selectUserPlaceholder": "أدخل معرّف المستخدم", "scheduledStart": "البدء المجدول", "scheduledEnd": "الموعد النهائي", "reviewTitle": "المراجعة والإنشاء", "reviewDescription": "راجع الإعدادات قبل إنشاء عملية الجرد"
+      "title": "إنشاء عملية جرد",
+      "description": "إعداد عملية جديدة لجرد المخزون",
+      "submit": "إنشاء الجرد",
+      "steps": {
+        "scope": "النطاق",
+        "selection": "الاختيار",
+        "configuration": "الإعداد",
+        "assignment": "التكليف",
+        "review": "المراجعة"
+      },
+      "selection": "اختيار العناصر",
+      "selectionDescriptionProduct": "اختر المنتجات المراد عدّها",
+      "selectionDescriptionProductLocation": "اختر المنتجات المراد عدّها في مواقع محددة",
+      "selectionDescriptionLocation": "اختر المواقع المراد جردها",
+      "selectionTitleCategory": "اختيار الفئات",
+      "selectionDescriptionCategory": "اختر فئات المنتجات المراد عدّها",
+      "selectionTitleZone": "اختيار الموقع والعقد",
+      "selectionDescriptionZone": "اختر موقعًا ثم حدد العقد من تسلسل مواقع التخزين",
+      "productSelectionHelper": "ابحث عن المنتجات واخترها بالاسم أو الرمز أو الباركود",
+      "locationSelectionHelper": "ابحث عن المواقع المراد إدراجها في الجرد واخترها",
+      "zoneLocationLabel": "الموقع",
+      "zoneLocationHelper": "تنتمي عقد التخزين إلى موقع واحد؛ اختر الموقع المراد عدّه أولًا",
+      "zoneSelectLabel": "العقد / المناطق",
+      "zoneLoadingZones": "جار تحميل عقد التخزين…",
+      "noZonesForLocation": "لا يحتوي هذا الموقع على عقد تخزين بعد. حدّد تسلسل التخزين قبل إنشاء عملية العدّ.",
+      "zoneSelectionHelper": "اختر عقدة واحدة أو أكثر. يشمل كل اختيار جميع العقد المتفرعة منه.",
+      "scopeTitle": "اختيار نطاق الجرد",
+      "scopeDescription": "اختر ما تريد عدّه",
+      "scopeType": "نوع النطاق",
+      "configTitle": "إعداد الجرد",
+      "configDescription": "حدّد قواعد الجرد ومتطلباته",
+      "executionMode": "نمط التنفيذ",
+      "countRequirements": "متطلبات العدّ",
+      "requiresCount2": "طلب عدّ ثانٍ (عدّ مزدوج)",
+      "requiresCount3": "طلب عدّ ثالث (عند وجود فروقات)",
+      "allowUnexpectedItems": "السماح بعناصر غير متوقعة",
+      "allowUnexpectedItemsHelp": "يمكن للقائمين بالعدّ إضافة عناصر غير موجودة في القائمة المتوقعة",
+      "blockSales": "حظر المبيعات أثناء هذا الجرد",
+      "blockSalesHelp": "منع المبيعات في المواقع الجاري جردها طوال مدة الجرد",
+      "blockSalesZoneDisabledHint": "لا يتوفر حظر المبيعات لعمليات العدّ حسب العقدة / المنطقة؛ تستمر المبيعات وتُسوّى حسب التوقيت",
+      "ambiguityWindowMinutes": "نافذة الالتباس (بالدقائق)",
+      "ambiguityWindowMinutesHelp": "هامش زمني لتسوية اختلاف العدّ عبر إعادة تطبيق المبيعات والحركات بين أوقات العدّ",
+      "instructions": "تعليمات القائمين بالعدّ",
+      "instructionsPlaceholder": "أدخل أي تعليمات خاصة للقائمين بالعدّ…",
+      "assignmentTitle": "تكليف القائمين بالعدّ",
+      "assignmentDescription": "اختر من سينفذ عمليات العدّ",
+      "counter1": "القائم بالعدّ الأساسي",
+      "counter1Help": "سينفذ هذا الشخص العدّ الأول",
+      "counter2": "القائم بالعدّ الثاني",
+      "counter3": "القائم بالعدّ الثالث (للحسم)",
+      "selectUserPlaceholder": "أدخل معرّف المستخدم",
+      "scheduledStart": "البدء المجدول",
+      "scheduledEnd": "الموعد النهائي",
+      "reviewTitle": "المراجعة والإنشاء",
+      "reviewDescription": "راجع الإعدادات قبل إنشاء عملية الجرد"
     },
     "detail": {
-      "progress": "التقدم", "instructions": "التعليمات", "assignments": "التكليفات", "noAssignments": "لا توجد تكليفات بعد", "configuration": "الإعداد", "scope": "النطاق", "mode": "نمط التنفيذ", "countsRequired": "عمليات العدّ المطلوبة", "allowUnexpected": "السماح بغير المتوقع", "timeline": "الخط الزمني", "created": "تم الإنشاء", "scheduledStart": "البدء المجدول", "scheduledEnd": "الموعد النهائي", "activated": "تم التفعيل", "finalized": "تم الاعتماد", "cancelled": "تم الإلغاء", "createdBy": "أنشأه"
+      "progress": "التقدم",
+      "instructions": "التعليمات",
+      "assignments": "التكليفات",
+      "noAssignments": "لا توجد تكليفات بعد",
+      "configuration": "الإعداد",
+      "scope": "النطاق",
+      "mode": "نمط التنفيذ",
+      "countsRequired": "عمليات العدّ المطلوبة",
+      "allowUnexpected": "السماح بغير المتوقع",
+      "timeline": "الخط الزمني",
+      "created": "تم الإنشاء",
+      "scheduledStart": "البدء المجدول",
+      "scheduledEnd": "الموعد النهائي",
+      "activated": "تم التفعيل",
+      "finalized": "تم الاعتماد",
+      "cancelled": "تم الإلغاء",
+      "createdBy": "أنشأه"
     },
-    "actions": { "activate": "تفعيل", "review": "مراجعة النتائج", "viewReport": "عرض التقرير", "cancel": "إلغاء", "finalize": "اعتماد" },
-    "cancelDialog": { "title": "إلغاء عملية الجرد؟", "description": "سيؤدي هذا إلى إلغاء عملية الجرد نهائيًا. سيُفقد كل التقدم ولا يمكن استعادته.", "reason": "سبب الإلغاء", "reasonPlaceholder": "أدخل سبب الإلغاء…", "confirm": "إلغاء الجرد" },
+    "actions": {
+      "activate": "تفعيل",
+      "review": "مراجعة النتائج",
+      "viewReport": "عرض التقرير",
+      "cancel": "إلغاء",
+      "finalize": "اعتماد"
+    },
+    "cancelDialog": {
+      "title": "إلغاء عملية الجرد؟",
+      "description": "سيؤدي هذا إلى إلغاء عملية الجرد نهائيًا. سيُفقد كل التقدم ولا يمكن استعادته.",
+      "reason": "سبب الإلغاء",
+      "reasonPlaceholder": "أدخل سبب الإلغاء…",
+      "confirm": "إلغاء الجرد"
+    },
     "reconciliation": {
-      "status": "الحالة", "product": "المنتج", "location": "الموقع", "theoretical": "النظري", "final": "النهائي", "varianceShort": "فرق", "allMatch": "الكل متطابق", "variance": "الفرق", "thirdDecisive": "العدّ الثالث حاسم", "override": "تجاوز", "needsAction": "يتطلب إجراء", "pending": "قيد الانتظار", "totalItems": "إجمالي العناصر", "autoResolved": "سُوّيت تلقائيًا", "needsAttention": "تتطلب المراجعة", "manuallyOverridden": "تم تجاوزها يدويًا", "itemsSelected": "تم اختيار {{count}} عنصر", "addToThirdCount": "إضافة إلى العدّ الثالث", "thirdCount": "العدّ الثالث", "manualOverride": "تجاوز يدوي", "finalQuantity": "الكمية النهائية", "overrideReason": "سبب التجاوز", "overrideReasonPlaceholder": "اشرح سبب تجاوز نتيجة العدّ…", "applyOverride": "تطبيق التجاوز", "expectedNow": "المتوقع الآن", "movementsSinceCount": "الحركات منذ العدّ", "adjustmentToPost": "التسوية التي ستُرحّل", "willNotAutoPost": "لن تُرحّل تلقائيًا: {{reason}}", "wasNotAutoPosted": "لم تُرحّل تلقائيًا: {{reason}}", "blocksFinalize": "يمنع الاعتماد: {{reason}}", "legacyDelta": "فرق بالنمط السابق", "openingCost": "تكلفة الرصيد الافتتاحي", "saveCost": "حفظ"
+      "status": "الحالة",
+      "product": "المنتج",
+      "location": "الموقع",
+      "theoretical": "النظري",
+      "final": "النهائي",
+      "varianceShort": "فرق",
+      "allMatch": "الكل متطابق",
+      "variance": "الفرق",
+      "thirdDecisive": "العدّ الثالث حاسم",
+      "override": "تجاوز",
+      "needsAction": "يتطلب إجراء",
+      "pending": "قيد الانتظار",
+      "totalItems": "إجمالي العناصر",
+      "autoResolved": "سُوّيت تلقائيًا",
+      "needsAttention": "تتطلب المراجعة",
+      "manuallyOverridden": "تم تجاوزها يدويًا",
+      "itemsSelected": "تم اختيار {{count}} عنصر",
+      "addToThirdCount": "إضافة إلى العدّ الثالث",
+      "thirdCount": "العدّ الثالث",
+      "manualOverride": "تجاوز يدوي",
+      "finalQuantity": "الكمية النهائية",
+      "overrideReason": "سبب التجاوز",
+      "overrideReasonPlaceholder": "اشرح سبب تجاوز نتيجة العدّ…",
+      "applyOverride": "تطبيق التجاوز",
+      "expectedNow": "المتوقع الآن",
+      "movementsSinceCount": "الحركات منذ العدّ",
+      "adjustmentToPost": "التسوية التي ستُرحّل",
+      "willNotAutoPost": "لن تُرحّل تلقائيًا: {{reason}}",
+      "wasNotAutoPosted": "لم تُرحّل تلقائيًا: {{reason}}",
+      "blocksFinalize": "يمنع الاعتماد: {{reason}}",
+      "legacyDelta": "فرق بالنمط السابق",
+      "openingCost": "تكلفة الرصيد الافتتاحي",
+      "saveCost": "حفظ"
     },
     "review": {
-      "title": "المراجعة", "description": "راجع نتائج العدّ وسوِّ الفروقات", "itemsNeedAttention": "يتطلب {{count}} عنصر تسوية قبل الاعتماد", "resolveBeforeFinalize": "استخدم العدّ الثالث أو التجاوز اليدوي لتسوية الفروقات.",
-      "finalizeConfirm": { "title": "اعتماد الجرد؟", "description": "سينشئ هذا تسويات للمخزون استنادًا إلى الكميات النهائية. لا يمكن التراجع عن هذا الإجراء.", "syncWarning": "تأكد من مزامنة جميع أجهزة نقاط البيع في هذا الموقع قبل الاعتماد؛ لن تُصحح المبيعات المتأخرة بعد الاعتماد إلا في الجرد التالي." },
-      "lateSalesDetected_zero": "لم تُسجّل أي عملية بيع متأخرة أثناء الجرد", "lateSalesDetected_one": "تم تسجيل {{count}} عملية بيع متأخرة أثناء الجرد", "lateSalesDetected_two": "تم تسجيل {{count}} عمليتي بيع متأخرتين أثناء الجرد", "lateSalesDetected_few": "تم تسجيل {{count}} عمليات بيع متأخرة أثناء الجرد", "lateSalesDetected_many": "تم تسجيل {{count}} عملية بيع متأخرة أثناء الجرد", "lateSalesDetected_other": "تم تسجيل {{count}} عملية بيع متأخرة أثناء الجرد", "lateSalesDescription": "حدثت مبيعات أثناء الجرد وهي محتسبة بعد إعادة تطبيق الحركات.",
-      "terminalSync": { "title": "تم اكتشاف خطر في مزامنة نقاط البيع", "description": "لدى صندوق نقطة بيع واحد أو أكثر إيصالات معلقة أو بيانات مزامنة قديمة أو لم يبلّغ عن حالته. قد يترك الاعتماد الآن أثرًا لمبيعات متأخرة.", "acknowledge": "أفهم خطر المزامنة وأريد إتاحة الاعتماد", "changed": "تغيّرت مخاطر مزامنة صناديق نقاط البيع. راجع أحدث حالة وأكّدها مجددًا.", "states": { "pending": "— {{count}} إيصال معلق", "stale": "— لم يبلّغ صندوق نقطة البيع عن حالته مؤخرًا", "unknown": "— لم يتم الإبلاغ عن حالة المزامنة", "healthy": "— تمت المزامنة" } }
+      "title": "المراجعة",
+      "description": "راجع نتائج العدّ وسوِّ الفروقات",
+      "itemsNeedAttention": "يتطلب {{count}} عنصر تسوية قبل الاعتماد",
+      "resolveBeforeFinalize": "استخدم العدّ الثالث أو التجاوز اليدوي لتسوية الفروقات.",
+      "finalizeConfirm": {
+        "title": "اعتماد الجرد؟",
+        "description": "سينشئ هذا تسويات للمخزون استنادًا إلى الكميات النهائية. لا يمكن التراجع عن هذا الإجراء.",
+        "syncWarning": "تأكد من مزامنة جميع أجهزة نقاط البيع في هذا الموقع قبل الاعتماد؛ لن تُصحح المبيعات المتأخرة بعد الاعتماد إلا في الجرد التالي."
+      },
+      "lateSalesDetected_zero": "لم تُسجّل أي عملية بيع متأخرة أثناء الجرد",
+      "lateSalesDetected_one": "تم تسجيل {{count}} عملية بيع متأخرة أثناء الجرد",
+      "lateSalesDetected_two": "تم تسجيل {{count}} عمليتي بيع متأخرتين أثناء الجرد",
+      "lateSalesDetected_few": "تم تسجيل {{count}} عمليات بيع متأخرة أثناء الجرد",
+      "lateSalesDetected_many": "تم تسجيل {{count}} عملية بيع متأخرة أثناء الجرد",
+      "lateSalesDetected_other": "تم تسجيل {{count}} عملية بيع متأخرة أثناء الجرد",
+      "lateSalesDescription": "حدثت مبيعات أثناء الجرد وهي محتسبة بعد إعادة تطبيق الحركات.",
+      "terminalSync": {
+        "title": "تم اكتشاف خطر في مزامنة نقاط البيع",
+        "description": "لدى صندوق نقطة بيع واحد أو أكثر إيصالات معلقة أو بيانات مزامنة قديمة أو لم يبلّغ عن حالته. قد يترك الاعتماد الآن أثرًا لمبيعات متأخرة.",
+        "acknowledge": "أفهم خطر المزامنة وأريد إتاحة الاعتماد",
+        "changed": "تغيّرت مخاطر مزامنة صناديق نقاط البيع. راجع أحدث حالة وأكّدها مجددًا.",
+        "states": {
+          "pending": "— {{count}} إيصال معلق",
+          "stale": "— لم يبلّغ صندوق نقطة البيع عن حالته مؤخرًا",
+          "unknown": "— لم يتم الإبلاغ عن حالة المزامنة",
+          "healthy": "— تمت المزامنة"
+        }
+      }
     },
     "report": {
-      "title": "تقرير الفروقات", "generatedAt": "تم الإنشاء في {{date}}", "exportPdf": "تصدير PDF", "exportExcel": "تصدير Excel", "totalItemsCounted": "إجمالي العناصر المعدودة", "itemsNoVariance": "عناصر بدون فرق", "itemsWithVariance": "عناصر بها فرق", "lateSalesCorrections": "تصحيحات المبيعات المتأخرة", "netVarianceValue": "قيمة صافي الفرق", "openingValue": "قيمة الرصيد الافتتاحي", "varianceBreakdown": "تفصيل الفروقات", "positiveVariance": "فرق موجب", "negativeVariance": "فرق سالب", "resolutionMethods": "طرق التسوية", "counterPerformance": "أداء القائمين بالعدّ", "itemsCounted": "عنصر تم عدّه", "accuracyRate": "معدل الدقة", "matchedOther": "مطابق للقائم بالعدّ الآخر", "matchedTheoretical": "مطابق للنظري", "provenWrong": "أُثبت خطؤه بواسطة العدّ الثالث", "flaggedItems": "العناصر المُعلَّمة", "reason": "السبب", "currentCostBasisNote": "القيم إرشادية، محسوبة بالتكلفة الحالية",
-      "lateSyncResiduals": { "title": "مبيعات وصلت بعد اعتماد هذا الجرد", "description": "حدثت هذه المبيعات قبل عدّ السطر لكنها وصلت إلى الخادم بعد الاعتماد. خُفّض المخزون مرتين لهذه السطور.", "noAutoCorrection": "لم يتم إجراء تصحيح تلقائي. راجع كل سطر وقرر ما إذا كانت هناك حاجة إلى تسوية يدوية للمخزون.", "quantity": "الكمية التي خُفّضت مرتين" }
+      "title": "تقرير الفروقات",
+      "generatedAt": "تم الإنشاء في {{date}}",
+      "exportPdf": "تصدير PDF",
+      "exportExcel": "تصدير Excel",
+      "totalItemsCounted": "إجمالي العناصر المعدودة",
+      "itemsNoVariance": "عناصر بدون فرق",
+      "itemsWithVariance": "عناصر بها فرق",
+      "lateSalesCorrections": "تصحيحات المبيعات المتأخرة",
+      "netVarianceValue": "قيمة صافي الفرق",
+      "openingValue": "قيمة الرصيد الافتتاحي",
+      "varianceBreakdown": "تفصيل الفروقات",
+      "positiveVariance": "فرق موجب",
+      "negativeVariance": "فرق سالب",
+      "resolutionMethods": "طرق التسوية",
+      "counterPerformance": "أداء القائمين بالعدّ",
+      "itemsCounted": "عنصر تم عدّه",
+      "accuracyRate": "معدل الدقة",
+      "matchedOther": "مطابق للقائم بالعدّ الآخر",
+      "matchedTheoretical": "مطابق للنظري",
+      "provenWrong": "أُثبت خطؤه بواسطة العدّ الثالث",
+      "flaggedItems": "العناصر المُعلَّمة",
+      "reason": "السبب",
+      "currentCostBasisNote": "القيم إرشادية، محسوبة بالتكلفة الحالية",
+      "lateSyncResiduals": {
+        "title": "مبيعات وصلت بعد اعتماد هذا الجرد",
+        "description": "حدثت هذه المبيعات قبل عدّ السطر لكنها وصلت إلى الخادم بعد الاعتماد. خُفّض المخزون مرتين لهذه السطور.",
+        "noAutoCorrection": "لم يتم إجراء تصحيح تلقائي. راجع كل سطر وقرر ما إذا كانت هناك حاجة إلى تسوية يدوية للمخزون.",
+        "quantity": "الكمية التي خُفّضت مرتين"
+      },
+      "countedItems": "الأصناف المجرودة",
+      "expected": "المتوقع",
+      "counted": "المجرود",
+      "applied": "مطبَّق",
+      "appliedYes": "مطبَّق",
+      "appliedNo": "غير مطبَّق",
+      "itemsApplied": "الفروقات المطبَّقة",
+      "itemsNotApplied": "الفروقات غير المطبَّقة"
     },
     "messages": {
-      "created": "تم إنشاء عملية الجرد بنجاح", "createFailed": "تعذر إنشاء الجرد: {{error}}", "activated": "تم تفعيل الجرد بنجاح", "activateFailed": "تعذر التفعيل: {{error}}", "cancelled": "تم إلغاء الجرد", "cancelFailed": "تعذر الإلغاء: {{error}}", "finalized": "تم اعتماد الجرد بنجاح", "finalizeFailed": "تعذر اعتماد الجرد: {{error}}", "thirdCountTriggered": "تم تشغيل العدّ الثالث", "thirdCountFailed": "تعذر تشغيل العدّ الثالث: {{error}}", "overrideApplied": "تم تطبيق التجاوز بنجاح", "overrideFailed": "تعذر تطبيق التجاوز: {{error}}", "reportDownloaded": "تم تنزيل التقرير", "exportFailed": "تعذر تصدير التقرير: {{error}}", "reminderSent": "تم إرسال التذكير بنجاح", "reminderFailed": "تعذر إرسال التذكير: {{error}}", "openingCostUpdated": "تم تحديث تكلفة الرصيد الافتتاحي", "openingCostFailed": "تعذر تحديث تكلفة الرصيد الافتتاحي: {{error}}"
+      "created": "تم إنشاء عملية الجرد بنجاح",
+      "createFailed": "تعذر إنشاء الجرد: {{error}}",
+      "activated": "تم تفعيل الجرد بنجاح",
+      "activateFailed": "تعذر التفعيل: {{error}}",
+      "cancelled": "تم إلغاء الجرد",
+      "cancelFailed": "تعذر الإلغاء: {{error}}",
+      "finalized": "تم اعتماد الجرد بنجاح",
+      "finalizeFailed": "تعذر اعتماد الجرد: {{error}}",
+      "thirdCountTriggered": "تم تشغيل العدّ الثالث",
+      "thirdCountFailed": "تعذر تشغيل العدّ الثالث: {{error}}",
+      "overrideApplied": "تم تطبيق التجاوز بنجاح",
+      "overrideFailed": "تعذر تطبيق التجاوز: {{error}}",
+      "reportDownloaded": "تم تنزيل التقرير",
+      "exportFailed": "تعذر تصدير التقرير: {{error}}",
+      "reminderSent": "تم إرسال التذكير بنجاح",
+      "reminderFailed": "تعذر إرسال التذكير: {{error}}",
+      "openingCostUpdated": "تم تحديث تكلفة الرصيد الافتتاحي",
+      "openingCostFailed": "تعذر تحديث تكلفة الرصيد الافتتاحي: {{error}}"
     },
-    "flags": { "basket_window": "عملية بيع ضمن نافذة السلة", "negative_at_apply": "مخزون سالب عند التطبيق", "clock_skew": "تم اكتشاف انحراف في الساعة", "pending_opening_cost": "تكلفة الرصيد الافتتاحي مطلوبة", "normalized_agreement": "تطابق بعد التوحيد", "notPostedRecount": "لم تُرحّل — أعد عدّ هذا العنصر في جلسة جديدة" }
+    "flags": {
+      "basket_window": "عملية بيع ضمن نافذة السلة",
+      "negative_at_apply": "مخزون سالب عند التطبيق",
+      "clock_skew": "تم اكتشاف انحراف في الساعة",
+      "pending_opening_cost": "تكلفة الرصيد الافتتاحي مطلوبة",
+      "normalized_agreement": "تطابق بعد التوحيد",
+      "notPostedRecount": "لم تُرحّل — أعد عدّ هذا العنصر في جلسة جديدة"
+    }
   },
   "entryExitNotes": {
     "title": "أذونات الدخول والخروج",
@@ -217,20 +452,109 @@
     "subtitle": "حدّد المسار الفعلي من الممر إلى الحاوية، ثم عيّن مكان كل منتج ليسهل العثور عليه.",
     "importExplainer": "عند استيراد المنتجات، أضف عمودي location_code وplacement_path (مثلاً A1 > R2 > B7) لمعاينة مواقع التخزين قبل اعتمادها.",
     "productCount": "المنتجات",
-    "location": { "label": "الموقع", "empty": "أنشئ موقعاً قبل تحديد مخطط التخزين." },
-    "views": { "tree": "شجرة", "table": "جدول" },
-    "tree": { "label": "شجرة مواقع التخزين", "expand": "توسيع", "collapse": "طي" },
-    "picker": { "label": "اختر عقدة تخزين" },
-    "productField": { "title": "موقع التخزين", "description": "اختر مكان تخزين هذا المنتج في كل موقع.", "loading": "جار تحميل مواقع التخزين…", "loadingPath": "جار تحميل المسار…", "unassigned": "غير معيّن", "change": "اختيار الموقع", "clear": "مسح", "saved": "تم حفظ موقع التخزين.", "cleared": "تم مسح موقع التخزين." },
-    "empty": { "title": "لا توجد عقد تخزين", "description": "ابدأ بممر أو منطقة أو قسم، ثم أضف مستوى التفصيل المناسب." },
-    "actions": { "addRoot": "إضافة عقدة رئيسية", "addChild": "إضافة عقدة فرعية", "edit": "تعديل", "delete": "حذف", "restore": "استعادة", "showDeleted": "إظهار المحذوف" },
-    "detail": { "title": "تفاصيل موقع التخزين", "breadcrumb": "مسار التخزين", "productsTab": "المنتجات", "selectPrompt": "اختر عقدة لعرض مسارها وإدارة المنتجات المخزنة فيها.", "close": "إغلاق التفاصيل" },
-    "form": { "addTitle": "إضافة عقدة تخزين", "editTitle": "تعديل عقدة التخزين", "name": "الاسم", "nameRequired": "الاسم مطلوب.", "code": "الرمز", "codeInvalid": "استخدم من 1 إلى 50 حرفاً أو رقماً أو نقطة أو شرطة. الشرطات المائلة والمسافات غير مسموحة.", "type": "النوع", "sortOrder": "ترتيب الفرز", "active": "نشط" },
-    "types": { "zone": "منطقة", "aisle": "ممر", "rack": "رف كبير", "shelf": "رف", "bin": "حاوية", "section": "قسم" },
-    "products": { "search": "البحث بالاسم أو الرمز أو الباركود", "loading": "جار تحميل المنتجات…", "empty": "لا توجد منتجات موضوعة مباشرة في هذه العقدة.", "addPlaceholder": "ابحث عن منتج", "assign": "تعيين المنتج", "unassign": "إزالة التعيين", "moveTarget": "نقل المنتجات المحددة إلى", "chooseTarget": "اختر الوجهة", "bulkMove": "نقل المحدد", "previous": "السابق", "next": "التالي" },
-    "table": { "label": "عقد التخزين", "select": "تحديد", "selectNode": "تحديد {{name}}", "selected": "تم تحديد {{count}} عقد", "code": "الرمز", "name": "الاسم", "type": "النوع", "products": "المنتجات", "active": "الحالة" },
-    "status": { "active": "نشط", "inactive": "غير نشط" },
-    "messages": { "created": "تم إنشاء عقدة التخزين.", "updated": "تم تحديث عقدة التخزين.", "moved": "تم نقل عقدة التخزين.", "deleted": "تم حذف عقدة التخزين.", "restored": "تمت استعادة عقدة التخزين.", "productsAssigned": "تم تعيين المنتج.", "productUnassigned": "تمت إزالة التعيين.", "productsMoved": "تم نقل المنتجات المحددة." }
+    "location": {
+      "label": "الموقع",
+      "empty": "أنشئ موقعاً قبل تحديد مخطط التخزين."
+    },
+    "views": {
+      "tree": "شجرة",
+      "table": "جدول"
+    },
+    "tree": {
+      "label": "شجرة مواقع التخزين",
+      "expand": "توسيع",
+      "collapse": "طي"
+    },
+    "picker": {
+      "label": "اختر عقدة تخزين"
+    },
+    "productField": {
+      "title": "موقع التخزين",
+      "description": "اختر مكان تخزين هذا المنتج في كل موقع.",
+      "loading": "جار تحميل مواقع التخزين…",
+      "loadingPath": "جار تحميل المسار…",
+      "unassigned": "غير معيّن",
+      "change": "اختيار الموقع",
+      "clear": "مسح",
+      "saved": "تم حفظ موقع التخزين.",
+      "cleared": "تم مسح موقع التخزين."
+    },
+    "empty": {
+      "title": "لا توجد عقد تخزين",
+      "description": "ابدأ بممر أو منطقة أو قسم، ثم أضف مستوى التفصيل المناسب."
+    },
+    "actions": {
+      "addRoot": "إضافة عقدة رئيسية",
+      "addChild": "إضافة عقدة فرعية",
+      "edit": "تعديل",
+      "delete": "حذف",
+      "restore": "استعادة",
+      "showDeleted": "إظهار المحذوف"
+    },
+    "detail": {
+      "title": "تفاصيل موقع التخزين",
+      "breadcrumb": "مسار التخزين",
+      "productsTab": "المنتجات",
+      "selectPrompt": "اختر عقدة لعرض مسارها وإدارة المنتجات المخزنة فيها.",
+      "close": "إغلاق التفاصيل"
+    },
+    "form": {
+      "addTitle": "إضافة عقدة تخزين",
+      "editTitle": "تعديل عقدة التخزين",
+      "name": "الاسم",
+      "nameRequired": "الاسم مطلوب.",
+      "code": "الرمز",
+      "codeInvalid": "استخدم من 1 إلى 50 حرفاً أو رقماً أو نقطة أو شرطة. الشرطات المائلة والمسافات غير مسموحة.",
+      "type": "النوع",
+      "sortOrder": "ترتيب الفرز",
+      "active": "نشط"
+    },
+    "types": {
+      "zone": "منطقة",
+      "aisle": "ممر",
+      "rack": "رف كبير",
+      "shelf": "رف",
+      "bin": "حاوية",
+      "section": "قسم"
+    },
+    "products": {
+      "search": "البحث بالاسم أو الرمز أو الباركود",
+      "loading": "جار تحميل المنتجات…",
+      "empty": "لا توجد منتجات موضوعة مباشرة في هذه العقدة.",
+      "addPlaceholder": "ابحث عن منتج",
+      "assign": "تعيين المنتج",
+      "unassign": "إزالة التعيين",
+      "moveTarget": "نقل المنتجات المحددة إلى",
+      "chooseTarget": "اختر الوجهة",
+      "bulkMove": "نقل المحدد",
+      "previous": "السابق",
+      "next": "التالي"
+    },
+    "table": {
+      "label": "عقد التخزين",
+      "select": "تحديد",
+      "selectNode": "تحديد {{name}}",
+      "selected": "تم تحديد {{count}} عقد",
+      "code": "الرمز",
+      "name": "الاسم",
+      "type": "النوع",
+      "products": "المنتجات",
+      "active": "الحالة"
+    },
+    "status": {
+      "active": "نشط",
+      "inactive": "غير نشط"
+    },
+    "messages": {
+      "created": "تم إنشاء عقدة التخزين.",
+      "updated": "تم تحديث عقدة التخزين.",
+      "moved": "تم نقل عقدة التخزين.",
+      "deleted": "تم حذف عقدة التخزين.",
+      "restored": "تمت استعادة عقدة التخزين.",
+      "productsAssigned": "تم تعيين المنتج.",
+      "productUnassigned": "تمت إزالة التعيين.",
+      "productsMoved": "تم نقل المنتجات المحددة."
+    }
   },
   "pricing": {
     "title": "التسعير",
@@ -298,8 +622,16 @@
     "empty": "لا يوجد مخزون",
     "product": "المنتج",
     "thresholdsNotApplicable": "الحدود حسب المتغير",
-    "metric": { "label": "مؤشر المخزون", "available": "المتاح", "onHand": "الموجود", "thresholds": "الحد الأدنى / الأقصى" },
+    "metric": {
+      "label": "مؤشر المخزون",
+      "available": "المتاح",
+      "onHand": "الموجود",
+      "thresholds": "الحد الأدنى / الأقصى"
+    },
     "baseGrainSuffix": " (أساسي)",
-    "rebalance": { "title": "اقتراحات إعادة التوازن", "empty": "لا توجد اقتراحات لإعادة التوازن" }
+    "rebalance": {
+      "title": "اقتراحات إعادة التوازن",
+      "empty": "لا توجد اقتراحات لإعادة التوازن"
+    }
   }
 }

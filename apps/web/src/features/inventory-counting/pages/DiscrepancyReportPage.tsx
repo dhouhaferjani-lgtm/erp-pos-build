@@ -158,7 +158,7 @@ export function DiscrepancyReportPage() {
       )}
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 xl:grid-cols-8 gap-4">
         <SummaryCard
           icon={CheckCircle}
           label={t('counting.report.totalItemsCounted')}
@@ -187,6 +187,21 @@ export function DiscrepancyReportPage() {
               : colorTokens.intent.danger.text
           }
           highlight={isNonZeroMoney(netVariance)}
+        />
+        <SummaryCard
+          icon={CheckCircle}
+          label={t('counting.report.itemsApplied')}
+          value={report.summary.items_applied.toString()}
+          iconClassName={colorTokens.intent.success.text}
+          testId="summary-items-applied"
+        />
+        <SummaryCard
+          icon={AlertTriangle}
+          label={t('counting.report.itemsNotApplied')}
+          value={report.summary.items_not_applied.toString()}
+          iconClassName={colorTokens.intent.danger.text}
+          highlight={report.summary.items_not_applied > 0}
+          testId="summary-items-not-applied"
         />
         <SummaryCard
           icon={AlertTriangle}
@@ -340,12 +355,12 @@ export function DiscrepancyReportPage() {
         </div>
       </div>
 
-      {/* Flagged Items */}
-      {report.flagged_items.length > 0 && (
+      {/* Counted items — expected / counted / variance / applied (W4-6) */}
+      {report.items.length > 0 && (
         <div className={`${colorTokens.surface.base} rounded-lg border p-6`}>
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <AlertTriangle className={`w-5 h-5 ${colorTokens.intent.caution.text}`} />
-            {t('counting.report.flaggedItems')}
+            {t('counting.report.countedItems')}
           </h2>
 
           <div className="overflow-x-auto">
@@ -359,13 +374,16 @@ export function DiscrepancyReportPage() {
                     {t('counting.reconciliation.location')}
                   </th>
                   <th className={`px-4 py-3 text-center text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
-                    {t('counting.reconciliation.theoretical')}
+                    {t('counting.report.expected')}
                   </th>
                   <th className={`px-4 py-3 text-center text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
-                    {t('counting.reconciliation.final')}
+                    {t('counting.report.counted')}
                   </th>
                   <th className={`px-4 py-3 text-center text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
                     {t('counting.reconciliation.varianceShort')}
+                  </th>
+                  <th className={`px-4 py-3 text-center text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
+                    {t('counting.report.applied')}
                   </th>
                   <th className={`px-4 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
                     {t('counting.report.reason')}
@@ -373,8 +391,12 @@ export function DiscrepancyReportPage() {
                 </tr>
               </thead>
               <tbody className={`divide-y ${colorTokens.border.divider}`}>
-                {report.flagged_items.map((item) => (
-                  <tr key={item.id} className={colorTokens.intent.caution.bgSubtleAlpha}>
+                {report.items.map((item) => (
+                  <tr
+                    key={item.id}
+                    data-testid={`report-item-${item.id}`}
+                    className={item.is_flagged ? colorTokens.intent.caution.bgSubtleAlpha : undefined}
+                  >
                     <td className="px-4 py-3">
                       <div className="font-medium">{item.product.name}</div>
                       <div className={`text-sm ${colorTokens.text.subtle}`}>
@@ -382,28 +404,50 @@ export function DiscrepancyReportPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-sm">{item.location.code}</td>
-                    <td className="px-4 py-3 text-center font-mono">
-                      {item.theoretical_qty}
+                    <td className="px-4 py-3 text-center font-mono" data-testid="report-expected-qty">
+                      {formatQuantity(item.expected_qty, item.product.quantity_decimals)}
                     </td>
-                    <td className="px-4 py-3 text-center font-mono font-medium">
-                      {item.final_qty ?? '-'}
+                    <td
+                      className="px-4 py-3 text-center font-mono font-medium"
+                      data-testid="report-counted-qty"
+                    >
+                      {item.counted_qty === null
+                        ? '-'
+                        : formatQuantity(item.counted_qty, item.product.quantity_decimals)}
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      {item.variance !== null && (
-                        <span
-                          className={cn(
-                            'font-mono font-medium',
-                            item.variance > 0 && colorTokens.intent.success.text,
-                            item.variance < 0 && colorTokens.intent.danger.text
-                          )}
-                        >
-                          {item.variance > 0 ? '+' : ''}
-                          {item.variance}
-                        </span>
-                      )}
+                    <td className="px-4 py-3 text-center" data-testid="report-variance-qty">
+                      <span
+                        className={cn(
+                          'font-mono font-medium',
+                          isPositiveQuantity(item.variance_qty) && colorTokens.intent.success.text,
+                          isNegativeQuantity(item.variance_qty) && colorTokens.intent.danger.text
+                        )}
+                      >
+                        {isPositiveQuantity(item.variance_qty) ? '+' : ''}
+                        {formatQuantity(item.variance_qty, item.product.quantity_decimals)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center text-sm" data-testid="report-variance-applied">
+                      <span
+                        className={
+                          item.variance_applied
+                            ? colorTokens.intent.success.text
+                            : colorTokens.intent.danger.text
+                        }
+                      >
+                        {item.variance_applied
+                          ? t('counting.report.appliedYes')
+                          : t('counting.report.appliedNo')}
+                      </span>
                     </td>
                     <td className={`px-4 py-3 text-sm ${colorTokens.text.muted}`}>
-                      {item.flag_reason || item.resolution_notes || '-'}
+                      {item.not_applied_reason !== null ? (
+                        <span data-testid="report-not-applied-reason">
+                          {t(`counting.flags.${item.not_applied_reason}`)}
+                        </span>
+                      ) : (
+                        (item.flag_reason ?? item.resolution_notes ?? '-')
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -414,6 +458,23 @@ export function DiscrepancyReportPage() {
       )}
     </div>
   )
+}
+
+/**
+ * Sign tests on a bcmath QUANTITY string. Deliberately string-based: a
+ * `Number()`/`parseFloat` here would put a float back on a quantity the backend
+ * spent the whole W4-6 lane getting right (house rule 19).
+ */
+function isNegativeQuantity(value: string): boolean {
+  return value.trim().startsWith('-') && !isZeroQuantity(value)
+}
+
+function isPositiveQuantity(value: string): boolean {
+  return !value.trim().startsWith('-') && !isZeroQuantity(value)
+}
+
+function isZeroQuantity(value: string): boolean {
+  return /^-?0*(\.0*)?$/.test(value.trim())
 }
 
 function isNonNegativeMoney(value: string): boolean {
@@ -430,6 +491,7 @@ interface SummaryCardProps {
   value: string
   iconClassName?: string
   highlight?: boolean
+  testId?: string
 }
 
 function SummaryCard({
@@ -438,9 +500,11 @@ function SummaryCard({
   value,
   iconClassName,
   highlight = false,
+  testId,
 }: SummaryCardProps) {
   return (
     <div
+      data-testid={testId}
       className={cn(
         `rounded-lg border ${colorTokens.surface.base} p-6`,
         highlight && `${colorTokens.intent.caution.border} ${colorTokens.intent.caution.bgSubtle}`
