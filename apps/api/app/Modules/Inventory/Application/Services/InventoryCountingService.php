@@ -12,6 +12,7 @@ use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
 use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
 use App\Modules\Inventory\Domain\Exceptions\CountingTransitionException;
+use App\Modules\Inventory\Domain\Exceptions\CountingUnresolvedItemsException;
 use App\Modules\Inventory\Domain\Exceptions\OpeningCostRequiredException;
 use App\Modules\Inventory\Domain\Exceptions\OverlappingCountingException;
 use App\Modules\Inventory\Domain\Exceptions\TerminalSyncAcknowledgementRequiredException;
@@ -1159,9 +1160,11 @@ class InventoryCountingService
             ->count();
 
         if ($unresolvedCount > 0) {
-            throw new \InvalidArgumentException(
-                "Cannot finalize: {$unresolvedCount} items still pending resolution"
-            );
+            // LEDGER C-14(iii): typed, like the two sibling pre-finalize
+            // refusals below. The bare `\InvalidArgumentException` this replaces
+            // had no render handler, so the most ordinary reviewer mistake
+            // surfaced as a 500 (pinned as such by ReconciliationTest until now).
+            throw new CountingUnresolvedItemsException($unresolvedCount);
         }
 
         // Re-validate the overlap guard at finalize time: the counting was

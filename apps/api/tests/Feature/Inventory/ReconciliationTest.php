@@ -490,8 +490,27 @@ class ReconciliationTest extends TestCase
         $response = $this->actingAs($this->adminUser)
             ->postJson("/api/v1/inventory/countings/{$counting->id}/finalize");
 
-        // Should fail due to unresolved items
-        $response->assertStatus(500); // Service throws InvalidArgumentException
+        // LEDGER C-14(iii) — HONEST PIN REWRITE. This assertion used to pin a
+        // 500: `finalize()` threw a bare `\InvalidArgumentException`, which has
+        // no render handler, while its two sibling pre-finalize refusals
+        // (`assertNoOverlappingActiveCounting`, `assertOpeningCostsResolved`)
+        // both raise a `DomainException` and surface as a typed 422. "You still
+        // have lines to resolve" is a business-rule refusal the reviewer must be
+        // able to read and act on, not a server error.
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'BUSINESS_ERROR');
+        $this->assertStringContainsString(
+            '1 item',
+            (string) $response->json('error.message'),
+            'The refusal must name how many lines are still pending. Body: '.$response->getContent(),
+        );
+
+        $counting->refresh();
+        $this->assertSame(
+            CountingStatus::PendingReview,
+            $counting->status,
+            'A refused finalize must leave the counting in pending_review.',
+        );
     }
 
     private function createCountingSession(bool $requiresCount2, bool $requiresCount3): InventoryCounting
