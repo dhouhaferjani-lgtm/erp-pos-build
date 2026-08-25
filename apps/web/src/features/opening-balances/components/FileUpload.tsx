@@ -52,7 +52,13 @@ function getExpectedColumns(batchType: OpeningBatchType): readonly string[] {
 function getTemplateContent(batchType: OpeningBatchType): string {
   switch (batchType) {
     case 'ACCOUNTING':
-      return 'account_code,debit,credit,reference\n101000,10000.00,0.00,Opening Cash\n401000,0.00,5000.00,Opening Payables\n301000,0.00,5000.00,Opening Equity'
+      // W4-4: the sample deliberately does NOT show a payables (401) or
+      // receivables (411) line. Those are partner CONTROL accounts: their opening
+      // balance is posted by the AR/AP open-items batch, one entry per open item
+      // carrying the partner, and AccountingOpeningService now REFUSES them here —
+      // stating them in both places would double the control account. The old
+      // sample taught exactly that mistake.
+      return 'account_code,debit,credit,reference\n101000,10000.00,0.00,Opening Cash\n213000,5000.00,0.00,Opening Equipment\n301000,0.00,15000.00,Opening Equity'
     case 'INVENTORY':
       return 'product_code,location_code,quantity,unit_cost\nSKU-001,MAIN,100,25.50\nSKU-002,MAIN,50,15.00\nSKU-003,WAREHOUSE,200,10.00'
     case 'AR_OPEN_ITEMS':
