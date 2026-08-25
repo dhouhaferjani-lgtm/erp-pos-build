@@ -934,7 +934,13 @@ return Application::configure(basePath: dirname(__DIR__))
                 return response()->json([
                     'error' => [
                         'code' => CountingTransitionException::CODE,
-                        'message' => $e->getMessage(),
+                        // LEDGER C-14(iv): operator text from the backend
+                        // catalogue in the request locale. `getMessage()` stays
+                        // the English developer/log string.
+                        'message' => __(
+                            CountingTransitionException::TRANSLATION_KEY,
+                            $e->translationReplacements(),
+                        ),
                         'counting_id' => $e->countingId,
                         'current_status' => $e->currentStatus->value,
                         'attempted_status' => $e->attemptedStatus->value,

@@ -330,6 +330,50 @@ class ReconciliationTest extends TestCase
         $this->assertEquals(ItemResolutionMethod::ManualOverride, $item->resolution_method);
     }
 
+    /**
+     * LEDGER C-14(iv) — the typed 422 `COUNTING_TRANSITION_REFUSED` message was
+     * hardcoded English inside `CountingTransitionException::__construct()` and
+     * rendered verbatim into the response body, so an operator on a French (or
+     * Arabic) tenant got an English refusal inside a translated toast wrapper
+     * (`counting.messages.overrideFailed` = "Failed to apply override: {{error}}").
+     *
+     * The operator-facing text now comes from the backend catalogue
+     * (`inventory.counting.transition_refused`) with both statuses rendered from
+     * `inventory.counting.status.*`, exactly like the house pattern used by
+     * `InsufficientStockForFulfilmentException::TRANSLATION_KEY`. `getMessage()`
+     * stays English — it is the developer/log string.
+     */
+    public function test_counting_transition_refusal_message_is_localised(): void
+    {
+        $counting = $this->createCountingSession(false, false);
+        $item = $this->createCountingItem($counting, '100.0000');
+        $counting->update(['status' => CountingStatus::Finalized]);
+
+        $response = $this->actingAs($this->adminUser)
+            ->withHeaders(['Accept-Language' => 'fr'])
+            ->postJson("/api/v1/inventory/countings/items/{$item->id}/override", [
+                'quantity' => 97,
+                'notes' => 'Verified with physical recount and checked against delivery note',
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'COUNTING_TRANSITION_REFUSED');
+        $response->assertJsonPath('error.current_status', 'finalized');
+        $response->assertJsonPath('error.attempted_status', 'pending_review');
+
+        $message = (string) $response->json('error.message');
+        $this->assertStringNotContainsString(
+            'This counting is',
+            $message,
+            'The operator message must come from the fr catalogue, not the hardcoded English exception text. Body: '.$response->getContent(),
+        );
+        $this->assertStringContainsString(
+            (string) trans('inventory.counting.status.finalized', [], 'fr'),
+            $message,
+            'The refusal must name the current status in the request locale. Body: '.$response->getContent(),
+        );
+    }
+
     public function test_reconciliation_view_shows_all_data(): void
     {
         $counting = $this->createCountingSession(true, false);
