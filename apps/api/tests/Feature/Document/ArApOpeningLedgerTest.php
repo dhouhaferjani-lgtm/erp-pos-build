@@ -20,8 +20,12 @@ use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Application\Services\ArApOpeningService;
+use App\Modules\Document\Domain\CreditNoteAllocation;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FiscalCategory;
+use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
@@ -277,6 +281,95 @@ final class ArApOpeningLedgerTest extends TestCase
         self::assertSame('500.0000', $payables->grand_total, 'The AP opening must age as a payable.');
     }
 
+    // --------------------------------------------- C-1 (gate r1) ----------
+
+    public function test_an_opening_credit_note_nets_against_the_opening_invoice_in_aged_ap(): void
+    {
+        // The reviewer's probe: one AP batch, an opening supplier invoice of
+        // 500.000 and an opening supplier credit note of 120.000 for the SAME
+        // supplier. A negative `opening_balance_supplier` in the standard Parties
+        // CSV becomes `document_type = 'credit_note'` by sign
+        // (Import\Services\PartiesRowMapper::balancePayload(), named not imported),
+        // so this is the shape a first tenant with one prepaid supplier ships.
+        $this->postBatch(OpeningBatchType::ApOpenItems, [
+            ['SUPP-001', '500.000', '500.000', 'invoice'],
+            ['SUPP-001', '120.000', '120.000', 'credit_note'],
+        ]);
+
+        $glNet = $this->glNet(SystemAccountPurpose::SupplierPayable, creditNormal: true);
+        self::assertSame('380.000', $glNet, 'Precondition: the control account nets.');
+        self::assertSame('380.000', $this->supplier->refresh()->payable_balance);
+
+        $payables = app(AgedPayablesService::class)->generate($this->company->id, Carbon::parse('2026-08-25'));
+        self::assertSame(
+            '380.0000',
+            $payables->grand_total,
+            'Aged AP must agree with GL 401 and the partner page. Counting the credit note as a POSITIVE payable overstates the debt by twice the credit note, and the operator pays from this report.'
+        );
+    }
+
+    public function test_an_opening_credit_note_nets_against_the_opening_invoice_in_aged_ar(): void
+    {
+        $this->postBatch(OpeningBatchType::ArOpenItems, [
+            ['CUST-001', '150.000', '150.000', 'invoice'],
+            ['CUST-001', '40.000', '40.000', 'credit_note'],
+        ]);
+
+        $glNet = $this->glNet(SystemAccountPurpose::CustomerReceivable, creditNormal: false);
+        self::assertSame('110.000', $glNet, 'Precondition: the control account nets.');
+        self::assertSame('110.000', $this->customer->refresh()->receivable_balance);
+
+        $receivables = app(AgedReceivablesService::class)->generate($this->company->id, Carbon::parse('2026-08-25'));
+        self::assertSame(
+            '110.0000',
+            $receivables->grand_total,
+            'Aged AR filtered on type = Invoice, so an opening credit note was invisible to it entirely — the report overstated what was collectible.'
+        );
+    }
+
+    public function test_an_ordinary_credit_note_is_not_double_counted_in_aged_ar(): void
+    {
+        // The trap the historical narrowing exists to avoid. An ORDINARY credit
+        // note reaches the report through `credit_note_allocations`, which
+        // `Document::outstandingBalance()` already subtracts from the invoice it
+        // was applied to. Counting it a second time as a standalone negative would
+        // double the credit.
+        $this->postArBatch('150.000');
+        $invoice = Document::query()->where('partner_id', $this->customer->id)->firstOrFail();
+
+        $creditNote = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::CreditNote,
+            'status' => DocumentStatus::Posted,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'document_number' => 'CN-2026-0001',
+            'document_date' => '2026-08-01',
+            'due_date' => '2026-08-01',
+            'currency' => 'TND',
+            'subtotal' => '40.000',
+            'discount_amount' => '0.000',
+            'tax_amount' => '0.000',
+            'total' => '40.000',
+        ]);
+
+        CreditNoteAllocation::create([
+            'credit_note_id' => $creditNote->id,
+            'invoice_id' => $invoice->id,
+            'amount' => '40.000',
+        ]);
+        $invoice->update(['balance_due' => '110.000']);
+
+        $receivables = app(AgedReceivablesService::class)->generate($this->company->id, Carbon::parse('2026-08-25'));
+        self::assertSame(
+            '110.0000',
+            $receivables->grand_total,
+            'The applied credit is already netted at the invoice; the credit note must not also appear as a negative.'
+        );
+    }
+
     // ------------------------------------------------------------ helpers ---
 
     private function accountFor(SystemAccountPurpose $purpose): Account
@@ -311,33 +404,23 @@ final class ArApOpeningLedgerTest extends TestCase
 
     private function postArBatch(string $openAmount, ?string $total = null, string $documentType = 'invoice'): void
     {
-        $this->postBatch(
-            OpeningBatchType::ArOpenItems,
-            'CUST-001',
-            $openAmount,
-            $total ?? $openAmount,
-            $documentType,
-        );
+        $this->postBatch(OpeningBatchType::ArOpenItems, [
+            ['CUST-001', $openAmount, $total ?? $openAmount, $documentType],
+        ]);
     }
 
     private function postApBatch(string $openAmount, ?string $total = null, string $documentType = 'invoice'): void
     {
-        $this->postBatch(
-            OpeningBatchType::ApOpenItems,
-            'SUPP-001',
-            $openAmount,
-            $total ?? $openAmount,
-            $documentType,
-        );
+        $this->postBatch(OpeningBatchType::ApOpenItems, [
+            ['SUPP-001', $openAmount, $total ?? $openAmount, $documentType],
+        ]);
     }
 
-    private function postBatch(
-        OpeningBatchType $type,
-        string $partnerCode,
-        string $openAmount,
-        string $total,
-        string $documentType,
-    ): void {
+    /**
+     * @param  list<array{0: string, 1: string, 2: string, 3: string}>  $rows  [partner_code, open_amount, total, document_type]
+     */
+    private function postBatch(OpeningBatchType $type, array $rows): void
+    {
         $batchService = app(OpeningBalanceBatchService::class);
 
         /** @var OpeningBalanceBatch $batch */
@@ -350,20 +433,45 @@ final class ArApOpeningLedgerTest extends TestCase
             'phpunit',
         );
 
-        $batchService->addImportRows($batch, [[
-            'partner_code' => $partnerCode,
-            'external_invoice_number' => 'LEG-'.strtoupper(substr($partnerCode, 0, 4)),
-            'document_date' => '2026-06-15',
-            'due_date' => '2026-07-15',
-            'total' => $total,
-            'open_amount' => $openAmount,
-            'document_type' => $documentType,
-            'currency' => 'TND',
-            'notes' => null,
-        ]]);
+        $batchService->addImportRows($batch, array_map(
+            static fn (array $row): array => [
+                'partner_code' => $row[0],
+                'external_invoice_number' => 'LEG-'.strtoupper(substr($row[0], 0, 4)).'-'.strtoupper(uniqid()),
+                'document_date' => '2026-06-15',
+                'due_date' => '2026-07-15',
+                'total' => $row[2],
+                'open_amount' => $row[1],
+                'document_type' => $row[3],
+                'currency' => 'TND',
+                'notes' => null,
+            ],
+            $rows,
+        ));
 
         $service = app(ArApOpeningService::class);
         $service->validateBatch($batch->refresh());
         $service->postBatch($batch->refresh(), $this->user->id);
+    }
+
+    /**
+     * The NET balance of a control account across every posted journal line, in the
+     * account's natural direction (debit-normal for 411, credit-normal for 401).
+     * This is the number the aged report must agree with.
+     *
+     * @return numeric-string
+     */
+    private function glNet(SystemAccountPurpose $purpose, bool $creditNormal): string
+    {
+        $account = $this->accountFor($purpose);
+
+        $net = '0.000';
+        foreach (JournalLine::query()->where('account_id', $account->id)->get() as $line) {
+            $net = $creditNormal
+                ? bcadd(bcsub($net, (string) $line->debit, 3), (string) $line->credit, 3)
+                : bcadd(bcsub($net, (string) $line->credit, 3), (string) $line->debit, 3);
+        }
+
+        /** @var numeric-string $net */
+        return $net;
     }
 }

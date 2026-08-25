@@ -9,6 +9,7 @@ use App\Modules\Accounting\Application\DTOs\Reports\AgedPayablesLineData;
 use App\Modules\Accounting\Application\DTOs\Reports\LocationReportBucketData;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Document\Domain\CreditNoteAllocation;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -219,8 +220,10 @@ final readonly class AgedPayablesService
         return $query
             ->with(['partner:id,name,type', 'allocations:id,document_id,amount', 'creditsAgainstDocument:id,invoice_id,amount'])
             ->get()
-            // As above: the SQL predicate is a coarse bound, bcmath decides.
-            ->filter(static fn (Document $document): bool => bccomp($document->outstandingBalance($scale), '0', $scale) > 0)
+            // As above: the SQL predicate is a coarse bound, bcmath decides. C-1: a
+            // credit note is kept while it still carries UNAPPLIED credit, so the
+            // comparison is against the signed amount's magnitude, not `> 0`.
+            ->filter(fn (Document $document): bool => bccomp($this->openBalance($document, $scale), '0', $scale) !== 0)
             ->values();
     }
 
@@ -412,12 +415,58 @@ final readonly class AgedPayablesService
      */
     private function openBalance(Document $document, int $scale): string
     {
+        if ($document->type === DocumentType::SupplierCreditNote) {
+            return $this->remainingCreditAsNegative($document, $scale);
+        }
+
         if ($document->status === DocumentStatus::Received) {
             /** @var numeric-string */
             return (string) ($document->balance_due ?? '0');
         }
 
         return $document->outstandingBalance($scale);
+    }
+
+    /**
+     * C-1 — what an OPENING supplier credit note still cancels, as a NEGATIVE.
+     *
+     * Before this, the arm counted an opening `SupplierCreditNote` as a POSITIVE
+     * payable: on the reviewer's probe (opening invoice 500.000 + opening credit
+     * note 120.000, same supplier) `GL 401` and `partners.payable_balance` both read
+     * 380.000 while aged AP reported 620.000 — overstated by twice the credit note,
+     * and the operator pays from this report. A negative
+     * `opening_balance_supplier` in the standard Parties CSV becomes
+     * `document_type = 'credit_note'` by sign
+     * (`Import\Services\PartiesRowMapper::balancePayload()`, named not imported), so
+     * one prepaid supplier on a first-tenant import is enough to produce it.
+     *
+     * `Document::outstandingBalance()` is deliberately invoice-oriented — its SQL
+     * always joins `credit_note_allocations` on `invoice_id`, "so a credit note's
+     * own outward allocations never reduce its balance" (`Document.php:695-708`) —
+     * so the outward allocations are subtracted here.
+     *
+     * ONE query per historical supplier credit note; the branch is reachable only
+     * from `historicalSupplierOpenItems()`, so the bound is the number of opening
+     * credit-note ROWS imported.
+     *
+     * @return numeric-string
+     */
+    private function remainingCreditAsNegative(Document $creditNote, int $scale): string
+    {
+        $appliedSum = CreditNoteAllocation::query()
+            ->where('credit_note_id', $creditNote->id)
+            ->sum('amount');
+
+        /** @var numeric-string $applied */
+        $applied = bcadd('0', (string) $appliedSum, $scale);
+
+        /** @var numeric-string $remaining */
+        $remaining = bcsub($creditNote->outstandingBalance($scale), $applied, $scale);
+
+        /** @var numeric-string $signed */
+        $signed = bcmul($remaining, '-1', $scale);
+
+        return $signed;
     }
 
     /**

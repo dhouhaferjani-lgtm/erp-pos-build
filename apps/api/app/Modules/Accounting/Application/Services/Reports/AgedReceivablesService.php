@@ -9,11 +9,13 @@ use App\Modules\Accounting\Application\DTOs\Reports\AgedReceivablesLineData;
 use App\Modules\Accounting\Application\DTOs\Reports\LocationReportBucketData;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Document\Domain\CreditNoteAllocation;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 /**
@@ -152,7 +154,29 @@ final readonly class AgedReceivablesService
     {
         $query = Document::query()
             ->where('company_id', $companyId)
-            ->where('type', DocumentType::Invoice)
+            // C-1: an OPENING credit note joins the arm as a negative.
+            //
+            // The type filter used to be `Invoice` alone, so a historical AR
+            // opening credit note — what a NEGATIVE `opening_balance_customer` in
+            // the standard Parties CSV becomes, by sign
+            // (`Import\Services\PartiesRowMapper::balancePayload()`, named not
+            // imported: module boundaries are enforced by deptrac and a docblock is
+            // not a dependency) — was invisible here while `GL 411` and the partner
+            // page both netted it. The report overstated what was collectible.
+            //
+            // Narrowed to `is_historical` DELIBERATELY. An ordinary credit note
+            // reaches this report through `credit_note_allocations`, which
+            // `Document::outstandingBalance()` already subtracts from the invoice it
+            // was applied to; admitting it here as a second, standalone negative
+            // would double the credit. An OPENING credit note has no invoice to
+            // attach to — it IS an open item, and nothing else nets it.
+            ->where(static function (Builder $q): void {
+                $q->where('type', DocumentType::Invoice)
+                    ->orWhere(static function (Builder $creditNotes): void {
+                        $creditNotes->where('type', DocumentType::CreditNote)
+                            ->where('is_historical', true);
+                    });
+            })
             ->where('status', DocumentStatus::Posted)
             ->where('document_date', '<=', $asOfDate)
             ->whereOutstanding();
@@ -165,7 +189,9 @@ final readonly class AgedReceivablesService
             ->get()
             // The SQL predicate is only a coarse bound — SQLite evaluates it in
             // floating point — so bcmath has the final say on what is outstanding.
-            ->filter(static fn (Document $invoice): bool => bccomp($invoice->outstandingBalance($scale), '0', $scale) > 0)
+            // A credit note is kept while it still carries UNAPPLIED credit, so the
+            // comparison is against the signed amount's magnitude, not `> 0`.
+            ->filter(fn (Document $invoice): bool => bccomp($this->openBalance($invoice, $scale), '0', $scale) !== 0)
             ->values();
     }
 
@@ -183,7 +209,47 @@ final readonly class AgedReceivablesService
      */
     private function openBalance(Document $invoice, int $scale): string
     {
+        if ($invoice->type === DocumentType::CreditNote) {
+            return $this->remainingCreditAsNegative($invoice, $scale);
+        }
+
         return $invoice->outstandingBalance($scale);
+    }
+
+    /**
+     * C-1 — what an OPENING credit note still owes back, as a NEGATIVE.
+     *
+     * `Document::outstandingBalance()` is deliberately invoice-oriented: its SQL
+     * always joins `credit_note_allocations` on `invoice_id`, "so a credit note's
+     * own outward allocations never reduce its balance"
+     * (`Document.php:695-708`). For a credit note that is the wrong number — it
+     * reports the full face value even after the credit has been handed to an
+     * invoice. Subtracting the outward allocations here keeps the report from
+     * granting the same credit twice.
+     *
+     * ONE query per historical credit note, and the branch is reachable only for
+     * `is_historical` credit notes (see `getOutstandingInvoices()`), so the bound is
+     * the number of opening credit-note ROWS the tenant imported — not the document
+     * table.
+     *
+     * @return numeric-string
+     */
+    private function remainingCreditAsNegative(Document $creditNote, int $scale): string
+    {
+        $appliedSum = CreditNoteAllocation::query()
+            ->where('credit_note_id', $creditNote->id)
+            ->sum('amount');
+
+        /** @var numeric-string $applied */
+        $applied = bcadd('0', (string) $appliedSum, $scale);
+
+        /** @var numeric-string $remaining */
+        $remaining = bcsub($creditNote->outstandingBalance($scale), $applied, $scale);
+
+        /** @var numeric-string $signed */
+        $signed = bcmul($remaining, '-1', $scale);
+
+        return $signed;
     }
 
     /**
