@@ -17,9 +17,15 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Contracts\Treasury\DTOs\OpeningFloatIntent;
+use App\Shared\Contracts\Treasury\RepositoryOpeningBalanceSeederInterface;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -113,11 +119,40 @@ final class UpcomingPaymentsTest extends TestCase
         $unpaidExpenseNumber = $unpaidExpense->document_number;
         self::assertNull($unpaidExpense->balance_due, 'Precondition: real expenses never populate balance_due');
 
+        // W4-10: a cash-paid expense must name the repository the money left.
+        // This test's subject is the unpaid/paid split in the report, not the
+        // payment shape, so the paid fixture simply names a till.
+        $till = PaymentRepository::forceCreate([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH-UPCOMING',
+            'name' => 'Caisse',
+            'type' => RepositoryType::CashRegister,
+            'is_active' => true,
+        ]);
+
+        // ...and a till only pays out what it holds, so give it its day-one
+        // float through the one sanctioned path (W4-2).
+        DB::transaction(function () use ($till): void {
+            app(RepositoryOpeningBalanceSeederInterface::class)->seed(new OpeningFloatIntent(
+                tenantId: $this->tenant->id,
+                companyId: $this->company->id,
+                repositoryId: $till->id,
+                amount: '100.000',
+                currency: (string) $this->company->currency,
+                batchId: (string) Str::uuid(),
+                occurredAt: CarbonImmutable::now()->subYears(2),
+                journalEntryId: null,
+                createdBy: $this->user->id,
+            ));
+        });
+
         $paidExpense = $expenseService->create([
             'company_id' => $this->company->id,
             'total' => '45.000',
             'payment_date' => '2026-07-06',
             'is_paid' => true,
+            'payment_repository_id' => $till->id,
             'vendor_name' => 'Tunisie Telecom',
         ], $this->user);
         $paidExpense = $expenseService->post($paidExpense, $this->user);

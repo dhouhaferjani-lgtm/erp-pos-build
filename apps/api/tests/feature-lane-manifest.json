@@ -6,7 +6,7 @@
     "deferred": "CAN run, but no lane runs it yet. Requires `reason`. Counted loudly on every CI run. After O-29 exactly one group is left here — `(root files)`, which no whole-directory selector can address."
   },
   "debt_ceiling": 1,
-  "gated_ceiling": 1169,
+  "gated_ceiling": 1170,
   "lanes": {
     "security-regression": {
       "job": "security-regression",
@@ -796,8 +796,8 @@
     },
     "Expense": {
       "lane": "feature-lane-fiscal-finance/Expense",
-      "classes": 22,
-      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
+      "classes": 23,
+      "note": "DELIBERATE RAISE 22 -> 23 (2026-08-25, Session A lane fix/campaign-w42-opening-cash-float, W4-10): ExpensePaidFromRepositoryTest \u2014 the only guard that an expense declared PAID IN CASH names the treasury repository the money left. ExpenseService::create() defaults is_paid to true, so a payload naming no repository minted an expense born paid with no till: posting credited the default cash GL account and wrote NO repository_movements row, and /pay (the only endpoint that accepts a repository) then refused it as already paid \u2014 GL cash fell 45.000 while the drawer never moved, permanently and irreversibly. The class also pins the positive shape (a 200.000-float drawer pays 5.000 and ends at 195.000, with the GL credit on the drawer's OWN gl_account_id) and the non-cash carve-out. Red captured on sqlite (4 of 6 failed: two expectException misses, one 201-where-422, one missing binding) and green on sqlite AND on PostgreSQL 16 (throwaway autoerp_test_w42, port 5433). Because this lane is PARKED behind vars.SELF_HOSTED_RUNNER_READY, the class is ALSO named in the backend-test-pgsql --filter allowlist in .github/workflows/ci.yml \u2014 same precedent as CorrectingEntryEndpointTest, SupplierGoodsReturnNoteTest and ResolveLineEntryCodeCostRedactionTest: a money-lane regression pin that executes on no event is not a pin. Remove the allowlist entry when this lane's gate is flipped, not before. gated_ceiling 1169 -> 1170 at merge (UNION arithmetic: dev's 1169 after W2-6 raised Product 57 -> 58 / gated 1168 -> 1169, plus this one Expense class; every other group's entry taken from dev verbatim. The W4-2 sibling class tests/Feature/Accounting/OpeningCashFloatSeedsRepositoryTest does NOT land here \u2014 Accounting is a live lane and carries no ceiling). Handback docs/superpowers/reviews/2026-08-25-w42-handback.md. Prior: Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Fiscal": {
       "lane": "feature-lane-fiscal-finance/Fiscal",
