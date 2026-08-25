@@ -487,6 +487,17 @@ class PaymentController extends Controller
                 ], 422);
             }
 
+            // W4-3: the document's SIDE must agree with its partner's ROLE.
+            //
+            // Gate r1 I-1 moved this into DocumentAllocationStateGuard, beside
+            // assertAllocatable(), because it was on ONE of four settlement routes
+            // and the legacy mis-typed row stayed reachable through the other
+            // three. Placed BEFORE the supplier arm so a mis-typed document is
+            // refused for what is actually wrong with it, rather than for the
+            // downstream symptom (a missing Cr-401 journal entry it could never
+            // have had).
+            $this->allocationStateGuard->assertDirectionMatchesPartner($document);
+
             // W-7 F-6: a WITHDRAWN document must be un-allocatable. This is the
             // shared per-allocation guard for both the AR and the AP branch below,
             // deliberately placed here rather than on the five `canTransitionToPaid()`
@@ -1478,6 +1489,10 @@ class PaymentController extends Controller
         $this->rejectSupplierInvoiceInMultiline($primaryDocument);
         // W-7 F-6: the multi-line path writes the same `Paid` status transitions.
         $this->allocationStateGuard->assertAllocatable($primaryDocument);
+        // W4-3 / gate r1 I-1 — storeMultiple's only type guard was
+        // rejectSupplierInvoiceInMultiline(), a pure `=== SupplierInvoice` test that
+        // a mis-typed customer document passes.
+        $this->allocationStateGuard->assertDirectionMatchesPartner($primaryDocument);
         // N-6 — classify the multi-line target once: every line settles the
         // SAME document, so posted-ness cannot differ between them. Refuses a
         // draft / cancelled / credit-note target with 422
@@ -1807,6 +1822,8 @@ class PaymentController extends Controller
                             // W-7 F-6: manual excess targets are client-supplied
                             // document ids and reach the same status write.
                             $this->allocationStateGuard->assertAllocatable($targetDoc);
+                            // W4-3 / gate r1 I-1.
+                            $this->allocationStateGuard->assertDirectionMatchesPartner($targetDoc);
                             // N-6 — manual excess targets are client-supplied
                             // ids; classify each one on its own locked row.
                             $targetTreatment = $this->allocationClassifier->classifyReceivableSide($targetDoc);

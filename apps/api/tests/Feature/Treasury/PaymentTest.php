@@ -718,11 +718,17 @@ class PaymentTest extends TestCase
 
         // One partner that holds BOTH an AR invoice and an AP supplier invoice, so
         // the cross-partner guard passes and the mixed-type guard is what fires.
+        //
+        // W4-3: the type must be `Both` for the fixture to mean what its comment
+        // says. It was `Supplier`, and the new document-side guard now refuses the
+        // customer invoice on a supplier-only partner BEFORE the mixed-type guard
+        // is reached — which is the guard doing its job, but it would leave
+        // MIXED_ALLOCATION_TYPES untested.
         $partner = Partner::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'name' => 'Dual Partner',
-            'type' => PartnerType::Supplier,
+            'type' => PartnerType::Both,
             'is_active' => true,
         ]);
 

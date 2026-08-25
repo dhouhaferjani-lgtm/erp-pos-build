@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Database\Factories;
 
 use App\Modules\Partner\Domain\Enums\CustomerAccountStatus;
+use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -33,7 +34,21 @@ class PartnerFactory extends Factory
             'id' => Str::uuid()->toString(),
             'tenant_id' => null, // Will be set by relationships
             'company_id' => null, // Will be set by seeder or relationships
-            'type' => $this->faker->randomElement(['customer', 'supplier', 'both']),
+            // W4-3 fix round r1: the DEFAULT is dual-role, not a random draw.
+            //
+            // This used to be `randomElement(['customer', 'supplier', 'both'])`, so
+            // roughly one factory partner in three was supplier-ONLY — and any test
+            // that gave such a partner a customer Invoice was relying on the draw.
+            // That was already non-determinism (two identical runs of the same five
+            // Treasury classes produced 13 and 16 failures), and the W4-3 direction
+            // guard — which refuses to settle a document whose type its partner's
+            // role cannot own — turns it into a visible 1-in-3 flake.
+            //
+            // `both` is the neutral default: it satisfies every role predicate, so a
+            // test that does not care about the type is unaffected by it. Every test
+            // that DOES care already says so explicitly, via the `customer()`,
+            // `supplier()` and `both()` states below or an inline `'type' =>`.
+            'type' => PartnerType::Both->value,
             'code' => strtoupper(Str::random(3)).$this->faker->unique()->numberBetween(100, 999),
             'name' => $fullName,
             'email' => $this->faker->unique()->companyEmail(),

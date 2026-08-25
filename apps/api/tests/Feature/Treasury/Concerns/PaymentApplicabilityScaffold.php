@@ -113,12 +113,25 @@ trait PaymentApplicabilityScaffold
             'type' => PartnerType::Customer,
         ]);
 
+        // W4-3 gate r2 F-1: `Both`, not `Supplier`.
+        //
+        // This partner is given BOTH an AP opening and a native customer `Invoice`
+        // (`AutoAllocationSkipsRefusedDocumentsTest::nativePostedInvoice($this->vendor, …)`),
+        // so as `Supplier` it was a customer-typed document owned by a supplier-only
+        // partner — the exact shape W4-3's direction guard refuses, because that
+        // inference is how a payment TO a supplier came to be recorded as money
+        // ARRIVING (`Dr bank / Cr 411`, repository movement IN). The guard skipped
+        // the native invoice on the auto sweep and nothing was collected.
+        //
+        // `Both` is what a partner that genuinely holds both sides is, it is what
+        // these tests mean, and it leaves every assertion here about opening
+        // PROVENANCE — which is what this scaffold exists to test — untouched.
         $this->vendor = Partner::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => 'SUP-C0A0',
             'name' => 'Fournisseur Sahel',
-            'type' => PartnerType::Supplier,
+            'type' => PartnerType::Both,
         ]);
 
         $this->paymentMethod = PaymentMethod::create([
