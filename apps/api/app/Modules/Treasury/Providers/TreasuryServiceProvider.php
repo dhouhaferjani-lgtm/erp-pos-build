@@ -19,6 +19,7 @@ use App\Modules\Treasury\Application\Services\Actions\InboundClearHandler;
 use App\Modules\Treasury\Application\Services\Actions\OutboundClearHandler;
 use App\Modules\Treasury\Application\Services\CsvStatementParser;
 use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
+use App\Modules\Treasury\Application\Services\LocationCashRegisterProvisioner;
 use App\Modules\Treasury\Application\Services\InstrumentRemittanceService;
 use App\Modules\Treasury\Application\Services\OutboundInstrumentIssuer;
 use App\Modules\Treasury\Application\Services\PaymentToleranceService;
@@ -40,6 +41,7 @@ use App\Modules\Treasury\Presentation\Console\TreasuryOrphanCensusCommand;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use App\Shared\Contracts\Partner\PartnerReferenceSource;
 use App\Shared\Contracts\Treasury\InstrumentReversalCancellerInterface;
+use App\Shared\Contracts\Treasury\LocationCashRegisterProvisionerInterface;
 use App\Shared\Contracts\Treasury\OutboundInstrumentIssuerInterface;
 use App\Shared\Contracts\Treasury\OutboundInstrumentPaymentLinkResolver;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
@@ -97,6 +99,15 @@ class TreasuryServiceProvider extends ServiceProvider
         $this->app->bind(
             RepositoryOpeningBalanceSeederInterface::class,
             RepositoryOpeningBalanceService::class,
+        );
+
+        // Campaign lane N-12 — a POS-enabled location owns its own drawer.
+        // Company (location create / `pos_enabled` flip) provisions through it;
+        // POS (terminal claim) asks it the read question. Both stay clear of
+        // Treasury's models (rule 6).
+        $this->app->bind(
+            LocationCashRegisterProvisionerInterface::class,
+            LocationCashRegisterProvisioner::class,
         );
 
         // DPA lane V3/G3 — the single repository-adjustment orchestration port

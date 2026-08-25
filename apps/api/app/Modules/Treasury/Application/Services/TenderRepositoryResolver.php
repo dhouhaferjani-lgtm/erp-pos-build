@@ -7,6 +7,7 @@ namespace App\Modules\Treasury\Application\Services;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 
 /**
@@ -30,17 +31,59 @@ use Illuminate\Database\QueryException;
  * merely whichever row happened to sort first). The `is_active` filter is
  * deliberately on the mapped branch ONLY, exactly as the bridge has always had
  * it; widening it here would silently change fiscal projection behaviour.
+ *
+ * ## Campaign lane N-12 — LOCATION IS A TIER, NOT A TIE-BREAKER
+ *
+ * The rule above was tenant+company only, with no location axis at all. On a
+ * multi-branch tenant that meant every branch resolved to whichever GL-linked
+ * cash register sorted first by UUID — in practice the one the provisioning
+ * seeder inserts first, i.e. the MAIN location's till. The Playwright campaign
+ * measured exactly that: `CASH-01 in 452.000 (POS01, Main) · in 200.000 (POS02,
+ * Ariana)` — two branches' takings commingled in one balance, so no per-branch
+ * cash count could reconcile against anything.
+ *
+ * When the caller knows the money's location (a POS receipt knows its
+ * terminal's location; a shift's cash count knows its terminal's location), the
+ * candidate set is TIERED:
+ *
+ *   tier 1  `location_id = $locationId`
+ *   tier 2  `location_id IS NULL`, and ONLY when tier 1 is empty
+ *   never   a repository attributed to a DIFFERENT location
+ *
+ * Tier 2 is what makes this forward-only rather than a fleet-wide behaviour
+ * break: every pre-N-12 tenant was provisioned with `location_id = NULL` on
+ * both seeded repositories (that is N-12's original wave-1 finding), and those
+ * tenants keep resolving exactly as they did. The moment a location owns a
+ * drawer, that drawer is the only answer for that location — and a location
+ * with no drawer of its own resolves to NULL, which every caller treats as a
+ * refusal. Borrowing another branch's till is never an outcome.
+ *
+ * A `null` `$locationId` (server-authored flows with no terminal, and every
+ * pre-existing caller) keeps the historical company-wide rule verbatim.
  */
 final readonly class TenderRepositoryResolver
 {
-    public function resolve(string $tenantId, string $companyId, ?PaymentMethod $method): ?PaymentRepository
-    {
+    public function resolve(
+        string $tenantId,
+        string $companyId,
+        ?PaymentMethod $method,
+        ?string $locationId = null,
+    ): ?PaymentRepository {
         try {
+            // N-12: with a known location, resolution runs against tier 1
+            // (that location's own repositories) and falls to tier 2 (the
+            // never-attributed legacy rows) only when tier 1 is empty. The
+            // MAPPED branch is inside the tier too, deliberately: a
+            // company-wide `default_repository_id` is operator routing policy,
+            // and letting it point a branch's cash at Main's till would
+            // reinstate the exact commingling this lane removes.
+            $tier = $locationId === null
+                ? null
+                : ($this->locationHasRepositories($tenantId, $companyId, $locationId) ? $locationId : false);
+
             $mappedRepositoryId = $method?->default_repository_id;
             if (is_string($mappedRepositoryId)) {
-                $mapped = PaymentRepository::query()
-                    ->where('tenant_id', $tenantId)
-                    ->where('company_id', $companyId)
+                $mapped = $this->scoped($tenantId, $companyId, $tier)
                     ->where('is_active', true)
                     ->whereNotNull('gl_account_id')
                     ->find($mappedRepositoryId);
@@ -67,9 +110,7 @@ final readonly class TenderRepositoryResolver
             // unchanged. The `is_active` filter deliberately stays on the mapped
             // branch only; widening it here would change fiscal projection
             // behaviour (see the class docblock).
-            return PaymentRepository::query()
-                ->where('tenant_id', $tenantId)
-                ->where('company_id', $companyId)
+            return $this->scoped($tenantId, $companyId, $tier)
                 ->whereNotNull('gl_account_id')
                 ->orderByRaw(
                     'CASE WHEN type = ? THEN 0 WHEN type = ? THEN 1 ELSE 2 END',
@@ -103,10 +144,14 @@ final readonly class TenderRepositoryResolver
      * The lookup itself sits inside the same `QueryException` guard `resolve()`
      * and the bridge both carry.
      */
-    public function resolveByMethodId(string $tenantId, string $companyId, ?string $methodId): ?PaymentRepository
-    {
+    public function resolveByMethodId(
+        string $tenantId,
+        string $companyId,
+        ?string $methodId,
+        ?string $locationId = null,
+    ): ?PaymentRepository {
         if (! is_string($methodId) || $methodId === '') {
-            return $this->resolve($tenantId, $companyId, null);
+            return $this->resolve($tenantId, $companyId, null, $locationId);
         }
 
         try {
@@ -122,6 +167,43 @@ final readonly class TenderRepositoryResolver
             return null;
         }
 
-        return $this->resolve($tenantId, $companyId, $method);
+        return $this->resolve($tenantId, $companyId, $method, $locationId);
     }
+
+    /**
+     * Tenant+company base query, narrowed to the resolved N-12 tier.
+     *
+     * `$tier` is a location id (tier 1), `false` (tier 2 — the never-attributed
+     * rows), or `null` (no location known: the historical company-wide set).
+     *
+     * @return Builder<PaymentRepository>
+     */
+    private function scoped(string $tenantId, string $companyId, string|false|null $tier): Builder
+    {
+        $query = PaymentRepository::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId);
+
+        if (is_string($tier)) {
+            return $query->where('location_id', $tier);
+        }
+
+        if ($tier === false) {
+            return $query->whereNull('location_id');
+        }
+
+        return $query;
+    }
+
+    private function locationHasRepositories(string $tenantId, string $companyId, string $locationId): bool
+    {
+        return PaymentRepository::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('location_id', $locationId)
+            ->whereNotNull('gl_account_id')
+            ->exists();
+    }
+
+
 }

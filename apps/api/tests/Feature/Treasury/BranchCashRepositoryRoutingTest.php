@@ -178,10 +178,10 @@ final class BranchCashRepositoryRoutingTest extends TestCase
         $this->assertSame(0, bccomp($this->numeric($main->fresh()?->balance), '0.000', 3), 'Main must be untouched.');
 
         $this->assertSame(1, DB::table('repository_movements')
-            ->where('repository_id', $branch->id)
+            ->where('payment_repository_id', $branch->id)
             ->where('source_id', $event->id)
             ->count());
-        $this->assertSame(0, DB::table('repository_movements')->where('repository_id', $main->id)->count());
+        $this->assertSame(0, DB::table('repository_movements')->where('payment_repository_id', $main->id)->count());
     }
 
     public function test_branch_cash_refund_debits_the_branch_drawer_not_main(): void
@@ -251,7 +251,7 @@ final class BranchCashRepositoryRoutingTest extends TestCase
         }
 
         $this->assertSame(0, Payment::query()->where('fiscal_event_id', $event->id)->count());
-        $this->assertSame(0, DB::table('repository_movements')->where('repository_id', $main->id)->count());
+        $this->assertSame(0, DB::table('repository_movements')->where('payment_repository_id', $main->id)->count());
         $this->assertSame(0, bccomp($this->numeric($main->fresh()?->balance), '0.000', 3));
     }
 

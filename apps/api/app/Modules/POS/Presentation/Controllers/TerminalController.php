@@ -6,6 +6,7 @@ namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Domain\Location;
+use App\Shared\Contracts\Treasury\LocationCashRegisterProvisionerInterface;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Enums\TerminalType;
@@ -46,6 +47,10 @@ final class TerminalController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        // Campaign lane N-12 — refuse a claim at a location that has no cash
+        // drawer, BEFORE any money exists. Injected through the Shared contract
+        // so POS never touches a Treasury model (rule 6).
+        private readonly LocationCashRegisterProvisionerInterface $cashRegisters,
     ) {}
 
     /**
@@ -382,6 +387,25 @@ final class TerminalController extends Controller
         // nearer, more actionable cause, so it keeps reporting first.
         if (! $this->locationHasPosEnabled($terminal->location_id, $terminal->company_id)) {
             return $this->posDisabledResponse();
+        }
+
+        // N-12: a location whose cash has nowhere of its own to go must not
+        // acquire a till. Before this lane the tender resolver answered such a
+        // terminal with whichever cash register sorted first in the company —
+        // in practice the MAIN location's — and the campaign measured two
+        // branches' takings commingled in one balance ("CASH-01 in 452.000
+        // (POS01, Main) · in 200.000 (POS02, Ariana)"), which no per-branch cash
+        // count can reconcile. The resolver now refuses instead of borrowing;
+        // refusing HERE is what keeps that refusal out of the money path, where
+        // it would land as a dead-lettered projection after the customer has
+        // already paid. Deliberately AFTER the pos_enabled check: "POS is off
+        // here" is the nearer cause when both are true.
+        if (! $this->cashRegisters->hasUsableCashRegister(
+            (string) $terminal->tenant_id,
+            (string) $terminal->company_id,
+            (string) $terminal->location_id,
+        )) {
+            return $this->noCashRegisterResponse();
         }
 
         if ($terminal->hardware_identifier !== null) {
@@ -963,6 +987,24 @@ final class TerminalController extends Controller
      * `TERMINAL_HAS_OPEN_SHIFT`) so the device's existing error handling reads
      * it without a new branch.
      */
+    /**
+     * N-12 — typed, actionable, and never a silent reroute.
+     *
+     * The message names the fix an operator can actually perform (add a cash
+     * register to this location in Treasury settings), because the alternative
+     * outcome — the device claims the terminal and its cash lands in another
+     * branch's drawer — is invisible until a cash count fails to reconcile.
+     */
+    private function noCashRegisterResponse(): JsonResponse
+    {
+        return response()->json([
+            'error' => [
+                'code' => 'LOCATION_HAS_NO_CASH_REGISTER',
+                'message' => 'This location has no cash register. Add a cash repository for the location in Treasury settings before using a terminal there — otherwise its cash would be booked against another location.',
+            ],
+        ], 422);
+    }
+
     private function posDisabledResponse(): JsonResponse
     {
         return response()->json([

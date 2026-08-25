@@ -1309,15 +1309,24 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                 ->where('company_id', $event->company_id)
                 ->find($existing->repository_id);
         } else {
-            $repository = $this->resolveRepositoryForTender($event, $paymentMethod);
+            $repository = $this->resolveRepositoryForTender($event, $paymentMethod, $terminalLocationId);
         }
 
         if ($repository === null) {
+            // N-12: the pre-fix message could not distinguish "this company has
+            // no till at all" from "this BRANCH has no till" — and the pre-fix
+            // resolver never produced the second case, because it quietly
+            // answered with Main's drawer. Naming the location is what makes the
+            // dead-lettered job actionable ("give Boutique Ariana a cash
+            // register"), and refusing is the point: a branch receipt booked
+            // into another branch's balance is unreconcilable forever, while a
+            // refused projection is replayable the moment the drawer exists.
             throw new RuntimeException(sprintf(
-                'TreasuryReceiptBridge: no GL-linked payment_repository found for tenant %s / company %s — '.
+                'TreasuryReceiptBridge: no GL-linked payment_repository found for tenant %s / company %s / location %s — '.
                 'cannot create POS-payment GL post for fiscal_event %s',
                 $event->tenant_id,
                 $event->company_id,
+                $terminalLocationId ?? '(none)',
                 $event->id,
             ));
         }
@@ -1576,16 +1585,26 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
      * {@see TenderRepositoryResolver} so the shift-close cash-variance listener
      * resolves the SAME repository this projection does — by sharing the code,
      * not by duplicating it. This method stays as the bridge's named seam (and
-     * the anti-drift test's second entry point); its behaviour is unchanged.
+     * the anti-drift test's second entry point).
+     *
+     * Campaign lane N-12: the terminal's LOCATION is now part of the question.
+     * A receipt authored at Boutique Ariana resolves against Ariana's own
+     * drawers; Main's till is not a candidate, and neither is any other
+     * branch's. `$locationId` is null only when the terminal row could not be
+     * read at all ({@see ResolvesTerminalLocation}), in which case the resolver
+     * keeps its historical company-wide behaviour rather than refusing money
+     * over a lookup blip.
      */
     private function resolveRepositoryForTender(
         FiscalEvent $event,
         ?PaymentMethod $method,
+        ?string $locationId,
     ): ?PaymentRepository {
         return $this->tenderRepositoryResolver->resolve(
             (string) $event->tenant_id,
             (string) $event->company_id,
             $method,
+            $locationId,
         );
     }
 
