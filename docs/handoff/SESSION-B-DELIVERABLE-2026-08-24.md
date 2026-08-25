@@ -21,8 +21,13 @@
 | Q-10 | Fiscal-period quick fixes — per-company country rules (fail-safe skip), per-row audit stamps, permissioned Closed→Open reopen; scheduler respects reopens on all three arms | `f5cae1f12` | treasury r1 ACCEPT-w/-cond → fix round `8a285c495` → r2 ACCEPT | YES (additive-only) | C-24, S-20 |
 | Q-11 | SupplierInvoice `match()` draft-guard + expense-number advisory lock | ⏳ queued (B-19 confirmed not in flight) | treasury | no | |
 | Q-12 | Treasury orphan census command (F5, read-only) | ⏳ queued | treasury | no | |
+| D-1 | **Slice D entry — `pg_constraint` enum↔CHECK parity test + shrink-only baseline + derived register (test-only)** | `2288299bf` | fiscal r1 APPROVED-w/-res + tenancy r1 APPROVED-w/-cond → fix `33e26cd69` → combined r2 APPROVED-w/-res | no | C-26, **O-31** |
 
-Owner items surfaced: **O-30** (forced terminal release orphans an OPEN shift; no server surface can close it — runbook + ruling,
+**Found out-of-lane (needs an owner priority call): C-27 — `journal_entries.entry_number` is unique per tenant but generated + locked per company
+(`GeneralLedgerService.php:5339-5356`): the second company of any tenant cannot post anything that mints a JE. Single-company first tenant is
+unaffected; multi-company is blocked at the first posting. Fix shape = Q-11's tenant-keyed lock.**
+
+Owner items surfaced: **O-31** (arm the owner-pinned blob over the three parity artifacts before the first CHECK batch), **O-30** (forced terminal release orphans an OPEN shift; no server surface can close it — runbook + ruling,
 non-waivable before the first forced release in prod). Green-field ruling 2026-08-24: migrations are not a blocker — S-19 reduced to one
 post-migrate `BLOCKED|FAILED` grep on the Q-7 token. `ci.yml` backend-pgsql `--filter` allowlist grew by 4 classes (Q-6, Q-7×2, Q-10) so the
 migration-bearing pins execute somewhere while their lanes are parked (B-3 precedent; S-14 leg applies to the promotion).
