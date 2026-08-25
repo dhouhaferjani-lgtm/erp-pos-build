@@ -20,7 +20,7 @@
 
 ## 3. Program spec §R — ratification questions STILL OUTSTANDING (none ruled as of 2026-08-25)
 Source: `docs/superpowers/specs/2026-08-23-state-machine-program-spec-skeleton.md` §R. The program does not start
-without these; Session B's erratum applies (§#26 census superseded by D-1: 245 tenant columns, baseline 188 → 176 after batch 1).
+without these; Session B's erratum applies (§#26 census superseded by D-1: 245 tenant columns, baseline 188 → 175 after batch 1).
 - **R-A graphs to sign:** R-A1 POS Order (retire `Closed`? un-bump edge? Cancelled terminal) · R-A2 OrderLine (`pending→sent`, `ready→served`, Cancelled terminal) · R-A3 Document (`Paid→Cancelled`? `Received` terminal? `revert` reach) · R-A4 Voucher (ratify Q-5 allow-list; Expired reactivation?) · R-A5 Import (`Pending` legal start?) · R-A6 Replenishment (`Fulfilled→Pending` compensating edge) · R-A7 FiscalPeriod (ratify Q-10 reopen + the C-24 manual close; `Locked` terminal-except-support) · R-A8 `pos_receipts.fiscal_status` sync-state split.
 - **R-B:** R-B1 no Treasury/Inventory workstream (Slice D only) · R-B2 workstream B absorbs C-8 trigger widening · R-B3 TableStatus/F&B deferred to the Dhouha track.
 - **R-C guard shape:** R-C1 one map-driven PHPStan rule · R-C2 `status` out of `$fillable` on governed aggregates (breaking sweep).
