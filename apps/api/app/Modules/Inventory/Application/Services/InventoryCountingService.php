@@ -613,6 +613,23 @@ class InventoryCountingService
         }
 
         return DB::transaction(function () use ($counting, $companyId, $user, $activateImmediately): InventoryCounting {
+            // Gate r1 IMPORTANT-2. The status test above ran on the caller's
+            // snapshot, OUTSIDE any transaction — classic check-then-act. A
+            // `cancel()` (which does take this lock) committing in that window
+            // used to lose the race silently: this method then transitioned the
+            // cancelled counting into `count_1_in_progress`, resurrecting a
+            // document that asserts nothing was posted.
+            //
+            // TERMINAL-ONLY, like every sibling. Draft -> Active is a LEGAL edge
+            // (it is the whole point of this method), so the guard must not
+            // re-assert the phase — only Finalized and Cancelled, the two
+            // statuses with no outgoing edge, are refused.
+            $lockedCounting = $this->lockCounting($counting->id);
+            $this->assertNotTerminal(
+                $lockedCounting,
+                $activateImmediately ? CountingStatus::Count1InProgress : CountingStatus::Scheduled,
+            );
+
             // Generate counting number if not already set
             if ($counting->counting_number === null) {
                 $counting->counting_number = $this->generateCountingNumber($companyId);
@@ -670,6 +687,13 @@ class InventoryCountingService
         }
 
         DB::transaction(function () use ($counting, $user): void {
+            // Gate r1 IMPORTANT-2 — same shape as activateDraft() above: the
+            // draft/scheduled test ran on the caller's snapshot outside the
+            // transaction, so a concurrent cancel() could be overwritten.
+            // Terminal-only: Draft/Scheduled -> Active is a legal edge.
+            $lockedCounting = $this->lockCounting($counting->id);
+            $this->assertNotTerminal($lockedCounting, CountingStatus::Count1InProgress);
+
             $this->assertNoOverlappingActiveCounting($counting);
 
             $counting->transitionTo(CountingStatus::Count1InProgress);
@@ -804,14 +828,29 @@ class InventoryCountingService
     /**
      * Re-read a counting header FOR UPDATE inside the caller's transaction.
      *
-     * Gate r1: the lifecycle-mutating paths (submitCount, triggerThirdCount,
-     * finalize, cancel) take this before they write, so the status they decide
-     * on is the committed truth rather than the snapshot the request loaded —
-     * the lock WAIT is long enough for another request to finalize or cancel
-     * the same counting. `manualOverride()` was the last gap (gate r2 NEW-2,
-     * LEDGER C-14(ii)) and now takes it too, so EVERY mutating counting path
-     * holds this lock — pinned by
-     * `CountingTerminalStateGuardTest::test_every_mutating_counting_path_emits_the_header_row_lock`.
+     * Every lifecycle-mutating path takes this before it writes, so the status
+     * it decides on is the committed truth rather than the snapshot the request
+     * loaded — the lock WAIT is long enough for another request to finalize or
+     * cancel the same counting.
+     *
+     * The covered set is exactly SEVEN, and it is ENUMERATED rather than
+     * described, because a previous revision of this docblock claimed "every
+     * mutating path" while `activate()` / `activateDraft()` were still unlocked
+     * (gate r1 IMPORTANT-2 — the overclaim told the next reviewer the surface
+     * was closed):
+     *
+     *   activateDraft(), activate(), submitCount(), triggerThirdCount(),
+     *   manualOverride(), finalize(), cancel()
+     *
+     * Five are pinned by
+     * `CountingTerminalStateGuardTest::test_every_mutating_counting_path_emits_the_header_row_lock`
+     * and the two activation paths by its sibling
+     * `::test_the_activation_paths_emit_the_header_row_lock_before_they_write`
+     * (both PostgreSQL-only — SQLite compiles `FOR UPDATE` away).
+     *
+     * NOT covered, deliberately: `CountingItemController::setOpeningCost()`
+     * still does a pre-transaction status read with an untyped `abort(422)`
+     * (LEDGER residual, outside this lane's brief).
      */
     private function lockCounting(string $countingId): InventoryCounting
     {
