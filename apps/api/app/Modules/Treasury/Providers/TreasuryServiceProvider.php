@@ -35,6 +35,7 @@ use App\Modules\Treasury\Presentation\Console\AuditDiscountsCommand;
 use App\Modules\Treasury\Presentation\Console\BackfillLocationAttributionCommand;
 use App\Modules\Treasury\Presentation\Console\InstrumentMaturityAlertsCommand;
 use App\Modules\Treasury\Presentation\Console\ReconcileTreasuryCommand;
+use App\Modules\Treasury\Presentation\Console\TreasuryOrphanCensusCommand;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use App\Shared\Contracts\Partner\PartnerReferenceSource;
 use App\Shared\Contracts\Treasury\InstrumentReversalCancellerInterface;
@@ -208,6 +209,7 @@ class TreasuryServiceProvider extends ServiceProvider
                 BackfillLocationAttributionCommand::class,
                 InstrumentMaturityAlertsCommand::class,
                 ReconcileTreasuryCommand::class,
+                TreasuryOrphanCensusCommand::class,
             ]);
         }
     }
