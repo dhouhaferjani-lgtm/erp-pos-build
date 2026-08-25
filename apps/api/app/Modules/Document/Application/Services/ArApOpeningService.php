@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Application\Services;
 
+use App\Modules\Accounting\Application\Services\ArApOpeningLedgerService;
 use App\Modules\Accounting\Application\Services\OpeningBalanceBatchService;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
 use App\Modules\Accounting\Domain\Enums\OpeningImportRowStatus;
@@ -31,15 +32,22 @@ use RuntimeException;
  * - Validates partner codes exist (customer for AR, supplier for AP)
  * - Validates dates and amounts
  * - Creates historical documents with is_historical = true
- * - Uses HIST-INV-XXXX or HIST-CN-XXXX numbering for our reference
+ * - AR batches mint customer-side documents (HIST-INV / HIST-CN), AP batches
+ *   supplier-side ones (HIST-SINV / HIST-SCN) — the batch side decides the type,
+ *   not the row (W4-3)
  * - external_document_number stores the original invoice number from old system
  * - balance_due set to the open amount
- * - No GL entry created (GL was handled by accounting opening)
+ * - Each open item posts its OWN historical journal entry against the seeded
+ *   opening-balance counterpart, with the control leg (411/401) carrying the
+ *   partner dimension, and refreshes the partner sub-ledger (W4-4). The GL
+ *   opening batch must NOT restate 411/401 — AccountingOpeningService refuses
+ *   partner control accounts for exactly that reason.
  */
 class ArApOpeningService
 {
     public function __construct(
         private readonly OpeningBalanceBatchService $batchService,
+        private readonly ArApOpeningLedgerService $ledgerService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
@@ -156,11 +164,23 @@ class ArApOpeningService
             }
         }
 
-        // Validate document type (default to invoice)
+        // Validate document type (default to invoice).
+        //
+        // W4-3: the row's `document_type` states the DIRECTION of the open item
+        // ("we are owed" vs "we owe back"), not the concrete document type — the
+        // AR and AP templates share one column vocabulary, and the Parties import
+        // (`Import\Services\PartiesRowMapper::balancePayload()`, named not imported)
+        // emits the same two words for both sides from the SIGN of the balance.
+        // The batch side is what turns that into a type. Before this, both sides
+        // mapped to Invoice/CreditNote, so an AP opening was a CUSTOMER invoice:
+        // `PaymentController` decides supplier-ness by
+        // `type === DocumentType::SupplierInvoice`, which such a document can never
+        // satisfy, so paying the supplier booked Dr bank / Cr 411 and moved the
+        // cash the wrong way while the 401 debt stayed standing.
         $docTypeValue = $rawData['document_type'] ?? 'invoice';
         $docType = match (strtolower($docTypeValue)) {
-            'invoice', 'inv' => DocumentType::Invoice,
-            'credit_note', 'creditnote', 'cn' => DocumentType::CreditNote,
+            'invoice', 'inv' => $isAr ? DocumentType::Invoice : DocumentType::SupplierInvoice,
+            'credit_note', 'creditnote', 'cn' => $isAr ? DocumentType::CreditNote : DocumentType::SupplierCreditNote,
             default => null,
         };
 
@@ -248,13 +268,16 @@ class ArApOpeningService
      *
      * Creates historical documents:
      * - is_historical = true
-     * - document_number = HIST-INV-XXXX or HIST-CN-XXXX (our reference)
+     * - document_number = HIST-INV / HIST-CN (AR) or HIST-SINV / HIST-SCN (AP)
      * - external_document_number = original invoice number from old system
      * - balance_due = open amount
      * - status = Posted
      * - fiscal_category = NonFiscal (excluded from hash chain)
      *
-     * No GL entry is created (GL was handled by accounting opening).
+     * Each document also posts its cutover journal entry through
+     * ArApOpeningLedgerService (control leg partner-tagged, counterpart on the
+     * seeded opening-balance equity account), and the partner sub-ledger is
+     * refreshed once per distinct partner at the end of the batch.
      *
      * @return array<string, mixed> Summary of documents created
      *
@@ -293,6 +316,8 @@ class ArApOpeningService
 
             $documentsCreated = [];
             $rowEntityMap = [];
+            /** @var list<string> $partnerIds */
+            $partnerIds = [];
             $totalAmount = '0.00';
             $totalOpenAmount = '0.00';
 
@@ -331,6 +356,15 @@ class ArApOpeningService
                     'reference' => "Opening Balance Batch: {$batch->name}",
                 ]);
 
+                // W4-4: the cutover GL leg, one entry per open item, control leg
+                // tagged with the partner. Inside this transaction so a document
+                // and its opening entry can never exist without each other.
+                $openingEntry = $this->ledgerService->postOpeningEntry(
+                    $document,
+                    $batch->cutover_date,
+                    $userId,
+                );
+
                 $documentsCreated[] = [
                     'id' => $document->id,
                     'document_number' => $documentNumber,
@@ -338,12 +372,21 @@ class ArApOpeningService
                     'total' => $mappedData['total'],
                     'balance_due' => $mappedData['open_amount'],
                     'type' => $docType->value,
+                    'journal_entry_number' => $openingEntry?->entry_number,
                 ];
 
+                $partnerIds[] = (string) $mappedData['partner_id'];
                 $totalAmount = bcadd($totalAmount, $mappedData['total'], $this->scale());
                 $totalOpenAmount = bcadd($totalOpenAmount, $mappedData['open_amount'], $this->scale());
                 $rowEntityMap[$row->id] = $document->id;
             }
+
+            // W4-4: opening entries are created directly Posted and therefore never
+            // dispatch JournalEntryPosted, so the RefreshPartnerBalanceOnJournalEntryPosted
+            // listener never runs. Refresh the sub-ledger explicitly, once per
+            // distinct partner — without this the partner pages keep reading 0.000
+            // against real open items, which is the whole of W4-4.
+            $this->ledgerService->refreshPartnerBalances($company->id, $partnerIds);
 
             // Transition the batch first — markBatchValidated requires the rows
             // to still be in Valid status (a Posted row no longer counts as valid).
@@ -424,7 +467,7 @@ class ArApOpeningService
                 'total_amount' => $totalAmount,
                 'total_open_amount' => $totalOpenAmount,
             ],
-            'note' => 'Historical documents will be created with is_historical=true. No GL entry will be created (GL balance should be handled via Accounting Opening).',
+            'note' => 'Historical documents will be created with is_historical=true. Each open item also posts its own opening journal entry against the opening-balance account, with the partner dimension on the receivable/payable leg, so the partner balances and the control accounts agree at cutover. Do NOT restate the receivable/payable control accounts in the GL Accounting opening — that batch refuses them.',
         ];
     }
 
@@ -451,6 +494,11 @@ class ArApOpeningService
         $prefix = match ($type) {
             DocumentType::Invoice => 'HIST-INV',
             DocumentType::CreditNote => 'HIST-CN',
+            // W4-3: the AP side gets its OWN sequences. Sharing HIST-INV made an
+            // opening supplier bill indistinguishable from a customer invoice in
+            // every list, export and search the operator has.
+            DocumentType::SupplierInvoice => 'HIST-SINV',
+            DocumentType::SupplierCreditNote => 'HIST-SCN',
             default => 'HIST-DOC',
         };
 

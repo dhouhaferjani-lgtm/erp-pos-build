@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Import;
 
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Application\Services\OpeningBalanceBatchService;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchStatus;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
@@ -64,6 +65,12 @@ final class PartiesImportBalancesTest extends TestCase
             'status' => CompanyStatus::Active,
         ]);
 
+        // W4-4: an AR/AP opening batch now posts its cutover journal entry against
+        // the seeded control accounts (411/401) and the opening-balance counterpart.
+        // Provisioning seeds these on every real company; the fixture must too, or
+        // the balance rows come back as `balance_not_posted` warnings.
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
         $this->seed(RolesAndPermissionsSeeder::class);
 
@@ -117,8 +124,14 @@ final class PartiesImportBalancesTest extends TestCase
         $this->assertSame(DocumentType::CreditNote, $creditNote->type);
         $this->assertSame('50.000', $creditNote->total);
 
+        // W4-3: the Parties import emits `document_type = 'invoice'` for a positive
+        // balance on EITHER side (the word states the direction, not the type); the
+        // AP batch is what makes it a supplier-side document. This assertion used to
+        // pin the defect — a supplier opening minted as a CUSTOMER invoice, which
+        // PaymentController then paid with the cash moving the wrong way.
         $supplierInvoice = Document::where('partner_id', Partner::where('code', 'SUP-POS')->value('id'))->firstOrFail();
-        $this->assertSame(DocumentType::Invoice, $supplierInvoice->type);
+        $this->assertSame(DocumentType::SupplierInvoice, $supplierInvoice->type);
+        $this->assertStringStartsWith('HIST-SINV-', (string) $supplierInvoice->document_number);
         $this->assertSame('80.000', $supplierInvoice->total);
 
         $arBatch = OpeningBalanceBatch::where('type', OpeningBatchType::ArOpenItems)->firstOrFail();
