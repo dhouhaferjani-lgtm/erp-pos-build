@@ -18,6 +18,7 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\DocumentFullyPaid;
 use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Application\Services\WithholdingCertificateService;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\DTOs\ReceiveInstrumentData;
@@ -463,6 +464,14 @@ class PaymentController extends Controller
         $supplierDocCount = 0;
         $nonSupplierDocCount = 0;
         $adjustedAllocations = [];
+        // Loaded once for the W4-3 direction guard below: the cross-partner guard
+        // already forces every allocated document onto this same partner, so one
+        // read answers the question for all of them.
+        /** @var Partner $partner */
+        $partner = Partner::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->findOrFail($validated['partner_id']);
         foreach ($allocations as $allocation) {
             /** @var Document $document */
             $document = Document::query()
@@ -482,6 +491,38 @@ class PaymentController extends Controller
                             'document_id' => $document->id,
                             'document_partner_id' => $document->partner_id,
                             'payment_partner_id' => $validated['partner_id'],
+                        ],
+                    ],
+                ], 422);
+            }
+
+            // W4-3: the document's SIDE must agree with its partner's ROLE.
+            //
+            // The whole AR/AP direction of a payment is inferred from the allocated
+            // document's type alone (the branch two blocks down). Nothing checked
+            // that the type was plausible for the partner, so a customer-typed
+            // document owned by a SUPPLIER — exactly what the AP opening batch used
+            // to mint, and what every tenant migrated before that fix still carries
+            // — silently took the AR arm: `Dr bank / Cr 411`, movement direction IN,
+            // the 401 debt untouched, and the document marked paid. The operator
+            // sent money out; the system recorded money arriving, and nothing warned.
+            //
+            // Placed BEFORE the supplier arm so a mis-typed document is refused for
+            // what is actually wrong with it, rather than for the downstream
+            // symptom (a missing Cr-401 journal entry it could never have had).
+            // `isCustomer()`/`isSupplier()` both hold for PartnerType::Both, so a
+            // dual-role partner is unaffected.
+            if (! $this->documentSideMatchesPartner($document, $partner)) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'PAYMENT_DIRECTION_MISMATCH',
+                        'message' => 'This document\'s type does not match the partner\'s role, so the payment direction cannot be determined. A customer invoice must belong to a customer and a supplier invoice to a supplier.',
+                        'details' => [
+                            'document_id' => $document->id,
+                            'document_number' => $document->document_number,
+                            'document_type' => $document->type->value,
+                            'partner_id' => $partner->id,
+                            'partner_type' => $partner->type->value,
                         ],
                     ],
                 ], 422);
@@ -1364,6 +1405,31 @@ class PaymentController extends Controller
                 ],
             ], 422));
         }
+    }
+
+    /**
+     * W4-3 — does this document's SIDE agree with its partner's ROLE?
+     *
+     * Sales-side documents (`Invoice`, `CreditNote`) settle against the customer
+     * receivable and take cash IN; purchase-side ones (`SupplierInvoice`,
+     * `SupplierCreditNote`) settle against the supplier payable and take cash OUT.
+     * The payment direction is inferred from the type alone, so a type the partner
+     * cannot plausibly own makes that inference silently wrong — which is exactly
+     * how a 500.000 TND supplier settlement came to be recorded as money arriving.
+     *
+     * `PartnerType::Both` satisfies both sides, so a dual-role partner is never
+     * refused. Every OTHER document type (advances, expenses, POS, order-stage
+     * documents) is deliberately left alone: this guard answers only the AR-vs-AP
+     * question, and returning true for anything outside it keeps the guard from
+     * quietly acquiring opinions about flows it was not written for.
+     */
+    private function documentSideMatchesPartner(Document $document, Partner $partner): bool
+    {
+        return match ($document->type) {
+            DocumentType::Invoice, DocumentType::CreditNote => $partner->isCustomer(),
+            DocumentType::SupplierInvoice, DocumentType::SupplierCreditNote => $partner->isSupplier(),
+            default => true,
+        };
     }
 
     /**
