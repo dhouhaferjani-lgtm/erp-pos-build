@@ -658,17 +658,68 @@ class ReconciliationTest extends TestCase
         // able to read and act on, not a server error.
         $response->assertStatus(422);
         $response->assertJsonPath('error.code', 'BUSINESS_ERROR');
-        $this->assertStringContainsString(
-            '1 item',
+
+        // Gate r1 MINOR-1: the previous pin was `assertStringContainsString('1 item', …)`,
+        // which ALSO passes against the old buggy "1 items" — so the
+        // pluralisation the commit message highlighted was never pinned. Exact
+        // sentence, plus an explicit negative on the ungrammatical form.
+        $this->assertSame(
+            'Cannot finalize: 1 item still pending resolution.',
             (string) $response->json('error.message'),
             'The refusal must name how many lines are still pending. Body: '.$response->getContent(),
         );
+        $this->assertStringNotContainsString('1 items', (string) $response->json('error.message'));
 
         $counting->refresh();
         $this->assertSame(
             CountingStatus::PendingReview,
             $counting->status,
             'A refused finalize must leave the counting in pending_review.',
+        );
+    }
+
+    /**
+     * Gate r1 IMPORTANT-5 — the unresolved-items refusal was hardcoded English,
+     * i.e. the exact defect C-14(iv) fixed for its sibling one commit later in
+     * the same lane. It now comes from the backend catalogue through the same
+     * TRANSLATION_KEY + translationReplacements() pattern, pluralised with
+     * `trans_choice` so FR gets its own singular/plural too.
+     */
+    public function test_unresolved_items_refusal_is_localised_and_pluralised(): void
+    {
+        $counting = InventoryCounting::create([
+            'company_id' => $this->company->id,
+            'status' => CountingStatus::PendingReview,
+            'scope_type' => CountingScopeType::Location,
+            'scope_filters' => ['location_ids' => [$this->warehouse->id]],
+            'execution_mode' => CountingExecutionMode::Sequential,
+            'requires_count_2' => false,
+            'requires_count_3' => false,
+            'allow_unexpected_items' => false,
+            'created_by_user_id' => $this->adminUser->id,
+        ]);
+
+        // TWO pending lines, so the plural arm is the one under test.
+        $this->createCountingItem($counting, '100.0000');
+        $this->createCountingItem($counting, '50.0000');
+
+        $response = $this->actingAs($this->adminUser)
+            ->withHeaders(['Accept-Language' => 'fr'])
+            ->postJson("/api/v1/inventory/countings/{$counting->id}/finalize");
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'BUSINESS_ERROR');
+
+        $message = (string) $response->json('error.message');
+        $this->assertStringNotContainsString(
+            'Cannot finalize',
+            $message,
+            'The operator message must come from the fr catalogue. Body: '.$response->getContent(),
+        );
+        $this->assertStringContainsString('2', $message, 'The count must be interpolated. Body: '.$message);
+        $this->assertSame(
+            trans_choice('inventory.counting.unresolved_items', 2, ['count' => 2], 'fr'),
+            $message,
         );
     }
 

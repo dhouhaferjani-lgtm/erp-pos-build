@@ -14,6 +14,9 @@ return [
     // labels mirror `apps/web/src/locales/<locale>/inventory.json`
     // `counting.status.*` so one refusal reads the same on both sides.
     'counting' => [
+        // Pluralised with `trans_choice` (gate r1 IMPORTANT-5): the count is
+        // in the sentence and FR does not pluralise like EN.
+        'unresolved_items' => 'Impossible de finaliser : :count ligne est encore en attente de résolution.|Impossible de finaliser : :count lignes sont encore en attente de résolution.',
         'transition_refused' => 'Ce comptage est « :current » et ne peut pas passer à « :attempted ».',
         'status' => [
             'draft' => 'Brouillon',

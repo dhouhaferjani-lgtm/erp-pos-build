@@ -34,6 +34,7 @@ use App\Modules\Inventory\Domain\Exceptions\BatchRequiredForLineException;
 use App\Modules\Inventory\Domain\Exceptions\CannotCorrectACorrectionException;
 use App\Modules\Inventory\Domain\Exceptions\ContraLinesImmutableException;
 use App\Modules\Inventory\Domain\Exceptions\CountingTransitionException;
+use App\Modules\Inventory\Domain\Exceptions\CountingUnresolvedItemsException;
 use App\Modules\Inventory\Domain\Exceptions\LineTenantMismatchException;
 use App\Modules\Inventory\Domain\Exceptions\StockAdjustmentStateException;
 use App\Modules\Inventory\Domain\Exceptions\StockMovedSinceAuthoringException;
@@ -992,6 +993,27 @@ return Application::configure(basePath: dirname(__DIR__))
                             'from' => $e->from->value,
                             'to' => $e->to->value,
                         ],
+                    ],
+                ], 422);
+            }
+        });
+
+        // Gate r1 IMPORTANT-5. Registered ABOVE the generic `DomainException`
+        // closure below (Laravel matches in registration order, first match
+        // wins) because the generic one cannot know about a translation key.
+        // The ENVELOPE is deliberately identical to the generic one — same
+        // `BUSINESS_ERROR` code, same two fields — so nothing that branches on
+        // the code changes; only the message becomes locale-aware.
+        $exceptions->render(function (CountingUnresolvedItemsException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'BUSINESS_ERROR',
+                        'message' => trans_choice(
+                            CountingUnresolvedItemsException::TRANSLATION_KEY,
+                            $e->unresolvedCount,
+                            $e->translationReplacements(),
+                        ),
                     ],
                 ], 422);
             }
