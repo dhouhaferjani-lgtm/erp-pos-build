@@ -119,10 +119,28 @@ cash-position screens short, and a genuine deposit refused with "insufficient ba
 by the `repository_code` column in step 1. A batch posted with that column leaves Treasury and the
 GL agreeing exactly.
 
-**It is still open for any till seeded before that shipped, or seeded through a batch that left the
-column blank.** For those: the till has a GL balance and no Treasury balance. Do NOT reach for
-"Adjust balance" (step 2). Move the cash in with a **Treasury transfer** from a till that does hold
-it, or — if no batch has been posted for that repository yet — post a new opening batch naming it.
+**A batch that leaves the column blank can no longer post at all.** Since the same change, an
+ACCOUNTING batch that debits a cash or bank account which payment repositories are linked to is
+**refused** (`OPENING_CASH_NOT_FULLY_SEEDED`) unless the whole debit on that account is assigned to
+repositories by the `repository_code` column. A four-column legacy sheet therefore cannot silently
+recreate the old gap: it is stopped, and the error names the account and the amount that would have
+reached no till.
+
+**For a tenant that was ALREADY seeded GL-only, before this shipped: there is no in-product remedy,
+and the two obvious ones are money-wrong.** Such a tenant has a GL cash balance and every till at
+zero.
+
+- Do NOT reach for "Adjust balance" (step 2) — it books the amount as income.
+- Do NOT post a second opening batch for that account — it debits the cash account **again**,
+  doubling GL cash against unchanged physical cash.
+- A **Treasury transfer** cannot help either: it moves cash *between* tills, and in this state no
+  till holds any.
+
+The only writer of an `opening_balance` movement is the batch post, and it always posts a GL leg
+alongside — so the treasury half cannot be added on its own without a purpose-built repair command,
+which does not exist. **Disposition (owner, 2026-08-25): greenfield — there are no existing tenants,
+so re-provision rather than backfill.** If a GL-only tenant ever does arise, raise it: it needs that
+repair command, not a workaround from this page.
 
 ### 5. Do not enable `TREASURY_SHIFT_VARIANCE_GL_ENABLED`.
 
