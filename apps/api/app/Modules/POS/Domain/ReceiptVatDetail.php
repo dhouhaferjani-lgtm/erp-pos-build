@@ -45,6 +45,9 @@ class ReceiptVatDetail extends Model
         'net_amount',
         'vat_amount',
         'gross_amount',
+        // D-1 (v5): this rate group's pro-rata share of the ticket-level
+        // remise. NULL on rows projected from v1..v4 events.
+        'discount_allocated',
     ];
 
     /**
@@ -57,6 +60,7 @@ class ReceiptVatDetail extends Model
             'net_amount' => 'decimal:3',
             'vat_amount' => 'decimal:3',
             'gross_amount' => 'decimal:3',
+            'discount_allocated' => 'decimal:3',
         ];
     }
 

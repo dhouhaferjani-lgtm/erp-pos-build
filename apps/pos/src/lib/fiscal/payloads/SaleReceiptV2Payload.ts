@@ -16,6 +16,7 @@
  */
 
 import type { LineItemInput, SaleReceiptPayloadInput } from '@/lib/fiscal/FiscalEventEngine';
+import type { CartItem } from '@/types/cart';
 import {
   buildSaleReceiptPayload,
   SaleReceiptPayloadInputError,
@@ -44,10 +45,29 @@ export function buildSaleReceiptV2Payload(
 ): SaleReceiptV2PayloadInput {
   const v1 = buildSaleReceiptPayload(input);
 
+  return {
+    ...v1,
+    line_items: enrichLineItemsWithVariantIdentity(v1.line_items, input.cartItems),
+  };
+}
+
+/**
+ * Fold the variant identity of each cart line into the V1 canonical line.
+ *
+ * EXTRACTED from `buildSaleReceiptV2Payload` unchanged (D-1) so V5 — which
+ * cannot delegate to V2 (its aggregate identity differs) — reuses the exact
+ * same enrichment rather than a second implementation that could drift.
+ * `SaleReceiptV2Payload.test.ts` + `SaleReceiptV1V2ByteStability.test.ts`
+ * pin the V2 bytes across the extraction.
+ */
+export function enrichLineItemsWithVariantIdentity(
+  lines: ReadonlyArray<LineItemInput>,
+  cartItems: ReadonlyArray<CartItem>,
+): LineItemV2Input[] {
   // buildLineItems maps cartItems positionally (cartItems.map), so the V1
-  // line at index i was built from input.cartItems[i].
-  const lineItems: LineItemV2Input[] = v1.line_items.map((line, index) => {
-    const item = input.cartItems[index];
+  // line at index i was built from cartItems[i].
+  return lines.map((line, index) => {
+    const item = cartItems[index];
     if (item === undefined) {
       throw new SaleReceiptPayloadInputError(
         `SaleReceiptV2 line/cart mismatch: V1 produced line ${index} with no matching cart item.`,
@@ -77,9 +97,4 @@ export function buildSaleReceiptV2Payload(
       variant_sku: variantSku,
     };
   });
-
-  return {
-    ...v1,
-    line_items: lineItems,
-  };
 }

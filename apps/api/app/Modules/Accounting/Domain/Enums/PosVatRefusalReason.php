@@ -50,4 +50,14 @@ enum PosVatRefusalReason: string
 
     /** A tender or sealed VAT amount is not a plain decimal string. */
     case NonNumericAmount = 'non_numeric_amount';
+
+    /**
+     * D-1 — the sealed rows disagree with each other about which era they were
+     * sealed in: some carry `discount_allocated`, some do not. `discount_allocated`
+     * is the discriminator between a PRE-remise base (v1..v4, remise booked as
+     * contra-revenue) and a POST-remise one (v5, remise already out of the base),
+     * so a mixed set cannot be read as either. Guessing would book a wrong
+     * revenue base on a receipt whose VAT the declaration still reports.
+     */
+    case SealedBaseEraAmbiguous = 'sealed_base_era_ambiguous';
 }

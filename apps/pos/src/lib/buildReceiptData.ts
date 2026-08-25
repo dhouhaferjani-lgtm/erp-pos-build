@@ -162,6 +162,14 @@ export function buildEscPosReceiptData(
 
   // Receipt-kind discriminator. Explicit override wins; otherwise infer from
   // receipt_type ('return' = refund, anything else = sale).
+  // D-1: was this receipt sealed with the remise ventilated into its base?
+  // `discount_allocated` is written verbatim by the projection at
+  // `event_version >= 5` and left NULL for every earlier receipt, so the
+  // presence of a share on ANY sealed row is the era.
+  const isPostRemiseReceipt = receipt.vat_details.some(
+    (vat) => vat.discount_allocated !== null && vat.discount_allocated !== undefined,
+  );
+
   const receiptKind: 'sale' | 'refund' =
     extras?.receiptKind ?? (receipt.receipt_type === 'return' ? 'refund' : 'sale');
 
@@ -206,7 +214,30 @@ export function buildEscPosReceiptData(
           ? bcformat(line.discount_amount, decimals)
           : null,
     })),
-    subtotal: bcformat(receipt.subtotal, decimals),
+    // D-1 (owner ruling 2026-08-25): on a POST-remise receipt the printed
+    // `Subtotal` is the ticket's GROSS (TTC) BEFORE the remise, so the
+    // customer's own arithmetic lands: `Subtotal − Remise (+ rounding) ==
+    // TOTAL`. `receipts.subtotal` is the post-remise taxable base there, and
+    // printing it verbatim beside a Remise line would double-count the
+    // discount; the base and VAT the customer is entitled to see are in the
+    // per-rate ventilation table.
+    //
+    // Gate r1 finding 8 — a REPRINT of a pre-D-1 receipt must stay
+    // byte-faithful to the ticket the customer was handed. On those receipts
+    // `receipts.subtotal` was the PRE-discount NET, and re-deriving would show
+    // 640.000 where the original showed 569.000. NF525 reprint fidelity is a
+    // defensible expectation, so the era decides, read off the same
+    // discriminator the ledger and the return path use.
+    subtotal: isPostRemiseReceipt
+      ? bcformat(
+        bcsub(
+          bcadd(receipt.total, receipt.discount_amount, decimals),
+          hasCashRounding && cashRoundingAdjustment !== null ? cashRoundingAdjustment : '0',
+          decimals,
+        ),
+        decimals,
+      )
+      : bcformat(receipt.subtotal, decimals),
     discount_amount: bcformat(receipt.discount_amount, decimals),
     tax_amount: bcformat(receipt.tax_amount, decimals),
     total: bcformat(receipt.total, decimals),
@@ -264,22 +295,37 @@ export function buildEscPosFromOfflineReceipt(
   const currencySymbol = getCurrencySymbol(result.currency);
   const decimals = getCurrencyDecimals(result.currency);
 
-  // Build VAT breakdown from cart items. Accumulate as currency-scale decimal
-  // strings (Big.js) — summing many lines with parseFloat drifted the printed
-  // taxable/tax totals.
+  // D-1 (owner ruling 2026-08-25): the printed VAT block is the SEALED
+  // per-rate breakdown, POST-remise. Re-deriving it from the cart lines here
+  // would print the PRE-discount base — the very figure the ruling removed —
+  // and put the customer's ticket at odds with the fiscal event the chain
+  // carries. The fallback below is reached only when the sealed rows are
+  // unavailable (idempotency replay whose canonical bytes could not be
+  // re-read); it is deliberately the old line roll-up, which is exact for the
+  // discount-free tickets that fallback can serve.
+  const sealedVatBreakdown = (result.vatBreakdown ?? [])
+    .filter((group) => bccomp(group.netAmount, '0') !== 0 || bccomp(group.vatAmount, '0') !== 0)
+    .map((group) => ({
+      rate: group.rate,
+      taxable: bcformat(group.netAmount, decimals),
+      tax: bcformat(group.vatAmount, decimals),
+    }));
+
   const vatByRate = new Map<string, { taxable: string; tax: string }>();
-  for (const item of cartItems) {
-    const rate = item.tax_rate;
-    if (bccomp(item.tax_amount, '0') === 0) continue;
-    const taxable = bcsub(item.line_total, item.tax_amount, decimals);
-    const existing = vatByRate.get(rate) ?? {
-      taxable: (0).toFixed(decimals),
-      tax: (0).toFixed(decimals),
-    };
-    vatByRate.set(rate, {
-      taxable: bcadd(existing.taxable, taxable, decimals),
-      tax: bcadd(existing.tax, item.tax_amount, decimals),
-    });
+  if (sealedVatBreakdown.length === 0) {
+    for (const item of cartItems) {
+      const rate = item.tax_rate;
+      if (bccomp(item.tax_amount, '0') === 0) continue;
+      const taxable = bcsub(item.line_total, item.tax_amount, decimals);
+      const existing = vatByRate.get(rate) ?? {
+        taxable: (0).toFixed(decimals),
+        tax: (0).toFixed(decimals),
+      };
+      vatByRate.set(rate, {
+        taxable: bcadd(existing.taxable, taxable, decimals),
+        tax: bcadd(existing.tax, item.tax_amount, decimals),
+      });
+    }
   }
 
   return {
@@ -315,17 +361,23 @@ export function buildEscPosFromOfflineReceipt(
     tax_amount: bcformat(result.taxAmount, decimals),
     total: bcformat(result.total, decimals),
     currency_symbol: currencySymbol,
-    vat_breakdown: Array.from(vatByRate.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([rate, { taxable, tax }]) => ({
-        rate,
-        taxable: bcformat(taxable, decimals),
-        tax: bcformat(tax, decimals),
-      })),
-    payments: [{
-      method: paymentMethodName,
-      amount: bcformat(result.total, decimals),
-    }],
+    vat_breakdown: sealedVatBreakdown.length > 0
+      ? sealedVatBreakdown
+      : Array.from(vatByRate.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([rate, { taxable, tax }]) => ({
+          rate,
+          taxable: bcformat(taxable, decimals),
+          tax: bcformat(tax, decimals),
+        })),
+    // A 100 %-comp ticket tenders nothing (D-1 / G3-A): the remise line
+    // carries the story, so no tender row is printed either.
+    payments: bccomp(result.total, '0') === 0 && bccomp(result.discountAmount, '0') > 0
+      ? []
+      : [{
+        method: paymentMethodName,
+        amount: bcformat(result.total, decimals),
+      }],
     change_due: bcformat(result.changeDue, decimals),
     tolerance_writeoff: null,
     has_tolerance: false,
