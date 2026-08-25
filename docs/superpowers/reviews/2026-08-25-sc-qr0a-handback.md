@@ -55,6 +55,16 @@ Feature class is added to any live `--filter` allowlist** — `feature-lane-docu
 stays parked behind `vars.SELF_HOSTED_RUNNER_READY`, so both execute nowhere until that gate
 flips. See §8 residual R-1.
 
+> **⚠ RE-DERIVE THE UNION AT MERGE.** Local `dev` moved from the base `351802aac` to
+> `42f7f8bad` (Session B, Slice D batch 1) while this lane was in flight, and dev's own
+> `gated_ceiling` is now **1180** with `Document` still at 86. So the merge-time values are
+> `Document 86 → 88` (unchanged — Session B's +2 landed in other groups) and
+> **`gated_ceiling` 1180 → 1182**, not the 1178 → 1180 recorded in the committed file.
+> Re-derive again if `dev` moves before the squash. Session B's batch adds a CHECK on
+> `documents.type`; it does not mention any column of this lane, so
+> `StagedDeploymentBootTest::test_no_check_constraint_mentions_a_new_column` is unaffected
+> (verified by reading the constraint's target column, not by assumption).
+
 ## 3. MIGRATION-BEARING
 
 **MIGRATION-BEARING: additive nullable, safe on any row count.**
@@ -214,7 +224,7 @@ C-3a1a per the brief's out-of-scope list.
 
 ## 8. Residuals (seen, NOT touched)
 
-- **R-1 — the two new Feature classes execute on no CI event.** `feature-lane-documents/Document` is parked behind `vars.SELF_HOSTED_RUNNER_READY`, and this lane did NOT add them to the `backend-test-pgsql --filter` allowlist. Precedent cuts both ways: C-F0 and W2-6 DID name their classes there precisely because a parked lane arms nothing. `StagedDeploymentBootTest` is the only guard that C-QR0b has not shipped its CHECK ahead of its backfill — a staged-deployment failure mode with fleet-wide blast radius. **Recommend the gates rule on whether it should be allowlisted**; the union arithmetic (`1178 → 1180`) is already recorded and would need re-deriving if `dev` moves before the squash.
+- **R-1 — the two new Feature classes execute on no CI event.** `feature-lane-documents/Document` is parked behind `vars.SELF_HOSTED_RUNNER_READY`, and this lane did NOT add them to the `backend-test-pgsql --filter` allowlist. Precedent cuts both ways: C-F0 and W2-6 DID name their classes there precisely because a parked lane arms nothing. `StagedDeploymentBootTest` is the only guard that C-QR0b has not shipped its CHECK ahead of its backfill — a staged-deployment failure mode with fleet-wide blast radius. **Recommend the gates rule on whether it should be allowlisted**; the union arithmetic needs re-deriving at merge — see the ⚠ box in §2 (`dev` is already at `42f7f8bad` / `gated_ceiling` 1180, so the merge value is 1182).
 - **R-2 — 7 of 12 local tenant databases lack `country_document_settings` entirely** and a further one has it empty (§3 census). Harmless here; a hard precondition for C-QR0b's seeder and its `COUNTRY_DOCUMENT_SETTINGS_NOT_SEEDED` refusal. Whether the staging/production fleet shows the same gap is unverified — the census above is LOCAL only.
 - **R-3 — inherited TypeScript drift** from six other lanes, carried in this lane's regeneration (§6).
 - **R-4 — `CountryDocumentDefaults` records FR's provisional status in a code COMMENT**, which is exactly what `policy_expertise_status` exists to make a column. Migrating that comment into the seeded column is C-QR0b's job; this lane deliberately left `CountryDocumentDefaults` and `CountryDocumentSettingsSeeder` untouched.
