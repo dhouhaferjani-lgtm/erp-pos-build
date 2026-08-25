@@ -229,6 +229,15 @@ export interface ImportRowPayload {
 
 // CSV Column definitions for each batch type
 export const GL_COLUMNS = ['account_code', 'debit', 'credit', 'reference', 'repository_code'] as const
+
+/**
+ * The headers an ACCOUNTING CSV MUST carry. `repository_code` (W4-2) is
+ * deliberately absent: it is optional, and every sheet written before it existed
+ * has exactly these four columns. Treating GL_COLUMNS as the required set made
+ * the upload refuse "missing columns: repository_code" and bricked the day-one
+ * wizard for every legacy file (treasury gate r1 F-1).
+ */
+export const GL_REQUIRED_COLUMNS = ['account_code', 'debit', 'credit', 'reference'] as const
 export const INVENTORY_COLUMNS = ['product_code', 'location_code', 'quantity', 'unit_cost'] as const
 export const AR_AP_COLUMNS = [
   'partner_code',

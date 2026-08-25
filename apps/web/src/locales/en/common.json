@@ -636,6 +636,7 @@
         "dropzone": "Drop your CSV file here, or click to browse",
         "dropzoneHint": "Supports CSV files up to 10MB",
         "expectedColumns": "Expected Columns",
+        "optionalColumn": "(optional)",
         "downloadTemplate": "Download Template",
         "fileSelected": "File selected",
         "rowsFound": "{{count}} rows found",

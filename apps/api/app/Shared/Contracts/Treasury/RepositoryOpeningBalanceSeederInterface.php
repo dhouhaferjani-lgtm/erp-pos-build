@@ -47,6 +47,20 @@ interface RepositoryOpeningBalanceSeederInterface
     ): ?OpeningFloatRepositoryDescriptor;
 
     /**
+     * Describe every ACTIVE repository of this company that is linked to one of
+     * the given GL accounts, for the batch-level COVERAGE check.
+     *
+     * The wizard needs this to answer "does this batch's cash debit actually
+     * reach every till that hangs off the account it debits?" — the question
+     * that catches both a legacy sheet naming no repository and a merged row
+     * naming only one of two (treasury gate r1 F-7 / PROBE B).
+     *
+     * @param  list<string>  $glAccountIds
+     * @return list<OpeningFloatRepositoryDescriptor>
+     */
+    public function describeByGlAccounts(string $tenantId, string $companyId, array $glAccountIds): array;
+
+    /**
      * Seed the repository's opening float.
      *
      * MUST be called inside the caller's own `DB::transaction`, AFTER the GL

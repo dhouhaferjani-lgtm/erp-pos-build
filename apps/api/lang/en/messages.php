@@ -71,6 +71,12 @@ return [
         'insufficient_repository_balance' => 'This repository\'s balance (:available :currency) is insufficient to record an outflow of :requested :currency; this repository does not allow a negative balance.',
         'adjustment_amount_below_currency_precision' => 'The amount :amount is smaller than the smallest unit of :currency, which is recorded with :decimals decimal place(s). Enter an amount of at least one unit.',
         'repository_not_seeded' => ':repository (:code) has never held money, so there is no balance to adjust. If you are entering an opening cash float, it is an accounting opening balance: enter it in Settings → Opening balances, on a debit line for this repository\'s own cash account, putting :code in the repository_code column — that posts the ledger entry and the till balance together. Recording it here would book it as income instead.',
+        'repository_already_seeded' => ':repository (:code) already holds money in Treasury, so it cannot receive an opening balance. An opening balance is the state before the first transaction. To move cash into a till that has already traded, use a Treasury transfer; to correct its balance, use a balance adjustment.',
+    ],
+
+    // Accounting
+    'accounting' => [
+        'opening_cash_not_fully_seeded' => 'This opening batch debits cash or bank accounts that payment repositories are linked to, but the money does not fully reach them. Name the repository on each cash line using the repository_code column — one line per repository — so the ledger and the tills open at the same figure.',
     ],
 
     // Taxation

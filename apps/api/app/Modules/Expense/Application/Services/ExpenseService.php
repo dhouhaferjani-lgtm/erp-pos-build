@@ -106,6 +106,8 @@ final class ExpenseService
             isPaid: (bool) ($data['is_paid'] ?? true),
             repositoryId: isset($data['payment_repository_id']) ? (string) $data['payment_repository_id'] : null,
             paymentMethodId: isset($data['payment_method_id']) ? (string) $data['payment_method_id'] : null,
+            tenantId: $user->tenant_id,
+            companyId: $company->id,
         );
 
         $linked = $this->prepareLinkedCost($data, $user->tenant_id, $data['company_id'], $companyCurrency);
@@ -219,6 +221,8 @@ final class ExpenseService
             isPaid: (bool) ($data['is_paid'] ?? $metadata->is_paid),
             repositoryId: (string) ($data['payment_repository_id'] ?? $metadata->payment_repository_id) ?: null,
             paymentMethodId: (string) ($data['payment_method_id'] ?? $metadata->payment_method_id) ?: null,
+            tenantId: $expense->tenant_id,
+            companyId: $expense->company_id,
         );
 
         $this->assertVatInvariants(
@@ -296,13 +300,21 @@ final class ExpenseService
         bool $isPaid,
         ?string $repositoryId,
         ?string $paymentMethodId,
+        string $tenantId,
+        string $companyId,
     ): void {
         if (! $isPaid || ($repositoryId !== null && $repositoryId !== '')) {
             return;
         }
 
         if ($paymentMethodId !== null && $paymentMethodId !== '') {
+            // Scoped by tenant AND company (gate r1 F-8). The HTTP layer already
+            // scopes it (ExpenseRequest's ScopedExists), but this is a DOMAIN
+            // invariant and a non-HTTP caller could otherwise satisfy it with
+            // another company's non-cash method.
             $isCashTender = PaymentMethod::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
                 ->whereKey($paymentMethodId)
                 ->value('is_cash_tender');
 
@@ -372,6 +384,22 @@ final class ExpenseService
         if ($expense->status !== DocumentStatus::Draft) {
             throw new \RuntimeException('Only draft expenses can be posted');
         }
+
+        // W4-10 / gate r1 F-2 — POSTING is where the damage happens, so the
+        // guard has to hold here too, not only on create/update. A Draft row
+        // carrying `is_paid = true, payment_repository_id = NULL` reaches this
+        // method from any writer that is not create()/update() — a legacy row, a
+        // seeder, an importer, a future recurrence template — and posting it
+        // credits the cash account with NO repository movement. Measured shape
+        // before this guard (gate PROBE C, sqlite and PostgreSQL):
+        // `posted=posted cashCredit=45.000 movements=0`.
+        $this->assertPaidExpenseNamesRepository(
+            isPaid: $expense->expenseMetadata?->is_paid === true,
+            repositoryId: $expense->expenseMetadata?->payment_repository_id,
+            paymentMethodId: $expense->expenseMetadata?->payment_method_id,
+            tenantId: $expense->tenant_id,
+            companyId: $expense->company_id,
+        );
 
         return DB::transaction(function () use ($expense, $user): Document {
             // Generate document number

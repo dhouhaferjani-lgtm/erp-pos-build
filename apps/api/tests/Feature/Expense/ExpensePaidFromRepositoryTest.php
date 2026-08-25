@@ -6,8 +6,12 @@ namespace Tests\Feature\Expense;
 
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\Accounting\Domain\Enums\OpeningBatchStatus;
+use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
+use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -15,6 +19,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Expense\Application\Services\ExpenseService;
 use App\Modules\Expense\Domain\Exceptions\ExpensePaidWithoutRepositoryException;
+use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -32,7 +37,6 @@ use Carbon\CarbonImmutable;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -129,7 +133,7 @@ final class ExpensePaidFromRepositoryTest extends TestCase
      */
     public function test_a_cash_expense_paid_from_a_repository_moves_that_repository(): void
     {
-        $this->seedFloat('200.000');
+        $this->seedFloat($this->drawer, '200.000');
 
         $expense = $this->service()->create([
             'company_id' => $this->company->id,
@@ -165,6 +169,170 @@ final class ExpensePaidFromRepositoryTest extends TestCase
             ->where('account_id', $this->expenseAccount->id)
             ->firstOrFail();
         $this->assertSame('5.000', (string) $debit->debit);
+    }
+
+    /**
+     * gate r1 F-4 — the per-till GL credit needs a fixture that can DISCRIMINATE.
+     * The headline case above links the drawer to the Cash PURPOSE account, so
+     * the new code and dev's pre-change code resolve to the same account and the
+     * assertion passes either way. Here the till carries its own `5311`: revert
+     * GeneralLedgerService's repository-account branch and this goes red.
+     */
+    public function test_the_credit_lands_on_the_tills_own_account_not_the_cash_purpose_account(): void
+    {
+        $boutiqueAccount = Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '5311',
+            'name' => 'Caisse boutique',
+            'type' => AccountType::Asset,
+            'is_active' => true,
+        ]);
+
+        $boutique = PaymentRepository::forceCreate([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH-02',
+            'name' => 'Caisse boutique',
+            'type' => RepositoryType::CashRegister,
+            'account_id' => $boutiqueAccount->id,
+            'gl_account_id' => $boutiqueAccount->id,
+            'is_active' => true,
+        ]);
+
+        $this->seedFloat($boutique, '500.000');
+
+        $expense = $this->service()->create([
+            'company_id' => $this->company->id,
+            'total' => '5.000',
+            'vendor_name' => 'Café du coin',
+            'is_paid' => true,
+            'payment_repository_id' => $boutique->id,
+            'payment_date' => now()->toDateString(),
+        ], $this->user);
+
+        $posted = $this->service()->post($expense, $this->user);
+
+        $movement = RepositoryMovement::query()
+            ->where('source_type', MovementSourceType::Expense->value)
+            ->where('source_id', $posted->id)
+            ->firstOrFail();
+
+        $this->assertSame(
+            '5.000',
+            (string) JournalLine::query()
+                ->where('journal_entry_id', $movement->journal_entry_id)
+                ->where('account_id', $boutiqueAccount->id)
+                ->firstOrFail()
+                ->credit,
+            'The credit must land on the till\'s OWN account (5311).'
+        );
+        $this->assertSame(
+            0,
+            JournalLine::query()
+                ->where('journal_entry_id', $movement->journal_entry_id)
+                ->where('account_id', $this->cashAccount->id)
+                ->count(),
+            'The Cash PURPOSE account (53) must carry nothing for a till that has its own account.'
+        );
+        $this->assertSame('495.000', $boutique->fresh()?->balance);
+    }
+
+    /**
+     * gate r1 F-2 — the guard has to hold at POST, not only at create/update.
+     * A Draft row carrying `is_paid = true, payment_repository_id = NULL` is
+     * reachable from any writer that is not create()/update(); before this guard
+     * posting it produced `Cr 53 45.000` with zero movements (gate PROBE C).
+     */
+    public function test_posting_a_draft_that_is_paid_with_no_repository_is_refused(): void
+    {
+        $expense = $this->service()->create([
+            'company_id' => $this->company->id,
+            'total' => '45.000',
+            'vendor_name' => 'Fournitures',
+            'is_paid' => false,
+        ], $this->user);
+
+        // Bypass create/update entirely — the shape a legacy row, a seeder or an
+        // importer can leave behind.
+        ExpenseMetadata::query()
+            ->where('document_id', $expense->id)
+            ->update(['is_paid' => true, 'payment_repository_id' => null]);
+
+        $this->expectException(ExpensePaidWithoutRepositoryException::class);
+
+        $this->service()->post($expense->fresh(['expenseMetadata']), $this->user);
+    }
+
+    /**
+     * gate r1 F-3 — the sanctioned non-cash carve-out must not reproduce the very
+     * shape W4-10 refuses. Before the fix a CARD-paid expense credited
+     * `53 Caisse` and moved no till (PROBE F: `credit53=45 credit512=0
+     * movements=0`), silently breaking the Σ-tills == GL-cash equality W4-2 has
+     * just established — and invisibly to `treasury:reconcile`, because there is
+     * no movement to check.
+     */
+    public function test_a_non_cash_expense_credits_the_methods_own_account_and_never_cash(): void
+    {
+        $cardAccount = Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '5115',
+            'name' => 'Cartes bancaires à encaisser',
+            'type' => AccountType::Asset,
+            'is_active' => true,
+        ]);
+
+        $card = PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CARD',
+            'name' => 'Carte bancaire',
+            'is_physical' => false,
+            'is_cash_tender' => false,
+            'default_account_id' => $cardAccount->id,
+            'is_active' => true,
+        ]);
+
+        $expense = $this->service()->create([
+            'company_id' => $this->company->id,
+            'total' => '45.000',
+            'vendor_name' => 'Fournitures',
+            'is_paid' => true,
+            'payment_method_id' => $card->id,
+            'payment_date' => now()->toDateString(),
+        ], $this->user);
+
+        $posted = $this->service()->post($expense, $this->user);
+
+        $entryId = JournalEntry::query()
+            ->where('source_type', 'expense')
+            ->where('source_id', $posted->id)
+            ->firstOrFail()
+            ->id;
+
+        $this->assertSame(
+            '45.000',
+            (string) JournalLine::query()
+                ->where('journal_entry_id', $entryId)
+                ->where('account_id', $cardAccount->id)
+                ->firstOrFail()
+                ->credit,
+            'A card-paid expense settles through the method\'s own account.'
+        );
+        $this->assertSame(
+            0,
+            JournalLine::query()
+                ->where('journal_entry_id', $entryId)
+                ->where('account_id', $this->cashAccount->id)
+                ->count(),
+            '53 Caisse must carry nothing: a card payment did not come out of a drawer.'
+        );
+        $this->assertSame(
+            0,
+            RepositoryMovement::query()->where('source_id', $posted->id)->count(),
+            'No repository was named, so no till moves — that is the carve-out, and it is now honest.'
+        );
     }
 
     public function test_a_born_paid_expense_without_a_repository_is_refused(): void
@@ -239,21 +407,39 @@ final class ExpensePaidFromRepositoryTest extends TestCase
 
         $this->expectException(ExpensePaidWithoutRepositoryException::class);
 
-        $this->service()->update($expense, ['is_paid' => true], $this->user);
+        $this->service()->update($expense, ['is_paid' => true]);
     }
 
-    private function seedFloat(string $amount): void
+    /**
+     * Give a till its opening float through the sanctioned W4-2 port.
+     *
+     * gate r1 F-12: the port now asserts that `batchId` names a REAL
+     * opening-balance batch of this tenant+company, so the fixture posts one
+     * rather than inventing a UUID — an opening movement with no document
+     * behind it is exactly what document-per-action forbids.
+     */
+    private function seedFloat(PaymentRepository $repository, string $amount): void
     {
+        $batch = OpeningBalanceBatch::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => OpeningBatchType::Accounting,
+            'name' => 'Fixture opening '.$repository->code,
+            'cutover_date' => CarbonImmutable::now()->subDays(2)->toDateString(),
+            'status' => OpeningBatchStatus::Draft,
+            'created_by' => $this->user->id,
+        ]);
+
         $seeder = app(RepositoryOpeningBalanceSeederInterface::class);
 
-        DB::transaction(function () use ($seeder, $amount): void {
+        DB::transaction(function () use ($seeder, $repository, $amount, $batch): void {
             $seeder->seed(new OpeningFloatIntent(
                 tenantId: $this->tenant->id,
                 companyId: $this->company->id,
-                repositoryId: $this->drawer->id,
+                repositoryId: $repository->id,
                 amount: $amount,
                 currency: 'TND',
-                batchId: (string) Str::uuid(),
+                batchId: $batch->id,
                 occurredAt: CarbonImmutable::now()->subDay(),
                 journalEntryId: null,
                 createdBy: $this->user->id,

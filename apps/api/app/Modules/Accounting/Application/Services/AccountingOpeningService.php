@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
 use App\Modules\Accounting\Domain\Enums\OpeningImportRowStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\Exceptions\OpeningCashNotFullySeededException;
 use App\Modules\Accounting\Domain\Events\OpeningBalancePosted;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
@@ -149,6 +150,27 @@ class AccountingOpeningService
         $validCount = count(array_filter($validationResults, fn (array $r): bool => $r['valid']));
         $invalidCount = count($validationResults) - $validCount;
 
+        // W4-2 / gate r1 F-7 — does the cash this batch debits actually REACH the
+        // tills that hang off the accounts it debits? Surfaced here so the
+        // operator sees it while the sheet is still fixable; enforced
+        // authoritatively in postBatch().
+        $coverageGaps = $this->openingCashCoverageGaps(
+            $batch->tenant_id,
+            $batch->company_id,
+            array_values(array_filter(
+                array_map(
+                    static fn (array $r): array => $r['mapped_data'],
+                    array_filter($validationResults, static fn (array $r): bool => $r['valid']),
+                ),
+                static fn (array $m): bool => isset($m['account_id']),
+            )),
+            $scale,
+        );
+
+        if ($coverageGaps !== []) {
+            $errors['_batch'] = array_merge($errors['_batch'] ?? [], $coverageGaps);
+        }
+
         // If not balanced, add a batch-level error
         if (! $isBalanced && $validCount > 0) {
             $errors['_batch'] = [
@@ -158,7 +180,7 @@ class AccountingOpeningService
         }
 
         return [
-            'valid' => $isBalanced && $invalidCount === 0,
+            'valid' => $isBalanced && $invalidCount === 0 && $coverageGaps === [],
             'total_rows' => count($rows),
             'valid_rows' => $validCount,
             'invalid_rows' => $invalidCount,
@@ -371,6 +393,112 @@ class AccountingOpeningService
     }
 
     /**
+     * Cash this batch debits that would reach NO till at all.
+     *
+     * THE RULE, and it is deliberately only this one: for every GL account the
+     * batch DEBITS that at least one ACTIVE payment repository is linked to, the
+     * whole debit on that account must be attributed to repositories by the rows
+     * naming them. A four-column legacy sheet attributes nothing, so its entire
+     * `Dr 53 1200.000` is a gap — which is precisely the P0 re-opening itself
+     * for an operator who has not heard of the new column.
+     *
+     * WHAT THIS DELIBERATELY DOES NOT REFUSE, and why (gate r1 F-7, PROBE B).
+     * A merged `Dr 53 1200.000` row naming only the drawer, on a tenant whose
+     * drawer AND safe both hang off `53`, passes: 1200.000 debited, 1200.000
+     * attributed. The drawer ends at 1200.000 and the safe at 0.000. The ledger
+     * and Treasury still AGREE (Σ tills on 53 == GL Dr 53) — it is a
+     * data-entry error about WHICH till holds the money, not a money error.
+     *
+     * The obvious extra rule — "every repository on the account must be named"
+     * — was written and then removed, because it is indistinguishable from a
+     * legitimate case: a shop whose safe is genuinely empty on day one. Refusing
+     * that would block a correct opening, and there is no affordance today for
+     * an operator to declare "this till opens at zero" (a zero row is rejected
+     * by validateRow's own amount rule and would post no line anyway). Recorded
+     * as a residual instead of guessed at.
+     *
+     * Accounts no repository is linked to (receivables, inventory, equity, a
+     * petty-cash account modelled outside Treasury) are not examined at all.
+     *
+     * @param  list<array<string, mixed>>  $mappedRows  mapped_data of the rows being posted
+     * @return list<string>
+     */
+    private function openingCashCoverageGaps(
+        string $tenantId,
+        string $companyId,
+        array $mappedRows,
+        int $scale,
+    ): array {
+        /** @var array<string, string> $debitByAccount */
+        $debitByAccount = [];
+        /** @var array<string, string> $attributedByAccount */
+        $attributedByAccount = [];
+        foreach ($mappedRows as $mapped) {
+            $accountId = $mapped['account_id'] ?? null;
+            if (! is_string($accountId)) {
+                continue;
+            }
+
+            $debit = (string) ($mapped['debit'] ?? '0');
+            if (bccomp($debit, '0', $scale) <= 0) {
+                continue;
+            }
+
+            $debitByAccount[$accountId] = bcadd($debitByAccount[$accountId] ?? '0', $debit, $scale);
+
+            $repositoryId = $mapped['repository_id'] ?? null;
+            if (is_string($repositoryId) && $repositoryId !== '') {
+                $attributedByAccount[$accountId] = bcadd($attributedByAccount[$accountId] ?? '0', $debit, $scale);
+            }
+        }
+
+        if ($debitByAccount === []) {
+            return [];
+        }
+
+        $descriptors = $this->repositoryOpeningSeeder->describeByGlAccounts(
+            $tenantId,
+            $companyId,
+            array_keys($debitByAccount),
+        );
+
+        if ($descriptors === []) {
+            return [];
+        }
+
+        /** @var array<string, list<OpeningFloatRepositoryDescriptor>> $byAccount */
+        $byAccount = [];
+        foreach ($descriptors as $descriptor) {
+            if ($descriptor->glAccountId === null) {
+                continue;
+            }
+            $byAccount[$descriptor->glAccountId][] = $descriptor;
+        }
+
+        $gaps = [];
+
+        foreach ($byAccount as $accountId => $repositories) {
+            $debit = $debitByAccount[$accountId] ?? '0';
+            $attributed = $attributedByAccount[$accountId] ?? '0';
+            $code = Account::query()->whereKey($accountId)->value('code');
+            $accountLabel = is_string($code) ? $code : $accountId;
+
+            $unattributed = bcsub($debit, $attributed, $scale);
+            if (bccomp($unattributed, '0', $scale) > 0) {
+                $names = implode(', ', array_map(
+                    static fn (OpeningFloatRepositoryDescriptor $r): string => $r->code,
+                    $repositories,
+                ));
+                $gaps[] = "Account {$accountLabel} is debited {$debit} but only {$attributed} is assigned to a ".
+                    "payment repository; {$unattributed} would exist in the ledger and in no till ".
+                    "(repositories on this account: {$names}).";
+            }
+        }
+
+        return $gaps;
+    }
+
+    /**
      * Post a validated GL opening batch.
      *
      * Creates a historical journal entry with:
@@ -417,6 +545,59 @@ class AccountingOpeningService
             }
 
             $postedRowCount = $validRows->count();
+
+            // gate r1 F-11, narrowed. A batch posts on STATUS alone: postBatch
+            // skips non-Valid rows and the OBE offset silently absorbs the
+            // imbalance, so a rejected row degrades into "Batch posted
+            // successfully" with money missing. That is pre-existing for
+            // ordinary GL rows and is left alone — but a rejected row that NAMES
+            // A REPOSITORY is new, and it degrades in the worst direction: the
+            // till's float vanishes from both the ledger and Treasury while `119`
+            // quietly absorbs it, on a write-once batch. Refuse precisely that.
+            $rejectedRepositoryRows = $batch->rows()
+                ->where('status', OpeningImportRowStatus::Invalid)
+                ->get()
+                ->filter(static function (OpeningBalanceImportRow $row): bool {
+                    $mapped = $row->mapped_data;
+
+                    return is_array($mapped)
+                        && is_string($mapped['repository_code'] ?? null)
+                        && $mapped['repository_code'] !== '';
+                });
+
+            if ($rejectedRepositoryRows->isNotEmpty()) {
+                $codes = $rejectedRepositoryRows
+                    ->map(static function (OpeningBalanceImportRow $row): string {
+                        $mapped = $row->mapped_data;
+
+                        return is_array($mapped) ? (string) ($mapped['repository_code'] ?? '?') : '?';
+                    })
+                    ->implode(', ');
+
+                throw new RuntimeException(
+                    "Cannot post: the opening line(s) for payment repository {$codes} did not validate, so ".
+                    'those tills would receive nothing while the rest of the batch posts and the opening '.
+                    'balance equity account absorbs the difference. Fix or remove those rows and validate again.'
+                );
+            }
+
+            // AUTHORITATIVE coverage refusal (gate r1 F-7). Evaluated BEFORE the
+            // entry, the lines or any movement exist, so nothing this batch
+            // writes can pollute the "already seeded" reading it depends on.
+            $coverageGaps = $this->openingCashCoverageGaps(
+                $company->tenant_id,
+                $company->id,
+                $validRows
+                    ->map(static fn (OpeningBalanceImportRow $row): mixed => $row->mapped_data)
+                    ->filter(static fn (mixed $m): bool => is_array($m) && isset($m['account_id']))
+                    ->values()
+                    ->all(),
+                $scale,
+            );
+
+            if ($coverageGaps !== []) {
+                throw new OpeningCashNotFullySeededException($coverageGaps);
+            }
 
             $entryNumber = $this->generateEntryNumber($company->id);
 

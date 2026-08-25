@@ -619,6 +619,7 @@
         "dropzone": "أفلت ملف CSV هنا أو انقر للاختيار",
         "dropzoneHint": "يدعم ملفات CSV حتى 10 ميغابايت",
         "expectedColumns": "الأعمدة المتوقّعة",
+        "optionalColumn": "(اختياري)",
         "downloadTemplate": "تنزيل القالب",
         "fileSelected": "تمّ اختيار الملف",
         "rowsFound": "تمّ العثور على {{count}} صف",

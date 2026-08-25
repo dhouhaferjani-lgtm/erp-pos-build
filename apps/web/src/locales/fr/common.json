@@ -642,6 +642,7 @@
         "dropzone": "Déposez votre fichier CSV ici, ou cliquez pour parcourir",
         "dropzoneHint": "Fichiers CSV jusqu'à 10 Mo supportés",
         "expectedColumns": "Colonnes attendues",
+        "optionalColumn": "(facultatif)",
         "downloadTemplate": "Télécharger le modèle",
         "fileSelected": "Fichier sélectionné",
         "rowsFound": "{{count}} lignes trouvées",

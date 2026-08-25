@@ -63,12 +63,55 @@ final readonly class RepositoryOpeningBalanceService implements RepositoryOpenin
         );
     }
 
+    public function describeByGlAccounts(string $tenantId, string $companyId, array $glAccountIds): array
+    {
+        if ($glAccountIds === []) {
+            return [];
+        }
+
+        return PaymentRepository::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('is_active', true)
+            ->whereIn('gl_account_id', $glAccountIds)
+            ->get()
+            ->map(fn (PaymentRepository $repository): OpeningFloatRepositoryDescriptor => new OpeningFloatRepositoryDescriptor(
+                id: $repository->id,
+                code: $repository->code,
+                name: $repository->name,
+                currency: $repository->currency,
+                glAccountId: $repository->gl_account_id,
+                hasMovements: $this->hasForeignMovement($repository->id, null),
+            ))
+            ->values()
+            ->all();
+    }
+
     public function seed(OpeningFloatIntent $intent): OpeningFloatResult
     {
         if (DB::transactionLevel() === 0) {
             throw new \LogicException(
                 'RepositoryOpeningBalanceService::seed() must be called inside the batch\'s DB::transaction '
                 .'(with the GL opening post), so the float and its journal entry commit together.'
+            );
+        }
+
+        // gate r1 F-12 — the contract asserts "the batch IS the justifying
+        // document (document-per-action)". Assert it instead of assuming it: an
+        // opening movement whose source_id points at nothing is a float with no
+        // document behind it, which is precisely what document-per-action
+        // forbids. Read through the table rather than the Accounting model, so
+        // Treasury does not import another module's domain (rule 6).
+        $batchExists = DB::table('opening_balance_batches')
+            ->where('id', $intent->batchId)
+            ->where('tenant_id', $intent->tenantId)
+            ->where('company_id', $intent->companyId)
+            ->exists();
+
+        if (! $batchExists) {
+            throw new \DomainException(
+                "Opening float batch {$intent->batchId} was not found for this company: an opening ".
+                'movement must be justified by a real opening-balance batch.'
             );
         }
 

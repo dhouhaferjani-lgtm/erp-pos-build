@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Upload, FileText, CheckCircle, XCircle, Loader2, Download } from 'lucide-react'
 import type { OpeningBatchType } from '../types'
-import { GL_COLUMNS, INVENTORY_COLUMNS, AR_AP_COLUMNS } from '../types'
+import { GL_COLUMNS, GL_REQUIRED_COLUMNS, INVENTORY_COLUMNS, AR_AP_COLUMNS } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
@@ -35,6 +35,10 @@ function parseCSV(text: string): { headers: string[]; rows: Array<Record<string,
   return { headers, rows }
 }
 
+/**
+ * Every column the template offers — the chip list and the downloadable sample.
+ * A superset of the REQUIRED set below.
+ */
 function getExpectedColumns(batchType: OpeningBatchType): readonly string[] {
   switch (batchType) {
     case 'ACCOUNTING':
@@ -46,6 +50,20 @@ function getExpectedColumns(batchType: OpeningBatchType): readonly string[] {
       return AR_AP_COLUMNS
     default:
       return []
+  }
+}
+
+/**
+ * The columns whose ABSENCE blocks the upload. Only ACCOUNTING differs from its
+ * expected set today: `repository_code` is optional (W4-2), so a four-column
+ * legacy sheet must still parse and upload (treasury gate r1 F-1).
+ */
+function getRequiredColumns(batchType: OpeningBatchType): readonly string[] {
+  switch (batchType) {
+    case 'ACCOUNTING':
+      return GL_REQUIRED_COLUMNS
+    default:
+      return getExpectedColumns(batchType)
   }
 }
 
@@ -79,6 +97,7 @@ export function FileUpload({ batchType, onUpload, isUploading }: FileUploadProps
   const [parseError, setParseError] = useState<string | null>(null)
 
   const expectedColumns = getExpectedColumns(batchType)
+  const requiredColumns = getRequiredColumns(batchType)
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -95,7 +114,7 @@ export function FileUpload({ batchType, onUpload, isUploading }: FileUploadProps
         }
 
         // Check for required columns
-        const missingColumns = expectedColumns.filter(
+        const missingColumns = requiredColumns.filter(
           (col) => !parsed.headers.includes(col)
         )
 
@@ -112,7 +131,7 @@ export function FileUpload({ batchType, onUpload, isUploading }: FileUploadProps
         setParseError(t('openingBalances.upload.errors.parseError'))
       }
     },
-    [expectedColumns, t]
+    [requiredColumns, t]
   )
 
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -175,14 +194,23 @@ export function FileUpload({ batchType, onUpload, isUploading }: FileUploadProps
           {t('openingBalances.upload.expectedColumns')}
         </h3>
         <div className="flex flex-wrap gap-2">
-          {expectedColumns.map((col) => (
-            <span
-              key={col}
-              className={`inline-flex items-center rounded ${colorTokens.intent.primary.bgSoft} px-2 py-0.5 text-xs font-medium ${colorTokens.intent.primary.textStronger}`}
-            >
-              {col}
-            </span>
-          ))}
+          {expectedColumns.map((col) => {
+            // Shown, never demanded: a sheet without it uploads unchanged.
+            const isOptional = !requiredColumns.includes(col)
+            return (
+              <span
+                key={col}
+                className={`inline-flex items-center rounded ${colorTokens.intent.primary.bgSoft} px-2 py-0.5 text-xs font-medium ${colorTokens.intent.primary.textStronger}`}
+              >
+                {col}
+                {isOptional && (
+                  <span className={`ms-1 font-normal ${colorTokens.text.subtle}`}>
+                    {t('openingBalances.upload.optionalColumn')}
+                  </span>
+                )}
+              </span>
+            )
+          })}
         </div>
         <button
           type="button"

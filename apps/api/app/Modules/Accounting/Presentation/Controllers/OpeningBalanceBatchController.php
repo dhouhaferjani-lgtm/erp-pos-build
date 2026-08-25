@@ -7,7 +7,9 @@ namespace App\Modules\Accounting\Presentation\Controllers;
 use App\Modules\Accounting\Application\Services\AccountingOpeningService;
 use App\Modules\Accounting\Application\Services\OpeningBalanceBatchService;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
+use App\Modules\Accounting\Domain\Exceptions\OpeningCashNotFullySeededException;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Treasury\Domain\Exceptions\RepositoryAlreadySeededException;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Accounting\Presentation\Concerns\RequiresCompanyAccess;
 use App\Modules\Company\Domain\Company;
@@ -623,6 +625,30 @@ class OpeningBalanceBatchController extends Controller
                     'timestamp' => now()->toIso8601String(),
                 ],
             ]);
+        } catch (RepositoryAlreadySeededException $e) {
+            // gate r1 F-5 — this used to fall through to the global handler and
+            // reach the operator as `BUSINESS_ERROR` plus raw server English,
+            // while the sibling W4-10 refusal got a typed code and en/fr/ar.
+            // Same lane, same operator: same treatment.
+            return response()->json([
+                'error' => [
+                    'code' => RepositoryAlreadySeededException::ERROR_CODE,
+                    'message' => __('messages.treasury.repository_already_seeded', [
+                        'repository' => $e->repositoryName,
+                        'code' => $e->repositoryCode,
+                    ]),
+                ],
+                'meta' => ['timestamp' => now()->toIso8601String()],
+            ], 422);
+        } catch (OpeningCashNotFullySeededException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => OpeningCashNotFullySeededException::ERROR_CODE,
+                    'message' => __('messages.accounting.opening_cash_not_fully_seeded'),
+                    'gaps' => $e->gaps,
+                ],
+                'meta' => ['timestamp' => now()->toIso8601String()],
+            ], 422);
         } catch (RuntimeException $e) {
             return response()->json([
                 'error' => [

@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Tests\Feature\Accounting\Reports;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Domain\Enums\OpeningBatchStatus;
+use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
+use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -25,7 +28,6 @@ use App\Shared\Contracts\Treasury\RepositoryOpeningBalanceSeederInterface;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -133,14 +135,27 @@ final class UpcomingPaymentsTest extends TestCase
 
         // ...and a till only pays out what it holds, so give it its day-one
         // float through the one sanctioned path (W4-2).
-        DB::transaction(function () use ($till): void {
+        // gate r1 F-12: the port asserts that batchId names a REAL opening
+        // batch of this tenant+company — an opening movement with no document
+        // behind it is what document-per-action forbids — so post one.
+        $openingBatch = OpeningBalanceBatch::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => OpeningBatchType::Accounting,
+            'name' => 'Fixture opening CASH-UPCOMING',
+            'cutover_date' => CarbonImmutable::now()->subYears(2)->toDateString(),
+            'status' => OpeningBatchStatus::Draft,
+            'created_by' => $this->user->id,
+        ]);
+
+        DB::transaction(function () use ($till, $openingBatch): void {
             app(RepositoryOpeningBalanceSeederInterface::class)->seed(new OpeningFloatIntent(
                 tenantId: $this->tenant->id,
                 companyId: $this->company->id,
                 repositoryId: $till->id,
                 amount: '100.000',
                 currency: (string) $this->company->currency,
-                batchId: (string) Str::uuid(),
+                batchId: $openingBatch->id,
                 occurredAt: CarbonImmutable::now()->subYears(2),
                 journalEntryId: null,
                 createdBy: $this->user->id,

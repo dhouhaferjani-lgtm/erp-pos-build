@@ -11,6 +11,7 @@ use App\Modules\Accounting\Domain\Enums\OpeningBatchStatus;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
 use App\Modules\Accounting\Domain\Enums\OpeningImportRowStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\Exceptions\OpeningCashNotFullySeededException;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Accounting\Domain\OpeningBalanceImportRow;
@@ -34,6 +35,7 @@ use App\Shared\Contracts\Treasury\RepositoryOpeningBalanceSeederInterface;
 use Carbon\CarbonImmutable;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -209,6 +211,21 @@ final class OpeningCashFloatSeedsRepositoryTest extends TestCase
             bcadd($this->drawer->fresh()?->balance ?? '0', $this->safe->fresh()?->balance ?? '0', 3),
             'Treasury cash must equal GL cash — the whole point of W4-2.'
         );
+
+        // gate r1 §(c) — pin the REAL reconciler, not only a re-implementation of
+        // its predicate. `treasury:reconcile` FREEZES a repository on cash drift,
+        // so a green run over the three freshly-seeded repositories is the
+        // strongest available statement that the opening movements and their
+        // journal entry agree. CompanyContext is cleared first: the command runs
+        // as a console/queue-shaped caller with no bound company (rule 20).
+        app(CompanyContext::class)->clear();
+
+        $this->assertSame(
+            0,
+            Artisan::call('treasury:reconcile', ['--tenant' => $this->tenant->id]),
+            'treasury:reconcile must stay green over the seeded repositories.'
+        );
+        $this->assertStringContainsString('froze 0', Artisan::output());
     }
 
     /**
@@ -332,6 +349,169 @@ final class OpeningCashFloatSeedsRepositoryTest extends TestCase
         $this->expectException(RepositoryAlreadySeededException::class);
 
         $this->service()->postBatch($second, $this->user->id);
+    }
+
+    /**
+     * gate r1 F-7 — the P0 re-opening itself. A four-column legacy sheet debits
+     * the cash account and names no repository, so 1200.000 would exist in the
+     * ledger and in no till, permanently (an opening batch locks at post). The
+     * batch must refuse rather than reproduce W4-2.
+     */
+    public function test_a_cash_debit_that_reaches_no_repository_is_refused(): void
+    {
+        $batch = $this->createBatch();
+        $this->createRawRow($batch, 1, ['account_code' => '53', 'debit' => '1200.000', 'credit' => '0.000']);
+        $this->createRawRow($batch, 2, ['account_code' => '119', 'debit' => '0.000', 'credit' => '1200.000']);
+
+        $result = $this->service()->validateBatch($batch);
+
+        $this->assertFalse($result['valid'], 'A cash debit reaching no till must not validate.');
+        /** @var array<string, mixed> $errors */
+        $errors = $result['errors'];
+        $this->assertArrayHasKey('_batch', $errors);
+        $this->assertStringContainsString('in no till', implode(' ', (array) $errors['_batch']));
+
+        // And the post-time guard is the authoritative one — validation can be
+        // stale by the time Post is pressed.
+        $posted = $this->createBatch('Legacy sheet posted directly');
+        $this->createRow($posted, 1, $this->cashAccount, '1200.000', '0.000', null);
+        $this->createRow($posted, 2, $this->openingEquityAccount, '0.000', '1200.000', null);
+
+        $this->expectException(OpeningCashNotFullySeededException::class);
+        $this->service()->postBatch($posted, $this->user->id);
+    }
+
+    /**
+     * The same refusal fires on a PARTIAL attribution: 1200.000 debited to `53`,
+     * only 200.000 assigned to a till.
+     */
+    public function test_a_partially_attributed_cash_debit_is_refused(): void
+    {
+        $batch = $this->createBatch();
+        $this->createRawRow($batch, 1, ['account_code' => '53', 'debit' => '200.000', 'credit' => '0.000', 'repository_code' => 'CASH-01']);
+        $this->createRawRow($batch, 2, ['account_code' => '53', 'debit' => '1000.000', 'credit' => '0.000']);
+        $this->createRawRow($batch, 3, ['account_code' => '119', 'debit' => '0.000', 'credit' => '1200.000']);
+
+        $result = $this->service()->validateBatch($batch);
+
+        $this->assertFalse($result['valid']);
+        /** @var array<string, mixed> $errors */
+        $errors = $result['errors'];
+        $this->assertStringContainsString('only 200.000 is assigned', implode(' ', (array) $errors['_batch']));
+    }
+
+    /**
+     * A debit on an account NO repository is linked to is not examined at all —
+     * receivables, inventory, equity, or a petty-cash account modelled outside
+     * Treasury must keep posting exactly as before.
+     */
+    public function test_a_debit_on_an_account_with_no_repository_is_not_examined(): void
+    {
+        $receivable = $this->account('411', 'Clients', AccountType::Asset, SystemAccountPurpose::CustomerReceivable);
+
+        $batch = $this->createBatch();
+        $this->createRow($batch, 1, $receivable, '900.000', '0.000', null);
+        $this->createRow($batch, 2, $this->openingEquityAccount, '0.000', '900.000', null);
+
+        $entry = $this->service()->postBatch($batch, $this->user->id);
+
+        $this->assertSame('900.000', $this->glDebit($entry->id, $receivable->id));
+        $this->assertSame(0, RepositoryMovement::query()->count());
+    }
+
+    /**
+     * KNOWN AND DELIBERATE (gate r1 F-7 / PROBE B): a merged `Dr 53 1200.000`
+     * row naming only the drawer POSTS, leaving the drawer at 1200.000 and the
+     * safe at 0.000.
+     *
+     * It is not refused because it cannot be told apart from a shop whose safe
+     * is genuinely empty on day one, and refusing that would block a correct
+     * opening. The ledger and Treasury still agree — Σ tills on `53` == GL Dr
+     * `53` — so it is a data-entry error about WHICH till holds the money, not a
+     * money error, and `treasury:reconcile` stays green. This test exists so the
+     * behaviour is a recorded decision rather than an accident: if a future lane
+     * gives the operator a way to declare "this till opens at zero", it should
+     * fail here and be rewritten.
+     */
+    public function test_a_merged_cash_row_over_seeds_one_till_and_is_deliberately_not_refused(): void
+    {
+        $batch = $this->createBatch();
+        $this->createRow($batch, 1, $this->cashAccount, '1200.000', '0.000', 'CASH-01');
+        $this->createRow($batch, 2, $this->openingEquityAccount, '0.000', '1200.000', null);
+
+        $entry = $this->service()->postBatch($batch, $this->user->id);
+
+        $this->assertSame('1200.000', $this->drawer->fresh()?->balance);
+        $this->assertSame('0.000', $this->safe->fresh()?->balance);
+        $this->assertSame('1200.000', $this->glDebit($entry->id, $this->cashAccount->id));
+
+        app(CompanyContext::class)->clear();
+        $this->assertSame(0, Artisan::call('treasury:reconcile', ['--tenant' => $this->tenant->id]));
+        $this->assertStringContainsString('froze 0', Artisan::output());
+    }
+
+    /**
+     * gate r1 F-11 (narrowed) — a batch posts on STATUS alone, so a rejected row
+     * silently degrades into "Batch posted successfully" with `119` absorbing the
+     * difference. For a row that names a TILL that is unacceptable: the float
+     * would vanish from the ledger AND from Treasury, on a write-once batch.
+     */
+    public function test_post_refuses_when_a_row_naming_a_repository_failed_validation(): void
+    {
+        $batch = $this->createBatch();
+        // BANK-01 is linked to 512; this row debits 53 → the row is rejected.
+        $this->createRawRow($batch, 1, ['account_code' => '53', 'debit' => '5000.000', 'credit' => '0.000', 'repository_code' => 'BANK-01']);
+        $this->createRawRow($batch, 2, ['account_code' => '119', 'debit' => '0.000', 'credit' => '5000.000']);
+
+        $this->service()->validateBatch($batch);
+
+        $this->expectExceptionMessageMatches('/BANK-01/');
+        $this->service()->postBatch($batch->fresh(), $this->user->id);
+    }
+
+    /**
+     * gate r1 F-5 — the refusal must reach the operator as a TYPED code with a
+     * translated message, the way the sibling W4-10 refusal does. It used to
+     * fall through to the global handler as `BUSINESS_ERROR` plus raw server
+     * English, and `ERROR_CODE` had zero consumers anywhere.
+     */
+    public function test_the_api_returns_a_typed_422_when_a_till_already_holds_money(): void
+    {
+        $first = $this->createBatch('First');
+        $this->createRow($first, 1, $this->cashAccount, '200.000', '0.000', 'CASH-01');
+        $this->createRow($first, 2, $this->openingEquityAccount, '0.000', '200.000', null);
+        $this->service()->postBatch($first, $this->user->id);
+
+        $second = $this->createBatch('Second');
+        $this->createRow($second, 1, $this->cashAccount, '50.000', '0.000', 'CASH-01');
+        $this->createRow($second, 2, $this->openingEquityAccount, '0.000', '50.000', null);
+
+        $response = $this->actingAs($this->user)->postJson(
+            "/api/v1/companies/{$this->company->id}/opening-batches/{$second->id}/post"
+        );
+
+        $response->assertStatus(422);
+        $this->assertSame('REPOSITORY_ALREADY_SEEDED', $response->json('error.code'));
+        $this->assertStringContainsString('CASH-01', (string) $response->json('error.message'));
+    }
+
+    /**
+     * The coverage refusal reaches the API as its own typed code, and carries the
+     * per-account gap list so the wizard can point at the offending line.
+     */
+    public function test_the_api_returns_a_typed_422_with_gaps_when_cash_reaches_no_till(): void
+    {
+        $batch = $this->createBatch();
+        $this->createRow($batch, 1, $this->cashAccount, '1200.000', '0.000', null);
+        $this->createRow($batch, 2, $this->openingEquityAccount, '0.000', '1200.000', null);
+
+        $response = $this->actingAs($this->user)->postJson(
+            "/api/v1/companies/{$this->company->id}/opening-batches/{$batch->id}/post"
+        );
+
+        $response->assertStatus(422);
+        $this->assertSame('OPENING_CASH_NOT_FULLY_SEEDED', $response->json('error.code'));
+        $this->assertStringContainsString('in no till', implode(' ', (array) $response->json('error.gaps')));
     }
 
     private function service(): AccountingOpeningService

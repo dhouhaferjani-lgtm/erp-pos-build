@@ -109,6 +109,13 @@ export function BatchPreview({ preview }: BatchPreviewProps) {
               </tfoot>
             </DataTable>
           </div>
+          {/* W4-2: name the till column's meaning where the operator is about
+              to lock the batch. Rendered only when a line actually seeds one. */}
+          {hasRepositoryLine(accounting) && (
+            <div className={`${colorTokens.surface.page} px-4 py-2 text-xs ${colorTokens.text.subtle}`}>
+              {t('openingBalances.preview.repositoryHint')}
+            </div>
+          )}
           {accounting.lines.length > 20 && (
             <div className={`${colorTokens.surface.page} px-4 py-2 text-xs ${colorTokens.text.subtle}`}>
               {t('openingBalances.preview.moreRows', { count: accounting.lines.length - 20 })}
