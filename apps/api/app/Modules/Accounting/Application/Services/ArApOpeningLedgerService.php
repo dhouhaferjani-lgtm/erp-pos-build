@@ -110,13 +110,17 @@ class ArApOpeningLedgerService
         $companyId = (string) $document->company_id;
         $partnerId = $document->partner_id;
 
-        if (! is_string($partnerId) || $partnerId === '') {
+        // `documents.partner_id` is typed non-nullable in the model docblock but the
+        // COLUMN is nullable, and an opening entry with no partner would post to the
+        // control account outside every sub-ledger — the exact invisibility W4-4 is
+        // about. Fail the batch closed rather than write an untraceable line.
+        if ($partnerId === '') {
             throw new RuntimeException(
                 "Opening document {$document->document_number} has no partner — it cannot reach the sub-ledger."
             );
         }
 
-        $scale = $this->moneyScale(is_string($document->currency) ? $document->currency : null);
+        $scale = $this->moneyScale($document->currency);
 
         /** @var numeric-string $amount */
         $amount = CurrencyScale::bcformatStrict((string) ($document->balance_due ?? '0'), $scale);

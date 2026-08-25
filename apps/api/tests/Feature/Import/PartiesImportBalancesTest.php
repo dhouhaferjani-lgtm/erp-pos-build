@@ -140,8 +140,13 @@ final class PartiesImportBalancesTest extends TestCase
         $this->assertSame(OpeningBatchStatus::Validated, $apBatch->status);
         $this->assertSame('IMPORT-'.substr($job->id, 0, 8).'-AR', $arBatch->name);
         $this->assertSame('IMPORT-'.substr($job->id, 0, 8).'-AP', $apBatch->name);
-        $this->assertSame(['import_job_id' => $job->id, 'source' => 'unified-import'], $arBatch->import_file_reference);
-        $this->assertSame(['import_job_id' => $job->id, 'source' => 'unified-import'], $apBatch->import_file_reference);
+        // Canonicalizing, not assertSame: `import_file_reference` is a JSONB column
+        // and PostgreSQL does not preserve object key order, so an order-sensitive
+        // comparison passes on the SQLite runner and fails on PG for a difference
+        // that is not a difference. Surfaced when this lane ran the class on PG for
+        // the first time — the Import group has no pgsql CI lane.
+        $this->assertEqualsCanonicalizing(['import_job_id' => $job->id, 'source' => 'unified-import'], $arBatch->import_file_reference);
+        $this->assertEqualsCanonicalizing(['import_job_id' => $job->id, 'source' => 'unified-import'], $apBatch->import_file_reference);
 
         $rowOne = $job->rows()->where('row_number', 1)->firstOrFail()->refresh();
         $rowFour = $job->rows()->where('row_number', 4)->firstOrFail()->refresh();
