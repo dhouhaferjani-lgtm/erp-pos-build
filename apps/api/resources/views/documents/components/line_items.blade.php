@@ -6,6 +6,18 @@
     // own authority as well. `$isProforma` reaches here through @include, which
     // hands the including view's `get_defined_vars()` down.
     $showTaxColumn = ($showTax ?? true) && ! ($isProforma ?? false);
+
+    // FIX ROUND r1 / gate F-2 (SPEC §2.4 r11.2) — a proforma prints TAX-INCLUSIVE
+    // line figures. Round 1 printed net amounts under a gross estimated total, and
+    // the difference between the two was, to the millime, the VAT the lane had
+    // removed: one subtraction undid the invariant. Gross lines sum to the
+    // estimated total, and the net basis never appears, so the subtraction has
+    // nothing to operate on. `ProformaGrossAmountResolver` owns the arithmetic
+    // (bcmath, rounded once); the closures are absent only on a direct
+    // `view('documents.components.line_items', …)` render, and the guard below
+    // keeps that path on the net figures rather than fataling.
+    $grossRow = ($isProforma ?? false)
+        && isset($proformaUnitPrice, $proformaLineAmount);
 @endphp
 <table class="items-table">
     <thead>
@@ -49,11 +61,11 @@
                 @endif
             </td>
             <td class="center">{{ $formatNumber($line->quantity, 2) }}</td>
-            <td class="right">{{ $formatMoney($line->unit_price) }}</td>
+            <td class="right">{{ $formatMoney($grossRow ? $proformaUnitPrice($line) : $line->unit_price) }}</td>
             @if($showTaxColumn)
             <td class="center">{{ $formatNumber($line->tax_rate, 0) }}%</td>
             @endif
-            <td class="right">{{ $formatMoney($line->line_total) }}</td>
+            <td class="right">{{ $formatMoney($grossRow ? $proformaLineAmount($line) : $line->line_total) }}</td>
         </tr>
         @endforeach
     </tbody>

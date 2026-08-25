@@ -30,7 +30,24 @@
         <div class="document-title">{{ $documentTitle }}</div>
         <div class="document-number">{{ $document->document_number }}</div>
         <div class="document-date">{{ $formatDate($document->document_date) }}</div>
-        @if($document->status)
+        {{--
+            C-F0 fix round r1 / gate F-1 — a PROFORMA STATES NO LIFECYCLE STATUS.
+
+            The predicate admits four statuses, and two of them put a word on the
+            page that contradicts the document. `Posted`-never-sealed printed
+            `POSTED` (the badge is upper-cased into the PDF by
+            `.status-badge { text-transform: uppercase }`) on the one output this
+            lane certifies as non-definitive. `Paid`-never-sealed — the tenant-#1
+            population `documents:repair-paid-never-posted` exists to move back to
+            Confirmed — printed `PAID` on a page from which the Paid and Balance
+            Due rows had just been deleted.
+
+            Suppressing the word, not relabelling it, is the point: a lifecycle
+            badge has nothing true to say about a document whose own banner states
+            it has not been entered in the accounts. The badge returns, unchanged,
+            the moment the document is sealed.
+        --}}
+        @if($document->status && ! ($isProforma ?? false))
             <div style="margin-top: 10px;">
                 <span class="status-badge status-{{ $document->status->value }}">
                     {{ ucfirst(str_replace('_', ' ', $document->status->value)) }}

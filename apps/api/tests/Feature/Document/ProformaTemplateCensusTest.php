@@ -41,8 +41,17 @@ final class ProformaTemplateCensusTest extends TestCase
 
     /**
      * Anything that puts a tax mention on the page.
+     *
+     * FIX ROUND r1 / gate F-4 — r1's regex was `__('(Tax|VAT|Tax ID)')|tax_amount|
+     * tax_rate|tax_id|vat_number|showTax`, which a new template evades by writing
+     * `__('TVA')`, a bare `TTC` / `HT` literal, `stamp_duty_amount` (the TN timbre,
+     * a document-level tax that lives outside every per-line field named above),
+     * `line_tax_amount`, or by rendering the API's `document_tax_details` /
+     * `taxBreakdown` shape. All of them are matched now. `\bHT\b` is anchored and
+     * case-SENSITIVE for the same reason it is in ProformaOutputTest: unanchored,
+     * it matches `height` and `right` in every style attribute in the tree.
      */
-    private const TAX_EMISSION = '/__\(\'(Tax|VAT|Tax ID)\'\)|tax_amount|tax_rate|tax_id|vat_number|showTax/';
+    private const TAX_EMISSION = '/__\(\'(Tax|VAT|TVA|Tax ID|TTC|HT)\'\)|\bTTC\b|\bHT\b|tax_amount|tax_rate|tax_id|vat_number|showTax|stamp_duty_amount|line_tax_amount|document_tax_details|taxBreakdown|tax_details/';
 
     /**
      * Blade files that emit a tax mention and are NOT gated, each with the reason
@@ -84,7 +93,7 @@ final class ProformaTemplateCensusTest extends TestCase
                 continue;
             }
 
-            if (str_contains($contents, 'isProforma')) {
+            if ($this->consultsTheFlagInCode($contents)) {
                 continue;
             }
 
@@ -131,9 +140,8 @@ final class ProformaTemplateCensusTest extends TestCase
     {
         foreach (DocumentPostingService::getFiscalDocumentTypes() as $type) {
             foreach (glob(resource_path('views/documents/country/*/'.$type->value.'.blade.php')) ?: [] as $override) {
-                $this->assertStringContainsString(
-                    'isProforma',
-                    (string) file_get_contents($override),
+                $this->assertTrue(
+                    $this->consultsTheFlagInCode((string) file_get_contents($override)),
                     sprintf(
                         'country template %s shadows the gated documents.templates.%s and must carry the proforma gate itself',
                         $override,
@@ -183,6 +191,39 @@ final class ProformaTemplateCensusTest extends TestCase
     }
 
     /**
+     * Does this blade consult `$isProforma` in CODE — not in a comment?
+     *
+     * FIX ROUND r1 / gate F-4. r1 asked `str_contains($contents, 'isProforma')`,
+     * which the docblock explaining the gate satisfies just as well as the gate
+     * does. A template whose gate was deleted but whose comment survived — the
+     * ordinary shape of a bad merge — passed. So: strip Blade comments and PHP
+     * comments first, then look for the flag only inside the constructs Blade
+     * actually evaluates — a parenthesised directive, an `@php … @endphp` block,
+     * or an echo.
+     */
+    private function consultsTheFlagInCode(string $contents): bool
+    {
+        $code = (string) preg_replace('/\{\{--.*?--\}\}/s', '', $contents);
+        $code = (string) preg_replace('#/\*.*?\*/#s', '', $code);
+        $code = (string) preg_replace('#^\s*//.*$#m', '', $code);
+
+        $evaluated = '';
+
+        foreach ([
+            '/@php\b(?!\s*\()(.*?)@endphp/s',                 // @php … @endphp block
+            '/@(?:if|elseif|unless|include|php)\s*\((.*)\)\s*$/m',  // parenthesised directive
+            '/\{\{(.*?)\}\}/s',                                // echo
+            '/@include\(\s*\'[^\']+\',\s*\[(.*?)\]\s*\)/s',      // multi-line @include array
+        ] as $pattern) {
+            if (preg_match_all($pattern, $code, $matches) > 0) {
+                $evaluated .= implode("\n", $matches[1]);
+            }
+        }
+
+        return str_contains($evaluated, 'isProforma');
+    }
+
+    /**
      * @return array<string, string> relative path => absolute path
      */
     private function bladeFiles(): array
@@ -204,6 +245,33 @@ final class ProformaTemplateCensusTest extends TestCase
         ksort($files);
 
         return $files;
+    }
+
+    /**
+     * The census's own falsification test (F-4): a blade whose ONLY mention of the
+     * flag is a comment must NOT count as gated.
+     */
+    public function test_a_comment_does_not_satisfy_the_gate_check(): void
+    {
+        $this->assertFalse(
+            $this->consultsTheFlagInCode('{{-- gated on $isProforma, honest --}}<td>{{ __(\'Tax\') }}</td>'),
+        );
+        $this->assertFalse(
+            $this->consultsTheFlagInCode("@php\n    // \$isProforma is handled upstream\n    \$x = 1;\n@endphp"),
+        );
+        // Directives are matched at end-of-line, which is how every one of them is
+        // written in this tree. A directive buried mid-line reads as UNGATED — the
+        // check fails CLOSED, which is the safe direction for a census.
+        $this->assertTrue(
+            $this->consultsTheFlagInCode("@if(\$isProforma ?? false)\n<td>x</td>\n@endif"),
+        );
+        $this->assertFalse(
+            $this->consultsTheFlagInCode('@if($isProforma ?? false)<td>x</td>@endif'),
+            'a mid-line directive is not recognised — the census fails closed, never open',
+        );
+        $this->assertTrue(
+            $this->consultsTheFlagInCode("@php\n    \$showTaxColumn = ! (\$isProforma ?? false);\n@endphp"),
+        );
     }
 
     private function invoice(): Document

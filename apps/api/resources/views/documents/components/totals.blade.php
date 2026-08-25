@@ -30,12 +30,24 @@
         <table class="totals-table">
             @if($isProforma ?? false)
             {{--
-                C-F0 / F-95 — ONE row, and it is the gross figure, labelled as an
-                estimate and not as a TTC total. The net subtotal is dropped with
-                the tax row on purpose: printing both a net and a gross line is a
-                VAT breakdown written as a subtraction, and a reader who can
-                subtract has the tax amount back. Settlement rows (Paid / Balance
-                Due) go too — a proforma is not a statement of account.
+                C-F0 / F-95, amended by fix round r1 / gate F-2 (SPEC §2.4 r11.2).
+
+                ONE row, and it is the tax-inclusive figure, labelled as an estimate
+                and never with a rate-basis word. The net subtotal is dropped along
+                with the tax row: printing a net line and a gross line together is a
+                VAT breakdown written as a subtraction, and a reader who can subtract
+                has the tax amount back. Round 1 dropped it here and then let
+                `line_items` supply the same net basis one table higher up — which is
+                why the LINE figures are now tax-inclusive too, and why they sum to
+                this row. Settlement rows (Paid / Balance Due) go as well: a proforma
+                is not a statement of account.
+
+                This row is the STORED `documents.total` and is never recomputed. A
+                document carrying a document-level charge (the TN timbre in
+                `stamp_duty_amount`) or a document-level discount therefore does not
+                sum exactly from its lines — the residual is that charge or discount,
+                never the VAT, so nothing about the invariant depends on it. Lane
+                handback residual R-8.
             --}}
             <tr class="total-row">
                 <td>{{ __('documents.proforma.estimated_total') }}</td>

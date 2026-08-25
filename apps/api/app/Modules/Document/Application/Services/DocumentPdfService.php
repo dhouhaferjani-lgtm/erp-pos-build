@@ -8,6 +8,7 @@ use App\Modules\Company\Application\Services\TaxIdentityResolver;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FacturXProfile;
 use App\Services\CompanyConfigService;
@@ -28,6 +29,7 @@ final class DocumentPdfService
         private readonly FacturXPdfGenerator $facturXPdfGenerator,
         private readonly TaxIdentityResolver $taxIdentityResolver,
         private readonly ProformaOutputPolicy $proformaPolicy,
+        private readonly ProformaGrossAmountResolver $proformaGrossAmounts,
     ) {}
 
     private function scale(): int
@@ -194,6 +196,13 @@ final class DocumentPdfService
             // tests; `ProformaTemplateCensusTest` pins that this key is always
             // present on the production path.
             'isProforma' => $this->proformaPolicy->isProforma($document),
+            // SPEC §2.4 r11.2 (gate r1 F-2) — the tax-inclusive figures a proforma
+            // line prints. Passed as closures, like `$formatMoney` above, so the
+            // POSTED branch of the template never calls them and its rendering is
+            // untouched. `DocumentLine` is typed on both so a template cannot hand
+            // them something else.
+            'proformaUnitPrice' => fn (DocumentLine $line): string => $this->proformaGrossAmounts->unitPrice($line, $currency),
+            'proformaLineAmount' => fn (DocumentLine $line): string => $this->proformaGrossAmounts->lineAmount($line, $currency),
             'formatMoney' => fn (string|float|null $amount) => $this->formatMoney($amount, $currency, $locale),
             'formatDate' => fn (Carbon|string|null $date) => $this->formatDate($date, $company->date_format, $locale),
             'formatNumber' => fn (string|float|null $number, int $decimals = 2) => $this->formatNumber($number, $decimals, $locale),

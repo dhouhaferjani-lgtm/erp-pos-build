@@ -172,6 +172,158 @@ final class ProformaOutputTest extends TestCase
         $this->assertNoForbiddenToken($this->scannable($this->renderHtml($invoice)), 'draft invoice HTML');
     }
 
+    /**
+     * FIX ROUND r1 / gate F-1 [BLOCKING] — the predicate admits FOUR statuses and
+     * the r1 matrix asserted two.
+     *
+     * `RepairPaidNeverPostedDocumentsCommand:118-119` selects exactly
+     * `type = Invoice ∧ status = Paid` with no seal: tenant #1's INV-2026-0003
+     * population, real rows. Those printed `PAID` on a page from which this lane
+     * had already deleted the Paid and Balance Due rows — the document contradicted
+     * itself. The `Posted`-never-sealed sibling was worse: the badge is
+     * upper-cased into the PDF by `.status-badge { text-transform: uppercase }`,
+     * so the page said `POSTED` — token 9 of FORBIDDEN_TOKENS, on the document
+     * this lane certifies as non-definitive.
+     *
+     * The fix is the whole badge, not the word: a proforma states no lifecycle
+     * status at all. There is nothing true a lifecycle badge can say about a
+     * document whose own banner says it has not been entered anywhere.
+     *
+     * @return array<string, array{0: DocumentStatus}>
+     */
+    public static function unsealedStatusProvider(): array
+    {
+        return [
+            'draft' => [DocumentStatus::Draft],
+            'confirmed' => [DocumentStatus::Confirmed],
+            'paid, never sealed' => [DocumentStatus::Paid],
+            'posted, never sealed' => [DocumentStatus::Posted],
+        ];
+    }
+
+    #[DataProvider('unsealedStatusProvider')]
+    public function test_no_unsealed_status_puts_a_lifecycle_word_on_the_proforma(DocumentStatus $status): void
+    {
+        $this->app->setLocale('en');
+        $invoice = $this->atStatus($this->unpostedInvoice(), $status);
+
+        $html = $this->renderHtml($invoice);
+        $scannable = $this->scannable($html);
+
+        $this->assertNoForbiddenToken($scannable, "{$status->value} invoice HTML");
+        $this->assertNoForbiddenToken($this->renderPdfText($invoice), "{$status->value} invoice PDF text");
+
+        // The badge MARKUP is gone — asserted on the rendered page, not the raw
+        // file: `layouts/document.blade.php`'s stylesheet declares `.status-badge`
+        // and `.status-posted` for the other seven templates, and a CSS class name
+        // is not a statement about this document.
+        $this->assertStringNotContainsString(
+            'status-badge',
+            $scannable,
+            'a proforma states no lifecycle status: the badge markup itself must be gone',
+        );
+
+        // …and so is the WORD, which the token scan cannot catch for `Paid` or
+        // `Draft`. The badge is upper-cased into the PDF and drawn on its own line,
+        // so exact line membership is the honest check — a substring search would
+        // report `238,000 DT` as containing `38,000 DT`.
+        $lines = $this->pdfLines($this->renderPdfText($invoice));
+        foreach (DocumentStatus::cases() as $case) {
+            $this->assertNotContains(
+                mb_strtoupper(ucfirst(str_replace('_', ' ', $case->value))),
+                $lines,
+                "the {$case->value} badge text must not be drawn on a proforma",
+            );
+        }
+
+        $this->assertStringContainsString(__('documents.proforma.title'), $html);
+    }
+
+    /**
+     * FIX ROUND r1 / gate F-2 — ORCHESTRATOR SPEC RULING (r11.2 amendment, owner
+     * OQ-75 default): the proforma prints GROSS line figures.
+     *
+     * r1 printed NET line amounts under a GROSS `Estimated total`. The page did
+     * not reconcile on its own face, and the difference — one subtraction — was
+     * exactly the VAT the lane had removed. `totals.blade.php` stated the rule
+     * ("a reader who can subtract has the tax amount back") while the table above
+     * it supplied the net figure anyway.
+     *
+     * The fixture is deliberately TWO lines with different amounts, one carrying a
+     * persisted `document_lines.tax_amount` and one carrying only a `tax_rate`, so
+     * the reconciliation is a real sum over both resolution paths and not an
+     * identity on a single row.
+     */
+    public function test_proforma_line_figures_are_gross_and_sum_to_the_estimated_total(): void
+    {
+        $this->app->setLocale('en');
+        $invoice = $this->twoLineUnpostedInvoice();
+
+        $html = $this->renderHtml($invoice);
+        $money = $this->moneyFormatter($invoice);
+
+        // The amount column, read off the rendered items table, in order:
+        // unit price then line amount, per row (the rate column is gone).
+        $this->assertSame(
+            [
+                $money('119.000'), $money('238.000'),
+                $money('59.500'), $money('59.500'),
+            ],
+            $this->itemsTableRightCells($html),
+            'every printed line figure must be tax-inclusive',
+        );
+
+        // Σ printed line amounts == the estimated total, at the VALUE level.
+        $this->assertSame(
+            (string) $invoice->total,
+            bcadd('238.000', '59.500', 3),
+            'the fixture itself must reconcile, or the assertion below is vacuous',
+        );
+        $this->assertStringContainsString($money('297.500'), $html);
+    }
+
+    /**
+     * The security property F-2 actually buys, stated as an absence: the VAT is
+     * not on the page, and neither is any figure it could be recovered from.
+     * `total − net` cannot be formed by a reader who never sees `net`.
+     */
+    public function test_no_figure_on_a_proforma_yields_the_vat_by_subtraction(): void
+    {
+        $this->app->setLocale('en');
+        $invoice = $this->twoLineUnpostedInvoice();
+
+        $rendered = $this->renderHtml($invoice);
+        $money = $this->moneyFormatter($invoice);
+
+        // EXACT FIGURES, never substrings: `238,000 DT` contains `38,000 DT`, so a
+        // substring search would report the VAT as printed when it is not. The set
+        // of money figures the page actually prints is the items table's right
+        // cells plus the totals table's cells; the PDF draws each on its own line.
+        $printedInHtml = array_merge(
+            $this->itemsTableRightCells($rendered),
+            $this->totalsTableCells($rendered),
+        );
+        $printedInPdf = $this->pdfLines($this->renderPdfText($invoice));
+
+        $this->assertSame(
+            [$money('297.500')],
+            $this->totalsTableCells($rendered),
+            'the totals box prints one figure and it is the estimated total',
+        );
+
+        foreach ([
+            '47.500' => 'the VAT total itself',
+            '250.000' => 'the net subtotal — estimated total MINUS this IS the VAT',
+            '200.000' => 'line 1 net amount — its gross counterpart is printed instead',
+            '100.000' => 'line 1 net unit price',
+            '38.000' => 'line 1 VAT',
+            '9.500' => 'line 2 VAT',
+        ] as $amount => $why) {
+            $this->assertNotContains($money($amount), $printedInHtml, "the HTML must not print {$why}");
+            $this->assertNotContains($money($amount), $printedInPdf, "the PDF must not print {$why}");
+        }
+    }
+
     public function test_a_posted_invoice_renders_identically_to_the_pre_change_snapshot(): void
     {
         $this->assertPostedRenderingUnchanged($this->postedInvoice(), 'posted-invoice');
@@ -250,6 +402,125 @@ final class ProformaOutputTest extends TestCase
         $this->assertStringContainsString('38,000', $html);
         $this->assertStringContainsString('VAT', $html, 'the seller VAT number stays on a definitive invoice');
         $this->assertStringNotContainsString(__('documents.proforma.title'), $html);
+    }
+
+    /**
+     * The `$formatMoney` closure the templates themselves use, so the expected
+     * strings are produced by the production formatter and not by a test-local
+     * imitation of it.
+     *
+     * @return \Closure(string): string
+     */
+    private function moneyFormatter(Document $document): \Closure
+    {
+        /** @var DocumentPdfService $service */
+        $service = $this->app->make(DocumentPdfService::class);
+        /** @var \Closure(string|float|null): string $formatter */
+        $formatter = $service->viewDataFor($document)['formatMoney'];
+
+        return static fn (string $amount): string => $formatter($amount);
+    }
+
+    /**
+     * Every right-aligned cell of the items table, in document order — i.e. the
+     * unit price and the line amount of each row, which with the rate column gone
+     * is the complete set of money figures the table prints.
+     *
+     * @return list<string>
+     */
+    private function itemsTableRightCells(string $html): array
+    {
+        if (preg_match('#<table class="items-table">(.*?)</table>#s', $html, $table) !== 1) {
+            self::fail('no items table was rendered');
+        }
+
+        preg_match_all('#<td class="right">(.*?)</td>#s', $table[1], $cells);
+
+        return array_map(static fn (string $cell): string => trim($cell), $cells[1]);
+    }
+
+    /**
+     * Every money cell of the totals box.
+     *
+     * @return list<string>
+     */
+    private function totalsTableCells(string $html): array
+    {
+        if (preg_match('#<table class="totals-table">(.*?)</table>#s', $html, $table) !== 1) {
+            self::fail('no totals table was rendered');
+        }
+
+        preg_match_all('#<td[^>]*>(.*?)</td>#s', $table[1], $cells);
+
+        $labels = [__('documents.proforma.estimated_total')];
+
+        return array_values(array_filter(
+            array_map(static fn (string $cell): string => trim($cell), $cells[1]),
+            static fn (string $cell): bool => ! in_array($cell, $labels, true),
+        ));
+    }
+
+    /**
+     * The PDF's drawn text, one trimmed entry per glyph run — which is one per
+     * table cell, so exact membership is meaningful.
+     *
+     * @return list<string>
+     */
+    private function pdfLines(string $text): array
+    {
+        return array_values(array_filter(
+            array_map(static fn (string $line): string => trim($line), explode("\n", $text)),
+            static fn (string $line): bool => $line !== '',
+        ));
+    }
+
+    private function atStatus(Document $document, DocumentStatus $status): Document
+    {
+        $document->forceFill(['status' => $status])->save();
+        $document->refresh();
+
+        return $document;
+    }
+
+    /**
+     * Two lines, different amounts, and the two ways a line's tax is knowable:
+     * line 1 carries only `tax_rate` (`document_lines.tax_amount` is nullable and
+     * NULL on older rows), line 2 carries a persisted `tax_amount`.
+     */
+    private function twoLineUnpostedInvoice(): Document
+    {
+        $invoice = $this->dpConfirmedInvoice([
+            $this->dpPhysicalLine('2.0000', '100.000'),
+            $this->dpPhysicalLine('1.0000', '50.000'),
+        ]);
+
+        $this->dpCompany->forceFill([
+            'vat_number' => 'TN-VAT-1234567',
+            'phone' => null,
+            'email' => null,
+            'registration_number' => null,
+        ])->save();
+
+        $lines = $invoice->lines->sortBy('line_number')->values();
+        $lines->firstOrFail()->forceFill(['tax_rate' => '19.00', 'tax_amount' => null])->save();
+        $lines->skip(1)->firstOrFail()->forceFill(['tax_rate' => '19.00', 'tax_amount' => '9.500'])->save();
+
+        $invoice->forceFill([
+            'document_number' => 'INV-PROFORMA-0002',
+            'document_date' => '2026-01-15',
+            'due_date' => '2026-02-15',
+            'subtotal' => '250.000',
+            'line_tax_amount' => '47.500',
+            'stamp_duty_amount' => '0.000',
+            'discount_amount' => '0.000',
+            'tax_amount' => '47.500',
+            'total' => '297.500',
+            'balance_due' => '297.500',
+            'notes' => null,
+        ])->save();
+        $invoice->refresh();
+
+        return $invoice;
     }
 
     private function renderHtml(Document $document): string
