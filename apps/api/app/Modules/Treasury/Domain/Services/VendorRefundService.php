@@ -145,8 +145,9 @@ final class VendorRefundService
             // purchase order (F-153 / LEDGER OQ-3, wrong-direction GL), and the
             // prepayments already sitting on POs must still be refundable, or the
             // fix would trap them. See
-            // `DocumentAllocationClassifier::assertReversalAdmitted()`.
-            $this->allocationClassifier->assertReversalAdmitted($lockedPo);
+            // `DocumentAllocationClassifier::assertReversalAdmitted()` (seam
+            // present, predicate deferred to C-0a1).
+            $this->allocationClassifier->assertReversalAdmitted($lockedPo->id);
 
             PaymentAllocation::create([
                 'payment_id' => $payment->id,

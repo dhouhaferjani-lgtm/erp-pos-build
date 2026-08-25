@@ -7,6 +7,7 @@ namespace Tests\Feature\Treasury;
 use App\Modules\Accounting\Application\Services\OpeningBalanceBatchService;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\OpeningBalanceImportRow;
 use App\Modules\Document\Application\DTOs\CreatePOSAccountChargeDraftCommand;
 use App\Modules\Document\Application\Services\ArApOpeningService;
 use App\Modules\Document\Application\Services\POSAccountChargeDraftService;
@@ -35,6 +36,13 @@ use Tests\TestCase;
  * rather than settling the safe one and guessing the other. Spec rules 2–5
  * admit them again, per side, in C-0a1.
  *
+ * GATE r1 / F-2 NARROWED THIS. The AR side of a historical opening is no longer
+ * refused: `opening_balance_import_rows.row_type` + `mapped_entity_id` prove the
+ * side today, so refusing a provable AR opening bought no safety and cost a
+ * cutover its whole open-receivables ledger. What stays refused, and is what this
+ * suite now pins, is the AP side and the side that cannot be proven.
+ * `HistoricalOpeningSideSettlementTest` carries the admitted AR case.
+ *
  * The POS case is the mirror-image hazard: a POS account-charge invoice already
  * carries a 411 from its sealed fiscal event, so a payment on it is ALWAYS a
  * clearing and never a 419 advance — but N-6's posted-ness test would book a
@@ -61,7 +69,7 @@ final class HistoricalAndPosInvoicesRefusedBeforeProvenanceTest extends TestCase
     public static function provenanceFamilies(): iterable
     {
         yield 'historical AP opening (the dangerous one: Cr 411 for a PAYABLE)' => ['ap_opening'];
-        yield 'historical AR opening' => ['ar_opening'];
+        yield 'historical opening with no provable side' => ['unknown_side_opening'];
         yield 'POS account charge, confirmed' => ['pos_confirmed'];
         yield 'POS account charge, posted' => ['pos_posted'];
     }
@@ -147,22 +155,28 @@ final class HistoricalAndPosInvoicesRefusedBeforeProvenanceTest extends TestCase
     }
 
     /**
-     * The auto path must not OFFER these documents either: `getOpenInvoices()`
-     * is the SQL mirror of the classifier, and it selects invoices by status
-     * alone. A historical opening is `posted` and open by construction, so it is
-     * exactly the row the FIFO sweep would pick first.
+     * Gate r1 / F-7 — the AUTO path SKIPS these documents; it does not refuse the
+     * request. r1's version of this test discarded the response and asserted only
+     * that nothing was written, which is exactly what hid F-1: "nothing written"
+     * was true both when the sweep passed over the row and when it threw a 422
+     * and rolled the whole collection back. The status code is the difference,
+     * so it is asserted.
+     *
+     * `AutoAllocationSkipsRefusedDocumentsTest` carries the other half — that the
+     * allocatable documents queued BEHIND the refused one are still collected.
      */
     #[DataProvider('provenanceFamilies')]
-    public function test_the_auto_allocation_execute_writes_nothing_for_it(string $family): void
+    public function test_the_auto_allocation_sweep_skips_it_without_refusing_the_request(string $family): void
     {
         [$document, $partner] = $this->mint($family);
         $payment = $this->makeUnallocatedPayment('100.000', $partner);
 
-        $this->actingAs($this->user)->postJson('/api/v1/smart-payment/apply-allocation', [
+        $response = $this->actingAs($this->user)->postJson('/api/v1/smart-payment/apply-allocation', [
             'payment_id' => $payment->id,
             'allocation_method' => 'fifo',
         ]);
 
+        $response->assertOk();
         $this->assertNoAllocationWasWritten($document->id);
     }
 
@@ -177,8 +191,8 @@ final class HistoricalAndPosInvoicesRefusedBeforeProvenanceTest extends TestCase
                 $this->vendor,
                 'historical_opening_provenance',
             ],
-            'ar_opening' => [
-                $this->historicalOpening(OpeningBatchType::ArOpenItems, $this->customer),
+            'unknown_side_opening' => [
+                $this->openingWithoutProvableSide(),
                 $this->customer,
                 'historical_opening_provenance',
             ],
@@ -236,6 +250,22 @@ final class HistoricalAndPosInvoicesRefusedBeforeProvenanceTest extends TestCase
         // quietly stop testing anything.
         self::assertTrue($document->is_historical);
         self::assertStringStartsWith('Opening Balance Batch: ', (string) $document->reference);
+
+        return $document;
+    }
+
+    /**
+     * A real AR opening whose import-row link has been severed, so the AR/AP
+     * evidence the resolver reads is genuinely absent. Every marker that
+     * identifies it as an opening survives; only the side does not.
+     */
+    private function openingWithoutProvableSide(): Document
+    {
+        $document = $this->historicalOpening(OpeningBatchType::ArOpenItems, $this->customer);
+
+        OpeningBalanceImportRow::query()
+            ->where('mapped_entity_id', $document->id)
+            ->update(['mapped_entity_id' => null]);
 
         return $document;
     }

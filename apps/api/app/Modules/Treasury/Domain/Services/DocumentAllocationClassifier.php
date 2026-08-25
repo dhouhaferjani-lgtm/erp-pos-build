@@ -10,6 +10,8 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Treasury\Domain\Enums\AllocationRefusalReason;
 use App\Modules\Treasury\Domain\Enums\AllocationTreatment;
 use App\Modules\Treasury\Domain\Exceptions\DocumentNotAllocatableException;
+use App\Shared\Contracts\Accounting\HistoricalOpeningSide;
+use App\Shared\Contracts\Accounting\HistoricalOpeningSideReaderInterface;
 
 /**
  * The ONE payment-applicability policy: may money be allocated to this
@@ -42,10 +44,6 @@ use App\Modules\Treasury\Domain\Exceptions\DocumentNotAllocatableException;
  *   NARROWED from N-6:
  *     Invoice + `paid` was ReceivableClearing. `paid` is a RETIRED lifecycle
  *       value (F-88); a settled document admits no new money.
- *     SalesOrder at ANY live status was Prepayment. Spec rule 7 admits it only
- *       while `confirmed` — a sales order's lifecycle is
- *       draft→confirmed→cancelled (§1.3), so any other status is a legacy row
- *       whose GL treatment nobody has ruled. Refuse rather than guess.
  *     PurchaseOrder was ReceivableClearing — N-6's own named residual R-1,
  *       kept only because it was live. It books a NEGATIVE CUSTOMER receivable
  *       against a SUPPLIER partner. F-153 / LEDGER OQ-3 refuse it throughout
@@ -57,19 +55,25 @@ use App\Modules\Treasury\Domain\Exceptions\DocumentNotAllocatableException;
  *       simply moved INTO the policy object so no writer needs a bypass. The
  *       AR-only writers call `classifyReceivableSide()` and refuse it.
  *
- * ── Provenance: fail closed (F-107) ───────────────────────────────────────
+ * ── Provenance: fail closed WHERE THE EVIDENCE IS ABSENT (F-107, F-2) ─────
  * Spec rules 2–5 decide historical openings and POS account-charge invoices
  * from PERSISTED provenance columns (`opening_side`, `document_provenance`)
  * that do not exist yet — lane C-PROV0 adds them and C-0a1 admits those rules.
- * Until then this lane must not guess: a historical AP opening is minted as an
- * `Invoice` exactly like an AR one, and admitting it would book Dr bank /
- * Cr 411 for a PAYABLE — money moving the wrong way against the wrong partner
- * class. So Invoice/CreditNote rows that carry EITHER marker are REFUSED, and
- * the two markers are read from the columns the minting services already write
- * (see `ArApOpeningService::postBatch()` and `POSAccountChargeDraftService::createDraft()`).
- * This is a deliberate temporary NARROWING: historical AR openings are payable
- * today and stop being payable until C-0a1. Refusing a legitimate collection is
- * recoverable; a wrong-direction GL entry against a supplier is not.
+ * The markers themselves are read from what the minting services already write
+ * (`ArApOpeningService::postBatch()` sets `is_historical` + the batch reference
+ * prefix; `POSAccountChargeDraftService::createDraft()` sets the receipt
+ * reference).
+ *
+ * POS-derived Invoice/CreditNote ⇒ REFUSED: the 411 already exists (it came from
+ * the sealed POS fiscal event), so a payment on it is always a clearing and
+ * never a 419 advance — but nothing here can yet prove the adopted receivable is
+ * the one being settled, so it waits for C-0a1.
+ *
+ * Historical openings ⇒ side-resolved, see `refusalForHistoricalOpening()`. Fail
+ * closed is the rule for the AP side and for an unprovable side, NOT a blanket
+ * over both: gate r1 F-2 established that the AR/AP discriminator exists today
+ * (`opening_balance_import_rows.row_type` + `mapped_entity_id`), and refusing a
+ * side you can prove is safe is not caution, it is an outage.
  *
  * ── Reversals are the inverse operation ───────────────────────────────────
  * `assertReversalAdmitted()` is what the refund / reversal writers call. It is
@@ -77,15 +81,25 @@ use App\Modules\Treasury\Domain\Exceptions\DocumentNotAllocatableException;
  * a rule that could refuse the unwinding of money already recorded would strand
  * cash on a document this lane has just stopped admitting.
  *
- * LIVES IN Domain (N-6 gate r1 I-1). A pure, side-effect-free policy object
- * with no infrastructure dependency — `MultiPaymentService`, itself a Domain
+ * LIVES IN Domain (N-6 gate r1 I-1) — `MultiPaymentService`, itself a Domain
  * service, must consult it, and sitting in Application made that a deptrac
- * Domain→Application BLOCKER. `App\Modules\Treasury\Application\Services\DocumentAllocationStateGuard`
+ * Domain→Application BLOCKER. It is no longer strictly side-effect-free: F-2
+ * gives it one constructor-injected READER, consulted only for documents that
+ * already carry an opening marker. It still writes nothing and decides nothing
+ * from ambient state. `App\Modules\Treasury\Application\Services\DocumentAllocationStateGuard`
  * (N-6 R2-F4: FQCN in prose, not a Domain→Application `use`) covers the
  * cancelled-document ground from the fiscal side and keeps its own refusal.
  */
 final class DocumentAllocationClassifier
 {
+    public function __construct(
+        // C-0a0 gate r1 / F-2 — the AR/AP side of a historical opening, read
+        // through a Shared contract (rule 6). It is consulted ONLY for a
+        // document that already carries an opening marker, so the ordinary
+        // native path stays query-free.
+        private readonly HistoricalOpeningSideReaderInterface $openingSideReader,
+    ) {}
+
     /**
      * The `documents.reference` prefix `ArApOpeningService::postBatch()` writes
      * on every historical AR/AP opening it mints
@@ -140,12 +154,15 @@ final class DocumentAllocationClassifier
         $treatment = $this->classify($document);
 
         if (! $treatment->isReceivableSide()) {
+            // F-4: a posted supplier invoice is INWARD money on the wrong path,
+            // not an outward document. Its remedy is the supplier payment flow,
+            // and the reason has to say so.
             throw new DocumentNotAllocatableException(
                 $document->id,
                 $document->document_number,
                 $document->type,
                 $document->status,
-                AllocationRefusalReason::OutwardDocumentType,
+                AllocationRefusalReason::PayableNotSettleableHere,
             );
         }
 
@@ -185,12 +202,12 @@ final class DocumentAllocationClassifier
             return AllocationRefusalReason::DocumentNotLive;
         }
 
-        // ── Rules 2–5, fail-closed until C-PROV0 persists provenance (F-107) ──
+        // ── Rules 2–5 (F-107 sequencing) ──────────────────────────────────
         // Only Invoice and CreditNote are ever minted by the opening importer
         // or the POS account-charge bridge, so only they can carry a marker.
         if ($document->type === DocumentType::Invoice || $document->type === DocumentType::CreditNote) {
             if ($this->isHistoricalOpening($document)) {
-                return AllocationRefusalReason::HistoricalOpeningProvenance;
+                return $this->refusalForHistoricalOpening($document);
             }
 
             if ($this->isPosAccountCharge($document)) {
@@ -206,10 +223,16 @@ final class DocumentAllocationClassifier
             // takes an advance. Both statuses are live by rule 1 above.
             DocumentType::Invoice => null,
 
-            // Rule 7.
-            DocumentType::SalesOrder => $document->status === DocumentStatus::Confirmed
-                ? null
-                : AllocationRefusalReason::StatusNotAllocatableForType,
+            // Rule 7, as reconciled with the N-6 gate in r1 (F-9). Spec r11
+            // says "SalesOrder + confirmed"; the N-6 gate ruled that `Posted` is
+            // REACHABLE (`DocumentPostingService::cancelSalesOrder()` guards for
+            // exactly that state, and `DocumentStatusMachine` allows
+            // Confirmed → Posted for every sales-lifecycle type) and that
+            // narrowing below the pre-N-6 rule is a regression, not a fix. Rule 1
+            // has already excluded every non-live status, so admitting BOTH live
+            // statuses honours the prior ruling without widening past it. Either
+            // way the money is an ADVANCE: a sales order never carries a 411.
+            DocumentType::SalesOrder => null,
 
             // Rule 8 — the existing guarded supplier path. `PaymentController`
             // keeps its own posted-ness + Cr-401-evidence guard on top; this is
@@ -251,15 +274,22 @@ final class DocumentAllocationClassifier
      * no longer be refunded: cash stranded on a document nobody can unwind,
      * which is strictly worse than the defect being fixed.
      *
-     * It exists as an explicit call rather than as an absence so that (a) the
-     * census can prove EVERY writer of `payment_allocations` passes through the
-     * classifier, and (b) when a reversal rule is finally ruled (C-0a1, once
-     * provenance distinguishes the families), there is exactly one place to put
-     * it. Residual R-C0a0-1 in the handback.
+     * SEAM PRESENT, PREDICATE DEFERRED TO C-0a1 — say so plainly rather than let
+     * a census imply otherwise. It exists as an explicit call rather than as an
+     * absence so that (a) the writer census can prove EVERY writer of
+     * `payment_allocations` passes through this object, and (b) when a reversal
+     * rule is finally ruled (C-0a1, once provenance distinguishes the families),
+     * there is exactly one place to put it.
+     *
+     * It takes an ID, not a `Document`, deliberately (gate r1 / F-5). r1 loaded
+     * the document at three call sites purely to satisfy this signature — three
+     * discarded `Document::find()` round-trips inside the refund transaction, to
+     * feed a method that does nothing with them. The seam should cost nothing
+     * until it decides something. Residual R-C0a0-1 in the handback.
      */
-    public function assertReversalAdmitted(Document $document): void
+    public function assertReversalAdmitted(string $documentId): void
     {
-        unset($document);
+        unset($documentId);
     }
 
     /**
@@ -290,6 +320,48 @@ final class DocumentAllocationClassifier
                 .'treatmentFor() must only be reached for a document refusalReasonFor() admitted.'
             ),
         };
+    }
+
+    /**
+     * C-0a0 gate r1 / F-2 — a historical opening is refused on the side that
+     * actually books wrong-direction GL, and admitted on the side that does not.
+     *
+     * r1 refused BOTH sides on the stated grounds that no column could tell them
+     * apart. That was not true: `opening_balance_import_rows.row_type` has
+     * carried `AR`/`AP` since the importer was written, and `mapped_entity_id`
+     * names the document each row minted. Blanket refusal therefore bought no
+     * safety on the AR side and cost a first-client cutover its entire open
+     * receivables ledger — those invoices have no other settlement route,
+     * because the AP branch of `PaymentController::store()` requires
+     * `type === SupplierInvoice` and an opening is minted as `Invoice`.
+     *
+     * Owner-sheet OQ-74 records this as the default:
+     * - AR + posted ⇒ ADMITTED (`ReceivableClearing`). The opening JE already
+     *   created the 411; collecting it is an ordinary collection, and booking it
+     *   as a 419 advance would invent a liability the company does not owe.
+     * - AP ⇒ REFUSED. Settling it is Dr 401 / Cr bank; C-0a1 routes it once
+     *   `opening_side` is a persisted column.
+     * - side UNPROVEN ⇒ REFUSED. Fail closed belongs where the evidence is
+     *   genuinely absent, not where nobody looked.
+     *
+     * CreditNote openings stay refused on BOTH sides (spec rule 4 / OQ-37).
+     */
+    private function refusalForHistoricalOpening(Document $document): ?AllocationRefusalReason
+    {
+        if ($document->type === DocumentType::CreditNote) {
+            return AllocationRefusalReason::HistoricalOpeningProvenance;
+        }
+
+        if ($this->openingSideReader->sideFor($document->id) !== HistoricalOpeningSide::AccountsReceivable) {
+            return AllocationRefusalReason::HistoricalOpeningProvenance;
+        }
+
+        // An opening is minted `posted` (`ArApOpeningService::postBatch()`), and
+        // `posted` is what proves the 411 exists. Anything else is a row nobody
+        // has ruled on — refuse rather than invent a treatment for it.
+        return $document->status === DocumentStatus::Posted
+            ? null
+            : AllocationRefusalReason::StatusNotAllocatableForType;
     }
 
     /**

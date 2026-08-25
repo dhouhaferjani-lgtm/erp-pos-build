@@ -7,6 +7,7 @@ namespace App\Providers;
 use App\Models\Country;
 use App\Models\VerticalConfig;
 use App\Modules\Accounting\Application\Services\AccountingService;
+use App\Modules\Accounting\Application\Services\HistoricalOpeningSideReader;
 use App\Modules\Accounting\Application\Services\PaymentLedgerPartitionReader;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
@@ -46,6 +47,7 @@ use App\Shared\Contracts\Accounting\DocumentGlCorrectionInterface;
 use App\Shared\Contracts\Accounting\DocumentGlPreflightInterface;
 use App\Shared\Contracts\Accounting\DocumentGlReversalInterface;
 use App\Shared\Contracts\Accounting\FiscalPeriodLockReaderInterface;
+use App\Shared\Contracts\Accounting\HistoricalOpeningSideReaderInterface;
 use App\Shared\Contracts\Accounting\PaymentLedgerPartitionReaderInterface;
 use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CatalogLookupInterface;
@@ -115,6 +117,10 @@ class AppServiceProvider extends ServiceProvider
         // reaches it through this Shared contract only (rule 6) — never through
         // the concrete reader or an Accounting model.
         $this->app->bind(PaymentLedgerPartitionReaderInterface::class, PaymentLedgerPartitionReader::class);
+        // C-0a0 (F-2): the AR/AP side of a historical opening balance. Treasury's
+        // allocation classifier reaches the opening-import evidence through this
+        // Shared contract only (rule 6) — never through an Accounting model.
+        $this->app->bind(HistoricalOpeningSideReaderInterface::class, HistoricalOpeningSideReader::class);
         $this->app->bind(PlatformSubmissionInterface::class, ProductSubmissionService::class);
         $this->app->bind(CatalogLookupInterface::class, BarcodeLookupService::class);
         $this->app->bind(EnrichmentQueryInterface::class, ProductEnrichmentQueryService::class);

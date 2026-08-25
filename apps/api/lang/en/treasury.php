@@ -24,11 +24,12 @@ return [
      */
     'allocation_refused' => [
         'document_not_live' => 'This document cannot receive a payment in its current status. Only confirmed or posted documents can be paid.',
-        'historical_opening_provenance' => 'This document is an imported opening balance. Opening balances cannot be settled from this screen yet.',
+        'historical_opening_provenance' => 'This is a supplier opening balance, or an opening balance whose side could not be determined. Settle supplier opening balances through the supplier payment flow.',
         'pos_derived_provenance' => 'This invoice comes from a point-of-sale account charge. It is settled through the customer account, not from this screen.',
         'status_not_allocatable_for_type' => 'This document cannot receive a payment in its current status. Post it first, then record the payment.',
         'outward_document_type' => 'Credit notes are money owed to the other party: apply them to another document or refund them, rather than receiving a payment against them.',
         'purchase_order_wrong_direction' => 'Purchase orders cannot receive a payment. Record the payment against the supplier invoice once it is posted.',
         'type_never_allocatable' => 'This document type never carries a balance a payment could settle.',
+        'payable_not_settleable_here' => 'This is a supplier invoice. Record the payment through the supplier payment flow, which pays the supplier and clears the payable.',
     ],
 ];

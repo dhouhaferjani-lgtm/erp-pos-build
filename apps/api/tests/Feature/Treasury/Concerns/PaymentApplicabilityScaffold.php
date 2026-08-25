@@ -5,12 +5,17 @@ declare(strict_types=1);
 namespace Tests\Feature\Treasury\Concerns;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Application\Services\OpeningBalanceBatchService;
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Application\DTOs\CreatePOSAccountChargeDraftCommand;
+use App\Modules\Document\Application\Services\ArApOpeningService;
+use App\Modules\Document\Application\Services\POSAccountChargeDraftService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -184,6 +189,95 @@ trait PaymentApplicabilityScaffold
             'reference' => 'Deposit for C-0a0 test',
             'notes' => 'Advance payment/deposit [UNALLOCATED]',
         ]);
+    }
+
+    /**
+     * Mint a historical AR/AP opening through the REAL importer, so the markers
+     * under test (`is_historical`, the batch reference prefix, and the
+     * `opening_balance_import_rows.row_type` AR/AP discriminator) are the ones
+     * the importer actually writes.
+     */
+    /**
+     * @param  numeric-string  $total
+     */
+    private function makeHistoricalOpening(OpeningBatchType $type, Partner $partner, string $total = '100.000'): Document
+    {
+        $batchService = app(OpeningBalanceBatchService::class);
+        $batch = $batchService->createBatch(
+            $this->company,
+            $type,
+            now(),
+            'C0A0-'.$type->value.'-'.Str::upper(Str::random(4)),
+            $this->user->id,
+            'phpunit',
+        );
+        $batchService->addImportRows($batch, [[
+            'partner_code' => (string) $partner->code,
+            'external_invoice_number' => 'LEG-'.Str::upper(Str::random(5)),
+            'document_date' => '2026-01-01',
+            'due_date' => '2026-01-31',
+            'total' => $total,
+            'open_amount' => $total,
+            'currency' => 'TND',
+            'document_type' => 'invoice',
+            'notes' => null,
+        ]]);
+
+        $service = app(ArApOpeningService::class);
+        $service->validateBatch($batch->refresh());
+        $service->postBatch($batch->refresh(), $this->user->id);
+
+        /** @var Document $document */
+        $document = Document::query()
+            ->where('company_id', $this->company->id)
+            ->where('partner_id', $partner->id)
+            ->where('is_historical', true)
+            ->latest('created_at')
+            ->firstOrFail();
+
+        return $document;
+    }
+
+    /**
+     * @param  numeric-string  $total
+     */
+    private function makePosAccountChargeInvoice(DocumentStatus $status, string $total = '100.000'): Document
+    {
+        $document = app(POSAccountChargeDraftService::class)->createDraft(
+            new CreatePOSAccountChargeDraftCommand(
+                tenantId: $this->tenant->id,
+                companyId: $this->company->id,
+                partnerId: $this->customer->id,
+                fiscalEventId: (string) Str::uuid(),
+                accountChargeUuid: (string) Str::uuid(),
+                businessDate: now()->toDateString(),
+                currencyCode: 'TND',
+                currencyScale: 3,
+                subtotal: $total,
+                vatTotal: '0.000',
+                total: $total,
+                transactionDiscountAmount: '0.000',
+                lineItems: [[
+                    'sku' => 'SKU-1',
+                    'name' => 'Consultation',
+                    'quantity' => '1.0000',
+                    'unit_price' => $total,
+                    'line_discount_amount' => '0.000',
+                    'line_subtotal' => $total,
+                    'line_vat' => '0.000',
+                    'vat_rate' => '0.00',
+                ]],
+                payloadSnapshot: ['source' => 'c0a0-test'],
+                dueDate: now()->addDays(30)->toDateString(),
+            ),
+        );
+
+        Document::query()->whereKey($document->id)->update([
+            'status' => $status,
+            'balance_due' => $total,
+        ]);
+
+        return $document->refresh();
     }
 
     private function makeUnallocatedPayment(string $amount, Partner $partner): Payment

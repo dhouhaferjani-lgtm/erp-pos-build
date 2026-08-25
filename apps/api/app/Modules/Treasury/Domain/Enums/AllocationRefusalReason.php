@@ -8,9 +8,10 @@ namespace App\Modules\Treasury\Domain\Enums;
  * WHY a document was refused a payment allocation (C-0a0, SPEC §2.1).
  *
  * `DOCUMENT_NOT_ALLOCATABLE` on its own tells an operator nothing actionable —
- * "post the invoice first", "this is an opening balance", "credit notes are
- * refunded, not collected" and "purchase-order prepayments are not supported"
- * are four different remedies behind one code. The reason is the machine-
+ * "post the invoice first", "this is a supplier opening balance", "credit notes
+ * are refunded, not collected", "purchase-order prepayments are not supported"
+ * and "pay this one through the supplier flow" are five different remedies
+ * behind one code. The reason is the machine-
  * readable half of the refusal; `translationKey()` is the human half, resolved
  * against `lang/<locale>/treasury.php` so nothing user-facing is hardcoded
  * (rule 11).
@@ -69,11 +70,27 @@ enum AllocationRefusalReason: string
     case PurchaseOrderWrongDirection = 'purchase_order_wrong_direction';
 
     /**
-     * Rule 9's tail: quotes, RFQs, delivery notes, return notes, correcting
-     * entries, expenses and income carry no partner balance an allocation could
-     * settle (expenses/income are settled through their own metadata flags).
+     * Rule 9's tail: quotes, RFQs, delivery notes, return notes and correcting
+     * entries carry no partner balance an allocation could settle; expenses and
+     * income are settled through their own metadata flags
+     * (`expense_metadata.is_paid` / `income_metadata.is_received`), not through
+     * `payment_allocations`.
      */
     case TypeNeverAllocatable = 'type_never_allocatable';
+
+    /**
+     * C-0a0 gate r1 / F-4 — the document IS payable, but not on THIS path.
+     *
+     * A posted supplier invoice is settled Dr 401 / Cr bank through the
+     * supplier-aware `PaymentController::store()` branch. Every other writer
+     * posts the customer direction (Dr bank / Cr 411-or-419) and increments a
+     * repository, so `classifyReceivableSide()` refuses a `PayableSettlement`
+     * there. r1 reused `OutwardDocumentType` for this, which was wrong twice
+     * over: a payable is INWARD money, not outward, and its operator copy talked
+     * about credit notes. Both halves of a refusal have to be true, or the enum
+     * is just `DOCUMENT_NOT_ALLOCATABLE` with extra steps.
+     */
+    case PayableNotSettleableHere = 'payable_not_settleable_here';
 
     /**
      * The i18n key that renders this reason to an operator. Namespaced so the

@@ -211,20 +211,17 @@ class PaymentRefundService
                 // Reverse original payment allocations
                 /** @var list<string> $refundedDocumentIds */
                 $refundedDocumentIds = [];
-                // C-0a0 — the classifier seam for a REVERSAL. Admission is total
-                // by design (`DocumentAllocationClassifier::assertReversalAdmitted()`):
+                // C-0a0 — the classifier seam for a REVERSAL. SEAM PRESENT,
+                // PREDICATE DEFERRED TO C-0a1: admission is total by design
+                // (`DocumentAllocationClassifier::assertReversalAdmitted()`) —
                 // this lane narrows what money may come IN, and must not narrow
                 // what may come back OUT, or the first consequence of shipping it
                 // would be cash stranded on documents it just stopped admitting.
-                // The call is what `PaymentAllocationWriterCensusTest` proves, and
-                // the single place a reversal rule will land once provenance
-                // exists (C-0a1).
+                // It takes the id the caller already holds; gate r1 F-5 removed
+                // the three discarded `Document::find()` reads that r1 added
+                // inside this transaction purely to satisfy the old signature.
                 foreach ($original->allocations as $allocation) {
-                    /** @var Document|null $reversalTarget */
-                    $reversalTarget = Document::query()->find($allocation->document_id);
-                    if ($reversalTarget instanceof Document) {
-                        $this->allocationClassifier->assertReversalAdmitted($reversalTarget);
-                    }
+                    $this->allocationClassifier->assertReversalAdmitted($allocation->document_id);
 
                     PaymentAllocation::create([
                         'payment_id' => $refund->id,
@@ -1315,20 +1312,17 @@ class PaymentRefundService
                 // each touched document's lineage sums to exactly zero by
                 // construction. netLiveAllocationsByDocument() already dropped
                 // the exact zeros.
-                // C-0a0 — the classifier seam for a REVERSAL. Admission is total
-                // by design (`DocumentAllocationClassifier::assertReversalAdmitted()`):
+                // C-0a0 — the classifier seam for a REVERSAL. SEAM PRESENT,
+                // PREDICATE DEFERRED TO C-0a1: admission is total by design
+                // (`DocumentAllocationClassifier::assertReversalAdmitted()`) —
                 // this lane narrows what money may come IN, and must not narrow
                 // what may come back OUT, or the first consequence of shipping it
                 // would be cash stranded on documents it just stopped admitting.
-                // The call is what `PaymentAllocationWriterCensusTest` proves, and
-                // the single place a reversal rule will land once provenance
-                // exists (C-0a1).
+                // It takes the id the caller already holds; gate r1 F-5 removed
+                // the three discarded `Document::find()` reads that r1 added
+                // inside this transaction purely to satisfy the old signature.
                 foreach ($netByDocument as $documentId => $net) {
-                    /** @var Document|null $reversalTarget */
-                    $reversalTarget = Document::query()->find($documentId);
-                    if ($reversalTarget instanceof Document) {
-                        $this->allocationClassifier->assertReversalAdmitted($reversalTarget);
-                    }
+                    $this->allocationClassifier->assertReversalAdmitted((string) $documentId);
 
                     PaymentAllocation::create([
                         'payment_id' => $reversal->id,
@@ -1981,12 +1975,9 @@ class PaymentRefundService
 
             // C-0a0 — the classifier seam for a REVERSAL; see
             // `DocumentAllocationClassifier::assertReversalAdmitted()` for why
-            // reversal admission is total by design.
-            /** @var Document|null $reversalTarget */
-            $reversalTarget = Document::query()->find($documentId);
-            if ($reversalTarget instanceof Document) {
-                $this->allocationClassifier->assertReversalAdmitted($reversalTarget);
-            }
+            // reversal admission is total by design (seam present, predicate
+            // deferred to C-0a1).
+            $this->allocationClassifier->assertReversalAdmitted($documentId);
 
             PaymentAllocation::create([
                 'payment_id' => $refundPaymentId,

@@ -49,6 +49,25 @@ final class PaymentAllocationWriterCensusTest extends TestCase
         'app/Modules/Treasury/Presentation/Controllers/PaymentController.php' => 4,
     ];
 
+    /**
+     * The four REVERSAL writers. Their seam is `assertReversalAdmitted()`, which
+     * is deliberately TOTAL — it admits everything, because this lane narrows
+     * what money may come IN and must not narrow what may come back OUT (a
+     * refund has to be able to unwind cash sitting on a document the lane has
+     * just stopped admitting; `VendorRefundService` is the live proof).
+     *
+     * Gate r1 / F-5 named the honesty problem: without this list the census's
+     * headline claim reads as "all 12 sites are policed", when 4 of them pass
+     * through a seam with no predicate yet. SEAM PRESENT, PREDICATE DEFERRED TO
+     * C-0a1 — stated here, in the artefact that makes the claim.
+     *
+     * @var list<string>
+     */
+    private const REVERSAL_SEAM_SITES_PREDICATE_DEFERRED = [
+        'app/Modules/Treasury/Domain/Services/PaymentRefundService.php',
+        'app/Modules/Treasury/Domain/Services/VendorRefundService.php',
+    ];
+
     public function test_every_production_writer_of_payment_allocations_is_classified_first(): void
     {
         $unguarded = [];
@@ -89,6 +108,42 @@ final class PaymentAllocationWriterCensusTest extends TestCase
             'The set of payment_allocations writers changed. Add the new writer to EXPECTED_WRITERS '
             .'only after proving it calls DocumentAllocationClassifier before its write.',
         );
+    }
+
+    /**
+     * The reversal seam is total TODAY, and the census must not be read as
+     * claiming otherwise. This asserts the split explicitly: the four reversal
+     * sites reach `assertReversalAdmitted()` (no predicate), every other site
+     * reaches a DECIDING variant.
+     */
+    public function test_the_reversal_seam_sites_are_declared_as_predicate_deferred(): void
+    {
+        $decidingCalls = 0;
+        $reversalCalls = 0;
+
+        foreach ($this->productionPhpFiles() as $relativePath => $absolutePath) {
+            $contents = (string) file_get_contents($absolutePath);
+
+            $reversalHere = preg_match_all('/allocationClassifier->assertReversalAdmitted\s*\(/', $contents);
+            $decidingHere = preg_match_all(
+                '/allocationClassifier->(classify|classifyOrNull|classifyReceivableSide|refusalReasonFor|isAllocatable)\s*\(/',
+                $contents,
+            );
+
+            if ($reversalHere > 0) {
+                self::assertContains(
+                    $relativePath,
+                    self::REVERSAL_SEAM_SITES_PREDICATE_DEFERRED,
+                    "{$relativePath} uses the predicate-deferred reversal seam but is not declared as such",
+                );
+            }
+
+            $reversalCalls += $reversalHere;
+            $decidingCalls += $decidingHere;
+        }
+
+        self::assertSame(4, $reversalCalls, 'exactly four reversal writers use the predicate-deferred seam');
+        self::assertGreaterThan(0, $decidingCalls);
     }
 
     /**

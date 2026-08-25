@@ -108,8 +108,14 @@ final class PurchaseOrderAllocationRefusedTest extends TestCase
      * The AUTO path never REFUSES a purchase order — it must never OFFER one.
      * `getOpenInvoices()` is the SQL mirror of the classifier, and a mirror that
      * still listed purchase orders would hand the execute loop a document its
-     * own policy object then throws on: a 422 raised on the server's OWN choice
-     * of target, not on anything the operator asked for.
+     * own policy object refuses.
+     *
+     * HONEST COVERAGE NOTE (gate r1 / F-7): these two auto cases pin the SQL
+     * mirror, NOT this lane's change — the gate verified they pass on base AND
+     * under a classifier tampered to admit purchase orders, because
+     * `getOpenInvoices()` never listed POs in the first place. They are kept as
+     * a regression guard on the mirror and must not be counted as coverage of
+     * the classifier.
      */
     public function test_the_auto_allocation_preview_never_offers_a_purchase_order(): void
     {
