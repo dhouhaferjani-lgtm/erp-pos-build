@@ -42,9 +42,20 @@ interface CompanyResponse {
  * settings request and the resolver, and a control whose only valid value is
  * the current one is a support trap.
  */
+type SettingSource = 'company' | 'country' | 'system'
+
 interface CompanySettingsValuation {
   inventory_valuation_mode: 'perpetual' | 'periodic'
-  inventory_valuation_mode_source: 'company' | 'country' | 'system'
+  inventory_valuation_mode_source: SettingSource
+  /**
+   * Lane P-1 — count-correction GL posting. Unlike the valuation mode this one
+   * IS editable: both answers are legitimate, so the control is a real toggle.
+   * `_override` is the tenant's OWN value (null = inheriting), reported
+   * separately from the resolved answer so the hint can say which it is.
+   */
+  count_correction_gl_posting_enabled: boolean
+  count_correction_gl_posting_source: SettingSource
+  count_correction_gl_posting_override: boolean | null
 }
 
 interface CompanySettingsResponse {
@@ -216,6 +227,28 @@ export function InventorySettings() {
     },
   })
 
+  // Lane P-1 — the count-correction posting toggle saves ON TOGGLE rather than
+  // joining the Save batch below. It is a single boolean on a different
+  // endpoint, and folding it into `hasChanges` would make Save mean two
+  // different scopes depending on which control the operator touched.
+  const saveCountCorrectionGlMutation = useMutation({
+    // `boolean | null` — `null` CLEARS the override and re-inherits the country
+    // default (gate r1 F-3). Without a way to send it, the first click on the
+    // checkbox pinned the company out of every future country ruling with no
+    // control to restore it, which made the whole nullable design unreachable
+    // from the product.
+    mutationFn: async (enabled: boolean | null) => {
+      await api.patch('/settings/company', { count_correction_gl_posting_enabled: enabled })
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['company-valuation-settings'] })
+      toast.success(t('inventory:settings.messages.saved'))
+    },
+    onError: () => {
+      toast.error(t('inventory:settings.countCorrectionGl.saveFailed'))
+    },
+  })
+
   const hasInventoryChanges = company && (
     settings.default_target_margin !== (company.default_target_margin ?? '30.00') ||
     settings.default_minimum_margin !== (company.default_minimum_margin ?? '15.00') ||
@@ -301,6 +334,81 @@ export function InventorySettings() {
               <span>{t('inventory:settings.valuation.perpetualHint')}</span>
             </p>
           ) : null}
+        </div>
+      ) : null}
+
+      {/* Count-correction GL posting — EDITABLE (lane P-1). Its own card rather
+          than a control inside the valuation panel above, which is read-only by
+          design and pinned as such. */}
+      {valuationData ? (
+        <div className={tokens.card.base} data-testid="count-correction-gl-settings">
+          <h3 className={cn(tokens.heading.section)}>
+            {t('inventory:settings.countCorrectionGl.title')}
+          </h3>
+          <p className={cn('mt-1 text-xs', textColors.tertiary)}>
+            {t('inventory:settings.countCorrectionGl.description')}
+          </p>
+
+          <div className="mt-4 flex items-start gap-3">
+            <Checkbox
+              id="count_correction_gl_posting_enabled"
+              checked={valuationData.count_correction_gl_posting_enabled}
+              disabled={!canEdit || saveCountCorrectionGlMutation.isPending}
+              onChange={(e) => {
+                void saveCountCorrectionGlMutation.mutateAsync(e.target.checked)
+              }}
+              className="mt-0.5"
+            />
+            <div className="flex-1">
+              {/* `htmlFor` rather than a wrapping label: the hint sits OUTSIDE
+                  the label so the checkbox's accessible name is the toggle
+                  label alone, not the label plus a paragraph of explanation. */}
+              <label
+                htmlFor="count_correction_gl_posting_enabled"
+                className={cn('text-sm font-medium', textColors.primary)}
+              >
+                {t('inventory:settings.countCorrectionGl.toggleLabel')}
+              </label>
+              <p className={cn('text-xs', textColors.tertiary)}>
+                {t('inventory:settings.countCorrectionGl.toggleHint')}
+              </p>
+            </div>
+          </div>
+
+          <dl className="mt-4">
+            <dt className={cn('text-xs', textColors.tertiary)}>
+              {t('inventory:settings.countCorrectionGl.sourceLabel')}
+            </dt>
+            <dd className={cn('mt-1 text-sm font-medium', textColors.primary)}>
+              {t(`inventory:settings.countCorrectionGl.source.${valuationData.count_correction_gl_posting_source}`)}
+            </dd>
+          </dl>
+
+          {valuationData.count_correction_gl_posting_override === null ? (
+            <p className={cn('mt-3 flex items-start gap-2 text-xs', textColors.tertiary)}>
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>{t('inventory:settings.countCorrectionGl.inheritedHint')}</span>
+            </p>
+          ) : (
+            <div className="mt-3">
+              <p className={cn('flex items-start gap-2 text-xs', textColors.tertiary)}>
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span>{t('inventory:settings.countCorrectionGl.overriddenHint')}</span>
+              </p>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="mt-2"
+                disabled={!canEdit || saveCountCorrectionGlMutation.isPending}
+                onClick={() => {
+                  void saveCountCorrectionGlMutation.mutateAsync(null)
+                }}
+              >
+                {t('inventory:settings.countCorrectionGl.reset')}
+              </Button>
+            </div>
+          )}
         </div>
       ) : null}
 

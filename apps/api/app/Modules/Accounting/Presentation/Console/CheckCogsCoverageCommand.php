@@ -14,6 +14,7 @@ use App\Modules\Compliance\Services\UninvoicedDeliveryNoteService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Inventory\Application\Services\CountCorrectionGlPostingResolver;
 use App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus;
 use App\Modules\Inventory\Domain\Enums\MovementGlCounterFamily;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
@@ -76,6 +77,7 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
         private readonly InvoicedBeforeDeliveryScanner $invoicedBeforeDelivery,
         private readonly UninvoicedDeliveryNoteService $uninvoicedDeliveryNotes,
         private readonly UndeliveredGoodsLineScanner $undeliveredGoodsLines,
+        private readonly CountCorrectionGlPostingResolver $countCorrectionGlPosting,
     ) {
         parent::__construct($companyContext);
     }
@@ -302,19 +304,21 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
                             ->where('journal_entries.source_type', 'supplier_credit_note');
                     });
             })
-            // T21 landed as an M5 writer, but its posting is held behind
-            // `inventory.count_correction_gl_posting_enabled` until the
-            // expert-comptable ratifies the Option A presentation (OQ-12/H-5).
-            // The exclusion is therefore tied to the FLAG, not to the wave: while
-            // the flag is off, count corrections are movement-only BY DESIGN and
-            // reporting them would make every completed count a permanent false
-            // alarm; the moment posting goes live the exclusion lifts and D-e
-            // reports the count corrections that SHOULD have posted and did not
-            // — the by-design declines (flat, historical) are filtered above.
-            // Closes
+            // T21 landed as an M5 writer, and lane P-1 (owner ruling 2026-08-25)
+            // turned its posting ON by default. The exclusion is tied to the
+            // resolved SETTING, not to the wave and no longer to a global config
+            // read: where a company has posting off (its own override, or a
+            // deployment-wide kill switch), count corrections are movement-only
+            // BY DESIGN and reporting them would make every completed count a
+            // permanent false alarm. Where posting is on — the default — the
+            // exclusion lifts and D-e reports the count corrections that SHOULD
+            // have posted and did not; the by-design declines (flat, historical)
+            // are filtered above. Resolved per COMPANY because the setting is
+            // per company: a global read would false-alarm every tenant the
+            // moment one of them opted out. Closes
             // docs/superpowers/tickets/2026-08-18-remove-counting-detector-exclusion-with-t21.md.
             ->when(
-                ! (bool) config('inventory.count_correction_gl_posting_enabled', false),
+                ! $this->countCorrectionGlPosting->isEnabledFor($company->id),
                 fn ($query) => $query->where(function ($inner): void {
                     $inner->whereNull('reference_type')->orWhere('reference_type', '!=', StockMovementReferenceType::InventoryCounting->value);
                 }),

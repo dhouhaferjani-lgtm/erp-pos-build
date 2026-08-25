@@ -1,4 +1,4 @@
-# BRIEF — Lane B2-4 / Slice D batch 1: money/fiscal enum CHECKs (baseline 188 → 176)
+# BRIEF — Lane B2-4 / Slice D batch 1: money/fiscal enum CHECKs (baseline 188 → 175 — ERRATUM: 13 columns, `from_status`/`to_status` are two)
 
 Follow `LANE-PROTOCOL.md`. Worktree (parent creates): `.worktrees/sb2-d2-slice-d-batch1`, branch
 `fix/sb2-d2-slice-d-batch1`, base = dev tip at dispatch (C-26 `fix/sb2-c26-parity-preconditions` MUST be on dev —
@@ -6,7 +6,7 @@ verify `git log --oneline -1 -- apps/api/tests/Architecture/Support/PgValueSetCh
 PG 5433 `autoerp`/`autoerp_secret`, own DB `autoerp_d2_test`. Tool calls < 90 s, one test file per run, by path,
 never the suite, no stash, never push. **MIGRATION-BEARING lane.**
 
-## Scope — exactly these 12 columns (5 tables), all `MISSING` in `enum-check-parity-register.md`
+## Scope — exactly these 13 columns (5 tables; ERRATUM: the table has 12 rows, the last row is two columns), all `MISSING` in `enum-check-parity-register.md`
 | table | column | enum | nullable? (check the migration) |
 |---|---|---|---|
 | `vouchers` | `status` | `Voucher\Domain\Enums\VoucherStatus` (5) | |
@@ -17,10 +17,10 @@ never the suite, no stash, never push. **MIGRATION-BEARING lane.**
 | `journal_entries` | `journal_code` | `JournalCode` (6) | likely nullable |
 | `payments` | `status` | `Treasury\Domain\Enums\PaymentStatus` (4) | |
 | `payments` | `origin` | `PaymentOrigin` (6) | |
-| `payments` | `payment_type` | `PaymentType` (9) | |
+| `payments` | `payment_type` | `PaymentType` (7) | |
 | `documents` | `type` | `Document\Domain\Enums\DocumentType` (13) | |
 | `instrument_events` | `event_type` | `Treasury\Domain\Enums\InstrumentEventType` (9) | |
-| `instrument_events` | `from_status` / `to_status` | `InstrumentStatus` (9) | `from_status` likely nullable |
+| `instrument_events` | `from_status` / `to_status` | `InstrumentStatus` (9) | BOTH nullable (information_schema) |
 
 Nothing else. Do NOT touch `fiscal_periods.status`, `pos_*`, `fiscal_*` (fiscal-pos lane later), or any column
 already COVERED/INTENDED/COMPOSITE. Do NOT widen or alter any existing CHECK.
@@ -39,7 +39,7 @@ Single-column value sets ONLY — no compound/AND CHECKs (the parser refuses the
 
 ## Ratchet + register (the point of the lane)
 - Run the gate on your throwaway DB: `EnumCheckParityTest` will report the 12 keys STALE → delete exactly those 12
-  keys from `enum-check-parity-baseline.json` (188 → **176**); regenerate the register with
+  keys from `enum-check-parity-baseline.json` (188 → **175**); regenerate the register with
   `tests/Architecture/Support/write-enum-check-parity-baseline.php` (usage in its header) and confirm the 12 rows
   read COVERED (not NARROWER/WIDER — if any reads NARROWER/WIDER you got the enum or nullability wrong; fix the
   migration, never the baseline). Central baseline untouched (11). Acknowledgements untouched.
