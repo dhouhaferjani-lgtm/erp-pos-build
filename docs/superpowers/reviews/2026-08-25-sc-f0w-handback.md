@@ -84,9 +84,10 @@ back if anyone writes `{@see \App\…\ProformaOutputPolicy}` there — do not.
 aggregate and is correct on every response regardless. A controller that does not
 override the hook ships no gross-amount rows — it costs a reader detail and can never
 expose a tax figure, because the client's suppression is gated on `is_proforma` alone.
-This is asserted, not asserted-about: see `DocumentTotals.proforma.test.tsx`, where the
-proforma branch renders with no `proformaTotals` prop path available and still emits no
-forbidden token.
+This is asserted, not asserted-about: `DocumentTotals.proforma.test.tsx` →
+*still hides every tax figure when the server ships NO proforma projection* renders the
+proforma branch with `proformaTotals: null` and asserts no forbidden token, no
+`Subtotal`, and no tax-breakdown request.
 
 ### 2.4 Generated TypeScript (rule 7)
 
@@ -207,6 +208,8 @@ $ npx vitest run src/features/documents/components/DocumentTotals.proforma.test.
  Test Files  3 failed (3)
       Tests  27 failed | 2 passed (29)
 ```
+(One further `DocumentTotals` case — the `proformaTotals: null` fail-open probe — was
+added after the first green and is counted in the 7/7 below.)
 The two that passed red are the two that pin UNCHANGED behaviour on purpose
 ("leaves a definitive document exactly as it was", "keeps the cancelled marker") — they
 are the posted-side half of the invariant and had to be green from the start.
@@ -220,10 +223,10 @@ $ npx vitest run src/features/documents/components/DocumentTotals.proforma.test.
     src/features/documents/components/CreditNoteDetail.test.tsx
  ✓ proformaCopyParity.test.ts            (16 tests)
  ✓ CreditNoteDetail.proforma.test.tsx     (7 tests)
- ✓ DocumentTotals.proforma.test.tsx       (6 tests)
+ ✓ DocumentTotals.proforma.test.tsx       (7 tests)
  ✓ DocumentTotals.test.tsx               (11 tests)
  ✓ CreditNoteDetail.test.tsx             (15 tests)
- Test Files  5 passed (5)      Tests  55 passed (55)
+ Test Files  5 passed (5)      Tests  56 passed (56)
 ```
 Whole feature, no regression:
 ```

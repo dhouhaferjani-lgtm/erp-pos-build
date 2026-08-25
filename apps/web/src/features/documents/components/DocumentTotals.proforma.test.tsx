@@ -139,6 +139,20 @@ describe('DocumentTotals — proforma branch', () => {
     expect(screen.queryByText('Discount')).not.toBeInTheDocument()
   })
 
+  it('still hides every tax figure when the server ships NO proforma projection', () => {
+    // The projection is enrichment; `isProforma` is the security-bearing field. An
+    // endpoint that builds no projection may cost the reader rows — it may never
+    // put a rate, a net subtotal or a tax amount back on the page.
+    vi.mocked(taxApi.fetchTaxBreakdown).mockResolvedValue(definitiveBreakdown)
+
+    const { container } = renderTotals({ isProforma: true, proformaTotals: null })
+
+    expectNoForbiddenToken(container.innerHTML, 'a proforma with no projection')
+    expect(screen.queryByText('Subtotal')).not.toBeInTheDocument()
+    expect(screen.queryByText('Estimated total')).not.toBeInTheDocument()
+    expect(taxApi.fetchTaxBreakdown).not.toHaveBeenCalled()
+  })
+
   it('leaves a definitive document exactly as it was', async () => {
     vi.mocked(taxApi.fetchTaxBreakdown).mockResolvedValue(definitiveBreakdown)
 
