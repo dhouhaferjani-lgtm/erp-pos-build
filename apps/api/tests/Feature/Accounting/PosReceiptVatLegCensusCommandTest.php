@@ -355,6 +355,11 @@ final class PosReceiptVatLegCensusCommandTest extends TestCase
                 'currency' => 'TND',
                 'is_training' => $isTraining,
                 'is_voided' => $isVoided,
+                // `pos_receipts_void_logic` (PG) requires the audit columns
+                // whenever `is_voided` is true — a fixture that sets the flag
+                // alone describes a receipt the schema forbids.
+                'voided_at' => $isVoided ? now() : null,
+                'voided_by' => $isVoided ? $this->cashierId : null,
             ]);
 
         if ($withSealedRows) {
