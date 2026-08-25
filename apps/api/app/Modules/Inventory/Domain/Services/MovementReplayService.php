@@ -274,6 +274,35 @@ final class MovementReplayService
      * `variant_id = :v` — never both, so variant B's movements are invisible
      * to variant A's replay and to the null-variant (base product) line.
      */
+    /**
+     * Whether the count instant's OWN second carries a movement on this grain
+     * (lane P-1, gate r1 F-2).
+     *
+     * This is the exact and only condition under which a NULL
+     * `final_qty_movement_marker` changes the replayed delta: the marker branch
+     * in {@see self::signedDelta()} narrows nothing but the boundary second, so
+     * with an empty boundary second a marker-less line and a marker-bearing line
+     * produce identical arithmetic.
+     *
+     * Callers use it to decide whether a marker-less line is genuinely
+     * ambiguous. Answering the cheaper question ("is the marker null?") would
+     * withhold the journal entry of every line counted before the marker columns
+     * shipped, including the overwhelming majority whose replay is not in doubt
+     * at all — a correct entry suppressed is a cost, not a saving.
+     */
+    public function boundarySecondIsAmbiguous(
+        string $productId,
+        string $locationId,
+        ?string $variantId,
+        CarbonInterface $countInstant,
+    ): bool {
+        $boundary = $this->boundary($countInstant);
+
+        return $this->scopedQuery($productId, $locationId, $variantId)
+            ->whereRaw('COALESCE(occurred_at, created_at) = ?', [$boundary])
+            ->exists();
+    }
+
     private function scopedQuery(string $productId, string $locationId, ?string $variantId): Builder
     {
         $query = DB::table('stock_movements')

@@ -232,7 +232,12 @@ export function InventorySettings() {
   // endpoint, and folding it into `hasChanges` would make Save mean two
   // different scopes depending on which control the operator touched.
   const saveCountCorrectionGlMutation = useMutation({
-    mutationFn: async (enabled: boolean) => {
+    // `boolean | null` — `null` CLEARS the override and re-inherits the country
+    // default (gate r1 F-3). Without a way to send it, the first click on the
+    // checkbox pinned the company out of every future country ruling with no
+    // control to restore it, which made the whole nullable design unreachable
+    // from the product.
+    mutationFn: async (enabled: boolean | null) => {
       await api.patch('/settings/company', { count_correction_gl_posting_enabled: enabled })
     },
     onSuccess: async () => {
@@ -384,7 +389,26 @@ export function InventorySettings() {
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span>{t('inventory:settings.countCorrectionGl.inheritedHint')}</span>
             </p>
-          ) : null}
+          ) : (
+            <div className="mt-3">
+              <p className={cn('flex items-start gap-2 text-xs', textColors.tertiary)}>
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span>{t('inventory:settings.countCorrectionGl.overriddenHint')}</span>
+              </p>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="mt-2"
+                disabled={!canEdit || saveCountCorrectionGlMutation.isPending}
+                onClick={() => {
+                  void saveCountCorrectionGlMutation.mutateAsync(null)
+                }}
+              >
+                {t('inventory:settings.countCorrectionGl.reset')}
+              </Button>
+            </div>
+          )}
         </div>
       ) : null}
 

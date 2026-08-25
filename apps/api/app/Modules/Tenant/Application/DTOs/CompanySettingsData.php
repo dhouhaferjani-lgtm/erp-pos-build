@@ -7,6 +7,7 @@ namespace App\Modules\Tenant\Application\DTOs;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Inventory\Application\DTOs\EffectiveCountCorrectionGlPosting;
 use App\Modules\Inventory\Application\DTOs\EffectiveValuationMode;
+use App\Modules\Inventory\Application\Services\CountCorrectionGlPostingResolver;
 use App\Modules\Inventory\Application\Services\InventoryValuationModeResolver;
 use App\Modules\Tenant\Domain\Tenant;
 
@@ -95,7 +96,15 @@ class CompanySettingsData
             // company, so nothing is resolvable. Report the system default and
             // say so, rather than omit the keys and hand the UI a shape that
             // changes per endpoint.
-            'count_correction_gl_posting_enabled' => true,
+            //
+            // Gate r1 F-4: this was a literal `true`, which made the documented
+            // deployment-wide kill switch (INVENTORY_COUNT_CORRECTION_GL_POSTING_ENABLED=false)
+            // invisible on exactly this surface. It now asks the same authority
+            // the sibling line asks. `systemDefault()` reads config and touches
+            // no database, so constructing the resolver here costs nothing and
+            // introduces no container lookup (`app()` is forbidden, rule 13);
+            // the two resolving call sites still inject it.
+            'count_correction_gl_posting_enabled' => (new CountCorrectionGlPostingResolver)->systemDefault(),
             'count_correction_gl_posting_source' => EffectiveCountCorrectionGlPosting::SOURCE_SYSTEM,
             'count_correction_gl_posting_override' => null,
         ];

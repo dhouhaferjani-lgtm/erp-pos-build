@@ -11,6 +11,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\EffectiveCountCorrectionGlPosting;
 use App\Modules\Inventory\Application\Services\CountCorrectionGlPostingResolver;
 use App\Modules\Inventory\Domain\CountryInventoryDefaults;
+use App\Modules\Tenant\Application\DTOs\CompanySettingsData;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -295,6 +296,30 @@ final class CountCorrectionGlPostingDefaultTest extends TestCase
             ->assertStatus(422);
 
         self::assertNull($this->company->fresh()?->count_correction_gl_posting_enabled);
+    }
+
+    /**
+     * Gate r1 F-4 — the deployment-wide kill switch must be visible on the
+     * TENANT-level settings view too. That surface has no company, so it reports
+     * the system default; it used to report a literal `true`, which made the one
+     * documented fleet override invisible on exactly the screen an operator
+     * would check.
+     */
+    public function test_the_tenant_level_view_reports_the_system_default_not_a_literal(): void
+    {
+        config(['inventory.count_correction_gl_posting_enabled' => false]);
+
+        $payload = CompanySettingsData::fromTenant($this->tenant);
+
+        self::assertFalse($payload['count_correction_gl_posting_enabled']);
+        self::assertSame(
+            EffectiveCountCorrectionGlPosting::SOURCE_SYSTEM,
+            $payload['count_correction_gl_posting_source'],
+        );
+
+        config(['inventory.count_correction_gl_posting_enabled' => true]);
+
+        self::assertTrue(CompanySettingsData::fromTenant($this->tenant)['count_correction_gl_posting_enabled']);
     }
 
     // ---------------------------------------------------------------- helpers

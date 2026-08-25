@@ -548,6 +548,8 @@
         "system": "Valeur par défaut du système"
       },
       "inheritedHint": "Valeur héritée. Cochez ou décochez pour définir votre propre préférence pour cette société.",
+      "overriddenHint": "Cette société a son propre réglage et ne suivra donc pas les évolutions de la valeur par défaut de votre pays.",
+      "reset": "Utiliser la valeur par défaut de mon pays",
       "saveFailed": "Impossible d'enregistrer la préférence de comptabilisation des écarts d'inventaire."
     },
     "margins": {

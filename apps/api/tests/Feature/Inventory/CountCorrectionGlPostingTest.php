@@ -15,6 +15,7 @@ use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Listeners\ApplyStockAdjustmentsOnCountingCompleted;
 use App\Modules\Inventory\Application\Services\CountCorrectionGlPostingResolver;
+use App\Modules\Inventory\Domain\Enums\CountingItemFlagReason;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
@@ -587,6 +588,109 @@ final class CountCorrectionGlPostingTest extends TestCase
         self::assertSame($chart['shrinkage']->id, $entry->lines[0]->account_id, 'Dr must be 6586 shrinkage expense.');
         self::assertSame('17.000', (string) $entry->lines[1]->credit);
         self::assertSame($chart['inventory']->id, $entry->lines[1]->account_id, 'Cr must be 37 inventory.');
+    }
+
+    /**
+     * Gate r1 F-2, probe A2 — a NULL boundary marker must not reach the LEDGER.
+     *
+     * W4-6 gate r2 NEW-1 closed the same-second ambiguity with a per-item
+     * insertion-order marker, but `MovementReplayService::signedDelta()`
+     * (`:105-114`) falls back to the r1 inclusive-boundary semantics when the
+     * marker is NULL — a line submitted before
+     * `2026_08_25_120000_add_count_movement_markers_to_counting_items` ran on
+     * that tenant, i.e. a count in flight across the upgrade. On that line a
+     * movement stamped in the SAME SECOND as the count is subtracted a second
+     * time: on-hand 56 becomes 52.
+     *
+     * The wrong STOCK correction is W4-6's residual and is not this lane's to
+     * fix — it is left in place here deliberately, and asserted, so the pin
+     * cannot silently start passing for the wrong reason. What this lane owes is
+     * that the flip does not turn that ambiguity into a JOURNAL ENTRY: the line
+     * records `missing_boundary_marker`, and NO entry is written.
+     */
+    public function test_a_null_boundary_marker_applies_stock_but_posts_no_entry(): void
+    {
+        $this->optionAChart();
+        $asOf = CarbonImmutable::now()->subHours(2);
+        $this->setOnHand('56.0000');
+
+        // The sale the counter had ALREADY seen, stamped at the count instant
+        // itself. With a marker it is baseline; with none it is replayed.
+        StockMovement::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'location_id' => $this->location->id,
+            'movement_type' => MovementType::Issue,
+            'quantity' => '-4.0000',
+            'quantity_before' => '60.0000',
+            'quantity_after' => '56.0000',
+            'occurred_at' => $asOf,
+        ]);
+
+        $counting = $this->counting(15);
+        $item = $this->item($counting, '56.0000', $asOf, '60.0000');
+        self::assertNull($item->final_qty_movement_marker, 'the probe requires the legacy, marker-less shape');
+
+        $this->fire($counting);
+
+        // W4-6's residual, unchanged and deliberately pinned: the double-subtract
+        // still reaches STOCK.
+        self::assertSame('52.0000', StockLevel::query()->where('product_id', $this->product->id)->value('quantity'));
+        self::assertSame(1, $this->countCorrectionMovements());
+
+        // What P-1 owes: it does NOT reach the ledger.
+        self::assertSame(0, $this->shrinkageEntries());
+
+        $item->refresh();
+        self::assertContains(
+            CountingItemFlagReason::MissingBoundaryMarker->value,
+            $item->flag_reasons ?? [],
+            'the withheld GL half must be recorded on the line, not silently dropped',
+        );
+        self::assertTrue((bool) $item->is_flagged, 'the reviewer must see the line');
+    }
+
+    /**
+     * The other half of F-2, and the reason the rule is narrow: a marker-less
+     * line with NO movement in the boundary second is NOT ambiguous — the marker
+     * branch is a no-op for it — so withholding its entry would suppress a
+     * correct posting for no risk reduction. It posts.
+     */
+    public function test_a_null_marker_without_a_boundary_second_movement_still_posts(): void
+    {
+        $chart = $this->optionAChart();
+        $asOf = CarbonImmutable::now()->subHours(2);
+        $this->setOnHand('70.0000');
+
+        // Thirteen minutes BEFORE the count instant: inside the ambiguity
+        // window, but nowhere near the boundary second.
+        StockMovement::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'location_id' => $this->location->id,
+            'movement_type' => MovementType::Receipt,
+            'quantity' => '20.0000',
+            'quantity_before' => '50.0000',
+            'quantity_after' => '70.0000',
+            'occurred_at' => $asOf->subMinutes(13),
+        ]);
+
+        $counting = $this->counting(15);
+        $item = $this->item($counting, '68.0000', $asOf, '70.0000');
+
+        $this->fire($counting);
+
+        $entry = $this->entryFor($this->countCorrectionMovement());
+        self::assertSame('8.500', (string) $entry->lines[0]->debit);
+        self::assertSame($chart['shrinkage']->id, $entry->lines[0]->account_id);
+
+        $item->refresh();
+        self::assertNotContains(
+            CountingItemFlagReason::MissingBoundaryMarker->value,
+            $item->flag_reasons ?? [],
+        );
     }
 
     /**

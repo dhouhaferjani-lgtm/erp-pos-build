@@ -298,6 +298,28 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
         // and suppressing the whole line on the strength of a nearby movement
         // discarded the very shrinkage the count exists to find.
         $preApplyReasons = $this->guardEvaluator->preApply($hasMovementNear, $openingGate['opening_cost_missing']);
+
+        // Lane P-1, gate r1 F-2. A line with no `final_qty_movement_marker`
+        // whose boundary second actually carries a movement has an UNPROVABLE
+        // replay: W4-6's order-based tie-break cannot run, so the r1 inclusive
+        // boundary may subtract that movement a second time. The shelf is still
+        // corrected — refusing would strand the operator mid-count — but the
+        // ledger is not, because a wrong journal entry is far more expensive to
+        // undo than a wrong shelf. Recorded as a reason so the reviewer sees it
+        // and the report can say why the value is missing.
+        if ($item->final_qty_movement_marker === null
+            && $this->replayService->boundarySecondIsAmbiguous($item->product_id, $item->location_id, $item->variant_id, $asOf)) {
+            $preApplyReasons[] = CountingItemFlagReason::MissingBoundaryMarker;
+        }
+
+        $glWithheld = false;
+        foreach ($preApplyReasons as $reason) {
+            if ($reason->blocksGlPosting()) {
+                $glWithheld = true;
+                break;
+            }
+        }
+
         $preApplyBlock = null;
         foreach ($preApplyReasons as $reason) {
             if ($reason->blocksStockApplication()) {
@@ -339,7 +361,7 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
         $countingId = $counting->id;
         $marker = $item->final_qty_movement_marker;
 
-        return DB::transaction(function () use ($item, $window, $asOf, $onboarding, $openingUnitCost, $finalQty, $countingId, $completedBy, $currencyCode, $marker): bool {
+        return DB::transaction(function () use ($item, $window, $asOf, $onboarding, $openingUnitCost, $finalQty, $countingId, $completedBy, $currencyCode, $marker, $glWithheld): bool {
             $audit = $this->stockAdjustmentService->applyCountResult(
                 productId: $item->product_id,
                 locationId: $item->location_id,
@@ -357,7 +379,20 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
                 // branch. postCountOpening() writes MovementType::Opening /
                 // MovementReason::OpeningBalance, which is outside the seam, so
                 // the onboarding first count still posts no shrinkage/gain leg.
-                onCountCorrection: function (StockMovement $movement) use ($currencyCode, $completedBy): void {
+                onCountCorrection: function (StockMovement $movement) use ($currencyCode, $completedBy, $glWithheld): void {
+                    if ($glWithheld) {
+                        // P-1 F-2: the movement is written and costed, so the
+                        // entry can still be built by hand once the line is
+                        // reviewed. Only the automatic posting is withheld.
+                        Log::warning('ApplyStockAdjustments: count correction applied WITHOUT a journal entry — replay boundary is ambiguous', [
+                            'movement_id' => $movement->id,
+                            'company_id' => $movement->company_id,
+                            'reason' => CountingItemFlagReason::MissingBoundaryMarker->value,
+                        ]);
+
+                        return;
+                    }
+
                     $this->enqueueCountCorrectionGl($movement, $currencyCode, $completedBy);
                 },
                 // Same-second tie-break (gate r2 NEW-1) — see

@@ -548,6 +548,8 @@
         "system": "System default"
       },
       "inheritedHint": "Inherited. Tick or untick to set your own preference for this company.",
+      "overriddenHint": "This company has its own setting, so it will not follow future changes to your country's default.",
+      "reset": "Use my country's default",
       "saveFailed": "Could not save the stock-count posting preference."
     },
     "margins": {

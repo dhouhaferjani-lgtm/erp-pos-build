@@ -69,7 +69,7 @@ const valuationFixture = {
   inventory_valuation_mode_source: 'country' as const,
   // Lane P-1 — the count-correction GL-posting leg of the same payload.
   count_correction_gl_posting_enabled: true,
-  count_correction_gl_posting_source: 'country' as const,
+  count_correction_gl_posting_source: 'country' as 'company' | 'country' | 'system',
   count_correction_gl_posting_override: null as boolean | null,
 }
 
@@ -98,6 +98,11 @@ describe('InventorySettings', () => {
     vi.clearAllMocks()
     mockHasPermission.mockReturnValue(true)
     mockMutateAsync.mockClear()
+    // The F-3 cases mutate this fixture in place (the query mock closes over
+    // it), so every case starts from the inheriting shape.
+    valuationFixture.count_correction_gl_posting_enabled = true
+    valuationFixture.count_correction_gl_posting_source = 'country'
+    valuationFixture.count_correction_gl_posting_override = null
   })
 
   it('renders margin percent fields as number inputs via atoms', () => {
@@ -224,6 +229,41 @@ describe('InventorySettings', () => {
       'inventory:settings.countCorrectionGl.toggleLabel'
     ) as HTMLInputElement
     expect(box.disabled).toBe(true)
+  })
+
+  // ── Gate r1 F-3 — `null` (inherit) must be reachable from the product ──────
+  it('offers no reset while the company is still inheriting', () => {
+    render(<InventorySettings />)
+
+    expect(
+      screen.queryByRole('button', { name: 'inventory:settings.countCorrectionGl.reset' })
+    ).toBeNull()
+  })
+
+  it('offers a reset once an override exists and sends null to clear it', async () => {
+    valuationFixture.count_correction_gl_posting_override = false
+    valuationFixture.count_correction_gl_posting_enabled = false
+    valuationFixture.count_correction_gl_posting_source = 'company'
+    const user = userEvent.setup()
+    render(<InventorySettings />)
+
+    await user.click(
+      screen.getByRole('button', { name: 'inventory:settings.countCorrectionGl.reset' })
+    )
+
+    expect(mockMutateAsync).toHaveBeenCalledWith(null)
+  })
+
+  it('does not offer the reset to a caller without settings.update', () => {
+    valuationFixture.count_correction_gl_posting_override = true
+    valuationFixture.count_correction_gl_posting_source = 'company'
+    mockHasPermission.mockReturnValue(false)
+    render(<InventorySettings />)
+
+    const reset = screen.getByRole('button', {
+      name: 'inventory:settings.countCorrectionGl.reset',
+    }) as HTMLButtonElement
+    expect(reset.disabled).toBe(true)
   })
 
   it('disables Save and shows the read-only hint for a caller without settings.update; the mutation never fires on click', async () => {
