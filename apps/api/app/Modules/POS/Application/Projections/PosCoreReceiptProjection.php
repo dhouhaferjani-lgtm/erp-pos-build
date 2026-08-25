@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Application\Projections;
 
+use App\Modules\BatchExpiry\Domain\DTOs\ConsumedBatchDTO;
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
 use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
@@ -40,6 +43,7 @@ use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Exceptions\InstrumentRequiredException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
+use App\Modules\POS\Domain\ReceiptLineBatchAllocation;
 use App\Modules\POS\Domain\ReceiptPayment;
 use App\Modules\POS\Domain\ReceiptVatDetail;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
@@ -198,6 +202,10 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         private readonly RestockPolicyResolver $restockPolicyResolver,
         private readonly ReturnScrapWriteOffService $returnScrapWriteOffService,
         private readonly InventoryGlPostingBuffer $glBuffer,
+        // W4R-2 — the LIVE lot arm. The retired `ReceiptCreationService`
+        // held the only FEFO calls in the POS module; this projection is
+        // the path a device-authored sale actually takes.
+        private readonly FEFOInventoryService $fefoService,
     ) {}
 
     public function name(): string
@@ -486,6 +494,8 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 $originalReceiptId,
                 $lineProjection['unit_costs'],
                 $lineProjection['stock_movement_expected'],
+                $lineProjection['line_ids'],
+                $lineProjection['original_line_ids'],
             );
 
             // Voucher redemption reaches the company GL advisory. It is
@@ -1183,9 +1193,18 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * lookup, exactly like a legacy-authored return line already does.
      */
     /**
+     * `line_ids` / `original_line_ids` (W4R-2) carry the per-index identity the
+     * lot arms need and nothing else has: `pos_receipt_line_batch_allocations`
+     * is keyed on the SALE line, and a refund's per-line lot PROVENANCE is read
+     * back off the ORIGINAL sale line. Both are produced here rather than
+     * re-queried later so the projection has exactly one place that decides
+     * which local row a canonical line index maps to.
+     *
      * @return array{
      *     unit_costs: array<int, numeric-string|null>,
-     *     stock_movement_expected: array<int, bool>
+     *     stock_movement_expected: array<int, bool>,
+     *     line_ids: array<int, string>,
+     *     original_line_ids: array<int, string>
      * }
      */
     private function writeLines(
@@ -1219,6 +1238,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         $lineNumber = 1;
         $lineUnitCosts = [];
         $lineStockMovementExpected = [];
+        $lineIds = [];
         foreach ($view->lineItems as $index => $line) {
             $originalLineReference = $originalLineReferences[$index] ?? null;
             // pos_receipt_lines.product_id is a foreign key to `products`
@@ -1287,7 +1307,13 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             }
             $lineStockMovementExpected[$index] = $stockMovementExpected;
 
-            ReceiptLine::query()->create([
+            // `id` is NOT mass-assignable on ReceiptLine, so the value passed
+            // below is dropped and `HasUuids` mints the real key. Read the id
+            // back OFF the created model — pre-generating one here would key
+            // every `pos_receipt_line_batch_allocations` row to an id no
+            // `pos_receipt_lines` row carries, and the refund arm would then
+            // find no provenance and silently fall back to the heuristic.
+            $receiptLine = ReceiptLine::query()->create([
                 'id' => Str::uuid()->toString(),
                 'receipt_id' => $receiptId,
                 'line_number' => $lineNumber++,
@@ -1317,11 +1343,15 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                     : ReturnLineDisposition::tryFrom($originalLineReference->disposition)?->value,
                 'stock_movement_expected' => $stockMovementExpected,
             ]);
+
+            $lineIds[$index] = (string) $receiptLine->id;
         }
 
         return [
             'unit_costs' => $lineUnitCosts,
             'stock_movement_expected' => $lineStockMovementExpected,
+            'line_ids' => $lineIds,
+            'original_line_ids' => $originalLineIdByIndex,
         ];
     }
 
@@ -1696,6 +1726,8 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      *
      * @param  array<int, numeric-string|null>  $lineUnitCosts
      * @param  array<int, bool>  $lineStockMovementExpected
+     * @param  array<int, string>  $lineIds
+     * @param  array<int, string>  $originalLineIds
      */
     private function applyStockMovementForLines(
         string $receiptId,
@@ -1708,6 +1740,8 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         ?string $originalReceiptId,
         array $lineUnitCosts,
         array $lineStockMovementExpected,
+        array $lineIds,
+        array $originalLineIds,
     ): void {
         if ($receiptType === ReceiptType::Return) {
             $this->restockForLines(
@@ -1719,6 +1753,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 $entryDate,
                 $originalReceiptId,
                 $lineStockMovementExpected,
+                $originalLineIds,
             );
 
             return;
@@ -1733,6 +1768,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             $currencyCode,
             $entryDate,
             $lineUnitCosts,
+            $lineIds,
         );
 
         // Live inventory counting task C2: a signed sale can never be rejected
@@ -1840,7 +1876,35 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * `variant_id` onto the `stock_movements` row. Non-variant lines pass null
      * and keep the product-level (`variant_id IS NULL`) behaviour.
      *
+     * **Lot legs (W4R-2).** The aggregate decrement below is only half of an
+     * outbound stock act on a batch-tracked product: the LOT ledger has to move
+     * with it. Until this lane the projection wrote neither an
+     * `inventory_batch_movements` leg nor a
+     * `pos_receipt_line_batch_allocations` snapshot, so on the wave-4 re-run
+     * tenant every live POS sale left `Σ lots` above `stock_levels` — 27 units
+     * of drift, 100 % of it POS. `ReceiptCreationService` DID hold the FEFO arm
+     * (W2-7/W4-5) but serves `POST /pos/receipts`, retired at 410. See
+     * {@see self::consumeLotsForSaleLine()}.
+     *
+     * **No composite arm here, and that is a finding, not an omission (W4R-3).**
+     * The retired `ReceiptCreationService` explodes a combo to its recipe
+     * leaves; this projection never has. It cannot simply grow one: the only
+     * producer of a `sellableType: 'composite_item'` cart line is
+     * `flattenMenuToProducts` (`apps/pos/src/api/productApi.ts:132`), which ids
+     * every Menu row as `<sellable_id>_<menu_category_id>`, and the sealed
+     * payload carries `item.product.id` verbatim
+     * (`apps/pos/src/lib/fiscal/payloads/SaleReceiptPayload.ts:317`) — the
+     * `receiptToPayload` unpacking that restores a bare `sellable_id` lives on
+     * the RETIRED `POST /pos/receipts` wire path
+     * (`apps/pos/src/lib/sync/syncService.ts:2546`), not on this one. So a
+     * composite line reaches here with a non-UUID `product_id` and is skipped
+     * by the `Str::isUuid()` guard below: it moves NO aggregate stock and NO
+     * lot stock, contributes ZERO to the Σ-lots-vs-aggregate drift this lane
+     * measures, and fixing it means first deciding how that sealed snapshot
+     * resolves server-side — a fiscal-payload decision, not an inventory one.
+     *
      * @param  array<int, numeric-string|null>  $lineUnitCosts
+     * @param  array<int, string>  $lineIds
      */
     private function decrementStockForLines(
         string $receiptId,
@@ -1851,6 +1915,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         string $currencyCode,
         CarbonInterface $entryDate,
         array $lineUnitCosts,
+        array $lineIds,
     ): void {
         // Phase 0 fast-follow (return-disposition spec §5.1): a REFUND/VOID-via-
         // SALE_RECEIPT maps to ReceiptType::Return and must NOT decrement stock
@@ -1870,7 +1935,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 continue;
             }
 
-            $this->decrementStock(
+            $movement = $this->decrementStock(
                 tenantId: $event->tenant_id,
                 companyId: $event->company_id,
                 locationId: (string) $terminal->location_id,
@@ -1890,6 +1955,239 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 entryDate: $entryDate,
                 unitCost: $lineUnitCosts[$index] ?? null,
             );
+
+            // The lot ledger moves with the aggregate, keyed to the movement
+            // the aggregate just wrote (document-per-action). No movement means
+            // nothing moved at all — a service line, or an absent grain — so
+            // there is nothing to draw a lot for either.
+            if ($movement !== null) {
+                $this->consumeLotsForSaleLine(
+                    event: $event,
+                    receiptId: $receiptId,
+                    receiptLineId: $lineIds[$index] ?? null,
+                    locationId: (string) $terminal->location_id,
+                    productId: $productId,
+                    quantity: $line->quantity,
+                    variantId: $line->variantId,
+                    movementId: $movement->id,
+                );
+            }
+        }
+    }
+
+    /**
+     * Draw this sale line's quantity from real lots, FEFO, and snapshot what it
+     * took — the LIVE-path counterpart of the retired
+     * `ReceiptCreationService::allocateBatches()`.
+     *
+     * Two legs, both keyed to the aggregate issue movement the caller just
+     * wrote, so the lot ledger and the aggregate ledger are one act:
+     *
+     *   * one `inventory_batch_movements` row per lot drawn (written inside
+     *     {@see FEFOInventoryService::consumeBatchesAtomically()}), which is
+     *     what keeps `Σ inventory_batch_stock == stock_levels`;
+     *   * one `pos_receipt_line_batch_allocations` row per lot, the only record
+     *     of WHICH lot went to WHICH customer. `BatchTraceabilityController`
+     *     reads it for recalls and
+     *     `ReceiptReturnService::lotProvenanceForLine()`
+     *     reads it to credit a return back to the lot the sale actually took —
+     *     both were reading an empty table for every device-authored sale.
+     *
+     * **NON-STRICT fulfilment, and this is the one place the live path must
+     * diverge from the retired service and from `DeliveryNoteService`.** Those
+     * two are STRICT because they can still REFUSE: the operator is standing
+     * there and the document has not been committed. This projector cannot.
+     * The event is already SEALED and chained — "a projector may never REJECT
+     * an already-signed event" (Model 1 §4.1, the doctrine
+     * {@see self::applyScrapDisposition()} states at length). Throwing
+     * `InsufficientBatchStockException` here would dead-letter a real, signed,
+     * money-collected sale because the LOT ledger disagreed with the aggregate,
+     * losing the receipt, its VAT and its drawer movement. So the draw takes
+     * what the lots hold and the shortfall is made OBSERVABLE instead.
+     *
+     * A shortfall is the same oversell the aggregate arm already permits and
+     * logs one level up (`insufficient stock during projection`) — the lot
+     * candidate predicate is simply narrower (expired / recalled / inactive
+     * lots are invisible, and `available_quantity` nets reservations). It is
+     * the only residual case where `Σ lots != stock_levels` after this lane.
+     *
+     * Rule 20: no `CompanyContext` — every scope is read off the event.
+     */
+    private function consumeLotsForSaleLine(
+        FiscalEvent $event,
+        string $receiptId,
+        ?string $receiptLineId,
+        string $locationId,
+        string $productId,
+        string $quantity,
+        ?string $variantId,
+        string $movementId,
+    ): void {
+        if (! $this->fefoService->productRequiresBatchTracking($productId)) {
+            return;
+        }
+
+        // `line_items[].quantity` is a positive decimal magnitude enforced by
+        // FiscalPayloadConstraintValidator's quantity regex at ingest, so this
+        // is unreachable on a verified event — but the aggregate arm already
+        // moved on this line, so a non-numeric value must not fatal the worker
+        // and strand the receipt. Same stance writeLines() takes on the cost
+        // snapshot, minus the throw (that one runs BEFORE any stock write).
+        if (! is_numeric($quantity)) {
+            Log::warning('PosCoreReceiptProjection: non-numeric canonical quantity on a batch-tracked sale line; no lot leg written', [
+                'fiscal_event_id' => $event->id,
+                'receipt_id' => $receiptId,
+                'product_id' => $productId,
+            ]);
+
+            return;
+        }
+
+        $this->containLotWork(
+            $event,
+            $receiptId,
+            $productId,
+            'sale',
+            function () use ($event, $receiptId, $receiptLineId, $locationId, $productId, $quantity, $variantId, $movementId): void {
+                $result = $this->fefoService->consumeBatchesAtomically(
+                    tenantId: $event->tenant_id,
+                    productId: $productId,
+                    locationId: $locationId,
+                    quantity: $quantity,
+                    movementId: $movementId,
+                    variantId: $variantId,
+                    strictFulfillment: false,
+                );
+
+                // `pos_receipt_line_batch_allocations.receipt_line_id` is NOT NULL.
+                // A line with no local row (it cannot happen on this path —
+                // writeLines() wrote one for every canonical index — but the guard
+                // keeps the ledger leg independent of the snapshot) skips the
+                // snapshot only; the LEDGER leg is already written and is what the
+                // Σ-lots invariant depends on.
+                if ($receiptLineId !== null) {
+                    $this->snapshotLotAllocations($receiptId, $receiptLineId, $result->consumed);
+                }
+
+                if (bccomp($result->shortfall, '0', 4) > 0) { // precision-ok: 4 = canonical quantity storage scale
+                    Log::warning('PosCoreReceiptProjection: lot shortfall on a batch-tracked POS sale; the sealed receipt is projected anyway and Σ lots stays above the aggregate by the shortfall — visible in inventory:lot-drift-census', [
+                        'fiscal_event_id' => $event->id,
+                        'receipt_id' => $receiptId,
+                        'product_id' => $productId,
+                        'variant_id' => $variantId,
+                        'location_id' => $locationId,
+                        'requested' => $quantity,
+                        'shortfall' => $result->shortfall,
+                    ]);
+                }
+            },
+        );
+    }
+
+    /**
+     * Snapshot the lots a sale line drew into `pos_receipt_line_batch_allocations`
+     * — the only record of WHICH lot went to WHICH customer.
+     *
+     * One `whereIn` for every `batch_number` instead of a `find()` per lot (gate
+     * r1 F-8): this runs per line, per receipt, on the queue, inside the receipt
+     * transaction, and a sale spanning N lots was issuing N extra round trips
+     * just to read a label.
+     *
+     * @param  array<int, ConsumedBatchDTO>  $consumed
+     */
+    private function snapshotLotAllocations(string $receiptId, string $receiptLineId, array $consumed): void
+    {
+        if ($consumed === []) {
+            return;
+        }
+
+        $batchNumbers = Batch::query()
+            ->whereIn('id', array_map(static fn ($row): int => $row->batchId, $consumed))
+            ->pluck('batch_number', 'id');
+
+        foreach ($consumed as $row) {
+            ReceiptLineBatchAllocation::query()->create([
+                'receipt_id' => $receiptId,
+                'receipt_line_id' => $receiptLineId,
+                'batch_id' => $row->batchId,
+                'quantity' => $row->quantityConsumed,
+                'batch_number' => $batchNumbers[$row->batchId] ?? null,
+                'expiry_date' => $row->expiryDate,
+            ]);
+        }
+    }
+
+    /**
+     * Run one line's lot work inside its OWN savepoint, and never let it take the
+     * sealed receipt down with it.
+     *
+     * 🚨 **W4R-2 gate r1 F-1 (inventory) / F-1+F-2 (fiscal).** The first cut of
+     * this lane contained only the STRICT-fulfilment case — `strictFulfillment:
+     * false` on the sale draw — and left every other throw uncontained. Both
+     * gates proved the consequence by execution. `restoreBatchesForReturn()`
+     * ends at `defaultBatchId()`, which REFUSES to mint a product-level
+     * `DEFAULT` lot for a product that has active variants
+     * (`MissingVariantException`); a product-level refund line of a pre-lane
+     * sale on such a product therefore threw straight through `apply()`'s
+     * `DB::transaction`, rolling back the WHOLE projection — no `pos_receipts`
+     * row, no refund lines, no VAT rows, no payment legs, no drawer movement —
+     * for money already handed back at the till. The exception is deterministic,
+     * so every Horizon retry reproduces it and
+     * `ApplyFiscalEventProjectionJob` flips the row to `dead_lettered`,
+     * terminal. On dev the same refund projects cleanly, so this lane INTRODUCED
+     * the failure mode — and it introduced it for exactly the historical shapes
+     * the lane exists to fix. The sale arm had the same gap for any
+     * `QueryException`, lock timeout or FK violation.
+     *
+     * That is the precise opposite of this projection's own doctrine: **a
+     * projector may never REJECT an already-signed event** (Model 1 §4.1). A lot
+     * leg that cannot be written must degrade to logged, censused drift — never
+     * to a lost receipt.
+     *
+     * The SAVEPOINT is load-bearing, not decorative. `restoreBatchesForReturn()`
+     * writes `creditLot()` legs BEFORE it can throw, and PostgreSQL aborts the
+     * entire transaction on any SQL error (25P02) until a `ROLLBACK TO
+     * SAVEPOINT`. A bare `catch` would therefore either commit a half-credited
+     * lot ledger or leave `apply()` "committing" a transaction the server had
+     * already discarded. Same idiom, same reasoning, as
+     * {@see self::applyScrapDisposition()}.
+     *
+     * **A retryable concurrency fault is the ONE thing NOT contained** — it is
+     * infrastructure, not a rejection, and the job's own retry is the correct
+     * handling. Laravel issues no `ROLLBACK TO SAVEPOINT` for a nested deadlock
+     * or serialization failure, so swallowing one would leave the enclosing
+     * transaction aborted and let `apply()` "COMMIT" a silently rolled-back
+     * receipt. See {@see ConcurrencyFault}.
+     *
+     * The drift this containment leaves behind is state, not an event, so it
+     * needs no separate ledger: `inventory:lot-drift-census` compares
+     * `Σ inventory_batch_stock` against `stock_levels` per (product, variant,
+     * location) and reports exactly this tuple.
+     *
+     * @param  \Closure(): void  $work
+     */
+    private function containLotWork(
+        FiscalEvent $event,
+        string $receiptId,
+        string $productId,
+        string $arm,
+        \Closure $work,
+    ): void {
+        try {
+            DB::transaction($work);
+        } catch (\Throwable $e) {
+            if (ConcurrencyFault::isRetryable($e)) {
+                throw $e;
+            }
+
+            Log::error('PosCoreReceiptProjection: the lot arm failed; the sealed receipt, its payments and its GL are projected WITHOUT lot legs and the tuple is left drifted — find it with inventory:lot-drift-census', [
+                'fiscal_event_id' => $event->id,
+                'receipt_id' => $receiptId,
+                'product_id' => $productId,
+                'arm' => $arm,
+                'exception' => $e::class,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
@@ -1973,6 +2271,11 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * product-level row (`product_id + variant_id IS NULL + location_id`).
      * `variant_id` is written onto the `stock_movements` row for downstream
      * reporting (Task 18). Column exists from Task 6.
+     *
+     * Returns the issue movement it wrote, or null when nothing moved (no
+     * `stock_levels` row at this grain). W4R-2 needs the movement id: the lot
+     * legs are keyed to it, so the aggregate act and the lot act are one
+     * document.
      */
     private function decrementStock(
         string $tenantId,
@@ -1987,7 +2290,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         ?string $unitCost,
         ?string $variantId = null,
         ?CarbonInterface $occurredAt = null,
-    ): void {
+    ): ?StockMovement {
         $stockLevelQuery = StockLevel::query()
             ->where('product_id', $productId)
             ->where('location_id', $locationId)
@@ -2018,7 +2321,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 ]);
             }
 
-            return;
+            return null;
         }
 
         /** @var numeric-string $available */
@@ -2081,6 +2384,8 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         ]);
 
         $this->enqueuePosMovement($movement, MovementGlKind::Exit, $currencyCode, $entryDate, $cashierId);
+
+        return $movement;
     }
 
     /**
@@ -2123,7 +2428,14 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      *     regulated never-restock item being DESTROYED is the correct outcome,
      *     and the pair never leaves it sellable.
      *
+     * **Lot legs (W4R-2).** A `restock` disposition puts goods back on a shelf,
+     * so on a batch-tracked product it must put them back on a LOT — and on the
+     * lot the sale actually took, which is why the sale arm's
+     * `pos_receipt_line_batch_allocations` snapshot is read back here. `scrap`
+     * and `not_received` credit NO lot; see the two branches below.
+     *
      * @param  array<int, bool>  $lineStockMovementExpected
+     * @param  array<int, string>  $originalLineIds
      */
     private function restockForLines(
         string $receiptId,
@@ -2134,6 +2446,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         CarbonInterface $entryDate,
         ?string $originalReceiptId,
         array $lineStockMovementExpected,
+        array $originalLineIds,
     ): void {
         $originalLineReferences = $view->originalLineReferences();
 
@@ -2205,7 +2518,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 }
             }
 
-            $this->restockStock(
+            $restoreMovement = $this->restockStock(
                 tenantId: $event->tenant_id,
                 companyId: $event->company_id,
                 locationId: (string) $terminal->location_id,
@@ -2224,7 +2537,226 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 unitCost: $originalSale['unit_cost'],
                 isHistorical: $originalSale['is_historical'],
             );
+
+            if ($restoreMovement !== null) {
+                $this->restoreLotsForRefundLine(
+                    event: $event,
+                    receiptId: $receiptId,
+                    locationId: (string) $terminal->location_id,
+                    productId: $productId,
+                    quantity: $line->quantity,
+                    variantId: $line->variantId,
+                    movementId: $restoreMovement->id,
+                    originalLineId: $originalLineIds[$index] ?? null,
+                );
+            }
         }
+    }
+
+    /**
+     * Put a refunded line's units back on the lot(s) the SALE took — the
+     * inbound mirror of {@see self::consumeLotsForSaleLine()} and the live-path
+     * counterpart of `ReceiptReturnService`'s restore arm.
+     *
+     * **Provenance first (gate r5 R5-1).** `$originalLineId` names the SALE
+     * line, whose `pos_receipt_line_batch_allocations` rows say exactly which
+     * lots it drew from; those become `preferredLots` hints. Without them
+     * {@see FEFOInventoryService::restoreBatchesForReturn()} falls back to its
+     * shipment-history heuristic, which aggregates over the whole (product,
+     * location, variant) tuple and cannot tell WHICH receipt shipped a leg — so
+     * returning the receipt that took the SHORT-dated lot credits the
+     * LONG-dated one, `Σ lots` still reconciles, and short-dated goods get
+     * re-labelled long-dated so FEFO ships them last. In a parapharmacy that is
+     * a product-safety defect. Every hint is still capped by the lot's
+     * outstanding outbound inside the service, so a hint can only ever
+     * under-credit.
+     *
+     * A legacy VOID or a pre-v4 REFUND carries no `original_line_references`,
+     * so `$originalLineId` is null and the service's heuristic is the whole
+     * policy for that shape.
+     *
+     * 🚨 **No `DEFAULT` lot is ever minted here (gate r1 F-3).** A refund of a
+     * PRE-LANE sale has no allocation rows AND no outbound lot leg, so nothing
+     * is attributable — and the first cut of this lane let the service's step-3
+     * fallback mint a `DEFAULT@today+365` for the whole quantity. That is
+     * strictly worse than doing nothing: before the refund the tuple already
+     * read `Σ lots` ABOVE `stock_levels` by exactly that amount (the sale moved
+     * the aggregate and not the lots), so restoring the aggregate ALONE brings
+     * the two back into line and drift returns to zero on its own. Measured by
+     * the gate: dev's behaviour left drift at 0, this lane's first cut left a
+     * permanent +4 plus a phantom lot — the exact phantom W2-7's
+     * `inventory:repair-phantom-default-batches` exists to delete, re-labelling
+     * short-dated goods as untracked stock that FEFO ships LAST. Every one of
+     * the 27 historical units on the first tenant is in that state. So the rule
+     * is: credit lots ONLY up to what this line is evidenced to have taken from
+     * them; anything left over stays in the untracked remainder, which is
+     * W2-7's own semantics for stock the lot ledger never tracked.
+     *
+     * The whole call is contained by {@see self::containLotWork()} — nothing
+     * here may reject a sealed refund.
+     *
+     * Rule 20: no `CompanyContext` — tenant/company come off the event.
+     */
+    private function restoreLotsForRefundLine(
+        FiscalEvent $event,
+        string $receiptId,
+        string $locationId,
+        string $productId,
+        string $quantity,
+        ?string $variantId,
+        string $movementId,
+        ?string $originalLineId,
+    ): void {
+        if (! $this->fefoService->productRequiresBatchTracking($productId)) {
+            return;
+        }
+
+        // See consumeLotsForSaleLine() — unreachable on a verified event, and a
+        // projector that has already restocked the aggregate may not fatal.
+        if (! is_numeric($quantity)) {
+            Log::warning('PosCoreReceiptProjection: non-numeric canonical quantity on a batch-tracked refund line; no lot credit written', [
+                'fiscal_event_id' => $event->id,
+                'product_id' => $productId,
+            ]);
+
+            return;
+        }
+
+        $this->containLotWork(
+            $event,
+            $receiptId,
+            $productId,
+            'refund',
+            function () use ($event, $receiptId, $locationId, $productId, $quantity, $variantId, $movementId, $originalLineId): void {
+                $unattributed = $this->fefoService->restoreBatchesForReturn(
+                    tenantId: $event->tenant_id,
+                    companyId: $event->company_id,
+                    productId: $productId,
+                    locationId: $locationId,
+                    quantity: $quantity,
+                    movementId: $movementId,
+                    variantId: $variantId,
+                    preferredLots: $originalLineId === null
+                        ? []
+                        : $this->lotProvenanceForOriginalLine($event, $originalLineId),
+                    // W4R-2 gate r1 F-3 — never mint a `DEFAULT@today+365` lot on a
+                    // refund. See the docblock above and the service's own.
+                    mintDefaultLotForUnattributed: false,
+                );
+
+                if (bccomp($unattributed, '0', 4) > 0) { // precision-ok: 4 = canonical quantity storage scale
+                    Log::info('PosCoreReceiptProjection: refunded units could not be attributed to any lot; they stay in the untracked remainder rather than minting a DEFAULT lot (the aggregate restore is what closes the drift)', [
+                        'fiscal_event_id' => $event->id,
+                        'receipt_id' => $receiptId,
+                        'product_id' => $productId,
+                        'variant_id' => $variantId,
+                        'location_id' => $locationId,
+                        'returned' => $quantity,
+                        'unattributed' => $unattributed,
+                    ]);
+                }
+            },
+        );
+    }
+
+    /**
+     * The lots the ORIGINAL sale line took, minus the share earlier refunds of
+     * that same line already credited back — the per-line provenance hint for
+     * {@see FEFOInventoryService::restoreBatchesForReturn()}.
+     *
+     * Netting mirrors
+     * `ReceiptReturnService::lotProvenanceForLine()`
+     * exactly: each lot's share is scaled by how much of the line has ALREADY
+     * been returned, so refunding 2 of 5 twice credits each lot its
+     * proportional share and never more than it originally took.
+     *
+     * "Already returned" deliberately EXCLUDES this event's own lines. By the
+     * time this runs, {@see self::writeLines()} has committed the current
+     * refund's `pos_receipt_lines` rows with their `original_line_id` set, so a
+     * naive sum would count the refund against itself and under-credit by its
+     * own quantity. The exclusion is written the same way
+     * {@see self::assertRefundQuantityWithinCap()} writes it — `whereNull` OR
+     * `<> $event->id`, both branches required because SQL `<>` drops NULLs, so
+     * legacy-authored return lines (`fiscal_event_id IS NULL`) stay counted.
+     *
+     * @return array<int, numeric-string>
+     */
+    private function lotProvenanceForOriginalLine(FiscalEvent $event, string $originalLineId): array
+    {
+        // ORDER IS CONTRACT, not luck (gate r1 F-6). `restoreBatchesForReturn()`
+        // consumes `$preferredLots` in array order, so on a PARTIAL refund of a
+        // line that spanned several lots this ordering decides WHICH lot gets the
+        // returned units back. Unordered, PostgreSQL's row order decided it.
+        // Earliest expiry first: the short-dated lot is restored before the
+        // long-dated one, so FEFO ships the returned units NEXT rather than last
+        // — the same product-safety stance the outbound draw takes. `batch_id`
+        // breaks the tie so two lots sharing an expiry are still deterministic.
+        $allocations = DB::table('pos_receipt_line_batch_allocations as a')
+            ->join('product_batches as pb', 'pb.id', '=', 'a.batch_id')
+            ->where('a.receipt_line_id', $originalLineId)
+            ->orderBy('pb.expiry_date')
+            ->orderBy('a.batch_id')
+            ->get(['a.batch_id as batch_id', 'a.quantity as quantity']);
+
+        if ($allocations->isEmpty()) {
+            return [];
+        }
+
+        /** @var numeric-string $originalQuantity */
+        $originalQuantity = (string) (DB::table('pos_receipt_lines')
+            ->where('id', $originalLineId)
+            ->value('quantity') ?? '0');
+
+        if (bccomp($originalQuantity, '0', 4) <= 0) { // precision-ok: 4 = canonical quantity storage scale
+            return [];
+        }
+
+        // Only refunds that actually CREDITED a lot dilute the hint (fiscal gate
+        // r1 F-6). A `scrap` or `not_received` disposition deliberately credits
+        // none — counting it here would shrink a later `restock` refund's hint
+        // for units the lot never got back, and the shortfall would then fall
+        // through to the heuristic and be mis-attributed. `whereNull` keeps
+        // legacy/pre-v4 return lines counted: they carry no disposition and DID
+        // restock.
+        $creditedLotDispositions = [
+            ReturnLineDisposition::Restock->value,
+        ];
+
+        /** @var numeric-string $alreadyReturned */
+        $alreadyReturned = (string) (DB::table('pos_receipt_lines')
+            ->join('pos_receipts', 'pos_receipts.id', '=', 'pos_receipt_lines.receipt_id')
+            ->where('pos_receipt_lines.original_line_id', $originalLineId)
+            ->where(function ($query) use ($event): void {
+                $query->whereNull('pos_receipts.fiscal_event_id')
+                    ->orWhere('pos_receipts.fiscal_event_id', '<>', $event->id);
+            })
+            ->where(function ($query) use ($creditedLotDispositions): void {
+                $query->whereNull('pos_receipt_lines.disposition')
+                    ->orWhereIn('pos_receipt_lines.disposition', $creditedLotDispositions);
+            })
+            ->selectRaw('COALESCE(SUM(ABS(pos_receipt_lines.quantity)), 0) as total')
+            ->value('total') ?? '0');
+
+        $provenance = [];
+
+        foreach ($allocations as $allocation) {
+            /** @var numeric-string $allocatedQuantity */
+            $allocatedQuantity = (string) $allocation->quantity;
+
+            $scaledShare = bcmul($allocatedQuantity, $alreadyReturned, 8); // precision-ok: 8 = intermediate, truncated to 4 on the next line
+            $alreadyCredited = bcdiv($scaledShare, $originalQuantity, 4); // precision-ok: 4 = canonical quantity storage scale
+
+            /** @var numeric-string $outstanding */
+            $outstanding = bcsub($allocatedQuantity, $alreadyCredited, 4); // precision-ok: 4 = canonical quantity storage scale
+
+            if (bccomp($outstanding, '0', 4) <= 0) { // precision-ok: 4 = canonical quantity storage scale
+                continue;
+            }
+
+            $provenance[(int) $allocation->batch_id] = $outstanding;
+        }
+
+        return $provenance;
     }
 
     /**
@@ -2260,6 +2792,18 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * projection row says applied and the event is never retried. Both legs take
      * `lockForUpdate` on `stock_levels`, so this block is genuinely
      * contention-prone. See {@see ConcurrencyFault}.
+     *
+     * **No lot credit, deliberately (W4R-2).** The restore leg below calls
+     * `restockStock` directly and does NOT reach
+     * {@see self::restoreLotsForRefundLine()}. That is the settled DPA V10
+     * policy, not an omission: `ReturnScrapWriteOffService`'s own docblock
+     * states that "a POS scrap has no batch by construction — scrapped goods
+     * deliberately never re-enter a sellable lot", and its write-off leg
+     * therefore writes NO `inventory_batch_movements` row. Crediting a lot on
+     * the restore leg while the destruction leg debits none would leave
+     * `Σ lots` ABOVE `stock_levels` by the scrapped quantity — the exact drift
+     * this lane exists to remove, re-introduced from the other direction. The
+     * pair nets to zero on the aggregate AND on the lot ledger, which is right.
      *
      * Rule 20: no `CompanyContext` is touched — the currency comes from the
      * canonical payload and is passed explicitly.
@@ -2409,7 +2953,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         ?string $variantId = null,
         ?CarbonInterface $occurredAt = null,
         ?string $unitCost = null,
-    ): void {
+    ): ?StockMovement {
         $stockLevelQuery = StockLevel::query()
             ->where('product_id', $productId)
             ->where('location_id', $locationId)
@@ -2434,7 +2978,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 ]);
             }
 
-            return;
+            return null;
         }
 
         /** @var numeric-string $stockQty */
@@ -2480,6 +3024,8 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         ]);
 
         $this->enqueuePosMovement($movement, MovementGlKind::Entry, $currencyCode, $entryDate, $cashierId);
+
+        return $movement;
     }
 
     /**
