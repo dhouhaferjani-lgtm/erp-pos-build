@@ -6,7 +6,7 @@
 | Branch | `feat/sc-f0w-web-proforma-parity` |
 | Worktree | `.worktrees/sc-f0w-web-proforma` |
 | Base | `eaf80a112` (local `dev`) |
-| Commit | `17a2e0fad` — single commit (locale files for en/fr/ar included, per `.claude/context/i18n.md`) |
+| Commits | `17a2e0fad` (lane — all three locale files in this ONE commit, per `.claude/context/i18n.md`) · `234f85303` (this handback) · `eb6dc752a` (the `proformaTotals: null` fail-open probe, added after the first green) |
 | Normative inputs | `BRIEF-C-F0w-web-proforma-parity.md` · `2026-08-25-sc-f0-gate-r1-conventions.md` §3.4 · SPEC §2.4 (r11.2) · LANE-PROTOCOL |
 | Migration | **NONE** |
 | Gates owed | frontend-conventions + fiscal-pos (predicate parity) |
@@ -263,7 +263,7 @@ than passing vacuously.
 
 ```
 $ npx tsc --noEmit -p tsconfig.json          → clean (no output)
-$ npx pnpm lint                              → PASS (whole chain: eslint · audit:keys ·
+$ npx pnpm lint                              → exit 0, whole chain (eslint · audit:keys ·
                                                audit:design-system · audit:quantity ·
                                                audit:i18n:local · test:eslint-rules ·
                                                test:tools → 8 files / 160 tests passed)
