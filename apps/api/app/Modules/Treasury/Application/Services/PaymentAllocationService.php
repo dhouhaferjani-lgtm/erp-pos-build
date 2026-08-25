@@ -208,7 +208,10 @@ class PaymentAllocationService
                 // money is an ADVANCE (Cr 419), not a settlement; a draft,
                 // cancelled or credit-note target is refused outright with 422
                 // DOCUMENT_NOT_ALLOCATABLE.
-                $treatment = $this->allocationClassifier->classify($document);
+                // C-0a0 — receivable side only: this path posts Dr bank / Cr
+                // 411-or-419 and increments a repository, so a payable
+                // settlement reaching it would move cash the wrong way.
+                $treatment = $this->allocationClassifier->classifyReceivableSide($document);
                 $isPrepayment = $treatment === AllocationTreatment::Prepayment;
 
                 // Create allocation record
@@ -728,7 +731,7 @@ class PaymentAllocationService
             // before any write, and so preview and execute agree on the same
             // set (the auto path's SQL mirror of this rule is in
             // `getOpenInvoices()`).
-            $this->allocationClassifier->classify($invoice);
+            $this->allocationClassifier->classifyReceivableSide($invoice);
 
             $invoiceBalance = $this->getInvoiceBalance($invoice);
 

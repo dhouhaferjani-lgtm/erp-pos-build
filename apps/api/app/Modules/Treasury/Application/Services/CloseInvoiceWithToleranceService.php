@@ -74,7 +74,7 @@ final class CloseInvoiceWithToleranceService
             // settle: the money sits in 419 and the invoice still owes its
             // posting. Refuse before the write-off JE is created rather than
             // letting `markPaid()` roll the whole transaction back at the end.
-            if ($this->allocationClassifier->classify($invoice) !== AllocationTreatment::ReceivableClearing) {
+            if ($this->allocationClassifier->classifyReceivableSide($invoice) !== AllocationTreatment::ReceivableClearing) {
                 throw new HttpResponseException(response()->json([
                     'error' => [
                         'code' => 'INVOICE_NOT_POSTED',

@@ -16,4 +16,19 @@ return [
         'cash_register' => 'Main Cash Register',
         'safe' => 'Office Safe',
     ],
+    /*
+     * C-0a0 — why a document was refused a payment allocation
+     * (SPEC-document-lifecycle-dimensions §2.1, `AllocationRefusalReason`).
+     * Rendered as the `message` of a 422 `DOCUMENT_NOT_ALLOCATABLE`; the enum
+     * value travels alongside it in `details.reason`.
+     */
+    'allocation_refused' => [
+        'document_not_live' => 'This document cannot receive a payment in its current status. Only confirmed or posted documents can be paid.',
+        'historical_opening_provenance' => 'This document is an imported opening balance. Opening balances cannot be settled from this screen yet.',
+        'pos_derived_provenance' => 'This invoice comes from a point-of-sale account charge. It is settled through the customer account, not from this screen.',
+        'status_not_allocatable_for_type' => 'This document cannot receive a payment in its current status. Post it first, then record the payment.',
+        'outward_document_type' => 'Credit notes are money owed to the other party: apply them to another document or refund them, rather than receiving a payment against them.',
+        'purchase_order_wrong_direction' => 'Purchase orders cannot receive a payment. Record the payment against the supplier invoice once it is posted.',
+        'type_never_allocatable' => 'This document type never carries a balance a payment could settle.',
+    ],
 ];
