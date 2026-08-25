@@ -116,6 +116,8 @@ final class PosCoreReceiptProjectionBatchLotTest extends TestCase
 
     public function test_batch_tracked_sale_draws_fefo_lots_and_snapshots_allocations(): void
     {
+        $this->requiresPostgresLotDraw();
+
         $product = $this->seedProduct(requiresBatchTracking: true);
         $stock = $this->seedStockLevel($product->id, null, '13.0000');
         $early = $this->seedLot($product->id, 'LOT-EARLY', now()->addDays(30)->toDateString(), '3.0000');
@@ -184,6 +186,8 @@ final class PosCoreReceiptProjectionBatchLotTest extends TestCase
 
     public function test_replay_of_the_same_sale_writes_no_second_lot_leg(): void
     {
+        $this->requiresPostgresLotDraw();
+
         $product = $this->seedProduct(requiresBatchTracking: true);
         $stock = $this->seedStockLevel($product->id, null, '10.0000');
         $lot = $this->seedLot($product->id, 'LOT-A', now()->addDays(30)->toDateString(), '10.0000');
@@ -210,6 +214,8 @@ final class PosCoreReceiptProjectionBatchLotTest extends TestCase
 
     public function test_lot_shortfall_never_rejects_the_sealed_sale(): void
     {
+        $this->requiresPostgresLotDraw();
+
         $product = $this->seedProduct(requiresBatchTracking: true);
         // The aggregate can cover the sale; the lot ledger cannot (2 of 5 units
         // sit in no lot at all). A projector may never REJECT an already-signed
@@ -240,18 +246,20 @@ final class PosCoreReceiptProjectionBatchLotTest extends TestCase
 
     public function test_projection_leaves_the_sealed_bytes_and_chain_hash_byte_identical(): void
     {
+        $this->requiresPostgresLotDraw();
+
         $product = $this->seedProduct(requiresBatchTracking: true);
         $this->seedStockLevel($product->id, null, '10.0000');
         $this->seedLot($product->id, 'LOT-A', now()->addDays(30)->toDateString(), '10.0000');
 
         $event = $this->saleEvent($product->id, '2.000');
-        $bytesBefore = (string) DB::table('fiscal_events')->where('id', $event->id)->value('canonical_bytes');
+        $bytesBefore = $this->sealedBytes($event->id);
         $hashBefore = (string) DB::table('fiscal_events')->where('id', $event->id)->value('current_hash');
 
         app(CompanyContext::class)->clear();
         $this->app->make(PosCoreReceiptProjection::class)->apply($event);
 
-        $bytesAfter = (string) DB::table('fiscal_events')->where('id', $event->id)->value('canonical_bytes');
+        $bytesAfter = $this->sealedBytes($event->id);
         $hashAfter = (string) DB::table('fiscal_events')->where('id', $event->id)->value('current_hash');
 
         $this->assertSame($bytesBefore, $bytesAfter);
@@ -266,6 +274,8 @@ final class PosCoreReceiptProjectionBatchLotTest extends TestCase
 
     public function test_refund_credits_the_lot_the_sale_actually_took(): void
     {
+        $this->requiresPostgresLotDraw();
+
         $product = $this->seedProduct(requiresBatchTracking: true);
         $stock = $this->seedStockLevel($product->id, null, '20.0000');
         $shortDated = $this->seedLot($product->id, 'LOT-A', now()->addDays(20)->toDateString(), '10.0000');
@@ -301,6 +311,8 @@ final class PosCoreReceiptProjectionBatchLotTest extends TestCase
 
     public function test_replay_of_the_same_refund_writes_no_second_credit(): void
     {
+        $this->requiresPostgresLotDraw();
+
         $product = $this->seedProduct(requiresBatchTracking: true);
         $stock = $this->seedStockLevel($product->id, null, '10.0000');
         $lot = $this->seedLot($product->id, 'LOT-A', now()->addDays(30)->toDateString(), '10.0000');
@@ -330,6 +342,8 @@ final class PosCoreReceiptProjectionBatchLotTest extends TestCase
 
     public function test_scrap_disposition_credits_no_lot(): void
     {
+        $this->requiresPostgresLotDraw();
+
         $product = $this->seedProduct(requiresBatchTracking: true);
         $stock = $this->seedStockLevel($product->id, null, '10.0000');
         $lot = $this->seedLot($product->id, 'LOT-A', now()->addDays(30)->toDateString(), '10.0000');
@@ -359,6 +373,48 @@ final class PosCoreReceiptProjectionBatchLotTest extends TestCase
     // =====================================================================
     // Helpers
     // =====================================================================
+
+    /**
+     * The raw sealed bytes. `fiscal_events.canonical_bytes` is `bytea` on
+     * PostgreSQL, which PDO hands back as a STREAM — casting the resource to a
+     * string yields "Resource id #N", a fresh number on every read, so a naive
+     * before/after comparison would fail even when the bytes are identical (and
+     * would have PASSED vacuously if the bytes really had changed).
+     */
+    private function sealedBytes(string $eventId): string
+    {
+        $raw = DB::table('fiscal_events')->where('id', $eventId)->value('canonical_bytes');
+
+        if (is_resource($raw)) {
+            $raw = stream_get_contents($raw);
+        }
+
+        return (string) $raw;
+    }
+
+    /**
+     * The FEFO OUTBOUND draw is PostgreSQL-only by construction:
+     * {@see \App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService::consumeBatchesAtomically()}
+     * selects its candidate lots `FOR UPDATE OF ibs SKIP LOCKED`, which SQLite
+     * cannot parse. That row-lock IS the concurrency contract (two cashiers must
+     * never draw the same lot row), so it is not something to branch away for a
+     * test driver. Every test that reaches a batch-tracked SALE therefore skips
+     * honestly off PostgreSQL rather than pretending to cover it.
+     *
+     * The INBOUND arm (`restoreBatchesForReturn`) is deliberately
+     * driver-agnostic (gate r4 R4-5), but it is only reachable here through a
+     * sale that is not — so the refund tests skip with it.
+     */
+    private function requiresPostgresLotDraw(): void
+    {
+        $driver = DB::connection()->getDriverName();
+
+        if ($driver !== 'pgsql') {
+            $this->markTestSkipped(
+                "FEFO lot consumption uses FOR UPDATE ... SKIP LOCKED; the {$driver} driver cannot execute it. Run this test on PostgreSQL."
+            );
+        }
+    }
 
     private function uuid(int $n): string
     {
