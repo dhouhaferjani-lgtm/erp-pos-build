@@ -31,5 +31,6 @@ return [
         'purchase_order_wrong_direction' => 'Une commande fournisseur ne peut pas recevoir de paiement. Enregistrez le paiement sur la facture fournisseur une fois celle-ci comptabilisée.',
         'type_never_allocatable' => "Ce type de document ne porte aucun solde qu'un paiement pourrait régler.",
         'payable_not_settleable_here' => "Il s'agit d'une facture fournisseur. Enregistrez le paiement via le parcours de paiement fournisseur, qui règle le fournisseur et solde la dette.",
+        'partner_role_mismatch' => 'Le type de ce document ne correspond pas au rôle du partenaire : le sens du paiement ne peut pas être déterminé. Une facture client doit appartenir à un client et une facture fournisseur à un fournisseur. Si ce partenaire est les deux, réglez son type sur « Les deux » ; sinon, corrigez le document.',
     ],
 ];

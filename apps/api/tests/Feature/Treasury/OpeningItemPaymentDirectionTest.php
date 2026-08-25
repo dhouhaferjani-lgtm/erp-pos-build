@@ -32,6 +32,7 @@ use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Payment;
+use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -395,6 +396,153 @@ final class OpeningItemPaymentDirectionTest extends TestCase
         $response->assertStatus(422);
         $response->assertJsonPath('error.code', 'PAYMENT_DIRECTION_MISMATCH');
         $this->assertDatabaseMissing('payment_allocations', ['document_id' => $document->id]);
+    }
+
+    // ------------------------------------------- gate r2 F-3 --------------
+    //
+    // The guard's only remaining hole, and the ONLY shape in this suite that still
+    // moves money without it. Every other direction test uses a HISTORICAL fixture,
+    // which C-0a0's `HistoricalOpeningProvenance` rule already refuses — so with the
+    // guard no-op'd they all still fail closed, and none of them discriminates.
+    //
+    // Reviewer probe on this shape with the guard tampered to `return;`:
+    //   storeMultiple -> 201 | JE ["customer_payment"] | repository 0.000 -> +500.000 IN | 1 allocation
+    //   split-payment -> 201 | repository +500.000
+    // Reachable: `CreateDocumentRequest` validates `partner_id` with ScopedExists
+    // and no role check, and an existing `both` partner can be re-typed to
+    // `supplier` after its invoices exist.
+
+    public function test_an_ordinary_mis_typed_invoice_cannot_be_paid_and_no_money_moves(): void
+    {
+        $invoice = $this->ordinaryMisTypedInvoice();
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $this->supplier->id,
+            'payment_method_id' => $this->bankMethod->id,
+            'repository_id' => $this->repository->id,
+            'amount' => '500.000',
+            'currency' => 'TND',
+            'payment_date' => '2026-08-25',
+            'allocations' => [
+                ['document_id' => $invoice->id, 'amount' => '500.000'],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'PAYMENT_DIRECTION_MISMATCH');
+        $this->assertNoMoneyMoved($invoice);
+    }
+
+    public function test_an_ordinary_mis_typed_invoice_cannot_be_paid_through_the_multi_payment_path(): void
+    {
+        $invoice = $this->ordinaryMisTypedInvoice();
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $this->supplier->id,
+            'document_id' => $invoice->id,
+            'payment_date' => '2026-08-25',
+            'payments' => [
+                [
+                    'payment_method_id' => $this->bankMethod->id,
+                    'repository_id' => $this->repository->id,
+                    'amount' => '500.000',
+                ],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'PAYMENT_DIRECTION_MISMATCH');
+        $this->assertNoMoneyMoved($invoice);
+    }
+
+    public function test_an_ordinary_mis_typed_invoice_cannot_be_paid_through_split_payment(): void
+    {
+        $invoice = $this->ordinaryMisTypedInvoice();
+
+        $response = $this->actingAs($this->user)->postJson("/api/v1/documents/{$invoice->id}/split-payment", [
+            'splits' => [
+                ['payment_method_id' => $this->bankMethod->id, 'repository_id' => $this->repository->id, 'amount' => '250.000'],
+                ['payment_method_id' => $this->bankMethod->id, 'repository_id' => $this->repository->id, 'amount' => '250.000'],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'PAYMENT_DIRECTION_MISMATCH');
+        $this->assertNoMoneyMoved($invoice);
+    }
+
+    public function test_the_direction_refusal_tells_the_operator_the_remedy(): void
+    {
+        $invoice = $this->ordinaryMisTypedInvoice();
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $this->supplier->id,
+            'payment_method_id' => $this->bankMethod->id,
+            'repository_id' => $this->repository->id,
+            'amount' => '500.000',
+            'currency' => 'TND',
+            'payment_date' => '2026-08-25',
+            'allocations' => [['document_id' => $invoice->id, 'amount' => '500.000']],
+        ]);
+
+        // An operator who hits this has no way to guess that the answer is "set the
+        // partner to Both", so the refusal has to say it — the same standard the
+        // control-account refusal is held to.
+        self::assertStringContainsString(
+            'set its type to Both',
+            (string) $response->json('error.message'),
+        );
+    }
+
+    /**
+     * An ORDINARY (non-historical) customer invoice owned by a supplier-ONLY
+     * partner. No `is_historical`, so C-0a0's provenance rule does not catch it and
+     * this guard is the only thing standing between the operator and a
+     * `Dr bank / Cr 411` for money going out.
+     */
+    private function ordinaryMisTypedInvoice(): Document
+    {
+        return Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'type' => DocumentType::Invoice,
+            'status' => DocumentStatus::Posted,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'document_number' => 'INV-2026-09100',
+            'document_date' => '2026-08-01',
+            'due_date' => '2026-08-31',
+            'currency' => 'TND',
+            'subtotal' => '500.000',
+            'discount_amount' => '0.000',
+            'tax_amount' => '0.000',
+            'total' => '500.000',
+            'balance_due' => '500.000',
+            'is_historical' => false,
+        ]);
+    }
+
+    /**
+     * The assertion that actually discriminates: not the status code, but that no
+     * cash, no ledger and no allocation moved. Without the guard this shape returns
+     * 201 and the repository goes UP by the payment.
+     */
+    private function assertNoMoneyMoved(Document $document): void
+    {
+        self::assertSame(0, PaymentAllocation::query()->where('document_id', $document->id)->count());
+        self::assertSame(0, Payment::query()->count());
+        self::assertSame(
+            0,
+            DB::table('repository_movements')->where('payment_repository_id', $this->repository->id)->count(),
+            'no repository movement may exist — the campaign recorded direction IN for money going out',
+        );
+        self::assertSame(
+            0,
+            JournalEntry::query()->where('company_id', $this->company->id)->where('source_type', 'customer_payment')->count(),
+            'no customer_payment journal entry may exist for a supplier-owned document',
+        );
+        self::assertSame(0, bccomp((string) $this->repository->refresh()->balance, '0.000', 3));
     }
 
     /**

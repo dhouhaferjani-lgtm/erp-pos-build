@@ -214,9 +214,27 @@ class PaymentAllocationService
                 // this write path reaches its own `canTransitionToPaid()` status
                 // flip a few lines below.
                 $this->allocationStateGuard->assertAllocatable($document);
-                // W4-3 / gate r1 I-1 — the smart-payment and allocation paths reach the
-                // same AR arm as PaymentController::store().
-                $this->allocationStateGuard->assertDirectionMatchesPartner($document);
+
+                // W4-3 — the document's SIDE must agree with its partner's ROLE, or
+                // the AR-vs-AP direction inferred from its type is silently wrong.
+                //
+                // Gate r2 F-1: r1 put the THROWING form here, three lines above the
+                // comment below that says a refusal on this path must skip. It obeys
+                // the same MANUAL-vs-SERVER rule as everything else in this loop —
+                // on MANUAL the operator named the document and gets the typed 422;
+                // on FIFO / due-date the server named it, so it is skipped with its
+                // reason recorded, exactly like `allocatableTreatmentOrSkip()` does.
+                // Both queued fiscal projections call this method with FIFO, so the
+                // throwing branch is unreachable from a worker.
+                if (! $this->allocationStateGuard->directionMatchesPartner($document)) {
+                    if ($command->allocationMethod === AllocationMethod::MANUAL) {
+                        $this->allocationStateGuard->assertDirectionMatchesPartner($document);
+                    }
+
+                    $this->logAutoAllocationSkip($document, AllocationRefusalReason::PartnerRoleMismatch->value);
+
+                    continue;
+                }
 
                 // N-6 — decide the GL treatment from the LOCKED row's state.
                 // A confirmed (unposted) invoice carries no receivable, so the

@@ -91,41 +91,77 @@ final class DocumentAllocationStateGuard
      */
     public function assertDirectionMatchesPartner(Document $document): void
     {
-        // `documents.partner_id` is typed non-nullable in the model docblock but the
-        // COLUMN is nullable, so the relation is resolved through the query builder
-        // (which types it `?Partner`) rather than read as a property. The eager-loaded
-        // relation is reused when a caller already fetched it, so this adds a query
-        // only on the paths that did not.
-        $partner = $document->relationLoaded('partner')
-            ? $document->getRelation('partner')
-            : $document->partner()->first();
-
-        if (! $partner instanceof Partner) {
+        if ($this->directionMatchesPartner($document)) {
             return;
         }
 
-        $matches = match ($document->type) {
-            DocumentType::Invoice, DocumentType::CreditNote => $partner->isCustomer(),
-            DocumentType::SupplierInvoice, DocumentType::SupplierCreditNote => $partner->isSupplier(),
-            default => true,
-        };
-
-        if ($matches) {
-            return;
-        }
+        $partner = $this->partnerOf($document);
 
         throw new HttpResponseException(response()->json([
             'error' => [
                 'code' => 'PAYMENT_DIRECTION_MISMATCH',
-                'message' => "This document's type does not match the partner's role, so the payment direction cannot be determined. A customer invoice must belong to a customer and a supplier invoice to a supplier.",
+                'message' => "This document's type does not match the partner's role, so the payment direction "
+                    .'cannot be determined. A customer invoice must belong to a customer and a supplier invoice '
+                    .'to a supplier. If this partner is both, set its type to Both; otherwise correct the document.',
                 'details' => [
                     'document_id' => $document->id,
                     'document_number' => $document->document_number,
                     'document_type' => $document->type->value,
-                    'partner_id' => $partner->id,
-                    'partner_type' => $partner->type->value,
+                    'partner_id' => $partner?->id,
+                    'partner_type' => $partner?->type->value,
                 ],
             ],
         ], 422));
+    }
+
+    /**
+     * The same question as a PREDICATE, for the paths that must not throw.
+     *
+     * Gate r2 F-1 — WHO CHOSE THE DOCUMENT decides what a refusal does, and the
+     * r1 hoist got that wrong: it put the throwing form into
+     * `PaymentAllocationService`'s execute loop, three lines above the 30-line
+     * comment in that file explaining why a refusal there must SKIP. On an auto
+     * sweep the SERVER chose the document, so throwing abandons every allocatable
+     * document queued behind the refused one and rolls back the whole transaction
+     * — and that exact call runs inside two queued fiscal projections
+     * (`TreasuryAccountPaymentBridge`, `TreasuryDepositBridge`, both `FIFO`),
+     * where an `HttpResponseException` is not the `NonRetryableProjectionException`
+     * the job special-cases: it is retried five times and then dead-letters a
+     * SEALED device fiscal fact. Eight tests that were green on dev went red.
+     *
+     * So the server-chosen path calls THIS, skips, and records
+     * `AllocationRefusalReason::PartnerRoleMismatch`; the HTTP entry points, where
+     * an operator named the document and is waiting for an answer, call
+     * `assertDirectionMatchesPartner()` and get the typed 422.
+     */
+    public function directionMatchesPartner(Document $document): bool
+    {
+        $partner = $this->partnerOf($document);
+
+        if (! $partner instanceof Partner) {
+            return true;
+        }
+
+        return match ($document->type) {
+            DocumentType::Invoice, DocumentType::CreditNote => $partner->isCustomer(),
+            DocumentType::SupplierInvoice, DocumentType::SupplierCreditNote => $partner->isSupplier(),
+            default => true,
+        };
+    }
+
+    /**
+     * `documents.partner_id` is typed non-nullable in the model docblock but the
+     * COLUMN is nullable, so the relation is resolved through the query builder
+     * (which types it `?Partner`) rather than read as a property. The eager-loaded
+     * relation is reused when a caller already fetched it, so this adds a query
+     * only on the paths that did not.
+     */
+    private function partnerOf(Document $document): ?Partner
+    {
+        $partner = $document->relationLoaded('partner')
+            ? $document->getRelation('partner')
+            : $document->partner()->first();
+
+        return $partner instanceof Partner ? $partner : null;
     }
 }

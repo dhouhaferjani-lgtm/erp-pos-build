@@ -31,5 +31,6 @@ return [
         'purchase_order_wrong_direction' => 'Purchase orders cannot receive a payment. Record the payment against the supplier invoice once it is posted.',
         'type_never_allocatable' => 'This document type never carries a balance a payment could settle.',
         'payable_not_settleable_here' => 'This is a supplier invoice. Record the payment through the supplier payment flow, which pays the supplier and clears the payable.',
+        'partner_role_mismatch' => "This document's type does not match the partner's role, so the payment direction cannot be determined. A customer invoice must belong to a customer and a supplier invoice to a supplier. If this partner is both, set its type to Both; otherwise correct the document.",
     ],
 ];
