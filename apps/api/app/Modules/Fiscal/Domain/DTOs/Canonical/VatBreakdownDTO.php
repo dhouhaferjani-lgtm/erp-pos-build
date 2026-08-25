@@ -27,6 +27,14 @@ final readonly class VatBreakdownDTO
         public string $rate,
         public string $taxCategoryCode,
         public string $vatAmount,
+        /**
+         * D-1 (v5): this group's pro-rata share of `transaction_discount_amount`.
+         * `null` on v1..v4 payloads, which sealed the taxable base BEFORE the
+         * ticket-level remise and carry no such key. Never defaulted to '0' —
+         * "the remise was ventilated and this group got nothing" and "this
+         * version had no concept of ventilation" must stay distinguishable.
+         */
+        public ?string $discountAllocated = null,
     ) {}
 
     /**
@@ -40,6 +48,9 @@ final readonly class VatBreakdownDTO
             rate: FiscalPayloadArrayGuards::requireString($data, 'rate'),
             taxCategoryCode: FiscalPayloadArrayGuards::requireString($data, 'tax_category_code'),
             vatAmount: FiscalPayloadArrayGuards::requireString($data, 'vat_amount'),
+            discountAllocated: array_key_exists('discount_allocated', $data)
+                ? FiscalPayloadArrayGuards::requireString($data, 'discount_allocated')
+                : null,
         );
     }
 }

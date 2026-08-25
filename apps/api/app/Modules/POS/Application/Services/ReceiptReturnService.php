@@ -46,6 +46,7 @@ use App\Modules\Voucher\Domain\Voucher;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\ConcurrencyFault;
 use App\Shared\Domain\CurrencyScale;
+use App\Shared\Domain\TransactionRemiseSplit;
 use Carbon\CarbonInterface;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
@@ -79,6 +80,13 @@ use Illuminate\Support\Str;
  */
 final class ReceiptReturnService
 {
+    /**
+     * Precision of the pro-rata share in the D-1 sealed-reversal arm, above the
+     * currency scale. Matches `TransactionRemiseSplit::RATIO_EXTRA_SCALE` so the
+     * two D-1 arithmetics carry their intermediates at the same width.
+     */
+    private const REVERSAL_RATIO_EXTRA_SCALE = TransactionRemiseSplit::RATIO_EXTRA_SCALE;
+
     use RoundsVat;
 
     public function __construct(
@@ -290,7 +298,7 @@ final class ReceiptReturnService
             $originalIsHistorical = $this->originalReceiptPredatesInventoryGlCutover($originalReceipt->id);
 
             [$receiptLines, $vatAggregates, $subtotal, $totalTax, $totalDiscount, $total] =
-                $this->computeReturnTotals($validatedLines, $currency);
+                $this->computeReturnTotals($validatedLines, $currency, $originalReceipt);
 
             // ─────────────────────────────────────────────────────────────────
             // Step 6: Policy guards (window / cap / manager-override threshold)
@@ -993,8 +1001,11 @@ final class ReceiptReturnService
      *     5: numeric-string,
      * }
      */
-    private function computeReturnTotals(array $validatedLines, string $currency): array
-    {
+    private function computeReturnTotals(
+        array $validatedLines,
+        string $currency,
+        Receipt $originalReceipt,
+    ): array {
         $s = $this->scale();
 
         /** @var list<array<string, mixed>> $receiptLines */
@@ -1083,20 +1094,55 @@ final class ReceiptReturnService
             $vatAggregates[$rateKey] = $vatEntry;
         }
 
-        // Recalculate VAT from aggregate net_amount
-        /** @var numeric-string $totalTax */
-        $totalTax = '0.00';
-        foreach ($vatAggregates as $rk => $vatData) {
-            /** @var array{tax_rate: string, net_amount: numeric-string, vat_amount: numeric-string, gross_amount: numeric-string} $vatData */
-            $recalcVat = $this->roundVat($vatData['net_amount'], $vatData['tax_rate']);
-            /** @var numeric-string $recalcGross */
-            $recalcGross = bcadd($vatData['net_amount'], $recalcVat, $s);
-            $vatAggregates[$rk] = array_merge($vatData, [
-                'vat_amount' => $recalcVat,
-                'gross_amount' => $recalcGross,
-            ]);
+        // ── D-1 gate r1 (treasury) finding F-2 ──────────────────────────────
+        // Everything above RECOMPUTES the return's VAT from `line_total` — the
+        // PRE-remise line gross. On an original sealed at SALE_RECEIPT
+        // `event_version >= 5` that base no longer exists: the sale declared a
+        // POST-remise base, so a return computed this way reverses VAT the
+        // tenant never collected (`discount x rate/(1+rate)` on a full return
+        // of the ruling's worked example: 5.547 TND), and `pos_receipts` return
+        // rows feed the declaration verbatim as `-ABS(...)`.
+        //
+        // A return of a v5 original therefore REVERSES THE SEALED ROWS
+        // pro-rata instead — the same posture the rest of D-1 takes: the device
+        // is the fiscal authority and the server only ever adds up and scales
+        // what it sealed. A FULL return has share == 1 and reverses the sealed
+        // breakdown exactly; a partial return takes each rate group's share of
+        // its own PRE-remise gross, which is the only ratio the original's
+        // lines can express.
+        //
+        // Pre-D-1 originals keep the recomputation verbatim: their sealed base
+        // IS the line roll-up, so the two agree, and changing it would move
+        // numbers on receipts that are already correct.
+        $sealedReversal = $this->postRemiseSealedReversal($originalReceipt, $vatAggregates, $s);
+        if ($sealedReversal !== null) {
+            $vatAggregates = $sealedReversal;
+            /** @var numeric-string $subtotal */
+            $subtotal = '0.00';
             /** @var numeric-string $totalTax */
-            $totalTax = bcadd($totalTax, $recalcVat, $s);
+            $totalTax = '0.00';
+            foreach ($vatAggregates as $vatData) {
+                /** @var numeric-string $subtotal */
+                $subtotal = bcadd($subtotal, $vatData['net_amount'], $s);
+                /** @var numeric-string $totalTax */
+                $totalTax = bcadd($totalTax, $vatData['vat_amount'], $s);
+            }
+        } else {
+            // Recalculate VAT from aggregate net_amount
+            /** @var numeric-string $totalTax */
+            $totalTax = '0.00';
+            foreach ($vatAggregates as $rk => $vatData) {
+                /** @var array{tax_rate: string, net_amount: numeric-string, vat_amount: numeric-string, gross_amount: numeric-string} $vatData */
+                $recalcVat = $this->roundVat($vatData['net_amount'], $vatData['tax_rate']);
+                /** @var numeric-string $recalcGross */
+                $recalcGross = bcadd($vatData['net_amount'], $recalcVat, $s);
+                $vatAggregates[$rk] = array_merge($vatData, [
+                    'vat_amount' => $recalcVat,
+                    'gross_amount' => $recalcGross,
+                ]);
+                /** @var numeric-string $totalTax */
+                $totalTax = bcadd($totalTax, $recalcVat, $s);
+            }
         }
 
         // The refund total is the discounted net plus tax (the line totals
@@ -1110,10 +1156,166 @@ final class ReceiptReturnService
         // the stored subtotal is the PRE-discount net; the refund `total` is
         // unchanged because the discount cancels out:
         //   (net + discount) + tax - discount = net + tax = total.
+        //
+        // D-1: on the sealed-reversal arm the stored `subtotal` is the reversed
+        // POST-remise base, so `total = subtotal + tax_amount` — the second arm
+        // of the widened `pos_receipts_totals` CHECK — and the line-discount
+        // sum must NOT be added back (it is already inside the sealed base).
+        // `discount_amount` still carries it for audit.
         /** @var numeric-string $headerSubtotal */
-        $headerSubtotal = bcadd($subtotal, $totalDiscount, $s);
+        $headerSubtotal = $sealedReversal !== null
+            ? $subtotal
+            : bcadd($subtotal, $totalDiscount, $s);
+        /** @var numeric-string $headerDiscount */
+        $headerDiscount = $sealedReversal !== null ? bcadd('0', '0', $s) : $totalDiscount;
 
-        return [$receiptLines, $vatAggregates, $headerSubtotal, $totalTax, $totalDiscount, $total];
+        return [$receiptLines, $vatAggregates, $headerSubtotal, $totalTax, $headerDiscount, $total];
+    }
+
+    /**
+     * D-1 (owner ruling 2026-08-25, gate r1 treasury F-2) — reverse a return's
+     * VAT from the ORIGINAL's SEALED per-rate breakdown, pro-rata.
+     *
+     * Returns `null` when the original was sealed BEFORE the cutover — its
+     * sealed base is the line roll-up, the caller's recomputation reproduces it,
+     * and those receipts must keep booking exactly as they always have.
+     *
+     * ## The ratio
+     *
+     * For each rate group, `share_r = refunded PRE-remise gross / the original's
+     * OWN PRE-remise gross at that rate`. The original's lines are the only
+     * thing that can express "how much of this group is coming back", and their
+     * gross is pre-remise on both sides of the fraction, so the remise cancels
+     * out of the ratio entirely. A FULL return has `share_r == 1` and reverses
+     * the sealed rows to the millime.
+     *
+     * `net_r` and `vat_r` are then scaled INDEPENDENTLY off the sealed figures
+     * and `gross_r` is their sum, so the reversed rows can never imply a rate
+     * the sale did not seal.
+     *
+     * The discriminator is the same one the ledger arm uses:
+     * `pos_receipt_vat_details.discount_allocated`, NULL on every receipt sealed
+     * at `event_version <= 4`. A MIXED set is refused rather than guessed —
+     * reversing half a receipt under each era would put the declaration out by
+     * an amount nobody could later reconstruct.
+     *
+     * @param  array<array-key, array{tax_rate: string, net_amount: numeric-string, vat_amount: numeric-string, gross_amount: numeric-string}>  $refunded  negative-signed, keyed by rate
+     * @return array<array-key, array{tax_rate: string, net_amount: numeric-string, vat_amount: numeric-string, gross_amount: numeric-string}>|null
+     *
+     * @throws \RuntimeException when the original's sealed rows are unusable
+     */
+    private function postRemiseSealedReversal(Receipt $originalReceipt, array $refunded, int $s): ?array
+    {
+        $sealed = DB::table('pos_receipt_vat_details')
+            ->where('receipt_id', $originalReceipt->id)
+            ->get(['tax_rate', 'net_amount', 'vat_amount', 'discount_allocated']);
+
+        if ($sealed->isEmpty()) {
+            return null;
+        }
+
+        $withShare = 0;
+        $withoutShare = 0;
+        foreach ($sealed as $row) {
+            if ($row->discount_allocated === null) {
+                $withoutShare++;
+
+                continue;
+            }
+            $withShare++;
+        }
+        if ($withShare > 0 && $withoutShare > 0) {
+            throw new \RuntimeException(sprintf(
+                'pos_return_sealed_base_era_ambiguous:receipt=%s:rows_with_discount_allocated=%d:rows_without=%d '
+                .'— the original\'s sealed VAT rows disagree about whether the taxable base is net of the '
+                .'transaction remise (D-1) or gross of it, so its return cannot be reversed without guessing.',
+                (string) $originalReceipt->id,
+                $withShare,
+                $withoutShare,
+            ));
+        }
+        if ($withShare === 0) {
+            return null;
+        }
+
+        // The original's OWN pre-remise gross per rate — the denominator.
+        /** @var array<string, numeric-string> $originalGross */
+        $originalGross = [];
+        foreach ($originalReceipt->lines as $line) {
+            $rate = $this->normalisedRateKey((string) $line->tax_rate);
+            /** @var numeric-string $lineTotal */
+            $lineTotal = (string) $line->line_total;
+            $originalGross[$rate] = bcadd($originalGross[$rate] ?? '0', $lineTotal, $s);
+        }
+
+        /** @var array<string, array{net: numeric-string, vat: numeric-string}> $sealedByRate */
+        $sealedByRate = [];
+        foreach ($sealed as $row) {
+            $rate = $this->normalisedRateKey((string) $row->tax_rate);
+            /** @var numeric-string $net */
+            $net = (string) $row->net_amount;
+            /** @var numeric-string $vat */
+            $vat = (string) $row->vat_amount;
+            $sealedByRate[$rate] = [
+                'net' => bcadd($sealedByRate[$rate]['net'] ?? '0', $net, $s),
+                'vat' => bcadd($sealedByRate[$rate]['vat'] ?? '0', $vat, $s),
+            ];
+        }
+
+        $out = [];
+        foreach ($refunded as $key => $group) {
+            $rate = $this->normalisedRateKey($group['tax_rate']);
+            $denominator = $originalGross[$rate] ?? '0';
+            $sealedRow = $sealedByRate[$rate] ?? null;
+            if ($sealedRow === null || bccomp($denominator, '0', $s) === 0) {
+                throw new \RuntimeException(sprintf(
+                    'pos_return_sealed_rate_missing:receipt=%s:rate=%s — the returned lines carry a VAT rate the '
+                    .'original receipt did not seal, so the reversal has no sealed figure to scale.',
+                    (string) $originalReceipt->id,
+                    $rate,
+                ));
+            }
+
+            // `$group['gross_amount']` is the refunded PRE-remise gross, already
+            // negative-signed; the magnitude is the numerator.
+            /** @var numeric-string $refundedGross */
+            $refundedGross = bcmul($group['gross_amount'], '-1', $s);
+            $ratioScale = $s + self::REVERSAL_RATIO_EXTRA_SCALE;
+            $share = bcdiv($refundedGross, $denominator, $ratioScale);
+
+            $net = bcmul(
+                TransactionRemiseSplit::roundHalfUp(bcmul($sealedRow['net'], $share, $ratioScale), $s),
+                '-1',
+                $s,
+            );
+            $vat = bcmul(
+                TransactionRemiseSplit::roundHalfUp(bcmul($sealedRow['vat'], $share, $ratioScale), $s),
+                '-1',
+                $s,
+            );
+
+            $out[$key] = [
+                'tax_rate' => $group['tax_rate'],
+                'net_amount' => $net,
+                'vat_amount' => $vat,
+                'gross_amount' => bcadd($net, $vat, $s),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * `pos_receipt_vat_details.tax_rate` is `decimal(5,2)` but the driver
+     * formats it differently (PG `'19.00'`, SQLite `'19'`), and the return
+     * aggregates key on `pos_receipt_lines.tax_rate`. Both are normalised to 2
+     * dp so the two sides join.
+     */
+    private function normalisedRateKey(string $rate): string
+    {
+        // precision-ok: a VAT RATE is a percentage, not money — `tax_rate` is
+        // decimal(5,2) and rule 19 keeps percents off the currency scale.
+        return bcadd(is_numeric($rate) ? $rate : '0', '0', 2);
     }
 
     // =========================================================================

@@ -149,6 +149,14 @@ export interface FullReceiptResponse {
     net_amount: string;
     vat_amount: string;
     gross_amount: string;
+    /**
+     * D-1 (v5): this rate group's pro-rata share of the ticket-level remise.
+     * `null` on a receipt sealed at `event_version <= 4`, whose base is GROSS
+     * of the remise. It is the era discriminator the ticket printer reads —
+     * never coerced to `'0'`, or a historical reprint would silently change
+     * meaning.
+     */
+    discount_allocated?: string | null;
   }>;
   payments: Array<{
     id: string;

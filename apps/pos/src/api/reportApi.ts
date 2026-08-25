@@ -13,6 +13,7 @@ import { generateZReport as generateLocalZReport } from '@/lib/offline/zReportSe
 import type { GenerateZReportOpts } from '@/lib/offline/zReportService';
 import { getAllPaymentMethods } from '@/lib/db/repositories/paymentRepository';
 import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
+import { readSealedReceiptView } from '@/lib/fiscal/sealedReceiptView';
 import type { LocalZReport } from '@/lib/offline/types';
 
 export type { GenerateZReportOpts };
@@ -579,7 +580,18 @@ async function generateLocalXReport(
     // scale. NOT `total − tax_amount`: `total` is the ROUNDED, POST-discount
     // gross against a PRE-discount VAT, and that mixture would also break
     // `Σ vat_breakdown[].net_amount == net_sales`.
-    netSales = bcadd(netSales, bcsub(receipt.subtotal, receipt.tax_amount, decimals), decimals);
+    //
+    // D-1 (owner ruling 2026-08-25): the derivation above holds only while both
+    // columns share a base. Since D-1 `tax_amount` is the SEALED POST-remise
+    // VAT while `subtotal` is still the pre-remise gross, so the sealed
+    // `subtotal` is read back off `canonical_bytes` — exact for every version,
+    // and identical to what the signed Z and the EOD preview report. The
+    // column arithmetic stays as the fallback for an unreadable blob. Full
+    // rationale in `lib/offline/zReportService.ts`.
+    const sealed = readSealedReceiptView(receipt.canonical_bytes);
+    netSales = sealed !== null
+      ? bcadd(netSales, sealed.subtotal, decimals)
+      : bcadd(netSales, bcsub(receipt.subtotal, receipt.tax_amount, decimals), decimals);
     taxAmount = bcadd(taxAmount, receipt.tax_amount, decimals);
 
     // C-2 fix (z-sale-branch-decomposition, ruling: Option B) — the third,
@@ -589,18 +601,31 @@ async function generateLocalXReport(
     // positive-signed. `lineGross` is bound to a local (rather than inlining
     // the addition in the accumulator, as this site used to) so a reviewer
     // reading all three fixes side by side sees ONE pattern, not three.
-    const lines = JSON.parse(receipt.lines) as ReceiptLineJson[];
-    for (const line of lines) {
-      const rate = line.tax_rate ?? '0';
-      const lineVat = line.tax_amount ?? '0';
-      const lineGross = line.line_total ?? '0';
-      const lineNet = bcsub(lineGross, lineVat, decimals);
+    // D-1: the per-rate rows are the SEALED ventilation, so the X stays
+    // internally consistent (`Σ vat == tax_amount`) on a discounted shift and
+    // agrees with the signed Z. The line roll-up remains the fallback.
+    if (sealed !== null) {
+      for (const group of sealed.vatBreakdown) {
+        const existing = vatByRate.get(group.rate) ?? { net: '0', vat: '0', gross: '0' };
+        existing.net = bcadd(existing.net, group.netAmount, decimals);
+        existing.vat = bcadd(existing.vat, group.vatAmount, decimals);
+        existing.gross = bcadd(existing.gross, group.grossAmount, decimals);
+        vatByRate.set(group.rate, existing);
+      }
+    } else {
+      const lines = JSON.parse(receipt.lines) as ReceiptLineJson[];
+      for (const line of lines) {
+        const rate = line.tax_rate ?? '0';
+        const lineVat = line.tax_amount ?? '0';
+        const lineGross = line.line_total ?? '0';
+        const lineNet = bcsub(lineGross, lineVat, decimals);
 
-      const existing = vatByRate.get(rate) ?? { net: '0', vat: '0', gross: '0' };
-      existing.net = bcadd(existing.net, lineNet, decimals);
-      existing.vat = bcadd(existing.vat, lineVat, decimals);
-      existing.gross = bcadd(existing.gross, lineGross, decimals);
-      vatByRate.set(rate, existing);
+        const existing = vatByRate.get(rate) ?? { net: '0', vat: '0', gross: '0' };
+        existing.net = bcadd(existing.net, lineNet, decimals);
+        existing.vat = bcadd(existing.vat, lineVat, decimals);
+        existing.gross = bcadd(existing.gross, lineGross, decimals);
+        vatByRate.set(rate, existing);
+      }
     }
 
     const payExisting = paymentByType.get(methodCode) ?? { amount: '0', count: 0 };

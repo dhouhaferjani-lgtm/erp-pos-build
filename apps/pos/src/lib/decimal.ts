@@ -70,6 +70,20 @@ export function bcsum(values: readonly string[], scale: number = 3): string {
   return acc.toFixed(scale);
 }
 
+/**
+ * Truncate (round toward zero) a decimal string at `scale`.
+ *
+ * D-1 (2026-08-25): the largest-remainder ventilation of a transaction
+ * discount across VAT rates needs a FLOOR at currency scale, not the
+ * half-up rounding every other helper here applies — the residue is then
+ * handed out one ulp at a time so `Σ allocated == discount` exactly. Inputs
+ * are non-negative money in that flow, where truncation toward zero and
+ * floor coincide.
+ */
+export function bctrunc(value: string, scale: number): string {
+  return safeBig(value).round(scale, Big.roundDown).toFixed(scale);
+}
+
 /** Absolute value of a decimal string, formatted at `scale`. */
 export function bcabs(value: string, scale: number = 3): string {
   return safeBig(value).abs().toFixed(scale);

@@ -69,7 +69,18 @@ final class FiscalEventPayloadRegistry
         //
         // Versions 1 and 2 remain parseable FOREVER (Events are Immutable
         // Forever) — see SUPPORTED_VERSIONS.
-        FiscalEventType::SALE_RECEIPT->value => [SaleReceiptPayload::class, 3],
+        // SaleReceiptV5 (D-1 post-remise VAT base, owner ruling 2026-08-25):
+        // version 5 seals `subtotal` / `vat_total` / `vat_breakdown[]` NET of
+        // the ticket-level remise, ventilated pro-rata per rate, and adds
+        // `discount_allocated` to every `vat_breakdown[]` row. The aggregate
+        // identity flips with it (the discount is no longer added back). See
+        // `FiscalPayloadConstraintValidator::SALE_RECEIPT_PAYLOAD_KEYS_V5`.
+        //
+        // Versions 1..4 remain parseable FOREVER (Events are Immutable
+        // Forever) — see SUPPORTED_VERSIONS. In particular v3 stays valid so a
+        // device still on an older build keeps projecting: the cutover is
+        // strictly FORWARD-ONLY.
+        FiscalEventType::SALE_RECEIPT->value => [SaleReceiptPayload::class, 5],
         FiscalEventType::CHAIN_BREAK_DETECTED->value => [ChainBreakDetectedPayload::class, 1],
         FiscalEventType::CHAIN_RESTART->value => [ChainRestartPayload::class, 1],
         FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT->value => [TerminalRegistrySnapshotPayload::class, 1],
@@ -123,7 +134,16 @@ final class FiscalEventPayloadRegistry
         // (`FiscalEventPayloadRegistry.ts`'s `VoidAuthoringProhibitedError`)
         // and rejected server-side by `FiscalPayloadConstraintValidator`'s
         // per-version constraint check, not a second branch here.
-        FiscalEventType::SALE_RECEIPT->value => [1, 2, 3, 4],
+        //
+        // v5 (D-1 post-remise VAT base, owner ruling 2026-08-25): the sealed
+        // taxable base excludes the remise. v3 stays in this list forever —
+        // receipts already in a chain, and devices not yet on the new build,
+        // must keep parsing. What stops a NEW device authoring the old shape is
+        // the forward-only PER-CHAIN v5 WATERMARK in
+        // `SaleReceiptForwardVersionGate` — NOT `devices.app_version`, which
+        // that class's own docblock explains at length why it deliberately does
+        // not read — and not this list.
+        FiscalEventType::SALE_RECEIPT->value => [1, 2, 3, 4, 5],
     ];
 
     /**

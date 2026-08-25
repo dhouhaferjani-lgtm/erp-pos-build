@@ -1,7 +1,7 @@
 import type Database from '@tauri-apps/plugin-sql';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useSyncStore } from '@/stores/syncStore';
-import { createOfflineReceipt } from '@/lib/offline/receiptService';
+import { createOfflineReceipt, type OfflineReceiptVatGroup } from '@/lib/offline/receiptService';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { bcsum } from '@/lib/decimal';
 import type { CartItem } from '@/types/cart';
@@ -78,8 +78,14 @@ export interface CheckoutResult {
   receiptNumber: string;
   total: string;
   subtotal: string;
+  /** The SEALED `vat_total` — VAT on the POST-remise base (D-1, v5). */
   taxAmount: string;
   discountAmount: string;
+  /**
+   * The sealed per-rate breakdown, POST-remise, in canonical order. Empty only
+   * on an idempotency replay whose canonical bytes could not be re-read.
+   */
+  vatBreakdown: readonly OfflineReceiptVatGroup[];
   /** Currency-scale decimal string — never a float. */
   changeDue: string;
   currency: string;
@@ -159,6 +165,7 @@ export async function executeCheckout(
     subtotal: result.subtotal,
     taxAmount: result.taxAmount,
     discountAmount: result.discountAmount,
+    vatBreakdown: result.vatBreakdown,
     changeDue: result.changeDue,
     currency: input.currency,
     fiscalHash: result.fiscalHash,

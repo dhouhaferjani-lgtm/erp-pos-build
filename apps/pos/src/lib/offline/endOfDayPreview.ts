@@ -23,6 +23,7 @@ import { getCashDrawerOpsForShift } from '@/lib/db/repositories/cashDrawerReposi
 import { getAccountPaymentRecordsForShift } from '@/lib/db/repositories/localAccountPaymentRecordRepository';
 import { getToleranceAutoAcceptCount } from '@/lib/db/repositories/toleranceAutoAcceptRepository';
 import { getRefundRecordsForShift } from '@/lib/db/repositories/localRefundRecordRepository';
+import { readSealedReceiptView } from '@/lib/fiscal/sealedReceiptView';
 
 interface OfflineReceiptRow {
   id: string;
@@ -46,6 +47,8 @@ interface OfflineReceiptRow {
   // rows predating this feature which the LEFT JOIN-free SELECT below
   // still reads as undefined) or 'refund'.
   receipt_kind?: 'sale' | 'refund';
+  /** Verbatim signed payload bytes; the source of the SEALED aggregates (D-1). */
+  canonical_bytes?: string | null;
 }
 
 interface PaymentJsonRow {
@@ -202,7 +205,7 @@ export async function buildEndOfDayPreview(
   const receipts = await queryAll<OfflineReceiptRow>(
     db,
     `SELECT id, total, subtotal, tax_amount, payments_json, lines, created_at, change_due, payment_method_id,
-            cash_rounding_adjustment, tolerance_shortfall, receipt_kind
+            cash_rounding_adjustment, tolerance_shortfall, receipt_kind, canonical_bytes
      FROM offline_receipts
      WHERE terminal_id = ? AND created_at >= ? AND voided = 0 AND is_training = 0
      ORDER BY created_at ASC`,
@@ -258,6 +261,10 @@ export async function buildEndOfDayPreview(
 
   for (const receipt of receipts) {
     const isRefund = receipt.receipt_kind === 'refund';
+    // D-1: what the chain DECLARED for this receipt. Null for a row whose
+    // canonical bytes are absent or unparseable — every consumer below then
+    // falls back to its pre-D-1 column arithmetic rather than throwing.
+    const sealed = readSealedReceiptView(receipt.canonical_bytes);
 
     // v3-refund-chain-integration spec §7.3a — grossSales/netSales/
     // taxAmount are SALE-ONLY, matching zReportService.ts's own §7.3
@@ -290,7 +297,17 @@ export async function buildEndOfDayPreview(
       // This preview is unsigned, but it is the number the cashier reconciles
       // against before the Z is authored — it must agree with the signed Z or
       // the close is disputed at the counter.
-      netSales = bcadd(netSales, bcsub(receipt.subtotal, receipt.tax_amount, scale), scale);
+      //
+      // D-1 (owner ruling 2026-08-25): the derivation above holds only while
+      // both columns share a base. Since D-1 `tax_amount` is the SEALED
+      // POST-remise VAT while `subtotal` is still the pre-remise gross, so the
+      // sealed `subtotal` is read back off `canonical_bytes` instead — exact
+      // for every version, and identical to what the signed Z reports. The
+      // column arithmetic stays as the fallback for an unreadable blob.
+      // See `zReportService.ts` for the full rationale.
+      netSales = sealed !== null
+        ? bcadd(netSales, sealed.subtotal, scale)
+        : bcadd(netSales, bcsub(receipt.subtotal, receipt.tax_amount, scale), scale);
       taxAmount = bcadd(taxAmount, receipt.tax_amount, scale);
     } else {
       // B-6(ii) — the refunds block the preview never had. Gross TTC magnitude
@@ -348,6 +365,23 @@ export async function buildEndOfDayPreview(
     // than left standing, because a stale "the sale branch is untouched"
     // sitting twenty lines above a corrected sale branch is exactly the kind
     // of note that gets a fix re-litigated or re-reverted later.
+    // D-1: on a SALE row the per-rate figures are the SEALED ventilation, so
+    // the preview agrees with the signed Z and stays internally consistent
+    // (`Σ vat == tax_amount`) on a discounted shift. Refund rows keep the
+    // line-derived decomposition the C-2 ruling settled; the line roll-up is
+    // also the fallback for a sale row with no readable canonical bytes.
+    if (!isRefund && sealed !== null) {
+      for (const group of sealed.vatBreakdown) {
+        const existing = vatByRate.get(group.rate) ?? { net: '0', vat: '0', gross: '0' };
+        existing.net = bcadd(existing.net, group.netAmount, scale);
+        existing.vat = bcadd(existing.vat, group.vatAmount, scale);
+        existing.gross = bcadd(existing.gross, group.grossAmount, scale);
+        vatByRate.set(group.rate, existing);
+      }
+
+      continue;
+    }
+
     const lines = JSON.parse(receipt.lines || '[]') as ReceiptLineJson[];
     for (const line of lines) {
       const rate = line.tax_rate ?? '0';

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\Accounting\Domain\DTOs;
 
 use App\Modules\Accounting\Domain\Exceptions\PosVatProjectionRefusedException;
-use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 
 /**
  * How ONE POS tender leg decomposes into net revenue + output VAT per rate
@@ -41,16 +40,25 @@ final readonly class PosRevenueVatSplit
          * This leg's share of `pos_receipts.discount_amount`, the TRANSACTION-level
          * discount (W4-9 gate r1 / F-4).
          *
-         * The device seals `subtotal + vat_total == total + transaction_discount_amount`
-         * — the VAT is computed on the PRE-discount base. So the taxable base the
-         * DGI declaration reports (`vat_breakdown[].net_amount`) is the pre-discount
-         * `subtotal`, and the ledger's revenue credit has to be that same figure or
-         * the two disagree about the base while agreeing about the VAT. Booking the
-         * discount as an explicit contra-revenue debit (`SalesDiscount`, 709) is
-         * what keeps them equal — and it is exactly what the POS's own
-         * ACCOUNT_CHARGE arm already does
-         * ({@see GeneralLedgerService::createPOSChargeEntry}),
-         * so the two POS arms book the same sale the same way.
+         * ERA-CONDITIONAL since D-1 (owner ruling 2026-08-25). Which era a receipt
+         * belongs to is read off `pos_receipt_vat_details.discount_allocated`
+         * ({@see PosReceiptVatAllocator::sealedBaseIsPostRemise()}):
+         *
+         *   - **v1..v4** — the device sealed `subtotal + vat_total == total +
+         *     transaction_discount_amount`, i.e. the VAT on the PRE-remise base.
+         *     The declaration reports that same base, so the revenue credit has
+         *     to be it too, and the remise comes back out as an explicit
+         *     contra-revenue debit (`SalesDiscount`, 709). THIS FIELD carries it.
+         *   - **v5** — the remise is already deducted from the sealed base, so
+         *     this field is CANONICAL ZERO and no 709 line is emitted. Debiting
+         *     709 as well would deduct the remise twice; under both the French
+         *     PCG and the Tunisian plan comptable, 709 records RRR granted HORS
+         *     facture, and D-1 makes the POS remise an on-invoice one.
+         *
+         * The claim that the ACCOUNT_CHARGE arm books it "the same way" is no
+         * longer true and has been removed: `createPOSChargeEntry()` still books
+         * the pre-remise shape unconditionally, and D-1 refuses a remise on that
+         * tender outright until its own ventilation lane lands.
          *
          * @var numeric-string
          */

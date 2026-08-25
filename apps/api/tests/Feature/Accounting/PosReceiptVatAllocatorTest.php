@@ -246,6 +246,153 @@ final class PosReceiptVatAllocatorTest extends TestCase
      * @param  list<array{0: string, 1: string, 2: string}>  $sealed  [rate, net, vat]
      * @param  numeric-string  $discountAmount
      */
+
+    // =================================================================
+    // D-1 (owner ruling 2026-08-25) — receipts sealed on the POST-remise base
+    // =================================================================
+
+    /**
+     * The ruling's worked example. The device sealed base 524.547 + VAT 65.453
+     * on a 640.000 ticket carrying a 50.000 remise, and the customer paid
+     * 590.000.
+     *
+     * Revenue must be the SEALED base, and there must be NO contra-revenue leg:
+     * the remise was already deducted from the base on the ticket, so booking it
+     * again in `709` would deduct it twice. The pre-D-1 derivation
+     * (`net = tender + discount − vat`) would book 574.547 — a revenue base that
+     * is neither the sealed one (524.547) nor the pre-remise one (569.000), and
+     * an entry that does not balance once the 709 debit is added.
+     */
+    public function test_a_post_remise_receipt_books_revenue_at_the_sealed_base_with_no_contra_leg(): void
+    {
+        $receipt = $this->receiptWithPostRemiseSealedVat('590.000', '65.453', '50.000', [
+            ['0.00', '63.609', '0.000', '5.391'],
+            ['7.00', '92.188', '6.453', '8.359'],
+            ['13.00', '184.375', '23.969', '17.656'],
+            ['19.00', '184.375', '35.031', '18.594'],
+        ]);
+
+        $split = $this->allocator->allocate($receipt, ['590.000'], 3)[0];
+
+        $this->assertSame('590.000', $split->tenderAmount);
+        $this->assertSame('524.547', $split->netRevenueAmount);
+        $this->assertSame('65.453', $split->totalVat());
+        // No 709 leg: `hasDiscount()` drives it, and the remise is already out
+        // of the base.
+        $this->assertSame('0.000', $split->discountAmount);
+        $this->assertFalse($split->hasDiscount());
+        // Balances by construction: Dr 590.000 == Cr 524.547 + Cr 65.453.
+        $this->assertSame(
+            0,
+            bccomp(bcadd($split->netRevenueAmount, $split->totalVat(), 3), $split->tenderAmount, 3),
+        );
+    }
+
+    /**
+     * The pre-D-1 shape is UNCHANGED — the discriminator is the sealed rows'
+     * own `discount_allocated`, so a receipt sealed before the cutover keeps
+     * booking revenue on its pre-discount base with the remise as contra.
+     * Forward-only in the ledger as well as on the wire.
+     */
+    public function test_a_pre_remise_receipt_keeps_the_pre_d1_contra_revenue_shape(): void
+    {
+        // Pre-D-1 arithmetic: the sealed base is the PRE-discount 600.000, so
+        // `pos_receipts_totals` requires `total = subtotal + tax − discount`
+        // = 600.000 + 90.000 − 50.000 = 640.000. (Only PostgreSQL carries that
+        // CHECK, which is why this fixture has to be right there and not merely
+        // plausible on sqlite.)
+        $receipt = $this->receiptWithSealedVat('640.000', '90.000', [
+            ['7.00', '100.000', '7.000'],
+            ['13.00', '200.000', '26.000'],
+            ['19.00', '300.000', '57.000'],
+        ], '50.000');
+
+        $split = $this->allocator->allocate($receipt, ['640.000'], 3)[0];
+
+        // net = tender + discount − vat = 640.000 + 50.000 − 90.000, i.e. the
+        // sealed PRE-discount base, with the remise as contra-revenue.
+        $this->assertSame('600.000', $split->netRevenueAmount);
+        $this->assertSame('50.000', $split->discountAmount);
+        $this->assertTrue($split->hasDiscount());
+    }
+
+    /** A post-remise receipt with no remise at all behaves identically either way. */
+    public function test_a_post_remise_receipt_without_a_remise_is_unchanged(): void
+    {
+        $receipt = $this->receiptWithPostRemiseSealedVat('690.000', '90.000', '0.000', [
+            ['7.00', '100.000', '7.000', '0.000'],
+            ['13.00', '200.000', '26.000', '0.000'],
+            ['19.00', '300.000', '57.000', '0.000'],
+        ]);
+
+        $split = $this->allocator->allocate($receipt, ['690.000'], 3)[0];
+
+        $this->assertSame('600.000', $split->netRevenueAmount);
+        $this->assertSame('0.000', $split->discountAmount);
+    }
+
+    /** Split tender on a post-remise receipt: the shares still add back exactly. */
+    public function test_a_post_remise_split_tender_adds_back_to_the_sealed_base_and_vat(): void
+    {
+        $receipt = $this->receiptWithPostRemiseSealedVat('590.000', '65.453', '50.000', [
+            ['0.00', '63.609', '0.000', '5.391'],
+            ['7.00', '92.188', '6.453', '8.359'],
+            ['13.00', '184.375', '23.969', '17.656'],
+            ['19.00', '184.375', '35.031', '18.594'],
+        ]);
+
+        $splits = $this->allocator->allocate($receipt, ['400.000', '190.000'], 3);
+
+        $net = '0.000';
+        $vat = '0.000';
+        foreach ($splits as $split) {
+            $net = bcadd($net, $split->netRevenueAmount, 3);
+            $vat = bcadd($vat, $split->totalVat(), 3);
+            $this->assertSame('0.000', $split->discountAmount);
+        }
+
+        $this->assertSame('524.547', $net);
+        $this->assertSame('65.453', $vat);
+    }
+
+    /**
+     * A 100 %-comp sealed at v5: every group is zero, nothing is tendered, and
+     * the split is a legitimate all-zero one rather than a refusal.
+     */
+    public function test_a_post_remise_hundred_percent_comp_is_all_zero_not_refused(): void
+    {
+        $receipt = $this->receiptWithPostRemiseSealedVat('0.000', '0.000', '640.000', [
+            ['0.00', '0.000', '0.000', '69.000'],
+            ['7.00', '0.000', '0.000', '107.000'],
+            ['13.00', '0.000', '0.000', '226.000'],
+            ['19.00', '0.000', '0.000', '238.000'],
+        ]);
+
+        $split = $this->allocator->allocate($receipt, ['0.000'], 3)[0];
+
+        $this->assertSame('0.000', $split->netRevenueAmount);
+        $this->assertSame('0.000', $split->totalVat());
+        $this->assertSame('0.000', $split->discountAmount);
+    }
+
+    /**
+     * A sealed set where only SOME rows carry `discount_allocated` cannot be
+     * read as either version, and a guess would book a wrong base. Refuse.
+     */
+    public function test_a_sealed_set_mixing_the_two_eras_is_refused(): void
+    {
+        $receipt = $this->receiptWithPostRemiseSealedVat('590.000', '65.453', '50.000', [
+            ['0.00', '63.609', '0.000', '5.391'],
+            ['7.00', '92.188', '6.453', null],
+            ['13.00', '184.375', '23.969', '17.656'],
+            ['19.00', '184.375', '35.031', '18.594'],
+        ]);
+
+        $this->expectException(PosVatProjectionRefusedException::class);
+
+        $this->allocator->allocate($receipt, ['590.000'], 3);
+    }
+
     private function receiptWithSealedVat(
         string $total,
         string $taxAmount,
@@ -306,6 +453,45 @@ final class PosReceiptVatAllocatorTest extends TestCase
         }
 
         return $receipt;
+    }
+
+    /**
+     * A receipt sealed at `event_version >= 5` (D-1): `pos_receipts.subtotal`
+     * and every sealed row are the POST-remise taxable base, and each row
+     * carries its ventilated share of the remise.
+     *
+     * `$sealed` rows are `[rate, net, vat, discount_allocated]`; a `null` share
+     * seeds a pre-D-1 row inside an otherwise post-D-1 set, which is the mixed
+     * corruption case.
+     *
+     * @param  list<array{0: string, 1: string, 2: string, 3: string|null}>  $sealed
+     */
+    private function receiptWithPostRemiseSealedVat(
+        string $total,
+        string $taxAmount,
+        string $discountAmount,
+        array $sealed,
+    ): Receipt {
+        $receipt = $this->receiptWithSealedVat($total, $taxAmount, [], $discountAmount);
+
+        // The header is the POST-remise base: `total = subtotal + tax_amount`,
+        // which is the second arm of the widened `pos_receipts_totals` CHECK.
+        $receipt->forceFill(['subtotal' => bcsub($total, $taxAmount, 3)])->save();
+
+        foreach ($sealed as [$rate, $net, $vat, $allocated]) {
+            ReceiptVatDetail::create([
+                'id' => Str::uuid()->toString(),
+                'receipt_id' => $receipt->id,
+                'tax_category' => 'S',
+                'tax_rate' => $rate,
+                'net_amount' => $net,
+                'vat_amount' => $vat,
+                'gross_amount' => bcadd($net, $vat, 3),
+                'discount_allocated' => $allocated,
+            ]);
+        }
+
+        return $receipt->refresh();
     }
 
     /**

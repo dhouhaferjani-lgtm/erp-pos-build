@@ -23,6 +23,7 @@ import {
 } from '@/lib/db/repositories/terminalStateRepository';
 import { insertZReportCounts } from '@/lib/db/repositories/zReportCountRepository';
 import type { ZReportCountRow } from '@/lib/db/repositories/zReportCountRepository';
+import { readSealedReceiptView } from '@/lib/fiscal/sealedReceiptView';
 import { getCashDrawerOpsForShift } from '@/lib/db/repositories/cashDrawerRepository';
 import { getAccountPaymentRecordsForShift } from '@/lib/db/repositories/localAccountPaymentRecordRepository';
 import {
@@ -956,7 +957,28 @@ function aggregateReportData(
     // plus the rounding, exactly as on the canonical receipt (whose identity #1
     // adds `transaction_discount_amount` back). The Z payload records neither
     // field, so no such identity is claimed anywhere.
-    netSales = bcadd(netSales, bcsub(receipt.subtotal, receipt.tax_amount, decimals), decimals);
+    // ── D-1 (owner ruling 2026-08-25) ────────────────────────────────────
+    // The premise of the C-6 derivation above — "`receipt.subtotal −
+    // receipt.tax_amount` reproduces the SEALED per-receipt net byte for
+    // byte" — held only while BOTH columns were pre-discount. Since D-1
+    // `offline_receipts.tax_amount` is the SEALED POST-remise VAT while
+    // `subtotal` is still the pre-remise gross roll-up, so the subtraction
+    // now mixes two bases and overstates the net by the VAT share of the
+    // remise.
+    //
+    // The fix is to stop deriving the figure at all: the sealed `subtotal`
+    // IS on the row, inside `canonical_bytes`, for every version. A v5
+    // receipt yields its post-remise base; a v1..v4 receipt yields the
+    // pre-discount base it actually declared. Re-deriving instead would make
+    // the Z disagree with the immutable document it summarises.
+    //
+    // The column arithmetic stays as the fallback for a row whose canonical
+    // bytes are absent or unparseable — a report must degrade to the older
+    // figure, never throw and block a shift close.
+    const sealed = readSealedReceiptView(receipt.canonical_bytes);
+    netSales = sealed !== null
+      ? bcadd(netSales, sealed.subtotal, decimals)
+      : bcadd(netSales, bcsub(receipt.subtotal, receipt.tax_amount, decimals), decimals);
     taxAmount = bcadd(taxAmount, receipt.tax_amount, decimals);
 
     // VAT breakdown from receipt lines.
@@ -978,18 +1000,36 @@ function aggregateReportData(
     // No `bcabs` here (unlike the refund branch): a sale row is
     // positive-signed, and `bcabs` would silently swallow a legitimately
     // negative row rather than surfacing it.
-    const lines = JSON.parse(receipt.lines) as ReceiptLineJson[];
-    for (const line of lines) {
-      const rate = line.tax_rate ?? '0';
-      const lineVat = line.tax_amount ?? '0';
-      const lineGross = line.line_total ?? '0';
-      const lineNet = bcsub(lineGross, lineVat, decimals);
+    //
+    // D-1: the per-rate rows come from the SEALED `vat_breakdown[]` for the
+    // same reason the headline does — on a discounted v5 receipt the line
+    // roll-up is the PRE-remise base, and accumulating it beside a
+    // post-remise `tax_amount` would leave the signed Z internally
+    // inconsistent (`Σ vat_breakdown[].vat_amount != tax_amount`). The
+    // line-derived roll-up remains the fallback for a row with no readable
+    // canonical bytes.
+    if (sealed !== null) {
+      for (const group of sealed.vatBreakdown) {
+        const existing = vatByRate.get(group.rate) ?? { net: '0', vat: '0', gross: '0' };
+        existing.net = bcadd(existing.net, group.netAmount, decimals);
+        existing.vat = bcadd(existing.vat, group.vatAmount, decimals);
+        existing.gross = bcadd(existing.gross, group.grossAmount, decimals);
+        vatByRate.set(group.rate, existing);
+      }
+    } else {
+      const lines = JSON.parse(receipt.lines) as ReceiptLineJson[];
+      for (const line of lines) {
+        const rate = line.tax_rate ?? '0';
+        const lineVat = line.tax_amount ?? '0';
+        const lineGross = line.line_total ?? '0';
+        const lineNet = bcsub(lineGross, lineVat, decimals);
 
-      const existing = vatByRate.get(rate) ?? { net: '0', vat: '0', gross: '0' };
-      existing.net = bcadd(existing.net, lineNet, decimals);
-      existing.vat = bcadd(existing.vat, lineVat, decimals);
-      existing.gross = bcadd(existing.gross, lineGross, decimals);
-      vatByRate.set(rate, existing);
+        const existing = vatByRate.get(rate) ?? { net: '0', vat: '0', gross: '0' };
+        existing.net = bcadd(existing.net, lineNet, decimals);
+        existing.vat = bcadd(existing.vat, lineVat, decimals);
+        existing.gross = bcadd(existing.gross, lineGross, decimals);
+        vatByRate.set(rate, existing);
+      }
     }
 
     // Payment method breakdown (NF525 / DSFinV-K, 2026-06-11 research):
