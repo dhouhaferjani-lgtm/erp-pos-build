@@ -443,10 +443,20 @@ final class CorrectingEntryEndpointTest extends TestCase
     {
         $correctionId = $this->postedCorrection();
 
+        // Driver-neutral half: the column that ARMS the triggers. This keeps
+        // running on SQLite so the seal itself is still pinned there.
         self::assertSame(
             FiscalStatus::Sealed->value,
             DB::table('documents')->where('id', $correctionId)->value('fiscal_status'),
         );
+
+        // Trigger half: PostgreSQL only. `trg_document_immutability` is created by
+        // `2025_12_11_054716_add_document_immutability_trigger.php`, which returns
+        // early on any non-pgsql driver by explicit design ("SQLite doesn't
+        // support triggers in the same way", :13-16). On SQLite the UPDATE simply
+        // succeeds, so the expectException could never be met — this was CI
+        // consolidation red I-4, SQLite-only and green on PG.
+        $this->skipUnlessPostgres();
 
         $this->expectException(QueryException::class);
         DB::table('documents')->where('id', $correctionId)->update(['document_number' => 'TAMPERED']);
@@ -455,10 +465,30 @@ final class CorrectingEntryEndpointTest extends TestCase
     /** The deletion trigger is armed too — a posted correction cannot be removed. */
     public function test_a_posted_correction_cannot_be_deleted_at_the_database_level(): void
     {
+        // I-4, same cause: `trg_prevent_fiscal_deletion` is created by the same
+        // pgsql-guarded migration, so on SQLite the DELETE succeeds and no
+        // QueryException can be thrown.
+        $this->skipUnlessPostgres();
+
         $correctionId = $this->postedCorrection();
 
         $this->expectException(QueryException::class);
         DB::table('documents')->where('id', $correctionId)->delete();
+    }
+
+    /**
+     * The two tests above assert PostgreSQL TRIGGER behaviour. Both triggers live
+     * behind an explicit `getDriverName() !== 'pgsql'` early return in their
+     * migration, so on SQLite there is nothing to assert — skip rather than fail.
+     */
+    private function skipUnlessPostgres(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            self::markTestSkipped(
+                'trg_document_immutability / trg_prevent_fiscal_deletion are created only on PostgreSQL '
+                .'(2025_12_11_054716_add_document_immutability_trigger.php:13-16).'
+            );
+        }
     }
 
     /**

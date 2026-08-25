@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Fiscal;
 
 use App\Enums\Vertical;
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
@@ -298,28 +299,34 @@ final class TaskPhase3AccountChargeFullFlowTest extends TestCase
         $this->bindModuleActivation(true);
         Sanctum::actingAs($this->cashier);
 
+        // CI consolidation red I-1. `accounting:backfill-chart-purposes` returns
+        // FAILURE when ANY purpose in the company's chart is left invalid —
+        // `BackfillChartPurposesCommand.php:387`,
+        // `return $invalid === 0 ? self::SUCCESS : self::FAILURE;`, a deliberate,
+        // documented operator contract (the runbook in that class's docblock
+        // gates on it). This fixture's chart was four hand-built accounts, so the
+        // command legitimately reported 11 invalid — eight purposes whose PARENT
+        // code was absent, plus eleven REQUIRED purposes it refuses to guess a
+        // code for — and exited 1. The `sales_discount` purpose under test was
+        // created correctly every time; the assertion below was reading a
+        // WHOLE-CHART verdict against a chart the fixture never built.
+        //
+        // Seed the company's real TN chart first, so the backfill is measured
+        // against a chart an operator could actually own and the exit code means
+        // what the assertion says it means. The SalesDiscount account is deleted
+        // immediately after, which is what still arms the dead-letter.
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
         Account::query()
             ->where('company_id', $this->company->id)
             ->where('system_purpose', SystemAccountPurpose::SalesDiscount)
             ->delete();
-        Account::factory()->create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'code' => '41',
-            'name' => 'Clients et comptes rattachés',
-            'type' => AccountType::Asset,
-            'system_purpose' => null,
-            'is_active' => true,
-        ]);
-        Account::factory()->create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'code' => '70',
-            'name' => 'Ventes de produits fabriqués, prestations de services, marchandises',
-            'type' => AccountType::Revenue,
-            'system_purpose' => null,
-            'is_active' => true,
-        ]);
+        $this->ensureParentAccount('41', 'Clients et comptes rattachés', AccountType::Asset);
+        $this->ensureParentAccount(
+            '70',
+            'Ventes de produits fabriqués, prestations de services, marchandises',
+            AccountType::Revenue,
+        );
 
         $eventId = Str::uuid()->toString();
         $envelope = $this->sealedEnvelope(
@@ -811,6 +818,34 @@ final class TaskPhase3AccountChargeFullFlowTest extends TestCase
             ],
             'invoice_classification' => 'b2b_facture_draft_requested',
         ];
+    }
+
+    /**
+     * The backfill can only CREATE a purpose account when its PARENT code exists,
+     * so these two parents have to be present. The TN chart seeded above already
+     * ships both, and `accounts` is UNIQUE on (company_id, code) — so create only
+     * when absent instead of blindly inserting.
+     */
+    private function ensureParentAccount(string $code, string $name, AccountType $type): void
+    {
+        $exists = Account::query()
+            ->where('company_id', $this->company->id)
+            ->where('code', $code)
+            ->exists();
+
+        if ($exists) {
+            return;
+        }
+
+        Account::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => $code,
+            'name' => $name,
+            'type' => $type,
+            'system_purpose' => null,
+            'is_active' => true,
+        ]);
     }
 
     private function createSystemAccount(
