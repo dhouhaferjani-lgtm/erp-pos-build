@@ -25,7 +25,7 @@ import { ValidationResults } from '../components/ValidationResults'
 import { BatchPreview } from '../components/BatchPreview'
 import { LockConfirmation } from '../components/LockConfirmation'
 import { openingBatchTypeKey } from '../i18nKeys'
-import type { OpeningBatchType } from '../types'
+import type { OpeningBatchType, ValidationErrors } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import { useCurrency } from '@/hooks/useCurrency'
@@ -114,6 +114,11 @@ export function OpeningBalanceWizardPage() {
     total_rows: number
     valid_rows: number
     invalid_rows: number
+    // gate r2 G-1: `errors` was dropped on assignment here, so every
+    // batch-level refusal (OPENING_CASH_NOT_FULLY_SEEDED, an unbalanced sheet)
+    // died between the API and the screen. The Post step is unreachable while
+    // `valid` is false — the operator has to be told WHY.
+    errors?: ValidationErrors
   } | null>(null)
 
   // Check if batch already exists

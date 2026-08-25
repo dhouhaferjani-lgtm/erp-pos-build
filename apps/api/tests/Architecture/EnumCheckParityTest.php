@@ -60,15 +60,28 @@ use Tests\TestCase;
  * asserts every clause of it, un-baselined. See that class for why filing either
  * one as debt actively misleads the burn-down.
  *
- * ⚠️ DISCLOSED RESIDUAL — no anti-growth ceiling yet. `DocumentPerActionBaselineRatchetTest`
- * carries a third direction: the working baseline is compared against a blob named
- * by an OWNER-SET repository variable, so "land a violation AND its baseline entry
- * in one change" cannot pass. This gate has no such pin, because none has been
- * bootstrapped for it — MATCHED GROWTH (a new uncovered column plus a hand-added
- * baseline entry in the same diff) passes here and is caught only by review of the
- * baseline diff. Arming it is an owner action (repository variable + pin tag), and
- * it is reported as an owes rather than faked with a self-referential pin that the
- * same diff could edit.
+ * ANTI-GROWTH CEILING (O-31 / gate r2 §R2-2) — the third direction, matching
+ * `DocumentPerActionBaselineRatchetTest`. Directions 1-3 above are all defeatable
+ * on their own: land a new uncovered column AND its hand-added baseline entry in
+ * one diff and everything above is green (MATCHED GROWTH). So
+ * `the_parity_artifacts_never_grow_against_the_owner_pinned_seed()` compares the
+ * working copies of ALL THREE artifacts — tenant baseline, central baseline and
+ * the acknowledgements — against the copies at a commit named by the OWNER-SET
+ * repository variable `ENUM_CHECK_PARITY_PROTECTED_SEED`. A commit rather than a
+ * blob, deliberately: one variable and one durable tag then cover all three files.
+ * The variable is the AUTHORITY precisely because it lives outside every candidate
+ * diff; `docs/handoff/progress/slice-d-parity.progress.yaml` carries a
+ * NON-AUTHORITATIVE mirror for the paper trail, and mirror drift FAILS. Until the
+ * owner arms the variable this gate fails CLOSED, which is the designed forcing
+ * function — see that YAML for the re-pin triggers.
+ *
+ * ⚠️ THE ACKNOWLEDGEMENTS ARE PART OF THE CEILING ON PURPOSE. Gate r2 proved that
+ * widening `fiscal_event_quarantine_class_phase1_allowed` to all six cases AND
+ * deleting its acknowledgement in the SAME diff was fully green: the widened CHECK
+ * reads COVERED, needs no baseline key, and the only machine-readable statement of
+ * the fiscal ledger/quarantine partition vanishes. Under the pin the deletion is
+ * red. `the_named_acknowledgements_still_resolve()` holds the cheap half of that
+ * guarantee even while the variable is unset.
  *
  * ⚠️ THE DETECTOR ITSELF IS CANDIDATE-DELETABLE — the same residual
  * `DocumentPerActionBaselineRatchetTest` discloses. Nothing asserts this file
@@ -89,6 +102,41 @@ final class EnumCheckParityTest extends TestCase
     private const CENTRAL_BASELINE_RELATIVE = 'tests/Architecture/baselines/enum-check-parity-central-baseline.json';
 
     private const ACKNOWLEDGEMENTS_RELATIVE = 'tests/Architecture/baselines/enum-check-parity-acknowledgements.json';
+
+    /**
+     * O-31 — the OWNER-SET repository variable holding the 40-hex seed COMMIT the
+     * three artifacts are ceilinged against. Never a tracked file: a contributor
+     * who can edit the artifacts must not be able to edit the ceiling too.
+     */
+    private const PROTECTED_SEED_ENV = 'ENUM_CHECK_PARITY_PROTECTED_SEED';
+
+    private const MIRROR_YAML_RELATIVE = 'docs/handoff/progress/slice-d-parity.progress.yaml';
+
+    private const MIRROR_FIELD = 'enum_check_parity_seed_commit';
+
+    private const PIN_TAG_FIELD = 'enum_check_parity_pin_tag';
+
+    /**
+     * The three protected artifacts, REPOSITORY-relative (the pin is resolved with
+     * `git cat-file <seed>:<path>` from the repository root, not from `apps/api`).
+     */
+    private const PROTECTED_ARTIFACTS = [
+        'tenant baseline' => 'apps/api/'.self::BASELINE_RELATIVE,
+        'central baseline' => 'apps/api/'.self::CENTRAL_BASELINE_RELATIVE,
+        'acknowledgements' => 'apps/api/'.self::ACKNOWLEDGEMENTS_RELATIVE,
+    ];
+
+    /**
+     * The rot guard's named entries — table, column and the verdict each one is
+     * relabelled to. Deliberately hard-coded: gate r2 §R2-2 proved that the only
+     * existing guard (`assertNotSame([], $entries)`) catches the file being EMPTIED
+     * and nothing else, so deleting ONE entry — the one carrying the fiscal
+     * ledger/quarantine partition — was free.
+     */
+    private const NAMED_ACKNOWLEDGEMENTS = [
+        ['table' => 'fiscal_event_quarantine', 'column' => 'integrity_exception_class', 'kind' => EnumCheckParityAcknowledgements::KIND_INTENDED_NARROWER],
+        ['table' => 'pos_receipts', 'column' => 'receipt_type', 'kind' => EnumCheckParityAcknowledgements::KIND_COVERED_BY_COMPOSITE],
+    ];
 
     /**
      * Derivation walks every model file under app/ and constructs each model; the
@@ -510,6 +558,258 @@ final class EnumCheckParityTest extends TestCase
             $this->scopeMap()->collidingTables(),
             'A table is declared in BOTH the central and the tenant migration tree — the topology split is broken.',
         );
+    }
+
+    /**
+     * O-31 / gate r2 §R2-2 — DIRECTION (c), the anti-growth ceiling, over ALL
+     * THREE artifacts at once.
+     *
+     * Directions 1-3 compare the tree against the tracked artifacts, so a diff
+     * that moves BOTH in step passes. This one compares the tracked artifacts
+     * against copies the diff cannot reach: the owner sets
+     * `ENUM_CHECK_PARITY_PROTECTED_SEED` to a reviewed commit sha and CI maps it
+     * in. Three claims, all shrink-only:
+     *
+     *   (a) every key in the working TENANT baseline is in the pinned one;
+     *   (b) every key in the working CENTRAL baseline is in the pinned one;
+     *   (c) every ACKNOWLEDGEMENT in the pinned file is still in the working file
+     *       with the SAME kind and the SAME predicate. Direction (c) runs the
+     *       opposite way round on purpose: an acknowledgement may be ADDED (that
+     *       is a reviewed claim about the schema), never silently DROPPED or
+     *       RELABELLED. That is the exact move gate r2 proved free — widen the
+     *       CHECK and delete the entry in one diff — and it is now red.
+     *
+     * FAILS CLOSED on: variable unset or empty (the designed forcing function for
+     * the owner bootstrap), a malformed sha, a mirror that disagrees with the
+     * variable (TAMPER SIGNAL, not a skip condition), or an unreachable object —
+     * CI must fetch the durable pin tag before this runs.
+     */
+    #[Test]
+    public function the_parity_artifacts_never_grow_against_the_owner_pinned_seed(): void
+    {
+        $seed = getenv(self::PROTECTED_SEED_ENV);
+        $seed = is_string($seed) ? trim($seed) : '';
+
+        $this->assertNotSame(
+            '',
+            $seed,
+            self::PROTECTED_SEED_ENV." is unset or empty, so the anti-growth ceiling over the three parity\n"
+            ."artifacts cannot be read and this gate FAILS CLOSED.\n"
+            ."In CI: the owner sets the repository variable and the workflow maps it into the job environment.\n"
+            .'Locally: export it from the reviewed seed commit recorded in '.self::MIRROR_YAML_RELATIVE." —\n"
+            .'  export '.self::PROTECTED_SEED_ENV.'=$(git rev-parse <'.self::MIRROR_FIELD.'>)',
+        );
+
+        $this->assertMatchesRegularExpression(
+            '/^[0-9a-f]{40}$|^[0-9a-f]{64}$/',
+            $seed,
+            self::PROTECTED_SEED_ENV.' is not a git commit hash: '.$seed,
+        );
+
+        $mirror = $this->mirrorPin();
+        $this->assertSame(
+            $seed,
+            $mirror,
+            'The progress-YAML mirror ('.self::MIRROR_FIELD.' in '.self::MIRROR_YAML_RELATIVE.') disagrees with '
+            .self::PROTECTED_SEED_ENV.".\n"
+            ."That is a TAMPER SIGNAL, not a skip condition: the mirror is the paper trail for the value the owner set,\n"
+            ."and a diff that moves one without the other is exactly what it exists to expose.\n"
+            .'mirror='.var_export($mirror, true).' variable='.$seed,
+        );
+
+        $pinned = [];
+        foreach (self::PROTECTED_ARTIFACTS as $label => $relative) {
+            [$exitCode, $contents] = $this->gitCatFile($seed.':'.$relative);
+            $this->assertSame(
+                0,
+                $exitCode,
+                'The protected '.$label.' at '.$seed.':'.$relative." could not be read (git cat-file exit {$exitCode}).\n"
+                .'CI must fetch the durable pin tag ('.self::PIN_TAG_FIELD.' in '.self::MIRROR_YAML_RELATIVE
+                .') before this gate runs; an unreachable object fails closed.',
+            );
+            $pinned[$label] = $contents;
+        }
+
+        // (a) + (b) — both baselines may only SHRINK.
+        $problems = [];
+        foreach ([
+            'tenant baseline' => self::BASELINE_RELATIVE,
+            'central baseline' => self::CENTRAL_BASELINE_RELATIVE,
+        ] as $label => $relative) {
+            $protectedKeys = [];
+            foreach ($this->decodeKeyList($pinned[$label], 'pinned '.$label) as $key) {
+                $protectedKeys[$key] = true;
+            }
+
+            foreach ($this->baselineKeys($relative) as $key) {
+                if (! isset($protectedKeys[$key])) {
+                    $problems[] = $label.' GREW: '.$key;
+                }
+            }
+        }
+
+        // (c) — no acknowledgement may be dropped or relabelled.
+        $working = $this->acknowledgementIndex(
+            (string) file_get_contents(base_path(self::ACKNOWLEDGEMENTS_RELATIVE)),
+            'working',
+        );
+        foreach ($this->acknowledgementIndex($pinned['acknowledgements'], 'pinned') as $key => $pinnedEntry) {
+            if (! isset($working[$key])) {
+                $problems[] = 'acknowledgement DROPPED: '.$key
+                    .' — widening a CHECK and deleting its acknowledgement in one diff is the move this refuses.';
+
+                continue;
+            }
+
+            $workingEntry = $working[$key];
+            if (($workingEntry['kind'] ?? null) !== ($pinnedEntry['kind'] ?? null)) {
+                $problems[] = 'acknowledgement RELABELLED: '.$key.' — kind '
+                    .var_export($pinnedEntry['kind'] ?? null, true).' -> '.var_export($workingEntry['kind'] ?? null, true);
+            }
+            if (($workingEntry['predicate'] ?? null) !== ($pinnedEntry['predicate'] ?? null)) {
+                $problems[] = 'acknowledgement PREDICATE MOVED: '.$key.' — '
+                    .json_encode($pinnedEntry['predicate'] ?? null).' -> '.json_encode($workingEntry['predicate'] ?? null);
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $problems,
+            "\nThe parity artifacts have GROWN or LOST GROUND against the owner-pinned seed {$seed}.\n"
+            ."Baseline keys may only be REMOVED; acknowledgements may only be ADDED.\n  "
+            .implode("\n  ", $problems)."\n"
+            ."A new uncovered column is fixed by ADDING THE CHECK, never by extending the baseline in the same diff.\n"
+            ."A NARROWER partition row is never 'closed' by widening the CHECK and deleting its acknowledgement.\n"
+            .'If the movement is legitimate and reviewed, the fix is an OWNER RE-PIN — a new '
+            .self::PROTECTED_SEED_ENV." value AND a newly allocated pin tag, together.\n",
+        );
+    }
+
+    /**
+     * R2-2, the cheap half — armed even while the owner variable is unset.
+     *
+     * `acknowledgements_still_describe_the_live_schema()` asserts every clause of
+     * every entry that is PRESENT, and guards only the file being emptied
+     * (`assertNotSame([], $entries)`). Neither notices ONE entry disappearing. So
+     * the two live acknowledgements are named here: the quarantine partition
+     * (whose deletion lets a `sequence_gap` or a `canonical_hash_mismatch` be
+     * written into the table reserved for classes that may never reach the ledger)
+     * and the `pos_receipts.receipt_type` composite. Retiring either one is a
+     * legitimate act — it just has to be done HERE, in the diff that retires it,
+     * where a reviewer can see it.
+     */
+    #[Test]
+    public function the_named_acknowledgements_still_resolve(): void
+    {
+        $entries = $this->acknowledgements()->entries();
+
+        $byColumn = [];
+        foreach ($entries as $entry) {
+            /** @var array{kind: string, table: string, column: string} $entry */
+            $byColumn[$entry['table'].'.'.$entry['column']] = $entry['kind'];
+        }
+
+        $problems = [];
+        foreach (self::NAMED_ACKNOWLEDGEMENTS as $named) {
+            $key = $named['table'].'.'.$named['column'];
+
+            if (! isset($byColumn[$key])) {
+                $problems[] = $key.' — named in NAMED_ACKNOWLEDGEMENTS but GONE from '
+                    .self::ACKNOWLEDGEMENTS_RELATIVE.'. If the row was legitimately retired (its CHECK became a real '
+                    .'value-set CHECK), delete it from NAMED_ACKNOWLEDGEMENTS in the SAME diff and say why. Never silently.';
+
+                continue;
+            }
+
+            if ($byColumn[$key] !== $named['kind']) {
+                $problems[] = $key.' — acknowledged as '.$byColumn[$key].', expected '.$named['kind']
+                    .'. A relabel changes what is being claimed about the live schema; re-derive the claim.';
+            }
+        }
+
+        $this->assertSame([], $problems, "\nAN ACKNOWLEDGEMENT NAMED IN THIS GUARD NO LONGER RESOLVES.\n  "
+            .implode("\n  ", $problems)."\n");
+    }
+
+    /**
+     * @return array<string, array<string, mixed>> key => the raw acknowledgement entry
+     */
+    private function acknowledgementIndex(string $json, string $origin): array
+    {
+        /** @var mixed $decoded */
+        $decoded = json_decode($json, true);
+        $this->assertIsArray($decoded, 'The '.$origin.' acknowledgements artifact is not a JSON array.');
+
+        $out = [];
+        foreach ($decoded as $entry) {
+            $this->assertIsArray($entry, 'The '.$origin.' acknowledgements artifact contains a non-object entry.');
+            $this->assertArrayHasKey('key', $entry, 'The '.$origin.' acknowledgements artifact contains an entry with no key.');
+            $out[(string) $entry['key']] = $entry;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function decodeKeyList(string $json, string $origin): array
+    {
+        /** @var mixed $decoded */
+        $decoded = json_decode($json, true);
+        $this->assertIsArray($decoded, 'The '.$origin.' is not a JSON array of keys.');
+
+        $keys = [];
+        foreach ($decoded as $entry) {
+            $this->assertIsString($entry, 'The '.$origin.' contains a non-string entry.');
+            $keys[] = $entry;
+        }
+
+        return $keys;
+    }
+
+    private function mirrorPin(): ?string
+    {
+        $path = $this->repositoryRoot().'/'.self::MIRROR_YAML_RELATIVE;
+        if (! is_file($path)) {
+            return null;
+        }
+
+        $contents = (string) file_get_contents($path);
+        if (preg_match('/^'.preg_quote(self::MIRROR_FIELD, '/').':\s*([0-9a-f]{40,64})\s*$/m', $contents, $matches) !== 1) {
+            return null;
+        }
+
+        return $matches[1];
+    }
+
+    /**
+     * @return array{0: int, 1: string}
+     */
+    private function gitCatFile(string $rev): array
+    {
+        $command = sprintf(
+            'git -C %s cat-file -p %s 2>/dev/null',
+            escapeshellarg($this->repositoryRoot()),
+            escapeshellarg($rev),
+        );
+
+        $descriptors = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+        $process = proc_open($command, $descriptors, $pipes);
+        if (! is_resource($process)) {
+            return [1, ''];
+        }
+
+        $stdout = (string) stream_get_contents($pipes[1]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+
+        return [proc_close($process), $stdout];
+    }
+
+    private function repositoryRoot(): string
+    {
+        return dirname(base_path(), 2);
     }
 
     private function registry(): EnumBackedColumnRegistry

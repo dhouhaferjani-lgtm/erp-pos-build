@@ -32,6 +32,7 @@ use App\Modules\Treasury\Domain\Enums\CancellationShape;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Payment;
+use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Voucher\Domain\Enums\VoucherEvent;
 use App\Modules\Voucher\Domain\Enums\VoucherSource;
@@ -4661,6 +4662,45 @@ final class GeneralLedgerService
      *              vendor partner for the AP subledger. NO cash is credited: an unpaid
      *              expense has not moved any money yet (Wave D bug fix).
      */
+    /**
+     * The GL account a NON-CASH payment method settles through, when an expense
+     * was paid without naming a treasury repository (W4-10's sanctioned
+     * carve-out; gate r1 F-3).
+     *
+     * Resolved from `payment_methods.default_account_id` — seeded configuration,
+     * never a hardcoded code — and scoped by tenant+company so a foreign
+     * method's account can never be reached. Null when the method is absent,
+     * carries no default account, or that account does not resolve for this
+     * company; the caller then falls back to the BANK purpose account.
+     */
+    private function paymentMethodAccountForExpense(
+        Document $expense,
+        string $companyId,
+        ?string $paymentMethodId,
+    ): ?Account {
+        if ($paymentMethodId === null) {
+            return null;
+        }
+
+        $accountId = PaymentMethod::query()
+            ->where('tenant_id', $expense->tenant_id)
+            ->where('company_id', $companyId)
+            ->whereKey($paymentMethodId)
+            ->value('default_account_id');
+
+        if (! is_string($accountId) || $accountId === '') {
+            return null;
+        }
+
+        $account = Account::query()
+            ->where('tenant_id', $expense->tenant_id)
+            ->where('company_id', $companyId)
+            ->whereKey($accountId)
+            ->first();
+
+        return $account instanceof Account ? $account : null;
+    }
+
     public function createFromExpense(Document $expense, User $user, PostingMode $mode = PostingMode::AfterCommit): JournalEntry
     {
         if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
@@ -4696,11 +4736,55 @@ final class GeneralLedgerService
             $isPaid = $metadata?->is_paid === true;
             if ($isPaid) {
                 // $isPaid === true implies $metadata is non-null (is_paid was read off it).
-                $repositoryType = $metadata->paymentRepository !== null ? $metadata->paymentRepository->type : RepositoryType::CashRegister;
-                $creditAccount = match ($repositoryType) {
-                    RepositoryType::BankAccount => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Bank),
-                    default => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Cash),
-                };
+                $repository = $metadata->paymentRepository;
+
+                // W4-10: credit the repository's OWN cash/bank account when it
+                // has one, so the treasury movement and the GL line land on the
+                // same account and ReconcileTreasuryCommand's check 2 (which
+                // treats the repository's own gl_account_id line as
+                // AUTHORITATIVE) actually enforces till == ledger. The
+                // purpose-based lookup stays as the fallback for a repository
+                // with no GL link and for the legacy no-repository shape — on
+                // the seeded chart the two resolve to the same account
+                // (PaymentRepositorySeeder links both tills to the Cash
+                // purpose account), so this is a no-op there and only bites
+                // when a tenant splits its cash accounts per till.
+                $repositoryGlAccount = $repository?->gl_account_id !== null
+                    ? Account::query()
+                        ->where('tenant_id', $expense->tenant_id)
+                        ->where('company_id', $companyId)
+                        ->whereKey($repository->gl_account_id)
+                        ->first()
+                    : null;
+
+                if ($repositoryGlAccount instanceof Account) {
+                    $creditAccount = $repositoryGlAccount;
+                } elseif ($repository !== null) {
+                    // A repository with no GL link: fall back on its TYPE.
+                    $creditAccount = match ($repository->type) {
+                        RepositoryType::BankAccount => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Bank),
+                        default => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Cash),
+                    };
+                } else {
+                    // NO repository at all. Since W4-10 this is reachable ONLY
+                    // through the sanctioned non-cash carve-out: an expense paid
+                    // by a method whose `is_cash_tender` is false
+                    // (ExpenseService::assertPaidExpenseNamesRepository refuses
+                    // every other shape). Crediting Cash here — which is what
+                    // shipped — put a CARD payment against `53 Caisse` and moved
+                    // no till, silently breaking the `Σ till balances == GL cash`
+                    // equality W4-2 establishes, in a way treasury:reconcile
+                    // cannot see because there is no movement to check
+                    // (gate r1 F-3, PROBE F: `credit53=45 credit512=0 movements=0`).
+                    //
+                    // The money left through the method's own rail, so credit the
+                    // account that rail is configured with — `payment_methods
+                    // .default_account_id` — and fall back to the BANK purpose
+                    // account, never Cash: a non-cash tender by definition did not
+                    // come out of a drawer.
+                    $creditAccount = $this->paymentMethodAccountForExpense($expense, $companyId, $metadata->payment_method_id)
+                        ?? $this->getAccountByPurpose($companyId, SystemAccountPurpose::Bank);
+                }
                 $creditPartnerId = null;
                 $creditDescription = 'Expense payment';
             } else {

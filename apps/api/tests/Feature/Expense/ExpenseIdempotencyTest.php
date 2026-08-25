@@ -16,6 +16,8 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -32,8 +34,25 @@ final class ExpenseIdempotencyTest extends TestCase
 
         app(CompanyContext::class)->setCompanyId($company->id);
 
+        // W4-10: a cash-paid expense must name the repository the money left.
+        // This test is about the idempotency key, not the payment shape, so it
+        // supplies a repository and keeps its subject unchanged.
+        $repository = PaymentRepository::forceCreate([
+            'tenant_id' => $company->tenant_id,
+            'company_id' => $company->id,
+            'code' => 'CASH-IDEMP',
+            'name' => 'Caisse',
+            'type' => RepositoryType::CashRegister,
+            'is_active' => true,
+        ]);
+
         $key = (string) Str::uuid();
-        $payload = ['total' => '12.500', 'is_paid' => true, 'idempotency_key' => $key];
+        $payload = [
+            'total' => '12.500',
+            'is_paid' => true,
+            'payment_repository_id' => $repository->id,
+            'idempotency_key' => $key,
+        ];
 
         $first = $this->actingAs($user, 'sanctum')
             ->postJson('/api/v1/expenses', $payload)
