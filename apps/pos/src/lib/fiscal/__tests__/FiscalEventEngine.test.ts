@@ -176,6 +176,9 @@ function validSaleReceiptPayload(): Record<string, unknown> {
     transaction_discount_reason: null,
     vat_breakdown: [
       {
+        // D-1 (v5): every `vat_breakdown[]` row carries its pro-rata share of
+        // the ticket remise. Canonical zero on a discount-free ticket.
+        discount_allocated: '0.000',
         gross_amount: '12.000',
         net_amount: '10.000',
         rate: '20.00',
@@ -198,8 +201,14 @@ function validSaleReceiptPayload(): Record<string, unknown> {
  */
 function validRefundReceiptV4Payload(): Record<string, unknown> {
   const base = validSaleReceiptPayload();
+  // v4 predates D-1: its `vat_breakdown[]` rows are the frozen five-key shape,
+  // so the v5-only `discount_allocated` must be stripped off the shared base.
+  const v4Breakdown = (base['vat_breakdown'] as Array<Record<string, unknown>>)
+    .map(({ discount_allocated: _allocated, ...rest }) => rest);
+
   return {
     ...base,
+    vat_breakdown: v4Breakdown,
     invoice_type_code: 'REFUND',
     original_line_references: [
       {
@@ -455,7 +464,7 @@ d('FiscalEventEngine.append', () => {
     expect(event.sequence_number).toBe(1);
     expect(event.previous_hash).toBe(GENESIS_SEED);
     expect(event.current_hash).toMatch(/^[0-9a-f]{64}$/);
-    expect(event.event_version).toBe(3); // SaleReceiptV3 (cash rounding)
+    expect(event.event_version).toBe(5); // SaleReceiptV5 (D-1 post-remise VAT base)
     expect(event.signature_version).toBe('hash-chain-integrity-v1');
     expect(event.sync_status).toBe('pending');
     expect(event.signature_status).toBe('not_required');
@@ -652,7 +661,7 @@ d('FiscalEventEngine.append', () => {
     expect(parsed.chain_context).toBe('operational');
     expect(parsed.previous_hash).toBe(GENESIS_SEED);
     expect(parsed.event_type).toBe('SALE_RECEIPT');
-    expect(parsed.event_version).toBe(3); // SaleReceiptV3 (cash rounding)
+    expect(parsed.event_version).toBe(5); // SaleReceiptV5 (D-1 post-remise VAT base)
     expect(parsed.signature_version).toBe('hash-chain-integrity-v1');
     expect(parsed.reference_event_id).toBeNull();
     expect(parsed.reference_document_id).toBeNull();
@@ -862,7 +871,7 @@ d('FiscalEventEngine.append', () => {
       }),
     );
 
-    expect(event.event_version).toBe(3);
+    expect(event.event_version).toBe(5);
     expect(event.sequence_number).toBe(1);
   });
 
@@ -1547,9 +1556,9 @@ d('FiscalEventEngine.append', () => {
     expect(event.current_hash).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it('spec §2 — a plain SALE payload still resolves event_version=3 (payload-aware resolution does not regress the common case)', async () => {
+  it('spec §2 + D-1 — a plain SALE payload resolves event_version=5 (payload-aware resolution does not regress the common case)', async () => {
     const event = await engine.append(adapter, saleReceiptRequest());
-    expect(event.event_version).toBe(3);
+    expect(event.event_version).toBe(5);
   });
 
   it('spec §2/§3.4 — rejects a v4 REFUND payload missing the three v4-only keys (still v3-shaped)', async () => {

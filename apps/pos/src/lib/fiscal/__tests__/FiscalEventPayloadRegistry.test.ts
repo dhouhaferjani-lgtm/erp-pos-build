@@ -57,7 +57,7 @@ describe('FiscalEventPayloadRegistry', () => {
   });
 
   it('returns eventVersion=1 for implemented types', () => {
-    expect(registry.eventVersionFor('SALE_RECEIPT')).toBe(3); // SaleReceiptV3 (cash rounding)
+    expect(registry.eventVersionFor('SALE_RECEIPT')).toBe(5); // SaleReceiptV5 (D-1 post-remise VAT base)
     expect(registry.eventVersionFor('CHAIN_BREAK_DETECTED')).toBe(1);
     expect(registry.eventVersionFor('CHAIN_RESTART')).toBe(1);
     expect(registry.eventVersionFor('TERMINAL_REGISTRY_SNAPSHOT')).toBe(1);
@@ -199,16 +199,16 @@ describe('FiscalEventPayloadRegistry', () => {
   // -------------------------------------------------------------------
 
   describe('payload-aware eventVersionFor() (spec §2)', () => {
-    it('resolves SALE_RECEIPT to 3 when the second argument is absent entirely (back-compat)', () => {
-      expect(registry.eventVersionFor('SALE_RECEIPT')).toBe(3);
+    it('resolves SALE_RECEIPT to 5 when the second argument is absent entirely (back-compat)', () => {
+      expect(registry.eventVersionFor('SALE_RECEIPT')).toBe(5);
     });
 
-    it('resolves SALE_RECEIPT to 3 when payload.invoice_type_code is SALE', () => {
-      expect(registry.eventVersionFor('SALE_RECEIPT', { invoice_type_code: 'SALE' })).toBe(3);
+    it('resolves SALE_RECEIPT to 5 when payload.invoice_type_code is SALE', () => {
+      expect(registry.eventVersionFor('SALE_RECEIPT', { invoice_type_code: 'SALE' })).toBe(5);
     });
 
-    it('resolves SALE_RECEIPT to 3 when payload.invoice_type_code is TRAINING', () => {
-      expect(registry.eventVersionFor('SALE_RECEIPT', { invoice_type_code: 'TRAINING' })).toBe(3);
+    it('resolves SALE_RECEIPT to 5 when payload.invoice_type_code is TRAINING', () => {
+      expect(registry.eventVersionFor('SALE_RECEIPT', { invoice_type_code: 'TRAINING' })).toBe(5);
     });
 
     it('resolves SALE_RECEIPT to 4 when payload.invoice_type_code is REFUND', () => {

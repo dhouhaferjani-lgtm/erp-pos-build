@@ -1117,6 +1117,61 @@ export const SALE_RECEIPT_PAYLOAD_KEYS_V3 = [
 ] as const;
 
 /**
+ * SALE_RECEIPT v5 top-level key set (D-1, owner ruling 2026-08-25).
+ *
+ * 30 keys — the SAME top-level set as v3. What changes at v5 is the
+ * SEMANTICS of three of them plus one nested key:
+ *   - `subtotal` / `vat_total` / `vat_breakdown[].net_amount` /
+ *     `vat_breakdown[].vat_amount` are now the POST-remise taxable base and
+ *     VAT (v3 sealed them on the PRE-discount base);
+ *   - `vat_breakdown[]` rows gain `discount_allocated` — this group's
+ *     pro-rata share of `transaction_discount_amount`
+ *     (`SALE_RECEIPT_VAT_BREAKDOWN_KEYS_V5`).
+ *
+ * The aggregate identity flips with it: v3 asserts
+ * `subtotal + vat_total == total + transaction_discount_amount` (the discount
+ * added BACK to reach the taxed base); v5 asserts
+ * `subtotal + vat_total == total` (minus the v3 rounding adjustment), because
+ * the base is already net of the remise.
+ *
+ * A NAMED constant, never a mutation of `SALE_RECEIPT_PAYLOAD_KEYS_V3` — the
+ * v3 record stays frozen forever and old receipts keep re-verifying against
+ * the v3 rules (rule 8: Events are Immutable Forever).
+ */
+export const SALE_RECEIPT_PAYLOAD_KEYS_V5 = [
+  'approval_references',
+  'business_date',
+  'buyer',
+  'cash_rounding_adjustment',
+  'cash_rounding_denomination',
+  'cashier_id',
+  'cashier_name',
+  'consumption_mode',
+  'currency_code',
+  'currency_scale',
+  'event_time_device',
+  'invoice_type_code',
+  'line_items',
+  'lottery_code',
+  'notes',
+  'original_receipt_reference',
+  'payments',
+  'receipt_uuid',
+  'seller',
+  'shift_id',
+  'subtotal',
+  'table_id',
+  'terminal_id',
+  'total',
+  'training_flag',
+  'transaction_discount_amount',
+  'transaction_discount_reason',
+  'vat_breakdown',
+  'vat_total',
+  'vouchers_redeemed',
+] as const;
+
+/**
  * SALE_RECEIPT v4 top-level key set (v3-refund-chain-integration spec §2/
  * §3.3/§3.4). 33 keys = the 30 v3 keys plus `original_line_references`,
  * `refund_destination`, `settlement_allocation`, which sort in
@@ -1548,9 +1603,15 @@ export function validateSaleReceiptPayload(payload: unknown, eventVersion: numbe
   //       30-key v3 set unchanged. The ROUNDING feature gate itself still
   //       lives on `fiscal_schema_version`, not on the payload version —
   //       unaffected by this threading.
+  //       D-1: v4 is the REFUND-only fan-out, so it is matched EXACTLY.
+  //       v5 (post-remise VAT base) carries the same 30 top-level keys as
+  //       v3 under `SALE_RECEIPT_PAYLOAD_KEYS_V5`; a `>= 4` test would have
+  //       handed v5 the 33-key refund set and refused every new sale.
   assertExactKeySet(
     p,
-    eventVersion >= 4 ? SALE_RECEIPT_PAYLOAD_KEYS_V4 : SALE_RECEIPT_PAYLOAD_KEYS_V3,
+    eventVersion === 4
+      ? SALE_RECEIPT_PAYLOAD_KEYS_V4
+      : (eventVersion >= 5 ? SALE_RECEIPT_PAYLOAD_KEYS_V5 : SALE_RECEIPT_PAYLOAD_KEYS_V3),
     'SALE_RECEIPT',
   );
 
@@ -1592,7 +1653,7 @@ export function validateSaleReceiptPayload(payload: unknown, eventVersion: numbe
   //        defense-in-depth boundary check (mirrors the PHP validator's own
   //        §2z, which is a genuinely separate parse path server-side) —
   //        never trusted to be redundant.
-  if (eventVersion >= 4) {
+  if (eventVersion === 4) {
     if (invoiceTypeCode === 'VOID') {
       throw new FiscalEventPayloadValidationError(
         'payload_void_authoring_prohibited:event_version=4 payloads with invoice_type_code=VOID have no legitimate producer (spec §2/§8)',
@@ -1676,7 +1737,7 @@ export function validateSaleReceiptPayload(payload: unknown, eventVersion: numbe
   //        already makes a non-zero-original-discount refund unreachable;
   //        this is the device-side defense-in-depth mirror of the PHP
   //        validator's identical §4a check, not a new runtime branch). --
-  if (eventVersion >= 4 && !isZeroDiscount) {
+  if (eventVersion === 4 && !isZeroDiscount) {
     throw new FiscalEventPayloadValidationError(
       `payload_v4_refund_transaction_discount_must_be_zero:transaction_discount_amount=${discountAmount}`,
     );
@@ -1694,7 +1755,7 @@ export function validateSaleReceiptPayload(payload: unknown, eventVersion: numbe
   //        per-row validation below, mirroring the PHP validator's
   //        placement exactly (both lists are validated by their own
   //        natural shape check, requireList, first).
-  if (eventVersion >= 4) {
+  if (eventVersion === 4) {
     validateOriginalLineReferences(p);
     validateRefundDestinationAndSettlementAllocation(p);
   }
@@ -1713,14 +1774,23 @@ export function validateSaleReceiptPayload(payload: unknown, eventVersion: numbe
 
   const payments = requireList(p, 'payments');
   if (payments.length === 0) {
-    throw new FiscalEventPayloadValidationError(
-      'payload_payments_empty:payments must have >= 1 row',
-    );
+    // D-1 / G3-A fold-in: a 100 %-comp receipt tenders nothing, and
+    // `pos_receipt_payments CHECK (amount > 0)` refuses the 0.000 leg the
+    // device used to emit — so at v5 the device emits NO tender row at all
+    // and the ticket's story is carried by the discount line. Allowed ONLY
+    // when the ticket is fully comped: `total` is canonical zero AND the
+    // remise equals the whole gross. Every other version, and every
+    // non-zero-total v5 ticket, still requires >= 1 row.
+    if (eventVersion < 5 || !isFullyCompedTicket(p, scale)) {
+      throw new FiscalEventPayloadValidationError(
+        'payload_payments_empty:payments must have >= 1 row',
+      );
+    }
   }
   payments.forEach((row, idx) => validatePaymentRow(idx, row, money, scale));
 
   // -- 7a. v4 single-cash-leg contract (spec §3.7). --
-  if (eventVersion >= 4) {
+  if (eventVersion === 4) {
     validateSingleCashLegPayment(payments);
   }
 
@@ -1730,7 +1800,7 @@ export function validateSaleReceiptPayload(payload: unknown, eventVersion: numbe
       'payload_vat_breakdown_empty:vat_breakdown must have >= 1 row',
     );
   }
-  vatBreakdown.forEach((row, idx) => validateVatBreakdownRow(idx, row, money, scale));
+  vatBreakdown.forEach((row, idx) => validateVatBreakdownRow(idx, row, money, scale, eventVersion));
 
   const vouchers = requireList(p, 'vouchers_redeemed');
   vouchers.forEach((row, idx) => validateVoucherRow(idx, row, money, scale));
@@ -2042,6 +2112,17 @@ const PAYMENT_KEYS = [
   'instrument_serial', 'instrument_type', 'method_code',
 ] as const;
 const VAT_BREAKDOWN_KEYS = ['gross_amount', 'net_amount', 'rate', 'tax_category_code', 'vat_amount'] as const;
+/**
+ * v5 `vat_breakdown[]` row key set (D-1) — the five v3 keys plus
+ * `discount_allocated`, this group's pro-rata share of the ticket-level
+ * remise. Sorted, mirroring
+ * `FiscalPayloadConstraintValidator::SALE_RECEIPT_VAT_BREAKDOWN_KEYS_V5`
+ * (the FiscalPayloadKeyDrift gate pins the two lists against each other).
+ */
+export const SALE_RECEIPT_VAT_BREAKDOWN_KEYS_V5 = [
+  'discount_allocated', 'gross_amount', 'net_amount', 'rate',
+  'tax_category_code', 'vat_amount',
+] as const;
 const VOUCHER_KEYS = ['redeemed_amount', 'voucher_code'] as const;
 const ACCOUNT_PAYMENT_CUSTOMER_KEYS = [
   'address',
@@ -3049,14 +3130,57 @@ function validatePaymentRow(index: number, row: unknown, money: RegExp, scale: n
   assertMoneyStringAt(row, 'foreign_currency_amount', moneyRegex(foreignScale), foreignScale, `${path}.foreign_currency_amount`);
 }
 
-function validateVatBreakdownRow(index: number, row: unknown, money: RegExp, scale: number): void {
+/**
+ * True when the ticket was fully comped: `total` is BCMath-equivalent zero and
+ * `transaction_discount_amount` equals `subtotal + vat_total` (v5 seals those
+ * two POST-remise, so the sum is the residual gross — zero on a full comp).
+ *
+ * Structural only: both operands were already pinned to the currency scale by
+ * the money checks above, so a string compare against the canonical zero is
+ * exact. The authoritative arithmetic cross-check stays server-side
+ * (synthesis v5 6.F).
+ */
+function isFullyCompedTicket(p: Record<string, unknown>, scale: number): boolean {
+  const total = p['total'];
+  const subtotal = p['subtotal'];
+  const vatTotal = p['vat_total'];
+  const discount = p['transaction_discount_amount'];
+  if (typeof total !== 'string' || typeof subtotal !== 'string'
+    || typeof vatTotal !== 'string' || typeof discount !== 'string') {
+    return false;
+  }
+
+  return isZeroMoney(total)
+    && isZeroMoney(subtotal)
+    && isZeroMoney(vatTotal)
+    && !isZeroMoney(discount)
+    && bcformat(discount, scale) === discount;
+}
+
+function validateVatBreakdownRow(
+  index: number,
+  row: unknown,
+  money: RegExp,
+  scale: number,
+  eventVersion: number = 1,
+): void {
   if (!isPlainObject(row)) {
     throw new FiscalEventPayloadValidationError(
       `payload_vat_breakdown_invalid:vat_breakdown[${index}] must be object; got ${typeofTag(row)}`,
     );
   }
   const path = `vat_breakdown[${index}]`;
-  assertExactKeySetWithPath(row, VAT_BREAKDOWN_KEYS, path);
+  // D-1: v5 rows carry the group's pro-rata share of the ticket remise.
+  // `eventVersion` defaults to 1 so every non-SALE_RECEIPT caller (which
+  // never threads a version) keeps the pre-D-1 five-key contract exactly.
+  assertExactKeySetWithPath(
+    row,
+    eventVersion >= 5 ? SALE_RECEIPT_VAT_BREAKDOWN_KEYS_V5 : VAT_BREAKDOWN_KEYS,
+    path,
+  );
+  if (eventVersion >= 5) {
+    assertMoneyStringAt(row, 'discount_allocated', money, scale, `${path}.discount_allocated`);
+  }
 
   assertMoneyStringAt(row, 'net_amount', money, scale, `${path}.net_amount`);
   assertMoneyStringAt(row, 'vat_amount', money, scale, `${path}.vat_amount`);

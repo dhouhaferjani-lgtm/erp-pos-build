@@ -264,22 +264,37 @@ export function buildEscPosFromOfflineReceipt(
   const currencySymbol = getCurrencySymbol(result.currency);
   const decimals = getCurrencyDecimals(result.currency);
 
-  // Build VAT breakdown from cart items. Accumulate as currency-scale decimal
-  // strings (Big.js) — summing many lines with parseFloat drifted the printed
-  // taxable/tax totals.
+  // D-1 (owner ruling 2026-08-25): the printed VAT block is the SEALED
+  // per-rate breakdown, POST-remise. Re-deriving it from the cart lines here
+  // would print the PRE-discount base — the very figure the ruling removed —
+  // and put the customer's ticket at odds with the fiscal event the chain
+  // carries. The fallback below is reached only when the sealed rows are
+  // unavailable (idempotency replay whose canonical bytes could not be
+  // re-read); it is deliberately the old line roll-up, which is exact for the
+  // discount-free tickets that fallback can serve.
+  const sealedVatBreakdown = (result.vatBreakdown ?? [])
+    .filter((group) => bccomp(group.netAmount, '0') !== 0 || bccomp(group.vatAmount, '0') !== 0)
+    .map((group) => ({
+      rate: group.rate,
+      taxable: bcformat(group.netAmount, decimals),
+      tax: bcformat(group.vatAmount, decimals),
+    }));
+
   const vatByRate = new Map<string, { taxable: string; tax: string }>();
-  for (const item of cartItems) {
-    const rate = item.tax_rate;
-    if (bccomp(item.tax_amount, '0') === 0) continue;
-    const taxable = bcsub(item.line_total, item.tax_amount, decimals);
-    const existing = vatByRate.get(rate) ?? {
-      taxable: (0).toFixed(decimals),
-      tax: (0).toFixed(decimals),
-    };
-    vatByRate.set(rate, {
-      taxable: bcadd(existing.taxable, taxable, decimals),
-      tax: bcadd(existing.tax, item.tax_amount, decimals),
-    });
+  if (sealedVatBreakdown.length === 0) {
+    for (const item of cartItems) {
+      const rate = item.tax_rate;
+      if (bccomp(item.tax_amount, '0') === 0) continue;
+      const taxable = bcsub(item.line_total, item.tax_amount, decimals);
+      const existing = vatByRate.get(rate) ?? {
+        taxable: (0).toFixed(decimals),
+        tax: (0).toFixed(decimals),
+      };
+      vatByRate.set(rate, {
+        taxable: bcadd(existing.taxable, taxable, decimals),
+        tax: bcadd(existing.tax, item.tax_amount, decimals),
+      });
+    }
   }
 
   return {
@@ -315,17 +330,23 @@ export function buildEscPosFromOfflineReceipt(
     tax_amount: bcformat(result.taxAmount, decimals),
     total: bcformat(result.total, decimals),
     currency_symbol: currencySymbol,
-    vat_breakdown: Array.from(vatByRate.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([rate, { taxable, tax }]) => ({
-        rate,
-        taxable: bcformat(taxable, decimals),
-        tax: bcformat(tax, decimals),
-      })),
-    payments: [{
-      method: paymentMethodName,
-      amount: bcformat(result.total, decimals),
-    }],
+    vat_breakdown: sealedVatBreakdown.length > 0
+      ? sealedVatBreakdown
+      : Array.from(vatByRate.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([rate, { taxable, tax }]) => ({
+          rate,
+          taxable: bcformat(taxable, decimals),
+          tax: bcformat(tax, decimals),
+        })),
+    // A 100 %-comp ticket tenders nothing (D-1 / G3-A): the remise line
+    // carries the story, so no tender row is printed either.
+    payments: bccomp(result.total, '0') === 0 && bccomp(result.discountAmount, '0') > 0
+      ? []
+      : [{
+        method: paymentMethodName,
+        amount: bcformat(result.total, decimals),
+      }],
     change_due: bcformat(result.changeDue, decimals),
     tolerance_writeoff: null,
     has_tolerance: false,

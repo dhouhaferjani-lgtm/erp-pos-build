@@ -355,6 +355,84 @@ final class FiscalPayloadConstraintValidator
     ];
 
     /**
+     * SALE_RECEIPT **v5** key set — D-1 (owner ruling 2026-08-25, option (a)).
+     *
+     * The SAME 30 top-level keys as v3. What changes at v5 is the SEMANTICS:
+     * `subtotal`, `vat_total` and every `vat_breakdown[]` row are sealed NET of
+     * the ticket-level remise, ventilated pro-rata per rate, and each
+     * breakdown row carries `discount_allocated`
+     * ({@see SALE_RECEIPT_VAT_BREAKDOWN_KEYS_V5}).
+     *
+     * The aggregate identity flips with it:
+     *   - v1/v2/v3: `subtotal + vat_total == (total - adjustment) + discount`
+     *     (the discount is added BACK — the base was the PRE-discount gross);
+     *   - v5:       `subtotal + vat_total == total - adjustment`.
+     *
+     * A NAMED constant, never a mutation of SALE_RECEIPT_PAYLOAD_KEYS_V3 — the
+     * v3 record stays frozen forever, and v3 payloads keep being ACCEPTED
+     * forever (older devices in the field; the cutover is forward-only).
+     *
+     * @var list<string>
+     */
+    public const SALE_RECEIPT_PAYLOAD_KEYS_V5 = [
+        'approval_references',
+        'business_date',
+        'buyer',
+        'cash_rounding_adjustment',
+        'cash_rounding_denomination',
+        'cashier_id',
+        'cashier_name',
+        'consumption_mode',
+        'currency_code',
+        'currency_scale',
+        'event_time_device',
+        'invoice_type_code',
+        'line_items',
+        'lottery_code',
+        'notes',
+        'original_receipt_reference',
+        'payments',
+        'receipt_uuid',
+        'seller',
+        'shift_id',
+        'subtotal',
+        'table_id',
+        'terminal_id',
+        'total',
+        'training_flag',
+        'transaction_discount_amount',
+        'transaction_discount_reason',
+        'vat_breakdown',
+        'vat_total',
+        'vouchers_redeemed',
+    ];
+
+    /**
+     * `vat_breakdown[]` row key set at **v5** — the five v1..v4 keys plus
+     * `discount_allocated`, this group's pro-rata share of the ticket remise.
+     * Sorted; mirrors `FiscalEventEngine.ts`'s
+     * `SALE_RECEIPT_VAT_BREAKDOWN_KEYS_V5` (the FiscalPayloadKeyDrift gate pins
+     * the two lists against each other).
+     *
+     * @var list<string>
+     */
+    public const SALE_RECEIPT_VAT_BREAKDOWN_KEYS_V5 = [
+        'discount_allocated',
+        'gross_amount',
+        'net_amount',
+        'rate',
+        'tax_category_code',
+        'vat_amount',
+    ];
+
+    /**
+     * The lowest `event_version` whose SALE_RECEIPT payload seals the taxable
+     * base NET of the ticket remise (D-1). Mirrors
+     * `FiscalEventPayloadRegistry.ts`'s `SALE_RECEIPT_AUTHORED_EVENT_VERSION`.
+     */
+    public const SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION = 5;
+
+    /**
      * SALE_RECEIPT **v4** key set — spec `2026-07-31-v3-refund-chain-integration.md`
      * §3.3/§3.4/§17. The v3 30-key contract plus three new top-level keys
      * authored ONLY by the device's REFUND normalization path
@@ -428,8 +506,15 @@ final class FiscalPayloadConstraintValidator
      */
     public function payloadKeysFor(FiscalEventType $type, int $eventVersion): ?array
     {
-        if ($type === FiscalEventType::SALE_RECEIPT && $eventVersion >= 4) {
+        // v4 is the REFUND-only fan-out, so it is matched EXACTLY. A `>= 4`
+        // test would have handed v5 (D-1, a SALE version) the 33-key refund
+        // set and refused every post-remise sale outright.
+        if ($type === FiscalEventType::SALE_RECEIPT && $eventVersion === 4) {
             return self::SALE_RECEIPT_PAYLOAD_KEYS_V4;
+        }
+        if ($type === FiscalEventType::SALE_RECEIPT
+            && $eventVersion >= self::SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION) {
+            return self::SALE_RECEIPT_PAYLOAD_KEYS_V5;
         }
         if ($type === FiscalEventType::SALE_RECEIPT && $eventVersion >= 3) {
             return self::SALE_RECEIPT_PAYLOAD_KEYS_V3;
@@ -1145,7 +1230,7 @@ final class FiscalPayloadConstraintValidator
         // ---- table); VOID authoring has no legitimate producer at any
         // ---- version and is explicitly rejected here at v4 parse (§8,
         // ---- §17 manifest: "VOID rejection at v4 parse"). ----
-        if ($eventVersion >= 4) {
+        if ($eventVersion === 4) {
             $invoiceType = $payload['invoice_type_code'] ?? null;
             if ($invoiceType === 'VOID') {
                 throw new RuntimeException(
@@ -1261,7 +1346,7 @@ final class FiscalPayloadConstraintValidator
         // ---- a non-zero one; this is the server-side mirror of the device's
         // ---- pre-authoring refusal, not a new runtime branch on the
         // ---- device side). ----
-        if ($eventVersion >= 4 && ! $isZeroDiscount) {
+        if ($eventVersion === 4 && ! $isZeroDiscount) {
             throw new RuntimeException(
                 'payload_v4_refund_transaction_discount_must_be_zero:transaction_discount_amount='.$discountAmount
             );
@@ -1299,7 +1384,7 @@ final class FiscalPayloadConstraintValidator
         // ---- invariant BEFORE line_items' own per-row validation below, so
         // ---- both lists are validated by their own natural shape checks
         // ---- first (requireList) and then cross-checked here.
-        if ($eventVersion >= 4) {
+        if ($eventVersion === 4) {
             $this->validateOriginalLineReferences($payload);
             $this->validateRefundDestinationAndSettlementAllocation($payload);
         }
@@ -1321,7 +1406,20 @@ final class FiscalPayloadConstraintValidator
 
         $payments = $this->requireList($payload, 'payments');
         if (count($payments) === 0) {
-            throw new RuntimeException('payload_payments_empty:payments must have >= 1 row');
+            // ---- D-1 / G3-A fold-in. A 100 %-comp receipt tenders nothing,
+            // ---- and `pos_receipt_payments CHECK (amount > 0)` refuses the
+            // ---- 0.000 leg the device used to emit — which made the whole
+            // ---- receipt unprojectable on PostgreSQL. At v5 the device emits
+            // ---- NO tender row for a full comp and the discount line carries
+            // ---- the story; the DB CHECK is kept exactly as it is. Allowed
+            // ---- ONLY when the ticket is genuinely fully comped: `total`,
+            // ---- `subtotal` and `vat_total` are all canonical zero and the
+            // ---- remise is positive. Every earlier version, and every
+            // ---- non-comped v5 ticket, still requires >= 1 row.
+            if ($eventVersion < self::SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION
+                || ! $this->isFullyCompedSaleReceipt($payload, $scale)) {
+                throw new RuntimeException('payload_payments_empty:payments must have >= 1 row');
+            }
         }
         foreach ($payments as $index => $row) {
             $this->validatePayment($index, $row, $moneyRegex, $scale);
@@ -1329,7 +1427,7 @@ final class FiscalPayloadConstraintValidator
 
         // ---- 7a. v4 single-cash-leg contract (spec §3.7, §17 manifest:
         // ---- "single-cash-leg + instrument_type null assertions"). ----
-        if ($eventVersion >= 4) {
+        if ($eventVersion === 4) {
             $this->validateSingleCashLegPayment($payments);
         }
 
@@ -1338,7 +1436,7 @@ final class FiscalPayloadConstraintValidator
             throw new RuntimeException('payload_vat_breakdown_empty:vat_breakdown must have >= 1 row');
         }
         foreach ($vatBreakdown as $index => $row) {
-            $this->validateVatBreakdownRow($index, $row, $moneyRegex, $scale);
+            $this->validateVatBreakdownRow($index, $row, $moneyRegex, $scale, $eventVersion);
         }
 
         $vouchers = $this->requireList($payload, 'vouchers_redeemed');
@@ -1349,7 +1447,7 @@ final class FiscalPayloadConstraintValidator
         // ---- 8. VAT partition algorithm (§6.C) — set equality + per-group
         // ----    amount equality via BCMath at currency_scale. ----
         // @phpstan-ignore-next-line argument.type — validated as list above
-        $this->validateVatPartition($lineItems, $vatBreakdown, $scale);
+        $this->validateVatPartition($lineItems, $vatBreakdown, $scale, $eventVersion);
 
         // ---- 9. Aggregate consistency (NF525-meaningful) ----
         // NF525 secures the ticket AGGREGATES (the VAT-declaration integrity):
@@ -1361,7 +1459,40 @@ final class FiscalPayloadConstraintValidator
         // projected) without touching canonical_bytes / current_hash. All checks
         // are EXACT (bccomp === 0) at the payload's currency_scale via bcmath.
         // @phpstan-ignore-next-line argument.type — validated as list above
-        $this->validateSaleReceiptAggregateConsistency($payload, $vatBreakdown, $scale, $roundingAdjustment);
+        $this->validateSaleReceiptAggregateConsistency($payload, $vatBreakdown, $scale, $roundingAdjustment, $eventVersion);
+    }
+
+    /**
+     * True when a v5 SALE_RECEIPT is a 100 % comp: `total`, `subtotal` and
+     * `vat_total` are all BCMath-equivalent zero and the remise is positive.
+     *
+     * Structural gate for the empty-`payments` allowance only; the
+     * arithmetic that PROVES the comp (Σ discount_allocated == the discount,
+     * and Σ net + Σ vat == total) is enforced unconditionally by
+     * {@see validateSaleReceiptAggregateConsistency()} a few lines later.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function isFullyCompedSaleReceipt(array $payload, int $scale): bool
+    {
+        foreach (['total', 'subtotal', 'vat_total', 'transaction_discount_amount'] as $field) {
+            if (! is_string($payload[$field] ?? null)) {
+                return false;
+            }
+        }
+        /** @var numeric-string $total */
+        $total = $payload['total'];
+        /** @var numeric-string $subtotal */
+        $subtotal = $payload['subtotal'];
+        /** @var numeric-string $vatTotal */
+        $vatTotal = $payload['vat_total'];
+        /** @var numeric-string $discount */
+        $discount = $payload['transaction_discount_amount'];
+
+        return bccomp($total, '0', $scale) === 0
+            && bccomp($subtotal, '0', $scale) === 0
+            && bccomp($vatTotal, '0', $scale) === 0
+            && bccomp($discount, '0', $scale) > 0;
     }
 
     /**
@@ -1385,6 +1516,7 @@ final class FiscalPayloadConstraintValidator
         array $vatBreakdown,
         int $scale,
         string $roundingAdjustment = '0',
+        int $eventVersion = 1,
     ): void {
         $subtotal = $this->asNumericString($payload['subtotal'], 'subtotal');
         $vatTotal = $this->asNumericString($payload['vat_total'], 'vat_total');
@@ -1401,25 +1533,46 @@ final class FiscalPayloadConstraintValidator
         // subtotal + vat_total == total. Omitting the discount term here would
         // FALSE-POSITIVE on every valid ticket carrying a transaction discount —
         // exactly the failure class this rework removes at the line level.
+        $isPostDiscountBase = $eventVersion >= self::SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION;
         $subtotalPlusVat = bcadd($subtotal, $vatTotal, $scale);
         // v3 folds the signed cash-rounding adjustment out of `total` before
         // the NF525 aggregate identity is evaluated; on v1/v2 the default '0'
         // makes this byte-identical to the previous expression.
-        $totalPlusDiscount = bcadd(bcsub($total, $roundingAdjustment, $scale), $discount, $scale);
-        if (bccomp($subtotalPlusVat, $totalPlusDiscount, $scale) !== 0) {
+        //
+        // D-1: at v5 the discount term DISAPPEARS. The base is already net of
+        // the remise, so adding it back would refuse every correct post-remise
+        // ticket — and, read the other way, this is exactly what REFUSES a
+        // v5-declared payload still carrying the pre-discount base.
+        $expectedRhs = bcsub($total, $roundingAdjustment, $scale);
+        if (! $isPostDiscountBase) {
+            $expectedRhs = bcadd($expectedRhs, $discount, $scale);
+        }
+        if (bccomp($subtotalPlusVat, $expectedRhs, $scale) !== 0) {
             throw new RuntimeException(
-                'payload_aggregate_consistency:subtotal_plus_vat_ne_total:expected='.$subtotalPlusVat.':got='.$totalPlusDiscount
+                'payload_aggregate_consistency:subtotal_plus_vat_ne_total:expected='.$subtotalPlusVat.':got='.$expectedRhs
             );
         }
 
         // 2 + 3. Σ vat_breakdown nets / vats == subtotal / vat_total.
         // 4. per group gross == net + vat.
+        // 5 (v5). Σ vat_breakdown discount_allocated == transaction_discount_amount,
+        //         and every money field non-negative.
         $sumNet = bcadd('0', '0', $scale);
         $sumVat = bcadd('0', '0', $scale);
+        $sumDiscount = bcadd('0', '0', $scale);
         foreach ($vatBreakdown as $row) {
             $net = $this->asNumericString($row['net_amount'], 'vat_breakdown.net_amount');
             $vat = $this->asNumericString($row['vat_amount'], 'vat_breakdown.vat_amount');
             $gross = $this->asNumericString($row['gross_amount'], 'vat_breakdown.gross_amount');
+            if ($isPostDiscountBase) {
+                $allocated = $this->asNumericString($row['discount_allocated'], 'vat_breakdown.discount_allocated');
+                if (bccomp($allocated, '0', $scale) < 0) {
+                    throw new RuntimeException(
+                        'payload_aggregate_consistency:group_discount_allocated_negative:got='.$allocated
+                    );
+                }
+                $sumDiscount = bcadd($sumDiscount, $allocated, $scale);
+            }
 
             $groupGross = bcadd($net, $vat, $scale);
             if (bccomp($groupGross, $gross, $scale) !== 0) {
@@ -1440,6 +1593,11 @@ final class FiscalPayloadConstraintValidator
         if (bccomp($sumVat, $vatTotal, $scale) !== 0) {
             throw new RuntimeException(
                 'payload_aggregate_consistency:vat_breakdown_vat_sum_ne_vat_total:expected='.$vatTotal.':got='.$sumVat
+            );
+        }
+        if ($isPostDiscountBase && bccomp($sumDiscount, $discount, $scale) !== 0) {
+            throw new RuntimeException(
+                'payload_aggregate_consistency:vat_breakdown_discount_sum_ne_transaction_discount:expected='.$discount.':got='.$sumDiscount
             );
         }
     }
@@ -2547,13 +2705,18 @@ final class FiscalPayloadConstraintValidator
      * Validate one `vat_breakdown[i]` row (structural; partition equality
      * checked separately).
      */
-    private function validateVatBreakdownRow(int|string $index, mixed $row, string $moneyRegex, int $scale): void
+    private function validateVatBreakdownRow(int|string $index, mixed $row, string $moneyRegex, int $scale, int $eventVersion = 1): void
     {
         if (! is_array($row) || (count($row) > 0 && array_is_list($row))) {
             throw new RuntimeException("payload_vat_breakdown_invalid:vat_breakdown[{$index}] must be object; got ".get_debug_type($row));
         }
         /** @var array<string, mixed> $row */
-        $expected = ['gross_amount', 'net_amount', 'rate', 'tax_category_code', 'vat_amount'];
+        // D-1: v5 rows carry `discount_allocated`. `$eventVersion` defaults to
+        // 1 so every non-SALE_RECEIPT caller keeps the pre-D-1 five-key
+        // contract byte-for-byte.
+        $expected = $eventVersion >= self::SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION
+            ? self::SALE_RECEIPT_VAT_BREAKDOWN_KEYS_V5
+            : ['gross_amount', 'net_amount', 'rate', 'tax_category_code', 'vat_amount'];
         $missing = array_diff($expected, array_keys($row));
         if (count($missing) > 0) {
             sort($missing);
@@ -2570,6 +2733,9 @@ final class FiscalPayloadConstraintValidator
         $this->assertMoneyString($row, 'vat_amount', $moneyRegex, $scale, "{$path}.vat_amount");
         $this->assertMoneyString($row, 'gross_amount', $moneyRegex, $scale, "{$path}.gross_amount");
         $this->assertMoneyString($row, 'rate', $this->moneyRegex(self::VAT_RATE_SCALE), self::VAT_RATE_SCALE, "{$path}.rate");
+        if ($eventVersion >= self::SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION) {
+            $this->assertMoneyString($row, 'discount_allocated', $moneyRegex, $scale, "{$path}.discount_allocated");
+        }
 
         $tcc = $row['tax_category_code'];
         if (! is_string($tcc)) {
@@ -2622,8 +2788,9 @@ final class FiscalPayloadConstraintValidator
      * @param  list<mixed>  $lineItems
      * @param  list<mixed>  $vatBreakdown
      */
-    private function validateVatPartition(array $lineItems, array $vatBreakdown, int $scale): void
+    private function validateVatPartition(array $lineItems, array $vatBreakdown, int $scale, int $eventVersion = 1): void
     {
+        $isPostDiscountBase = $eventVersion >= self::SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION;
         // Group line_items by (vat_rate, tax_category_code). Money fields
         // were narrowed by validateLineItem above (assertMoneyString); we
         // re-narrow via asNumericString to satisfy PHPStan's BCMath types.
@@ -2683,6 +2850,27 @@ final class FiscalPayloadConstraintValidator
             $bVat = $this->asNumericString($b['vat_amount'], 'vat_breakdown.vat_amount');
             $bGross = $this->asNumericString($b['gross_amount'], 'vat_breakdown.gross_amount');
             $expectedGross = bcadd($g['sum_net'], $g['sum_vat'], $scale);
+
+            // ---- D-1 (v5): the group is the line roll-up MINUS its share of
+            // ---- the ticket remise, so a straight equality against the line
+            // ---- sums would refuse every correct post-remise ticket. What is
+            // ---- verified instead is that the sealed group is a TRUE SPLIT of
+            // ---- the line sums:
+            // ----   discNet = Σ line_subtotal − net_amount  >= 0
+            // ----   discVat = Σ line_vat      − vat_amount  >= 0
+            // ----   discNet + discVat == discount_allocated
+            // ---- and gross == Σ line gross − discount_allocated.
+            // ----
+            // ---- This is EXACT and recomputation-free: the server never
+            // ---- divides by a rate and never re-derives the device's VAT. It
+            // ---- still pins the sealed numbers to the sealed lines, so a
+            // ---- fabricated base cannot pass.
+            if ($isPostDiscountBase) {
+                $this->validateVatPartitionGroupV5($g, $b, $bNet, $bVat, $bGross, $expectedGross, $scale);
+
+                continue;
+            }
+
             if (bccomp($g['sum_net'], $bNet, $scale) !== 0) {
                 throw new RuntimeException(
                     "payload_partition_net_mismatch:rate={$g['rate']}:category={$g['category']}:expected={$g['sum_net']}:got=".$bNet
@@ -2698,6 +2886,64 @@ final class FiscalPayloadConstraintValidator
                     "payload_partition_gross_mismatch:rate={$g['rate']}:category={$g['category']}:expected={$expectedGross}:got=".$bGross
                 );
             }
+        }
+    }
+
+    /**
+     * D-1 (v5) per-group partition check — the sealed group must be a TRUE
+     * SPLIT of its line roll-up by the group's `discount_allocated`.
+     *
+     * Never recomputes VAT from a rate: only exact subtractions and equalities
+     * at the payload's currency scale. A violation routes through the same
+     * RuntimeException → quarantine path as every other partition failure.
+     *
+     * @param  array{rate: string, category: string, sum_net: numeric-string, sum_vat: numeric-string}  $group
+     * @param  array<string, mixed>  $breakdown
+     * @param  numeric-string  $breakdownNet
+     * @param  numeric-string  $breakdownVat
+     * @param  numeric-string  $breakdownGross
+     * @param  numeric-string  $lineGross
+     *
+     * @throws RuntimeException on a partition violation (→ quarantine)
+     */
+    private function validateVatPartitionGroupV5(
+        array $group,
+        array $breakdown,
+        string $breakdownNet,
+        string $breakdownVat,
+        string $breakdownGross,
+        string $lineGross,
+        int $scale,
+    ): void {
+        $rate = $group['rate'];
+        $category = $group['category'];
+        $allocated = $this->asNumericString($breakdown['discount_allocated'], 'vat_breakdown.discount_allocated');
+
+        $discNet = bcsub($group['sum_net'], $breakdownNet, $scale);
+        $discVat = bcsub($group['sum_vat'], $breakdownVat, $scale);
+        if (bccomp($discNet, '0', $scale) < 0) {
+            throw new RuntimeException(
+                "payload_partition_net_exceeds_lines:rate={$rate}:category={$category}:lines={$group['sum_net']}:got=".$breakdownNet
+            );
+        }
+        if (bccomp($discVat, '0', $scale) < 0) {
+            throw new RuntimeException(
+                "payload_partition_vat_exceeds_lines:rate={$rate}:category={$category}:lines={$group['sum_vat']}:got=".$breakdownVat
+            );
+        }
+
+        $discSplit = bcadd($discNet, $discVat, $scale);
+        if (bccomp($discSplit, $allocated, $scale) !== 0) {
+            throw new RuntimeException(
+                "payload_partition_discount_split_mismatch:rate={$rate}:category={$category}:expected={$allocated}:got=".$discSplit
+            );
+        }
+
+        $expectedGross = bcsub($lineGross, $allocated, $scale);
+        if (bccomp($expectedGross, $breakdownGross, $scale) !== 0) {
+            throw new RuntimeException(
+                "payload_partition_gross_mismatch:rate={$rate}:category={$category}:expected={$expectedGross}:got=".$breakdownGross
+            );
         }
     }
 

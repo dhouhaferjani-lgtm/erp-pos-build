@@ -177,6 +177,8 @@ function validSaleReceiptPayload(): Record<string, unknown> {
     transaction_discount_reason: null,
     vat_breakdown: [
       {
+        // D-1 (v5): pro-rata share of the ticket remise; zero here.
+        discount_allocated: '0.000',
         gross_amount: '12.000',
         net_amount: '10.000',
         rate: '20.00',
