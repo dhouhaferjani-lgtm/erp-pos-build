@@ -1537,16 +1537,17 @@ final class AdvanceReversalGlShapeTest extends TestCase
 
         $negative = str_starts_with($trimmed, '-');
         $magnitude = ltrim($trimmed, '+-');
-        if ($magnitude === '' || ! preg_match('/^\d+(\.\d+)?$/', $magnitude)) {
-            // Not a plain decimal (unexpected driver formatting) — surface it as-is
-            // so the failure message shows the real value instead of a silent '0.000'.
+        // Half-up rounding at $scale: add 5 at the (scale+1)-th place, then truncate.
+        $half = '0.'.str_repeat('0', $scale).'5';
+
+        // The regex pins the FORMAT (a plain decimal, no exponent); the two
+        // is_numeric() calls are what narrow both operands to `numeric-string`
+        // for bcmath. Anything else is surfaced as-is so the failure message
+        // shows the real driver value instead of a silent '0.000'.
+        if (! preg_match('/^\d+(\.\d+)?$/', $magnitude) || ! is_numeric($magnitude) || ! is_numeric($half)) {
             return $trimmed;
         }
 
-        // Half-up rounding at $scale: add 5 at the (scale+1)-th place, then truncate.
-        /** @var numeric-string $half */
-        $half = '0.'.str_repeat('0', $scale).'5';
-        /** @var numeric-string $magnitude */
         $rounded = bcadd($magnitude, $half, $scale + 1);
         $result = bcadd($rounded, '0', $scale);
 
