@@ -32,14 +32,35 @@ use Illuminate\Support\Facades\Schema;
  *      RuntimeException naming table, column, offending value and row count —
  *      rather than letting PostgreSQL fail the DDL with a message that names no
  *      row;
- *   2. `ADD CONSTRAINT … NOT VALID` — takes only a brief ACCESS EXCLUSIVE lock
- *      and does not scan the table;
- *   3. a SEPARATE `VALIDATE CONSTRAINT` — SHARE UPDATE EXCLUSIVE, does not block
- *      readers or writers while it scans.
+ *   2. `ADD CONSTRAINT … NOT VALID`;
+ *   3. a SEPARATE `VALIDATE CONSTRAINT`.
  *
  * Step (1) is what guarantees step (3) cannot fail on a row: the census has
  * already proven the table clean under exactly the predicate the constraint
  * expresses.
+ *
+ * THE SPLIT BUYS NO LOCK RELIEF AS EXECUTED — DO NOT READ IT AS PERMISSION TO RUN
+ * THIS HOT. `Illuminate\Database\Migrations\Migration::$withinTransaction`
+ * defaults to TRUE and `Migrator.php:449` honours it on PostgreSQL, and none of
+ * the five batch-1 migrations opts out. The census, `ADD CONSTRAINT … NOT VALID`
+ * and `VALIDATE CONSTRAINT` therefore all run inside ONE transaction, so the
+ * ACCESS EXCLUSIVE lock taken by the ADD is held until COMMIT — through the whole
+ * validation scan. Proven by the r1 treasury gate: with that transaction open, a
+ * plain `SELECT count(*) FROM payments` in a second session blocked until
+ * `statement_timeout`. The net lock profile equals a plain `ADD CONSTRAINT`: full
+ * table, ACCESS EXCLUSIVE, for the duration of the scan. Schedule the fleet run in
+ * a maintenance window on any tenant whose tables are not small.
+ *
+ * THE TRANSACTION IS KEPT DELIBERATELY (parent ruling, r1 fix round): green-field
+ * tenants with small tables buy nothing from lock relief, and ATOMICITY is worth
+ * more — a failed census leaves ZERO constraints on the table, including any this
+ * `up()` already created for an earlier column in the same loop. Both r1 gates
+ * proved that live (planted dirt → RuntimeException → zero `chk_%_enum` rows). The
+ * NOT VALID / VALIDATE split is retained only as the IDIOM for the day a tenant's
+ * table is large enough to justify `public $withinTransaction = false;` — at which
+ * point the split starts delivering lock relief AND the abort stops being atomic
+ * (columns applied earlier in the loop survive, and the message names only the
+ * failing one).
  *
  * NULLABLE COLUMNS are written `(col IS NULL OR col IN (…))` and never
  * `(col IS NOT NULL AND col IN (…))` — LEDGER C-37(iii). The `IS NOT NULL AND`
@@ -70,8 +91,33 @@ use Illuminate\Support\Facades\Schema;
  * which will then reject the new value at INSERT time, per tenant, at runtime,
  * while the application happily accepts it. **A new case therefore needs its own
  * widening migration** (`DROP CONSTRAINT IF EXISTS` + `ADD CONSTRAINT`, the same
- * statements `up()` runs). `EnumCheckParityTest` fails the moment the two
- * disagree, so the obligation is enforced, not merely documented.
+ * statements `up()` runs).
+ *
+ * `EnumCheckParityTest` DOES NOT ENFORCE THAT OBLIGATION — do not rely on it (r1
+ * treasury C1 / fiscal F-2 corrected the earlier claim here). It runs under
+ * `RefreshDatabase`, i.e. against a schema THIS migration just built, and the
+ * migration re-derives its value list from `Enum::cases()` at migrate time, so on
+ * a fresh schema the CHECK and the enum agree by construction, always. A case
+ * added with NO widening migration therefore silently WIDENS every fresh schema
+ * while every already-migrated tenant keeps the old CHECK and raises SQLSTATE
+ * 23514 on the first row carrying the new value — a per-tenant runtime write bomb
+ * with zero CI signal. Proven live at r1: a 6th `VoucherStatus` case with no
+ * migration left `EnumCheckParityTest` (11/790) and
+ * `SliceDBatch1CheckConstraintsTest` (19/70) fully GREEN. What actually enforces
+ * the obligation is the per-batch freeze test
+ * `tests/Feature/Treasury/SliceDBatch1EnumFreezeTest.php`, which pins the exact
+ * case list this batch materialised into SQL and goes red the moment an enum moves
+ * in EITHER direction.
+ *
+ * REMOVING A CASE IS EQUALLY MIGRATION-BEARING, and costs more than adding one.
+ * Deleting a case (the live candidates are `JournalEntryStatus::Reversed`, program
+ * spec §R-D3, and the dead `PaymentOrigin` cases, §R-D8) leaves the DB WIDER than
+ * the enum, which the parity gate reports as a NEW failure — and it CANNOT be
+ * baselined away, because the O-31 owner-pinned anti-growth ceiling refuses
+ * baseline growth. The delete therefore costs a NARROWING migration plus a
+ * per-tenant census, and any surviving row still carrying the removed value aborts
+ * that tenant. LEDGER C-38 couples R-D2/R-D3/R-D8 to this batch so the owner
+ * ruling is made with that cost visible.
  */
 return new class extends Migration
 {
@@ -153,11 +199,18 @@ return new class extends Migration
     /**
      * The PRE-FLIGHT CENSUS predicate — the rows this constraint would reject.
      *
-     * For a NOT NULL column, NULL itself is a violation and is reported as such
-     * (`COALESCE(col, '<NULL>')`), so that a column PostgreSQL still allows to be
-     * NULL — because an earlier migration dropped the NOT NULL and nobody noticed —
-     * aborts the tenant here instead of failing VALIDATE. For a NULLABLE column,
-     * NULL is legitimate and is excluded from the violation set.
+     * For a NOT NULL column the census DELIBERATELY OVER-REJECTS relative to its
+     * own constraint: `col IS NULL` counts as a violation even though the CHECK
+     * would accept such a row. That is NOT a VALIDATE-safety measure — `col IN (…)`
+     * evaluates to NULL for a NULL input, NULL is not FALSE, and PostgreSQL admits
+     * it, so VALIDATE would not fail on it (r1 fiscal gate F-3 corrected the wrong
+     * rationale previously stated here). It is a NOT-NULL-DRIFT DETECTOR: this
+     * batch asserts at BUILD time that the column is NOT NULL, and if an earlier
+     * migration quietly dropped that on some tenant, the operator is told loudly
+     * instead of the batch constraining a column whose nullability it got wrong.
+     *
+     * For a NULLABLE column, NULL is legitimate and is excluded from the violation
+     * set.
      */
     private function violationPredicate(string $column, string $values, bool $nullable): string
     {
