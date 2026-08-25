@@ -48,7 +48,7 @@
 {"code":"7060","name":"Service Revenue","type":"revenue","parent_code":"7000","system_purpose":"service_revenue","is_system":true,"sort_order":48}
 {"code":"7070","name":"Product Sales Revenue","type":"revenue","parent_code":"7000","system_purpose":"product_revenue","is_system":true,"sort_order":49}
 {"code":"7090","name":"Sales Returns","type":"expense","parent_code":"7000","system_purpose":"sales_return","is_system":true,"sort_order":50}
-{"code":"7091","name":"Sales Discounts","type":"expense","parent_code":"7000","system_purpose":"sales_discount","is_system":true,"sort_order":51}
+{"code":"7091","name":"Sales Discounts","type":"revenue","parent_code":"7000","system_purpose":"sales_discount","is_system":true,"sort_order":51}
 {"code":"7580","name":"Payment Tolerance Income","type":"revenue","parent_code":"7000","system_purpose":"payment_tolerance_income","is_system":true,"sort_order":52}
 {"code":"7581","name":"Sales Rounding Difference (Income)","type":"revenue","parent_code":"7000","system_purpose":"sales_rounding_difference_income","is_system":true,"sort_order":53}
 {"code":"7585","name":"Écart sur prix d'achat","type":"revenue","parent_code":"7000","system_purpose":"purchase_price_variance_income","is_system":true,"sort_order":54}

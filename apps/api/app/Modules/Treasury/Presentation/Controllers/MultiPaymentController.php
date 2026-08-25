@@ -12,6 +12,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Treasury\Application\Services\DocumentAllocationStateGuard;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
+use App\Modules\Treasury\Domain\Exceptions\DocumentNotAllocatableException;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\Services\MultiPaymentService;
@@ -211,6 +212,15 @@ class MultiPaymentController extends Controller
             }
 
             throw $e;
+        } catch (DocumentNotAllocatableException $e) {
+            // C-0a0 — MUST precede the generic handler below. The classifier's
+            // refusal is a TYPED domain exception carrying a machine-readable
+            // reason, and `bootstrap/app.php` renders it as 422
+            // `DOCUMENT_NOT_ALLOCATABLE` with that reason in `details`. The
+            // generic arm flattens every exception to `{"error": "<message>"}`,
+            // which drops the code the frontend routes on and the reason an
+            // operator needs — a refusal indistinguishable from a crash.
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'error' => $e->getMessage(),
@@ -399,6 +409,15 @@ class MultiPaymentController extends Controller
                 ],
                 'message' => 'Deposit applied to document successfully',
             ]);
+        } catch (DocumentNotAllocatableException $e) {
+            // C-0a0 — MUST precede the generic handler below. The classifier's
+            // refusal is a TYPED domain exception carrying a machine-readable
+            // reason, and `bootstrap/app.php` renders it as 422
+            // `DOCUMENT_NOT_ALLOCATABLE` with that reason in `details`. The
+            // generic arm flattens every exception to `{"error": "<message>"}`,
+            // which drops the code the frontend routes on and the reason an
+            // operator needs — a refusal indistinguishable from a crash.
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'error' => $e->getMessage(),

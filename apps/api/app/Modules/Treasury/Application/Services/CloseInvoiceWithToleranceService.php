@@ -68,26 +68,6 @@ final class CloseInvoiceWithToleranceService
             // reappearing as collected revenue.
             $this->allocationStateGuard->assertAllocatable($invoice);
 
-            // N-6 — closing with tolerance writes off a RECEIVABLE residual, so
-            // it presupposes a posted receivable. On a confirmed (unposted)
-            // invoice there is nothing in 411 to write off and nothing to
-            // settle: the money sits in 419 and the invoice still owes its
-            // posting. Refuse before the write-off JE is created rather than
-            // letting `markPaid()` roll the whole transaction back at the end.
-            if ($this->allocationClassifier->classify($invoice) !== AllocationTreatment::ReceivableClearing) {
-                throw new HttpResponseException(response()->json([
-                    'error' => [
-                        'code' => 'INVOICE_NOT_POSTED',
-                        'message' => 'Only a posted invoice can be closed with a tolerance write-off.',
-                        'details' => [
-                            'document_id' => $invoiceId,
-                            'document_number' => $invoice->document_number,
-                            'status' => $invoice->status->value,
-                        ],
-                    ],
-                ], 422));
-            }
-
             // Treasury gate IMPORTANT (W-6 D2 consumer sweep): this used to be
             // `$invoice->balance_due ?? '0'`. `outstandingBalance()` treats a
             // NON-NULL cache as authoritative (unchanged for this trigger- or
@@ -100,6 +80,35 @@ final class CloseInvoiceWithToleranceService
             $balance = $invoice->outstandingBalance(3);
             if ($invoice->status === DocumentStatus::Paid || bccomp($balance, '0', self::SCALE) <= 0) {
                 throw new InvoiceAlreadyPaidException($invoiceId);
+            }
+
+            // C-0a0 — the ALREADY-SETTLED check above must stay FIRST. `paid` is
+            // a retired lifecycle value (F-88) and the classifier now refuses it
+            // as `document_not_live`; running the classifier first would replace
+            // this endpoint's specific `INVOICE_ALREADY_PAID` with a generic
+            // `DOCUMENT_NOT_ALLOCATABLE` and tell the operator nothing about why
+            // there is nothing left to write off. Order, not policy: everything
+            // that is NOT already settled still has to clear the classifier
+            // before a single row is written.
+            //
+            // N-6 — closing with tolerance writes off a RECEIVABLE residual, so
+            // it presupposes a posted receivable. On a confirmed (unposted)
+            // invoice there is nothing in 411 to write off and nothing to
+            // settle: the money sits in 419 and the invoice still owes its
+            // posting. Refuse before the write-off JE is created rather than
+            // letting `markPaid()` roll the whole transaction back at the end.
+            if ($this->allocationClassifier->classifyReceivableSide($invoice) !== AllocationTreatment::ReceivableClearing) {
+                throw new HttpResponseException(response()->json([
+                    'error' => [
+                        'code' => 'INVOICE_NOT_POSTED',
+                        'message' => 'Only a posted invoice can be closed with a tolerance write-off.',
+                        'details' => [
+                            'document_id' => $invoiceId,
+                            'document_number' => $invoice->document_number,
+                            'status' => $invoice->status->value,
+                        ],
+                    ],
+                ], 422));
             }
 
             $companyId = (string) $invoice->company_id;

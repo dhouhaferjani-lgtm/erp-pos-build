@@ -319,7 +319,7 @@ final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccoun
             // (createPOSChargeEntry debits it). 709 already carries SalesReturn and
             // 7091 the voucher clearing account, so the discount takes the
             // marchandises leg 7097, mirroring the French chart.
-            ['code' => '7097', 'name' => 'Rabais, remises et ristournes accordés sur ventes de marchandises', 'type' => 'expense', 'parent_code' => '70',
+            ['code' => '7097', 'name' => 'Rabais, remises et ristournes accordés sur ventes de marchandises', 'type' => 'revenue', 'parent_code' => '70',
                 'system_purpose' => SystemAccountPurpose::SalesDiscount->value, 'is_system' => true],
             ['code' => '7580', 'name' => 'Écart de règlement (produits)', 'type' => 'revenue', 'parent_code' => '75',
                 'system_purpose' => SystemAccountPurpose::PaymentToleranceIncome->value, 'is_system' => true],
