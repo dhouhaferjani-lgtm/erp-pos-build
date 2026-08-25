@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\BatchExpiry\Application\Services;
 
-use App\Console\Commands\RepairPhantomDefaultBatchesCommand;
-use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
 use App\Shared\Domain\QuantityScale;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -17,7 +15,7 @@ use Illuminate\Support\Facades\DB;
  *
  * 🚨 **Why this exists as its own service (W4R-2 gate r1 F-4 / fiscal F-5).**
  * The query already existed, but only inside
- * {@see RepairPhantomDefaultBatchesCommand} — a
+ * `App\Console\Commands\RepairPhantomDefaultBatchesCommand` — a
  * MAINTENANCE-WINDOW repair tool named after the W2-7 phantom-`DEFAULT` defect,
  * which refuses to run without an explicit tenant AND exactly one of
  * `--dry-run` / `--execute`. Nobody reaches for that when they want to know
@@ -27,7 +25,7 @@ use Illuminate\Support\Facades\DB;
  * That matters most for the drift this codebase creates DELIBERATELY. A POS
  * sale is projected from a SEALED fiscal event, and a projector may never
  * reject a signed event, so when the lot arm cannot fully draw
- * ({@see PosCoreReceiptProjection::consumeLotsForSaleLine()})
+ * (`POS\Application\Projections\PosCoreReceiptProjection::consumeLotsForSaleLine()`)
  * the sale is committed with a lot shortfall and the tuple is left drifted. The
  * FEFO candidate predicate is narrower than the aggregate's in five independent
  * ways — expired, recalled and inactive lots are invisible,

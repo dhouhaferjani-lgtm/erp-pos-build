@@ -14,7 +14,6 @@ use App\Modules\BatchExpiry\Domain\Entities\BatchMovement;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\BatchExpiry\Domain\Events\BatchStockConsumed;
 use App\Modules\BatchExpiry\Domain\Exceptions\InsufficientBatchStockException;
-use App\Modules\Document\Domain\Services\ReturnNoteService;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\ProductVariantLookup;
@@ -422,7 +421,7 @@ class FEFOInventoryService
      * W2-7's own semantics: a `DEFAULT` lot backs the untracked remainder, and
      * minting one is a deliberate, evidence-gated act — never a side effect of a
      * refund. Defaults to `true` so the document channel
-     * ({@see ReturnNoteService}) is
+     * (`Document\Domain\Services\ReturnNoteService`, which omits the flag) is
      * bit-for-bit unchanged.
      *
      * @param  numeric-string  $quantity  Positive quantity being returned.

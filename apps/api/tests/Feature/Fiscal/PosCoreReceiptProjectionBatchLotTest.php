@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Fiscal;
 
 use App\Modules\BatchExpiry\Application\Services\LotLedgerDriftCensus;
+use App\Modules\BatchExpiry\Domain\DTOs\BatchConsumptionResultDTO;
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
@@ -24,6 +25,8 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Shared\Contracts\ProductVariantLookup;
+use Illuminate\Database\DeadlockException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -397,21 +400,33 @@ final class PosCoreReceiptProjectionBatchLotTest extends TestCase
 
     public function test_a_throwing_lot_arm_never_takes_the_sealed_receipt_down(): void
     {
-        // Deliberately the MIRROR of `requiresPostgresLotDraw()`: this one runs
-        // ONLY where the FEFO draw cannot. On SQLite `consumeBatchesAtomically()`
-        // raises a real `QueryException` (`FOR UPDATE … SKIP LOCKED` is
-        // unparseable), which is precisely the "any other exception" shape the
-        // fiscal gate proved took the whole projection down — it injected a
-        // `LogicException` and measured `receipts = 0`. So the driver limitation
-        // is not worked around here, it is USED as an honest fault injector, and
-        // this is the one containment proof that needs no mock of a final class.
-        if (DB::connection()->getDriverName() === 'pgsql') {
-            $this->markTestSkipped('Needs a driver on which the FEFO draw genuinely throws; on PostgreSQL it succeeds.');
-        }
-
+        // 🚨 Gate r2 F-1r. The first cut of this pin relied on SQLite's real
+        // `FOR UPDATE … SKIP LOCKED` parse error and therefore SKIPPED on
+        // PostgreSQL — and the pgsql `--filter` allowlist is the ONLY CI job that
+        // runs this class while `feature-lane-fiscal-finance` is parked. The gate
+        // proved the consequence by execution: with `containLotWork()` replaced by
+        // a bare `$work()`, all 16 PG tests still passed. A Critical fix with no
+        // ratchet on the merge path.
+        //
+        // The fault is now INJECTED, so this runs on every driver.
+        // `FEFOInventoryService` is not `final`, so a container-bound subclass is
+        // enough — no interface to invent, no mock of a sealed class.
+        //
+        // The double writes a REAL `inventory_batch_movements` leg and only THEN
+        // throws, which is what makes this a savepoint test and not merely a
+        // try/catch test: `restoreBatchesForReturn()` likewise writes `creditLot()`
+        // legs before it can throw, so a bare `catch` would commit a half-credited
+        // lot ledger. Asserting the leg is GONE is the proof the rollback happened.
         $product = $this->seedProduct(requiresBatchTracking: true);
         $stock = $this->seedStockLevel($product->id, null, '10.0000');
         $lot = $this->seedLot($product->id, 'LOT-A', now()->addDays(30)->toDateString(), '10.0000');
+
+        $this->bindFefoDouble(new PartiallyWritingThenThrowingFefoService(
+            $this->app->make(ProductVariantLookup::class),
+            $this->tenantId,
+            $lot->id,
+            new \RuntimeException('injected non-retryable lot-arm fault'),
+        ));
 
         $event = $this->saleEvent($product->id, '4.000');
 
@@ -425,14 +440,16 @@ final class PosCoreReceiptProjectionBatchLotTest extends TestCase
         $this->assertSame(1, DB::table('pos_receipts')->count());
         $this->assertSame(1, DB::table('pos_receipt_lines')->count());
         $this->assertSame(1, DB::table('pos_receipt_payments')->count());
+        $this->assertSame(1, DB::table('pos_receipt_vat_details')->count());
 
-        // The aggregate arm ran and committed — it is upstream of the savepoint.
+        // The aggregate arm ran and committed — it is upstream of the savepoint —
+        // and its GL entry was buffered off that same movement.
         $stock->refresh();
         $this->assertSame('6.0000', $stock->quantity);
         $this->assertSame(1, DB::table('stock_movements')->where('reason', 'pos_sale')->count());
 
-        // The lot arm rolled back cleanly inside its own savepoint: no half leg,
-        // no orphan allocation row.
+        // The lot arm rolled back INSIDE its own savepoint: the leg the double
+        // wrote before throwing is gone, and no orphan allocation row survived.
         $this->assertSame('10.0000', $this->lotQuantity($lot->id));
         $this->assertSame(0, DB::table('inventory_batch_movements')->count());
         $this->assertSame(0, DB::table('pos_receipt_line_batch_allocations')->count());
@@ -444,6 +461,53 @@ final class PosCoreReceiptProjectionBatchLotTest extends TestCase
                 && str_contains($message, 'inventory:lot-drift-census')
                 && ($context['arm'] ?? null) === 'sale'
         );
+
+        // `apply()` reached its inventory-GL flush and the flush did NOT abort:
+        // the buffered entry for the sale movement was handed to the GL seam like
+        // any other receipt, so the lot fault did not short-circuit it. (The
+        // fixture seeds no chart of accounts, so the resulting entries are not
+        // asserted here — a failure of the seam itself is, because that catch
+        // announces itself with its own error line.)
+        Log::shouldNotHaveReceived('error', [
+            \Mockery::on(static fn (string $message): bool => str_contains($message, 'inventory GL batch failed')),
+            \Mockery::any(),
+        ]);
+    }
+
+    public function test_a_retryable_concurrency_fault_in_the_lot_arm_is_no_t_swallowed(): void
+    {
+        // The one thing containment must NOT contain. Laravel issues no
+        // `ROLLBACK TO SAVEPOINT` for a nested deadlock or serialization failure,
+        // so swallowing one would leave the enclosing PostgreSQL transaction
+        // aborted (25P02) and let `apply()` "COMMIT" a receipt the server had
+        // already discarded — the whole projection lost while the projection row
+        // says applied and the event is never retried. It must escape so the job
+        // retries. Same carve-out `applyScrapDisposition()` makes (gate C2).
+        $product = $this->seedProduct(requiresBatchTracking: true);
+        $this->seedStockLevel($product->id, null, '10.0000');
+        $lot = $this->seedLot($product->id, 'LOT-A', now()->addDays(30)->toDateString(), '10.0000');
+
+        $this->bindFefoDouble(new PartiallyWritingThenThrowingFefoService(
+            $this->app->make(ProductVariantLookup::class),
+            $this->tenantId,
+            $lot->id,
+            new DeadlockException('SQLSTATE[40P01]: Deadlock detected', 0, new \PDOException('deadlock detected')),
+            writeLegFirst: false,
+        ));
+
+        $event = $this->saleEvent($product->id, '4.000');
+
+        app(CompanyContext::class)->clear();
+
+        $this->expectException(DeadlockException::class);
+
+        try {
+            $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+        } finally {
+            // apply()'s own transaction rolled back with it, so the receipt is not
+            // half-written either — the job may retry the whole projection.
+            $this->assertSame(0, DB::table('pos_receipts')->count());
+        }
     }
 
     public function test_refund_of_a_product_level_line_on_a_variant_bearing_product_still_projects(): void
@@ -731,6 +795,19 @@ final class PosCoreReceiptProjectionBatchLotTest extends TestCase
     // =====================================================================
     // Helpers
     // =====================================================================
+
+    /**
+     * Swap the projection's FEFO collaborator for a fault-injecting double.
+     *
+     * `PosCoreReceiptProjection` takes `FEFOInventoryService` by constructor
+     * injection, so a container instance is all it takes — and the service is
+     * not `final`, so a plain subclass works and no interface has to be invented
+     * for a test. Bound per-test, never in `setUp()`.
+     */
+    private function bindFefoDouble(FEFOInventoryService $double): void
+    {
+        $this->app->instance(FEFOInventoryService::class, $double);
+    }
 
     /**
      * Rewind the lot side of a just-projected sale to the PRE-LANE historical
@@ -1072,5 +1149,53 @@ final class PosCoreReceiptProjectionBatchLotTest extends TestCase
         ]);
 
         return $event->refresh();
+    }
+}
+
+/**
+ * Fault injector for the containment pins (gate r2 F-1r).
+ *
+ * Optionally writes a REAL `inventory_batch_movements` leg and then throws the
+ * supplied exception from `consumeBatchesAtomically()`. The write-then-throw
+ * order is deliberate: it mirrors `restoreBatchesForReturn()`, which credits
+ * lots before it can reach the throw, so the test can prove the SAVEPOINT rolled
+ * the leg back rather than only that the exception was caught.
+ *
+ * Lives beside the test rather than in a fixtures namespace: it is meaningless
+ * outside this class, and PSR-4 does not autoload it — PHPUnit loads it with the
+ * test file.
+ */
+final class PartiallyWritingThenThrowingFefoService extends FEFOInventoryService
+{
+    public function __construct(
+        ProductVariantLookup $variantLookup,
+        private readonly string $injectedTenantId,
+        private readonly int $injectedBatchId,
+        private readonly \Throwable $fault,
+        private readonly bool $writeLegFirst = true,
+    ) {
+        parent::__construct($variantLookup);
+    }
+
+    public function consumeBatchesAtomically(
+        string $tenantId,
+        string $productId,
+        string $locationId,
+        string $quantity,
+        string $movementId,
+        ?string $variantId = null,
+        bool $strictFulfillment = true,
+    ): BatchConsumptionResultDTO {
+        if ($this->writeLegFirst) {
+            DB::table('inventory_batch_movements')->insert([
+                'tenant_id' => $this->injectedTenantId,
+                'batch_id' => $this->injectedBatchId,
+                'movement_id' => $movementId,
+                'quantity' => '-1.0000',
+                'created_at' => now(),
+            ]);
+        }
+
+        throw $this->fault;
     }
 }
