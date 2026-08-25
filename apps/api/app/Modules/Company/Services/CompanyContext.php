@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
+use Illuminate\Support\Str;
 
 /**
  * Service for managing the current company context.
@@ -142,9 +143,20 @@ class CompanyContext
      * It must require an ACTIVE membership, not mere existence — otherwise a
      * suspended/revoked member who still holds a valid token keeps passing
      * company context (the root of the FU-2 privilege-escalation finding).
+     *
+     * LEDGER C-13(iii): `$companyId` reaches here from client-supplied input
+     * (the `X-Company-Id` header via `CompanyContextMiddleware`, a request
+     * parameter via `OwnerReportScope`). `company_id` is a PostgreSQL `uuid`
+     * column, so a non-uuid literal raises SQLSTATE 22P02 and 500s the request
+     * instead of denying access. A malformed id can never match a membership,
+     * so it is a plain "no access" — fail closed, never throw.
      */
     public function userHasAccessToCompany(User $user, string $companyId): bool
     {
+        if (! Str::isUuid($companyId)) {
+            return false;
+        }
+
         return UserCompanyMembership::where('user_id', $user->id)
             ->where('company_id', $companyId)
             ->where('status', MembershipStatus::Active->value)

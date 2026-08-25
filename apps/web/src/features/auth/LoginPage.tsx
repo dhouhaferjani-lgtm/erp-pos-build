@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { LogIn, AlertCircle } from 'lucide-react'
 import { api, ensureCsrfCookie } from '../../lib/api'
 import { useAuthStore } from '../../stores/authStore'
+import { clearScopeForNewSession } from '../../lib/clearAppState'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
@@ -87,6 +88,10 @@ export function LoginPage() {
         permissions: data.user.permissions,
         email_verified_at: data.user.emailVerifiedAt,
       }
+      // W2-1: forget the previous account's company/location scope BEFORE the
+      // session is installed, so the first authenticated call cannot carry
+      // another company's `X-Company-Id` and 403 the whole app.
+      clearScopeForNewSession(queryClient)
       setAuth(user, data.token)
       void queryClient.invalidateQueries({ queryKey: ['auth', 'me'] })
       // Redirect to the page they were trying to access, or home
