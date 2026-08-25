@@ -288,6 +288,34 @@ describe('SupplierInvoiceDetailPage — Post action', () => {
     })
   })
 
+  /**
+   * LEDGER C-28(i) — the Re-match button was rendered unconditionally while its
+   * sibling Post is `{!isPosted && …}`. Q-11 made re-matching Draft-only on the
+   * server (`MATCH_NOT_ALLOWED`), so on a posted invoice the button was a live
+   * control whose only possible outcome was an error toast.
+   */
+  it('Re-match button is shown for a draft invoice', async () => {
+    mockApiGet.mockResolvedValue(makeDetail({ status: 'draft', match_status: 'matched' }))
+    renderWithProviders(<SupplierInvoiceDetailPage />)
+    await waitFor(() => {
+      expect(screen.getByTestId('btn-rematch')).toBeInTheDocument()
+    })
+  })
+
+  it('Re-match button is not shown when status=posted', async () => {
+    mockApiGet.mockResolvedValue(
+      makeDetail({ status: 'posted', match_status: 'matched', posted_at: '2026-06-01T10:00:00Z' })
+    )
+    renderWithProviders(<SupplierInvoiceDetailPage />)
+
+    // Wait for a control that only a POSTED invoice renders, so the absence
+    // assertions below run against the loaded page and not the loading state.
+    await screen.findByTestId('btn-record-payment')
+
+    expect(screen.queryByTestId('btn-post')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('btn-rematch')).not.toBeInTheDocument()
+  })
+
   it('Post button is disabled when match=price_variance (price block in strict mode)', async () => {
     // price_variance can be either warn (allowed) or block (disallowed) based on policy.
     // Assumption: the FE disables the button when match_status=price_variance to surface
