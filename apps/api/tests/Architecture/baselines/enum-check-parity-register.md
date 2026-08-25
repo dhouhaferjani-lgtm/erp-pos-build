@@ -10,7 +10,7 @@ Generated: 2026-08-25 · schema: 274 tables declared across BOTH migration trees
 
 | Scope | Columns | Baseline | Note |
 |---|---:|---:|---|
-| tenant (ASSERTED) | 245 | 188 | the gate's primary population |
+| tenant (ASSERTED) | 245 | 175 | the gate's primary population |
 | central (ASSERTED separately) | 20 | 11 | a different SCOPE, not a different migration path — see below |
 
 **The test database is a UNION of both migration trees.** Under `APP_ENV=testing`,
@@ -24,12 +24,12 @@ would read a CHECK that no real `tenant_<uuid>` database has.
 
 | Verdict | Tenant columns |
 |---|---:|
-| COVERED | 55 |
+| COVERED | 68 |
 | COVERED_BY_COMPOSITE | 1 |
 | INTENDED_NARROWER | 1 |
-| MISSING | 188 |
+| MISSING | 175 |
 
-**Baseline size: 188.** That is the number that must go DOWN. `status`-suffixed columns: 16 of 75 covered.
+**Baseline size: 175.** That is the number that must go DOWN. `status`-suffixed columns: 21 of 75 covered.
 
 ## Acknowledged verdicts — NOT debt, and NOT waivers
 
@@ -117,7 +117,7 @@ CHECK carries an explicit `IS NULL` branch.
 | `documents` | `match_status` | `App\Modules\Document\Domain\Enums\SupplierInvoiceMatchStatus` | MISSING | — | yes |
 | `documents` | `status` | `App\Modules\Document\Domain\Enums\DocumentStatus` | COVERED | — | — |
 | `documents` | `supplier_credit_note_reason` | `App\Modules\Procurement\Domain\Enums\SupplierCreditNoteReason` | MISSING | — | yes |
-| `documents` | `type` | `App\Modules\Document\Domain\Enums\DocumentType` | MISSING | — | yes |
+| `documents` | `type` | `App\Modules\Document\Domain\Enums\DocumentType` | COVERED | — | — |
 | `earning_rules` | `rule_type` | `App\Modules\Loyalty\Domain\Enums\EarningRuleType` | MISSING | — | yes |
 | `enrichment_results` | `origin` | `App\Modules\Product\Domain\Enums\EnrichmentResultOrigin` | MISSING | — | yes |
 | `enrichment_results` | `status` | `App\Modules\Product\Domain\Enums\EnrichmentReviewStatus` | MISSING | — | yes |
@@ -134,9 +134,9 @@ CHECK carries an explicit `IS NULL` branch.
 | `goods_receipts` | `status` | `App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus` | MISSING | — | yes |
 | `import_jobs` | `status` | `App\Modules\Import\Domain\Enums\ImportStatus` | MISSING | — | yes |
 | `import_jobs` | `type` | `App\Modules\Import\Domain\Enums\ImportType` | MISSING | — | yes |
-| `instrument_events` | `event_type` | `App\Modules\Treasury\Domain\Enums\InstrumentEventType` | MISSING | — | yes |
-| `instrument_events` | `from_status` | `App\Modules\Treasury\Domain\Enums\InstrumentStatus` | MISSING | — | yes |
-| `instrument_events` | `to_status` | `App\Modules\Treasury\Domain\Enums\InstrumentStatus` | MISSING | — | yes |
+| `instrument_events` | `event_type` | `App\Modules\Treasury\Domain\Enums\InstrumentEventType` | COVERED | — | — |
+| `instrument_events` | `from_status` | `App\Modules\Treasury\Domain\Enums\InstrumentStatus` | COVERED | null-guarded | — |
+| `instrument_events` | `to_status` | `App\Modules\Treasury\Domain\Enums\InstrumentStatus` | COVERED | null-guarded | — |
 | `instrument_remittance_lines` | `line_status` | `App\Modules\Treasury\Domain\Enums\RemittanceLineStatus` | MISSING | — | yes |
 | `instrument_remittances` | `instrument_kind` | `App\Modules\Treasury\Domain\Enums\InstrumentKind` | MISSING | — | yes |
 | `instrument_remittances` | `remittance_type` | `App\Modules\Treasury\Domain\Enums\RemittanceType` | MISSING | — | yes |
@@ -146,8 +146,8 @@ CHECK carries an explicit `IS NULL` branch.
 | `inventory_countings` | `execution_mode` | `App\Modules\Inventory\Domain\Enums\CountingExecutionMode` | COVERED | — | — |
 | `inventory_countings` | `scope_type` | `App\Modules\Inventory\Domain\Enums\CountingScopeType` | COVERED | — | — |
 | `inventory_countings` | `status` | `App\Modules\Inventory\Domain\Enums\CountingStatus` | COVERED | — | — |
-| `journal_entries` | `journal_code` | `App\Modules\Accounting\Domain\Enums\JournalCode` | MISSING | — | yes |
-| `journal_entries` | `status` | `App\Modules\Accounting\Domain\Enums\JournalEntryStatus` | MISSING | — | yes |
+| `journal_entries` | `journal_code` | `App\Modules\Accounting\Domain\Enums\JournalCode` | COVERED | null-guarded | — |
+| `journal_entries` | `status` | `App\Modules\Accounting\Domain\Enums\JournalEntryStatus` | COVERED | — | — |
 | `location_nodes` | `node_type` | `App\Modules\Inventory\Domain\Enums\LocationNodeType` | MISSING | — | yes |
 | `locations` | `type` | `App\Modules\Company\Domain\Enums\LocationType` | MISSING | — | yes |
 | `loyalty_enrollments` | `status` | `App\Modules\Loyalty\Domain\Enums\EnrollmentStatus` | MISSING | — | yes |
@@ -193,9 +193,9 @@ CHECK carries an explicit `IS NULL` branch.
 | `payment_methods` | `fee_type` | `App\Modules\Treasury\Domain\Enums\FeeType` | MISSING | — | yes |
 | `payment_methods` | `instrument_kind` | `App\Modules\Treasury\Domain\Enums\InstrumentKind` | MISSING | — | yes |
 | `payment_repositories` | `type` | `App\Modules\Treasury\Domain\Enums\RepositoryType` | MISSING | — | yes |
-| `payments` | `origin` | `App\Modules\Treasury\Domain\Enums\PaymentOrigin` | MISSING | — | yes |
-| `payments` | `payment_type` | `App\Modules\Treasury\Domain\Enums\PaymentType` | MISSING | — | yes |
-| `payments` | `status` | `App\Modules\Treasury\Domain\Enums\PaymentStatus` | MISSING | — | yes |
+| `payments` | `origin` | `App\Modules\Treasury\Domain\Enums\PaymentOrigin` | COVERED | null-guarded | — |
+| `payments` | `payment_type` | `App\Modules\Treasury\Domain\Enums\PaymentType` | COVERED | — | — |
+| `payments` | `status` | `App\Modules\Treasury\Domain\Enums\PaymentStatus` | COVERED | — | — |
 | `pos_exchange_requests` | `status` | `App\Modules\POS\Domain\Enums\ExchangeRequestStatus` | MISSING | — | yes |
 | `pos_held_orders` | `status` | `App\Modules\POS\Domain\Enums\HeldOrderStatus` | COVERED | — | — |
 | `pos_order_lines` | `status` | `App\Modules\POS\Domain\Enums\OrderLineStatus` | MISSING | — | yes |
@@ -281,10 +281,10 @@ CHECK carries an explicit `IS NULL` branch.
 | `vehicles` | `fuel_type` | `App\Modules\Vehicle\Domain\Enums\FuelType` | MISSING | — | yes |
 | `vehicles` | `transmission` | `App\Modules\Vehicle\Domain\Enums\TransmissionType` | MISSING | — | yes |
 | `voucher_ledger` | `event` | `App\Modules\Voucher\Domain\Enums\VoucherEvent` | COVERED | — | — |
-| `vouchers` | `redemption_mode` | `App\Modules\Voucher\Domain\Enums\RedemptionMode` | MISSING | — | yes |
-| `vouchers` | `source` | `App\Modules\Voucher\Domain\Enums\VoucherSource` | MISSING | — | yes |
-| `vouchers` | `status` | `App\Modules\Voucher\Domain\Enums\VoucherStatus` | MISSING | — | yes |
-| `vouchers` | `voucher_kind` | `App\Modules\Voucher\Domain\Enums\VoucherKind` | MISSING | — | yes |
+| `vouchers` | `redemption_mode` | `App\Modules\Voucher\Domain\Enums\RedemptionMode` | COVERED | — | — |
+| `vouchers` | `source` | `App\Modules\Voucher\Domain\Enums\VoucherSource` | COVERED | — | — |
+| `vouchers` | `status` | `App\Modules\Voucher\Domain\Enums\VoucherStatus` | COVERED | — | — |
+| `vouchers` | `voucher_kind` | `App\Modules\Voucher\Domain\Enums\VoucherKind` | COVERED | — | — |
 | `withholding_certificates` | `direction` | `App\Modules\Taxation\Domain\Enums\WithholdingDirection` | MISSING | — | yes |
 | `withholding_certificates` | `status` | `App\Modules\Taxation\Domain\Enums\CertificateStatus` | MISSING | — | yes |
 | `withholding_tax_rules` | `partner_tax_status` | `App\Modules\Taxation\Domain\Enums\PartnerTaxStatus` | MISSING | — | yes |
@@ -343,7 +343,7 @@ burn-down denominator has to be the mechanical number, not the remembered one:
   and the whole `impersonation_*` family were filed as uncovered when they are covered.
 - **It counted a different population.** The register above is every column an `app/**/Domain/Enums/*`
   or `app/**/Shared/Enums/*` enum GOVERNS, not every column named `*status*`: 245 tenant columns, not 90.
-  Restricted to `*status`-suffixed columns the count is 75, of which 16 are covered — close to the
+  Restricted to `*status`-suffixed columns the count is 75, of which 21 are covered — close to the
   sweep's 76/14 but not equal, and the gap is columns with no enum cast at all (see the un-gateable section).
 - **`bank_reconciliations.status` cannot be asserted at all.** The table carries
   `bank_reconciliations_status_check` but has NO Eloquent model, so there is no enum to compare it to.
