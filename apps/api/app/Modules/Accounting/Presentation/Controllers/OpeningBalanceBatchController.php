@@ -399,6 +399,11 @@ class OpeningBalanceBatchController extends Controller
                 'rows.*.debit' => ['nullable', 'numeric', 'min:0', 'regex:/^-?\d+(\.\d{1,3})?$/'],
                 'rows.*.credit' => ['nullable', 'numeric', 'min:0', 'regex:/^-?\d+(\.\d{1,3})?$/'],
                 'rows.*.description' => ['nullable', 'string', 'max:255'],
+                // W4-2 — optional; names the payment repository whose day-one
+                // cash float this line seeds. AccountingOpeningService validates
+                // existence, the debit-only rule, the GL-account match and the
+                // never-traded rule per row; this is ingress shape only.
+                'rows.*.repository_code' => ['nullable', 'string', 'max:50'],
             ],
             OpeningBatchType::Inventory => [
                 'rows.*.product_code' => ['required', 'string'],

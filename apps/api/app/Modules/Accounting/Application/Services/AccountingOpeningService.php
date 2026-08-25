@@ -16,6 +16,10 @@ use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Accounting\Domain\OpeningBalanceImportRow;
 use App\Modules\Company\Domain\Company;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\Treasury\DTOs\OpeningFloatIntent;
+use App\Shared\Contracts\Treasury\DTOs\OpeningFloatRepositoryDescriptor;
+use App\Shared\Contracts\Treasury\RepositoryOpeningBalanceSeederInterface;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -43,6 +47,7 @@ class AccountingOpeningService
     public function __construct(
         private readonly OpeningBalanceBatchService $batchService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly RepositoryOpeningBalanceSeederInterface $repositoryOpeningSeeder,
     ) {}
 
     /**
@@ -115,14 +120,23 @@ class AccountingOpeningService
         $totalCredit = '0';
 
         foreach ($rows as $row) {
-            $result = $this->validateRow($row, $batch->company_id, $scale);
+            $result = $this->validateRow($row, $batch->tenant_id, $batch->company_id, $scale);
             $validationResults[$row->id] = $result;
+        }
 
+        // W4-2: a repository may be named at most ONCE per batch. Two rows
+        // seeding the same till would collide on the movement port's
+        // per-repository idempotency key at post time (silently keeping only the
+        // first float, because a replay is a no-op) — so refuse it here, where
+        // the operator can still fix the sheet.
+        $this->flagDuplicateRepositoryRows($validationResults);
+
+        foreach ($validationResults as $rowId => $result) {
             if ($result['valid']) {
                 $totalDebit = bcadd($totalDebit, $result['mapped_data']['debit'] ?? '0', $scale);
                 $totalCredit = bcadd($totalCredit, $result['mapped_data']['credit'] ?? '0', $scale);
             } else {
-                $errors[$row->id] = $result['errors'];
+                $errors[$rowId] = $result['errors'];
             }
         }
 
@@ -168,8 +182,12 @@ class AccountingOpeningService
      *
      * @return array{valid: bool, errors: array<string, array<string>>, mapped_data: array<string, mixed>}
      */
-    private function validateRow(OpeningBalanceImportRow $row, string $companyId, int $scale): array
-    {
+    private function validateRow(
+        OpeningBalanceImportRow $row,
+        string $tenantId,
+        string $companyId,
+        int $scale,
+    ): array {
         $rawData = $row->raw_data;
         $errors = [];
         $mappedData = [];
@@ -224,11 +242,132 @@ class AccountingOpeningService
 
         $mappedData['description'] = $rawData['description'] ?? null;
 
+        $this->validateRepositoryColumn($rawData, $tenantId, $companyId, $scale, $mappedData, $errors);
+
         return [
             'valid' => empty($errors),
             'errors' => $errors,
             'mapped_data' => $mappedData,
         ];
+    }
+
+    /**
+     * W4-2 — validate the optional `repository_code` column that turns a GL
+     * cash/bank opening line into a treasury opening float.
+     *
+     * Naming a repository is what makes the wizard the ONE sanctioned path to a
+     * day-one float: the same row then posts the GL leg AND the repository's
+     * opening movement. Every refusal below exists so the two halves can never
+     * disagree.
+     *
+     * @param  array<string, mixed>  $rawData
+     * @param  array<string, mixed>  $mappedData
+     * @param  array<string, array<int, string>>  $errors
+     */
+    private function validateRepositoryColumn(
+        array $rawData,
+        string $tenantId,
+        string $companyId,
+        int $scale,
+        array &$mappedData,
+        array &$errors,
+    ): void {
+        $rawCode = $rawData['repository_code'] ?? null;
+        $code = is_string($rawCode) ? trim($rawCode) : '';
+
+        if ($code === '') {
+            return;
+        }
+
+        $mappedData['repository_code'] = $code;
+
+        $descriptor = $this->repositoryOpeningSeeder->describeByCode($tenantId, $companyId, $code);
+
+        if (! $descriptor instanceof OpeningFloatRepositoryDescriptor) {
+            $errors['repository_code'] = ["Payment repository '{$code}' was not found or is inactive."];
+
+            return;
+        }
+
+        $mappedData['repository_id'] = $descriptor->id;
+        $mappedData['repository_name'] = $descriptor->name;
+
+        // A float ENTERS a till: it is a debit on the asset account. A credit row
+        // naming a repository would ask treasury to hold negative opening cash.
+        if (bccomp($mappedData['debit'] ?? '0', '0', $scale) <= 0) {
+            $errors['repository_code'] = [
+                "Payment repository '{$code}' can only be named on a debit line — an opening float ".
+                'is money entering the repository.',
+            ];
+
+            return;
+        }
+
+        // The repository's balance must equal the GL debit that backs it. That
+        // is only true if the row debits the repository's OWN cash/bank account.
+        if ($descriptor->glAccountId !== null
+            && ($mappedData['account_id'] ?? null) !== $descriptor->glAccountId) {
+            $expected = Account::query()->whereKey($descriptor->glAccountId)->value('code');
+            $errors['repository_code'] = [
+                "Payment repository '{$code}' is linked to GL account {$expected}; the opening float ".
+                'must be debited to that account so treasury and the ledger agree.',
+            ];
+
+            return;
+        }
+
+        if ($descriptor->hasMovements) {
+            $errors['repository_code'] = [
+                "Payment repository '{$code}' already holds money in Treasury, so it cannot receive an ".
+                'opening balance. Use a Treasury transfer to move cash into a till that has already traded.',
+            ];
+
+            return;
+        }
+
+        // Single-currency companies today, but the movement port refuses a
+        // currency mismatch outright — surface it as a row error instead of a
+        // post-time exception.
+        $rowCurrency = Company::query()->whereKey($companyId)->value('currency');
+        if (is_string($rowCurrency) && $descriptor->currency !== $rowCurrency) {
+            $errors['repository_code'] = [
+                "Payment repository '{$code}' is held in {$descriptor->currency}, not the company currency ".
+                "{$rowCurrency}.",
+            ];
+        }
+    }
+
+    /**
+     * Flag every row naming a repository that another row in the same batch
+     * already named.
+     *
+     * @param  array<string, array{valid: bool, errors: array<string, array<int, string>>, mapped_data: array<string, mixed>}>  $validationResults
+     */
+    private function flagDuplicateRepositoryRows(array &$validationResults): void
+    {
+        /** @var array<string, int> $seen */
+        $seen = [];
+
+        foreach ($validationResults as $result) {
+            $code = $result['mapped_data']['repository_code'] ?? null;
+            if (! is_string($code) || $code === '') {
+                continue;
+            }
+            $seen[$code] = ($seen[$code] ?? 0) + 1;
+        }
+
+        foreach ($validationResults as $rowId => $result) {
+            $code = $result['mapped_data']['repository_code'] ?? null;
+            if (! is_string($code) || ($seen[$code] ?? 0) < 2) {
+                continue;
+            }
+
+            $validationResults[$rowId]['errors']['repository_code'] = [
+                "Payment repository '{$code}' is named more than once in this batch. A repository ".
+                'receives exactly one opening float.',
+            ];
+            $validationResults[$rowId]['valid'] = false;
+        }
     }
 
     /**
@@ -328,6 +467,29 @@ class AccountingOpeningService
                     $totalCredit = bcadd($totalCredit, $credit, $scale);
 
                     $rowEntityMap[$row->id] = $line->id;
+
+                    // W4-2 — the treasury half of the SAME row, inside the SAME
+                    // transaction as the GL line above. The row's debit IS the
+                    // float, and the line above is the GL debit that backs it, so
+                    // the repository balance equals the ledger by construction.
+                    // Seeded AFTER the line exists: the reconciler's check 2
+                    // reconciles a movement against the JE's line on the
+                    // repository's own gl_account_id, which is what keeps this
+                    // equality enforced for the life of the tenant.
+                    $repositoryId = $mappedData['repository_id'] ?? null;
+                    if (is_string($repositoryId) && $repositoryId !== '') {
+                        $this->repositoryOpeningSeeder->seed(new OpeningFloatIntent(
+                            tenantId: $company->tenant_id,
+                            companyId: $company->id,
+                            repositoryId: $repositoryId,
+                            amount: $debit,
+                            currency: (string) $company->currency,
+                            batchId: $batch->id,
+                            occurredAt: CarbonImmutable::parse($batch->cutover_date->toDateString()),
+                            journalEntryId: $entry->id,
+                            createdBy: $userId,
+                        ));
+                    }
                 }
             }
 
@@ -416,6 +578,11 @@ class AccountingOpeningService
                 'debit' => $mappedData['debit'] ?? '0',
                 'credit' => $mappedData['credit'] ?? '0',
                 'description' => $mappedData['description'] ?? '',
+                // W4-2: null on every ordinary GL line; set when this row also
+                // seeds a treasury repository's opening float, so the operator
+                // sees WHICH till the money lands in before locking the batch.
+                'repository_code' => $mappedData['repository_code'] ?? null,
+                'repository_name' => $mappedData['repository_name'] ?? null,
             ];
         });
 
