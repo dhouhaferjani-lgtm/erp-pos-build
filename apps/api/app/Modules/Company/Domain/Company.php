@@ -111,9 +111,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  *                                                                 inventory valuation system. NULL = inherit the country default; resolve through
  *                                                                 `InventoryValuationModeResolver`, never by reading this column directly.
  * @property bool|null $count_correction_gl_posting_enabled Company override for whether a count
- *                                                            correction posts a shrinkage/gain journal entry. NULL = inherit the country
- *                                                            default; resolve through `CountCorrectionGlPostingResolver`, never by reading
- *                                                            this column directly (lane P-1, owner ruling 2026-08-25).
+ *                                                          correction posts a shrinkage/gain journal entry. NULL = inherit the country
+ *                                                          default; resolve through `CountCorrectionGlPostingResolver`, never by reading
+ *                                                          this column directly (lane P-1, owner ruling 2026-08-25).
  * @property CarbonImmutable $inventory_gl_cutover_at COGS-at-exit detector watermark; NOT NULL and initialized on company creation
  * @property string $default_target_margin Default target margin percentage
  * @property string $default_minimum_margin Default minimum margin percentage
