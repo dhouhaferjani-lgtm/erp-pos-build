@@ -1885,6 +1885,23 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * (W2-7/W4-5) but serves `POST /pos/receipts`, retired at 410. See
      * {@see self::consumeLotsForSaleLine()}.
      *
+     * **No composite arm here, and that is a finding, not an omission (W4R-3).**
+     * The retired `ReceiptCreationService` explodes a combo to its recipe
+     * leaves; this projection never has. It cannot simply grow one: the only
+     * producer of a `sellableType: 'composite_item'` cart line is
+     * `flattenMenuToProducts` (`apps/pos/src/api/productApi.ts:132`), which ids
+     * every Menu row as `<sellable_id>_<menu_category_id>`, and the sealed
+     * payload carries `item.product.id` verbatim
+     * (`apps/pos/src/lib/fiscal/payloads/SaleReceiptPayload.ts:317`) — the
+     * `receiptToPayload` unpacking that restores a bare `sellable_id` lives on
+     * the RETIRED `POST /pos/receipts` wire path
+     * (`apps/pos/src/lib/sync/syncService.ts:2546`), not on this one. So a
+     * composite line reaches here with a non-UUID `product_id` and is skipped
+     * by the `Str::isUuid()` guard below: it moves NO aggregate stock and NO
+     * lot stock, contributes ZERO to the Σ-lots-vs-aggregate drift this lane
+     * measures, and fixing it means first deciding how that sealed snapshot
+     * resolves server-side — a fiscal-payload decision, not an inventory one.
+     *
      * @param  array<int, numeric-string|null>  $lineUnitCosts
      * @param  array<int, string>  $lineIds
      */

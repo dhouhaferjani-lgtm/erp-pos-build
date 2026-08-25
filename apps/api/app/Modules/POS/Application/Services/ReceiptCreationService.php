@@ -1411,6 +1411,16 @@ final class ReceiptCreationService
                     occurredAt: $occurredAt,
                 );
 
+                // 🪦 RETIRED PATH — see allocateBatches()'s header. The LIVE
+                // projection has no composite arm at all, and cannot get one
+                // without a fiscal decision first: `flattenMenuToProducts`
+                // (apps/pos/src/api/productApi.ts:132) is the only producer of
+                // a `sellableType: 'composite_item'` cart line and it ids every
+                // one as `<sellable_id>_<category_id>`, which the sealed
+                // payload carries verbatim, so the projection's
+                // `Str::isUuid($productId)` guard skips it. See W4R-3 in
+                // docs/superpowers/reviews/2026-08-25-w4r2-handback.md.
+                //
                 // 🚨 Campaign wave 4, W4-5 (composite arm). The DIRECT product line
                 // above allocates FEFO lots; this leaf path decremented the aggregate
                 // and left the lot ledger untouched, so a batch-tracked component sold
@@ -1538,6 +1548,28 @@ final class ReceiptCreationService
 
     /**
      * Allocate batches using FEFO for a POS receipt line.
+     *
+     * 🪦 **RETIRED PATH — quarantined, not deleted (W4R-2).** Every caller of
+     * `createReceipt()` is inert: `POST /api/v1/pos/receipts` and
+     * `POST /api/v1/pos/orders/{id}/close` are 410 route-level closures
+     * (`POS/routes.php`, `POS/routes_orders.php`), and `ExchangeService` —
+     * the third chokepoint carve-out — has no controller and no route. So this
+     * method has not run in production since §14.2, which is exactly why the
+     * W4-5/W2-7 lot fix landed here and the LIVE device-authored path kept
+     * drifting (27 units on the wave-4 re-run tenant, 100 % live POS).
+     *
+     * The live equivalent is
+     * `PosCoreReceiptProjection::consumeLotsForSaleLine()`. Read that one when
+     * changing lot behaviour for a POS sale.
+     *
+     * Kept rather than deleted for three reasons: `ChokepointCompletenessTest`
+     * + `scripts/saleReceipt-chokepoint-manifest.json` pin this service as a
+     * named carve-out (deleting it breaks the regrowth gate); the LIVE server
+     * return path
+     * (`ReceiptReturnService::lotProvenanceForLine()`, reached by the
+     * still-active `POST /pos/receipts/{id}/return`) reads the
+     * `pos_receipt_line_batch_allocations` rows this method's shape defines;
+     * and its tests are the shared-service tests for that contract.
      *
      * Atomically consumes batch-level stock (FEFO, row-locked via
      * {@see FEFOInventoryService::consumeBatchesAtomically()}) and snapshots each
