@@ -149,6 +149,11 @@ final class PaymentApplicabilityMatrixTest extends TestCase
         'invoice|historical_ar|paid' => 'refused:document_not_live',
         'invoice|historical_ar|received' => 'refused:document_not_live',
         'invoice|historical_ar|cancelled' => 'refused:document_not_live',
+        // LEGACY rows, kept deliberately (gate r3 / R3-2). Before W4-3 an AP
+        // opening WAS minted as `DocumentType::Invoice`, indistinguishable from an
+        // AR one, and every tenant migrated before the retype still holds such
+        // rows. Fail-closed on them is right and must not drift. The CURRENT shape
+        // is `supplier_invoice|historical_ap|*` below.
         'invoice|historical_ap|draft' => 'refused:document_not_live',
         'invoice|historical_ap|confirmed' => 'refused:historical_opening_provenance',
         'invoice|historical_ap|posted' => 'refused:historical_opening_provenance',
@@ -191,12 +196,99 @@ final class PaymentApplicabilityMatrixTest extends TestCase
         'credit_note|pos|paid' => 'refused:document_not_live',
         'credit_note|pos|received' => 'refused:document_not_live',
         'credit_note|pos|cancelled' => 'refused:document_not_live',
+
+        // ── Gate r3 / R3-2 — the AP side the tables did not cover ────────────
+        //
+        // Since W4-3 an AP opening is minted as a `SupplierInvoice` on `HIST-SINV`
+        // (a negative one as a `SupplierCreditNote`), so these are the rows the
+        // product now actually produces — and without them
+        // `test_the_tables_cover_exactly_the_whole_space` was asserting coverage it
+        // did not have for the entire AP side.
+        //
+        // Every one of them equals its NATIVE row, and that is the ruling (OQ-74 =
+        // ALLOW, `d0cfa624f`), not an oversight: `refusalForHistoricalOpening()` is
+        // reached only for `Invoice`/`CreditNote` (`:208`), because those were the
+        // only types the opening importer could mint when provenance was the only
+        // discriminator. A supplier-typed opening carries its own posted `Cr 401`
+        // and is therefore an ordinary payable — `posted ⇒ payable_settlement`,
+        // settled Dr 401 / Cr bank through `PaymentController::store()`. The
+        // receivable-direction routes still refuse it, via
+        // `classifyReceivableSide()`, as `PayableNotSettleableHere` — a different
+        // question, asked elsewhere.
+
+        'supplier_invoice|historical_ar|draft' => 'refused:document_not_live',
+        'supplier_invoice|historical_ar|confirmed' => 'refused:status_not_allocatable_for_type',
+        'supplier_invoice|historical_ar|posted' => 'admit:payable_settlement',
+        'supplier_invoice|historical_ar|paid' => 'refused:document_not_live',
+        'supplier_invoice|historical_ar|received' => 'refused:document_not_live',
+        'supplier_invoice|historical_ar|cancelled' => 'refused:document_not_live',
+        'supplier_invoice|historical_ap|draft' => 'refused:document_not_live',
+        'supplier_invoice|historical_ap|confirmed' => 'refused:status_not_allocatable_for_type',
+        'supplier_invoice|historical_ap|posted' => 'admit:payable_settlement',
+        'supplier_invoice|historical_ap|paid' => 'refused:document_not_live',
+        'supplier_invoice|historical_ap|received' => 'refused:document_not_live',
+        'supplier_invoice|historical_ap|cancelled' => 'refused:document_not_live',
+        'supplier_invoice|historical_unknown|draft' => 'refused:document_not_live',
+        'supplier_invoice|historical_unknown|confirmed' => 'refused:status_not_allocatable_for_type',
+        'supplier_invoice|historical_unknown|posted' => 'admit:payable_settlement',
+        'supplier_invoice|historical_unknown|paid' => 'refused:document_not_live',
+        'supplier_invoice|historical_unknown|received' => 'refused:document_not_live',
+        'supplier_invoice|historical_unknown|cancelled' => 'refused:document_not_live',
+        'supplier_invoice|pos|draft' => 'refused:document_not_live',
+        'supplier_invoice|pos|confirmed' => 'refused:status_not_allocatable_for_type',
+        'supplier_invoice|pos|posted' => 'admit:payable_settlement',
+        'supplier_invoice|pos|paid' => 'refused:document_not_live',
+        'supplier_invoice|pos|received' => 'refused:document_not_live',
+        'supplier_invoice|pos|cancelled' => 'refused:document_not_live',
+
+        'supplier_credit_note|historical_ar|draft' => 'refused:document_not_live',
+        'supplier_credit_note|historical_ar|confirmed' => 'refused:outward_document_type',
+        'supplier_credit_note|historical_ar|posted' => 'refused:outward_document_type',
+        'supplier_credit_note|historical_ar|paid' => 'refused:document_not_live',
+        'supplier_credit_note|historical_ar|received' => 'refused:document_not_live',
+        'supplier_credit_note|historical_ar|cancelled' => 'refused:document_not_live',
+        'supplier_credit_note|historical_ap|draft' => 'refused:document_not_live',
+        'supplier_credit_note|historical_ap|confirmed' => 'refused:outward_document_type',
+        'supplier_credit_note|historical_ap|posted' => 'refused:outward_document_type',
+        'supplier_credit_note|historical_ap|paid' => 'refused:document_not_live',
+        'supplier_credit_note|historical_ap|received' => 'refused:document_not_live',
+        'supplier_credit_note|historical_ap|cancelled' => 'refused:document_not_live',
+        'supplier_credit_note|historical_unknown|draft' => 'refused:document_not_live',
+        'supplier_credit_note|historical_unknown|confirmed' => 'refused:outward_document_type',
+        'supplier_credit_note|historical_unknown|posted' => 'refused:outward_document_type',
+        'supplier_credit_note|historical_unknown|paid' => 'refused:document_not_live',
+        'supplier_credit_note|historical_unknown|received' => 'refused:document_not_live',
+        'supplier_credit_note|historical_unknown|cancelled' => 'refused:document_not_live',
+        'supplier_credit_note|pos|draft' => 'refused:document_not_live',
+        'supplier_credit_note|pos|confirmed' => 'refused:outward_document_type',
+        'supplier_credit_note|pos|posted' => 'refused:outward_document_type',
+        'supplier_credit_note|pos|paid' => 'refused:document_not_live',
+        'supplier_credit_note|pos|received' => 'refused:document_not_live',
+        'supplier_credit_note|pos|cancelled' => 'refused:document_not_live',
     ];
 
     /**
      * @var list<string>
      */
     private const PROVENANCE_FAMILIES = ['historical_ar', 'historical_ap', 'historical_unknown', 'pos'];
+
+    /**
+     * The document types a provenance marker can appear on.
+     *
+     * Gate r3 / R3-2 — ONE list, read by `everyCell()` AND by the coverage count,
+     * because they used to be a `foreach` over two types and a hardcoded `2 *` in
+     * two different methods. Adding `SupplierInvoice` / `SupplierCreditNote` (what
+     * W4-3 now mints for an AP opening) to one and not the other is precisely how
+     * the tables came to claim coverage they did not have.
+     *
+     * @var list<DocumentType>
+     */
+    private const PROVENANCE_TYPES = [
+        DocumentType::Invoice,
+        DocumentType::CreditNote,
+        DocumentType::SupplierInvoice,
+        DocumentType::SupplierCreditNote,
+    ];
 
     private DocumentAllocationClassifier $classifier;
 
@@ -217,7 +309,7 @@ final class PaymentApplicabilityMatrixTest extends TestCase
             }
         }
 
-        foreach ([DocumentType::Invoice, DocumentType::CreditNote] as $type) {
+        foreach (self::PROVENANCE_TYPES as $type) {
             foreach (self::PROVENANCE_FAMILIES as $family) {
                 foreach (DocumentStatus::cases() as $status) {
                     yield "{$type->value} + {$status->value} + {$family}" => [$type, $status, $family];
@@ -267,13 +359,26 @@ final class PaymentApplicabilityMatrixTest extends TestCase
             self::EXPECTED_NATIVE,
         );
         $this->assertCount(
-            2 * count(self::PROVENANCE_FAMILIES) * count(DocumentStatus::cases()),
+            count(self::PROVENANCE_TYPES) * count(self::PROVENANCE_FAMILIES) * count(DocumentStatus::cases()),
             self::EXPECTED_PROVENANCE,
         );
 
         foreach (DocumentType::cases() as $type) {
             foreach (DocumentStatus::cases() as $status) {
                 $this->assertArrayHasKey("{$type->value}|{$status->value}", self::EXPECTED_NATIVE);
+            }
+        }
+
+        // Coverage by KEY, not only by count — a count matches just as well when
+        // one row is duplicated and another missing.
+        foreach (self::PROVENANCE_TYPES as $type) {
+            foreach (self::PROVENANCE_FAMILIES as $family) {
+                foreach (DocumentStatus::cases() as $status) {
+                    $this->assertArrayHasKey(
+                        "{$type->value}|{$family}|{$status->value}",
+                        self::EXPECTED_PROVENANCE,
+                    );
+                }
             }
         }
     }
@@ -566,18 +671,31 @@ final class PaymentApplicabilityMatrixTest extends TestCase
     }
 
     /**
-     * Gate r2 / G-3 — the AP-opening refusal must not send an operator down a
-     * route that does not exist.
+     * Gate r2 / G-3 — a refusal must not send an operator down a route that does
+     * not exist. **Rewritten at gate r3 / R3-2: the premise it was built on is
+     * gone, and the assertion now guards a different, still-true fact.**
      *
-     * An AP opening is minted as `DocumentType::Invoice`
-     * (`ArApOpeningService::postBatch()`), and the supplier branch of
-     * `PaymentController::store()` is gated on
-     * `$document->type === DocumentType::SupplierInvoice`. So "settle it through
-     * the supplier payment flow" — which is what this string said after the r1
-     * fix round — is an instruction that fails. Settling AP openings arrives with
-     * the provenance lane (C-0a1); until then the copy has to say so.
+     * What it used to say: an AP opening is minted as `DocumentType::Invoice`, the
+     * supplier branch of `PaymentController::store()` is gated on
+     * `type === SupplierInvoice`, so "settle it through the supplier payment flow"
+     * is an instruction that fails, and settling AP openings waits for C-0a1.
+     *
+     * Both halves are now false. W4-3 mints an AP opening as a `SupplierInvoice`
+     * on `HIST-SINV` with a posted `supplier_invoice` entry carrying `Cr 401`
+     * partner-tagged — which is exactly what that supplier branch checks — and the
+     * owner RULED it settleable (OQ-74 = ALLOW, `d0cfa624f`; standing rule:
+     * standard ERP logic applies as soon as it is implemented). An AP opening is
+     * paid Dr 401 / Cr bank today, pinned by
+     * `Tests\Feature\Treasury\HistoricalOpeningSideSettlementTest::test_a_historical_ap_opening_is_paid_through_the_supplier_arm`.
+     *
+     * Why the assertion survives unchanged. `HistoricalOpeningProvenance` no longer
+     * fires for AP openings at all — it is now reached only by a CreditNote opening
+     * and by an opening whose side cannot be proven. For those the copy is still
+     * exactly right: there is no route, and "cannot be settled yet" is the truth.
+     * So this test is kept, with its reasoning corrected, rather than deleted: it
+     * still stops that string from advertising a flow its readers cannot take.
      */
-    public function test_the_ap_opening_refusal_does_not_name_a_route_that_does_not_exist(): void
+    public function test_the_unprovable_opening_refusal_does_not_name_a_route_that_does_not_exist(): void
     {
         $english = require dirname(__DIR__, 3).'/lang/en/treasury.php';
         $message = (string) $english['allocation_refused'][AllocationRefusalReason::HistoricalOpeningProvenance->value];
@@ -585,7 +703,7 @@ final class PaymentApplicabilityMatrixTest extends TestCase
         $this->assertStringNotContainsStringIgnoringCase(
             'supplier payment flow',
             $message,
-            'AP opening balances cannot be paid through the supplier payment flow until C-0a1 lands',
+            'this reason now fires only for credit-note and unprovable-side openings, which have no settlement route',
         );
         $this->assertStringContainsStringIgnoringCase('cannot be settled yet', $message);
     }

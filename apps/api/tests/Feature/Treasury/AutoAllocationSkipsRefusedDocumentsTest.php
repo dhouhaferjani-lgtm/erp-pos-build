@@ -8,12 +8,14 @@ use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Treasury\Application\DTOs\ApplyPaymentAllocationCommand;
 use App\Modules\Treasury\Application\Services\PaymentAllocationService;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\Feature\Treasury\Concerns\PaymentApplicabilityScaffold;
 use Tests\TestCase;
 
@@ -121,6 +123,17 @@ final class AutoAllocationSkipsRefusedDocumentsTest extends TestCase
         $offered = $response->json('data.allocations');
         $offeredIds = array_column($offered, 'document_id');
 
+        // Gate r3 / R3-1 — say WHY, or this assertion is vacuous. Since W4-3 an AP
+        // opening is a `SupplierInvoice`, and `getOpenInvoices()` selects only
+        // `Invoice|SalesOrder`, so it is excluded by the SQL TYPE mirror rather than
+        // by any refusal running. That is the intended guarantee, but it is a
+        // different guarantee from the one this test used to make, and a reader has
+        // to be able to tell which one is being pinned.
+        self::assertSame(
+            DocumentType::SupplierInvoice,
+            $opening->type,
+            'precondition: the AP opening is supplier-typed, so the SQL mirror — not a refusal — keeps it out',
+        );
         $this->assertNotContains($opening->id, $offeredIds, 'a refused opening must never be OFFERED');
         $this->assertContains($native->id, $offeredIds);
     }
@@ -148,6 +161,11 @@ final class AutoAllocationSkipsRefusedDocumentsTest extends TestCase
         );
 
         $this->assertTrue($result['success']);
+        // Gate r3 / R3-1 — same caveat as the preview test: this row is out of the
+        // sweep by TYPE, not by a refusal, so on its own it no longer exercises the
+        // direction guard. `test_the_sweep_skips_a_partner_role_mismatch_...` below
+        // is what pins the guard's placement on this entry point.
+        self::assertSame(DocumentType::SupplierInvoice, $opening->type);
         $this->assertSame(0, PaymentAllocation::query()->where('document_id', $opening->id)->count());
         $this->assertAllocatedTo($native->id, '50.000');
     }
@@ -181,6 +199,78 @@ final class AutoAllocationSkipsRefusedDocumentsTest extends TestCase
         $response->assertStatus(422);
         $response->assertJsonPath('error.code', 'SUPPLIER_INVOICE_NOT_PAYABLE_HERE');
         $this->assertSame(0, PaymentAllocation::query()->where('document_id', $opening->id)->count());
+    }
+
+    /**
+     * GATE r3 / R3-1 — the pin for the r2 F-1 fix, which had ZERO coverage.
+     *
+     * r2's CRITICAL was that a THROW on `PaymentAllocationService`'s direction check
+     * dead-letters a SEALED device fiscal fact after five Horizon retries, because
+     * both queued bridges enter that method with FIFO. The fix was to skip on the
+     * server-chosen path and throw only on MANUAL. Reverting it went unnoticed by
+     * the entire Treasury directory — the r2 tripwires had stopped working for two
+     * independent reasons, both introduced by this lane: the scaffold's vendor
+     * became `Both`, and an AP opening became a `SupplierInvoice` that
+     * `getOpenInvoices()` never offers.
+     *
+     * This is the one shape that both REACHES the sweep and TRIPS the predicate:
+     * a supplier-ONLY partner holding an ordinary posted customer `Invoice` (the
+     * mismatch — `getOpenInvoices()` selects `Invoice|SalesOrder`, so it is offered)
+     * and, behind it, a confirmed `SalesOrder` (which the predicate passes, because
+     * an order carries no AR/AP side of its own). The mismatch must be SKIPPED with
+     * its reason, the order must still be collected, and nothing may throw.
+     *
+     * Revert the MANUAL gate and this goes red immediately: the FIFO call throws
+     * `HttpResponseException` out of the projection entry point.
+     */
+    public function test_the_sweep_skips_a_partner_role_mismatch_without_throwing_and_still_collects(): void
+    {
+        $supplierOnly = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'SUPONLY-'.Str::upper(Str::random(5)),
+            'name' => 'Fournisseur Uniquement',
+            'type' => PartnerType::Supplier,
+        ]);
+
+        // The mismatch, and OLDEST so FIFO reaches it first.
+        $misTyped = $this->makeDocument(DocumentType::Invoice, DocumentStatus::Posted, '100.000', $supplierOnly, 'INV');
+        Document::query()->whereKey($misTyped->id)->update(['document_date' => '2026-01-01']);
+
+        // Behind it, a document the predicate lets through: an order has no AR/AP
+        // side, so `directionMatchesPartner()` returns true for it whatever the
+        // partner's role is.
+        $order = $this->makeDocument(DocumentType::SalesOrder, DocumentStatus::Confirmed, '80.000', $supplierOnly, 'SO');
+        Document::query()->whereKey($order->id)->update(['document_date' => '2026-06-01']);
+
+        // 150.000, not 50.000, and the reason is a finding in its own right: the
+        // PREVIEW still offers the mis-typed row (the direction predicate is not part
+        // of `getOpenInvoices()`'s SQL mirror), so a payment small enough to be
+        // exhausted by the mismatch would leave the order out of the preview's
+        // allocation list entirely and this test would fail for a reason that has
+        // nothing to do with the guard. Sized to cover both, the execute-side skip
+        // is isolated. The preview/execute disagreement is recorded as a residual in
+        // the handback — it wastes an offer, it does not move money.
+        $payment = $this->makeUnallocatedPayment('150.000', $supplierOnly);
+
+        $result = app(PaymentAllocationService::class)->applyAllocationFromCommand(
+            new ApplyPaymentAllocationCommand(
+                tenantId: $this->tenant->id,
+                companyId: $this->company->id,
+                paymentId: $payment->id,
+                allocationMethod: AllocationMethod::FIFO,
+                actorUserId: $this->user->id,
+                source: 'pos_account_payment',
+            ),
+        );
+
+        $this->assertTrue($result['success'], 'the sweep must not throw — a throw here dead-letters a sealed fiscal fact');
+        $this->assertSame(
+            0,
+            PaymentAllocation::query()->where('document_id', $misTyped->id)->count(),
+            'the mis-typed document must be SKIPPED, not allocated — that is the Dr bank / Cr 411 defect',
+        );
+        $this->assertAllocatedTo($order->id, '50.000'); // the preview gave the mismatch 100 of the 150 and the order the remaining 50; the execute then skipped the mismatch
     }
 
     /**
