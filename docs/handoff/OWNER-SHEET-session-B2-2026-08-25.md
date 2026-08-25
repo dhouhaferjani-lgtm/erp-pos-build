@@ -35,4 +35,5 @@ without these; Session B's erratum applies (§#26 census superseded by D-1: 245 
 | B2-2 C-26 parity parser + owner-pin reader | `19f9e61bb` | fiscal-pos r1 ACCEPT-w/-cond |
 | B2-3 O-31 seed + steps | doc `OWNER-O31-…` | parent-verified |
 | B2-4 Slice D batch 1 — 13 CHECKs, baseline 188→175 (MIGRATION-BEARING → S-22) | `42f7f8bad` | fiscal-pos r1 + treasury r1 ACCEPT-w/-cond → fix round |
-| B2-5 C-24 manual period close | _queued_ (brief + worktree ready) | treasury |
+| B2-5 C-24 manual period close (`POST /fiscal-periods/{id}/close`; S-20 seeder step) | `bd03bd8cb` | treasury r1 ACCEPT-w/-cond → micro round |
+| B2-6 residual sweep (C-30i, C-14ii-iv, C-16iii, C-17ii/iv/vii/viii, C-28i) | _in flight_ | tenancy + inventory (+ FE conventions) |
