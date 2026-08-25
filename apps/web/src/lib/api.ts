@@ -1,5 +1,6 @@
 import axios, { type AxiosError, type AxiosInstance, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
-import { useCompanyStore } from '../stores/companyStore'
+import { markCompanyAccessDenied, useCompanyStore } from '../stores/companyStore'
+import { useLocationStore } from '../stores/locationStore'
 import { useAuthStore } from '../stores/authStore'
 
 /**
@@ -118,6 +119,96 @@ let redirect: (path: string) => void = (path) => {
 export function __resetRedirectGuard(): void { redirectedToLogin = false }
 export function __setRedirectForTests(fn: (path: string) => void): void { redirect = fn }
 
+/**
+ * Bootstrap endpoints that must NEVER carry `X-Company-Id` (W2-1).
+ *
+ * These are the calls that TELL the client which companies it may use. Sending
+ * the client's own (possibly stale) belief on them makes the answer depend on
+ * the question: a browser holding a previous account's selection 403'd on
+ * `/user/companies` itself, so the membership list could never load, the
+ * switcher opened empty and the deadlock could not self-heal — the exact
+ * campaign wave-2 W2-1 failure. Both endpoints are user-scoped server-side
+ * (`UserController::companies` reads the caller's own memberships; `/auth/me`
+ * is not company-scoped at all), so the header adds nothing but risk.
+ */
+const COMPANY_CONTEXT_EXEMPT_PATHS = ['/user/companies', '/auth/me']
+
+/**
+ * True when a request URL addresses one of the bootstrap endpoints above.
+ * Tolerates an absolute URL, an `/api/v1` prefix and a query string.
+ */
+export function isCompanyContextExempt(url: string | undefined): boolean {
+  if (url === undefined || url === '') {
+    return false
+  }
+  const withoutQuery = url.split('?')[0].split('#')[0]
+  const withoutOrigin = withoutQuery.replace(/^[a-z]+:\/\/[^/]+/i, '')
+  const withoutApiPrefix = withoutOrigin.replace(/^\/api\/v\d+/, '')
+  const path = withoutApiPrefix.startsWith('/') ? withoutApiPrefix : `/${withoutApiPrefix}`
+
+  return COMPANY_CONTEXT_EXEMPT_PATHS.includes(path.replace(/\/+$/, ''))
+}
+
+/**
+ * Typed rejections that mean "the company scope you sent is stale or junk".
+ * Both are recoverable by forgetting the selection and re-bootstrapping;
+ * `NO_COMPANY_ACCESS` deliberately is NOT here — it means the user is a member
+ * of no company at all, which resetting cannot fix.
+ */
+const COMPANY_SCOPE_REJECTION_CODES = ['COMPANY_ACCESS_DENIED', 'INVALID_COMPANY_ID']
+
+/**
+ * Self-heal a stale company scope (W2-1).
+ *
+ * Drops the persisted selection and the previous company's locations. Because
+ * `currentCompanyId` is a suffix of every `tenantScopedKey`, clearing it
+ * re-keys the bootstrap query and CompanyProvider refetches `/user/companies`
+ * — now WITHOUT the header (see `isCompanyContextExempt`) — so the store
+ * relearns the real membership list and `resolveCompanySelection` picks the
+ * user's primary company.
+ *
+ * MATCHING (F-3): `sentCompanyId` is the `X-Company-Id` the FAILING request
+ * actually carried. The reset fires only when it is still the current
+ * selection. Without that check a 403 for company A, issued moments before the
+ * user switched to B, would wipe B — silently undoing a deliberate switch. A
+ * request that carried no header was resolved server-side against the user's
+ * default company, which no client-side reset can fix, so it is ignored too.
+ *
+ * LOOP SAFETY: the denied company is recorded (`markCompanyAccessDenied`) so
+ * `resolveCompanySelection` cannot re-pick it on the re-bootstrap that follows.
+ * Without that, "the selection is null now" is only half the cycle — the
+ * provider re-picks `isPrimary`/`companies[0]` deterministically, and if the
+ * server denies that one too the pair resets forever. Belt: the reset is also a
+ * no-op once `currentCompanyId` is null.
+ *
+ * @returns whether this call reset the scope.
+ */
+export function handleCompanyScopeRejection(
+  code: string | null,
+  sentCompanyId: string | null,
+): boolean {
+  if (code === null || !COMPANY_SCOPE_REJECTION_CODES.includes(code)) {
+    return false
+  }
+
+  const companyStore = useCompanyStore.getState()
+  const currentCompanyId = companyStore.currentCompanyId
+  if (currentCompanyId === null) {
+    return false
+  }
+
+  if (sentCompanyId === null || sentCompanyId !== currentCompanyId) {
+    return false
+  }
+
+  console.warn('Stale company scope rejected by the API, resetting selection:', code)
+  markCompanyAccessDenied(currentCompanyId)
+  companyStore.reset()
+  useLocationStore.getState().reset()
+
+  return true
+}
+
 export function handleUnauthorized(url: string, sentToken: string | null): void {
   const store = useAuthStore.getState()
   if (url.includes('/auth/me')) {
@@ -165,9 +256,11 @@ function createApiClient(): AxiosInstance {
         config.headers['Authorization'] = `Bearer ${token}`
       }
 
-      // Add company context header for multi-company support
+      // Add company context header for multi-company support.
+      // Bootstrap calls are exempt: they are what teaches the client which
+      // companies exist, so they must not depend on what it already believes.
       const companyId = useCompanyStore.getState().currentCompanyId
-      if (companyId) {
+      if (companyId && !isCompanyContextExempt(config.url)) {
         config.headers['X-Company-Id'] = companyId
       }
 
@@ -236,6 +329,20 @@ function createApiClient(): AxiosInstance {
               ? authHeader.slice('Bearer '.length)
               : null
           handleUnauthorized(url, sentToken)
+        }
+
+        // A stale/junk company scope is recoverable: forget the selection and
+        // let CompanyProvider re-bootstrap (W2-1). 400 carries INVALID_COMPANY_ID,
+        // 403 carries COMPANY_ACCESS_DENIED; both are typed by
+        // CompanyContextMiddleware.
+        if (response.status === 403 || response.status === 400) {
+          const responseData: unknown = response.data
+          const envelope = isRecord(responseData) ? responseData['error'] : null
+          const sentCompanyId: unknown = error.config?.headers['X-Company-Id']
+          handleCompanyScopeRejection(
+            readString(envelope, 'code'),
+            typeof sentCompanyId === 'string' ? sentCompanyId : null,
+          )
         }
 
         // Handle 403 Forbidden

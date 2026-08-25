@@ -41,6 +41,23 @@ namespace App\Modules\Inventory\Domain\Enums;
  * journal entry — which is why the flag raises `is_flagged` and the reviewer
  * sees the chip. Carried on the LEDGER next to the OQ-12 flag-flip row.
  *
+ * ## `missing_boundary_marker` — the third question (lane P-1, gate r1 F-2)
+ *
+ * W4-6 gate r2 NEW-1 resolved the same-second tie by insertion ORDER, using a
+ * per-item `final_qty_movement_marker`. When that marker is NULL — a line
+ * submitted before the marker columns shipped on that tenant, i.e. a count in
+ * flight across the upgrade — `MovementReplayService::signedDelta()` falls back
+ * to the r1 inclusive-boundary semantics, and a movement stamped in the SAME
+ * SECOND as the count is subtracted twice. Once count-correction GL posting is
+ * ON (this lane), that guess also becomes a journal entry.
+ *
+ * So a marker-less line whose boundary second actually carries a movement gets
+ * this reason: `isBlocking()` true (the reviewer sees it), stock application
+ * NOT blocked (the shelf is still corrected), {@see self::blocksGlPosting()}
+ * true (the ledger is not). A marker-less line with an EMPTY boundary second is
+ * not ambiguous at all — the marker branch is a no-op for it — and is left
+ * alone.
+ *
  * `pending_opening_cost` (D3) is raised when an onboarding first-count line has
  * no resolvable positive opening cost (item override unset AND the product's
  * `cost_price` is ≤ 0). Posting it would silently establish a zero-cost opening
@@ -55,6 +72,7 @@ enum CountingItemFlagReason: string
     case ClockSkew = 'clock_skew';
     case PendingOpeningCost = 'pending_opening_cost';
     case NormalizedAgreement = 'normalized_agreement';
+    case MissingBoundaryMarker = 'missing_boundary_marker';
 
     /**
      * Whether this reason alone forces `is_flagged=true` on the item.
@@ -62,7 +80,8 @@ enum CountingItemFlagReason: string
     public function isBlocking(): bool
     {
         return match ($this) {
-            self::BasketWindow, self::NegativeAtApply, self::ClockSkew, self::PendingOpeningCost => true,
+            self::BasketWindow, self::NegativeAtApply, self::ClockSkew, self::PendingOpeningCost,
+            self::MissingBoundaryMarker => true,
             self::NormalizedAgreement => false,
         };
     }
@@ -77,7 +96,30 @@ enum CountingItemFlagReason: string
     {
         return match ($this) {
             self::NegativeAtApply, self::PendingOpeningCost => true,
-            self::BasketWindow, self::ClockSkew, self::NormalizedAgreement => false,
+            self::BasketWindow, self::ClockSkew, self::NormalizedAgreement,
+            self::MissingBoundaryMarker => false,
+        };
+    }
+
+    /**
+     * Whether this reason withholds the line's JOURNAL ENTRY while still letting
+     * the stock correction through (lane P-1, gate r1 F-2).
+     *
+     * This is the THIRD question the enum answers, and it exists because the two
+     * that came before it cannot express the case. `missing_boundary_marker`
+     * names a line whose replay is provably ambiguous at the boundary second and
+     * which therefore may have moved stock by the wrong amount. Refusing the
+     * stock write would strand the operator with a shelf nobody can correct;
+     * writing the journal entry would put an unprovable number in the ledger,
+     * where it is far more expensive to undo. So: correct the shelf, withhold
+     * the value, flag the line for review.
+     */
+    public function blocksGlPosting(): bool
+    {
+        return match ($this) {
+            self::MissingBoundaryMarker => true,
+            self::BasketWindow, self::NegativeAtApply, self::ClockSkew,
+            self::PendingOpeningCost, self::NormalizedAgreement => false,
         };
     }
 
@@ -89,6 +131,7 @@ enum CountingItemFlagReason: string
             self::ClockSkew => 'Clock Skew Detected',
             self::PendingOpeningCost => 'Opening Cost Required',
             self::NormalizedAgreement => 'Normalized Agreement',
+            self::MissingBoundaryMarker => 'Boundary Marker Missing',
         };
     }
 }

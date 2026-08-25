@@ -8,6 +8,7 @@ use App\Modules\Company\Application\Services\TaxIdentityResolver;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FacturXProfile;
 use App\Services\CompanyConfigService;
@@ -27,6 +28,8 @@ final class DocumentPdfService
         private readonly FacturXService $facturXService,
         private readonly FacturXPdfGenerator $facturXPdfGenerator,
         private readonly TaxIdentityResolver $taxIdentityResolver,
+        private readonly ProformaOutputPolicy $proformaPolicy,
+        private readonly ProformaGrossAmountResolver $proformaGrossAmounts,
     ) {}
 
     private function scale(): int
@@ -68,8 +71,14 @@ final class DocumentPdfService
     {
         $pdfContent = $this->generate($document)->output();
 
-        // Generate and embed Factur-X XML for eligible B2B invoices
-        if ($this->facturXService->isEligible($document)) {
+        // C-F0 / F-95 — a PROFORMA gets no Factur-X payload. `isEligible()` asks
+        // only "FR company, B2B partner, invoice, no XML yet"; it says nothing
+        // about whether the invoice exists in the ledger. Embedding the XML would
+        // put a machine-readable VAT breakdown — `BT-110`, the tax total — inside
+        // a PDF whose visible page deliberately carries none, and this is the path
+        // `DocumentEmailService` sends to the customer. Once the invoice is
+        // posted and sealed the next generation embeds it as before.
+        if (! $this->proformaPolicy->isProforma($document) && $this->facturXService->isEligible($document)) {
             $xml = $this->facturXService->generateXml($document);
 
             $document->update([
@@ -168,6 +177,7 @@ final class DocumentPdfService
         // so the human-readable PDF and the embedded XML agree. documents.location_id
         // is nullable, so fall back to the company when absent.
         $seller = $this->sellerTaxIdentity($company, $document->location);
+        $isProforma = $this->proformaPolicy->isProforma($document);
 
         return [
             'document' => $document,
@@ -181,6 +191,27 @@ final class DocumentPdfService
             'locale' => $locale,
             'currency' => $currency,
             'documentTitle' => $this->getDocumentTitle($document->type, $locale),
+            // SPEC §2.4 — resolved ONCE, here, and read by the templates, the
+            // shared components and the layout. The blade-side `?? ` fallbacks
+            // exist only for direct `view('documents.templates.*')` renders in
+            // tests; `ProformaTemplateCensusTest` pins that this key is always
+            // present on the production path.
+            'isProforma' => $isProforma,
+            // SPEC §2.4 r11.2 (gate r1 F-2) — the tax-inclusive figures a proforma
+            // line prints. Passed as closures, like `$formatMoney` above, so the
+            // POSTED branch of the template never calls them and its rendering is
+            // untouched. `DocumentLine` is typed on both so a template cannot hand
+            // them something else.
+            'proformaUnitPrice' => fn (DocumentLine $line): string => $this->proformaGrossAmounts->unitPrice($line, $currency),
+            'proformaLineAmount' => fn (DocumentLine $line): string => $this->proformaGrossAmounts->lineAmount($line, $currency),
+            // Gate r2 §3 (residual R-8) — the rows that make a proforma's totals box
+            // close over its gross lines when the document carries a TN timbre or a
+            // document-level discount. Resolved here, once, so the two fiscal
+            // templates render it and compute nothing; `null` on the posted path,
+            // where the blades never reach it.
+            'proformaTotals' => $isProforma
+                ? $this->proformaGrossAmounts->totals($document, $currency)
+                : null,
             'formatMoney' => fn (string|float|null $amount) => $this->formatMoney($amount, $currency, $locale),
             'formatDate' => fn (Carbon|string|null $date) => $this->formatDate($date, $company->date_format, $locale),
             'formatNumber' => fn (string|float|null $number, int $decimals = 2) => $this->formatNumber($number, $decimals, $locale),

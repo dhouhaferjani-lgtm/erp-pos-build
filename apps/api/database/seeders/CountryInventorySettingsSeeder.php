@@ -37,6 +37,12 @@ class CountryInventorySettingsSeeder extends Seeder
 
         $now = now();
 
+        // Lane P-1: the GL-posting column arrives in a LATER migration than this
+        // seeder's own table, and the seeder runs on tenant databases that are
+        // mid-migration. Same fail-closed posture as the hasTable guard above —
+        // write the column only once it exists.
+        $hasGlPostingColumn = Schema::hasColumn('country_inventory_settings', 'count_correction_gl_posting_enabled');
+
         foreach (CountryInventoryDefaults::all() as $countryCode => $mode) {
             if (! DB::table('countries')->where('code', $countryCode)->exists()) {
                 // Same degrade-to-no-op as CountryPaymentSettingsSeeder: a
@@ -67,13 +73,33 @@ class CountryInventorySettingsSeeder extends Seeder
                 ->where('country_code', $countryCode)
                 ->first();
 
+            $pinned = [
+                'inventory_valuation_mode' => $mode->value,
+                'updated_at' => $now,
+            ];
+
+            if ($hasGlPostingColumn) {
+                // PINNED like the valuation mode, and for the same reason: the
+                // country row IS the jurisdiction default (lane P-1, owner
+                // ruling 2026-08-25). A tenant that wants something else sets
+                // the company override, which this seeder never touches.
+                //
+                // A country absent from the posting map falls back to the
+                // system default rather than inventing a jurisdiction answer —
+                // `CountCorrectionGlPostingResolver` makes that visible as
+                // `source: system`.
+                $countryDefault = CountryInventoryDefaults::countCorrectionGlPostingForCountry($countryCode);
+
+                if ($countryDefault !== null) {
+                    $pinned['count_correction_gl_posting_enabled'] = $countryDefault;
+                }
+            }
+
             if ($existing === null) {
-                DB::table('country_inventory_settings')->insert([
+                DB::table('country_inventory_settings')->insert($pinned + [
                     'id' => (string) Str::uuid(),
                     'country_code' => $countryCode,
-                    'inventory_valuation_mode' => $mode->value,
                     'created_at' => $now,
-                    'updated_at' => $now,
                 ]);
 
                 continue;
@@ -81,10 +107,7 @@ class CountryInventorySettingsSeeder extends Seeder
 
             DB::table('country_inventory_settings')
                 ->where('country_code', $countryCode)
-                ->update([
-                    'inventory_valuation_mode' => $mode->value,
-                    'updated_at' => $now,
-                ]);
+                ->update($pinned);
         }
     }
 }
