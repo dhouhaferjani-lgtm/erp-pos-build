@@ -15,7 +15,6 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Listeners\ApplyStockAdjustmentsOnCountingCompleted;
 use App\Modules\Inventory\Application\Services\CountingDiscrepancyReportService;
 use App\Modules\Inventory\Application\Services\InventoryCountingService;
-use App\Modules\Inventory\Domain\Exceptions\CountingTransitionException;
 use App\Modules\Inventory\Domain\Enums\CountingItemFlagReason;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
@@ -23,6 +22,7 @@ use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
+use App\Modules\Inventory\Domain\Exceptions\CountingTransitionException;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
 use App\Modules\Inventory\Domain\StockLevel;
@@ -119,7 +119,7 @@ final class CountingVarianceAppliedTest extends TestCase
         return Product::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
-            'sku' => $sku.'-'.uniqid(),
+            'sku' => substr($sku, 0, 4).'-'.uniqid(),
             'name' => $sku,
             'type' => ProductType::Part,
             'is_active' => true,
@@ -168,7 +168,7 @@ final class CountingVarianceAppliedTest extends TestCase
             'company_id' => $this->company->id,
             'scope_type' => CountingScopeType::Location,
             'scope_filters' => ['location_id' => $this->location->id],
-            'counting_number' => 'CNT-W46-'.uniqid(),
+            'counting_number' => 'C'.uniqid(),
             'status' => CountingStatus::Finalized,
             'ambiguity_window_minutes' => $windowMinutes,
             'created_by_user_id' => $this->user->id,

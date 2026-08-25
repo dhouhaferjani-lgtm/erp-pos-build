@@ -303,7 +303,7 @@ final class PreFinalizeReplayPreviewTest extends TestCase
             'company_id' => $this->company->id,
             'scope_type' => CountingScopeType::Location,
             'scope_filters' => ['location_id' => $this->location->id],
-            'counting_number' => 'CNT-PRV-'.uniqid(),
+            'counting_number' => 'CP'.uniqid(), // <= 20 chars: inventory_countings.counting_number is varchar(20)
             'status' => CountingStatus::PendingReview,
             'ambiguity_window_minutes' => 15,
             'created_by_user_id' => $this->user->id,

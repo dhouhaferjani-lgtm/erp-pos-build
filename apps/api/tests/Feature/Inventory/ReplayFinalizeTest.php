@@ -154,7 +154,7 @@ final class ReplayFinalizeTest extends TestCase
             'company_id' => $this->company->id,
             'scope_type' => CountingScopeType::Location,
             'scope_filters' => ['location_id' => $this->location->id],
-            'counting_number' => 'CNT-RPL-'.uniqid(),
+            'counting_number' => 'CR'.uniqid(), // <= 20 chars: inventory_countings.counting_number is varchar(20)
             'status' => CountingStatus::Finalized,
             'ambiguity_window_minutes' => $windowMinutes,
             'created_by_user_id' => $this->user->id,
