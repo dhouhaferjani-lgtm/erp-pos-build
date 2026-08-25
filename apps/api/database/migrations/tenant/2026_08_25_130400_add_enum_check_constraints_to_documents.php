@@ -116,7 +116,7 @@ use Illuminate\Support\Facades\Schema;
  * baselined away, because the O-31 owner-pinned anti-growth ceiling refuses
  * baseline growth. The delete therefore costs a NARROWING migration plus a
  * per-tenant census, and any surviving row still carrying the removed value aborts
- * that tenant. LEDGER C-38 couples R-D2/R-D3/R-D8 to this batch so the owner
+ * that tenant. LEDGER C-40 couples R-D2/R-D3/R-D8 to this batch so the owner
  * ruling is made with that cost visible.
  */
 return new class extends Migration

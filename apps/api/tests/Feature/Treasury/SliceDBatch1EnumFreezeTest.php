@@ -52,7 +52,7 @@ use Tests\TestCase;
  *                   census (any surviving row with the removed value aborts that
  *                   tenant). Live candidates: `JournalEntryStatus::Reversed`
  *                   (spec §R-D3) and the dead `PaymentOrigin` cases (§R-D8);
- *                   LEDGER C-38.
+ *                   LEDGER C-40.
  *   REORDERED     → no migration needed (the admitted SET is unchanged), but the
  *                   materialised SQL text moves, so re-pin here deliberately.
  *
