@@ -438,6 +438,132 @@ final class CountingVarianceAppliedTest extends TestCase
     }
 
     /**
+     * Gate r1 F-2 — the replay boundary is INCLUSIVE at the count instant.
+     *
+     * A movement stamped in the same second as the count is genuinely ambiguous,
+     * and the two readings are not symmetric: treating it as pre-count leaves it
+     * out of the replay and posts a phantom `+4` gain (which becomes a wrong
+     * shrinkage/gain journal entry the moment the GL flag flips), while treating
+     * it as post-count neutralises it and the line resolves at variance ZERO.
+     * The fail-safe reading is the one that invents no stock.
+     */
+    public function test_a_movement_at_the_exact_count_instant_is_neutralised_not_re_added(): void
+    {
+        $t = CarbonImmutable::now()->subHours(2)->startOfSecond();
+        $siro = $this->product('SIRO-TOUX');
+
+        // Counted 60 at T; the 4-unit sale carries exactly T as its event time.
+        $this->setOnHand($siro, '56.0000');
+        $this->movement($siro, '60.0000', '56.0000', $t);
+
+        $counting = $this->counting(15);
+        $this->item($counting, $siro, '60.0000', $t, '60.0000');
+
+        $this->fire($counting);
+
+        self::assertSame('56.0000', $this->onHand($siro), 'no phantom +4 gain');
+        self::assertSame(0, $this->correctionsFor($siro));
+
+        /** @var CountingDiscrepancyReportService $reports */
+        $reports = app(CountingDiscrepancyReportService::class);
+        $report = $reports->build($counting->fresh(), $this->user, []);
+
+        /** @var array<string, mixed> $summary */
+        $summary = $report['summary'];
+        self::assertSame(0, $summary['items_with_variance']);
+
+        /** @var list<array<string, mixed>> $rows */
+        $rows = $report['items'];
+        self::assertSame(0, bccomp('0.0000', (string) $rows[0]['variance_qty'], 4));
+        self::assertSame(0, bccomp('60.0000', (string) $rows[0]['expected_qty'], 4));
+    }
+
+    /**
+     * Gate r1 F-3 — a RECALLED lot is exactly where a count shortage lands.
+     *
+     * Recall is the most likely reason batch-tracked stock is physically gone
+     * from a shelf, so excluding recalled lots from the drawdown left the
+     * aggregate lowered and Σ lots above it — the precise divergence the arm
+     * exists to prevent. Recalled lots go LAST in the order (saleable stock is
+     * corrected first), but they are never skipped.
+     */
+    public function test_a_shortage_reaches_a_recalled_lot(): void
+    {
+        $t = CarbonImmutable::now()->subHours(2);
+        $product = $this->product('SIRO-LOT', '8.500000', batchTracked: true);
+        $this->setOnHand($product, '30.0000');
+
+        $recalled = $this->lot($product, 'LOT-R', CarbonImmutable::now()->addDays(10)->toDateString(), '30.0000');
+        $recalled->update(['is_recalled' => true, 'recall_reason' => 'supplier recall']);
+
+        $counting = $this->counting(15);
+        $this->item($counting, $product, '28.0000', $t, '30.0000');
+
+        $this->fire($counting);
+
+        self::assertSame('28.0000', $this->onHand($product));
+        self::assertSame(0, bccomp('28.0000', $this->lotQty($recalled), 4), 'Σ lots must track the aggregate');
+    }
+
+    /**
+     * Gate r1 F-3/F-4 — saleable stock is corrected before recalled stock.
+     */
+    public function test_a_shortage_prefers_saleable_lots_over_recalled_ones(): void
+    {
+        $t = CarbonImmutable::now()->subHours(2);
+        $product = $this->product('SIRO-LOT', '8.500000', batchTracked: true);
+        $this->setOnHand($product, '50.0000');
+
+        // The recalled lot expires SOONEST, so pure FEFO would take it first.
+        $recalled = $this->lot($product, 'LOT-R', CarbonImmutable::now()->addDays(5)->toDateString(), '20.0000');
+        $recalled->update(['is_recalled' => true]);
+        $saleable = $this->lot($product, 'LOT-S', CarbonImmutable::now()->addDays(30)->toDateString(), '30.0000');
+
+        $counting = $this->counting(15);
+        $this->item($counting, $product, '47.0000', $t, '50.0000');
+
+        $this->fire($counting);
+
+        self::assertSame('47.0000', $this->onHand($product));
+        self::assertSame(0, bccomp('27.0000', $this->lotQty($saleable), 4));
+        self::assertSame(0, bccomp('20.0000', $this->lotQty($recalled), 4));
+    }
+
+    /**
+     * Gate r1 F-4 — a lot that cannot give what the snapshot promised must not
+     * abort the finalize job.
+     *
+     * The FEFO list is now read under the same `inventory_batch_stock` lock
+     * `issueBatchStock()` takes, and each issue is additionally guarded, so a
+     * stale-snapshot refusal narrows the gap on the next lot instead of
+     * unwinding the root transaction and every already-applied item with it.
+     */
+    public function test_a_lot_shortfall_narrows_the_gap_instead_of_aborting_the_job(): void
+    {
+        $t = CarbonImmutable::now()->subHours(2);
+
+        // Line 1: a batch-tracked product whose lots cannot cover the shortage.
+        $starved = $this->product('SIRO-LOT', '8.500000', batchTracked: true);
+        $this->setOnHand($starved, '60.0000');
+        $thin = $this->lot($starved, 'LOT-T', CarbonImmutable::now()->addDays(20)->toDateString(), '1.0000');
+
+        // Line 2: an ordinary line that must still be applied.
+        $other = $this->product('COMP-MAGN');
+        $this->setOnHand($other, '70.0000');
+
+        $counting = $this->counting(15);
+        $this->item($counting, $starved, '50.0000', $t, '60.0000');
+        $this->item($counting, $other, '68.0000', $t, '70.0000');
+
+        $this->fire($counting);
+
+        self::assertSame('50.0000', $this->onHand($starved));
+        self::assertSame(0, bccomp('0.0000', $this->lotQty($thin), 4), 'the thin lot is drained, not skipped');
+        self::assertSame('68.0000', $this->onHand($other), 'the sibling line is still applied');
+        self::assertSame(1, $this->correctionsFor($other));
+    }
+
+    /**
      * W2-7 coupling: a batch-tracked shortage must draw the LOT ledger down by
      * the same delta (FEFO), and must not mint or inflate a DEFAULT lot.
      */

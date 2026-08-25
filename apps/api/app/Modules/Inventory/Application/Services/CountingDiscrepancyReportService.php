@@ -149,6 +149,13 @@ final class CountingDiscrepancyReportService
                 'net' => $net,
                 'currency' => $currency,
             ],
+            // Gate r1 F-6 — these three partition `total_items_counted`, and
+            // `items_applied`/`items_not_applied` count VARYING lines only. A
+            // row that agrees with the shelf reports `variance_applied: true`
+            // (nothing is outstanding on it) but is counted under
+            // `items_agreeing`, not `items_applied`, so a consumer reconciling
+            // the rows against the summary does not find them contradicting.
+            'items_agreeing' => $itemsNoVariance,
             'items_applied' => $itemsApplied,
             'items_not_applied' => $itemsNotApplied,
             'late_sales_corrections' => count($counting->late_sales_flags ?? []),

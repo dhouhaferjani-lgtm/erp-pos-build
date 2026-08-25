@@ -19,10 +19,27 @@ namespace App\Modules\Inventory\Domain\Enums;
  * it blocking every line that had moved within ±`ambiguity_window_minutes` of
  * the count instant — which, in a shop that keeps selling while it counts, is
  * every line — so real shrinkage was flagged and discarded. The replay
- * (`expected_now = counted + Σ(as_of, now]`) is what keeps an in-window sale
+ * (`expected_now = counted + Σ[as_of, now]`) is what keeps an in-window sale
  * counted exactly ONCE; the near-movement itself is evidence for the reviewer,
  * never a reason to leave the shelf and the ledger disagreeing. It therefore
  * still raises `is_flagged`, and no longer blocks the stock write.
+ *
+ * ## What that decides, stated rather than left implicit (gate r1 F-2)
+ *
+ * The ± window is symmetric but the replay is not, and the asymmetry is the
+ * point. Movements from the count instant ONWARDS are neutralised, so they
+ * cannot move the variance. Movements STRICTLY BEFORE it are part of the
+ * baseline — the counter is taken to have counted the shelf as it stood — so a
+ * `basket_window` line whose only nearby movement is in the PRE-count half now
+ * resolves by POSTING its counted-vs-expected delta.
+ *
+ * That is correct whenever the goods were on (or off) the shelf before the
+ * counter reached it, and wrong when they were booked before the count but
+ * moved physically after it. There is no in-product reversal beyond a fresh
+ * count, and once
+ * `inventory.count_correction_gl_posting_enabled` is flipped it also becomes a
+ * journal entry — which is why the flag raises `is_flagged` and the reviewer
+ * sees the chip. Carried on the LEDGER next to the OQ-12 flag-flip row.
  *
  * `pending_opening_cost` (D3) is raised when an onboarding first-count line has
  * no resolvable positive opening cost (item override unset AND the product's

@@ -8,6 +8,7 @@ use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Entities\BatchMovement;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
+use App\Modules\BatchExpiry\Domain\Exceptions\InsufficientBatchStockException;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Inventory\Application\DTOs\ReplayAuditDto;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
@@ -33,6 +34,7 @@ use App\Shared\Domain\Exceptions\VariantRequiredException;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
@@ -1254,7 +1256,9 @@ final class StockAdjustmentService
      * order as adjust() (ProductCostLock FIRST, then the stock_level row FOR
      * UPDATE). Live-inventory-counting task B3 (spec §4/§5).
      *
-     * Replays movements in `(finalQtyAsOf, now]`, computes
+     * Replays movements in `[finalQtyAsOf, now]` (inclusive on both bounds —
+     * see MovementReplayService::signedDelta() for why the count instant itself
+     * belongs to the replay), computes
      * `expected_now = finalQty + Σ signed_delta` and
      * `adjustment = expected_now − on_hand_now`, and posts it additively as a
      * `count_correction` — or, for the first count of an onboarding line, as an
@@ -1313,7 +1317,7 @@ final class StockAdjustmentService
                 $rawOnHand = (string) $stockLevel->quantity;
                 $onHandNow = bcadd($rawOnHand, '0', $scale);
 
-                // Replay the window (finalQtyAsOf, now] UNDER the row lock so the
+                // Replay the window [finalQtyAsOf, now] UNDER the row lock so the
                 // summed delta and the on-hand read are consistent (a concurrent
                 // sale cannot commit while we hold the row lock). The same pure
                 // computation powers the review preview.
@@ -1459,23 +1463,44 @@ final class StockAdjustmentService
      * DEFAULT lot up only to the UNTRACKED REMAINDER and therefore never
      * re-mints a phantom lot on top of real ones.
      *
-     * FEFO order, EXPIRED LOTS INCLUDED. The count has no lot grain
+     * ## Which lots are candidates (gate r1 F-3)
+     *
+     * ALL of them — expired and RECALLED included. The count has no lot grain
      * (`inventory_counting_items` is keyed on product/variant/location — W4-8),
-     * so soonest-expiry-first is the only defensible attribution available here;
-     * and stock that has gone missing off a shelf is more likely the oldest than
-     * the newest, so skipping expired lots would push the shortfall onto
-     * saleable stock and leave the expired lot claiming units that are gone.
+     * so the shortage cannot be attributed to a named lot and an ordering is the
+     * only attribution available. Recall is the single most likely reason
+     * batch-tracked stock is physically gone from a shelf, so a recalled lot is
+     * exactly where a shortage lands; excluding it left the aggregate lowered
+     * and the recalled lot still claiming units that no longer exist, which is
+     * the divergence this method exists to prevent.
      *
-     * TOLERANT, for the same reason `issueFromDefaultBatchByDelta()` is: the
-     * aggregate has already moved inside this lock, so a refusal would strand
-     * the operator mid-correction. Each lot gives `min(available, remaining)`,
-     * which can never overshoot and strictly narrows any gap.
+     * Order: SALEABLE lots first, FEFO within each class (soonest expiry, then
+     * creation), recalled lots last. Correcting saleable stock before
+     * quarantined stock is the conservative reading of an unattributable
+     * shortage — it never silently "uses up" a recall that a regulator may still
+     * need counted — while still guaranteeing the recalled lot is reachable once
+     * saleable stock is exhausted.
      *
-     * Driver-agnostic on purpose — it reads the FEFO order unlocked and lets
-     * `issueBatchStock()` take the `inventory_batch_stock` row lock per lot,
-     * exactly as the sibling DEFAULT-lot arm does. No new lock is taken on
-     * `product_batches`, so the established `stock_levels` →
-     * `inventory_batch_stock` order is unchanged.
+     * ## Why it cannot abort the job (gate r1 F-4)
+     *
+     * The candidate list is read `lockForUpdate()` on `inventory_batch_stock` —
+     * the SAME rows `issueBatchStock()` re-reads under its own lock — so the
+     * `min(available, remaining)` computed here is held, not a snapshot that can
+     * go stale between the read and the write. Lock order stays
+     * `stock_levels` → `inventory_batch_stock` (the row lock is already held by
+     * `applyCountResult()` / `postAdjustmentWithinLock()`), so no inversion is
+     * introduced and no lock is taken on `product_batches`.
+     *
+     * The per-lot `catch` is the belt to that braces: `handle()` wraps the WHOLE
+     * item loop in one root transaction with no per-item catch, so a single
+     * `InsufficientBatchStockException` here would unwind every already-applied
+     * item in the count. A refusal therefore skips that lot and tries the next —
+     * which is what "tolerant" claimed before it was true.
+     *
+     * TOLERANT overall, for the same reason `issueFromDefaultBatchByDelta()` is:
+     * the aggregate has already moved inside this lock, so a refusal would
+     * strand the operator mid-correction. A partial drain cannot overshoot and
+     * strictly narrows any gap; an unclosed remainder is logged, never silent.
      *
      * @param  numeric-string  $adjustment  Negative delta already applied to the aggregate
      */
@@ -1504,15 +1529,16 @@ final class StockAdjustmentService
             ->join('product_batches', 'product_batches.id', '=', 'inventory_batch_stock.batch_id')
             ->where('product_batches.company_id', $stockLevel->company_id)
             ->where('product_batches.product_id', $productId)
-            ->where('product_batches.is_recalled', false)
             ->when(
                 $stockLevel->variant_id === null,
                 static fn ($query) => $query->whereNull('product_batches.variant_id'),
                 static fn ($query) => $query->where('product_batches.variant_id', $stockLevel->variant_id),
             )
             ->where('inventory_batch_stock.location_id', $stockLevel->location_id)
+            ->orderBy('product_batches.is_recalled')
             ->orderBy('product_batches.expiry_date')
             ->orderBy('product_batches.created_at')
+            ->lockForUpdate()
             ->get([
                 'inventory_batch_stock.batch_id',
                 'inventory_batch_stock.quantity',
@@ -1534,15 +1560,46 @@ final class StockAdjustmentService
             /** @var numeric-string $take */
             $take = bccomp($available, $remaining, self::SCALE) < 0 ? $available : $remaining;
 
-            $this->batchStockService->issueBatchStock(
-                tenantId: $stockLevel->tenant_id,
-                batchId: (int) $lot->batch_id,
-                locationId: $stockLevel->location_id,
-                quantity: $take,
-                movementId: $movementId,
-            );
+            try {
+                $this->batchStockService->issueBatchStock(
+                    tenantId: $stockLevel->tenant_id,
+                    batchId: (int) $lot->batch_id,
+                    locationId: $stockLevel->location_id,
+                    quantity: $take,
+                    movementId: $movementId,
+                );
+            } catch (InsufficientBatchStockException $e) {
+                // Cannot happen while the lockForUpdate above is held, but a
+                // throw escaping here would roll back the entire finalize job
+                // (one root transaction, no per-item catch). Narrow the gap on
+                // the next lot instead.
+                Log::warning('Count shortage could not draw down a lot; trying the next one.', [
+                    'product_id' => $productId,
+                    'location_id' => $stockLevel->location_id,
+                    'batch_id' => (int) $lot->batch_id,
+                    'requested' => $take,
+                    'movement_id' => $movementId,
+                    'shortfall' => $e->getMessage(),
+                ]);
+
+                continue;
+            }
 
             $remaining = bcsub($remaining, $take, self::SCALE);
+        }
+
+        if (bccomp($remaining, '0', self::SCALE) > 0) {
+            // The aggregate moved; the lot ledger could not follow it all the
+            // way, so Σ lots stays ABOVE the aggregate by $remaining. Stated
+            // loudly because it is the one case where this method leaves the two
+            // ledgers diverged, and the repair path is
+            // `inventory:repair-phantom-default-batches` plus a fresh count.
+            Log::warning('Count shortage exceeded the lot ledger; aggregate and lots remain diverged.', [
+                'product_id' => $productId,
+                'location_id' => $stockLevel->location_id,
+                'movement_id' => $movementId,
+                'unallocated_quantity' => $remaining,
+            ]);
         }
     }
 

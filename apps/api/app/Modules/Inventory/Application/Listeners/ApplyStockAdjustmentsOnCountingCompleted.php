@@ -295,8 +295,15 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
             return false;
         }
 
-        // Advisory reasons are stamped on the row BEFORE the posting so the
-        // annotation survives even if the posting throws and the job retries.
+        // Advisory reasons are stamped BEFORE the posting so the annotation and
+        // the posting share one savepoint. They do NOT survive a throw: handle()
+        // wraps the whole item loop in ONE root transaction (see the T21 note
+        // there) with no per-item catch, so an item-N failure unwinds this save
+        // along with everything else — which is exactly what
+        // CountCorrectionGlPostingTest::test_an_item_that_throws_... pins (0
+        // movements AND 0 entries). Durability is not needed: the queue retry
+        // re-evaluates the line because `replay_audit` — the idempotency marker
+        // — is still null, and re-annotates it.
         $this->annotateItem($item, $preApplyReasons);
 
         $openingUnitCost = $this->resolveOpeningUnitCost($item, $counting->company_id);

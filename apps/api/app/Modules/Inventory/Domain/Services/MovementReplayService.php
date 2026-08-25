@@ -31,7 +31,29 @@ final class MovementReplayService
 {
     /**
      * Σ(quantity_after − quantity_before) over the stock line's movements
-     * whose event time falls in (from, to] — exclusive start, inclusive end.
+     * whose event time falls in [from, to] — INCLUSIVE on both bounds.
+     *
+     * ## The baseline this defines (campaign W4-6, gate r1 F-2)
+     *
+     * `from` is the instant the shelf was physically counted. The counted
+     * quantity is taken as the truth AT that instant, so:
+     *
+     *  - everything that happened STRICTLY BEFORE it is already reflected in
+     *    what the counter saw — it is part of the baseline and must NOT be
+     *    replayed (re-adding it would double-count the shelf);
+     *  - everything from that instant onwards is neutralised exactly ONCE, so
+     *    `expected_now = counted + Σ` restores the count onto today's on-hand.
+     *
+     * The boundary itself is INCLUSIVE, and that is a deliberate fail-safe
+     * rather than a rounding detail. `count_N_at_estimate` and
+     * `occurred_at`/`created_at` are both stored at second precision, so a sale
+     * rung up in the same second as the count is genuinely ambiguous. Excluding
+     * it (the pre-2026-08-25 `>` semantics) treats it as already-counted and
+     * posts a phantom GAIN of its magnitude — stock the shop does not have, and
+     * a wrong shrinkage/gain journal entry the moment
+     * `inventory.count_correction_gl_posting_enabled` is flipped. Including it
+     * resolves the same line at variance ZERO. Between two unprovable readings,
+     * take the one that invents no stock.
      *
      * A single SUM query; the result is normalized to
      * `InventoryScale::QUANTITY_SCALE` via bcadd so a NULL sum (no matching
@@ -49,7 +71,7 @@ final class MovementReplayService
         CarbonInterface $to,
     ): string {
         $query = $this->scopedQuery($productId, $locationId, $variantId)
-            ->whereRaw('COALESCE(occurred_at, created_at) > ?', [$this->boundary($from)])
+            ->whereRaw('COALESCE(occurred_at, created_at) >= ?', [$this->boundary($from)])
             ->whereRaw('COALESCE(occurred_at, created_at) <= ?', [$this->boundary($to)]);
 
         /** @var string|int|float|null $sum */
@@ -136,7 +158,7 @@ final class MovementReplayService
                     continue;
                 }
                 $eventAt = CarbonImmutable::instance($eventAtValue);
-                if ($eventAt->gt($from) && $eventAt->lte($to)) {
+                if ($eventAt->gte($from) && $eventAt->lte($to)) {
                     $rowDelta = bcsub($row->quantity_after, $row->quantity_before, InventoryScale::QUANTITY_SCALE);
                     $delta = bcadd($delta, $rowDelta, InventoryScale::QUANTITY_SCALE);
                 }
@@ -225,7 +247,7 @@ final class MovementReplayService
      * Formats a window boundary to second precision, matching the
      * `timestampTz` (precision 0) storage of `occurred_at`/`created_at` — a
      * value carrying sub-second precision would never compare equal to a
-     * stored boundary row, breaking the exact-boundary (from, to] semantics.
+     * stored boundary row, breaking the exact-boundary [from, to] semantics.
      * Converts to UTC before formatting to ensure consistent comparison
      * regardless of the caller's timezone.
      */
