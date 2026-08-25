@@ -344,7 +344,19 @@
 
     <div class="footer">
         <span class="footer-company">{{ $company->legal_name ?? $company->name }}</span>
-        @php($sellerTaxIdDisplay = ($sellerTaxId ?? null) ?? $company->tax_id)
+        {{--
+            C-F0 / F-95 — the footer repeats the seller's fiscal identifier on every
+            page, so it has to be gated too.
+
+            `?? false` and NOT the `?? true` the two fiscal templates use: this
+            layout wraps all eight templates, and it is rendered from the ORIGINAL
+            view-data array (a `@php` reassignment inside @section('content') does
+            not reach it), so a fail-safe default here would strip the identifier
+            from a purchase order rendered directly in a test.
+            `DocumentPdfService::prepareData()` always supplies the key on the
+            production path — `ProformaTemplateCensusTest` pins that.
+        --}}
+        @php($sellerTaxIdDisplay = ($isProforma ?? false) ? null : (($sellerTaxId ?? null) ?? $company->tax_id))
         @if($sellerTaxIdDisplay)
             | {{ ($sellerTaxLabel ?? null) ?? __('Tax ID') }}: {{ $sellerTaxIdDisplay }}
         @endif

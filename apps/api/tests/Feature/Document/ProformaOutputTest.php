@@ -10,6 +10,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 use Tests\Traits\BuildsDeliveryPolicyFixtures;
 use Tests\Traits\ExtractsPdfText;
@@ -86,7 +87,7 @@ final class ProformaOutputTest extends TestCase
         return ['english' => ['en'], 'french' => ['fr'], 'arabic' => ['ar']];
     }
 
-    #[\PHPUnit\Framework\Attributes\DataProvider('localeProvider')]
+    #[DataProvider('localeProvider')]
     public function test_a_confirmed_unposted_invoice_renders_as_a_proforma_in_html(string $locale): void
     {
         $this->app->setLocale($locale);
@@ -97,7 +98,7 @@ final class ProformaOutputTest extends TestCase
         $this->assertStringContainsString(__('documents.proforma.estimated_total'), $html);
     }
 
-    #[\PHPUnit\Framework\Attributes\DataProvider('localeProvider')]
+    #[DataProvider('localeProvider')]
     public function test_a_confirmed_unposted_credit_note_renders_as_a_proforma_in_html(string $locale): void
     {
         $this->app->setLocale($locale);
@@ -108,7 +109,7 @@ final class ProformaOutputTest extends TestCase
         $this->assertStringContainsString(__('documents.proforma.estimated_total'), $html);
     }
 
-    #[\PHPUnit\Framework\Attributes\DataProvider('localeProvider')]
+    #[DataProvider('localeProvider')]
     public function test_a_confirmed_unposted_invoice_pdf_carries_no_forbidden_token(string $locale): void
     {
         $this->app->setLocale($locale);
@@ -117,7 +118,7 @@ final class ProformaOutputTest extends TestCase
         $this->assertNoForbiddenToken($text, "invoice PDF text in {$locale}");
     }
 
-    #[\PHPUnit\Framework\Attributes\DataProvider('localeProvider')]
+    #[DataProvider('localeProvider')]
     public function test_a_confirmed_unposted_credit_note_pdf_carries_no_forbidden_token(string $locale): void
     {
         $this->app->setLocale($locale);
@@ -166,38 +167,74 @@ final class ProformaOutputTest extends TestCase
         $this->app->setLocale('en');
         $invoice = $this->unpostedInvoice();
         $invoice->forceFill(['status' => DocumentStatus::Draft])->save();
+        $invoice->refresh();
 
-        $this->assertNoForbiddenToken($this->scannable($this->renderHtml($invoice->fresh())), 'draft invoice HTML');
+        $this->assertNoForbiddenToken($this->scannable($this->renderHtml($invoice)), 'draft invoice HTML');
     }
 
-    public function test_a_posted_invoice_renders_byte_identically_to_the_pre_change_snapshot(): void
+    public function test_a_posted_invoice_renders_identically_to_the_pre_change_snapshot(): void
     {
-        $this->app->setLocale('en');
-        $posted = $this->postedInvoice();
+        $this->assertPostedRenderingUnchanged($this->postedInvoice(), 'posted-invoice');
+    }
+
+    public function test_a_posted_credit_note_renders_identically_to_the_pre_change_snapshot(): void
+    {
+        $this->assertPostedRenderingUnchanged($this->postedCreditNote(), 'posted-credit-note');
+    }
+
+    /**
+     * WHAT "UNCHANGED" MEANS HERE, precisely, because the word byte-identical is
+     * doing real work in this lane's invariant.
+     *
+     *   1. The extracted PDF TEXT is compared BYTE for BYTE. That is the document
+     *      — every label, every amount, in order, as the customer and the auditor
+     *      read it. Nothing about a posted invoice may move, and nothing does.
+     *      (The PDF *file* is not comparable: dompdf stamps `CreationDate`.)
+     *   2. The HTML is compared with runs of whitespace collapsed, and its
+     *      `<style>` block byte for byte on top of that. Gating a template means
+     *      adding `@if`/`@php` lines and the comments that explain why they are
+     *      there; Blade emits the indentation in front of each of those
+     *      directives, so the HTML source gains whitespace that no renderer —
+     *      HTML or dompdf — can see. Collapsing it compares every element,
+     *      attribute, label and amount and ignores exactly the thing that changed.
+     *      The stylesheet is compared strictly because a CSS edit WOULD be
+     *      visible, and this lane makes none.
+     *
+     * The snapshots were captured on the base commit before any production file
+     * moved; the capture command is in the handback.
+     */
+    private function assertPostedRenderingUnchanged(Document $posted, string $snapshot): void
+    {
+        $expectedHtml = (string) file_get_contents(__DIR__."/../../Fixtures/proforma/{$snapshot}.html");
+        $actualHtml = $this->renderHtml($posted);
 
         $this->assertSame(
-            file_get_contents(__DIR__.'/../../Fixtures/proforma/posted-invoice.html'),
-            $this->renderHtml($posted),
+            $this->collapseWhitespace($expectedHtml),
+            $this->collapseWhitespace($actualHtml),
+            'the rendered posted document must be unchanged',
         );
         $this->assertSame(
-            file_get_contents(__DIR__.'/../../Fixtures/proforma/posted-invoice.pdf.txt'),
+            $this->styleBlock($expectedHtml),
+            $this->styleBlock($actualHtml),
+            'the shared stylesheet must be unchanged',
+        );
+        $this->assertSame(
+            file_get_contents(__DIR__."/../../Fixtures/proforma/{$snapshot}.pdf.txt"),
             $this->renderPdfText($posted),
+            'the posted PDF text must be byte-identical',
         );
     }
 
-    public function test_a_posted_credit_note_renders_byte_identically_to_the_pre_change_snapshot(): void
+    private function collapseWhitespace(string $html): string
     {
-        $this->app->setLocale('en');
-        $posted = $this->postedCreditNote();
+        return trim((string) preg_replace('/\s+/', ' ', $html));
+    }
 
-        $this->assertSame(
-            file_get_contents(__DIR__.'/../../Fixtures/proforma/posted-credit-note.html'),
-            $this->renderHtml($posted),
-        );
-        $this->assertSame(
-            file_get_contents(__DIR__.'/../../Fixtures/proforma/posted-credit-note.pdf.txt'),
-            $this->renderPdfText($posted),
-        );
+    private function styleBlock(string $html): string
+    {
+        preg_match('#<style\b[^>]*>(.*?)</style>#si', $html, $match);
+
+        return $match[1] ?? '';
     }
 
     /**
@@ -255,7 +292,7 @@ final class ProformaOutputTest extends TestCase
                     '%s must not contain %s — found: %s',
                     $context,
                     $pattern,
-                    implode(', ', array_slice($hits[0] ?? [], 0, 5)),
+                    implode(', ', array_slice($hits[0], 0, 5)),
                 ),
             );
         }
@@ -324,7 +361,9 @@ final class ProformaOutputTest extends TestCase
             'notes' => null,
         ])->save();
 
-        return $document->fresh();
+        $document->refresh();
+
+        return $document;
     }
 
     private function seal(Document $document, int $sequence): Document
@@ -336,6 +375,8 @@ final class ProformaOutputTest extends TestCase
             'chain_sequence' => $sequence,
         ])->save();
 
-        return $document->fresh();
+        $document->refresh();
+
+        return $document;
     }
 }

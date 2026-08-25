@@ -14,7 +14,21 @@ use Tests\TestCase;
 use Tests\Traits\BuildsDeliveryPolicyFixtures;
 
 /**
- * N-6 item 6 (owner ruling) — the not-yet-posted print marker.
+ * N-6 item 6 (owner ruling) — the not-yet-posted print marker, SUPERSEDED IN PLACE
+ * by lane C-F0 (SPEC §2.4 / F-95).
+ *
+ * WHAT CHANGED AND WHY THE ASSERTIONS MOVED. N-6's fourth arm printed a warning
+ * line beside a full VAT breakdown; C-F0 replaced that arm's copy with the
+ * proforma banner and stripped the VAT from the page underneath it, because the
+ * VAT mentioned on an issued invoice is owed by the act of issuing it (Code TVA
+ * Art. 18) and a sentence next to the amount does not undo the amount. Every
+ * assertion that named `documents.posting_marker.title` / `.detail` now names
+ * `documents.proforma.title` / `.detail` — those two keys were DELETED from
+ * `lang/{en,fr,ar}/documents.php`, and leaving the old names here would have made
+ * each `assertStringNotContainsString` vacuously true against a raw key string.
+ * The arm SELECTION is untouched, which is the property this class was written to
+ * hold: the branch is on the SEAL, not on lifecycle status.
+ *
  *
  * The one owner-ruled, fiscally-VISIBLE output of this lane. It shipped in r1
  * with no test at all, which is exactly how fiscal gate F-4 got in: the marker
@@ -39,19 +53,19 @@ final class PostingMarkerPrintTest extends TestCase
         $this->bootDeliveryPolicyFixtures('TN');
     }
 
-    public function test_a_draft_invoice_prints_the_not_yet_posted_marker(): void
+    public function test_a_draft_invoice_prints_the_proforma_banner(): void
     {
         $html = $this->renderMarker($this->invoice(DocumentStatus::Draft));
 
-        $this->assertStringContainsString(__('documents.posting_marker.title'), $html);
+        $this->assertStringContainsString(__('documents.proforma.title'), $html);
         $this->assertStringNotContainsString(__('documents.posting_marker.cancelled_title'), $html);
     }
 
-    public function test_a_confirmed_invoice_prints_the_not_yet_posted_marker(): void
+    public function test_a_confirmed_invoice_prints_the_proforma_banner(): void
     {
         $html = $this->renderMarker($this->invoice(DocumentStatus::Confirmed));
 
-        $this->assertStringContainsString(__('documents.posting_marker.title'), $html);
+        $this->assertStringContainsString(__('documents.proforma.title'), $html);
     }
 
     public function test_a_posted_invoice_prints_no_marker_at_all(): void
@@ -86,9 +100,9 @@ final class PostingMarkerPrintTest extends TestCase
 
         $this->assertStringContainsString(__('documents.posting_marker.cancelled_title'), $html);
         $this->assertStringNotContainsString(
-            __('documents.posting_marker.title'),
+            __('documents.proforma.title'),
             $html,
-            'a sealed-then-cancelled invoice must never be described as unsealed',
+            'a sealed-then-cancelled invoice was issued with VAT and must never be re-rendered as an estimate',
         );
     }
 
@@ -113,7 +127,7 @@ final class PostingMarkerPrintTest extends TestCase
             $html,
             'a document that was never sealed must not be described as sealed and hash-chained',
         );
-        $this->assertStringNotContainsString(__('documents.posting_marker.title'), $html);
+        $this->assertStringNotContainsString(__('documents.proforma.title'), $html);
     }
 
     /**
@@ -131,17 +145,17 @@ final class PostingMarkerPrintTest extends TestCase
 
         $this->assertStringContainsString(__('documents.posting_marker.historical_title'), $html);
         $this->assertStringNotContainsString(
-            __('documents.posting_marker.detail'),
+            __('documents.proforma.detail'),
             $html,
-            'a Posted opening-balance row must not be told it "has not been posted to the accounts"',
+            'a Posted opening-balance row is not an estimate and must not be re-labelled as one',
         );
     }
 
-    public function test_a_confirmed_credit_note_prints_the_marker_too(): void
+    public function test_a_confirmed_credit_note_prints_the_proforma_banner_too(): void
     {
         $creditNote = $this->dpConfirmedCreditNote([$this->dpPhysicalLine()]);
 
-        $this->assertStringContainsString(__('documents.posting_marker.title'), $this->renderMarker($creditNote));
+        $this->assertStringContainsString(__('documents.proforma.title'), $this->renderMarker($creditNote));
     }
 
     public function test_a_non_fiscal_type_prints_no_marker(): void

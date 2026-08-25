@@ -14,9 +14,33 @@ return [
     | English regardless of locale. Only dotted keys reach these PHP arrays
     | and actually translate — and this line has to translate.
     */
+    /*
+    |----------------------------------------------------------------------
+    | C-F0 / SPEC §2.4 (F-13, F-64, F-95) — the PROFORMA rendering
+    |----------------------------------------------------------------------
+    | Replaces the N-6 not-yet-posted marker on an UNSEALED fiscal document
+    | (`posting_marker.title` / `.detail` are gone with it). N-6 put a warning
+    | next to the VAT; F-95 removes the VAT. Under Code TVA Art. 18 the VAT
+    | mentioned on an issued invoice is owed by the act of issuing it, so a
+    | numbered VAT-bearing paper the ledger has never seen is a liability the
+    | tenant never chose — and one the recipient can deduct from.
+    |
+    | The wording below deliberately contains none of the tokens F-95 forbids on
+    | such a page (`VAT`, `TVA`, `tax`, `TTC`, `HT`, `posted`, `comptabilisée`,
+    | seal/hash/chain/QR wording); `ProformaOutputTest` scans the rendered HTML
+    | and the extracted PDF text for every one of them, in en, fr and ar. A
+    | translator who reintroduces one fails that test, which is the point.
+    |
+    | Dotted keys, for the reason `posting_marker` gives below: only dotted keys
+    | reach these PHP arrays and actually translate.
+    */
+    'proforma' => [
+        'title' => 'Proforma — non-fiscal document',
+        'detail' => 'This is an estimate issued before the sale has been entered in the accounts. It is not a definitive fiscal document, it carries no seal, and it confers no right of deduction. A definitive document will be issued once the sale is entered.',
+        'estimated_total' => 'Estimated total',
+    ],
+
     'posting_marker' => [
-        'title' => 'Not yet posted — no fiscal seal',
-        'detail' => 'This document has not been posted to the accounts. It carries no fiscal seal and no hash-chain entry, and is not a definitive fiscal invoice.',
         'cancelled_title' => 'Cancelled — this document has been voided',
         'cancelled_detail' => 'This document was posted and sealed, and has since been cancelled. Its fiscal seal remains in the hash chain; the document itself is void and must not be used as a claim.',
         'cancelled_unsealed_detail' => 'This document has been cancelled and must not be used as a claim. It was never posted to the accounts and carries no fiscal seal.',

@@ -143,7 +143,11 @@ final class ProformaTemplateCensusTest extends TestCase
             }
         }
 
-        $this->assertTrue(true);
+        $this->assertSame(
+            [],
+            glob(resource_path('views/documents/country/*/invoice.blade.php')) ?: [],
+            'the first country invoice template is a deliberate decision, not a drive-by: gate it, then record it here',
+        );
     }
 
     public function test_the_pdf_view_data_always_carries_the_proforma_flag(): void
@@ -213,7 +217,8 @@ final class ProformaTemplateCensusTest extends TestCase
             'type' => DocumentType::SalesOrder,
             'status' => DocumentStatus::Confirmed,
         ]);
+        $order->refresh();
 
-        return $order->fresh();
+        return $order;
     }
 }

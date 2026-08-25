@@ -1,6 +1,18 @@
 @extends('documents.layouts.document')
 
 @section('content')
+@php
+    /*
+     | C-F0 / SPEC §2.4 (F-95). `DocumentPdfService::prepareData()` always supplies
+     | `isProforma` (pinned by ProformaTemplateCensusTest); the `?? true` is the
+     | FAIL-SAFE default owner ruling OQ-14 asks for, and it applies to a direct
+     | `view('documents.templates.…', …)` render that supplies no flag: an unknown
+     | fiscal state prints as non-definitive rather than as an issued, VAT-bearing
+     | document. @include hands this resolved value down to every component below.
+     */
+    $isProforma = $isProforma ?? true;
+@endphp
+
     @include('documents.components.header')
 
     @include('documents.components.posting_marker')
@@ -32,7 +44,7 @@
     @endif
 
     @include('documents.components.line_items', [
-        'showTax' => true,
+        'showTax' => ! $isProforma,
         'lineDesignationOverrideEnabled' => (bool) ($company->line_designation_override_enabled ?? false),
     ])
 
@@ -48,6 +60,16 @@
 
         <div class="totals-box">
             <table class="totals-table">
+                @if($isProforma)
+                {{-- C-F0 / F-95 — see components/totals.blade.php: one estimated
+                     gross row, no net line to subtract from. The credit note has
+                     its own totals block rather than the shared component, which
+                     is exactly how a gate gets missed; it is gated here. --}}
+                <tr class="total-row" style="background-color: #dc2626;">
+                    <td>{{ __('documents.proforma.estimated_total') }}</td>
+                    <td>{{ $formatMoney($document->total) }}</td>
+                </tr>
+                @else
                 <tr>
                     <td>{{ __('Subtotal') }}</td>
                     <td>{{ $formatMoney($document->subtotal) }}</td>
@@ -60,6 +82,7 @@
                     <td>{{ __('Credit Total') }}</td>
                     <td>{{ $formatMoney($document->total) }}</td>
                 </tr>
+                @endif
             </table>
         </div>
     </div>

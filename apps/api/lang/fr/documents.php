@@ -14,9 +14,22 @@ return [
     | English regardless of locale. Only dotted keys reach these PHP arrays
     | and actually translate — and this line has to translate.
     */
+    /*
+    |----------------------------------------------------------------------
+    | C-F0 / SPEC §2.4 (F-13, F-64, F-95) — le rendu PROFORMA
+    |----------------------------------------------------------------------
+    | Voir `lang/en/documents.php` pour la règle et sa raison. Aucune mention de
+    | taxe, aucun scellement, aucune formule de comptabilisation ici : le test
+    | `ProformaOutputTest` balaie le rendu français à la recherche de chacun de
+    | ces termes.
+    */
+    'proforma' => [
+        'title' => 'Proforma — document non fiscal',
+        'detail' => "Il s'agit d'une estimation établie avant l'enregistrement de la vente dans les comptes. Ce n'est pas un document fiscal définitif, il ne porte aucun scellement et n'ouvre aucun droit à déduction. Un document définitif sera émis une fois la vente enregistrée.",
+        'estimated_total' => 'Total estimé',
+    ],
+
     'posting_marker' => [
-        'title' => 'Non comptabilisée — aucun scellement fiscal',
-        'detail' => "Ce document n'a pas été comptabilisé. Il ne porte aucun scellement fiscal ni entrée dans la chaîne de hachage, et ne constitue pas une facture fiscale définitive.",
         'cancelled_title' => 'Annulée — ce document a été annulé',
         'cancelled_detail' => 'Ce document a été comptabilisé et scellé, puis annulé. Son scellement fiscal demeure dans la chaîne de hachage ; le document lui-même est nul et ne peut être utilisé comme justificatif.',
         'cancelled_unsealed_detail' => "Ce document a été annulé et ne peut être utilisé comme justificatif. Il n'a jamais été comptabilisé et ne porte aucun scellement fiscal.",

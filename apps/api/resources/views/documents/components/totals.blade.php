@@ -28,6 +28,20 @@
 
     <div class="totals-box">
         <table class="totals-table">
+            @if($isProforma ?? false)
+            {{--
+                C-F0 / F-95 — ONE row, and it is the gross figure, labelled as an
+                estimate and not as a TTC total. The net subtotal is dropped with
+                the tax row on purpose: printing both a net and a gross line is a
+                VAT breakdown written as a subtraction, and a reader who can
+                subtract has the tax amount back. Settlement rows (Paid / Balance
+                Due) go too — a proforma is not a statement of account.
+            --}}
+            <tr class="total-row">
+                <td>{{ __('documents.proforma.estimated_total') }}</td>
+                <td>{{ $formatMoney($document->total) }}</td>
+            </tr>
+            @else
             <tr>
                 <td>{{ __('Subtotal') }}</td>
                 <td>{{ $formatMoney($document->subtotal) }}</td>
@@ -55,6 +69,7 @@
                 <td>{{ __('Balance Due') }}</td>
                 <td>{{ $formatMoney($document->balance_due) }}</td>
             </tr>
+            @endif
             @endif
         </table>
     </div>

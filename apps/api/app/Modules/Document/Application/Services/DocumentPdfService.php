@@ -27,6 +27,7 @@ final class DocumentPdfService
         private readonly FacturXService $facturXService,
         private readonly FacturXPdfGenerator $facturXPdfGenerator,
         private readonly TaxIdentityResolver $taxIdentityResolver,
+        private readonly ProformaOutputPolicy $proformaPolicy,
     ) {}
 
     private function scale(): int
@@ -68,8 +69,14 @@ final class DocumentPdfService
     {
         $pdfContent = $this->generate($document)->output();
 
-        // Generate and embed Factur-X XML for eligible B2B invoices
-        if ($this->facturXService->isEligible($document)) {
+        // C-F0 / F-95 — a PROFORMA gets no Factur-X payload. `isEligible()` asks
+        // only "FR company, B2B partner, invoice, no XML yet"; it says nothing
+        // about whether the invoice exists in the ledger. Embedding the XML would
+        // put a machine-readable VAT breakdown — `BT-110`, the tax total — inside
+        // a PDF whose visible page deliberately carries none, and this is the path
+        // `DocumentEmailService` sends to the customer. Once the invoice is
+        // posted and sealed the next generation embeds it as before.
+        if (! $this->proformaPolicy->isProforma($document) && $this->facturXService->isEligible($document)) {
             $xml = $this->facturXService->generateXml($document);
 
             $document->update([
@@ -181,6 +188,12 @@ final class DocumentPdfService
             'locale' => $locale,
             'currency' => $currency,
             'documentTitle' => $this->getDocumentTitle($document->type, $locale),
+            // SPEC §2.4 — resolved ONCE, here, and read by the templates, the
+            // shared components and the layout. The blade-side `?? ` fallbacks
+            // exist only for direct `view('documents.templates.*')` renders in
+            // tests; `ProformaTemplateCensusTest` pins that this key is always
+            // present on the production path.
+            'isProforma' => $this->proformaPolicy->isProforma($document),
             'formatMoney' => fn (string|float|null $amount) => $this->formatMoney($amount, $currency, $locale),
             'formatDate' => fn (Carbon|string|null $date) => $this->formatDate($date, $company->date_format, $locale),
             'formatNumber' => fn (string|float|null $number, int $decimals = 2) => $this->formatNumber($number, $decimals, $locale),
