@@ -19,6 +19,16 @@ declare(strict_types=1);
 */
 
 return [
+    /*
+    | Campaign W2-6 (gate r2 C2). Added alongside `posting_marker` because this is an
+    | API refusal rendered in the WEB UI, not in the PDF stack — the Arabic-shaping
+    | caveat above applies to generated PDFs only, so there is no reason to leave an
+    | Arabic-locale tenant reading an English refusal here.
+    */
+    'purchase_order' => [
+        'line_unpriced' => 'السطر :line (« :description ») بدون سعر وحدة. أدخل سعر المورّد في كل سطر قبل تأكيد أمر الشراء: التأكيد بقيمة 0.000 سيُدخل البضاعة إلى المخزون بقيمة صفرية ويُفسد تقييم مخزونك.',
+    ],
+
     'posting_marker' => [
         'title' => 'غير مُرحَّلة — بدون ختم ضريبي',
         'detail' => 'لم يتم ترحيل هذا المستند إلى الحسابات. لا يحمل ختماً ضريبياً ولا قيداً في سلسلة التجزئة، وليس فاتورة ضريبية نهائية.',

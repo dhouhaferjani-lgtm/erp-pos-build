@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { DocumentLine } from '@/components/documents/DocumentLineEditor'
 
-import { buildLinePayload } from '../DocumentForm'
+import { buildLinePayload } from '../linePayload'
 
 function makeLine(overrides: Partial<DocumentLine> = {}): DocumentLine {
   return {

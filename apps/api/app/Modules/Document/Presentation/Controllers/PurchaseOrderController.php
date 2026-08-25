@@ -16,6 +16,7 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\PriceEntryMode;
+use App\Modules\Document\Domain\Exceptions\UnpricedPurchaseOrderLineException;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\PurchaseOrderService;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
@@ -719,6 +720,15 @@ class PurchaseOrderController extends Controller
                 // Use the PurchaseOrderService for proper lifecycle management with landed costs
                 return $this->purchaseOrderService->confirm($lockedDocument, $user->id);
             });
+        } catch (UnpricedPurchaseOrderLineException $e) {
+            // Caught BEFORE \DomainException on purpose: this controller maps every
+            // \DomainException to INVALID_STATUS_TRANSITION, and an unpriced line is
+            // not a status-transition error — the draft is perfectly valid, it just
+            // cannot become a firm commitment at a price nobody entered (W2-6 / r2 C2).
+            return $this->validationErrorResponse(
+                UnpricedPurchaseOrderLineException::ERROR_CODE,
+                __(UnpricedPurchaseOrderLineException::TRANSLATION_KEY, $e->translationReplacements()),
+            );
         } catch (\DomainException $e) {
             return $this->validationErrorResponse('INVALID_STATUS_TRANSITION', $e->getMessage());
         }

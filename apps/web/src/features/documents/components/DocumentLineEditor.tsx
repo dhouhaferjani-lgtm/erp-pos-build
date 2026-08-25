@@ -25,6 +25,8 @@ import { DesignationCell } from './DesignationCell'
 import { NotesCell } from './NotesCell'
 import { useLineDesignationFeature } from '../hooks/useLineDesignationFeature'
 import { getQuantityDecimals } from '../../../lib/quantityScale'
+import { isPurchaseDocumentType } from '../linePayload'
+import type { DocumentType } from '../DocumentListPage'
 import { borderColors, colors, textColors, tokens } from '../../../lib/designTokens'
 
 // Map frontend document type strings to backend applicable_document_types format
@@ -43,6 +45,78 @@ function taxSelectorDocumentType(documentType: string | undefined): string | und
 function decimalValue(value: string | number | null | undefined): string {
   if (value === null || value === undefined || value === '') return '0'
   return String(value)
+}
+
+/**
+ * Display value for a money input. Identical to {@link decimalValue} except it
+ * lets a deliberately EMPTY price stay empty instead of showing a fabricated
+ * `0` — the operator must see a blank field and type the real price (W2-6).
+ */
+function moneyInputValue(value: string | number | null | undefined): string {
+  return value === '' ? '' : decimalValue(value)
+}
+
+
+/** Where a freshly added line's unit price came from — surfaced to the operator. */
+type UnitPriceDefaultSource = 'product_purchase_price' | 'product_sale_price' | 'none'
+
+interface UnitPriceDefault {
+  /** Canonical decimal string, or '' meaning "no default — operator must type". */
+  price: string
+  source: UnitPriceDefaultSource
+}
+
+function isBlankMoney(value: string | number | null | undefined): boolean {
+  return value === null || value === undefined || String(value).trim() === ''
+}
+
+/**
+ * Unit-price default for a newly added line — campaign defect W2-6 (P1).
+ *
+ * A purchase-order line used to inherit `products.sale_price`: an operator who
+ * accepted the default booked the goods receipt at RETAIL, inflating stock
+ * valuation and WAC by ~64% on the wave-2 tenant (Dr 37 1 852,000 instead of
+ * 1 130,000) and matching the supplier invoice against the wrong money.
+ *
+ * PURCHASE precedence (in order):
+ *   1. Supplier-specific purchase price — NOT AVAILABLE. `price_lists` /
+ *      `partner_price_lists` carry no purchase/sale discriminator and are
+ *      consumed sale-side only (PricingService::getPrice falls back to
+ *      `sale_price` as `base_price`), so they cannot be read as supplier
+ *      buying prices without a schema change. There is no supplier-product
+ *      price table. When one lands, it plugs in HERE, ahead of step 2.
+ *   2. `products.purchase_price` — the canonical buying price. Same field the
+ *      server-side PO builder already uses
+ *      (DraftPurchaseOrderService.php:142 `$product->purchase_price ?? '0'`)
+ *      and the supplier-DN committer falls back to
+ *      (SupplierDeliveryNoteCommitter.php:137).
+ *   3. EMPTY — the operator types the price. Reached when the product carries
+ *      no purchase price, and also when the API redacted it for a caller
+ *      without `pricing.view_cost_prices` (ProductData::withoutCostFields).
+ *      Empty is correct in both cases: a blank field is honest, a retail price
+ *      is not.
+ *
+ * DELIBERATELY EXCLUDED as purchase sources:
+ *   - `products.cost_price` — the perpetual weighted-average COST (a
+ *     valuation, not a price): WeightedAverageCostService.php:291.
+ *   - `products.last_purchase_cost` — the LANDED unit cost, freight/duty
+ *     already allocated in (WeightedAverageCostService.php:292-294). Seeding a
+ *     PO line with it would bake landed costs into the price the supplier is
+ *     asked to invoice and then fail the three-way match against it.
+ *
+ * Sale documents are untouched: they still default to `sale_price`.
+ */
+function resolveLineUnitPriceDefault(
+  product: Pick<Product, 'sale_price' | 'purchase_price'>,
+  isPurchaseDocument: boolean,
+): UnitPriceDefault {
+  if (!isPurchaseDocument) {
+    return { price: decimalValue(product.sale_price), source: 'product_sale_price' }
+  }
+  if (!isBlankMoney(product.purchase_price)) {
+    return { price: String(product.purchase_price), source: 'product_purchase_price' }
+  }
+  return { price: '', source: 'none' }
 }
 
 function calculateDiscountedSubtotal(
@@ -96,6 +170,7 @@ interface Product {
   sku?: string | null
   barcode?: string | null
   sale_price?: string | number | null
+  purchase_price?: string | number | null
   tax_rate?: string | number | null
   default_tax_configuration_id?: string | null
   quantity_decimals?: number | null
@@ -138,8 +213,13 @@ interface DocumentLineEditorProps {
   lines: DocumentLine[]
   onChange: (lines: DocumentLine[]) => void
   readonly?: boolean
-  documentType?: string
+  documentType?: DocumentType
   partnerId?: string | null
+  /**
+   * Lines whose unit price the parent form refused to submit (blank price).
+   * Escalates the blank-price hint from advisory to error and marks the input.
+   */
+  invalidLineIds?: ReadonlySet<string>
 }
 
 interface PricingContextLineRequest {
@@ -197,7 +277,7 @@ function pricingContextKey(line: Pick<DocumentLine, 'product_id' | 'variant_id'>
   return `${line.product_id}:${line.variant_id}`
 }
 
-export function DocumentLineEditor({ lines, onChange, readonly = false, documentType, partnerId = null }: DocumentLineEditorProps) {
+export function DocumentLineEditor({ lines, onChange, readonly = false, documentType, partnerId = null, invalidLineIds }: DocumentLineEditorProps) {
   const { t } = useTranslation(['sales', 'common'])
   const queryClient = useQueryClient()
   const { config: companyConfig, hasModule } = useCompanyConfig()
@@ -217,16 +297,39 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   // arrived from the API/an import defaults to amount mode instead of being
   // silently clobbered by touching the percent cell.
   const [discountModeOverrides, setDiscountModeOverrides] = useState<Record<string, 'percent' | 'amount' | undefined>>({})
+  // Where each freshly added line's unit price came from, so the operator can
+  // see the provenance of a number they did not type (W2-6). UI-only state on
+  // purpose: it must never reach the API line payload. Dropped for a line as
+  // soon as the operator edits that line's price.
+  const [priceSourceByLineId, setPriceSourceByLineId] = useState<Record<string, UnitPriceDefaultSource | undefined>>({})
   const linesRef = useRef(lines)
 
   useEffect(() => {
     linesRef.current = lines
   }, [lines])
 
+  // Gate r2 finding 6: a refused submit must take the operator TO the problem.
+  // On a long document the inline message can be far off-screen, so focus the
+  // first refused price cell (which scrolls it into view) when the parent form
+  // flags one.
+  const firstRefusedLineId = useMemo(() => {
+    if (invalidLineIds === undefined || invalidLineIds.size === 0) return null
+    return lines.find((line) => invalidLineIds.has(line.id))?.id ?? null
+  }, [invalidLineIds, lines])
+
+  useEffect(() => {
+    if (firstRefusedLineId === null) return
+    const input = document.getElementById(`line-price-input-${firstRefusedLineId}`)
+    if (input instanceof HTMLInputElement) {
+      input.focus()
+    }
+  }, [firstRefusedLineId])
+
   // Get company currency with fallback
   const companyCurrency = currentCompany?.currency ?? 'EUR'
   const companyLocale = currentCompany?.locale.replace('_', '-') ?? 'en-US'
   const taxDocumentType = taxSelectorDocumentType(documentType)
+  const isPurchaseDocument = isPurchaseDocumentType(documentType)
   const purchaseBonusEnabled =
     documentType === 'purchase_order' &&
     hasModule('PurchaseBonus') &&
@@ -359,7 +462,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
         return
       }
 
-      const salePrice = decimalValue(product.sale_price)
+      const priceDefault = resolveLineUnitPriceDefault(product, isPurchaseDocument)
       const taxRate = decimalValue(product.tax_rate)
       const newLine: DocumentLine = {
         id: generateId(),
@@ -373,19 +476,20 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
         designation_default_snapshot: product.name,
         notes: null,
         quantity: String(incrementBy),
-        unit_price: salePrice,
+        unit_price: priceDefault.price,
         discount_percent: null,
         discount_amount: null,
         tax_rate: taxRate,
         tax_configuration_id: product.default_tax_configuration_id ?? null,
-        line_total: calculateLineTotal(incrementBy, salePrice, taxRate, null, null),
+        line_total: calculateLineTotal(incrementBy, priceDefault.price, taxRate, null, null),
         free_quantity: '0',
         price_entry_mode: 'unit',
         quantity_decimals: product.quantity_decimals ?? null,
       }
+      setPriceSourceByLineId((current) => ({ ...current, [newLine.id]: priceDefault.source }))
       onChange([...linesRef.current, newLine])
     },
-    [onChange]
+    [isPurchaseDocument, onChange]
   )
 
   const handleAddService = useCallback(
@@ -440,6 +544,15 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   // Update line
   const handleUpdateLine = useCallback(
     (lineId: string, updates: Partial<DocumentLine>) => {
+      // The provenance hint describes a price the operator did NOT type. Once
+      // they touch the price cell it stops being true, so it is dropped.
+      if ('unit_price' in updates || 'line_total' in updates || 'price_entry_mode' in updates) {
+        setPriceSourceByLineId((current) => {
+          if (current[lineId] === undefined) return current
+          const { [lineId]: _dropped, ...rest } = current
+          return rest
+        })
+      }
       onChange(
         linesRef.current.map((line) => {
           if (line.id !== lineId) return line
@@ -456,8 +569,24 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
           ) {
             if ((updatedLine.price_entry_mode ?? 'unit') === 'total') {
               const netTotal = 'line_total' in updates ? updates.line_total : calculateNetExtendedAmount(updatedLine)
-              updatedLine.unit_price = deriveUnitPrice(updatedLine, netTotal)
-              updatedLine.line_total = calculateTotalFromNetAmount(decimalValue(netTotal), updatedLine.tax_rate)
+              // W2-6 gate r2 C1: never SYNTHESISE a price out of nothing.
+              // `deriveUnitPrice` cannot return blank — a blank net amount comes
+              // back as '0.000' — so running an unpriced line through it turned the
+              // protective EMPTY into a priced-at-zero line on the mode toggle
+              // alone, before the operator typed anything: the submit guard stopped
+              // seeing a blank and the warning disappeared. Two ways in:
+              //   • the operator toggled the mode and there is no entered total yet
+              //     (no `line_total` in this update, and the price is still blank);
+              //   • the operator CLEARED the total cell (`line_total` arrives blank).
+              // Both must stay blank until a real amount is entered.
+              const totalNotEnteredYet = !('line_total' in updates) && isBlankMoney(line.unit_price)
+              if (totalNotEnteredYet || isBlankMoney(netTotal)) {
+                updatedLine.unit_price = ''
+                updatedLine.line_total = ''
+              } else {
+                updatedLine.unit_price = deriveUnitPrice(updatedLine, netTotal)
+                updatedLine.line_total = calculateTotalFromNetAmount(decimalValue(netTotal), updatedLine.tax_rate)
+              }
             } else {
               updatedLine.line_total = calculateLineTotal(
                 updatedLine.quantity,
@@ -494,6 +623,11 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   // Remove line
   const handleRemoveLine = useCallback(
     (lineId: string) => {
+      setPriceSourceByLineId((current) => {
+        if (current[lineId] === undefined) return current
+        const { [lineId]: _dropped, ...rest } = current
+        return rest
+      })
       onChange(linesRef.current.filter((line) => line.id !== lineId))
     },
     [onChange]
@@ -644,6 +778,27 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
             ? t('sales:lineItems.pricing.policyWarning')
             : null
         const detailsOpen = openPricingLineId === line.id
+        // W2-6 + gate r1 finding 3. Two distinct hints, both derived from the
+        // line's CURRENT state so neither can be stranded by an edit:
+        //   • blank price  → always warn, on every document type. This is the
+        //     affordance that backs the submit block, so it must survive the
+        //     operator typing a digit and deleting it again (the earlier
+        //     version read add-time provenance, which `handleUpdateLine` drops
+        //     on any price edit — the warning vanished in exactly the state it
+        //     exists to flag).
+        //   • priced from purchase_price → informational provenance, dropped
+        //     as soon as the operator overtypes it (it stops being true).
+        const priceIsBlank = isBlankMoney(line.unit_price)
+        const priceRefused = invalidLineIds?.has(line.id) === true
+        const priceHintId = `line-price-hint-${line.id}`
+        const priceInputId = `line-price-input-${line.id}`
+        const priceHintMessage = priceIsBlank
+          ? (isPurchaseDocument && priceSourceByLineId[line.id] === 'none'
+              ? t('sales:lineItems.priceSource.none')
+              : t('sales:lineItems.priceSource.required'))
+          : (isPurchaseDocument && priceSourceByLineId[line.id] === 'product_purchase_price'
+              ? t('sales:lineItems.priceSource.productPurchasePrice')
+              : null)
 
         if (readonly) {
           return <span className={`text-sm ${textColors.primary}`}>{formatAmount(deriveUnitPrice(line))}</span>
@@ -654,10 +809,15 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
             <div className="flex items-center justify-end gap-2">
               {(line.price_entry_mode ?? 'unit') === 'total' ? (
                 <DraftMoneyInput
+                  id={priceInputId}
                   currency={companyCurrency}
                   min="0"
-                  error={isBlocked}
-                  initialValue={calculateNetExtendedAmount(line)}
+                  error={isBlocked || priceRefused}
+                  {...(priceHintMessage !== null ? { 'aria-describedby': priceHintId } : {})}
+                  // A blank line has no total to show either — rendering
+                  // `calculateNetExtendedAmount` here would print 0.000 for a price
+                  // nobody entered (gate r2 C1).
+                  initialValue={priceIsBlank ? '' : calculateNetExtendedAmount(line)}
                   onFocus={() => {
                     setFocusedPriceLineId(line.id)
                   }}
@@ -669,10 +829,12 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                 />
               ) : (
                 <MoneyInput
+                  id={priceInputId}
                   currency={companyCurrency}
                   min="0"
-                  error={isBlocked}
-                  value={decimalValue(line.unit_price)}
+                  error={isBlocked || priceRefused}
+                  {...(priceHintMessage !== null ? { 'aria-describedby': priceHintId } : {})}
+                  value={moneyInputValue(line.unit_price)}
                   onFocus={() => {
                     setFocusedPriceLineId(line.id)
                   }}
@@ -700,6 +862,19 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                 </button>
               )}
             </div>
+
+            {priceHintMessage !== null && (
+              <div
+                id={priceHintId}
+                // Deliberately NOT role="alert": the form-level refusal message is
+                // the single announcement, and this node is already reachable from
+                // the input through aria-describedby. N+1 alerts on a long document
+                // is noise, not accessibility (gate r2 finding 6).
+                className={`max-w-72 text-end text-[11px] leading-4 ${priceRefused ? textColors.error : priceIsBlank ? textColors.warning : textColors.secondary}`}
+              >
+                {priceHintMessage}
+              </div>
+            )}
 
             {pricingItem !== undefined && (
               <div className={`max-w-72 text-end text-[11px] leading-4 ${isBlocked ? textColors.error : isWarning ? textColors.warning : textColors.secondary}`}>
@@ -914,6 +1089,9 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
     companyCurrency,
     designationFeatureEnabled,
     deriveUnitPrice,
+    invalidLineIds,
+    isPurchaseDocument,
+    priceSourceByLineId,
     formatAmount,
     getDiscountMode,
     handleRemoveLine,

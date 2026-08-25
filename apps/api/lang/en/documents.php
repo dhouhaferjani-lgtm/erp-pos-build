@@ -58,6 +58,16 @@ return [
     'stock' => [
         'insufficient' => "Not enough stock for ':product' at ':location'. Available: :available, requested: :requested. Receive or transfer the goods first, then confirm.",
     ],
+
+    /*
+     | Campaign W2-6 (gate r2 C2). A purchase line the operator never priced is
+     | persisted as 0.000 by the draft autosave, and past that boundary nothing can
+     | tell it from a deliberate zero. Confirm refuses it, code PO_LINE_UNPRICED.
+     | An explicit free-of-charge bonus line (`is_bonus_line`) is exempt.
+     */
+    'purchase_order' => [
+        'line_unpriced' => 'Line :line (":description") has no unit price. Enter the supplier\'s price on every line before confirming this purchase order — confirming at 0.000 would receive the goods into stock at no value and distort your stock valuation.',
+    ],
     'pre_delivery_invoicing' => [
         /*
          | Wave 3 T25b/T25d. GUIDED-REQUIRE: the refusal must name where the
