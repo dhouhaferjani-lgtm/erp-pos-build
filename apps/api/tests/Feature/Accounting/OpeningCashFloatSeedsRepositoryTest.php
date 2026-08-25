@@ -413,20 +413,33 @@ final class OpeningCashFloatSeedsRepositoryTest extends TestCase
 
     /**
      * A debit on an account NO repository is linked to is not examined at all —
-     * receivables, inventory, equity, or a petty-cash account modelled outside
+     * inventory, VAT, fixed assets, or a petty-cash account modelled outside
      * Treasury must keep posting exactly as before.
+     *
+     * FIXTURE NOTE (2026-08-25, consolidation on merged dev). This case used to
+     * debit `411 Clients` / `SystemAccountPurpose::CustomerReceivable`. W4-3 then
+     * shipped `PartnerControlAccountResolver`, which refuses a GL opening row on a
+     * partner CONTROL account — a receivable stated without a partner dimension
+     * can never be collected, never ages, and doubles the control account against
+     * the AR open-items batch that actually owns that balance. The refusal is
+     * correct and this test was never about it, so the fixture moves to
+     * `4456 TVA déductible`: a 4xx account that is NOT partner-control, carries a
+     * debit balance at cutover in real life (recoverable input VAT carried
+     * forward), and has no payment repository linked to it. **Do not move this
+     * back onto 411/401, or onto any child of them — the resolver walks the
+     * ancestor chain.**
      */
     public function test_a_debit_on_an_account_with_no_repository_is_not_examined(): void
     {
-        $receivable = $this->account('411', 'Clients', AccountType::Asset, SystemAccountPurpose::CustomerReceivable);
+        $vatDeductible = $this->account('4456', 'TVA déductible', AccountType::Asset, SystemAccountPurpose::VatDeductible);
 
         $batch = $this->createBatch();
-        $this->createRow($batch, 1, $receivable, '900.000', '0.000', null);
+        $this->createRow($batch, 1, $vatDeductible, '900.000', '0.000', null);
         $this->createRow($batch, 2, $this->openingEquityAccount, '0.000', '900.000', null);
 
         $entry = $this->service()->postBatch($batch, $this->user->id);
 
-        $this->assertSame('900.000', $this->glDebit($entry->id, $receivable->id));
+        $this->assertSame('900.000', $this->glDebit($entry->id, $vatDeductible->id));
         $this->assertSame(0, RepositoryMovement::query()->count());
     }
 
