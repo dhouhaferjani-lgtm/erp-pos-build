@@ -11,6 +11,7 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Income\Domain\IncomeMetadata;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
@@ -34,6 +35,7 @@ final class IncomeService
     public function __construct(
         private readonly GeneralLedgerService $glService,
         private readonly TreasuryMovementServiceInterface $movementService,
+        private readonly DocumentStatusService $documentStatus,
     ) {}
 
     /**
@@ -149,9 +151,10 @@ final class IncomeService
         }
 
         return DB::transaction(function () use ($income, $user): Document {
-            $income->document_number = $this->generateIncomeNumber($income->company_id);
-            $income->status = DocumentStatus::Posted;
-            $income->save();
+            // N-6 fix round r1 / fiscal gate F-6 — single write path.
+            $this->documentStatus->transition($income, DocumentStatus::Posted, [
+                'document_number' => $this->generateIncomeNumber($income->company_id),
+            ]);
 
             $metadata = $income->incomeMetadata;
 

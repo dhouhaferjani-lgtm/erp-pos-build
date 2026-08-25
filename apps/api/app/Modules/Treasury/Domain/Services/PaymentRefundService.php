@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Document\Domain\CreditNoteAllocation;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
@@ -65,6 +66,7 @@ class PaymentRefundService
         // Shared contract only (rule 6) — Treasury never imports the concrete
         // reader or an Accounting model.
         private readonly PaymentLedgerPartitionReaderInterface $partitionReader,
+        private readonly DocumentStatusService $documentStatus,
     ) {}
 
     private function scale(): int
@@ -168,6 +170,7 @@ class PaymentRefundService
                 /** @var numeric-string $originalAmount */
                 $originalAmount = (string) $original->amount;
                 $this->assertWithinRefundableBalance($original, $originalAmount);
+                $this->assertNotAdvanceBacked($original);
 
                 // Create refund payment (negative amount)
                 // IMPORTANT: payment_type is set explicitly to Refund to avoid the column
@@ -338,6 +341,7 @@ class PaymentRefundService
 
                 // Cumulative over-refund guard under the lock.
                 $this->assertWithinRefundableBalance($original, $amount);
+                $this->assertNotAdvanceBacked($original);
 
                 // Create partial refund payment (negative amount).
                 // Spec §13 writer-inventory row 8 — inherit the original `origin`
@@ -474,6 +478,67 @@ class PaymentRefundService
                 originalAmount: $originalAmount,
             );
         }
+    }
+
+    /**
+     * N-6 fix round r2 / treasury gate R2-C1 [CRITICAL] — REFUSE TO REFUND AN
+     * ADVANCE-BACKED PAYMENT. Fail closed; do not guess the shape.
+     *
+     * THE DEFECT THIS CLOSES, and it was created by this lane.
+     * `refundPayment()` and `partialRefund()` both post their GL through
+     * {@see self::postRefundGlAndMovement()}, which calls
+     * `createPaymentRefundJournalEntry()` UNCONDITIONALLY — the AR-only shape
+     * (Dr 411 / Cr cash). Before N-6 that was exactly right, because a customer
+     * payment always credited 411 and the refund debited it straight back. N-6
+     * moved the credit to 419 for a payment collected on an unposted invoice
+     * and left the refund's debit on 411. Measured on PostgreSQL:
+     *
+     *     after prepay          411  0.000    419 -200.000
+     *     after refundPayment() 411 +200.000  419 -200.000   ← 400.000 misstated
+     *     after reversePayment()411  0.000    419  0.000     ← the correct arm
+     *
+     * The partner ends up carrying a receivable that does not exist AND an
+     * advance liability that has already been paid out in cash.
+     *
+     * WHY REFUSE RATHER THAN POST THE PARTITION-DRIVEN SHAPE HERE. The reversal
+     * arm ({@see self::postReversalGlAndMovement()}) does select accounts from
+     * the partition — behind belts A-D3 (the unconsumed-advance ceiling, taken
+     * under a Partner row lock), A-D4b belts 1/2 (coverage and non-emptiness)
+     * and A-D6. Its own C-A note records why it may emit the buckets verbatim:
+     * A-D6 has ALREADY refused any advance-backed original that carries a prior
+     * refund, so `netUnreversed == arBacked + advanceBacked` exactly and NO
+     * PRORATION is needed. `partialRefund()` has no such luxury — it refunds an
+     * ARBITRARY amount, so splitting it across the 411/419 buckets IS proration,
+     * which that lane deliberately refused to invent and ticketed as OQ-3.
+     * Shipping a proration rule here, in a fix round, to satisfy a path that
+     * already has a correct sibling, would silently mis-state two accounts on a
+     * guess. So: refuse, and name the supported path.
+     *
+     * This also keeps A-D6's premise TRUE — "prior refunds post the receivable
+     * shape only" stays a fact rather than becoming a stale comment.
+     *
+     * @throws \DomainException when any part of the original sits in 419.
+     */
+    private function assertNotAdvanceBacked(Payment $original): void
+    {
+        $scale = $this->scaleResolver->getScaleSafe($original->currency, 3);
+
+        $partition = $this->partitionReader->read(
+            $original->company_id,
+            $original->id,
+            $original->currency,
+        );
+
+        if (bccomp($partition->advanceBacked, '0', $scale) <= 0) {
+            return;
+        }
+
+        throw new \DomainException(
+            "payment {$original->id} has {$partition->advanceBacked} booked as a customer advance "
+            .'(419), not as a receivable. A refund posts the receivable shape only, so it would debit '
+            .'411 and leave the advance standing. Reverse the payment instead — reversal selects the '
+            .'account from the ledger and unwinds the advance.'
+        );
     }
 
     /**
@@ -1960,12 +2025,21 @@ class PaymentRefundService
             /** @var numeric-string $balanceDue */
             $balanceDue = bcsub(bcsub($documentTotal, $allocatedSum, $scale), $creditedSum, $scale);
 
-            $document->forceFill([
-                'balance_due' => $balanceDue,
-                'status' => $document->status === DocumentStatus::Paid && bccomp($balanceDue, '0', $scale) > 0
-                    ? DocumentStatus::Posted
-                    : $document->status,
-            ])->save();
+            // N-6 — this used to write `Posted` UNCONDITIONALLY whenever a
+            // `Paid` document's balance re-opened. On a document that reached
+            // `Paid` through the pre-N-6 `Confirmed -> Paid` hole that
+            // MANUFACTURES a posted invoice: no seal, no chain sequence, no GL,
+            // no VAT — a fiscal document fabricated by a refund.
+            // `reopenFromPaid()` checks `fiscal_hash` before consenting, and
+            // leaves a never-sealed document exactly where it is.
+            // The BALANCE is written unconditionally — it is a fact about the
+            // allocations and is never in doubt. Only the STATUS half is
+            // conditional, and `reopenFromPaid()` may legitimately decline it.
+            $document->forceFill(['balance_due' => $balanceDue])->save();
+
+            if ($document->status === DocumentStatus::Paid && bccomp($balanceDue, '0', $scale) > 0) {
+                $this->documentStatus->reopenFromPaid($document);
+            }
         }
     }
 

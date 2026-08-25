@@ -10,6 +10,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -47,6 +48,7 @@ final class SupplierInvoicePostingService
         private readonly GeneralLedgerService $generalLedgerService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly ReceiptLineConsumptionPlanner $receiptPlanner,
+        private readonly DocumentStatusService $documentStatus,
     ) {}
 
     /**
@@ -286,10 +288,14 @@ final class SupplierInvoicePostingService
             // 8. Draft → Posted; initialize payable ceiling; persist the match status.
             // balance_due is set to total here so PaymentController has an authoritative
             // ceiling (deferred B2 credit-note decrement will subtract from this).
-            $supplierInvoice->balance_due = $supplierInvoice->total;
-            $supplierInvoice->status = DocumentStatus::Posted;
-            $supplierInvoice->match_status = $matchStatus;
-            $supplierInvoice->save();
+            // N-6 fix round r1 / fiscal gate F-6 — routed through the single
+            // write path. `draft → posted` is a legal edge for this TYPE (see
+            // `DocumentStatusMachine::postsDirectlyFromDraft()`); the other two
+            // columns ride in the same statement.
+            $this->documentStatus->transition($supplierInvoice, DocumentStatus::Posted, [
+                'balance_due' => $supplierInvoice->total,
+                'match_status' => $matchStatus,
+            ]);
         });
     }
 

@@ -3,6 +3,27 @@
 declare(strict_types=1);
 
 return [
+
+    /*
+    |----------------------------------------------------------------------
+    | N-6 — printout marker for a confirmed (not yet posted) fiscal document
+    |----------------------------------------------------------------------
+    | Dotted keys on purpose. The documents blade tree calls `__()` with
+    | ENGLISH NATURAL keys everywhere else (`__('Tax ID')`, `__('Qty')`), and
+    | no `lang/*.json` file exists, so every one of those renders as literal
+    | English regardless of locale. Only dotted keys reach these PHP arrays
+    | and actually translate — and this line has to translate.
+    */
+    'posting_marker' => [
+        'title' => 'Non comptabilisée — aucun scellement fiscal',
+        'detail' => "Ce document n'a pas été comptabilisé. Il ne porte aucun scellement fiscal ni entrée dans la chaîne de hachage, et ne constitue pas une facture fiscale définitive.",
+        'cancelled_title' => 'Annulée — ce document a été annulé',
+        'cancelled_detail' => 'Ce document a été comptabilisé et scellé, puis annulé. Son scellement fiscal demeure dans la chaîne de hachage ; le document lui-même est nul et ne peut être utilisé comme justificatif.',
+        'cancelled_unsealed_detail' => "Ce document a été annulé et ne peut être utilisé comme justificatif. Il n'a jamais été comptabilisé et ne porte aucun scellement fiscal.",
+        'historical_title' => "Solde d'ouverture — repris d'un système précédent",
+        'historical_detail' => "Ce document constate un solde déjà existant à l'ouverture des comptes ici. Il a été comptabilisé dans le système précédent et ne porte aucun scellement fiscal dans celui-ci.",
+    ],
+
     'discount' => [
         'below_tolerance' => "La remise doit dépasser la marge de tolérance (:margin). Pour des résidus plus petits, utilisez l'écriture de tolérance de paiement au règlement.",
         'amount_exceeds_line_gross' => 'Le montant de la remise ne peut pas dépasser le montant brut de la ligne (:gross).',

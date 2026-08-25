@@ -65,3 +65,8 @@ Rule by editing the "Ruling" cell; the session log records the date.
 | OQ-66 | After a DN/RN reversal: original `fiscal_status` → VOIDED (hash/sequence kept, chain member), or a separate reversal marker? | VOIDED, member kept | Separate marker | |
 | OQ-67 | Supplier-invoice input VAT (P-4): entitlement date = `posted_at`; cancellation leaves the period by reversal-JE date; replacement enters on its own `posted_at`? | Yes | Invoice date / other | |
 | OQ-68 | Exit of a `legacy_authority_unproven` quarantine: permanent reporting, owner-certified grandfathering, or corrective document? | Corrective document; owner-certified grandfathering only by signed ruling | Permanent reporting | |
+| OQ-69 | POS-derived invoice fiscal representation: adopted-event FK outside document chains (row stays DRAFT/NON_FISCAL, no hash copy), a separate authority kind, or another structure? | Adopted-event FK outside chain membership | Separate authority kind | |
+| OQ-70 | May a company override ever select `allow` before a country capability is approved? | No — `pre_delivery_allow_authorized` capability checked before override; persisted `allow` overrides rejected | Allow override | |
+| OQ-71 | Procurement policy values + approval state for EVERY field × EVERY catalogue country? | TN approved (existing vertical values); all other countries `provisional` (posting refused) until you rule per country | Provide the matrix | |
+| OQ-72 | Does a supplier goods return reopen fulfilment on the linked supplier invoice as well as the PO? | Yes — SI verdict nets linked returns; both recomputed | PO only | |
+| OQ-73 | Cancelled supplier invoice input VAT: immutable negative reversal tax rows (keyed to originals, reversal date) remove entitlement? | Yes | Other representation | |
