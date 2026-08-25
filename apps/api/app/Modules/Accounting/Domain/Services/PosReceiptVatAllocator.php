@@ -257,7 +257,7 @@ final class PosReceiptVatAllocator
      * Ordered by `(tax_rate, id)` so replays and split-tender allocations are
      * byte-identical run to run.
      *
-     * @return list<array{tax_rate: numeric-string, vat_amount: numeric-string, net_amount: numeric-string, discount_allocated: numeric-string|null}>
+     * @return list<array{tax_rate: numeric-string, vat_amount: numeric-string, discount_allocated: numeric-string|null}>
      */
     private function loadSealedRows(string $receiptId): array
     {
@@ -265,7 +265,14 @@ final class PosReceiptVatAllocator
             ->where('receipt_id', $receiptId)
             ->orderBy('tax_rate')
             ->orderBy('id')
-            ->get(['tax_rate', 'vat_amount', 'net_amount', 'discount_allocated']);
+            // `net_amount` is deliberately NOT read (gate r1 treasury F-5): this
+            // class derives net by SUBTRACTION from the tender, which is what
+            // makes the entry balance by construction, and a read-then-discarded
+            // column reads like a half-landed idea. The sealed base IS
+            // reconciled against the ledger — era-agnostically, over the whole
+            // corpus rather than one receipt at a time — by the census's base
+            // arm (`pos:census-vat-legs`, F-1).
+            ->get(['tax_rate', 'vat_amount', 'discount_allocated']);
 
         $sealed = [];
         foreach ($rows as $row) {
@@ -276,10 +283,6 @@ final class PosReceiptVatAllocator
             }
             if (! is_numeric($vat)) {
                 throw PosVatProjectionRefusedException::nonNumericAmount($receiptId, 'vat_amount', $vat);
-            }
-            $net = (string) $row->net_amount;
-            if (! is_numeric($net)) {
-                throw PosVatProjectionRefusedException::nonNumericAmount($receiptId, 'net_amount', $net);
             }
             // D-1: NULL means "sealed before the cutover, base gross of the
             // remise"; a value means "base already net of it". Never coerced to
@@ -301,7 +304,6 @@ final class PosReceiptVatAllocator
                 // read the same on both.
                 'tax_rate' => bcadd($rate, '0', 2), // precision-ok: a VAT RATE is a percentage, not money — `tax_rate` is decimal(5,2) and rule 19 keeps percents off the currency scale.
                 'vat_amount' => $vat,
-                'net_amount' => $net,
                 'discount_allocated' => $allocated,
             ];
         }
@@ -323,7 +325,7 @@ final class PosReceiptVatAllocator
      * A MIXED set is refused rather than resolved: the two eras book the remise
      * differently, and a guess is a wrong revenue base.
      *
-     * @param  list<array{tax_rate: numeric-string, vat_amount: numeric-string, net_amount: numeric-string, discount_allocated: numeric-string|null}>  $sealed
+     * @param  list<array{tax_rate: numeric-string, vat_amount: numeric-string, discount_allocated: numeric-string|null}>  $sealed
      */
     private function sealedBaseIsPostRemise(string $receiptId, array $sealed): bool
     {

@@ -68,24 +68,50 @@ final class SaleReceiptForwardVersionGate
             return null;
         }
 
-        $watermark = $this->db->table('fiscal_events')
+        // Gate r1 finding 3 — scoped to the CHAIN, not just the terminal.
+        //
+        // The device drains its outbox `ORDER BY chain_context ASC,
+        // sequence_number ASC` (`fiscalEventRepository.ts:117-118`), and
+        // `'operational'` sorts before `'training_operational'`. On a terminal
+        // that takes the D-1 build with unsynced training sales still queued,
+        // the post-upgrade operational v5 receipts drain FIRST and set the
+        // watermark; the pre-upgrade training v3 receipts drain next and would
+        // be refused as downgrades — stored, never projected, so no
+        // `pos_receipts` row, no GL entry and (stock is authored only in
+        // `PosCoreReceiptProjection`) no stock movement, for real sales.
+        //
+        // Within one chain the ordering is already safe: v3 stragglers carry
+        // lower sequence numbers and drain first. Per-chain is therefore the
+        // grain the whole watermark argument is made on, and scoping to it
+        // does not weaken the gate — each chain is its own monotone sequence.
+        //
+        // Gate r1 finding 5 — an EXISTENCE probe, not `MAX()`. The gate only
+        // ever compares against the threshold, so aggregating the whole chain
+        // was work thrown away; `exists()` short-circuits on the first hit and
+        // is served by the partial index added in
+        // `2026_08_25_090200_index_sale_receipt_v5_watermark_d1`. This runs on
+        // the ingest hot path for EVERY pre-v5 receipt from every
+        // not-yet-upgraded terminal — i.e. all of them until the build ships.
+        $watermarked = $this->db->table('fiscal_events')
             ->where('tenant_id', $envelope->tenantId)
             ->where('company_id', $envelope->companyId)
             ->where('terminal_id', $envelope->terminalId)
+            ->where('chain_context', $envelope->chainContext)
             ->where('event_type', FiscalEventType::SALE_RECEIPT->value)
-            ->max('event_version');
+            ->where('event_version', '>=', $threshold)
+            ->exists();
 
-        if (! is_numeric($watermark) || (int) $watermark < $threshold) {
+        if (! $watermarked) {
             return null;
         }
 
         return sprintf(
-            'sale_receipt_version_downgrade:terminal=%s:event_version=%d:terminal_watermark=%d:'
-            .'a terminal that has authored the post-remise VAT base (v%d) may never author the '
+            'sale_receipt_version_downgrade:terminal=%s:chain_context=%s:event_version=%d:'
+            .'a chain that has authored the post-remise VAT base (v%d) may never author the '
             .'pre-discount base again',
             $envelope->terminalId,
+            $envelope->chainContext,
             $version,
-            (int) $watermark,
             $threshold,
         );
     }

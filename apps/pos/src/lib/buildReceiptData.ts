@@ -162,6 +162,14 @@ export function buildEscPosReceiptData(
 
   // Receipt-kind discriminator. Explicit override wins; otherwise infer from
   // receipt_type ('return' = refund, anything else = sale).
+  // D-1: was this receipt sealed with the remise ventilated into its base?
+  // `discount_allocated` is written verbatim by the projection at
+  // `event_version >= 5` and left NULL for every earlier receipt, so the
+  // presence of a share on ANY sealed row is the era.
+  const isPostRemiseReceipt = receipt.vat_details.some(
+    (vat) => vat.discount_allocated !== null && vat.discount_allocated !== undefined,
+  );
+
   const receiptKind: 'sale' | 'refund' =
     extras?.receiptKind ?? (receipt.receipt_type === 'return' ? 'refund' : 'sale');
 
@@ -206,21 +214,30 @@ export function buildEscPosReceiptData(
           ? bcformat(line.discount_amount, decimals)
           : null,
     })),
-    // D-1 (owner ruling 2026-08-25): the printed `Subtotal` is the ticket's
-    // GROSS (TTC) BEFORE the remise, so the customer's own arithmetic lands:
-    // `Subtotal − Remise (+ rounding) == TOTAL`. `receipts.subtotal` is now the
-    // POST-remise taxable base (net), so printing it verbatim beside a Remise
-    // line would double-count the discount on the ticket. The base and VAT the
-    // customer is entitled to see are in the per-rate ventilation table, which
-    // is the sealed post-remise breakdown.
-    subtotal: bcformat(
-      bcsub(
-        bcadd(receipt.total, receipt.discount_amount, decimals),
-        hasCashRounding && cashRoundingAdjustment !== null ? cashRoundingAdjustment : '0',
+    // D-1 (owner ruling 2026-08-25): on a POST-remise receipt the printed
+    // `Subtotal` is the ticket's GROSS (TTC) BEFORE the remise, so the
+    // customer's own arithmetic lands: `Subtotal − Remise (+ rounding) ==
+    // TOTAL`. `receipts.subtotal` is the post-remise taxable base there, and
+    // printing it verbatim beside a Remise line would double-count the
+    // discount; the base and VAT the customer is entitled to see are in the
+    // per-rate ventilation table.
+    //
+    // Gate r1 finding 8 — a REPRINT of a pre-D-1 receipt must stay
+    // byte-faithful to the ticket the customer was handed. On those receipts
+    // `receipts.subtotal` was the PRE-discount NET, and re-deriving would show
+    // 640.000 where the original showed 569.000. NF525 reprint fidelity is a
+    // defensible expectation, so the era decides, read off the same
+    // discriminator the ledger and the return path use.
+    subtotal: isPostRemiseReceipt
+      ? bcformat(
+        bcsub(
+          bcadd(receipt.total, receipt.discount_amount, decimals),
+          hasCashRounding && cashRoundingAdjustment !== null ? cashRoundingAdjustment : '0',
+          decimals,
+        ),
         decimals,
-      ),
-      decimals,
-    ),
+      )
+      : bcformat(receipt.subtotal, decimals),
     discount_amount: bcformat(receipt.discount_amount, decimals),
     tax_amount: bcformat(receipt.tax_amount, decimals),
     total: bcformat(receipt.total, decimals),

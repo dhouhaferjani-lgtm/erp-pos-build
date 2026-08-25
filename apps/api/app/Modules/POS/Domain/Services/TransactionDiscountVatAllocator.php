@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Domain\Services;
 
+use App\Shared\Domain\TransactionRemiseSplit;
 use RuntimeException;
 
 /**
@@ -43,7 +44,7 @@ use RuntimeException;
 final class TransactionDiscountVatAllocator
 {
     /** Precision of the proportional intermediate, above the currency scale. */
-    private const RATIO_EXTRA_SCALE = 4;
+    private const RATIO_EXTRA_SCALE = TransactionRemiseSplit::RATIO_EXTRA_SCALE;
 
     /**
      * Ventilate `$discount` across `$groups`.
@@ -176,67 +177,32 @@ final class TransactionDiscountVatAllocator
      */
     private function splitAllocated(string $allocated, array $group, int $scale): array
     {
-        $zero = bcadd('0', '0', $scale);
-        if (bccomp($allocated, '0', $scale) === 0) {
-            return [$zero, $zero];
-        }
-
-        $ratioScale = $scale + self::RATIO_EXTRA_SCALE;
-        $divisor = bcadd('1', bcdiv($group['tax_rate'], '100', $ratioScale), $ratioScale);
-        $discNet = $this->roundHalfUp(bcdiv($allocated, $divisor, $ratioScale), $scale);
-        if (bccomp($discNet, $group['net_amount'], $scale) > 0) {
-            $discNet = bcadd($group['net_amount'], '0', $scale);
-        }
-        $discVat = bcsub($allocated, $discNet, $scale);
-        if (bccomp($discVat, $group['vat_amount'], $scale) > 0) {
-            $discVat = bcadd($group['vat_amount'], '0', $scale);
-            $discNet = bcsub($allocated, $discVat, $scale);
-        }
-
-        /** @var numeric-string $discNet */
-        /** @var numeric-string $discVat */
-        return [$discNet, $discVat];
+        // Delegates to the shared kernel (gate r1 finding 2): the SERVER
+        // CONTRACT VALIDATOR now re-derives this same split to PIN a sealed
+        // payload's net/VAT halves, so the rule had to stop being a private
+        // detail of this class and become one authority all three consumers
+        // read. Behaviour is unchanged — `TransactionDiscountVatAllocatorTest`
+        // pins the worked example digit-for-digit across the extraction.
+        return TransactionRemiseSplit::split(
+            $allocated,
+            $group['tax_rate'],
+            $group['net_amount'],
+            $group['vat_amount'],
+            $scale,
+        );
     }
 
     /**
-     * Half-up rounding at `$scale` for a NON-NEGATIVE value.
+     * `1` at the last representable digit of `$scale` — the shared rule.
      *
-     * bcmath has no rounding mode — `bcadd($v, '0', $s)` truncates — so half-up
-     * is done by adding half an ulp before truncating. Every money value in this
-     * class is non-negative, so "half up" and "half away from zero" coincide;
-     * the guard makes that assumption explicit rather than silent.
-     *
-     * @param  numeric-string  $value
-     * @return numeric-string
-     */
-    private function roundHalfUp(string $value, int $scale): string
-    {
-        if (bccomp($value, '0', $scale + self::RATIO_EXTRA_SCALE) < 0) {
-            throw new RuntimeException('pos_transaction_discount_negative_intermediate:'.$value);
-        }
-
-        $half = bcdiv($this->ulp($scale), '2', $scale + 1);
-
-        /** @var numeric-string $rounded */
-        $rounded = bcadd(bcadd($value, $half, $scale + self::RATIO_EXTRA_SCALE), '0', $scale);
-
-        return $rounded;
-    }
-
-    /**
-     * `1` at the last representable digit of `$scale`.
+     * (`roundHalfUp()` used to live here too; since the split moved to
+     * `TransactionRemiseSplit` this class no longer rounds anything itself, so
+     * the wrapper was removed rather than left as dead delegation.)
      *
      * @return numeric-string
      */
     private function ulp(int $scale): string
     {
-        if ($scale === 0) {
-            return '1';
-        }
-
-        // Built by DIVISION rather than string concatenation: bcdiv returns a
-        // genuine numeric-string, whereas '0.'.str_repeat(...).'1' is inferred
-        // as non-falsy-string and would need a cast to satisfy the return type.
-        return bcdiv('1', bcpow('10', (string) $scale), $scale);
+        return TransactionRemiseSplit::ulp($scale);
     }
 }

@@ -25,6 +25,7 @@ import {
   FiscalEventPayloadValidationError,
   SALE_RECEIPT_PAYLOAD_KEYS,
   ServerAuthoredEventTypeError,
+  validateSaleReceiptPayload,
   type FiscalEventAppendRequest,
 } from '../FiscalEventEngine';
 import { FiscalEventCanonicalEncoder } from '../FiscalEventCanonicalEncoder';
@@ -1559,6 +1560,41 @@ d('FiscalEventEngine.append', () => {
   it('spec §2 + D-1 — a plain SALE payload resolves event_version=5 (payload-aware resolution does not regress the common case)', async () => {
     const event = await engine.append(adapter, saleReceiptRequest());
     expect(event.event_version).toBe(5);
+  });
+
+  it('D-1 gate r1 — rejects a v5 SALE_RECEIPT declaring invoice_type_code=REFUND', () => {
+    const payload = {
+      ...validSaleReceiptPayload(),
+      invoice_type_code: 'REFUND',
+      original_receipt_reference: {
+        fiscal_event_id: '55555555-5555-4555-8555-555555555555',
+        original_business_date: '2026-05-15',
+        original_receipt_uuid: '66666666-6666-4666-8666-666666666666',
+        refund_reason: 'customer asked',
+      },
+    };
+
+    expect(() => validateSaleReceiptPayload(payload, 5)).toThrow(
+      /payload_invoice_type_invalid:event_version>=5/,
+    );
+  });
+
+  it('D-1 gate r1 — rejects a v5 SALE_RECEIPT declaring invoice_type_code=VOID', () => {
+    const payload = { ...validSaleReceiptPayload(), invoice_type_code: 'VOID' };
+
+    expect(() => validateSaleReceiptPayload(payload, 5)).toThrow(
+      /payload_invoice_type_invalid:event_version>=5/,
+    );
+  });
+
+  it('D-1 gate r1 — still accepts a v5 TRAINING receipt', () => {
+    const payload = {
+      ...validSaleReceiptPayload(),
+      invoice_type_code: 'TRAINING',
+      training_flag: true,
+    };
+
+    expect(() => validateSaleReceiptPayload(payload, 5)).not.toThrow();
   });
 
   it('spec §2/§3.4 — rejects a v4 REFUND payload missing the three v4-only keys (still v3-shaped)', async () => {

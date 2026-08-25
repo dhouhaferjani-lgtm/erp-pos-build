@@ -571,7 +571,19 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         $this->expectAccountChargeException('/payload_account_charge_credit_decision_invalid:warnings\\[0\\] must be a stable lower_snake_case code/', $payload);
     }
 
-    public function test_account_charge_accepts_discount_present_and_absent_variants(): void
+    /**
+     * D-1 gate r1 finding 4 (2026-08-25) — RE-PINNED from "accepts" to
+     * "refuses".
+     *
+     * `accountChargeCartMapper.ts` still seals `subtotal`/`vat_total` on the
+     * PRE-remise line roll-up and applies the remise to `total` alone. Since
+     * D-1 the SALE_RECEIPT arm of the same cart seals a POST-remise base, so
+     * accepting a discounted ACCOUNT_CHARGE would let one cart declare two
+     * different taxable bases depending on tender. The remise is refused on
+     * this event type until the ACCOUNT_CHARGE ventilation lane lands; the
+     * discount-FREE variant is unchanged and still accepted.
+     */
+    public function test_account_charge_refuses_a_transaction_discount_until_it_ventilates(): void
     {
         $this->assertAccountChargeAccepted($this->canonicalAccountChargePayload());
 
@@ -592,7 +604,12 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
                 'credit_available_after' => '86.000',
             ],
         ]);
-        $this->assertAccountChargeAccepted($payload);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches(
+            '/payload_account_charge_transaction_discount_unsupported/'
+        );
+        $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_CHARGE, $payload);
     }
 
     public function test_account_charge_accepts_nullable_and_populated_buyer_and_references(): void

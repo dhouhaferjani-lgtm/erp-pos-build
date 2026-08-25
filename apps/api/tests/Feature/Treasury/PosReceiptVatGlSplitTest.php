@@ -562,6 +562,75 @@ final class PosReceiptVatGlSplitTest extends TestCase
         );
     }
 
+    /**
+     * D-1 gate r1 (treasury) F-3 — the TURNOVER DISCONTINUITY at the cutover,
+     * pinned rather than discovered by a controller in month three.
+     *
+     * The SAME economic ticket reports different P&L turnover either side of
+     * the rollout:
+     *
+     *   pre-D-1 (v<=4)  Cr 70x 569.000 / Dr 709 50.000  →  turnover 519.000
+     *   post-D-1 (v5)   Cr 70x 524.547 / no 709 leg     →  turnover 524.547
+     *
+     * The 5.547 difference is exactly the VAT half of the remise, which the
+     * pre-D-1 shape buried in a TTC debit to a revenue-contra account. **The v5
+     * figure is the correct one** — turnover HT, net of the remise HT — so this
+     * is a correction, not a regression. But it lands MID-PERIOD, on the day
+     * each terminal takes the build, so any month-over-month or year-over-year
+     * turnover comparison spanning the rollout is not comparing like with like.
+     * Fleet-wide the shift is `Σ(remise × rate/(1+rate))`.
+     *
+     * The sibling test above pins the v<=4 face at 550.000 on its own fixture;
+     * this one pins the v5 face and the identity that replaces it: turnover IS
+     * the declared taxable base, with nothing to subtract.
+     */
+    public function test_the_profit_and_loss_turnover_at_v5_is_the_sealed_base_with_no_contra(): void
+    {
+        $event = $this->projectedThreeRateSale(
+            [['amount' => '590.000', 'method_code' => 'CASH']],
+            vatBreakdown: [
+                ['rate' => '0.00', 'net' => '63.609', 'vat' => '0.000', 'discount_allocated' => '5.391', 'line_net' => '69.000', 'line_vat' => '0.000'],
+                ['rate' => '7.00', 'net' => '92.188', 'vat' => '6.453', 'discount_allocated' => '8.359', 'line_net' => '100.000', 'line_vat' => '7.000'],
+                ['rate' => '13.00', 'net' => '184.375', 'vat' => '23.969', 'discount_allocated' => '17.656', 'line_net' => '200.000', 'line_vat' => '26.000'],
+                ['rate' => '19.00', 'net' => '184.375', 'vat' => '35.031', 'discount_allocated' => '18.594', 'line_net' => '200.000', 'line_vat' => '38.000'],
+            ],
+            subtotal: '524.547',
+            taxTotal: '65.453',
+            total: '590.000',
+            discountTotal: '50.000',
+            eventVersion: 5,
+        );
+
+        $this->app->make(CompanyContext::class)->clear();
+        $this->app->make(TreasuryReceiptBridge::class)->apply($event);
+
+        $receipt = Receipt::query()->where('fiscal_event_id', $event->id)->firstOrFail();
+
+        $this->app->make(CompanyContext::class)->setCompanyId($this->companyId);
+        $statement = $this->app->make(ProfitLossService::class)->generate(
+            $this->companyId,
+            now()->subDay()->startOfDay(),
+            now()->addDay()->endOfDay(),
+        );
+
+        // Turnover IS the sealed (declared) taxable base — nothing to net off,
+        // because the remise never entered revenue.
+        $sealedBase = (string) DB::table('pos_receipt_vat_details')
+            ->where('receipt_id', $receipt->id)
+            ->sum('net_amount');
+        $this->assertSame('524.547', bcadd($sealedBase, '0', 3));
+        $this->assertSame('524.547', bcadd((string) $statement['total_revenue'], '0', 3));
+        $this->assertSame('0.000', bcadd((string) $statement['total_expenses'], '0', 3));
+
+        // The discontinuity itself, stated as a number: the pre-D-1 shape would
+        // have reported 519.000 for the same ticket (569.000 gross HT less the
+        // 50.000 TTC contra), i.e. 5.547 lower — the VAT half of the remise.
+        $this->assertSame(
+            '5.547',
+            bcsub(bcadd((string) $statement['total_revenue'], '0', 3), '519.000', 3),
+        );
+    }
+
     public function test_a_discounted_refund_credits_the_discount_account_back(): void
     {
         $sale = $this->projectedThreeRateSale(

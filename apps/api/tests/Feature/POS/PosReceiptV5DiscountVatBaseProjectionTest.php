@@ -244,6 +244,49 @@ final class PosReceiptV5DiscountVatBaseProjectionTest extends TestCase
         self::assertNull($gate->verdict($this->envelopeFor(5, 2)));
     }
 
+    /**
+     * Gate r1 finding 3. The device drains its outbox
+     * `ORDER BY chain_context ASC, sequence_number ASC`, and `'operational'`
+     * sorts before `'training_operational'`. A terminal that takes the D-1
+     * build with unsynced TRAINING sales still queued therefore drains its
+     * post-upgrade operational v5 receipts FIRST — and the pre-upgrade training
+     * v3 receipts after. Scoped to the terminal alone the gate would refuse
+     * them: stored, never projected, so no `pos_receipts` row, no GL entry and
+     * no stock movement, for real sales.
+     */
+    public function test_an_operational_v5_watermark_does_not_refuse_a_training_chain_v3(): void
+    {
+        $this->storeEvent($this->workedExamplePayload(), 5);
+
+        self::assertNull(app(SaleReceiptForwardVersionGate::class)->verdict(
+            $this->envelopeFor(3, 2, 'training_operational'),
+        ));
+    }
+
+    /** …and the training chain gets its OWN watermark once it authors v5. */
+    public function test_a_training_chain_watermark_refuses_a_training_chain_downgrade(): void
+    {
+        $this->storeEvent($this->workedExamplePayload(), 5, 'training_operational');
+
+        $verdict = app(SaleReceiptForwardVersionGate::class)->verdict(
+            $this->envelopeFor(3, 2, 'training_operational'),
+        );
+
+        self::assertNotNull($verdict);
+        self::assertMatchesRegularExpression('/sale_receipt_version_downgrade/', $verdict);
+        self::assertMatchesRegularExpression('/chain_context=training_operational/', $verdict);
+    }
+
+    /** A training-chain watermark must not bleed into the operational chain either. */
+    public function test_a_training_chain_watermark_does_not_refuse_an_operational_v3(): void
+    {
+        $this->storeEvent($this->workedExamplePayload(), 5, 'training_operational');
+
+        self::assertNull(app(SaleReceiptForwardVersionGate::class)->verdict(
+            $this->envelopeFor(3, 2, 'operational'),
+        ));
+    }
+
     public function test_the_gate_is_scoped_to_the_terminal_that_authored_the_watermark(): void
     {
         $this->storeEvent($this->workedExamplePayload(), 5);
@@ -265,8 +308,11 @@ final class PosReceiptV5DiscountVatBaseProjectionTest extends TestCase
     // Fixtures
     // =================================================================
 
-    private function envelopeFor(int $eventVersion, int $sequenceNumber): FiscalEventEnvelope
-    {
+    private function envelopeFor(
+        int $eventVersion,
+        int $sequenceNumber,
+        string $chainContext = 'operational',
+    ): FiscalEventEnvelope {
         return new FiscalEventEnvelope(
             envelopeId: (string) Str::uuid(),
             idempotencyKey: $this->terminalId.':'.$sequenceNumber,
@@ -282,7 +328,7 @@ final class PosReceiptV5DiscountVatBaseProjectionTest extends TestCase
             sequenceNumber: $sequenceNumber,
             eventTimeDevice: now()->utc()->format('Y-m-d\TH:i:s\Z'),
             businessDate: now()->utc()->toDateString(),
-            chainContext: 'operational',
+            chainContext: $chainContext,
             lastServerTimeSeen: null,
             referenceEventId: null,
             referenceDocumentId: null,
@@ -312,7 +358,7 @@ final class PosReceiptV5DiscountVatBaseProjectionTest extends TestCase
     /**
      * @param  array<string, mixed>  $payload
      */
-    private function storeEvent(array $payload, int $eventVersion): FiscalEvent
+    private function storeEvent(array $payload, int $eventVersion, string $chainContext = 'operational'): FiscalEvent
     {
         static $sequence = 0;
         $sequence++;
@@ -368,6 +414,7 @@ final class PosReceiptV5DiscountVatBaseProjectionTest extends TestCase
             'integrity_exception_reason' => null,
             'payload' => $payload,
             'payload_parse_status' => PayloadParseStatus::Parsed,
+            'chain_context' => $chainContext,
         ]);
 
         return $event->refresh();

@@ -1653,6 +1653,21 @@ export function validateSaleReceiptPayload(payload: unknown, eventVersion: numbe
   //        defense-in-depth boundary check (mirrors the PHP validator's own
   //        §2z, which is a genuinely separate parse path server-side) —
   //        never trusted to be redundant.
+  // -- 3y. D-1 (gate r1 finding 1) — v5 is a SALE/TRAINING version and nothing
+  //        else. The five refund guards narrowed to `=== 4` (correct: a `>= 4`
+  //        test would have handed v5 the 33-key refund set), which left v5 with
+  //        no invoice-type restriction at all. The device registry already
+  //        refuses to AUTHOR a v5 REFUND/VOID, so this is defence in depth —
+  //        but that is exactly the standard §3z sets for its own VOID check
+  //        ("never trusted to be redundant"), and this validator also re-reads
+  //        STORED bytes on the refund-resolution path, where the producer is
+  //        not this device.
+  if (eventVersion >= 5 && invoiceTypeCode !== 'SALE' && invoiceTypeCode !== 'TRAINING') {
+    throw new FiscalEventPayloadValidationError(
+      `payload_invoice_type_invalid:event_version>=5 requires invoice_type_code=SALE|TRAINING; got ${jsonOrType(invoiceTypeCode)}`,
+    );
+  }
+
   if (eventVersion === 4) {
     if (invoiceTypeCode === 'VOID') {
       throw new FiscalEventPayloadValidationError(

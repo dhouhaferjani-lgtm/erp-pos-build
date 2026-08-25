@@ -21,6 +21,7 @@ use App\Modules\Fiscal\Domain\DTOs\ZCashDrawerMovementPayload;
 use App\Modules\Fiscal\Domain\DTOs\ZReportPayload;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Shared\Domain\CashRoundingCaps;
+use App\Shared\Domain\TransactionRemiseSplit;
 use App\Shared\Domain\Validation\CountryTaxNumberRules;
 use LogicException;
 use RuntimeException;
@@ -1225,6 +1226,32 @@ final class FiscalPayloadConstraintValidator
         $this->assertEnum($payload, 'invoice_type_code', self::INVOICE_TYPE_CODES);
 
         // ---- 2z. v4 (refund/void chain integration, spec §2 table) — the
+        // ---- 2y. D-1 (gate r1 finding 1). v5 is a SALE/TRAINING version and
+        // ---- nothing else. Adding 5 to the parseable set while narrowing the
+        // ---- five refund guards to `=== 4` (correct in itself — a `>= 4` test
+        // ---- would have handed v5 the 33-key refund set) left v5 with NO
+        // ---- invoice-type restriction at all: the enum check above still
+        // ---- admits REFUND and VOID, and the v4 block below no longer fires
+        // ---- for them. A v5 REFUND therefore skipped the VOID prohibition,
+        // ---- `validateOriginalLineReferences()`, the refund
+        // ---- destination/settlement contract, `validateSingleCashLegPayment()`
+        // ---- and the zero-discount rule — and
+        // ---- `PosCoreReceiptProjection::resolveReceiptType()` keys off
+        // ---- `invoice_type_code`, so such a payload would have projected as a
+        // ---- RETURN: negative revenue, a restocking movement, and an original
+        // ---- that was never validated. The hole did not exist before D-1 (the
+        // ---- registry refused a v5 envelope outright); this clause closes it.
+        if ($eventVersion >= self::SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION) {
+            $v5InvoiceType = $payload['invoice_type_code'] ?? null;
+            if ($v5InvoiceType !== 'SALE' && $v5InvoiceType !== 'TRAINING') {
+                throw new RuntimeException(
+                    'payload_invoice_type_invalid:event_version>='
+                    .self::SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION
+                    .' requires invoice_type_code=SALE|TRAINING; got '.var_export($v5InvoiceType, true)
+                );
+            }
+        }
+
         // ---- device NEVER resolves event_version=4 for anything but a
         // ---- REFUND (`FiscalEventPayloadRegistry.ts`'s eventVersionFor()
         // ---- table); VOID authoring has no legitimate producer at any
@@ -1856,6 +1883,40 @@ final class FiscalPayloadConstraintValidator
             $scale,
             'payload_discount_reason_mismatch',
         );
+
+        // ---- D-1 gate r1 finding 4 — the owner ruling of 2026-08-25 is NOT
+        // ---- yet in force on this event type. `accountChargeCartMapper.ts`
+        // ---- still seals `subtotal`/`vat_total` on the PRE-remise line
+        // ---- roll-up and applies the remise to `total` alone — verbatim the
+        // ---- defect D-1 exists to remove, on a sibling type fed by the SAME
+        // ---- cart and the SAME transaction-discount UI. Left alone, one cart
+        // ---- would seal two different taxable bases depending on tender:
+        // ---- post-remise if paid, pre-remise if charged to account. That is
+        // ---- indefensible in front of an inspector, and
+        // ---- `createPOSChargeEntry()` would over-credit `4457` on every
+        // ---- discounted on-account sale.
+        // ----
+        // ---- Ventilating ACCOUNT_CHARGE properly is a versioned-payload
+        // ---- change of its own (new event version, projection column, GL era
+        // ---- awareness) and cannot be authored or tested end-to-end inside
+        // ---- D-1. So the remise is REFUSED here until that lane lands:
+        // ---- fail-closed, immediately correct, and reversible in one line.
+        // ---- The device refuses it first (`accountChargeCartMapper.ts`); this
+        // ---- is the contract-boundary belt, and it is what actually binds a
+        // ---- device that has not taken the build.
+        if (bccomp(
+            $this->asNumericString($payload['transaction_discount_amount'], 'transaction_discount_amount'),
+            '0',
+            $scale
+        ) > 0) {
+            throw new RuntimeException(
+                'payload_account_charge_transaction_discount_unsupported:transaction_discount_amount='
+                .$payload['transaction_discount_amount']
+                .' — ACCOUNT_CHARGE still seals VAT on the PRE-remise base (D-1 owner ruling 2026-08-25 is not '
+                .'yet in force on this event type), so a discounted on-account sale would declare VAT on a base '
+                .'the customer never paid. Refused until the ACCOUNT_CHARGE ventilation lane lands.'
+            );
+        }
 
         $sellerCountryCode = $this->validateSeller($payload);
         $customerCategory = $this->validateAccountChargeCustomer($payload['customer'] ?? null, $sellerCountryCode);
@@ -2946,6 +3007,45 @@ final class FiscalPayloadConstraintValidator
         if (bccomp($discSplit, $allocated, $scale) !== 0) {
             throw new RuntimeException(
                 "payload_partition_discount_split_mismatch:rate={$rate}:category={$category}:expected={$allocated}:got=".$discSplit
+            );
+        }
+
+        // ---- D-1 gate r1 finding 2. The checks above bound only the TOTAL of
+        // ---- the two halves, leaving the split between them free. A device
+        // ---- could take the whole remise out of the VAT half wherever the
+        // ---- group could carry it — same lines, same total, same
+        // ---- `Σ discount_allocated`, same group grosses — and under-declare
+        // ---- output VAT by up to `min(remise, Σ line_vat)` per receipt with
+        // ---- nothing raising a hand. On the ruling's own worked example that
+        // ---- is 30.703 TND on ONE ticket, sealed into the chain and read
+        // ---- verbatim by the declaration.
+        // ----
+        // ---- The pin is EXACT, and it is still not a recomputation of the
+        // ---- group's VAT: `TransactionRemiseSplit` is a pure function of the
+        // ---- allocated share, the rate and the group's OWN sealed line sums,
+        // ---- and it is the same authority the device and the server-authored
+        // ---- path both carve the remise with. The group's VAT remains
+        // ---- `Σ line_vat − discVat`, where `Σ line_vat` is sealed line data
+        // ---- this validator never second-guesses. No tolerance band is needed:
+        // ---- the clamps that make a 100 %-comp land on exactly zero live
+        // ---- INSIDE the shared rule, so the expected pair is reproducible to
+        // ---- the millime rather than approximated.
+        // `$rate` reaches here as the group KEY (`vat_rate` off the line items),
+        // already pinned to `VAT_RATE_SCALE` by `assertMoneyString` on both the
+        // line and the breakdown row. Re-narrowed for the shared kernel's
+        // numeric-string contract rather than cast.
+        $rateN = $this->asNumericString($rate, 'vat_breakdown.rate');
+        [, $expectedDiscVat] = TransactionRemiseSplit::split(
+            $allocated,
+            $rateN,
+            $group['sum_net'],
+            $group['sum_vat'],
+            $scale,
+        );
+        if (bccomp($discVat, $expectedDiscVat, $scale) !== 0) {
+            throw new RuntimeException(
+                "payload_partition_discount_vat_split_out_of_band:rate={$rate}:category={$category}"
+                .":expected={$expectedDiscVat}:got=".$discVat
             );
         }
 

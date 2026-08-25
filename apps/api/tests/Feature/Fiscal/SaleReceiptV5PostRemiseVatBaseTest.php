@@ -183,6 +183,164 @@ final class SaleReceiptV5PostRemiseVatBaseTest extends TestCase
     }
 
     // =================================================================
+    // Gate r1 finding 1 — v5 is a SALE/TRAINING version, nothing else
+    // =================================================================
+
+    /**
+     * Adding 5 to the parseable set while narrowing the five refund guards to
+     * `=== 4` left v5 with NO invoice-type restriction: a v5 declaring REFUND
+     * was accepted and skipped every v4 invariant — the VOID prohibition,
+     * `original_line_references`, the refund destination/settlement contract,
+     * the single-cash-leg rule and the zero-discount rule. Downstream
+     * `PosCoreReceiptProjection::resolveReceiptType()` keys off
+     * `invoice_type_code`, so it would have projected as a RETURN: negative
+     * revenue, a restocking movement, and an unvalidated original.
+     */
+    public function test_v5_refuses_a_refund_invoice_type(): void
+    {
+        $payload = $this->workedExamplePayload();
+        $payload['invoice_type_code'] = 'REFUND';
+        // A WELL-FORMED original reference, exactly as the gate's probe had it:
+        // without one the payload is refused by `validateOriginalReceiptReference`
+        // and the test would pass for the wrong reason, proving nothing about the
+        // version gate.
+        $payload['original_receipt_reference'] = [
+            'fiscal_event_id' => '55555555-5555-4555-8555-555555555555',
+            'original_business_date' => '2026-08-24',
+            'original_receipt_uuid' => '66666666-6666-4666-8666-666666666666',
+            'refund_reason' => 'customer asked',
+        ];
+
+        self::assertMatchesRegularExpression(
+            '/payload_invoice_type_invalid/',
+            (string) $this->constraintFailure($payload, 5),
+        );
+    }
+
+    public function test_v5_refuses_a_void_invoice_type(): void
+    {
+        $payload = $this->workedExamplePayload();
+        $payload['invoice_type_code'] = 'VOID';
+        $payload['training_flag'] = false;
+        // A WELL-FORMED original reference, exactly as the gate's probe had it:
+        // without one the payload is refused by `validateOriginalReceiptReference`
+        // and the test would pass for the wrong reason, proving nothing about the
+        // version gate.
+        $payload['original_receipt_reference'] = [
+            'fiscal_event_id' => '55555555-5555-4555-8555-555555555555',
+            'original_business_date' => '2026-08-24',
+            'original_receipt_uuid' => '66666666-6666-4666-8666-666666666666',
+            'refund_reason' => 'customer asked',
+        ];
+
+        self::assertMatchesRegularExpression(
+            '/payload_invoice_type_invalid|payload_void_authoring_prohibited/',
+            (string) $this->constraintFailure($payload, 5),
+        );
+    }
+
+    public function test_v5_accepts_a_training_receipt(): void
+    {
+        $payload = $this->workedExamplePayload();
+        $payload['invoice_type_code'] = 'TRAINING';
+        $payload['training_flag'] = true;
+
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: 5);
+        $this->addToAssertionCount(1);
+    }
+
+    /** The v4 REFUND path is untouched: its own invoice-type rule still governs. */
+    public function test_v4_still_requires_a_refund_invoice_type(): void
+    {
+        $payload = $this->preDiscountBasePayload();
+        $payload['transaction_discount_amount'] = '0.000';
+        $payload['transaction_discount_reason'] = null;
+        $payload['total'] = '640.000';
+        $payload['payments'][0]['amount'] = '640.000';
+        $payload['vat_breakdown'] = array_map(
+            static function (array $row): array {
+                unset($row['discount_allocated']);
+
+                return $row;
+            },
+            $payload['vat_breakdown'],
+        );
+
+        // A v4 payload that says SALE is refused by the v4 rule, not the v5 one.
+        self::assertMatchesRegularExpression(
+            '/event_version=4 requires invoice_type_code=REFUND|payload_missing_required/',
+            (string) $this->constraintFailure($payload, 4),
+        );
+    }
+
+    // =================================================================
+    // Gate r1 finding 2 — the net/VAT split of the remise is PINNED
+    // =================================================================
+
+    /**
+     * The mis-split the gate demonstrated: same lines, same `total`, same
+     * `Σ discount_allocated`, same group grosses — but the whole allocated
+     * remise is taken out of the VAT half wherever the group can carry it.
+     * Every aggregate identity still holds, and the receipt under-declares
+     * 30.703 TND of output VAT.
+     *
+     * Nothing but a pin on the SPLIT itself can catch this, which is why the
+     * expected halves are re-derived from `TransactionRemiseSplit` — a pure
+     * function of the allocated share, the rate and the group's own sealed line
+     * sums. The group's VAT is still never recomputed from its rate.
+     */
+    public function test_v5_refuses_a_remise_carved_entirely_out_of_the_vat_half(): void
+    {
+        $payload = $this->misSplitPayload();
+
+        // The aggregates the weaker check looked at are all still exact …
+        self::assertSame('590.000', $payload['total']);
+        self::assertSame(
+            0,
+            bccomp(bcadd($payload['subtotal'], $payload['vat_total'], 3), '590.000', 3),
+        );
+        // … and the receipt under-declares output VAT by tens of dinars against
+        // the golden ventilation (65.453). The exact figure depends on how much
+        // VAT each group can absorb; the gate's own variant moved 30.703, this
+        // one moves more. What matters is that it is large and was ACCEPTED.
+        self::assertSame(0, bccomp($payload['vat_total'], '27.750', 3));
+        self::assertSame('37.703', bcsub('65.453', $payload['vat_total'], 3));
+
+        self::assertMatchesRegularExpression(
+            '/payload_partition_discount_vat_split_out_of_band/',
+            (string) $this->constraintFailure($payload, 5),
+        );
+    }
+
+    /** A single-ulp nudge of the split is refused too — the pin is EXACT. */
+    public function test_v5_refuses_a_one_ulp_nudge_of_the_split(): void
+    {
+        $payload = $this->workedExamplePayload();
+        // Move one millime from base to VAT inside the 19 % group. Group gross,
+        // Σ net + Σ vat and the total identity all stay exact.
+        $payload['vat_breakdown'][2]['net_amount'] = '184.374';
+        $payload['vat_breakdown'][2]['vat_amount'] = '35.032';
+        $payload['subtotal'] = '524.546';
+        $payload['vat_total'] = '65.454';
+
+        self::assertMatchesRegularExpression(
+            '/payload_partition_discount_vat_split_out_of_band/',
+            (string) $this->constraintFailure($payload, 5),
+        );
+    }
+
+    /** The 100 %-comp clamp is inside the band the pin allows. */
+    public function test_v5_still_accepts_the_clamped_split_of_a_full_comp(): void
+    {
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $this->fullyCompedPayload(),
+            eventVersion: 5,
+        );
+        $this->addToAssertionCount(1);
+    }
+
+    // =================================================================
     // 100 %-comp (G3-A fold-in)
     // =================================================================
 
@@ -327,6 +485,47 @@ final class SaleReceiptV5PostRemiseVatBaseTest extends TestCase
                 ['7.00', '', '107.000', '0.000', '0.000', '100.000', '7.000'],
             ],
             payments: [],
+        );
+    }
+
+    /**
+     * Gate r1 finding 2's payload: the golden ventilation re-carved so each
+     * group's allocated remise comes out of the VAT half wherever the group can
+     * carry it (`discVat = min(allocated, line_vat)`), the rest out of the net.
+     *
+     * @return array<string, mixed>
+     */
+    private function misSplitPayload(): array
+    {
+        // [rate, category, allocated, lineNet, lineVat]
+        $groups = [
+            ['0.00', 'EXEMPT', '5.391', '69.000', '0.000'],
+            ['13.00', '', '17.656', '200.000', '26.000'],
+            ['19.00', '', '18.594', '200.000', '38.000'],
+            ['7.00', '', '8.359', '100.000', '7.000'],
+        ];
+
+        $rows = [];
+        $subtotal = '0.000';
+        $vatTotal = '0.000';
+        foreach ($groups as [$rate, $category, $allocated, $lineNet, $lineVat]) {
+            $discVat = bccomp($allocated, $lineVat, 3) > 0 ? $lineVat : $allocated;
+            $discNet = bcsub($allocated, $discVat, 3);
+            $net = bcsub($lineNet, $discNet, 3);
+            $vat = bcsub($lineVat, $discVat, 3);
+            $subtotal = bcadd($subtotal, $net, 3);
+            $vatTotal = bcadd($vatTotal, $vat, 3);
+            $rows[] = [$rate, $category, $allocated, $net, $vat, $lineNet, $lineVat];
+        }
+
+        return $this->basePayload(
+            total: '590.000',
+            subtotal: $subtotal,
+            vatTotal: $vatTotal,
+            discount: '50.000',
+            discountReason: 'Geste commercial',
+            vatBreakdown: $rows,
+            payments: [['amount' => '590.000', 'method_code' => 'CASH']],
         );
     }
 

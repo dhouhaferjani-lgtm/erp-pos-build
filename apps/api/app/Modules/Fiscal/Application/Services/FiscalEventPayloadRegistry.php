@@ -138,9 +138,11 @@ final class FiscalEventPayloadRegistry
         // v5 (D-1 post-remise VAT base, owner ruling 2026-08-25): the sealed
         // taxable base excludes the remise. v3 stays in this list forever —
         // receipts already in a chain, and devices not yet on the new build,
-        // must keep parsing. What stops a NEW device authoring the old shape
-        // is the forward-only version gate on the device's recorded
-        // `app_version` (see `SaleReceiptForwardVersionGate`), not this list.
+        // must keep parsing. What stops a NEW device authoring the old shape is
+        // the forward-only PER-CHAIN v5 WATERMARK in
+        // `SaleReceiptForwardVersionGate` — NOT `devices.app_version`, which
+        // that class's own docblock explains at length why it deliberately does
+        // not read — and not this list.
         FiscalEventType::SALE_RECEIPT->value => [1, 2, 3, 4, 5],
     ];
 
