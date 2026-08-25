@@ -38,6 +38,7 @@ use App\Modules\POS\Domain\ReceiptLineBatchAllocation;
 use App\Modules\POS\Domain\ReceiptVatDetail;
 use App\Modules\POS\Domain\Services\DiscountCalculationService;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
+use App\Modules\POS\Domain\Services\TransactionDiscountVatAllocator;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
@@ -77,6 +78,10 @@ final class ReceiptCreationService
         private readonly DiscountCalculationService $discountCalculationService,
         private readonly DiscountOrchestratorService $discountOrchestrator,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        // D-1 (owner ruling 2026-08-25): the transaction discount reduces the
+        // taxable base, ventilated pro-rata per rate. Constructor-injected
+        // (rule 13); the allocator is pure bcmath with no dependencies.
+        private readonly TransactionDiscountVatAllocator $transactionDiscountVatAllocator,
     ) {}
 
     private function scale(): int
@@ -483,10 +488,46 @@ final class ReceiptCreationService
             // Total = sum of line totals (TTC) - transaction discount
             // Uses $sumLineTotals (gross) instead of $subtotal + recalculated $totalTax
             // to avoid VAT recalculation rounding drift (e.g., 5.000 TND becoming 4.999).
-            // Then derive $totalTax from the difference to maintain the accounting identity:
-            // subtotal + tax_amount - discount = total
             $total = bcsub($sumLineTotals, $effectiveTransactionDiscount, $this->scale());
-            $totalTax = bcsub($sumLineTotals, $subtotal, $this->scale());
+
+            // ── D-1 (owner ruling 2026-08-25) ────────────────────────────────
+            // The taxable base EXCLUDES the remise granted on the ticket
+            // (TN Code TVA art. 6; FR CGI 267-II-1 / BOI-TVA-BASE-10-10-30),
+            // ventilated PRO-RATA per rate — never at a blended rate, never
+            // left on the pre-discount gross.
+            //
+            // Before this, `$vatAggregates` was the PRE-discount line roll-up
+            // and `$subtotal` / `$totalTax` were written straight from it, so a
+            // discounted receipt declared VAT on a base the customer never paid
+            // and the DGI filing (which reads `pos_receipt_vat_details`
+            // verbatim) over-declared by discount x rate/(1+rate).
+            //
+            // The header aggregates are now DERIVED FROM the ventilated groups,
+            // so `pos_receipts` and `pos_receipt_vat_details` can never
+            // disagree, and the identity becomes
+            // `subtotal + tax_amount == total` (the discount is recorded
+            // alongside, not folded back in). `pos_receipts_totals` admits both
+            // forms — see the D-1 CHECK-widening migration.
+            //
+            // Step 1 — reconcile the aggregates to the gross line total FIRST.
+            // The promotions path re-rounds each group's `vat_amount` from its
+            // aggregated `net_amount` (`applyPromotionLineDiscounts()`), so
+            // `Σ gross_amount` can sit an ulp or two off `$sumLineTotals`. The
+            // pre-D-1 code hid that by deriving `$totalTax` from the gross and
+            // never comparing the two; deriving the header FROM the groups
+            // makes the drift visible as a `pos_receipts_totals` violation, so
+            // it is absorbed here, explicitly and boundedly, into the largest
+            // group's VAT. The base (`net_amount`) is left at its line-derived
+            // value — the residue is a VAT-rounding artefact, not a base error.
+            $vatAggregates = $this->reconcileAggregatesToGross($vatAggregates, $sumLineTotals);
+
+            // Step 2 — ventilate the remise across the reconciled groups.
+            $vatAggregates = $this->ventilateTransactionDiscount(
+                $vatAggregates,
+                $effectiveTransactionDiscount,
+            );
+            $subtotal = $this->sumVatAggregates($vatAggregates, 'net_amount');
+            $totalTax = $this->sumVatAggregates($vatAggregates, 'vat_amount');
 
             // 5. Generate receipt number and sequence
             $isTraining = $terminal->is_training_mode;
@@ -1182,6 +1223,123 @@ final class ReceiptCreationService
         $vatAggregates[$rateKey]['net_amount'] = bcadd($existingNet, $netAmount, $this->scale());
         $vatAggregates[$rateKey]['vat_amount'] = bcadd($existingVat, $taxAmount, $this->scale());
         $vatAggregates[$rateKey]['gross_amount'] = bcadd($existingGross, $lineTotal, $this->scale());
+    }
+
+    /**
+     * D-1 — make `Σ vat_aggregates.gross_amount` equal the gross line total
+     * EXACTLY, absorbing any rounding residue into the largest group's VAT.
+     *
+     * A no-op (byte-for-byte) whenever the two already agree, which is every
+     * receipt that did not go through a promotion line-discount recompute.
+     *
+     * @param  array<string, array{tax_rate: string, net_amount: string, vat_amount: string, gross_amount: string}>  $vatAggregates
+     * @param  numeric-string  $sumLineTotals
+     * @return array<string, array{tax_rate: string, net_amount: string, vat_amount: string, gross_amount: string}>
+     */
+    private function reconcileAggregatesToGross(array $vatAggregates, string $sumLineTotals): array
+    {
+        if (count($vatAggregates) === 0) {
+            return $vatAggregates;
+        }
+
+        $sumGross = $this->sumVatAggregates($vatAggregates, 'gross_amount');
+        $residue = bcsub($sumLineTotals, $sumGross, $this->scale());
+        if (bccomp($residue, '0', $this->scale()) === 0) {
+            return $vatAggregates;
+        }
+
+        $largestKey = null;
+        $largestGross = null;
+        foreach ($vatAggregates as $key => $aggregate) {
+            /** @var numeric-string $gross */
+            $gross = $aggregate['gross_amount'];
+            if ($largestGross === null || bccomp($gross, $largestGross, $this->scale()) > 0) {
+                $largestGross = $gross;
+                $largestKey = $key;
+            }
+        }
+        if ($largestKey === null) {
+            return $vatAggregates;
+        }
+
+        /** @var numeric-string $vat */
+        $vat = $vatAggregates[$largestKey]['vat_amount'];
+        $adjustedVat = bcadd($vat, $residue, $this->scale());
+        if (bccomp($adjustedVat, '0', $this->scale()) < 0) {
+            // A residue big enough to drive a group's VAT negative is not
+            // rounding noise; leave the groups untouched rather than invent a
+            // number. The `pos_receipts_totals` CHECK then refuses the row and
+            // the checkout fails loudly instead of sealing a wrong base.
+            return $vatAggregates;
+        }
+
+        $vatAggregates[$largestKey]['vat_amount'] = $adjustedVat;
+        /** @var numeric-string $net */
+        $net = $vatAggregates[$largestKey]['net_amount'];
+        $vatAggregates[$largestKey]['gross_amount'] = bcadd($net, $adjustedVat, $this->scale());
+
+        return $vatAggregates;
+    }
+
+    /**
+     * D-1 — ventilate the transaction discount across the VAT aggregates.
+     *
+     * Returns the aggregates with `net_amount` / `vat_amount` / `gross_amount`
+     * reduced to their POST-remise values and each group carrying its own
+     * `discount_allocated`. A zero discount returns the groups untouched (the
+     * allocator is a no-op there), so undiscounted receipts keep today's
+     * numbers byte-for-byte.
+     *
+     * @param  array<string, array{tax_rate: string, net_amount: string, vat_amount: string, gross_amount: string}>  $vatAggregates
+     * @param  numeric-string  $discount
+     * @return array<string, array{tax_rate: string, net_amount: string, vat_amount: string, gross_amount: string, discount_allocated: string}>
+     */
+    private function ventilateTransactionDiscount(array $vatAggregates, string $discount): array
+    {
+        $keys = array_keys($vatAggregates);
+        $groups = [];
+        foreach ($vatAggregates as $aggregate) {
+            /** @var numeric-string $rate */
+            $rate = $aggregate['tax_rate'];
+            /** @var numeric-string $net */
+            $net = $aggregate['net_amount'];
+            /** @var numeric-string $vat */
+            $vat = $aggregate['vat_amount'];
+            $groups[] = ['tax_rate' => $rate, 'net_amount' => $net, 'vat_amount' => $vat];
+        }
+
+        $allocated = $this->transactionDiscountVatAllocator->allocate($groups, $discount, $this->scale());
+
+        $out = [];
+        foreach ($keys as $index => $key) {
+            $row = $allocated[$index];
+            $out[$key] = [
+                'tax_rate' => $row['tax_rate'],
+                'net_amount' => $row['net_amount'],
+                'vat_amount' => $row['vat_amount'],
+                'gross_amount' => $row['gross_amount'],
+                'discount_allocated' => $row['discount_allocated'],
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, array<string, string>>  $vatAggregates
+     * @return numeric-string
+     */
+    private function sumVatAggregates(array $vatAggregates, string $field): string
+    {
+        $sum = bcadd('0', '0', $this->scale());
+        foreach ($vatAggregates as $aggregate) {
+            /** @var numeric-string $value */
+            $value = $aggregate[$field] ?? '0';
+            $sum = bcadd($sum, $value, $this->scale());
+        }
+
+        /** @var numeric-string $sum */
+        return $sum;
     }
 
     /**
