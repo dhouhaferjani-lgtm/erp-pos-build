@@ -44,6 +44,7 @@ final class DocumentPdfSellerTaxIdTest extends TestCase
             countryCode: 'TN',
             companyTaxId: 'COMPANY-MF-0000',
             branchTaxId: 'BRANCH-MF-1234',
+            sealed: true,
         );
 
         $data = $this->app->make(DocumentPdfService::class)->viewDataFor($document);
@@ -60,6 +61,7 @@ final class DocumentPdfSellerTaxIdTest extends TestCase
             countryCode: 'FR',
             companyTaxId: 'COMPANY-ONLY-TAX',
             branchTaxId: null,
+            sealed: true,
         );
 
         $data = $this->app->make(DocumentPdfService::class)->viewDataFor($document);
@@ -87,8 +89,23 @@ final class DocumentPdfSellerTaxIdTest extends TestCase
         $this->assertSame('Demande de Prix', $data['documentTitle']);
     }
 
-    private function makeInvoice(string $countryCode, string $companyTaxId, ?string $branchTaxId): Document
-    {
+    /**
+     * `$sealed` (C-F0): the two tax-identity tests above assert that the seller's
+     * fiscal identifier is ON the page, so their fixture has to be a DEFINITIVE
+     * invoice. It previously carried `status = Posted` with no `fiscal_hash` —
+     * the never-sealed shape `DocumentStatusService::wasNeverSealed()` describes
+     * and `documents:repair-paid-never-posted` exists to undo — which SPEC §2.4
+     * renders as a proforma, without fiscal identifiers. The seal is set at
+     * creation, not by a later `save()`: on PostgreSQL `trg_document_immutability`
+     * refuses an update to a row that is already SEALED, which is why the RFQ test
+     * below (which mutates its document afterwards) keeps an unsealed fixture.
+     */
+    private function makeInvoice(
+        string $countryCode,
+        string $companyTaxId,
+        ?string $branchTaxId,
+        bool $sealed = false,
+    ): Document {
         $suffix = random_int(10000, 99999);
 
         $tenant = Tenant::create([
@@ -127,7 +144,7 @@ final class DocumentPdfSellerTaxIdTest extends TestCase
             'type' => PartnerType::Customer,
         ]);
 
-        return Document::create([
+        return Document::create(array_merge([
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,
             'location_id' => $location->id,
@@ -143,6 +160,10 @@ final class DocumentPdfSellerTaxIdTest extends TestCase
             'tax_amount' => '20.000',
             'total' => '120.000',
             'balance_due' => '120.000',
-        ]);
+        ], $sealed ? [
+            'fiscal_status' => FiscalStatus::Sealed,
+            'fiscal_hash' => str_repeat('a', 64),
+            'chain_sequence' => 1,
+        ] : []));
     }
 }

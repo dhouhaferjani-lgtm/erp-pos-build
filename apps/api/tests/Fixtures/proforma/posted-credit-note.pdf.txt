@@ -1,0 +1,34 @@
+3E Lane Company SARL
+Avoir
+CN-SNAPSHOT-0001
+15/01/2026
+POSTED
+FROM
+3E Lane Company SARL
+Tax ID: 3E-TAX
+VAT: TN-VAT-1234567
+BILL TO
+3E Customer
+Tax ID: CUST-FISCAL-9
+#
+DESCRIPTION
+QTY
+UNIT PRICE
+TAX
+AMOUNT
+1
+3E physical line
+2,00
+100,000 DT
+19%
+200,000 DT
+Subtotal
+200,000 DT
+Tax
+38,000 DT
+Credit Total
+238,000 DT
+Note:
+ This credit note reduces your balance by the amount shown above.
+3E Lane Company SARL
+ | Tax ID: 3E-TAX

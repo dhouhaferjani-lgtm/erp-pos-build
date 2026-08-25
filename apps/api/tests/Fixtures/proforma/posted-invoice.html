@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="{{ $locale ?? 'en' }}">
+<html lang="fr_TN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ $documentTitle ?? 'Document' }} - {{ $document->document_number }}</title>
+    <title>Facture - INV-SNAPSHOT-0001</title>
     <style>
         * {
             margin: 0;
@@ -52,7 +52,7 @@
         .company-name {
             font-size: 16pt;
             font-weight: bold;
-            color: {{ $company->primary_color ?? '#1f2937' }};
+            color: #2563EB;
         }
 
         .company-details {
@@ -64,7 +64,7 @@
         .document-title {
             font-size: 18pt;
             font-weight: bold;
-            color: {{ $company->primary_color ?? '#1f2937' }};
+            color: #2563EB;
             margin-bottom: 10px;
         }
 
@@ -125,7 +125,7 @@
         }
 
         .items-table th {
-            background-color: {{ $company->primary_color ?? '#1f2937' }};
+            background-color: #2563EB;
             color: white;
             font-size: 9pt;
             font-weight: bold;
@@ -207,7 +207,7 @@
         }
 
         .totals-table tr.total-row {
-            background-color: {{ $company->primary_color ?? '#1f2937' }};
+            background-color: #2563EB;
             color: white;
         }
 
@@ -335,48 +335,113 @@
             page-break-after: always;
         }
     </style>
-    @stack('styles')
-</head>
+    </head>
 <body>
     <div class="container">
-        @yield('content')
+            <div class="header">
+    <div class="header-left">
+                <div class="company-name">3E Lane Company SARL</div>
+        <div class="company-details">
+                                                                                </div>
     </div>
+    <div class="header-right">
+        <div class="document-title">Facture</div>
+        <div class="document-number">INV-SNAPSHOT-0001</div>
+        <div class="document-date">15/01/2026</div>
+                    <div style="margin-top: 10px;">
+                <span class="status-badge status-posted">
+                    Posted
+                </span>
+            </div>
+            </div>
+</div>
+
+    
+    <div class="parties">
+    
+    <div class="party-box">
+        <div class="party-title">From</div>
+        <div class="party-name">3E Lane Company SARL</div>
+        <div class="party-details">
+                                                                            Tax ID: 3E-TAX<br>
+                                        VAT: TN-VAT-1234567
+                    </div>
+    </div>
+
+    
+    <div style="display: table-cell; width: 4%;"></div>
+
+    
+    <div class="party-box">
+        <div class="party-title">Bill To</div>
+        <div class="party-name">3E Customer</div>
+        <div class="party-details">
+                                                    Tax ID: CUST-FISCAL-9<br>
+                                </div>
+    </div>
+</div>
+
+    <table class="items-table">
+    <thead>
+        <tr>
+            <th style="width: 5%;">#</th>
+            <th style="width: 40%;">Description</th>
+            <th class="center" style="width: 10%;">Qty</th>
+            <th class="right" style="width: 15%;">Unit Price</th>
+                        <th class="center" style="width: 10%;">Tax</th>
+                        <th class="right" style="width: 20%;">Amount</th>
+        </tr>
+    </thead>
+    <tbody>
+                        <tr>
+            <td>1</td>
+            <td>
+                <strong>3E physical line</strong>
+                                                            </td>
+            <td class="center">2,00</td>
+            <td class="right">100,000 DT</td>
+                        <td class="center">19%</td>
+                        <td class="right">200,000 DT</td>
+        </tr>
+            </tbody>
+</table>
+
+    <div class="totals-section">
+    <div class="totals-notes">
+        
+            </div>
+
+    <div class="totals-box">
+        <table class="totals-table">
+            <tr>
+                <td>Subtotal</td>
+                <td>200,000 DT</td>
+            </tr>
+                        <tr>
+                <td>Tax</td>
+                <td>38,000 DT</td>
+            </tr>
+            <tr class="total-row">
+                <td>Total</td>
+                <td>238,000 DT</td>
+            </tr>
+                    </table>
+    </div>
+</div>
+
+    <div class="payment-info">
+    <div class="payment-title">Payment Information</div>
+    <div class="payment-details">
+                    <strong>Due Date:</strong> 15/02/2026<br>
+                            </div>
+</div>
+
+        </div>
 
     <div class="footer">
-        <span class="footer-company">{{ $company->legal_name ?? $company->name }}</span>
-        {{--
-            C-F0 / F-95 — the footer repeats the seller's fiscal identifier on every
-            page, so it has to be gated too.
+        <span class="footer-company">3E Lane Company SARL</span>
+                            | Tax ID: 3E-TAX
+                                    </div>
 
-            `?? false` and NOT the `?? true` the two fiscal templates use — and the
-            r1 rationale for that was WRONG, corrected here by gate r1 F-5. Blade
-            compiles `@extends` into a TRAILING
-            `$__env->make($layout, array_diff_key(get_defined_vars(), …))`
-            (`CompilesLayouts.php:24`) that runs after the section body in the SAME
-            function scope, so a `@php` reassignment inside `@section('content')`
-            DOES reach this layout. The real reason for the asymmetry is coverage:
-            this layout wraps all eight templates, six of which never resolve the
-            flag at all, so defaulting to TRUE here would strip the identifier from
-            a purchase order or a quote rendered directly. The two fiscal templates
-            own the fail-safe because they are the only ones the rule applies to.
-            `DocumentPdfService::prepareData()` always supplies the key on the
-            production path — `ProformaTemplateCensusTest` pins that.
-        --}}
-        @php($sellerTaxIdDisplay = ($isProforma ?? false) ? null : (($sellerTaxId ?? null) ?? $company->tax_id))
-        @if($sellerTaxIdDisplay)
-            | {{ ($sellerTaxLabel ?? null) ?? __('Tax ID') }}: {{ $sellerTaxIdDisplay }}
-        @endif
-        @if($company->registration_number)
-            | {{ __('Reg.') }}: {{ $company->registration_number }}
-        @endif
-        @if($company->phone)
-            | {{ $company->phone }}
-        @endif
-        @if($company->email)
-            | {{ $company->email }}
-        @endif
-    </div>
-
-    @stack('scripts')
-</body>
+    </body>
 </html>
