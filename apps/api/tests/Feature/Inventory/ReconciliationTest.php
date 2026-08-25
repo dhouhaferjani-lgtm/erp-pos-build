@@ -374,6 +374,121 @@ class ReconciliationTest extends TestCase
         );
     }
 
+    /**
+     * LEDGER C-14(ii) follow-up — gate r1 IMPORTANT-4 (house rule 19).
+     *
+     * `ManualOverrideRequest` validated `quantity` as `numeric` with no scale
+     * ceiling, and `quantity()` hands the raw input to `bcadd($raw, '0', 4)`.
+     * Two live defects on the entry gate of the very method C-14(ii) locked:
+     *
+     *  - `'1e3'` passes `numeric` and then blows up inside bcadd
+     *    ("Argument #1 ($num1) is not well-formed") -> catch-all renderer -> 500.
+     *    That is exactly the failure mode C-14(iii) removed on the sibling
+     *    endpoint one commit earlier.
+     *  - `'12.99999'` is accepted and silently TRUNCATED to `12.9999` at rest
+     *    (bcadd truncates, it does not round), and that altered number is what
+     *    finalize() posts to stock as the counted quantity.
+     */
+    public function test_manual_override_refuses_exponent_notation_instead_of_500ing(): void
+    {
+        $counting = $this->createCountingSession(false, false);
+        $item = $this->createCountingItem($counting, '100.0000');
+        $item->update(['count_1_qty' => '95.0000', 'is_flagged' => true]);
+
+        $response = $this->actingAs($this->adminUser)
+            ->postJson("/api/v1/inventory/countings/items/{$item->id}/override", [
+                'quantity' => '1e3',
+                'notes' => 'Verified with physical recount and checked against delivery note',
+            ]);
+
+        $this->assertApiValidationErrors($response, ['quantity']);
+
+        $this->assertNull(
+            $item->fresh()?->final_qty,
+            'A refused override must not have written a quantity.',
+        );
+    }
+
+    public function test_manual_override_refuses_a_quantity_beyond_scale_4_instead_of_truncating(): void
+    {
+        $counting = $this->createCountingSession(false, false);
+        $item = $this->createCountingItem($counting, '100.0000');
+        $item->update(['count_1_qty' => '95.0000', 'is_flagged' => true]);
+
+        $response = $this->actingAs($this->adminUser)
+            ->postJson("/api/v1/inventory/countings/items/{$item->id}/override", [
+                'quantity' => '12.99999',
+                'notes' => 'Verified with physical recount and checked against delivery note',
+            ]);
+
+        $this->assertApiValidationErrors($response, ['quantity']);
+
+        $this->assertNull(
+            $item->fresh()?->final_qty,
+            'The operator number must be refused, never silently truncated to 12.9999.',
+        );
+    }
+
+    /**
+     * The ceiling must not narrow the legitimate range: a 4-dp quantity, an
+     * integer, and a JSON numeric literal all still pass.
+     */
+    public function test_manual_override_still_accepts_quantities_at_or_below_scale_4(): void
+    {
+        foreach (['12.3456', '7', 7.5] as $index => $quantity) {
+            $counting = $this->createCountingSession(false, false);
+            $item = $this->createCountingItem($counting, '100.0000');
+            $item->update(['count_1_qty' => '95.0000', 'is_flagged' => true]);
+
+            $response = $this->actingAs($this->adminUser)
+                ->postJson("/api/v1/inventory/countings/items/{$item->id}/override", [
+                    'quantity' => $quantity,
+                    'notes' => 'Verified with physical recount and checked against delivery note',
+                ]);
+
+            $response->assertStatus(200);
+            $this->assertSame(
+                bcadd((string) $quantity, '0', 4),
+                $item->fresh()?->final_qty,
+                "Case {$index}: a within-scale quantity must still be stored verbatim at 4 d.p.",
+            );
+        }
+    }
+
+    /**
+     * LEDGER C-14(ii) follow-up — gate r1 IMPORTANT-3.
+     *
+     * Every existing override control runs at `count_1_in_progress`, but the
+     * reconciliation screen that OFFERS "manual override" is reached at
+     * `pending_review`. Without this control, a future widening of
+     * `assertNotTerminal()` (e.g. "a counting under review is frozen") would
+     * break the real product flow with every other test still green.
+     */
+    public function test_manual_override_is_allowed_while_the_counting_is_pending_review(): void
+    {
+        $counting = $this->createCountingSession(false, false);
+        $item = $this->createCountingItem($counting, '100.0000');
+        $item->update(['count_1_qty' => '95.0000', 'is_flagged' => true]);
+        $counting->update(['status' => CountingStatus::PendingReview]);
+
+        $response = $this->actingAs($this->adminUser)
+            ->postJson("/api/v1/inventory/countings/items/{$item->id}/override", [
+                'quantity' => '97.5000',
+                'notes' => 'Verified with physical recount and checked against delivery note',
+            ]);
+
+        $response->assertStatus(200);
+
+        $fresh = $item->fresh();
+        $this->assertSame('97.5000', $fresh?->final_qty);
+        $this->assertSame(ItemResolutionMethod::ManualOverride, $fresh?->resolution_method);
+        $this->assertSame(
+            CountingStatus::PendingReview,
+            ($counting->fresh() ?? $counting)->status,
+            'The override must not have moved the counting off pending_review.',
+        );
+    }
+
     public function test_reconciliation_view_shows_all_data(): void
     {
         $counting = $this->createCountingSession(true, false);
