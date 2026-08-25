@@ -74,6 +74,8 @@ final class PosReceiptVatGlSplitTest extends TestCase
 
     private string $vatAccountId;
 
+    private string $discountAccountId;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -126,6 +128,10 @@ final class PosReceiptVatGlSplitTest extends TestCase
         $this->vatAccountId = Account::findByPurposeOrFail(
             $this->companyId,
             SystemAccountPurpose::VatCollected,
+        )->id;
+        $this->discountAccountId = Account::findByPurposeOrFail(
+            $this->companyId,
+            SystemAccountPurpose::SalesDiscount,
         )->id;
 
         $repository = PaymentRepository::factory()->create([
@@ -339,6 +345,104 @@ final class PosReceiptVatGlSplitTest extends TestCase
     }
 
     // =================================================================
+    // Transaction discount
+    // =================================================================
+
+    public function test_transaction_discount_is_a_contra_revenue_line_so_the_ledger_base_matches_the_declaration(): void
+    {
+        // W4-9 gate r1, F-4. The device seals the VAT on the PRE-discount base:
+        // `subtotal + vat_total == total + transaction_discount_amount`. Here
+        // subtotal 600.000, VAT 90.000, discount 50.000 → the customer tenders
+        // 640.000.
+        //
+        // Letting the revenue credit absorb the discount (640.000 − 90.000 =
+        // 550.000) balances arithmetically but puts the ledger's implied taxable
+        // base at 550.000 while the DGI declaration reports 600.000 for the same
+        // receipt — books and filing agreeing about the VAT and disagreeing
+        // about what it was charged on. Expected instead:
+        //
+        //   Dr  53   Caisse              640.000
+        //   Dr  709  Sales discount       50.000
+        //     Cr  70x ProductRevenue     600.000   ← the declaration's base_amount
+        //     Cr  4457 per sealed rate    90.000
+        //
+        // This is how the POS's own ACCOUNT_CHARGE arm already books a
+        // discounted sale (`createPOSChargeEntry`), so the two POS arms agree.
+        $event = $this->projectedThreeRateSale(
+            [['amount' => '640.000', 'method_code' => 'CASH']],
+            total: '640.000',
+            discountTotal: '50.000',
+        );
+
+        $this->app->make(CompanyContext::class)->clear();
+        $this->app->make(TreasuryReceiptBridge::class)->apply($event);
+
+        $receipt = Receipt::query()->where('fiscal_event_id', $event->id)->firstOrFail();
+        $lines = $this->posEntryLines($receipt->id, 'pos_receipt');
+
+        $this->assertSame('640.000', $this->sumDebits($lines, $this->cashAccountId));
+        $this->assertSame('50.000', $this->sumDebits($lines, $this->discountAccountId));
+        $this->assertSame('600.000', $this->sumCredits($lines, $this->revenueAccountId));
+        $this->assertSame($this->sealedVatByRate($receipt->id), $this->ledgerVatByRate($lines));
+
+        // The revenue credit IS the sum of the sealed net bases — the same
+        // number the declaration reports.
+        $sealedNet = (string) DB::table('pos_receipt_vat_details')
+            ->where('receipt_id', $receipt->id)
+            ->sum('net_amount');
+        $this->assertSame(
+            bcadd($sealedNet, '0', 3),
+            $this->sumCredits($lines, $this->revenueAccountId),
+            'the ledger revenue base must equal the sealed (declared) taxable base',
+        );
+
+        $this->assertSame($this->sumColumn($lines, 'debit'), $this->sumColumn($lines, 'credit'));
+    }
+
+    public function test_a_discounted_refund_credits_the_discount_account_back(): void
+    {
+        $sale = $this->projectedThreeRateSale(
+            [['amount' => '640.000', 'method_code' => 'CASH']],
+            total: '640.000',
+            discountTotal: '50.000',
+        );
+        $this->app->make(CompanyContext::class)->clear();
+        $this->app->make(TreasuryReceiptBridge::class)->apply($sale);
+
+        $refund = $this->projectedThreeRateSale(
+            [['amount' => '640.000', 'method_code' => 'CASH']],
+            total: '640.000',
+            discountTotal: '50.000',
+            invoiceTypeCode: 'REFUND',
+            originalEventId: $sale->id,
+            sequenceNumber: 2,
+        );
+        $this->app->make(TreasuryReceiptBridge::class)->apply($refund);
+
+        $refundReceipt = Receipt::query()->where('fiscal_event_id', $refund->id)->firstOrFail();
+        $refundLines = $this->posEntryLines($refundReceipt->id, 'pos_receipt_refund');
+
+        // The contra line mirrors: a debit on the sale, a credit on its reversal.
+        $this->assertSame('50.000', $this->sumCredits($refundLines, $this->discountAccountId));
+        $this->assertSame('600.000', $this->sumDebits($refundLines, $this->revenueAccountId));
+
+        $all = array_merge(
+            $this->posEntryLines(
+                Receipt::query()->where('fiscal_event_id', $sale->id)->firstOrFail()->id,
+                'pos_receipt',
+            ),
+            $refundLines,
+        );
+        foreach ([$this->cashAccountId, $this->revenueAccountId, $this->vatAccountId, $this->discountAccountId] as $accountId) {
+            $this->assertSame(
+                $this->sumDebits($all, $accountId),
+                $this->sumCredits($all, $accountId),
+                'a refunded discounted sale must leave account '.$accountId.' flat',
+            );
+        }
+    }
+
+    // =================================================================
     // Zero-rated + refusal
     // =================================================================
 
@@ -523,6 +627,7 @@ final class PosReceiptVatGlSplitTest extends TestCase
         string $subtotal = '600.000',
         string $taxTotal = '90.000',
         string $total = '690.000',
+        string $discountTotal = '0.000',
         string $invoiceTypeCode = 'SALE',
         ?string $originalEventId = null,
         ?string $originalReceiptUuid = null,
@@ -615,8 +720,8 @@ final class PosReceiptVatGlSplitTest extends TestCase
             'terminal_id' => '33333333-3333-4333-8333-333333333333',
             'total' => $total,
             'training_flag' => false,
-            'transaction_discount_amount' => '0.000',
-            'transaction_discount_reason' => null,
+            'transaction_discount_amount' => $discountTotal,
+            'transaction_discount_reason' => bccomp($discountTotal, '0', 3) > 0 ? 'loyalty' : null,
             'vat_breakdown' => $vatRows,
             'vat_total' => $taxTotal,
             'vouchers_redeemed' => [],

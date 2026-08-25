@@ -5,22 +5,36 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Console\Command;
-use Illuminate\Database\Query\JoinClause;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
 /**
- * REPORT-ONLY census of POS receipts whose journal entries carry NO output-VAT
- * leg (W4-9). Writes nothing, ever.
+ * REPORT-ONLY census of POS receipts whose journal entries do not carry the
+ * output VAT their own sealed breakdown says they collected (W4-9). Writes
+ * nothing, ever.
  *
  * Before W4-9 the POS credited the whole gross tender to `70x` and posted no
  * `VatCollected` (4457 on the TN chart) line at all — revenue overstated by
  * exactly the VAT, VAT payable unrecorded, and the trial balance still closing,
- * so there was no symptom to notice. The fix only changes what NEW receipts
- * post; already-posted entries stay wrong until they are corrected, and journal
- * entries are immutable (rule 8), so this command is the deploy check: run it
- * after deploying, and a non-zero count means that tenant has pre-fix receipts
- * whose books disagree with their own VAT declaration.
+ * so there was no symptom. The fix only changes what NEW receipts post;
+ * already-posted entries stay wrong until they are corrected, and journal
+ * entries are immutable (rule 8), so this command is the deploy check.
+ *
+ * **It compares AMOUNTS, not the presence of a line** (gate r1, F-3). The POS
+ * books ONE ENTRY PER TENDER LEG, so a mid-deploy cutover or a partially
+ * replayed multi-leg receipt lands a `4457` line on some legs and not others.
+ * An "is there a VAT line?" predicate calls that CLEAN — and that population is
+ * precisely what this command exists to find. Per receipt it sums
+ * `credit − debit` across every VAT-purpose line on its POS entries and checks
+ * the magnitude against the sealed total.
+ *
+ * The sealed VAT is likewise aggregated in a DERIVED TABLE before it is joined
+ * (gate r1, F-2). Joining the rate rows and the entries in one flat product
+ * multiplied the sealed VAT by the entry count, so a two-leg receipt reported
+ * twice the money it actually owed.
  *
  * On a greenfield tenant the remedy is re-provisioning. On a trading tenant it
  * is a correcting entry per period, decided by the accountant — deliberately
@@ -50,7 +64,13 @@ final class PosReceiptVatLegCensusCommand extends Command
         {--company= : Optional company UUID filter}
         {--limit=50 : Maximum receipts to list individually}';
 
-    protected $description = 'Report-only: POS receipts carrying sealed VAT whose journal entries have no output-VAT leg';
+    protected $description = 'Report-only: POS receipts whose journal entries do not carry their sealed output VAT';
+
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {
+        parent::__construct();
+    }
 
     public function handle(): int
     {
@@ -79,27 +99,56 @@ final class PosReceiptVatLegCensusCommand extends Command
         }
 
         $query = DB::table('pos_receipts')
-            ->join('pos_receipt_vat_details', 'pos_receipt_vat_details.receipt_id', '=', 'pos_receipts.id')
-            ->leftJoin('journal_entries', function (JoinClause $join): void {
-                $join->on('journal_entries.source_id', '=', 'pos_receipts.id')
-                    ->whereIn('journal_entries.source_type', self::POS_SOURCE_TYPES);
-            })
-            ->leftJoin('journal_lines', function (JoinClause $join) use ($vatAccounts): void {
-                $join->on('journal_lines.journal_entry_id', '=', 'journal_entries.id')
-                    ->whereIn('journal_lines.account_id', $vatAccounts);
-            })
-            ->groupBy('pos_receipts.id', 'pos_receipts.receipt_number', 'pos_receipts.posted_at', 'pos_receipts.currency')
-            ->havingRaw('COUNT(journal_lines.id) = 0')
-            ->havingRaw('SUM(pos_receipt_vat_details.vat_amount) > 0')
+            // Aggregate FIRST, join second: one row per receipt on both sides,
+            // so neither the rate rows nor the per-leg entries can multiply the
+            // other (F-2).
+            ->joinSub(
+                DB::table('pos_receipt_vat_details')
+                    ->select('receipt_id', DB::raw('SUM(vat_amount) AS sealed_vat'))
+                    ->groupBy('receipt_id'),
+                'sealed',
+                'sealed.receipt_id',
+                '=',
+                'pos_receipts.id',
+            )
+            ->leftJoinSub(
+                DB::table('journal_entries')
+                    ->whereIn('source_type', self::POS_SOURCE_TYPES)
+                    ->select('source_id', DB::raw('COUNT(*) AS entry_count'))
+                    ->groupBy('source_id'),
+                'entries',
+                'entries.source_id',
+                '=',
+                'pos_receipts.id',
+            )
+            ->leftJoinSub(
+                DB::table('journal_lines')
+                    ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+                    ->whereIn('journal_entries.source_type', self::POS_SOURCE_TYPES)
+                    ->whereIn('journal_lines.account_id', $vatAccounts)
+                    ->select(
+                        'journal_entries.source_id',
+                        DB::raw('SUM(journal_lines.credit) AS vat_credit'),
+                        DB::raw('SUM(journal_lines.debit) AS vat_debit'),
+                    )
+                    ->groupBy('journal_entries.source_id'),
+                'ledger',
+                'ledger.source_id',
+                '=',
+                'pos_receipts.id',
+            )
             ->select([
                 'pos_receipts.id',
                 'pos_receipts.receipt_number',
                 'pos_receipts.posted_at',
                 'pos_receipts.currency',
-                DB::raw('SUM(pos_receipt_vat_details.vat_amount) AS sealed_vat'),
-                DB::raw('COUNT(DISTINCT journal_entries.id) AS entry_count'),
+                'sealed.sealed_vat',
+                'entries.entry_count',
+                'ledger.vat_credit',
+                'ledger.vat_debit',
             ])
-            ->orderBy('pos_receipts.posted_at');
+            ->orderBy('pos_receipts.posted_at')
+            ->orderBy('pos_receipts.id');
 
         if (is_string($tenantId) && $tenantId !== '') {
             $query->where('pos_receipts.tenant_id', $tenantId);
@@ -108,47 +157,114 @@ final class PosReceiptVatLegCensusCommand extends Command
             $query->where('pos_receipts.company_id', $companyId);
         }
 
-        $rows = $query->get();
+        [$drift, $neverPosted, $listed] = $this->report($query, $limit);
 
-        if ($rows->isEmpty()) {
-            $this->info('POS output-VAT leg census: none — every POS receipt carrying sealed VAT has a VAT leg.');
+        if ($drift === 0) {
+            $this->info('POS output-VAT leg census: none — every POS receipt carries its sealed output VAT in the ledger.');
 
             return self::SUCCESS;
         }
 
         $this->error(sprintf(
-            'POS output-VAT leg census: %d receipt(s) carry sealed VAT but no `%s` journal line.',
-            $rows->count(),
+            'POS output-VAT leg census: %d receipt(s) whose ledger `%s` does not match their sealed VAT.',
+            $drift,
             SystemAccountPurpose::VatCollected->value,
         ));
-
-        foreach ($rows->take($limit) as $row) {
-            $this->line(sprintf(
-                '%s  posted=%s  sealed_vat=%s %s  pos_entries=%s  receipt_id=%s',
-                (string) ($row->receipt_number ?? '(no number)'),
-                (string) ($row->posted_at ?? '(unposted)'),
-                (string) $row->sealed_vat,
-                (string) ($row->currency ?? ''),
-                (string) $row->entry_count,
-                (string) $row->id,
-            ));
+        foreach ($listed as $line) {
+            $this->line($line);
         }
-
-        if ($rows->count() > $limit) {
-            $this->line(sprintf('… and %d more (raise --limit to list them).', $rows->count() - $limit));
+        $listedCount = count($listed);
+        if ($drift > $listedCount) {
+            $this->line(sprintf('… and %d more (raise --limit to list them).', $drift - $listedCount));
         }
 
         // `entry_count = 0` and `entry_count > 0` are different problems: the
         // first is a receipt that never reached the GL at all, the second is a
-        // receipt booked by the pre-W4-9 writer. Separating them keeps an
-        // operator from chasing the wrong remedy.
-        $neverPosted = $rows->filter(static fn (object $row): bool => (int) $row->entry_count === 0)->count();
+        // receipt booked by the pre-W4-9 writer or booked on only some of its
+        // legs. Separating them keeps an operator from chasing the wrong remedy.
         $this->line(sprintf(
-            'Breakdown: %d never reached the GL (no pos_receipt entry at all), %d were booked without a VAT leg.',
+            'Breakdown: %d never reached the GL (no pos_receipt entry at all), %d were booked with a wrong or partial VAT leg.',
             $neverPosted,
-            $rows->count() - $neverPosted,
+            $drift - $neverPosted,
         ));
 
         return self::FAILURE;
+    }
+
+    /**
+     * Walk the candidates and decide drift with bcmath at the receipt's own
+     * currency scale — never in SQL. `SUM()` over a decimal column comes back
+     * as a float on SQLite and as `numeric` on PostgreSQL; comparing those in
+     * the database would make the verdict driver-dependent, on a check whose
+     * whole job is to be trusted at deploy time.
+     *
+     * @return array{0: int, 1: int, 2: list<string>} [driftCount, neverPostedCount, listedLines]
+     */
+    private function report(Builder $query, int $limit): array
+    {
+        $drift = 0;
+        $neverPosted = 0;
+        $listed = [];
+
+        foreach ($query->cursor() as $row) {
+            $scale = $this->scaleResolver->getScaleSafe((string) ($row->currency ?? 'TND'), 3);
+
+            $sealed = $this->money($row->sealed_vat, $scale);
+            if (bccomp($sealed, '0', $scale) <= 0) {
+                continue;
+            }
+
+            // A sale credits 4457, its refund debits it; the sealed rows are
+            // non-negative either way (table CHECK). Compare magnitudes.
+            $ledger = bcsub(
+                $this->money($row->vat_credit ?? '0', $scale),
+                $this->money($row->vat_debit ?? '0', $scale),
+                $scale,
+            );
+            $ledgerMagnitude = bccomp($ledger, '0', $scale) < 0
+                ? bcmul($ledger, '-1', $scale)
+                : $ledger;
+
+            if (bccomp($ledgerMagnitude, $sealed, $scale) === 0) {
+                continue;
+            }
+
+            $drift++;
+            $entryCount = (int) ($row->entry_count ?? 0);
+            if ($entryCount === 0) {
+                $neverPosted++;
+            }
+
+            if (count($listed) < $limit) {
+                $listed[] = sprintf(
+                    '%s  posted=%s  sealed_vat=%s  ledger_vat=%s %s  pos_entries=%d  receipt_id=%s',
+                    (string) ($row->receipt_number ?? '(no number)'),
+                    (string) ($row->posted_at ?? '(unposted)'),
+                    $sealed,
+                    $ledgerMagnitude,
+                    (string) ($row->currency ?? ''),
+                    $entryCount,
+                    (string) $row->id,
+                );
+            }
+        }
+
+        return [$drift, $neverPosted, $listed];
+    }
+
+    /**
+     * A driver-returned aggregate, normalised to the currency scale.
+     *
+     * ROUNDED, not truncated: SQLite has no decimal type, so `SUM()` over a
+     * `decimal(12,3)` column comes back as a float. Truncating `6.9999999` to
+     * `6.999` would invent drift on a receipt that is perfectly booked.
+     *
+     * @return numeric-string
+     */
+    private function money(mixed $value, int $scale): string
+    {
+        $raw = is_scalar($value) ? (string) $value : '0';
+
+        return is_numeric($raw) ? CurrencyScale::bcround($raw, $scale) : bcadd('0', '0', $scale);
     }
 }

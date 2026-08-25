@@ -11,13 +11,13 @@ use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\DTOs\CreatePOSChargeJournalEntryCommand;
 use App\Modules\Accounting\Domain\DTOs\PosRevenueVatSplit;
-use App\Modules\Accounting\Domain\Exceptions\PosVatProjectionRefusedException;
 use App\Modules\Accounting\Domain\Enums\JournalCode;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
 use App\Modules\Accounting\Domain\Exceptions\ClosedFiscalPeriodException;
+use App\Modules\Accounting\Domain\Exceptions\PosVatProjectionRefusedException;
 use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryPostException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
@@ -3359,6 +3359,9 @@ final class GeneralLedgerService
                         'partner_id' => null,
                         'amount' => $spec['amount'],
                         'description' => $spec['description'],
+                        // A discounted sale's reversal credits 709 back; the
+                        // B2b arm emits no contra lines, so it defaults false.
+                        'contra' => $spec['contra'],
                     ],
                     $this->posRevenueAndVatLineSpecs(
                         $companyId,
@@ -3379,12 +3382,13 @@ final class GeneralLedgerService
 
             $lineOrder = 0;
             foreach ($debitLines as $line) {
+                $isContra = ($line['contra'] ?? false) === true;
                 JournalLine::query()->create([
                     'journal_entry_id' => $entry->id,
                     'account_id' => $line['account_id'],
                     'partner_id' => $line['partner_id'],
-                    'debit' => $line['amount'],
-                    'credit' => '0',
+                    'debit' => $isContra ? '0' : $line['amount'],
+                    'credit' => $isContra ? $line['amount'] : '0',
                     'description' => $line['description'],
                     'line_order' => $lineOrder++,
                 ]);
@@ -3821,12 +3825,16 @@ final class GeneralLedgerService
         $lineOrder = 1;
 
         foreach ($this->posRevenueAndVatLineSpecs($companyId, $vatSplit, $revenueDescription, $vatDescriptionPrefix) as $spec) {
+            // `contra` sits on the OPPOSITE side from revenue: the sales-discount
+            // line is a debit on a sale and a credit on its reversal, always the
+            // mirror of the revenue it reduces.
+            $onDebit = $spec['contra'] ? ! $onDebitSide : $onDebitSide;
             JournalLine::create([
                 'journal_entry_id' => $entry->id,
                 'account_id' => $spec['account_id'],
                 'partner_id' => null,
-                'debit' => $onDebitSide ? $spec['amount'] : '0',
-                'credit' => $onDebitSide ? '0' : $spec['amount'],
+                'debit' => $onDebit ? $spec['amount'] : '0',
+                'credit' => $onDebit ? '0' : $spec['amount'],
                 'description' => $spec['description'],
                 'line_order' => $lineOrder++,
             ]);
@@ -3851,7 +3859,11 @@ final class GeneralLedgerService
      * GROSS, leaving `4457` permanently overstated by every instrument-tendered
      * POS refund. There is now ONE place that decides what the decomposition is.
      *
-     * @return list<array{account_id: string, amount: numeric-string, description: string}>
+     * A `contra` spec sits on the opposite side from revenue — today that is the
+     * transaction-level sales discount (709), which reduces the revenue the
+     * pre-discount base recognised.
+     *
+     * @return list<array{account_id: string, amount: numeric-string, description: string, contra: bool}>
      */
     private function posRevenueAndVatLineSpecs(
         string $companyId,
@@ -3866,6 +3878,24 @@ final class GeneralLedgerService
                 'account_id' => (string) $this->getAccountByPurpose($companyId, SystemAccountPurpose::ProductRevenue)->id,
                 'amount' => $vatSplit->netRevenueAmount,
                 'description' => $revenueDescription,
+                'contra' => false,
+            ];
+        }
+
+        // W4-9 gate r1 (F-4). The device seals the VAT on the PRE-discount base
+        // (`subtotal + vat_total == total + transaction_discount_amount`), and
+        // the declaration reports that same base. Letting the revenue credit
+        // silently absorb the discount would leave the ledger's implied base
+        // BELOW the declared one — books and filing agreeing about the VAT while
+        // disagreeing about what it was charged on. The discount is therefore an
+        // explicit contra-revenue line, exactly as `createPOSChargeEntry()` books
+        // the ACCOUNT_CHARGE arm of the same POS.
+        if ($vatSplit->hasDiscount()) {
+            $specs[] = [
+                'account_id' => (string) $this->getAccountByPurpose($companyId, SystemAccountPurpose::SalesDiscount)->id,
+                'amount' => $vatSplit->discountAmount,
+                'description' => 'POS transaction discount',
+                'contra' => true,
             ];
         }
 
@@ -3880,6 +3910,7 @@ final class GeneralLedgerService
                 'account_id' => (string) $vatAccount->id,
                 'amount' => $allocation->vatAmount,
                 'description' => sprintf('%s %s%%', $vatDescriptionPrefix, $allocation->taxRate),
+                'contra' => false,
             ];
         }
 

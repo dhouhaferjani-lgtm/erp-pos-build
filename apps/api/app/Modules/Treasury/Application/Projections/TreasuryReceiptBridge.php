@@ -1595,9 +1595,9 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
      */
     /**
      * @param  Closure(int): PosRevenueVatSplit  $resolveVatSplit  W4-9 gate r1 (F-1) — the instrument
-     *        cancellation reverses a POS SALE, so it needs the same net + per-rate-VAT decomposition the sale
-     *        recognised. Resolved HERE, not in `apply()`: this is the moment that leg is about to post, and the
-     *        cross-tenant `method_code` gate has already run above.
+     *                                                             cancellation reverses a POS SALE, so it needs the same net + per-rate-VAT decomposition the sale
+     *                                                             recognised. Resolved HERE, not in `apply()`: this is the moment that leg is about to post, and the
+     *                                                             cross-tenant `method_code` gate has already run above.
      */
     private function handleMaturityRefundLeg(
         FiscalEvent $event,

@@ -21,6 +21,5 @@ final readonly class PosVatRateAllocation
     public function __construct(
         public string $taxRate,
         public string $vatAmount,
-        public ?string $taxCategory,
     ) {}
 }

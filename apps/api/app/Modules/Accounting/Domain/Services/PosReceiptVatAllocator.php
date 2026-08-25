@@ -66,7 +66,8 @@ final class PosReceiptVatAllocator
     {
         $receiptId = (string) $receipt->id;
         $sealed = $this->loadSealedRows($receiptId);
-        $declaredVat = $this->declaredVat($receipt, $receiptId, $currencyScale);
+        $declaredVat = $this->receiptMoney($receipt->tax_amount, $currencyScale);
+        $declaredDiscount = $this->receiptMoney($receipt->discount_amount, $currencyScale);
 
         /** @var numeric-string $tenderTotal */
         $tenderTotal = bcadd('0', '0', $currencyScale);
@@ -97,13 +98,14 @@ final class PosReceiptVatAllocator
                 throw PosVatProjectionRefusedException::missingSealedVatDetails($receiptId);
             }
 
-            return array_map(
-                static fn (string $amount): PosRevenueVatSplit => PosRevenueVatSplit::vatFree(
-                    $amount,
-                    $currencyScale,
-                ),
-                $amounts,
-            );
+            $discountShares = $this->apportion($declaredDiscount, $amounts, $tenderTotal, $this->residualLegIndex($amounts, $currencyScale), $currencyScale);
+
+            $splits = [];
+            foreach ($amounts as $index => $amount) {
+                $splits[] = PosRevenueVatSplit::vatFree($amount, $currencyScale, $discountShares[$index] ?? '0');
+            }
+
+            return $splits;
         }
 
         /** @var numeric-string $vatTotal */
@@ -130,6 +132,11 @@ final class PosReceiptVatAllocator
 
         $residualLeg = $this->residualLegIndex($amounts, $currencyScale);
 
+        // The transaction discount rides the same apportionment as the VAT so a
+        // split-tender receipt's contra-revenue lines also add back to the
+        // sealed figure exactly.
+        $discountShares = $this->apportion($declaredDiscount, $amounts, $tenderTotal, $residualLeg, $currencyScale);
+
         /** @var array<int, list<PosVatRateAllocation>> $perLeg */
         $perLeg = [];
         foreach (array_keys($amounts) as $index) {
@@ -142,7 +149,6 @@ final class PosReceiptVatAllocator
                 $perLeg[$index][] = new PosVatRateAllocation(
                     taxRate: $row['tax_rate'],
                     vatAmount: $share,
-                    taxCategory: $row['tax_category'],
                 );
             }
         }
@@ -155,8 +161,14 @@ final class PosReceiptVatAllocator
                 $legVat = bcadd($legVat, $allocation->vatAmount, $currencyScale);
             }
 
+            /** @var numeric-string $legDiscount */
+            $legDiscount = $discountShares[$index] ?? bcadd('0', '0', $currencyScale);
+
+            // Revenue is recognised on the PRE-discount base: the sealed VAT was
+            // computed on it, and it is what the declaration reports as
+            // `base_amount`. The discount comes back out through 709.
             /** @var numeric-string $net */
-            $net = bcsub($amount, $legVat, $currencyScale);
+            $net = bcsub(bcadd($amount, $legDiscount, $currencyScale), $legVat, $currencyScale);
             if (bccomp($net, '0', $currencyScale) < 0) {
                 throw PosVatProjectionRefusedException::vatExceedsTender($receiptId, $legVat, $amount);
             }
@@ -166,6 +178,7 @@ final class PosReceiptVatAllocator
                 netRevenueAmount: $net,
                 vatAllocations: $perLeg[$index],
                 currencyScale: $currencyScale,
+                discountAmount: $legDiscount,
             );
             $split->assertReconciles($receiptId, bcadd($amount, '0', $currencyScale));
 
@@ -176,21 +189,18 @@ final class PosReceiptVatAllocator
     }
 
     /**
-     * The VAT the receipt row itself declares, normalised to the currency scale.
+     * A money column off the receipt row, normalised to the currency scale.
+     * Both columns are `decimal(N,3)` with a model cast, so there is no parse
+     * to fail.
      *
      * @return numeric-string
      */
-    private function declaredVat(Receipt $receipt, string $receiptId, int $currencyScale): string
+    private function receiptMoney(mixed $value, int $currencyScale): string
     {
-        // `$receiptId` is carried for symmetry with the other refusal sites and
-        // for the message a future non-numeric arm would need; the column is
-        // `decimal(N,3)` and the model casts it, so there is no parse to fail.
-        unset($receiptId);
+        /** @var numeric-string $raw */
+        $raw = (string) ($value ?? '0');
 
-        /** @var numeric-string $declared */
-        $declared = (string) ($receipt->tax_amount ?? '0');
-
-        return bcadd($declared, '0', $currencyScale);
+        return bcadd($raw, '0', $currencyScale);
     }
 
     /**
@@ -202,7 +212,7 @@ final class PosReceiptVatAllocator
      * Ordered by `(tax_rate, id)` so replays and split-tender allocations are
      * byte-identical run to run.
      *
-     * @return list<array{tax_rate: numeric-string, vat_amount: numeric-string, tax_category: ?string}>
+     * @return list<array{tax_rate: numeric-string, vat_amount: numeric-string}>
      */
     private function loadSealedRows(string $receiptId): array
     {
@@ -210,7 +220,7 @@ final class PosReceiptVatAllocator
             ->where('receipt_id', $receiptId)
             ->orderBy('tax_rate')
             ->orderBy('id')
-            ->get(['tax_rate', 'vat_amount', 'tax_category']);
+            ->get(['tax_rate', 'vat_amount']);
 
         $sealed = [];
         foreach ($rows as $row) {
@@ -222,8 +232,6 @@ final class PosReceiptVatAllocator
             if (! is_numeric($vat)) {
                 throw PosVatProjectionRefusedException::nonNumericAmount($receiptId, 'vat_amount', $vat);
             }
-            $category = $row->tax_category;
-
             $sealed[] = [
                 // Normalise the rate to 2 dp HERE, not at the line description.
                 // `pos_receipt_vat_details.tax_rate` is `decimal(5,2)` but the
@@ -233,7 +241,6 @@ final class PosReceiptVatAllocator
                 // read the same on both.
                 'tax_rate' => bcadd($rate, '0', 2), // precision-ok: a VAT RATE is a percentage, not money — `tax_rate` is decimal(5,2) and rule 19 keeps percents off the currency scale.
                 'vat_amount' => $vat,
-                'tax_category' => is_string($category) ? $category : null,
             ];
         }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Accounting\Domain\DTOs;
 
 use App\Modules\Accounting\Domain\Exceptions\PosVatProjectionRefusedException;
+use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 
 /**
  * How ONE POS tender leg decomposes into net revenue + output VAT per rate
@@ -37,6 +38,24 @@ final readonly class PosRevenueVatSplit
         public array $vatAllocations,
         public int $currencyScale,
         /**
+         * This leg's share of `pos_receipts.discount_amount`, the TRANSACTION-level
+         * discount (W4-9 gate r1 / F-4).
+         *
+         * The device seals `subtotal + vat_total == total + transaction_discount_amount`
+         * — the VAT is computed on the PRE-discount base. So the taxable base the
+         * DGI declaration reports (`vat_breakdown[].net_amount`) is the pre-discount
+         * `subtotal`, and the ledger's revenue credit has to be that same figure or
+         * the two disagree about the base while agreeing about the VAT. Booking the
+         * discount as an explicit contra-revenue debit (`SalesDiscount`, 709) is
+         * what keeps them equal — and it is exactly what the POS's own
+         * ACCOUNT_CHARGE arm already does
+         * ({@see GeneralLedgerService::createPOSChargeEntry}),
+         * so the two POS arms book the same sale the same way.
+         *
+         * @var numeric-string
+         */
+        public string $discountAmount = '0',
+        /**
          * True ONLY for a receipt the allocator has positively established
          * carries no VAT at all (no sealed rows AND `tax_amount` zero).
          *
@@ -54,17 +73,28 @@ final readonly class PosRevenueVatSplit
      *
      * @param  numeric-string  $tenderAmount
      */
-    public static function vatFree(string $tenderAmount, int $currencyScale): self
+    /**
+     * @param  numeric-string  $tenderAmount
+     * @param  numeric-string  $discountAmount
+     */
+    public static function vatFree(string $tenderAmount, int $currencyScale, string $discountAmount = '0'): self
     {
         $normalised = bcadd($tenderAmount, '0', $currencyScale);
+        $discount = bcadd($discountAmount, '0', $currencyScale);
 
         return new self(
             tenderAmount: $normalised,
-            netRevenueAmount: $normalised,
+            netRevenueAmount: bcadd($normalised, $discount, $currencyScale),
             vatAllocations: [],
             currencyScale: $currencyScale,
+            discountAmount: $discount,
             isVatFree: true,
         );
+    }
+
+    public function hasDiscount(): bool
+    {
+        return bccomp($this->discountAmount, '0', $this->currencyScale) > 0;
     }
 
     /** @return numeric-string */
@@ -119,7 +149,11 @@ final readonly class PosRevenueVatSplit
             );
         }
 
-        $recomposed = bcadd($this->netRevenueAmount, $this->totalVat(), $this->currencyScale);
+        $recomposed = bcsub(
+            bcadd($this->netRevenueAmount, $this->totalVat(), $this->currencyScale),
+            $this->discountAmount,
+            $this->currencyScale,
+        );
         if (bccomp($recomposed, $this->tenderAmount, $this->currencyScale) !== 0) {
             throw PosVatProjectionRefusedException::splitDoesNotReconcile(
                 $receiptId,
