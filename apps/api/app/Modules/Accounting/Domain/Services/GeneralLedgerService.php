@@ -4430,11 +4430,36 @@ final class GeneralLedgerService
             $isPaid = $metadata?->is_paid === true;
             if ($isPaid) {
                 // $isPaid === true implies $metadata is non-null (is_paid was read off it).
-                $repositoryType = $metadata->paymentRepository !== null ? $metadata->paymentRepository->type : RepositoryType::CashRegister;
-                $creditAccount = match ($repositoryType) {
-                    RepositoryType::BankAccount => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Bank),
-                    default => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Cash),
-                };
+                $repository = $metadata->paymentRepository;
+
+                // W4-10: credit the repository's OWN cash/bank account when it
+                // has one, so the treasury movement and the GL line land on the
+                // same account and ReconcileTreasuryCommand's check 2 (which
+                // treats the repository's own gl_account_id line as
+                // AUTHORITATIVE) actually enforces till == ledger. The
+                // purpose-based lookup stays as the fallback for a repository
+                // with no GL link and for the legacy no-repository shape — on
+                // the seeded chart the two resolve to the same account
+                // (PaymentRepositorySeeder links both tills to the Cash
+                // purpose account), so this is a no-op there and only bites
+                // when a tenant splits its cash accounts per till.
+                $repositoryGlAccount = $repository?->gl_account_id !== null
+                    ? Account::query()
+                        ->where('tenant_id', $expense->tenant_id)
+                        ->where('company_id', $companyId)
+                        ->whereKey($repository->gl_account_id)
+                        ->first()
+                    : null;
+
+                if ($repositoryGlAccount instanceof Account) {
+                    $creditAccount = $repositoryGlAccount;
+                } else {
+                    $repositoryType = $repository !== null ? $repository->type : RepositoryType::CashRegister;
+                    $creditAccount = match ($repositoryType) {
+                        RepositoryType::BankAccount => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Bank),
+                        default => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Cash),
+                    };
+                }
                 $creditPartnerId = null;
                 $creditDescription = 'Expense payment';
             } else {

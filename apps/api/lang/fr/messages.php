@@ -70,7 +70,7 @@ return [
         'adjustment_tolerance_account_missing' => 'Impossible d\'enregistrer cet ajustement : le plan comptable n\'a aucun compte assigné à l\'usage \':purpose\'. Allez dans Paramètres → Plan comptable pour assigner un compte à cet usage, puis réessayez.',
         'insufficient_repository_balance' => 'Le solde de ce dépôt (:available :currency) est insuffisant pour enregistrer une sortie de :requested :currency ; ce dépôt n\'autorise pas un solde négatif.',
         'adjustment_amount_below_currency_precision' => 'Le montant :amount est inférieur à la plus petite unité de :currency, qui se comptabilise avec :decimals décimale(s). Saisissez un montant d\'au moins une unité.',
-        'repository_not_seeded' => ':repository (:code) n\'a jamais détenu de fonds : il n\'y a donc aucun solde à ajuster. S\'il s\'agit d\'un fonds de caisse initial, c\'est un solde d\'ouverture comptable : saisissez-le dans Paramètres → Soldes d\'ouverture. L\'enregistrer ici le comptabiliserait en produits.',
+        'repository_not_seeded' => ':repository (:code) n\'a jamais détenu de fonds : il n\'y a donc aucun solde à ajuster. S\'il s\'agit d\'un fonds de caisse initial, c\'est un solde d\'ouverture comptable : saisissez-le dans Paramètres → Soldes d\'ouverture, sur une ligne au débit du compte de trésorerie de cette caisse, en indiquant :code dans la colonne repository_code — l\'écriture comptable et le solde de la caisse sont alors enregistrés ensemble. L\'enregistrer ici le comptabiliserait en produits.',
     ],
 
     // Taxation

@@ -792,6 +792,8 @@
       "total": "Total",
       "accountCode": "Account code",
       "accountName": "Account name",
+      "repository": "Cash repository",
+      "repositoryHint": "Seeds this repository's opening float",
       "debitCredit": "Debit {{debit}} / Credit {{credit}} for {{amount}}",
       "products": "Products",
       "product": "Product",

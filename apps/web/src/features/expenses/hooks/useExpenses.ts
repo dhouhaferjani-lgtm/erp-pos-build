@@ -19,6 +19,20 @@ import type {
   PayExpenseRequest,
 } from '../types'
 
+/**
+ * W4-10: the typed refusal of a cash-paid expense that names no treasury
+ * repository. The server replies `{code, message}` at 422 — read the CODE, not
+ * the English prose, so the operator sees a translated message (rule 11).
+ */
+function errorCode(error: unknown): string | null {
+  if (typeof error !== 'object' || error === null || !('response' in error)) return null
+  const response = error.response
+  if (typeof response !== 'object' || response === null || !('data' in response)) return null
+  const data = response.data
+  if (typeof data !== 'object' || data === null || !('code' in data)) return null
+  return typeof data.code === 'string' ? data.code : null
+}
+
 function flatErrorMessage(error: unknown): string | null {
   if (typeof error !== 'object' || error === null || !('response' in error)) return null
   const response = error.response
@@ -26,6 +40,22 @@ function flatErrorMessage(error: unknown): string | null {
   const data = response.data
   if (typeof data !== 'object' || data === null || !('error' in data)) return null
   return typeof data.error === 'string' ? data.error : null
+}
+
+/**
+ * Message for a failed expense create/update. EXPENSE_PAID_WITHOUT_REPOSITORY
+ * (W4-10) is translated locally; anything else falls back to the server's own
+ * message.
+ */
+function expenseWriteErrorMessage(
+  error: unknown,
+  t: (key: string) => string,
+): string {
+  if (errorCode(error) === 'EXPENSE_PAID_WITHOUT_REPOSITORY') {
+    return t('expenses:errors.paidWithoutRepository')
+  }
+
+  return flatErrorMessage(error) ?? getErrorMessage(error) ?? t('common:errors.unexpected')
 }
 
 /**
@@ -127,7 +157,7 @@ export function useCreateExpense() {
       toast.success(t('expenses:messages.created'))
     },
     onError: (error: Error) => {
-      toast.error(error.message || t('common:errors.unexpected'))
+      toast.error(expenseWriteErrorMessage(error, t))
     },
   })
 }
@@ -159,7 +189,7 @@ export function useUpdateExpense() {
       toast.success(t('expenses:messages.updated'))
     },
     onError: (error: Error) => {
-      toast.error(error.message || t('common:errors.unexpected'))
+      toast.error(expenseWriteErrorMessage(error, t))
     },
   })
 }

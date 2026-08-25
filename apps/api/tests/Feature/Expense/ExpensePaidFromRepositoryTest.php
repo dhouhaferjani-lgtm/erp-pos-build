@@ -14,6 +14,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Expense\Application\Services\ExpenseService;
+use App\Modules\Expense\Domain\Exceptions\ExpensePaidWithoutRepositoryException;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -31,6 +32,7 @@ use Carbon\CarbonImmutable;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -135,7 +137,7 @@ final class ExpensePaidFromRepositoryTest extends TestCase
             'vendor_name' => 'Café du coin',
             'is_paid' => true,
             'payment_repository_id' => $this->drawer->id,
-            'payment_date' => '2026-01-02',
+            'payment_date' => now()->toDateString(),
         ], $this->user);
 
         $posted = $this->service()->post($expense, $this->user);
@@ -167,7 +169,7 @@ final class ExpensePaidFromRepositoryTest extends TestCase
 
     public function test_a_born_paid_expense_without_a_repository_is_refused(): void
     {
-        $this->expectException(\App\Modules\Expense\Domain\Exceptions\ExpensePaidWithoutRepositoryException::class);
+        $this->expectException(ExpensePaidWithoutRepositoryException::class);
 
         $this->service()->create([
             'company_id' => $this->company->id,
@@ -235,7 +237,7 @@ final class ExpensePaidFromRepositoryTest extends TestCase
             'is_paid' => false,
         ], $this->user);
 
-        $this->expectException(\App\Modules\Expense\Domain\Exceptions\ExpensePaidWithoutRepositoryException::class);
+        $this->expectException(ExpensePaidWithoutRepositoryException::class);
 
         $this->service()->update($expense, ['is_paid' => true], $this->user);
     }
@@ -251,8 +253,8 @@ final class ExpensePaidFromRepositoryTest extends TestCase
                 repositoryId: $this->drawer->id,
                 amount: $amount,
                 currency: 'TND',
-                batchId: (string) \Illuminate\Support\Str::uuid(),
-                occurredAt: CarbonImmutable::parse('2026-01-01'),
+                batchId: (string) Str::uuid(),
+                occurredAt: CarbonImmutable::now()->subDay(),
                 journalEntryId: null,
                 createdBy: $this->user->id,
             ));

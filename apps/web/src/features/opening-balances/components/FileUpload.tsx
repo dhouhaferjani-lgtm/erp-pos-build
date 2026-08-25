@@ -52,7 +52,11 @@ function getExpectedColumns(batchType: OpeningBatchType): readonly string[] {
 function getTemplateContent(batchType: OpeningBatchType): string {
   switch (batchType) {
     case 'ACCOUNTING':
-      return 'account_code,debit,credit,reference\n101000,10000.00,0.00,Opening Cash\n401000,0.00,5000.00,Opening Payables\n301000,0.00,5000.00,Opening Equity'
+      // W4-2: `repository_code` is optional and only meaningful on a cash/bank
+      // DEBIT line — it names the payment repository whose day-one float this
+      // line seeds, so the same row posts the GL leg AND the till's opening
+      // movement. Leave it blank on every other line.
+      return 'account_code,debit,credit,reference,repository_code\n101000,200.000,0.000,Opening drawer float,CASH-01\n101000,1000.000,0.000,Opening safe float,SAFE-01\n401000,0.000,500.000,Opening Payables,\n301000,0.000,700.000,Opening Equity,'
     case 'INVENTORY':
       return 'product_code,location_code,quantity,unit_cost\nSKU-001,MAIN,100,25.50\nSKU-002,MAIN,50,15.00\nSKU-003,WAREHOUSE,200,10.00'
     case 'AR_OPEN_ITEMS':

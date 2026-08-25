@@ -107,6 +107,14 @@ export interface AccountingPreviewLine {
   debit: string
   credit: string
   description: string
+  /**
+   * W4-2: null on an ordinary GL line; set when this row also seeds a treasury
+   * repository's day-one cash float, so the operator sees WHICH till the money
+   * lands in before locking the batch. Pinned server-side by
+   * `apps/api/tests/Feature/Accounting/OpeningBalancePreviewContractTest.php`.
+   */
+  repository_code: string | null
+  repository_name: string | null
 }
 
 export interface InventoryPreviewLine {
@@ -220,7 +228,7 @@ export interface ImportRowPayload {
 }
 
 // CSV Column definitions for each batch type
-export const GL_COLUMNS = ['account_code', 'debit', 'credit', 'reference'] as const
+export const GL_COLUMNS = ['account_code', 'debit', 'credit', 'reference', 'repository_code'] as const
 export const INVENTORY_COLUMNS = ['product_code', 'location_code', 'quantity', 'unit_cost'] as const
 export const AR_AP_COLUMNS = [
   'partner_code',

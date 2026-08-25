@@ -775,6 +775,8 @@
       "total": "الإجمالي",
       "accountCode": "رمز الحساب",
       "accountName": "اسم الحساب",
+      "repository": "صندوق النقد",
+      "repositoryHint": "يغذي الرصيد الافتتاحي لهذا الصندوق",
       "debitCredit": "مدين {{debit}} / دائن {{credit}} بمبلغ {{amount}}",
       "products": "المنتجات",
       "product": "المنتج",

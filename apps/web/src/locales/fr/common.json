@@ -798,6 +798,8 @@
       "total": "Total",
       "accountCode": "Code compte",
       "accountName": "Libellé du compte",
+      "repository": "Caisse / compte",
+      "repositoryHint": "Alimente le fonds de caisse initial de cette caisse",
       "debitCredit": "Débit {{debit}} / Crédit {{credit}} pour {{amount}}",
       "products": "Produits",
       "product": "Produit",
