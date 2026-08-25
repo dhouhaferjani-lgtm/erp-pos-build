@@ -1011,8 +1011,8 @@
     },
     "Treasury": {
       "lane": "treasury-spine-pgsql/feature-treasury",
-      "classes": 120,
-      "note": "Informational for lane groups: the ceiling is enforced only for deferred/excluded groups; a laned directory picks up new classes automatically. 120 on disk = 119 at the Session-B Q-11 merge tip plus TreasuryOrphanCensusCommandTest (Session B lane Q-12, triage F5 / DS-1 census half)."
+      "classes": 121,
+      "note": "Informational for lane groups: the ceiling is enforced only for deferred/excluded groups; a laned directory picks up new classes automatically. 121 on disk = 119 at the Session-B Q-11 merge tip plus TreasuryOrphanCensusCommandTest (Session B lane Q-12, triage F5 / DS-1 census half) and SliceDBatch1CheckConstraintsTest (Session B2 lane B2-4 / Slice D batch 1, 2026-08-25) \u2014 the liveness pin on the 13 money/fiscal enum CHECK constraints (23514 rejection, NULL still accepted on the four nullable columns, pg_constraint.convalidated true). It lives here rather than in Feature/Architecture because treasury-spine-pgsql runs this directory WHOLE on a real PostgreSQL service and gates on PR->dev, which is what a PG-only CHECK pin needs; no --filter append is required."
     },
     "Uom": {
       "lane": "feature-lane-inventory/Uom",
