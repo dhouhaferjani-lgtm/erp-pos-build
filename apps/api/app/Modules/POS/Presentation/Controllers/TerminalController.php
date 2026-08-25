@@ -107,11 +107,6 @@ final class TerminalController extends Controller
 
         $data = $request->validated();
 
-        // Auto-generate code if not provided
-        if (empty($data['code'])) {
-            $data['code'] = $this->generateTerminalCode();
-        }
-
         $company = $this->companyContext->requireCompany();
 
         // B-3: same refusal on the admin creation path as on the device paths.
@@ -119,25 +114,35 @@ final class TerminalController extends Controller
             return $this->posDisabledResponse();
         }
 
-        $terminal = Terminal::create([
-            'tenant_id' => $company->tenant_id,
-            'company_id' => $company->id,
-            'location_id' => $data['location_id'],
-            'type' => TerminalType::Physical,
-            'code' => $data['code'],
-            'name' => $data['name'],
-            'description' => $data['description'] ?? null,
-            'genesis_seed' => bin2hex(random_bytes(32)),
-            'current_sequence' => 1,
-            'current_year' => (int) now()->format('Y'),
-            // Provision-at-v3 (first-tenant launch, Lane D1): every terminal
-            // created through this endpoint is fiscal schema 3 from creation.
-            // Explicit here (not just relying on the column DEFAULT) so the
-            // API contract is visible in code.
-            'fiscal_schema_version' => 3,
-            'is_active' => true,
-            'activated_at' => now(),
-        ]);
+        // C-17(vii): the auto-code is allocated INSIDE this transaction so the
+        // per-company advisory lock `generateTerminalCode()` takes is still held
+        // when the INSERT lands. Allocating before the transaction (as this
+        // method used to) makes the lock a per-statement no-op.
+        $terminal = DB::transaction(function () use ($data, $company): Terminal {
+            $code = empty($data['code'])
+                ? $this->generateTerminalCode()
+                : (string) $data['code'];
+
+            return Terminal::create([
+                'tenant_id' => $company->tenant_id,
+                'company_id' => $company->id,
+                'location_id' => $data['location_id'],
+                'type' => TerminalType::Physical,
+                'code' => $code,
+                'name' => $data['name'],
+                'description' => $data['description'] ?? null,
+                'genesis_seed' => bin2hex(random_bytes(32)),
+                'current_sequence' => 1,
+                'current_year' => (int) now()->format('Y'),
+                // Provision-at-v3 (first-tenant launch, Lane D1): every terminal
+                // created through this endpoint is fiscal schema 3 from creation.
+                // Explicit here (not just relying on the column DEFAULT) so the
+                // API contract is visible in code.
+                'fiscal_schema_version' => 3,
+                'is_active' => true,
+                'activated_at' => now(),
+            ]);
+        });
 
         return response()->json([
             'data' => TerminalResource::make($terminal->load(['location', 'company'])),
@@ -521,49 +526,90 @@ final class TerminalController extends Controller
     {
         Gate::authorize('pos.manage_terminals');
 
-        $terminal = Terminal::forCompany($this->companyContext->requireCompanyId())
-            ->findOrFail($id);
+        $companyId = $this->companyContext->requireCompanyId();
+        $forced = $request->boolean('force');
+        $reason = (string) $request->input('reason', '');
 
-        $previousHardwareIdentifier = $terminal->hardware_identifier;
+        // LEDGER C-17(viii): everything that reads state and then writes it runs
+        // in ONE transaction, with the terminal row taken FOR UPDATE first. The
+        // old body read `hardware_identifier`, then probed `pos_shifts` for an
+        // OPEN row, then cleared the binding — three statements, no transaction,
+        // no lock — so two concurrent releases both passed the probe and both
+        // fired TerminalReleased, and a release that lost a race to a second
+        // release could clear a binding the first had already replaced.
+        //
+        // WHAT THIS DOES NOT BUY (be honest, it matters for the orphan story):
+        // the row lock serialises release-against-release, not
+        // release-against-shift-open. Neither shift-open path locks the terminal
+        // row — `ShiftManagementService::openShift()` opens a transaction but
+        // touches only `pos_shifts`, and the device-authoritative path
+        // (`ZSessionLifecycleProjection::projectPosShiftOpen()`) is a projection
+        // of a synced fiscal event. A shift that opens between this probe and
+        // the commit is still orphaned silently. Closing THAT needs the arbiter
+        // to be the database: a conditional
+        // `UPDATE … WHERE NOT EXISTS (open shift)` in the non-forced arm, the
+        // same idiom `claim()` uses. Filed as a residual, not taken here.
+        /** @var array{0: Terminal, 1: string|null, 2: string|null}|JsonResponse $result */
+        $result = DB::transaction(function () use ($id, $companyId, $forced) {
+            /** @var Terminal $terminal */
+            $terminal = Terminal::forCompany($companyId)
+                ->whereKey($id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        // Idempotent: releasing an unclaimed terminal is a no-op that answers
-        // 200 (a retried request must not fail) and writes NO audit event — an
-        // audit register that records releases which never happened is worse
-        // than one that records none. Checked BEFORE the open-shift guard on
-        // purpose: a no-op breaks no binding, so it orphans nothing, and there
-        // is nothing for the operator to confront.
+            $previousHardwareIdentifier = $terminal->hardware_identifier;
+
+            // Idempotent: releasing an unclaimed terminal is a no-op that answers
+            // 200 (a retried request must not fail) and writes NO audit event — an
+            // audit register that records releases which never happened is worse
+            // than one that records none. Checked BEFORE the open-shift guard on
+            // purpose: a no-op breaks no binding, so it orphans nothing, and there
+            // is nothing for the operator to confront.
+            if ($previousHardwareIdentifier === null) {
+                return [$terminal, null, null];
+            }
+
+            // The probe now runs UNDER the row lock, so its answer is still true
+            // at the moment the clearing write below commits (for every writer
+            // that takes the same lock).
+            /** @var string|null $openShiftId */
+            $openShiftId = $terminal->shifts()
+                ->where('status', ShiftStatus::Open)
+                ->orderBy('opened_at')
+                ->value('id');
+
+            if ($openShiftId !== null && ! $forced) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'TERMINAL_HAS_OPEN_SHIFT',
+                        'message' => 'This terminal still has an open shift. Close it from the device first. '
+                            .'If the device is gone and the shift can no longer be closed, re-send with '
+                            .'force=true and a reason — the shift will be orphaned and the replacement '
+                            .'device will not project shifts or Z reports until it is resolved.',
+                        'open_shift_id' => $openShiftId,
+                    ],
+                ], 409);
+            }
+
+            $terminal->update([
+                'hardware_identifier' => null,
+            ]);
+
+            return [$terminal, $previousHardwareIdentifier, $openShiftId];
+        });
+
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+
+        [$terminal, $previousHardwareIdentifier, $openShiftId] = $result;
+
+        // No-op release (already unbound): 200, no audit event.
         if ($previousHardwareIdentifier === null) {
             return response()->json([
                 'data' => TerminalResource::make($terminal->load(['location', 'company'])),
             ]);
         }
-
-        $forced = $request->boolean('force');
-
-        /** @var string|null $openShiftId */
-        $openShiftId = $terminal->shifts()
-            ->where('status', ShiftStatus::Open)
-            ->orderBy('opened_at')
-            ->value('id');
-
-        if ($openShiftId !== null && ! $forced) {
-            return response()->json([
-                'error' => [
-                    'code' => 'TERMINAL_HAS_OPEN_SHIFT',
-                    'message' => 'This terminal still has an open shift. Close it from the device first. '
-                        .'If the device is gone and the shift can no longer be closed, re-send with '
-                        .'force=true and a reason — the shift will be orphaned and the replacement '
-                        .'device will not project shifts or Z reports until it is resolved.',
-                    'open_shift_id' => $openShiftId,
-                ],
-            ], 409);
-        }
-
-        $reason = (string) $request->input('reason', '');
-
-        $terminal->update([
-            'hardware_identifier' => null,
-        ]);
 
         event(new TerminalReleased(
             terminalId: $terminal->id,
@@ -988,13 +1034,76 @@ final class TerminalController extends Controller
     }
 
     /**
-     * Generate a unique terminal code
+     * Generate a unique terminal code — LEDGER C-17(vii).
+     *
+     * Two defects, in the shape `ExpenseService::generateExpenseNumber()` and
+     * `GeneralLedgerService::takeTenantNumberingLock()` already fixed for
+     * document numbers:
+     *
+     * 1. A COUNT IS NOT A MAXIMUM. The old body was `count() + 1`. As soon as
+     *    the sequence has a hole — an admin-supplied code, a renamed till, a
+     *    terminal created at another location — `count + 1` lands on a code that
+     *    already exists and the INSERT dies on `pos_terminals_unique_code`
+     *    (tenant, company, location, code). That is a 500 on an ordinary "add a
+     *    terminal" click with no concurrency involved, and it is the collision
+     *    {@see isUniqueViolation} documents as "genuinely reachable". The next
+     *    code is now the maximum numeric suffix of the company's `POS…` codes
+     *    plus one; codes outside that shape (`CAISSE-A`) are skipped rather than
+     *    parsed as zero. Parsed in PHP because neither a portable SQL cast nor a
+     *    lexicographic MAX is correct here — 'POS99' sorts above 'POS100'.
+     *
+     * 2. TOCTOU. max+1 is still read-then-write: two concurrent creates read the
+     *    same maximum. The read is serialised by a transaction-scoped advisory
+     *    lock keyed on the COMPANY (the scope of the unique index), taken by
+     *    {@see takeTerminalCodeLock}. There was NO pre-existing advisory or row
+     *    lock on this path to hang it off: `claim()` locks nothing (its
+     *    guarantee is a conditional UPDATE on an EXISTING row) and `store()` ran
+     *    entirely outside a transaction. Both callers now allocate INSIDE the
+     *    create transaction, so the lock is held until the INSERT commits.
+     *
+     * `withTrashed()` is kept: an archived terminal still occupies its code
+     * (`pos_terminals_unique_code` has no `deleted_at` predicate).
      */
     private function generateTerminalCode(): string
     {
         $companyId = $this->companyContext->requireCompanyId();
-        $count = Terminal::withTrashed()->forCompany($companyId)->count();
 
-        return 'POS'.str_pad((string) ($count + 1), 2, '0', STR_PAD_LEFT);
+        $this->takeTerminalCodeLock($companyId);
+
+        /** @var list<string> $codes */
+        $codes = Terminal::withTrashed()
+            ->forCompany($companyId)
+            ->pluck('code')
+            ->all();
+
+        $highest = 0;
+        foreach ($codes as $code) {
+            if (preg_match('/^POS(\d+)$/', (string) $code, $matches) === 1) {
+                $highest = max($highest, (int) $matches[1]);
+            }
+        }
+
+        return 'POS'.str_pad((string) ($highest + 1), 2, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Serialise terminal-code allocation for one company.
+     *
+     * Transaction-scoped (released at commit); outside an explicit transaction
+     * it degrades to a harmless per-statement no-op, which is why both callers
+     * allocate inside `DB::transaction`. String-namespaced so it cannot alias
+     * any bare-uuid key. No-op on non-pgsql drivers, like its two siblings in
+     * Expense and Accounting.
+     */
+    private function takeTerminalCodeLock(string $companyId): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return;
+        }
+
+        DB::statement(
+            'SELECT pg_advisory_xact_lock(hashtextextended(?, 0))',
+            ["pos_terminal_code:{$companyId}"],
+        );
     }
 }

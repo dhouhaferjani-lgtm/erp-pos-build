@@ -307,23 +307,23 @@ final class TerminalClaimHardeningTest extends TestCase
      * A unique violation on a DIFFERENT constraint must NOT be reported as
      * `DEVICE_ALREADY_BOUND`.
      *
-     * `generateTerminalCode()` derives the next code from a `count()`, so a
-     * `pos_terminals_unique_code` collision is genuinely reachable — the
-     * 2026-08-23 sweep records that TOCTOU separately and this lane does not fix
-     * it. What this lane must not do is MIS-ATTRIBUTE it: telling an operator
-     * "release your other terminal" when the real cause is a duplicate code
-     * sends them to fix something unrelated. The assertion of value is that it
-     * is not a 409.
+     * HONEST PIN REWRITE — LEDGER C-17(vii). This case used to assert
+     * `>= 500`, because `generateTerminalCode()` derived the next code from a
+     * `count()` and therefore collided with this fixture's POS02 on
+     * `pos_terminals_unique_code`; the point being made was only that the 500 is
+     * not MIS-REPORTED as a 409 "release your other terminal". C-17(vii) makes
+     * the allocator max+1, so that collision is no longer reachable from this
+     * path at all and the old assertion pinned a defect. What survives is the
+     * behaviour that mattered: an unbound device provisioning at a location
+     * whose code sequence has a hole is not a device-binding conflict — it is a
+     * successful provision on the next FREE code.
      *
-     * The exact 5xx is deliberately NOT pinned (tenancy gate r1 finding 8):
-     * `generateTerminalCode()`'s count()-derived TOCTOU is an open follow-up
-     * from the 2026-08-23 sweep, and whoever finally fixes it must not be handed
-     * a red test in a file about device binding.
+     * `isUniqueViolation()`'s discrimination itself is still exercised by
+     * {@see test_request_terminal_refuses_a_hardware_identifier_that_is_already_bound}
+     * above, which is the arm that must answer 409.
      */
     public function test_a_code_collision_is_not_mis_reported_as_a_device_binding_collision(): void
     {
-        // One terminal exists, so `generateTerminalCode()` will produce POS02 —
-        // which this fixture has already taken at the same location.
         $this->claimableTerminal(['code' => 'POS02']);
 
         $response = $this->postJson('/api/v1/pos/terminals/request', [
@@ -333,7 +333,12 @@ final class TerminalClaimHardeningTest extends TestCase
         ]);
 
         $this->assertNotSame(409, $response->getStatusCode());
-        $this->assertGreaterThanOrEqual(500, $response->getStatusCode());
+        $this->assertLessThan(
+            500,
+            $response->getStatusCode(),
+            'A hole in the code sequence must no longer 500 the provisioning path. Body: '.$response->getContent(),
+        );
+        $response->assertJsonPath('data.code', 'POS03');
     }
 
     public function test_request_terminal_still_provisions_for_an_unbound_device(): void
@@ -677,6 +682,150 @@ final class TerminalClaimHardeningTest extends TestCase
      * Projects the shape a device's SESSION_OPEN leaves behind: an OPEN
      * `pos_shifts` row on the terminal.
      */
+    // ----------------------------------------- code allocation + release lock
+
+    /**
+     * LEDGER C-17(vii) — `generateTerminalCode()` derived the next code from
+     * `Terminal::withTrashed()->forCompany($id)->count()`. A count is not a
+     * maximum: as soon as the code sequence has a HOLE (an admin-supplied code,
+     * a renamed till), `count + 1` lands on a code that already exists and the
+     * INSERT dies on `pos_terminals_unique_code` — a 500 on a perfectly ordinary
+     * "add a terminal" click, with no concurrency involved at all.
+     *
+     * Fixture: POS01 and POS03 exist at the fixture location. count() = 2 =>
+     * "POS03" (collision). max + 1 => "POS04".
+     */
+    public function test_auto_generated_terminal_code_is_max_plus_one_not_count_plus_one(): void
+    {
+        $this->claimableTerminal(['code' => 'POS01']);
+        $this->claimableTerminal(['code' => 'POS03']);
+
+        $response = $this->postJson('/api/v1/pos/terminals', [
+            'location_id' => $this->location->id,
+            'name' => 'Fourth till',
+        ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('data.code', 'POS04');
+    }
+
+    /**
+     * A non-numeric or foreign code must not derail the allocator — it is
+     * skipped, not parsed as zero.
+     */
+    public function test_auto_generated_terminal_code_ignores_codes_outside_the_pos_sequence(): void
+    {
+        $this->claimableTerminal(['code' => 'POS07']);
+        $this->claimableTerminal(['code' => 'CAISSE-A']);
+
+        $this->postJson('/api/v1/pos/terminals', [
+            'location_id' => $this->location->id,
+            'name' => 'Next till',
+        ])->assertStatus(201)->assertJsonPath('data.code', 'POS08');
+    }
+
+    /**
+     * LEDGER C-17(vii), the TOCTOU half. max+1 alone is still read-then-write:
+     * two concurrent creates read the same maximum and race to the same code.
+     * The read is now serialised by a transaction-scoped advisory lock keyed on
+     * the company — the shape `ExpenseService::generateExpenseNumber()` and
+     * `GeneralLedgerService::takeTenantNumberingLock()` already use — and the
+     * allocation now happens INSIDE the create transaction, so the lock is held
+     * until the INSERT commits.
+     *
+     * PostgreSQL only: `pg_advisory_xact_lock` does not exist on SQLite (the
+     * helper is a no-op there, like its two siblings).
+     */
+    public function test_terminal_code_allocation_takes_the_company_advisory_lock_before_the_insert(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('pg_advisory_xact_lock is PostgreSQL-only; the helper no-ops on SQLite.');
+        }
+
+        /** @var list<string> $statements */
+        $statements = [];
+        DB::listen(function (QueryExecuted $query) use (&$statements): void {
+            $statements[] = strtolower($query->sql);
+        });
+
+        $this->postJson('/api/v1/pos/terminals', [
+            'location_id' => $this->location->id,
+            'name' => 'Locked till',
+        ])->assertStatus(201);
+
+        $lockAt = null;
+        $insertAt = null;
+        foreach ($statements as $i => $sql) {
+            if ($lockAt === null && str_contains($sql, 'pg_advisory_xact_lock')) {
+                $lockAt = $i;
+            }
+            if ($insertAt === null && str_contains($sql, 'insert into "pos_terminals"')) {
+                $insertAt = $i;
+            }
+        }
+
+        $this->assertNotNull($lockAt, 'Terminal-code allocation must take the per-company advisory lock.');
+        $this->assertNotNull($insertAt, 'The create never inserted — the trace point moved.');
+        $this->assertLessThan(
+            $insertAt,
+            $lockAt,
+            'The advisory lock must be taken BEFORE the INSERT, inside the same transaction.',
+        );
+    }
+
+    /**
+     * LEDGER C-17(viii) — `release()`'s open-shift probe was check-then-act with
+     * no lock at all: it read `pos_shifts` for an OPEN row, then wrote
+     * `hardware_identifier = NULL` outside any transaction. The probe now runs
+     * INSIDE a transaction, after `lockForUpdate()` on the terminal row, and the
+     * clearing write happens on that same locked instance.
+     *
+     * PostgreSQL only for the SQL-text half: `SQLiteGrammar::compileLock()`
+     * returns '', so `FOR UPDATE` is compiled away and the ordering could never
+     * be observed on the SQLite leg.
+     */
+    public function test_release_probes_for_an_open_shift_under_the_terminal_row_lock(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('FOR UPDATE is compiled away by SQLiteGrammar::compileLock().');
+        }
+
+        $terminal = $this->claimableTerminal(['hardware_identifier' => 'HW-RELEASE-LOCK']);
+
+        /** @var list<string> $statements */
+        $statements = [];
+        DB::listen(function (QueryExecuted $query) use (&$statements): void {
+            $statements[] = strtolower($query->sql);
+        });
+
+        $this->postJson("/api/v1/pos/terminals/{$terminal->id}/release", [
+            'reason' => 'device replaced',
+        ])->assertStatus(200);
+
+        $lockAt = null;
+        $probeAt = null;
+        $updateAt = null;
+        foreach ($statements as $i => $sql) {
+            if ($lockAt === null && str_contains($sql, 'from "pos_terminals"') && str_contains($sql, 'for update')) {
+                $lockAt = $i;
+            }
+            if ($probeAt === null && str_contains($sql, 'from "pos_shifts"') && str_contains($sql, 'status')) {
+                $probeAt = $i;
+            }
+            if ($updateAt === null && str_contains($sql, 'update "pos_terminals"')) {
+                $updateAt = $i;
+            }
+        }
+
+        $this->assertNotNull($lockAt, 'release() must re-read the terminal row FOR UPDATE.');
+        $this->assertNotNull($probeAt, 'The open-shift probe never ran — the trace point moved.');
+        $this->assertNotNull($updateAt, 'release() never cleared the binding.');
+        $this->assertLessThan($probeAt, $lockAt, 'The open-shift probe must run AFTER the row lock.');
+        $this->assertLessThan($updateAt, $lockAt, 'The clearing write must happen under the row lock.');
+
+        $this->assertNull($terminal->fresh()?->hardware_identifier);
+    }
+
     // ------------------------------------------------------ zChainState()
 
     /**
