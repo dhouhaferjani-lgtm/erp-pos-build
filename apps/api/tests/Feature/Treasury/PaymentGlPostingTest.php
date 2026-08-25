@@ -29,7 +29,9 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
+use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
@@ -276,6 +278,48 @@ class PaymentGlPostingTest extends TestCase
 
         $this->assertNotNull($entry, 'Supplier payment must create a journal entry.');
         $this->assertSame(JournalEntryStatus::Posted, $entry->status);
+
+        // W4R2-2 — the row must be TYPED as the supplier payment it is.
+        //
+        // `store()` used to choose the type from allocation-emptiness alone
+        // (`empty($adjustedAllocations) ? Advance : DocumentPayment`), and a
+        // supplier payment always carries allocations (`:803` refuses one that
+        // exceeds `$totalAllocated`), so it always landed on `DocumentPayment`
+        // — whose `isIncoming()` is `true`. The GL above was already right
+        // (Dr 401 / Cr bank); it was the TYPE that told the dashboard the money
+        // had come in.
+        $payment = Payment::query()->findOrFail($paymentId);
+        $this->assertSame(PaymentType::SupplierPayment, $payment->payment_type);
+        $this->assertFalse(
+            $payment->payment_type->isIncoming(),
+            'A supplier payment moves money OUT; it must never satisfy the "payments received" predicate.',
+        );
+        $this->assertTrue($payment->payment_type->isOutgoing());
+
+        // W4R2-2 backfill — the same row, re-tainted to its legacy shape, must be
+        // recovered by the data migration FROM THE LEDGER, not from a heuristic.
+        // Using the real posted GL this test just produced is the point: the
+        // migration's predicate is "has a POSTED `supplier_payment` entry naming
+        // this payment, with a debit on the 401 account", and that is exactly what
+        // sits in the DB right now.
+        DB::table('payments')->where('id', $paymentId)->update(['payment_type' => 'document_payment']);
+
+        $backfill = require base_path(
+            'database/migrations/tenant/2026_08_25_150100_retype_supplier_and_pos_refund_payments.php'
+        );
+        $backfill->up();
+
+        $this->assertSame(
+            PaymentType::SupplierPayment,
+            Payment::query()->findOrFail($paymentId)->payment_type,
+        );
+
+        // Idempotent: a second run matches zero rows and changes nothing.
+        $backfill->up();
+        $this->assertSame(
+            PaymentType::SupplierPayment,
+            Payment::query()->findOrFail($paymentId)->payment_type,
+        );
 
         $supplier->refresh();
         $this->assertSame('0.000', $supplier->payable_balance);

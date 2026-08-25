@@ -29,6 +29,7 @@ use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
+use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentInstrument;
@@ -361,6 +362,77 @@ final class PosBridgeInstrumentRefundTest extends TestCase
         }
         $movementRepository = PaymentRepository::query()->findOrFail($movementRepositoryId);
         $this->assertSame('90.000', (string) $movementRepository->balance);
+    }
+
+    /**
+     * W4R2-2 — the refund leg must not carry an `isIncoming() === true` type.
+     *
+     * Before the fix the bridge stamped `PaymentType::POS` on EVERY leg it
+     * wrote, refund receipts included, with a positive amount. `POS->isIncoming()`
+     * is `true`, so `DashboardController`'s "Payments Received" tile — which
+     * filters on exactly that predicate — counted every refund as money that had
+     * come IN. On the campaign tenant two refunds (42.800 + 85.600) were added to
+     * a 452.000 sale instead of being left out of it.
+     *
+     * The arrangement deposits the original instrument first so the refund takes
+     * the STANDARD CASH REVERSAL path (the same one
+     * `test_refund_after_remittance_uses_standard_cash_reversal_and_one_alert`
+     * pins), which is the path that actually writes a refund Payment row.
+     */
+    public function test_pos_refund_leg_is_typed_pos_refund_and_is_not_incoming(): void
+    {
+        [$refundEvent, $saleEvent] = $this->projectedRefundReceipt('10.00');
+        $bridge = $this->app->make(TreasuryReceiptBridge::class);
+        $bridge->apply($saleEvent);
+
+        $instrument = PaymentInstrument::query()
+            ->where('idempotency_key', "fiscal_event:{$saleEvent->id}:instrument:0")
+            ->sole();
+        $this->app->make(InstrumentLifecycleService::class)->deposit(
+            $instrument->id,
+            $this->bankRepositoryId,
+            $this->operatorId,
+        );
+
+        $bridge->apply($refundEvent);
+
+        $sale = Payment::query()->where('fiscal_event_id', $saleEvent->id)->sole();
+        $refund = Payment::query()->where('fiscal_event_id', $refundEvent->id)->sole();
+
+        // The SALE leg is unchanged — this fix must not move money the other way.
+        $this->assertSame(PaymentType::POS, $sale->payment_type);
+        $this->assertTrue($sale->payment_type->isIncoming());
+
+        $this->assertSame(PaymentType::POSRefund, $refund->payment_type);
+        $this->assertFalse(
+            $refund->payment_type->isIncoming(),
+            'A POS refund hands cash back; it must never satisfy the "payments received" predicate.',
+        );
+        $this->assertTrue($refund->payment_type->isOutgoing());
+
+        // The amount stays POSITIVE — the direction lives in the type, not the
+        // sign. Pinned so a later "fix" does not flip it and double-count.
+        $this->assertSame(1, bccomp((string) $refund->amount, '0', 3));
+
+        // W4R2-2 backfill — re-taint both legs to the legacy shape and let the
+        // data migration separate them USING THE JOURNAL ENTRY the bridge linked.
+        // The sale leg is the negative control: it must survive untouched.
+        DB::table('payments')
+            ->whereIn('id', [$sale->id, $refund->id])
+            ->update(['payment_type' => 'pos']);
+
+        $backfill = require base_path(
+            'database/migrations/tenant/2026_08_25_150100_retype_supplier_and_pos_refund_payments.php'
+        );
+        $backfill->up();
+
+        $this->assertSame(PaymentType::POSRefund, $refund->fresh()->payment_type);
+        $this->assertSame(PaymentType::POS, $sale->fresh()->payment_type);
+
+        // Idempotent.
+        $backfill->up();
+        $this->assertSame(PaymentType::POSRefund, $refund->fresh()->payment_type);
+        $this->assertSame(PaymentType::POS, $sale->fresh()->payment_type);
     }
 
     public function test_ambiguous_received_candidates_are_not_cancelled_and_take_the_alert_cash_path(): void
