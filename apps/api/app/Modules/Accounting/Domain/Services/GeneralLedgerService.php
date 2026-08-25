@@ -5652,8 +5652,13 @@ final class GeneralLedgerService
      *    scan. The pre-existing per-COMPANY key is KEPT and taken second: the hash
      *    chain and `chain_sequence` are per company and {@see sealAndPersistEntry}
      *    holds exactly that key. **The invariant, enforced at BOTH sites and
-     *    nowhere else: every path that takes the company chain key takes the
-     *    tenant numbering key first.** {@see takeTenantNumberingLock} is the single
+     *    nowhere else: every path that MINTS or SEALS a journal entry takes the
+     *    tenant numbering key before the company chain key.** Two callers take the
+     *    bare company key without ever minting or sealing in that transaction
+     *    (`AccountingService`, `TreasuryMovementService::transfer()` — the latter
+     *    is safe only because `RepositoryTransferService` mints the JE BEFORE
+     *    calling it; gate r2 F-8); a future caller that takes the company key and
+     *    then mints must go through this helper first. {@see takeTenantNumberingLock} is the single
      *    place the key literal lives, and `sealAndPersistEntry` calls it too — it
      *    must, because it also runs for entries numbered in an EARLIER transaction
      *    (the `$existing`-Draft replay branches), which mint nothing and would
