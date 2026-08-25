@@ -60,6 +60,8 @@
 
 **RULED 2026-08-25 (owner): count-correction GL posting — flip `inventory.count_correction_gl_posting_enabled` to true (seeded default) when W4-6 lands; the expert-comptable reviews the account choice (6586/7586) later at onboarding. Supersedes the OQ-12/H-5 deploy-time blocker. Brief `docs/sessions/session-A-2026-08-24/BRIEF-P1-count-correction-gl-default.md`.**
 
+**RULED 2026-08-25 (owner) — OQ-74 + STANDING RULE:** AP historical openings are ALLOWED as supplier-typed documents now that W4-3 books them correctly (Session C's provenance columns remain program work). General rule: *anything that is standard ERP logic — the way things should work — is applied as soon as it is implemented; no fail-safe refusal holds back a correctly built standard flow.* Sessions B/C: apply to pending fail-safe defaults.
+
 ## B. Asks — need your ruling (from the first-client onboarding audit)
 
 Full audit evidence lives in the session transcript; gaps are ranked G1–G13. The asks:
