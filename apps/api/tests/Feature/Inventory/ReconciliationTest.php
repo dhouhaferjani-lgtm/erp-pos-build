@@ -699,9 +699,24 @@ class ReconciliationTest extends TestCase
             'created_by_user_id' => $this->adminUser->id,
         ]);
 
-        // TWO pending lines, so the plural arm is the one under test.
+        // TWO pending lines, so the plural arm is the one under test. They need
+        // DISTINCT products: `idx_counting_item_unique` (PostgreSQL) is on
+        // (counting, product, location, variant), so two lines for the same
+        // product are a 23505 — a SQLite-only green would hide that.
         $this->createCountingItem($counting, '100.0000');
-        $this->createCountingItem($counting, '50.0000');
+        InventoryCountingItem::create([
+            'counting_id' => $counting->id,
+            'product_id' => Product::create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'sku' => 'PROD-UNRESOLVED-2',
+                'name' => 'Second unresolved product',
+                'type' => ProductType::Part,
+                'is_active' => true,
+            ])->id,
+            'location_id' => $this->warehouse->id,
+            'theoretical_qty' => '50.0000',
+        ]);
 
         $response = $this->actingAs($this->adminUser)
             ->withHeaders(['Accept-Language' => 'fr'])
