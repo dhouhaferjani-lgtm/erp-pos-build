@@ -20,6 +20,7 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -139,8 +140,8 @@ final class PosCoreReceiptProjectionVariantStockTest extends TestCase
         $this->assertSame('10.0000', $productLevel->quantity);
 
         // Exactly one POS-sale stock movement, carrying the variant_id.
-        $this->assertSame(1, DB::table('stock_movements')->where('reason', 'pos_sale')->count());
-        $movement = DB::table('stock_movements')->where('reason', 'pos_sale')->first();
+        $this->assertSame(1, $this->myStockMovements()->where('reason', 'pos_sale')->count());
+        $movement = $this->myStockMovements()->where('reason', 'pos_sale')->first();
         $this->assertNotNull($movement);
         $this->assertSame($variant->id, $movement->variant_id);
         $this->assertSame($product->id, $movement->product_id);
@@ -169,8 +170,8 @@ final class PosCoreReceiptProjectionVariantStockTest extends TestCase
         $variantLevel->refresh();
         $this->assertSame('10.0000', $variantLevel->quantity);
 
-        $this->assertSame(1, DB::table('stock_movements')->where('reason', 'pos_sale')->count());
-        $movement = DB::table('stock_movements')->where('reason', 'pos_sale')->first();
+        $this->assertSame(1, $this->myStockMovements()->where('reason', 'pos_sale')->count());
+        $movement = $this->myStockMovements()->where('reason', 'pos_sale')->first();
         $this->assertNotNull($movement);
         $this->assertNull($movement->variant_id);
         $this->assertSame($product->id, $movement->product_id);
@@ -208,12 +209,12 @@ final class PosCoreReceiptProjectionVariantStockTest extends TestCase
         $this->assertSame('5.0000', $productLevel->quantity);
 
         // No stock movement at all — there was no variant row to decrement.
-        $this->assertSame(0, DB::table('stock_movements')->where('reason', 'pos_sale')->count());
+        $this->assertSame(0, $this->myStockMovements()->where('reason', 'pos_sale')->count());
 
         // The receipt still projects (stock is a best-effort downstream effect).
-        $this->assertSame(1, DB::table('pos_receipts')->count());
+        $this->assertSame(1, $this->myReceipts()->count());
         $this->assertTrue(
-            (bool) DB::table('pos_receipt_lines')->value('stock_movement_expected'),
+            (bool) $this->myReceiptChildren('pos_receipt_lines')->value('stock_movement_expected'),
             'A missing variant grain is an anomaly that D-f must continue to report.',
         );
 
@@ -243,7 +244,7 @@ final class PosCoreReceiptProjectionVariantStockTest extends TestCase
 
         $variantLevel->refresh();
         $this->assertSame('8.0000', $variantLevel->quantity);
-        $this->assertSame(1, DB::table('stock_movements')->where('reason', 'pos_sale')->count());
+        $this->assertSame(1, $this->myStockMovements()->where('reason', 'pos_sale')->count());
 
         // Replay — the fiscal_event_id idempotency guard short-circuits before
         // any stock write. No second decrement, no duplicate movement.
@@ -252,8 +253,8 @@ final class PosCoreReceiptProjectionVariantStockTest extends TestCase
 
         $variantLevel->refresh();
         $this->assertSame('8.0000', $variantLevel->quantity, 'replay must not double-decrement');
-        $this->assertSame(1, DB::table('stock_movements')->where('reason', 'pos_sale')->count());
-        $this->assertSame(1, DB::table('pos_receipts')->count());
+        $this->assertSame(1, $this->myStockMovements()->where('reason', 'pos_sale')->count());
+        $this->assertSame(1, $this->myReceipts()->count());
     }
 
     // =================================================================
@@ -279,7 +280,7 @@ final class PosCoreReceiptProjectionVariantStockTest extends TestCase
         $variantLevel->refresh();
         $this->assertSame('9.7001', $variantLevel->quantity);
 
-        $movement = DB::table('stock_movements')->where('reason', 'pos_sale')->first();
+        $movement = $this->myStockMovements()->where('reason', 'pos_sale')->first();
         $this->assertNotNull($movement);
         $this->assertSame('10.0001', (string) $movement->quantity_before);
         $this->assertSame('9.7001', (string) $movement->quantity_after);
@@ -489,5 +490,47 @@ final class PosCoreReceiptProjectionVariantStockTest extends TestCase
         ksort($value);
 
         return array_map(fn ($v) => $this->sortRecursive($v), $value);
+    }
+
+    // =================================================================
+    // Helpers — scoped reads (LEDGER C-7)
+    // =================================================================
+
+    /**
+     * `stock_movements` rows created by THIS test.
+     *
+     * `setUp()` mints a fresh `Tenant` per test, so a `tenant_id` filter is an
+     * exact "the rows I created" scope. Without it these reads also see the
+     * rows COMMITTED by `PosCoreReceiptProjectionRefundDispositionStockTest`,
+     * which overrides `connectionsToTransact()` to `[]` (it has to: it asserts
+     * real transaction-rollback semantics, which a wrapping RefreshDatabase
+     * transaction would mask) and therefore leaves its rows behind for the rest
+     * of the PHP process. That bleed is why this class was green standalone and
+     * red in any multi-class run — the same root cause and the same fix shape
+     * the C-7 lane applied to `PosCoreReceiptProjectionTest`.
+     */
+    private function myStockMovements(): Builder
+    {
+        return DB::table('stock_movements')->where('tenant_id', $this->tenantId);
+    }
+
+    /** `pos_receipts` rows created by THIS test. */
+    private function myReceipts(): Builder
+    {
+        return DB::table('pos_receipts')->where('tenant_id', $this->tenantId);
+    }
+
+    /**
+     * Child rows of THIS test's receipts. `pos_receipt_lines`,
+     * `pos_receipt_payments` and `pos_receipt_vat_details` carry no tenant
+     * column, so the scope walks the `receipt_id` FK back to the
+     * tenant-scoped parent.
+     */
+    private function myReceiptChildren(string $table): Builder
+    {
+        return DB::table($table)->whereIn(
+            'receipt_id',
+            DB::table('pos_receipts')->select('id')->where('tenant_id', $this->tenantId),
+        );
     }
 }
