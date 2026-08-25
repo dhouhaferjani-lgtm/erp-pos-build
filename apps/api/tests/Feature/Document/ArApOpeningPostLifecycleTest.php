@@ -128,6 +128,34 @@ final class ArApOpeningPostLifecycleTest extends TestCase
             'is_active' => true,
             'is_system' => true,
         ]);
+
+        // W4-4: an AR/AP opening now posts its own cutover entry against the
+        // partner control account, so the fixture must carry the two control
+        // purposes. On a real tenant these are seeded by provisioning
+        // (ProvisioningRequiredPurposesV1); when they are genuinely absent
+        // `Account::findByPurposeOrFail()` fails the whole batch closed with an
+        // operator-facing message rather than posting a partial opening.
+        Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '4110',
+            'name' => 'Customer Receivable',
+            'type' => AccountType::Asset,
+            'system_purpose' => SystemAccountPurpose::CustomerReceivable,
+            'is_active' => true,
+            'is_system' => true,
+        ]);
+
+        Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '4010',
+            'name' => 'Supplier Payable',
+            'type' => AccountType::Liability,
+            'system_purpose' => SystemAccountPurpose::SupplierPayable,
+            'is_active' => true,
+            'is_system' => true,
+        ]);
     }
 
     public function test_post_batch_completes_and_marks_rows_posted(): void

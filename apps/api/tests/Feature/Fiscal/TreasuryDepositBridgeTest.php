@@ -23,6 +23,7 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Application\Services\VirtualAdminFiscalEventService;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\DTOs\ApplyPaymentAllocationCommand;
+use App\Modules\Treasury\Application\Projections\Concerns\HandlesMaturityTenderLeg;
 use App\Modules\Treasury\Application\Projections\TreasuryDepositBridge;
 use App\Modules\Treasury\Application\Services\PaymentAllocationService;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
@@ -301,6 +302,15 @@ final class TreasuryDepositBridgeTest extends TestCase
             canonicalReader: new CanonicalPayloadReader,
             allocationService: $this->allocationService,
             movementService: $this->app->make(TreasuryMovementServiceInterface::class),
+            // INHERITED-RED REPAIR — REVIVED, NOT NEW. This helper still passed
+            // 3 arguments after `HandlesMaturityTenderLeg` became a 4th
+            // constructor dependency of TreasuryDepositBridge, so every test in
+            // this file that builds the bridge died with `ArgumentCountError`
+            // and had been proving nothing. Same repair as
+            // TreasuryAccountPaymentBridgeTest::bridge() (G-3 wave). Resolved
+            // from the container rather than hand-built so the concern keeps
+            // its own wiring. No production behaviour change.
+            maturityLegHandler: $this->app->make(HandlesMaturityTenderLeg::class),
         );
     }
 

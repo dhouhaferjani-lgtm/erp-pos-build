@@ -25,6 +25,12 @@ final class ResultWorkbookTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * Stable, valid UUID used as the imported product's entity id. `import_rows.imported_entity_id`
+     * is a `uuid` column on PostgreSQL, so the fixture value must parse as one.
+     */
+    private const IMPORTED_PRODUCT_ID = '0192f3a1-4c7b-7d2e-8f10-a1b2c3d4e5f6';
+
     private Tenant $tenant;
 
     private Company $company;
@@ -84,7 +90,10 @@ final class ResultWorkbookTest extends TestCase
         $importedRow->update([
             'is_valid' => true,
             'is_imported' => true,
-            'imported_entity_id' => 'product-1',
+            // C-10: this column is `uuid` in PostgreSQL — a non-UUID literal
+            // ('product-1') is silently accepted by SQLite but raises 22P02 on
+            // PG. Bind a real UUID so the class is driver-agnostic.
+            'imported_entity_id' => self::IMPORTED_PRODUCT_ID,
             // Execution writes internal bookkeeping (arrays) into data — the
             // workbook must skip underscore-prefixed keys, not crash on them.
             'data' => array_merge($importedRow->data, ['_results' => ['opening_stock' => 'ok']]),

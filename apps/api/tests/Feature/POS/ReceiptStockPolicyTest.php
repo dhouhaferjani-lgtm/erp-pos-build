@@ -342,8 +342,18 @@ final class ReceiptStockPolicyTest extends TestCase
             // expected
         }
 
-        $this->assertSame(0, Receipt::query()->count(), 'no receipt may survive the rollback');
-        $this->assertSame(0, StockMovement::query()->count());
+        // LEDGER C-7: scope to THIS test's tenant. Unscoped these two reads also
+        // see the rows COMMITTED by
+        // `PosCoreReceiptProjectionRefundDispositionStockTest` (it disables
+        // RefreshDatabase transactions to assert real rollback semantics), so
+        // the class was green standalone and red in any multi-class run. Every
+        // other read in this class is already scoped by a per-test product_id.
+        $this->assertSame(
+            0,
+            Receipt::query()->where('tenant_id', $this->tenant->id)->count(),
+            'no receipt may survive the rollback',
+        );
+        $this->assertSame(0, StockMovement::query()->where('tenant_id', $this->tenant->id)->count());
         $this->assertSame('10.0000', $this->productStock($leaf->id)->quantity);
         $this->assertSame($sequenceBefore, $this->terminal->refresh()->current_sequence);
     }

@@ -33,7 +33,13 @@ class TenantFactory extends Factory
             'first_name' => $firstName,
             'last_name' => $lastName,
             'preferred_locale' => 'fr',
-            'slug' => Str::slug($this->faker->unique()->company()),
+            // LEDGER C-7 (residual R-3). `faker->unique()` only de-duplicates the
+            // company NAME; `Str::slug()` then collapses distinct names onto the
+            // same slug ("Smith & Sons" and "Smith and Sons" both become
+            // "smith-sons"), which trips `tenants_slug_unique` nondeterministically
+            // in long multi-class runs. Append a random discriminator so the slug
+            // is unique by construction while staying human-readable.
+            'slug' => Str::slug($this->faker->company()).'-'.Str::lower(Str::random(8)),
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
             'email' => $this->faker->unique()->safeEmail(),

@@ -480,7 +480,7 @@ final class AdvanceReversalGlShapeTest extends TestCase
             'fixture: shape X is an Advance-typed line whose GL credits AR',
         );
         self::assertSame(
-            '0',
+            '0.000',
             $this->creditByPurpose($advanceTyped->id, 'advance', SystemAccountPurpose::CustomerAdvance),
             'fixture: shape X has NO advance-backed GL',
         );
@@ -603,7 +603,7 @@ final class AdvanceReversalGlShapeTest extends TestCase
             'fixture: order portion + excess both credit CustomerAdvance',
         );
         self::assertSame(
-            '0',
+            '0.000',
             $this->creditByPurpose($payment->id, 'customer_payment', SystemAccountPurpose::CustomerReceivable),
             'fixture: shape Y has ZERO AR-backed GL',
         );
@@ -1141,7 +1141,7 @@ final class AdvanceReversalGlShapeTest extends TestCase
         $instrument->save();
 
         self::assertSame(
-            '0',
+            '0.000',
             $this->creditByPurpose($payment->id, 'customer_payment', SystemAccountPurpose::CustomerReceivable),
             'fixture: the partition really is empty',
         );
@@ -1410,7 +1410,7 @@ final class AdvanceReversalGlShapeTest extends TestCase
             $purpose = $row->getAttribute('purpose');
             /** @var string $total */
             $total = (string) $row->getAttribute('total');
-            $totals[$purpose] = $total;
+            $totals[$purpose] = self::normaliseDecimal($total);
         }
 
         return $totals;
@@ -1429,7 +1429,7 @@ final class AdvanceReversalGlShapeTest extends TestCase
             ->selectRaw('CAST(COALESCE(SUM(journal_lines.credit), 0) AS TEXT) as total')
             ->first();
 
-        return (string) ($row->total ?? '0');
+        return self::normaliseDecimal((string) ($row->total ?? '0'));
     }
 
     /**
@@ -1509,10 +1509,49 @@ final class AdvanceReversalGlShapeTest extends TestCase
         foreach ($rows as $row) {
             /** @var string $purpose */
             $purpose = $row->getAttribute('purpose');
-            $totals[$purpose] = (string) $row->getAttribute('total');
+            $totals[$purpose] = self::normaliseDecimal((string) $row->getAttribute('total'));
         }
 
         return $totals;
+    }
+
+    /**
+     * Normalise a driver-formatted aggregate into a fixed-scale decimal STRING.
+     *
+     * The SUM(...) aggregates in this class are read back with `CAST(... AS TEXT)`,
+     * and the two drivers disagree on the text they produce: PostgreSQL keeps the
+     * `numeric(N,3)` scale ('90.000'), while SQLite — which has no DECIMAL type and
+     * stores these columns with NUMERIC affinity — collapses the trailing zeros
+     * ('90'). String-equality on a driver-formatted decimal therefore made this
+     * whole class SQLite-red / PG-green with identical production behaviour.
+     *
+     * Round (half-up) at $scale with bcmath, then emit the canonical fixed-scale
+     * representation so both drivers land on the same string. Never uses floats.
+     */
+    private static function normaliseDecimal(string $value, int $scale = 3): string
+    {
+        $trimmed = trim($value);
+        if ($trimmed === '') {
+            $trimmed = '0';
+        }
+
+        $negative = str_starts_with($trimmed, '-');
+        $magnitude = ltrim($trimmed, '+-');
+        // Half-up rounding at $scale: add 5 at the (scale+1)-th place, then truncate.
+        $half = '0.'.str_repeat('0', $scale).'5';
+
+        // The regex pins the FORMAT (a plain decimal, no exponent); the two
+        // is_numeric() calls are what narrow both operands to `numeric-string`
+        // for bcmath. Anything else is surfaced as-is so the failure message
+        // shows the real driver value instead of a silent '0.000'.
+        if (! preg_match('/^\d+(\.\d+)?$/', $magnitude) || ! is_numeric($magnitude) || ! is_numeric($half)) {
+            return $trimmed;
+        }
+
+        $rounded = bcadd($magnitude, $half, $scale + 1);
+        $result = bcadd($rounded, '0', $scale);
+
+        return $negative && bccomp($result, '0', $scale) !== 0 ? '-'.$result : $result;
     }
 
     private function soleDebitLineForSource(

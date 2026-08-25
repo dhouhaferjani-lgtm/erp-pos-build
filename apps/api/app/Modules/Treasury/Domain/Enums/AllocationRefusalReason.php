@@ -93,6 +93,25 @@ enum AllocationRefusalReason: string
     case PayableNotSettleableHere = 'payable_not_settleable_here';
 
     /**
+     * W4-3 / gate r2 F-1 — the document's SIDE disagrees with its partner's ROLE:
+     * a customer-typed document owned by a supplier-only partner, or the mirror.
+     *
+     * The AR-vs-AP direction of a settlement is inferred from the document TYPE
+     * alone, so a type the partner cannot own makes that inference silently wrong —
+     * how a 500.000 TND payment to a supplier came to be recorded as money
+     * ARRIVING (`Dr bank / Cr 411`, repository movement IN, the 401 debt untouched).
+     *
+     * It exists as a REASON, not only as the typed 422 the HTTP entry points throw,
+     * because who chose the document decides what a refusal does. On an auto sweep
+     * the SERVER chose it, and this call runs inside two queued fiscal projections
+     * (`TreasuryAccountPaymentBridge`, `TreasuryDepositBridge`, both `FIFO`) where
+     * throwing dead-letters a SEALED device fiscal fact after five retries. There
+     * the mismatch has to skip the document and say why — like every other reason
+     * in this enum.
+     */
+    case PartnerRoleMismatch = 'partner_role_mismatch';
+
+    /**
      * The i18n key that renders this reason to an operator. Namespaced so the
      * whole family can be located and translated as one block.
      */

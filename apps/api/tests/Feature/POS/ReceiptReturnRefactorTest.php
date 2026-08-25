@@ -26,6 +26,7 @@ use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Voucher\Domain\VoucherLedger;
+use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -256,9 +257,11 @@ final class ReceiptReturnRefactorTest extends TestCase
         ]);
 
         // Original receipt posted 2 days ago → out of window
-        $saleReceipt = $this->createSaleReceipt();
-        $saleReceipt->posted_at = Carbon::now()->subDays(2);
-        $saleReceipt->save();
+        // `posted_at` must be seeded at INSERT: the PostgreSQL
+        // `prevent_receipt_modification()` trigger freezes the timestamp on a
+        // fiscalised receipt, so the previous back-date-then-save shape raised
+        // 23000 on PG while passing on SQLite (no trigger there).
+        $saleReceipt = $this->createSaleReceipt(postedAt: Carbon::now()->subDays(2));
 
         $line = $this->createLine($saleReceipt, '3.000', '30.000');
 
@@ -519,11 +522,33 @@ final class ReceiptReturnRefactorTest extends TestCase
         $this->company->save();
     }
 
+    /**
+     * A fiscalised SALE header whose totals SATISFY the PostgreSQL
+     * `pos_receipts_totals` CHECK — `total = subtotal + tax_amount - discount_amount`
+     * (`2026_03_09_200000_add_return_fields_to_pos_receipts.php:42`).
+     *
+     * The old fixture hardcoded `tax_amount = '19.000'` regardless of the
+     * subtotal/total the caller asked for, so every call that passed
+     * `total === $subtotal` (3/3, 100/100, 200/200) produced an arithmetically
+     * impossible header. SQLite never creates that CHECK — the migration is
+     * pgsql-guarded — so the rows went in silently there and only PostgreSQL
+     * (production's driver) rejected them. Derive the tax so the identity holds
+     * for any caller: the default 100.000/119.000 still yields the same 19.000
+     * this fixture always intended.
+     *
+     * `postedAt` is accepted at CREATION time on purpose: `posted_at` is one of
+     * the fields frozen by the `prevent_receipt_modification()` trigger, so a
+     * sealed receipt cannot be back-dated with a follow-up UPDATE.
+     *
+     * @param  numeric-string  $subtotal
+     * @param  numeric-string  $total
+     */
     private function createSaleReceipt(
         string $subtotal = '100.000',
         string $total = '119.000',
+        ?CarbonInterface $postedAt = null,
     ): Receipt {
-        return Receipt::factory()->create([
+        $attributes = [
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'location_id' => $this->location->id,
@@ -531,11 +556,17 @@ final class ReceiptReturnRefactorTest extends TestCase
             'cashier_id' => $this->cashier->id,
             'receipt_type' => ReceiptType::Sale,
             'subtotal' => $subtotal,
-            'tax_amount' => '19.000',
+            'tax_amount' => bcsub($total, $subtotal, 3),
             'total' => $total,
             'currency' => 'EUR',
             'fiscal_status' => FiscalStatus::Fiscalized,
-        ]);
+        ];
+
+        if ($postedAt !== null) {
+            $attributes['posted_at'] = $postedAt;
+        }
+
+        return Receipt::factory()->create($attributes);
     }
 
     // =====================================================================

@@ -47,6 +47,7 @@ class AccountingOpeningService
 
     public function __construct(
         private readonly OpeningBalanceBatchService $batchService,
+        private readonly PartnerControlAccountResolver $controlAccounts,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly RepositoryOpeningBalanceSeederInterface $repositoryOpeningSeeder,
     ) {}
@@ -236,6 +237,17 @@ class AccountingOpeningService
 
             if ($account === null) {
                 $errors['account_code'] = ["Account '{$rawData['account_code']}' not found or inactive"];
+            } elseif (($controlBatch = $this->controlAccounts->batchLabelFor($account)) !== null) {
+                // W4-4: partner CONTROL accounts are sub-ledger territory and may
+                // not be stated here — see PartnerControlAccountResolver for why,
+                // and for the ancestor walk that stops the same restatement landing
+                // one account down (gate r1 I-4).
+                //
+                // Refused at validation, before anything posts, so the operator
+                // fixes the file rather than unwinding a locked batch. The same
+                // refusal runs again in postBatch(): rows that were already `Valid`
+                // before this shipped would otherwise post after it (gate r1 I-2).
+                $errors['account_code'] = [$this->controlAccounts->refusalMessage($account, $controlBatch)];
             } else {
                 $mappedData['account_id'] = $account->id;
                 $mappedData['account_code'] = $account->code;
@@ -699,6 +711,18 @@ class AccountingOpeningService
 
                 if (! is_array($mappedData) || ! isset($mappedData['account_id'])) {
                     continue;
+                }
+
+                // Gate r1 I-2: validation is not the last word. postBatch() posts
+                // whatever is already `Valid`, so a batch validated BEFORE the
+                // control-account rule shipped would post a 411/401 line AFTER it
+                // shipped and double the control account against the AR/AP openings.
+                // Re-assert on the row that is actually about to be written.
+                $postingAccount = Account::query()->whereKey($mappedData['account_id'])->first();
+
+                if ($postingAccount !== null
+                    && ($controlBatch = $this->controlAccounts->batchLabelFor($postingAccount)) !== null) {
+                    throw new RuntimeException($this->controlAccounts->refusalMessage($postingAccount, $controlBatch));
                 }
 
                 $debit = $mappedData['debit'] ?? '0';

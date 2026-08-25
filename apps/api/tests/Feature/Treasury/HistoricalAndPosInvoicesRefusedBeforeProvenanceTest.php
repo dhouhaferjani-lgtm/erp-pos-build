@@ -39,9 +39,23 @@ use Tests\TestCase;
  * GATE r1 / F-2 NARROWED THIS. The AR side of a historical opening is no longer
  * refused: `opening_balance_import_rows.row_type` + `mapped_entity_id` prove the
  * side today, so refusing a provable AR opening bought no safety and cost a
- * cutover its whole open-receivables ledger. What stays refused, and is what this
- * suite now pins, is the AP side and the side that cannot be proven.
- * `HistoricalOpeningSideSettlementTest` carries the admitted AR case.
+ * cutover its whole open-receivables ledger.
+ *
+ * OWNER RULING OQ-74, recorded `d0cfa624f` — **ALLOW**, and the AP family has left
+ * this suite entirely. The premise quoted above ("there is no column to tell the
+ * two apart yet") no longer holds: W4-3 mints an AP opening as a
+ * `DocumentType::SupplierInvoice` on its own `HIST-SINV` sequence with a posted
+ * `supplier_invoice` journal entry carrying `Cr 401` partner-tagged. The
+ * discriminator C-PROV0 was going to add already exists — it is the document TYPE,
+ * backed by a real payable in the ledger — so an AP opening is a properly built
+ * payable and settles `Dr 401 / Cr bank` through the supplier arm. Per the owner's
+ * standing rule, standard ERP logic applies as soon as it is implemented: a
+ * correctly built flow is not refused as a fail-safe.
+ *
+ * What this suite still pins is the side that cannot be PROVEN, plus the two POS
+ * families. `HistoricalOpeningSideSettlementTest` carries both admitted openings —
+ * AR collected on the receivable path, AP paid on the supplier path — and the
+ * refusals that still stand for an AP opening offered to an AR-direction route.
  *
  * The POS case is the mirror-image hazard: a POS account-charge invoice already
  * carries a 411 from its sealed fiscal event, so a payment on it is ALWAYS a
@@ -68,7 +82,6 @@ final class HistoricalAndPosInvoicesRefusedBeforeProvenanceTest extends TestCase
      */
     public static function provenanceFamilies(): iterable
     {
-        yield 'historical AP opening (the dangerous one: Cr 411 for a PAYABLE)' => ['ap_opening'];
         yield 'historical opening with no provable side' => ['unknown_side_opening'];
         yield 'POS account charge, confirmed' => ['pos_confirmed'];
         yield 'POS account charge, posted' => ['pos_posted'];
@@ -186,11 +199,6 @@ final class HistoricalAndPosInvoicesRefusedBeforeProvenanceTest extends TestCase
     private function mint(string $family): array
     {
         return match ($family) {
-            'ap_opening' => [
-                $this->historicalOpening(OpeningBatchType::ApOpenItems, $this->vendor),
-                $this->vendor,
-                'historical_opening_provenance',
-            ],
             'unknown_side_opening' => [
                 $this->openingWithoutProvableSide(),
                 $this->customer,

@@ -1304,6 +1304,8 @@ class CreditNoteService
             // allocated only once it is itself posted, and the source invoice can
             // be cancelled in that gap. Money against a withdrawn document.
             $this->allocationStateGuard->assertAllocatable($invoice);
+            // W4-3 / gate r1 I-1 — applying a credit note settles the receivable too.
+            $this->allocationStateGuard->assertDirectionMatchesPartner($invoice);
 
             $scale = $this->scaleFor($invoice);
             /** @var numeric-string $currentBalance */

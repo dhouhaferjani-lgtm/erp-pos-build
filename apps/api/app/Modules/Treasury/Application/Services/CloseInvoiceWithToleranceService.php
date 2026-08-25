@@ -67,6 +67,8 @@ final class CloseInvoiceWithToleranceService
             // a GL write-off and `DocumentStatus::Paid` — a withdrawn document
             // reappearing as collected revenue.
             $this->allocationStateGuard->assertAllocatable($invoice);
+            // W4-3 / gate r1 I-1 — a tolerance close writes off the receivable.
+            $this->allocationStateGuard->assertDirectionMatchesPartner($invoice);
 
             // Treasury gate IMPORTANT (W-6 D2 consumer sweep): this used to be
             // `$invoice->balance_due ?? '0'`. `outstandingBalance()` treats a

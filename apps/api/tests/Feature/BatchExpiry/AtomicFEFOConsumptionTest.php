@@ -45,6 +45,21 @@ class AtomicFEFOConsumptionTest extends TestCase
     {
         parent::setUp();
 
+        // DRIVER-AWARE (inherited red, 8-error BatchExpiry cluster). Every test
+        // in this class exercises
+        // `FEFOInventoryService::consumeBatchesAtomically()`, whose candidate
+        // SELECT is hand-written PostgreSQL (`FOR UPDATE OF ibs SKIP LOCKED`) —
+        // SQLite has no row-lock syntax at all and dies with
+        // `near "FOR": syntax error`, so these six cases were pure noise on the
+        // SQLite leg and proved nothing. The class is green on PostgreSQL and
+        // is listed in the `backend-test-pgsql` CI filter, which is where the
+        // primitive it covers actually runs.
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped(
+                'consumeBatchesAtomically() issues PostgreSQL-only `FOR UPDATE ... SKIP LOCKED` SQL.'
+            );
+        }
+
         $this->service = app(FEFOInventoryService::class);
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
