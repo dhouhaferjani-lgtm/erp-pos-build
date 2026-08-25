@@ -50,6 +50,7 @@ phpstan.neon.local
 *.tmp
 *.temp
 apps/api/.deptrac.cache
+/.deptrac.cache
 
 # Tauri auto-generated schemas
 apps/pos/src-tauri/gen/schemas/

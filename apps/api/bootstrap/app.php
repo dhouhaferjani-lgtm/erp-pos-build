@@ -954,15 +954,20 @@ return Application::configure(basePath: dirname(__DIR__))
         // ---------------------------------------------------------------------
         $exceptions->render(function (DocumentNotAllocatableException $e, Request $request) {
             if ($request->expectsJson() || $request->is('api/*')) {
+                // C-0a0 — the REASON is the actionable half of this refusal, and
+                // it is rendered through `lang/<locale>/treasury.php` so nothing
+                // user-facing is hardcoded (rule 11). `reason` stays in `details`
+                // as the machine-readable key the frontend may branch on.
                 return response()->json([
                     'error' => [
                         'code' => 'DOCUMENT_NOT_ALLOCATABLE',
-                        'message' => 'This document cannot receive a customer payment allocation in its current state.',
+                        'message' => __($e->reason->translationKey()),
                         'details' => [
                             'document_id' => $e->documentId,
                             'document_number' => $e->documentNumber,
                             'document_type' => $e->documentType->value,
                             'status' => $e->documentStatus->value,
+                            'reason' => $e->reason->value,
                         ],
                     ],
                 ], 422);

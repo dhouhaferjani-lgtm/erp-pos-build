@@ -7,6 +7,7 @@ namespace Tests\Feature\BatchExpiry;
 use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
+use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Product\Domain\Product;
@@ -150,5 +151,31 @@ final class EnsureDefaultBatchTest extends TestCase
 
         $this->assertNull($batch, 'zero target must not mint a lot');
         $this->assertSame(0, Batch::where('product_id', $this->product->id)->count());
+    }
+
+    /**
+     * Gate r4 R4-10 — `FEFOInventoryService` (Domain) duplicates
+     * `DEFAULT_BATCH_NUMBER` / `DEFAULT_SHELF_LIFE_DAYS` rather than importing
+     * them, because Domain must not depend on Application (deptrac
+     * ModuleDomain → ModuleApplication). Correct, but nothing pinned the two
+     * pairs equal, so a silent divergence would split the DEFAULT-lot vocabulary
+     * in half: the outbound/repair side would look for 'DEFAULT' while the inbound
+     * restore minted something else, and every return would create a second
+     * untracked lot.
+     */
+    public function test_the_domain_mirror_of_the_default_lot_constants_matches_the_application_source(): void
+    {
+        $mirror = new \ReflectionClass(FEFOInventoryService::class);
+
+        $this->assertSame(
+            BatchStockService::DEFAULT_BATCH_NUMBER,
+            $mirror->getConstant('DEFAULT_BATCH_NUMBER'),
+            'FEFOInventoryService mirrors this constant; the two must never diverge.',
+        );
+
+        $this->assertSame(
+            BatchStockService::DEFAULT_SHELF_LIFE_DAYS,
+            $mirror->getConstant('DEFAULT_SHELF_LIFE_DAYS'),
+        );
     }
 }

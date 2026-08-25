@@ -98,14 +98,121 @@ class StockReservationService implements InventoryReservationServiceInterface, R
             $notes,
             $batchId
         ): StockReservation {
+            /** @var numeric-string $quantity */
             $batchId = $batchId ?? $this->resolveDefaultBatchIdForImplicitReservation(
                 company: $company,
                 productId: $productId,
                 locationId: $locationId,
+                quantity: $quantity,
             );
 
-            // If batch_id provided, validate batch stock instead of aggregate stock
             /** @var numeric-string $quantity */
+
+            // ── ONE hold, computed BEFORE the branch (gate r1 CRITICAL 1) ──
+            //
+            // 🚨 Campaign W2-7 (oversell leg). `reserve()` writes the hold to the
+            // LOT (`inventory_batch_stock.reserved_quantity`) OR to the aggregate
+            // row, NEVER both — which is why F11 saw `stock_levels.reserved =
+            // 0.0000` right after a batch-tracked confirm. So each branch used to
+            // see only half the truth, and BOTH directions oversold:
+            //   lot-then-aggregate  reserve the whole lot, then the same quantity
+            //                       again — the fallback read `30 - 0 = 30`;
+            //   aggregate-then-lot  reserve 25 of 18+12 (no single lot covers, so
+            //                       the hold lands on the aggregate), then 12 —
+            //                       the 12-unit lot still read `12 - 0 = 12`.
+            //                       37 units reserved against 30 on hand.
+            // The second only became reachable once the FEFO resolver started
+            // returning null for a spill-over request, because before this lane the
+            // phantom DEFAULT lot absorbed every implicit reservation. Fixing one
+            // direction is not a fix: the tuple-level hold is ONE number and both
+            // branches must refuse against it.
+            //
+            // The truth for "how much is held" is the active reservation set — the
+            // very sum `StockLevel::recalculateReserved()` writes back into the
+            // column (StockLevel.php:196-206), so this is the codebase's own
+            // definition, not a new one. Take the LARGER of the two: the column can
+            // legitimately lead the sum under drift, and this guard must never read
+            // a smaller hold than either source already knows about.
+            //
+            // The `stock_levels` row is locked FIRST, before any batch-stock row —
+            // the same order `resolveDefaultBatchIdForImplicitReservation()` uses —
+            // so concurrent confirms serialize here and the second reads the first's
+            // committed reservation.
+            //
+            // 🚨 Campaign N-2: `first()`, NOT `firstOrFail()`. Every day-one product
+            // has no `stock_levels` row, and `firstOrFail()` turned that into a
+            // `ModelNotFoundException` — a raw 404 out of
+            // `SalesOrderController::confirm()`, whose only catch is
+            // `\DomainException`. An absent row is not a missing resource: the
+            // product and the location both exist and the tuple simply holds
+            // nothing, so it is read as available 0 and refused by the SAME
+            // predicate an existing row at quantity 0 already fails. Deliberately
+            // NOT `firstOrCreate`: a refused reservation must not write a phantom
+            // row (and the row it would create would be refused on the very next
+            // line anyway).
+            //
+            // 🚨 Gate r2 C-3: VARIANT-SCOPED, and the sum below with it. `reserve()`
+            // has no `variantId` parameter, so every reservation it writes is a
+            // PRODUCT-LEVEL one — `whereNull('variant_id')` is therefore the tuple
+            // this guard is about. Without the predicate `first()` returned whichever
+            // row the storage engine happened to hand back: an empty variant row
+            // physically ahead of the product-level row refused a 5-of-5 confirm that
+            // `dev` granted, and the outcome depended on row order. The same predicate
+            // is what `resolveDefaultBatchIdForImplicitReservation()` uses below and
+            // what `WeightedAverageCostService` locks on — one tuple definition, three
+            // places. Threading a real `variantId` through `reserve()` is its own lane.
+            $stockLevel = StockLevel::where('product_id', $productId)
+                ->where('location_id', $locationId)
+                ->where('company_id', $company->id)
+                ->whereNull('variant_id')
+                ->lockForUpdate()
+                ->first();
+
+            // Scoped to the SAME tuple as the quantity it is subtracted from —
+            // company included (gate r3 R3-9): summing holds across every variant,
+            // or across companies, while reading one row's quantity compares two
+            // different things. Redundant under database-per-tenant, load-bearing
+            // in single-schema compatibility mode, and free either way.
+            /** @var numeric-string $activeHold */
+            $activeHold = bcadd(
+                (string) StockReservation::query()
+                    ->where('company_id', $company->id)
+                    ->where('product_id', $productId)
+                    ->where('location_id', $locationId)
+                    ->whereNull('variant_id')
+                    ->active()
+                    ->sum('quantity'),
+                '0',
+                self::QUANTITY_SCALE,
+            );
+
+            /** @var numeric-string $columnHold */
+            $columnHold = $stockLevel === null
+                ? '0.0000'
+                : bcadd((string) $stockLevel->reserved, '0', self::QUANTITY_SCALE);
+
+            $hold = bccomp($activeHold, $columnHold, self::QUANTITY_SCALE) > 0 ? $activeHold : $columnHold;
+
+            /** @var numeric-string $tupleAvailable */
+            $tupleAvailable = $stockLevel === null
+                ? '0.0000'
+                : bcsub((string) $stockLevel->quantity, $hold, self::QUANTITY_SCALE);
+
+            if ($stockLevel === null || bccomp($tupleAvailable, $quantity, self::QUANTITY_SCALE) < 0) {
+                throw $this->insufficientStock(
+                    company: $company,
+                    productId: $productId,
+                    locationId: $locationId,
+                    available: $tupleAvailable,
+                    requested: $quantity,
+                );
+            }
+
+            // The tuple can cover the request. A lot-booked reservation must ALSO
+            // fit inside its own lot, so the per-lot guard stays — it is now a
+            // second, narrower condition rather than the only one.
+            $batchStock = null;
+
             if ($batchId !== null) {
                 // Lock batch stock to prevent concurrent reservations
                 $batchStock = BatchStock::where('batch_id', $batchId)
@@ -113,45 +220,15 @@ class StockReservationService implements InventoryReservationServiceInterface, R
                     ->lockForUpdate()
                     ->firstOrFail();
 
-                // Validate sufficient available stock in this batch
-                $available = bcsub((string) $batchStock->quantity, (string) $batchStock->reserved_quantity, 4);
-                if (bccomp($available, $quantity, 4) < 0) {
+                $available = bcsub(
+                    (string) $batchStock->quantity,
+                    (string) $batchStock->reserved_quantity,
+                    self::QUANTITY_SCALE,
+                );
+
+                if (bccomp($available, $quantity, self::QUANTITY_SCALE) < 0) {
                     throw new \RuntimeException(
                         "Insufficient batch stock. Available: {$available}, Requested: {$quantity}"
-                    );
-                }
-            } else {
-                // Lock aggregate stock level to prevent concurrent reservations.
-                //
-                // 🚨 Campaign N-2: `first()`, NOT `firstOrFail()`. Every day-one
-                // product has no `stock_levels` row, and `firstOrFail()` turned
-                // that into a `ModelNotFoundException` — a raw 404 out of
-                // `SalesOrderController::confirm()`, whose only catch is
-                // `\DomainException`. An absent row is not a missing resource:
-                // the product and the location both exist and the tuple simply
-                // holds nothing, so it is read as available 0 and refused by the
-                // SAME predicate an existing row at quantity 0 already fails.
-                // Deliberately NOT `firstOrCreate`: a refused reservation must
-                // not write a phantom row (and the row it would create would be
-                // refused on the very next line anyway).
-                $stockLevel = StockLevel::where('product_id', $productId)
-                    ->where('location_id', $locationId)
-                    ->where('company_id', $company->id)
-                    ->lockForUpdate()
-                    ->first();
-
-                // Validate sufficient available stock
-                $available = $stockLevel === null
-                    ? '0.0000'
-                    : bcsub((string) $stockLevel->quantity, (string) $stockLevel->reserved, 4);
-
-                if ($stockLevel === null || bccomp($available, $quantity, 4) < 0) {
-                    throw $this->insufficientStock(
-                        company: $company,
-                        productId: $productId,
-                        locationId: $locationId,
-                        available: $available,
-                        requested: $quantity,
                     );
                 }
             }
@@ -179,8 +256,12 @@ class StockReservationService implements InventoryReservationServiceInterface, R
                 'created_by' => auth()->id(),
             ]);
 
-            // Update reserved quantities
-            if ($batchId !== null) {
+            // Update reserved quantities. Still ONE row per reservation: a
+            // lot-booked hold lives on the lot, an aggregate-booked hold on the
+            // aggregate row. The guard above is what makes the two comparable;
+            // making both columns move is the (larger) lane recorded as a residual,
+            // because it needs symmetric decrements in release() and expire().
+            if ($batchStock !== null) {
                 // Update batch stock reserved quantity
                 $batchStock->update([
                     'reserved_quantity' => bcadd((string) $batchStock->reserved_quantity, $quantity, self::QUANTITY_SCALE),
@@ -232,10 +313,57 @@ class StockReservationService implements InventoryReservationServiceInterface, R
         });
     }
 
+    /**
+     * Pick the lot an IMPLICIT (caller supplied no `batch_id`) reservation must
+     * be booked against on a batch-tracked product.
+     *
+     * 🚨 Campaign W2-7 — this method used to answer with a `DEFAULT` lot seeded to
+     * the tuple's FULL `stock_levels.quantity`, without subtracting what the real
+     * dated lots already held. On the normal path (goods receipt with explicit
+     * lots) that quantity is already fully lot-represented, so every first sales
+     * order on a batch-tracked product DOUBLED the batch ledger (30 real units →
+     * 60) and pinned the reservation to an expiry-less lot, defeating FEFO in the
+     * exact vertical (parapharmacy, `requires_batch_tracking` forced on) where
+     * expiry control is the point.
+     *
+     * The policy implemented here:
+     *  1. the `DEFAULT` lot backs ONLY the untracked remainder
+     *     (`stock_levels.quantity − Σ real lots`, clamped at 0; zero mints nothing);
+     *  2. the reservation is then booked FEFO — the earliest-expiry lot that can
+     *     cover the whole request, which is normally a real dated lot;
+     *  3. a request no SINGLE lot can cover falls back to the aggregate branch
+     *     (return null). `reserve()` writes one row with one `batch_id`, so a
+     *     spill-over cannot be lot-pinned without splitting the reservation.
+     *     Both branches refuse against the SAME tuple-level hold (see `reserve()`),
+     *     so the fallback cannot over-commit the tuple.
+     *
+     * ⚠️ WHAT THE CHOSEN LOT DOES *NOT* DO (gate r1 finding 7). An earlier version
+     * of this docblock justified the fallback with "issuance stays FEFO regardless
+     * ({@see FEFOInventoryService::consumeBatchesAtomically()})". That is FALSE for
+     * the path this method serves: `consumeBatchesAtomically()` has exactly one
+     * caller in `app/` — `POS\Application\Services\ReceiptCreationService` — and
+     * the SO → DN path never reaches it. On DN confirm
+     * (`DeliveryNoteService::…`) the reservation is released WHOLESALE by source and
+     * its `batch_id` is never propagated onto the delivery-note line; lot stock
+     * moves only when the DN LINE itself carries a `batch_id`. So the FEFO lot
+     * chosen here is a SOFT HOLD: it makes lot-level availability honest while the
+     * order is open, and has no influence on which lot is ultimately issued.
+     * Propagating the reservation's lot to the DN line is a named follow-up lane.
+     * Pinned by `BatchTrackedSalesOrderConfirmFefoTest::
+     * test_delivery_note_confirm_releases_the_lot_hold_without_issuing_from_that_lot`.
+     *
+     * Deliberately never SHRINKS an over-seeded `DEFAULT` lot: that is a stock
+     * ledger correction and belongs to the evidence-gated
+     * `inventory:repair-phantom-default-batches` command, not to a silent side
+     * effect of confirming an order.
+     *
+     * @param  numeric-string  $quantity  The quantity the caller wants to reserve.
+     */
     private function resolveDefaultBatchIdForImplicitReservation(
         Company $company,
         string $productId,
         string $locationId,
+        string $quantity,
     ): ?int {
         $product = Product::query()
             ->where('tenant_id', $company->tenant_id)
@@ -264,18 +392,38 @@ class StockReservationService implements InventoryReservationServiceInterface, R
             return null;
         }
 
-        $batch = $this->batchStockService->ensureDefaultBatch(
+        // Step 1 — back only the UNTRACKED remainder with the DEFAULT lot.
+        /** @var numeric-string $aggregateQuantity */
+        $aggregateQuantity = (string) $stockLevel->quantity;
+
+        $this->batchStockService->ensureDefaultBatchForUntrackedRemainder(
             companyId: $company->id,
             tenantId: $company->tenant_id,
             productId: $productId,
             locationId: $locationId,
-            targetQuantity: (string) $stockLevel->quantity,
+            aggregateQuantity: $aggregateQuantity,
             shelfLifeDays: $product->default_shelf_life_days,
             asOfDate: now()->toDateString(),
             variantId: $stockLevel->variant_id,
         );
 
-        return $batch?->id;
+        // Step 2 — book FEFO. `suggestBatchesForSale()` orders by expiry ascending
+        // and skips expired / inactive / recalled lots, so the first suggestion is
+        // the FEFO lot. Only a single-lot suggestion can be honoured here (see the
+        // docblock): anything else returns null and reserves at the aggregate level.
+        $result = $this->fefoService->suggestBatchesForSale(
+            productId: $productId,
+            locationId: $locationId,
+            quantity: $quantity,
+            includeExpired: false,
+            variantId: $stockLevel->variant_id,
+        );
+
+        if (! $result->fullyFulfilled || count($result->suggestions) !== 1) {
+            return null;
+        }
+
+        return $result->suggestions[0]->batch->id;
     }
 
     /**

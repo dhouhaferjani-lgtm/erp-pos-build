@@ -1236,7 +1236,7 @@ final class ReceiptCreationService
                     occurredAt: $occurredAt,
                 );
             } else {
-                $this->decrementStock(
+                $leafMovement = $this->decrementStock(
                     tenantId: $tenantId,
                     companyId: $companyId,
                     locationId: $locationId,
@@ -1247,6 +1247,30 @@ final class ReceiptCreationService
                     policy: $policy,
                     occurredAt: $occurredAt,
                 );
+
+                // 🚨 Campaign wave 4, W4-5 (composite arm). The DIRECT product line
+                // above allocates FEFO lots; this leaf path decremented the aggregate
+                // and left the lot ledger untouched, so a batch-tracked component sold
+                // inside a combo made `Σ lots` drift upward exactly like the delivery
+                // note did.
+                //
+                // `consumeBatchesAtomically()` rather than `allocateBatches()`: a leaf
+                // component has no `pos_receipt_lines` row of its own (only the combo
+                // line does), and `pos_receipt_line_batch_allocations.receipt_line_id`
+                // is NOT NULL. The LEDGER leg — one `inventory_batch_movements` row per
+                // lot, keyed to the leaf's own issue movement — is what keeps lot stock
+                // truthful, and it is written here. Per-leaf allocation SNAPSHOTS need a
+                // schema decision (a nullable receipt_line_id or a component-level
+                // table) and are a named follow-up.
+                if ($leafMovement !== null && $this->fefoService->productRequiresBatchTracking($line->component_id)) {
+                    $this->fefoService->consumeBatchesAtomically(
+                        tenantId: $tenantId,
+                        productId: $line->component_id,
+                        locationId: $locationId,
+                        quantity: $requiredQty,
+                        movementId: $leafMovement->id,
+                    );
+                }
             }
         }
     }

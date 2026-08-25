@@ -404,7 +404,8 @@
       "inventory_counting": "Inventory count",
       "pos_receipt_return_scrap": "POS return scrap",
       "stock_adjustment": "Stock adjustment",
-      "supplier_goods_return_note": "Supplier goods return"
+      "supplier_goods_return_note": "Supplier goods return",
+      "batch_ledger_repair": "Batch ledger repair"
     },
     "empty": {
       "title": "No entry/exit notes",

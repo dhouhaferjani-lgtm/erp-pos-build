@@ -29,6 +29,9 @@ final class VendorRefundService
         private readonly GeneralLedgerService $glService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly TreasuryMovementServiceInterface $movementService,
+        // C-0a0 — the writer census requires every production writer of
+        // `payment_allocations` to pass the ONE applicability policy first.
+        private readonly DocumentAllocationClassifier $allocationClassifier,
     ) {}
 
     /**
@@ -136,6 +139,15 @@ final class VendorRefundService
             // Create negative allocation to reverse part of the prepayment
             /** @var numeric-string $negativeAmount */
             $negativeAmount = bcmul($amount, '-1', 4);
+
+            // C-0a0 — the classifier seam for a REVERSAL. This is the exact case
+            // that makes reversal admission total: C-0a0 REFUSES new money on a
+            // purchase order (F-153 / LEDGER OQ-3, wrong-direction GL), and the
+            // prepayments already sitting on POs must still be refundable, or the
+            // fix would trap them. See
+            // `DocumentAllocationClassifier::assertReversalAdmitted()` (seam
+            // present, predicate deferred to C-0a1).
+            $this->allocationClassifier->assertReversalAdmitted($lockedPo->id);
 
             PaymentAllocation::create([
                 'payment_id' => $payment->id,

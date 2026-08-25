@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Domain\Services;
 
+use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Compliance\Services\FiscalHashService;
@@ -24,6 +25,7 @@ use App\Modules\Inventory\Domain\Enums\MovementGlKind;
 use App\Modules\Inventory\Domain\PhysicalLinePredicate;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Inventory\Domain\Services\ReturnCostBasisResolver;
+use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -77,6 +79,7 @@ final class ReturnNoteService
         private readonly DeliveredQuantityResolver $deliveredQuantityResolver,
         private readonly ReturnCostBasisResolver $returnCostBasisResolver,
         private readonly InventoryGlPostingBuffer $glBuffer,
+        private readonly FEFOInventoryService $fefoService,
     ) {}
 
     /**
@@ -752,6 +755,17 @@ final class ReturnNoteService
                 referenceId: $returnNote->id
             );
 
+            // 🚨 Campaign gate r3 R3-1 — the INBOUND mirror of W4-5. Until this
+            // arm existed, `recordReturn()` credited the AGGREGATE and nothing
+            // else, so a sale followed by a return left `Σ lots` BELOW
+            // `stock_levels`: every returned unit permanently shaved the lot
+            // ledger, deliveries were eventually refused with a 422 on stock the
+            // stock screen showed on hand, and `untrackedRemainderAt()` reported a
+            // phantom remainder that the sibling seams would re-mint as a DEFAULT
+            // lot — re-labelling short-dated returned goods as untracked stock
+            // ranked `today + 365` by FEFO.
+            $this->restoreBatchStock($returnNote, $line, $product, $location, (string) $line->quantity, $movement);
+
             $occurredAt = $movement->occurred_at ?? $movement->created_at ?? now();
             $buffer->enqueue(new MovementGlContext(
                 kind: MovementGlKind::Entry,
@@ -824,5 +838,120 @@ final class ReturnNoteService
         }
 
         return $company->fiscal_chain_seed;
+    }
+
+    /**
+     * Put returned units back on the lot(s) they LEFT — gate r3 R3-1, gate r5 R5-1.
+     *
+     * The policy lives in {@see FEFOInventoryService::restoreBatchesForReturn()},
+     * the inbound mirror of the `consumeBatchesAtomically()` the delivery arm uses
+     * and in the same Domain tier as this service: per-line PROVENANCE first, then
+     * the outstanding-outbound heuristic (most-recently-shipped first), then the
+     * `DEFAULT` lot — one `inventory_batch_movements` leg per credit, keyed to this
+     * return's own receipt movement.
+     *
+     * The provenance this channel can supply is the issue legs of the ORIGINATING
+     * delivery ({@see self::lotProvenanceForReturnLine()}). It is per-document
+     * rather than per-line — a delivery note has no allocation snapshot — so on a
+     * multi-line delivery of the SAME product it resolves the lots the delivery
+     * drew, which is still strictly better than the tuple-wide heuristic. When the
+     * return names no resolvable source (a standalone return, or one sourced from
+     * an invoice whose deliveries are not linked), the hint is empty and the
+     * heuristic answers, exactly as before.
+     *
+     * 🚨 Gate r5 R5-2: `variantId` is threaded from the LINE. Without it the
+     * outbound mirror (`DeliveryNoteService::issueStock()`, which does pass
+     * `$line->variant_id`) consumed variant-scoped lots while this arm looked for
+     * product-level ones, found none, fell through to the `DEFAULT` arm — and that
+     * arm's variant guard THREW `MissingVariantException` inside the confirm
+     * transaction, so a variant-bearing batch-tracked product could not be returned
+     * at all. (`WeightedAverageCostService::recordReturn()` still has no
+     * `variantId`, so the AGGREGATE credit on this path stays product-level; that
+     * asymmetry predates this lane and is a named residual.)
+     *
+     * @param  numeric-string  $quantity
+     */
+    private function restoreBatchStock(
+        Document $returnNote,
+        DocumentLine $line,
+        Product $product,
+        Location $location,
+        string $quantity,
+        StockMovement $movement,
+    ): void {
+        if (! $product->requires_batch_tracking) {
+            return;
+        }
+
+        $this->fefoService->restoreBatchesForReturn(
+            tenantId: (string) $returnNote->tenant_id,
+            companyId: (string) $returnNote->company_id,
+            productId: (string) $product->id,
+            locationId: (string) $location->id,
+            quantity: CurrencyScale::bcformatStrict($quantity, self::QUANTITY_SCALE),
+            movementId: (string) $movement->id,
+            defaultShelfLifeDays: $product->default_shelf_life_days,
+            variantId: $line->variant_id,
+            preferredLots: $this->lotProvenanceForReturnLine($returnNote, $product, $location),
+        );
+    }
+
+    /**
+     * Lots the ORIGINATING document's issue movements drew for this product +
+     * location — the document channel's provenance hint (gate r5 R5-1).
+     *
+     * Resolved from `inventory_batch_movements` legs whose `stock_movements` row
+     * references the return's `source_document_id` (or any document that names it
+     * as ITS source — a delivery note raised from the same order/invoice). Only
+     * OUTBOUND legs count, and the magnitude is returned positive.
+     *
+     * Empty when nothing resolves, which is the honest answer for a standalone
+     * return: the service then falls through to its heuristic.
+     *
+     * @return array<int, numeric-string>
+     */
+    private function lotProvenanceForReturnLine(
+        Document $returnNote,
+        Product $product,
+        Location $location,
+    ): array {
+        $sourceId = $returnNote->source_document_id;
+
+        if ($sourceId === null) {
+            return [];
+        }
+
+        $sourceIds = Document::query()
+            ->where('company_id', $returnNote->company_id)
+            ->where('source_document_id', $sourceId)
+            ->pluck('id')
+            ->push($sourceId)
+            ->unique()
+            ->all();
+
+        $rows = DB::table('inventory_batch_movements as ibm')
+            ->join('stock_movements as sm', 'sm.id', '=', 'ibm.movement_id')
+            ->where('sm.company_id', $returnNote->company_id)
+            ->where('sm.product_id', $product->id)
+            ->where('sm.location_id', $location->id)
+            ->whereIn('sm.reference_id', $sourceIds)
+            ->where('ibm.quantity', '<', 0)
+            ->groupBy('ibm.batch_id')
+            ->select(['ibm.batch_id as batch_id', DB::raw('SUM(ibm.quantity) as shipped')])
+            ->get();
+
+        $provenance = [];
+
+        foreach ($rows as $row) {
+            $shipped = QuantityScale::round(
+                trim((string) $row->shipped),
+                QuantityScale::SCALE,
+                QuantityScale::FLOOR,
+            );
+
+            $provenance[(int) $row->batch_id] = bcsub('0', $shipped, QuantityScale::SCALE);
+        }
+
+        return $provenance;
     }
 }

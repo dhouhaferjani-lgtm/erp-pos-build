@@ -22,6 +22,7 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\Services\MultiPaymentService;
@@ -162,11 +163,24 @@ class DocumentPaymentStatusTransitionTest extends TestCase
         $this->assertEquals('0.000', $so->balance_due, 'Balance should be zero');
     }
 
-    public function test_fully_paid_purchase_order_retains_confirmed_status(): void
+    /**
+     * C-0a0 (F-153 / LEDGER OQ-3) — was
+     * `test_fully_paid_purchase_order_retains_confirmed_status`, which asserted
+     * that paying a purchase order SUCCEEDS.
+     *
+     * It does not any more, and the old assertion was pinning a defect: the
+     * allocation booked `AllocationTreatment::ReceivableClearing` — a NEGATIVE
+     * CUSTOMER receivable (Cr 411) against a SUPPLIER partner. N-6 kept that row
+     * only because it was live and refusing it was out of that lane's scope
+     * (its named residual R-1). SPEC §2.1 rule 9 refuses purchase orders
+     * throughout this program; a genuine supplier prepayment belongs in a
+     * supplier-advance account (Dr 409) and is a separate program.
+     */
+    public function test_paying_a_purchase_order_is_refused(): void
     {
         $po = $this->createDocument(DocumentType::PurchaseOrder, DocumentStatus::Confirmed, '1000.00', $this->vendor);
 
-        $this->actingAs($this->user)->postJson('/api/v1/payments', [
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
             'partner_id' => $this->vendor->id,
             'payment_method_id' => $this->cashMethod->id,
             'repository_id' => $this->cashRegister->id,
@@ -176,11 +190,15 @@ class DocumentPaymentStatusTransitionTest extends TestCase
             'allocations' => [
                 ['document_id' => $po->id, 'amount' => '1000.00'],
             ],
-        ])->assertCreated();
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'DOCUMENT_NOT_ALLOCATABLE');
+        $response->assertJsonPath('error.details.reason', 'purchase_order_wrong_direction');
 
         $po->refresh();
-        $this->assertEquals(DocumentStatus::Confirmed, $po->status, 'Purchase Order must stay Confirmed after full payment');
-        $this->assertEquals('0.000', $po->balance_due, 'Balance should be zero');
+        $this->assertEquals(DocumentStatus::Confirmed, $po->status);
+        $this->assertSame(0, PaymentAllocation::query()->where('document_id', $po->id)->count());
     }
 
     public function test_fully_paid_invoice_transitions_to_paid_status(): void
