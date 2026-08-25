@@ -206,7 +206,21 @@ export function buildEscPosReceiptData(
           ? bcformat(line.discount_amount, decimals)
           : null,
     })),
-    subtotal: bcformat(receipt.subtotal, decimals),
+    // D-1 (owner ruling 2026-08-25): the printed `Subtotal` is the ticket's
+    // GROSS (TTC) BEFORE the remise, so the customer's own arithmetic lands:
+    // `Subtotal − Remise (+ rounding) == TOTAL`. `receipts.subtotal` is now the
+    // POST-remise taxable base (net), so printing it verbatim beside a Remise
+    // line would double-count the discount on the ticket. The base and VAT the
+    // customer is entitled to see are in the per-rate ventilation table, which
+    // is the sealed post-remise breakdown.
+    subtotal: bcformat(
+      bcsub(
+        bcadd(receipt.total, receipt.discount_amount, decimals),
+        hasCashRounding && cashRoundingAdjustment !== null ? cashRoundingAdjustment : '0',
+        decimals,
+      ),
+      decimals,
+    ),
     discount_amount: bcformat(receipt.discount_amount, decimals),
     tax_amount: bcformat(receipt.tax_amount, decimals),
     total: bcformat(receipt.total, decimals),

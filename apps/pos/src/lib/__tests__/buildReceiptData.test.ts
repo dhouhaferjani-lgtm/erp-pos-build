@@ -564,8 +564,13 @@ describe('buildEscPosReceiptData — currency-aware display scale', () => {
     const receipt = makeStorageScaleReceipt('EUR');
     const result = buildEscPosReceiptData(receipt);
 
+    // D-1: the printed `Subtotal` is the ticket's GROSS (TTC) before the
+    // remise (`total + discount − rounding`), not `receipts.subtotal` — which
+    // since D-1 is the POST-remise taxable base. Printing the base beside a
+    // Remise line would double-count the discount on the ticket; the base and
+    // VAT the customer is entitled to see are in the ventilation table.
     // Top-level totals
-    expect(result.subtotal).toBe('10.00');
+    expect(result.subtotal).toBe('11.90');
     expect(result.tax_amount).toBe('1.90');
     expect(result.discount_amount).toBe('0.00');
     expect(result.total).toBe('11.90');
@@ -592,8 +597,13 @@ describe('buildEscPosReceiptData — currency-aware display scale', () => {
     const receipt = makeStorageScaleReceipt('TND');
     const result = buildEscPosReceiptData(receipt);
 
+    // D-1: the printed `Subtotal` is the ticket's GROSS (TTC) before the
+    // remise (`total + discount − rounding`), not `receipts.subtotal` — which
+    // since D-1 is the POST-remise taxable base. Printing the base beside a
+    // Remise line would double-count the discount on the ticket; the base and
+    // VAT the customer is entitled to see are in the ventilation table.
     // Top-level totals — scale 3 for TND
-    expect(result.subtotal).toBe('10.000');
+    expect(result.subtotal).toBe('11.900');
     expect(result.tax_amount).toBe('1.900');
     expect(result.discount_amount).toBe('0.000');
     expect(result.total).toBe('11.900');
@@ -654,7 +664,8 @@ describe('buildEscPosReceiptData — currency-aware display scale', () => {
     });
     const result = buildEscPosReceiptData(receipt);
 
-    expect(result.subtotal).toBe('1000');
+    // D-1: gross (TTC) before the remise — see the EUR case above.
+    expect(result.subtotal).toBe('1100');
     expect(result.tax_amount).toBe('100');
     expect(result.total).toBe('1100');
     expect(result.payments[0]!.amount).toBe('1100');
