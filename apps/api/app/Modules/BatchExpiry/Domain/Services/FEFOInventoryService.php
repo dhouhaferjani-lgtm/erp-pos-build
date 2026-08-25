@@ -6,22 +6,43 @@ namespace App\Modules\BatchExpiry\Domain\Services;
 
 use App\Modules\BatchExpiry\Application\DTOs\BatchSuggestionDTO;
 use App\Modules\BatchExpiry\Application\DTOs\BatchSuggestionResultDTO;
+use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\BatchExpiry\Domain\DTOs\BatchConsumptionResultDTO;
 use App\Modules\BatchExpiry\Domain\DTOs\ConsumedBatchDTO;
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\BatchExpiry\Domain\Entities\BatchMovement;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\BatchExpiry\Domain\Events\BatchStockConsumed;
 use App\Modules\BatchExpiry\Domain\Exceptions\InsufficientBatchStockException;
+use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Contracts\ProductVariantLookup;
+use App\Shared\Domain\Exceptions\MissingVariantException;
 use App\Shared\Domain\QuantityScale;
 use Carbon\Carbon;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class FEFOInventoryService
 {
+    /**
+     * Mirrors {@see BatchStockService::DEFAULT_BATCH_NUMBER}.
+     * Duplicated rather than imported because Domain must not depend on
+     * Application (deptrac ModuleDomain → ModuleApplication).
+     */
+    private const string DEFAULT_BATCH_NUMBER = 'DEFAULT';
+
+    /** Mirrors BatchStockService::DEFAULT_SHELF_LIFE_DAYS, for the same reason. */
+    private const int DEFAULT_SHELF_LIFE_DAYS = 365;
+
+    public function __construct(
+        private readonly ProductVariantLookup $variantLookup,
+    ) {}
+
     /**
      * Get batches to fulfill a quantity, ordered by expiry (soonest first).
      * Implements FEFO (First-Expired-First-Out) logic.
@@ -313,6 +334,369 @@ class FEFOInventoryService
                 shortfall: $shortfall,
             );
         });
+    }
+
+    /**
+     * Put returned units back on the lot(s) they LEFT — the inbound mirror of
+     * {@see self::consumeBatchesAtomically()} (campaign gate r3 R3-1).
+     *
+     * Until this existed, the document return path credited `stock_levels` and no
+     * lot, so a sale followed by a return left `Σ lots` BELOW the aggregate: every
+     * returned unit permanently shaved the lot ledger, deliveries were eventually
+     * refused with a 422 on stock the stock screen showed on hand, and
+     * `untrackedRemainderAt()` reported a phantom remainder that the sibling seams
+     * would re-mint as a `DEFAULT` lot — re-labelling short-dated returned goods as
+     * untracked stock ranked `today + 365` by FEFO. In a parapharmacy that is a
+     * product-safety defect, not just a ledger one.
+     *
+     * Origin resolution, in order (gate r5 R5-1 — PROVENANCE FIRST):
+     *
+     *  1. **Per-line provenance**, when the caller has it. `$preferredLots` maps
+     *     batch id → quantity that THIS line is known to have taken from that lot.
+     *     The POS channel passes the sale line's own
+     *     `pos_receipt_line_batch_allocations` rows; the document channel passes
+     *     the issue legs of the originating delivery. Each hint is still capped by
+     *     the lot's outstanding outbound (below), so a hint can never over-credit.
+     *
+     *     This exists because the heuristic in step 2 cannot tell WHICH sale
+     *     shipped a leg — it aggregates over the whole (product, location, variant)
+     *     tuple — so it is only right when the returned sale happened to be the
+     *     last one out. Gate r5 measured the consequence: two dated lots, receipt 1
+     *     ships the short-dated lot A and receipt 2 ships the long-dated lot B;
+     *     returning receipt 1 credited **B**, leaving A at zero with 5 of its units
+     *     physically back on the shelf. Two lot balances wrong at rest,
+     *     `BatchTraceabilityController`'s recall trail broken in both directions,
+     *     and short-dated units re-labelled long-dated so FEFO ships them LAST —
+     *     the same product-safety failure mode as the `DEFAULT@today+365` phantom
+     *     this lane exists to kill, one notch less visible. `Σ lots ==
+     *     stock_levels` reconciles either way, which is exactly why nothing else
+     *     catches it.
+     *
+     *  2. **Shipment history** (the heuristic), for whatever provenance does not
+     *     cover — pre-lane sales that have no snapshot, and unattributed returns.
+     *     Lots whose OUTSTANDING OUTBOUND is positive, most-recently-SHIPPED first.
+     *     See {@see self::outstandingShippedLots()} for why the ceiling is
+     *     outstanding-outbound and not the lot's total net (gate r4 R4-1).
+     *
+     *  3. **DEFAULT lot.** Anything still left — goods the ERP never saw leave a
+     *     lot — lands there. `Σ lots` reconciles with `stock_levels` and the units
+     *     are VISIBLY untracked rather than silently missing.
+     *
+     * Every credit writes an `inventory_batch_movements` row keyed to the caller's
+     * inbound movement (document-per-action), positive by the signed-ledger
+     * convention this class already uses for consumption.
+     *
+     * @param  numeric-string  $quantity  Positive quantity being returned.
+     * @param  string  $movementId  FK → stock_movements.id (the caller's inbound movement).
+     * @param  ?int  $defaultShelfLifeDays  Product default expiry period, for the fallback lot.
+     * @param  array<int, numeric-string>  $preferredLots  batch id => quantity this line is
+     *                                                     KNOWN to have taken from that lot.
+     */
+    public function restoreBatchesForReturn(
+        string $tenantId,
+        string $companyId,
+        string $productId,
+        string $locationId,
+        string $quantity,
+        string $movementId,
+        ?int $defaultShelfLifeDays = null,
+        ?string $variantId = null,
+        array $preferredLots = [],
+    ): void {
+        /** @var numeric-string $remaining */
+        $remaining = QuantityScale::round($quantity, QuantityScale::SCALE, QuantityScale::HALF_UP);
+
+        if (bccomp($remaining, '0', QuantityScale::SCALE) <= 0) {
+            return;
+        }
+
+        $outstanding = $this->outstandingShippedLots($companyId, $productId, $locationId, $variantId);
+
+        // 1. Provenance first, each hint capped by the lot's outstanding outbound
+        //    so a stale or over-stated hint can never over-credit a lot.
+        foreach ($preferredLots as $batchId => $hinted) {
+            if (bccomp($remaining, '0', QuantityScale::SCALE) <= 0) {
+                break;
+            }
+
+            $ceiling = $outstanding[$batchId] ?? null;
+
+            if ($ceiling === null) {
+                continue;
+            }
+
+            /** @var numeric-string $credit */
+            $credit = $hinted;
+            foreach ([$ceiling, $remaining] as $cap) {
+                if (bccomp($cap, $credit, QuantityScale::SCALE) < 0) {
+                    $credit = $cap;
+                }
+            }
+
+            if (bccomp($credit, '0', QuantityScale::SCALE) <= 0) {
+                continue;
+            }
+
+            $this->creditLot($tenantId, $batchId, $locationId, $credit, $movementId);
+
+            $remaining = bcsub($remaining, $credit, QuantityScale::SCALE);
+            $outstanding[$batchId] = bcsub($ceiling, $credit, QuantityScale::SCALE);
+        }
+
+        // 2. Heuristic for whatever provenance did not cover.
+        foreach ($outstanding as $batchId => $shipped) {
+            if (bccomp($remaining, '0', QuantityScale::SCALE) <= 0) {
+                break;
+            }
+
+            /** @var numeric-string $credit */
+            $credit = bccomp($shipped, $remaining, QuantityScale::SCALE) < 0 ? $shipped : $remaining;
+
+            $this->creditLot($tenantId, $batchId, $locationId, $credit, $movementId);
+
+            $remaining = bcsub($remaining, $credit, QuantityScale::SCALE);
+        }
+
+        if (bccomp($remaining, '0', QuantityScale::SCALE) <= 0) {
+            return;
+        }
+
+        $this->creditLot(
+            $tenantId,
+            $this->defaultBatchId($tenantId, $companyId, $productId, $defaultShelfLifeDays, $variantId),
+            $locationId,
+            $remaining,
+            $movementId,
+        );
+    }
+
+    /**
+     * Lots this product+location has shipped and NOT yet taken back, keyed by
+     * batch id, most-recently-SHIPPED first. The value is the outstanding
+     * OUTBOUND quantity as a positive decimal string, and it is the ceiling on
+     * what a return may credit back to that lot.
+     *
+     * 🚨 Gate r4 R4-1 — this used to net EVERY leg of the lot and keep only lots
+     * whose net was negative. But the inbound half of the ledger is not empty: a
+     * lot that arrived through a goods receipt carries a POSITIVE leg for its
+     * whole received quantity (`GoodsReceiptService` →
+     * `BatchStockService::receiveBatchStock()` → `recordBatchMovement()`), and a
+     * lot cannot ship more than it received — so `SUM(all legs) < 0` could NEVER
+     * be true for a ledger-recorded lot. Every real lot was permanently invisible
+     * to the restore arm and every customer return minted a fresh `DEFAULT` lot
+     * ranked `today + 365`: the exact phantom this lane exists to eliminate,
+     * re-minted on every return, with short-dated goods re-labelled untracked and
+     * the recall trail pointing at the wrong lot. On the wave-4 first tenant every
+     * real dated lot has exactly one leg and it is positive, so this fired on day
+     * one. The lane's own tests passed only because their fixture seeded lots with
+     * no ledger legs at all.
+     *
+     * The ceiling is therefore OUTSTANDING OUTBOUND, not the net of everything:
+     *
+     *     outstanding(lot) = −[ Σ(legs < 0)                       // shipped
+     *                         + Σ(legs > 0 that are return credits) ]  // already given back
+     *
+     * The positive side is restricted to legs whose movement is itself a customer
+     * or POS return, which is what preserves the anti-double-credit property: a
+     * second return with no matching shipment finds the lot's outstanding already
+     * consumed and falls through to the `DEFAULT` arm.
+     *
+     * `CASE WHEN` rather than `FILTER (WHERE …)`: the aggregate filter clause is
+     * not portable to every driver this suite runs on, and the inbound arm is
+     * deliberately driver-agnostic (gate r4 R4-5).
+     *
+     * @return array<int, numeric-string>
+     */
+    private function outstandingShippedLots(
+        string $companyId,
+        string $productId,
+        string $locationId,
+        ?string $variantId,
+    ): array {
+        $returnReasons = [
+            MovementReason::CustomerReturn->value,
+            MovementReason::POSReturn->value,
+        ];
+
+        $placeholders = implode(', ', array_fill(0, count($returnReasons), '?'));
+
+        // Outbound magnitude still outstanding: everything the lot shipped, minus
+        // everything a return has already put back.
+        $outstandingExpr = '-SUM(CASE WHEN ibm.quantity < 0 THEN ibm.quantity '
+            ."WHEN sm.reason IN ({$placeholders}) THEN ibm.quantity ELSE 0 END)";
+
+        // r4 R4-8: "most recently shipped" is measured over OUTBOUND legs only —
+        // a lot that RECEIVED stock yesterday must not sort ahead of one that
+        // SHIPPED today.
+        $lastShippedExpr = 'MAX(CASE WHEN ibm.quantity < 0 THEN sm.created_at END)';
+
+        // r5 R5-9: one sale that spilled across several lots writes all its legs
+        // under ONE movement_id, so those lots share a created_at and the ordering
+        // above ties. Break the tie deterministically instead of letting the driver
+        // decide — visible on a PARTIAL return, where only some tied lots are
+        // credited.
+
+        $query = DB::table('inventory_batch_movements as ibm')
+            ->join('stock_movements as sm', 'sm.id', '=', 'ibm.movement_id')
+            ->join('product_batches as pb', 'pb.id', '=', 'ibm.batch_id')
+            // r4 R4-9: scoped like every other half of this comparison. Redundant
+            // under database-per-tenant, load-bearing in single-schema mode.
+            ->where('sm.company_id', $companyId)
+            ->where('sm.product_id', $productId)
+            ->where('sm.location_id', $locationId)
+            ->where('pb.batch_number', '!=', self::DEFAULT_BATCH_NUMBER);
+
+        if ($variantId === null) {
+            $query->whereNull('pb.variant_id');
+        } else {
+            $query->where('pb.variant_id', $variantId);
+        }
+
+        $rows = $query
+            ->groupBy('ibm.batch_id')
+            ->havingRaw("{$outstandingExpr} > 0", $returnReasons)
+            ->orderByRaw("{$lastShippedExpr} DESC, ibm.batch_id DESC")
+            ->select([
+                'ibm.batch_id as batch_id',
+                DB::raw("{$outstandingExpr} as outstanding"),
+            ])
+            ->addBinding($returnReasons, 'select')
+            ->get();
+
+        $outstanding = [];
+
+        foreach ($rows as $row) {
+            // FLOOR: this is a CEILING on what may be credited back, never round up.
+            $outstanding[(int) $row->batch_id] = QuantityScale::round(
+                trim((string) $row->outstanding),
+                QuantityScale::SCALE,
+                QuantityScale::FLOOR,
+            );
+        }
+
+        return $outstanding;
+    }
+
+    /**
+     * Credit a lot and write its positive ledger leg. Mirrors the decrement half
+     * of {@see self::consumeBatchesAtomically()}, including the row lock.
+     *
+     * @param  numeric-string  $quantity
+     */
+    private function creditLot(
+        string $tenantId,
+        int $batchId,
+        string $locationId,
+        string $quantity,
+        string $movementId,
+    ): void {
+        /** @var object{id: int, quantity: mixed}|null $row */
+        $row = DB::table('inventory_batch_stock')
+            ->where('batch_id', $batchId)
+            ->where('location_id', $locationId)
+            ->lockForUpdate()
+            ->first();
+
+        if ($row === null) {
+            DB::table('inventory_batch_stock')->insert([
+                'tenant_id' => $tenantId,
+                'batch_id' => $batchId,
+                'location_id' => $locationId,
+                'quantity' => $quantity,
+                'reserved_quantity' => '0.0000',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } else {
+            $current = QuantityScale::round(
+                trim((string) $row->quantity),
+                QuantityScale::SCALE,
+                QuantityScale::FLOOR,
+            );
+
+            DB::table('inventory_batch_stock')
+                ->where('id', $row->id)
+                ->update([
+                    'quantity' => bcadd($current, $quantity, QuantityScale::SCALE),
+                    'updated_at' => now(),
+                ]);
+        }
+
+        // The justifying leg, written through the MODEL rather than the query
+        // builder: `movement_id` is a NOT-NULL FK to `stock_movements`, and the
+        // document-per-action scanner recognises the pairing only in this shape
+        // (`BatchMovement::create([... 'movement_id' => ...])`), which is what
+        // makes the two batch-stock writes above LINKED rather than violations.
+        BatchMovement::create([
+            'tenant_id' => $tenantId,
+            'batch_id' => $batchId,
+            'movement_id' => $movementId,
+            'quantity' => $quantity,
+        ]);
+    }
+
+    /**
+     * The product's `DEFAULT` lot id, minting the lot row if it does not exist.
+     * Deliberately does NOT create batch stock — {@see self::creditLot()} does that
+     * with the ledger leg attached.
+     */
+    private function defaultBatchId(
+        string $tenantId,
+        string $companyId,
+        string $productId,
+        ?int $defaultShelfLifeDays,
+        ?string $variantId,
+    ): int {
+        $existing = DB::table('product_batches')
+            ->where('company_id', $companyId)
+            ->where('product_id', $productId)
+            ->where('batch_number', self::DEFAULT_BATCH_NUMBER)
+            ->when($variantId === null,
+                fn ($q) => $q->whereNull('variant_id'),
+                fn ($q) => $q->where('variant_id', $variantId),
+            )
+            ->value('id');
+
+        if ($existing !== null) {
+            return (int) $existing;
+        }
+
+        // 🚨 Gate r4 R4-4 — the same guard `BatchStockService::findOrCreateBatch()`
+        // applies: a variant-bearing product must NEVER receive a product-level
+        // batch. This mint is a raw insert (the model layer would pull Application
+        // into Domain), so the guard has to be restated here rather than inherited.
+        // Refusing is the right answer: silently minting a forbidden product-level
+        // DEFAULT lot would hide the real problem, which is that
+        // `WeightedAverageCostService::recordReturn()` has no `variantId` parameter
+        // and credits the aggregate product-level — the variant asymmetry above the
+        // lot layer is pre-existing and is a named residual.
+        if ($variantId === null) {
+            $activeVariants = $this->variantLookup->listForProduct($productId, true);
+
+            if ($activeVariants->isNotEmpty()) {
+                throw MissingVariantException::forProduct($productId);
+            }
+        }
+
+        $today = CarbonImmutable::now()->toDateString();
+
+        return (int) DB::table('product_batches')->insertGetId([
+            'uuid' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'company_id' => $companyId,
+            'product_id' => $productId,
+            'variant_id' => $variantId,
+            'batch_number' => self::DEFAULT_BATCH_NUMBER,
+            'manufacturing_date' => $today,
+            'expiry_date' => CarbonImmutable::now()
+                ->addDays($defaultShelfLifeDays ?? self::DEFAULT_SHELF_LIFE_DAYS)
+                ->toDateString(),
+            'is_active' => true,
+            'is_expired' => false,
+            'is_recalled' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     /**

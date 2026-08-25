@@ -30,7 +30,6 @@
     "app/Modules/Inventory/Domain/Services/StockAdjustmentService.php::App\\Modules\\Inventory\\Domain\\Services\\StockAdjustmentService::getOrCreateStockLevel::stock_levels::firstOrCreate#1",
     "app/Modules/Inventory/Domain/Services/StockAdjustmentService.php::App\\Modules\\Inventory\\Domain\\Services\\StockAdjustmentService::recordMovement::stock_movements::create#1",
     "app/Modules/Inventory/Domain/StockLevel.php::App\\Modules\\Inventory\\Domain\\StockLevel::recalculateReserved::stock_levels::save#1",
-    "app/Modules/POS/Application/Services/ReceiptReturnService.php::App\\Modules\\POS\\Application\\Services\\ReceiptReturnService::restoreBatchAllocations::inventory_batch_stock::query_builder#1",
     "app/Modules/POS/Application/Services/ReturnScrapWriteOffService.php::App\\Modules\\POS\\Application\\Services\\ReturnScrapWriteOffService::writeOff::stock_movements::save#1",
     "app/Modules/Treasury/Application/Services/RepositoryTransferService.php::App\\Modules\\Treasury\\Application\\Services\\RepositoryTransferService::transfer::journal_entries::delete#1"
 ]

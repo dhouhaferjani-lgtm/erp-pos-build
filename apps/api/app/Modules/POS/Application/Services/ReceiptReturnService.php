@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Application\Services;
 
+use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\ValueObjects\ReservationSettings;
 use App\Modules\Company\Services\CompanyContext;
@@ -93,6 +94,7 @@ final class ReceiptReturnService
         private readonly LegacyCorrectionGuard $legacyCorrectionGuard,
         private readonly ReturnScrapWriteOffService $returnScrapWriteOffService,
         private readonly InventoryGlPostingBuffer $glBuffer,
+        private readonly FEFOInventoryService $fefoService,
     ) {}
 
     private function scale(): int
@@ -483,7 +485,7 @@ final class ReceiptReturnService
                 // restoreStock targets $originalLine->variant_id verbatim, so
                 // it is symmetric in both cases. Never re-derive the variant
                 // for NULL lines.
-                $this->restoreStock(
+                $restoreMovement = $this->restoreStock(
                     tenantId: $terminal->tenant_id,
                     companyId: $companyId,
                     locationId: $originalReceipt->location_id,
@@ -498,12 +500,47 @@ final class ReceiptReturnService
                     isHistorical: $originalIsHistorical,
                 );
 
-                $this->restoreBatchAllocations(
-                    originalLine: $originalLine,
-                    returnQuantity: $qty,
-                    alreadyReturnedQuantity: $alreadyReturnedQty,
-                    locationId: $originalReceipt->location_id,
-                );
+                // 🚨 Gate r4 R4-6/R4-7 + gate r5 R5-1 — ONE restore service, TWO
+                // inputs: per-line PROVENANCE first, heuristic only as a fallback.
+                //
+                // r4 converged both channels on the one Domain service, which was
+                // right — the old snapshot-only arm restored NOTHING when the
+                // snapshot was absent, exactly the shape a COMPOSITE leaf leaves.
+                // But it converged onto the WEAKER policy: it deleted the per-line
+                // `pos_receipt_line_batch_allocations` snapshot, which names
+                // exactly which lots THIS line consumed, in favour of a ledger scan
+                // aggregated over the whole (product, location, variant) tuple. The
+                // ledger cannot tell which RECEIPT shipped a leg, so the heuristic
+                // is only right when the returned sale was the last one out.
+                //
+                // Gate r5 measured the regression: lot A (short-dated) and lot B
+                // (long-dated); receipt 1 ships A, receipt 2 ships B; returning
+                // receipt 1 credited **B** and left A at zero with 5 of its units
+                // back on the shelf. `Σ lots == stock_levels` still reconciles,
+                // which is why nothing else caught it — but two lot balances are
+                // wrong at rest, `BatchTraceabilityController` (which still reads
+                // these allocation rows) reports the recall wrong in both
+                // directions, and short-dated units get a longer expiry so FEFO
+                // ships them LAST.
+                //
+                // The snapshot is therefore an ORIGIN HINT, not a replacement
+                // policy: it is applied first, still capped by each lot's
+                // outstanding outbound, and whatever it does not cover falls
+                // through to the heuristic and then to the DEFAULT lot. Composite
+                // leaves — which have no snapshot — are unaffected and still reach
+                // the fallback, which is what R4-7 was actually asking for.
+                if ($restoreMovement !== null && $this->fefoService->productRequiresBatchTracking($originalLine->product_id)) {
+                    $this->fefoService->restoreBatchesForReturn(
+                        tenantId: $terminal->tenant_id,
+                        companyId: $companyId,
+                        productId: $originalLine->product_id,
+                        locationId: $originalReceipt->location_id,
+                        quantity: $qty,
+                        movementId: $restoreMovement->id,
+                        variantId: $originalLine->variant_id,
+                        preferredLots: $this->lotProvenanceForLine($originalLine, $alreadyReturnedQty),
+                    );
+                }
             }
 
             // ─────────────────────────────────────────────────────────────────
@@ -1307,7 +1344,7 @@ final class ReceiptReturnService
         ?string $unitCost = null,
         bool $isHistorical = false,
         ?string $variantId = null,
-    ): void {
+    ): ?StockMovement {
         $stockLevel = $this->resolveStockLevelForUpdate($productId, $locationId, $companyId, $variantId);
 
         if ($stockLevel === null) {
@@ -1317,7 +1354,7 @@ final class ReceiptReturnService
                 'location_id' => $locationId,
             ]);
 
-            return;
+            return null;
         }
 
         $quantityBefore = (string) $stockLevel->quantity;
@@ -1376,6 +1413,8 @@ final class ReceiptReturnService
             postedByUserId: $cashierId,
             isHistorical: (bool) $movement->is_historical,
         ));
+
+        return $movement;
     }
 
     /**
@@ -1614,123 +1653,6 @@ final class ReceiptReturnService
         return (int) $receipt->getAttribute('gl_is_historical') === 1;
     }
 
-    /**
-     * Restore batch-level stock (inventory_batch_stock) for a returned line (F4).
-     *
-     * The sale path consumes batch stock via FEFO and snapshots each consumed
-     * batch into a ReceiptLineBatchAllocation row keyed by receipt_line_id.
-     * Restitution is proportional to the returned fraction of the line —
-     * FEFO order is irrelevant when putting stock back.
-     *
-     * Cumulative-restitution invariant: after a cumulative total of R units
-     * (out of an original line quantity Q) has been returned, each allocation
-     * `a` must have been restored by exactly
-     *
-     *     cumulative(R) = min(a, trunc4(a × R ÷ Q))
-     *
-     * where trunc4 is bcmath truncation at scale 4 (canonical quantity scale).
-     * Each return restores the DELTA cumulative(R_new) − cumulative(R_prev),
-     * derived from the persisted already-returned quantities rather than
-     * trusting per-return proportional math — so repeated partial returns can
-     * never restore more than the original allocation, and a full return
-     * restores each allocation exactly (trunc4(a × Q ÷ Q) = a).
-     *
-     * @param  numeric-string  $returnQuantity  Quantity returned in THIS return
-     * @param  numeric-string  $alreadyReturnedQuantity  Quantity returned by prior (non-voided) returns
-     */
-    private function restoreBatchAllocations(
-        ReceiptLine $originalLine,
-        string $returnQuantity,
-        string $alreadyReturnedQuantity,
-        string $locationId,
-    ): void {
-        $allocations = ReceiptLineBatchAllocation::where('receipt_line_id', $originalLine->id)->get();
-
-        if ($allocations->isEmpty()) {
-            return;
-        }
-
-        /** @var numeric-string $originalQty */
-        $originalQty = (string) $originalLine->quantity;
-
-        if (bccomp($originalQty, '0', 4) <= 0) { // precision-ok: 4 = canonical quantity storage scale
-            return;
-        }
-
-        /** @var numeric-string $newReturned */
-        $newReturned = bcadd($alreadyReturnedQuantity, $returnQuantity, 4); // precision-ok: 4 = canonical quantity storage scale
-
-        foreach ($allocations as $allocation) {
-            /** @var numeric-string $allocQty */
-            $allocQty = (string) $allocation->quantity;
-
-            $previousCumulative = $this->cumulativeBatchRestitution($allocQty, $alreadyReturnedQuantity, $originalQty);
-            $newCumulative = $this->cumulativeBatchRestitution($allocQty, $newReturned, $originalQty);
-
-            /** @var numeric-string $delta */
-            $delta = bcsub($newCumulative, $previousCumulative, 4); // precision-ok: 4 = canonical quantity storage scale
-
-            if (bccomp($delta, '0', 4) <= 0) { // precision-ok: 4 = canonical quantity storage scale
-                continue;
-            }
-
-            /** @var object{id: int|string, quantity: int|float|string}|null $batchStock */
-            $batchStock = DB::table('inventory_batch_stock')
-                ->where('batch_id', $allocation->batch_id)
-                ->where('location_id', $locationId)
-                ->lockForUpdate()
-                ->first();
-
-            if ($batchStock === null) {
-                Log::warning('No batch stock row found during return batch restitution', [
-                    'batch_id' => $allocation->batch_id,
-                    'receipt_line_id' => $originalLine->id,
-                    'location_id' => $locationId,
-                ]);
-
-                continue;
-            }
-
-            // SQLite returns numeric columns as int/float; normalize to a
-            // numeric-string before bcmath.
-            /** @var numeric-string $batchQuantity */
-            $batchQuantity = (string) $batchStock->quantity;
-
-            DB::table('inventory_batch_stock')
-                ->where('id', $batchStock->id)
-                ->update([
-                    'quantity' => bcadd($batchQuantity, $delta, 4), // precision-ok: 4 = canonical quantity storage scale
-                    'updated_at' => now(),
-                ]);
-        }
-    }
-
-    /**
-     * Cumulative batch restitution owed after $returnedQty of $originalQty
-     * has been returned: min(allocation, trunc4(allocation × returned ÷ original)).
-     *
-     * @param  numeric-string  $allocQty
-     * @param  numeric-string  $returnedQty
-     * @param  numeric-string  $originalQty
-     * @return numeric-string
-     */
-    private function cumulativeBatchRestitution(
-        string $allocQty,
-        string $returnedQty,
-        string $originalQty,
-    ): string {
-        // bcdiv truncates toward zero — conservative: batch restitution may
-        // momentarily lag the aggregate by < 0.0001 per allocation, but never
-        // leads it, and converges exactly at full return.
-        $cumulative = bcdiv(bcmul($allocQty, $returnedQty, 8), $originalQty, 4); // precision-ok: 8 = intermediate headroom, 4 = canonical quantity storage scale
-
-        if (bccomp($cumulative, $allocQty, 4) > 0) { // precision-ok: 4 = canonical quantity storage scale
-            return $allocQty;
-        }
-
-        return $cumulative;
-    }
-
     // =========================================================================
     // Helpers
     // =========================================================================
@@ -1750,5 +1672,65 @@ final class ReceiptReturnService
 
         /** @var numeric-string */
         return $amount;
+    }
+
+    /**
+     * The lots THIS receipt line consumed, minus what earlier returns of the same
+     * line already credited back — the per-line provenance hint for
+     * {@see FEFOInventoryService::restoreBatchesForReturn()} (gate r5 R5-1).
+     *
+     * `pos_receipt_line_batch_allocations` is written on the sale
+     * ({@see ReceiptCreationService::allocateBatches()})
+     * and names the batch and quantity for every lot the line drew from. It is the
+     * only record that says which RECEIPT shipped which lot; the movement ledger
+     * aggregates over the whole tuple and cannot.
+     *
+     * Partial returns are netted the same way the deleted snapshot restore did:
+     * each lot's share is scaled by how much of the line has been returned so far,
+     * so returning 2 of 5 twice credits the lot twice at its proportional share and
+     * never more than it originally took. The service caps every hint by the lot's
+     * outstanding outbound anyway, so this arithmetic can only ever under-credit,
+     * never over-credit.
+     *
+     * @param  numeric-string  $alreadyReturnedQuantity
+     * @return array<int, numeric-string>
+     */
+    private function lotProvenanceForLine(ReceiptLine $originalLine, string $alreadyReturnedQuantity): array
+    {
+        $allocations = ReceiptLineBatchAllocation::where('receipt_line_id', $originalLine->id)->get();
+
+        if ($allocations->isEmpty()) {
+            return [];
+        }
+
+        /** @var numeric-string $originalQty */
+        $originalQty = (string) $originalLine->quantity;
+
+        if (bccomp($originalQty, '0', 4) <= 0) { // precision-ok: 4 = canonical quantity storage scale
+            return [];
+        }
+
+        $provenance = [];
+
+        foreach ($allocations as $allocation) {
+            /** @var numeric-string $allocQty */
+            $allocQty = (string) $allocation->quantity;
+
+            // What this lot still owes back: its full share minus the share the
+            // prior returns of this line already consumed.
+            $scaledShare = bcmul($allocQty, $alreadyReturnedQuantity, 8); // precision-ok: 8 = intermediate, truncated to 4 on the next line
+            $alreadyCredited = bcdiv($scaledShare, $originalQty, 4); // precision-ok: 4 = canonical quantity storage scale
+
+            /** @var numeric-string $outstanding */
+            $outstanding = bcsub($allocQty, $alreadyCredited, 4); // precision-ok: 4 = canonical quantity storage scale
+
+            if (bccomp($outstanding, '0', 4) <= 0) { // precision-ok: 4 = canonical quantity storage scale
+                continue;
+            }
+
+            $provenance[(int) $allocation->batch_id] = $outstanding;
+        }
+
+        return $provenance;
     }
 }

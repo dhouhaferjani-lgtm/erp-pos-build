@@ -920,12 +920,17 @@ class ProductController extends Controller
             ->orderBy('location_id')
             ->get()
             ->each(function (StockLevel $stockLevel) use ($product, $tenantId): void {
-                $this->batchStockService->ensureDefaultBatch(
+                // 🚨 Campaign W2-7 — the backfill used to seed the DEFAULT lot with
+                // the FULL aggregate quantity. A product flipped to batch-tracked may
+                // already hold real dated lots (they exist independently of the flag),
+                // and those units are already lot-represented: the DEFAULT lot may
+                // only carry the untracked remainder.
+                $this->batchStockService->ensureDefaultBatchForUntrackedRemainder(
                     companyId: $product->company_id,
                     tenantId: $tenantId,
                     productId: $product->id,
                     locationId: $stockLevel->location_id,
-                    targetQuantity: (string) $stockLevel->quantity,
+                    aggregateQuantity: (string) $stockLevel->quantity,
                     shelfLifeDays: $product->default_shelf_life_days,
                     asOfDate: now()->toDateString(),
                     variantId: $stockLevel->variant_id,

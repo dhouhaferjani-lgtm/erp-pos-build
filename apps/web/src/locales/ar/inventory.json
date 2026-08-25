@@ -123,7 +123,8 @@
       "delivery_note": "إذن تسليم",
       "stock_transfer": "تحويل مخزون",
       "adjustment_batch": "تسوية",
-      "supplier_goods_return_note": "مرتجع إلى المورد"
+      "supplier_goods_return_note": "مرتجع إلى المورد",
+      "batch_ledger_repair": "إصلاح سجل الدفعات"
     },
     "empty": {
       "title": "لا توجد أذونات دخول أو خروج",

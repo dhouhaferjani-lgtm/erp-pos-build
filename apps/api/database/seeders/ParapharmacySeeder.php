@@ -1340,10 +1340,19 @@ class ParapharmacySeeder extends Seeder
      * row has stock yet zero selectable lots, which silently blocks PO
      * goods-receipt and stock-transfer flows (there is no lot to pick).
      *
-     * Delegates to the shared {@see BatchStockService::ensureDefaultBatch()} so
+     * Delegates to the shared
+     * {@see BatchStockService::ensureDefaultBatchForUntrackedRemainder()} so
      * seeded data mirrors the production default-batch behavior: one DEFAULT lot
      * per product (+ variant) with expiry = today + the product's default expiry
-     * period, whose per-location batch stock reconciles to the StockLevel.
+     * period, holding the share of the StockLevel that no real lot accounts for.
+     *
+     * 🚨 Campaign W2-7, gate r1 finding 6 — this used to pass the aggregate
+     * `$stock->quantity` as the DEFAULT lot's target. Combined with the
+     * re-runnability promised below, that made the seeder a live phantom-minting
+     * path: re-run it on a tenant that has since received real dated lots and it
+     * re-created exactly the double-booking
+     * `inventory:repair-phantom-default-batches` exists to repair. Not a request
+     * path, but it IS the parapharmacy vertical's provisioning path.
      *
      * Additive + idempotent: re-running reconciles to the current StockLevel and
      * never double-counts, so it is safe to call again after more stock is
@@ -1377,12 +1386,12 @@ class ParapharmacySeeder extends Seeder
         $count = 0;
 
         foreach ($stockLevels as $stock) {
-            $batchStockService->ensureDefaultBatch(
+            $batchStockService->ensureDefaultBatchForUntrackedRemainder(
                 companyId: $company->id,
                 tenantId: $company->tenant_id,
                 productId: $stock->product_id,
                 locationId: $stock->location_id,
-                targetQuantity: (string) $stock->quantity,
+                aggregateQuantity: (string) $stock->quantity,
                 shelfLifeDays: $shelfLifeByProduct[$stock->product_id] ?? null,
                 asOfDate: $asOfDate,
                 variantId: $stock->variant_id,

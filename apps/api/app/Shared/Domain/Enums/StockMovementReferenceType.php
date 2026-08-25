@@ -93,4 +93,21 @@ enum StockMovementReferenceType: string
      * case is what replaces that.
      */
     case SupplierGoodsReturnNote = 'supplier_goods_return_note';
+
+    /**
+     * A run of `inventory:repair-phantom-default-batches` — the maintenance
+     * operation that recomputes a phantom `DEFAULT` lot down to its untracked
+     * remainder (campaign W2-7).
+     *
+     * `reference_id` is the RUN id, not a document id: the repair is a ledger
+     * reconciliation with no document behind it, and grouping every lot the run
+     * corrected under one id is what lets an operator pull the whole batch back
+     * out of `stock_movements`. The movement it stamps carries `quantity = 0`
+     * with `quantity_before === quantity_after`, because the AGGREGATE on-hand
+     * quantity is not changing — only the double-booked lot ledger is.
+     *
+     * The backing value is the string the lane's first draft wrote as a raw
+     * constant, preserved verbatim so nothing has to be migrated.
+     */
+    case BatchLedgerRepair = 'batch_ledger_repair';
 }
