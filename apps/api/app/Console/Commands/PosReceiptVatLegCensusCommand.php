@@ -114,6 +114,18 @@ final class PosReceiptVatLegCensusCommand extends Command
         // receipt, `SalesDiscount` — and a chart missing any of them fails the
         // projection. A deploy gate that names only the first sends the operator
         // back for a second round trip.
+        //
+        // D-1 (owner ruling 2026-08-25): a receipt sealed at SALE_RECEIPT
+        // `event_version >= 5` books its remise OUT OF THE BASE and resolves no
+        // `SalesDiscount` account at all. The precheck is KEPT anyway — every
+        // receipt sealed before the cutover still needs it, they are refused by
+        // the projection without it, and they keep arriving from devices that
+        // have not taken the new build (the cutover is forward-only). It is a
+        // provisioning gate, not a per-receipt assertion.
+        //
+        // The DRIFT arm below is version-agnostic by construction: it compares
+        // SEALED VAT against the VAT actually credited, and D-1 changes neither
+        // side's meaning — only the number the device seals.
         $missingPurposes = [];
         if ($vatAccounts === []) {
             $missingPurposes[] = SystemAccountPurpose::VatCollected;

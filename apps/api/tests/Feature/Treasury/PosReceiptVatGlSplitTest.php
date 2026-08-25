@@ -415,6 +415,92 @@ final class PosReceiptVatGlSplitTest extends TestCase
         $this->assertSame($this->sumColumn($lines, 'debit'), $this->sumColumn($lines, 'credit'));
     }
 
+    /**
+     * D-1 (owner ruling 2026-08-25) — the POST-remise ledger shape.
+     *
+     * The ruling's worked example: a 640.000 TTC ticket at 7 / 13 / 19 % plus an
+     * exempt line, with a 50.000 remise ventilated pro-rata. The device seals
+     * base 524.547 + VAT 65.453 and the customer pays 590.000.
+     *
+     *   Dr  53   Caisse             590.000
+     *     Cr  70x ProductRevenue    524.547   ← the declaration's base_amount
+     *     Cr  4457 per sealed rate   65.453
+     *                               -------
+     *                               590.000
+     *
+     * **There is NO 709 leg**, and that is the whole point. The remise was
+     * already deducted from the taxable base ON the ticket, so debiting it again
+     * to contra-revenue would deduct it twice. Under both the French PCG and the
+     * Tunisian plan comptable, `709` carries RRR granted HORS facture (by
+     * avoir); an RRR granted on the invoice is deducted directly and never
+     * recorded there. Pre-D-1 the 709 leg was the CORRECT compensating treatment
+     * precisely because the sealed base was NOT reduced — see the sibling test
+     * above, which still pins that shape and still passes.
+     *
+     * W4-9's forward-looking note predicted the shape would survive with
+     * `70x − 709` equal to the declared base (`Cr 70x 574.547 / Dr 709 50.000`).
+     * That balances and its NET turnover is right, but neither gross figure
+     * means anything: pre-remise HT revenue is 569.000, not 574.547, and a
+     * 50.000 TTC debit to a revenue-contra account buries 5.547 of VAT in it.
+     * Booking the sealed base directly is both simpler and the only shape where
+     * every posted figure is a real one.
+     */
+    public function test_a_post_remise_sale_credits_the_sealed_base_with_no_contra_revenue_leg(): void
+    {
+        $event = $this->projectedThreeRateSale(
+            [['amount' => '590.000', 'method_code' => 'CASH']],
+            vatBreakdown: [
+                ['rate' => '0.00', 'net' => '63.609', 'vat' => '0.000', 'discount_allocated' => '5.391', 'line_net' => '69.000', 'line_vat' => '0.000'],
+                ['rate' => '7.00', 'net' => '92.188', 'vat' => '6.453', 'discount_allocated' => '8.359', 'line_net' => '100.000', 'line_vat' => '7.000'],
+                ['rate' => '13.00', 'net' => '184.375', 'vat' => '23.969', 'discount_allocated' => '17.656', 'line_net' => '200.000', 'line_vat' => '26.000'],
+                ['rate' => '19.00', 'net' => '184.375', 'vat' => '35.031', 'discount_allocated' => '18.594', 'line_net' => '200.000', 'line_vat' => '38.000'],
+            ],
+            subtotal: '524.547',
+            taxTotal: '65.453',
+            total: '590.000',
+            discountTotal: '50.000',
+            eventVersion: 5,
+        );
+
+        $this->app->make(CompanyContext::class)->clear();
+        $this->app->make(TreasuryReceiptBridge::class)->apply($event);
+
+        $receipt = Receipt::query()->where('fiscal_event_id', $event->id)->firstOrFail();
+        $lines = $this->posEntryLines($receipt->id, 'pos_receipt');
+
+        $this->assertSame('590.000', $this->sumDebits($lines, $this->cashAccountId));
+        $this->assertSame('524.547', $this->sumCredits($lines, $this->revenueAccountId));
+        // The exempt group seals a 0.000 VAT row and posts NO 4457 line (the
+        // pre-existing `nonZeroVatAllocations()` behaviour, pinned by
+        // `test_fully_exempt_sale_posts_no_vat_line_at_all`), so the comparison
+        // is against the sealed rates that actually carry VAT.
+        $this->assertSame(
+            array_filter(
+                $this->sealedVatByRate($receipt->id),
+                static fn (string $vat): bool => bccomp($vat, '0', 3) !== 0,
+            ),
+            $this->ledgerVatByRate($lines),
+        );
+
+        // No contra-revenue leg at all — neither side of it.
+        $this->assertSame('0.000', $this->sumDebits($lines, $this->discountAccountId));
+        $this->assertSame('0.000', $this->sumCredits($lines, $this->discountAccountId));
+
+        // The revenue credit IS the sealed (declared) taxable base.
+        $sealedNet = (string) DB::table('pos_receipt_vat_details')
+            ->where('receipt_id', $receipt->id)
+            ->sum('net_amount');
+        $this->assertSame(
+            bcadd($sealedNet, '0', 3),
+            $this->sumCredits($lines, $this->revenueAccountId),
+            'the ledger revenue base must equal the sealed (declared) taxable base',
+        );
+
+        // Balances by construction.
+        $this->assertSame($this->sumColumn($lines, 'debit'), $this->sumColumn($lines, 'credit'));
+        $this->assertSame('590.000', $this->sumColumn($lines, 'debit'));
+    }
+
     public function test_the_profit_and_loss_reports_turnover_net_of_the_discount(): void
     {
         // Treasury gate I-3. `ProfitLossService` partitions strictly on
@@ -807,26 +893,30 @@ final class PosReceiptVatGlSplitTest extends TestCase
         $vatRows = [];
         $lineItems = [];
         foreach ($rates as $i => $r) {
-            $vatRows[] = [
+            $vatRows[] = array_filter([
                 'gross_amount' => bcadd($r['net'], $r['vat'], 3),
                 'net_amount' => $r['net'],
                 'rate' => $r['rate'],
                 'tax_category_code' => 'S',
                 'vat_amount' => $r['vat'],
-            ];
+                // D-1: present ONLY when the fixture seals a POST-remise base
+                // (SALE_RECEIPT event_version >= 5). Absent = the pre-D-1 shape,
+                // which is what every existing fixture here keeps.
+                'discount_allocated' => $r['discount_allocated'] ?? null,
+            ], static fn (mixed $v): bool => $v !== null);
             $lineItems[] = [
                 'gtin' => null,
                 'line_discount_amount' => '0.000',
                 'line_discount_reason' => null,
-                'line_subtotal' => $r['net'],
-                'line_vat' => $r['vat'],
+                'line_subtotal' => $r['line_net'] ?? $r['net'],
+                'line_vat' => $r['line_vat'] ?? $r['vat'],
                 'name' => 'Item at '.$r['rate'].'%',
                 'non_collected_subtype' => null,
                 'product_id' => 'prod-'.$i,
                 'quantity' => '1.0000',
                 'sku' => 'SKU-'.$i,
                 'tax_category_code' => 'S',
-                'unit_price' => bcadd($r['net'], $r['vat'], 3),
+                'unit_price' => bcadd($r['line_net'] ?? $r['net'], $r['line_vat'] ?? $r['vat'], 3),
                 'vat_rate' => $r['rate'],
             ];
         }

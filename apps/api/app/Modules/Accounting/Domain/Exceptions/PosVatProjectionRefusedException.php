@@ -152,6 +152,30 @@ final class PosVatProjectionRefusedException extends RuntimeException
         );
     }
 
+    /**
+     * D-1 — `discount_allocated` is present on some sealed rows and absent on
+     * others, so the receipt's base era is unreadable.
+     */
+    public static function sealedBaseEraAmbiguous(string $receiptId, int $withShare, int $withoutShare): self
+    {
+        return new self(
+            PosVatRefusalReason::SealedBaseEraAmbiguous,
+            $receiptId,
+            sprintf(
+                'pos_vat_projection_refused:%s:receipt=%s:rows_with_discount_allocated=%d:rows_without=%d — the '
+                .'sealed pos_receipt_vat_details rows disagree about whether the taxable base is net of the '
+                .'transaction remise (D-1, SALE_RECEIPT event_version >= 5) or gross of it (v1..v4). The two eras '
+                .'book the remise differently — out of the base, or as contra-revenue in 709 — so a mixed set '
+                .'cannot be posted without guessing which, and a guess is a wrong revenue base on a receipt whose '
+                .'VAT the declaration still reports.',
+                PosVatRefusalReason::SealedBaseEraAmbiguous->value,
+                $receiptId,
+                $withShare,
+                $withoutShare,
+            ),
+        );
+    }
+
     public static function nonNumericAmount(string $receiptId, string $field, string $value): self
     {
         return new self(
