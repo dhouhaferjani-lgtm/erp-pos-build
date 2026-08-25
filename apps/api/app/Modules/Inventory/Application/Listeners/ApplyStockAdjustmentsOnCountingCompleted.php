@@ -273,12 +273,38 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
 
         $item->loadMissing('product');
         $openingGate = $this->openingCostGate->evaluateItem($item, $onboarding);
-        $preApplyBlock = $this->guardEvaluator->preApply($hasMovementNear, $openingGate['opening_cost_missing']);
+
+        // W4-6. Every pre-apply reason is RECORDED; only a reason that answers
+        // `blocksStockApplication()` withholds the posting. `basket_window` is
+        // recorded and does NOT withhold: the replay window inside
+        // applyCountResult() is what keeps an in-count sale counted exactly once,
+        // and suppressing the whole line on the strength of a nearby movement
+        // discarded the very shrinkage the count exists to find.
+        $preApplyReasons = $this->guardEvaluator->preApply($hasMovementNear, $openingGate['opening_cost_missing']);
+        $preApplyBlock = null;
+        foreach ($preApplyReasons as $reason) {
+            if ($reason->blocksStockApplication()) {
+                $preApplyBlock = $reason;
+                break;
+            }
+        }
+
         if ($preApplyBlock !== null) {
-            $this->flagItem($item, $preApplyBlock, $asOf);
+            $this->flagItem($item, $preApplyBlock, $asOf, $preApplyReasons);
 
             return false;
         }
+
+        // Advisory reasons are stamped BEFORE the posting so the annotation and
+        // the posting share one savepoint. They do NOT survive a throw: handle()
+        // wraps the whole item loop in ONE root transaction (see the T21 note
+        // there) with no per-item catch, so an item-N failure unwinds this save
+        // along with everything else — which is exactly what
+        // CountCorrectionGlPostingTest::test_an_item_that_throws_... pins (0
+        // movements AND 0 entries). Durability is not needed: the queue retry
+        // re-evaluates the line because `replay_audit` — the idempotency marker
+        // — is still null, and re-annotates it.
+        $this->annotateItem($item, $preApplyReasons);
 
         $openingUnitCost = $this->resolveOpeningUnitCost($item, $counting->company_id);
 
@@ -294,8 +320,9 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
         // replay_audit) would re-sum that movement in a fresh window and
         // double-apply. This is the fix for the finalize double-apply blocker.
         $countingId = $counting->id;
+        $marker = $item->final_qty_movement_marker;
 
-        return DB::transaction(function () use ($item, $window, $asOf, $onboarding, $openingUnitCost, $finalQty, $countingId, $completedBy, $currencyCode): bool {
+        return DB::transaction(function () use ($item, $window, $asOf, $onboarding, $openingUnitCost, $finalQty, $countingId, $completedBy, $currencyCode, $marker): bool {
             $audit = $this->stockAdjustmentService->applyCountResult(
                 productId: $item->product_id,
                 locationId: $item->location_id,
@@ -316,6 +343,9 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
                 onCountCorrection: function (StockMovement $movement) use ($currencyCode, $completedBy): void {
                     $this->enqueueCountCorrectionGl($movement, $currencyCode, $completedBy);
                 },
+                // Same-second tie-break (gate r2 NEW-1) — see
+                // MovementReplayService::signedDelta().
+                finalQtyMovementMarker: $marker,
             );
 
             // Null return means the negative-at-apply guard tripped (basket window
@@ -443,17 +473,56 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
     }
 
     /**
+     * Record advisory (non-blocking) reasons on a line that IS being posted.
+     *
+     * `basket_window` reaches this path: the reviewer still needs to see that
+     * stock moved near the count instant, but the correction is applied.
+     *
+     * @param  list<CountingItemFlagReason>  $reasons
+     */
+    private function annotateItem(InventoryCountingItem $item, array $reasons): void
+    {
+        if ($reasons === []) {
+            return;
+        }
+
+        $existing = $item->flag_reasons ?? [];
+        $flagged = (bool) $item->is_flagged;
+
+        foreach ($reasons as $reason) {
+            if (! in_array($reason->value, $existing, true)) {
+                $existing[] = $reason->value;
+            }
+
+            if ($reason->isBlocking()) {
+                $flagged = true;
+            }
+        }
+
+        $item->flag_reasons = $existing;
+        $item->is_flagged = $flagged;
+        $item->save();
+    }
+
+    /**
      * Append a blocking flag reason to the item (dedup) and persist a best-effort
      * replay audit for the review page. Nothing was posted for a flagged item.
+     *
+     * @param  list<CountingItemFlagReason>  $alsoRecord  Advisory reasons observed on
+     *                                                    the same evaluation, recorded
+     *                                                    alongside the blocker.
      */
     private function flagItem(
         InventoryCountingItem $item,
         CountingItemFlagReason $reason,
         CarbonInterface $asOf,
+        array $alsoRecord = [],
     ): void {
         $reasons = $item->flag_reasons ?? [];
-        if (! in_array($reason->value, $reasons, true)) {
-            $reasons[] = $reason->value;
+        foreach ([...$alsoRecord, $reason] as $recorded) {
+            if (! in_array($recorded->value, $reasons, true)) {
+                $reasons[] = $recorded->value;
+            }
         }
 
         $item->flag_reasons = $reasons;
@@ -478,7 +547,14 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
         $now = now();
         $scale = InventoryScale::QUANTITY_SCALE;
 
-        $replayedDelta = $this->replayService->signedDelta($item->product_id, $item->location_id, $item->variant_id, $asOf, $now);
+        $replayedDelta = $this->replayService->signedDelta(
+            $item->product_id,
+            $item->location_id,
+            $item->variant_id,
+            $asOf,
+            $now,
+            $item->final_qty_movement_marker,
+        );
 
         /** @var numeric-string $onHand */
         $onHand = (string) (StockLevel::where('product_id', $item->product_id)

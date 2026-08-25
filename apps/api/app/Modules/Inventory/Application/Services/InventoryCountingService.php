@@ -1104,6 +1104,10 @@ class InventoryCountingService
             // Replay boundary for a manual override is fixed to resolved_at — the
             // override request carries no count timestamp of its own (B3 §1).
             $item->final_qty_as_of = $now;
+            // ...and its same-second tie-break is the movement order AT that
+            // instant (W4-6 gate r2, NEW-1). The override is authored now, so
+            // everything already on the line is baseline.
+            $item->final_qty_movement_marker = $item->latestMovementMarker();
             $item->is_flagged = true;
             $item->flag_reason = 'manual_override';
             $item->save();
@@ -1211,6 +1215,10 @@ class InventoryCountingService
                 $asOf = $this->finalQuantityAsOfResolver->resolve($item);
                 if ($asOf !== null) {
                     $item->final_qty_as_of = Carbon::instance($asOf);
+                    // Freeze the SAME phase's movement-order marker with it, so
+                    // the boundary and its same-second tie-break can never come
+                    // from different counts (W4-6 gate r2, NEW-1).
+                    $item->final_qty_movement_marker = $this->finalQuantityAsOfResolver->resolveMarker($item);
                     $item->save();
                 }
             }
