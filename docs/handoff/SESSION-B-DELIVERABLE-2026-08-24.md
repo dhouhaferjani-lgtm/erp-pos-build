@@ -27,22 +27,24 @@ non-waivable before the first forced release in prod). Green-field ruling 2026-0
 post-migrate `BLOCKED|FAILED` grep on the Q-7 token. `ci.yml` backend-pgsql `--filter` allowlist grew by 4 classes (Q-6, Q-7×2, Q-10) so the
 migration-bearing pins execute somewhere while their lanes are parked (B-3 precedent; S-14 leg applies to the promotion).
 
-## (b) CHECK burn-down — the honest denominator (D-1 `70adfcb2e`, ⏳ dual gate in flight)
+## (b) CHECK burn-down — the honest denominator (D-1 merged `2288299bf`; fix round `33e26cd69`; r2 APPROVED-w/-residuals)
 
 D-1 derives the population MECHANICALLY (every Eloquent model's `$casts` → `app/**/Domain/Enums/*`, plus the governed audit columns)
 and reads `pg_constraint` on a freshly-migrated tenant schema. Result — **the audit's §#26 census (90 / 76 uncovered / 14 constrained)
 was wrong in both directions**:
 
-| Population (fix round `33e26cd69`, r2 ⏳) | columns | COVERED | MISSING | INTENDED_NARROWER | COVERED_BY_COMPOSITE | **baselined** |
+| Population (merged `2288299bf`; r2 APPROVED-w/-residuals) | columns | COVERED | MISSING | INTENDED_NARROWER | COVERED_BY_COMPOSITE | **baselined** |
 |---|---|---|---|---|---|---|
-| enum-governed tenant columns (asserted) | **245** | 54 | 189 | 1 | 1 | **189** |
+| enum-governed tenant columns (asserted) | **245** | 55 | 188 | 1 | 1 | **188** |
 | of which `*status`-suffixed (comparable to §#26) | 74 | 15 | 59 | 0 | 0 | 59 |
 | central-DB columns (asserted on the union DB only) | 20 | 9 | 11 | 0 | 0 | 11 |
 
 Arithmetic from the first cut (244/190): +1 `products.enrichment_status` (was silently excluded — `Shared/Enums` now in scope) → 191;
 −1 `fiscal_event_quarantine.integrity_exception_class` (INTENDED_NARROWER, predicate-keyed acknowledgement) → 190;
 −1 `pos_receipts.receipt_type` (COVERED_BY_COMPOSITE via `pos_receipts_return_logic`) → **189**. The parser fixes (NOT VALID, parens,
-OR-chains) moved zero live verdicts.
+OR-chains) moved zero live verdicts. At merge the ratchet flagged `documents.status::MISSING` STALE — Session A's N-6 had landed
+`2026_08_24_100100_add_status_check_constraint_to_documents` after the baseline cut — and the baseline shrank to **188** (COVERED 55). That is
+the gate working on its first day.
 
 ¹ 244 at `70adfcb2e`; the tenancy gate found `products.enrichment_status` (cast to `App\Shared\Enums\EnrichmentStatus`, no CHECK) silently excluded by the `Domain/Enums` filter — population widened to `Shared/Enums` in the fix round.
 
@@ -58,6 +60,8 @@ classes `IntegrityExceptionClass::isAdmissibleToLedger()` routes to quarantine; 
 INTENDED-narrower (D-1 fix round) — widening that CHECK would destroy the ledger/quarantine partition. Two hard preconditions before the first
 CHECK-adding batch (fiscal gate F-2/F-4): the parser must see `NOT VALID` CHECKs (the mandated batch idiom is invisible to it today), and
 cross-column CHECKs that pin a value set (`pos_receipts.receipt_type` via `pos_receipts_return_logic`) must not read as MISSING.
+
+**Final (post fix round):** Final register (fix round `33e26cd69`): **245 tenant enum-governed columns — 54 COVERED / 189 MISSING / 1 INTENDED_NARROWER (quarantine partition) / 1 COVERED_BY_COMPOSITE (`pos_receipts.receipt_type`) → shrink-only baseline 189 at the fix round, **188 at merge** (Session A's N-6 landed `2026_08_24_100100_add_status_check_constraint_to_documents` between the baseline cut and the merge — the ratchet flagged `documents.status::MISSING` STALE, exactly as designed, and the baseline shrank)**; central scope asserted on the union DB: 20 columns, 9 COVERED (impersonation/grant authz) / baseline 11. §#26's 90/76/14 is superseded; Slice D burns down from 189.
 
 The artifact the owner reads is `apps/api/tests/Architecture/baselines/enum-check-parity-register.md` (column → enum → verdict);
 the ratchet is `EnumCheckParityTest` (PG-only, shrink-only baseline `enum-check-parity-baseline.json`, 190 keys) + 18 liveness/tamper
