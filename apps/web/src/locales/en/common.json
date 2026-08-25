@@ -636,6 +636,7 @@
         "dropzone": "Drop your CSV file here, or click to browse",
         "dropzoneHint": "Supports CSV files up to 10MB",
         "expectedColumns": "Expected Columns",
+        "optionalColumn": "(optional)",
         "downloadTemplate": "Download Template",
         "fileSelected": "File selected",
         "rowsFound": "{{count}} rows found",
@@ -660,6 +661,11 @@
         "skipped": "Skipped",
         "noErrors": "No validation errors found",
         "hasErrors": "Please fix the errors before proceeding",
+        "batchErrors": {
+            "OPENING_CASH_NOT_FULLY_SEEDED": "Account {{account}} is debited {{debited}}, but only {{attributed}} is assigned to a cash or bank repository. {{unattributed}} would exist in the ledger and in no till. Put the repository's code in the repository_code column of each cash line — one line per repository ({{repositories}}).",
+            "OPENING_BATCH_NOT_BALANCED": "Total debits ({{debit}}) do not equal total credits ({{credit}}). Difference: {{difference}}.",
+            "unknown": "This batch cannot be posted ({{code}}). Ask your administrator — this version of the app does not have a description for that refusal."
+          },
         "validateButton": "Validate rows"
       },
       "preview": {
@@ -792,6 +798,8 @@
       "total": "Total",
       "accountCode": "Account code",
       "accountName": "Account name",
+      "repository": "Cash repository",
+      "repositoryHint": "Seeds this repository's opening float",
       "debitCredit": "Debit {{debit}} / Credit {{credit}} for {{amount}}",
       "products": "Products",
       "product": "Product",

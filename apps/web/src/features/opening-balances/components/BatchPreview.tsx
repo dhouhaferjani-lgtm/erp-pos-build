@@ -35,6 +35,10 @@ export function BatchPreview({ preview }: BatchPreviewProps) {
   const amountOrBlank = (value: string): string =>
     bccomp(value, '0') === 0 ? '' : formatMoney(value, { symbol: false })
 
+  /** True when at least one line seeds a treasury repository (W4-2). */
+  const hasRepositoryLine = (accounting: AccountingPostPreview): boolean =>
+    accounting.lines.some((line) => line.repository_code !== null)
+
   const renderAccountingPreview = (accounting: AccountingPostPreview) => (
     <div className="space-y-6">
       {/* Lines table */}
@@ -56,6 +60,14 @@ export function BatchPreview({ preview }: BatchPreviewProps) {
                   <th className={`px-4 py-2 text-right text-xs font-medium ${colorTokens.text.subtle}`}>
                     {t('openingBalances.preview.credit')}
                   </th>
+                  {/* W4-2: the till a cash/bank line seeds. Rendered only when
+                      the batch actually names one, so an ordinary GL batch keeps
+                      its four-column shape. */}
+                  {hasRepositoryLine(accounting) && (
+                    <th className={`px-4 py-2 text-left text-xs font-medium ${colorTokens.text.subtle}`}>
+                      {t('openingBalances.preview.repository')}
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className={`divide-y ${colorTokens.border.divider} ${colorTokens.surface.base}`}>
@@ -71,6 +83,13 @@ export function BatchPreview({ preview }: BatchPreviewProps) {
                     <td className={`px-4 py-2 text-sm text-right ${colorTokens.intent.danger.text}`}>
                       {amountOrBlank(line.credit)}
                     </td>
+                    {hasRepositoryLine(accounting) && (
+                      <td className={`px-4 py-2 text-sm ${colorTokens.text.secondary}`}>
+                        {line.repository_code === null
+                          ? ''
+                          : `${line.repository_name ?? ''} (${line.repository_code})`}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -85,10 +104,18 @@ export function BatchPreview({ preview }: BatchPreviewProps) {
                   <td className={`px-4 py-2 text-sm text-right font-bold ${colorTokens.intent.danger.textStrong}`}>
                     {formatMoney(accounting.totals.credit, { symbol: false })}
                   </td>
+                  {hasRepositoryLine(accounting) && <td className="px-4 py-2" />}
                 </tr>
               </tfoot>
             </DataTable>
           </div>
+          {/* W4-2: name the till column's meaning where the operator is about
+              to lock the batch. Rendered only when a line actually seeds one. */}
+          {hasRepositoryLine(accounting) && (
+            <div className={`${colorTokens.surface.page} px-4 py-2 text-xs ${colorTokens.text.subtle}`}>
+              {t('openingBalances.preview.repositoryHint')}
+            </div>
+          )}
           {accounting.lines.length > 20 && (
             <div className={`${colorTokens.surface.page} px-4 py-2 text-xs ${colorTokens.text.subtle}`}>
               {t('openingBalances.preview.moreRows', { count: accounting.lines.length - 20 })}
