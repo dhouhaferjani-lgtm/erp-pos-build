@@ -29,8 +29,9 @@ unaffected; multi-company is blocked at the first posting. Fix shape = Q-11's te
 
 Owner items surfaced: **O-31** (arm the owner-pinned blob over the three parity artifacts before the first CHECK batch), **O-30** (forced terminal release orphans an OPEN shift; no server surface can close it — runbook + ruling,
 non-waivable before the first forced release in prod). Green-field ruling 2026-08-24: migrations are not a blocker — S-19 reduced to one
-post-migrate `BLOCKED|FAILED` grep on the Q-7 token. `ci.yml` backend-pgsql `--filter` allowlist grew by 4 classes (Q-6, Q-7×2, Q-10) so the
-migration-bearing pins execute somewhere while their lanes are parked (B-3 precedent; S-14 leg applies to the promotion).
+post-migrate `BLOCKED|FAILED` grep on the Q-7 token. `ci.yml` backend-pgsql `--filter` allowlist grew by 5 classes (Q-6, Q-7×2, Q-10, Q-11's `ExpensePostTest`) so the
+migration-bearing / PG-only pins execute somewhere while their lanes are parked (B-3 precedent; S-14 leg applies to the promotion).
+Still wired NOWHERE: D-1's `EnumCheckParityTest` (needs a PG-service job — `treasury-spine-pgsql`; owner/S-14).
 
 ## (b) CHECK burn-down — the honest denominator (D-1 merged `2288299bf`; fix round `33e26cd69`; r2 APPROVED-w/-residuals)
 

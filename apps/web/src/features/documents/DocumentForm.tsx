@@ -142,109 +142,13 @@ export function computeLinesDirty(lastSavedLines: string | null, lines: unknown[
   return lastSavedLines === null ? lines.length > 0 : JSON.stringify(lines) !== lastSavedLines
 }
 
-interface LinePayload {
-  product_id?: string
-  service_id?: string
-  quantity: string | number
-  unit_price: string | number
-  line_total: string | number
-  price_entry_mode: 'unit' | 'total'
-  discount_percent: string | null
-  discount_amount: string | null
-  free_quantity?: string | number
-  tax_rate?: string | number
-  tax_configuration_id?: string
-}
+import {
+  buildAutoSaveLinePayload,
+  buildLinePayload,
+  findBlankPriceLineIds,
+  hydrateLineUnitPrice,
+} from './linePayload'
 
-/**
- * True when a value is absent or blank — used for the tax fields, where an
- * empty string means "the line says nothing", not "zero".
- */
-function isBlank(value: string | number | null | undefined): boolean {
-  return value === null || value === undefined || String(value).trim() === ''
-}
-
-/**
- * Campaign defect N-1 (P0): decide what a line says about tax.
- *
- * `DocumentLineTaxResolver` prefers the tax CONFIGURATION over any
- * denormalised rate — but its FIRST branch short-circuits on an explicit
- * `tax_rate`, so sending both means the configuration is never consulted. The
- * form used to send `tax_rate` on every line and `tax_configuration_id` on
- * none, which is how a product on the 7 % band came out of the API taxed at the
- * company's 19 % default with the right rate showing on screen throughout.
- *
- * So the line states ONE thing:
- *  - It knows its configuration (picked from the per-line selector, or
- *    inherited from the product's `default_tax_configuration_id`): send the id
- *    and let the server read the rate off the configuration itself. The rate
- *    displayed here came from that same configuration, so nothing is lost —
- *    but the server no longer has to trust a number the client copied.
- *  - It does not (a free-text service line, a document loaded from the server
- *    before configurations were tracked on lines): send the rate, exactly as
- *    before. `'0.00'` is a stated exemption and IS sent; only a truly blank
- *    rate is omitted, which lets the backend resolve from the product.
- */
-function applyLineTax(payload: LinePayload, line: DocumentLine): void {
-  const configurationId = line.tax_configuration_id
-  if (typeof configurationId === 'string' && configurationId.trim() !== '') {
-    payload.tax_configuration_id = configurationId
-    return
-  }
-  if (!isBlank(line.tax_rate)) {
-    payload.tax_rate = line.tax_rate
-  }
-}
-
-/**
- * True when a free_quantity value is empty or represents zero (e.g. '', '0',
- * '0.0000'). String-based check on purpose — never parseFloat on quantities.
- */
-function isZeroFreeQuantity(value: DocumentLine['free_quantity']): boolean {
-  if (value === null || value === undefined) return true
-  const trimmed = String(value).trim()
-  return trimmed === '' || /^0+(\.0+)?$/.test(trimmed)
-}
-
-/**
- * Pure helper: maps a DocumentLine to the API line payload shared by BOTH
- * the autosave draft payload and the submit payload (single source of truth
- * so the two sites cannot drift). Exported for unit testing.
- *
- * `free_quantity` is OMITTED when empty/zero: the backend
- * (Create/UpdateDocumentRequest) prohibits `lines.*.free_quantity` whenever
- * the purchase-bonus module gate is disabled for the company, so sending the
- * default '0' fails every document creation with a 422
- * ("Le champ lines.0.free_quantity est interdit."). A real non-zero bonus
- * quantity (purchase flow with the module enabled) is sent exactly as entered.
- *
- * The TAX half lives here too (campaign defect N-1) rather than at the two call
- * sites, which had already drifted apart — the autosave payload sent
- * `line.tax_rate || 0` while submit sent `line.tax_rate` raw. One decision, one
- * place. See {@link applyLineTax}.
- */
-export function buildLinePayload(line: DocumentLine): LinePayload {
-  const payload: LinePayload = {
-    quantity: line.quantity,
-    unit_price: line.unit_price,
-    line_total: line.line_total,
-    price_entry_mode: line.price_entry_mode ?? 'unit',
-    discount_percent: line.discount_percent ?? null,
-    discount_amount: line.discount_amount ?? null,
-  }
-  if (line.is_service) {
-    if (line.service_id !== undefined && line.service_id.trim() !== '') {
-      payload.service_id = line.service_id
-    }
-  } else {
-    payload.product_id = line.product_id
-  }
-  if (!isZeroFreeQuantity(line.free_quantity)) {
-    payload.free_quantity = line.free_quantity as string | number
-  }
-  applyLineTax(payload, line)
-  return payload
-}
 
 function scopedNamespacePredicate(
   namespace: string,
@@ -275,6 +179,10 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
 
   // Track if initial lines have been loaded
   const [hasInitializedLines, setHasInitializedLines] = useState(false)
+  // Lines the operator tried to save with no unit price. Populated only by a
+  // submit attempt (so the cell is not scolded mid-typing) and cleared as soon
+  // as the prices are filled in.
+  const [blankPriceLineIds, setBlankPriceLineIds] = useState<ReadonlySet<string>>(() => new Set())
   // Track if URL partner has been applied
   const [hasAppliedUrlPartner, setHasAppliedUrlPartner] = useState(false)
   // Lines state (managed separately from form)
@@ -344,7 +252,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
       // sees one number while the draft holds another.
       lines: lines.map(line => ({
         id: line.id,
-        ...buildLinePayload(line),
+        ...buildAutoSaveLinePayload(line),
       })),
     }
   }, [effectiveType, watchedPartnerId, watchedNotes, watchedDocumentDate, watchedDueDate, lines])
@@ -461,7 +369,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
       free_quantity: l.free_quantity ?? '0',
       free_quantity_received: l.free_quantity_received ?? '0',
       free_quantity_invoiced: l.free_quantity_invoiced ?? '0',
-      unit_price: l.unit_price,
+      unit_price: hydrateLineUnitPrice(l.unit_price, effectiveType),
       discount_percent: l.discount_percent ?? null,
       discount_amount: l.discount_amount ?? null,
       tax_rate: l.tax_rate ?? '0',
@@ -542,6 +450,18 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
   })
 
   const onSubmit = (data: DocumentFormData) => {
+    // Gate r1 finding 1: a line with no unit price must never reach the server.
+    // On a purchase order it would confirm at 0.000 (PurchaseOrderService::confirm
+    // has no zero-price guard), post Dr 37 at zero on receipt and drag WAC down,
+    // with the three-way match only raising an ADVISORY variance under the
+    // shipped `warn` policy. On a sales document it would bill zero.
+    const blankPriceIds = findBlankPriceLineIds(lines)
+    if (blankPriceIds.length > 0) {
+      setBlankPriceLineIds(new Set(blankPriceIds))
+      return
+    }
+    setBlankPriceLineIds(new Set())
+
     // `reason` is a credit-note-only field. Strip it everywhere else so the
     // other document endpoints (which don't declare it) never receive it.
     const { reason, ...rest } = data
@@ -776,10 +696,22 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
         {/* Document Lines */}
         <DocumentLineEditor
           lines={lines}
-          onChange={setLines}
+          onChange={(next) => {
+            // Any line edit invalidates a stale blocked-submit flag; the next
+            // submit re-derives it.
+            setBlankPriceLineIds((current) => (current.size === 0 ? current : new Set()))
+            setLines(next)
+          }}
+          invalidLineIds={blankPriceLineIds}
           partnerId={watchedPartnerId || null}
           {...(effectiveType ? { documentType: effectiveType } : {})}
         />
+
+        {blankPriceLineIds.size > 0 && (
+          <p role="alert" className={`text-sm ${textColors.error}`}>
+            {t('sales:documents.errors.unitPriceRequired')}
+          </p>
+        )}
 
         {/* Additional Costs (Purchase Orders only - after document has an autosaved draft id) */}
         {effectiveType === 'purchase_order' && docId && (

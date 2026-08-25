@@ -42,6 +42,10 @@ return [
     'stock' => [
         'insufficient' => 'Stock insuffisant pour « :product » à « :location ». Disponible : :available, demandé : :requested. Réceptionnez ou transférez la marchandise avant de confirmer.',
     ],
+
+    'purchase_order' => [
+        'line_unpriced' => 'La ligne :line (« :description ») n\'a pas de prix unitaire. Saisissez le prix du fournisseur sur chaque ligne avant de confirmer ce bon de commande : confirmer à 0,000 ferait entrer la marchandise en stock à valeur nulle et fausserait votre valorisation.',
+    ],
     'pre_delivery_invoicing' => [
         'refused' => "Cette facture contient des marchandises qui n'ont pas été livrées. Selon les règles comptables de ce pays, une facture définitive de marchandises ne peut pas être émise avant la livraison : elle ne peut donc pas encore être comptabilisée.",
         'alternative_delivery_note' => 'Créez et confirmez maintenant un bon de livraison pour les marchandises, puis comptabilisez la facture.',
