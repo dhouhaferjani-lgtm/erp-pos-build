@@ -1805,9 +1805,20 @@ final class GeneralLedgerService
             $user = User::query()->findOrFail($postedByUserId);
         }
 
+        // N-6 DPA rollback lane — TRANSACTIONAL CONTAINMENT, NOT COMPENSATION.
+        //
+        // The synchronous post now happens INSIDE this same `DB::transaction`
+        // closure. `SynchronousInTransaction` is only reachable with an
+        // enclosing transaction (the guard above refuses otherwise), so this
+        // closure is always a SAVEPOINT: a refused post unwinds it with
+        // `ROLLBACK TO SAVEPOINT` and the draft entry and its lines simply never
+        // existed. See the note at the post site below for what this replaces.
+        $postSynchronously = $mode === PostingMode::SynchronousInTransaction;
+
         $entry = DB::transaction(function () use (
             $companyId, $partnerId, $invoiceId, $amount,
-            $date, $description, $advanceAccount, $receivableAccount, $scale
+            $date, $description, $advanceAccount, $receivableAccount, $scale,
+            $postSynchronously, $user, $currencyCode
         ): JournalEntry {
             Partner::query()
                 ->whereKey($partnerId)
@@ -1869,91 +1880,49 @@ final class GeneralLedgerService
                 'line_order' => 1,
             ]);
 
-            return $entry->load('lines');
+            $entry->load('lines');
+
+            if ($postSynchronously) {
+                // Null-actor safe: the GL consequence of clearing an advance is
+                // deterministic and independent of who triggered it, and posting
+                // runs from `DocumentPostingService::post()`, which has no actor
+                // of its own.
+                //
+                // INSIDE the savepoint on purpose. A throw here — an imbalance
+                // at the chokepoint, a chain or currency failure — rolls this
+                // closure back, so the draft entry and its two lines are undone
+                // by the DATABASE. Nothing is deleted because nothing was ever
+                // committed, and the exception propagates to the caller
+                // unchanged.
+                //
+                // WHAT THIS REPLACES, and why the shape matters. The first
+                // version of this guard (N-6 r2 F-5) created the entry in this
+                // closure, posted AFTER it returned, and on failure DELETEd the
+                // orphan draft as compensation. That was correct about the
+                // symptom — an unposted draft that discharges nothing and that
+                // no reconcile consumes must not survive — and wrong about the
+                // mechanism: `journal_entries` and `journal_lines` are
+                // APPEND-ONLY under the document-per-action contract, where a
+                // correction is a reversing document and never a row delete.
+                // The `backend-dpa-guard` ratchet said so, with two new keys.
+                // Containment gets the same outcome without ever writing a
+                // DELETE, and without the re-read + status assertion the delete
+                // needed to stay safe.
+                //
+                // Lock order is unchanged and still matches the A-D8 record
+                // (… -> Partner -> GL advisory -> …): the Partner row lock is
+                // taken at the top of this closure and `postEntryNow()` takes
+                // the company advisory lock second. Row locks are held to the
+                // OUTER transaction's end regardless of this savepoint, so the
+                // enclosing caller sees exactly the locking profile it did
+                // before.
+                $this->postEntryNow($entry, $user, $currencyCode);
+            }
+
+            return $entry;
         });
 
-        if ($mode === PostingMode::SynchronousInTransaction) {
-            // Null-actor safe: the GL consequence of clearing an advance is
-            // deterministic and independent of who triggered it, and posting
-            // runs from `DocumentPostingService::post()` which has no actor of
-            // its own.
-            //
-            // R2-F5 — NO ORPHAN DRAFT MAY SURVIVE A FAILED POST.
-            //
-            // The entry above was created inside its own `DB::transaction`.
-            // Under an enclosing transaction that is a SAVEPOINT which has
-            // already been released, so if `postEntryNow()` throws and the
-            // CALLER catches it (the converter downgrades a non-balance failure
-            // to a payload note), the draft entry stays durable — a journal
-            // entry that discharges nothing, that no reconcile consumes, and
-            // that nothing links to, since the caller returns before recording
-            // `advance_journal_entry_id`. That is the same orphan-Draft class
-            // F-3 just closed, minus the marker that would let anyone find it.
-            //
-            // Deleting it here fixes it for EVERY caller rather than asking each
-            // one to clean up: the entry is still DRAFT (unchained), so
-            // `JournalEntryObserver::deleting()` permits it, and a chained entry
-            // would refuse — which is the correct direction. The original
-            // exception is always re-thrown; the cleanup never masks it.
-            try {
-                $this->postEntryNow($entry, $user, $currencyCode);
-            } catch (\Throwable $postFailure) {
-                try {
-                    // R3 (treasury gate r3) — DELETE THROUGH THE MODELS, AND
-                    // PROVE THE ENTRY IS STILL A DRAFT FIRST.
-                    //
-                    // `$entry->lines()->delete()` is a BUILDER mass-delete: it
-                    // emits one `DELETE ... WHERE journal_entry_id = ?` and fires
-                    // NO model events, so `JournalLineObserver::deleting()` —
-                    // the guard that refuses to remove a line of a chained entry
-                    // — never runs. A probe confirmed it succeeds against a
-                    // POSTED, hash-chained entry. `$entry->delete()` below IS a
-                    // model delete and its own observer does fire, so the entry
-                    // header was protected while its lines were not: exactly the
-                    // wrong half.
-                    //
-                    // The re-read is the belt: `$entry` is the in-memory object
-                    // that failed to post, and this cleanup runs on the failure
-                    // path, so the row is re-read and its status asserted before
-                    // anything is removed. Not-Draft means something else posted
-                    // it between the failure and here — refuse and let the outer
-                    // catch log it, rather than delete a chained entry through a
-                    // path that was only ever meant to remove a stillborn draft.
-                    /** @var JournalEntry|null $reread */
-                    $reread = JournalEntry::query()->find($entry->id);
-
-                    if (! $reread instanceof JournalEntry) {
-                        throw new \RuntimeException(
-                            "clearing entry {$entry->id} vanished before cleanup could remove it."
-                        );
-                    }
-
-                    if ($reread->status !== JournalEntryStatus::Draft) {
-                        throw new \RuntimeException(
-                            "refusing to clean up clearing entry {$reread->entry_number}: it is "
-                            ."{$reread->status->value}, not a draft, so it is no longer this path's to remove."
-                        );
-                    }
-
-                    // Model deletes, one per line, so the observer fires on each.
-                    foreach ($reread->lines()->get() as $line) {
-                        $line->delete();
-                    }
-
-                    $reread->delete();
-                } catch (\Throwable $cleanupFailure) {
-                    Log::warning('Could not remove the unposted customer-advance clearing entry', [
-                        'entry_id' => $entry->id,
-                        'entry_number' => $entry->entry_number,
-                        'company_id' => $companyId,
-                        'post_failure' => $postFailure->getMessage(),
-                        'cleanup_failure' => $cleanupFailure->getMessage(),
-                    ]);
-                }
-
-                throw $postFailure;
-            }
-        } elseif ($user !== null) {
+        if (! $postSynchronously && $user !== null) {
             $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
         }
 

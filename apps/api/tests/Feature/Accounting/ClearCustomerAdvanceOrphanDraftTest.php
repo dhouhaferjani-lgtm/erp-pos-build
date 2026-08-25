@@ -12,6 +12,7 @@ use App\Modules\Accounting\Domain\Exceptions\ImmutableJournalEntryException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -19,28 +20,48 @@ use Tests\TestCase;
 use Tests\Traits\BuildsDeliveryPolicyFixtures;
 
 /**
- * N-6 condition round r2 — fiscal gate R2-F5.
+ * N-6 — no orphan DRAFT clearing entry may survive a failed synchronous post
+ * (fiscal gate R2-F5), and the ledger must reach that outcome by ROLLBACK, not
+ * by DELETE (DPA consolidation r1).
  *
- * `clearCustomerAdvanceToReceivable()` creates its entry inside its OWN
- * `DB::transaction`. Under an enclosing transaction that is a SAVEPOINT which
- * has already been released, so when `postEntryNow()` throws and the CALLER
- * catches it — `SalesOrderToInvoiceConverter` downgrades a non-balance failure
- * to a payload note — the DRAFT entry stayed durable: a journal entry that
- * discharges nothing, that no reconcile consumes, and that nothing links to
- * (the caller returns before recording `advance_journal_entry_id`).
+ * THE DEFECT (R2-F5). `clearCustomerAdvanceToReceivable()` created its entry in
+ * its own `DB::transaction` and posted AFTER that returned. Under an enclosing
+ * transaction that inner one is a SAVEPOINT which has already been RELEASED, so
+ * when `postEntryNow()` threw and the CALLER caught it —
+ * `SalesOrderToInvoiceConverter` downgrades a non-balance failure to a payload
+ * note — the DRAFT entry stayed durable: a journal entry that discharges
+ * nothing, that no reconcile consumes, and that nothing links to (the caller
+ * returns before recording `advance_journal_entry_id`).
  *
- * The same orphan-Draft class F-3 closed, minus the marker that would let
- * anyone find it.
+ * THE FIRST FIX WAS RIGHT ABOUT THE SYMPTOM AND WRONG ABOUT THE MECHANISM. It
+ * DELETEd the orphan as compensation. `journal_entries` and `journal_lines` are
+ * APPEND-ONLY under the document-per-action contract — a correction is a
+ * reversing document, never a row delete — and the `backend-dpa-guard` ratchet
+ * said so with two new keys.
+ *
+ * THE SHIPPED FIX IS CONTAINMENT. The post now happens INSIDE the creating
+ * savepoint, so a refusal unwinds it and the rows never existed. Same outcome,
+ * no DELETE, and no re-read-and-assert-Draft belt needed to make a delete safe.
+ * Both facts are asserted below: zero rows AND zero DELETE statements.
  */
 final class ClearCustomerAdvanceOrphanDraftTest extends TestCase
 {
     use BuildsDeliveryPolicyFixtures;
     use RefreshDatabase;
 
+    /** @var list<string> */
+    private array $executedStatements = [];
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->bootDeliveryPolicyFixtures('TN');
+
+        // Every statement this test causes, so the assertions can be about what
+        // the DATABASE was asked to do rather than about what the source says.
+        DB::listen(function (QueryExecuted $query): void {
+            $this->executedStatements[] = $query->sql;
+        });
     }
 
     public function test_a_failed_synchronous_post_leaves_no_draft_entry_behind_and_rethrows(): void
@@ -136,6 +157,25 @@ final class ClearCustomerAdvanceOrphanDraftTest extends TestCase
                     ->pluck('id'))
                 ->count(),
             'no orphan clearing LINES may survive either',
+        );
+
+        // DPA consolidation r1 — HOW the rows are gone is part of the contract,
+        // not an implementation detail. `journal_entries` and `journal_lines`
+        // are append-only; the rows must be undone by the transaction, never
+        // removed by a compensating DELETE. Measured on the query log rather
+        // than asserted about the source, so a future re-introduction of a
+        // delete on this path fails here even if it is written differently.
+        $deletes = array_values(array_filter(
+            $this->executedStatements,
+            static fn (string $sql): bool => str_starts_with(strtolower(ltrim($sql)), 'delete')
+                && (str_contains(strtolower($sql), 'journal_entries')
+                    || str_contains(strtolower($sql), 'journal_lines')),
+        ));
+
+        $this->assertSame(
+            [],
+            $deletes,
+            'the draft must be rolled back, never deleted — journal rows are append-only',
         );
     }
 
