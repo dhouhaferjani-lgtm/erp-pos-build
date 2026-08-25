@@ -438,12 +438,17 @@ describe('receiptService — fiscal-event engine wiring', () => {
     const payload = vi.mocked(engine.append).mock.calls[0]![1].payload as {
       subtotal: string;
       total: string;
+      vat_total: string;
       transaction_discount_amount: string;
     };
-    // The signed aggregate closes exactly: total + discount == subtotal.
+    // D-1 (owner ruling 2026-08-25): at v5 the signed aggregate closes as
+    // `subtotal + vat_total == total` — the taxable base is already NET of the
+    // remise, so the discount is NOT added back. (Pre-D-1 this read
+    // `total + discount == subtotal`, with `subtotal` the PRE-discount base.)
     expect(payload.total).toBe('4.37');
     expect(payload.transaction_discount_amount).toBe('0.63');
-    expect(bcadd(payload.total, payload.transaction_discount_amount, 2)).toBe(payload.subtotal);
+    expect(payload.subtotal).toBe('4.37');
+    expect(bcadd(payload.subtotal, payload.vat_total, 2)).toBe(payload.total);
   });
 
   it('persists the variant identity on the stored line without altering fiscal SKU bytes', async () => {

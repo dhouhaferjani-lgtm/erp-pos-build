@@ -187,6 +187,14 @@ const TAX_RATE = '20.00';
 const TXN_DISCOUNT = '2.00';
 /** total = subtotal(gross) − discount = 12.00 − 2.00. */
 const DISCOUNTED_TOTAL = '10.00';
+/**
+ * D-1 (owner ruling 2026-08-25): with the 2.00 remise ventilated, the 20 %
+ * group's declared base is 8.33 and its declared VAT 1.67 (the remise itself
+ * splits 1.67 HT + 0.33 VAT). Pre-D-1 the ticket sealed 10.00 / 2.00 — VAT on
+ * a base the customer never paid.
+ */
+const POST_REMISE_NET = '8.33';
+const POST_REMISE_VAT = '1.67';
 
 async function runAllMigrations(adapter: SqliteTestAdapter): Promise<void> {
   for (const m of migrations) {
@@ -488,15 +496,21 @@ describe('C-6 sale headline totals — REAL writer through Z / EOD / X', () => {
       }),
     );
 
-    // The three columns, on three different bases (the whole reason the
-    // identity had to be settled rather than guessed).
-    expect(row['subtotal']).toBe(GROSS);              // pre-discount gross
-    expect(row['tax_amount']).toBe(VAT);              // pre-discount VAT
-    expect(row['total']).toBe(DISCOUNTED_TOTAL);      // post-discount gross
+    // D-1 (owner ruling 2026-08-25) — the columns, and their bases:
+    //   `subtotal`   Σ GROSS line_total, PRE-remise (unchanged);
+    //   `tax_amount` the SEALED POST-remise VAT (was the pre-discount VAT);
+    //   `total`      the post-remise gross.
+    // A 12.00 gross ticket at 20 % with a 2.00 remise: the remise itself
+    // splits 1.67 HT + 0.33 VAT, so the declared base is 10.00 − 1.67 = 8.33
+    // and the declared VAT is 2.00 − 0.33 = 1.67.
+    expect(row['subtotal']).toBe(GROSS);                       // pre-remise gross
+    expect(row['tax_amount']).toBe(POST_REMISE_VAT);           // sealed VAT
+    expect(row['total']).toBe(DISCOUNTED_TOTAL);               // post-remise gross
     expect(row['transaction_discount_amount']).toBe(TXN_DISCOUNT);
 
     const sealed = await sealedSaleReceiptPayload();
-    expect(sealed['subtotal']).toBe(NET);             // canonical net: 12.00 − 2.00
+    expect(sealed['subtotal']).toBe(POST_REMISE_NET);          // taxable base, net of the remise
+    expect(sealed['vat_total']).toBe(POST_REMISE_VAT);
     expect(sealed['total']).toBe(DISCOUNTED_TOTAL);
 
     const z = await generateZReport(
@@ -509,26 +523,29 @@ describe('C-6 sale headline totals — REAL writer through Z / EOD / X', () => {
     );
 
     expect(z.report_data.gross_sales).toBe(DISCOUNTED_TOTAL);
-    expect(z.report_data.tax_amount).toBe(VAT);
-    // The chosen identity: Σ (subtotal − tax_amount) == Σ sealed `subtotal`.
+    expect(z.report_data.tax_amount).toBe(POST_REMISE_VAT);
+    // D-1: the identity is now `net_sales == Σ SEALED subtotal`, read back off
+    // the canonical bytes rather than derived from columns. The pre-D-1
+    // derivation (`subtotal − tax_amount`) mixed a pre-remise gross with a
+    // post-remise VAT and would have reported 12.00 − 1.67 = 10.33.
     expect(z.report_data.net_sales).toBe(sealed['subtotal']);
-    expect(z.report_data.net_sales).toBe(NET);
-    // The REJECTED identity would have produced 10.00 − 2.00 = 8.00 …
-    expect(z.report_data.net_sales).not.toBe('8.00');
-    // … and 8.00 would contradict the per-rate rows, which stay pre-discount
-    // (the transaction discount never enters `vat_breakdown` — on the receipt
-    // either: `SaleReceiptPayload.ts:340-348` sums line nets/VATs only).
+    expect(z.report_data.net_sales).toBe(POST_REMISE_NET);
+    expect(z.report_data.net_sales).not.toBe('10.33');
+    // The per-rate rows are the SEALED ventilation, so the Z is internally
+    // consistent: Σ net == net_sales and Σ vat == tax_amount.
     expect(z.report_data.vat_breakdown).toEqual([
-      { tax_rate: 20, net_amount: NET, vat_amount: VAT, gross_amount: GROSS },
+      {
+        tax_rate: 20,
+        net_amount: POST_REMISE_NET,
+        vat_amount: POST_REMISE_VAT,
+        gross_amount: DISCOUNTED_TOTAL,
+      },
     ]);
 
-    // Stated rather than glossed: with a ticket discount the headline does NOT
-    // satisfy net + tax == gross. The wedge is exactly the discount, and it is
-    // the same wedge the canonical receipt carries (validator identity #1 adds
-    // `transaction_discount_amount` back — :1128-1140). No Z field records it,
-    // so no such identity is asserted here or in the F-4 tripwire.
+    // D-1 restores the headline identity a discounted shift used to break:
+    // the base is already net of the remise, so net + tax == gross exactly.
     expect(bcadd(z.report_data.net_sales, z.report_data.tax_amount, 2)).toBe(
-      bcadd(z.report_data.gross_sales, TXN_DISCOUNT, 2),
+      z.report_data.gross_sales,
     );
 
     // Both signed sibling consumers agree.
@@ -539,7 +556,7 @@ describe('C-6 sale headline totals — REAL writer through Z / EOD / X', () => {
       '100.00',
       'EUR',
     );
-    expect(eod.net_sales).toBe(NET);
+    expect(eod.net_sales).toBe(POST_REMISE_NET);
 
     const x = await generateXReport(TERMINAL_UUID, {
       tenantId: TENANT_ID,
@@ -548,7 +565,7 @@ describe('C-6 sale headline totals — REAL writer through Z / EOD / X', () => {
       operatorId: OPERATOR_UUID,
       operatorName: 'Alice',
     });
-    expect(x.net_sales).toBe(NET);
+    expect(x.net_sales).toBe(POST_REMISE_NET);
   });
 
   // ── F-6: the headline accumulators' currency-scale arguments ─────────────
