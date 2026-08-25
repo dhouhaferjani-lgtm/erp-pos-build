@@ -121,7 +121,7 @@
 {"code":"707","name":"Ventes de marchandises","type":"revenue","parent_code":"70","system_purpose":"product_revenue","is_system":true,"sort_order":121}
 {"code":"708","name":"Produits des activités annexes","type":"revenue","parent_code":"70","system_purpose":null,"is_system":false,"sort_order":122}
 {"code":"709","name":"Rabais, remises et ristournes accordés","type":"expense","parent_code":"70","system_purpose":"sales_return","is_system":true,"sort_order":123}
-{"code":"7097","name":"Rabais, remises et ristournes accordés sur ventes de marchandises","type":"expense","parent_code":"70","system_purpose":"sales_discount","is_system":true,"sort_order":124}
+{"code":"7097","name":"Rabais, remises et ristournes accordés sur ventes de marchandises","type":"revenue","parent_code":"70","system_purpose":"sales_discount","is_system":true,"sort_order":124}
 {"code":"7580","name":"Écart de règlement (produits)","type":"revenue","parent_code":"75","system_purpose":"payment_tolerance_income","is_system":true,"sort_order":125}
 {"code":"7091","name":"Remboursements clients - Virements bons d'achat","type":"expense","parent_code":"70","system_purpose":"sales_returns_clearing","is_system":true,"sort_order":126}
 {"code":"4197","name":"Clients - Bons d'achat émis (passif courant)","type":"liability","parent_code":"41","system_purpose":"voucher_liability","is_system":true,"sort_order":127}

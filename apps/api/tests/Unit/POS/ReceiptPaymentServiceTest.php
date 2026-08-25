@@ -8,6 +8,7 @@ use App\Models\Country;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\Accounting\Domain\Services\PosReceiptVatAllocator;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
@@ -63,6 +64,10 @@ final class ReceiptPaymentServiceTest extends TestCase
             // store_voucher payments, so the service is resolved from the
             // container as a real instance — no mock needed.
             $this->app->make(VoucherRedemptionService::class),
+            // W4-9 — the revenue/VAT allocator. Resolved from the container as a
+            // real instance: it reads the receipt's own sealed VAT rows, so a
+            // stub would test a fiction.
+            $this->app->make(PosReceiptVatAllocator::class),
         );
     }
 
@@ -347,6 +352,7 @@ final class ReceiptPaymentServiceTest extends TestCase
             $spy,
             $this->app->make(ReceiptFinalizationService::class),
             $this->app->make(VoucherRedemptionService::class),
+            $this->app->make(PosReceiptVatAllocator::class),
         );
 
         $service->processReceiptPayments(

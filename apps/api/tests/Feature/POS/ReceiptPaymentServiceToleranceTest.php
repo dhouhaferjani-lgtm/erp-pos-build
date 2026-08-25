@@ -17,6 +17,7 @@ use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Receipt;
+use App\Modules\POS\Domain\ReceiptVatDetail;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
@@ -27,6 +28,7 @@ use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -374,7 +376,7 @@ final class ReceiptPaymentServiceToleranceTest extends TestCase
     {
         // Receipts enter processReceiptPayments() in pending_seal state.
         // The service finalizes them (computes fiscal_hash, advances chain) when fully tendered.
-        return Receipt::create([
+        $receipt = Receipt::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'location_id' => $this->location->id,
@@ -397,5 +399,23 @@ final class ReceiptPaymentServiceToleranceTest extends TestCase
             'is_voided' => false,
             'is_training' => false,
         ]);
+
+        // W4-9 — every real receipt carries its SEALED VAT breakdown
+        // (`ReceiptCreationService` writes one row per aggregate in the same
+        // transaction as the receipt; the device-authored path does the same in
+        // `PosCoreReceiptProjection`). The GL writer now REFUSES a receipt with
+        // no sealed rows rather than guessing the split, so a fixture that
+        // skipped them was describing a receipt that cannot exist.
+        ReceiptVatDetail::create([
+            'id' => Str::uuid()->toString(),
+            'receipt_id' => $receipt->id,
+            'tax_category' => 'Z',
+            'tax_rate' => '0.00',
+            'net_amount' => $total,
+            'vat_amount' => '0.000',
+            'gross_amount' => $total,
+        ]);
+
+        return $receipt;
     }
 }

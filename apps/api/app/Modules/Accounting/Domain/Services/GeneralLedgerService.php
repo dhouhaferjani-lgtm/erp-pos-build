@@ -4,17 +4,20 @@ declare(strict_types=1);
 
 namespace App\Modules\Accounting\Domain\Services;
 
+use App\Modules\Accounting\Application\Services\AccountingService;
 use App\Modules\Accounting\Application\Services\FiscalPeriodResolverService;
 use App\Modules\Accounting\Application\Services\GeneralLedgerHashService;
 use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\DTOs\CreatePOSChargeJournalEntryCommand;
+use App\Modules\Accounting\Domain\DTOs\PosRevenueVatSplit;
 use App\Modules\Accounting\Domain\Enums\JournalCode;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
 use App\Modules\Accounting\Domain\Exceptions\ClosedFiscalPeriodException;
+use App\Modules\Accounting\Domain\Exceptions\PosVatProjectionRefusedException;
 use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryPostException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
@@ -3496,9 +3499,26 @@ final class GeneralLedgerService
         CancellationShape $shape,
         \DateTimeInterface $date,
         ?PaymentLedgerPartition $partition = null,
+        ?PosRevenueVatSplit $posRevenueSplit = null,
     ): JournalEntry {
         if (DB::transactionLevel() < 1) {
             throw new \LogicException('Instrument cancellation entries require an enclosing transaction.');
+        }
+
+        // W4-9 gate r1 (F-1) — the PosRevenue shape reverses a POS SALE, and a
+        // POS sale now recognises revenue NET with its output VAT on `4457`.
+        // Reversing it needs the same decomposition, so the split is REQUIRED on
+        // that arm and refused (typed) when absent. Checked before the entry row
+        // is created: an unreversible instrument must leave no orphan Draft.
+        if ($shape === CancellationShape::PosRevenue) {
+            if ($posRevenueSplit === null) {
+                throw PosVatProjectionRefusedException::missingSealedVatDetails($instrumentId);
+            }
+            // The instrument NOMINAL is what the cancellation reverses, and the
+            // refund leg's tender must be that same figure (the bridge matched
+            // the paper on it). If they ever diverge, refuse rather than post a
+            // reversal that does not undo the sale.
+            $posRevenueSplit->assertReconciles($instrumentId, $amount);
         }
 
         return DB::transaction(function () use (
@@ -3511,6 +3531,7 @@ final class GeneralLedgerService
             $shape,
             $date,
             $partition,
+            $posRevenueSplit,
         ): JournalEntry {
             $entry = JournalEntry::query()->create([
                 'tenant_id' => $tenantId,
@@ -3529,16 +3550,39 @@ final class GeneralLedgerService
             // partner_id, description), which is how a fourth shape gets added
             // wrongly. A future `CancellationShape` case is now a compile error.
             $debitLines = match ($shape) {
-                // UNCHANGED, byte for byte: one Dr ProductRevenue, partner_id
-                // null. Only its SELECTION narrowed — under A-D7 it is reachable
-                // solely through an explicit caller-supplied shape (the POS void
-                // lane), never from a reversal.
-                CancellationShape::PosRevenue => [[
-                    'account_id' => $this->getAccountByPurpose($companyId, SystemAccountPurpose::ProductRevenue)->id,
-                    'partner_id' => null,
-                    'amount' => $amount,
-                    'description' => 'POS revenue reversed',
-                ]],
+                // Reachable solely through an explicit caller-supplied shape
+                // (the POS void/refund lane), never from a B2B reversal.
+                //
+                // W4-9 gate r1 (F-1): this was a SINGLE `Dr ProductRevenue` at
+                // the GROSS instrument nominal. That was symmetric while the sale
+                // also credited revenue gross; once the sale started crediting
+                // `70x` NET and `4457` per rate, a cheque/effet-tendered POS
+                // refund reversed revenue by the gross and reversed no VAT at
+                // all — leaving `4457` permanently overstated on a live tender,
+                // while the DGI declaration nets that refund
+                // (`EloquentVatDataRepository`, `receipt_type='return'` →
+                // `-ABS(vat_amount)`). Books and filing diverged again on exactly
+                // the transaction this lane exists to fix. It now takes the SAME
+                // decomposition every other POS revenue leg takes.
+                CancellationShape::PosRevenue => array_map(
+                    static fn (array $spec): array => [
+                        'account_id' => $spec['account_id'],
+                        'partner_id' => null,
+                        'amount' => $spec['amount'],
+                        'description' => $spec['description'],
+                        // A discounted sale's reversal credits 709 back; the
+                        // B2b arm emits no contra lines, so it defaults false.
+                        'contra' => $spec['contra'],
+                    ],
+                    $this->posRevenueAndVatLineSpecs(
+                        $companyId,
+                        // Non-null on this arm: asserted before the transaction opened.
+                        $posRevenueSplit ?? throw PosVatProjectionRefusedException::missingSealedVatDetails($instrumentId),
+                        $instrumentId,
+                        'POS revenue reversed',
+                        'POS output VAT reversed (instrument cancellation)',
+                    ),
+                ),
 
                 CancellationShape::B2b => $this->b2bCancellationDebits(
                     $companyId,
@@ -3550,12 +3594,13 @@ final class GeneralLedgerService
 
             $lineOrder = 0;
             foreach ($debitLines as $line) {
+                $isContra = ($line['contra'] ?? false) === true;
                 JournalLine::query()->create([
                     'journal_entry_id' => $entry->id,
                     'account_id' => $line['account_id'],
                     'partner_id' => $line['partner_id'],
-                    'debit' => $line['amount'],
-                    'credit' => '0',
+                    'debit' => $isContra ? '0' : $line['amount'],
+                    'credit' => $isContra ? $line['amount'] : '0',
                     'description' => $line['description'],
                     'line_order' => $lineOrder++,
                 ]);
@@ -3852,18 +3897,42 @@ final class GeneralLedgerService
     /**
      * Create journal entry for POS payment.
      *
-     * POS payments are DIRECT TO REVENUE (no AR account).
-     * Debit: Cash/Bank Account (from payment repository's GL account), or the
-     * caller-supplied portfolio-account override for a maturity tender.
-     * Credit: Revenue Account (ProductRevenue system purpose)
+     * POS payments are DIRECT TO REVENUE (no AR account):
      *
-     * The override is deliberately a debit-only seam: revenue lines remain
-     * byte-identical across immediate and deferred POS tender legs.
+     *     Dr  Cash/Bank (repository GL account, or the caller-supplied
+     *         portfolio-account override for a maturity tender)   tender
+     *       Cr  Revenue (ProductRevenue)                          net
+     *       Cr  VAT collected (VatCollected — 4457 on the TN chart), ONE LINE
+     *           PER SEALED RATE                                   vat
+     *
+     * **W4-9 — this used to credit the GROSS tender to revenue and post no VAT
+     * leg at all.** `4457` carried no journal line for any POS receipt while
+     * `pos_receipt_vat_details` and the DGI declaration both carried the right
+     * split: the books and the filing disagreed from receipt #1, revenue was
+     * overstated by exactly the VAT, and the trial balance still closed — so
+     * nothing surfaced it. Document-arm sales
+     * ({@see AccountingService::createInvoiceGLEntries})
+     * always posted the VAT leg, so the two sales channels disagreed about the
+     * same kind of transaction.
+     *
+     * The VAT numbers arrive ALREADY DECIDED in `$vatSplit`, apportioned from
+     * the SEALED `pos_receipt_vat_details` rows by
+     * {@see PosReceiptVatAllocator}.
+     * Nothing here multiplies a net by a rate: the sealed breakdown is the
+     * fiscal fact and this method is forbidden a second opinion about it.
+     * `assertReconciles()` runs BEFORE the first `journal_lines` insert, so a
+     * split that cannot express the leg refuses (typed) instead of writing a
+     * plausible-looking wrong entry.
+     *
+     * The cash-account override is deliberately a debit-only seam: the revenue
+     * and VAT lines remain byte-identical across immediate and deferred POS
+     * tender legs.
      */
     public function createPOSPaymentEntry(
         Payment $payment,
         Receipt $receipt,
         PaymentRepository $repository,
+        PosRevenueVatSplit $vatSplit,
         ?string $cashAccountOverrideId = null,
     ): JournalEntry {
         if ($repository->gl_account_id === null) {
@@ -3874,11 +3943,11 @@ final class GeneralLedgerService
             );
         }
 
-        $entry = DB::transaction(function () use ($payment, $receipt, $repository, $cashAccountOverrideId): JournalEntry {
-            $companyId = $payment->company_id;
+        $tender = $this->posTenderAmount($payment, $receipt);
+        $vatSplit->assertReconciles((string) $receipt->id, $tender);
 
-            // Get revenue account by system purpose
-            $revenueAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::ProductRevenue);
+        $entry = DB::transaction(function () use ($payment, $receipt, $repository, $cashAccountOverrideId, $vatSplit, $tender): JournalEntry {
+            $companyId = $payment->company_id;
 
             $entryNumber = $this->generateEntryNumber($companyId);
 
@@ -3895,32 +3964,212 @@ final class GeneralLedgerService
                 'source_id' => $receipt->id,
             ]);
 
-            // Debit: Cash/Bank Account (from payment repository)
+            // Debit: Cash/Bank Account (from payment repository) — the GROSS
+            // tender. This leg is unchanged by W4-9: the money that moved is
+            // still the money that moved.
             JournalLine::create([
                 'journal_entry_id' => $entry->id,
                 'account_id' => $cashAccountOverrideId ?? $repository->gl_account_id,
                 'partner_id' => null,
-                'debit' => $payment->amount,
+                'debit' => $tender,
                 'credit' => '0',
                 'description' => "POS payment via {$repository->name}",
                 'line_order' => 0,
             ]);
 
-            // Credit: Revenue Account
-            JournalLine::create([
-                'journal_entry_id' => $entry->id,
-                'account_id' => $revenueAccount->id,
-                'partner_id' => null,
-                'debit' => '0',
-                'credit' => $payment->amount,
-                'description' => 'POS sales revenue',
-                'line_order' => 1,
-            ]);
+            $this->writePosRevenueAndVatLines(
+                entry: $entry,
+                companyId: (string) $companyId,
+                vatSplit: $vatSplit,
+                subjectId: (string) $receipt->id,
+                onDebitSide: false,
+                revenueDescription: 'POS sales revenue',
+                vatDescriptionPrefix: 'POS output VAT',
+            );
 
             return $entry->load('lines');
         });
 
         return $entry;
+    }
+
+    /**
+     * The tender amount the POS entry's cash leg carries, normalised to the
+     * receipt currency scale.
+     *
+     * The scale is resolved from the RECEIPT currency explicitly — never from a
+     * no-arg `getScale()`. Both POS GL writers run inside
+     * `TreasuryReceiptBridge`, i.e. on a Horizon worker with NO `CompanyContext`
+     * bound (rule 20), where the no-arg resolution throws.
+     *
+     * @return numeric-string
+     */
+    private function posTenderAmount(Payment $payment, Receipt $receipt): string
+    {
+        /** @var numeric-string $amount */
+        $amount = (string) $payment->amount;
+
+        return bcadd($amount, '0', $this->scaleResolver->getScale((string) $receipt->currency));
+    }
+
+    /**
+     * Write the revenue + per-rate output-VAT legs of a POS entry (W4-9).
+     *
+     * `$onDebitSide` is the ONLY difference between a sale and its refund
+     * reversal: a sale CREDITS revenue and VAT, a refund DEBITS the same two
+     * accounts for the same decomposition. Sharing one writer is what makes the
+     * refund a true mirror — the alternative (two hand-written line blocks) is
+     * how a refund ends up reversing revenue gross and leaving `4457`
+     * permanently overstated.
+     *
+     * Zero-valued lines are skipped: a fully-exempt sale posts no `4457` line at
+     * all (rather than a 0.000 line), and the `VatCollected` purpose is resolved
+     * ONLY when a rate actually carries money — so a chart with no VAT account
+     * can still book an exempt sale.
+     */
+    private function writePosRevenueAndVatLines(
+        JournalEntry $entry,
+        string $companyId,
+        PosRevenueVatSplit $vatSplit,
+        string $subjectId,
+        bool $onDebitSide,
+        string $revenueDescription,
+        string $vatDescriptionPrefix,
+    ): void {
+        $lineOrder = 1;
+
+        foreach ($this->posRevenueAndVatLineSpecs($companyId, $vatSplit, $subjectId, $revenueDescription, $vatDescriptionPrefix) as $spec) {
+            // `contra` sits on the OPPOSITE side from revenue: the sales-discount
+            // line is a debit on a sale and a credit on its reversal, always the
+            // mirror of the revenue it reduces.
+            $onDebit = $spec['contra'] ? ! $onDebitSide : $onDebitSide;
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $spec['account_id'],
+                'partner_id' => null,
+                'debit' => $onDebit ? $spec['amount'] : '0',
+                'credit' => $onDebit ? '0' : $spec['amount'],
+                'description' => $spec['description'],
+                'line_order' => $lineOrder++,
+            ]);
+        }
+    }
+
+    /**
+     * Precheck every purpose the decomposition will resolve — and only those it
+     * will actually use — before a single line is built.
+     *
+     * @throws PosVatProjectionRefusedException when the chart cannot express this decomposition
+     */
+    private function assertPosPurposesProvisioned(
+        string $companyId,
+        PosRevenueVatSplit $vatSplit,
+        string $subjectId,
+    ): void {
+        $required = [];
+        if ($vatSplit->hasNetRevenue()) {
+            $required[] = SystemAccountPurpose::ProductRevenue;
+        }
+        if ($vatSplit->hasDiscount()) {
+            $required[] = SystemAccountPurpose::SalesDiscount;
+        }
+        if ($vatSplit->nonZeroVatAllocations() !== []) {
+            $required[] = SystemAccountPurpose::VatCollected;
+        }
+
+        foreach ($required as $purpose) {
+            if (! $this->hasAccountForPurpose($companyId, $purpose)) {
+                throw PosVatProjectionRefusedException::chartPurposeMissing($subjectId, $purpose);
+            }
+        }
+    }
+
+    /**
+     * THE POS revenue/VAT decomposition, as data (W4-9 gate r1 / F-1).
+     *
+     * One net `ProductRevenue` line plus one `VatCollected` line per sealed rate
+     * that actually carries money. Zero-valued lines are skipped, so a
+     * fully-exempt sale posts no `4457` line at all — and the `VatCollected`
+     * purpose is resolved ONLY when a rate carries money, so a chart without the
+     * account can still book an exempt sale.
+     *
+     * It exists as SPECS rather than as writes because the POS reverses revenue
+     * on three different entry shapes — the sale, the cash/card refund reversal,
+     * and the maturity-instrument cancellation — each of which persists its lines
+     * differently (line ordering, an enclosing portfolio credit). Gate r1 F-1 was
+     * exactly what happens when one of those three hand-writes its own version:
+     * the sale credited `70x` NET while the cheque/effet cancellation debited it
+     * GROSS, leaving `4457` permanently overstated by every instrument-tendered
+     * POS refund. There is now ONE place that decides what the decomposition is.
+     *
+     * A `contra` spec sits on the opposite side from revenue — today that is the
+     * transaction-level sales discount (709), which reduces the revenue the
+     * pre-discount base recognised.
+     *
+     * @return list<array{account_id: string, amount: numeric-string, description: string, contra: bool}>
+     */
+    private function posRevenueAndVatLineSpecs(
+        string $companyId,
+        PosRevenueVatSplit $vatSplit,
+        string $subjectId,
+        string $revenueDescription,
+        string $vatDescriptionPrefix,
+    ): array {
+        // Treasury gate I-2 — precheck EVERY purpose this decomposition will
+        // resolve, and only those it will actually use, before a single line is
+        // built. `getAccountByPurpose()` throws a bare `RuntimeException` from
+        // the depths of the writer; from inside `TreasuryReceiptBridge`'s
+        // transaction that costs the receipt its Treasury payment, its
+        // `repository_movements` row and its cash balance too, with nothing
+        // naming the missing purpose. Same posture the §4.6 rounding and
+        // tolerance entries already take ("Both halves of the entry are
+        // prechecked") — fail closed, but say what is missing.
+        $this->assertPosPurposesProvisioned($companyId, $vatSplit, $subjectId);
+
+        $specs = [];
+
+        if ($vatSplit->hasNetRevenue()) {
+            $specs[] = [
+                'account_id' => (string) $this->getAccountByPurpose($companyId, SystemAccountPurpose::ProductRevenue)->id,
+                'amount' => $vatSplit->netRevenueAmount,
+                'description' => $revenueDescription,
+                'contra' => false,
+            ];
+        }
+
+        // W4-9 gate r1 (F-4). The device seals the VAT on the PRE-discount base
+        // (`subtotal + vat_total == total + transaction_discount_amount`), and
+        // the declaration reports that same base. Letting the revenue credit
+        // silently absorb the discount would leave the ledger's implied base
+        // BELOW the declared one — books and filing agreeing about the VAT while
+        // disagreeing about what it was charged on. The discount is therefore an
+        // explicit contra-revenue line, exactly as `createPOSChargeEntry()` books
+        // the ACCOUNT_CHARGE arm of the same POS.
+        if ($vatSplit->hasDiscount()) {
+            $specs[] = [
+                'account_id' => (string) $this->getAccountByPurpose($companyId, SystemAccountPurpose::SalesDiscount)->id,
+                'amount' => $vatSplit->discountAmount,
+                'description' => 'POS transaction discount',
+                'contra' => true,
+            ];
+        }
+
+        $allocations = $vatSplit->nonZeroVatAllocations();
+        if ($allocations === []) {
+            return $specs;
+        }
+
+        $vatAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::VatCollected);
+        foreach ($allocations as $allocation) {
+            $specs[] = [
+                'account_id' => (string) $vatAccount->id,
+                'amount' => $allocation->vatAmount,
+                'description' => sprintf('%s %s%%', $vatDescriptionPrefix, $allocation->taxRate),
+                'contra' => false,
+            ];
+        }
+
+        return $specs;
     }
 
     /**
@@ -3949,7 +4198,8 @@ final class GeneralLedgerService
     public function createPOSRefundReversalEntry(
         Payment $payment,
         Receipt $receipt,
-        PaymentRepository $repository
+        PaymentRepository $repository,
+        PosRevenueVatSplit $vatSplit,
     ): JournalEntry {
         if ($repository->gl_account_id === null) {
             throw new \InvalidArgumentException(
@@ -3959,10 +4209,11 @@ final class GeneralLedgerService
             );
         }
 
-        $entry = DB::transaction(function () use ($payment, $receipt, $repository): JournalEntry {
-            $companyId = $payment->company_id;
+        $tender = $this->posTenderAmount($payment, $receipt);
+        $vatSplit->assertReconciles((string) $receipt->id, $tender);
 
-            $revenueAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::ProductRevenue);
+        $entry = DB::transaction(function () use ($payment, $receipt, $repository, $vatSplit, $tender): JournalEntry {
+            $companyId = $payment->company_id;
 
             $entryNumber = $this->generateEntryNumber($companyId);
 
@@ -3978,27 +4229,34 @@ final class GeneralLedgerService
                 'source_id' => $receipt->id,
             ]);
 
-            // Debit: Revenue Account — the sale revenue is reversed.
-            JournalLine::create([
-                'journal_entry_id' => $entry->id,
-                'account_id' => $revenueAccount->id,
-                'partner_id' => null,
-                'debit' => $payment->amount,
-                'credit' => '0',
-                'description' => 'POS sales revenue reversed (refund)',
-                'line_order' => 0,
-            ]);
-
             // Credit: Cash/Bank Account (from payment repository) — money out.
+            // Written FIRST so the cash leg keeps `line_order = 0` on both the
+            // sale and its reversal; the revenue/VAT legs then mirror the sale's
+            // ordering on the opposite side.
             JournalLine::create([
                 'journal_entry_id' => $entry->id,
                 'account_id' => $repository->gl_account_id,
                 'partner_id' => null,
                 'debit' => '0',
-                'credit' => $payment->amount,
+                'credit' => $tender,
                 'description' => "POS refund via {$repository->name}",
-                'line_order' => 1,
+                'line_order' => 0,
             ]);
+
+            // W4-9 — the refund reverses the SAME decomposition the sale
+            // recognised: revenue net and output VAT per sealed rate. Reversing
+            // the gross tender against revenue alone (the pre-W4-9 shape) would
+            // have left `4457` permanently overstated by every refunded sale's
+            // VAT once sales started booking it.
+            $this->writePosRevenueAndVatLines(
+                entry: $entry,
+                companyId: (string) $companyId,
+                vatSplit: $vatSplit,
+                subjectId: (string) $receipt->id,
+                onDebitSide: true,
+                revenueDescription: 'POS sales revenue reversed (refund)',
+                vatDescriptionPrefix: 'POS output VAT reversed (refund)',
+            );
 
             return $entry->load('lines');
         });
