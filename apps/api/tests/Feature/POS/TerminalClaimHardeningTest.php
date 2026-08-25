@@ -677,6 +677,56 @@ final class TerminalClaimHardeningTest extends TestCase
      * Projects the shape a device's SESSION_OPEN leaves behind: an OPEN
      * `pos_shifts` row on the terminal.
      */
+    // ------------------------------------------------- route id constraints
+
+    /**
+     * LEDGER C-17(iv) — a non-UUID `{id}` 500s across the whole terminal route
+     * group. Every one of these handlers takes `string $id` and puts it straight
+     * into a `where('id', …)` against a `uuid` column, so PostgreSQL answers
+     * `SQLSTATE[22P02] invalid input syntax for type uuid` — a 500 with a SQL
+     * fragment in the log for what is simply a bad URL. Fixed group-wide with
+     * `whereUuid`, so an unparseable id is a 404 before the controller runs.
+     *
+     * PostgreSQL only, and not for convenience: SQLite is untyped, so
+     * `where id = 'not-a-uuid'` there just matches no rows and every one of
+     * these already answers 404. The defect is invisible on the SQLite leg.
+     */
+    public function test_a_non_uuid_terminal_id_is_a_404_not_a_500(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('SQLite is untyped: a non-UUID id matches no rows instead of raising 22P02.');
+        }
+
+        $calls = [
+            ['get', '/api/v1/pos/terminals/not-a-uuid'],
+            ['patch', '/api/v1/pos/terminals/not-a-uuid'],
+            ['delete', '/api/v1/pos/terminals/not-a-uuid'],
+            ['patch', '/api/v1/pos/terminals/not-a-uuid/activate'],
+            ['patch', '/api/v1/pos/terminals/not-a-uuid/deactivate'],
+            ['post', '/api/v1/pos/terminals/not-a-uuid/release'],
+            ['patch', '/api/v1/pos/terminals/not-a-uuid/archive'],
+            ['post', '/api/v1/pos/terminals/not-a-uuid/toggle-training'],
+            ['get', '/api/v1/pos/terminals/not-a-uuid/z-chain-state'],
+            ['post', '/api/v1/pos/terminals/not-a-uuid/fiscal-schema-cutover'],
+            ['post', '/api/v1/pos/terminals/not-a-uuid/acknowledge-v4-refund-authoring'],
+        ];
+
+        foreach ($calls as [$verb, $url]) {
+            $response = match ($verb) {
+                'get' => $this->getJson($url),
+                'patch' => $this->patchJson($url, []),
+                'delete' => $this->deleteJson($url),
+                default => $this->postJson($url, []),
+            };
+
+            $this->assertSame(
+                404,
+                $response->status(),
+                strtoupper($verb)." {$url} must 404 on an unparseable id, not 500. Body: ".$response->getContent(),
+            );
+        }
+    }
+
     private function openShiftOn(Terminal $terminal): string
     {
         $shiftId = (string) Str::uuid();

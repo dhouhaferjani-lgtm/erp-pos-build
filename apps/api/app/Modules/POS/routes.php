@@ -61,34 +61,49 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('throttle:pos-terminal-activation');
     Route::get('/pos/terminals/by-device/{hardwareIdentifier}', [TerminalController::class, 'findByDevice']);
     Route::post('/pos/terminals', [TerminalController::class, 'store']);
-    Route::get('/pos/terminals/{id}', [TerminalController::class, 'show']);
-    Route::patch('/pos/terminals/{id}', [TerminalController::class, 'update']);
-    Route::delete('/pos/terminals/{id}', [TerminalController::class, 'destroy']);
-    Route::patch('/pos/terminals/{id}/activate', [TerminalController::class, 'activate'])
-        ->middleware('throttle:pos-terminal-activation');
-    Route::patch('/pos/terminals/{id}/deactivate', [TerminalController::class, 'deactivate']);
-    // Q-7: the reverse of `claim`. Admin-only (`pos.manage_terminals`, asserted
-    // in the controller like every sibling here), because it is the remedial
-    // path for a dead or replaced till — it re-opens the terminal, and its
-    // fiscal chain, to a different device.
-    Route::post('/pos/terminals/{id}/release', [TerminalController::class, 'release']);
-    Route::patch('/pos/terminals/{id}/archive', [TerminalController::class, 'archive']);
-    Route::post('/pos/terminals/{id}/toggle-training', [TerminalController::class, 'toggleTrainingMode']);
-    Route::get('/pos/terminals/{id}/z-chain-state', [TerminalController::class, 'zChainState']);
-    // Fiscal-schema cutover: admin-only, gated on no-open-shift + no-unzreported + empty-queue
-    Route::post('/pos/terminals/{terminal}/fiscal-schema-cutover', FiscalSchemaCutoverController::class);
-    // v3-refund-chain-integration §9.3 Phase 2 — the DEVICE acknowledges the
-    // server's v4-refund-authoring offer. Stamping
-    // `v4_refund_authoring_acknowledged_at` is the SOLE trigger that
-    // activates LegacyCorrectionGuard (i.e. retires the legacy /return +
-    // /void correction path) for the terminal. Wave-2 fix-wave finding 9:
-    // this route did not exist while the device had been posting to it
-    // since wave 2 and swallowing the 404, so the guard could never fire
-    // and the legacy path stayed open on v4 terminals permanently.
-    Route::post(
-        '/pos/terminals/{id}/acknowledge-v4-refund-authoring',
-        V4RefundAuthoringAcknowledgementController::class
-    )->name('pos.terminals.acknowledge-v4-refund-authoring');
+    // LEDGER C-17(iv): every handler below takes the id as a plain `string` and
+    // puts it straight into a `where('id', …)` against a `uuid` column, so a
+    // non-UUID segment made PostgreSQL raise `SQLSTATE[22P02] invalid input
+    // syntax for type uuid` — a 500 (with a SQL fragment in the log) for what is
+    // simply a bad URL. Constrained group-wide instead of per route so a route
+    // added here cannot silently reopen it. `{terminal}` is the
+    // fiscal-schema-cutover route's parameter name and has the same exposure.
+    // Invisible on SQLite, which is untyped and already 404s.
+    // NB: chaining `->whereUuid('id')->whereUuid('terminal')` does NOT work —
+    // RouteRegistrar::attribute() REPLACES the `where` array, so only the last
+    // call survives (verified: the group came out constrained on `terminal`
+    // only, and GET /pos/terminals/not-a-uuid still 500'd). Pass both names to
+    // one call.
+    Route::whereUuid(['id', 'terminal'])->group(function (): void {
+        Route::get('/pos/terminals/{id}', [TerminalController::class, 'show']);
+        Route::patch('/pos/terminals/{id}', [TerminalController::class, 'update']);
+        Route::delete('/pos/terminals/{id}', [TerminalController::class, 'destroy']);
+        Route::patch('/pos/terminals/{id}/activate', [TerminalController::class, 'activate'])
+            ->middleware('throttle:pos-terminal-activation');
+        Route::patch('/pos/terminals/{id}/deactivate', [TerminalController::class, 'deactivate']);
+        // Q-7: the reverse of `claim`. Admin-only (`pos.manage_terminals`, asserted
+        // in the controller like every sibling here), because it is the remedial
+        // path for a dead or replaced till — it re-opens the terminal, and its
+        // fiscal chain, to a different device.
+        Route::post('/pos/terminals/{id}/release', [TerminalController::class, 'release']);
+        Route::patch('/pos/terminals/{id}/archive', [TerminalController::class, 'archive']);
+        Route::post('/pos/terminals/{id}/toggle-training', [TerminalController::class, 'toggleTrainingMode']);
+        Route::get('/pos/terminals/{id}/z-chain-state', [TerminalController::class, 'zChainState']);
+        // Fiscal-schema cutover: admin-only, gated on no-open-shift + no-unzreported + empty-queue
+        Route::post('/pos/terminals/{terminal}/fiscal-schema-cutover', FiscalSchemaCutoverController::class);
+        // v3-refund-chain-integration §9.3 Phase 2 — the DEVICE acknowledges the
+        // server's v4-refund-authoring offer. Stamping
+        // `v4_refund_authoring_acknowledged_at` is the SOLE trigger that
+        // activates LegacyCorrectionGuard (i.e. retires the legacy /return +
+        // /void correction path) for the terminal. Wave-2 fix-wave finding 9:
+        // this route did not exist while the device had been posting to it
+        // since wave 2 and swallowing the 404, so the guard could never fire
+        // and the legacy path stayed open on v4 terminals permanently.
+        Route::post(
+            '/pos/terminals/{id}/acknowledge-v4-refund-authoring',
+            V4RefundAuthoringAcknowledgementController::class
+        )->name('pos.terminals.acknowledge-v4-refund-authoring');
+    });
 
     // Shift Management
     // Web POS is demo-account-only (owner decision 2026-06-11): the six
