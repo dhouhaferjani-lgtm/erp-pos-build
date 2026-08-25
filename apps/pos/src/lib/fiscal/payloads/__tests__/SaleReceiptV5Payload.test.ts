@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { bcsum } from '@/lib/decimal';
+import { bccomp, bcsum } from '@/lib/decimal';
 import { SALE_RECEIPT_PAYLOAD_KEYS_V5, SALE_RECEIPT_VAT_BREAKDOWN_KEYS_V5 } from '@/lib/fiscal/FiscalEventEngine';
 import { SaleReceiptAggregateInvariantError } from '@/lib/fiscal/payloads/SaleReceiptPayload';
 import type { BuildSaleReceiptPayloadInput } from '@/lib/fiscal/payloads/SaleReceiptPayload';
@@ -141,7 +141,7 @@ describe('buildSaleReceiptV5Payload', () => {
     // not pay; v5 seals 65.453 on the 590.000 they did.
     expect(v3.vat_total).toBe('71.000');
     expect(v5.vat_total).toBe('65.453');
-    expect(Number(v5.vat_total)).toBeLessThan(Number(v3.vat_total));
+    expect(bccomp(v5.vat_total, v3.vat_total)).toBeLessThan(0);
   });
 
   it('is byte-identical to v3 (minus discount_allocated) when there is no remise', () => {

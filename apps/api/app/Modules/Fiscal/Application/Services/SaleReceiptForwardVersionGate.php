@@ -2,10 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Fiscal\Domain\Services;
+namespace App\Modules\Fiscal\Application\Services;
 
 use App\Modules\Fiscal\Application\DTOs\FiscalEventEnvelope;
-use App\Modules\Fiscal\Application\Services\FiscalPayloadConstraintValidator;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use Illuminate\Database\ConnectionInterface;
 

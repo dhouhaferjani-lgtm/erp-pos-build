@@ -8,18 +8,19 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Fiscal\Application\DTOs\FiscalEventEnvelope;
+use App\Modules\Fiscal\Application\Services\SaleReceiptForwardVersionGate;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
-use App\Modules\Fiscal\Domain\Services\SaleReceiptForwardVersionGate;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -197,7 +198,7 @@ final class PosReceiptV5DiscountVatBaseProjectionTest extends TestCase
         // The CHECK is still in force — proven by trying to insert the very row
         // the device used to emit.
         if (DB::connection()->getDriverName() === 'pgsql') {
-            $this->expectException(\Illuminate\Database\QueryException::class);
+            $this->expectException(QueryException::class);
             DB::table('pos_receipt_payments')->insert([
                 'id' => (string) Str::uuid(),
                 'receipt_id' => $receipt->id,

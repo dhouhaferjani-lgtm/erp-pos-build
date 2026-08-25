@@ -53,7 +53,7 @@ return new class extends Migration
             DB::statement(
                 'COMMENT ON COLUMN pos_receipt_vat_details.discount_allocated IS '
                 ."'D-1: this rate group''s pro-rata share of the ticket-level remise (sealed at "
-                ."SALE_RECEIPT event_version >= 5). NULL on rows projected from v1..v4 events, "
+                .'SALE_RECEIPT event_version >= 5). NULL on rows projected from v1..v4 events, '
                 ."which sealed the taxable base BEFORE the remise.'"
             );
         }

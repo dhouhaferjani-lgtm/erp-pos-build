@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from 'vitest';
 
+import { bcadd, bccomp, bcsub, bcsum } from '@/lib/decimal';
 import {
   TransactionDiscountAllocationError,
   allocateTransactionDiscount,
@@ -56,17 +57,14 @@ describe('allocateTransactionDiscount', () => {
     const out = allocateTransactionDiscount(groups, '50.000', TND);
 
     const byRate = new Map(out.map((g) => [`${g.rate}|${g.category}`, g]));
-    const sumDisc = out.reduce((acc, g) => acc + Number(g.discountAllocated), 0);
-    expect(sumDisc.toFixed(3)).toBe('50.000');
+    expect(bcsum(out.map((g) => g.discountAllocated), TND)).toBe('50.000');
 
     // Every group's gross is reduced by exactly its allocated share.
     for (const g of out) {
-      expect(Number(g.grossAmount).toFixed(3)).toBe(
-        (Number(g.grossBeforeDiscount) - Number(g.discountAllocated)).toFixed(3),
-      );
-      expect(Number(g.netAmount) + Number(g.vatAmount)).toBeCloseTo(Number(g.grossAmount), 6);
-      expect(Number(g.netAmount)).toBeGreaterThanOrEqual(0);
-      expect(Number(g.vatAmount)).toBeGreaterThanOrEqual(0);
+      expect(g.grossAmount).toBe(bcsub(g.grossBeforeDiscount, g.discountAllocated, TND));
+      expect(bcadd(g.netAmount, g.vatAmount, TND)).toBe(g.grossAmount);
+      expect(bccomp(g.netAmount, '0')).toBeGreaterThanOrEqual(0);
+      expect(bccomp(g.vatAmount, '0')).toBeGreaterThanOrEqual(0);
     }
 
     // Exempt group carries base only — never any VAT.
@@ -82,9 +80,8 @@ describe('allocateTransactionDiscount', () => {
     ];
 
     const out = allocateTransactionDiscount(groups, '10.001', TND);
-    const sum = out.reduce((acc, g) => acc + Number(g.discountAllocated), 0);
 
-    expect(sum.toFixed(3)).toBe('10.001');
+    expect(bcsum(out.map((g) => g.discountAllocated), TND)).toBe('10.001');
   });
 
   it('zeroes a group entirely on a 100 % comp (no ±1 ulp residue left behind)', () => {
@@ -126,7 +123,7 @@ describe('allocateTransactionDiscount', () => {
 
     const out = allocateTransactionDiscount(groups, '500.000', TND);
     for (const g of out) {
-      expect(Number(g.discountAllocated)).toBeLessThanOrEqual(Number(g.grossBeforeDiscount));
+      expect(bccomp(g.discountAllocated, g.grossBeforeDiscount)).toBeLessThanOrEqual(0);
     }
   });
 });

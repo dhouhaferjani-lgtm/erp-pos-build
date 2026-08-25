@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -104,7 +105,7 @@ return new class extends Migration
             DB::transaction(function (): void {
                 DB::statement('ALTER TABLE pos_receipts VALIDATE CONSTRAINT pos_receipts_totals');
             });
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             // 23514 = check_violation: this tenant already carried residue rows
             // under the OLD constraint. Leave the constraint NOT VALID — it
             // still guards every new row — rather than abort the fleet.

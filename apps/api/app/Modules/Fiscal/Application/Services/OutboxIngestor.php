@@ -7,7 +7,6 @@ namespace App\Modules\Fiscal\Application\Services;
 use App\Modules\Fiscal\Application\DTOs\FiscalEventEnvelope;
 use App\Modules\Fiscal\Application\DTOs\IngestionResult;
 use App\Modules\Fiscal\Application\DTOs\ParseResult;
-use App\Modules\Fiscal\Domain\Services\SaleReceiptForwardVersionGate;
 use App\Modules\Fiscal\Application\Jobs\ApplyFiscalEventProjectionJob;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityExceptionClass;

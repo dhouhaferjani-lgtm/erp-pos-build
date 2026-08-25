@@ -223,13 +223,20 @@ final class TransactionDiscountVatAllocator
         return $rounded;
     }
 
-    /** `1` at the last representable digit of `$scale`. */
+    /**
+     * `1` at the last representable digit of `$scale`.
+     *
+     * @return numeric-string
+     */
     private function ulp(int $scale): string
     {
         if ($scale === 0) {
             return '1';
         }
 
-        return '0.'.str_repeat('0', $scale - 1).'1';
+        // Built by DIVISION rather than string concatenation: bcdiv returns a
+        // genuine numeric-string, whereas '0.'.str_repeat(...).'1' is inferred
+        // as non-falsy-string and would need a cast to satisfy the return type.
+        return bcdiv('1', bcpow('10', (string) $scale), $scale);
     }
 }

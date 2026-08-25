@@ -1248,22 +1248,25 @@ final class ReceiptCreationService
             return $vatAggregates;
         }
 
-        $largestKey = null;
-        $largestGross = null;
+        // The count guard above makes the first key non-null, so it seeds the
+        // search instead of a null sentinel PHPStan would then narrow away.
+        $largestKey = (string) array_key_first($vatAggregates);
+        /** @var numeric-string $largestGross */
+        $largestGross = $vatAggregates[$largestKey]['gross_amount'];
         foreach ($vatAggregates as $key => $aggregate) {
             /** @var numeric-string $gross */
             $gross = $aggregate['gross_amount'];
-            if ($largestGross === null || bccomp($gross, $largestGross, $this->scale()) > 0) {
+            if (bccomp($gross, $largestGross, $this->scale()) > 0) {
                 $largestGross = $gross;
                 $largestKey = $key;
             }
         }
-        if ($largestKey === null) {
-            return $vatAggregates;
-        }
 
+        $largest = $vatAggregates[$largestKey];
         /** @var numeric-string $vat */
-        $vat = $vatAggregates[$largestKey]['vat_amount'];
+        $vat = $largest['vat_amount'];
+        /** @var numeric-string $net */
+        $net = $largest['net_amount'];
         $adjustedVat = bcadd($vat, $residue, $this->scale());
         if (bccomp($adjustedVat, '0', $this->scale()) < 0) {
             // A residue big enough to drive a group's VAT negative is not
@@ -1273,10 +1276,12 @@ final class ReceiptCreationService
             return $vatAggregates;
         }
 
-        $vatAggregates[$largestKey]['vat_amount'] = $adjustedVat;
-        /** @var numeric-string $net */
-        $net = $vatAggregates[$largestKey]['net_amount'];
-        $vatAggregates[$largestKey]['gross_amount'] = bcadd($net, $adjustedVat, $this->scale());
+        $vatAggregates[$largestKey] = [
+            'tax_rate' => $largest['tax_rate'],
+            'net_amount' => $net,
+            'vat_amount' => $adjustedVat,
+            'gross_amount' => bcadd($net, $adjustedVat, $this->scale()),
+        ];
 
         return $vatAggregates;
     }
