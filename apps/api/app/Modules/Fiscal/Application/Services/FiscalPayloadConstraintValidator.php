@@ -1359,7 +1359,17 @@ final class FiscalPayloadConstraintValidator
         $lhs = bcadd($subtotalN, $vatTotalN, $scale);
         // Spec §4.1 identity (1): subtotal + vat_total == (total − adj) + discount.
         // Absent fields ⇒ adj = 0 ⇒ this reduces to the v1/v2 identity exactly.
-        $rhs = bcadd(bcsub($totalN, $roundingAdjustment, $scale), $discountAmount, $scale);
+        //
+        // D-1: at v5 the discount term DISAPPEARS — the taxable base is already
+        // net of the remise. This is the FIRST of the two places the identity
+        // is evaluated (the second is
+        // {@see validateSaleReceiptAggregateConsistency()}); both must thread
+        // the version or a correct post-remise ticket is refused here before it
+        // ever reaches the aggregate check.
+        $rhs = bcsub($totalN, $roundingAdjustment, $scale);
+        if ($eventVersion < self::SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION) {
+            $rhs = bcadd($rhs, $discountAmount, $scale);
+        }
         if (bccomp($lhs, $rhs, $scale) !== 0) {
             throw new RuntimeException(
                 'payload_total_arithmetic_mismatch:lhs='.$lhs.':rhs='.$rhs
