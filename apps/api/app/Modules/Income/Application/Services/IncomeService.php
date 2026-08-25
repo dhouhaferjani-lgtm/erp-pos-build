@@ -153,7 +153,7 @@ final class IncomeService
         return DB::transaction(function () use ($income, $user): Document {
             // N-6 fix round r1 / fiscal gate F-6 — single write path.
             $this->documentStatus->transition($income, DocumentStatus::Posted, [
-                'document_number' => $this->generateIncomeNumber($income->company_id),
+                'document_number' => $this->generateIncomeNumber($income->tenant_id),
             ]);
 
             $metadata = $income->incomeMetadata;
@@ -201,24 +201,46 @@ final class IncomeService
     }
 
     /**
-     * Generate income document number.
+     * Allocate the next income document number for the tenant.
+     *
+     * LEDGER C-27 (Session B2, 2026-08-25) — the Income twin of the
+     * journal-entry defect, fixed in the same shape Q-11 applied to
+     * `ExpenseService::generateExpenseNumber()`:
+     *
+     * 1. SCOPE. The scan is TENANT-scoped, not company-scoped, because the only
+     *    unique index on the column is
+     *    `documents_tenant_id_type_document_number_unique` on
+     *    `(tenant_id, type, document_number)`. A company-scoped max+1 is NARROWER
+     *    than the constraint it must satisfy: in a tenant with two companies, the
+     *    second company's first income post minted `INC-YYYY-000001`, which the
+     *    first company already held — an unconditional unique violation that rolled
+     *    back the whole post transaction (GL entry + treasury movement).
+     *    Consequence of the widening: sequential income numbers now interleave
+     *    across the companies of a tenant. The index is deliberately untouched.
+     *
+     * 2. RACE. There was NO lock at all. The max+1 read is now serialised by a
+     *    transaction-scoped advisory lock keyed on the same (tenant) scope as the
+     *    scan. The single call site (`post()`) runs inside `DB::transaction`, so
+     *    the lock is held until that transaction commits.
      */
-    private function generateIncomeNumber(string $companyId): string
+    private function generateIncomeNumber(string $tenantId): string
     {
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement(
+                'SELECT pg_advisory_xact_lock(hashtextextended(?, 0))',
+                ["income_number:{$tenantId}"],
+            );
+        }
+
         $year = date('Y');
-        $lastIncome = Document::query()
-            ->where('company_id', $companyId)
+        $lastNumber = Document::query()
+            ->where('tenant_id', $tenantId)
             ->where('type', DocumentType::Income)
             ->where('document_number', 'like', "INC-{$year}-%")
             ->orderByDesc('document_number')
-            ->first();
+            ->value('document_number');
 
-        if ($lastIncome !== null) {
-            $lastNumber = (int) substr($lastIncome->document_number, -6);
-            $nextNumber = $lastNumber + 1;
-        } else {
-            $nextNumber = 1;
-        }
+        $nextNumber = is_string($lastNumber) ? ((int) substr($lastNumber, -6)) + 1 : 1;
 
         return sprintf('INC-%s-%06d', $year, $nextNumber);
     }

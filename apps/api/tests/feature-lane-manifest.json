@@ -6,7 +6,7 @@
     "deferred": "CAN run, but no lane runs it yet. Requires `reason`. Counted loudly on every CI run. After O-29 exactly one group is left here — `(root files)`, which no whole-directory selector can address."
   },
   "debt_ceiling": 1,
-  "gated_ceiling": 1174,
+  "gated_ceiling": 1175,
   "lanes": {
     "security-regression": {
       "job": "security-regression",
@@ -671,8 +671,8 @@
     },
     "Accounting": {
       "lane": "treasury-spine-pgsql/feature-accounting",
-      "classes": 86,
-      "note": "Informational for lane groups: the ceiling is enforced only for deferred/excluded groups; a laned directory picks up new classes automatically. 86 on disk at the O-27 tip: 81 at the 2026-08-21 accepted tip, plus ChokepointUnbalancedGuardTest (P3 M1) and SeededChartManifestRequiredPurposeCompletenessTest (P3 M2) = 83, plus ChartPurposeBackfillSeederParityTest, LiveTenantChartValidationParityTest and BackfillChartRequiredPurposesO27MigrationTest (O-27 F-4)."
+      "classes": 88,
+      "note": "Informational for lane groups: the ceiling is enforced only for deferred/excluded groups; a laned directory picks up new classes automatically. 86 on disk at the O-27 tip: 81 at the 2026-08-21 accepted tip, plus ChokepointUnbalancedGuardTest (P3 M1) and SeededChartManifestRequiredPurposeCompletenessTest (P3 M2) = 83, plus ChartPurposeBackfillSeederParityTest, LiveTenantChartValidationParityTest and BackfillChartRequiredPurposesO27MigrationTest (O-27 F-4); 87 with JournalEntryNumberingTenantScopeTest and 88 with InventoryGlNumberingTenantScopeTest (Session B2 lane B2-1, LEDGER C-27 + fix round r1)."
     },
     "Admin": {
       "lane": "feature-lane-tenancy/Admin",
@@ -821,8 +821,8 @@
     },
     "Income": {
       "lane": "feature-lane-fiscal-finance/Income",
-      "classes": 3,
-      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
+      "classes": 4,
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped. Raised 3 -> 4 by Session B2 lane B2-1 (LEDGER C-27) for IncomeNumberingTenantScopeTest."
     },
     "Inventory": {
       "lane": "feature-lane-inventory/Inventory",
