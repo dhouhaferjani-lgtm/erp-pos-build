@@ -2,7 +2,7 @@
 
 > Handover mandate: `docs/handoff/HANDOVER-state-machine-fixes-session-B-2026-08-23.md` §7 — (a) merged-lane list with gate records,
 > (b) the CHECK burn-down count (76 → n) once Slice D-1 lands, (c) the program spec skeleton + owner questions.
-> Every merge is on LOCAL dev only and CI-UNVERIFIED (S-17); Session A owns promotion. DRAFT — rows marked ⏳ fill in as lanes land.
+> Every merge is on LOCAL dev only and CI-UNVERIFIED (S-17); Session A owns promotion. **COMPLETE 2026-08-25 — Wave 1 (Q-1..Q-13) + Slice D-1 all merged; dev tip `524e2f477`.**
 
 ## (a) Merged lanes — Wave 1 (all gated; records in `docs/superpowers/reviews/`)
 
@@ -19,8 +19,8 @@
 | Q-9 | F1 kitchen/order `module:Menu` both layers + SM-1 terminal-state guard (Cancelled→Ready chain closed) | `5e4a0af3e` | tenancy r1 CHANGES → fixture fix → fiscal r1 APPROVED | no | C-19 |
 | Q-13 | `module:Tables` backend gate (none existed) + device `pullTables` skip — owner go-ahead | `0a3b629ff` | tenancy r1 APPROVED | no | C-20 |
 | Q-10 | Fiscal-period quick fixes — per-company country rules (fail-safe skip), per-row audit stamps, permissioned Closed→Open reopen; scheduler respects reopens on all three arms | `f5cae1f12` | treasury r1 ACCEPT-w/-cond → fix round `8a285c495` → r2 ACCEPT | YES (additive-only) | C-24, S-20 |
-| Q-11 | SupplierInvoice `match()` draft-guard + expense-number advisory lock | ⏳ queued (B-19 confirmed not in flight) | treasury | no | |
-| Q-12 | Treasury orphan census command (F5, read-only) | ⏳ queued | treasury | no | |
+| Q-11 | SupplierInvoice `match()` Draft-only guard + tenant-keyed expense-number advisory lock | `0f775b6f7` | treasury r1 ACCEPT-w/-cond | no | C-28 (+ found **C-27**) |
+| Q-12 | Treasury orphan census command (F5, read-only, `--json`) | `524e2f477` | treasury r1 r1 CHANGES → fix 0f8d00a2e → r2 APPROVED | no | C-30 |
 | D-1 | **Slice D entry — `pg_constraint` enum↔CHECK parity test + shrink-only baseline + derived register (test-only)** | `2288299bf` | fiscal r1 APPROVED-w/-res + tenancy r1 APPROVED-w/-cond → fix `33e26cd69` → combined r2 APPROVED-w/-res | no | C-26, **O-31** |
 
 **Found out-of-lane (needs an owner priority call): C-27 — `journal_entries.entry_number` is unique per tenant but generated + locked per company
