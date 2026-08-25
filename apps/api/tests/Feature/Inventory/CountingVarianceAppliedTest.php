@@ -35,6 +35,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -479,6 +480,114 @@ final class CountingVarianceAppliedTest extends TestCase
     }
 
     /**
+     * Gate r2 NEW-1 (P2) — same second, counter did NOT see the sale.
+     *
+     * The sale's movement id is ABOVE the marker the count froze, so it arrived
+     * after the counter reported: neutralise it once. Counted 60 − sold 4 == the
+     * 56 on the shelf, so the line varies by nothing.
+     */
+    public function test_same_second_movement_after_the_count_is_neutralised(): void
+    {
+        $t = CarbonImmutable::now()->subHours(2)->startOfSecond();
+        $siro = $this->product('SIRO-TOUX');
+
+        $this->setOnHand($siro, '56.0000');
+        $sale = $this->movement($siro, '60.0000', '56.0000', $t);
+
+        $counting = $this->counting(15);
+        // Counted BEFORE that sale existed: the marker predates it.
+        $item = $this->item($counting, $siro, '60.0000', $t, '60.0000');
+        $item->final_qty_movement_marker = '00000000-0000-0000-0000-000000000000';
+        $item->save();
+
+        $this->fire($counting);
+
+        self::assertSame('56.0000', $this->onHand($siro), 'no phantom +4 gain');
+        self::assertSame(0, $this->correctionsFor($siro));
+        self::assertTrue($sale->exists);
+        self::assertSame(0, bccomp('0.0000', $this->reportVariance($counting), 4));
+    }
+
+    /**
+     * Gate r2 NEW-1 (P2b) — same second, counter DID see the sale.
+     *
+     * The r1 boundary fix decided this second in favour of the other reading and
+     * subtracted the same 4 units twice (56 → 52). A timestamp has no
+     * information left to separate the two; insertion ORDER does. Here the
+     * sale's id is AT the marker — it was already on the line when the counter
+     * reported — so it is baseline, and the line again varies by nothing.
+     */
+    public function test_same_second_movement_before_the_count_is_baseline(): void
+    {
+        $t = CarbonImmutable::now()->subHours(2)->startOfSecond();
+        $siro = $this->product('SIRO-TOUX');
+
+        $this->setOnHand($siro, '56.0000');
+        $sale = $this->movement($siro, '60.0000', '56.0000', $t);
+
+        $counting = $this->counting(15);
+        // Counted AFTER that sale: the marker IS the sale.
+        $item = $this->item($counting, $siro, '56.0000', $t, '60.0000');
+        $item->final_qty_movement_marker = (string) $sale->id;
+        $item->save();
+
+        $this->fire($counting);
+
+        self::assertSame('56.0000', $this->onHand($siro), 'the sale must not be subtracted twice');
+        self::assertSame(0, $this->correctionsFor($siro));
+        self::assertSame(0, bccomp('0.0000', $this->reportVariance($counting), 4));
+    }
+
+    /**
+     * The marker is only a TIE-break: a movement strictly after the count is
+     * neutralised whatever the marker says, because the count instant may be a
+     * device time hours before the marker was taken (an offline count that
+     * synced later).
+     */
+    public function test_a_later_movement_is_neutralised_even_below_the_marker(): void
+    {
+        $t = CarbonImmutable::now()->subHours(2)->startOfSecond();
+        $siro = $this->product('SIRO-TOUX');
+
+        $this->setOnHand($siro, '56.0000');
+        $sale = $this->movement($siro, '60.0000', '56.0000', $t->addMinutes(30));
+
+        $counting = $this->counting(15);
+        $item = $this->item($counting, $siro, '60.0000', $t, '60.0000');
+        // A marker at or above the later sale must NOT make it baseline.
+        $item->final_qty_movement_marker = (string) $sale->id;
+        $item->save();
+
+        $this->fire($counting);
+
+        self::assertSame('56.0000', $this->onHand($siro));
+        self::assertSame(0, $this->correctionsFor($siro));
+    }
+
+    /** Submitting a count freezes the movement order it was taken against. */
+    public function test_submitting_a_count_stamps_the_movement_marker(): void
+    {
+        $t = CarbonImmutable::now()->subHours(2);
+        $siro = $this->product('SIRO-TOUX');
+        $this->setOnHand($siro, '60.0000');
+        $existing = $this->movement($siro, '55.0000', '60.0000', $t);
+
+        $counting = $this->counting(15);
+        $item = InventoryCountingItem::create([
+            'counting_id' => $counting->id,
+            'product_id' => $siro->id,
+            'location_id' => $this->location->id,
+            'theoretical_qty' => '60.0000',
+            'resolution_method' => ItemResolutionMethod::Pending,
+        ]);
+
+        $item->submitCount(1, '58.0000');
+
+        $item->refresh();
+        self::assertSame((string) $existing->id, $item->count_1_movement_marker);
+    }
+
+    /**
      * Gate r1 F-3 — a RECALLED lot is exactly where a count shortage lands.
      *
      * Recall is the most likely reason batch-tracked stock is physically gone
@@ -656,6 +765,99 @@ final class CountingVarianceAppliedTest extends TestCase
             self::assertSame('68.0000', $this->onHand($short));
             self::assertSame(1, $this->correctionsFor($short));
         }
+    }
+
+    /**
+     * Gate r2 NEW-3 — the tripwire for BOTH F-4 defences.
+     *
+     * The r1 cases could not tell fixed from unfixed code: they seeded a 1-unit
+     * lot against a 10-unit shortage, so `take = min(1, 10) = 1` was always
+     * accepted and the `InsufficientBatchStockException` branch was never
+     * entered. Removing the `lockForUpdate()` AND the per-lot `catch` left the
+     * suite green.
+     *
+     * This case forces the branch. A query listener fires the instant the FEFO
+     * candidate list is read and deletes the lot row out from under it, so
+     * `issueBatchStock()` finds nothing, computes `available = 0.0000` and
+     * throws — the exact stale-snapshot shape the defences exist for. It fails
+     * if EITHER defence is removed:
+     *
+     *  - drop the `catch` → the exception escapes `handle()`'s single root
+     *    transaction and takes the sibling line's already-applied correction
+     *    with it, so `fire()` throws and this test errors;
+     *  - drop `->lockForUpdate()` → the read no longer carries `FOR UPDATE` and
+     *    the SQL assertion fails (PostgreSQL only; SQLite's grammar compiles any
+     *    lock clause to an empty string, so the lock half of the tripwire is
+     *    inert on that lane and is skipped rather than faked).
+     */
+    public function test_a_stale_lot_snapshot_neither_aborts_the_job_nor_loses_the_lock(): void
+    {
+        $t = CarbonImmutable::now()->subHours(2);
+        $expectsLockClause = DB::getDriverName() === 'pgsql';
+
+        $product = $this->product('SIRO-LOT', '8.500000', batchTracked: true);
+        $this->setOnHand($product, '60.0000');
+        $lot = $this->lot($product, 'LOT-A', CarbonImmutable::now()->addDays(20)->toDateString(), '10.0000');
+
+        // A sibling line whose correction must survive the throw.
+        $other = $this->product('COMP-MAGN');
+        $this->setOnHand($other, '70.0000');
+
+        $counting = $this->counting(15);
+        $this->item($counting, $product, '50.0000', $t, '60.0000');
+        $this->item($counting, $other, '68.0000', $t, '70.0000');
+
+        $sawLockedFefoRead = false;
+        $lotId = $lot->id;
+
+        DB::listen(function ($query) use (&$sawLockedFefoRead, $lotId, $expectsLockClause): void {
+            $sql = strtolower($query->sql);
+
+            if (! str_contains($sql, 'inventory_batch_stock')
+                || ! str_contains($sql, 'is_recalled')
+                || ! str_starts_with($sql, 'select')) {
+                return;
+            }
+
+            if ($expectsLockClause) {
+                self::assertStringContainsString(
+                    'for update',
+                    $sql,
+                    'the FEFO candidate list must be read under the same lock issueBatchStock takes',
+                );
+            }
+
+            $sawLockedFefoRead = true;
+
+            // Invalidate the snapshot the caller just took.
+            DB::table('inventory_batch_stock')->where('batch_id', $lotId)->delete();
+        });
+
+        $this->fire($counting);
+
+        self::assertTrue($sawLockedFefoRead, 'the FEFO candidate read never happened');
+
+        // The shortage still moved the aggregate, the lot ledger could not
+        // follow, and the SIBLING line was applied rather than rolled back.
+        self::assertSame('50.0000', $this->onHand($product));
+        self::assertSame('68.0000', $this->onHand($other));
+        self::assertSame(1, $this->correctionsFor($other));
+    }
+
+    /** @return numeric-string The single report row's variance. */
+    private function reportVariance(InventoryCounting $counting): string
+    {
+        /** @var CountingDiscrepancyReportService $reports */
+        $reports = app(CountingDiscrepancyReportService::class);
+        $report = $reports->build($counting->fresh(), $this->user, []);
+
+        /** @var list<array<string, mixed>> $rows */
+        $rows = $report['items'];
+
+        /** @var numeric-string $variance */
+        $variance = (string) $rows[0]['variance_qty'];
+
+        return $variance;
     }
 
     /** @param  numeric-string  $quantity */

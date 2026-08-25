@@ -1276,6 +1276,9 @@ final class StockAdjustmentService
      * @param  StockMovementReferenceType|null  $referenceType  Counting-document morph type;
      *                                                          pass together with $referenceId
      * @param  string|null  $referenceId  Counting-document UUID; pass together with $referenceType
+     * @param  string|null  $finalQtyMovementMarker  Last `stock_movements.id` visible when the
+     *                                               count was submitted; breaks the same-second
+     *                                               tie the timestamp cannot (gate r2 NEW-1).
      * @param  \Closure(StockMovement): void|null  $onCountCorrection  GL sink for the
      *                                                                 count_correction movement (T21). Invoked, still inside the lock, ONLY for the
      *                                                                 `postCountCorrection()` branch — `postCountOpening()` writes
@@ -1297,19 +1300,20 @@ final class StockAdjustmentService
         ?StockMovementReferenceType $referenceType = null,
         ?string $referenceId = null,
         ?\Closure $onCountCorrection = null,
+        ?string $finalQtyMovementMarker = null,
     ): ?ReplayAuditDto {
         $this->assertVariantConsistency($productId, $variantId);
         $this->assertReferenceLinkagePaired($referenceType, $referenceId);
         $scale = InventoryScale::QUANTITY_SCALE;
 
-        return DB::transaction(function () use ($productId, $locationId, $variantId, $finalQty, $finalQtyAsOf, $onboarding, $openingUnitCost, $scale, $referenceType, $referenceId, $onCountCorrection): ?ReplayAuditDto {
+        return DB::transaction(function () use ($productId, $locationId, $variantId, $finalQty, $finalQtyAsOf, $onboarding, $openingUnitCost, $scale, $referenceType, $referenceId, $onCountCorrection, $finalQtyMovementMarker): ?ReplayAuditDto {
             $companyId = $this->resolveCompanyId($locationId);
             $tenantId = $this->resolveTenantId($productId, $companyId);
 
             // ProductCostLock FIRST (advisory, product-grain), then the
             // stock_level row FOR UPDATE inside the closure. Never invert this —
             // adjust()/recordPurchase/recordSale rely on advisory -> row order.
-            return $this->costLock->acquire($tenantId, $companyId, [$productId], function () use ($productId, $locationId, $variantId, $finalQty, $finalQtyAsOf, $onboarding, $openingUnitCost, $companyId, $tenantId, $scale, $referenceType, $referenceId, $onCountCorrection): ?ReplayAuditDto {
+            return $this->costLock->acquire($tenantId, $companyId, [$productId], function () use ($productId, $locationId, $variantId, $finalQty, $finalQtyAsOf, $onboarding, $openingUnitCost, $companyId, $tenantId, $scale, $referenceType, $referenceId, $onCountCorrection, $finalQtyMovementMarker): ?ReplayAuditDto {
                 $now = now();
                 $stockLevel = $this->lockStockLevel($productId, $locationId, $companyId, $variantId);
 
@@ -1329,6 +1333,7 @@ final class StockAdjustmentService
                     $finalQtyAsOf,
                     $now,
                     $onHandNow,
+                    $finalQtyMovementMarker,
                 );
                 $expectedNow = $computation->expectedNow;
 
@@ -1486,10 +1491,22 @@ final class StockAdjustmentService
      * The candidate list is read `lockForUpdate()` on `inventory_batch_stock` —
      * the SAME rows `issueBatchStock()` re-reads under its own lock — so the
      * `min(available, remaining)` computed here is held, not a snapshot that can
-     * go stale between the read and the write. Lock order stays
-     * `stock_levels` → `inventory_batch_stock` (the row lock is already held by
-     * `applyCountResult()` / `postAdjustmentWithinLock()`), so no inversion is
-     * introduced and no lock is taken on `product_batches`.
+     * go stale between the read and the write. The `stock_levels` row lock is
+     * already held by `applyCountResult()` / `postAdjustmentWithinLock()`, so
+     * the order is `stock_levels` → `inventory_batch_stock`, unchanged.
+     *
+     * ⚠ ONE thing this DOES take that no other query in `app/` does, stated
+     * because the next author will build on it (gate r2 NEW-2 — an earlier
+     * revision of this very comment claimed the opposite): on PostgreSQL
+     * `->lockForUpdate()` over a JOIN compiles to a bare `FOR UPDATE` with no
+     * `OF` clause, and PostgreSQL then locks the matched rows in EVERY table in
+     * the `FROM` list — so this also takes a row lock on `product_batches`.
+     * There is no AB-BA cycle today: this is the only joined `lockForUpdate()`
+     * in `app/` and nothing else locks `product_batches` at all (verified across
+     * BatchStockService, FEFOInventoryService, GroupedWriteOffService and
+     * RepairPhantomDefaultBatchesCommand). A future writer that needs a
+     * `product_batches` lock must take it AFTER `inventory_batch_stock`, or this
+     * read must narrow to `->lock('for update of inventory_batch_stock')`.
      *
      * The per-lot `catch` is the belt to that braces: `handle()` wraps the WHOLE
      * item loop in one root transaction with no per-item catch, so a single

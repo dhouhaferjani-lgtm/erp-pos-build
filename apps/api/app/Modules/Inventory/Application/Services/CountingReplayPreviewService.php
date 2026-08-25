@@ -77,6 +77,7 @@ final class CountingReplayPreviewService
                 onHandNow: $stockByGrain[$this->grainKey($item->product_id, $item->location_id, $item->variant_id)] ?? '0.0000',
                 from: $asOf,
                 windowMinutes: $counting->ambiguity_window_minutes,
+                marker: $item->final_qty_movement_marker ?? $this->asOfResolver->resolveMarker($item),
             );
         }
 

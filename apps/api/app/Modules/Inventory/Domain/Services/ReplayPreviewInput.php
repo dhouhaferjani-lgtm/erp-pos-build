@@ -21,5 +21,7 @@ final readonly class ReplayPreviewInput
         public string $onHandNow,
         public CarbonInterface $from,
         public int $windowMinutes,
+        /** Last `stock_movements.id` visible when the count was submitted (W4-6 gate r2). */
+        public ?string $marker = null,
     ) {}
 }

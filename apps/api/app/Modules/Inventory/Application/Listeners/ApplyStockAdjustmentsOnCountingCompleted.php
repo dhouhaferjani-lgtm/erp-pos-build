@@ -320,8 +320,9 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
         // replay_audit) would re-sum that movement in a fresh window and
         // double-apply. This is the fix for the finalize double-apply blocker.
         $countingId = $counting->id;
+        $marker = $item->final_qty_movement_marker;
 
-        return DB::transaction(function () use ($item, $window, $asOf, $onboarding, $openingUnitCost, $finalQty, $countingId, $completedBy, $currencyCode): bool {
+        return DB::transaction(function () use ($item, $window, $asOf, $onboarding, $openingUnitCost, $finalQty, $countingId, $completedBy, $currencyCode, $marker): bool {
             $audit = $this->stockAdjustmentService->applyCountResult(
                 productId: $item->product_id,
                 locationId: $item->location_id,
@@ -342,6 +343,9 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
                 onCountCorrection: function (StockMovement $movement) use ($currencyCode, $completedBy): void {
                     $this->enqueueCountCorrectionGl($movement, $currencyCode, $completedBy);
                 },
+                // Same-second tie-break (gate r2 NEW-1) — see
+                // MovementReplayService::signedDelta().
+                finalQtyMovementMarker: $marker,
             );
 
             // Null return means the negative-at-apply guard tripped (basket window
@@ -543,7 +547,14 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
         $now = now();
         $scale = InventoryScale::QUANTITY_SCALE;
 
-        $replayedDelta = $this->replayService->signedDelta($item->product_id, $item->location_id, $item->variant_id, $asOf, $now);
+        $replayedDelta = $this->replayService->signedDelta(
+            $item->product_id,
+            $item->location_id,
+            $item->variant_id,
+            $asOf,
+            $now,
+            $item->final_qty_movement_marker,
+        );
 
         /** @var numeric-string $onHand */
         $onHand = (string) (StockLevel::where('product_id', $item->product_id)
