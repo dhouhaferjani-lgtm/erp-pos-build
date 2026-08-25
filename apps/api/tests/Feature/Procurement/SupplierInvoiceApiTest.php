@@ -2402,6 +2402,85 @@ final class SupplierInvoiceApiTest extends TestCase
         $this->assertSame('5.0000', $poLine->quantity_invoiced, 'quantity_invoiced must be incremented exactly once');
     }
 
+    // -------------------------------------------------------------------------
+    // Q-11 — POST /supplier-invoices/{id}/match is a DRAFT-only operation
+    // -------------------------------------------------------------------------
+
+    /**
+     * Q-11 (tenancy sub-report, `documents.match_status`): the post-time
+     * match_status is the value SupplierInvoicePostingService booked the GL and
+     * the PPV variance against. Re-running the matcher on a POSTED invoice used
+     * to silently overwrite it, leaving a document that claims a clean match
+     * while the ledger holds a variance posting.
+     * RematchDraftSupplierInvoicesCommand already restricts itself to Draft; the
+     * HTTP endpoint must do the same.
+     */
+    public function test_match_endpoint_refuses_a_posted_supplier_invoice_and_leaves_post_time_match_status_intact(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        [$po, $poLine] = $this->createPoWithReceipt('5.0000', '100.000');
+
+        $store = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '5.0000', '100.000', '0.00'));
+        $store->assertCreated();
+        $invoiceId = $store->json('data.id');
+        $this->assertIsString($invoiceId);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$invoiceId}/post")
+            ->assertOk()
+            ->assertJsonPath('data.status', DocumentStatus::Posted->value);
+
+        // Stand in for a post-time authoritative value the GL was booked against:
+        // the matcher would recompute this invoice as Matched.
+        Document::query()->whereKey($invoiceId)->update([
+            'match_status' => SupplierInvoiceMatchStatus::PriceVariance->value,
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$invoiceId}/match");
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'MATCH_NOT_ALLOWED');
+
+        /** @var Document $invoice */
+        $invoice = Document::query()->findOrFail($invoiceId);
+        $this->assertSame(
+            SupplierInvoiceMatchStatus::PriceVariance,
+            $invoice->match_status,
+            'The post-time match_status of a POSTED supplier invoice must not be overwritten by /match.'
+        );
+    }
+
+    /**
+     * Q-11 companion: the guard must not break the legitimate draft re-match.
+     */
+    public function test_match_endpoint_still_rematches_a_draft_supplier_invoice(): void
+    {
+        [$po, $poLine] = $this->createPoWithReceipt('5.0000', '100.000');
+
+        $store = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '5.0000', '100.000', '0.00'));
+        $store->assertCreated();
+        $invoiceId = $store->json('data.id');
+        $this->assertIsString($invoiceId);
+
+        // Force a stale value so a successful re-match is observable.
+        Document::query()->whereKey($invoiceId)->update([
+            'match_status' => SupplierInvoiceMatchStatus::Unmatched->value,
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$invoiceId}/match");
+
+        $response->assertOk();
+
+        /** @var Document $invoice */
+        $invoice = Document::query()->findOrFail($invoiceId);
+        $this->assertSame(DocumentStatus::Draft, $invoice->status);
+        $this->assertSame(SupplierInvoiceMatchStatus::Matched, $invoice->match_status);
+    }
+
     private function assertApiValidationEnvelope(TestResponse $response): void
     {
         $response->assertUnprocessable()
