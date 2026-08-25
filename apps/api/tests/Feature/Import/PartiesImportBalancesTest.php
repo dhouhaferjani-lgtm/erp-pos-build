@@ -127,8 +127,8 @@ final class PartiesImportBalancesTest extends TestCase
         $this->assertSame(OpeningBatchStatus::Validated, $apBatch->status);
         $this->assertSame('IMPORT-'.substr($job->id, 0, 8).'-AR', $arBatch->name);
         $this->assertSame('IMPORT-'.substr($job->id, 0, 8).'-AP', $apBatch->name);
-        $this->assertSame(['import_job_id' => $job->id, 'source' => 'unified-import'], $arBatch->import_file_reference);
-        $this->assertSame(['import_job_id' => $job->id, 'source' => 'unified-import'], $apBatch->import_file_reference);
+        $this->assertSameJsonObject(['import_job_id' => $job->id, 'source' => 'unified-import'], $arBatch->import_file_reference);
+        $this->assertSameJsonObject(['import_job_id' => $job->id, 'source' => 'unified-import'], $apBatch->import_file_reference);
 
         $rowOne = $job->rows()->where('row_number', 1)->firstOrFail()->refresh();
         $rowFour = $job->rows()->where('row_number', 4)->firstOrFail()->refresh();
@@ -211,6 +211,30 @@ final class PartiesImportBalancesTest extends TestCase
     /**
      * @param  array<int, array<string, mixed>>  $rows
      */
+    /**
+     * Compare a decoded JSON/JSONB object without depending on key ORDER.
+     *
+     * C-10: `import_file_reference` is a `jsonb` column. PostgreSQL's jsonb
+     * normalises object keys (shortest-first, then bytewise) on storage, so the
+     * round-tripped array comes back in a different order than it was written;
+     * SQLite's `json`/TEXT storage preserves insertion order. `assertSame` on
+     * an associative array is order-sensitive, so it passed on SQLite and failed
+     * on PG. Sort both sides by key before the strict comparison — values and
+     * value types are still compared strictly.
+     *
+     * @param  array<string, mixed>  $expected
+     */
+    private function assertSameJsonObject(array $expected, mixed $actual): void
+    {
+        $this->assertIsArray($actual);
+
+        /** @var array<string, mixed> $actual */
+        ksort($expected);
+        ksort($actual);
+
+        $this->assertSame($expected, $actual);
+    }
+
     private function makeValidatedJob(array $rows): ImportJob
     {
         $job = $this->importService->createJob(
