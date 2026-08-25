@@ -9,6 +9,7 @@ use App\Modules\Identity\Domain\User;
 use Closure;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -20,6 +21,19 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * The middleware validates that the authenticated user has access to the
  * requested company before setting the context.
+ *
+ * ERROR CONTRACT (W2-1 / LEDGER C-13(iii)) — every rejection is a typed code
+ * the SPA keys on, never an opaque failure:
+ *
+ * | code                    | status | meaning                                        |
+ * |-------------------------|--------|------------------------------------------------|
+ * | `INVALID_COMPANY_ID`    | 400    | the header is not a UUID — a junk client value  |
+ * | `NO_COMPANY_ACCESS`     | 403    | the user is a member of no company at all       |
+ * | `COMPANY_ACCESS_DENIED` | 403    | the requested company is not one of the user's  |
+ *
+ * `INVALID_COMPANY_ID` and `COMPANY_ACCESS_DENIED` both mean "your persisted
+ * selection is stale/junk"; the web client resets the selection and re-bootstraps
+ * on either (`apps/web/src/lib/api.ts` `handleCompanyScopeRejection`).
  */
 final class CompanyContextMiddleware
 {
@@ -52,7 +66,23 @@ final class CompanyContextMiddleware
         }
 
         $user = $authenticatedUser;
-        $companyId = $this->resolveCompanyId($request, $user);
+        $headerCompanyId = $this->headerCompanyId($request);
+
+        // C-13(iii): the header is client-supplied. Anything that is not a UUID
+        // must be rejected HERE — pushed into the `company_id` uuid predicate it
+        // raises SQLSTATE 22P02 on PostgreSQL and the request 500s, which tells
+        // the client nothing and looks like a server fault in monitoring.
+        if ($headerCompanyId !== null && ! Str::isUuid($headerCompanyId)) {
+            return response()->json([
+                'error' => [
+                    'code' => 'INVALID_COMPANY_ID',
+                    'message' => 'The X-Company-Id header is not a valid company identifier.',
+                ],
+            ], 400);
+        }
+
+        // Priority 1: explicit header. Priority 2: the user's default company.
+        $companyId = $headerCompanyId ?? $this->companyContext->getDefaultCompanyForUser($user);
 
         if ($companyId === null) {
             return response()->json([
@@ -97,17 +127,17 @@ final class CompanyContextMiddleware
     }
 
     /**
-     * Resolve the company ID from request or user's default.
+     * The explicitly requested company id, or null when the header is absent
+     * or empty (an empty header means "no explicit selection", not "junk").
      */
-    private function resolveCompanyId(Request $request, User $user): ?string
+    private function headerCompanyId(Request $request): ?string
     {
-        // Priority 1: Explicit header
         $headerCompanyId = $request->header('X-Company-Id');
-        if ($headerCompanyId !== null && $headerCompanyId !== '') {
-            return $headerCompanyId;
+
+        if (! is_string($headerCompanyId) || $headerCompanyId === '') {
+            return null;
         }
 
-        // Priority 2: User's default company
-        return $this->companyContext->getDefaultCompanyForUser($user);
+        return $headerCompanyId;
     }
 }
