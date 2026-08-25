@@ -26,10 +26,15 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\Exceptions\RepositoryAlreadySeededException;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\RepositoryMovement;
+use App\Shared\Contracts\Treasury\DTOs\OpeningFloatIntent;
+use App\Shared\Contracts\Treasury\RepositoryOpeningBalanceSeederInterface;
+use Carbon\CarbonImmutable;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -165,6 +170,29 @@ final class OpeningCashFloatSeedsRepositoryTest extends TestCase
             $this->assertSame('2026-01-01', $movement->occurred_at?->toDateString());
         }
 
+        // ReconcileTreasuryCommand check 2 treats the JE's line(s) on the
+        // repository's OWN gl_account_id as AUTHORITATIVE: an In movement must be
+        // justified by a debit there, per line or by their sum. Mirror that
+        // predicate here so the equality is pinned the way the reconciler reads
+        // it — a merged row (one Dr 53 1200 line for two tills) would fail this
+        // and freeze the drawer in production, which is why one row seeds one
+        // repository.
+        foreach ($movements as $movement) {
+            $repository = PaymentRepository::query()->findOrFail($movement->payment_repository_id);
+            $matching = JournalLine::query()
+                ->where('journal_entry_id', $entry->id)
+                ->where('account_id', $repository->gl_account_id)
+                ->get()
+                ->filter(fn (JournalLine $line): bool => bccomp((string) $line->debit, $movement->amount, 3) === 0);
+
+            $this->assertCount(
+                1,
+                $matching,
+                "Movement {$movement->amount} on {$repository->code} must be justified by exactly one ".
+                'debit line on its own GL account.'
+            );
+        }
+
         // Repository balance == GL debit on that repository's own cash account.
         $this->assertSame(
             '1200.000',
@@ -197,18 +225,18 @@ final class OpeningCashFloatSeedsRepositoryTest extends TestCase
 
         // Replay the seeding leg through the same batch id/leg — the port must
         // return the existing movement instead of writing a second one.
-        $seeder = app(\App\Shared\Contracts\Treasury\RepositoryOpeningBalanceSeederInterface::class);
+        $seeder = app(RepositoryOpeningBalanceSeederInterface::class);
         $entryId = (string) RepositoryMovement::query()->firstOrFail()->journal_entry_id;
 
-        \Illuminate\Support\Facades\DB::transaction(function () use ($seeder, $batch, $entryId): void {
-            $seeder->seed(new \App\Shared\Contracts\Treasury\DTOs\OpeningFloatIntent(
+        DB::transaction(function () use ($seeder, $batch, $entryId): void {
+            $seeder->seed(new OpeningFloatIntent(
                 tenantId: $this->tenant->id,
                 companyId: $this->company->id,
                 repositoryId: $this->drawer->id,
                 amount: '200.000',
                 currency: 'TND',
                 batchId: $batch->id,
-                occurredAt: \Carbon\CarbonImmutable::parse('2026-01-01'),
+                occurredAt: CarbonImmutable::parse('2026-01-01'),
                 journalEntryId: $entryId,
                 createdBy: $this->user->id,
             ));
@@ -301,7 +329,7 @@ final class OpeningCashFloatSeedsRepositoryTest extends TestCase
         $this->createRow($second, 1, $this->cashAccount, '50.000', '0.000', 'CASH-01');
         $this->createRow($second, 2, $this->openingEquityAccount, '0.000', '50.000', null);
 
-        $this->expectException(\App\Modules\Treasury\Domain\Exceptions\RepositoryAlreadySeededException::class);
+        $this->expectException(RepositoryAlreadySeededException::class);
 
         $this->service()->postBatch($second, $this->user->id);
     }
