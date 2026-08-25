@@ -58,6 +58,8 @@
 
 **RULED 2026-08-25 (owner): D-1 — POS transaction discounts reduce the VAT base, ventilated PRO-RATA per rate line (largest-remainder), sealed post-discount; forward-only device lane + POS release. Also folded: 100 %-comp receipts carry no zero tender row (schema CHECK kept). Spec: `docs/sessions/session-A-2026-08-24/BRIEF-D1-pos-vat-discount-base.md`.**
 
+**RULED 2026-08-25 (owner): count-correction GL posting — flip `inventory.count_correction_gl_posting_enabled` to true (seeded default) when W4-6 lands; the expert-comptable reviews the account choice (6586/7586) later at onboarding. Supersedes the OQ-12/H-5 deploy-time blocker. Brief `docs/sessions/session-A-2026-08-24/BRIEF-P1-count-correction-gl-default.md`.**
+
 ## B. Asks — need your ruling (from the first-client onboarding audit)
 
 Full audit evidence lives in the session transcript; gaps are ranked G1–G13. The asks:
