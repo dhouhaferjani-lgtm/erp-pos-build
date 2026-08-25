@@ -56,6 +56,8 @@
 
 **RULED 2026-08-24 (owner, verbatim substance): tenant #1 launches with POS first, then purchasing (catalog+inventory), branch transfers (branches of one company), treasury; accounting later; B2B sales later (fix properly, not launch-critical). Session A queue re-ordered accordingly; wave 3 = POS rehearsal.** Also RULED: N-6/B-20 = option (b) advance model within the independent-dimensions lifecycle model (gating payments on posted invoices REJECTED); unposted invoices may be printed with VAT + a 'not posted' line (TN: posted = sealed + MoF QR).
 
+**RULED 2026-08-25 (owner): D-1 — POS transaction discounts reduce the VAT base, ventilated PRO-RATA per rate line (largest-remainder), sealed post-discount; forward-only device lane + POS release. Also folded: 100 %-comp receipts carry no zero tender row (schema CHECK kept). Spec: `docs/sessions/session-A-2026-08-24/BRIEF-D1-pos-vat-discount-base.md`.**
+
 ## B. Asks — need your ruling (from the first-client onboarding audit)
 
 Full audit evidence lives in the session transcript; gaps are ranked G1–G13. The asks:
