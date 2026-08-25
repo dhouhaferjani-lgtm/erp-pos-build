@@ -14,6 +14,7 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Listeners\ApplyStockAdjustmentsOnCountingCompleted;
+use App\Modules\Inventory\Application\Services\CountCorrectionGlPostingResolver;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
@@ -54,13 +55,22 @@ use Tests\TestCase;
  * alarm instead. The seam's own tests (InventoryGlPostingSeamTest) resolve this
  * the same way: opt out of transactional refresh and require PostgreSQL.
  *
- * ## The dormancy pin
+ * ## The default pin (RE-PINNED by lane P-1, 2026-08-25)
  *
- * `inventory.count_correction_gl_posting_enabled` ships FALSE (OQ-12/H-5: the
- * expert-comptable must ratify the Option A presentation before the flag is
- * flipped for any tenant). Every posting test therefore turns the flag ON
- * explicitly, and `test_the_flag_is_off_by_default_and_the_dormant_listener_posts_nothing`
- * pins the shipped default.
+ * Count-correction GL posting used to ship FALSE under the OQ-12/H-5 deploy
+ * blocker. The owner SUPERSEDED that blocker on 2026-08-25: posting is seeded
+ * ON, per country, tenant-editable, with the expert-comptable reviewing the
+ * Option A account choice later at onboarding. So the sentinel that pinned the
+ * dormant default now pins the opposite — `test_the_shipped_default_posts_...`
+ * fires a count with NO flag flip of any kind and requires Dr 6586 / Cr 37 — and
+ * a second case pins that a company which turns posting OFF on purpose still
+ * corrects stock and still posts nothing.
+ *
+ * The other posting tests keep their explicit `enableFlag()` on purpose: it is
+ * now redundant, and saying so out loud is cheaper than a suite that silently
+ * depends on a default it never states. The SETTING itself — the seeded
+ * per-country row, the resolution chain and the backfill migration — is pinned
+ * in `CountCorrectionGlPostingDefaultTest`.
  */
 final class CountCorrectionGlPostingTest extends TestCase
 {
@@ -542,16 +552,51 @@ final class CountCorrectionGlPostingTest extends TestCase
     // ------------------------------------------------------------- dormancy
 
     /**
-     * OQ-12/H-5 deploy gate: the shipped default is OFF, and with it OFF the
-     * listener corrects stock and posts NOTHING — the count movement still
-     * carries its cost, so the ledger can be reconstructed once the flag flips.
+     * Lane P-1 (owner ruling 2026-08-25): posting is SEEDED ON, so a count
+     * finalized on a default tenant — no `enableFlag()`, no company override,
+     * nothing touched — must book Dr 6586 / Cr 37.
+     *
+     * This is the exact case the campaign's smoke-sheet row 7.5 could not meet
+     * before this lane. The old sentinel asserted the opposite; it pinned a
+     * default that the ruling superseded.
      */
-    public function test_the_flag_is_off_by_default_and_the_dormant_listener_posts_nothing(): void
+    public function test_the_shipped_default_posts_dr_shrinkage_cr_inventory_with_no_flag_flip(): void
     {
-        self::assertFalse(
-            (bool) config('inventory.count_correction_gl_posting_enabled'),
-            'Count-correction GL posting must ship OFF until the expert-comptable ratifies Option A.',
+        self::assertTrue(
+            $this->app->make(CountCorrectionGlPostingResolver::class)->isEnabledFor($this->company->id),
+            'Count-correction GL posting must be ON for a company that has changed nothing.',
         );
+
+        $chart = $this->optionAChart();
+        $asOf = CarbonImmutable::now()->subHours(3);
+        $this->setOnHand('10.0000');
+
+        $counting = $this->counting();
+        $this->item($counting, '6.0000', $asOf);
+
+        $this->fire($counting);
+
+        self::assertSame('6.0000', StockLevel::query()->where('product_id', $this->product->id)->value('quantity'));
+
+        $movement = $this->countCorrectionMovement();
+        self::assertSame('4.250000', (string) $movement->unit_cost);
+
+        $entry = $this->entryFor($movement);
+        // 4.250000 x |6 − 10| = 17.000 at the TND scale of 3.
+        self::assertSame('17.000', (string) $entry->lines[0]->debit);
+        self::assertSame($chart['shrinkage']->id, $entry->lines[0]->account_id, 'Dr must be 6586 shrinkage expense.');
+        self::assertSame('17.000', (string) $entry->lines[1]->credit);
+        self::assertSame($chart['inventory']->id, $entry->lines[1]->account_id, 'Cr must be 37 inventory.');
+    }
+
+    /**
+     * The tenant override still withholds the entry: stock is corrected, the
+     * movement still carries its cost (so the ledger can be rebuilt if the
+     * tenant changes its mind), and no journal entry exists.
+     */
+    public function test_a_company_that_explicitly_disables_posting_corrects_stock_and_posts_nothing(): void
+    {
+        $this->company->update(['count_correction_gl_posting_enabled' => false]);
 
         $this->optionAChart();
         $asOf = CarbonImmutable::now()->subHours(3);

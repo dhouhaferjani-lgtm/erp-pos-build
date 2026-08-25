@@ -6,6 +6,8 @@ namespace Tests\Feature\Inventory;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\EffectiveCountCorrectionGlPosting;
 use App\Modules\Inventory\Application\Services\CountCorrectionGlPostingResolver;
 use App\Modules\Inventory\Domain\CountryInventoryDefaults;
@@ -14,8 +16,10 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\CountriesSeeder;
 use Database\Seeders\CountryInventorySettingsSeeder;
+use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /**
@@ -232,7 +236,86 @@ final class CountCorrectionGlPostingDefaultTest extends TestCase
             ->value('count_correction_gl_posting_enabled'));
     }
 
+    // ------------------------------------------------- the settings surface
+
+    /**
+     * `GET /settings/company` reports the RESOLVED answer, where it came from,
+     * and the tenant's own override — three separate facts, because "off"
+     * because I said so and "off" because my jurisdiction says so are different
+     * support conversations.
+     */
+    public function test_the_settings_endpoint_reports_the_resolved_answer_its_source_and_the_override(): void
+    {
+        $this->provisionReferenceData();
+        $user = $this->authenticatedSettingsUser();
+
+        $this->actingAs($user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/settings/company')
+            ->assertOk()
+            ->assertJsonPath('data.count_correction_gl_posting_enabled', true)
+            ->assertJsonPath('data.count_correction_gl_posting_source', EffectiveCountCorrectionGlPosting::SOURCE_COUNTRY)
+            ->assertJsonPath('data.count_correction_gl_posting_override', null);
+    }
+
+    public function test_the_settings_endpoint_writes_and_clears_the_tenant_override(): void
+    {
+        $this->provisionReferenceData();
+        $user = $this->authenticatedSettingsUser();
+
+        $this->actingAs($user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', ['count_correction_gl_posting_enabled' => false])
+            ->assertOk()
+            ->assertJsonPath('data.count_correction_gl_posting_enabled', false)
+            ->assertJsonPath('data.count_correction_gl_posting_source', EffectiveCountCorrectionGlPosting::SOURCE_COMPANY);
+
+        self::assertFalse($this->company->fresh()?->count_correction_gl_posting_enabled);
+
+        // `null` CLEARS the override — the only way back to "whatever my
+        // jurisdiction says", which is why the rule is nullable.
+        $this->actingAs($user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', ['count_correction_gl_posting_enabled' => null])
+            ->assertOk()
+            ->assertJsonPath('data.count_correction_gl_posting_enabled', true)
+            ->assertJsonPath('data.count_correction_gl_posting_source', EffectiveCountCorrectionGlPosting::SOURCE_COUNTRY);
+
+        self::assertNull($this->company->fresh()?->count_correction_gl_posting_enabled);
+    }
+
+    public function test_the_settings_endpoint_refuses_a_non_boolean_with_a_422(): void
+    {
+        $this->provisionReferenceData();
+        $user = $this->authenticatedSettingsUser();
+
+        $this->actingAs($user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', ['count_correction_gl_posting_enabled' => 'maybe'])
+            ->assertStatus(422);
+
+        self::assertNull($this->company->fresh()?->count_correction_gl_posting_enabled);
+    }
+
     // ---------------------------------------------------------------- helpers
+
+    private function authenticatedSettingsUser(): User
+    {
+        $this->app->make(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
+        $this->seed(RolesAndPermissionsSeeder::class);
+
+        $user = User::factory()->create(['tenant_id' => $this->tenant->id]);
+        $user->givePermissionTo('settings.update');
+        $user->givePermissionTo('settings.view');
+
+        UserCompanyMembership::create([
+            'user_id' => $user->id,
+            'company_id' => $this->company->id,
+            'role' => 'admin',
+        ]);
+
+        return $user;
+    }
 
     private function provisionReferenceData(): void
     {
