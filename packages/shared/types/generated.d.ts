@@ -308,6 +308,7 @@ export type JournalEntryStatus = 'draft' | 'posted' | 'reversed';
 export type OpeningBatchStatus = 'DRAFT' | 'VALIDATED' | 'LOCKED';
 export type OpeningBatchType = 'ACCOUNTING' | 'INVENTORY' | 'AR_OPEN_ITEMS' | 'AP_OPEN_ITEMS';
 export type OpeningImportRowStatus = 'PENDING' | 'VALID' | 'INVALID' | 'SKIPPED' | 'POSTED';
+export type PosVatRefusalReason = 'missing_sealed_vat_details' | 'vat_exceeds_tender' | 'split_does_not_reconcile' | 'sealed_vat_disagrees_with_receipt' | 'chart_purpose_missing' | 'non_numeric_amount';
 export type PostingMode = 'after_commit' | 'synchronous_in_transaction';
 export type SystemAccountPurpose = 'bank' | 'cash' | 'customer_receivable' | 'supplier_advance' | 'inventory' | 'uninvoiced_revenue' | 'supplier_payable' | 'customer_advance' | 'vat_collected' | 'vat_deductible' | 'product_revenue' | 'service_revenue' | 'cost_of_goods_sold' | 'inventory_shrinkage_expense' | 'inventory_gain_income' | 'purchase_expenses' | 'office_expense' | 'travel_expense' | 'meals_expense' | 'utilities_expense' | 'general_expense' | 'retained_earnings' | 'opening_balance_equity' | 'payment_tolerance_expense' | 'payment_tolerance_income' | 'purchase_price_variance_expense' | 'purchase_price_variance_income' | 'sales_return' | 'refund_write_off' | 'realized_fx_gain' | 'realized_fx_loss' | 'sales_discount' | 'sales_returns_clearing' | 'voucher_liability' | 'marketing_goodwill_expense' | 'voucher_breakage_income' | 'rounding_loss_expense' | 'pos_tender_clearing' | 'goods_received_not_invoiced' | 'purchase_stamp_duty' | 'sales_stamp_duty_payable' | 'sales_rounding_difference_income' | 'sales_rounding_difference_expense';
 }
@@ -562,6 +563,7 @@ declare namespace App.Modules.Company.Domain.Enums {
 export type CompanyStatus = 'active' | 'suspended' | 'closed';
 export type DiscountFloorMode = 'Advisory' | 'WarnRequiresPermission' | 'Block';
 export type DocumentReviewStatus = 'pending' | 'in_review' | 'approved' | 'rejected' | 'expired';
+export type FiscalPeriodReopenRefusalCode = 'FISCAL_PERIOD_REOPEN_LOCKED' | 'FISCAL_PERIOD_REOPEN_NOT_CLOSED' | 'FISCAL_PERIOD_REOPEN_FISCAL_YEAR_CLOSED' | 'FISCAL_PERIOD_REOPEN_SUCCESSOR_SETTLED';
 export type HashChainType = 'invoice' | 'credit_note' | 'delivery_note' | 'return_note' | 'receipt' | 'payment' | 'journal_entry' | 'z_report';
 export type LocationType = 'shop' | 'warehouse' | 'office' | 'mobile';
 export type MembershipRevocationReason = 'user_deactivated';
@@ -848,11 +850,14 @@ export type DeliveryStatus = 'not_delivered' | 'partially_delivered' | 'fully_de
 export type DocumentStatus = 'draft' | 'confirmed' | 'posted' | 'paid' | 'received' | 'cancelled';
 export type DocumentType = 'quote' | 'sales_order' | 'purchase_order' | 'invoice' | 'credit_note' | 'delivery_note' | 'return_note' | 'expense' | 'supplier_invoice' | 'supplier_credit_note' | 'income' | 'purchase_rfq' | 'correcting_entry';
 export type FacturXProfile = 'minimum' | 'basicwl' | 'basic' | 'en16931' | 'extended';
+export type FiscalAuthorityMode = 'not_required' | 'required';
+export type FiscalAuthorityStatus = 'not_required' | 'pending' | 'accepted' | 'rejected';
 export type FiscalCategory = 'NON_FISCAL' | 'FISCAL_RECEIPT' | 'TAX_INVOICE' | 'CREDIT_NOTE' | 'DELIVERY_NOTE' | 'RETURN_NOTE';
 export type FiscalStatus = 'DRAFT' | 'SEALED' | 'VOIDED';
 export type FulfillmentStatus = 'not_fulfilled' | 'partially_fulfilled' | 'fulfilled' | 'not_applicable';
 export type LandedCostSplitMethod = 'by_value' | 'by_quantity';
 export type PaymentStatus = 'unpaid' | 'partially_paid' | 'in_payment' | 'paid' | 'overpaid';
+export type PolicyExpertiseStatus = 'approved' | 'provisional';
 export type PostingContext = 'standard' | 'work_order_generated_invoice';
 export type PreDeliveryInvoicingPolicy = 'require_delivery_first' | 'allow';
 export type PriceEntryMode = 'unit' | 'total';
@@ -2528,6 +2533,8 @@ writeoffCount: number;
 }
 declare namespace App.Modules.Treasury.Domain.Enums {
 export type AllocationMethod = 'fifo' | 'due_date' | 'manual';
+export type AllocationRefusalReason = 'document_not_live' | 'historical_opening_provenance' | 'pos_derived_provenance' | 'status_not_allocatable_for_type' | 'outward_document_type' | 'purchase_order_wrong_direction' | 'type_never_allocatable' | 'payable_not_settleable_here';
+export type AllocationTreatment = 'receivable_clearing' | 'prepayment' | 'payable_settlement';
 export type AllocationType = 'invoice_payment' | 'credit_application' | 'credit_note_application' | 'tolerance_writeoff';
 export type BankStatementStatus = 'imported' | 'reconciling' | 'reconciled' | 'voided';
 export type CancellationShape = 'b2b' | 'pos_revenue';
@@ -3030,6 +3037,9 @@ bank_name: string | null;
 errors: Array<any>;
 };
 }
+declare namespace App.Shared.Contracts.Accounting {
+export type HistoricalOpeningSide = 'ar' | 'ap';
+}
 declare namespace App.Shared.Contracts.Treasury.DTOs {
 export type ToleranceCheckResult = {
 qualifies: boolean;
@@ -3102,12 +3112,13 @@ meta: Array<any>;
 declare namespace App.Shared.Domain.Enums {
 export type ReturnPeriodRefusalCode = 'RETURN_PERIOD_CLOSED' | 'RETURN_PERIOD_FILED' | 'RETURN_PERIOD_LOCKED';
 export type SkinType = 'normal' | 'oily' | 'dry' | 'combination' | 'sensitive';
-export type StockMovementReferenceType = 'Document' | 'inventory_counting' | 'pos_receipt_return_scrap' | 'stock_adjustment' | 'supplier_goods_return_note';
+export type StockMovementReferenceType = 'Document' | 'inventory_counting' | 'pos_receipt_return_scrap' | 'stock_adjustment' | 'supplier_goods_return_note' | 'batch_ledger_repair';
 export type VarianceDirection = 'over' | 'under' | 'balanced';
 export type VarianceSeverity = 'info' | 'warning' | 'critical';
 }
 declare namespace App.Shared.Enums {
 export type BrandMappingPushResult = 'mapped' | 'conflict' | 'not_found' | 'failed';
+export type CategoryResolutionOutcome = 'matched' | 'matched_by_slug' | 'created' | 'restored';
 export type EnrichmentFeedbackAction = 'confirmed' | 'rejected';
 export type EnrichmentFeedbackReason = 'wrong_product' | 'bad_data';
 export type EnrichmentStatus = 'pending' | 'enriching' | 'completed' | 'failed' | 'rejected' | 'not_enrichable';
