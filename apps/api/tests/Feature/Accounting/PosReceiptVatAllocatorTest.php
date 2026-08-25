@@ -114,6 +114,78 @@ final class PosReceiptVatAllocatorTest extends TestCase
         $this->assertSame('100.000', $splits[1]->netRevenueAmount);
     }
 
+    public function test_a_hundred_percent_comp_is_split_not_refused(): void
+    {
+        // W4-9 gate r2, R2-1 — the limiting case. The whole ticket is comped, so
+        // the tender is 0.000 and the discount is the entire gross. Before the
+        // fix the receipt-level guard compared the sealed VAT against the bare
+        // TENDER and refused, and nothing catches that refusal: the projection
+        // job failed forever, while the declaration still reported 90.000 of VAT
+        // from the same sealed rows.
+        //
+        // Asserted at the allocator rather than end-to-end on purpose: a comp
+        // receipt cannot be PROJECTED at all on PostgreSQL, because its only
+        // payment line is 0.000 and `pos_receipt_payments` carries
+        // CHECK (amount > 0). That is a pre-existing POS-core/schema gap
+        // upstream of this lane (see the handback residuals); the guard this
+        // test pins is the part W4-9 owns.
+        $receipt = $this->receiptWithSealedVat('0.000', '90.000', [
+            ['7.00', '100.000', '7.000'],
+            ['13.00', '200.000', '26.000'],
+            ['19.00', '300.000', '57.000'],
+        ], discountAmount: '690.000');
+
+        $split = $this->allocator->allocate($receipt, ['0.000'], 3)[0];
+
+        $this->assertSame('0.000', $split->tenderAmount);
+        $this->assertSame('690.000', $split->discountAmount);
+        $this->assertSame('600.000', $split->netRevenueAmount);
+        $this->assertSame('90.000', $split->totalVat());
+        // Dr 709 690.000 / Cr 70x 600.000 / Cr 4457 90.000 — and it balances.
+        $split->assertReconciles($receipt->id, '0.000');
+    }
+
+    public function test_a_discount_larger_than_the_net_subtotal_is_split_not_refused(): void
+    {
+        // The general R2-1 shape: `cartTotals.ts` clamps the discount to the
+        // GROSS subtotal, so 620.000 off a 690.000 gross ticket is
+        // device-authorable and signed (`600 + 90 == 70 + 620`).
+        $receipt = $this->receiptWithSealedVat('70.000', '90.000', [
+            ['19.00', '600.000', '90.000'],
+        ], discountAmount: '620.000');
+
+        $split = $this->allocator->allocate($receipt, ['70.000'], 3)[0];
+
+        $this->assertSame('620.000', $split->discountAmount);
+        $this->assertSame('600.000', $split->netRevenueAmount);
+        $split->assertReconciles($receipt->id, '70.000');
+    }
+
+    public function test_a_multi_leg_comp_still_assigns_the_whole_discount(): void
+    {
+        // R2-3 — with a zero tender and more than one leg the apportionment
+        // cannot divide proportionally. Zeroing every share (the old behaviour)
+        // let `netRevenue` fall back silently to the post-discount base while
+        // `assertReconciles()` still passed, because `0 + 0 − 0 == 0`. The whole
+        // discount now lands on the residual leg.
+        $receipt = $this->receiptWithSealedVat('0.000', '19.000', [
+            ['19.00', '100.000', '19.000'],
+        ], discountAmount: '119.000');
+
+        $splits = $this->allocator->allocate($receipt, ['0.000', '0.000'], 3);
+
+        $this->assertSame(
+            '119.000',
+            bcadd($splits[0]->discountAmount, $splits[1]->discountAmount, 3),
+            'the whole discount must be assigned, not silently dropped',
+        );
+        $this->assertSame(
+            '100.000',
+            bcadd($splits[0]->netRevenueAmount, $splits[1]->netRevenueAmount, 3),
+            'revenue must stay on the sealed pre-discount base',
+        );
+    }
+
     public function test_a_receipt_with_no_vat_at_all_is_vat_free_not_refused(): void
     {
         $receipt = $this->receiptWithSealedVat('100.000', '0.000', []);
@@ -172,9 +244,14 @@ final class PosReceiptVatAllocatorTest extends TestCase
      * @param  numeric-string  $total
      * @param  numeric-string  $taxAmount
      * @param  list<array{0: string, 1: string, 2: string}>  $sealed  [rate, net, vat]
+     * @param  numeric-string  $discountAmount
      */
-    private function receiptWithSealedVat(string $total, string $taxAmount, array $sealed): Receipt
-    {
+    private function receiptWithSealedVat(
+        string $total,
+        string $taxAmount,
+        array $sealed,
+        string $discountAmount = '0.000',
+    ): Receipt {
         $tenant = Tenant::factory()->create();
         $company = Company::factory()->create(['tenant_id' => $tenant->id, 'currency' => 'TND']);
         $location = Location::factory()->create(['company_id' => $company->id]);
@@ -186,10 +263,23 @@ final class PosReceiptVatAllocatorTest extends TestCase
         ]);
         $cashier = User::factory()->create(['tenant_id' => $tenant->id]);
 
+        // `pos_receipts` carries a PG CHECK
+        // `total = subtotal + tax_amount − discount_amount + rounding`, so the
+        // four columns have to be set as a consistent set — `withTotal()` alone
+        // derives `subtotal = total − tax` and would violate it on any discounted
+        // fixture. The subtotal is the SEALED pre-discount base (Σ net_amount),
+        // which is what the device seals and the declaration reports.
+        $subtotal = $sealed === []
+            ? bcsub($total, $taxAmount, 3)
+            : array_reduce(
+                $sealed,
+                static fn (string $carry, array $row): string => bcadd($carry, $row[1], 3),
+                '0.000',
+            );
+
         // Every FK is passed explicitly: ReceiptFactory's defaults would spin up
         // their own tenant-less Company through the nested factories.
         $receipt = Receipt::factory()
-            ->withTotal($total, $taxAmount)
             ->create([
                 'tenant_id' => $tenant->id,
                 'company_id' => $company->id,
@@ -197,6 +287,10 @@ final class PosReceiptVatAllocatorTest extends TestCase
                 'terminal_id' => $terminal->id,
                 'cashier_id' => $cashier->id,
                 'currency' => 'TND',
+                'subtotal' => $subtotal,
+                'tax_amount' => $taxAmount,
+                'total' => $total,
+                'discount_amount' => $discountAmount,
             ]);
 
         foreach ($sealed as [$rate, $net, $vat]) {
