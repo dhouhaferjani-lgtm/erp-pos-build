@@ -1,5 +1,9 @@
 # Dependencies
 node_modules/
+# ...and as a bare SYMLINK: the trailing-slash rule above matches a directory
+# only, so a worktree that symlinks node_modules from the main checkout (to run
+# the web typecheck/lint/vitest) had it staged by `git add -A`.
+node_modules
 vendor/
 
 # Environment files
