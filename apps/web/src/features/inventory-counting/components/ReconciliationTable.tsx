@@ -19,11 +19,16 @@ import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 // Post-finalize backstop reasons: a line the replay skipped at apply time
-// (basket-window ambiguity or negative-at-apply) that was therefore NOT posted.
-// The deliberate v1 recovery path is a recount in a NEW session — surfaced as a
-// hint under the chip so the reviewer knows the quantity is not in stock yet.
+// (negative-at-apply, or an opening line with no cost) that was therefore NOT
+// posted. The deliberate v1 recovery path is a recount in a NEW session —
+// surfaced as a hint under the chip so the reviewer knows the quantity is not in
+// stock yet.
+//
+// 🚨 Campaign W4-6 removed `basket_window` from this set. A movement near the
+// count instant is now an annotation, not a veto: the correction IS posted, so
+// telling the reviewer to recount would be false. It must stay in step with
+// CountingItemFlagReason::blocksStockApplication() on the backend.
 const NOT_POSTED_RECOUNT_REASONS = new Set([
-  'basket_window',
   'negative_at_apply',
   'pending_opening_cost',
 ])

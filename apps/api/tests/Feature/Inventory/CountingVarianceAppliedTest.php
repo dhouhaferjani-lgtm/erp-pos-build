@@ -14,6 +14,8 @@ use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Listeners\ApplyStockAdjustmentsOnCountingCompleted;
 use App\Modules\Inventory\Application\Services\CountingDiscrepancyReportService;
+use App\Modules\Inventory\Application\Services\InventoryCountingService;
+use App\Modules\Inventory\Domain\Exceptions\CountingTransitionException;
 use App\Modules\Inventory\Domain\Enums\CountingItemFlagReason;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
@@ -482,6 +484,52 @@ final class CountingVarianceAppliedTest extends TestCase
         self::assertSame(0, bccomp('30.0000', $this->lotQty($lotA), 4));
         self::assertSame(0, bccomp('37.0000', $this->lotQty($default), 4));
         self::assertSame(2, Batch::query()->where('product_id', $product->id)->count());
+    }
+
+    /**
+     * Session B Q-2's finalize lock, from this lane's angle: the second
+     * finalize is refused and the variance is applied exactly ONCE. The lock
+     * itself is untouched here — this pins that making the variance actually
+     * post did not open a double-apply door.
+     */
+    public function test_a_second_finalize_is_refused_and_applies_nothing_twice(): void
+    {
+        $estimate = CarbonImmutable::now()->subHour();
+        $short = $this->product('COMP-MAGN');
+        $this->setOnHand($short, '70.0000');
+
+        $counting = $this->counting(15);
+        $counting->status = CountingStatus::PendingReview;
+        $counting->save();
+
+        InventoryCountingItem::create([
+            'counting_id' => $counting->id,
+            'product_id' => $short->id,
+            'location_id' => $this->location->id,
+            'theoretical_qty' => '70.0000',
+            'count_1_qty' => '68.0000',
+            'count_1_at_estimate' => $estimate,
+            'count_2_qty' => '68.0000',
+            'count_2_at_estimate' => $estimate,
+            'final_qty' => '68.0000',
+            'resolution_method' => ItemResolutionMethod::AutoCountersAgree,
+        ]);
+
+        /** @var InventoryCountingService $service */
+        $service = app(InventoryCountingService::class);
+        $service->finalize($counting, $this->user);
+
+        self::assertSame('68.0000', $this->onHand($short));
+        self::assertSame(1, $this->correctionsFor($short));
+
+        $this->expectException(CountingTransitionException::class);
+
+        try {
+            $service->finalize($counting->fresh(), $this->user);
+        } finally {
+            self::assertSame('68.0000', $this->onHand($short));
+            self::assertSame(1, $this->correctionsFor($short));
+        }
     }
 
     /** @param  numeric-string  $quantity */
