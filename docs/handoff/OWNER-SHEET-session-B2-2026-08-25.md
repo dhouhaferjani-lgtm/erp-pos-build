@@ -16,7 +16,7 @@
 - **S-19** one `grep -E 'status=(BLOCKED|FAILED)'` on the Q-7 token after `tenants:migrate`.
 - **S-20** re-run `RolesAndPermissionsSeeder` + permission cache reset (`fiscal-periods.reopen`; `fiscal-periods.close` joins it when C-24 lands).
 - **S-14 leg** (workflow edits): wire `EnumCheckParityTest` + liveness into `treasury-spine-pgsql` / `backend-architecture` — hand-place the hunk from `REPORT-C26-implementer.md` §5 with the C-37(i) corrections (sqlite-skip grep, job name, anchors); plus the `backend-pgsql` allowlist appends named in the register rows.
-- **Slice D batch 1 (B2-4)** is MIGRATION-BEARING: per-tenant census for 12 columns is in its lane report/migration docblocks (in-migration abort protects the fleet; green-field ruling 2026-08-24 applies).
+- **S-22** Slice D batch 1 is MIGRATION-BEARING: `tenants:migrate-rolling --force` (never bare `tenants:migrate`), 13 pre-flight census queries + the `convalidated` post-flight query in `REPORT-D2-implementer.md`; in-migration abort protects the fleet (green-field ruling 2026-08-24 applies). NOTE for §R-D rulings: the 13 enum sets are now frozen in the DB — deleting a dead case is a narrowing migration (LEDGER C-40).
 
 ## 3. Program spec §R — ratification questions STILL OUTSTANDING (none ruled as of 2026-08-25)
 Source: `docs/superpowers/specs/2026-08-23-state-machine-program-spec-skeleton.md` §R. The program does not start
@@ -34,5 +34,5 @@ without these; Session B's erratum applies (§#26 census superseded by D-1: 245 
 | B2-1 C-27 JE/income numbering tenant scope + lock (multi-company block LIFTED) | `0613e2ce8` | stock-gl r1→r2 ACCEPT-w/-cond · treasury r1 ACCEPT-w/-cond |
 | B2-2 C-26 parity parser + owner-pin reader | `19f9e61bb` | fiscal-pos r1 ACCEPT-w/-cond |
 | B2-3 O-31 seed + steps | doc `OWNER-O31-…` | parent-verified |
-| B2-4 Slice D batch 1 | _in flight_ | treasury + fiscal-pos |
+| B2-4 Slice D batch 1 — 13 CHECKs, baseline 188→175 (MIGRATION-BEARING → S-22) | `42f7f8bad` | fiscal-pos r1 + treasury r1 ACCEPT-w/-cond → fix round |
 | B2-5 C-24 manual period close | _queued_ (brief + worktree ready) | treasury |
