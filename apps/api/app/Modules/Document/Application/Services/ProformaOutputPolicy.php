@@ -5,10 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\Document\Application\Services;
 
 use App\Modules\Document\Domain\Document;
-use App\Modules\Document\Domain\Enums\DocumentStatus;
-use App\Modules\Document\Domain\Enums\FiscalCategory;
-use App\Modules\Document\Domain\Enums\FiscalStatus;
-use App\Modules\Document\Domain\Services\DocumentPostingService;
 
 /**
  * Decides whether a RENDERED document is a proforma — SPEC §2.4 (F-13, F-64, F-95).
@@ -39,25 +35,16 @@ use App\Modules\Document\Domain\Services\DocumentPostingService;
  */
 final class ProformaOutputPolicy
 {
+    /**
+     * C-F0w: the body moved to {@see Document::isProformaOutput()} so that the
+     * document RESOURCE — a static DTO factory that can inject nothing — reads the
+     * same predicate as the PDF instead of guessing from `status`. This class stays
+     * the named entry point every injected consumer already uses, and delegates, so
+     * there is still exactly ONE implementation. The reasoning above is unchanged
+     * and still governs; `Document::isProformaOutput()` points back here for it.
+     */
     public function isProforma(Document $document): bool
     {
-        if (! in_array($document->type, DocumentPostingService::getFiscalDocumentTypes(), true)) {
-            return false;
-        }
-
-        if ($document->fiscal_hash !== null) {
-            return false;
-        }
-
-        if ($document->fiscal_status === FiscalStatus::Voided
-            || $document->status === DocumentStatus::Cancelled) {
-            return false;
-        }
-
-        if ($document->isHistorical() || $document->fiscal_category === FiscalCategory::NonFiscal) {
-            return false;
-        }
-
-        return true;
+        return $document->isProformaOutput();
     }
 }

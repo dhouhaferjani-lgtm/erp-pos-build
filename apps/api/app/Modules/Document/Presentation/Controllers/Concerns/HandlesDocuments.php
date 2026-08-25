@@ -6,6 +6,8 @@ namespace App\Modules\Document\Presentation\Controllers\Concerns;
 
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Application\DTOs\DocumentData;
+use App\Modules\Document\Application\DTOs\ProformaPresentationData;
+use App\Modules\Document\Application\Services\ProformaPresenter;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentVehicleContext;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -62,9 +64,24 @@ trait HandlesDocuments
         }
 
         return response()->json([
-            'data' => DocumentData::fromModel($document, true, $scale),
+            'data' => DocumentData::fromModel($document, true, $scale, $this->proformaPresentation($document)),
             'meta' => $meta,
         ], $statusCode);
+    }
+
+    /**
+     * The VAT-free projection a PROFORMA detail view renders — C-F0w.
+     *
+     * Default: none. `DocumentData::$is_proforma` is computed on the aggregate and
+     * is therefore always correct, whatever this returns; a controller that does
+     * not override this simply ships no gross-amount rows, which costs a reader
+     * detail and can never expose a tax figure. Controllers serving a FISCAL
+     * document detail page override it with an injected
+     * {@see ProformaPresenter}.
+     */
+    protected function proformaPresentation(Document $document): ?ProformaPresentationData
+    {
+        return null;
     }
 
     /**

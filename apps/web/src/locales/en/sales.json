@@ -280,6 +280,17 @@
     "draftSavedAt": "Draft saved {{time}}",
     "errors": {
       "unitPriceRequired": "Enter a unit price on every line before saving."
+    },
+    "proforma": {
+      "title": "Proforma — non-fiscal document",
+      "detail": "This is an estimate issued before the sale has been entered in the accounts. It is not a definitive fiscal document, it carries no seal, and it confers no right of deduction. A definitive document will be issued once the sale is entered.",
+      "estimatedTotal": "Estimated total",
+      "stampDuty": "Stamp duty",
+      "discount": "Discount",
+      "adjustment": "Adjustment"
+    },
+    "creditNote": {
+      "balanceNote": "This credit note reduces your balance by the amount shown above."
     }
   },
   "lineItems": {
@@ -870,8 +881,6 @@
     "postTitle": "Post Credit Note",
     "postMessage": "Are you sure you want to post this credit note? This will create accounting entries. This action cannot be undone.",
     "postingMarker": {
-      "title": "Not yet posted — no fiscal seal",
-      "detail": "This document has not been posted to the accounts. It carries no fiscal seal and no hash-chain entry, and is not a definitive fiscal credit note.",
       "cancelledTitle": "Cancelled — this document has been voided",
       "cancelledDetail": "This credit note has been cancelled and must not be used as a claim."
     }

@@ -14,6 +14,7 @@ import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
 import { DocumentAttachments } from '../components/DocumentAttachments'
 import { DocumentTotals } from '../components/DocumentTotals'
+import { ProformaBanner } from '../components/ProformaBanner'
 import { DocumentHeader } from '../components/DocumentHeader'
 import { DocumentOutstandingCallout } from '../components/DocumentOutstandingCallout'
 import { CreateCreditNoteForm } from '../components/CreateCreditNoteForm'
@@ -416,6 +417,36 @@ export function InvoiceDetailPage() {
 
   const isPosted = invoice.status === 'posted'
 
+  /**
+   * C-F0w / SPEC §2.4 — the SERVER's proforma predicate (`ProformaOutputPolicy`,
+   * keyed on the fiscal seal), the same one the PDF uses. Never re-derived from
+   * `status`: a `paid`-but-unsealed invoice IS a proforma, and `isPosted` above is
+   * true for a `posted` invoice the chain never sealed.
+   */
+  const isProforma = invoice.is_proforma === true
+  const proformaLineAmounts = new Map(
+    (invoice.proforma?.lines ?? []).map((line) => [line.line_id, line] as const)
+  )
+
+  /**
+   * The figure the items table prints for one line: the NET one on a definitive
+   * invoice, the server's TAX-INCLUSIVE one on a proforma, and NOTHING when the
+   * projection does not cover the line — never a net figure under a gross total.
+   */
+  const displayLineAmount = (
+    lineId: string,
+    net: string,
+    field: 'unit_price' | 'line_total'
+  ): string | null => {
+    const currency = currentCompany?.currency ?? 'EUR'
+    if (!isProforma) {
+      return formatCurrency(net, { currency })
+    }
+    const gross = proformaLineAmounts.get(lineId)
+
+    return gross === undefined ? null : formatCurrency(gross[field], { currency })
+  }
+
   // Use computed outstanding_amount (source of truth) for display
   const outstandingAmount = parseFloat(invoice.outstanding_amount || invoice.balance_due || '0')
   const isPaid = invoice.payment_status === 'paid' || outstandingAmount === 0
@@ -477,7 +508,8 @@ export function InvoiceDetailPage() {
               })}
             </StatusBadge>
           )}
-          {isPosted && (
+          {/* Never claim a seal on a document the chain has not sealed (C-F0w). */}
+          {isPosted && !isProforma && (
             <StatusBadge tone="info" className="gap-1.5">
               <Lock className="h-3 w-3" />
               {t('invoices.fiscallySealed')}
@@ -600,6 +632,8 @@ export function InvoiceDetailPage() {
           </div>
         </div>
 
+        {isProforma && <ProformaBanner className="mx-4 mb-4 sm:mx-6" />}
+
         {/* Lines Table */}
         <div className={`border-t ${colorClasses.borderGray200}`}>
           <DataTable className={`min-w-full divide-y ${colorClasses.divideGray200}`}>
@@ -635,11 +669,19 @@ export function InvoiceDetailPage() {
                   <td className={`px-6 py-4 text-sm ${colorClasses.textGray900} text-right`}>
                     {formatQuantity(line.quantity, getQuantityDecimals(line))}
                   </td>
+                  {/*
+                    * On a PROFORMA these two cells are TAX-INCLUSIVE and come from
+                    * the server (`invoice.proforma.lines`) — the same figures the
+                    * PDF prints. Round 1 of C-F0 printed NET line amounts under a
+                    * gross estimated total, and the difference between the two was,
+                    * to the millime, the VAT it had just removed. A line the
+                    * projection does not cover prints nothing rather than a net one.
+                    */}
                   <td className={`px-6 py-4 text-sm ${colorClasses.textGray900} text-right`}>
-                    {formatCurrency(line.unit_price, { currency: currentCompany?.currency ?? 'EUR' })}
+                    {displayLineAmount(line.id, line.unit_price, 'unit_price')}
                   </td>
                   <td className={`px-6 py-4 text-sm ${colorClasses.textGray900} text-right font-medium`}>
-                    {formatCurrency(line.line_total, { currency: currentCompany?.currency ?? 'EUR' })}
+                    {displayLineAmount(line.id, line.line_total, 'line_total')}
                   </td>
                 </tr>
               ))}
@@ -655,8 +697,10 @@ export function InvoiceDetailPage() {
                 documentId={invoice.id}
                 documentType="invoice"
                 currency={currentCompany?.currency ?? 'EUR'}
-                showBalanceDue={isPosted}
+                showBalanceDue={isPosted && !isProforma}
                 balanceDue={outstandingAmount}
+                isProforma={isProforma}
+                proformaTotals={invoice.proforma ?? null}
               />
             </div>
           </div>

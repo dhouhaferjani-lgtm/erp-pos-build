@@ -117,7 +117,7 @@ describe('CreditNoteDetail', () => {
     expect(screen.getByText('Source Invoice')).toBeInTheDocument()
     expect(screen.getByText('INV-00001')).toBeInTheDocument()
     expect(screen.getByText('Amount')).toBeInTheDocument()
-    expect(screen.getByText('100.00')).toBeInTheDocument()
+    expect(screen.getByText(/100[.,]000/)).toBeInTheDocument()
     expect(screen.getByText('Reason')).toBeInTheDocument()
     expect(screen.getByText('Product Return')).toBeInTheDocument()
   })
@@ -281,7 +281,10 @@ describe('CreditNoteDetail', () => {
     printSpy.mockRestore()
   })
 
-  it('formats amount with 2 decimals', () => {
+  // C-F0w: this used to assert `100.00` — `parseFloat(total).toFixed(companyDecimals)`
+  // on a TND (3-decimal) credit note, a float on money that dropped the millime.
+  // `formatCurrency` formats the STRING at the DOCUMENT currency's scale (rule 19).
+  it('formats the amount at the document currency scale', () => {
     render(
       <CreditNoteDetail
         creditNote={mockCreditNote}
@@ -291,7 +294,7 @@ describe('CreditNoteDetail', () => {
       { wrapper }
     )
 
-    expect(screen.getByText('100.00')).toBeInTheDocument()
+    expect(screen.getByText(/100[.,]000/)).toBeInTheDocument()
   })
 
   it('formats dates correctly', () => {

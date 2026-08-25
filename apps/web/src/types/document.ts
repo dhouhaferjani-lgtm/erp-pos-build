@@ -50,6 +50,34 @@ export interface DocumentLineData {
   quantity_received?: string
 }
 
+/**
+ * The two tax-INCLUSIVE figures one line of a proforma prints — mirrors
+ * `App\Modules\Document\Application\DTOs\ProformaLineAmounts`.
+ */
+export interface ProformaLineAmounts {
+  line_id: string
+  unit_price: string
+  line_total: string
+}
+
+/**
+ * Everything a detail page needs to render a PROFORMA — mirrors
+ * `App\Modules\Document\Application\DTOs\ProformaPresentationData`.
+ *
+ * Present on the payload only when `is_proforma` is true AND the endpoint builds
+ * the projection (every fiscal DETAIL endpoint does). A page gates its VAT
+ * rendering on `is_proforma`, never on this object being present, so an endpoint
+ * that ships no projection can only cost the reader rows — never leak a tax figure.
+ */
+export interface ProformaPresentation {
+  estimated_total: string
+  gross_lines: string
+  stamp_duty: string | null
+  discount: string | null
+  adjustment: string | null
+  lines: ProformaLineAmounts[]
+}
+
 export interface Document {
   id: string
   type: string
@@ -64,6 +92,22 @@ export interface Document {
   total: string
   notes: string | null
   internal_notes: string | null
+
+  /**
+   * C-F0w / SPEC §2.4 — whether a RENDERING of this document is a proforma: no
+   * VAT, no rate rows, no seal wording, an ESTIMATED total.
+   *
+   * The SERVER's predicate (`ProformaOutputPolicy`, keyed on the fiscal seal), the
+   * same one the PDF uses. NEVER re-derive it from `status`: a `paid`-but-unsealed
+   * invoice IS a proforma and a sealed-then-cancelled one is NOT.
+   *
+   * Optional only because this interface is a hand-maintained mirror that dozens of
+   * fixtures construct; every real API response carries it. Compare with `=== true`.
+   */
+  is_proforma?: boolean
+
+  /** The VAT-free figures the proforma branch renders. Never read on a definitive document. */
+  proforma?: ProformaPresentation | null
 
   // Partner info (denormalized on the resource)
   partner_id: string | null

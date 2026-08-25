@@ -16,6 +16,7 @@ use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\PaymentStatus;
 use App\Modules\Document\Domain\Enums\SupplierInvoiceMatchStatus;
+use App\Modules\Document\Domain\Services\DocumentPostingService;
 use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Income\Domain\IncomeMetadata;
 use App\Modules\Partner\Domain\Partner;
@@ -599,6 +600,47 @@ class Document extends Model
     public function isHistorical(): bool
     {
         return $this->is_historical ?? false;
+    }
+
+    /**
+     * Whether a RENDERING of this document is a PROFORMA — SPEC §2.4 (F-13, F-64,
+     * F-95). `ProformaOutputPolicy` (Application layer — deliberately NOT imported
+     * here, Domain does not depend on Application) carries the full reasoning for
+     * every clause below; read it there.
+     *
+     * WHY THE BODY LIVES ON THE AGGREGATE (C-F0w). C-F0 shipped the predicate as an
+     * Application service because its only consumer was `DocumentPdfService`, which
+     * constructor-injects it. The web needs the SAME answer on every document
+     * payload, and `DocumentData::fromModel()` is a STATIC factory with ~20 call
+     * sites: it cannot inject anything, and threading a service through all of them
+     * would leave any missed call site emitting a silent `false` — a page that
+     * renders VAT on an unsealed invoice, which is the exact defect this lane
+     * exists to close. Putting a dependency-free predicate where the data already
+     * is makes the fail-open shape unrepresentable, and puts it next to
+     * `isSealed()` / `isFiscal()`, which `DocumentData` already projects the same
+     * way.
+     *
+     * THE POLICY REMAINS THE NAMED ENTRY POINT and now delegates here, so there is
+     * still exactly ONE implementation in the system. `ProformaResourceTest`
+     * asserts the resource field against a live policy call on nine document
+     * shapes, so a fork would fail the suite rather than drift quietly.
+     */
+    public function isProformaOutput(): bool
+    {
+        if (! in_array($this->type, DocumentPostingService::getFiscalDocumentTypes(), true)) {
+            return false;
+        }
+
+        if ($this->fiscal_hash !== null) {
+            return false;
+        }
+
+        if ($this->fiscal_status === FiscalStatus::Voided
+            || $this->status === DocumentStatus::Cancelled) {
+            return false;
+        }
+
+        return ! ($this->isHistorical() || $this->fiscal_category === FiscalCategory::NonFiscal);
     }
 
     /**

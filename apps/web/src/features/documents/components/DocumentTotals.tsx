@@ -8,7 +8,8 @@ import { useCompanyStore } from '@/stores/companyStore'
 import { fetchTaxBreakdown, type TaxBreakdown } from '../api/taxApi'
 import { bccomp } from '@/lib/decimal'
 import { formatCurrency, formatPercent } from '@/lib/format'
-import { colorClasses } from '@/lib/designTokens'
+import { colorClasses, semanticColorTokens } from '@/lib/designTokens'
+import type { ProformaPresentation } from '@/types/document'
 
 export interface DocumentTotalsProps {
   documentId: string
@@ -17,6 +18,16 @@ export interface DocumentTotalsProps {
   showBalanceDue?: boolean
   balanceDue?: number
   className?: string
+  /**
+   * C-F0w / SPEC §2.4 — render the VAT-FREE box (`Document.is_proforma`).
+   *
+   * This is the SERVER's predicate. It gates the whole tax rendering on its own:
+   * even with no `proformaTotals` to draw, nothing below prints a rate, a net
+   * subtotal or a tax amount, and the breakdown request is never sent.
+   */
+  isProforma?: boolean
+  /** The rows a proforma's box prints, from `Document.proforma`. */
+  proformaTotals?: ProformaPresentation | null
 }
 
 /**
@@ -38,6 +49,8 @@ export function DocumentTotals({
   showBalanceDue = false,
   balanceDue,
   className,
+  isProforma = false,
+  proformaTotals,
 }: DocumentTotalsProps) {
   const { t } = useTranslation('sales')
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
@@ -46,7 +59,10 @@ export function DocumentTotals({
   const { data: taxBreakdown, isLoading, error } = useQuery<TaxBreakdown>({
     queryKey: tenantScopedKey(['tax-breakdown', documentId]),
     queryFn: () => fetchTaxBreakdown(documentId),
-    enabled: tenantId !== null && companyId !== null && !!documentId,
+    // A proforma never asks for a tax breakdown. Not merely "does not render it":
+    // the VAT figures never enter the browser at all, so no later refactor can
+    // surface them from cache.
+    enabled: tenantId !== null && companyId !== null && !!documentId && !isProforma,
   })
 
   /**
@@ -73,6 +89,80 @@ export function DocumentTotals({
    */
   const formatAmount = (amount: string | number): string => {
     return formatCurrency(amount, { currency, includeCurrency: false })
+  }
+
+  /**
+   * C-F0w / SPEC §2.4 (F-95) — the PROFORMA box, mirroring
+   * `documents/components/proforma_totals_rows.blade.php` row for row: an optional
+   * stamp-duty row, an optional signed residual, and the estimated total. No net
+   * subtotal, no per-rate rows, no tax row, no settlement rows.
+   *
+   * Printing a net subtotal beside a gross total is a VAT breakdown written as a
+   * subtraction, and a proforma is not a statement of account.
+   *
+   * It returns BEFORE the breakdown query's loading and error arms on purpose:
+   * the query is disabled here, so it stays pending forever, and nothing below
+   * this line may ever render for an unsealed document.
+   */
+  if (isProforma) {
+    return (
+      <div className={cn('space-y-2', className)}>
+        {proformaTotals !== null && proformaTotals !== undefined && (
+          <>
+            {proformaTotals.stamp_duty !== null && (
+              <div className="flex items-center justify-between py-1">
+                <span className={`text-sm ${semanticColorTokens.text.muted}`}>
+                  {t('documents.proforma.stampDuty')}
+                </span>
+                <span
+                  className={`text-sm font-medium ${semanticColorTokens.text.primary} font-mono`}
+                >
+                  {formatAmount(proformaTotals.stamp_duty)} {currency}
+                </span>
+              </div>
+            )}
+
+            {proformaTotals.discount !== null ? (
+              <div className="flex items-center justify-between py-1">
+                <span className={`text-sm ${semanticColorTokens.text.muted}`}>
+                  {t('documents.proforma.discount')}
+                </span>
+                <span
+                  className={`text-sm font-medium ${semanticColorTokens.text.primary} font-mono`}
+                >
+                  -{formatAmount(proformaTotals.discount)} {currency}
+                </span>
+              </div>
+            ) : proformaTotals.adjustment !== null ? (
+              /* An increase is never called a discount. */
+              <div className="flex items-center justify-between py-1">
+                <span className={`text-sm ${semanticColorTokens.text.muted}`}>
+                  {t('documents.proforma.adjustment')}
+                </span>
+                <span
+                  className={`text-sm font-medium ${semanticColorTokens.text.primary} font-mono`}
+                >
+                  {formatAmount(proformaTotals.adjustment)} {currency}
+                </span>
+              </div>
+            ) : null}
+
+            <div className={`border-t ${semanticColorTokens.border.default} my-2`}></div>
+
+            <div className="flex items-center justify-between py-1">
+              <span className={`text-base font-semibold ${semanticColorTokens.text.primary}`}>
+                {t('documents.proforma.estimatedTotal')}
+              </span>
+              <span
+                className={`text-base font-bold ${semanticColorTokens.text.primary} font-mono`}
+              >
+                {formatAmount(proformaTotals.estimated_total)} {currency}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+    )
   }
 
   if (isLoading) {
