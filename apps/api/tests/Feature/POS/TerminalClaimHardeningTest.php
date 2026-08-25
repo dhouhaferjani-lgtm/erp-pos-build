@@ -677,6 +677,62 @@ final class TerminalClaimHardeningTest extends TestCase
      * Projects the shape a device's SESSION_OPEN leaves behind: an OPEN
      * `pos_shifts` row on the terminal.
      */
+    // ------------------------------------------------------ zChainState()
+
+    /**
+     * LEDGER C-17(ii) — `zChainState()` derived `z_hash_sequence` from
+     * `ZReport::forTerminal(...)->count()` while `z_number` came from the LATEST
+     * row. The device keeps the two counters in lockstep
+     * (`zReportService.ts:440-442`: `newZNumber = z_number + 1`,
+     * `newHashSequence = z_hash_sequence + 1`), so the recovery endpoint must
+     * hand back a matching pair. `count()` under-reports the moment any Z row is
+     * absent server-side — exactly the O-30 population — and the value is sealed
+     * into the next Z payload as `legacyReportReference.hash_sequence`
+     * (`zReportService.ts:722-724`), so a recovered device would author a Z whose
+     * hash sequence silently rewinds.
+     *
+     * Fixture: Z 1 and Z 3 exist, Z 2 does not. `count()` = 2, latest z_number = 3.
+     */
+    public function test_z_chain_state_hash_sequence_tracks_the_latest_z_number_not_the_row_count(): void
+    {
+        $terminal = $this->claimableTerminal(['hardware_identifier' => 'HW-ZCHAIN']);
+
+        $this->insertZReport($terminal, zNumber: 1, shiftNumber: 1, fiscalHash: str_repeat('1', 64));
+        // Z 2 never reached the server (the O-30 shape).
+        $this->insertZReport($terminal, zNumber: 3, shiftNumber: 3, fiscalHash: str_repeat('3', 64));
+
+        $this->assertSame(
+            2,
+            DB::table('pos_z_reports')->where('terminal_id', $terminal->id)->count(),
+            'The fixture must actually have a hole in it, or this proves nothing.',
+        );
+
+        $response = $this->getJson("/api/v1/pos/terminals/{$terminal->id}/z-chain-state");
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('data.z_number', 3);
+        $response->assertJsonPath('data.z_last_hash', str_repeat('3', 64));
+        $response->assertJsonPath(
+            'data.z_hash_sequence',
+            3,
+        );
+    }
+
+    /**
+     * The no-Z case must still answer the genesis pair — the fix must not turn
+     * an empty chain into a null or a 500.
+     */
+    public function test_z_chain_state_is_genesis_when_the_terminal_has_no_z_reports(): void
+    {
+        $terminal = $this->claimableTerminal(['hardware_identifier' => 'HW-ZCHAIN-EMPTY']);
+
+        $this->getJson("/api/v1/pos/terminals/{$terminal->id}/z-chain-state")
+            ->assertStatus(200)
+            ->assertJsonPath('data.z_last_hash', 'GENESIS')
+            ->assertJsonPath('data.z_hash_sequence', 0)
+            ->assertJsonPath('data.z_number', 0);
+    }
+
     // ------------------------------------------------- route id constraints
 
     /**
@@ -725,6 +781,46 @@ final class TerminalClaimHardeningTest extends TestCase
                 strtoupper($verb)." {$url} must 404 on an unparseable id, not 500. Body: ".$response->getContent(),
             );
         }
+    }
+
+    /**
+     * Insert a Z report straight through the query builder (with its own shift,
+     * since `pos_z_reports.shift_id` is unique) so the fixture can contain a
+     * HOLE — a z_number the server never received.
+     */
+    private function insertZReport(Terminal $terminal, int $zNumber, int $shiftNumber, string $fiscalHash): void
+    {
+        $shiftId = (string) Str::uuid();
+
+        DB::table('pos_shifts')->insert([
+            'id' => $shiftId,
+            'terminal_id' => $terminal->id,
+            'cashier_id' => $this->user->id,
+            'shift_number' => $shiftNumber,
+            // `pos_shifts_closed_logic` (PG CHECK): CLOSED requires both
+            // closed_at and closed_by.
+            'status' => 'CLOSED',
+            'opening_cash' => '0.00',
+            'opened_at' => now(),
+            'closed_at' => now(),
+            'closed_by' => $this->user->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('pos_z_reports')->insert([
+            'id' => (string) Str::uuid(),
+            'terminal_id' => $terminal->id,
+            'shift_id' => $shiftId,
+            'z_number' => $zNumber,
+            'fiscal_hash' => $fiscalHash,
+            'previous_z_hash' => null,
+            'report_data' => json_encode(['z_number' => $zNumber]),
+            'receipt_snapshots' => json_encode([]),
+            'grand_totals' => json_encode([]),
+            'generated_by' => $this->user->id,
+            'generated_at' => now(),
+        ]);
     }
 
     private function openShiftOn(Terminal $terminal): string

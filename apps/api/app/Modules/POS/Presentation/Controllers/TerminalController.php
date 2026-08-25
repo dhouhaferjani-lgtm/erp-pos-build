@@ -841,7 +841,21 @@ final class TerminalController extends Controller
         return response()->json([
             'data' => [
                 'z_last_hash' => $latestZReport->fiscal_hash,
-                'z_hash_sequence' => ZReport::forTerminal($terminal->id)->count(),
+                // LEDGER C-17(ii): derived from the LATEST row, like `z_number`
+                // beside it — NOT from `->count()`. The device advances both
+                // counters off the same local state
+                // (`zReportService.ts:440-442`: `newZNumber = z_number + 1`,
+                // `newHashSequence = z_hash_sequence + 1`), so they are the same
+                // number by construction and this endpoint must hand back a
+                // matching pair. `count()` under-reports the moment any Z row is
+                // missing server-side (the O-30 population), and the value is
+                // sealed into the next Z payload as
+                // `legacyReportReference.hash_sequence` — a recovered device
+                // would author a Z whose hash sequence silently rewinds.
+                // `pos_z_reports` stores no `hash_sequence` column of its own
+                // (ZReportSyncController validates the field but never persists
+                // it), so the latest `z_number` is the only server-side truth.
+                'z_hash_sequence' => $latestZReport->z_number,
                 'z_number' => $latestZReport->z_number,
                 'grand_totals' => $latestZReport->grand_totals,
             ],
