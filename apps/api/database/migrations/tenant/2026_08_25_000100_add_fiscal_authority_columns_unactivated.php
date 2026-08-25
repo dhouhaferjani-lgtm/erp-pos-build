@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\Schema;
  *  `country_document_settings`  (the document-lane country policy family's
  *  declared extension point — see `2026_08_10_120000_create_country_document_settings_table.php`):
  *    + `fiscal_authority_mode`     varchar(32)  NULL   ({@see FiscalAuthorityMode})
- *    + `fiscal_authority_types`    json         NULL   ({@see FiscalAuthorityTypes})
+ *    + `fiscal_authority_types`    jsonb        NULL   ({@see FiscalAuthorityTypes})
  *    + `policy_expertise_status`   varchar(32)  NULL   ({@see PolicyExpertiseStatus})
  *  `documents`:
  *    + `fiscal_authority_status`   varchar(32)  NULL   ({@see FiscalAuthorityStatus})
@@ -53,14 +53,19 @@ use Illuminate\Support\Facades\Schema;
  * PostgreSQL 16 each is a catalog-only change (no table rewrite, no full-table
  * lock beyond a brief ACCESS EXCLUSIVE on the catalog entry) and completes in
  * constant time whether the tenant holds 0 or 10^8 documents. There is NO
- * constraint any existing row could violate, hence NO abort path: the pre-flight
- * census below is INFORMATIONAL — it sizes what C-QR0b will have to backfill — and
- * this migration never throws on its result.
+ * constraint any existing row could violate, hence NO ROW-DRIVEN abort path: the
+ * pre-flight census below is INFORMATIONAL — it sizes what C-QR0b will have to
+ * backfill — and no row count can fail this migration.
+ *
+ * It aborts on exactly ONE condition (gate r1 F-4): a tenant missing either table
+ * this migration extends. See `assertPrerequisiteTables()` — a migration that
+ * cannot do its whole job must not record itself as done.
  *
  * PRE-FLIGHT CENSUS (read-only; run per tenant database before promoting).
  * Docblock-census pattern copied from
- * `2026_08_11_000100_unique_journal_entries_source_inventory_movement.php`, with
- * the abort deliberately dropped for the reason above.
+ * `2026_08_11_000100_unique_journal_entries_source_inventory_movement.php`; its
+ * abort is retargeted from "a row would violate the constraint" to "the schema this
+ * migration extends is not there", the only way this one can fail.
  *
  *   SELECT
  *     (SELECT COUNT(*) FROM country_document_settings)                        AS settings_rows,
@@ -77,10 +82,17 @@ use Illuminate\Support\Facades\Schema;
  *               ('documents','fiscal_authority_status')))                     AS new_columns_present;
  *
  * `new_columns_present` is 0 before this migration and 4 after — the idempotence
- * check. `authority_scope_documents` is the C-QR0b initialiser's population and the
- * OQ-49 quarantine's upper bound; it does not gate this migration.
+ * check, and the ONLY per-tenant proof that the schema is actually there. "The
+ * migration is recorded as run" is NOT that proof, which is why C-QR0b's preflight
+ * must assert this query returns 4 per tenant before it seeds anything (gate ruling
+ * R-2). The executed census emits both halves — `new_columns_before` /
+ * `new_columns_after` — so a first application (0 -> 4) is distinguishable in the log
+ * from a re-run (4 -> 4). `authority_scope_documents` is the C-QR0b initialiser's
+ * population and the OQ-49 quarantine's upper bound; it does not gate this migration.
  *
- * Fleet-abort risk: NONE. Unattended-safe, idempotent, guarded per object, and
+ * Fleet-abort risk: NONE from data. A tenant missing `country_document_settings`
+ * aborts loudly and is reported by the rolling command, by design. Unattended-safe
+ * (it either applies completely or not at all), idempotent, guarded per object, and
  * rollback-neutral (`down()` drops only what `up()` added; nothing reads the
  * columns, so a rollback loses no state).
  */
@@ -95,6 +107,10 @@ return new class extends Migration
 
     public function up(): void
     {
+        $this->assertPrerequisiteTables();
+
+        $columnsBefore = $this->countNewColumns();
+
         if (Schema::hasTable('country_document_settings')) {
             Schema::table('country_document_settings', function (Blueprint $table): void {
                 if (! Schema::hasColumn('country_document_settings', 'fiscal_authority_mode')) {
@@ -102,7 +118,13 @@ return new class extends Migration
                 }
 
                 if (! Schema::hasColumn('country_document_settings', 'fiscal_authority_types')) {
-                    $table->json('fiscal_authority_types')->nullable();
+                    // `jsonb`, NOT `json` (gate r1 F-2). PostgreSQL's `json` type has no
+                    // equality operator — `'["invoice"]'::json = '["invoice"]'::json`
+                    // raises 42883 — so the canonical form this column stores could not
+                    // be compared in SQL at all, and SQLite (where `json` is TEXT and
+                    // `=` works) would hide it from the default test driver. `jsonb` is
+                    // also the tenant schema's house convention, 99 columns to 26.
+                    $table->jsonb('fiscal_authority_types')->nullable();
                 }
 
                 if (! Schema::hasColumn('country_document_settings', 'policy_expertise_status')) {
@@ -119,7 +141,7 @@ return new class extends Migration
             });
         }
 
-        $this->recordCensus();
+        $this->recordCensus($columnsBefore);
     }
 
     public function down(): void
@@ -144,20 +166,90 @@ return new class extends Migration
     }
 
     /**
-     * The census the docblock documents, executed so the per-tenant numbers land in
-     * the migration output instead of having to be reconstructed afterwards.
+     * FAIL LOUDLY rather than half-apply (gate r1 F-4).
      *
-     * PostgreSQL only — SQLite is the test driver, never a tenant database, and the
-     * `information_schema` half has no SQLite equivalent. Purely informational: it
-     * cannot fail this migration.
+     * The original shape guarded each table with `Schema::hasTable` and moved on. A
+     * tenant whose `2026_08_10_120000_create_country_document_settings_table` never
+     * ran — a restored snapshot, an errored earlier batch, or a database left behind
+     * at an older migration (7 of 12 local tenant databases were in exactly that
+     * state at authoring time, gate ruling R-2) — would then have taken ONE of the
+     * four columns, recorded this migration as RUN, and never retried. "The migration
+     * ran" would stop being evidence that the schema is there, and C-QR0b's seeder
+     * would meet a table it believes exists.
+     *
+     * A migration that cannot do its whole job must not claim it did. Throwing leaves
+     * the row out of the `migrations` table, so the rolling command reports the tenant
+     * and the operator lands the prerequisite and re-runs.
+     *
+     * @throws RuntimeException when either table this migration extends is absent
      */
-    private function recordCensus(): void
+    private function assertPrerequisiteTables(): void
     {
-        if (DB::connection()->getDriverName() !== 'pgsql') {
+        $missing = array_values(array_filter(
+            ['country_document_settings', 'documents'],
+            static fn (string $table): bool => ! Schema::hasTable($table),
+        ));
+
+        if ($missing === []) {
             return;
         }
 
-        if (! Schema::hasTable('documents') || ! Schema::hasTable('country_document_settings')) {
+        throw new RuntimeException(sprintf(
+            'C-QR0a cannot apply on this tenant: missing table(s) %s. This migration extends both '
+            .'`country_document_settings` (created by 2026_08_10_120000_create_country_document_settings_table) '
+            .'and `documents`; applying it partially would record it as run with only some of its four '
+            .'columns present. Land the prerequisite migration on this tenant and re-run. Verify with the '
+            .'per-tenant census: SELECT (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = '
+            ."current_schema() AND (table_name, column_name) IN (('country_document_settings','fiscal_authority_mode'),"
+            ."('country_document_settings','fiscal_authority_types'),('country_document_settings','policy_expertise_status'),"
+            ."('documents','fiscal_authority_status'))) AS new_columns_present; -- must be 4 after a successful run.",
+            implode(', ', $missing),
+        ));
+    }
+
+    /**
+     * How many of this migration's four columns already exist. PostgreSQL only —
+     * SQLite is the test driver, never a tenant database, and the `information_schema`
+     * half has no SQLite equivalent. Returns null off PostgreSQL so the census can say
+     * "not measured" instead of "zero".
+     */
+    private function countNewColumns(): ?int
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return null;
+        }
+
+        $row = DB::selectOne(
+            "SELECT COUNT(*) AS present
+               FROM information_schema.columns
+              WHERE table_schema = current_schema()
+                AND (table_name, column_name) IN (
+                      ('country_document_settings','fiscal_authority_mode'),
+                      ('country_document_settings','fiscal_authority_types'),
+                      ('country_document_settings','policy_expertise_status'),
+                      ('documents','fiscal_authority_status'))"
+        );
+
+        return $row === null ? null : (int) $row->present;
+    }
+
+    /**
+     * The census the docblock documents, executed so the per-tenant numbers land in
+     * the migration output instead of having to be reconstructed afterwards.
+     *
+     * `$columnsBefore` is measured BEFORE the columns are added (gate r1 F-8): the
+     * census used to run only afterwards, so `new_columns_present` was always 4 and
+     * the emitted record could never distinguish a first application (0 -> 4) from a
+     * re-run of an already-migrated tenant (4 -> 4). That distinction is the whole
+     * idempotence signal.
+     *
+     * PostgreSQL only. Purely informational: it cannot fail this migration — the one
+     * condition that MUST fail it is handled by `assertPrerequisiteTables()` before
+     * any DDL runs.
+     */
+    private function recordCensus(?int $columnsBefore): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
             return;
         }
 
@@ -169,19 +261,12 @@ return new class extends Migration
         $creditNote = DocumentType::CreditNote->value;
 
         $census = DB::selectOne(
-            "SELECT
+            'SELECT
                 (SELECT COUNT(*) FROM country_document_settings) AS settings_rows,
                 (SELECT COUNT(*) FROM documents) AS document_rows,
                 (SELECT COUNT(*) FROM documents WHERE status = ?) AS posted_documents,
                 (SELECT COUNT(*) FROM documents
-                  WHERE type IN (?, ?) AND status <> ?) AS authority_scope_documents,
-                (SELECT COUNT(*) FROM information_schema.columns
-                  WHERE table_schema = current_schema()
-                    AND (table_name, column_name) IN (
-                          ('country_document_settings','fiscal_authority_mode'),
-                          ('country_document_settings','fiscal_authority_types'),
-                          ('country_document_settings','policy_expertise_status'),
-                          ('documents','fiscal_authority_status'))) AS new_columns_present",
+                  WHERE type IN (?, ?) AND status <> ?) AS authority_scope_documents',
             [$posted, $invoice, $creditNote, $cancelled],
         );
 
@@ -194,7 +279,8 @@ return new class extends Migration
             'document_rows' => (int) $census->document_rows,
             'posted_documents' => (int) $census->posted_documents,
             'authority_scope_documents' => (int) $census->authority_scope_documents,
-            'new_columns_present' => (int) $census->new_columns_present,
+            'new_columns_before' => $columnsBefore,
+            'new_columns_after' => $this->countNewColumns(),
         ]);
     }
 };

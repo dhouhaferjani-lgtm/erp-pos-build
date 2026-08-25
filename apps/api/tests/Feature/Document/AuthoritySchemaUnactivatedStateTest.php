@@ -17,6 +17,7 @@ use Database\Seeders\CountryDocumentSettingsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use InvalidArgumentException;
 use Tests\TestCase;
 use Tests\Traits\BuildsDeliveryPolicyFixtures;
 
@@ -193,6 +194,68 @@ final class AuthoritySchemaUnactivatedStateTest extends TestCase
             'pending',
             DB::table('documents')->where('id', $invoice->id)->value('fiscal_authority_status'),
         );
+    }
+
+    /**
+     * Gate r1 F-2 — the docblock claim on {@see FiscalAuthorityTypes}, executed.
+     *
+     * The value object canonicalises the set so that "two rows that mean the same
+     * thing are equal byte-for-byte in the database", which is what lets C-QR0b's
+     * country-parity check be a COMPARISON rather than a set intersection. On
+     * PostgreSQL that sentence is only true if the column is `jsonb`: the `json`
+     * type has NO equality operator, so `WHERE fiscal_authority_types = ?` raises
+     * 42883 and any Eloquent `where()` on the column 500s. SQLite cannot falsify
+     * this — there `json` is TEXT and `=` works — which is exactly why the proof
+     * has to run on PostgreSQL.
+     */
+    public function test_the_canonical_form_is_comparable_with_sql_equality(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            self::markTestSkipped(
+                'SQL equality on the JSON column is a PostgreSQL type property: SQLite stores json/jsonb '
+                .'as TEXT, where `=` always works, so it cannot falsify the jsonb requirement. '
+                .'Run with -c phpunit-pgsql.xml.'
+            );
+        }
+
+        $row = CountryDocumentSettings::query()->where('country_code', 'TN')->firstOrFail();
+
+        // Written in the WRONG order on purpose: canonicalisation is what makes the
+        // stored bytes predictable, and jsonb arrays are order-significant.
+        $row->forceFill([
+            'fiscal_authority_types' => FiscalAuthorityTypes::fromArray(['credit_note', 'invoice']),
+        ])->save();
+
+        $matches = DB::table('country_document_settings')
+            ->where('country_code', 'TN')
+            ->whereRaw('fiscal_authority_types = ?::jsonb', [json_encode(['invoice', 'credit_note'])])
+            ->count();
+
+        self::assertSame(1, $matches, 'The canonical form must be findable by SQL equality on jsonb.');
+
+        self::assertSame(
+            0,
+            DB::table('country_document_settings')
+                ->where('country_code', 'TN')
+                ->whereRaw('fiscal_authority_types = ?::jsonb', [json_encode(['credit_note', 'invoice'])])
+                ->count(),
+            'jsonb arrays are order-significant — which is precisely why the DTO canonicalises.',
+        );
+    }
+
+    /**
+     * Gate r1 F-7. A scalar is the plausible mistake — one type written where the SET
+     * was meant — and it used to reach `fromArray(iterable)` and die with a raw
+     * TypeError, skipping the typed refusal the rest of this design promises.
+     */
+    public function test_the_cast_refuses_a_scalar_with_the_typed_exception(): void
+    {
+        $row = CountryDocumentSettings::query()->where('country_code', 'TN')->firstOrFail();
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('must be assigned a');
+
+        $row->forceFill(['fiscal_authority_types' => 'invoice'])->save();
     }
 
     /**

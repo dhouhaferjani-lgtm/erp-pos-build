@@ -149,7 +149,13 @@ dropped by this lane.
 | file | RED | GREEN |
 |---|---|---|
 | `tests/Unit/Document/FiscalAuthorityEnumsTest.php` | `Tests: 8 failed (1 assertions)` — `Class "App\Modules\Document\Domain\Enums\FiscalAuthorityMode" not found` | `Tests: 8 passed (16 assertions)` |
-| `tests/Feature/Document/AuthoritySchemaUnactivatedStateTest.php` + `tests/Feature/Document/StagedDeploymentBootTest.php` | `Tests: 9 failed, 4 skipped, 1 passed` — `country_document_settings.fiscal_authority_mode must exist after this lane's migration. Failed asserting that false is true.` | `Tests: 4 skipped, 15 passed` |
+| `tests/Feature/Document/AuthoritySchemaUnactivatedStateTest.php` + `tests/Feature/Document/StagedDeploymentBootTest.php` | `Tests: 9 failed, 4 skipped, 1 passed` — `country_document_settings.fiscal_authority_mode must exist after this lane's migration. Failed asserting that false is true.` | `Tests: 4 skipped, 11 passed` |
+
+> **Figures corrected in fix round r1 (gate r1 F-6).** The r0 handback recorded the
+> two-Feature-file green as `4 skipped, 15 passed`, which was the ALL-THREE-FILES total
+> pasted into the two-file row — the two classes held 15 methods, so the two-file green was
+> `4 skipped, 11 passed`. The all-three-files totals in this table are the reproducible ones.
+> Fix round r1 adds 4 test methods; its own figures are in §10.
 
 The 4 sqlite skips are `StagedDeploymentBootTest`'s `information_schema` / `pg_constraint`
 assertions, which are PostgreSQL-only by construction and are proven below.
@@ -159,7 +165,7 @@ assertions, which are PostgreSQL-only by construction and are proven below.
 | file | RED | GREEN |
 |---|---|---|
 | `AuthoritySchemaUnactivatedStateTest` + `StagedDeploymentBootTest` | `Tests: 13 failed, 1 passed (14 assertions)` | `Tests: 15 passed` |
-| all three files together | — | `Tests: 22 passed (90 assertions)` (before the idempotence case was added; `StagedDeploymentBootTest` alone then re-ran `6 passed, 42 assertions`) |
+| all three files together | — | `Tests: 22 passed (90 assertions)` (before the idempotence case was added; `StagedDeploymentBootTest` alone then re-ran `6 passed, 42 assertions`). Superseded by fix round r1 — see §10. |
 
 The single test green at RED on PG is
 `StagedDeploymentBootTest::test_the_container_boots_and_posting_still_succeeds` — the
@@ -258,3 +264,169 @@ CACHE_STORE=array php artisan typescript:transform
 ```
 
 **Do NOT merge.** Gates: `fiscal-pos-reviewer` + `tenancy-authz-reviewer`.
+
+
+---
+
+# Fix round r1 — fiscal gate r1 (`docs/superpowers/reviews/2026-08-25-sc-qr0a-gate-r1-fiscal.md`)
+
+Verdict addressed: **ACCEPT-WITH-CONDITIONS**, merge-blocking on conditions 1–3.
+Same worktree, same branch, LANE-PROTOCOL unchanged. PG throwaway `autoerp_test_scqr0a`
+recreated and dropped; every test path `ls`-verified; one test process at a time; the full
+suite was never invoked.
+
+**Conditions 1 (manifest union) and 4 (LEDGER) are orchestrator-owned and are NOT actioned
+here.** The manifest `classes` / `gated_ceiling` values are deliberately left untouched — the
+gate re-derives them at the squash (dev moved twice during the gate alone).
+
+## Per-item status
+
+| Item | Status | Where |
+|---|---|---|
+| **F-2** [BLOCKING] | **DONE** — `json` → `jsonb`, in place | migration:120-128 (`$table->jsonb(...)`), docblock:25 |
+| **F-3** [BLOCKING] | **DONE** — both classes allowlisted, manifest note updated | `.github/workflows/ci.yml:989-1009` (comment) + `:1019` (filter tail); `tests/feature-lane-manifest.json` `Document` note |
+| **F-4** | **DONE** — aborts loudly, before any DDL | migration:110 (`assertPrerequisiteTables()` call), :186-208 (the method), docblock:60-64 |
+| **F-8** | **DONE** — census logs real before/after | migration:112 (`countNewColumns()` before DDL), :216-233 (the method), :250 (`recordCensus(?int)`), :282-283 (both halves logged) |
+| **F-7** | **DONE** — typed refusal on scalar input | `FiscalAuthorityTypesCast.php:76-84` (guard), `:22` (`@implements` widened to `<FiscalAuthorityTypes, mixed>`) |
+| **F-5** | **DONE** — freeze attributed to C-3a1a | `FiscalAuthorityStatus.php:19-26` |
+| **F-6** | **DONE** — §4 figures corrected from a fresh run | §4 above, ⚠ note |
+| **F-9** | **DONE** — docblock matches what `RefreshDatabase` actually does | `StagedDeploymentBootTest.php:34-40` |
+| F-1 / condition 1 | **NOT ACTIONED** — orchestrator-owned (manifest union at squash) | — |
+| condition 4 (LEDGER) | **NOT ACTIONED** — orchestrator-owned | — |
+
+## F-2 — `fiscal_authority_types` is now `jsonb`
+
+Ruled: **switch the type**, not weaken the claim. The column is NULL on every row, has no
+index and no data, so the change costs nothing today and would cost a migration on a live
+table once C-QR0b seeds ~200 country rows. **The migration is edited IN PLACE, not superseded
+by a second one** — it has run nowhere but local throwaways.
+
+The DTO's canonicalisation and its docblock claim are unchanged; what changed is that the
+claim is now true on PostgreSQL, and is *executed*:
+`AuthoritySchemaUnactivatedStateTest::test_the_canonical_form_is_comparable_with_sql_equality`
+writes the set in the WRONG order, then finds the row by
+`WHERE fiscal_authority_types = ?::jsonb` against the CANONICAL literal, and asserts the
+reversed literal matches **zero** rows — jsonb arrays are order-significant, which is exactly
+why the DTO canonicalises. It skips on SQLite with the reason stated in the skip message
+(json/jsonb are both TEXT there, so `=` always works and SQLite cannot falsify the
+requirement). `StagedDeploymentBootTest::test_the_authority_types_column_is_jsonb` pins
+`udt_name = 'jsonb'`.
+
+## F-3 — both classes allowlisted
+
+Appended to the `backend-test-pgsql --filter` allowlist, append-only, with the standard
+removal comment in the house style
+(`… Remove both when that lane's gate flips, not before.`). The manifest `Document` note
+records the same, replacing the r0 note's now-false "NOT named in any live --filter
+allowlist" sentence.
+
+**S-14 promotion leg owed** (recorded here and in the ci.yml comment): `backend-test-pgsql`
+runs on `workflow_dispatch || base_ref==main || base_ref==dev || push→main` — **not** on
+`push→dev`. The allowlist arms both classes on PRs and main pushes, not on a direct dev
+promotion, so a session that promotes straight to `dev` must run them by path itself.
+
+## F-4 + F-8 — the migration fails loudly and the census tells the truth
+
+`up()` now calls `assertPrerequisiteTables()` **before any DDL**: a tenant missing either
+`country_document_settings` or `documents` gets a `RuntimeException` carrying the missing
+table name, the prerequisite migration's name, and the exact per-tenant census query with the
+note "must be 4 after a successful run". Nothing is added on the way out, so the tenant is
+never recorded half-applied and the rolling command reports it for a retry after the
+prerequisite lands.
+
+`recordCensus()` now takes the column count measured **before** the DDL and logs both halves
+(`new_columns_before` / `new_columns_after`), so a first application (0 → 4) is
+distinguishable in the log from a re-run (4 → 4). The r0 shape ran the count only afterwards,
+where it was always 4 — the docblock's "0 before and 4 after" described the manual query, not
+the emitted one.
+
+The docblock's MIGRATION-BEARING section is amended accordingly: **no ROW-DRIVEN abort path**
+(no row count can fail it) with exactly one abort condition — the schema it extends is absent.
+
+## F-7 — typed refusal on scalar input
+
+`FiscalAuthorityTypesCast::set()` (`:76-84`) guards with `is_iterable()` and throws the DTO's
+`InvalidArgumentException` naming table, column, expected type and `get_debug_type($value)`.
+`'invoice'` — one type written where the SET was meant — is refused, not silently wrapped
+into a one-element list. The `@implements` generic widened from
+`CastsAttributes<FiscalAuthorityTypes, FiscalAuthorityTypes|iterable<mixed>>` to
+`<FiscalAuthorityTypes, mixed>`, because the narrow TSet was what made PHPStan call the guard
+"already narrowed" in r0 and is why it was dropped there.
+
+## F-5 — the freeze is C-3a1a's, and now says so
+
+`FiscalAuthorityStatus.php:19-26` records that F-101 freezing is **not enforced anywhere
+yet**: `enforce_document_immutability()` is a column BLACKLIST that does not name this
+column, and the seal hash covers only `document_number`, `posted_at`, `total`, `currency`.
+The triggers belong to C-3a1a (SPEC §2.3 / F-133), which lands AFTER C-QR0b ships the writer.
+No enforcement is implemented here. Condition 4 (the LEDGER row) is orchestrator-owned.
+
+## F-9 — docblock matches reality
+
+`StagedDeploymentBootTest`'s class docblock now states that `RefreshDatabase` runs the FULL
+tenant migration set, so the assertion is the stronger one — that no migration in the tree,
+this one or any later, has activated these columns — and that when C-QR0b lands, its own
+migration turning these cases red is the intended signal.
+
+## §10 — Fix round r1: red → green, by path
+
+Red was captured honestly: the four **production** files were reverted to the gated SHA
+`f7488c02d` with `git checkout HEAD -- <paths>` (no `git stash` — the stash stack is
+repo-global), the new tests were run against the pre-fix code, then the fixes were restored
+and re-run.
+
+### RED — PostgreSQL 16, pre-fix production code, new tests present
+
+`php artisan test -c phpunit-pgsql.xml tests/Feature/Document/AuthoritySchemaUnactivatedStateTest.php tests/Feature/Document/StagedDeploymentBootTest.php`
+→ **`Tests: 4 failed, 15 passed (85 assertions)`**. All four reds are the four new cases, and
+each reproduces the gate's own proof:
+
+| new case | red |
+|---|---|
+| `the canonical form is comparable with sql equality` | `SQLSTATE[42883]: Undefined function: 7 ERROR: operator does not exist: json = jsonb` |
+| `the cast refuses a scalar with the typed exception` | `Failed asserting that exception of type "TypeError" matches expected exception "InvalidArgumentException"` — `fromArray(): Argument #1 ($values) must be of type Traversable\|array, string given, called in …/FiscalAuthorityTypesCast.php on line 69` (the exact line the gate cited) |
+| `the authority types column is jsonb` | `Failed asserting that two strings are identical.` (`udt_name` = `json`) |
+| `the migration refuses a tenant without the settings table` | `A tenant without country_document_settings must not be migrated half-way.` — `up()` returned normally, confirming the silent half-application |
+
+### GREEN
+
+| run | result |
+|---|---|
+| PG, two Feature files | `Tests: 19 passed (88 assertions)` |
+| PG, all three lane files | **`Tests: 27 passed (104 assertions)`** |
+| sqlite, all three lane files | **`Tests: 7 skipped, 20 passed (60 assertions)`** |
+
+The 7 sqlite skips are the PostgreSQL-only cases, each with an explicit reason: the four
+`information_schema` / `pg_constraint` shape assertions, the new `jsonb` type pin, the new
+half-application refusal, and the new SQL-equality proof (whose skip message states that
+SQLite stores json/jsonb as TEXT and therefore cannot falsify the requirement).
+
+### Regression, unchanged surfaces (sqlite, by path)
+
+`DocumentFillableRegressionTest`, `DocumentEntityTest`, `PreDeliveryInvoicingGateTest`,
+`PreDeliveryInvoicingPolicyResolverTest` → `Tests: 2 skipped, 33 passed (80 assertions)`
+(same as r0; the 2 skips are pre-existing PG-only CHECK cases).
+
+### Static analysis, re-run after the fix round
+
+| gate | result |
+|---|---|
+| PHPStan level 8, touched paths | `[OK] No errors` |
+| Pint, touched paths | `fixed` (one `ordered_imports`), then clean |
+| deptrac ratchet | `TOTAL 183 / 183 — RESULT: PASS` |
+| feature-lane manifest checker | OK — 1431 Feature classes, 74 groups; **"every `--filter` entry is anchored and uniquely matched"**, which is also the proof that the two new allowlist entries each resolve to exactly one class |
+| ci.yml | parses as valid YAML |
+
+## Residuals after fix round r1
+
+R-1 is **closed** by F-3 (both classes now execute on PRs and main pushes; the `push→dev` gap
+is recorded as the S-14 leg). R-2 is **superseded** by gate ruling R-2 — stale-local-DB
+artefact, not a migration defect; what it demands of C-QR0b's preflight (assert
+`new_columns_present = 4` per tenant, refuse loudly otherwise) is now enforceable because F-4
+makes the migration abort rather than half-apply. R-3 (inherited TypeScript drift) was
+**confirmed by the gate** as authored by other lanes. R-4, R-5 and R-6 stand unchanged. Two
+carry-forwards are orchestrator-owned and NOT actioned here: the manifest union (condition 1)
+and the two LEDGER rows (condition 4 — C-QR0b preflight; C-QR0b/C-3a1a unenforced F-101
+freeze).
+
+**Still: do NOT merge.** Tenancy gate (`tenancy-authz-reviewer`) has not run.

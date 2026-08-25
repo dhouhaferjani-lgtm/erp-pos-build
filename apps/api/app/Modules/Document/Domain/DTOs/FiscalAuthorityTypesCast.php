@@ -22,7 +22,7 @@ use InvalidArgumentException;
  * decay into "the empty set" — an empty set says the authority applies to NO type,
  * which is a policy, and F-112 forbids inventing one.
  *
- * @implements CastsAttributes<FiscalAuthorityTypes, FiscalAuthorityTypes|iterable<mixed>>
+ * @implements CastsAttributes<FiscalAuthorityTypes, mixed>
  */
 final class FiscalAuthorityTypesCast implements CastsAttributes
 {
@@ -64,9 +64,26 @@ final class FiscalAuthorityTypesCast implements CastsAttributes
             return null;
         }
 
-        $types = $value instanceof FiscalAuthorityTypes
-            ? $value
-            : FiscalAuthorityTypes::fromArray($value);
+        if ($value instanceof FiscalAuthorityTypes) {
+            return json_encode($value->toArray(), JSON_THROW_ON_ERROR);
+        }
+
+        // A scalar used to reach `fromArray(iterable)` and blow up with a raw
+        // TypeError (gate r1 F-7), skipping the typed refusal the rest of this
+        // design promises. `'invoice'` is the plausible mistake — a single type
+        // written where the SET was meant — so it must be refused, not silently
+        // wrapped into a one-element list.
+        if (! is_iterable($value)) {
+            throw new InvalidArgumentException(sprintf(
+                '%s.%s must be assigned a %s or an iterable of DocumentType values; got %s.',
+                $model->getTable(),
+                $key,
+                FiscalAuthorityTypes::class,
+                get_debug_type($value),
+            ));
+        }
+
+        $types = FiscalAuthorityTypes::fromArray($value);
 
         return json_encode($types->toArray(), JSON_THROW_ON_ERROR);
     }

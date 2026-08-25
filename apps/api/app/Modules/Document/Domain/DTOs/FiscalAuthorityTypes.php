@@ -128,7 +128,7 @@ final class FiscalAuthorityTypes implements Castable, JsonSerializable
      * a cast under `Infrastructure/Casts` would be a boundary violation.
      *
      * @param  array<int, string>  $arguments
-     * @return CastsAttributes<FiscalAuthorityTypes, FiscalAuthorityTypes|iterable<mixed>>
+     * @return CastsAttributes<FiscalAuthorityTypes, mixed>
      */
     public static function castUsing(array $arguments): CastsAttributes
     {

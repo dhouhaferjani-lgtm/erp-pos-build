@@ -7,9 +7,11 @@ namespace Tests\Feature\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
 use Database\Seeders\CountryDocumentSettingsSeeder;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use RuntimeException;
 use Tests\TestCase;
 use Tests\Traits\BuildsDeliveryPolicyFixtures;
 
@@ -28,6 +30,13 @@ use Tests\Traits\BuildsDeliveryPolicyFixtures;
  * ran, against `information_schema` / `pg_constraint` on real PostgreSQL, and then
  * boots the container and posts a document through the ordinary service to prove
  * the half-deployed schema is inert.
+ *
+ * To be exact about what is simulated (gate r1 F-9): `RefreshDatabase` runs the FULL
+ * tenant migration set, not this lane's migration in isolation. The assertion is
+ * therefore the stronger one — that NO migration in the tree, this one or any later,
+ * has activated these columns. The day C-QR0b lands, its own migration is what turns
+ * these cases red, and that is the intended signal: the shape assertions move to
+ * C-QR0b's activation test rather than being deleted.
  *
  * The constraint arrives ATOMICALLY with the backfill in C-QR0b. That is the whole
  * reason it is absent here, and why this test must go RED the moment someone adds
@@ -151,6 +160,68 @@ final class StagedDeploymentBootTest extends TestCase
                 "{$target['table']}.{$target['column']} cannot hold the longest enum value.",
             );
         }
+    }
+
+    /**
+     * Gate r1 F-2 — the column is `jsonb`, not `json`.
+     *
+     * Not a style preference. PostgreSQL's `json` type has no equality operator, so a
+     * `json` column cannot be compared in SQL at all; the sibling proof in
+     * {@see AuthoritySchemaUnactivatedStateTest} exercises the comparison, and this
+     * one pins the type that makes it possible. House convention in the tenant schema
+     * is `jsonb` (99 columns) over `json` (26).
+     */
+    public function test_the_authority_types_column_is_jsonb(): void
+    {
+        $this->skipUnlessPostgres();
+
+        $row = DB::selectOne(
+            'SELECT udt_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?',
+            ['country_document_settings', 'fiscal_authority_types'],
+        );
+
+        self::assertNotNull($row);
+        self::assertSame('jsonb', $row->udt_name, 'json has no equality operator; jsonb does.');
+    }
+
+    /**
+     * Gate r1 F-4 — a tenant missing `country_document_settings` must ABORT, not
+     * half-apply.
+     *
+     * The original shape guarded each table with `Schema::hasTable` and moved on:
+     * `up()` completed without throwing, added only `documents.fiscal_authority_status`,
+     * and the migration was then recorded as RUN and never retried. "The migration ran"
+     * would stop being evidence that the schema is there — and C-QR0b's seeder would
+     * meet a table it believes exists. 7 of 12 local tenant databases were in exactly
+     * that state at authoring time.
+     */
+    public function test_the_migration_refuses_a_tenant_without_the_settings_table(): void
+    {
+        $this->skipUnlessPostgres();
+
+        // Undo this lane's migration, then remove its prerequisite, so `up()` meets the
+        // half-migrated tenant it has to refuse.
+        Schema::table('documents', function (Blueprint $table): void {
+            $table->dropColumn('fiscal_authority_status');
+        });
+        Schema::drop('country_document_settings');
+
+        self::assertFalse(Schema::hasColumn('documents', 'fiscal_authority_status'));
+
+        $migration = require database_path('migrations/tenant/2026_08_25_000100_add_fiscal_authority_columns_unactivated.php');
+
+        try {
+            $migration->up();
+            self::fail('A tenant without country_document_settings must not be migrated half-way.');
+        } catch (RuntimeException $e) {
+            self::assertStringContainsString('country_document_settings', $e->getMessage());
+            self::assertStringContainsString('new_columns_present', $e->getMessage(), 'The refusal must carry the per-tenant census hint.');
+        }
+
+        self::assertFalse(
+            Schema::hasColumn('documents', 'fiscal_authority_status'),
+            'The refusal must precede every DDL statement — nothing may be added on the way out.',
+        );
     }
 
     /**

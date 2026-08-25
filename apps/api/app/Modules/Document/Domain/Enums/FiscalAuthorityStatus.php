@@ -16,7 +16,14 @@ use App\Modules\Document\Domain\Document;
  * and `confirmed→posted` requires it for fiscal types.
  *
  * FROZEN once the seal fact exists (F-101): only the QR acquisition service writes
- * it, and only while the document is still unsealed.
+ * it, and only while the document is still unsealed. **That freeze is not enforced
+ * anywhere yet** (gate r1 F-5): `enforce_document_immutability()` is a column
+ * BLACKLIST that does not name this column, and the seal hash covers only
+ * `document_number`, `posted_at`, `total` and `currency` — so flipping a sealed row
+ * from `rejected` to `accepted` breaks no chain today. The data-boundary triggers
+ * that make F-101 real belong to C-3a1a (SPEC §2.3 / F-133), which lands AFTER
+ * C-QR0b ships the writer; until then the freeze is a stated invariant, not a
+ * guarded one.
  *
  * `not_required` is shared with {@see FiscalAuthorityMode} as a STRING but not as a
  * type: DeliveryNote and ReturnNote initialise to `not_required` regardless of the
