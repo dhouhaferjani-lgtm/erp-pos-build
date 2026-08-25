@@ -40,7 +40,18 @@ review is not cancelled, it is re-sequenced to onboarding, and it now has a leve
 a deploy: a tenant whose accountant disagrees turns posting off in settings, keeps the costed
 movement rows, and can rebuild the ledger later. LEDGER row **C-33 (iv)** carries the review.
 
-**Carried forward unchanged:** W4-6 residual **R-8** — the pre-count half of the ± ambiguity window
-resolves by posting, so a `basket_window` line whose nearby movement was booked before the count but
-shelved after it now produces a wrong *journal entry* as well as a wrong stock correction. That
-consequence was contingent on this flip and is now live.
+**Carried forward — TWO horns, corrected 2026-08-25 after the P-1 stock↔GL gate.** W4-6 residual
+**R-8** was inherited here as "the pre-count half", which named only one of them:
+
+* **pre-count half** — a movement booked before the count but shelved after it is treated as
+  baseline, so the line posts a wrong stock correction and, from this flip onward, a wrong *journal
+  entry*. Live; confirmed by execution in the P-1 gate (probe B).
+* **same-second boundary** — W4-6 gate r2's insertion-order marker closes this only for a
+  **marker-bearing** line. With `final_qty_movement_marker` NULL — a count in flight across the
+  upgrade — the r1 inclusive boundary subtracts the boundary-second movement twice. Live; confirmed
+  by execution in the P-1 gate (probe A2).
+
+P-1 condition round r1 closes the **ledger** consequence of the second horn only: such a line records
+`CountingItemFlagReason::MissingBoundaryMarker`, its stock correction still applies, and **no journal
+entry is written**. The wrong *stock* number on that line, and both consequences of the first horn,
+remain W4-6's to own.
