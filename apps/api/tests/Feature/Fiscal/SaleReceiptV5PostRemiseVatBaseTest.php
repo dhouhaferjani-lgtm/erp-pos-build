@@ -341,6 +341,126 @@ final class SaleReceiptV5PostRemiseVatBaseTest extends TestCase
     }
 
     // =================================================================
+    // Gate r2 finding 1 — the ALLOCATION across rate groups is pinned too
+    // =================================================================
+
+    /**
+     * r1 pinned each group's net/VAT SPLIT; nothing pinned each group's SHARE.
+     * Because `discNet + discVat == allocated` holds per group, moving the whole
+     * remise onto a different rate group leaves EVERY aggregate identity intact
+     * (`subtotal + vat_total == total`, `Σ discount_allocated == discount`,
+     * per-group `gross == lineGross − allocated`) while the DECLARED VAT moves.
+     *
+     * The sharp case: pushing the whole 50.000 onto the EXEMPT group seals VAT
+     * **71.000** — exactly the pre-D-1 figure the owner ruling exists to remove
+     * — on a v5 receipt whose totals all reconcile.
+     */
+    public function test_v5_refuses_the_whole_remise_pushed_onto_the_exempt_group(): void
+    {
+        $payload = $this->remiseOnOneGroupPayload('0.00');
+
+        // The pre-D-1 VAT total, sealed at v5, with every aggregate exact.
+        self::assertSame(0, bccomp($payload['vat_total'], '71.000', 3));
+        self::assertSame(
+            0,
+            bccomp(bcadd($payload['subtotal'], $payload['vat_total'], 3), '590.000', 3),
+        );
+
+        self::assertMatchesRegularExpression(
+            '/payload_partition_discount_allocation_out_of_band/',
+            (string) $this->constraintFailure($payload, 5),
+        );
+    }
+
+    /** The mirror case: the whole remise onto the 19 % group under-declares 2.436. */
+    public function test_v5_refuses_the_whole_remise_pushed_onto_the_top_rate_group(): void
+    {
+        $payload = $this->remiseOnOneGroupPayload('19.00');
+
+        self::assertSame(0, bccomp($payload['vat_total'], '63.017', 3));
+
+        self::assertMatchesRegularExpression(
+            '/payload_partition_discount_allocation_out_of_band/',
+            (string) $this->constraintFailure($payload, 5),
+        );
+    }
+
+    /**
+     * The band is a BAND, not an equality: it must never make the server a
+     * co-author of the largest-remainder tie-break, or a future device/server
+     * drift would quarantine real sales. The golden ventilation — whose residue
+     * puts one ulp ABOVE the exact pro-rata share on two groups — is accepted.
+     */
+    public function test_v5_accepts_the_pro_rata_allocation_including_its_residue_ulps(): void
+    {
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $this->workedExamplePayload(),
+            eventVersion: 5,
+        );
+        $this->addToAssertionCount(1);
+    }
+
+    /** A 100 %-comp allocates every group its whole gross — inside the band. */
+    public function test_v5_accepts_a_full_comp_allocation(): void
+    {
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $this->fullyCompedPayload(),
+            eventVersion: 5,
+        );
+        $this->addToAssertionCount(1);
+    }
+
+    /**
+     * The whole remise on ONE rate group, with every other identity preserved:
+     * that group's share is its full gross-capped amount, all others zero, and
+     * each group's net/VAT split is still the honest one for its own share (so
+     * the r1 split pin cannot catch it).
+     *
+     * @return array<string, mixed>
+     */
+    private function remiseOnOneGroupPayload(string $onRate): array
+    {
+        // [rate, category, lineNet, lineVat]
+        $groups = [
+            ['0.00', 'EXEMPT', '69.000', '0.000'],
+            ['13.00', '', '200.000', '26.000'],
+            ['19.00', '', '200.000', '38.000'],
+            ['7.00', '', '100.000', '7.000'],
+        ];
+
+        $rows = [];
+        $subtotal = '0.000';
+        $vatTotal = '0.000';
+        foreach ($groups as [$rate, $category, $lineNet, $lineVat]) {
+            $allocated = $rate === $onRate ? '50.000' : '0.000';
+            // The honest split for THIS share — so `discVat` still matches
+            // `TransactionRemiseSplit::split()` and the r1 pin passes.
+            $divisor = bcadd('1', bcdiv($rate, '100', 7), 7);
+            $discNet = bccomp($allocated, '0', 3) === 0
+                ? '0.000'
+                : bcadd(bcadd(bcdiv($allocated, $divisor, 7), '0.0005', 7), '0', 3);
+            $discVat = bcsub($allocated, $discNet, 3);
+            $net = bcsub($lineNet, $discNet, 3);
+            $vat = bcsub($lineVat, $discVat, 3);
+            $subtotal = bcadd($subtotal, $net, 3);
+            $vatTotal = bcadd($vatTotal, $vat, 3);
+            $rows[] = [$rate, $category, $allocated, $net, $vat, $lineNet, $lineVat];
+        }
+
+        return $this->basePayload(
+            total: '590.000',
+            subtotal: $subtotal,
+            vatTotal: $vatTotal,
+            discount: '50.000',
+            discountReason: 'Geste commercial',
+            vatBreakdown: $rows,
+            payments: [['amount' => '590.000', 'method_code' => 'CASH']],
+        );
+    }
+
+    // =================================================================
     // 100 %-comp (G3-A fold-in)
     // =================================================================
 

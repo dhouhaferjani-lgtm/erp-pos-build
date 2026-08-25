@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { bcadd, bccomp, bcsub, bcsum } from '@/lib/decimal';
+import { bcadd, bccomp, bcdiv, bcformat, bcmul, bcsub, bcsum } from '@/lib/decimal';
 import {
   TransactionDiscountAllocationError,
   allocateTransactionDiscount,
@@ -96,6 +96,56 @@ describe('allocateTransactionDiscount', () => {
       expect(g.netAmount).toBe('0.000');
       expect(g.vatAmount).toBe('0.000');
       expect(g.grossAmount).toBe('0.000');
+    }
+  });
+
+/**
+   * D-1 gate r2 finding 1 — the SERVER now bounds each group's share within
+   * `[exact − 1 ulp, exact + 2 ulp]` of `discount × gross_r / Σ gross`
+   * (`FiscalPayloadConstraintValidator::assertRemiseAllocationInBand()`).
+   *
+   * A band the honest DEVICE can fall outside of would quarantine real sales,
+   * so this is the parity proof from the authoring side: 1 000 pseudo-random
+   * ventilations must all land inside the band the server enforces, and Σ must
+   * still be the remise exactly. The PHP twin
+   * (`TransactionDiscountVatAllocatorTest`) runs the same proof on the server
+   * allocator.
+   */
+  it('a thousand random ventilations all land inside the server\'s band', () => {
+    // Deterministic LCG so a failure reproduces exactly.
+    let seed = 20260825;
+    const rnd = (n: number): number => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed % n;
+    };
+    const RATES = ['0.00', '7.00', '13.00', '19.00'];
+    const ULP = '0.001';
+
+    for (let i = 0; i < 1000; i++) {
+      const groups: VatGroupLineSums[] = [];
+      let ticketGross = '0.000';
+      for (const rate of RATES.slice(0, 1 + rnd(4))) {
+        const net = `${rnd(900)}.${String(rnd(1000)).padStart(3, '0')}`;
+        const vat = bcdiv(bcmul(net, rate, 7), '100', TND);
+        groups.push({ rate, category: '', lineNet: bcformat(net, TND), lineVat: vat });
+        ticketGross = bcadd(ticketGross, bcadd(net, vat, TND), TND);
+      }
+      if (bccomp(ticketGross, '0') === 0) continue;
+
+      const discount = bcdiv(bcmul(ticketGross, String(1 + rnd(100)), 7), '100', TND);
+      if (bccomp(discount, '0') === 0) continue;
+
+      const out = allocateTransactionDiscount(groups, discount, TND);
+
+      for (const group of out) {
+        const exact = bcdiv(bcmul(discount, group.grossBeforeDiscount, 7), ticketGross, 7);
+        const lower = bcsub(exact, ULP, 7);
+        const upper = bcadd(exact, bcmul(ULP, '2', TND), 7);
+        expect(bccomp(group.discountAllocated, lower)).toBeGreaterThanOrEqual(0);
+        expect(bccomp(group.discountAllocated, upper)).toBeLessThanOrEqual(0);
+      }
+
+      expect(bcsum(out.map((g) => g.discountAllocated), TND)).toBe(bcformat(discount, TND));
     }
   });
 

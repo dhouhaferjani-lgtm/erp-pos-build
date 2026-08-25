@@ -572,18 +572,22 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
     }
 
     /**
-     * D-1 gate r1 finding 4 (2026-08-25) — RE-PINNED from "accepts" to
-     * "refuses".
+     * D-1 gate r2 finding 2 — RE-PINNED back to "accepts", at THIS layer.
      *
-     * `accountChargeCartMapper.ts` still seals `subtotal`/`vat_total` on the
-     * PRE-remise line roll-up and applies the remise to `total` alone. Since
-     * D-1 the SALE_RECEIPT arm of the same cart seals a POST-remise base, so
-     * accepting a discounted ACCOUNT_CHARGE would let one cart declare two
-     * different taxable bases depending on tender. The remise is refused on
-     * this event type until the ACCOUNT_CHARGE ventilation lane lands; the
-     * discount-FREE variant is unchanged and still accepted.
+     * r1 refused a discounted ACCOUNT_CHARGE here, in the pure payload
+     * validator. That was wrong twice: `VerifyEventChainCommand` re-runs this
+     * validator over STORED events, so every historical discounted credit sale
+     * would have started reporting as a payload-constraint failure; and it bound
+     * un-upgraded terminals, quarantining real credit sales at ingest the moment
+     * the server deployed — inverting the deploy order.
+     *
+     * The refusal moved to `SaleReceiptForwardVersionGate`, on the same
+     * per-chain v5 watermark the sales arm uses, so it binds only chains that
+     * have proven they author the post-remise base. The PAYLOAD CONTRACT is
+     * unchanged and must stay that way: these bytes were valid when they were
+     * signed and must re-validate forever (rule 8).
      */
-    public function test_account_charge_refuses_a_transaction_discount_until_it_ventilates(): void
+    public function test_account_charge_still_accepts_a_transaction_discount_at_the_payload_contract(): void
     {
         $this->assertAccountChargeAccepted($this->canonicalAccountChargePayload());
 
@@ -605,11 +609,9 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
             ],
         ]);
 
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessageMatches(
-            '/payload_account_charge_transaction_discount_unsupported/'
-        );
-        $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_CHARGE, $payload);
+        // Accepted at the payload contract — the cutover lives on the ingest
+        // path, not in the immutable bytes.
+        $this->assertAccountChargeAccepted($payload);
     }
 
     public function test_account_charge_accepts_nullable_and_populated_buyer_and_references(): void

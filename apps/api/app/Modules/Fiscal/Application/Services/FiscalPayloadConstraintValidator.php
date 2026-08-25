@@ -1484,7 +1484,7 @@ final class FiscalPayloadConstraintValidator
         // ---- 8. VAT partition algorithm (§6.C) — set equality + per-group
         // ----    amount equality via BCMath at currency_scale. ----
         // @phpstan-ignore-next-line argument.type — validated as list above
-        $this->validateVatPartition($lineItems, $vatBreakdown, $scale, $eventVersion);
+        $this->validateVatPartition($lineItems, $vatBreakdown, $scale, $eventVersion, $payload);
 
         // ---- 9. Aggregate consistency (NF525-meaningful) ----
         // NF525 secures the ticket AGGREGATES (the VAT-declaration integrity):
@@ -1884,39 +1884,24 @@ final class FiscalPayloadConstraintValidator
             'payload_discount_reason_mismatch',
         );
 
-        // ---- D-1 gate r1 finding 4 — the owner ruling of 2026-08-25 is NOT
-        // ---- yet in force on this event type. `accountChargeCartMapper.ts`
-        // ---- still seals `subtotal`/`vat_total` on the PRE-remise line
-        // ---- roll-up and applies the remise to `total` alone — verbatim the
-        // ---- defect D-1 exists to remove, on a sibling type fed by the SAME
-        // ---- cart and the SAME transaction-discount UI. Left alone, one cart
-        // ---- would seal two different taxable bases depending on tender:
-        // ---- post-remise if paid, pre-remise if charged to account. That is
-        // ---- indefensible in front of an inspector, and
-        // ---- `createPOSChargeEntry()` would over-credit `4457` on every
-        // ---- discounted on-account sale.
+        // ---- D-1 gate r2 finding 2 — the ACCOUNT_CHARGE remise refusal used to
+        // ---- live HERE, unconditional. That was wrong twice over: this
+        // ---- validator is also re-run over STORED events by
+        // ---- `VerifyEventChainCommand`, so every historical discounted credit
+        // ---- sale — already accepted, projected and in the AR ledger — would
+        // ---- have started reporting as a payload-constraint failure; and it
+        // ---- bound un-upgraded terminals, whose discounted on-account sales
+        // ---- would have been quarantined at ingest the moment the server
+        // ---- deployed (no `account_charge_receipts` row, no AR movement, no
+        // ---- GL entry, for a sale the customer already walked out with) —
+        // ---- inverting the deploy order, since SALE_RECEIPT v5 needs
+        // ---- server-first.
         // ----
-        // ---- Ventilating ACCOUNT_CHARGE properly is a versioned-payload
-        // ---- change of its own (new event version, projection column, GL era
-        // ---- awareness) and cannot be authored or tested end-to-end inside
-        // ---- D-1. So the remise is REFUSED here until that lane lands:
-        // ---- fail-closed, immediately correct, and reversible in one line.
-        // ---- The device refuses it first (`accountChargeCartMapper.ts`); this
-        // ---- is the contract-boundary belt, and it is what actually binds a
-        // ---- device that has not taken the build.
-        if (bccomp(
-            $this->asNumericString($payload['transaction_discount_amount'], 'transaction_discount_amount'),
-            '0',
-            $scale
-        ) > 0) {
-            throw new RuntimeException(
-                'payload_account_charge_transaction_discount_unsupported:transaction_discount_amount='
-                .$payload['transaction_discount_amount']
-                .' — ACCOUNT_CHARGE still seals VAT on the PRE-remise base (D-1 owner ruling 2026-08-25 is not '
-                .'yet in force on this event type), so a discounted on-account sale would declare VAT on a base '
-                .'the customer never paid. Refused until the ACCOUNT_CHARGE ventilation lane lands.'
-            );
-        }
+        // ---- The refusal now lives in `SaleReceiptForwardVersionGate`, gated
+        // ---- on the SAME per-chain v5 watermark the sales arm uses: a terminal
+        // ---- that has proven it can author the post-remise base may not then
+        // ---- charge a remise to account on the pre-remise one. Un-upgraded
+        // ---- devices keep the legacy path, and nothing is retroactive.
 
         $sellerCountryCode = $this->validateSeller($payload);
         $customerCategory = $this->validateAccountChargeCustomer($payload['customer'] ?? null, $sellerCountryCode);
@@ -2858,8 +2843,9 @@ final class FiscalPayloadConstraintValidator
      *
      * @param  list<mixed>  $lineItems
      * @param  list<mixed>  $vatBreakdown
+     * @param  array<string, mixed>  $payload  read only at v5, for the ticket-wide remise (gate r2 finding 1)
      */
-    private function validateVatPartition(array $lineItems, array $vatBreakdown, int $scale, int $eventVersion = 1): void
+    private function validateVatPartition(array $lineItems, array $vatBreakdown, int $scale, int $eventVersion = 1, array $payload = []): void
     {
         $isPostDiscountBase = $eventVersion >= self::SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION;
         // Group line_items by (vat_rate, tax_category_code). Money fields
@@ -2914,6 +2900,30 @@ final class FiscalPayloadConstraintValidator
             );
         }
 
+        // ---- D-1 gate r2 finding 1 — the ticket-wide denominator for the
+        // ---- ALLOCATION band. r1 pinned each group's net/VAT SPLIT but
+        // ---- nothing pinned its SHARE, and because `discNet + discVat ==
+        // ---- allocated` holds per group, moving the whole remise onto a
+        // ---- different rate group left EVERY aggregate identity intact while
+        // ---- the declared VAT moved. Pushing 50.000 onto the exempt group of
+        // ---- the ruling's own example sealed VAT 71.000 — the pre-D-1 figure
+        // ---- the ruling exists to remove — at event_version 5, accepted.
+        /** @var numeric-string $ticketLineGross */
+        $ticketLineGross = bcadd('0', '0', $scale);
+        if ($isPostDiscountBase) {
+            foreach ($groups as $g) {
+                $ticketLineGross = bcadd(
+                    $ticketLineGross,
+                    bcadd($g['sum_net'], $g['sum_vat'], $scale),
+                    $scale,
+                );
+            }
+        }
+        /** @var numeric-string $declaredDiscount */
+        $declaredDiscount = $isPostDiscountBase
+            ? $this->asNumericString($payload['transaction_discount_amount'], 'transaction_discount_amount')
+            : bcadd('0', '0', $scale);
+
         // Per-group amount equality.
         foreach ($groups as $key => $g) {
             $b = $breakdownByKey[$key];
@@ -2937,7 +2947,17 @@ final class FiscalPayloadConstraintValidator
             // ---- still pins the sealed numbers to the sealed lines, so a
             // ---- fabricated base cannot pass.
             if ($isPostDiscountBase) {
-                $this->validateVatPartitionGroupV5($g, $b, $bNet, $bVat, $bGross, $expectedGross, $scale);
+                $this->validateVatPartitionGroupV5(
+                    $g,
+                    $b,
+                    $bNet,
+                    $bVat,
+                    $bGross,
+                    $expectedGross,
+                    $scale,
+                    $ticketLineGross,
+                    $declaredDiscount,
+                );
 
                 continue;
             }
@@ -2974,6 +2994,8 @@ final class FiscalPayloadConstraintValidator
      * @param  numeric-string  $breakdownVat
      * @param  numeric-string  $breakdownGross
      * @param  numeric-string  $lineGross
+     * @param  numeric-string  $ticketLineGross  Σ pre-remise gross over all groups (v5 only)
+     * @param  numeric-string  $declaredDiscount  the ticket remise (v5 only)
      *
      * @throws RuntimeException on a partition violation (→ quarantine)
      */
@@ -2985,7 +3007,11 @@ final class FiscalPayloadConstraintValidator
         string $breakdownGross,
         string $lineGross,
         int $scale,
+        string $ticketLineGross = '0',
+        string $declaredDiscount = '0',
     ): void {
+        /** @var numeric-string $ticketLineGross */
+        /** @var numeric-string $declaredDiscount */
         $rate = $group['rate'];
         $category = $group['category'];
         $allocated = $this->asNumericString($breakdown['discount_allocated'], 'vat_breakdown.discount_allocated');
@@ -3053,6 +3079,78 @@ final class FiscalPayloadConstraintValidator
         if (bccomp($expectedGross, $breakdownGross, $scale) !== 0) {
             throw new RuntimeException(
                 "payload_partition_gross_mismatch:rate={$rate}:category={$category}:expected={$expectedGross}:got=".$breakdownGross
+            );
+        }
+
+        $this->assertRemiseAllocationInBand(
+            $rate,
+            $category,
+            $allocated,
+            $lineGross,
+            $ticketLineGross,
+            $declaredDiscount,
+            $scale,
+        );
+    }
+
+    /**
+     * D-1 gate r2 finding 1 — bound this group's SHARE of the ticket remise.
+     *
+     * The device ventilates by largest-remainder pro-rata
+     * (`vatDiscountAllocation.ts`): `exact_r = discount x gross_r / Σ gross`,
+     * floored at the currency scale, with the residue handed out one ulp at a
+     * time. So an honest share is `floor(exact_r)` or `floor(exact_r) + 1 ulp`
+     * — and, in the degenerate case where a high-remainder group is already at
+     * its own gross ceiling and the allocator's second capacity pass revisits,
+     * `+ 2 ulp`.
+     *
+     * This is a BAND, deliberately not an equality. Pinning the allocation
+     * exactly would make the server a CO-AUTHOR of the ventilation, and any
+     * future device/server drift in the largest-remainder tie-break would
+     * quarantine real sales — a materially different risk posture. The band
+     * refuses every re-allocation that moves real money (the r2 probe moved the
+     * whole remise onto one group, changing the declared VAT by 2.436 and
+     * 5.547) while staying immune to tie-break drift.
+     *
+     * @param  numeric-string  $allocated
+     * @param  numeric-string  $lineGross  this group's PRE-remise gross
+     * @param  numeric-string  $ticketLineGross  Σ pre-remise gross over all groups
+     * @param  numeric-string  $declaredDiscount
+     *
+     * @throws RuntimeException when the share is outside the band (→ quarantine)
+     */
+    private function assertRemiseAllocationInBand(
+        string $rate,
+        string $category,
+        string $allocated,
+        string $lineGross,
+        string $ticketLineGross,
+        string $declaredDiscount,
+        int $scale,
+    ): void {
+        // A remise-free ticket has nothing to ventilate; the `Σ allocated ==
+        // discount` + non-negativity checks already pin every share at zero.
+        if (bccomp($declaredDiscount, '0', $scale) === 0
+            || bccomp($ticketLineGross, '0', $scale) === 0) {
+            return;
+        }
+
+        $ratioScale = $scale + TransactionRemiseSplit::RATIO_EXTRA_SCALE;
+        $exact = bcdiv(
+            bcmul($declaredDiscount, $lineGross, $ratioScale),
+            $ticketLineGross,
+            $ratioScale,
+        );
+        $ulp = TransactionRemiseSplit::ulp($scale);
+        $lower = bcsub($exact, $ulp, $ratioScale);
+        $upper = bcadd($exact, bcmul($ulp, '2', $scale), $ratioScale);
+
+        if (bccomp($allocated, $lower, $ratioScale) < 0
+            || bccomp($allocated, $upper, $ratioScale) > 0) {
+            throw new RuntimeException(
+                "payload_partition_discount_allocation_out_of_band:rate={$rate}:category={$category}"
+                .':expected_pro_rata='.bcadd($exact, '0', $scale)
+                .':got='.$allocated
             );
         }
     }

@@ -188,9 +188,15 @@ final class OutboxIngestor
         // ---- pre-discount base again. Routed as a parse failure so the
         // ---- envelope follows the SAME path as every other payload-contract
         // ---- violation: STORED with its bytes intact, NOT projected. Older
-        // ---- devices (no v5 watermark on their terminal) are unaffected.
+        // ---- devices (no v5 watermark on their chain) are unaffected. Since
+        // ---- gate r2 the same call also carries the ACCOUNT_CHARGE remise
+        // ---- refusal, on the same watermark — which is why the parsed payload
+        // ---- is threaded in.
         if ($parseResult->ok) {
-            $downgradeFailure = $this->saleReceiptForwardVersionGate->verdict($envelope);
+            $downgradeFailure = $this->saleReceiptForwardVersionGate->verdict(
+                $envelope,
+                $parseResult->payload,
+            );
             if ($downgradeFailure !== null) {
                 $parseResult = ParseResult::failure($downgradeFailure);
             }

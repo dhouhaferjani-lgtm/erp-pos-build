@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\POS;
 
 use App\Modules\POS\Domain\Services\TransactionDiscountVatAllocator;
+use App\Shared\Domain\TransactionRemiseSplit;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 
@@ -26,6 +27,70 @@ final class TransactionDiscountVatAllocatorTest extends TestCase
     {
         parent::setUp();
         $this->allocator = new TransactionDiscountVatAllocator;
+    }
+
+    /**
+     * D-1 gate r2 finding 1 — the server now BOUNDS each group's share within
+     * `[exact − 1 ulp, exact + 2 ulp]` of `discount × gross_r / Σ gross`
+     * (`FiscalPayloadConstraintValidator::assertRemiseAllocationInBand()`).
+     *
+     * A band that the honest allocator can fall outside of would quarantine
+     * real sales, which is exactly the risk the gate warned about when it
+     * refused an exact pin. This fuzz is the parity proof in the other
+     * direction: 1 000 random ventilations must ALL land inside the band, and
+     * the +2 ulp headroom exists precisely for the capacity-clamp case the
+     * second pass produces.
+     */
+    public function test_a_thousand_random_ventilations_all_land_inside_the_servers_band(): void
+    {
+        mt_srand(20260825);
+        $scale = 3;
+        $ulp = TransactionRemiseSplit::ulp($scale);
+        $ratioScale = $scale + TransactionRemiseSplit::RATIO_EXTRA_SCALE;
+
+        for ($i = 0; $i < 1000; $i++) {
+            $groups = [];
+            $ticketGross = '0.000';
+            foreach (array_slice(['0.00', '7.00', '13.00', '19.00'], 0, mt_rand(1, 4)) as $rate) {
+                $net = sprintf('%d.%03d', mt_rand(0, 900), mt_rand(0, 999));
+                $vat = bcadd(bcdiv(bcmul($net, $rate, 7), '100', 7), '0', 3);
+                $groups[] = ['tax_rate' => $rate, 'net_amount' => $net, 'vat_amount' => $vat];
+                $ticketGross = bcadd($ticketGross, bcadd($net, $vat, 3), 3);
+            }
+            if (bccomp($ticketGross, '0', 3) === 0) {
+                continue;
+            }
+            // A remise anywhere in (0, gross].
+            $discount = bcadd(bcdiv(bcmul($ticketGross, (string) mt_rand(1, 100), 7), '100', 7), '0', 3);
+            if (bccomp($discount, '0', 3) === 0) {
+                continue;
+            }
+
+            $out = $this->allocator->allocate($groups, $discount, $scale);
+
+            $sum = '0.000';
+            foreach ($out as $index => $row) {
+                $gross = bcadd($groups[$index]['net_amount'], $groups[$index]['vat_amount'], 3);
+                $exact = bcdiv(bcmul($discount, $gross, $ratioScale), $ticketGross, $ratioScale);
+                $lower = bcsub($exact, $ulp, $ratioScale);
+                $upper = bcadd($exact, bcmul($ulp, '2', $scale), $ratioScale);
+
+                $this->assertGreaterThanOrEqual(
+                    0,
+                    bccomp($row['discount_allocated'], $lower, $ratioScale),
+                    sprintf('iteration %d rate %s: %s below %s', $i, $row['tax_rate'], $row['discount_allocated'], $lower),
+                );
+                $this->assertLessThanOrEqual(
+                    0,
+                    bccomp($row['discount_allocated'], $upper, $ratioScale),
+                    sprintf('iteration %d rate %s: %s above %s', $i, $row['tax_rate'], $row['discount_allocated'], $upper),
+                );
+                $sum = bcadd($sum, $row['discount_allocated'], 3);
+            }
+
+            // …and the ventilation still adds back to the remise exactly.
+            $this->assertSame(0, bccomp($sum, $discount, 3), 'iteration '.$i);
+        }
     }
 
     public function test_zero_discount_returns_the_line_sums_untouched(): void

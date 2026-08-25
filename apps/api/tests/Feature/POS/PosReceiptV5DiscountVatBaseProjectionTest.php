@@ -308,6 +308,72 @@ final class PosReceiptV5DiscountVatBaseProjectionTest extends TestCase
     // Fixtures
     // =================================================================
 
+    // =================================================================
+    // Gate r2 finding 2 — the ACCOUNT_CHARGE remise refusal is VERSION-AWARE
+    // =================================================================
+
+    /**
+     * An un-upgraded chain keeps the legacy path. r1 refused this
+     * unconditionally, which would have quarantined a real credit sale — no
+     * `account_charge_receipts` row, no AR movement, no GL entry — the moment
+     * the server deployed, for a cart the customer already walked out with.
+     */
+    public function test_a_discounted_account_charge_is_admitted_from_a_chain_with_no_v5_watermark(): void
+    {
+        self::assertNull(app(SaleReceiptForwardVersionGate::class)->verdict(
+            $this->accountChargeEnvelope(),
+            ['transaction_discount_amount' => '5.000'],
+        ));
+    }
+
+    /**
+     * Once the SAME chain has authored a post-remise sale, a discounted credit
+     * sale is refused: one cart must not declare two taxable bases depending on
+     * tender.
+     */
+    public function test_a_discounted_account_charge_is_refused_once_the_chain_has_sealed_v5(): void
+    {
+        $this->storeEvent($this->workedExamplePayload(), 5);
+
+        $verdict = app(SaleReceiptForwardVersionGate::class)->verdict(
+            $this->accountChargeEnvelope(),
+            ['transaction_discount_amount' => '5.000'],
+        );
+
+        self::assertNotNull($verdict);
+        self::assertMatchesRegularExpression('/account_charge_remise_unsupported_after_cutover/', $verdict);
+    }
+
+    /** A remise-FREE credit sale is never touched, watermark or not. */
+    public function test_an_undiscounted_account_charge_is_always_admitted(): void
+    {
+        $this->storeEvent($this->workedExamplePayload(), 5);
+
+        self::assertNull(app(SaleReceiptForwardVersionGate::class)->verdict(
+            $this->accountChargeEnvelope(),
+            ['transaction_discount_amount' => '0.000'],
+        ));
+    }
+
+    /** The watermark is per CHAIN here too — an operational v5 does not bind training. */
+    public function test_an_operational_watermark_does_not_refuse_a_training_chain_account_charge(): void
+    {
+        $this->storeEvent($this->workedExamplePayload(), 5);
+
+        self::assertNull(app(SaleReceiptForwardVersionGate::class)->verdict(
+            $this->accountChargeEnvelope('training_operational'),
+            ['transaction_discount_amount' => '5.000'],
+        ));
+    }
+
+    private function accountChargeEnvelope(string $chainContext = 'operational'): FiscalEventEnvelope
+    {
+        $envelope = $this->envelopeFor(1, 9, $chainContext);
+        $envelope->eventType = FiscalEventType::ACCOUNT_CHARGE;
+
+        return $envelope;
+    }
+
     private function envelopeFor(
         int $eventVersion,
         int $sequenceNumber,
