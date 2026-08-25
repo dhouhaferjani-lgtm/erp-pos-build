@@ -520,6 +520,77 @@ final class PaymentApplicabilityMatrixTest extends TestCase
     }
 
     /**
+     * Every reason is renderable in every locale the namespace exists in. A
+     * refusal whose key resolves to the raw dotted path is the rule-11 failure
+     * the enum was built to avoid, and it only shows up in production.
+     *
+     * The lang files are plain PHP arrays, so a pure unit test can read them
+     * directly without booting the framework.
+     *
+     * @return iterable<string, array{string}>
+     */
+    public static function locales(): iterable
+    {
+        yield 'en' => ['en'];
+        yield 'fr' => ['fr'];
+        yield 'ar' => ['ar'];
+    }
+
+    #[DataProvider('locales')]
+    public function test_every_refusal_reason_is_translated_in_every_locale(string $locale): void
+    {
+        $translations = require dirname(__DIR__, 3)."/lang/{$locale}/treasury.php";
+
+        $this->assertIsArray($translations);
+        $this->assertArrayHasKey('allocation_refused', $translations, $locale);
+        $this->assertIsArray($translations['allocation_refused']);
+
+        foreach (AllocationRefusalReason::cases() as $reason) {
+            $this->assertArrayHasKey(
+                $reason->value,
+                $translations['allocation_refused'],
+                "{$locale} is missing a message for {$reason->value}",
+            );
+            $this->assertNotSame(
+                '',
+                trim((string) $translations['allocation_refused'][$reason->value]),
+                "{$locale} has an empty message for {$reason->value}",
+            );
+        }
+
+        $this->assertSame(
+            count(AllocationRefusalReason::cases()),
+            count($translations['allocation_refused']),
+            "{$locale} carries an allocation_refused key with no matching enum case",
+        );
+    }
+
+    /**
+     * Gate r2 / G-3 — the AP-opening refusal must not send an operator down a
+     * route that does not exist.
+     *
+     * An AP opening is minted as `DocumentType::Invoice`
+     * (`ArApOpeningService::postBatch()`), and the supplier branch of
+     * `PaymentController::store()` is gated on
+     * `$document->type === DocumentType::SupplierInvoice`. So "settle it through
+     * the supplier payment flow" — which is what this string said after the r1
+     * fix round — is an instruction that fails. Settling AP openings arrives with
+     * the provenance lane (C-0a1); until then the copy has to say so.
+     */
+    public function test_the_ap_opening_refusal_does_not_name_a_route_that_does_not_exist(): void
+    {
+        $english = require dirname(__DIR__, 3).'/lang/en/treasury.php';
+        $message = (string) $english['allocation_refused'][AllocationRefusalReason::HistoricalOpeningProvenance->value];
+
+        $this->assertStringNotContainsStringIgnoringCase(
+            'supplier payment flow',
+            $message,
+            'AP opening balances cannot be paid through the supplier payment flow until C-0a1 lands',
+        );
+        $this->assertStringContainsStringIgnoringCase('cannot be settled yet', $message);
+    }
+
+    /**
      * @return array{0: ?AllocationRefusalReason, 1: ?AllocationTreatment}
      */
     private function parse(string $expected): array

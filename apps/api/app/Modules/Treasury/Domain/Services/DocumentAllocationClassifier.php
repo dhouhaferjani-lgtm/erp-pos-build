@@ -336,9 +336,21 @@ final class DocumentAllocationClassifier
      * `type === SupplierInvoice` and an opening is minted as `Invoice`.
      *
      * Owner-sheet OQ-74 records this as the default:
-     * - AR + posted ⇒ ADMITTED (`ReceivableClearing`). The opening JE already
-     *   created the 411; collecting it is an ordinary collection, and booking it
-     *   as a 419 advance would invent a liability the company does not owe.
+     * - AR + posted ⇒ ADMITTED (`ReceivableClearing`). Collecting it is an
+     *   ordinary collection, and booking it as a 419 advance would invent a
+     *   liability the company does not owe.
+     *
+     *   CUTOVER ORDERING (gate r2 / R-R2-1) — an AR opening DOCUMENT creates no
+     *   journal entry of its own: `ArApOpeningService` says so three times
+     *   ("No GL entry created (GL was handled by accounting opening)", `:37`,
+     *   `:257`, `:427`). It writes `is_historical`, `balance_due` and a `posted`
+     *   status, and nothing else. So the 411 this collection CREDITS exists only
+     *   if the tenant also posted an `AccountingOpeningService` opening batch.
+     *   Collect against AR open items only AFTER the accounting opening batch is
+     *   posted, or the credit lands against a debit that was never made and the
+     *   partner's receivable goes negative. This is inherited, not introduced —
+     *   base admitted the same collections — but C-0a0 is what re-enables the
+     *   path, so the runbook ordering is stated where the admission is made.
      * - AP ⇒ REFUSED. Settling it is Dr 401 / Cr bank; C-0a1 routes it once
      *   `opening_side` is a persisted column.
      * - side UNPROVEN ⇒ REFUSED. Fail closed belongs where the evidence is

@@ -11,40 +11,74 @@ already exist (`documents.is_historical`, `documents.reference`); the persisted 
 
 ## 1. What shipped
 
-`DocumentAllocationClassifier` (Treasury Domain) is now EXHAUSTIVE and DEFAULT-REFUSE over
-`(DocumentType, DocumentStatus, provenance)`, and **every** production writer of `payment_allocations` passes it
-before any write.
+> **REWRITTEN AT GATE r2 (condition 1 / G-1), FROM THE CODE AT `4ab709d04`.** The r1 text of this section
+> and of §6 was left untouched by the r1 fix commit and therefore described a NARROWER policy and a SMALLER
+> scope than what ships. The gate was right that this is the section a parent reads to sign off, so it is
+> restated here from `DocumentAllocationClassifier` and from the closed-set assertion that pins it
+> (`PaymentApplicabilityMatrixTest::test_the_admitted_set_is_closed_and_exactly_this()`), not from memory.
 
-**Admitted — and nothing else (4 cells of 78):**
+`DocumentAllocationClassifier` (Treasury Domain) is EXHAUSTIVE and DEFAULT-REFUSE over
+`(DocumentType, DocumentStatus, provenance)`, and **every** production writer of `payment_allocations` passes
+it before any write.
 
-| Type | Status | Provenance | Treatment |
-|---|---|---|---|
-| Invoice | `posted` | native | `ReceivableClearing` (Cr 411) |
-| Invoice | `confirmed` | native | `Prepayment` (Cr 419) |
-| SalesOrder | `confirmed` | any | `Prepayment` (Cr 419) |
-| SupplierInvoice | `posted` | any | `PayableSettlement` (Dr 401) — NEW enum case |
+**Admitted — and nothing else: SIX `(type, status[, provenance])` cells.** The closed-set test enumerates
+them as 18 literal strings because the sales-order and supplier-invoice rows repeat across all five
+provenance families (rules 2–5 are scoped to Invoice and CreditNote, so a provenance marker on any other
+type is meaningless and must not change its verdict):
 
-Everything else is `Refused` with a typed 422 `DOCUMENT_NOT_ALLOCATABLE` carrying an `AllocationRefusalReason`
-and an i18n message (en/fr/ar).
+| # | Type | Status | Provenance | Treatment |
+|---|---|---|---|---|
+| 1 | Invoice | `posted` | native | `ReceivableClearing` (Cr 411) |
+| 2 | Invoice | `confirmed` | native | `Prepayment` (Cr 419) |
+| 3 | Invoice | `posted` | **historical AR** | `ReceivableClearing` (Cr 411) — admitted by the r1 fix round (F-2); see the cutover-ordering note below |
+| 4 | SalesOrder | `confirmed` | any (provenance-invariant) | `Prepayment` (Cr 419) |
+| 5 | SalesOrder | `posted` | any (provenance-invariant) | `Prepayment` (Cr 419) — see the OPEN RULING below |
+| 6 | SupplierInvoice | `posted` | any (provenance-invariant) | `PayableSettlement` (Dr 401) |
 
-### Changes of behaviour vs N-6 (all deliberate, each is a narrowing except the last)
+Everything else is `Refused` with a typed 422 `DOCUMENT_NOT_ALLOCATABLE` carrying an
+`AllocationRefusalReason` (8 cases) and an i18n message (en/fr/ar).
 
-| Cell | N-6 | C-0a0 | Why |
+**⚠ OPEN RULING carried into merge — `SalesOrder + posted` (gate r2 / G-2, condition 2).** Row 5 restores
+the N-6 gate's explicit ruling (`Posted` is reachable via `DocumentPostingService::cancelSalesOrder()`;
+narrowing below the pre-N-6 pure-type rule is a regression) and therefore contradicts spec r11 §2.1 rule 7,
+which says "SalesOrder + confirmed". Money-safe either way — both live statuses take an ADVANCE, because a
+sales order never carries a 411. The spec must be amended or the code narrowed and the N-6 ruling formally
+withdrawn. **Owned by the orchestrator, not by this lane.**
+
+**⚠ OPEN RULING carried into merge — OQ-74 (condition 3).** Row 3 (historical AR openings collectable on
+the AR path before C-0a1) is recorded as the implemented DEFAULT; it is not yet ruled on the owner sheet.
+**Owned by the orchestrator.**
+
+**⚠ CUTOVER ORDERING for row 3 (gate r2 / R-R2-1).** An AR opening DOCUMENT creates no journal entry of its
+own — `ArApOpeningService` states it three times ("No GL entry created (GL was handled by accounting
+opening)", `:37`, `:257`, `:427`); it writes `is_historical`, `balance_due` and a `posted` status and nothing
+else. The 411 that row 3's collection CREDITS therefore exists only if the tenant ALSO posted an
+`AccountingOpeningService` opening batch. **Runbook: post the accounting opening batch BEFORE collecting
+against AR open items**, or the credit lands against a debit that was never made and the partner's
+receivable goes negative. Inherited, not introduced (base admitted the same collections), but C-0a0 is what
+re-enables the path — so the ordering is stated here and in the classifier docblock beside the admission
+itself (`DocumentAllocationClassifier::refusalForHistoricalOpening()`).
+
+### Changes of behaviour vs N-6 (as shipped at `4ab709d04`)
+
+| Cell | N-6 | C-0a0 as shipped | Why |
 |---|---|---|---|
 | `Invoice + paid` | `ReceivableClearing` | Refused `document_not_live` | `paid` is a RETIRED lifecycle value (F-88); a settled document admits no new money |
-| `SalesOrder` at any live status | `Prepayment` | `Prepayment` only at `confirmed` | Spec rule 7; SO lifecycle is draft→confirmed→cancelled (§1.3), any other status is an unruled legacy row |
+| `SalesOrder` at any live status | `Prepayment` | `Prepayment` at `confirmed` AND `posted` — **unchanged from N-6** | r1 narrowed this to `confirmed`; gate r1 F-9 restored it. Spec conflict recorded above |
 | `PurchaseOrder` (any live status) | `ReceivableClearing` | Refused `purchase_order_wrong_direction` | F-153 / LEDGER OQ-3. N-6's own docblock called this row "EXPLICITLY WRONG" and named it residual R-1. It booked a NEGATIVE **customer** receivable against a **supplier** partner |
-| `Invoice`/`CreditNote` with historical-opening or POS-account-charge markers | admitted as ordinary invoices | Refused `historical_opening_provenance` / `pos_derived_provenance` | F-107 fail-closed. An AP opening is minted as `Invoice` byte-for-byte like an AR one; admitting it books Dr bank / Cr 411 for money the company OWES |
-| `SupplierInvoice + posted` | refused HERE, handled by a `? null :` bypass in `PaymentController::store()` | `PayableSettlement` | The one path capable of paying a supplier was the one path the policy object never saw. Runtime behaviour is UNCHANGED (the posted-ness + Cr-401-evidence guard still runs; `PayableSettlement` is not a prepayment) |
+| `Invoice` historical **AP** opening, or an opening whose side is UNPROVABLE | admitted as an ordinary invoice | Refused `historical_opening_provenance` | The Dr bank / Cr 411-for-a-PAYABLE defect this lane exists to kill. Fail closed where the evidence is absent |
+| `Invoice` historical **AR** opening | admitted | **admitted** (`ReceivableClearing`) | r1 refused it; gate r1 F-2 proved the AR/AP discriminator exists on base (`opening_balance_import_rows.row_type` + `mapped_entity_id`) and that blanket refusal cost a cutover its whole open-receivables ledger |
+| `Invoice`/`CreditNote` with the POS account-charge marker | admitted as ordinary invoices | Refused `pos_derived_provenance` | F-89 / F-107. The 411 already exists (sealed POS fiscal event), so it is never a 419 advance — but nothing here can yet prove the adopted receivable, so it waits for C-0a1 |
+| `CreditNote` historical opening, either side | admitted | Refused | spec rule 4 / OQ-37 |
+| `SupplierInvoice + posted` | refused HERE, handled by a `? null :` bypass in `PaymentController::store()` | `PayableSettlement` | The one path capable of paying a supplier was the one path the policy object never saw. Runtime behaviour UNCHANGED (the posted-ness + Cr-401-evidence guard still runs; `PayableSettlement` is not a prepayment) |
 
-Two seams keep the widening safe:
-- `classifyReceivableSide()` — the AR-only writers (smart allocation, multi-line, excess, split, deposit,
-  close-with-tolerance) refuse `PayableSettlement` explicitly instead of refusing the TYPE by hand. Before this,
-  `MultiPaymentService` had **no** supplier-invoice rejection of its own and would have admitted one the moment the
-  classifier learned to.
-- `assertReversalAdmitted()` — the refund/reversal writers. **Total by design**, see residual R-C0a0-1.
+Three seams keep this safe:
+- `classifyReceivableSide()` — the AR-only writers refuse `PayableSettlement` explicitly (with
+  `payable_not_settleable_here`) instead of refusing the TYPE by hand.
+- `rejectUnallocatable()` / `allocatableTreatmentOrSkip()` — the AUTO sweep SKIPS a refused target and logs
+  the reason; only MANUAL and direct (operator-named) targets throw.
+- `assertReversalAdmitted()` — the refund/reversal writers. **Seam present, predicate deferred to C-0a1.**
 
----
 
 ## 2. Red → green, per test file, by path
 
@@ -243,21 +277,29 @@ is PHPStan-clean** (`[OK] No errors` on the 11 production paths and on the 5 new
 
 ---
 
-## 6. Scope note — one file outside the brief's declared boundary
+## 6. Scope note — six paths outside the brief's declared file boundary
 
-The brief scopes changes to `app/Modules/Treasury/**` + its tests + `lang/*/treasury.php`. Two edits fall outside:
+> **REWRITTEN AT GATE r2 (condition 1 / G-1), FROM THE DIFF AT `4ab709d04`.** The r1 text claimed "one file
+> outside the boundary" and "nothing else … readers are untouched"; the r1 fix round then added four more
+> paths, one of which IS a reader. Declared here in full.
 
-1. **`apps/api/bootstrap/app.php:963-977`** — unavoidable. The brief REQUIRES "typed 422 `DOCUMENT_NOT_ALLOCATABLE`
-   with an i18n reason key per rule", and this render arm is the only place the Treasury exception becomes an HTTP
-   body. The edit is confined to the existing `DocumentNotAllocatableException` arm (message → `__(translationKey())`,
-   `reason` added to `details`); no other handler, ordering or behaviour was touched.
-2. **`apps/api/tests/Feature/Treasury/DocumentPaymentStatusTransitionTest.php`** — a Treasury test, inside "its tests",
-   but flagged because the change INVERTS an existing assertion (see §3).
+The brief scopes changes to `app/Modules/Treasury/**` + its tests + `lang/*/treasury.php`. Six paths fall
+outside that, each with its justification:
 
-Nothing else outside the boundary was modified. `apps/web`, `apps/pos`, migrations, readers, GL services, the status
-machine and the fiscal chain are all untouched.
+| # | Path | Why it is outside, and why it was unavoidable |
+|---|---|---|
+| 1 | `apps/api/bootstrap/app.php` (`:964`, `:970`) | The brief REQUIRES "typed 422 `DOCUMENT_NOT_ALLOCATABLE` with an i18n reason key", and this render arm is the ONLY boundary that turns the Treasury exception into an HTTP body. The hunk is confined to the existing `DocumentNotAllocatableException` arm: `message` becomes `__($e->reason->translationKey())` and `reason` joins `details`. No other handler, no ordering change. |
+| 2 | `apps/api/app/Shared/Contracts/Accounting/HistoricalOpeningSide.php` (NEW) | Gate r1 F-2 required narrowing the fail-closed refusal to the AP side. The discriminator is an Accounting concept, and rule 6 forbids Treasury Domain importing an Accounting model — so it crosses as a Shared contract. This is the value type. |
+| 3 | `apps/api/app/Shared/Contracts/Accounting/HistoricalOpeningSideReaderInterface.php` (NEW) | The port itself. Treasury depends on THIS, never on `OpeningBalanceImportRow` / `OpeningBalanceBatch`. |
+| 4 | `apps/api/app/Modules/Accounting/Application/Services/HistoricalOpeningSideReader.php` (NEW) | The implementation, in the module that OWNS the opening-import tables. It is a READER — the brief puts readers out of scope, and this one exists only because F-2 made an AR/AP verdict a precondition of the classifier's own decision. Follows the `PaymentLedgerPartitionReader` precedent exactly. |
+| 5 | `apps/api/app/Providers/AppServiceProvider.php` (`:123`, imports `:10`, `:50`) | One `bind()` line for #3→#4. Constructor injection is the only wiring rule; the binding has to live where the other Shared-contract bindings do. |
+| 6 | `apps/api/tests/Feature/Treasury/DocumentPaymentStatusTransitionTest.php` (`:179-202`) | Inside "its tests", but flagged because the change INVERTS an existing assertion: `test_fully_paid_purchase_order_retains_confirmed_status` → `test_paying_a_purchase_order_is_refused`. The old assertion PINNED the F-153 defect (it asserted that paying a purchase order returns 201). |
 
----
+Everything else in the diff is `app/Modules/Treasury/**`, its tests, or `lang/*/treasury.php`.
+`apps/web`, `apps/pos`, `database/`, the status machine, the fiscal chain and every GL service are
+untouched — verified by `git diff --name-only faf822f8a...HEAD`, which lists 29 files under `apps/api/`
+and nothing else.
+
 
 ## 7. Deviation from the brief's test plan (declared)
 
@@ -576,3 +618,100 @@ is unchanged (2 pre-existing entries belonging to other sessions).
   openings from the sweep. Flagged for the r2 gate as a deliberate, reasoned deviation, not an omission.
 - **R-R1-4** — OQ-74 (historical AR openings collectable on the AR path pre-C-0a1) is recorded here as the
   implemented default and still needs the owner's explicit ruling on the owner sheet.
+
+---
+---
+
+# Finisher round r2 — response to `2026-08-25-sc-0a0-gate-r2-treasury.md`
+
+**Gate verdict** spec ⚠ + quality ACCEPT-WITH-CONDITIONS, **merge-blocking NO**, at `4ab709d04`.
+Three of the five conditions belong to this lane; conditions 2 (`SalesOrder + posted` ruling) and
+3 (OQ-74 onto the owner sheet) are the orchestrator's and were NOT touched here — both are now flagged
+inline in §1 so the merge artefact carries them.
+**Migration: still NONE. Not merged. Not pushed.**
+
+### Condition 1 / G-1 — handback §1 and §6 restated FROM THE CODE · DONE
+
+§1 and §6 were the only sections the r1 fix commit left untouched, so they described a narrower policy and
+a smaller scope than what ships. Both are rewritten in place (each carries a `REWRITTEN AT GATE r2` note):
+
+- **§1** now states the admitted set as **six `(type, status[, provenance])` cells**, derived from
+  `DocumentAllocationClassifier` and from the 18 literal strings in
+  `PaymentApplicabilityMatrixTest::test_the_admitted_set_is_closed_and_exactly_this()` — including
+  `invoice/posted/historical_ar` (row 3) and `sales_order/posted` (row 5), neither of which appeared in the
+  r1 text. It explains why 6 cells expand to 18 strings (rules 2–5 are scoped to Invoice/CreditNote, so the
+  sales-order and supplier-invoice rows are provenance-invariant). The behaviour-vs-N-6 table is rewritten
+  the same way: `SalesOrder` is no longer described as narrowed, and historical AR/AP/unprovable and
+  POS-derived each get their own row. The two orchestrator-owned open rulings are marked ⚠ inline.
+- **§6** is retitled "six paths outside the brief's declared file boundary" and lists every one with its
+  rule-6 justification: `bootstrap/app.php`, the two new `app/Shared/Contracts/Accounting/*` files,
+  `HistoricalOpeningSideReader.php` (a READER — explicitly out of scope in the brief, and why F-2 forced
+  it), `AppServiceProvider.php`, and the flagged Treasury test whose assertion was inverted. The r1
+  claims "one file outside the boundary" and "readers are untouched" are gone, as is the stale
+  `bootstrap/app.php:963-977` citation F-6 had already corrected elsewhere. The file list is re-derived
+  from `git diff --name-only faf822f8a...HEAD` (29 files, all under `apps/api/`).
+
+Documentation only — no code change.
+
+### Condition 4 / G-3 — `historical_opening_provenance` copy · DONE (three locales, key unchanged)
+
+The r1 copy told the operator to "settle supplier opening balances through the supplier payment flow".
+That route does not exist: an AP opening is minted as `DocumentType::Invoice`
+(`ArApOpeningService::postBatch()`), and the supplier branch of `PaymentController::store()` is gated on
+`$document->type === DocumentType::SupplierInvoice` (`:514`), so following the instruction fails. The copy
+now says supplier opening balances **cannot be settled yet** and that support arrives in a later release —
+which is what the handback's own F-2 table already said ("C-0a1's route"). Key name unchanged.
+
+- `lang/en/treasury.php` · `lang/fr/treasury.php` · `lang/ar/treasury.php`, `allocation_refused.historical_opening_provenance`.
+
+Pinned so it cannot regress, by two new unit tests in `PaymentApplicabilityMatrixTest`:
+- `test_every_refusal_reason_is_translated_in_every_locale()` (en/fr/ar data sets) — every
+  `AllocationRefusalReason` case has a non-empty message in every locale, and no locale carries an orphan
+  key. This is the guard the namespace never had: an untranslated reason renders as its raw dotted path,
+  and that only shows up in production.
+- `test_the_ap_opening_refusal_does_not_name_a_route_that_does_not_exist()` — asserts the English string
+  does NOT contain "supplier payment flow", with the reason spelled out in the docblock.
+
+### Condition 5 / R-R2-1 — cutover ordering · DONE (handback + classifier docblock)
+
+An AR opening DOCUMENT creates no journal entry of its own. `ArApOpeningService` says so three times —
+"No GL entry created (GL was handled by accounting opening)" at `:37`, `:257` and `:427` — it writes
+`is_historical`, `balance_due` and a `posted` status and nothing else. The 411 that F-2's re-admitted
+collection CREDITS therefore exists only if the tenant ALSO posted an `AccountingOpeningService` opening
+batch.
+
+**Runbook ordering: post the accounting opening batch BEFORE collecting against AR open items.** Out of
+order, the credit lands against a debit that was never made and the partner's receivable goes negative.
+
+Recorded in two places, because a runbook note nobody reads at the call site is how this gets lost:
+- handback §1, as a ⚠ block attached to admitted row 3;
+- `DocumentAllocationClassifier::refusalForHistoricalOpening()`'s docblock, immediately beside the
+  "AR + posted ⇒ ADMITTED" line that re-enables the path.
+
+Inherited, not introduced — base admitted the same collections — but C-0a0 is what re-enables them.
+
+### Not touched (orchestrator-owned)
+
+- **Condition 2 / G-2** — `SalesOrder + posted` contradicts spec r11 §2.1 rule 7. Flagged ⚠ in §1; the code
+  is unchanged (`DocumentAllocationClassifier.php:235`), and it is money-safe either way (both live statuses
+  take a Cr 419 advance).
+- **Condition 3 / R-R1-4** — OQ-74 onto the owner sheet. Flagged ⚠ in §1.
+- **G-4, G-5, G-6, G-7** — recorded by the gate for follow-on lanes; not conditions of this merge, and not
+  touched.
+
+### Verification for this round
+
+```
+./vendor/bin/pint --test app/Modules/Treasury app/Modules/Accounting app/Shared/Contracts/Accounting \
+    app/Providers/AppServiceProvider.php tests/Unit/Treasury tests/Feature/Treasury lang bootstrap/app.php
+→ {"result":"pass"}
+
+./vendor/bin/phpstan analyse <the classifier + the 3 lang-adjacent paths + the rewritten unit suite>
+→ [OK] No errors
+
+php artisan test tests/Unit/Treasury/PaymentApplicabilityMatrixTest.php      # the i18n guard, by path
+→ Tests: 142 passed (939 assertions)
+php artisan test tests/Feature/Treasury/HistoricalOpeningSideSettlementTest.php \
+                 tests/Feature/Treasury/HistoricalAndPosInvoicesRefusedBeforeProvenanceTest.php
+→ Tests: 24 passed (134 assertions)                                          # the copy's consumers
+```

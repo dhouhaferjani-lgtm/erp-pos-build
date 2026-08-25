@@ -24,7 +24,7 @@ return [
      */
     'allocation_refused' => [
         'document_not_live' => 'Ce document ne peut pas recevoir de paiement dans son statut actuel. Seuls les documents confirmés ou comptabilisés peuvent être payés.',
-        'historical_opening_provenance' => "Il s'agit d'un solde d'ouverture fournisseur, ou d'un solde d'ouverture dont le sens n'a pas pu être déterminé. Réglez les soldes d'ouverture fournisseurs via le parcours de paiement fournisseur.",
+        'historical_opening_provenance' => "Il s'agit d'un solde d'ouverture fournisseur, ou d'un solde d'ouverture dont le sens n'a pas pu être déterminé. Les soldes d'ouverture fournisseurs ne peuvent pas encore être réglés — leur paiement arrivera dans une prochaine version.",
         'pos_derived_provenance' => "Cette facture provient d'une vente à crédit du point de vente. Elle se règle via le compte client, pas depuis cet écran.",
         'status_not_allocatable_for_type' => "Ce document ne peut pas recevoir de paiement dans son statut actuel. Comptabilisez-le d'abord, puis enregistrez le paiement.",
         'outward_document_type' => "Un avoir représente une somme due à l'autre partie : imputez-le sur un autre document ou remboursez-le, au lieu d'encaisser un paiement dessus.",
