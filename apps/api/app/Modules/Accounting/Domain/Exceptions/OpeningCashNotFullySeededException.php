@@ -30,7 +30,10 @@ use DomainException;
  * ── Why a refusal and not a warning ──────────────────────────────────────────
  * An opening batch is write-once: `postBatch` marks it Validated then Locked in
  * the same transaction, and a repository that already holds money refuses a
- * second float ({@see \App\Modules\Treasury\Domain\Exceptions\RepositoryAlreadySeededException}).
+ * second float (Treasury's RepositoryAlreadySeededException — named in prose,
+ * not an {@see} FQCN: pint's fully_qualified_strict_types fixer turns those
+ * into real `use` statements, which would make this Accounting Domain class
+ * import another module's Domain namespace and break the layering, rule 6).
  * So a wrong opening cannot be corrected in-product — it has to be right the
  * first time or not happen at all.
  */

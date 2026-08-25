@@ -69,22 +69,27 @@ final readonly class RepositoryOpeningBalanceService implements RepositoryOpenin
             return [];
         }
 
-        return PaymentRepository::query()
+        $repositories = PaymentRepository::query()
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->where('is_active', true)
             ->whereIn('gl_account_id', $glAccountIds)
-            ->get()
-            ->map(fn (PaymentRepository $repository): OpeningFloatRepositoryDescriptor => new OpeningFloatRepositoryDescriptor(
+            ->get();
+
+        $descriptors = [];
+
+        foreach ($repositories as $repository) {
+            $descriptors[] = new OpeningFloatRepositoryDescriptor(
                 id: $repository->id,
                 code: $repository->code,
                 name: $repository->name,
                 currency: $repository->currency,
                 glAccountId: $repository->gl_account_id,
                 hasMovements: $this->hasForeignMovement($repository->id, null),
-            ))
-            ->values()
-            ->all();
+            );
+        }
+
+        return $descriptors;
     }
 
     public function seed(OpeningFloatIntent $intent): OpeningFloatResult

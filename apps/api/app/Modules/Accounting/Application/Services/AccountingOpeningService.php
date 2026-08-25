@@ -9,8 +9,8 @@ use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
 use App\Modules\Accounting\Domain\Enums\OpeningImportRowStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
-use App\Modules\Accounting\Domain\Exceptions\OpeningCashNotFullySeededException;
 use App\Modules\Accounting\Domain\Events\OpeningBalancePosted;
+use App\Modules\Accounting\Domain\Exceptions\OpeningCashNotFullySeededException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
@@ -157,13 +157,7 @@ class AccountingOpeningService
         $coverageGaps = $this->openingCashCoverageGaps(
             $batch->tenant_id,
             $batch->company_id,
-            array_values(array_filter(
-                array_map(
-                    static fn (array $r): array => $r['mapped_data'],
-                    array_filter($validationResults, static fn (array $r): bool => $r['valid']),
-                ),
-                static fn (array $m): bool => isset($m['account_id']),
-            )),
+            $this->mappedRowsForCoverageFromResults($validationResults),
             $scale,
         );
 
@@ -393,6 +387,45 @@ class AccountingOpeningService
     }
 
     /**
+     * mapped_data of persisted rows, as a LIST the coverage rule can consume.
+     *
+     * @param  array<int, OpeningBalanceImportRow>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function mappedRowsForCoverage(array $rows): array
+    {
+        $mapped = [];
+
+        foreach ($rows as $row) {
+            $data = $row->mapped_data;
+            if (is_array($data) && isset($data['account_id'])) {
+                $mapped[] = $data;
+            }
+        }
+
+        return $mapped;
+    }
+
+    /**
+     * The same, from an in-flight validation pass (nothing is persisted yet).
+     *
+     * @param  array<string, array{valid: bool, errors: array<string, array<int, string>>, mapped_data: array<string, mixed>}>  $validationResults
+     * @return list<array<string, mixed>>
+     */
+    private function mappedRowsForCoverageFromResults(array $validationResults): array
+    {
+        $mapped = [];
+
+        foreach ($validationResults as $result) {
+            if ($result['valid'] && isset($result['mapped_data']['account_id'])) {
+                $mapped[] = $result['mapped_data'];
+            }
+        }
+
+        return $mapped;
+    }
+
+    /**
      * Cash this batch debits that would reach NO till at all.
      *
      * THE RULE, and it is deliberately only this one: for every GL account the
@@ -429,9 +462,9 @@ class AccountingOpeningService
         array $mappedRows,
         int $scale,
     ): array {
-        /** @var array<string, string> $debitByAccount */
+        /** @var array<string, numeric-string> $debitByAccount */
         $debitByAccount = [];
-        /** @var array<string, string> $attributedByAccount */
+        /** @var array<string, numeric-string> $attributedByAccount */
         $attributedByAccount = [];
         foreach ($mappedRows as $mapped) {
             $accountId = $mapped['account_id'] ?? null;
@@ -439,7 +472,19 @@ class AccountingOpeningService
                 continue;
             }
 
-            $debit = (string) ($mapped['debit'] ?? '0');
+            // mapped_data is JSONB, so the debit arrives as mixed. Refuse to do
+            // bcmath on anything that is not a number rather than casting it to
+            // silence the type checker (rule 19): a non-numeric debit is a
+            // corrupt staging row, and treating it as '0' would quietly shrink
+            // the amount the coverage rule compares against.
+            $rawDebit = $mapped['debit'] ?? '0';
+            if (! is_string($rawDebit) && ! is_int($rawDebit) && ! is_float($rawDebit)) {
+                continue;
+            }
+            $debit = (string) $rawDebit;
+            if (! is_numeric($debit)) {
+                continue;
+            }
             if (bccomp($debit, '0', $scale) <= 0) {
                 continue;
             }
@@ -587,11 +632,7 @@ class AccountingOpeningService
             $coverageGaps = $this->openingCashCoverageGaps(
                 $company->tenant_id,
                 $company->id,
-                $validRows
-                    ->map(static fn (OpeningBalanceImportRow $row): mixed => $row->mapped_data)
-                    ->filter(static fn (mixed $m): bool => is_array($m) && isset($m['account_id']))
-                    ->values()
-                    ->all(),
+                $this->mappedRowsForCoverage($validRows->all()),
                 $scale,
             );
 
