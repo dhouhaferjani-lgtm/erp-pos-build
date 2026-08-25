@@ -378,9 +378,18 @@ final class OpeningItemPaymentDirectionTest extends TestCase
         $document = $this->legacyMisTypedOpening();
         $deposit = $this->unallocatedDeposit('500.000');
 
+        // MANUAL, not fifo: Session C's `sc-0a0 r1` auto-sweep now SKIPS targets the
+        // applicability rules refuse, so a fifo sweep never reaches the allocation
+        // loop for this document and would return 200 having allocated nothing —
+        // the right OUTCOME, but it would prove nothing about this guard. A manual
+        // allocation names the document explicitly and reaches the loop, which is
+        // where the guard has to hold.
         $response = $this->actingAs($this->user)->postJson('/api/v1/smart-payment/apply-allocation', [
             'payment_id' => $deposit->id,
-            'allocation_method' => 'fifo',
+            'allocation_method' => 'manual',
+            'manual_allocations' => [
+                ['document_id' => $document->id, 'amount' => '500.000'],
+            ],
         ]);
 
         $response->assertStatus(422);
