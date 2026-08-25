@@ -807,9 +807,10 @@ class InventoryCountingService
      * finalize, cancel) take this before they write, so the status they decide
      * on is the committed truth rather than the snapshot the request loaded —
      * the lock WAIT is long enough for another request to finalize or cancel
-     * the same counting. NOT yet covered (gate r2 NEW-2, pre-existing, out of
-     * lane Q-2 scope — LEDGER): manualOverride() writes item quantities with
-     * neither this lock nor a terminal-state guard.
+     * the same counting. `manualOverride()` was the last gap (gate r2 NEW-2,
+     * LEDGER C-14(ii)) and now takes it too, so EVERY mutating counting path
+     * holds this lock — pinned by
+     * `CountingTerminalStateGuardTest::test_every_mutating_counting_path_emits_the_header_row_lock`.
      */
     private function lockCounting(string $countingId): InventoryCounting
     {
@@ -1084,7 +1085,26 @@ class InventoryCountingService
     /**
      * Manual override for an item.
      *
+     * LEDGER C-14(ii): this path used to write `final_qty` / `resolution_method`
+     * / `resolved_at` with NEITHER the header lock nor a terminal-state guard —
+     * the only mutating counting path left out of the Q-2 gate r1 sweep. A
+     * reviewer holding a stale item handle could therefore rewrite the resolved
+     * quantity of a FINALIZED counting whose variance had already been posted to
+     * stock, and since lane Q-2's unique counting-apply movement index that
+     * corrected quantity can never be re-posted — the correction is silently
+     * lost. It now takes `lockCounting()` FIRST (so the status it decides on is
+     * committed truth, not the caller's snapshot) and refuses terminal statuses
+     * with the same typed 422 `COUNTING_TRANSITION_REFUSED` as submitCount /
+     * triggerThirdCount / cancel. `attemptedStatus` is `PendingReview` — the
+     * review phase an override belongs to.
+     *
+     * The controller (`CountingItemController::override()`) deliberately carries
+     * NO duplicate pre-transaction status check: a check outside the lock is
+     * check-then-act, and this refusal is the authoritative one.
+     *
      * @param  numeric-string  $quantity  Canonical numeric string (quantity scale 4, e.g. '1.2345')
+     *
+     * @throws CountingTransitionException when the counting is finalized or cancelled
      */
     public function manualOverride(
         InventoryCountingItem $item,
@@ -1095,6 +1115,9 @@ class InventoryCountingService
         $userId = (string) $user->id;
 
         DB::transaction(function () use ($item, $quantity, $notes, $userId): void {
+            $lockedCounting = $this->lockCounting($item->counting_id);
+            $this->assertNotTerminal($lockedCounting, CountingStatus::PendingReview);
+
             $now = now();
             $item->final_qty = $quantity;
             $item->resolution_method = ItemResolutionMethod::ManualOverride;

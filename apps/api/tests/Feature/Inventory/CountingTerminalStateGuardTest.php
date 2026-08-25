@@ -341,6 +341,83 @@ final class CountingTerminalStateGuardTest extends TestCase
     }
 
     /**
+     * PROBE D (LEDGER C-14(ii)) — `manualOverride()` had NEITHER the header lock
+     * NOR a terminal guard: it wrote `final_qty` / `resolution_method` /
+     * `resolved_at` straight onto the item inside its own transaction. A
+     * reviewer holding a stale item handle could therefore rewrite the resolved
+     * quantity of a FINALIZED counting whose variance had already been posted to
+     * stock — and, since lane Q-2's unique counting-apply index, that corrected
+     * quantity can never be re-posted. Same refusal shape as probes A-C.
+     */
+    public function test_probe_d_manual_override_into_a_finalized_counting_is_refused(): void
+    {
+        $counting = $this->activeCounting();
+        $item = $this->item($counting);
+
+        // The reviewer's handle, captured while the counting was still live.
+        $staleItem = InventoryCountingItem::findOrFail($item->id);
+
+        $this->service->submitCount(
+            InventoryCountingItem::findOrFail($item->id),
+            1,
+            '12.0000',
+            null,
+            $this->user,
+        );
+        $this->service->finalize(InventoryCounting::findOrFail($counting->id), $this->user);
+        $this->assertSame(CountingStatus::Finalized, $this->freshStatus($counting));
+
+        $resolutionBefore = InventoryCountingItem::findOrFail($item->id)->resolution_method;
+
+        try {
+            $this->service->manualOverride($staleItem, '99.0000', 'late override', $this->user);
+            $this->fail('Expected a manual override into a FINALIZED counting to be refused.');
+        } catch (CountingTransitionException $exception) {
+            $this->assertSame(CountingStatus::Finalized, $exception->currentStatus);
+            $this->assertSame(CountingStatus::PendingReview, $exception->attemptedStatus);
+        }
+
+        $fresh = InventoryCountingItem::findOrFail($item->id);
+        $this->assertNotSame(
+            '99.0000',
+            $fresh->final_qty,
+            'A finalized counting must not accept an overridden final quantity.'
+        );
+        $this->assertSame(
+            $resolutionBefore,
+            $fresh->resolution_method,
+            'The refused override must not have rewritten the resolution method.'
+        );
+        $this->assertSame(
+            0,
+            $this->countEvents($counting, InventoryCountingEvent::ITEM_MANUALLY_OVERRIDDEN),
+            'The refused override must not have written an audit row.'
+        );
+    }
+
+    /**
+     * A live counting is still overridable — the terminal guard must not have
+     * turned manualOverride() into a blanket refusal for the states it serves.
+     */
+    public function test_a_live_counting_item_is_still_manually_overridable(): void
+    {
+        $counting = $this->activeCounting();
+        $item = $this->item($counting);
+
+        $this->service->manualOverride(
+            InventoryCountingItem::findOrFail($item->id),
+            '7.0000',
+            'recount by hand',
+            $this->user,
+        );
+
+        $fresh = InventoryCountingItem::findOrFail($item->id);
+        $this->assertSame('7.0000', $fresh->final_qty);
+        $this->assertSame(ItemResolutionMethod::ManualOverride, $fresh->resolution_method);
+        $this->assertSame(1, $this->countEvents($counting, InventoryCountingEvent::ITEM_MANUALLY_OVERRIDDEN));
+    }
+
+    /**
      * Structural sentinel (gate r1, item 6). A full two-connection proof that
      * PostgreSQL actually BLOCKS a second session is not available here:
      * RefreshDatabase wraps each test in a transaction, so the fixture rows are
@@ -432,6 +509,25 @@ final class CountingTerminalStateGuardTest extends TestCase
                     $this->service->triggerThirdCount(
                         InventoryCounting::findOrFail($counting->id),
                         $itemIds,
+                        $this->user,
+                    );
+                },
+            ],
+            'manualOverride' => [
+                function (): InventoryCounting {
+                    $counting = $this->activeCounting();
+                    $this->item($counting, $this->secondProduct());
+                    $counting->setRelation('items', $counting->items()->get());
+
+                    return $counting;
+                },
+                function (InventoryCounting $counting): void {
+                    /** @var string $itemId */
+                    $itemId = $counting->items->first()?->id;
+                    $this->service->manualOverride(
+                        InventoryCountingItem::findOrFail($itemId),
+                        '3.0000',
+                        'lock sentinel',
                         $this->user,
                     );
                 },
