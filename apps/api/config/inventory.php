@@ -6,26 +6,31 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Count-correction GL posting (DPA Wave 3D — T21)
+    | Count-correction GL posting — SYSTEM default (lane P-1)
     |--------------------------------------------------------------------------
     |
-    | DEPLOY-TIME GATE, OQ-12/H-5. The T20 treasury ruling of record
-    | (docs/handoff/reviews/wave3-3c-3d/TREASURY-RULING-2026-08-19-t20-option-a.md)
-    | approved the Option A shrinkage/gain map (6586 / 7586) but queued
-    | expert-comptable ratification of its liasse presentation BEFORE
-    | count-correction posting goes live.
+    | This key is no longer THE gate. It is the last link of a three-step chain
+    | owned by CountCorrectionGlPostingResolver:
     |
-    | "Goes live" is this flag. The T21 listener is fully built and tested; with
-    | the flag FALSE it corrects stock and threads the row cost onto the count
-    | movement, but enqueues no journal entry — so the ledger can be
-    | reconstructed from the movement rows once the flag flips. Both
-    | count-correction purposes stay dormant exactly as sub-wave 3C shipped
-    | them.
+    |   companies.count_correction_gl_posting_enabled          (tenant override)
+    |     -> country_inventory_settings.count_correction_gl_posting_enabled
+    |       -> this value                                      (system default)
     |
-    | Do NOT enable this for any tenant before the ratification is recorded.
+    | It ships TRUE. The owner RULED on 2026-08-25 that count-correction posting
+    | is seeded ON — perpetual inventory means a stock-take difference must reach
+    | the ledger — with the expert-comptable reviewing the Option A account
+    | choice (6586 shortage / 7586 overage) later at onboarding. That supersedes
+    | the OQ-12/H-5 deploy-time blocker of 2026-08-19, which had this key
+    | defaulted FALSE pending ratification; the supersession is appended to
+    | docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-19-m5-oq12-gate.md.
+    |
+    | The env var survives as a deployment-wide kill switch: setting it false
+    | turns posting off for every company that has not set its OWN override,
+    | without editing tenant data. A single tenant is turned off through the
+    | settings surface instead, which is what the company column is for.
     |
     */
 
-    'count_correction_gl_posting_enabled' => (bool) env('INVENTORY_COUNT_CORRECTION_GL_POSTING_ENABLED', false),
+    'count_correction_gl_posting_enabled' => (bool) env('INVENTORY_COUNT_CORRECTION_GL_POSTING_ENABLED', true),
 
 ];
