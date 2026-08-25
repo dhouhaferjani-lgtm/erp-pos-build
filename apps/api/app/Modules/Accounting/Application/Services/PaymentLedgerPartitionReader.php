@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalLine;
+use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Shared\Contracts\Accounting\PaymentLedgerPartition;
 use App\Shared\Contracts\Accounting\PaymentLedgerPartitionReaderInterface;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -81,7 +82,86 @@ final readonly class PaymentLedgerPartitionReader implements PaymentLedgerPartit
             $scale,
         );
 
+        // N-6 fix round r1 / treasury gate I-3 — NET THE REPAIR.
+        //
+        // `documents:repair-paid-never-posted` re-books a customer payment that
+        // credited 411 when no receivable existed: it posts a SEPARATE entry
+        // (`source_type = 'payment_advance_reclass'`, `source_id = the payment`)
+        // carrying Dr 411 / Cr 419, and deliberately never mutates the original
+        // hash-chained `customer_payment` entry. Read literally, the two queries
+        // above then describe a REPAIRED payment as fully AR-backed and not
+        // advance-backed at all — the exact opposite of where its money now sits.
+        // A later refund would reverse 411 (already discharged) and leave the 419
+        // the repair created standing forever.
+        //
+        // The partition is a statement about the payment's CURRENT ledger
+        // position, so the reclass has to be part of it: its 411 DEBIT cancels
+        // that much of the original AR credit, and its 419 CREDIT is advance.
+        // Clamped at zero — the partition is a magnitude, never negative.
+        $reclassDebitOnReceivable = $this->debitTotal(
+            $companyId,
+            $paymentId,
+            GeneralLedgerService::PAYMENT_ADVANCE_RECLASS_SOURCE_TYPE,
+            SystemAccountPurpose::CustomerReceivable,
+            $scale,
+        );
+        $reclassCreditOnAdvance = $this->creditTotal(
+            $companyId,
+            $paymentId,
+            GeneralLedgerService::PAYMENT_ADVANCE_RECLASS_SOURCE_TYPE,
+            SystemAccountPurpose::CustomerAdvance,
+            $scale,
+        );
+
+        /** @var numeric-string $arBacked */
+        $arBacked = bccomp($arBacked, $reclassDebitOnReceivable, $scale) > 0
+            ? bcsub($arBacked, $reclassDebitOnReceivable, $scale)
+            : $this->zero($scale);
+        /** @var numeric-string $advanceBacked */
+        $advanceBacked = bcadd($advanceBacked, $reclassCreditOnAdvance, $scale);
+
         return new PaymentLedgerPartition($arBacked, $advanceBacked, $scale);
+    }
+
+    /**
+     * The DEBIT-side mirror of {@see self::creditTotal()}.
+     *
+     * @return numeric-string
+     */
+    private function debitTotal(
+        string $companyId,
+        string $paymentId,
+        string $sourceType,
+        SystemAccountPurpose $purpose,
+        int $scale,
+    ): string {
+        $account = Account::findByPurpose($companyId, $purpose);
+
+        if (! $account instanceof Account) {
+            return $this->zero($scale);
+        }
+
+        /** @var object{total: string|null}|null $row */
+        $row = JournalLine::query()
+            ->join('journal_entries', 'journal_lines.journal_entry_id', '=', 'journal_entries.id')
+            ->where('journal_entries.company_id', $companyId)
+            ->where('journal_entries.source_id', $paymentId)
+            ->where('journal_entries.source_type', $sourceType)
+            ->where('journal_entries.status', JournalEntryStatus::Posted->value)
+            ->where('journal_lines.account_id', $account->id)
+            ->selectRaw('CAST(COALESCE(SUM(journal_lines.debit), 0) AS TEXT) as total')
+            ->first();
+
+        $total = $row->total ?? '0';
+
+        if (! is_numeric($total)) {
+            return $this->zero($scale);
+        }
+
+        /** @var numeric-string $normalised */
+        $normalised = bcadd($total, '0', $scale);
+
+        return $normalised;
     }
 
     /**

@@ -14,6 +14,7 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\PostingContext;
+use App\Modules\Document\Domain\Events\DocumentFullyPaid;
 use App\Modules\Document\Domain\Events\InvoiceCancelled;
 use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Document\Domain\Events\SalesOrderCancelled;
@@ -21,8 +22,10 @@ use App\Modules\Document\Domain\Exceptions\DeliveryRequiredBeforeInvoiceExceptio
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Shared\Contracts\Accounting\CustomerAdvanceClearingInterface;
 use App\Shared\Contracts\Accounting\DocumentGlPreflightInterface;
 use App\Shared\Contracts\Accounting\DocumentGlReversalInterface;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Inventory\ReceiptLineGuardInterface;
 use App\Shared\Contracts\Inventory\ReservationReleaserInterface;
 use App\Shared\Contracts\Taxation\DocumentPeriodLockInterface;
@@ -57,6 +60,9 @@ final class DocumentPostingService
         private readonly DocumentGlReversalInterface $glReversal,
         private readonly DocumentPeriodLockInterface $periodLock,
         private readonly DeliveryComplianceGate $deliveryComplianceGate,
+        private readonly CustomerAdvanceClearingInterface $advanceClearing,
+        private readonly DocumentStatusService $documentStatus,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     /**
@@ -74,8 +80,15 @@ final class DocumentPostingService
      */
     public function post(Document $document, PostingContext $context = PostingContext::Standard): Document
     {
-        // Idempotent: if already posted, return success
-        if ($document->isPosted()) {
+        // Idempotent: if already posted, return success.
+        //
+        // N-6 — `Paid` counts as already posted here when the document carries a
+        // seal. Posting a fully-prepaid invoice now settles it in the same
+        // transaction (`settleIfFullyPrepaid()`), so `Posted` is a state it
+        // passes THROUGH; a re-post that landed in the `! isConfirmed()` refusal
+        // below would report "cannot post a paid document" about a document this
+        // very method had just posted.
+        if ($document->isPosted() || $this->isSealedAndSettled($document)) {
             /** @var Document */
             return $document->fresh(['lines']);
         }
@@ -94,9 +107,20 @@ final class DocumentPostingService
         $requiresFiscalChain = $this->requiresFiscalChain($document->type);
 
         return DB::transaction(function () use ($document, $requiresFiscalChain, $context): Document {
-            // Double-check inside transaction (another request may have posted it)
+            // Double-check inside transaction (another request may have posted it).
+            //
+            // N-6 fix round r1 / fiscal gate F-2 — this MUST use the SAME widened
+            // predicate as the outer probe at the top of `post()`. `isPosted()`
+            // alone is `status === Posted`, and since this lane a posting
+            // transaction can leave a fully-prepaid invoice at `Paid`
+            // (`settleIfFullyPrepaid()`). A second concurrent `post()` that
+            // passed the outer probe before the first committed would refresh
+            // here, see `Paid`, judge it un-posted and seal it a SECOND time — a
+            // second `chain_sequence`, a second `InvoicePosted`, a second GL
+            // entry on one invoice. The two probes are one guard and must not
+            // drift apart again.
             $document->refresh();
-            if ($document->isPosted()) {
+            if ($document->isPosted() || $this->isSealedAndSettled($document)) {
                 /** @var Document */
                 return $document->fresh(['lines']);
             }
@@ -130,11 +154,173 @@ final class DocumentPostingService
 
                 $this->postWithFiscalChain($document);
             } else {
-                $document->update(['status' => DocumentStatus::Posted]);
+                $this->documentStatus->transition($document, DocumentStatus::Posted);
+            }
+
+            // N-6 — posting is the moment a receivable comes into existence, so
+            // it is also the moment any advance collected against this document
+            // must be discharged. Runs INSIDE the posting transaction: if the
+            // clearing entry cannot be written the whole posting is refused
+            // rather than leaving a sealed invoice next to a stranded 419.
+            if ($document->type === DocumentType::Invoice) {
+                $this->clearAdvancesAllocatedToInvoice($document);
+                $this->settleIfFullyPrepaid($document);
             }
 
             /** @var Document */
             return $document->fresh(['lines']);
+        });
+    }
+
+    /**
+     * A document that is `Paid` AND sealed reached `Paid` through `Posted` — it
+     * has been posted, and a second `post()` must be a no-op rather than a
+     * refusal. A `Paid` document with NO seal is the legacy pre-N-6 dead end and
+     * is deliberately NOT covered: it must not be treated as posted by anything.
+     */
+    private function isSealedAndSettled(Document $document): bool
+    {
+        return $document->status === DocumentStatus::Paid && $document->fiscal_hash !== null;
+    }
+
+    /**
+     * Clear every OPEN customer advance allocated to this invoice, once.
+     *
+     * OPEN means `booked_as_advance = true AND advance_cleared_at IS NULL`. The
+     * second half is what stops a DOUBLE CLEAR: an order-originated prepayment
+     * is already cleared at CONVERSION by
+     * `SalesOrderToInvoiceConverter::transferPrepayments()`, which re-points the
+     * allocation row onto the new invoice — without the marker this method would
+     * clear the same 419 a second time, draining another advance of the same
+     * partner (the clearing ceiling is partner-pool-level by construction) or
+     * refusing outright.
+     *
+     * ONE entry for the whole sum, not one per allocation: the clearing is a
+     * single accounting fact about this invoice, and
+     * `clearCustomerAdvanceToReceivable()` keys its entry on the INVOICE id.
+     */
+    private function clearAdvancesAllocatedToInvoice(Document $invoice): void
+    {
+        $openAdvances = PaymentAllocation::query()
+            ->where('document_id', $invoice->id)
+            ->where('booked_as_advance', true)
+            ->whereNull('advance_cleared_at')
+            ->lockForUpdate()
+            ->get();
+
+        if ($openAdvances->isEmpty()) {
+            return;
+        }
+
+        $scale = $this->scaleResolver->getScaleSafe((string) $invoice->currency, 3);
+
+        /** @var numeric-string $total */
+        $total = '0';
+        foreach ($openAdvances as $advance) {
+            /** @var numeric-string $amount */
+            $amount = (string) $advance->amount;
+            $total = bcadd($total, $amount, $scale);
+        }
+
+        if (bccomp($total, '0', $scale) <= 0) {
+            return;
+        }
+
+        // M-5 (treasury gate r1): `auth()` is the same shape rule 13 forbids in
+        // `app()`. It is kept here, deliberately and narrowly: `post()` takes no
+        // actor and threading one through every caller is a signature change
+        // across the posting surface, out of scope for a fix round. The value is
+        // ADVISORY only — `clearCustomerAdvanceForDocument()` accepts null and
+        // the entry posts either way (`postEntryNow` is null-actor safe), so a
+        // console or queued post loses attribution, never the entry. Recorded as
+        // a named residual rather than silently left.
+        $actorId = auth()->id();
+        $journalEntryId = $this->advanceClearing->clearCustomerAdvanceForDocument(
+            $invoice,
+            $total,
+            is_string($actorId) ? $actorId : null,
+        );
+
+        // `advance_journal_entry_id` is deliberately NOT overwritten: it names
+        // the entry that BOOKED the advance, and this one discharges it. The
+        // clearing entry is keyed on the invoice id in `journal_entries` and is
+        // found from there.
+        unset($journalEntryId);
+
+        PaymentAllocation::query()
+            ->whereIn('id', $openAdvances->pluck('id')->all())
+            ->update(['advance_cleared_at' => now()]);
+    }
+
+    /**
+     * An invoice whose balance is already zero when it is posted was PAID IN
+     * ADVANCE: the money arrived while it was still Confirmed, was booked to
+     * 419, and the clearing above has just discharged it against the fresh
+     * receivable. `Posted -> Paid` is now a legal edge and the lifecycle should
+     * say so.
+     *
+     * This is the ONLY place `confirmed-then-prepaid` reaches `Paid`, and it
+     * reaches it THROUGH `Posted` — which is the whole point of the lane.
+     */
+    private function settleIfFullyPrepaid(Document $invoice): void
+    {
+        if (! $invoice->type->canTransitionToPaid()) {
+            return;
+        }
+
+        $scale = $this->scaleResolver->getScaleSafe((string) $invoice->currency, 3);
+        $outstanding = $invoice->outstandingBalance($scale);
+
+        if (bccomp($outstanding, '0', $scale) > 0) {
+            return;
+        }
+
+        // Nothing was ever allocated: a zero-balance read on a document with no
+        // allocations at all is the empty case, not a settlement.
+        $hasAllocations = PaymentAllocation::query()
+            ->where('document_id', $invoice->id)
+            ->exists();
+
+        if (! $hasAllocations) {
+            return;
+        }
+
+        $this->documentStatus->markPaid($invoice);
+
+        // N-6 fix round r1 / treasury gate I-4 — the AUDIT EVENT.
+        //
+        // Every pre-N-6 writer that flipped a document to `Paid` also dispatched
+        // `DocumentFullyPaid`, and `Compliance\Listeners\DomainEventSubscriber`
+        // persists it into the audit event store. Settling at posting is a new
+        // way to reach `Paid`, so without this a fully-prepaid invoice became
+        // `Paid` with no audit event at all — a hole in the chain that records
+        // WHY a document is settled.
+        //
+        // Rule 8: the EXISTING event is reused, never versioned — its shape is
+        // unchanged and its meaning here is identical (this document is now
+        // fully paid). Deferred to `afterCommit` like every other dispatch site,
+        // so no listener observes an uncommitted settlement.
+        $invoiceId = $invoice->id;
+        $tenantId = $invoice->tenant_id;
+        $companyId = $invoice->company_id;
+        $documentNumber = $invoice->document_number;
+        $documentType = $invoice->type->value;
+        $partnerId = $invoice->partner_id;
+        $total = $invoice->total ?? '0.00';
+
+        DB::afterCommit(function () use (
+            $invoiceId, $tenantId, $companyId, $documentNumber, $documentType, $partnerId, $total
+        ): void {
+            event(new DocumentFullyPaid(
+                documentId: $invoiceId,
+                tenantId: $tenantId,
+                companyId: $companyId,
+                documentNumber: $documentNumber,
+                documentType: $documentType,
+                partnerId: $partnerId,
+                totalPaid: $total,
+                paidAt: now()->toIso8601String(),
+            ));
         });
     }
 
@@ -214,9 +400,10 @@ final class DocumentPostingService
             // `VatPeriodCancellationGuard::refusalAppliesTo()`.
             $this->periodLock->assertCancellationPeriodIsOpen($document);
 
-            // Update status and fiscal_status if it's a fiscal document
+            // Update status and fiscal_status if it's a fiscal document.
+            // N-6 — `status` is no longer in this array: the single write path
+            // takes it as the transition target and merges the rest.
             $updateData = [
-                'status' => DocumentStatus::Cancelled,
                 'cancelled_at' => now(),
                 'cancelled_by' => $actorId,
                 'cancellation_reason' => $reason,
@@ -238,12 +425,12 @@ final class DocumentPostingService
                 $this->glReversal->reverseDocumentGl($document);
 
                 $updateData['fiscal_status'] = FiscalStatus::Voided;
-                $document->update($updateData);
+                $this->documentStatus->transition($document, DocumentStatus::Cancelled, $updateData);
                 DB::afterCommit(function () use ($document): void {
                     $this->dispatchCancellationEvent($document);
                 });
             } else {
-                $document->update($updateData);
+                $this->documentStatus->transition($document, DocumentStatus::Cancelled, $updateData);
             }
 
             /** @var Document */
@@ -277,8 +464,7 @@ final class DocumentPostingService
                 expectedCompanyId: $salesOrder->company_id,
             );
 
-            $salesOrder->update([
-                'status' => DocumentStatus::Cancelled,
+            $this->documentStatus->transition($salesOrder, DocumentStatus::Cancelled, [
                 'cancelled_at' => $cancelledAt,
                 'cancelled_by' => $cancelledBy,
                 'cancellation_reason' => $reason,
@@ -355,8 +541,7 @@ final class DocumentPostingService
                 );
             }
 
-            $document->update([
-                'status' => DocumentStatus::Draft,
+            $this->documentStatus->transition($document, DocumentStatus::Draft, [
                 'confirmed_at' => null,
                 'confirmed_by' => null,
             ]);
@@ -385,8 +570,7 @@ final class DocumentPostingService
                 expectedCompanyId: $salesOrder->company_id,
             );
 
-            $salesOrder->update([
-                'status' => DocumentStatus::Draft,
+            $this->documentStatus->transition($salesOrder, DocumentStatus::Draft, [
                 'confirmed_at' => null,
                 'confirmed_by' => null,
             ]);
@@ -443,8 +627,7 @@ final class DocumentPostingService
                 throw new \DomainException('PURCHASE_ORDER_HAS_SUPPLIER_INVOICES');
             }
 
-            $purchaseOrder->update([
-                'status' => DocumentStatus::Draft,
+            $this->documentStatus->transition($purchaseOrder, DocumentStatus::Draft, [
                 'confirmed_at' => null,
                 'confirmed_by' => null,
             ]);
@@ -460,9 +643,31 @@ final class DocumentPostingService
     private function postWithFiscalChain(Document $document): void
     {
         // Acquire lock and get previous document in chain
+        // N-6 fix round r1 / fiscal gate F-1 [CRITICAL] — THE CHAIN IS A FISCAL
+        // DIMENSION, SO ITS PREDECESSOR IS SELECTED ON THE FISCAL COLUMNS.
+        //
+        // This query used to carry `->where('status', <lifecycle>)`. A sealed
+        // document that had since MOVED ON in its lifecycle — an invoice settled
+        // to `Paid`, a delivery note or return note later cancelled — became
+        // invisible to it, so the NEXT document of that type was treated as
+        // GENESIS: `previous_hash = NULL` and `chain_sequence` restarting at 1.
+        // Nothing detects that: there is no unique index on
+        // (company_id, type, chain_sequence) and no chain verifier in `app/`, so
+        // the fork is silent. `.claude/context/compliance.md` requires an
+        // unbroken SHA-256 chain per document type.
+        //
+        // The bug predates this lane, but N-6 makes it DETERMINISTIC for the
+        // flow it introduces: `settleIfFullyPrepaid()` moves a fully-prepaid
+        // invoice to `Paid` INSIDE the sealing transaction, so such an invoice is
+        // never chain-visible for a single instant under the old predicate.
+        //
+        // `whereNotNull('fiscal_hash')` is the correct and sufficient predicate:
+        // a hash exists if and only if the document was sealed into this chain,
+        // and a VOIDED (cancelled) document keeps its hash on purpose — the link
+        // must stay in the chain, which is exactly why no status filter belongs
+        // here.
         $previousDoc = Document::where('company_id', $document->company_id)
             ->where('type', $document->type)
-            ->where('status', DocumentStatus::Posted)
             ->whereNotNull('fiscal_hash')
             ->orderByDesc('chain_sequence')
             ->lockForUpdate()
@@ -493,9 +698,14 @@ final class DocumentPostingService
             default => FiscalCategory::NonFiscal,
         };
 
-        // Update document with fiscal chain data and seal it
-        $document->update([
-            'status' => DocumentStatus::Posted,
+        // Update document with fiscal chain data and seal it.
+        //
+        // N-6 — routed through the single write path, with the seal columns
+        // passed as `$extraAttributes` so they land in the SAME statement as the
+        // status flip. That is not cosmetic: `trg_document_immutability` reads
+        // `OLD.fiscal_status`, so splitting the seal into a second update would
+        // be refused by the trigger.
+        $this->documentStatus->transition($document, DocumentStatus::Posted, [
             'fiscal_category' => $fiscalCategory,
             'fiscal_status' => FiscalStatus::Sealed,
             'fiscal_hash' => $fiscalHash,

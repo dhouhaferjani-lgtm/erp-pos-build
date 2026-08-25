@@ -15,6 +15,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
@@ -28,6 +29,7 @@ use App\Modules\Treasury\Domain\Events\InvoiceClosedWithTolerance;
 use App\Modules\Treasury\Domain\Exceptions\InvoiceAlreadyPaidException;
 use App\Modules\Treasury\Domain\Exceptions\ToleranceExceededException;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Modules\Treasury\Domain\Services\DocumentAllocationClassifier;
 use App\Shared\Contracts\Treasury\DTOs\ToleranceCheckResult;
 use App\Shared\Contracts\Treasury\Enums\ToleranceType;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
@@ -398,6 +400,12 @@ final class CloseInvoiceWithToleranceServiceTest extends TestCase
             $this->app->make(PaymentToleranceService::class),
             $this->app->make(GeneralLedgerService::class),
             $this->app->make(DocumentAllocationStateGuard::class),
+            // N-6 (treasury gate r2 C-2): the lane widened this constructor
+            // 4 -> 6 — the classifier refuses a close-with-tolerance on an
+            // UNPOSTED invoice (there is no 411 residual to write off), and the
+            // status flip goes through the single write path.
+            $this->app->make(DocumentAllocationClassifier::class),
+            $this->app->make(DocumentStatusService::class),
         );
 
         $service->close($invoice->id, $this->closedBy);

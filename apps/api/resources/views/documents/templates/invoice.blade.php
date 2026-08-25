@@ -3,6 +3,8 @@
 @section('content')
     @include('documents.components.header')
 
+    @include('documents.components.posting_marker')
+
     @include('documents.components.parties')
 
     @include('documents.components.line_items', [

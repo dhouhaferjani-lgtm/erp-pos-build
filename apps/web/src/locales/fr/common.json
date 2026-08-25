@@ -259,6 +259,7 @@
   },
   "fields": {
     "totalReceivable": "Total à recevoir",
+    "customerAdvances": "Acomptes détenus",
     "totalPayable": "Total à payer",
     "name": "Nom",
     "type": "Type",

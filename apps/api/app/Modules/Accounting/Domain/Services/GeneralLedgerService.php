@@ -53,6 +53,15 @@ use Illuminate\Support\Facades\Log;
  */
 final class GeneralLedgerService
 {
+    /**
+     * `journal_entries.source_type` for the N-6 repair entry that re-books a
+     * customer payment from the receivable (411) to the customer advance (419).
+     * Deliberately distinct from `'payment'` so the repair can never be mistaken
+     * for the payment it corrects — and so the repair command can detect that a
+     * payment has already been repaired.
+     */
+    public const PAYMENT_ADVANCE_RECLASS_SOURCE_TYPE = 'payment_advance_reclass';
+
     public const string INVENTORY_MOVEMENT_REVERSAL_SOURCE_TYPE = 'inventory_movement_reversal';
 
     public function __construct(
@@ -389,6 +398,104 @@ final class GeneralLedgerService
 
             return $entry->load('lines');
         });
+
+        return $entry;
+    }
+
+    /**
+     * N-6 REPAIR — re-book a customer payment that was credited to the
+     * receivable (411) when no receivable existed, as a customer advance (419).
+     *
+     * Dr Customer Receivable (411, partner-tagged) — undo the wrong credit
+     * Cr Customer Advance   (419, partner-tagged) — state the real liability
+     *
+     * WHY A NEW ENTRY AND NOT AN EDIT. The original payment entry is posted and
+     * hash-chained; it is never mutated. This is a correcting movement in its own
+     * right, keyed on its own `source_type` so it can never be mistaken for the
+     * payment it repairs, nor double-applied (the command checks for an existing
+     * one before writing).
+     *
+     * WHY IT IS NOT A `CorrectingEntry` DOCUMENT (owner ruling c4's mechanism).
+     * `AccountingService::assertCorrectingEntryIsPostable()` refuses with
+     * `targetHasNoLedgerEntry` when the target document's ledger footprint is
+     * EMPTY — and a never-posted invoice has exactly that: no entry at all. The
+     * document-per-action mechanism structurally cannot express "the invoice was
+     * never booked, and the payment against it was mis-booked", because the
+     * misbooking lives on the PAYMENT's entry, not the document's. Recorded for
+     * the owner in the N-6 handback.
+     *
+     * @param  numeric-string  $amount
+     */
+    public function reclassifyCustomerPaymentToAdvance(
+        string $companyId,
+        string $partnerId,
+        string $paymentId,
+        string $amount,
+        \DateTimeInterface $date,
+        string $description,
+        ?string $postedByUserId = null,
+        ?string $currencyCode = null,
+    ): JournalEntry {
+        $scale = $this->scaleResolver->getScaleSafe($currencyCode, 3);
+
+        if (bccomp($amount, '0', $scale) <= 0) {
+            throw new \InvalidArgumentException('A payment reclassification amount must be positive.');
+        }
+
+        $receivableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerReceivable);
+        $advanceAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerAdvance);
+
+        $user = null;
+        if ($postedByUserId !== null) {
+            /** @var User $user */
+            $user = User::query()->findOrFail($postedByUserId);
+        }
+
+        $entry = DB::transaction(function () use (
+            $companyId, $partnerId, $paymentId, $amount, $date, $description,
+            $receivableAccount, $advanceAccount
+        ): JournalEntry {
+            $company = Company::findOrFail($companyId);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $company->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_date' => $date,
+                'description' => $description,
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => self::PAYMENT_ADVANCE_RECLASS_SOURCE_TYPE,
+                'journal_code' => JournalCode::fromSourceType(self::PAYMENT_ADVANCE_RECLASS_SOURCE_TYPE)->value,
+                'source_id' => $paymentId,
+            ]);
+
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $receivableAccount->id,
+                'partner_id' => $partnerId,
+                'debit' => $amount,
+                'credit' => '0',
+                'description' => 'Reverse receivable credit booked without a posted invoice',
+                'line_order' => 0,
+            ]);
+
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $advanceAccount->id,
+                'partner_id' => $partnerId,
+                'debit' => '0',
+                'credit' => $amount,
+                'description' => 'Customer advance liability',
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+
+        // Synchronous, null-actor safe: the command that drives this runs on the
+        // console with no authenticated user, and leaving a DRAFT entry behind
+        // would be worse than the misclassification it repairs.
+        $this->postEntryNow($entry, $user, $currencyCode);
 
         return $entry;
     }
@@ -1672,7 +1779,29 @@ final class GeneralLedgerService
         ?string $description = null,
         ?string $postedByUserId = null,
         ?string $currencyCode = null,
+        PostingMode $mode = PostingMode::AfterCommit,
     ): JournalEntry {
+        // N-6 — `SynchronousInTransaction` exists for the INVOICE POSTING path.
+        // Clearing must be atomic with the seal: if the 419 -> 411 entry cannot
+        // be written the posting is refused with it, never left half-done with
+        // a sealed invoice and a stranded advance. It also closes a real trap in
+        // the legacy signature — with a NULL `$postedByUserId` the AfterCommit
+        // branch below creates the entry and never posts it, leaving a DRAFT
+        // journal entry that no reconcile would ever consume.
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('clearCustomerAdvanceToReceivable: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
+        // N-6 fix round r1 / treasury gate I-8 (rule 19) — the ceiling arithmetic
+        // below used the bare no-arg `$this->scale()`, which resolves from
+        // `CompanyContext` and THROWS outside a request. The lane routes a new
+        // caller through here from inside `DocumentPostingService::post()`, so
+        // the moment posting is driven from a queue or a console command the
+        // clearing would throw and — being inside the posting transaction —
+        // refuse the posting itself. It also compared a DOCUMENT-currency amount
+        // at the COMPANY's scale. The entity currency is already a parameter.
+        $scale = $this->scaleResolver->getScaleSafe($currencyCode, 3);
+
         $advanceAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerAdvance);
         $receivableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerReceivable);
         $user = null;
@@ -1683,7 +1812,7 @@ final class GeneralLedgerService
 
         $entry = DB::transaction(function () use (
             $companyId, $partnerId, $invoiceId, $amount,
-            $date, $description, $advanceAccount, $receivableAccount
+            $date, $description, $advanceAccount, $receivableAccount, $scale
         ): JournalEntry {
             Partner::query()
                 ->whereKey($partnerId)
@@ -1691,7 +1820,7 @@ final class GeneralLedgerService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            if (bccomp($amount, '0', $this->scale()) <= 0) {
+            if (bccomp($amount, '0', $scale) <= 0) {
                 throw new \InvalidArgumentException('Customer advance clearing amount must be positive.');
             }
 
@@ -1699,9 +1828,9 @@ final class GeneralLedgerService
             // holds the Partner lock and already resolved the advance account
             // above, so it keeps using the private helper directly rather than
             // re-resolving through availableCustomerAdvance().
-            $availableAdvance = $this->availableCustomerAdvanceMagnitude($companyId, $partnerId, $advanceAccount->id, $this->scale());
+            $availableAdvance = $this->availableCustomerAdvanceMagnitude($companyId, $partnerId, $advanceAccount->id, $scale);
 
-            if (bccomp($amount, $availableAdvance, $this->scale()) > 0) {
+            if (bccomp($amount, $availableAdvance, $scale) > 0) {
                 throw new \InvalidArgumentException(
                     "Cannot clear customer advance beyond available balance ({$availableAdvance})."
                 );
@@ -1749,7 +1878,88 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        if ($user !== null) {
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            // Null-actor safe: the GL consequence of clearing an advance is
+            // deterministic and independent of who triggered it, and posting
+            // runs from `DocumentPostingService::post()` which has no actor of
+            // its own.
+            //
+            // R2-F5 — NO ORPHAN DRAFT MAY SURVIVE A FAILED POST.
+            //
+            // The entry above was created inside its own `DB::transaction`.
+            // Under an enclosing transaction that is a SAVEPOINT which has
+            // already been released, so if `postEntryNow()` throws and the
+            // CALLER catches it (the converter downgrades a non-balance failure
+            // to a payload note), the draft entry stays durable — a journal
+            // entry that discharges nothing, that no reconcile consumes, and
+            // that nothing links to, since the caller returns before recording
+            // `advance_journal_entry_id`. That is the same orphan-Draft class
+            // F-3 just closed, minus the marker that would let anyone find it.
+            //
+            // Deleting it here fixes it for EVERY caller rather than asking each
+            // one to clean up: the entry is still DRAFT (unchained), so
+            // `JournalEntryObserver::deleting()` permits it, and a chained entry
+            // would refuse — which is the correct direction. The original
+            // exception is always re-thrown; the cleanup never masks it.
+            try {
+                $this->postEntryNow($entry, $user, $currencyCode);
+            } catch (\Throwable $postFailure) {
+                try {
+                    // R3 (treasury gate r3) — DELETE THROUGH THE MODELS, AND
+                    // PROVE THE ENTRY IS STILL A DRAFT FIRST.
+                    //
+                    // `$entry->lines()->delete()` is a BUILDER mass-delete: it
+                    // emits one `DELETE ... WHERE journal_entry_id = ?` and fires
+                    // NO model events, so `JournalLineObserver::deleting()` —
+                    // the guard that refuses to remove a line of a chained entry
+                    // — never runs. A probe confirmed it succeeds against a
+                    // POSTED, hash-chained entry. `$entry->delete()` below IS a
+                    // model delete and its own observer does fire, so the entry
+                    // header was protected while its lines were not: exactly the
+                    // wrong half.
+                    //
+                    // The re-read is the belt: `$entry` is the in-memory object
+                    // that failed to post, and this cleanup runs on the failure
+                    // path, so the row is re-read and its status asserted before
+                    // anything is removed. Not-Draft means something else posted
+                    // it between the failure and here — refuse and let the outer
+                    // catch log it, rather than delete a chained entry through a
+                    // path that was only ever meant to remove a stillborn draft.
+                    /** @var JournalEntry|null $reread */
+                    $reread = JournalEntry::query()->find($entry->id);
+
+                    if (! $reread instanceof JournalEntry) {
+                        throw new \RuntimeException(
+                            "clearing entry {$entry->id} vanished before cleanup could remove it."
+                        );
+                    }
+
+                    if ($reread->status !== JournalEntryStatus::Draft) {
+                        throw new \RuntimeException(
+                            "refusing to clean up clearing entry {$reread->entry_number}: it is "
+                            ."{$reread->status->value}, not a draft, so it is no longer this path's to remove."
+                        );
+                    }
+
+                    // Model deletes, one per line, so the observer fires on each.
+                    foreach ($reread->lines()->get() as $line) {
+                        $line->delete();
+                    }
+
+                    $reread->delete();
+                } catch (\Throwable $cleanupFailure) {
+                    Log::warning('Could not remove the unposted customer-advance clearing entry', [
+                        'entry_id' => $entry->id,
+                        'entry_number' => $entry->entry_number,
+                        'company_id' => $companyId,
+                        'post_failure' => $postFailure->getMessage(),
+                        'cleanup_failure' => $cleanupFailure->getMessage(),
+                    ]);
+                }
+
+                throw $postFailure;
+            }
+        } elseif ($user !== null) {
             $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
         }
 

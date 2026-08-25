@@ -10,6 +10,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Inventory\Application\DTOs\SupplierGoodsReturnLineData;
 use App\Modules\Inventory\Application\Services\SupplierGoodsReturnNoteService;
 use App\Modules\Inventory\Domain\Enums\SupplierGoodsReturnLineKind;
@@ -114,6 +115,7 @@ final class SupplierCreditNotePostingService
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly SupplierGoodsReturnNoteService $goodsReturnNoteService,
         private readonly ProductCostLock $costLock,
+        private readonly DocumentStatusService $documentStatus,
     ) {}
 
     /**
@@ -368,9 +370,9 @@ final class SupplierCreditNotePostingService
             );
         }
 
-        // 7. Draft → Posted.
-        $creditNote->status = DocumentStatus::Posted;
-        $creditNote->save();
+        // 7. Draft → Posted, through the single write path (N-6 fix round r1,
+        // fiscal gate F-6).
+        $this->documentStatus->transition($creditNote, DocumentStatus::Posted);
     }
 
     /**
