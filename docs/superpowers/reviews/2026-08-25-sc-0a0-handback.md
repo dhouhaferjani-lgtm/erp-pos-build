@@ -290,3 +290,289 @@ php artisan test tests/Feature/Treasury/HistoricalAndPosInvoicesRefusedBeforePro
 ```
 
 Throwaway PG database `autoerp_test_sc0a0` was created on port 5433 by this lane and dropped at the end.
+
+---
+---
+
+# Fix round r1 — response to `2026-08-25-sc-0a0-gate-r1-treasury.md`
+
+**Gate verdict addressed** spec ❌ + quality CHANGES-REQUESTED, merge-blocking, 9 findings.
+**Fix commit** `4ee16617c` on `feat/sc-0a0-payment-applicability` (r1 tree was `ffcdd8555`).
+**Migration: still NONE.** No `database/` path in the r1 diff either.
+**Not merged. Not pushed.**
+
+The gate was right on the thing that matters: r1 fixed a wrong-money path and opened an availability
+one in the same commit, and its own residual R-C0a0-2 described that break as benign. It is not benign —
+`classifyReceivableSide()` THROWS, and two of the three consumers are queue workers. Everything below
+follows from that.
+
+## Per finding
+
+### F-1 [CRITICAL] — auto sweep threw instead of skipping · FIXED, both halves
+
+**(b) the AUTO branch skips; MANUAL and direct keep throwing.**
+`PaymentAllocationService.php:240` — the execute loop now branches on WHO CHOSE THE DOCUMENT:
+`$command->allocationMethod === MANUAL ? classifyReceivableSide(...) : allocatableTreatmentOrSkip(...)`,
+and a `null` verdict `continue`s past the row (`:245-247`). The non-throwing locked-row helper is
+`allocatableTreatmentOrSkip()` (`:642-665`), the skip is logged with its reason
+(`logAutoAllocationSkip()`, `:667-677`).
+
+**(a) preview and execute agree.** Two changes, because one was not enough:
+- `getOpenInvoices()` (`:585-594`) gains the POS-derived exclusion in SQL —
+  `reference NULL OR reference NOT LIKE 'POS-ACCOUNT-CHARGE:%'`, built from
+  `DocumentAllocationClassifier::POS_ACCOUNT_CHARGE_REFERENCE_PREFIX` so the two cannot drift.
+- `previewAllocationForContext()` (`:119-128`) filters the AUTO set through the classifier itself
+  (`rejectUnallocatable()`, `:623-636`). This is what makes preview and execute agree BY CONSTRUCTION
+  rather than by two hand-kept predicates staying in step — the failure mode the gate found.
+
+**DECLARED DEVIATION from the literal wording of F-1(a).** The disposition says the SQL predicate should
+also carry `is_historical = false`. It does not, and must not, now that F-2 lands in the same round:
+blanket-excluding historical rows would hide every *collectable* AR opening from the sweep — the identical
+availability break, from the other direction. The AR/AP discriminator is not a `documents` column (it lives
+in `opening_balance_import_rows`), so SQL cannot decide it; the classifier filter in `rejectUnallocatable()`
+does, on the same verdict the execute loop uses. POS-derived IS excluded in SQL because its marker *is* a
+`documents` column.
+
+*Proof — `tests/Feature/Treasury/AutoAllocationSkipsRefusedDocumentsTest.php` (new), the gate's leg 9 made
+permanent, including the queued-projection entry point called with the exact
+`ApplyPaymentAllocationCommand` shape `TreasuryAccountPaymentBridge:216` / `TreasuryDepositBridge:200` use.*
+
+RED (on `ffcdd8555`, sqlite):
+```
+⨯ the http auto path skips a refused opening and still collects the native invoice   Expected 200, received 422
+⨯ the http auto path skips a pos derived invoice and still collects the native ...   Expected 200, received 422
+⨯ the auto preview offers exactly what the execute allocates    Failed asserting that an array does not contain '01a0367a-…'
+⨯ the queued projection entry point does not throw on a refused opening              (DocumentNotAllocatableException)
+✓ the manual path still throws for the same document
+⨯ an auto sweep whose whole set is refused returns cleanly                           Expected 200, received 422
+Tests:    5 failed, 1 passed (9 assertions)
+```
+GREEN sqlite: `Tests: 6 passed (21 assertions)` · GREEN PG 5433: 6 passed (inside `Tests: 147 passed (3990 assertions)`).
+
+### F-2 [IMPORTANT] — historical AR openings had no settlement path · FIXED (option (a))
+
+The gate is correct that the discriminator exists on base and that r1's docblock claim was not accurate.
+`OpeningBalanceBatchService::addImportRows():200-218` stamps `opening_balance_import_rows.row_type` from
+`OpeningBatchType::rowType()` (`AR`/`AP`) at insert, and `markRowsPosted():636-658` claims the row to the
+document it minted via `mapped_entity_id`. Neither is rewritten afterwards.
+
+Reached through a NEW Shared contract, never an Accounting model (rule 6):
+- `app/Shared/Contracts/Accounting/HistoricalOpeningSide.php` (new enum: `ar` / `ap`)
+- `app/Shared/Contracts/Accounting/HistoricalOpeningSideReaderInterface.php` (new)
+- `app/Modules/Accounting/Application/Services/HistoricalOpeningSideReader.php` (new impl)
+- bound at `app/Providers/AppServiceProvider.php:123`
+- consumed at `DocumentAllocationClassifier::refusalForHistoricalOpening()` (`:349-365`), constructor
+  dep at `:95-102`.
+
+Rule as implemented (**owner-sheet OQ-74, this is the recorded default**):
+| Case | Verdict |
+|---|---|
+| historical **AR** + `posted` | ADMITTED ⇒ `ReceivableClearing`. The opening JE created the 411; booking it as a 419 advance would invent a liability the company does not owe. |
+| historical **AR**, any other live status | Refused `status_not_allocatable_for_type` (an opening is minted `posted`; anything else is unruled) |
+| historical **AP** | Refused `historical_opening_provenance` — Dr 401 / Cr bank is C-0a1's route |
+| side **unprovable** | Refused `historical_opening_provenance` — fail closed belongs where the evidence is absent, not where nobody looked |
+| historical **CreditNote**, either side | Refused (spec rule 4 / OQ-37), unchanged |
+
+`PartnerType` was rejected as the discriminator and the reasoning is in the reader's docblock: `Both` exists
+and both `Partner::scopeCustomers()` and `scopeSuppliers()` admit it (`Partner.php:257-271`), so a `both`
+partner can hold an opening on either side and the partner row cannot say which.
+
+*Proof — `tests/Feature/Treasury/HistoricalOpeningSideSettlementTest.php` (new).*
+RED (on `ffcdd8555`, sqlite):
+```
+⨯ a historical ar opening can be collected on the direct payment endpoint   Expected 201, received 422
+⨯ a historical ar opening is offered and collected by the auto sweep        Expected 200, received 422
+✓ a historical ap opening is still refused
+✓ a historical opening whose side cannot be resolved is refused
+Tests:    2 failed, 2 passed (9 assertions)
+```
+GREEN sqlite: `Tests: 4 passed` · GREEN PG: 4 passed (inside `Tests: 8 passed (19 assertions)`).
+`HistoricalAndPosInvoicesRefusedBeforeProvenanceTest` was updated in step: its `ar_opening` data set became
+`unknown_side_opening` (a real AR opening whose import-row link is severed), so the suite still pins four
+refused families across five entry points — `Tests: 20 passed (122 assertions)`.
+
+### F-3 [IMPORTANT] — `classifyReceivableSide()` had zero coverage · FIXED
+
+Unit, in `PaymentApplicabilityMatrixTest`: `test_the_receivable_side_seam_refuses_a_payable_settlement()`
+(asserts the SI is allocatable via `classify()` and refused via `classifyReceivableSide()` — the distinction
+is the point), `test_the_receivable_side_seam_admits_the_ar_documents()` (4 data sets: posted invoice ⇒
+clearing, confirmed invoice ⇒ advance, confirmed AND posted sales order ⇒ advance),
+`test_the_receivable_side_seam_still_refuses_what_the_matrix_refuses()`.
+
+Feature, in `tests/Feature/Treasury/ReceivableSideSeamTest.php` (new): reaches the seam through
+`MultiPaymentService::createSplitPayment()` and `::applyDepositToDocument()` **called directly**, bypassing
+the controller pre-guards — which the gate ruled load-bearing and which are NOT removed here. The fixture
+mints a posted supplier invoice WITH a posted Cr-401 journal entry, so the refusal cannot be dismissed as
+"that document was never payable anyway". Two positive cases pin that the seam did not become a blanket
+refusal (posted invoice clears; confirmed invoice books both split lines as advances).
+
+RED (on `ffcdd8555`, sqlite) — the seam fired, with the wrong reason:
+```
+⨯ the split payment service refuses a posted supplier invoice with the payable reason   Failed asserting that two strings are identical.
+⨯ the deposit application service refuses a posted supplier invoice                     Failed asserting that two strings are identical.
+✓ the split payment service still admits a posted invoice
+✓ the split payment service books a confirmed invoice as an advance
+Tests:    2 failed, 2 passed (5 assertions)
+```
+GREEN sqlite: `Tests: 4 passed` · GREEN PG: 4 passed.
+
+### F-4 [IMPORTANT] — payable refused with credit-note copy · FIXED
+
+New `AllocationRefusalReason::PayableNotSettleableHere` (`AllocationRefusalReason.php:93`), used at
+`DocumentAllocationClassifier.php:157-167`. Copy added to `lang/{en,fr,ar}/treasury.php` pointing at the
+supplier payment flow. The enum's own docblock records why `OutwardDocumentType` was wrong twice over
+(a payable is INWARD money, and its message talks about credit notes). Asserted by the two RED→GREEN cases
+above and by the unit seam test.
+
+### F-5 [IMPORTANT] — three discarded `Document::find()` reads inside refund transactions · FIXED
+
+`assertReversalAdmitted(string $documentId)` (`DocumentAllocationClassifier.php:290`) now takes the id the
+caller already holds. The three reads are gone: `PaymentRefundService.php:224` (was a `find()` per
+allocation inside the reversal loop), `:1325`, `:1980`; `VendorRefundService.php:150` passes `$lockedPo->id`.
+`grep -c "Document::query()->find" PaymentRefundService.php` → **0**.
+
+The evidential half is fixed too, in the artefact that makes the claim:
+`PaymentAllocationWriterCensusTest::REVERSAL_SEAM_SITES_PREDICATE_DEFERRED` plus
+`test_the_reversal_seam_sites_are_declared_as_predicate_deferred()`, which asserts exactly four reversal
+calls exist and that only the two declared files use them. The method docblock and both call-site comments
+now say **SEAM PRESENT, PREDICATE DEFERRED TO C-0a1** in those words.
+
+GREEN: `tests/Unit/Treasury/PaymentAllocationWriterCensusTest.php` → `Tests: 3 passed (3095 assertions)`
+(sqlite and PG). Reversal-writer regression: `PaymentRefundTest` · `PaymentRefundProrationTest` ·
+`PaymentReversalNetLineageTest` · `PaymentReversalDocumentTest` · `ProRataResidualRedistributionTest` ·
+`VendorRefundScalingTest` · `RefundSpineTest` · `PaymentReversalRefusalTest` → `Tests: 86 passed (392 assertions)`.
+
+### F-6 [MINOR] — handback line table wrong · FIXED, re-derived from `4ee16617c`
+
+Re-derived with `grep -n` on the final tree, not copied:
+
+| File | Symbol | Line |
+|---|---|---|
+| `Treasury/Domain/Services/DocumentAllocationClassifier.php` | `__construct` (opening-side reader dep) | `:95-102` |
+| | `HISTORICAL_OPENING_REFERENCE_PREFIX` · `POS_ACCOUNT_CHARGE_REFERENCE_PREFIX` · `LIVE_STATUSES` | `:108` · `:115` · `:121` |
+| | `classify()` | `:126-141` |
+| | `classifyReceivableSide()` (F-4 reason at `:157-167`) | `:152-170` |
+| | `classifyOrNull()` · `isAllocatable()` | `:177-182` · `:184-187` |
+| | `refusalReasonFor()` — rule 1 `:201`, provenance `:205-219`, exhaustive per-type `match` `:221-259` (SalesOrder `:235`, PurchaseOrder `:249`) | `:198-260` |
+| | `assertReversalAdmitted(string $documentId)` | `:290-293` |
+| | `treatmentFor()` (second exhaustive `match` at `:303`) | `:301-323` |
+| | `refusalForHistoricalOpening()` (NEW, F-2) | `:349-365` |
+| | `isHistoricalOpening()` · `isPosAccountCharge()` | `:377-384` · `:391-394` |
+| `Treasury/Domain/Enums/AllocationTreatment.php` | `case PayableSettlement` · `isReceivableSide()` | `:43` · `:53-59` |
+| `Treasury/Domain/Enums/AllocationRefusalReason.php` | 8 cases at `:31`, `:39`, `:47`, `:54`, `:61`, `:70`, `:79`, `:93` (`PayableNotSettleableHere`, NEW) | |
+| `Treasury/Domain/Exceptions/DocumentNotAllocatableException.php` | `public readonly AllocationRefusalReason $reason` | `:41` |
+| `bootstrap/app.php` | `'message' => __($e->reason->translationKey())` · `'reason' => $e->reason->value` | `:964` · `:970` |
+| `Treasury/Application/Services/PaymentAllocationService.php` | ctor dep `:45` · AUTO/MANUAL branch `:240` · write `:250` · SQL provenance predicate `:585-594` · `rejectUnallocatable()` `:623-636` · `allocatableTreatmentOrSkip()` `:642-665` · `logAutoAllocationSkip()` `:667-677` · manual preview `:854` | |
+| `Treasury/Application/Services/CloseInvoiceWithToleranceService.php` | ctor `:51` · `classifyReceivableSide()` `:100` (after the already-settled check) · write `:162` | |
+| `Treasury/Domain/Services/MultiPaymentService.php` | ctor `:33` · split `:89`→write `:130` · deposit `:306`→write `:308` | |
+| `Treasury/Domain/Services/PaymentRefundService.php` | ctor `:75` · seams `:224`, `:1325`, `:1980` → writes `:226`, `:1327`, `:1982` | |
+| `Treasury/Domain/Services/VendorRefundService.php` | ctor `:34` · seam `:150` → write `:152` | |
+| `Treasury/Presentation/Controllers/PaymentController.php` | ctor `:75` · pre-transaction fail-fast `:603` · locked-row `classify()` `:1045`→write `:1048` · multi-line `:1485`→write `:1639` · manual excess `:1812`→write `:1818` · auto excess `:1895`→write `:1900` | |
+| `Treasury/Presentation/Controllers/MultiPaymentController.php` | typed rethrow ahead of the generic arm | `:215`, `:412` |
+| `app/Shared/Contracts/Accounting/HistoricalOpeningSide.php` | NEW enum | — |
+| `app/Shared/Contracts/Accounting/HistoricalOpeningSideReaderInterface.php` | NEW contract | — |
+| `app/Modules/Accounting/Application/Services/HistoricalOpeningSideReader.php` | NEW impl | — |
+| `app/Providers/AppServiceProvider.php` | binding (imports `:10`, `:50`) | `:123` |
+| `lang/{en,fr,ar}/treasury.php` | `allocation_refused.*` — `payable_not_settleable_here` added, `historical_opening_provenance` copy rewritten for the AP/unprovable case | |
+
+The r1 table's **call-site** lines were exact and are re-derived unchanged above where they did not move.
+The gate's assertion-count note is also corrected: the matrix suite is now `Tests: 138 passed (877 assertions)`
+after the F-8 rewrite, so the 953/955 discrepancy is moot.
+
+### F-7 [MINOR] — auto-path tests asserted no status code · FIXED
+
+`HistoricalAndPosInvoicesRefusedBeforeProvenanceTest::test_the_auto_allocation_execute_writes_nothing_for_it`
+→ `test_the_auto_allocation_sweep_skips_it_without_refusing_the_request`, now asserting `assertOk()` before
+`assertNoAllocationWasWritten()`. Its docblock states the gate's point in full: "nothing written" was true
+both when the sweep passed over the row and when it threw and rolled the collection back — the status code
+is the difference, which is why it is asserted.
+
+The two vacuous PO auto cases are KEPT and explicitly labelled: `PurchaseOrderAllocationRefusedTest`
+carries an "HONEST COVERAGE NOTE" recording that the gate proved them green on base AND under a tampered
+classifier, so they pin the `getOpenInvoices()` mirror and must not be counted as coverage of the classifier.
+
+### F-8 [MINOR] — matrix oracle was a structural clone · FIXED
+
+`expectedRefusalReason()` is deleted. The oracle is now two LITERAL tables in
+`PaymentApplicabilityMatrixTest`: `EXPECTED_NATIVE` (78 cells — every `DocumentType` × every
+`DocumentStatus`) and `EXPECTED_PROVENANCE` (48 cells — Invoice/CreditNote × 4 provenance families ×
+6 statuses). No shared control flow with the production `match` survives; changing a verdict means editing
+a line that names the cell it decides.
+
+Three properties guard the table itself: `test_the_tables_cover_exactly_the_whole_space()` (a missing cell
+must FAIL, not silently skip), `test_provenance_markers_do_not_change_any_other_type()` (rules 2–5 are
+scoped to the two minted types — this replaces 264 duplicate literal cells with the property they encode),
+and `test_the_admitted_set_is_closed_and_exactly_this()`, which the gate named the primary guard and which
+is now 18 literal strings.
+
+GREEN: `Tests: 138 passed (877 assertions)` (sqlite and PG).
+
+### F-9 [MINOR] — SalesOrder narrowing contradicted the N-6 gate · FIXED, N-6's ruling restored
+
+`DocumentAllocationClassifier.php:235` is now `DocumentType::SalesOrder => null` — admitted at `confirmed`
+OR `posted` (rule 1 has already excluded every non-live status). The docblock no longer claims a narrowing,
+and states why: `Posted` IS reachable (`DocumentPostingService::cancelSalesOrder()` guards for exactly that
+state; `DocumentStatusMachine` allows `Confirmed → Posted` for every sales-lifecycle type), the N-6 gate
+ruled that narrowing below the pre-N-6 rule is a regression, and either way the money is an ADVANCE because
+a sales order never carries a 411. Pinned by name in `test_the_cells_this_lane_closes()` and by four new
+admitted cells in the closed-set assertion.
+
+## Gate legs re-run after the fix
+
+```
+./vendor/bin/pint --test app/Modules/Treasury app/Modules/Accounting app/Shared/Contracts/Accounting \
+    app/Providers/AppServiceProvider.php tests/Unit/Treasury tests/Feature/Treasury lang bootstrap/app.php
+→ {"result":"pass"}
+
+./vendor/bin/phpstan analyse <11 production paths + 3 new Shared/Accounting paths + AppServiceProvider
+                              + 7 new/rewritten test paths>
+→ [OK] No errors
+
+./vendor/bin/deptrac analyse   (lane) → Violations 183   ⇒ UNCHANGED vs dev; grep for this lane's classes
+                                                            in the violation list → 0 hits
+```
+
+Regression, by path, one process at a time (sqlite):
+
+| Batch | Result |
+|---|---|
+| `N6PaymentOnUnpostedInvoiceTest` · `DocumentPaymentStatusTransitionTest` · `PaymentAllocationDocumentStateTest` · `CloseInvoiceWithToleranceServiceTest` · `Document/CreditNoteAllocationTest` · `VendorPrepaymentRefundTest` · `PurchaseOrderAllocationRefusedTest` | `69 passed (249 assertions)` |
+| `PaymentAllocationServiceTest` (+ tolerance contract/persistence) · `SmartPaymentIntegrationTest` · `MultiPaymentSpineTest` · `PaymentControllerSpineTest` · `Unit/Document/DocumentStatusMachineTest` | `54 passed (265 assertions)` |
+| the eight refund / reversal suites (F-5 blast radius) | `86 passed (392 assertions)` |
+| `ArApOpeningPostLifecycleTest` · `OpeningBalanceBatchLifecycleHardeningTest` · `Reports/AgedOutstandingSourceTest` · `PostingMarkerPrintTest` · `AdvanceReversalRefusalsAndCeilingTest` · `PaymentAllocationPrecisionTest` · `TreasuryEventsTest` (F-2 blast radius: the opening-balance consumers) | `4 skipped, 49 passed (137 assertions)` |
+
+PG 5433 (`autoerp_test_sc0a0`, created by this round and dropped at the end):
+
+| Batch | Result |
+|---|---|
+| `PaymentApplicabilityMatrixTest` · `PaymentAllocationWriterCensusTest` · `AutoAllocationSkipsRefusedDocumentsTest` | `147 passed (3990 assertions)` |
+| `HistoricalOpeningSideSettlementTest` · `ReceivableSideSeamTest` | `8 passed (19 assertions)` |
+| `HistoricalAndPosInvoicesRefusedBeforeProvenanceTest` · `PurchaseOrderAllocationRefusedTest` | `27 passed (154 assertions)` |
+| `N6PaymentOnUnpostedInvoiceTest` · `DocumentPaymentStatusTransitionTest` · `PaymentAllocationDocumentStateTest` · `CloseInvoiceWithToleranceServiceTest` · `PaymentRefundTest` · `VendorPrepaymentRefundTest` · `ArApOpeningPostLifecycleTest` | `74 passed (272 assertions)` |
+
+The full PHPUnit suite was never run. The repo-global WIP shelf was never touched — `git stash list`
+is unchanged (2 pre-existing entries belonging to other sessions).
+
+## Residual disposition after r1
+
+| # | Status |
+|---|---|
+| R-C0a0-1 (reversal seam total) | **Implementation fixed** per F-5 — no discarded reads, and the census declares the four sites as predicate-deferred. Policy unchanged and still owner-flagged for C-0a1. |
+| R-C0a0-2 (`getOpenInvoices()` mirror drift) | **CLOSED.** It was F-1. The mirror is no longer the agreement mechanism — `rejectUnallocatable()` filters preview and `allocatableTreatmentOrSkip()` filters execute, from the same classifier verdict. |
+| R-C0a0-3 (auto path returns 200 with no reason) | **Superseded.** The auto path now returns 200 and logs a per-document reason server-side. Surfacing skipped-document reasons in the API RESPONSE is not done — see R-R1-1. |
+| R-C0a0-4 / R-C0a0-5 / R-C0a0-6 / R-C0a0-7 | Unchanged; gate accepted each. The older supplier-invoice type guards stay in place (R-C0a0-5), and F-3/F-4 are precisely what makes retiring them safe later. |
+| R-GATE-1 (`type_never_allocatable` copy names Expense/Income) | **Addressed in copy**: the enum docblock and the en/fr/ar strings now say expenses and income are settled through their own metadata flags rather than through `payment_allocations`. |
+
+**New residuals opened by this round:**
+
+- **R-R1-1** — the AUTO sweep logs each skipped document and its reason (`logAutoAllocationSkip()`), but the
+  API response does not carry them. An operator who collects less than expected sees the amount, not the
+  reason. Surfacing a `skipped[]` block is an API-shape change and belongs with the reader lane, not here.
+- **R-R1-2** — `HistoricalOpeningSideReader` issues one query per historical document classified. That is
+  bounded by the number of openings in an allocation set and is zero for the native path, but it is a
+  read inside the allocation transaction. C-PROV0 makes it a column and the reader disappears.
+- **R-R1-3** — F-1(a) is implemented WITHOUT the literal `is_historical = false` SQL predicate the
+  disposition names, because F-2 landed in the same round and that predicate would hide collectable AR
+  openings from the sweep. Flagged for the r2 gate as a deliberate, reasoned deviation, not an omission.
+- **R-R1-4** — OQ-74 (historical AR openings collectable on the AR path pre-C-0a1) is recorded here as the
+  implemented default and still needs the owner's explicit ruling on the owner sheet.
