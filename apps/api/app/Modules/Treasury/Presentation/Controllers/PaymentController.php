@@ -601,6 +601,17 @@ class PaymentController extends Controller
                 }
             } else {
                 $nonSupplierDocCount++;
+
+                // C-0a0 — fail fast, BEFORE the balance math and before any row is
+                // written. The `allocations.*.document_id` rule is a bare
+                // `ScopedExists`: it proves the id belongs to this tenant/company
+                // and nothing about whether the document may take money. The
+                // authoritative verdict is re-taken on the LOCKED row inside the
+                // transaction below (a status can change between the two reads);
+                // this call is what stops a refused document from ever reaching
+                // the cap-and-advance arithmetic. Receivable-side only — the AP
+                // branch above owns supplier invoices.
+                $this->allocationClassifier->classifyReceivableSide($document);
             }
 
             // Cap allocation at document balance (can't overpay a single invoice)
@@ -1033,13 +1044,16 @@ class PaymentController extends Controller
                         ], 422));
                     }
 
-                    // N-6 — classify the AR side on the LOCKED row. Supplier
-                    // invoices keep their own AP branch (Dr 401 / Cr Bank) and
-                    // their own posted-ness + Cr-401 evidence guard above; the
-                    // classifier is AR-only and refuses them by construction.
-                    $treatment = $document->type === DocumentType::SupplierInvoice
-                        ? null
-                        : $this->allocationClassifier->classify($document);
+                    // C-0a0 — classify the LOCKED row, UNCONDITIONALLY. N-6 wrote
+                    // `type === SupplierInvoice ? null : classify(...)`, so the one
+                    // path capable of paying a supplier was the one path the policy
+                    // object never saw. `AllocationTreatment::PayableSettlement` is
+                    // now a first-class verdict (spec rule 8), so the bypass is gone
+                    // and the AP branch below is reached only for a document the
+                    // classifier itself ruled payable. Behaviour is unchanged: the
+                    // supplier posted-ness + Cr-401-evidence guard above still runs,
+                    // and `PayableSettlement` is not a prepayment.
+                    $treatment = $this->allocationClassifier->classify($document);
                     $isPrepayment = $treatment === AllocationTreatment::Prepayment;
 
                     $allocationRow = PaymentAllocation::create([
@@ -1483,7 +1497,7 @@ class PaymentController extends Controller
         // SAME document, so posted-ness cannot differ between them. Refuses a
         // draft / cancelled / credit-note target with 422
         // DOCUMENT_NOT_ALLOCATABLE before any payment row is written.
-        $primaryTreatment = $this->allocationClassifier->classify($primaryDocument);
+        $primaryTreatment = $this->allocationClassifier->classifyReceivableSide($primaryDocument);
         $primaryIsPrepayment = $primaryTreatment === AllocationTreatment::Prepayment;
 
         /** @var numeric-string $documentBalance */
@@ -1812,7 +1826,7 @@ class PaymentController extends Controller
                             $this->allocationStateGuard->assertDirectionMatchesPartner($targetDoc);
                             // N-6 — manual excess targets are client-supplied
                             // ids; classify each one on its own locked row.
-                            $targetTreatment = $this->allocationClassifier->classify($targetDoc);
+                            $targetTreatment = $this->allocationClassifier->classifyReceivableSide($targetDoc);
                             $targetIsPrepayment = $targetTreatment === AllocationTreatment::Prepayment;
 
                             /** @var numeric-string $allocAmount */
@@ -1895,7 +1909,7 @@ class PaymentController extends Controller
                             // N-6 — the auto preview already restricts the set
                             // (`getOpenInvoices()`), but the row is only LOCKED
                             // here, so the verdict is re-taken on the locked row.
-                            $targetTreatment = $this->allocationClassifier->classify($targetDoc);
+                            $targetTreatment = $this->allocationClassifier->classifyReceivableSide($targetDoc);
                             $targetIsPrepayment = $targetTreatment === AllocationTreatment::Prepayment;
                             /** @var numeric-string $allocAmount */
                             $allocAmount = (string) $allocation['amount'];

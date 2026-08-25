@@ -8,6 +8,7 @@ use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\Accounting\Domain\Services\PosReceiptVatAllocator;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
@@ -41,6 +42,7 @@ use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
+use App\Shared\Domain\CurrencyScale;
 use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -468,10 +470,19 @@ final class PosBridgeSpineTest extends TestCase
             'notes' => 'prior-write simulation',
         ]);
 
+        // W4-9 — mirror the production entry shape (net revenue + output VAT
+        // per sealed rate) so the replay assertions below still describe a real
+        // prior write.
+        $vatSplit = $this->app->make(PosReceiptVatAllocator::class)->allocate(
+            $receipt,
+            [$amount],
+            CurrencyScale::for((string) $receipt->currency),
+        )[0];
         $journalEntry = $this->app->make(GeneralLedgerService::class)->createPOSPaymentEntry(
             payment: $payment,
             receipt: $receipt,
             repository: $repository,
+            vatSplit: $vatSplit,
         );
         $payment->journal_entry_id = $journalEntry->id;
         $payment->save();

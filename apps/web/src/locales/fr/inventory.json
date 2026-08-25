@@ -404,7 +404,8 @@
       "inventory_counting": "Inventaire",
       "pos_receipt_return_scrap": "Rebut sur retour caisse",
       "stock_adjustment": "Bon de régularisation de stock",
-      "supplier_goods_return_note": "Retour fournisseur"
+      "supplier_goods_return_note": "Retour fournisseur",
+      "batch_ledger_repair": "Correction du registre des lots"
     },
     "empty": {
       "title": "Aucun bon d'entrée/sortie",

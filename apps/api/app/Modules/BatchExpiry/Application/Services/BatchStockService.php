@@ -11,6 +11,7 @@ use App\Modules\BatchExpiry\Domain\Exceptions\InsufficientBatchStockException;
 use App\Modules\BatchExpiry\Domain\Repositories\BatchRepositoryInterface;
 use App\Shared\Contracts\ProductVariantLookup;
 use App\Shared\Domain\Exceptions\MissingVariantException;
+use App\Shared\Domain\QuantityScale;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
@@ -105,6 +106,137 @@ final class BatchStockService
         }
 
         return $batch;
+    }
+
+    /**
+     * Quantity at $locationId that REAL (non-{@see self::DEFAULT_BATCH_NUMBER})
+     * lots already account for.
+     *
+     * Every lot row is counted, including inactive/recalled/expired ones: the
+     * question this answers is "how much of the aggregate on-hand quantity is
+     * already represented inside a lot", and a recalled lot still physically
+     * holds its units. Filtering on `is_active` here would resurrect exactly the
+     * double-count this method exists to prevent.
+     *
+     * @param  ?string  $variantId  null → product-level lots only; set → that variant's lots only.
+     * @return numeric-string Scale-4 decimal string (rule 19; no float ever touches it).
+     */
+    public function trackedLotQuantityAt(
+        string $companyId,
+        string $productId,
+        string $locationId,
+        ?string $variantId = null,
+    ): string {
+        $query = BatchStock::query()
+            ->join('product_batches', 'inventory_batch_stock.batch_id', '=', 'product_batches.id')
+            ->where('product_batches.company_id', $companyId)
+            ->where('product_batches.product_id', $productId)
+            ->where('product_batches.batch_number', '!=', self::DEFAULT_BATCH_NUMBER)
+            ->where('inventory_batch_stock.location_id', $locationId);
+
+        if ($variantId === null) {
+            $query->whereNull('product_batches.variant_id');
+        } else {
+            $query->where('product_batches.variant_id', $variantId);
+        }
+
+        // SUM() comes back as a scalar the driver may render as int, float or
+        // string; bcadd against '0' normalises it to a scale-4 decimal string
+        // without ever routing it through a float literal.
+        // Gate r1 finding 10 — parity with the house FEFO path
+        // (FEFOInventoryService::suggestBatchesForSale). SUM() comes back as a
+        // scalar the driver may render as int, float or string, and SQLite can emit
+        // scientific notation for sub-1e-4 values, on which bcmath throws a bare
+        // ValueError. QuantityScale::round() takes a plain string and returns a
+        // numeric-string, so the normalisation is one call and the two sites agree.
+        // FLOOR: this is stock ON HAND and must never round UP.
+        $sum = trim((string) $query->sum('inventory_batch_stock.quantity'));
+
+        if (preg_match('/^-?\d+(\.\d+)?$/', $sum) !== 1) {
+            throw new \RuntimeException(sprintf(
+                'SUM(inventory_batch_stock.quantity) for product %s at location %s is not a plain decimal ("%s") — '
+                .'refusing to compute an untracked remainder from an unknown lot total.',
+                $productId,
+                $locationId,
+                $sum,
+            ));
+        }
+
+        return QuantityScale::round($sum, QuantityScale::SCALE, QuantityScale::FLOOR);
+    }
+
+    /**
+     * The share of the aggregate on-hand quantity that NO real lot accounts for.
+     *
+     * `stock_levels.quantity − Σ(real lot quantities)`, clamped at zero. This is
+     * the ONLY quantity the DEFAULT lot may ever carry (campaign W2-7): seeding
+     * it with the aggregate total double-books every unit that arrived through a
+     * goods receipt with explicit lots.
+     *
+     * @param  numeric-string  $aggregateQuantity  The tuple's `stock_levels.quantity`.
+     * @return numeric-string Scale-4 decimal string, never negative.
+     */
+    public function untrackedRemainderAt(
+        string $companyId,
+        string $productId,
+        string $locationId,
+        string $aggregateQuantity,
+        ?string $variantId = null,
+    ): string {
+        $tracked = $this->trackedLotQuantityAt($companyId, $productId, $locationId, $variantId);
+
+        /** @var numeric-string $remainder */
+        $remainder = bcsub($aggregateQuantity, $tracked, 4); // precision-ok: batch quantity is decimal(15,4), canonical scale 4
+
+        if (bccomp($remainder, '0', 4) < 0) { // precision-ok: batch quantity is decimal(15,4), canonical scale 4
+            return bcadd('0', '0', 4); // precision-ok: batch quantity is decimal(15,4), canonical scale 4
+        }
+
+        return $remainder;
+    }
+
+    /**
+     * Reconcile the DEFAULT lot to the UNTRACKED REMAINDER of an aggregate
+     * quantity — the safe form of {@see self::ensureDefaultBatch()} for callers
+     * that hold a `stock_levels` total rather than a lot-specific quantity.
+     *
+     * Returns null (and mints nothing) when the real lots already account for
+     * the whole aggregate quantity. Like `ensureDefaultBatch()` it only ever
+     * tops the DEFAULT lot UP: shrinking an over-seeded DEFAULT lot is a ledger
+     * correction with its own operator-run repair command
+     * (`inventory:repair-phantom-default-batches`), never a silent side effect
+     * of a read-shaped path.
+     *
+     * @param  numeric-string  $aggregateQuantity  The tuple's `stock_levels.quantity`.
+     */
+    public function ensureDefaultBatchForUntrackedRemainder(
+        string $companyId,
+        string $tenantId,
+        string $productId,
+        string $locationId,
+        string $aggregateQuantity,
+        ?int $shelfLifeDays,
+        string $asOfDate,
+        ?string $variantId = null,
+    ): ?Batch {
+        $remainder = $this->untrackedRemainderAt(
+            companyId: $companyId,
+            productId: $productId,
+            locationId: $locationId,
+            aggregateQuantity: $aggregateQuantity,
+            variantId: $variantId,
+        );
+
+        return $this->ensureDefaultBatch(
+            companyId: $companyId,
+            tenantId: $tenantId,
+            productId: $productId,
+            locationId: $locationId,
+            targetQuantity: $remainder,
+            shelfLifeDays: $shelfLifeDays,
+            asOfDate: $asOfDate,
+            variantId: $variantId,
+        );
     }
 
     /**

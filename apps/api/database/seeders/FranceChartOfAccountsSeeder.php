@@ -389,7 +389,7 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             // the transaction discount). PCG 709 subdivides by revenue family;
             // 7097 is the marchandises leg, and 709 itself already carries
             // SalesReturn while 7091 carries the voucher clearing account.
-            ['code' => '7097', 'name' => 'Rabais, remises et ristournes accordés sur ventes de marchandises', 'type' => 'expense', 'parent_code' => '70',
+            ['code' => '7097', 'name' => 'Rabais, remises et ristournes accordés sur ventes de marchandises', 'type' => 'revenue', 'parent_code' => '70',
                 'system_purpose' => SystemAccountPurpose::SalesDiscount->value, 'is_system' => true],
             ['code' => '7580', 'name' => 'Écart de règlement (produits)', 'type' => 'revenue', 'parent_code' => '75',
                 'system_purpose' => SystemAccountPurpose::PaymentToleranceIncome->value, 'is_system' => true],

@@ -18,6 +18,7 @@ use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Application\DTOs\ApplyPaymentAllocationCommand;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
+use App\Modules\Treasury\Domain\Enums\AllocationRefusalReason;
 use App\Modules\Treasury\Domain\Enums\AllocationTreatment;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Events\PaymentAllocated;
@@ -30,6 +31,7 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class PaymentAllocationService
 {
@@ -114,7 +116,17 @@ class PaymentAllocationService
             return $this->previewManualAllocation($paymentAmount, $manualAllocations, $tenantId, $companyId);
         }
 
-        return $this->previewAutoAllocation($paymentAmount, $openInvoices, $tenantId, $companyId);
+        // C-0a0 gate r1 / F-1 — the AUTO set is the SERVER's choice of targets,
+        // so a target the classifier refuses is SKIPPED, never thrown on. The
+        // same filter runs here and in the execute loop, which is what makes
+        // preview and execute agree by construction rather than by two hand-kept
+        // predicates staying in step.
+        return $this->previewAutoAllocation(
+            $paymentAmount,
+            $this->rejectUnallocatable($openInvoices),
+            $tenantId,
+            $companyId,
+        );
     }
 
     /**
@@ -211,7 +223,30 @@ class PaymentAllocationService
                 // money is an ADVANCE (Cr 419), not a settlement; a draft,
                 // cancelled or credit-note target is refused outright with 422
                 // DOCUMENT_NOT_ALLOCATABLE.
-                $treatment = $this->allocationClassifier->classify($document);
+                // C-0a0 — receivable side only: this path posts Dr bank / Cr
+                // 411-or-419 and increments a repository, so a payable
+                // settlement reaching it would move cash the wrong way.
+                //
+                // Gate r1 / F-1 — WHO CHOSE THIS DOCUMENT decides what a refusal
+                // does. On MANUAL the operator named it, so a refusal is an
+                // answer they asked for and must surface as a typed 422. On
+                // FIFO / due-date the SERVER named it: the operator asked to
+                // collect a payment, and throwing would abandon every allocatable
+                // document queued behind the refused one AND roll back the whole
+                // transaction. Worse, this exact call runs inside two queued
+                // fiscal projections (`TreasuryAccountPaymentBridge`,
+                // `TreasuryDepositBridge`), where a `DomainException` is not the
+                // `NonRetryableProjectionException` the job special-cases — it is
+                // retried five times and then dead-letters a SEALED device fiscal
+                // fact. So the sweep skips, and says why in the log.
+                $treatment = $command->allocationMethod === AllocationMethod::MANUAL
+                    ? $this->allocationClassifier->classifyReceivableSide($document)
+                    : $this->allocatableTreatmentOrSkip($document);
+
+                if ($treatment === null) {
+                    continue;
+                }
+
                 $isPrepayment = $treatment === AllocationTreatment::Prepayment;
 
                 // Create allocation record
@@ -541,6 +576,26 @@ class PaymentAllocationService
                         ->where('status', DocumentStatus::Confirmed);
                 });
             })
+            // C-0a0 gate r1 / F-1(a) — the provenance half of the mirror. A
+            // POS account-charge invoice is `Invoice + posted + open` exactly
+            // like a native one, so without this it is OFFERED and then refused.
+            // It is excluded in SQL because its marker IS a `documents` column.
+            //
+            // Historical openings are deliberately NOT excluded here: F-2 admits
+            // the AR side, and the AR/AP discriminator lives in
+            // `opening_balance_import_rows`, not on this row — a blanket
+            // `is_historical = false` would restore the availability break from
+            // the other direction, hiding every collectable opening balance from
+            // the sweep. The classifier filter in `rejectUnallocatable()` decides
+            // those, on the same verdict the execute loop uses.
+            ->where(function ($q) {
+                $q->whereNull('reference')
+                    ->orWhere(
+                        'reference',
+                        'NOT LIKE',
+                        DocumentAllocationClassifier::POS_ACCOUNT_CHARGE_REFERENCE_PREFIX.'%',
+                    );
+            })
             ->whereRaw('total > COALESCE((SELECT SUM(amount) FROM payment_allocations WHERE document_id = documents.id), 0)');
 
         // Apply sorting based on allocation method
@@ -553,6 +608,74 @@ class PaymentAllocationService
         }
 
         return $query->get();
+    }
+
+    /**
+     * C-0a0 gate r1 / F-1 — drop from an AUTO set every document the classifier
+     * refuses, recording WHY.
+     *
+     * This runs on UNLOCKED rows, which is exactly right for a preview and not
+     * enough for a write: the execute loop re-takes the verdict on the locked
+     * row (`allocatableTreatmentOrSkip()`), because a status can change between
+     * the two reads. The point of running it here as well is that the operator
+     * is never OFFERED a document the write would then silently pass over.
+     *
+     * @param  Collection<int, Document>  $openInvoices
+     * @return Collection<int, Document>
+     */
+    private function rejectUnallocatable(Collection $openInvoices): Collection
+    {
+        return $openInvoices->filter(function (Document $document): bool {
+            $reason = $this->allocationClassifier->refusalReasonFor($document);
+
+            if ($reason === null) {
+                return true;
+            }
+
+            $this->logAutoAllocationSkip($document, $reason->value);
+
+            return false;
+        })->values();
+    }
+
+    /**
+     * The locked-row verdict for an AUTO target: the treatment, or `null` to
+     * skip. Never throws — see the call site for why.
+     */
+    private function allocatableTreatmentOrSkip(Document $document): ?AllocationTreatment
+    {
+        $reason = $this->allocationClassifier->refusalReasonFor($document);
+
+        if ($reason !== null) {
+            $this->logAutoAllocationSkip($document, $reason->value);
+
+            return null;
+        }
+
+        $treatment = $this->allocationClassifier->classifyOrNull($document);
+
+        // A payable settlement cannot be booked by this path (Dr bank / Cr 411
+        // is the wrong direction for it), and on an AUTO sweep that is a skip
+        // like any other — `getOpenInvoices()` never offers a supplier invoice,
+        // so reaching here at all would mean the mirror had drifted.
+        if ($treatment !== null && ! $treatment->isReceivableSide()) {
+            $this->logAutoAllocationSkip($document, AllocationRefusalReason::PayableNotSettleableHere->value);
+
+            return null;
+        }
+
+        return $treatment;
+    }
+
+    private function logAutoAllocationSkip(Document $document, string $reason): void
+    {
+        Log::info('auto allocation skipped a document the payment applicability policy refuses', [
+            'document_id' => $document->id,
+            'document_number' => $document->document_number,
+            'document_type' => $document->type->value,
+            'status' => $document->status->value,
+            'reason' => $reason,
+        ]);
     }
 
     /**
@@ -733,7 +856,7 @@ class PaymentAllocationService
             // before any write, and so preview and execute agree on the same
             // set (the auto path's SQL mirror of this rule is in
             // `getOpenInvoices()`).
-            $this->allocationClassifier->classify($invoice);
+            $this->allocationClassifier->classifyReceivableSide($invoice);
 
             $invoiceBalance = $this->getInvoiceBalance($invoice);
 

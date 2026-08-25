@@ -41,7 +41,10 @@ class GetExpiredBatchesWithStockTest extends TestCase
     {
         parent::setUp();
 
-        $this->service = new FEFOInventoryService;
+        // Gate r4 R4-4: the service now constructor-injects ProductVariantLookup
+        // (a variant-bearing product must never get a product-level DEFAULT lot),
+        // so it is container-resolved rather than newed up.
+        $this->service = app(FEFOInventoryService::class);
 
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->for($this->tenant)->create();

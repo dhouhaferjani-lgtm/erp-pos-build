@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\POS\Application\Services;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\Accounting\Domain\Services\PosReceiptVatAllocator;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Partner\Domain\Partner;
@@ -76,6 +77,10 @@ final class ReceiptPaymentService
         private readonly PaymentToleranceCheckerContract $toleranceChecker,
         private readonly ReceiptFinalizationService $finalizationService,
         private readonly VoucherRedemptionService $voucherRedemptionService,
+        // W4-9 — the same allocator the device-authored bridge uses, so the
+        // legacy server-recompute path and the fiscal-event path cannot drift
+        // into two different opinions about the same receipt's output VAT.
+        private readonly PosReceiptVatAllocator $vatAllocator,
     ) {}
 
     /**
@@ -215,6 +220,23 @@ final class ReceiptPaymentService
             $receiptPayments = [];
             $treasuryPayments = [];
 
+            // W4-9 — decompose the tender into net revenue + output VAT per
+            // SEALED rate before the first GL write, exactly as
+            // `TreasuryReceiptBridge` does for device-authored receipts. This
+            // path posts one entry per tender line too, so the receipt-level
+            // sealed breakdown is apportioned across the lines here.
+            //
+            // Amounts are the TENDERED figures this legacy path already books
+            // (it has no change-netting pre-pass), so any over-tender lands in
+            // the net revenue leg exactly as it did before W4-9 — the VAT legs
+            // are unaffected by it.
+            /** @var list<string> $legAmounts */
+            $legAmounts = [];
+            foreach ($payments as $paymentData) {
+                $legAmounts[] = (string) $paymentData['amount'];
+            }
+            $vatSplits = $this->vatAllocator->allocate($receipt, $legAmounts, self::SCALE);
+
             foreach ($payments as $index => $paymentData) {
                 // Tenant-isolation sweep (2026-05-01): scope the lookup to the
                 // receipt's tenant and the resolved company so a programmatic
@@ -303,7 +325,8 @@ final class ReceiptPaymentService
                 $journalEntry = $this->generalLedgerService->createPOSPaymentEntry(
                     payment: $treasuryPayment,
                     receipt: $receipt,
-                    repository: $repository
+                    repository: $repository,
+                    vatSplit: $vatSplits[$index],
                 );
 
                 // Link journal entry to payment

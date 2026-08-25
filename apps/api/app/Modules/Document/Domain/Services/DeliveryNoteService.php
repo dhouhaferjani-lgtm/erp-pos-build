@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Document\Domain\Services;
 
 use App\Modules\BatchExpiry\Application\Services\BatchStockService;
+use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Domain\Document;
@@ -56,6 +57,7 @@ final class DeliveryNoteService
         private readonly WeightedAverageCostService $wacService,
         private readonly TaxCalculationService $taxCalculationService,
         private readonly BatchStockService $batchStockService,
+        private readonly FEFOInventoryService $fefoService,
         private readonly InventoryGlPostingBuffer $glBuffer,
     ) {}
 
@@ -306,7 +308,56 @@ final class DeliveryNoteService
                 referenceId: $deliveryNote->id
             );
 
-            // Deduct batch-level stock if this line has a batch assigned
+            // Deduct batch-level stock. Two shapes:
+            //
+            //  - the line NAMES a lot          -> issue from exactly that lot;
+            //  - the line names none, and the
+            //    product is batch-tracked      -> consume FEFO lots.
+            //
+            // 🚨 Campaign wave 4, W4-5 — the second arm did not exist. An outbound
+            // delivery moved `stock_levels` and left the lot ledger untouched, so
+            // lot stock only ever GREW: wave 4 measured `stock_levels` 53 against a
+            // lot ledger of 115 on one product after a day's trading. In a vertical
+            // that forces batch tracking on every product that is fatal — dated lots
+            // never deplete so FEFO ranks stale lots forever, the DEFAULT lot stops
+            // backing genuinely untracked stock (the remainder clamps at 0), and
+            // there is no which-lot-went-to-which-customer trail for a recall.
+            //
+            // `consumeBatchesAtomically()` locks each candidate row
+            // (`FOR UPDATE … SKIP LOCKED`), draws in expiry order and writes one
+            // `inventory_batch_movements` leg per lot keyed to the issue movement
+            // above — the same document-per-action shape the POS channel uses
+            // (`POS\Application\Services\ReceiptCreationService::allocateBatches()`).
+            //
+            // STRICT fulfilment, deliberately, and for the same reason the POS path
+            // is strict (its FU-1 policy note): batch tracking exists for lot
+            // traceability, so a delivery that cannot be drawn from real lots is
+            // REFUSED rather than committed with a silent lot shortfall. The
+            // aggregate `pos_stock_policy` relaxation never applied to lots.
+            //
+            // WHAT "cannot be drawn from real lots" MEANS — three shapes, all now
+            // refusals, all pinned in `BatchTrackedSalesOrderConfirmFefoTest`
+            // (gate r3 R3-4). `consumeBatchesAtomically()`'s candidate predicate is
+            // narrower than "the tuple has lot stock":
+            //
+            //   * EXPIRED lots are invisible (`expiry_date >= today`). Stock sitting
+            //     entirely in a passed-expiry lot is UNDELIVERABLE. That is the
+            //     policy this vertical wants — a parapharmacy must not ship expired
+            //     goods, and shipping them silently is the worse failure — but it is
+            //     stated here rather than left to a WHERE clause. Disposing of
+            //     expired stock is a write-off document, not a delivery.
+            //   * NO lots at all on a batch-tracked tuple is a refusal.
+            //     `GoodsReceiptService` forces batch data on the common inbound path,
+            //     so this is the shape left by a path that never minted a lot.
+            //   * RESERVED lots are skipped: `available_quantity` is the GENERATED
+            //     `quantity − reserved_quantity`, so a fully-held earliest lot is
+            //     passed over and a LATER lot ships. FEFO here means "earliest
+            //     expiry among lots that are actually free", not "earliest expiry".
+            //
+            // The refusal is ATOMIC: `recordSale()` has already moved the aggregate
+            // for this line (and for every earlier line) when the draw fails, so the
+            // exception must roll the whole confirm back. Pinned by the two
+            // atomicity tests, single- and multi-line.
             if ($line->batch_id !== null) {
                 $this->batchStockService->issueBatchStock(
                     tenantId: $deliveryNote->tenant_id,
@@ -314,6 +365,15 @@ final class DeliveryNoteService
                     locationId: (string) $location->id,
                     quantity: (string) $line->quantity,
                     movementId: $movement->id,
+                );
+            } elseif ($product->requires_batch_tracking) {
+                $this->fefoService->consumeBatchesAtomically(
+                    tenantId: $deliveryNote->tenant_id,
+                    productId: (string) $product->id,
+                    locationId: (string) $location->id,
+                    quantity: CurrencyScale::bcformatStrict((string) $line->quantity, self::QUANTITY_SCALE),
+                    movementId: $movement->id,
+                    variantId: $line->variant_id,
                 );
             }
 

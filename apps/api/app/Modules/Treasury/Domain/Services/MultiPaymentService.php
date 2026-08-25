@@ -82,7 +82,11 @@ class MultiPaymentService
             // the SAME document, so posted-ness cannot differ between them.
             // Refuses a draft / cancelled / credit-note target with 422
             // DOCUMENT_NOT_ALLOCATABLE before any payment row is written.
-            $treatment = $this->allocationClassifier->classify($document);
+            // C-0a0 — receivable side only (this path posts the customer GL
+            // direction and increments a repository). It is also the path that
+            // had NO type rejection of its own, so a posted supplier invoice
+            // could reach it the moment the classifier learned to admit one.
+            $treatment = $this->allocationClassifier->classifyReceivableSide($document);
 
             // Resolve the acting user once — synchronous in-transaction GL posting
             // (Task 19) requires an actor. Only the ledgered cash-line branch below
@@ -298,7 +302,8 @@ class MultiPaymentService
             // N-6 — refuses a draft / cancelled / credit-note target (422
             // DOCUMENT_NOT_ALLOCATABLE) and decides whether the deposit settles
             // a receivable or stays an advance against an unposted document.
-            $treatment = $this->allocationClassifier->classify($document);
+            // C-0a0 — receivable side only; see `createSplitPayment()`.
+            $treatment = $this->allocationClassifier->classifyReceivableSide($document);
 
             $allocation = PaymentAllocation::create([
                 'id' => Str::uuid()->toString(),

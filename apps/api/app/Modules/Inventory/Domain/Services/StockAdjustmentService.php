@@ -85,6 +85,17 @@ final class StockAdjustmentService
      *                                         movement row so reversals can recover the original
      *                                         cost without recomputing from a changed WAC.
      * @param  int|null  $batchId  Optional batch ID for batch-tracked products
+     * @param  bool  $creditsLotItself  Set by a caller that credits the lot ledger
+     *                                  ITSELF, right after this call, through
+     *                                  `BatchStockService::receiveBatchStock()`.
+     *                                  Suppresses the implicit DEFAULT-lot top-up:
+     *                                  at THIS point the incoming units are not yet
+     *                                  inside any lot, so the untracked-remainder
+     *                                  helper would back them with a DEFAULT lot and
+     *                                  the caller's own credit would then book them a
+     *                                  SECOND time (gate r1 finding 8). Not the same
+     *                                  as `$batchId`: that one asks THIS method to
+     *                                  write the lot leg.
      * @param  StockMovementReferenceType|null  $referenceType  Source-document morph type; pass together with $referenceId
      * @param  string|null  $referenceId  Source-document UUID; pass together with $referenceType
      */
@@ -101,11 +112,12 @@ final class StockAdjustmentService
         ?string $unitCost = null,
         ?StockMovementReferenceType $referenceType = null,
         ?string $referenceId = null,
+        bool $creditsLotItself = false,
     ): StockMovement {
         $this->assertVariantConsistency($productId, $variantId);
         $this->assertReferenceLinkagePaired($referenceType, $referenceId);
 
-        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $expectedCompanyId, $variantId, $reason, $unitCost, $referenceType, $referenceId): StockMovement {
+        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $expectedCompanyId, $variantId, $reason, $unitCost, $referenceType, $referenceId, $creditsLotItself): StockMovement {
             $companyId = $expectedCompanyId ?? $this->resolveCompanyId($locationId);
 
             // WAC serialization seam: take the per-product advisory lock FIRST
@@ -113,7 +125,7 @@ final class StockAdjustmentService
             // key is product-grain ([$productId]) even when the row we touch is
             // variant-scoped — variant cost is advisory only; WAC stays
             // product-grain (§6.7).
-            return $this->costLock->acquire($this->resolveTenantId($productId, $companyId), $companyId, [$productId], function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $companyId, $variantId, $reason, $unitCost, $referenceType, $referenceId): StockMovement {
+            return $this->costLock->acquire($this->resolveTenantId($productId, $companyId), $companyId, [$productId], function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $companyId, $variantId, $reason, $unitCost, $referenceType, $referenceId, $creditsLotItself): StockMovement {
                 $stockLevel = $this->lockStockLevel($productId, $locationId, $companyId, $variantId);
 
                 /** @var numeric-string $quantityBefore */
@@ -149,7 +161,7 @@ final class StockAdjustmentService
                         movementId: $movement->id,
                         quantity: $quantity,
                     );
-                } else {
+                } elseif (! $creditsLotItself) {
                     $this->ensureDefaultBatchForImplicitPositiveStock($stockLevel, $productId);
                 }
 
@@ -1740,12 +1752,17 @@ final class StockAdjustmentService
             return;
         }
 
-        $this->batchStockService->ensureDefaultBatch(
+        // 🚨 Campaign W2-7 — this used to pass the tuple's FULL aggregate quantity
+        // as the DEFAULT lot's target, so stock already held by real dated lots was
+        // double-booked in the batch ledger. `$stockLevel->quantity` is the
+        // AGGREGATE, and the DEFAULT lot may only ever carry the share of it that
+        // no real lot accounts for.
+        $this->batchStockService->ensureDefaultBatchForUntrackedRemainder(
             companyId: $stockLevel->company_id,
             tenantId: $stockLevel->tenant_id,
             productId: $productId,
             locationId: $stockLevel->location_id,
-            targetQuantity: (string) $stockLevel->quantity,
+            aggregateQuantity: (string) $stockLevel->quantity,
             shelfLifeDays: $product->default_shelf_life_days,
             asOfDate: now()->toDateString(),
             variantId: $stockLevel->variant_id,

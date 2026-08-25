@@ -206,7 +206,14 @@ final class BackfillChartPurposesCommandTest extends TestCase
         $this->assertNotNull($discount);
         $this->assertSame(SystemAccountPurpose::SalesDiscount->value, $discount->system_purpose);
         $this->assertSame($revenueParent, $discount->parent_id);
-        $this->assertSame('expense', $discount->type);
+        // W4-9 treasury gate I-3 — `709x Rabais, remises et ristournes accordés`
+        // is contra-revenue: a debit-balance account inside the revenue class.
+        // Typing it `expense` made `ProfitLossService`, which partitions on
+        // `accounts.type`, report turnover GROSS with the discount as an
+        // operating charge instead of `CA net de RRR`. Kept in lockstep with the
+        // seeders, `SystemAccountPurpose::expectedAccountType()` and the frozen
+        // chart goldens.
+        $this->assertSame('revenue', $discount->type);
     }
 
     public function test_it_leaves_a_chart_that_already_carries_the_purpose_on_another_code_untouched(): void
