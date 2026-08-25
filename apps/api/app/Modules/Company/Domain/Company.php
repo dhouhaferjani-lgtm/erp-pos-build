@@ -110,6 +110,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property InventoryValuationMode|null $inventory_valuation_mode Company override for the
  *                                                                 inventory valuation system. NULL = inherit the country default; resolve through
  *                                                                 `InventoryValuationModeResolver`, never by reading this column directly.
+ * @property bool|null $count_correction_gl_posting_enabled Company override for whether a count
+ *                                                            correction posts a shrinkage/gain journal entry. NULL = inherit the country
+ *                                                            default; resolve through `CountCorrectionGlPostingResolver`, never by reading
+ *                                                            this column directly (lane P-1, owner ruling 2026-08-25).
  * @property CarbonImmutable $inventory_gl_cutover_at COGS-at-exit detector watermark; NOT NULL and initialized on company creation
  * @property string $default_target_margin Default target margin percentage
  * @property string $default_minimum_margin Default minimum margin percentage
@@ -278,6 +282,9 @@ class Company extends Model
         'closed_at',
         'inventory_costing_method',
         'inventory_valuation_mode',
+        // Lane P-1 — nullable override of the seeded country count-correction
+        // GL-posting default. NULL = inherit the country default.
+        'count_correction_gl_posting_enabled',
         'inventory_gl_cutover_at',
         'default_target_margin',
         'default_minimum_margin',
@@ -332,6 +339,7 @@ class Company extends Model
             'status' => CompanyStatus::class,
             'tax_status' => CompanyTaxStatus::class,
             'inventory_valuation_mode' => InventoryValuationMode::class,
+            'count_correction_gl_posting_enabled' => 'boolean',
             'inventory_gl_cutover_at' => 'immutable_datetime',
             'allow_below_cost_sales' => 'boolean',
             'default_max_discount_percent' => 'decimal:2',

@@ -331,6 +331,12 @@ class CheckCogsCoverageCommandTest extends TestCase
         );
 
         $movement->update(['reference_type' => 'stock_adjustment']);
+        // The count-correction arm of this negative rode on the pre-P-1 default
+        // (posting dormant, so an unposted count correction was by design). Lane
+        // P-1 made ON the default, so the opt-out is now stated instead of
+        // assumed — otherwise this row is a genuine D-e finding and the case
+        // would be asserting the wrong exclusion.
+        $this->dpCompany->update(['count_correction_gl_posting_enabled' => false]);
         $this->movement(
             MovementReason::CountCorrection,
             '4.000000',
@@ -499,11 +505,16 @@ class CheckCogsCoverageCommandTest extends TestCase
     /**
      * T21 / ticket 2026-08-18-remove-counting-detector-exclusion-with-t21.
      *
-     * The counting exclusion is tied to the POSTING FLAG, not to the wave. While
-     * count-correction posting is dormant (OQ-12/H-5), a count movement with no
-     * entry is by design and stays silent. The moment the flag is enabled the
-     * exclusion lifts: the same movement becomes a D-e finding, and it goes
-     * silent again once its movement-keyed `inventory_shrinkage` entry exists.
+     * The counting exclusion is tied to the resolved POSTING SETTING, not to the
+     * wave — and lane P-1 (owner ruling 2026-08-25) made ON the default, so the
+     * dormant leg is now expressed the only way it can still occur: a company
+     * that turned posting off. RE-PINNED accordingly — the old version asserted
+     * silence on an untouched company, which is now a real D-e finding.
+     *
+     * Where a company has posting off, a count movement with no entry is by
+     * design and stays silent. Where it is on the exclusion lifts: the same
+     * movement becomes a D-e finding, and it goes silent again once its
+     * movement-keyed `inventory_shrinkage` entry exists.
      */
     public function test_de_reports_count_corrections_once_their_posting_flag_is_live(): void
     {
@@ -515,12 +526,15 @@ class CheckCogsCoverageCommandTest extends TestCase
             referenceType: 'inventory_counting',
         );
 
-        // Dormant (the shipped default): silent.
+        // Dormant (this company opted out): silent.
+        $this->dpCompany->update(['count_correction_gl_posting_enabled' => false]);
         Log::spy();
         $this->artisan('accounting:check-cogs-coverage')->assertExitCode(0);
 
-        // Live: the same movement is now a missing-entry finding.
-        config(['inventory.count_correction_gl_posting_enabled' => true]);
+        // Live — the P-1 default, reached by CLEARING the override rather than
+        // by setting one, so the case pins the inherited answer and not a
+        // second explicit opinion.
+        $this->dpCompany->update(['count_correction_gl_posting_enabled' => null]);
         Log::spy();
         $this->artisan('accounting:check-cogs-coverage')->assertExitCode(1);
         Log::shouldHaveReceived('warning')->withArgs(
@@ -561,6 +575,9 @@ class CheckCogsCoverageCommandTest extends TestCase
     public function test_de_excludes_flat_and_historical_count_corrections_once_the_flag_is_live(): void
     {
         $this->dpCompany->update(['inventory_gl_cutover_at' => now()->subHour()]);
+        // Redundant since lane P-1 made ON the default, kept because a test that
+        // silently depends on a default it never states is a test that goes
+        // green for the wrong reason the next time the default moves.
         config(['inventory.count_correction_gl_posting_enabled' => true]);
 
         $flat = $this->movement(
