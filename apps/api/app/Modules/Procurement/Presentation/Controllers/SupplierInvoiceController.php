@@ -269,6 +269,19 @@ final class SupplierInvoiceController extends Controller
             return $this->notFoundResponse('Supplier invoice');
         }
 
+        // Q-11 — re-matching is a DRAFT-only operation. Once the invoice is posted,
+        // `match_status` is the authoritative post-time value that
+        // SupplierInvoicePostingService booked the GL (and any PPV variance) against;
+        // recomputing it here would leave the document claiming a state the ledger was
+        // never written under. RematchDraftSupplierInvoicesCommand carries the same
+        // Draft-only restriction.
+        if ($doc->status !== DocumentStatus::Draft) {
+            return $this->validationErrorResponse(
+                'MATCH_NOT_ALLOWED',
+                'Only draft supplier invoices can be re-matched. The match status of a posted invoice is the authoritative post-time value the general ledger was booked against.'
+            );
+        }
+
         $matchStatus = $this->matcher->match($doc);
         $doc->match_status = $matchStatus;
         $doc->save();

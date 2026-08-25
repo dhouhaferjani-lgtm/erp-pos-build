@@ -25,6 +25,7 @@ use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -157,6 +158,130 @@ final class ExpensePostTest extends TestCase
             'source_type' => 'expense',
             'source_id' => $expense->id,
         ]);
+    }
+
+    /**
+     * Q-11 (Treasury sub-report): `generateExpenseNumber` deduped within
+     * `company_id`, but the only unique index on the column is
+     * `documents_tenant_id_type_document_number_unique` on
+     * `(tenant_id, type, document_number)`. In a tenant with two companies the
+     * second company's first expense post generated `EXP-YYYY-000001`, which the
+     * first company already held — an unconditional unique violation that rolls
+     * back the whole post transaction (GL entry, VAT detail, WAC capitalisation).
+     */
+    public function test_expense_numbers_do_not_collide_across_two_companies_in_the_same_tenant(): void
+    {
+        [$user, $companyA] = $this->makeUserWithPermissions(['expenses.post', 'expenses.view']);
+        $companyB = $this->makeSiblingCompany($user, 'Second Company');
+
+        // Company A already holds this tenant's EXP-<year>-000001.
+        $numberA = sprintf('EXP-%s-%06d', date('Y'), 1);
+        $this->makeExpense($companyA, $user, [
+            'status' => DocumentStatus::Posted,
+            'document_number' => $numberA,
+            'total' => '120.000',
+            'currency' => 'TND',
+        ]);
+
+        // Company B posts ITS first expense. A company-scoped max+1 mints
+        // EXP-<year>-000001 again and violates
+        // documents_tenant_id_type_document_number_unique.
+        $numberB = $this->postExpenseForCompany($user, $companyB, '140.000');
+
+        $this->assertNotSame(
+            $numberA,
+            $numberB,
+            'Expense numbers must be unique tenant-wide — the unique index is (tenant_id, type, document_number).'
+        );
+        $this->assertSame(sprintf('EXP-%s-%06d', date('Y'), 2), $numberB);
+    }
+
+    /**
+     * Q-11: the max+1 read must be serialised by a transaction-scoped advisory
+     * lock (the shape `InstrumentRemittance::allocateNumber()` already uses), keyed
+     * on the SAME scope the scan uses — the tenant.
+     */
+    public function test_expense_number_allocation_takes_the_tenant_advisory_lock(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            self::markTestSkipped('pg_advisory_xact_lock is observable on PostgreSQL only.');
+        }
+
+        [$user, $company] = $this->makeUserWithPermissions(['expenses.post', 'expenses.view']);
+
+        DB::enableQueryLog();
+        $this->postExpenseForCompany($user, $company, '90.000');
+        $log = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $locks = array_values(array_filter(
+            $log,
+            static fn (array $entry): bool => str_contains((string) $entry['query'], 'pg_advisory_xact_lock(hashtextextended')
+                && in_array("expense_number:{$user->tenant_id}", array_map(strval(...), $entry['bindings']), true)
+        ));
+
+        $this->assertNotSame(
+            [],
+            $locks,
+            'Expected a pg_advisory_xact_lock keyed expense_number:{tenantId} during expense-number allocation.'
+        );
+    }
+
+    /**
+     * Post one expense for the given company and return the allocated number.
+     */
+    private function postExpenseForCompany(User $user, Company $company, string $total): string
+    {
+        app(CompanyContext::class)->setCompanyId($company->id);
+        app(ChartOfAccountsService::class)->seedForCompany($company);
+
+        $expense = $this->makeExpense($company, $user, [
+            'total' => $total,
+            'currency' => 'TND',
+        ]);
+
+        ExpenseMetadata::create([
+            'document_id' => $expense->id,
+            'is_paid' => true,
+            'payment_repository_id' => null,
+            'payment_date' => now()->toDateString(),
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->withHeader('X-Company-Id', $company->id)
+            ->postJson("/api/v1/expenses/{$expense->id}/post")
+            ->assertOk();
+
+        $number = $expense->fresh()?->document_number;
+        $this->assertIsString($number);
+
+        return $number;
+    }
+
+    /**
+     * Create a second company under the same tenant, with the user a member of it.
+     */
+    private function makeSiblingCompany(User $user, string $name): Company
+    {
+        $company = Company::create([
+            'tenant_id' => $user->tenant_id,
+            'name' => $name,
+            'legal_name' => $name.' LLC',
+            'tax_id' => 'TAX'.uniqid(),
+            'country_code' => 'TN',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'currency' => 'TND',
+            'status' => CompanyStatus::Active,
+        ]);
+
+        UserCompanyMembership::create([
+            'user_id' => $user->id,
+            'company_id' => $company->id,
+            'role' => 'accountant',
+        ]);
+
+        return $company;
     }
 
     // -------------------------------------------------------------------------

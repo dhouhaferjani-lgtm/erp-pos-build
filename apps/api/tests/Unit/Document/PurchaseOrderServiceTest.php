@@ -19,6 +19,7 @@ use App\Modules\Inventory\Application\Services\LandedCostService;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
@@ -50,7 +51,10 @@ class PurchaseOrderServiceTest extends TestCase
 
         $landedCostService = $this->app->make(LandedCostService::class);
         $taxCalculationService = $this->app->make(TaxCalculationService::class);
-        $this->service = new PurchaseOrderService($landedCostService, $taxCalculationService);
+        // W2-6 r2 C2: confirm() now refuses unpriced lines, which needs the money
+        // scale of the document's currency (rule 19 — resolver, never a literal).
+        $scaleResolver = $this->app->make(CurrencyScaleResolverInterface::class);
+        $this->service = new PurchaseOrderService($landedCostService, $taxCalculationService, $scaleResolver);
 
         $this->partner = Partner::factory()->create([
             'tenant_id' => $this->tenant->id,

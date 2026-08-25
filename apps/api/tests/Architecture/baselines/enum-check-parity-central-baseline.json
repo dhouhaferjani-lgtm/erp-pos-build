@@ -1,0 +1,13 @@
+[
+    "admin_template_accounts.system_purpose::MISSING",
+    "admin_template_accounts.type::MISSING",
+    "admin_templates.domain::MISSING",
+    "admin_templates.status::MISSING",
+    "billing_invoices.status::MISSING",
+    "billing_payments.status::MISSING",
+    "billing_refunds.status::MISSING",
+    "country_template_assignments.domain::MISSING",
+    "tenant_subscriptions.status::MISSING",
+    "tenants.plan::MISSING",
+    "tenants.status::MISSING"
+]

@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { DocumentForm, buildLinePayload, computeLinesDirty } from './DocumentForm'
+import { DocumentForm, computeLinesDirty } from './DocumentForm'
+import { buildLinePayload } from './linePayload'
 
 const draftAutoSaveState = vi.hoisted(() => ({
   draftId: undefined as string | undefined,

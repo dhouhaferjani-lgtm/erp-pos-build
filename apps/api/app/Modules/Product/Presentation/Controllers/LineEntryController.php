@@ -42,7 +42,7 @@ final class LineEntryController extends Controller
             return $this->success([
                 'kind' => 'product',
                 'matched_code_type' => 'product_barcode',
-                'product' => ProductData::fromModel($productBarcode, ProductMediaData::makeEmpty()),
+                'product' => $this->productPayload($productBarcode, $request),
             ], $request);
         }
 
@@ -51,7 +51,7 @@ final class LineEntryController extends Controller
             return $this->success([
                 'kind' => 'product',
                 'matched_code_type' => 'product_sku',
-                'product' => ProductData::fromModel($productSku, ProductMediaData::makeEmpty()),
+                'product' => $this->productPayload($productSku, $request),
             ], $request);
         }
 
@@ -190,10 +190,12 @@ final class LineEntryController extends Controller
             ], $request);
         }
 
+        $redactCost = $this->mustRedactCost($request);
+
         return $this->success([
             'kind' => 'variant',
             'matched_code_type' => $matchedCodeType,
-            'product' => ProductData::fromModel($product, ProductMediaData::makeEmpty()),
+            'product' => $this->productPayload($product, $request),
             'variant' => [
                 'id' => $variant->id,
                 'product_id' => $variant->productId,
@@ -203,10 +205,41 @@ final class LineEntryController extends Controller
                 'name_suffix' => $variant->nameSuffix,
                 'is_default' => $variant->isDefault,
                 'price_override' => $variant->priceOverride,
-                'cost_override' => $variant->costOverride,
+                // Cost data: same confidentiality rule as the product DTO's
+                // cost fields. `price_override` is sale-side and stays.
+                'cost_override' => $redactCost ? null : $variant->costOverride,
                 'image_url' => $variant->imageUrl,
             ],
         ], $request);
+    }
+
+    /**
+     * Product DTO for the scan/lookup response, with cost/margin fields redacted
+     * for callers lacking `pricing.view_cost_prices`.
+     *
+     * This endpoint and `products.index` are both gated by `can:products.view`
+     * and both feed the same document line editor — typed search resolves through
+     * ProductController (which redacts, see ProductController::index), barcode scan
+     * resolves through here. Without this the two entry paths disagreed and a scan
+     * handed cost data to a non-holder. W2-6 made the leak visible on screen: the
+     * scanned `purchase_price` pre-fills the purchase-order price cell and is
+     * announced by the line's price-provenance hint.
+     */
+    private function productPayload(Product $product, Request $request): ProductData
+    {
+        $dto = ProductData::fromModel($product, ProductMediaData::makeEmpty());
+
+        return $this->mustRedactCost($request) ? $dto->withoutCostFields() : $dto;
+    }
+
+    private function mustRedactCost(Request $request): bool
+    {
+        $user = $request->user();
+        if (! $user instanceof User) {
+            abort(403);
+        }
+
+        return ! $user->can('pricing.view_cost_prices');
     }
 
     private function pricingContextKey(string $productId, ?string $variantId): string
