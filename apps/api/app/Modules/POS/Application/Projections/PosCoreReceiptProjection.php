@@ -1406,6 +1406,16 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * The canonical `vat_breakdown[]` carries pre-computed gross_amount per
      * synthesis v5 §6.C; we mirror it straight through. `tax_category_code`
      * is canonical-only (not projected to columns).
+     *
+     * **D-1 (owner ruling 2026-08-25).** From `event_version = 5` the sealed
+     * `net_amount` / `vat_amount` are the taxable base and VAT NET of the
+     * ticket-level remise, ventilated pro-rata per rate, and each row carries
+     * its own `discount_allocated`. The projector still mirrors verbatim — it
+     * never recomputes a sealed VAT — so the only change here is that the
+     * ventilated share is carried across too. `discountAllocated` is `null` on
+     * v1..v4 rows and is written as NULL: "the remise was ventilated and this
+     * group got nothing" and "this version had no concept of ventilation" stay
+     * distinguishable in the read model the DGI declaration reads.
      */
     private function writeVatBreakdown(string $receiptId, SaleReceiptCanonicalView $view): void
     {
@@ -1417,6 +1427,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 'net_amount' => $vat->netAmount,
                 'vat_amount' => $vat->vatAmount,
                 'gross_amount' => $vat->grossAmount,
+                'discount_allocated' => $vat->discountAllocated,
             ]);
         }
     }

@@ -156,6 +156,14 @@ final class AutoAllocationSkipsRefusedDocumentsTest extends TestCase
      * The other half of the rule: a document the OPERATOR named still throws.
      * Skipping a manually chosen target would silently do nothing and tell them
      * the payment was allocated.
+     *
+     * OWNER RULING OQ-74 (recorded `d0cfa624f`) — ALLOW. The REASON changed here,
+     * the refusal did not. W4-3 mints an AP opening as a `SupplierInvoice`, so it
+     * is no longer refused for missing provenance: it is refused because this is
+     * the AR allocation path, which posts `Dr bank / Cr 411`, and a payable
+     * settles `Dr 401 / Cr bank` through `PaymentController::store()`. Same
+     * outcome, truer reason — and the positive case (the supplier arm accepting
+     * it) is pinned in `HistoricalOpeningSideSettlementTest`.
      */
     public function test_the_manual_path_still_throws_for_the_same_document(): void
     {
@@ -171,8 +179,7 @@ final class AutoAllocationSkipsRefusedDocumentsTest extends TestCase
         ]);
 
         $response->assertStatus(422);
-        $response->assertJsonPath('error.code', 'DOCUMENT_NOT_ALLOCATABLE');
-        $response->assertJsonPath('error.details.reason', 'historical_opening_provenance');
+        $response->assertJsonPath('error.code', 'SUPPLIER_INVOICE_NOT_PAYABLE_HERE');
         $this->assertSame(0, PaymentAllocation::query()->where('document_id', $opening->id)->count());
     }
 

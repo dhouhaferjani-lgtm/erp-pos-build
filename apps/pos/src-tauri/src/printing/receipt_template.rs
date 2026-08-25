@@ -612,10 +612,48 @@ pub fn format_receipt_with_settings(
             );
         }
 
-        b.two_column(
-            &data.label(|l| &l.tax, "Tax:"),
-            &format!("{}{}", data.currency_symbol, data.tax_amount),
-        );
+        // ── VAT ventilation (D-1, owner ruling 2026-08-25) ──
+        // Commercial layout: lines → Remise → per-rate base/VAT → TOTAL.
+        //
+        // The table sits ABOVE the TOTAL and REPLACES the standalone "Tax:"
+        // line, because since D-1 the sealed base and VAT are POST-remise.
+        // Printing `Subtotal − Remise + Tax` down the ticket no longer lands on
+        // TOTAL (the remise would be counted twice: once as its own line and
+        // again inside the reduced tax), so the aggregate Tax line is shown
+        // ONLY when there is no ventilation table to carry the same
+        // information — legacy receipts, and tickets whose VAT block the
+        // merchant has switched off.
+        //
+        // With the table present the ticket's arithmetic is
+        // `Subtotal (TTC) − Remise (+ rounding) == TOTAL`, and the ventilation
+        // shows the taxable base the customer was actually charged on.
+        let shows_vat_breakdown =
+            data.show_vat_breakdown.unwrap_or(true) && !data.vat_breakdown.is_empty();
+
+        if shows_vat_breakdown {
+            b.separator('-');
+            b.bold(true);
+            b.three_column(
+                &data.label(|l| &l.vat_rate, "VAT %"),
+                &data.label(|l| &l.taxable, "Taxable"),
+                &data.label(|l| &l.tax_col, "Tax"),
+            );
+            b.bold(false);
+
+            for vat in &data.vat_breakdown {
+                b.three_column(
+                    &format!("{}%", vat.rate),
+                    &format!("{}{}", data.currency_symbol, vat.taxable),
+                    &format!("{}{}", data.currency_symbol, vat.tax),
+                );
+            }
+            b.separator('-');
+        } else {
+            b.two_column(
+                &data.label(|l| &l.tax, "Tax:"),
+                &format!("{}{}", data.currency_symbol, data.tax_amount),
+            );
+        }
 
         // ── Cash rounding (SIGNED) ──
         // Deliberately inside the totals block, between Tax and TOTAL, NOT in
@@ -644,26 +682,6 @@ pub fn format_receipt_with_settings(
         );
         b.font_size(FontSize::Normal);
         b.bold(false);
-
-        // ── VAT Breakdown ──
-        if data.show_vat_breakdown.unwrap_or(true) && !data.vat_breakdown.is_empty() {
-            b.separator('-');
-            b.bold(true);
-            b.three_column(
-                &data.label(|l| &l.vat_rate, "VAT %"),
-                &data.label(|l| &l.taxable, "Taxable"),
-                &data.label(|l| &l.tax_col, "Tax"),
-            );
-            b.bold(false);
-
-            for vat in &data.vat_breakdown {
-                b.three_column(
-                    &format!("{}%", vat.rate),
-                    &format!("{}{}", data.currency_symbol, vat.taxable),
-                    &format!("{}{}", data.currency_symbol, vat.tax),
-                );
-            }
-        }
 
         // ── Payments ──
         if data.show_payment_details.unwrap_or(true) {
@@ -1491,6 +1509,75 @@ mod tests_z_cash_counts {
         // the line out of the `show_payment_details` gate.
         assert!(index_of("Tax:") < index_of("Rounding"));
         assert!(index_of("Rounding") < index_of("TOTAL:"));
+    }
+
+    /// D-1 (owner ruling 2026-08-25) — a discounted ticket prints the
+    /// commercial layout: lines → Remise → per-rate base/VAT → TOTAL, and the
+    /// customer's arithmetic lands on `Subtotal − Remise == TOTAL`.
+    ///
+    /// The ventilation table REPLACES the aggregate `Tax:` line: since D-1 the
+    /// base and VAT are POST-remise, so `Subtotal − Remise + Tax` would count
+    /// the discount twice on the printed ticket.
+    #[test]
+    fn a_discounted_sale_prints_the_ventilation_above_the_total_and_no_aggregate_tax_line() {
+        let mut data = make_rounded_sale();
+        data.subtotal = "640.000".to_string();
+        data.discount_amount = "50.000".to_string();
+        data.tax_amount = "65.453".to_string();
+        data.total = "590.000".to_string();
+        data.cash_rounding_adjustment = None;
+        data.has_cash_rounding = Some(false);
+        data.show_vat_breakdown = Some(true);
+        data.vat_breakdown = vec![
+            VatBreakdownLine { rate: "0.00".to_string(), taxable: "63.609".to_string(), tax: "0.000".to_string() },
+            VatBreakdownLine { rate: "7.00".to_string(), taxable: "92.188".to_string(), tax: "6.453".to_string() },
+            VatBreakdownLine { rate: "13.00".to_string(), taxable: "184.375".to_string(), tax: "23.969".to_string() },
+            VatBreakdownLine { rate: "19.00".to_string(), taxable: "184.375".to_string(), tax: "35.031".to_string() },
+        ];
+
+        let bytes = format_receipt_with_settings(&data, None);
+        let text = String::from_utf8_lossy(&bytes);
+
+        let index_of = |needle: &str| {
+            text.find(needle)
+                .unwrap_or_else(|| panic!("{needle:?} not printed\n---\n{text}\n---"))
+        };
+
+        assert!(index_of("Subtotal:") < index_of("Discount"));
+        assert!(index_of("Discount") < index_of("Taxable"));
+        assert!(index_of("Taxable") < index_of("TOTAL:"));
+        assert!(
+            !text.contains("Tax:"),
+            "the aggregate Tax line must give way to the ventilation\n{text}"
+        );
+
+        // The ticket's own arithmetic. `printed_millimes` reads the printed
+        // sign, and the Remise line prints as `-TND50.000`, so the discount
+        // comes back NEGATIVE and is ADDED here.
+        assert_eq!(
+            printed_millimes(&text, "Subtotal:") + printed_millimes(&text, "Discount"),
+            printed_millimes(&text, "TOTAL:"),
+        );
+    }
+
+    /// With the VAT block switched off there is no table to carry the base and
+    /// VAT, so the aggregate `Tax:` line comes back — a merchant hiding the
+    /// ventilation must not also lose the VAT figure.
+    #[test]
+    fn hiding_the_vat_block_restores_the_aggregate_tax_line() {
+        let mut data = make_rounded_sale();
+        data.show_vat_breakdown = Some(false);
+        data.vat_breakdown = vec![VatBreakdownLine {
+            rate: "19.00".to_string(),
+            taxable: "10.000".to_string(),
+            tax: "1.900".to_string(),
+        }];
+
+        let bytes = format_receipt_with_settings(&data, None);
+        let text = String::from_utf8_lossy(&bytes);
+
+        assert!(text.contains("Tax:"), "aggregate Tax line must survive\n{text}");
+        assert!(!text.contains("Taxable"), "ventilation must stay hidden\n{text}");
     }
 
     #[test]

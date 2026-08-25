@@ -41,6 +41,7 @@ function makeOfflineCheckoutResult(overrides: Partial<CheckoutResult> = {}): Che
     subtotal: '20.00',
     taxAmount: '0.00',
     discountAmount: '0.00',
+    vatBreakdown: [],
     changeDue: '0.00',
     currency: 'EUR',
     // fiscalHash is optional (string | undefined)
@@ -563,6 +564,10 @@ describe('buildEscPosReceiptData — currency-aware display scale', () => {
     const receipt = makeStorageScaleReceipt('EUR');
     const result = buildEscPosReceiptData(receipt);
 
+    // D-1 gate r1 finding 8: this fixture's vat_details carry no
+    // `discount_allocated`, i.e. a PRE-D-1 receipt, so a reprint stays
+    // byte-faithful and prints `receipts.subtotal` verbatim. The gross-TTC
+    // derivation applies only to post-remise receipts (pinned below).
     // Top-level totals
     expect(result.subtotal).toBe('10.00');
     expect(result.tax_amount).toBe('1.90');
@@ -591,6 +596,7 @@ describe('buildEscPosReceiptData — currency-aware display scale', () => {
     const receipt = makeStorageScaleReceipt('TND');
     const result = buildEscPosReceiptData(receipt);
 
+    // Pre-D-1 reprint — see the EUR case above.
     // Top-level totals — scale 3 for TND
     expect(result.subtotal).toBe('10.000');
     expect(result.tax_amount).toBe('1.900');
@@ -613,6 +619,30 @@ describe('buildEscPosReceiptData — currency-aware display scale', () => {
     // VAT breakdown
     expect(result.vat_breakdown[0]!.taxable).toBe('10.000');
     expect(result.vat_breakdown[0]!.tax).toBe('1.900');
+  });
+
+/**
+   * D-1 gate r1 finding 8 — the era decides which `Subtotal` the ticket prints.
+   *
+   * On a POST-remise receipt `receipts.subtotal` is the taxable base, so the
+   * ticket prints the GROSS (TTC) before the remise and `Subtotal − Remise`
+   * lands on TOTAL. On a pre-D-1 receipt it was the pre-discount NET, and a
+   * reprint must stay byte-faithful to what the customer was handed.
+   */
+  it('prints the gross TTC subtotal on a POST-remise receipt, and the stored net on a pre-D-1 one', () => {
+    const base = makeStorageScaleReceipt('TND');
+
+    const preD1 = buildEscPosReceiptData(base);
+    expect(preD1.subtotal).toBe('10.000');
+
+    const postRemise = buildEscPosReceiptData({
+      ...base,
+      discount_amount: '2.000',
+      total: '9.900',
+      vat_details: base.vat_details.map((v) => ({ ...v, discount_allocated: '2.000' })),
+    });
+    // total + discount = 11.900 gross TTC, and 11.900 − 2.000 = 9.900 = TOTAL.
+    expect(postRemise.subtotal).toBe('11.900');
   });
 
   it('formats all monetary strings to 0 decimals for JPY', () => {
@@ -653,6 +683,7 @@ describe('buildEscPosReceiptData — currency-aware display scale', () => {
     });
     const result = buildEscPosReceiptData(receipt);
 
+    // Pre-D-1 reprint — see the EUR case above.
     expect(result.subtotal).toBe('1000');
     expect(result.tax_amount).toBe('100');
     expect(result.total).toBe('1100');

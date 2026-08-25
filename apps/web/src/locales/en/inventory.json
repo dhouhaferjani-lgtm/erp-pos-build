@@ -536,6 +536,22 @@
       },
       "perpetualHint": "Every stock exit relieves inventory and records cost of goods sold as it happens."
     },
+    "countCorrectionGl": {
+      "title": "Stock-Count Corrections in Accounting",
+      "description": "Whether a stock-count difference is posted to the general ledger as it is applied.",
+      "toggleLabel": "Post stock-count corrections to the ledger",
+      "toggleHint": "A shortage is booked as an inventory shrinkage expense, an overage as inventory gain, valued at the item's own cost. Turn this off and the stock is still corrected and still costed — only the accounting entry is withheld.",
+      "sourceLabel": "Set by",
+      "source": {
+        "company": "This company",
+        "country": "Your country's default",
+        "system": "System default"
+      },
+      "inheritedHint": "Inherited. Tick or untick to set your own preference for this company.",
+      "overriddenHint": "This company has its own setting, so it will not follow future changes to your country's default.",
+      "reset": "Use my country's default",
+      "saveFailed": "Could not save the stock-count posting preference."
+    },
     "margins": {
       "title": "Default Margin Policies",
       "description": "Set company-wide default margins. Individual products can override these settings.",
@@ -869,7 +885,15 @@
         "description": "These sales occurred before the line was counted but reached the server after finalization. Stock was reduced twice for these lines.",
         "noAutoCorrection": "No automatic correction was made. Review each line and decide whether a manual stock adjustment is needed.",
         "quantity": "Quantity reduced twice"
-      }
+      },
+      "countedItems": "Counted items",
+      "expected": "Expected",
+      "counted": "Counted",
+      "applied": "Applied",
+      "appliedYes": "Applied",
+      "appliedNo": "Not applied",
+      "itemsApplied": "Variances applied",
+      "itemsNotApplied": "Variances not applied"
     },
     "messages": {
       "created": "Counting operation created successfully",
@@ -1068,11 +1092,33 @@
     "navLabel": "Storage & locations",
     "title": "Storage & locations",
     "productCount": "Products",
-    "location": { "label": "Location", "empty": "Create a location before defining its storage layout." },
-    "views": { "tree": "Tree", "table": "Table" },
-    "tree": { "label": "Storage node tree", "expand": "Expand", "collapse": "Collapse" },
-    "picker": { "label": "Choose a storage node" },
-    "productField": { "title": "Storage location", "description": "Choose where this product is stored at each location.", "loading": "Loading storage locations…", "loadingPath": "Loading path…", "unassigned": "Not assigned", "change": "Choose location", "clear": "Clear", "saved": "Storage location saved.", "cleared": "Storage location cleared." },
+    "location": {
+      "label": "Location",
+      "empty": "Create a location before defining its storage layout."
+    },
+    "views": {
+      "tree": "Tree",
+      "table": "Table"
+    },
+    "tree": {
+      "label": "Storage node tree",
+      "expand": "Expand",
+      "collapse": "Collapse"
+    },
+    "picker": {
+      "label": "Choose a storage node"
+    },
+    "productField": {
+      "title": "Storage location",
+      "description": "Choose where this product is stored at each location.",
+      "loading": "Loading storage locations…",
+      "loadingPath": "Loading path…",
+      "unassigned": "Not assigned",
+      "change": "Choose location",
+      "clear": "Clear",
+      "saved": "Storage location saved.",
+      "cleared": "Storage location cleared."
+    },
     "subtitle": "Map the physical path from aisle to bin, then place products where teams can find them.",
     "importExplainer": "Importing products? Add location_code and placement_path columns (for example A1 > R2 > B7) to preview placements before committing them.",
     "empty": {
@@ -1098,11 +1144,49 @@
       "restore": "Restore",
       "showDeleted": "Show deleted"
     },
-    "detail": { "title": "Storage node details", "breadcrumb": "Storage path", "productsTab": "Products", "selectPrompt": "Select a node to inspect its path and manage the products stored there.", "close": "Close details" },
-    "types": { "zone": "Zone", "aisle": "Aisle", "rack": "Rack", "shelf": "Shelf", "bin": "Bin", "section": "Section" },
-    "products": { "search": "Search by name, SKU, or barcode", "loading": "Loading products…", "empty": "No products are placed directly in this node.", "addPlaceholder": "Find a product", "assign": "Place product", "unassign": "Remove placement", "moveTarget": "Move selected products to", "chooseTarget": "Choose destination", "bulkMove": "Move selected", "previous": "Previous", "next": "Next" },
-    "table": { "label": "Storage nodes", "select": "Select", "selectNode": "Select {{name}}", "selected": "{{count}} nodes selected", "code": "Code", "name": "Name", "type": "Type", "products": "Products", "active": "Status" },
-    "status": { "active": "Active", "inactive": "Inactive" },
+    "detail": {
+      "title": "Storage node details",
+      "breadcrumb": "Storage path",
+      "productsTab": "Products",
+      "selectPrompt": "Select a node to inspect its path and manage the products stored there.",
+      "close": "Close details"
+    },
+    "types": {
+      "zone": "Zone",
+      "aisle": "Aisle",
+      "rack": "Rack",
+      "shelf": "Shelf",
+      "bin": "Bin",
+      "section": "Section"
+    },
+    "products": {
+      "search": "Search by name, SKU, or barcode",
+      "loading": "Loading products…",
+      "empty": "No products are placed directly in this node.",
+      "addPlaceholder": "Find a product",
+      "assign": "Place product",
+      "unassign": "Remove placement",
+      "moveTarget": "Move selected products to",
+      "chooseTarget": "Choose destination",
+      "bulkMove": "Move selected",
+      "previous": "Previous",
+      "next": "Next"
+    },
+    "table": {
+      "label": "Storage nodes",
+      "select": "Select",
+      "selectNode": "Select {{name}}",
+      "selected": "{{count}} nodes selected",
+      "code": "Code",
+      "name": "Name",
+      "type": "Type",
+      "products": "Products",
+      "active": "Status"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
     "messages": {
       "created": "Storage node created.",
       "updated": "Storage node updated.",
@@ -1121,8 +1205,16 @@
     "empty": "No stock found",
     "product": "Product",
     "thresholdsNotApplicable": "Thresholds are set per variant",
-    "metric": { "label": "Stock metric", "available": "Available", "onHand": "On hand", "thresholds": "Min / max" },
+    "metric": {
+      "label": "Stock metric",
+      "available": "Available",
+      "onHand": "On hand",
+      "thresholds": "Min / max"
+    },
     "baseGrainSuffix": " (base)",
-    "rebalance": { "title": "Rebalancing suggestions", "empty": "No rebalancing suggestions" }
+    "rebalance": {
+      "title": "Rebalancing suggestions",
+      "empty": "No rebalancing suggestions"
+    }
   }
 }

@@ -74,6 +74,8 @@ the ratchet is `EnumCheckParityTest` (PG-only, shrink-only baseline `enum-check-
 tests. It runs in NO CI job yet (S-14): proposed home `treasury-spine-pgsql` + `backend-architecture`. Burn-down batches (Slice D
 proper) start from 190, money/fiscal-first, each censused + `NOT VALID`/`VALIDATE`.
 
+**Session B2 addendum (2026-08-25):** Slice D **batch 1 MERGED `42f7f8bad`** — 13 money/fiscal columns (vouchers ×4, journal_entries ×2, payments ×3, documents.type, instrument_events ×3) now CHECK-covered: tenant baseline **188 → 175**, COVERED 55 → 68 (`*status`-suffixed 16 → 21 of 75). Preconditions landed first: C-26 `19f9e61bb` (parser AND-refusal; owner-pin reader over all three artifacts) and the O-31 owner steps (`OWNER-O31-enum-check-parity-pin-2026-08-25.md`, seed `da5ae1379`). Enum sets are now FROZEN in the DB — every §R-D delete ruling costs a narrowing migration (LEDGER C-40). Also this session: **C-27 MERGED `0613e2ce8`** — the multi-company JE block is lifted (O-32 numbering ruling + S-21 fleet census owed). Owner reading order: `docs/handoff/OWNER-SHEET-session-B2-2026-08-25.md`.
+
 ## (c) Program spec + owner questions
 `docs/superpowers/specs/2026-08-23-state-machine-program-spec-skeleton.md` — workstreams G0/A/B/C/V/I/D/E; §R ratification questions
 outstanding. **Erratum for the spec:** §#26's 90/76/14 census is superseded by D-1's 244/190 (see (b)); the spec's Slice D sizing must be re-based. Additions from this session's gates: WS-A gains the KDS 422-swallow + `OrderCancelled` event gap (C-19); WS-V gains the

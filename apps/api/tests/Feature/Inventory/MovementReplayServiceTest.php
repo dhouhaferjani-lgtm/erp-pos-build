@@ -203,16 +203,31 @@ final class MovementReplayServiceTest extends TestCase
         $this->assertSame('0.0000', $delta);
     }
 
-    public function test_boundary_exactly_at_from_is_excluded_exactly_at_to_is_included(): void
+    /**
+     * 🚨 Campaign W4-6 gate r1 (F-2) rewrote this sentinel. It used to pin the
+     * `from` boundary as EXCLUSIVE, which meant a sale rung up in the same
+     * second as the count was left out of the replay, treated as
+     * already-counted, and posted as a phantom GAIN of its own magnitude —
+     * stock the shop does not have, and a wrong shrinkage/gain journal entry the
+     * moment the count-correction GL flag flips. Both instants are stored at
+     * second precision, so the collision is a real operating case, not a
+     * rounding curiosity. The window is now CLOSED at both ends: including the
+     * boundary movement resolves the same line at variance zero, and between two
+     * unprovable readings the replay takes the one that invents no stock.
+     */
+    public function test_boundary_movements_at_both_ends_are_included(): void
     {
         $t = CarbonImmutable::parse('2026-07-01 10:00:00');
         $end = $t->addDay();
 
-        // Exactly at `from` - must be excluded (window is (from, to]).
+        // Exactly at `from` - must be included (window is [from, to]).
         $this->movement('10.0000', '11.0000', $t, movementType: MovementType::Receipt);
 
         // Exactly at `to` - must be included.
         $this->movement('11.0000', '13.0000', $end, movementType: MovementType::Receipt);
+
+        // Strictly BEFORE `from` - part of the baseline, never replayed.
+        $this->movement('5.0000', '10.0000', $t->subSecond(), movementType: MovementType::Receipt);
 
         $delta = $this->service->signedDelta(
             $this->productId,
@@ -222,7 +237,11 @@ final class MovementReplayServiceTest extends TestCase
             $end,
         );
 
-        $this->assertSame('2.0000', $delta, 'only the at-to receipt (+2) should count; the at-from receipt (+1) must be excluded');
+        $this->assertSame(
+            '3.0000',
+            $delta,
+            'both boundary receipts (+1, +2) count; the one a second before `from` (+5) is baseline and must not be re-added',
+        );
     }
 
     public function test_variant_isolation(): void

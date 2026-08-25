@@ -27,19 +27,23 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $count_1_at
  * @property Carbon|null $count_1_device_at
  * @property Carbon|null $count_1_at_estimate
+ * @property string|null $count_1_movement_marker
  * @property string|null $count_1_notes
  * @property numeric-string|null $count_2_qty
  * @property Carbon|null $count_2_at
  * @property Carbon|null $count_2_device_at
  * @property Carbon|null $count_2_at_estimate
+ * @property string|null $count_2_movement_marker
  * @property string|null $count_2_notes
  * @property numeric-string|null $count_3_qty
  * @property Carbon|null $count_3_at
  * @property Carbon|null $count_3_device_at
  * @property Carbon|null $count_3_at_estimate
+ * @property string|null $count_3_movement_marker
  * @property string|null $count_3_notes
  * @property numeric-string|null $final_qty
  * @property Carbon|null $final_qty_as_of
+ * @property string|null $final_qty_movement_marker
  * @property numeric-string|null $expected_qty_at_apply
  * @property numeric-string|null $opening_unit_cost
  * @property array<string, mixed>|null $replay_audit
@@ -82,19 +86,23 @@ class InventoryCountingItem extends Model
         'count_1_at',
         'count_1_device_at',
         'count_1_at_estimate',
+        'count_1_movement_marker',
         'count_1_notes',
         'count_2_qty',
         'count_2_at',
         'count_2_device_at',
         'count_2_at_estimate',
+        'count_2_movement_marker',
         'count_2_notes',
         'count_3_qty',
         'count_3_at',
         'count_3_device_at',
         'count_3_at_estimate',
+        'count_3_movement_marker',
         'count_3_notes',
         'final_qty',
         'final_qty_as_of',
+        'final_qty_movement_marker',
         'expected_qty_at_apply',
         'opening_unit_cost',
         'replay_audit',
@@ -274,9 +282,19 @@ class InventoryCountingItem extends Model
         $atColumn = "count_{$phase}_at";
         $deviceAtColumn = "count_{$phase}_device_at";
         $estimateColumn = "count_{$phase}_at_estimate";
+        $markerColumn = "count_{$phase}_movement_marker";
         $notesColumn = "count_{$phase}_notes";
 
         $serverNow = Carbon::now();
+
+        // W4-6 gate r2 (NEW-1) — the same-second tie-break. Both the count
+        // instant and `stock_movements.occurred_at` are second-precision, so a
+        // sale rung up in the same second as this count cannot be ordered
+        // against it by time; INSERTION ORDER can. Snapshot the last movement id
+        // that exists on this stock line right now: everything at or below it
+        // was already there when the counter reported (baseline), everything
+        // above it arrived afterwards (neutralised by the replay).
+        $this->$markerColumn = $this->latestMovementMarker();
 
         $this->$qtyColumn = $quantity;
         $this->$atColumn = $serverNow;
@@ -302,6 +320,30 @@ class InventoryCountingItem extends Model
         }
 
         $this->save();
+    }
+
+    /**
+     * The last `stock_movements.id` on this line's grain, or null when the line
+     * has never moved.
+     *
+     * `stock_movements.id` is a UUIDv7, so lexicographic order is creation
+     * order — which is why `ORDER BY id DESC LIMIT 1` is the marker rather than
+     * `MAX(id)` (PostgreSQL has no `max(uuid)` aggregate).
+     */
+    public function latestMovementMarker(): ?string
+    {
+        $marker = StockMovement::query()
+            ->where('product_id', $this->product_id)
+            ->where('location_id', $this->location_id)
+            ->when(
+                $this->variant_id !== null,
+                fn ($query) => $query->where('variant_id', $this->variant_id),
+                fn ($query) => $query->whereNull('variant_id'),
+            )
+            ->orderByDesc('id')
+            ->value('id');
+
+        return $marker !== null ? (string) $marker : null;
     }
 
     /**

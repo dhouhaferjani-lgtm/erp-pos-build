@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Inventory\Application\DTOs\MovementGlContext;
 use App\Modules\Inventory\Application\DTOs\ReplayAuditDto;
+use App\Modules\Inventory\Application\Services\CountCorrectionGlPostingResolver;
 use App\Modules\Inventory\Application\Services\InventoryGlPostingBuffer;
 use App\Modules\Inventory\Domain\Enums\CountingItemFlagReason;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
@@ -48,16 +49,32 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
      */
     private const COST_SCALE = 6;
 
+    /**
+     * Per-JOB memo of the resolved count-correction GL-posting answer, keyed by
+     * company id (lane P-1).
+     *
+     * The resolver reads two tables; a 400-line count would otherwise repeat
+     * that per varying line. It is reset at the top of every `handle()` so a
+     * reused listener instance (the retry path, and every test that fires twice)
+     * cannot serve a stale answer after an operator flips the setting.
+     *
+     * @var array<string, bool>
+     */
+    private array $glPostingEnabled = [];
+
     public function __construct(
         private readonly StockAdjustmentService $stockAdjustmentService,
         private readonly MovementReplayService $replayService,
         private readonly OpeningCostGate $openingCostGate,
         private readonly CountingReplayGuardEvaluator $guardEvaluator,
         private readonly InventoryGlPostingBuffer $glBuffer,
+        private readonly CountCorrectionGlPostingResolver $glPostingResolver,
     ) {}
 
     public function handle(InventoryCountingCompleted $event): void
     {
+        $this->glPostingEnabled = [];
+
         $counting = InventoryCounting::with('items')->find($event->countingId);
 
         if ($counting === null) {
@@ -273,12 +290,60 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
 
         $item->loadMissing('product');
         $openingGate = $this->openingCostGate->evaluateItem($item, $onboarding);
-        $preApplyBlock = $this->guardEvaluator->preApply($hasMovementNear, $openingGate['opening_cost_missing']);
+
+        // W4-6. Every pre-apply reason is RECORDED; only a reason that answers
+        // `blocksStockApplication()` withholds the posting. `basket_window` is
+        // recorded and does NOT withhold: the replay window inside
+        // applyCountResult() is what keeps an in-count sale counted exactly once,
+        // and suppressing the whole line on the strength of a nearby movement
+        // discarded the very shrinkage the count exists to find.
+        $preApplyReasons = $this->guardEvaluator->preApply($hasMovementNear, $openingGate['opening_cost_missing']);
+
+        // Lane P-1, gate r1 F-2. A line with no `final_qty_movement_marker`
+        // whose boundary second actually carries a movement has an UNPROVABLE
+        // replay: W4-6's order-based tie-break cannot run, so the r1 inclusive
+        // boundary may subtract that movement a second time. The shelf is still
+        // corrected — refusing would strand the operator mid-count — but the
+        // ledger is not, because a wrong journal entry is far more expensive to
+        // undo than a wrong shelf. Recorded as a reason so the reviewer sees it
+        // and the report can say why the value is missing.
+        if ($item->final_qty_movement_marker === null
+            && $this->replayService->boundarySecondIsAmbiguous($item->product_id, $item->location_id, $item->variant_id, $asOf)) {
+            $preApplyReasons[] = CountingItemFlagReason::MissingBoundaryMarker;
+        }
+
+        $glWithheld = false;
+        foreach ($preApplyReasons as $reason) {
+            if ($reason->blocksGlPosting()) {
+                $glWithheld = true;
+                break;
+            }
+        }
+
+        $preApplyBlock = null;
+        foreach ($preApplyReasons as $reason) {
+            if ($reason->blocksStockApplication()) {
+                $preApplyBlock = $reason;
+                break;
+            }
+        }
+
         if ($preApplyBlock !== null) {
-            $this->flagItem($item, $preApplyBlock, $asOf);
+            $this->flagItem($item, $preApplyBlock, $asOf, $preApplyReasons);
 
             return false;
         }
+
+        // Advisory reasons are stamped BEFORE the posting so the annotation and
+        // the posting share one savepoint. They do NOT survive a throw: handle()
+        // wraps the whole item loop in ONE root transaction (see the T21 note
+        // there) with no per-item catch, so an item-N failure unwinds this save
+        // along with everything else — which is exactly what
+        // CountCorrectionGlPostingTest::test_an_item_that_throws_... pins (0
+        // movements AND 0 entries). Durability is not needed: the queue retry
+        // re-evaluates the line because `replay_audit` — the idempotency marker
+        // — is still null, and re-annotates it.
+        $this->annotateItem($item, $preApplyReasons);
 
         $openingUnitCost = $this->resolveOpeningUnitCost($item, $counting->company_id);
 
@@ -294,8 +359,9 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
         // replay_audit) would re-sum that movement in a fresh window and
         // double-apply. This is the fix for the finalize double-apply blocker.
         $countingId = $counting->id;
+        $marker = $item->final_qty_movement_marker;
 
-        return DB::transaction(function () use ($item, $window, $asOf, $onboarding, $openingUnitCost, $finalQty, $countingId, $completedBy, $currencyCode): bool {
+        return DB::transaction(function () use ($item, $window, $asOf, $onboarding, $openingUnitCost, $finalQty, $countingId, $completedBy, $currencyCode, $marker, $glWithheld): bool {
             $audit = $this->stockAdjustmentService->applyCountResult(
                 productId: $item->product_id,
                 locationId: $item->location_id,
@@ -313,9 +379,25 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
                 // branch. postCountOpening() writes MovementType::Opening /
                 // MovementReason::OpeningBalance, which is outside the seam, so
                 // the onboarding first count still posts no shrinkage/gain leg.
-                onCountCorrection: function (StockMovement $movement) use ($currencyCode, $completedBy): void {
+                onCountCorrection: function (StockMovement $movement) use ($currencyCode, $completedBy, $glWithheld): void {
+                    if ($glWithheld) {
+                        // P-1 F-2: the movement is written and costed, so the
+                        // entry can still be built by hand once the line is
+                        // reviewed. Only the automatic posting is withheld.
+                        Log::warning('ApplyStockAdjustments: count correction applied WITHOUT a journal entry — replay boundary is ambiguous', [
+                            'movement_id' => $movement->id,
+                            'company_id' => $movement->company_id,
+                            'reason' => CountingItemFlagReason::MissingBoundaryMarker->value,
+                        ]);
+
+                        return;
+                    }
+
                     $this->enqueueCountCorrectionGl($movement, $currencyCode, $completedBy);
                 },
+                // Same-second tie-break (gate r2 NEW-1) — see
+                // MovementReplayService::signedDelta().
+                finalQtyMovementMarker: $marker,
             );
 
             // Null return means the negative-at-apply guard tripped (basket window
@@ -350,18 +432,22 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
      * both counting paths share one basis and neither re-reads a WAC that may
      * have moved since the movement was written.
      *
-     * ## Dormant by configuration (OQ-12/H-5)
+     * ## Gated per COMPANY, seeded ON (lane P-1, owner ruling 2026-08-25)
      *
-     * `inventory.count_correction_gl_posting_enabled` ships FALSE. The
-     * expert-comptable must ratify the approved Option A (6586 / 7586)
-     * presentation before the flag is flipped for any tenant. With it off the
-     * stock correction and its costed movement row still happen; only the
-     * journal entry is withheld, so nothing is lost — the ledger can be built
-     * from the movement rows once the gate clears.
+     * The gate used to be a bare `config()` read defaulted FALSE by the
+     * OQ-12/H-5 deploy blocker. The owner superseded that blocker: posting is
+     * seeded ON per country and is tenant-editable, so the question is now
+     * "is it on for THIS company", answered by
+     * {@see CountCorrectionGlPostingResolver} through the chain
+     * company override -> country row -> system default.
+     *
+     * With it off the stock correction and its costed movement row still
+     * happen; only the journal entry is withheld, so nothing is lost — the
+     * ledger can be rebuilt from the movement rows if a tenant turns it back on.
      */
     private function enqueueCountCorrectionGl(StockMovement $movement, string $currencyCode, string $completedBy): void
     {
-        if (! (bool) config('inventory.count_correction_gl_posting_enabled', false)) {
+        if (! $this->glPostingIsEnabledFor((string) $movement->company_id)) {
             return;
         }
 
@@ -386,6 +472,15 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
             isHistorical: (bool) $movement->is_historical,
             productId: $movement->product_id,
         ));
+    }
+
+    /**
+     * Whether count-correction GL posting is on for this company, resolved ONCE
+     * per company per job (lane P-1).
+     */
+    private function glPostingIsEnabledFor(string $companyId): bool
+    {
+        return $this->glPostingEnabled[$companyId] ??= $this->glPostingResolver->isEnabledFor($companyId);
     }
 
     /**
@@ -443,17 +538,56 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
     }
 
     /**
+     * Record advisory (non-blocking) reasons on a line that IS being posted.
+     *
+     * `basket_window` reaches this path: the reviewer still needs to see that
+     * stock moved near the count instant, but the correction is applied.
+     *
+     * @param  list<CountingItemFlagReason>  $reasons
+     */
+    private function annotateItem(InventoryCountingItem $item, array $reasons): void
+    {
+        if ($reasons === []) {
+            return;
+        }
+
+        $existing = $item->flag_reasons ?? [];
+        $flagged = (bool) $item->is_flagged;
+
+        foreach ($reasons as $reason) {
+            if (! in_array($reason->value, $existing, true)) {
+                $existing[] = $reason->value;
+            }
+
+            if ($reason->isBlocking()) {
+                $flagged = true;
+            }
+        }
+
+        $item->flag_reasons = $existing;
+        $item->is_flagged = $flagged;
+        $item->save();
+    }
+
+    /**
      * Append a blocking flag reason to the item (dedup) and persist a best-effort
      * replay audit for the review page. Nothing was posted for a flagged item.
+     *
+     * @param  list<CountingItemFlagReason>  $alsoRecord  Advisory reasons observed on
+     *                                                    the same evaluation, recorded
+     *                                                    alongside the blocker.
      */
     private function flagItem(
         InventoryCountingItem $item,
         CountingItemFlagReason $reason,
         CarbonInterface $asOf,
+        array $alsoRecord = [],
     ): void {
         $reasons = $item->flag_reasons ?? [];
-        if (! in_array($reason->value, $reasons, true)) {
-            $reasons[] = $reason->value;
+        foreach ([...$alsoRecord, $reason] as $recorded) {
+            if (! in_array($recorded->value, $reasons, true)) {
+                $reasons[] = $recorded->value;
+            }
         }
 
         $item->flag_reasons = $reasons;
@@ -478,7 +612,14 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
         $now = now();
         $scale = InventoryScale::QUANTITY_SCALE;
 
-        $replayedDelta = $this->replayService->signedDelta($item->product_id, $item->location_id, $item->variant_id, $asOf, $now);
+        $replayedDelta = $this->replayService->signedDelta(
+            $item->product_id,
+            $item->location_id,
+            $item->variant_id,
+            $asOf,
+            $now,
+            $item->final_qty_movement_marker,
+        );
 
         /** @var numeric-string $onHand */
         $onHand = (string) (StockLevel::where('product_id', $item->product_id)

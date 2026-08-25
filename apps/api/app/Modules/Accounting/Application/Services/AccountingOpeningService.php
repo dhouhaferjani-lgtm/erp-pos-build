@@ -10,12 +10,17 @@ use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
 use App\Modules\Accounting\Domain\Enums\OpeningImportRowStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Events\OpeningBalancePosted;
+use App\Modules\Accounting\Domain\Exceptions\OpeningCashNotFullySeededException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Accounting\Domain\OpeningBalanceImportRow;
 use App\Modules\Company\Domain\Company;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\Treasury\DTOs\OpeningFloatIntent;
+use App\Shared\Contracts\Treasury\DTOs\OpeningFloatRepositoryDescriptor;
+use App\Shared\Contracts\Treasury\RepositoryOpeningBalanceSeederInterface;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -44,6 +49,7 @@ class AccountingOpeningService
         private readonly OpeningBalanceBatchService $batchService,
         private readonly PartnerControlAccountResolver $controlAccounts,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly RepositoryOpeningBalanceSeederInterface $repositoryOpeningSeeder,
     ) {}
 
     /**
@@ -116,14 +122,23 @@ class AccountingOpeningService
         $totalCredit = '0';
 
         foreach ($rows as $row) {
-            $result = $this->validateRow($row, $batch->company_id, $scale);
+            $result = $this->validateRow($row, $batch->tenant_id, $batch->company_id, $scale);
             $validationResults[$row->id] = $result;
+        }
 
+        // W4-2: a repository may be named at most ONCE per batch. Two rows
+        // seeding the same till would collide on the movement port's
+        // per-repository idempotency key at post time (silently keeping only the
+        // first float, because a replay is a no-op) — so refuse it here, where
+        // the operator can still fix the sheet.
+        $this->flagDuplicateRepositoryRows($validationResults);
+
+        foreach ($validationResults as $rowId => $result) {
             if ($result['valid']) {
                 $totalDebit = bcadd($totalDebit, $result['mapped_data']['debit'] ?? '0', $scale);
                 $totalCredit = bcadd($totalCredit, $result['mapped_data']['credit'] ?? '0', $scale);
             } else {
-                $errors[$row->id] = $result['errors'];
+                $errors[$rowId] = $result['errors'];
             }
         }
 
@@ -136,16 +151,47 @@ class AccountingOpeningService
         $validCount = count(array_filter($validationResults, fn (array $r): bool => $r['valid']));
         $invalidCount = count($validationResults) - $validCount;
 
-        // If not balanced, add a batch-level error
+        // W4-2 / gate r1 F-7 — does the cash this batch debits actually REACH the
+        // tills that hang off the accounts it debits? Surfaced here so the
+        // operator sees it while the sheet is still fixable; enforced
+        // authoritatively in postBatch().
+        $coverageGaps = $this->openingCashCoverageGaps(
+            $batch->tenant_id,
+            $batch->company_id,
+            $this->mappedRowsForCoverageFromResults($validationResults),
+            $scale,
+        );
+
+        // BATCH-LEVEL errors are STRUCTURED, never prose (gate r2 G-1). The
+        // operator reads them in the wizard, so the string has to be built in
+        // their locale on the client — the server sends a code plus its
+        // parameters, and `message` is the English fallback kept for logs and
+        // for API consumers that are not the wizard.
+        $batchErrors = $coverageGaps;
+
         if (! $isBalanced && $validCount > 0) {
-            $errors['_batch'] = [
-                "Total debits ({$totalDebit}) do not equal total credits ({$totalCredit}). ".
-                'Difference: '.bcsub($totalDebit, $totalCredit, $scale),
+            // MERGE, do not overwrite. This branch used to assign `_batch`
+            // outright, which silently discarded a coverage gap whenever the
+            // sheet was also unbalanced — the two refusals are independent and
+            // an operator needs to see both before re-uploading.
+            $batchErrors[] = [
+                'code' => 'OPENING_BATCH_NOT_BALANCED',
+                'params' => [
+                    'debit' => $totalDebit,
+                    'credit' => $totalCredit,
+                    'difference' => bcsub($totalDebit, $totalCredit, $scale),
+                ],
+                'message' => "Total debits ({$totalDebit}) do not equal total credits ({$totalCredit}). ".
+                    'Difference: '.bcsub($totalDebit, $totalCredit, $scale),
             ];
         }
 
+        if ($batchErrors !== []) {
+            $errors['_batch'] = $batchErrors;
+        }
+
         return [
-            'valid' => $isBalanced && $invalidCount === 0,
+            'valid' => $isBalanced && $invalidCount === 0 && $coverageGaps === [],
             'total_rows' => count($rows),
             'valid_rows' => $validCount,
             'invalid_rows' => $invalidCount,
@@ -169,8 +215,12 @@ class AccountingOpeningService
      *
      * @return array{valid: bool, errors: array<string, array<string>>, mapped_data: array<string, mixed>}
      */
-    private function validateRow(OpeningBalanceImportRow $row, string $companyId, int $scale): array
-    {
+    private function validateRow(
+        OpeningBalanceImportRow $row,
+        string $tenantId,
+        string $companyId,
+        int $scale,
+    ): array {
         $rawData = $row->raw_data;
         $errors = [];
         $mappedData = [];
@@ -236,11 +286,304 @@ class AccountingOpeningService
 
         $mappedData['description'] = $rawData['description'] ?? null;
 
+        $this->validateRepositoryColumn($rawData, $tenantId, $companyId, $scale, $mappedData, $errors);
+
         return [
             'valid' => empty($errors),
             'errors' => $errors,
             'mapped_data' => $mappedData,
         ];
+    }
+
+    /**
+     * W4-2 — validate the optional `repository_code` column that turns a GL
+     * cash/bank opening line into a treasury opening float.
+     *
+     * Naming a repository is what makes the wizard the ONE sanctioned path to a
+     * day-one float: the same row then posts the GL leg AND the repository's
+     * opening movement. Every refusal below exists so the two halves can never
+     * disagree.
+     *
+     * @param  array<string, mixed>  $rawData
+     * @param  array<string, mixed>  $mappedData
+     * @param  array<string, array<int, string>>  $errors
+     */
+    private function validateRepositoryColumn(
+        array $rawData,
+        string $tenantId,
+        string $companyId,
+        int $scale,
+        array &$mappedData,
+        array &$errors,
+    ): void {
+        $rawCode = $rawData['repository_code'] ?? null;
+        $code = is_string($rawCode) ? trim($rawCode) : '';
+
+        if ($code === '') {
+            return;
+        }
+
+        $mappedData['repository_code'] = $code;
+
+        $descriptor = $this->repositoryOpeningSeeder->describeByCode($tenantId, $companyId, $code);
+
+        if (! $descriptor instanceof OpeningFloatRepositoryDescriptor) {
+            $errors['repository_code'] = ["Payment repository '{$code}' was not found or is inactive."];
+
+            return;
+        }
+
+        $mappedData['repository_id'] = $descriptor->id;
+        $mappedData['repository_name'] = $descriptor->name;
+
+        // A float ENTERS a till: it is a debit on the asset account. A credit row
+        // naming a repository would ask treasury to hold negative opening cash.
+        if (bccomp($mappedData['debit'] ?? '0', '0', $scale) <= 0) {
+            $errors['repository_code'] = [
+                "Payment repository '{$code}' can only be named on a debit line — an opening float ".
+                'is money entering the repository.',
+            ];
+
+            return;
+        }
+
+        // The repository's balance must equal the GL debit that backs it. That
+        // is only true if the row debits the repository's OWN cash/bank account.
+        if ($descriptor->glAccountId !== null
+            && ($mappedData['account_id'] ?? null) !== $descriptor->glAccountId) {
+            $expected = Account::query()->whereKey($descriptor->glAccountId)->value('code');
+            $errors['repository_code'] = [
+                "Payment repository '{$code}' is linked to GL account {$expected}; the opening float ".
+                'must be debited to that account so treasury and the ledger agree.',
+            ];
+
+            return;
+        }
+
+        if ($descriptor->hasMovements) {
+            $errors['repository_code'] = [
+                "Payment repository '{$code}' already holds money in Treasury, so it cannot receive an ".
+                'opening balance. Use a Treasury transfer to move cash into a till that has already traded.',
+            ];
+
+            return;
+        }
+
+        // Single-currency companies today, but the movement port refuses a
+        // currency mismatch outright — surface it as a row error instead of a
+        // post-time exception.
+        $rowCurrency = Company::query()->whereKey($companyId)->value('currency');
+        if (is_string($rowCurrency) && $descriptor->currency !== $rowCurrency) {
+            $errors['repository_code'] = [
+                "Payment repository '{$code}' is held in {$descriptor->currency}, not the company currency ".
+                "{$rowCurrency}.",
+            ];
+        }
+    }
+
+    /**
+     * Flag every row naming a repository that another row in the same batch
+     * already named.
+     *
+     * @param  array<string, array{valid: bool, errors: array<string, array<int, string>>, mapped_data: array<string, mixed>}>  $validationResults
+     */
+    private function flagDuplicateRepositoryRows(array &$validationResults): void
+    {
+        /** @var array<string, int> $seen */
+        $seen = [];
+
+        foreach ($validationResults as $result) {
+            $code = $result['mapped_data']['repository_code'] ?? null;
+            if (! is_string($code) || $code === '') {
+                continue;
+            }
+            $seen[$code] = ($seen[$code] ?? 0) + 1;
+        }
+
+        foreach ($validationResults as $rowId => $result) {
+            $code = $result['mapped_data']['repository_code'] ?? null;
+            if (! is_string($code) || ($seen[$code] ?? 0) < 2) {
+                continue;
+            }
+
+            $validationResults[$rowId]['errors']['repository_code'] = [
+                "Payment repository '{$code}' is named more than once in this batch. A repository ".
+                'receives exactly one opening float.',
+            ];
+            $validationResults[$rowId]['valid'] = false;
+        }
+    }
+
+    /**
+     * mapped_data of persisted rows, as a LIST the coverage rule can consume.
+     *
+     * @param  array<int, OpeningBalanceImportRow>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function mappedRowsForCoverage(array $rows): array
+    {
+        $mapped = [];
+
+        foreach ($rows as $row) {
+            $data = $row->mapped_data;
+            if (is_array($data) && isset($data['account_id'])) {
+                $mapped[] = $data;
+            }
+        }
+
+        return $mapped;
+    }
+
+    /**
+     * The same, from an in-flight validation pass (nothing is persisted yet).
+     *
+     * @param  array<string, array{valid: bool, errors: array<string, array<int, string>>, mapped_data: array<string, mixed>}>  $validationResults
+     * @return list<array<string, mixed>>
+     */
+    private function mappedRowsForCoverageFromResults(array $validationResults): array
+    {
+        $mapped = [];
+
+        foreach ($validationResults as $result) {
+            if ($result['valid'] && isset($result['mapped_data']['account_id'])) {
+                $mapped[] = $result['mapped_data'];
+            }
+        }
+
+        return $mapped;
+    }
+
+    /**
+     * Cash this batch debits that would reach NO till at all.
+     *
+     * THE RULE, and it is deliberately only this one: for every GL account the
+     * batch DEBITS that at least one ACTIVE payment repository is linked to, the
+     * whole debit on that account must be attributed to repositories by the rows
+     * naming them. A four-column legacy sheet attributes nothing, so its entire
+     * `Dr 53 1200.000` is a gap — which is precisely the P0 re-opening itself
+     * for an operator who has not heard of the new column.
+     *
+     * WHAT THIS DELIBERATELY DOES NOT REFUSE, and why (gate r1 F-7, PROBE B).
+     * A merged `Dr 53 1200.000` row naming only the drawer, on a tenant whose
+     * drawer AND safe both hang off `53`, passes: 1200.000 debited, 1200.000
+     * attributed. The drawer ends at 1200.000 and the safe at 0.000. The ledger
+     * and Treasury still AGREE (Σ tills on 53 == GL Dr 53) — it is a
+     * data-entry error about WHICH till holds the money, not a money error.
+     *
+     * The obvious extra rule — "every repository on the account must be named"
+     * — was written and then removed, because it is indistinguishable from a
+     * legitimate case: a shop whose safe is genuinely empty on day one. Refusing
+     * that would block a correct opening, and there is no affordance today for
+     * an operator to declare "this till opens at zero" (a zero row is rejected
+     * by validateRow's own amount rule and would post no line anyway). Recorded
+     * as a residual instead of guessed at.
+     *
+     * Accounts no repository is linked to (receivables, inventory, equity, a
+     * petty-cash account modelled outside Treasury) are not examined at all.
+     *
+     * @param  list<array<string, mixed>>  $mappedRows  mapped_data of the rows being posted
+     * @return list<array{code: string, params: array<string, string>, message: string}>
+     */
+    private function openingCashCoverageGaps(
+        string $tenantId,
+        string $companyId,
+        array $mappedRows,
+        int $scale,
+    ): array {
+        /** @var array<string, numeric-string> $debitByAccount */
+        $debitByAccount = [];
+        /** @var array<string, numeric-string> $attributedByAccount */
+        $attributedByAccount = [];
+        foreach ($mappedRows as $mapped) {
+            $accountId = $mapped['account_id'] ?? null;
+            if (! is_string($accountId)) {
+                continue;
+            }
+
+            // mapped_data is JSONB, so the debit arrives as mixed. Refuse to do
+            // bcmath on anything that is not a number rather than casting it to
+            // silence the type checker (rule 19): a non-numeric debit is a
+            // corrupt staging row, and treating it as '0' would quietly shrink
+            // the amount the coverage rule compares against.
+            $rawDebit = $mapped['debit'] ?? '0';
+            if (! is_string($rawDebit) && ! is_int($rawDebit) && ! is_float($rawDebit)) {
+                continue;
+            }
+            $debit = (string) $rawDebit;
+            if (! is_numeric($debit)) {
+                continue;
+            }
+            if (bccomp($debit, '0', $scale) <= 0) {
+                continue;
+            }
+
+            $debitByAccount[$accountId] = bcadd($debitByAccount[$accountId] ?? '0', $debit, $scale);
+
+            $repositoryId = $mapped['repository_id'] ?? null;
+            if (is_string($repositoryId) && $repositoryId !== '') {
+                $attributedByAccount[$accountId] = bcadd($attributedByAccount[$accountId] ?? '0', $debit, $scale);
+            }
+        }
+
+        if ($debitByAccount === []) {
+            return [];
+        }
+
+        $descriptors = $this->repositoryOpeningSeeder->describeByGlAccounts(
+            $tenantId,
+            $companyId,
+            array_keys($debitByAccount),
+        );
+
+        if ($descriptors === []) {
+            return [];
+        }
+
+        /** @var array<string, list<OpeningFloatRepositoryDescriptor>> $byAccount */
+        $byAccount = [];
+        foreach ($descriptors as $descriptor) {
+            if ($descriptor->glAccountId === null) {
+                continue;
+            }
+            $byAccount[$descriptor->glAccountId][] = $descriptor;
+        }
+
+        $gaps = [];
+
+        foreach ($byAccount as $accountId => $repositories) {
+            // Normalised to the batch scale so every money value in `params`
+            // renders identically in the wizard — an unattributed account would
+            // otherwise report a bare '0' next to a '1200.000'.
+            $debit = bcadd($debitByAccount[$accountId] ?? '0', '0', $scale);
+            $attributed = bcadd($attributedByAccount[$accountId] ?? '0', '0', $scale);
+            $code = Account::query()->whereKey($accountId)->value('code');
+            $accountLabel = is_string($code) ? $code : $accountId;
+
+            $unattributed = bcsub($debit, $attributed, $scale);
+            if (bccomp($unattributed, '0', $scale) > 0) {
+                $names = implode(', ', array_map(
+                    static fn (OpeningFloatRepositoryDescriptor $r): string => $r->code,
+                    $repositories,
+                ));
+                $gaps[] = [
+                    'code' => OpeningCashNotFullySeededException::ERROR_CODE,
+                    'params' => [
+                        'account' => $accountLabel,
+                        'debited' => $debit,
+                        'attributed' => $attributed,
+                        'unattributed' => $unattributed,
+                        'repositories' => $names,
+                    ],
+                    // English fallback for logs and non-wizard consumers only —
+                    // the wizard renders the code+params in the operator's locale.
+                    'message' => "Account {$accountLabel} is debited {$debit} but only {$attributed} is assigned to a ".
+                        "payment repository; {$unattributed} would exist in the ledger and in no till ".
+                        "(repositories on this account: {$names}).",
+                ];
+            }
+        }
+
+        return $gaps;
     }
 
     /**
@@ -290,6 +633,55 @@ class AccountingOpeningService
             }
 
             $postedRowCount = $validRows->count();
+
+            // gate r1 F-11, narrowed. A batch posts on STATUS alone: postBatch
+            // skips non-Valid rows and the OBE offset silently absorbs the
+            // imbalance, so a rejected row degrades into "Batch posted
+            // successfully" with money missing. That is pre-existing for
+            // ordinary GL rows and is left alone — but a rejected row that NAMES
+            // A REPOSITORY is new, and it degrades in the worst direction: the
+            // till's float vanishes from both the ledger and Treasury while `119`
+            // quietly absorbs it, on a write-once batch. Refuse precisely that.
+            $rejectedRepositoryRows = $batch->rows()
+                ->where('status', OpeningImportRowStatus::Invalid)
+                ->get()
+                ->filter(static function (OpeningBalanceImportRow $row): bool {
+                    $mapped = $row->mapped_data;
+
+                    return is_array($mapped)
+                        && is_string($mapped['repository_code'] ?? null)
+                        && $mapped['repository_code'] !== '';
+                });
+
+            if ($rejectedRepositoryRows->isNotEmpty()) {
+                $codes = $rejectedRepositoryRows
+                    ->map(static function (OpeningBalanceImportRow $row): string {
+                        $mapped = $row->mapped_data;
+
+                        return is_array($mapped) ? (string) ($mapped['repository_code'] ?? '?') : '?';
+                    })
+                    ->implode(', ');
+
+                throw new RuntimeException(
+                    "Cannot post: the opening line(s) for payment repository {$codes} did not validate, so ".
+                    'those tills would receive nothing while the rest of the batch posts and the opening '.
+                    'balance equity account absorbs the difference. Fix or remove those rows and validate again.'
+                );
+            }
+
+            // AUTHORITATIVE coverage refusal (gate r1 F-7). Evaluated BEFORE the
+            // entry, the lines or any movement exist, so nothing this batch
+            // writes can pollute the "already seeded" reading it depends on.
+            $coverageGaps = $this->openingCashCoverageGaps(
+                $company->tenant_id,
+                $company->id,
+                $this->mappedRowsForCoverage($validRows->all()),
+                $scale,
+            );
+
+            if ($coverageGaps !== []) {
+                throw new OpeningCashNotFullySeededException($coverageGaps);
+            }
 
             $entryNumber = $this->generateEntryNumber($company->id);
 
@@ -352,6 +744,29 @@ class AccountingOpeningService
                     $totalCredit = bcadd($totalCredit, $credit, $scale);
 
                     $rowEntityMap[$row->id] = $line->id;
+
+                    // W4-2 — the treasury half of the SAME row, inside the SAME
+                    // transaction as the GL line above. The row's debit IS the
+                    // float, and the line above is the GL debit that backs it, so
+                    // the repository balance equals the ledger by construction.
+                    // Seeded AFTER the line exists: the reconciler's check 2
+                    // reconciles a movement against the JE's line on the
+                    // repository's own gl_account_id, which is what keeps this
+                    // equality enforced for the life of the tenant.
+                    $repositoryId = $mappedData['repository_id'] ?? null;
+                    if (is_string($repositoryId) && $repositoryId !== '') {
+                        $this->repositoryOpeningSeeder->seed(new OpeningFloatIntent(
+                            tenantId: $company->tenant_id,
+                            companyId: $company->id,
+                            repositoryId: $repositoryId,
+                            amount: $debit,
+                            currency: (string) $company->currency,
+                            batchId: $batch->id,
+                            occurredAt: CarbonImmutable::parse($batch->cutover_date->toDateString()),
+                            journalEntryId: $entry->id,
+                            createdBy: $userId,
+                        ));
+                    }
                 }
             }
 
@@ -440,6 +855,11 @@ class AccountingOpeningService
                 'debit' => $mappedData['debit'] ?? '0',
                 'credit' => $mappedData['credit'] ?? '0',
                 'description' => $mappedData['description'] ?? '',
+                // W4-2: null on every ordinary GL line; set when this row also
+                // seeds a treasury repository's opening float, so the operator
+                // sees WHICH till the money lands in before locking the batch.
+                'repository_code' => $mappedData['repository_code'] ?? null,
+                'repository_name' => $mappedData['repository_name'] ?? null,
             ];
         });
 

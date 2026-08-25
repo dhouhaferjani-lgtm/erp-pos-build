@@ -571,7 +571,23 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         $this->expectAccountChargeException('/payload_account_charge_credit_decision_invalid:warnings\\[0\\] must be a stable lower_snake_case code/', $payload);
     }
 
-    public function test_account_charge_accepts_discount_present_and_absent_variants(): void
+    /**
+     * D-1 gate r2 finding 2 — RE-PINNED back to "accepts", at THIS layer.
+     *
+     * r1 refused a discounted ACCOUNT_CHARGE here, in the pure payload
+     * validator. That was wrong twice: `VerifyEventChainCommand` re-runs this
+     * validator over STORED events, so every historical discounted credit sale
+     * would have started reporting as a payload-constraint failure; and it bound
+     * un-upgraded terminals, quarantining real credit sales at ingest the moment
+     * the server deployed — inverting the deploy order.
+     *
+     * The refusal moved to `SaleReceiptForwardVersionGate`, on the same
+     * per-chain v5 watermark the sales arm uses, so it binds only chains that
+     * have proven they author the post-remise base. The PAYLOAD CONTRACT is
+     * unchanged and must stay that way: these bytes were valid when they were
+     * signed and must re-validate forever (rule 8).
+     */
+    public function test_account_charge_still_accepts_a_transaction_discount_at_the_payload_contract(): void
     {
         $this->assertAccountChargeAccepted($this->canonicalAccountChargePayload());
 
@@ -592,6 +608,9 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
                 'credit_available_after' => '86.000',
             ],
         ]);
+
+        // Accepted at the payload contract — the cutover lives on the ingest
+        // path, not in the immutable bytes.
         $this->assertAccountChargeAccepted($payload);
     }
 

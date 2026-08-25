@@ -107,6 +107,8 @@ final class PosReceiptVatLegCensusCommand extends Command
         // below. On a multi-company tenant an unscoped pluck would let a leg
         // booked to company B's `4457` satisfy company A's receipt.
         $vatAccounts = $this->accountsForPurpose(SystemAccountPurpose::VatCollected, $companyId);
+        // D-1 gate r1 (treasury) F-1 — the BASE arm needs the revenue accounts.
+        $revenueAccounts = $this->accountsForPurpose(SystemAccountPurpose::ProductRevenue, $companyId);
 
         // BOTH hard purposes are prechecked, not just the one the census counts
         // (treasury gate I-2). Since W4-9 a POS tender leg resolves up to three
@@ -114,9 +116,24 @@ final class PosReceiptVatLegCensusCommand extends Command
         // receipt, `SalesDiscount` — and a chart missing any of them fails the
         // projection. A deploy gate that names only the first sends the operator
         // back for a second round trip.
+        //
+        // D-1 (owner ruling 2026-08-25): a receipt sealed at SALE_RECEIPT
+        // `event_version >= 5` books its remise OUT OF THE BASE and resolves no
+        // `SalesDiscount` account at all. The precheck is KEPT anyway — every
+        // receipt sealed before the cutover still needs it, they are refused by
+        // the projection without it, and they keep arriving from devices that
+        // have not taken the new build (the cutover is forward-only). It is a
+        // provisioning gate, not a per-receipt assertion.
+        //
+        // The DRIFT arm below is version-agnostic by construction: it compares
+        // SEALED VAT against the VAT actually credited, and D-1 changes neither
+        // side's meaning — only the number the device seals.
         $missingPurposes = [];
         if ($vatAccounts === []) {
             $missingPurposes[] = SystemAccountPurpose::VatCollected;
+        }
+        if ($revenueAccounts === []) {
+            $missingPurposes[] = SystemAccountPurpose::ProductRevenue;
         }
         if ($this->accountsForPurpose(SystemAccountPurpose::SalesDiscount, $companyId) === []) {
             $missingPurposes[] = SystemAccountPurpose::SalesDiscount;
@@ -156,7 +173,14 @@ final class PosReceiptVatLegCensusCommand extends Command
             // other (F-2).
             ->joinSub(
                 DB::table('pos_receipt_vat_details')
-                    ->select('receipt_id', DB::raw('SUM(vat_amount) AS sealed_vat'))
+                    ->select(
+                        'receipt_id',
+                        DB::raw('SUM(vat_amount) AS sealed_vat'),
+                        // D-1 gate r1 (treasury) F-1 — the sealed BASE, the
+                        // figure the declaration reports as `base_amount` and
+                        // the one D-1's own defect class gets wrong.
+                        DB::raw('SUM(net_amount) AS sealed_net'),
+                    )
                     ->groupBy('receipt_id'),
                 'sealed',
                 'sealed.receipt_id',
@@ -186,6 +210,38 @@ final class PosReceiptVatLegCensusCommand extends Command
                     ->groupBy('journal_entries.source_id'),
                 'ledger',
                 'ledger.source_id',
+                '=',
+                'pos_receipts.id',
+            )
+            // ── D-1 gate r1 (treasury) F-1 — the BASE arm ────────────────────
+            // The VAT arm above is era-agnostic, and that is exactly why it is
+            // not enough: D-1's defect class is a wrong revenue BASE with a
+            // CORRECT VAT. The P0 this lane closed booked 574.547 against a
+            // sealed base of 524.547 while the VAT matched to the millime — and
+            // this census would have exited 0 on it. Same for the failure the
+            // lane's own `SealedBaseEraAmbiguous` refusal guards against.
+            //
+            // The identity is era-agnostic and exact on BOTH sides:
+            //   Σ pos_receipt_vat_details.net_amount == Σ (credit − debit) on
+            //   the ProductRevenue account over the receipt's POS entries.
+            // v<=4: 569.000 == 569.000 (the `70x` line ALONE, NOT `70x − 709` —
+            // the contra is a separate account); v5: 524.547 == 524.547. The
+            // §4.6 rounding entry moves the cash-rounding adjustment between
+            // `70x` and 6580/7580 and lands revenue back on net, so the identity
+            // survives rounding.
+            ->leftJoinSub(
+                DB::table('journal_lines')
+                    ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+                    ->whereIn('journal_entries.source_type', self::POS_SOURCE_TYPES)
+                    ->whereIn('journal_lines.account_id', $revenueAccounts)
+                    ->select(
+                        'journal_entries.source_id',
+                        DB::raw('SUM(journal_lines.credit) AS revenue_credit'),
+                        DB::raw('SUM(journal_lines.debit) AS revenue_debit'),
+                    )
+                    ->groupBy('journal_entries.source_id'),
+                'revenue_ledger',
+                'revenue_ledger.source_id',
                 '=',
                 'pos_receipts.id',
             )
@@ -219,15 +275,47 @@ final class PosReceiptVatLegCensusCommand extends Command
                 '=',
                 'original.fiscal_event_id',
             )
+            // The BASE arm needs the same instrument sibling the VAT arm has
+            // (W4-9 gate r2 R2-2, one account over): a cheque/effet-tendered
+            // POS refund reverses its REVENUE on the instrument-cancellation
+            // entry too, so a base arm that only looked at `pos_receipt*`
+            // entries reported a correctly booked refund as `ledger_base=0.00`.
+            ->leftJoinSub(
+                DB::table('payments')
+                    ->join('payment_instruments', 'payment_instruments.payment_id', '=', 'payments.id')
+                    ->join('journal_entries', function (JoinClause $join): void {
+                        $join->on('journal_entries.source_id', '=', 'payment_instruments.id')
+                            ->where('journal_entries.source_type', '=', self::INSTRUMENT_SOURCE_TYPE);
+                    })
+                    ->join('journal_lines', 'journal_lines.journal_entry_id', '=', 'journal_entries.id')
+                    ->whereIn('journal_lines.account_id', $revenueAccounts)
+                    ->where('payments.origin', PaymentOrigin::Pos->value)
+                    ->whereNotNull('payments.fiscal_event_id')
+                    ->select(
+                        'payments.fiscal_event_id',
+                        DB::raw('SUM(journal_lines.credit) AS revenue_credit'),
+                        DB::raw('SUM(journal_lines.debit) AS revenue_debit'),
+                    )
+                    ->groupBy('payments.fiscal_event_id'),
+                'instrument_revenue_ledger',
+                'instrument_revenue_ledger.fiscal_event_id',
+                '=',
+                'original.fiscal_event_id',
+            )
             ->select([
                 'pos_receipts.id',
                 'pos_receipts.receipt_number',
                 'pos_receipts.posted_at',
                 'pos_receipts.currency',
                 'sealed.sealed_vat',
+                'sealed.sealed_net',
                 'entries.entry_count',
                 'ledger.vat_credit',
                 'ledger.vat_debit',
+                'revenue_ledger.revenue_credit',
+                'revenue_ledger.revenue_debit',
+                'instrument_revenue_ledger.revenue_credit as instrument_revenue_credit',
+                'instrument_revenue_ledger.revenue_debit as instrument_revenue_debit',
                 'instrument_ledger.vat_credit as instrument_vat_credit',
                 'instrument_ledger.vat_debit as instrument_vat_debit',
                 'instrument_ledger.entry_count as instrument_entry_count',
@@ -295,7 +383,12 @@ final class PosReceiptVatLegCensusCommand extends Command
             $scale = $this->scaleResolver->getScaleSafe((string) ($row->currency ?? 'TND'), 3);
 
             $sealed = $this->money($row->sealed_vat, $scale);
-            if (bccomp($sealed, '0', $scale) <= 0) {
+            $sealedNet = $this->money($row->sealed_net ?? '0', $scale);
+            // A receipt with neither sealed VAT nor a sealed base has nothing to
+            // reconcile. Previously this skipped on VAT alone, which also skipped
+            // the BASE check on a fully-exempt sale — a sale whose whole taxable
+            // base is real even though its VAT is zero.
+            if (bccomp($sealed, '0', $scale) <= 0 && bccomp($sealedNet, '0', $scale) <= 0) {
                 continue;
             }
 
@@ -320,23 +413,54 @@ final class PosReceiptVatLegCensusCommand extends Command
                 ? bcmul($ledger, '-1', $scale)
                 : $ledger;
 
-            if (bccomp($ledgerMagnitude, $sealed, $scale) === 0) {
+            // ── D-1 gate r1 (treasury) F-1 — the BASE arm. ──────────────────
+            // Same magnitude comparison, on the revenue account. Skipped
+            // entirely when the receipt has no POS entry at all, so a
+            // never-posted receipt is still reported once (by the VAT arm)
+            // rather than twice.
+            $revenueLedger = bcsub(
+                bcadd(
+                    $this->money($row->revenue_credit ?? '0', $scale),
+                    $this->money($row->instrument_revenue_credit ?? '0', $scale),
+                    $scale,
+                ),
+                bcadd(
+                    $this->money($row->revenue_debit ?? '0', $scale),
+                    $this->money($row->instrument_revenue_debit ?? '0', $scale),
+                    $scale,
+                ),
+                $scale,
+            );
+            $revenueMagnitude = bccomp($revenueLedger, '0', $scale) < 0
+                ? bcmul($revenueLedger, '-1', $scale)
+                : $revenueLedger;
+            $entryCount = (int) ($row->entry_count ?? 0) + (int) ($row->instrument_entry_count ?? 0);
+
+            $vatOk = bccomp($ledgerMagnitude, $sealed, $scale) === 0;
+            // The base is only checkable once the receipt HAS a POS entry; with
+            // none, the VAT arm's `never reached the GL` verdict already says
+            // everything there is to say.
+            $baseOk = $entryCount === 0
+                || bccomp($revenueMagnitude, $sealedNet, $scale) === 0;
+
+            if ($vatOk && $baseOk) {
                 continue;
             }
 
             $drift++;
-            $entryCount = (int) ($row->entry_count ?? 0) + (int) ($row->instrument_entry_count ?? 0);
             if ($entryCount === 0) {
                 $neverPosted++;
             }
 
             if (count($listed) < $limit) {
                 $listed[] = sprintf(
-                    '%s  posted=%s  sealed_vat=%s  ledger_vat=%s %s  pos_entries=%d  receipt_id=%s',
+                    '%s  posted=%s  sealed_vat=%s  ledger_vat=%s  sealed_base=%s  ledger_base=%s %s  pos_entries=%d  receipt_id=%s',
                     (string) ($row->receipt_number ?? '(no number)'),
                     (string) ($row->posted_at ?? '(unposted)'),
                     $sealed,
                     $ledgerMagnitude,
+                    $sealedNet,
+                    $revenueMagnitude,
                     (string) ($row->currency ?? ''),
                     $entryCount,
                     (string) $row->id,

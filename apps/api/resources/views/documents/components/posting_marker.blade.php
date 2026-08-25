@@ -84,8 +84,26 @@
     <span>{{ __('documents.posting_marker.historical_detail') }}</span>
 </div>
 @elseif($isFiscalType && ! $isSealed)
+{{--
+    C-F0 / SPEC §2.4 (F-95) — THIS ARM IS NOW THE PROFORMA BANNER, and the rest of
+    the page follows it: `$isProforma` (resolved by `ProformaOutputPolicy`, passed
+    in by `DocumentPdfService::prepareData()`) is TRUE for exactly this arm, and it
+    strips the VAT column, the tax rows and the fiscal identifiers from
+    `line_items`, `totals`, `parties` and the layout footer.
+
+    WHY THE MARKER WAS NOT ENOUGH. N-6 shipped a warning line printed NEXT TO a
+    full VAT breakdown. Code TVA Art. 18 makes the VAT mentioned on an issued
+    invoice payable by the act of issuing it, and the recipient can deduct from
+    the paper regardless of what a sentence beside it says. The banner had to
+    become the document.
+
+    The three arms above are unchanged: a sealed-then-cancelled document, an
+    unsealed cancelled one and a historical opening balance are all statements
+    about a document that was issued, not estimates — see `ProformaOutputPolicy`
+    for why each one is excluded there too.
+--}}
 <div class="posting-marker">
-    <strong>{{ __('documents.posting_marker.title') }}</strong>
-    <span>{{ __('documents.posting_marker.detail') }}</span>
+    <strong>{{ __('documents.proforma.title') }}</strong>
+    <span>{{ __('documents.proforma.detail') }}</span>
 </div>
 @endif

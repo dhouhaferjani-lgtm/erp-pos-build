@@ -51,6 +51,42 @@ in the GL opening balance batch as debits to the till's own cash account (on our
 first). The batch balances itself against `119 Solde d'ouverture`. Post it; it validates and **locks
 automatically** in the same transaction.
 
+> **Since 2026-08-25 (W4-2) the same row also seeds Treasury.** The ACCOUNTING template carries an
+> optional **`repository_code`** column. Put the repository's code (e.g. `CASH-01`, `SAFE-01`,
+> `BANK-01`) on that till's **debit** line and posting the batch writes BOTH the journal entry AND the
+> repository's opening movement (`repository_movements`, `source_type = opening_balance`, linked to
+> that same journal entry) in one transaction. The till's balance then equals the GL debit that backs
+> it, and step 4's understatement gap below no longer exists.
+>
+> One row per repository, and the row must debit **that repository's own** `gl_account_id` — the
+> wizard refuses a mismatch, a credit line, an unknown or inactive code, the same code twice, and a
+> repository that has already moved money (`REPOSITORY_ALREADY_SEEDED`). Leave the column blank on
+> every line that is not a till.
+>
+> **If you get the split wrong, it is fixable — with a transfer, not a second batch.** The wizard
+> refuses a cash debit that reaches *no* till, but it cannot tell "1200 in the drawer" from "1200 that
+> should have been 200 drawer + 1000 safe": both put the same total in the ledger and in Treasury, and
+> it has no way to know your safe is not simply empty. So a single merged row **posts**, and puts the
+> whole amount in the one till it names.
+>
+> To correct it afterwards: **Treasury → Transfer**, moving the excess from the over-seeded till to the
+> one that should have had it. When both tills hang off the **same GL account** — which is how a drawer
+> and a safe are provisioned today — that transfer writes **no journal entry and no journal line**: it
+> moves the treasury balances only, leaves the ledger untouched, and `treasury:reconcile` stays green.
+> Verified by execution at treasury gate r2 (PROBE R-9-REMEDY: drawer 1200 → 200, safe 0 → 1000,
+> journal entries before 1, after 1). Do **not** post a second opening batch to fix it — that would
+> debit the cash account again and double GL cash.
+>
+> Example (drawer 200, safe 1000, bank 5000, on a TND tenant at storage scale 3):
+>
+> ```csv
+> account_code,debit,credit,reference,repository_code
+> 53,200.000,0.000,Opening drawer float,CASH-01
+> 53,1000.000,0.000,Opening safe float,SAFE-01
+> 512,5000.000,0.000,Opening bank balance,BANK-01
+> 119,0.000,6200.000,Opening balance equity,
+> ```
+
 ### 2. Do NOT use Treasury → repository → "Adjust balance" to seed a till.
 
 That dialog books the amount as **income** (`7580 Écart de règlement (produits)`), not as an opening
@@ -90,16 +126,35 @@ the float in the opening batch.
 The device asks for the opening float when a shift is opened. Enter the counted amount. This number
 is the drawer's own expectation — it does not post anywhere and cannot double-count with step 1.
 
-### 4. Known gap while `opening_float` (B-2 option b) is not shipped.
+### 4. ~~Known gap while `opening_float` (B-2 option b) is not shipped.~~ **CLOSED 2026-08-25 (W4-2).**
 
-The till's balance shown in Treasury will be understated by the float amount. Two consequences to
-expect:
+The gap this section described — the till's Treasury balance permanently understated by the float,
+cash-position screens short, and a genuine deposit refused with "insufficient balance" — was closed
+by the `repository_code` column in step 1. A batch posted with that column leaves Treasury and the
+GL agreeing exactly.
 
-- Cash-position screens show the till short by the float. The GL (`53`) and the physical drawer are
-  correct; the Treasury figure is the one that is behind.
-- A cash **outflow** (safe drop, bank deposit, payout) may be refused with "insufficient balance" if
-  it exceeds `till balance shown in Treasury`. Workaround until (b) ships: split the deposit, or keep
-  the float out of the deposit amount.
+**A batch that leaves the column blank can no longer post at all.** Since the same change, an
+ACCOUNTING batch that debits a cash or bank account which payment repositories are linked to is
+**refused** (`OPENING_CASH_NOT_FULLY_SEEDED`) unless the whole debit on that account is assigned to
+repositories by the `repository_code` column. A four-column legacy sheet therefore cannot silently
+recreate the old gap: it is stopped, and the error names the account and the amount that would have
+reached no till.
+
+**For a tenant that was ALREADY seeded GL-only, before this shipped: there is no in-product remedy,
+and the two obvious ones are money-wrong.** Such a tenant has a GL cash balance and every till at
+zero.
+
+- Do NOT reach for "Adjust balance" (step 2) — it books the amount as income.
+- Do NOT post a second opening batch for that account — it debits the cash account **again**,
+  doubling GL cash against unchanged physical cash.
+- A **Treasury transfer** cannot help either: it moves cash *between* tills, and in this state no
+  till holds any.
+
+The only writer of an `opening_balance` movement is the batch post, and it always posts a GL leg
+alongside — so the treasury half cannot be added on its own without a purpose-built repair command,
+which does not exist. **Disposition (owner, 2026-08-25): greenfield — there are no existing tenants,
+so re-provision rather than backfill.** If a GL-only tenant ever does arise, raise it: it needs that
+repair command, not a workaround from this page.
 
 ### 5. Do not enable `TREASURY_SHIFT_VARIANCE_GL_ENABLED`.
 
@@ -111,12 +166,23 @@ the float into `6580/7580` on the first close. Current default is already `false
 
 ## Verdict on this posture
 
-Acceptable as a launch posture **for a single-till, owner-operated tenant**, because the operator and
-the accountant are the same person and step 2 is now enforced by the guard. It stops being acceptable
-the moment a second tenant with a real bookkeeper onboards — at which point ship `opening_float`
-(research brief §1.7, Recommendation 3, effort M: the enum case
-`MovementSourceType.php` and the reconciler's JE exemption `ReconcileTreasuryCommand.php:899-907`
-already exist; only the writer is missing).
+**Superseded 2026-08-25 by W4-2.** The posture described below was "acceptable for a single-till,
+owner-operated tenant, and it stops being acceptable the moment a second tenant with a real
+bookkeeper onboards — at which point ship `opening_float`". That writer now exists: it is the
+`repository_code` column of the ACCOUNTING opening batch (step 1), which posts the GL leg and the
+repository movement together rather than as two rails an operator must reconcile by hand.
+
+Two differences from the design sketched in research brief §1.7, both deliberate:
+
+- The opening movement **carries a `journal_entry_id`** (the batch's own historical entry) rather
+  than the null the reconciler already exempts. Linking it is what makes
+  `ReconcileTreasuryCommand` check 2 — which treats the JE's line on the repository's own
+  `gl_account_id` as authoritative — enforce `till == ledger` for the life of the tenant, instead of
+  merely tolerating a divergence. The null-JE exemption stays for other paths.
+- There is **no new `opening_float` reason code**. `MovementReasonCode` is the operator-chosen
+  count-variance vocabulary the "Adjust balance" dialog offers; adding a case there would surface
+  "opening balance" as an adjustment choice and reopen the exact misuse
+  `REPOSITORY_NOT_SEEDED` closes. `source_type = opening_balance` already carries the meaning.
 
 Promote `opening_float` to pre-launch if tenant #1 will make routine bank deposits from the till
 (step 4's outflow refusal becomes a daily obstruction rather than an annoyance).

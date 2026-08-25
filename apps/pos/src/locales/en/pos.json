@@ -1014,7 +1014,8 @@
     },
     "errors": {
       "customer_required": "Customer is required for account charge.",
-      "not_enabled": "This customer is not enabled for account charge."
+      "not_enabled": "This customer is not enabled for account charge.",
+      "remise_not_supported": "A remise cannot be applied to an on-account charge yet. Clear the discount, or take payment now."
     }
   },
   "customer": {

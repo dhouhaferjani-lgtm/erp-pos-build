@@ -10,7 +10,7 @@ import type {
 import {
   type SaleReceiptSellerInput,
 } from '@/lib/fiscal/payloads/SaleReceiptPayload';
-import { buildSaleReceiptV3Payload } from '@/lib/fiscal/payloads/SaleReceiptV3Payload';
+import { buildSaleReceiptV5Payload } from '@/lib/fiscal/payloads/SaleReceiptV5Payload';
 import { computeExactCartTotal, computeExactDiscountAmount } from '@/lib/payment/cartTotals';
 import type { CartTransactionDiscount } from '@/stores/cartStore';
 import type { PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
@@ -129,12 +129,35 @@ export class CartTotalIntegrityError extends Error {
   }
 }
 
+/** One sealed `vat_breakdown[]` row, surfaced for the printed ticket. */
+export interface OfflineReceiptVatGroup {
+  /** Percent at `vat_rate_scale` (e.g. `'19.00'`). */
+  readonly rate: string;
+  /** Taxable base AFTER the ticket-level remise. */
+  readonly netAmount: string;
+  /** VAT on the post-remise base. */
+  readonly vatAmount: string;
+  /** This group's pro-rata share of the remise. */
+  readonly discountAllocated: string;
+}
+
 export interface OfflineReceiptResult {
   receiptNumber: string;
   total: string;
+  /** Gross (TTC) roll-up of the cart lines, BEFORE the ticket-level remise. */
   subtotal: string;
+  /**
+   * The SEALED `vat_total` — VAT on the POST-remise base (D-1, v5). Never the
+   * pre-discount line roll-up: the printed ticket and the local mirror must
+   * quote the same VAT the fiscal event declares.
+   */
   taxAmount: string;
   discountAmount: string;
+  /**
+   * The sealed per-rate breakdown, POST-remise, in canonical order. Printed
+   * verbatim so the ticket can never quote a base the chain does not carry.
+   */
+  vatBreakdown: readonly OfflineReceiptVatGroup[];
   /** Currency-scale decimal string — money never crosses a float boundary. */
   changeDue: string;
   fiscalHash: string;
@@ -155,6 +178,48 @@ function computeLineTotals(cartItems: CartItem[]): {
   }
 
   return { subtotal, taxAmount };
+}
+
+/**
+ * Recover the sealed per-rate breakdown from a receipt's canonical bytes.
+ *
+ * The idempotency-replay path (cashier double-click) returns a receipt that was
+ * authored on an earlier call, so the in-memory breakdown is gone — but the
+ * signed bytes are on the row. Parsing them is exact and needs no schema of its
+ * own. Fail-soft: a v1..v3 row (no `discount_allocated`) or an unparseable blob
+ * yields an empty list and the ticket falls back to its non-fiscal totals block
+ * rather than refusing to reprint.
+ */
+function vatBreakdownFromCanonicalBytes(bytes: string | null | undefined): OfflineReceiptVatGroup[] {
+  if (typeof bytes !== 'string' || bytes === '') return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bytes);
+  } catch {
+    return [];
+  }
+  if (typeof parsed !== 'object' || parsed === null) return [];
+  const rows = (parsed as Record<string, unknown>)['vat_breakdown'];
+  if (!Array.isArray(rows)) return [];
+
+  const out: OfflineReceiptVatGroup[] = [];
+  for (const row of rows) {
+    if (typeof row !== 'object' || row === null) continue;
+    const r = row as Record<string, unknown>;
+    const rate = r['rate'];
+    const net = r['net_amount'];
+    const vat = r['vat_amount'];
+    const allocated = r['discount_allocated'];
+    if (typeof rate !== 'string' || typeof net !== 'string' || typeof vat !== 'string') continue;
+    out.push({
+      rate,
+      netAmount: net,
+      vatAmount: vat,
+      discountAllocated: typeof allocated === 'string' ? allocated : '0',
+    });
+  }
+
+  return out;
 }
 
 function generateReceiptNumber(
@@ -286,6 +351,7 @@ export async function createOfflineReceipt(
         subtotal: existing.subtotal,
         taxAmount: existing.tax_amount,
         discountAmount: existing.discount_amount,
+        vatBreakdown: vatBreakdownFromCanonicalBytes(existing.canonical_bytes),
         changeDue: existing.change_due ?? bcformat('0', getCurrencyDecimals(existing.currency)),
         fiscalHash: existing.fiscal_hash,
         idempotencyKey: existing.idempotency_key,
@@ -332,6 +398,20 @@ export async function createOfflineReceipt(
     throw new CartTotalIntegrityError(total, input.policySnapshot.exactTotal);
   }
 
+  // ── 100 %-comp tickets: NO zero tender row (D-1, G3-A fold-in) ──────────
+  // `pos_receipt_payments` carries `CHECK (amount > 0)`, so the 0.000 leg the
+  // cash screen produces for a fully comped ticket made the whole receipt
+  // unprojectable on PostgreSQL — the projection refused it upstream of the GL
+  // bridge and the sale silently never landed. A comp tenders nothing: the
+  // discount line carries the story, so the leg is dropped here, before the
+  // canonical payload AND before payments_json (the sync wire), and the DB
+  // CHECK stays exactly as it is. If this empties the list on a ticket whose
+  // total is NOT zero, the payload validator refuses it (`payload_payments_empty`)
+  // and nothing is signed.
+  const tenderedPayments = input.payments.filter(
+    (payment) => bccomp(bcformat(payment.amount, decimals), '0') > 0,
+  );
+
   const isTraining = input.isTraining === true;
   if (!input.tenantId || !input.companyId || !input.shiftId || !input.seller) {
     throw new Error('tenantId, companyId, shiftId, and seller are required for fiscal-event receipt authoring.');
@@ -354,7 +434,7 @@ export async function createOfflineReceipt(
   // then swaps in the rounded total and runs the v3 binds. Since M4 the signed
   // canonical line items also carry the variant identity, so the sealed record
   // matches the printed ticket.
-  const canonicalPayload = buildSaleReceiptV3Payload(
+  const canonicalPayload = buildSaleReceiptV5Payload(
     {
       receiptId,
       terminalId: input.terminalId,
@@ -370,7 +450,7 @@ export async function createOfflineReceipt(
       total: exactTotalFormatted,
       transactionDiscountAmount,
       transactionDiscountReason: input.transactionDiscount?.reason ?? null,
-      payments: input.payments.map((payment) => ({
+      payments: tenderedPayments.map((payment) => ({
         methodCode: payment.methodCode,
         amount: payment.amount,
         instrumentType: payment.instrumentType ?? null,
@@ -397,6 +477,18 @@ export async function createOfflineReceipt(
       denomination: input.policySnapshot.denomination,
     },
   );
+  // Read back off the CANONICAL payload, never re-derived: what the ticket
+  // prints and what the local mirror stores are the sealed bytes themselves.
+  const sealedVatTotal = canonicalPayload.vat_total;
+  const sealedVatBreakdown: OfflineReceiptVatGroup[] = canonicalPayload.vat_breakdown.map(
+    (group) => ({
+      rate: group.rate,
+      netAmount: group.net_amount,
+      vatAmount: group.vat_amount,
+      discountAllocated: group.discount_allocated,
+    }),
+  );
+
   const primaryApprovalReferenceEventId =
     approvalReferences[0]?.override_event_id ?? null;
 
@@ -421,7 +513,7 @@ export async function createOfflineReceipt(
   // the server will recompute the hash from null instrument fields and
   // reject the payload as a chain break.
   const paymentsJson = JSON.stringify(
-    input.payments.map((p) => ({
+    tenderedPayments.map((p) => ({
       payment_method_id: p.paymentMethodId ?? input.paymentMethodId,
       repository_id: p.repositoryId ?? input.paymentRepositoryId,
       amount: p.amount,
@@ -460,7 +552,7 @@ export async function createOfflineReceipt(
   // create a redemption ledger entry for it.
   const voucherTenders = isTraining
     ? []
-    : collectStoreVoucherPayments(input.payments);
+    : collectStoreVoucherPayments(tenderedPayments);
   const resolvedVouchers = await resolveLocalVouchers(db, voucherTenders);
 
   // 5c. Wrap receipt insert + hash chain advance + voucher balance updates
@@ -545,7 +637,11 @@ export async function createOfflineReceipt(
           }))
         ),
         subtotal: bcformat(subtotal, decimals),
-        tax_amount: bcformat(taxAmount, decimals),
+        // D-1: the SEALED vat_total (post-remise), not the pre-discount line
+        // roll-up. `subtotal` stays the gross TTC roll-up, so the local mirror
+        // still satisfies `total == subtotal − discount (+ rounding)` while
+        // `tax_amount` is the VAT actually declared by the chain.
+        tax_amount: sealedVatTotal,
         discount_amount: bcformat(transactionDiscountAmount, decimals),
         total: totalFormatted,
         currency: input.currency,
@@ -666,8 +762,9 @@ export async function createOfflineReceipt(
     receiptNumber,
     total: totalFormatted,
     subtotal: bcformat(subtotal, decimals),
-    taxAmount: bcformat(taxAmount, decimals),
+    taxAmount: sealedVatTotal,
     discountAmount: bcformat(transactionDiscountAmount, decimals),
+    vatBreakdown: sealedVatBreakdown,
     changeDue: changeDueFormatted,
     fiscalHash: fiscalEventResult.current_hash,
     idempotencyKey,

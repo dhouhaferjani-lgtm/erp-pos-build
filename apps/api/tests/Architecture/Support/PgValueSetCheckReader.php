@@ -141,8 +141,36 @@ final class PgValueSetCheckReader
             $flat = $stripped;
         }
 
+        // R2-1 — A CONJUNCTION IS NEVER A SINGLE-COLUMN VALUE SET.
+        //
+        // PostgreSQL renders `CHECK (status IN (…) AND origin IN (…))` as two
+        // `= ANY (ARRAY[…])` predicates joined by AND, and the flattened text ends
+        // in `]` just like a plain ARRAY form does. Before this guard the ARRAY
+        // body capture was greedy (`ARRAY\[(.*)\]\s*$`), so it swallowed the
+        // intervening `] … ARRAY[` and returned ONE column admitting the UNION of
+        // both halves. That union is routinely EXACTLY the governing enum's case
+        // list — reproduced live on `payments.status`, where the gate reported
+        // COVERED for a column PostgreSQL restricts to two of its four cases, i.e.
+        // a NARROWER write bomb wearing a COVERED badge (gate r2 §R2-1). A FALSE
+        // COVERED is the one failure mode that makes this whole gate lie, so a
+        // conjunction is rejected outright, BEFORE any shape is matched.
+        //
+        // Belt and braces: the ARRAY bodies below additionally forbid `]` inside
+        // the captured body, so even a conjunction this scan somehow misses cannot
+        // produce a spanning capture. The residual cost of that second brace is
+        // that a value set one of whose LITERALS contains `]` now reads null —
+        // MISSING, the safe direction, and no such literal exists in this schema.
+        //
+        // The scan is QUOTE-AWARE. A naive `str_contains($flat, ' AND ')` would
+        // reject `CHECK (label IN ('salt AND pepper', 'z'))`, which IS an ordinary
+        // value set: a false MISSING is safe but it silently inflates the burn-down
+        // denominator, so it is pinned against in the liveness provider.
+        if (self::containsUnquotedAnd($flat)) {
+            return null;
+        }
+
         // ARRAY form, with an optional `col IS NULL OR` prefix.
-        if (preg_match('/^CHECK (?:(\w+) IS NULL OR )?(\w+) = ANY ARRAY\[(.*)\]\s*$/', $flat, $m) === 1) {
+        if (preg_match('/^CHECK (?:(\w+) IS NULL OR )?(\w+) = ANY ARRAY\[([^\]]*)\]\s*$/', $flat, $m) === 1) {
             $nullGuard = $m[1] === '' ? null : $m[1];
             $column = $m[2];
             if ($nullGuard !== null && $nullGuard !== $column) {
@@ -158,7 +186,7 @@ final class PgValueSetCheckReader
         }
 
         // ARRAY form with the null guard written AFTER the set.
-        if (preg_match('/^CHECK (\w+) = ANY ARRAY\[(.*)\] OR (\w+) IS NULL\s*$/', $flat, $m) === 1) {
+        if (preg_match('/^CHECK (\w+) = ANY ARRAY\[([^\]]*)\] OR (\w+) IS NULL\s*$/', $flat, $m) === 1) {
             if ($m[1] !== $m[3]) {
                 return null;
             }
@@ -180,6 +208,38 @@ final class PgValueSetCheckReader
         // or naming a second column is a cross-column invariant, not a value set,
         // and yields null — which reads as MISSING, i.e. the safe direction.
         return self::parseOrChain($flat, $notValidated);
+    }
+
+    /**
+     * R2-1 — is there an ` AND ` OUTSIDE every single-quoted literal?
+     *
+     * `flatten()` has already dropped PostgreSQL's parenthesisation, so there is
+     * no nesting left to distinguish a "top-level" AND from a nested one — which
+     * is the correct answer anyway: a conjunction ANYWHERE in the predicate means
+     * the constraint expresses more than one column's admissible enumeration, and
+     * `parseValueSet()` must not claim to have read a single-column value set out
+     * of it. The OR-chain path is unaffected: it rejects an AND-carrying branch on
+     * its own (`pos_receipts_return_logic`), and now never sees one.
+     */
+    private static function containsUnquotedAnd(string $flat): bool
+    {
+        $length = strlen($flat);
+
+        for ($i = 0; $i < $length;) {
+            if ($flat[$i] === "'") {
+                [, $i] = self::consumeLiteral($flat, $i);
+
+                continue;
+            }
+
+            if (substr_compare($flat, ' AND ', $i, 5) === 0) {
+                return true;
+            }
+
+            $i++;
+        }
+
+        return false;
     }
 
     /**

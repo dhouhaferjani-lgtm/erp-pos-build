@@ -5,6 +5,8 @@ import {
   SALE_RECEIPT_PAYLOAD_KEYS,
   SALE_RECEIPT_PAYLOAD_KEYS_V3,
   SALE_RECEIPT_PAYLOAD_KEYS_V4,
+  SALE_RECEIPT_PAYLOAD_KEYS_V5,
+  SALE_RECEIPT_VAT_BREAKDOWN_KEYS_V5,
 } from '../FiscalEventEngine';
 import { ACCOUNT_PAYMENT_PAYLOAD_KEYS } from '../payloads/AccountPaymentPayload';
 import { ACCOUNT_CHARGE_PAYLOAD_KEYS } from '../payloads/AccountChargePayload';
@@ -47,6 +49,37 @@ describe('Fiscal payload PHP/TS key drift gates', () => {
       expect(v3.has(key)).toBe(true);
     }
     expect(v3.size - SALE_RECEIPT_PAYLOAD_KEYS.length).toBe(2);
+  });
+
+  // -------------------------------------------------------------------
+  // D-1 (owner ruling 2026-08-25) — SALE_RECEIPT v5 key-set drift gates.
+  // The TOP-LEVEL set is unchanged from v3; what moves is the semantics of
+  // subtotal / vat_total / vat_breakdown[] and the new per-row
+  // `discount_allocated`. Both lists are pinned against their PHP twins.
+  // -------------------------------------------------------------------
+
+  it('SALE_RECEIPT_PAYLOAD_KEYS_V5 byte-mirrors the PHP named const', () => {
+    const phpKeys = readPhpNamedConst('SALE_RECEIPT_PAYLOAD_KEYS_V5');
+    const tsKeys = [...SALE_RECEIPT_PAYLOAD_KEYS_V5];
+
+    expect([...tsKeys].sort()).toEqual([...phpKeys].sort());
+    expect(tsKeys).toHaveLength(30);
+    expect(tsKeys).toEqual([...tsKeys].sort());
+  });
+
+  it('V5 carries exactly the V3 top-level keys — the change is semantic, not structural', () => {
+    expect([...SALE_RECEIPT_PAYLOAD_KEYS_V5].sort())
+      .toEqual([...SALE_RECEIPT_PAYLOAD_KEYS_V3].sort());
+  });
+
+  it('SALE_RECEIPT_VAT_BREAKDOWN_KEYS_V5 byte-mirrors the PHP named const', () => {
+    const phpKeys = readPhpNamedConst('SALE_RECEIPT_VAT_BREAKDOWN_KEYS_V5');
+    const tsKeys = [...SALE_RECEIPT_VAT_BREAKDOWN_KEYS_V5];
+
+    expect([...tsKeys].sort()).toEqual([...phpKeys].sort());
+    expect(tsKeys).toHaveLength(6);
+    expect(tsKeys).toEqual([...tsKeys].sort());
+    expect(tsKeys).toContain('discount_allocated');
   });
 
   // -------------------------------------------------------------------

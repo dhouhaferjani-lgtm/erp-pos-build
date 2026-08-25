@@ -831,7 +831,17 @@ class UserController extends Controller
         // Map each company id -> whether the user's membership is primary.
         // The client uses `is_primary` as the first tiebreak when deciding which
         // company to auto-select, so it must be exposed here.
+        //
+        // ACTIVE only (W2-1 gate r1, F-2). This list is what the client is
+        // allowed to select from, and `CompanyContext::userHasAccessToCompany`
+        // — the check every company-scoped request passes through — requires an
+        // ACTIVE membership. Listing a suspended/revoked membership here made
+        // the two disagree: the client could deterministically re-select a
+        // company the middleware then denies, so a scope reset would re-pick it
+        // and 403 again, forever. It also stopped an offboarded token-holder
+        // from enumerating the names of companies they were revoked from.
         $primaryByCompany = UserCompanyMembership::where('user_id', $user->id)
+            ->where('status', MembershipStatus::Active->value)
             ->pluck('is_primary', 'company_id');
 
         // Fetch companies

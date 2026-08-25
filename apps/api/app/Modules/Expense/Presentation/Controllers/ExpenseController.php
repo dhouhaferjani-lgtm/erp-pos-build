@@ -15,6 +15,7 @@ use App\Modules\Expense\Application\DTOs\PayExpenseRequestData;
 use App\Modules\Expense\Application\Exceptions\LinkedCostException;
 use App\Modules\Expense\Application\Queries\ExpenseIndexQuery;
 use App\Modules\Expense\Application\Services\ExpenseService;
+use App\Modules\Expense\Domain\Exceptions\ExpensePaidWithoutRepositoryException;
 use App\Modules\Expense\Presentation\Requests\ExpenseRequest;
 use App\Modules\Expense\Presentation\Requests\PayExpenseRequest;
 use App\Modules\Expense\Presentation\Resources\ExpenseResource;
@@ -110,6 +111,8 @@ class ExpenseController extends Controller
             $expense = $this->expenseService->create($data, $user);
         } catch (LinkedCostException $exception) {
             return $this->linkedCostError($exception);
+        } catch (ExpensePaidWithoutRepositoryException $exception) {
+            return $this->paidWithoutRepositoryError($exception);
         }
 
         return response()->json([
@@ -235,6 +238,8 @@ class ExpenseController extends Controller
             $expense = $this->expenseService->post($expense, $user);
         } catch (LinkedCostException $exception) {
             return $this->linkedCostError($exception);
+        } catch (ExpensePaidWithoutRepositoryException $exception) {
+            return $this->paidWithoutRepositoryError($exception);
         }
 
         return response()->json([
@@ -370,6 +375,19 @@ class ExpenseController extends Controller
         }
 
         return response()->json(['data' => $resolution]);
+    }
+
+    /**
+     * W4-10 — the typed refusal of a cash-paid expense that names no treasury
+     * repository. Mirrors linkedCostError()'s `{code, message}` envelope so the
+     * expense form can highlight the repository field.
+     */
+    private function paidWithoutRepositoryError(ExpensePaidWithoutRepositoryException $exception): JsonResponse
+    {
+        return response()->json([
+            'code' => ExpensePaidWithoutRepositoryException::ERROR_CODE,
+            'message' => $exception->getMessage(),
+        ], 422);
     }
 
     private function linkedCostError(LinkedCostException $exception): JsonResponse

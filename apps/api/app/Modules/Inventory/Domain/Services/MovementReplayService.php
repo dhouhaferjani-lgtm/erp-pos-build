@@ -31,7 +31,55 @@ final class MovementReplayService
 {
     /**
      * Σ(quantity_after − quantity_before) over the stock line's movements
-     * whose event time falls in (from, to] — exclusive start, inclusive end.
+     * whose event time falls in [from, to] — INCLUSIVE on both bounds.
+     *
+     * ## The baseline this defines (campaign W4-6, gate r1 F-2)
+     *
+     * `from` is the instant the shelf was physically counted. The counted
+     * quantity is taken as the truth AT that instant, so:
+     *
+     *  - everything that happened STRICTLY BEFORE it is already reflected in
+     *    what the counter saw — it is part of the baseline and must NOT be
+     *    replayed (re-adding it would double-count the shelf);
+     *  - everything from that instant onwards is neutralised exactly ONCE, so
+     *    `expected_now = counted + Σ` restores the count onto today's on-hand.
+     *
+     * The boundary itself is INCLUSIVE, and that is a deliberate fail-safe
+     * rather than a rounding detail. `count_N_at_estimate` and
+     * `occurred_at`/`created_at` are both stored at second precision, so a sale
+     * rung up in the same second as the count is genuinely ambiguous. Excluding
+     * it (the pre-2026-08-25 `>` semantics) treats it as already-counted and
+     * posts a phantom GAIN of its magnitude — stock the shop does not have, and
+     * a wrong shrinkage/gain journal entry the moment
+     * `inventory.count_correction_gl_posting_enabled` is flipped. Including it
+     * resolves the same line at variance ZERO. Between two unprovable readings,
+     * take the one that invents no stock.
+     *
+     * ## The same-second tie-break (gate r2, NEW-1)
+     *
+     * Closing the boundary is necessary but not sufficient: `[from, to]` decides
+     * the same-second case in favour of ONE reading of the counter (they had not
+     * seen the movement). Take the other reading — the sale was rung up at `from`
+     * and the counter walked past AFTER it — and the same units are subtracted
+     * twice. A timestamp cannot separate the two; it has no information left.
+     * INSERTION ORDER does, and `$marker` carries it: the last
+     * `stock_movements.id` that existed on this line when the count was
+     * SUBMITTED. A boundary-second movement at or below it was already there
+     * when the counter reported (baseline); above it, it arrived afterwards
+     * (neutralised). `stock_movements.id` is a UUIDv7, so lexicographic order is
+     * creation order.
+     *
+     * The marker refines ONLY the boundary second. Everything strictly after
+     * `from` is neutralised and everything strictly before it is baseline,
+     * marker or no marker — because `from` may be a DEVICE instant hours earlier
+     * than the marker was taken (an offline count that synced later), and pure
+     * id ordering would then silently stop neutralising every sale made between
+     * the count and its sync. Time decides what time can decide; order decides
+     * only the tie.
+     *
+     * With `$marker` null (a legacy row, or a line counted before the marker
+     * columns shipped) the boundary second stays inclusive — the r1 semantics,
+     * unchanged.
      *
      * A single SUM query; the result is normalized to
      * `InventoryScale::QUANTITY_SCALE` via bcadd so a NULL sum (no matching
@@ -39,6 +87,7 @@ final class MovementReplayService
      * driver-returned numeric type is forced through bcmath rather than a
      * float cast.
      *
+     * @param  string|null  $marker  Last `stock_movements.id` visible when the count was submitted.
      * @return numeric-string signed delta at InventoryScale::QUANTITY_SCALE (may be negative)
      */
     public function signedDelta(
@@ -47,10 +96,23 @@ final class MovementReplayService
         ?string $variantId,
         CarbonInterface $from,
         CarbonInterface $to,
+        ?string $marker = null,
     ): string {
+        $fromBoundary = $this->boundary($from);
+
         $query = $this->scopedQuery($productId, $locationId, $variantId)
-            ->whereRaw('COALESCE(occurred_at, created_at) > ?', [$this->boundary($from)])
+            ->whereRaw('COALESCE(occurred_at, created_at) >= ?', [$fromBoundary])
             ->whereRaw('COALESCE(occurred_at, created_at) <= ?', [$this->boundary($to)]);
+
+        if ($marker !== null) {
+            // Boundary-second rows only: keep the ones that arrived AFTER the
+            // count was submitted, drop the ones that were already there.
+            $query->where(function (Builder $boundary) use ($fromBoundary, $marker): void {
+                $boundary
+                    ->whereRaw('COALESCE(occurred_at, created_at) > ?', [$fromBoundary])
+                    ->orWhere('id', '>', $marker);
+            });
+        }
 
         /** @var string|int|float|null $sum */
         $sum = $query->selectRaw('SUM(quantity_after - quantity_before) as delta')->value('delta');
@@ -77,8 +139,9 @@ final class MovementReplayService
         CarbonInterface $from,
         CarbonInterface $to,
         string $onHandNow,
+        ?string $marker = null,
     ): ReplayComputation {
-        $movementsSinceCount = $this->signedDelta($productId, $locationId, $variantId, $from, $to);
+        $movementsSinceCount = $this->signedDelta($productId, $locationId, $variantId, $from, $to, $marker);
 
         return $this->computeFromDelta($finalQty, $onHandNow, $movementsSinceCount);
     }
@@ -114,7 +177,7 @@ final class MovementReplayService
             ->whereIn('location_id', array_keys($locationIds))
             ->whereRaw('COALESCE(occurred_at, created_at) >= ?', [$this->boundary($minimumFrom)])
             ->whereRaw('COALESCE(occurred_at, created_at) <= ?', [$this->boundary($to)])
-            ->get(['product_id', 'location_id', 'variant_id', 'quantity_before', 'quantity_after', 'occurred_at', 'created_at']);
+            ->get(['id', 'product_id', 'location_id', 'variant_id', 'quantity_before', 'quantity_after', 'occurred_at', 'created_at']);
 
         /** @var array<string, list<StockMovement>> $byGrain */
         $byGrain = [];
@@ -136,7 +199,12 @@ final class MovementReplayService
                     continue;
                 }
                 $eventAt = CarbonImmutable::instance($eventAtValue);
-                if ($eventAt->gt($from) && $eventAt->lte($to)) {
+                // Mirror of signedDelta()'s tie-break: at the boundary second the
+                // marker decides, everywhere else the timestamp does. The preview
+                // and the apply must never disagree about a line.
+                $inWindow = $eventAt->gt($from)
+                    || ($eventAt->eq($from) && ($input->marker === null || (string) $row->id > $input->marker));
+                if ($inWindow && $eventAt->lte($to)) {
                     $rowDelta = bcsub($row->quantity_after, $row->quantity_before, InventoryScale::QUANTITY_SCALE);
                     $delta = bcadd($delta, $rowDelta, InventoryScale::QUANTITY_SCALE);
                 }
@@ -206,6 +274,35 @@ final class MovementReplayService
      * `variant_id = :v` — never both, so variant B's movements are invisible
      * to variant A's replay and to the null-variant (base product) line.
      */
+    /**
+     * Whether the count instant's OWN second carries a movement on this grain
+     * (lane P-1, gate r1 F-2).
+     *
+     * This is the exact and only condition under which a NULL
+     * `final_qty_movement_marker` changes the replayed delta: the marker branch
+     * in {@see self::signedDelta()} narrows nothing but the boundary second, so
+     * with an empty boundary second a marker-less line and a marker-bearing line
+     * produce identical arithmetic.
+     *
+     * Callers use it to decide whether a marker-less line is genuinely
+     * ambiguous. Answering the cheaper question ("is the marker null?") would
+     * withhold the journal entry of every line counted before the marker columns
+     * shipped, including the overwhelming majority whose replay is not in doubt
+     * at all — a correct entry suppressed is a cost, not a saving.
+     */
+    public function boundarySecondIsAmbiguous(
+        string $productId,
+        string $locationId,
+        ?string $variantId,
+        CarbonInterface $countInstant,
+    ): bool {
+        $boundary = $this->boundary($countInstant);
+
+        return $this->scopedQuery($productId, $locationId, $variantId)
+            ->whereRaw('COALESCE(occurred_at, created_at) = ?', [$boundary])
+            ->exists();
+    }
+
     private function scopedQuery(string $productId, string $locationId, ?string $variantId): Builder
     {
         $query = DB::table('stock_movements')
@@ -225,7 +322,7 @@ final class MovementReplayService
      * Formats a window boundary to second precision, matching the
      * `timestampTz` (precision 0) storage of `occurred_at`/`created_at` — a
      * value carrying sub-second precision would never compare equal to a
-     * stored boundary row, breaking the exact-boundary (from, to] semantics.
+     * stored boundary row, breaking the exact-boundary [from, to] semantics.
      * Converts to UTC before formatting to ensure consistent comparison
      * regardless of the caller's timezone.
      */

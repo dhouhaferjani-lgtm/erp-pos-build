@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Tests\Feature\Accounting\Reports;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Domain\Enums\OpeningBatchStatus;
+use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
+use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -17,9 +20,14 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Contracts\Treasury\DTOs\OpeningFloatIntent;
+use App\Shared\Contracts\Treasury\RepositoryOpeningBalanceSeederInterface;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -113,11 +121,53 @@ final class UpcomingPaymentsTest extends TestCase
         $unpaidExpenseNumber = $unpaidExpense->document_number;
         self::assertNull($unpaidExpense->balance_due, 'Precondition: real expenses never populate balance_due');
 
+        // W4-10: a cash-paid expense must name the repository the money left.
+        // This test's subject is the unpaid/paid split in the report, not the
+        // payment shape, so the paid fixture simply names a till.
+        $till = PaymentRepository::forceCreate([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH-UPCOMING',
+            'name' => 'Caisse',
+            'type' => RepositoryType::CashRegister,
+            'is_active' => true,
+        ]);
+
+        // ...and a till only pays out what it holds, so give it its day-one
+        // float through the one sanctioned path (W4-2).
+        // gate r1 F-12: the port asserts that batchId names a REAL opening
+        // batch of this tenant+company — an opening movement with no document
+        // behind it is what document-per-action forbids — so post one.
+        $openingBatch = OpeningBalanceBatch::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => OpeningBatchType::Accounting,
+            'name' => 'Fixture opening CASH-UPCOMING',
+            'cutover_date' => CarbonImmutable::now()->subYears(2)->toDateString(),
+            'status' => OpeningBatchStatus::Draft,
+            'created_by' => $this->user->id,
+        ]);
+
+        DB::transaction(function () use ($till, $openingBatch): void {
+            app(RepositoryOpeningBalanceSeederInterface::class)->seed(new OpeningFloatIntent(
+                tenantId: $this->tenant->id,
+                companyId: $this->company->id,
+                repositoryId: $till->id,
+                amount: '100.000',
+                currency: (string) $this->company->currency,
+                batchId: $openingBatch->id,
+                occurredAt: CarbonImmutable::now()->subYears(2),
+                journalEntryId: null,
+                createdBy: $this->user->id,
+            ));
+        });
+
         $paidExpense = $expenseService->create([
             'company_id' => $this->company->id,
             'total' => '45.000',
             'payment_date' => '2026-07-06',
             'is_paid' => true,
+            'payment_repository_id' => $till->id,
             'vendor_name' => 'Tunisie Telecom',
         ], $this->user);
         $paidExpense = $expenseService->post($paidExpense, $this->user);

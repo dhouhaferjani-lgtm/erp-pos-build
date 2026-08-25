@@ -335,24 +335,33 @@ final class DocumentAllocationClassifier
      * because the AP branch of `PaymentController::store()` requires
      * `type === SupplierInvoice` and an opening is minted as `Invoice`.
      *
-     * Owner-sheet OQ-74 records this as the default:
+     * Owner-sheet OQ-74, RULED `d0cfa624f` — **ALLOW**, under the standing rule
+     * that standard ERP logic applies as soon as it is implemented (a correctly
+     * built flow is not refused as a fail-safe):
      * - AR + posted ⇒ ADMITTED (`ReceivableClearing`). Collecting it is an
      *   ordinary collection, and booking it as a 419 advance would invent a
      *   liability the company does not owe.
      *
-     *   CUTOVER ORDERING (gate r2 / R-R2-1) — an AR opening DOCUMENT creates no
-     *   journal entry of its own: `ArApOpeningService` says so three times
-     *   ("No GL entry created (GL was handled by accounting opening)", `:37`,
-     *   `:257`, `:427`). It writes `is_historical`, `balance_due` and a `posted`
-     *   status, and nothing else. So the 411 this collection CREDITS exists only
-     *   if the tenant also posted an `AccountingOpeningService` opening batch.
-     *   Collect against AR open items only AFTER the accounting opening batch is
-     *   posted, or the credit lands against a debit that was never made and the
-     *   partner's receivable goes negative. This is inherited, not introduced —
-     *   base admitted the same collections — but C-0a0 is what re-enables the
-     *   path, so the runbook ordering is stated where the admission is made.
-     * - AP ⇒ REFUSED. Settling it is Dr 401 / Cr bank; C-0a1 routes it once
-     *   `opening_side` is a persisted column.
+     *   CUTOVER ORDERING — **no longer a hazard, and the reason is worth keeping.**
+     *   This used to warn that an AR opening DOCUMENT created no journal entry of
+     *   its own, so the 411 it credits existed only if the tenant had also posted
+     *   an `AccountingOpeningService` batch, and collecting in the wrong order
+     *   drove the receivable negative. W4-4 removed the premise: every AR/AP
+     *   opening now posts its OWN historical entry (Dr 411 / Cr opening-balance
+     *   equity, control leg partner-tagged) inside the same transaction that mints
+     *   the document, and the GL opening batch REFUSES a partner control account
+     *   so the balance can never be stated twice. The debit this collection
+     *   credits is therefore created by the opening itself, in every order.
+     * - AP ⇒ **ADMITTED, on the supplier arm only.** W4-3 mints it as a
+     *   `DocumentType::SupplierInvoice` on `HIST-SINV` with a posted
+     *   `supplier_invoice` entry carrying `Cr 401` partner-tagged — which is
+     *   precisely the precondition `PaymentController::store()`'s supplier branch
+     *   checks — so it settles Dr 401 / Cr bank like any other payable. The old
+     *   refusal rested on an AP opening being byte-identical to an AR one (both
+     *   were `Invoice`); the discriminator C-PROV0 was going to add is now the
+     *   TYPE itself, backed by a real payable in the ledger.
+     *   It stays refused on the RECEIVABLE-direction routes, which post
+     *   Dr bank / Cr 411 — `PayableNotSettleableHere`, not a provenance refusal.
      * - side UNPROVEN ⇒ REFUSED. Fail closed belongs where the evidence is
      *   genuinely absent, not where nobody looked.
      *

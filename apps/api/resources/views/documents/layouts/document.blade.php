@@ -344,7 +344,25 @@
 
     <div class="footer">
         <span class="footer-company">{{ $company->legal_name ?? $company->name }}</span>
-        @php($sellerTaxIdDisplay = ($sellerTaxId ?? null) ?? $company->tax_id)
+        {{--
+            C-F0 / F-95 — the footer repeats the seller's fiscal identifier on every
+            page, so it has to be gated too.
+
+            `?? false` and NOT the `?? true` the two fiscal templates use — and the
+            r1 rationale for that was WRONG, corrected here by gate r1 F-5. Blade
+            compiles `@extends` into a TRAILING
+            `$__env->make($layout, array_diff_key(get_defined_vars(), …))`
+            (`CompilesLayouts.php:24`) that runs after the section body in the SAME
+            function scope, so a `@php` reassignment inside `@section('content')`
+            DOES reach this layout. The real reason for the asymmetry is coverage:
+            this layout wraps all eight templates, six of which never resolve the
+            flag at all, so defaulting to TRUE here would strip the identifier from
+            a purchase order or a quote rendered directly. The two fiscal templates
+            own the fail-safe because they are the only ones the rule applies to.
+            `DocumentPdfService::prepareData()` always supplies the key on the
+            production path — `ProformaTemplateCensusTest` pins that.
+        --}}
+        @php($sellerTaxIdDisplay = ($isProforma ?? false) ? null : (($sellerTaxId ?? null) ?? $company->tax_id))
         @if($sellerTaxIdDisplay)
             | {{ ($sellerTaxLabel ?? null) ?? __('Tax ID') }}: {{ $sellerTaxIdDisplay }}
         @endif

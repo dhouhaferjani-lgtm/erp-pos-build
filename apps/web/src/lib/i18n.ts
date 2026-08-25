@@ -323,7 +323,10 @@ const resources = {
         },
       },
     },
-    inventory: { ...enInventory, ...arInventory, products: { ...enInventory.products, ...arInventory.products } },
+    // `settings` joins `products` as a DEEP-merged sub-tree (lane P-1): the ar
+    // bundle now authors `settings.countCorrectionGl`, and a shallow spread
+    // would shadow every other `settings.*` key English supplies here.
+    inventory: { ...enInventory, ...arInventory, products: { ...enInventory.products, ...arInventory.products }, settings: { ...enInventory.settings, ...arInventory.settings } },
     treasury: { ...enTreasury, ...arTreasury },
     validation: arValidation,
     pricing: enPricing,

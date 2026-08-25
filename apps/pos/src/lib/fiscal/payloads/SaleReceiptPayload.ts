@@ -229,7 +229,7 @@ function assertSaleReceiptAggregates(
   }
 }
 
-function buildSellerBlock(input: SaleReceiptSellerInput): SellerBlockInput {
+export function buildSellerBlock(input: SaleReceiptSellerInput): SellerBlockInput {
   const name = requireText(input.name, 'seller.name');
   const countryCode = requireText(input.countryCode, 'seller.address.country_code').toUpperCase();
   const taxNumber = normalizeSellerTaxNumber(
@@ -259,7 +259,7 @@ function normalizeSellerTaxNumber(taxNumber: string, countryCode: string): strin
   return taxNumber;
 }
 
-function buildLineItems(cartItems: CartItem[], scale: number): LineItemInput[] {
+export function buildLineItems(cartItems: CartItem[], scale: number): LineItemInput[] {
   return cartItems.map((item) => {
     const discountAmount = bcformat(item.discount_amount ?? '0', scale);
     const discountReason = item.discount_reason ?? null;
@@ -353,7 +353,7 @@ function buildVatBreakdown(
     }));
 }
 
-function buildPayments(
+export function buildPayments(
   payments: ReadonlyArray<SaleReceiptPaymentInput>,
   scale: number,
 ): PaymentInput[] {
@@ -367,7 +367,7 @@ function buildPayments(
   }));
 }
 
-function buildVouchersRedeemed(
+export function buildVouchersRedeemed(
   payments: ReadonlyArray<SaleReceiptPaymentInput>,
   scale: number,
 ): VoucherRedeemedInput[] {
@@ -379,7 +379,7 @@ function buildVouchersRedeemed(
     }));
 }
 
-function mapConsumptionMode(value: string | null): 'dine_in' | 'takeaway' | null {
+export function mapConsumptionMode(value: string | null): 'dine_in' | 'takeaway' | null {
   if (value === null || value === '') return null;
   if (value === 'SUR_PLACE' || value === 'dine_in') return 'dine_in';
   if (value === 'A_EMPORTER' || value === 'takeaway') return 'takeaway';

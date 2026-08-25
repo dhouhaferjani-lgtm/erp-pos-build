@@ -1,7 +1,8 @@
 import type { CartItem } from '@/types/cart';
 import type { CartTransactionDiscount } from '@/stores/cartStore';
+import i18n from '@/lib/i18n';
 import { getCurrencyDecimals } from '@/lib/currency';
-import { bcadd, bccomp, bcformat, bcmul, bcdiv, bcsub } from '@/lib/decimal';
+import { bcadd, bccomp, bcformat, bcsub } from '@/lib/decimal';
 import type {
   AccountChargeLineInput,
   AccountChargeVatBreakdownInput,
@@ -98,22 +99,39 @@ export function buildAccountChargeCart(
   }
 
   const grossTotal = bcadd(netSubtotal, taxAmount);
-  let transactionDiscountAmount = '0';
+  // ── D-1 gate r1 finding 4 (owner ruling 2026-08-25) ─────────────────────
+  // This mapper still seals `subtotal`/`vatTotal` on the PRE-remise line
+  // roll-up and applies the remise to `total` alone — verbatim the defect D-1
+  // removed from SALE_RECEIPT, on a sibling event type fed by the SAME cart
+  // and the SAME transaction-discount UI. Since D-1 a paid ticket seals a
+  // POST-remise base; letting an on-account ticket seal a pre-remise one would
+  // make ONE cart declare two different taxable bases depending on tender, and
+  // `createPOSChargeEntry()` would over-credit VAT collected on every
+  // discounted on-account sale.
+  //
+  // Ventilating ACCOUNT_CHARGE properly is a versioned-payload change of its
+  // own (new event version, projection column, GL era awareness) and cannot be
+  // authored or tested end-to-end inside D-1. So the remise is REFUSED here
+  // until that lane lands: fail-closed, immediately correct, reversible in one
+  // block. Nothing is signed when it throws — the cashier is told to clear the
+  // remise or take payment now. The server refuses it too
+  // (`payload_account_charge_transaction_discount_unsupported`), which is what
+  // binds a device that has not taken this build.
   if (input.transactionDiscount) {
-    transactionDiscountAmount = input.transactionDiscount.type === 'percentage'
-      ? bcdiv(bcmul(grossTotal, input.transactionDiscount.value), '100')
-      : input.transactionDiscount.value;
-  }
-  // Canonical contract §6.A (PHP validateDiscountReasonPair + TS engine line 430):
-  // transaction_discount_reason MUST be non-null when transaction_discount_amount > 0.
-  const transactionDiscountReason = input.transactionDiscount?.reason ?? null;
-  if (bccomp(transactionDiscountAmount, '0') > 0 && (transactionDiscountReason === null || transactionDiscountReason === '')) {
     throw new AccountChargeCartError(
-      'transaction discount reason is required when a transaction discount amount is present.',
+      i18n.t('account_charge.errors.remise_not_supported', { ns: 'pos' }),
     );
   }
-  const rawTotal = bcsub(grossTotal, transactionDiscountAmount);
-  const total = bccomp(rawTotal, '0') >= 0 ? rawTotal : '0';
+  // The refusal above makes these constants, not a branch. They are KEPT (a) so
+  // the canonical payload still carries the two contract fields at their
+  // canonical-zero values, and (b) so re-enabling the remise here — once
+  // ACCOUNT_CHARGE ventilates — is deleting a guard rather than rebuilding a
+  // computation. Canonical contract §6.A: `transaction_discount_reason` must be
+  // null while the amount is zero, which is exactly what a refused remise
+  // leaves behind.
+  const transactionDiscountAmount = '0';
+  const transactionDiscountReason: string | null = null;
+  const total = grossTotal;
 
   return {
     lines,

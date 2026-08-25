@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { CartItem } from '@/stores/cartStore';
 import { buildSaleReceiptPayload } from '@/lib/fiscal/payloads/SaleReceiptPayload';
 import { bcadd, bccomp } from '@/lib/decimal';
-import { buildAccountChargeCart } from '../accountChargeCartMapper';
+import { AccountChargeCartError, buildAccountChargeCart } from '../accountChargeCartMapper';
 
 function cart(): CartItem[] {
   return [
@@ -70,32 +70,46 @@ describe('buildAccountChargeCart', () => {
     expect(result.transactionDiscountAmount).toBe('0.000');
   });
 
-  it('applies a fixed transaction discount off the gross total and satisfies subtotal+vatTotal==total+discount invariant', () => {
+  /**
+   * D-1 gate r1 finding 4 (owner ruling 2026-08-25) — RE-PINNED from "applies"
+   * to "refuses".
+   *
+   * This mapper seals `subtotal`/`vatTotal` on the PRE-remise line roll-up and
+   * applies the remise to `total` alone — the defect D-1 removed from
+   * SALE_RECEIPT, on a sibling event type fed by the SAME cart and the SAME
+   * discount UI. Accepting it would let ONE cart declare two different taxable
+   * bases depending on tender. Refused until ACCOUNT_CHARGE ventilates; the
+   * server refuses it too, which is what binds an un-upgraded device.
+   */
+  it('refuses a transaction discount until ACCOUNT_CHARGE ventilates the base', () => {
     const discount: import('@/stores/cartStore').CartTransactionDiscount = {
       type: 'fixed',
       value: '19.000',
       reason: 'promo',
     };
-    const result = buildAccountChargeCart({ cartItems: cart(), currency: 'TND', transactionDiscount: discount });
-    expect(result.subtotal).toBe('100.000');
-    expect(result.vatTotal).toBe('19.000');
-    expect(result.total).toBe('100.000');
-    expect(result.transactionDiscountAmount).toBe('19.000');
-    // Invariant: subtotal + vatTotal === total + transactionDiscountAmount (119.000 === 119.000)
-    // Uses bc* string helpers — no JS float arithmetic (no-JS-float rule).
-    const lhs = bcadd(result.subtotal, result.vatTotal);
-    const rhs = bcadd(result.total, result.transactionDiscountAmount);
-    expect(bccomp(lhs, rhs)).toBe(0);
+
+    expect(() => buildAccountChargeCart({ cartItems: cart(), currency: 'TND', transactionDiscount: discount }))
+      .toThrow(AccountChargeCartError);
   });
 
-  it('throws when a transaction discount amount is present but reason is missing', () => {
+  it('refuses a percentage remise on the same grounds', () => {
     const discount: import('@/stores/cartStore').CartTransactionDiscount = {
-      type: 'fixed',
-      value: '19.000',
-      reason: null as unknown as string,
+      type: 'percentage',
+      value: '10',
+      reason: 'promo',
     };
+
     expect(() => buildAccountChargeCart({ cartItems: cart(), currency: 'TND', transactionDiscount: discount }))
-      .toThrow(/transaction discount reason/i);
+      .toThrow(AccountChargeCartError);
+  });
+
+  it('a remise-free on-account cart still seals canonical-zero discount fields', () => {
+    const result = buildAccountChargeCart({ cartItems: cart(), currency: 'TND', transactionDiscount: null });
+
+    expect(result.transactionDiscountAmount).toBe('0.000');
+    expect(result.transactionDiscountReason).toBeNull();
+    // subtotal + vatTotal === total, with no wedge to add back.
+    expect(bccomp(bcadd(result.subtotal, result.vatTotal), result.total)).toBe(0);
   });
 
   it('sorts vatBreakdown by `rate|taxCategoryCode` — deterministic order for two-rate cart', () => {

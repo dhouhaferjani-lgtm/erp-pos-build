@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Domain;
 
+use App\Modules\Inventory\Application\Services\CountCorrectionGlPostingResolver;
 use App\Modules\Inventory\Domain\Enums\InventoryValuationMode;
 use App\Shared\Domain\CountryPaymentDefaults;
 
@@ -56,6 +57,49 @@ final class CountryInventoryDefaults
     public static function all(): array
     {
         return self::DEFAULTS;
+    }
+
+    /**
+     * Whether a count correction posts a shrinkage/gain journal entry, per
+     * country (lane P-1, owner ruling 2026-08-25).
+     *
+     * It is a SECOND map rather than a value derived from `DEFAULTS`, even
+     * though today both countries are perpetual and both post. Perpetual
+     * valuation says COGS is booked at the exit seam; it does not by itself say
+     * that a stock-take difference is booked as 6586/7586 rather than absorbed
+     * in a period-end adjustment, and a jurisdiction that wants the latter must
+     * be expressible as an edit HERE and nowhere else. Collapsing the two would
+     * make that edit a code change to the valuation map, which is the wrong
+     * lever.
+     *
+     * Both entries are `true`: the owner ruled the flag ships ON, with the
+     * expert-comptable reviewing the Option A account choice (6586 shortage /
+     * 7586 overage) later at onboarding rather than as a gate before the flip.
+     *
+     * @var array<string, bool>
+     */
+    private const COUNT_CORRECTION_GL_POSTING = [
+        'TN' => true,
+        'FR' => true,
+    ];
+
+    /**
+     * @return array<string, bool>
+     */
+    public static function allCountCorrectionGlPosting(): array
+    {
+        return self::COUNT_CORRECTION_GL_POSTING;
+    }
+
+    /**
+     * The pinned posting default for a country, or null when it has none —
+     * callers fall through to the SYSTEM default explicitly, through
+     * {@see CountCorrectionGlPostingResolver},
+     * so the choice stays visible in the resolved `source`.
+     */
+    public static function countCorrectionGlPostingForCountry(string $countryCode): ?bool
+    {
+        return self::COUNT_CORRECTION_GL_POSTING[strtoupper(trim($countryCode))] ?? null;
     }
 
     /**

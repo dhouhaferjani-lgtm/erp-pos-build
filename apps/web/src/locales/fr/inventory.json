@@ -536,6 +536,22 @@
       },
       "perpetualHint": "Chaque sortie de stock déstocke et comptabilise le coût des marchandises vendues au moment où elle se produit."
     },
+    "countCorrectionGl": {
+      "title": "Écarts d'inventaire en comptabilité",
+      "description": "Indique si un écart d'inventaire est comptabilisé au grand livre au moment où il est appliqué.",
+      "toggleLabel": "Comptabiliser les écarts d'inventaire",
+      "toggleHint": "Un manquant est enregistré en charge pour démarque inventaire, un excédent en produit sur inventaire, valorisé au coût propre de l'article. Si vous désactivez cette option, le stock est tout de même corrigé et valorisé — seule l'écriture comptable est retenue.",
+      "sourceLabel": "Défini par",
+      "source": {
+        "company": "Cette société",
+        "country": "Valeur par défaut de votre pays",
+        "system": "Valeur par défaut du système"
+      },
+      "inheritedHint": "Valeur héritée. Cochez ou décochez pour définir votre propre préférence pour cette société.",
+      "overriddenHint": "Cette société a son propre réglage et ne suivra donc pas les évolutions de la valeur par défaut de votre pays.",
+      "reset": "Utiliser la valeur par défaut de mon pays",
+      "saveFailed": "Impossible d'enregistrer la préférence de comptabilisation des écarts d'inventaire."
+    },
     "margins": {
       "title": "Politiques de marge par défaut",
       "description": "Définir les marges par défaut à l'échelle de l'entreprise. Les produits individuels peuvent remplacer ces paramètres.",
@@ -869,7 +885,15 @@
         "description": "Ces ventes ont eu lieu avant le comptage de la ligne, mais sont arrivées au serveur après la finalisation. Le stock a été réduit deux fois pour ces lignes.",
         "noAutoCorrection": "Aucune correction automatique n'a été effectuée. Vérifiez chaque ligne et décidez si un ajustement manuel du stock est nécessaire.",
         "quantity": "Quantité déduite deux fois"
-      }
+      },
+      "countedItems": "Articles comptés",
+      "expected": "Attendu",
+      "counted": "Compté",
+      "applied": "Appliqué",
+      "appliedYes": "Appliqué",
+      "appliedNo": "Non appliqué",
+      "itemsApplied": "Écarts appliqués",
+      "itemsNotApplied": "Écarts non appliqués"
     },
     "messages": {
       "created": "Comptage créé avec succès",
@@ -1068,11 +1092,33 @@
     "navLabel": "Rangement & emplacements",
     "title": "Rangement & emplacements",
     "productCount": "Produits",
-    "location": { "label": "Site", "empty": "Créez un site avant de définir son organisation de stockage." },
-    "views": { "tree": "Arbre", "table": "Tableau" },
-    "tree": { "label": "Arbre des emplacements", "expand": "Développer", "collapse": "Réduire" },
-    "picker": { "label": "Choisir un emplacement" },
-    "productField": { "title": "Emplacement de stockage", "description": "Choisissez où ce produit est rangé dans chaque site.", "loading": "Chargement des emplacements…", "loadingPath": "Chargement du chemin…", "unassigned": "Non attribué", "change": "Choisir l’emplacement", "clear": "Effacer", "saved": "Emplacement de stockage enregistré.", "cleared": "Emplacement de stockage effacé." },
+    "location": {
+      "label": "Site",
+      "empty": "Créez un site avant de définir son organisation de stockage."
+    },
+    "views": {
+      "tree": "Arbre",
+      "table": "Tableau"
+    },
+    "tree": {
+      "label": "Arbre des emplacements",
+      "expand": "Développer",
+      "collapse": "Réduire"
+    },
+    "picker": {
+      "label": "Choisir un emplacement"
+    },
+    "productField": {
+      "title": "Emplacement de stockage",
+      "description": "Choisissez où ce produit est rangé dans chaque site.",
+      "loading": "Chargement des emplacements…",
+      "loadingPath": "Chargement du chemin…",
+      "unassigned": "Non attribué",
+      "change": "Choisir l’emplacement",
+      "clear": "Effacer",
+      "saved": "Emplacement de stockage enregistré.",
+      "cleared": "Emplacement de stockage effacé."
+    },
     "subtitle": "Cartographiez le parcours physique de l’allée au bac, puis indiquez où chaque produit est rangé.",
     "importExplainer": "Vous importez des produits ? Ajoutez les colonnes location_code et placement_path (par exemple A1 > R2 > B7) pour prévisualiser les rangements avant validation.",
     "empty": {
@@ -1098,11 +1144,49 @@
       "restore": "Restaurer",
       "showDeleted": "Afficher les supprimés"
     },
-    "detail": { "title": "Détails de l’emplacement", "breadcrumb": "Chemin de rangement", "productsTab": "Produits", "selectPrompt": "Sélectionnez un nœud pour consulter son chemin et gérer les produits qui y sont rangés.", "close": "Fermer les détails" },
-    "types": { "zone": "Zone", "aisle": "Allée", "rack": "Rayonnage", "shelf": "Étagère", "bin": "Bac", "section": "Section" },
-    "products": { "search": "Rechercher par nom, référence ou code-barres", "loading": "Chargement des produits…", "empty": "Aucun produit n’est rangé directement dans ce nœud.", "addPlaceholder": "Rechercher un produit", "assign": "Ranger le produit", "unassign": "Retirer l’emplacement", "moveTarget": "Déplacer les produits sélectionnés vers", "chooseTarget": "Choisir la destination", "bulkMove": "Déplacer la sélection", "previous": "Précédent", "next": "Suivant" },
-    "table": { "label": "Emplacements de rangement", "select": "Sélectionner", "selectNode": "Sélectionner {{name}}", "selected": "{{count}} nœuds sélectionnés", "code": "Code", "name": "Nom", "type": "Type", "products": "Produits", "active": "État" },
-    "status": { "active": "Actif", "inactive": "Inactif" },
+    "detail": {
+      "title": "Détails de l’emplacement",
+      "breadcrumb": "Chemin de rangement",
+      "productsTab": "Produits",
+      "selectPrompt": "Sélectionnez un nœud pour consulter son chemin et gérer les produits qui y sont rangés.",
+      "close": "Fermer les détails"
+    },
+    "types": {
+      "zone": "Zone",
+      "aisle": "Allée",
+      "rack": "Rayonnage",
+      "shelf": "Étagère",
+      "bin": "Bac",
+      "section": "Section"
+    },
+    "products": {
+      "search": "Rechercher par nom, référence ou code-barres",
+      "loading": "Chargement des produits…",
+      "empty": "Aucun produit n’est rangé directement dans ce nœud.",
+      "addPlaceholder": "Rechercher un produit",
+      "assign": "Ranger le produit",
+      "unassign": "Retirer l’emplacement",
+      "moveTarget": "Déplacer les produits sélectionnés vers",
+      "chooseTarget": "Choisir la destination",
+      "bulkMove": "Déplacer la sélection",
+      "previous": "Précédent",
+      "next": "Suivant"
+    },
+    "table": {
+      "label": "Emplacements de rangement",
+      "select": "Sélectionner",
+      "selectNode": "Sélectionner {{name}}",
+      "selected": "{{count}} nœuds sélectionnés",
+      "code": "Code",
+      "name": "Nom",
+      "type": "Type",
+      "products": "Produits",
+      "active": "État"
+    },
+    "status": {
+      "active": "Actif",
+      "inactive": "Inactif"
+    },
     "messages": {
       "created": "Emplacement créé.",
       "updated": "Emplacement mis à jour.",
@@ -1121,8 +1205,16 @@
     "empty": "Aucun stock trouvé",
     "product": "Produit",
     "thresholdsNotApplicable": "Seuils définis par variante",
-    "metric": { "label": "Indicateur de stock", "available": "Disponible", "onHand": "En stock", "thresholds": "Min / max" },
+    "metric": {
+      "label": "Indicateur de stock",
+      "available": "Disponible",
+      "onHand": "En stock",
+      "thresholds": "Min / max"
+    },
     "baseGrainSuffix": " (base)",
-    "rebalance": { "title": "Suggestions de rééquilibrage", "empty": "Aucune suggestion de rééquilibrage" }
+    "rebalance": {
+      "title": "Suggestions de rééquilibrage",
+      "empty": "Aucune suggestion de rééquilibrage"
+    }
   }
 }
