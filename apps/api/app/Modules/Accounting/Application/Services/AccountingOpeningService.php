@@ -161,16 +161,32 @@ class AccountingOpeningService
             $scale,
         );
 
-        if ($coverageGaps !== []) {
-            $errors['_batch'] = array_merge($errors['_batch'] ?? [], $coverageGaps);
+        // BATCH-LEVEL errors are STRUCTURED, never prose (gate r2 G-1). The
+        // operator reads them in the wizard, so the string has to be built in
+        // their locale on the client — the server sends a code plus its
+        // parameters, and `message` is the English fallback kept for logs and
+        // for API consumers that are not the wizard.
+        $batchErrors = $coverageGaps;
+
+        if (! $isBalanced && $validCount > 0) {
+            // MERGE, do not overwrite. This branch used to assign `_batch`
+            // outright, which silently discarded a coverage gap whenever the
+            // sheet was also unbalanced — the two refusals are independent and
+            // an operator needs to see both before re-uploading.
+            $batchErrors[] = [
+                'code' => 'OPENING_BATCH_NOT_BALANCED',
+                'params' => [
+                    'debit' => $totalDebit,
+                    'credit' => $totalCredit,
+                    'difference' => bcsub($totalDebit, $totalCredit, $scale),
+                ],
+                'message' => "Total debits ({$totalDebit}) do not equal total credits ({$totalCredit}). ".
+                    'Difference: '.bcsub($totalDebit, $totalCredit, $scale),
+            ];
         }
 
-        // If not balanced, add a batch-level error
-        if (! $isBalanced && $validCount > 0) {
-            $errors['_batch'] = [
-                "Total debits ({$totalDebit}) do not equal total credits ({$totalCredit}). ".
-                'Difference: '.bcsub($totalDebit, $totalCredit, $scale),
-            ];
+        if ($batchErrors !== []) {
+            $errors['_batch'] = $batchErrors;
         }
 
         return [
@@ -454,7 +470,7 @@ class AccountingOpeningService
      * petty-cash account modelled outside Treasury) are not examined at all.
      *
      * @param  list<array<string, mixed>>  $mappedRows  mapped_data of the rows being posted
-     * @return list<string>
+     * @return list<array{code: string, params: array<string, string>, message: string}>
      */
     private function openingCashCoverageGaps(
         string $tenantId,
@@ -523,8 +539,11 @@ class AccountingOpeningService
         $gaps = [];
 
         foreach ($byAccount as $accountId => $repositories) {
-            $debit = $debitByAccount[$accountId] ?? '0';
-            $attributed = $attributedByAccount[$accountId] ?? '0';
+            // Normalised to the batch scale so every money value in `params`
+            // renders identically in the wizard — an unattributed account would
+            // otherwise report a bare '0' next to a '1200.000'.
+            $debit = bcadd($debitByAccount[$accountId] ?? '0', '0', $scale);
+            $attributed = bcadd($attributedByAccount[$accountId] ?? '0', '0', $scale);
             $code = Account::query()->whereKey($accountId)->value('code');
             $accountLabel = is_string($code) ? $code : $accountId;
 
@@ -534,9 +553,21 @@ class AccountingOpeningService
                     static fn (OpeningFloatRepositoryDescriptor $r): string => $r->code,
                     $repositories,
                 ));
-                $gaps[] = "Account {$accountLabel} is debited {$debit} but only {$attributed} is assigned to a ".
-                    "payment repository; {$unattributed} would exist in the ledger and in no till ".
-                    "(repositories on this account: {$names}).";
+                $gaps[] = [
+                    'code' => OpeningCashNotFullySeededException::ERROR_CODE,
+                    'params' => [
+                        'account' => $accountLabel,
+                        'debited' => $debit,
+                        'attributed' => $attributed,
+                        'unattributed' => $unattributed,
+                        'repositories' => $names,
+                    ],
+                    // English fallback for logs and non-wizard consumers only —
+                    // the wizard renders the code+params in the operator's locale.
+                    'message' => "Account {$accountLabel} is debited {$debit} but only {$attributed} is assigned to a ".
+                        "payment repository; {$unattributed} would exist in the ledger and in no till ".
+                        "(repositories on this account: {$names}).",
+                ];
             }
         }
 

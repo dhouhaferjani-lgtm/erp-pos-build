@@ -63,6 +63,20 @@ automatically** in the same transaction.
 > repository that has already moved money (`REPOSITORY_ALREADY_SEEDED`). Leave the column blank on
 > every line that is not a till.
 >
+> **If you get the split wrong, it is fixable — with a transfer, not a second batch.** The wizard
+> refuses a cash debit that reaches *no* till, but it cannot tell "1200 in the drawer" from "1200 that
+> should have been 200 drawer + 1000 safe": both put the same total in the ledger and in Treasury, and
+> it has no way to know your safe is not simply empty. So a single merged row **posts**, and puts the
+> whole amount in the one till it names.
+>
+> To correct it afterwards: **Treasury → Transfer**, moving the excess from the over-seeded till to the
+> one that should have had it. When both tills hang off the **same GL account** — which is how a drawer
+> and a safe are provisioned today — that transfer writes **no journal entry and no journal line**: it
+> moves the treasury balances only, leaves the ledger untouched, and `treasury:reconcile` stays green.
+> Verified by execution at treasury gate r2 (PROBE R-9-REMEDY: drawer 1200 → 200, safe 0 → 1000,
+> journal entries before 1, after 1). Do **not** post a second opening batch to fix it — that would
+> debit the cash account again and double GL cash.
+>
 > Example (drawer 200, safe 1000, bank 5000, on a TND tenant at storage scale 3):
 >
 > ```csv

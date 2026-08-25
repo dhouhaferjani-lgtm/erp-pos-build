@@ -73,12 +73,55 @@ export interface OpeningBatchStatusResponse {
   inventory_ready: boolean
 }
 
+/**
+ * A BATCH-level validation refusal — one that belongs to the sheet as a whole
+ * rather than to a row (an unbalanced batch, or cash debited to an account whose
+ * tills the sheet never names).
+ *
+ * Structured on purpose (treasury gate r2 G-1): `message` is the server's
+ * English fallback, kept for logs and non-wizard consumers, and the wizard
+ * renders `code` + `params` through `t()` so the operator reads their own
+ * language. Never render `message` in the UI.
+ */
+export interface BatchLevelError {
+  code: string
+  params: Record<string, string>
+  message: string
+}
+
+/**
+ * `errors._batch` carries {@link BatchLevelError}s; every other key is a row id
+ * carrying that row's per-field messages.
+ */
+export type ValidationErrors = Record<string, BatchLevelError[] | Record<string, string[]>>
+
+/**
+ * The `_batch` entries of a validation result, or `[]`.
+ *
+ * A narrowing helper rather than a cast: the server may add batch-level codes
+ * this build has never heard of, and a malformed entry must not crash the
+ * wizard on the day-one path.
+ */
+export function batchLevelErrors(errors: ValidationErrors | undefined): BatchLevelError[] {
+  // Deliberately read as `unknown`: the server may add batch-level codes this
+  // build has never heard of, and a malformed entry must not crash the wizard
+  // on the day-one path. The declared type is the contract, not a guarantee.
+  const batch: unknown = errors?.['_batch']
+  if (!Array.isArray(batch)) return []
+
+  return batch.filter(isBatchLevelError)
+}
+
+function isBatchLevelError(entry: unknown): entry is BatchLevelError {
+  return typeof entry === 'object' && entry !== null && 'code' in entry && typeof entry.code === 'string'
+}
+
 export interface ValidationResult {
   valid: boolean
   total_rows: number
   valid_rows: number
   invalid_rows: number
-  errors: Record<string, Record<string, string[]>>
+  errors: ValidationErrors
   total_value?: string
   total_debit?: string
   total_credit?: string

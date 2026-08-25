@@ -667,6 +667,11 @@
         "skipped": "Ignorée",
         "noErrors": "Aucune erreur de validation trouvée",
         "hasErrors": "Veuillez corriger les erreurs avant de continuer",
+        "batchErrors": {
+            "OPENING_CASH_NOT_FULLY_SEEDED": "Le compte {{account}} est débité de {{debited}}, mais seuls {{attributed}} sont affectés à une caisse ou à un compte bancaire. {{unattributed}} existeraient au grand livre et dans aucune caisse. Indiquez le code de la caisse dans la colonne repository_code de chaque ligne de trésorerie — une ligne par caisse ({{repositories}}).",
+            "OPENING_BATCH_NOT_BALANCED": "Le total des débits ({{debit}}) est différent du total des crédits ({{credit}}). Écart : {{difference}}.",
+            "unknown": "Ce lot ne peut pas être comptabilisé ({{code}}). Contactez votre administrateur : cette version de l'application ne décrit pas ce refus."
+          },
         "validateButton": "Valider les lignes"
       },
       "preview": {

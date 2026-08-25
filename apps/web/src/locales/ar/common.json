@@ -644,6 +644,11 @@
         "skipped": "متخطّى",
         "noErrors": "لم يُعثَر على أخطاء تحقّق",
         "hasErrors": "يرجى تصحيح الأخطاء قبل المتابعة",
+        "batchErrors": {
+            "OPENING_CASH_NOT_FULLY_SEEDED": "الحساب {{account}} مدين بمبلغ {{debited}}، لكن {{attributed}} فقط مُسند إلى صندوق نقد أو حساب بنكي. سيبقى {{unattributed}} في دفتر الأستاذ دون أن يصل إلى أي صندوق. ضع رمز الصندوق في عمود repository_code لكل سطر نقدي — سطر واحد لكل صندوق ({{repositories}}).",
+            "OPENING_BATCH_NOT_BALANCED": "مجموع المدين ({{debit}}) لا يساوي مجموع الدائن ({{credit}}). الفرق: {{difference}}.",
+            "unknown": "لا يمكن ترحيل هذه الدفعة ({{code}}). راجع المسؤول: هذا الإصدار من التطبيق لا يتضمّن وصفًا لهذا الرفض."
+          },
         "validateButton": "التحقق من الصفوف"
       },
       "preview": {

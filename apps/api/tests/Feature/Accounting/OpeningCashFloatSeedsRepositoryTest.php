@@ -369,7 +369,15 @@ final class OpeningCashFloatSeedsRepositoryTest extends TestCase
         /** @var array<string, mixed> $errors */
         $errors = $result['errors'];
         $this->assertArrayHasKey('_batch', $errors);
-        $this->assertStringContainsString('in no till', implode(' ', (array) $errors['_batch']));
+        // STRUCTURED, not prose (gate r2 G-1): the wizard renders this in the
+        // operator's locale from the code and its parameters.
+        $gap = ((array) $errors['_batch'])[0];
+        $this->assertSame('OPENING_CASH_NOT_FULLY_SEEDED', $gap['code']);
+        $this->assertSame('53', $gap['params']['account']);
+        $this->assertSame('1200.000', $gap['params']['debited']);
+        $this->assertSame('0.000', $gap['params']['attributed']);
+        $this->assertSame('1200.000', $gap['params']['unattributed']);
+        $this->assertStringContainsString('CASH-01', $gap['params']['repositories']);
 
         // And the post-time guard is the authoritative one — validation can be
         // stale by the time Post is pressed.
@@ -397,7 +405,10 @@ final class OpeningCashFloatSeedsRepositoryTest extends TestCase
         $this->assertFalse($result['valid']);
         /** @var array<string, mixed> $errors */
         $errors = $result['errors'];
-        $this->assertStringContainsString('only 200.000 is assigned', implode(' ', (array) $errors['_batch']));
+        $gap = ((array) $errors['_batch'])[0];
+        $this->assertSame('OPENING_CASH_NOT_FULLY_SEEDED', $gap['code']);
+        $this->assertSame('200.000', $gap['params']['attributed']);
+        $this->assertSame('1000.000', $gap['params']['unattributed']);
     }
 
     /**
@@ -511,7 +522,9 @@ final class OpeningCashFloatSeedsRepositoryTest extends TestCase
 
         $response->assertStatus(422);
         $this->assertSame('OPENING_CASH_NOT_FULLY_SEEDED', $response->json('error.code'));
-        $this->assertStringContainsString('in no till', implode(' ', (array) $response->json('error.gaps')));
+        $this->assertSame('OPENING_CASH_NOT_FULLY_SEEDED', $response->json('error.gaps.0.code'));
+        $this->assertSame('53', $response->json('error.gaps.0.params.account'));
+        $this->assertSame('1200.000', $response->json('error.gaps.0.params.unattributed'));
     }
 
     private function service(): AccountingOpeningService

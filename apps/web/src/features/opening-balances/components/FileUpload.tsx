@@ -74,7 +74,11 @@ function getTemplateContent(batchType: OpeningBatchType): string {
       // DEBIT line — it names the payment repository whose day-one float this
       // line seeds, so the same row posts the GL leg AND the till's opening
       // movement. Leave it blank on every other line.
-      return 'account_code,debit,credit,reference,repository_code\n101000,200.000,0.000,Opening drawer float,CASH-01\n101000,1000.000,0.000,Opening safe float,SAFE-01\n401000,0.000,500.000,Opening Payables,\n301000,0.000,700.000,Opening Equity,'
+      // No payables line: W4-3 refuses a supplier balance entered as a bare GL
+      // credit (it has to come through the AP open-items batch), so a sample
+      // that showed one would teach the wrong shape. Debits 1200.000 against
+      // equity 1200.000 — balanced as printed.
+      return 'account_code,debit,credit,reference,repository_code\n101000,200.000,0.000,Opening drawer float,CASH-01\n101000,1000.000,0.000,Opening safe float,SAFE-01\n301000,0.000,1200.000,Opening Equity,'
     case 'INVENTORY':
       return 'product_code,location_code,quantity,unit_cost\nSKU-001,MAIN,100,25.50\nSKU-002,MAIN,50,15.00\nSKU-003,WAREHOUSE,200,10.00'
     case 'AR_OPEN_ITEMS':

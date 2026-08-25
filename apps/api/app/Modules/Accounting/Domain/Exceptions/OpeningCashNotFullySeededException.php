@@ -42,13 +42,18 @@ final class OpeningCashNotFullySeededException extends DomainException
     public const ERROR_CODE = 'OPENING_CASH_NOT_FULLY_SEEDED';
 
     /**
-     * @param  list<string>  $gaps  human-readable, one per offending GL account
+     * @param  list<array{code: string, params: array<string, string>, message: string}>  $gaps
+     *                                                                                           one structured entry per offending GL account. STRUCTURED, not prose
+     *                                                                                           (gate r2 G-1): the operator reads this in the wizard, so the sentence is
+     *                                                                                           assembled in their locale on the client from `code` + `params`.
+     *                                                                                           `message` is the English fallback, for logs and non-wizard consumers.
      */
     public function __construct(public readonly array $gaps)
     {
         parent::__construct(
             'This opening batch debits cash or bank accounts that payment repositories are linked to, '.
-            'but the money does not fully reach them: '.implode(' ', $gaps).' '.
+            'but the money does not fully reach them: '.
+            implode(' ', array_column($gaps, 'message')).' '.
             'Name the repository on each cash line using the repository_code column, one line per '.
             'repository, so the ledger and the tills open at the same figure.'
         );
