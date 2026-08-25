@@ -22,8 +22,10 @@ use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Treasury\RepositoryAdjustmentServiceInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\QueryException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Jobs\SyncJob;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Ramsey\Uuid\Uuid;
 use Throwable;
@@ -763,6 +765,20 @@ final class PostShiftCashVarianceAdjustment implements ShouldQueue
         /** @var array<string, PaymentRepository> $resolved */
         $resolved = [];
 
+        // Campaign lane N-12 — the shift's variance belongs to the till at the
+        // TERMINAL'S location, not to whichever company till sorts first. The
+        // shift-close leg has to agree with the sale legs the fiscal bridge
+        // already booked (sharing `TenderRepositoryResolver` rather than
+        // reimplementing it is this listener's stated reason for existing in
+        // this shape), and the bridge now resolves per location — so the same
+        // location has to reach the resolver from here, or a branch's variance
+        // would be adjusted against Main's drawer while its sales sit in its
+        // own.
+        //
+        // Null (terminal row unreadable) keeps the historical company-wide
+        // rule, exactly as the bridge does for the same input.
+        $locationId = $this->terminalLocationId($event);
+
         foreach ($moved as $breakdown) {
             // Gate finding I3 — the OFFLINE sync endpoint validates only
             // `uuid|distinct` on `payment_method_id`, so unlike the live path
@@ -789,11 +805,13 @@ final class PostShiftCashVarianceAdjustment implements ShouldQueue
                 $event->tenantId,
                 $event->companyId,
                 $breakdown->paymentMethodId,
+                $locationId,
             );
 
             if (! $repository instanceof PaymentRepository) {
                 $this->refuse($event, 'no_repository_resolved', [
                     'payment_method_id' => $breakdown->paymentMethodId,
+                    'location_id' => $locationId,
                 ]);
 
                 return null;
@@ -952,5 +970,34 @@ final class PostShiftCashVarianceAdjustment implements ShouldQueue
             self::DOCUMENT_ID_NAMESPACE,
             'urn:autoerp:pos-shift-cash-variance:'.$shiftId,
         )->toString();
+    }
+
+    /**
+     * Campaign lane N-12 — the location this shift's cash physically sat in.
+     *
+     * `CashCountRecorded` carries the terminal, and `pos_terminals.location_id`
+     * is the same column the sale legs resolve through
+     * (`ResolvesTerminalLocation`). Same source, same answer — which is the only
+     * way a shift's variance adjustment can land in the same drawer as the
+     * shift's own sales.
+     *
+     * A lookup failure returns null (company-wide rule preserved) rather than
+     * refusing: this listener already refuses loudly for every ambiguity that
+     * actually threatens the money, and a missing terminal row is not one it
+     * can act on.
+     */
+    private function terminalLocationId(CashCountRecorded $event): ?string
+    {
+        try {
+            $locationId = DB::table('pos_terminals')
+                ->where('tenant_id', $event->tenantId)
+                ->where('company_id', $event->companyId)
+                ->where('id', $event->terminalId)
+                ->value('location_id');
+        } catch (QueryException) {
+            return null;
+        }
+
+        return is_string($locationId) ? $locationId : null;
     }
 }

@@ -7,6 +7,7 @@ namespace Database\Seeders;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentRepository;
@@ -109,6 +110,23 @@ class PaymentRepositorySeeder extends Seeder
             );
         }
 
+        // Campaign lane N-12 — attribute the day-one repositories to the
+        // company's own POS location instead of leaving `location_id = NULL`.
+        //
+        // The wave-1 finding was cosmetic ("Cash across stores" filed everything
+        // under *Unattributed*); the wave-4 re-runs measured the real cost once a
+        // second branch existed — the Boutique Ariana terminal's 200.000 TND cash
+        // sale landed in `CASH-01`, the Main location's drawer, because the tender
+        // resolver had no location axis and broke ties on the stable UUID.
+        //
+        // Attribution is what arms the resolver's tier 1 for this tenant, so the
+        // SECOND location provisioned (which gets its own drawer via
+        // `LocationCashRegisterProvisioner`) can never silently borrow this one.
+        // Null-safe by design: the location table may legitimately be empty at
+        // this point in the provisioning order, and a NULL here is still the
+        // resolver's tier 2 — i.e. exactly today's behaviour, never a failure.
+        $locationId = $this->defaultLocationId($company);
+
         foreach ($this->defaultRepositories($company) as $repo) {
             // A repository is BORN at balance 0 — the direct-balance-write
             // trigger (`2026_07_08_160000`) rejects any other opening value, and
@@ -118,6 +136,7 @@ class PaymentRepositorySeeder extends Seeder
                 'company_id' => $company->id,
                 'account_id' => $cashAccount?->id,
                 'gl_account_id' => $cashAccount?->id,
+                'location_id' => $locationId,
                 ...$repo,
             ]);
         }
@@ -128,6 +147,28 @@ class PaymentRepositorySeeder extends Seeder
         // seedReferenceData(), and compensate() then dropped the tenant database —
         // which made the country_payment_settings self-healing inert.
         $this->command?->info('Created 2 payment repositories for '.$company->name);
+    }
+
+    /**
+     * N-12 — the location these day-one repositories belong to.
+     *
+     * The default location first (`is_default`), then any POS-enabled one, then
+     * nothing. `TenantProvisioningService` creates a `type=shop`, POS-enabled
+     * Main Location, so the ordinary registration path resolves it; a seeder run
+     * against a company that has no locations yet returns null and the
+     * repositories stay unattributed, which is the pre-N-12 shape and still
+     * fully served by the resolver's tier 2.
+     */
+    private function defaultLocationId(Company $company): ?string
+    {
+        $locationId = Location::query()
+            ->where('company_id', $company->id)
+            ->orderByDesc('is_default')
+            ->orderByDesc('pos_enabled')
+            ->orderBy('created_at')
+            ->value('id');
+
+        return is_string($locationId) ? $locationId : null;
     }
 
     /**

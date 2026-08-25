@@ -288,8 +288,16 @@ final class TenderRepositoryResolverTest extends TestCase
     /**
      * Drive the bridge's own resolution seam with the same inputs and assert it
      * lands on the same repository — the anti-drift pin.
+     *
+     * Campaign lane N-12 added a `$locationId` axis to both sides of the seam.
+     * Every case in THIS file is location-less by construction (its fixtures
+     * never attribute a repository), so both sides are driven with an explicit
+     * null: this file's subject is the company-wide rule, which N-12 preserves
+     * verbatim. The location tiers have their own pins in
+     * `BranchCashRepositoryRoutingTest`, which asserts the same agreement for a
+     * receipt authored at a branch.
      */
-    private function assertBridgeAgrees(?PaymentMethod $method): void
+    private function assertBridgeAgrees(?PaymentMethod $method, ?string $locationId = null): void
     {
         $event = new FiscalEvent;
         $event->tenant_id = $this->tenantId;
@@ -297,10 +305,10 @@ final class TenderRepositoryResolverTest extends TestCase
 
         $reflected = new ReflectionMethod(TreasuryReceiptBridge::class, 'resolveRepositoryForTender');
         /** @var ?PaymentRepository $viaBridge */
-        $viaBridge = $reflected->invoke(app(TreasuryReceiptBridge::class), $event, $method);
+        $viaBridge = $reflected->invoke(app(TreasuryReceiptBridge::class), $event, $method, $locationId);
 
         $this->assertSame(
-            $this->resolver()->resolve($this->tenantId, $this->companyId, $method)?->id,
+            $this->resolver()->resolve($this->tenantId, $this->companyId, $method, $locationId)?->id,
             $viaBridge?->id,
             'TreasuryReceiptBridge and TenderRepositoryResolver must resolve the same repository.',
         );
