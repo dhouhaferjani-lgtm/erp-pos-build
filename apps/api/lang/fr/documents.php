@@ -33,6 +33,12 @@ return [
         'adjustment' => 'Ajustement',
     ],
 
+    // Fix round r3 (F-C3) — rendu uniquement sur un avoir DÉFINITIF, jamais sur un
+    // proforma : celui-ci ne réduit aucun solde. Voir lang/en/documents.php.
+    'credit_note' => [
+        'balance_note' => 'Cet avoir réduit votre solde du montant indiqué ci-dessus.',
+    ],
+
     'posting_marker' => [
         'cancelled_title' => 'Annulée — ce document a été annulé',
         'cancelled_detail' => 'Ce document a été comptabilisé et scellé, puis annulé. Son scellement fiscal demeure dans la chaîne de hachage ; le document lui-même est nul et ne peut être utilisé comme justificatif.',

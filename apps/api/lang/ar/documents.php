@@ -30,24 +30,35 @@ return [
     ],
 
     /*
-    | C-F0 / SPEC §2.4 (F-13, F-64, F-95) — العرض المبدئي (proforma).
-    | كما في `posting_marker` أدناه، تحفّظ تشكيل الخط في ملفات PDF قائم ولا يبرر
-    | ترك مستخدم عربي أمام نص إنجليزي.
+    | C-F0 / SPEC §2.4 (F-13, F-64, F-95) — the PROFORMA rendering.
+    |
+    | The reasoning behind every one of these strings is in `lang/en/documents.php`,
+    | in English, where the rest of the repository's rationale lives (fix round r3,
+    | conventions gate F-C4 — r2 left a six-line French comment here, in the one
+    | file an Arabic translator opens). Two things to know before editing:
+    |
+    |   1. The Latin-script token scan in `ProformaOutputTest` CANNOT guard these
+    |      strings. An Arabic tax word would pass it. They are a human decision.
+    |   2. `title` is deliberately noun-headed and type-neutral —
+    |      `مستند مبدئي` (masculine مستند), not a bare feminine adjective agreeing
+    |      with an elided فاتورة. The same key titles a credit note (إشعار,
+    |      masculine), where the feminine form disagreed (gate F-C5).
+    |
+    | The PDF font stack still does not SHAPE Arabic (residual R-4); that is the
+    | Arabic-PDF lane's problem and not a reason to leave an Arabic tenant reading
+    | English.
     */
     'proforma' => [
-        'title' => 'مبدئية — مستند غير ضريبي',
+        'title' => 'مستند مبدئي — غير ضريبي',
         'detail' => 'هذا تقدير صادر قبل إدخال البيع في الحسابات. ليس مستنداً ضريبياً نهائياً، ولا يحمل أي ختم، ولا ينشئ أي حق في الخصم. سيُصدر مستند نهائي بعد إدخال البيع.',
         'estimated_total' => 'المجموع التقديري',
-        /*
-        | Gate r2 §3 (R-8). Le balayage de jetons est en alphabet latin : il ne peut
-        | PAS attraper un mot de taxe écrit en arabe, donc ces trois chaînes sont une
-        | décision humaine et non une garantie de test. « معلوم الطابع » est le terme
-        | tunisien du droit de timbre SANS l'adjectif « جبائي » (fiscal) — un droit
-        | nommé, pas une mention de TVA.
-        */
         'stamp_duty' => 'معلوم الطابع',
         'discount' => 'تخفيض',
         'adjustment' => 'تعديل',
+    ],
+
+    'credit_note' => [
+        'balance_note' => 'يخفّض هذا الإشعار رصيدك بالمبلغ المبيّن أعلاه.',
     ],
 
     'posting_marker' => [

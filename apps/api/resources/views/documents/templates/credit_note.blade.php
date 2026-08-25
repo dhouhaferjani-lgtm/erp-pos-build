@@ -61,33 +61,17 @@
         <div class="totals-box">
             <table class="totals-table">
                 @if($isProforma)
-                {{-- C-F0 / F-95 — see components/totals.blade.php: gross line
-                     figures, no net line to subtract from, and (gate r2 §3 / R-8)
-                     the duty and derived-discount rows that make the box close over
-                     them. The credit note has its own totals block rather than the
-                     shared component, which is exactly how a gate gets missed; it is
-                     gated here, and it must stay in step with the component. --}}
-                @if(($proformaTotals ?? null) !== null && $proformaTotals->stampDuty !== null)
-                <tr>
-                    <td>{{ __('documents.proforma.stamp_duty') }}</td>
-                    <td>{{ $formatMoney($proformaTotals->stampDuty) }}</td>
-                </tr>
-                @endif
-                @if(($proformaTotals ?? null) !== null && $proformaTotals->discount !== null)
-                <tr>
-                    <td>{{ __('documents.proforma.discount') }}</td>
-                    <td>-{{ $formatMoney($proformaTotals->discount) }}</td>
-                </tr>
-                @elseif(($proformaTotals ?? null) !== null && $proformaTotals->surcharge !== null)
-                <tr>
-                    <td>{{ __('documents.proforma.adjustment') }}</td>
-                    <td>{{ $formatMoney($proformaTotals->surcharge) }}</td>
-                </tr>
-                @endif
-                <tr class="total-row" style="background-color: #dc2626;">
-                    <td>{{ __('documents.proforma.estimated_total') }}</td>
-                    <td>{{ $formatMoney($document->total) }}</td>
-                </tr>
+                {{-- C-F0 / F-95 — gross line figures, no net line to subtract from,
+                     and (gate r2 §3 / R-8) the duty and derived-discount rows that
+                     make the box close over them. r2 hand-copied those rows from
+                     `components/totals.blade.php` and said they "must stay in step"
+                     while nothing made them and no test rendered them; fix round r3
+                     (conventions F-C2 / fiscal F-12) made it one partial, included
+                     here and there, and the R-8 tests now run over BOTH document
+                     types. The credit note keeps its own totals BLOCK — its posted
+                     arm says `Credit Total`, not `Total` — but not its own copy of
+                     these rows. --}}
+                @include('documents.components.proforma_totals_rows', ['totalRowStyle' => 'background-color: #dc2626;'])
                 @else
                 <tr>
                     <td>{{ __('Subtotal') }}</td>
@@ -106,7 +90,24 @@
         </div>
     </div>
 
+    {{--
+        Fix round r3 / conventions gate F-C3 — A PROFORMA DOES NOT REDUCE ANYTHING.
+
+        This sentence was ungated and non-dotted. On a proforma it printed under a
+        banner reading "Proforma — non-fiscal document … it confers no right of
+        deduction", on a page from which this lane had deliberately deleted the Paid
+        and Balance Due rows because a proforma is not a statement of account — and
+        it asserted a balance effect the document does not have, using the
+        definitive noun in the one place the lane took care not to. A French or
+        Tunisian customer also read it in English, since it was a natural-English
+        key and no `lang/*.json` file exists.
+
+        The English value of `documents.credit_note.balance_note` is byte-identical
+        to the old literal, so the posted credit-note snapshots do not move.
+    --}}
+    @if(! $isProforma)
     <div style="margin-top: 30px; padding: 15px; background-color: #fee2e2; border: 1px solid #fecaca; border-radius: 4px; font-size: 9pt; color: #991b1b;">
-        <strong>{{ __('Note') }}:</strong> {{ __('This credit note reduces your balance by the amount shown above.') }}
+        <strong>{{ __('Note') }}:</strong> {{ __('documents.credit_note.balance_note') }}
     </div>
+    @endif
 @endsection

@@ -200,6 +200,15 @@ final class ProformaTemplateCensusTest extends TestCase
      * comments first, then look for the flag only inside the constructs Blade
      * actually evaluates — a parenthesised directive, an `@php … @endphp` block,
      * or an echo.
+     *
+     * SCOPE — THIS IS A PER-FILE CHECK, NOT A PER-EMISSION ONE (conventions gate
+     * r1). A file that consults `$isProforma` anywhere satisfies it everywhere, so
+     * the two most tax-dense files in the tree (`line_items`, `totals`) could grow a
+     * new UNGATED tax cell without this census noticing. What actually covers that
+     * is `ProformaOutputTest` rendering the two real templates and scanning the
+     * output — this class's job is the narrower one of catching a file that emits a
+     * tax mention and never mentions the flag at all, which is the shape a NEW
+     * template arrives in.
      */
     private function consultsTheFlagInCode(string $contents): bool
     {

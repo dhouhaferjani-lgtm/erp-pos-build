@@ -50,34 +50,13 @@
                 *droit de timbre* and a discount are not VAT mentions, and Art. 18
                 attaches to nothing else.
 
-                Both rows come from `ProformaTotals`, already decided: the blade
-                renders and computes nothing. The reconciling row is DERIVED from
-                `total − (Σ printed gross lines + stamp)`, never assembled from the
-                stored discount, so the page closes on every shape — including a
-                legacy row whose NULL `tax_amount` made the fallback tax the
-                pre-discount net.
+                The rows themselves live in ONE place —
+                `components/proforma_totals_rows.blade.php`, extracted in fix round
+                r3 (conventions F-C2 / fiscal F-12) because the credit note carried a
+                hand-copy that no test rendered. Read that partial for what each row
+                is and why it is allowed on a page that carries no VAT.
             --}}
-            @if(($proformaTotals ?? null) !== null && $proformaTotals->stampDuty !== null)
-            <tr>
-                <td>{{ __('documents.proforma.stamp_duty') }}</td>
-                <td>{{ $formatMoney($proformaTotals->stampDuty) }}</td>
-            </tr>
-            @endif
-            @if(($proformaTotals ?? null) !== null && $proformaTotals->discount !== null)
-            <tr>
-                <td>{{ __('documents.proforma.discount') }}</td>
-                <td>-{{ $formatMoney($proformaTotals->discount) }}</td>
-            </tr>
-            @elseif(($proformaTotals ?? null) !== null && $proformaTotals->surcharge !== null)
-            <tr>
-                <td>{{ __('documents.proforma.adjustment') }}</td>
-                <td>{{ $formatMoney($proformaTotals->surcharge) }}</td>
-            </tr>
-            @endif
-            <tr class="total-row">
-                <td>{{ __('documents.proforma.estimated_total') }}</td>
-                <td>{{ $formatMoney($document->total) }}</td>
-            </tr>
+            @include('documents.components.proforma_totals_rows')
             @else
             <tr>
                 <td>{{ __('Subtotal') }}</td>

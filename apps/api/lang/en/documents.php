@@ -52,6 +52,43 @@ return [
         'adjustment' => 'Adjustment',
     ],
 
+    /*
+    | THE ARABIC STRINGS ARE NOT GUARDED, and this is where that is written down
+    | (fix round r3, conventions gate F-C4 — the rationale used to live, in French,
+    | inside `lang/ar/documents.php`).
+    |
+    | `ProformaOutputTest`'s forbidden-token scan is Latin-script: `VAT`, `TVA`,
+    | `tax`, `TTC`, `HT`. It cannot catch an Arabic tax word, so every `ar` string
+    | above is a human decision and not a tested one. Two deliberate choices:
+    |
+    |   - `stamp_duty` is `معلوم الطابع`, the Tunisian name for the duty WITHOUT the
+    |     adjective `جبائي` (fiscal) that the full administrative form
+    |     `معلوم الطابع الجبائي` carries. A named duty, not a mention of TVA — which
+    |     is the only thing Code TVA Art. 18 attaches liability to.
+    |   - `title` is `مستند مبدئي — غير ضريبي`, noun-headed and type-neutral. The
+    |     r2 string was a bare feminine adjective agreeing with an elided فاتورة
+    |     (invoice, f.), and the SAME key titles a credit note (إشعار, m.), where it
+    |     disagreed (gate F-C5). `en` and `fr` avoid this by using the noun
+    |     "Proforma"; `ar` now does the same with مستند.
+    |
+    | `lang/ar/documents.php` carries a short English pointer back to this block.
+    */
+
+    /*
+    | Fix round r3, conventions gate F-C3. This sentence used to be a NON-DOTTED
+    | literal at the foot of `templates/credit_note.blade.php`, ungated — so it
+    | printed under the proforma banner, asserting a balance effect the document
+    | does not have, on a page from which this lane had just deleted the Paid and
+    | Balance Due rows. It is now dotted (so a French or Tunisian customer reads it
+    | in their own language) and rendered only on a DEFINITIVE credit note.
+    |
+    | The English value is byte-identical to the old literal on purpose: the posted
+    | credit-note snapshots must not move.
+    */
+    'credit_note' => [
+        'balance_note' => 'This credit note reduces your balance by the amount shown above.',
+    ],
+
     'posting_marker' => [
         'cancelled_title' => 'Cancelled — this document has been voided',
         'cancelled_detail' => 'This document was posted and sealed, and has since been cancelled. Its fiscal seal remains in the hash chain; the document itself is void and must not be used as a claim.',

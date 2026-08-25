@@ -103,10 +103,27 @@ final class ProformaGrossAmountResolver
      * absorbs every discount — and it makes `unit × qty == amount` an identity the
      * customer can check with a calculator.
      *
-     * ROUNDING. The quotient is taken at `scale + 4` and rounded once. Where the
-     * quantity does not divide the amount exactly, `unit × qty` differs from the
-     * printed amount by less than half a currency unit per line item; the printed
-     * AMOUNT is the authoritative figure and the one the estimated total sums.
+     * ROUNDING — AND ITS BOUND, WHICH IS LINEAR IN QUANTITY. The quotient is taken
+     * at `scale + 4` and rounded once, so where the quantity does not divide the
+     * amount exactly the printed unit price is off by up to half a currency unit —
+     * and that error is then MULTIPLIED BY THE QUANTITY. The bound on
+     * `|unit × qty − amount|` is therefore
+     *
+     *     qty × 0.5 × 10^-scale
+     *
+     * not the constant half-unit r2's docblock claimed (gate r3 F-11 measured it:
+     * 10 000 units of a 0.333 part drifts 2.700 DT, five times that claim, and it
+     * is plainly visible on the page). Pinned by
+     * `ProformaOutputTest::test_a_bulk_non_dividing_row_drifts_within_the_stated_bound`.
+     *
+     * This is a characterised trade-off, not a defect: the printed AMOUNT is
+     * authoritative, it is what the totals box sums, and the page still closes.
+     * Widening the scale cannot buy `unit × qty == amount` — the quotient is
+     * non-terminating for most quantities at ANY finite scale — and would print the
+     * only figure on the page that is not at the currency's own scale (gate r3
+     * ruling R-10: ACCEPT, do not widen). The posted invoice has no such drift
+     * because its unit price is stored, not derived.
+     *
      * Quantity is `decimal(N,4)`, so `scale + 4` carries every digit it can hold.
      *
      * @return numeric-string

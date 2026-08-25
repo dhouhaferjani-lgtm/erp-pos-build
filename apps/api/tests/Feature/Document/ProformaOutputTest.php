@@ -101,6 +101,41 @@ final class ProformaOutputTest extends TestCase
         return ['english' => ['en'], 'french' => ['fr'], 'arabic' => ['ar']];
     }
 
+    /**
+     * FIX ROUND r3 / conventions F-C2 + fiscal F-12 [BLOCKING].
+     *
+     * Every R-8 test built an Invoice, and the credit note re-implemented the three
+     * conditional rows in its own totals block — so the duplicated markup on one of
+     * the exactly two document types this lane exists for was rendered by nothing.
+     * The markup is now ONE shared partial, and these tests run over both types so a
+     * divergence cannot come back the way it came.
+     *
+     * @return array<string, array{0: DocumentType}>
+     */
+    public static function fiscalTypeProvider(): array
+    {
+        return [
+            'invoice' => [DocumentType::Invoice],
+            'credit note' => [DocumentType::CreditNote],
+        ];
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: DocumentType}>
+     */
+    public static function localeAndFiscalTypeProvider(): array
+    {
+        $cases = [];
+
+        foreach (self::localeProvider() as $localeLabel => [$locale]) {
+            foreach (self::fiscalTypeProvider() as $typeLabel => [$type]) {
+                $cases["{$localeLabel} {$typeLabel}"] = [$locale, $type];
+            }
+        }
+
+        return $cases;
+    }
+
     #[DataProvider('localeProvider')]
     public function test_a_confirmed_unposted_invoice_renders_as_a_proforma_in_html(string $locale): void
     {
@@ -367,10 +402,11 @@ final class ProformaOutputTest extends TestCase
      *     29.104 × 4 = 116.416 ≠ 106.416. RED.
      * One fixture, both forbidden derivations falsified.
      */
-    public function test_every_proforma_row_closes_on_its_own_face(): void
+    #[DataProvider('fiscalTypeProvider')]
+    public function test_every_proforma_row_closes_on_its_own_face(DocumentType $type): void
     {
         $this->app->setLocale('en');
-        $invoice = $this->discountedUnpostedInvoice();
+        $invoice = $this->discountedUnposted($type);
 
         $money = $this->moneyFormatter($invoice);
         $printed = $this->itemsTableRightCells($this->renderHtml($invoice));
@@ -410,10 +446,11 @@ final class ProformaOutputTest extends TestCase
      * d'enregistrement et de timbre — naming a separate duty is not mentioning TVA,
      * which is the only thing Art. 18 attaches liability to.
      */
-    public function test_the_proforma_totals_box_reconciles_with_a_stamp_duty_and_a_discount(): void
+    #[DataProvider('fiscalTypeProvider')]
+    public function test_the_proforma_totals_box_reconciles_with_a_stamp_duty_and_a_discount(DocumentType $type): void
     {
         $this->app->setLocale('en');
-        $invoice = $this->discountedUnpostedInvoice();
+        $invoice = $this->discountedUnposted($type);
 
         $money = $this->moneyFormatter($invoice);
 
@@ -436,19 +473,19 @@ final class ProformaOutputTest extends TestCase
         );
     }
 
-    #[DataProvider('localeProvider')]
-    public function test_a_proforma_with_a_stamp_duty_and_a_discount_stays_clean(string $locale): void
+    #[DataProvider('localeAndFiscalTypeProvider')]
+    public function test_a_proforma_with_a_stamp_duty_and_a_discount_stays_clean(string $locale, DocumentType $type): void
     {
         $this->app->setLocale($locale);
-        $invoice = $this->discountedUnpostedInvoice();
+        $invoice = $this->discountedUnposted($type);
 
         $this->assertNoForbiddenToken(
             $this->scannable($this->renderHtml($invoice)),
-            "discounted invoice HTML in {$locale}",
+            "discounted {$type->value} HTML in {$locale}",
         );
         $this->assertNoForbiddenToken(
             $this->renderPdfText($invoice),
-            "discounted invoice PDF text in {$locale}",
+            "discounted {$type->value} PDF text in {$locale}",
         );
 
         $this->assertStringContainsString(__('documents.proforma.stamp_duty'), $this->renderHtml($invoice));
@@ -459,10 +496,11 @@ final class ProformaOutputTest extends TestCase
      * The duty and discount rows must not hand back what the gross lines were
      * hiding. Exact membership again — `236,480 DT` contains `36,480 DT`.
      */
-    public function test_the_duty_and_discount_rows_do_not_reveal_the_vat(): void
+    #[DataProvider('fiscalTypeProvider')]
+    public function test_the_duty_and_discount_rows_do_not_reveal_the_vat(DocumentType $type): void
     {
         $this->app->setLocale('en');
-        $invoice = $this->discountedUnpostedInvoice();
+        $invoice = $this->discountedUnposted($type);
 
         $rendered = $this->renderHtml($invoice);
         $money = $this->moneyFormatter($invoice);
@@ -497,10 +535,11 @@ final class ProformaOutputTest extends TestCase
      * fallback tax the PRE-discount net is exactly how that happens — and calling
      * an increase a "Discount" would be a lie. It gets its own neutral label.
      */
-    public function test_a_residual_that_runs_the_other_way_is_not_called_a_discount(): void
+    #[DataProvider('fiscalTypeProvider')]
+    public function test_a_residual_that_runs_the_other_way_is_not_called_a_discount(DocumentType $type): void
     {
         $this->app->setLocale('en');
-        $invoice = $this->surchargedUnpostedInvoice();
+        $invoice = $this->surchargedUnposted($type);
 
         $money = $this->moneyFormatter($invoice);
         $cells = $this->totalsTableCells($this->renderHtml($invoice));
@@ -534,7 +573,7 @@ final class ProformaOutputTest extends TestCase
     public function test_the_reconciling_row_is_derived_and_not_assembled_from_the_stored_discount(): void
     {
         $this->app->setLocale('en');
-        $invoice = $this->legacyTaxRowUnpostedInvoice();
+        $invoice = $this->legacyTaxRowUnposted();
 
         $money = $this->moneyFormatter($invoice);
 
@@ -547,6 +586,159 @@ final class ProformaOutputTest extends TestCase
             (string) $invoice->total,
             bcsub('238.000', '11.900', 3),
             'and the page closes on the figures it actually prints',
+        );
+    }
+
+    /**
+     * FIX ROUND r3 / conventions F-C3 [BLOCKING] — a proforma credit note may not
+     * tell the customer it reduces their balance.
+     *
+     * `templates/credit_note.blade.php` closed with an ungated
+     * "This credit note reduces your balance by the amount shown above." — printed
+     * under a banner reading "Proforma — non-fiscal document … it confers no right
+     * of deduction", on a page from which this lane deliberately deleted the Paid
+     * and Balance Due rows because a proforma is not a statement of account. The
+     * page asserted a balance effect the document does not have, and called itself
+     * a *credit note*, the definitive noun, in the one place the lane took care not
+     * to. It was also a non-dotted key with no JSON lang file, so a French or
+     * Tunisian customer read it in English.
+     *
+     * Now: absent on a proforma, and a dotted key in three locales on a definitive
+     * credit note.
+     */
+    public function test_a_proforma_credit_note_does_not_claim_it_reduces_your_balance(): void
+    {
+        $this->app->setLocale('en');
+        $proforma = $this->unpostedCreditNote();
+
+        $definitiveSentence = 'This credit note reduces your balance by the amount shown above.';
+
+        $this->assertStringNotContainsString($definitiveSentence, $this->renderHtml($proforma));
+        $this->assertStringNotContainsString(
+            __('documents.credit_note.balance_note'),
+            $this->renderHtml($proforma),
+        );
+        $this->assertStringNotContainsString('reduces your balance', $this->renderPdfText($proforma));
+    }
+
+    /**
+     * …and the definitive credit note still says it, byte for byte. The key moved
+     * from a non-dotted literal to `documents.credit_note.balance_note`, and the
+     * English value is unchanged precisely so the posted snapshots stay identical.
+     */
+    public function test_a_definitive_credit_note_still_states_the_balance_effect(): void
+    {
+        $this->app->setLocale('en');
+
+        $this->assertSame(
+            'This credit note reduces your balance by the amount shown above.',
+            __('documents.credit_note.balance_note'),
+        );
+        $this->assertStringContainsString(
+            __('documents.credit_note.balance_note'),
+            $this->renderHtml($this->postedCreditNote()),
+        );
+    }
+
+    /**
+     * FIX ROUND r3 / conventions F-C1 [MAJOR] — the three-locale claim was pinned
+     * TAUTOLOGICALLY.
+     *
+     * `assertStringContainsString(__('documents.proforma.title'), $html)` resolves
+     * both sides through the same Translator at the same locale. Delete the
+     * `proforma` block from `lang/ar/documents.php` and Laravel falls back per key
+     * to `en` — for the blade AND for the assertion — so the test passes on a page
+     * that renders English to an Arabic tenant. If the key vanished from `en` too,
+     * both sides get the literal key string back and it STILL passes.
+     *
+     * These are the strings themselves. `DocumentsProformaLangParityTest` is the
+     * other half: it pins the key sets and placeholder sets across the three files.
+     *
+     * @return array<string, array{0: string, 1: array<string, string>}>
+     */
+    public static function localeLiteralProvider(): array
+    {
+        return [
+            'french' => ['fr', [
+                'title' => 'Proforma — document non fiscal',
+                'estimated_total' => 'Total estimé',
+                'stamp_duty' => 'Droit de timbre',
+                'discount' => 'Remise',
+            ]],
+            'arabic' => ['ar', [
+                'title' => 'مستند مبدئي — غير ضريبي',
+                'estimated_total' => 'المجموع التقديري',
+                'stamp_duty' => 'معلوم الطابع',
+                'discount' => 'تخفيض',
+            ]],
+        ];
+    }
+
+    /**
+     * @param  array<string, string>  $expected
+     */
+    #[DataProvider('localeLiteralProvider')]
+    public function test_the_proforma_renders_the_literal_strings_of_its_locale(string $locale, array $expected): void
+    {
+        $this->app->setLocale($locale);
+        $html = $this->renderHtml($this->discountedUnposted());
+
+        foreach ($expected as $key => $literal) {
+            $this->assertStringContainsString(
+                $literal,
+                $html,
+                "documents.proforma.{$key} must render its own {$locale} string, not a fallback",
+            );
+        }
+    }
+
+    /**
+     * FIX ROUND r3 / fiscal F-11 — the drift bound, measured rather than reassured.
+     *
+     * r2's docblock and residual R-10 claimed `printed unit × qty` differs from the
+     * printed amount "by less than half a currency unit per line item". That is
+     * wrong: the unit price is rounded once and then multiplied by the quantity, so
+     * the error is LINEAR IN QUANTITY — the true bound is `qty × 0.5 × 10^-scale`.
+     * At 10 000 units of a 0.333 part it is 2.700 DT, five times the claimed
+     * ceiling and plainly visible on the page.
+     *
+     * Not a fiscal exposure: the printed AMOUNT is authoritative, the estimated
+     * total sums the amounts, and the box still closes — all three asserted here.
+     * The scale stays at the currency's own (gate r3 ruling R-10: `unit × qty ==
+     * amount` is unattainable at ANY finite scale for a non-terminating quotient,
+     * and a scale-5 unit price would be the only figure on the page off convention).
+     * What changes is that the trade-off is now characterised and pinned instead of
+     * being described by a comforting sentence.
+     */
+    public function test_a_bulk_non_dividing_row_drifts_within_the_stated_bound(): void
+    {
+        $this->app->setLocale('en');
+        $invoice = $this->bulkNonDividingUnpostedInvoice();
+
+        $money = $this->moneyFormatter($invoice);
+
+        $this->assertSame(
+            [$money('0.396'), $money('3962.700')],
+            $this->itemsTableRightCells($this->renderHtml($invoice)),
+            'the unit price is the rounded quotient; the AMOUNT is authoritative',
+        );
+
+        // The amount is what the totals box sums, so the page still closes.
+        $this->assertSame(
+            [$money('3962.700')],
+            $this->totalsTableCells($this->renderHtml($invoice)),
+        );
+
+        $quantity = '10000.0000';
+        $drift = bcsub(bcmul('0.396', $quantity, 3), '3962.700', 3);
+        $bound = bcmul($quantity, '0.0005', 4);   // qty × 0.5 × 10^-scale, scale = 3
+
+        $this->assertSame('-2.700', $drift, 'the drift is real and this is its size');
+        $this->assertSame('5.0000', $bound);
+        $this->assertLessThanOrEqual(
+            0,
+            bccomp(bcmul($drift, '-1', 3), $bound, 4),
+            'the drift must stay within qty × 0.5 × 10^-scale',
         );
     }
 
@@ -728,10 +920,22 @@ final class ProformaOutputTest extends TestCase
      *   L3  qty 4  net  90.000  VAT 16.416 (persisted; line discount 10.000)
      *   subtotal 340.000 − discount 10.000 + line VAT 62.016 + stamp 1.000 = 393.016
      *   Σ gross lines 402.016; 402.016 + 1.000 − 10.000 = 393.016
+     *
+     * FIX ROUND r3 / fiscal F-13 — THESE LINE TAXES ARE SYNTHETIC, chosen so every
+     * row divides its quantity exactly and the row-closure assertion can be exact
+     * with no tolerance. They are NOT the tax engine's proration of this fixture's
+     * own `discount_amount`: 36.480 + 9.120 + 16.416 = 62.016 implies a taxed base
+     * of 326.400 (a 4% reduction), while the stated discount is 10.000 on 340.000
+     * (2.94%). The document is internally consistent
+     * (340.000 − 10.000 + 62.016 + 1.000 = 393.016) and every assertion is over what
+     * is PRINTED, so nothing is weakened — but a reader who tries to reconcile the
+     * figures against `TaxCalculationService:171-183` will not be able to, and
+     * should not try. The SHAPE (persisted post-discount line taxes that are not
+     * `rate × line_total`) is what the tests need; the exact proration is not.
      */
-    private function discountedUnpostedInvoice(): Document
+    private function discountedUnposted(DocumentType $type = DocumentType::Invoice): Document
     {
-        $invoice = $this->dpConfirmedInvoice([
+        $invoice = $this->confirmedOfType($type, [
             $this->dpPhysicalLine('2.0000', '100.000'),
             $this->dpPhysicalLine('1.0000', '50.000'),
             $this->dpPhysicalLine('4.0000', '25.000'),
@@ -781,11 +985,11 @@ final class ProformaOutputTest extends TestCase
      * discount — the shape that separates a derived reconciling row from an
      * assembled one.
      */
-    private function legacyTaxRowUnpostedInvoice(): Document
+    private function legacyTaxRowUnposted(DocumentType $type = DocumentType::Invoice): Document
     {
         $invoice = $this->deterministic(
-            $this->dpConfirmedInvoice([$this->dpPhysicalLine()]),
-            'INV-PROFORMA-0005',
+            $this->confirmedOfType($type, [$this->dpPhysicalLine()]),
+            'PROFORMA-0005',
         );
 
         $invoice->lines->firstOrFail()->forceFill(['tax_rate' => '19.00', 'tax_amount' => null])->save();
@@ -803,11 +1007,11 @@ final class ProformaOutputTest extends TestCase
         return $invoice;
     }
 
-    private function surchargedUnpostedInvoice(): Document
+    private function surchargedUnposted(DocumentType $type = DocumentType::Invoice): Document
     {
         $invoice = $this->deterministic(
-            $this->dpConfirmedInvoice([$this->dpPhysicalLine()]),
-            'INV-PROFORMA-0004',
+            $this->confirmedOfType($type, [$this->dpPhysicalLine()]),
+            'PROFORMA-0004',
         );
 
         $invoice->lines->firstOrFail()->forceFill(['tax_rate' => '19.00', 'tax_amount' => '38.000'])->save();
@@ -856,6 +1060,59 @@ final class ProformaOutputTest extends TestCase
         $invoice->refresh();
 
         return $invoice;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $lines
+     */
+    /**
+     * 10 000 units of a 0.333 part at 19% — a quantity that does not divide its
+     * gross line amount, so the rounded unit price multiplies back short.
+     *
+     *   net 3330.000 + VAT 632.700 = gross 3962.700 ; 3962.700 ÷ 10000 = 0.39627
+     *   printed unit 0.396 ; 0.396 × 10000 = 3960.000 ; drift −2.700
+     *   bound qty × 0.5 × 10^-3 = 5.000
+     *
+     * No stamp and no discount, so the totals box is the estimated total alone and
+     * the reconciliation is over the AMOUNT column, which is exact.
+     */
+    private function bulkNonDividingUnpostedInvoice(): Document
+    {
+        $invoice = $this->deterministic(
+            $this->dpConfirmedInvoice([$this->dpPhysicalLine('10000.0000', '0.333')]),
+            'PROFORMA-0006',
+        );
+
+        $invoice->lines->firstOrFail()->forceFill([
+            'tax_rate' => '19.00',
+            'tax_amount' => '632.700',
+            'line_total' => '3330.000',
+        ])->save();
+
+        $invoice->forceFill([
+            'subtotal' => '3330.000',
+            'discount_amount' => '0.000',
+            'line_tax_amount' => '632.700',
+            'stamp_duty_amount' => '0.000',
+            'tax_amount' => '632.700',
+            'total' => '3962.700',
+            'balance_due' => '3962.700',
+        ])->save();
+        $invoice->refresh();
+
+        return $invoice;
+    }
+
+    /**
+     * The same fixture over either fiscal type — conventions F-C2 / fiscal F-12.
+     *
+     * @param  list<array<string, mixed>>  $lines
+     */
+    private function confirmedOfType(DocumentType $type, array $lines): Document
+    {
+        return $type === DocumentType::CreditNote
+            ? $this->dpConfirmedCreditNote($lines)
+            : $this->dpConfirmedInvoice($lines);
     }
 
     private function renderHtml(Document $document): string
