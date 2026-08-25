@@ -21,6 +21,7 @@ use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Expense\Application\DTOs\PayExpenseRequestData;
 use App\Modules\Expense\Application\Exceptions\LinkedCostException;
 use App\Modules\Expense\Domain\Enums\ExpenseKind;
+use App\Modules\Expense\Domain\Exceptions\ExpensePaidWithoutRepositoryException;
 use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Domain\Entities\DocumentTaxDetail;
@@ -30,6 +31,7 @@ use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\RepositoryMovement;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -99,6 +101,14 @@ final class ExpenseService
         if (! is_numeric($total) || ($vatAmount !== null && ! is_numeric($vatAmount))) {
             throw new \InvalidArgumentException('Expense amounts must be numeric strings.');
         }
+
+        $this->assertPaidExpenseNamesRepository(
+            isPaid: (bool) ($data['is_paid'] ?? true),
+            repositoryId: isset($data['payment_repository_id']) ? (string) $data['payment_repository_id'] : null,
+            paymentMethodId: isset($data['payment_method_id']) ? (string) $data['payment_method_id'] : null,
+            tenantId: $user->tenant_id,
+            companyId: $company->id,
+        );
 
         $linked = $this->prepareLinkedCost($data, $user->tenant_id, $data['company_id'], $companyCurrency);
 
@@ -203,6 +213,18 @@ final class ExpenseService
             ? ($data['vat_deductible_percent'] !== null ? (string) $data['vat_deductible_percent'] : null)
             : $metadata->vat_deductible_percent;
         $kind = $metadata->expense_kind;
+
+        // Evaluated on the RESOLVED post-update state, exactly as the metadata
+        // update below computes it — flipping an unpaid expense to paid must be
+        // refused for the same reason creating it paid is.
+        $this->assertPaidExpenseNamesRepository(
+            isPaid: (bool) ($data['is_paid'] ?? $metadata->is_paid),
+            repositoryId: (string) ($data['payment_repository_id'] ?? $metadata->payment_repository_id) ?: null,
+            paymentMethodId: (string) ($data['payment_method_id'] ?? $metadata->payment_method_id) ?: null,
+            tenantId: $expense->tenant_id,
+            companyId: $expense->company_id,
+        );
+
         $this->assertVatInvariants(
             [
                 'total' => $total,
@@ -255,6 +277,55 @@ final class ExpenseService
 
             return $freshExpense;
         });
+    }
+
+    /**
+     * W4-10 — an expense that claims to have been PAID IN CASH must name the
+     * treasury repository the money left.
+     *
+     * `create()` defaults `is_paid` to true, so a payload that sets neither
+     * `payment_repository_id` nor `payment_date` used to mint an expense that
+     * was born paid with no till: posting it credited the default cash GL
+     * account and wrote NO repository movement, and `/pay` — the only endpoint
+     * that accepts a repository — then refused it as already paid. GL cash fell
+     * while the drawer never moved, permanently.
+     *
+     * The carve-out: a NON-CASH payment method settles through its own rail
+     * (card acquirer, bank transfer, an issued instrument) and is not a till
+     * withdrawal, so it may be born paid without a repository.
+     *
+     * @throws ExpensePaidWithoutRepositoryException
+     */
+    private function assertPaidExpenseNamesRepository(
+        bool $isPaid,
+        ?string $repositoryId,
+        ?string $paymentMethodId,
+        string $tenantId,
+        string $companyId,
+    ): void {
+        if (! $isPaid || ($repositoryId !== null && $repositoryId !== '')) {
+            return;
+        }
+
+        if ($paymentMethodId !== null && $paymentMethodId !== '') {
+            // Scoped by tenant AND company (gate r1 F-8). The HTTP layer already
+            // scopes it (ExpenseRequest's ScopedExists), but this is a DOMAIN
+            // invariant and a non-HTTP caller could otherwise satisfy it with
+            // another company's non-cash method.
+            $isCashTender = PaymentMethod::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->whereKey($paymentMethodId)
+                ->value('is_cash_tender');
+
+            // A method that is explicitly NOT a cash tender is settled off-till.
+            // An unresolvable method is treated as cash: fail closed.
+            if ($isCashTender === false || $isCashTender === 0) {
+                return;
+            }
+        }
+
+        throw new ExpensePaidWithoutRepositoryException;
     }
 
     /**
@@ -313,6 +384,22 @@ final class ExpenseService
         if ($expense->status !== DocumentStatus::Draft) {
             throw new \RuntimeException('Only draft expenses can be posted');
         }
+
+        // W4-10 / gate r1 F-2 — POSTING is where the damage happens, so the
+        // guard has to hold here too, not only on create/update. A Draft row
+        // carrying `is_paid = true, payment_repository_id = NULL` reaches this
+        // method from any writer that is not create()/update() — a legacy row, a
+        // seeder, an importer, a future recurrence template — and posting it
+        // credits the cash account with NO repository movement. Measured shape
+        // before this guard (gate PROBE C, sqlite and PostgreSQL):
+        // `posted=posted cashCredit=45.000 movements=0`.
+        $this->assertPaidExpenseNamesRepository(
+            isPaid: $expense->expenseMetadata?->is_paid === true,
+            repositoryId: $expense->expenseMetadata?->payment_repository_id,
+            paymentMethodId: $expense->expenseMetadata?->payment_method_id,
+            tenantId: $expense->tenant_id,
+            companyId: $expense->company_id,
+        );
 
         return DB::transaction(function () use ($expense, $user): Document {
             // Generate document number

@@ -127,10 +127,23 @@ final class ExpensePostTest extends TestCase
     }
 
     /**
-     * Posting a paid expense WITHOUT a payment_repository_id (no repo) only
-     * creates the GL entry — there is no balance to decrement.
+     * INVERTED 2026-08-25 by W4-10 (campaign wave-4 §W4-10, treasury gate r1
+     * F-2). This test used to assert that posting a paid expense with NO
+     * payment_repository_id "only creates the GL entry — there is no balance to
+     * decrement". That is precisely the defect: the GL entry credits the cash
+     * account for 80.000 and NOTHING moves in Treasury, so ledger cash falls
+     * while every till stays where it was — permanently, because `/pay` (the
+     * only endpoint that accepts a repository) then refuses the expense as
+     * already paid.
+     *
+     * The shape is now refused at POST as well as at create/update, so the same
+     * fixture — which reaches ExpenseMetadata directly and therefore bypasses
+     * both of those — is the regression pin for the post-time guard.
+     * A cash-paid expense that legitimately moves no till does not exist; the
+     * legitimate no-repository case is a NON-CASH method, covered by
+     * ExpensePaidFromRepositoryTest.
      */
-    public function test_posting_paid_expense_without_repository_still_creates_gl_entry(): void
+    public function test_posting_a_paid_expense_without_a_repository_is_refused(): void
     {
         [$user, $company] = $this->makeUserWithPermissions(['expenses.post', 'expenses.view']);
 
@@ -152,12 +165,15 @@ final class ExpensePostTest extends TestCase
         $response = $this->actingAs($user, 'sanctum')
             ->postJson("/api/v1/expenses/{$expense->id}/post");
 
-        $response->assertOk();
+        $response->assertStatus(422);
 
-        $this->assertDatabaseHas('journal_entries', [
+        // Nothing was booked and nothing was numbered: the refusal is before the
+        // transaction, so the document is still a Draft.
+        $this->assertDatabaseMissing('journal_entries', [
             'source_type' => 'expense',
             'source_id' => $expense->id,
         ]);
+        $this->assertSame(DocumentStatus::Draft, $expense->fresh()?->status);
     }
 
     /**
@@ -240,9 +256,14 @@ final class ExpensePostTest extends TestCase
             'currency' => 'TND',
         ]);
 
+        // UNPAID: this helper's subject is document NUMBERING, not the payment
+        // shape. Since W4-10 a cash-paid expense must name the repository the
+        // money left, and an unpaid expense allocates its number identically
+        // (it books an AP liability instead of crediting cash), so this is the
+        // smallest change that keeps the subject intact.
         ExpenseMetadata::create([
             'document_id' => $expense->id,
-            'is_paid' => true,
+            'is_paid' => false,
             'payment_repository_id' => null,
             'payment_date' => now()->toDateString(),
         ]);

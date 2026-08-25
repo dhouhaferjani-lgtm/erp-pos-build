@@ -23,6 +23,7 @@ use App\Modules\Treasury\Application\Services\InstrumentRemittanceService;
 use App\Modules\Treasury\Application\Services\OutboundInstrumentIssuer;
 use App\Modules\Treasury\Application\Services\PaymentToleranceService;
 use App\Modules\Treasury\Application\Services\RepositoryAdjustmentService;
+use App\Modules\Treasury\Application\Services\RepositoryOpeningBalanceService;
 use App\Modules\Treasury\Application\Services\StatementActionRegistry;
 use App\Modules\Treasury\Application\Services\StatementParserRegistry;
 use App\Modules\Treasury\Application\Services\TreasuryMovementService;
@@ -43,6 +44,7 @@ use App\Shared\Contracts\Treasury\OutboundInstrumentIssuerInterface;
 use App\Shared\Contracts\Treasury\OutboundInstrumentPaymentLinkResolver;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use App\Shared\Contracts\Treasury\RepositoryAdjustmentServiceInterface;
+use App\Shared\Contracts\Treasury\RepositoryOpeningBalanceSeederInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\Event;
@@ -87,6 +89,14 @@ class TreasuryServiceProvider extends ServiceProvider
         $this->app->bind(
             TreasuryMovementServiceInterface::class,
             TreasuryMovementService::class,
+        );
+
+        // W4-2 — the ONE sanctioned path to a day-one cash float. Bound to the
+        // Shared contract so the Accounting opening-balance wizard seeds a till
+        // without importing Treasury domain models (rule 6).
+        $this->app->bind(
+            RepositoryOpeningBalanceSeederInterface::class,
+            RepositoryOpeningBalanceService::class,
         );
 
         // DPA lane V3/G3 — the single repository-adjustment orchestration port

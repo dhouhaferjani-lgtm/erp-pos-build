@@ -31,6 +31,8 @@ const accountingPreview: AccountingPostPreview = {
       debit: '10000.000',
       credit: '0.000',
       description: 'Solde d ouverture caisse',
+      repository_code: 'CASH-01',
+      repository_name: 'Caisse principale',
     },
   ],
   totals: {
