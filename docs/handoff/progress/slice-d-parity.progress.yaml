@@ -1,0 +1,61 @@
+lane: slice-d-parity
+brief: docs/sessions/session-B-2026-08-23/BRIEF-C26-parity-preconditions.md
+gate_record: docs/superpowers/reviews/2026-08-25-sb-d1-parity-gate-r2.md   # R2-1 + R2-2 are the two residuals this lane closes
+guard: apps/api/tests/Architecture/EnumCheckParityTest.php
+guard_method: the_parity_artifacts_never_grow_against_the_owner_pinned_seed
+
+# ===========================================================================
+# O-31 / R2-2 — the OWNER-PINNED ANTI-GROWTH CEILING over the parity artifacts
+# ===========================================================================
+#
+# THE AUTHORITY IS THE OWNER-SET GITHUB ACTIONS REPOSITORY VARIABLE
+# `ENUM_CHECK_PARITY_PROTECTED_SEED`, never this file. The variable lives
+# OUTSIDE every candidate diff, which is the entire point: a contributor who can
+# edit the three parity artifacts cannot also edit the ceiling they are measured
+# against. The fields below are a NON-AUTHORITATIVE MIRROR kept for the paper
+# trail, and a mirror that DISAGREES with the variable is a TAMPER SIGNAL, not a
+# skip condition — the guard fails on drift exactly as it fails on an unset
+# variable, a malformed sha, or an unfetchable object.
+#
+# WHY A SEED COMMIT AND NOT A BLOB (the deliberate difference from
+# `enforcement-p1.progress.yaml`'s `dpa_baseline_protected_blob`): this ceiling
+# covers THREE artifacts, not one —
+#   apps/api/tests/Architecture/baselines/enum-check-parity-baseline.json
+#   apps/api/tests/Architecture/baselines/enum-check-parity-central-baseline.json
+#   apps/api/tests/Architecture/baselines/enum-check-parity-acknowledgements.json
+# Pinning one COMMIT means one repository variable and one durable tag cover all
+# three; pinning blobs would mean three of each, three chances to re-pin two of
+# them and quietly leave the third behind. The guard resolves each artifact as
+# `<seed>:<path>`.
+#
+# WHAT IT BUYS (gate r2 §R2-2, proven live): before this pin, widening
+# `fiscal_event_quarantine_class_phase1_allowed` to all six IntegrityExceptionClass
+# cases AND deleting the acknowledgement entry in the SAME diff was fully green —
+# the widened CHECK reads COVERED, needs no baseline key, and the only
+# machine-readable statement of the fiscal ledger/quarantine partition is gone.
+# The pin makes the deletion red, because the acknowledgement is present in the
+# pinned copy and absent from the working one.
+#
+# RE-PIN TRIGGERS (owner action: NEW variable value + NEWLY ALLOCATED tag,
+# together, or neither is any use):
+#   1. a slice-D CHECK-adding batch legitimately SHRINKS a baseline — no re-pin
+#      needed, shrink is always allowed; re-pin only to tighten the ceiling;
+#   2. a new acknowledgement is ADDED after review — no re-pin needed (additions
+#      are allowed, only drops and relabels are refused);
+#   3. an acknowledgement is legitimately RETIRED (its CHECK became a real
+#      value-set CHECK and the entry deleted) — RE-PIN REQUIRED, and the review
+#      that retires it is the authorisation;
+#   4. a baseline legitimately GROWS (a new enum-backed column lands with no
+#      CHECK) — RE-PIN REQUIRED. This is the forcing function: matched growth in
+#      one diff is precisely what the ceiling exists to refuse.
+
+# The 40-hex commit the owner must set `ENUM_CHECK_PARITY_PROTECTED_SEED` to.
+enum_check_parity_seed_commit: da5ae13792e2a5067edde96f85858d2ea37efccf
+# Durable ref so the seed object survives shallow clones / gc. NOT YET CREATED —
+# the owner allocates it against the seed commit above (`git tag <tag> <seed>`,
+# push the tag), and CI fetches it by reading THIS field before the guard runs.
+enum_check_parity_pin_tag: ci-pin/enum-check-parity-r1
+
+# History — one line per pin movement, newest last. Never rewrite a line.
+pin_history:
+  - "2026-08-25 · r1 · seed da5ae13792e2a5067edde96f85858d2ea37efccf · candidate proposed by lane B2-2/C-26; blobs at seed = baseline 47e77720a11e9d9e5acd1143a203a78a6c38141b, central d3623927c3257630801c9559d5577aacfdd7308e, acks 3df370e19e44544f9df36160cf2bacc9da2758e5 (identical at dev tip); variable + tag NOT yet armed by the owner"
