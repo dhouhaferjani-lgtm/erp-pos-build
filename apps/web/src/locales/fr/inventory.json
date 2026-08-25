@@ -536,6 +536,20 @@
       },
       "perpetualHint": "Chaque sortie de stock déstocke et comptabilise le coût des marchandises vendues au moment où elle se produit."
     },
+    "countCorrectionGl": {
+      "title": "Écarts d'inventaire en comptabilité",
+      "description": "Indique si un écart d'inventaire est comptabilisé au grand livre au moment où il est appliqué.",
+      "toggleLabel": "Comptabiliser les écarts d'inventaire",
+      "toggleHint": "Un manquant est enregistré en charge pour démarque inventaire, un excédent en produit sur inventaire, valorisé au coût propre de l'article. Si vous désactivez cette option, le stock est tout de même corrigé et valorisé — seule l'écriture comptable est retenue.",
+      "sourceLabel": "Défini par",
+      "source": {
+        "company": "Cette société",
+        "country": "Valeur par défaut de votre pays",
+        "system": "Valeur par défaut du système"
+      },
+      "inheritedHint": "Valeur héritée. Cochez ou décochez pour définir votre propre préférence pour cette société.",
+      "saveFailed": "Impossible d'enregistrer la préférence de comptabilisation des écarts d'inventaire."
+    },
     "margins": {
       "title": "Politiques de marge par défaut",
       "description": "Définir les marges par défaut à l'échelle de l'entreprise. Les produits individuels peuvent remplacer ces paramètres.",

@@ -536,6 +536,20 @@
       },
       "perpetualHint": "Every stock exit relieves inventory and records cost of goods sold as it happens."
     },
+    "countCorrectionGl": {
+      "title": "Stock-Count Corrections in Accounting",
+      "description": "Whether a stock-count difference is posted to the general ledger as it is applied.",
+      "toggleLabel": "Post stock-count corrections to the ledger",
+      "toggleHint": "A shortage is booked as an inventory shrinkage expense, an overage as inventory gain, valued at the item's own cost. Turn this off and the stock is still corrected and still costed — only the accounting entry is withheld.",
+      "sourceLabel": "Set by",
+      "source": {
+        "company": "This company",
+        "country": "Your country's default",
+        "system": "System default"
+      },
+      "inheritedHint": "Inherited. Tick or untick to set your own preference for this company.",
+      "saveFailed": "Could not save the stock-count posting preference."
+    },
     "margins": {
       "title": "Default Margin Policies",
       "description": "Set company-wide default margins. Individual products can override these settings.",

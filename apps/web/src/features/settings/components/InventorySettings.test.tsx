@@ -67,6 +67,10 @@ const reservationFixture = {
 const valuationFixture = {
   inventory_valuation_mode: 'perpetual' as const,
   inventory_valuation_mode_source: 'country' as const,
+  // Lane P-1 — the count-correction GL-posting leg of the same payload.
+  count_correction_gl_posting_enabled: true,
+  count_correction_gl_posting_source: 'country' as const,
+  count_correction_gl_posting_override: null as boolean | null,
 }
 
 // ─── TanStack Query mock ────────────────────────────────────────────────────
@@ -184,6 +188,42 @@ describe('InventorySettings', () => {
 
     const panel = screen.getByTestId('inventory-valuation-settings')
     expect(panel.querySelectorAll('input, select, textarea, button')).toHaveLength(0)
+  })
+
+  // ── Lane P-1 — the EDITABLE count-correction GL-posting control ───────────
+  it('renders the resolved count-correction posting answer, its source, and a checked box', () => {
+    render(<InventorySettings />)
+
+    const panel = screen.getByTestId('count-correction-gl-settings')
+    expect(panel).toBeInTheDocument()
+    expect(
+      screen.getByText('inventory:settings.countCorrectionGl.source.country')
+    ).toBeInTheDocument()
+
+    const box = screen.getByLabelText(
+      'inventory:settings.countCorrectionGl.toggleLabel'
+    ) as HTMLInputElement
+    expect(box.type).toBe('checkbox')
+    expect(box.checked).toBe(true)
+  })
+
+  it('saves the override the moment the box is toggled', async () => {
+    const user = userEvent.setup()
+    render(<InventorySettings />)
+
+    await user.click(screen.getByLabelText('inventory:settings.countCorrectionGl.toggleLabel'))
+
+    expect(mockMutateAsync).toHaveBeenCalledWith(false)
+  })
+
+  it('does not offer the toggle to a caller without settings.update', () => {
+    mockHasPermission.mockReturnValue(false)
+    render(<InventorySettings />)
+
+    const box = screen.getByLabelText(
+      'inventory:settings.countCorrectionGl.toggleLabel'
+    ) as HTMLInputElement
+    expect(box.disabled).toBe(true)
   })
 
   it('disables Save and shows the read-only hint for a caller without settings.update; the mutation never fires on click', async () => {
