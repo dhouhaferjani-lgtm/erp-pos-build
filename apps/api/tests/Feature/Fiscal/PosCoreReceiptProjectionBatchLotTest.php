@@ -6,6 +6,7 @@ namespace Tests\Feature\Fiscal;
 
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
+use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
@@ -161,7 +162,9 @@ final class PosCoreReceiptProjectionBatchLotTest extends TestCase
             ['3.0000', '2.0000'],
             $allocations->pluck('quantity')->map(fn ($q) => (string) $q)->values()->all(),
         );
-        $this->assertSame('LOT-EARLY', (string) $allocations->first()->batch_number);
+        $earliestAllocation = $allocations->first();
+        $this->assertNotNull($earliestAllocation);
+        $this->assertSame('LOT-EARLY', (string) $earliestAllocation->batch_number);
     }
 
     public function test_non_batch_tracked_sale_writes_no_lot_legs(): void
@@ -394,7 +397,7 @@ final class PosCoreReceiptProjectionBatchLotTest extends TestCase
 
     /**
      * The FEFO OUTBOUND draw is PostgreSQL-only by construction:
-     * {@see \App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService::consumeBatchesAtomically()}
+     * {@see FEFOInventoryService::consumeBatchesAtomically()}
      * selects its candidate lots `FOR UPDATE OF ibs SKIP LOCKED`, which SQLite
      * cannot parse. That row-lock IS the concurrency contract (two cashiers must
      * never draw the same lot row), so it is not something to branch away for a
@@ -481,6 +484,7 @@ final class PosCoreReceiptProjectionBatchLotTest extends TestCase
             ->where('location_id', $this->locationId)
             ->value('quantity');
 
+        /** @var numeric-string $raw */
         return bcadd($raw, '0', 4); // precision-ok: 4 = canonical quantity storage scale
     }
 
@@ -565,6 +569,7 @@ final class PosCoreReceiptProjectionBatchLotTest extends TestCase
         $businessDate = $eventTime->copy()->startOfDay();
 
         $unitPrice = '10.00';
+        /** @var numeric-string $quantity */
         $lineTotal = bcmul($unitPrice, $quantity, 2); // precision-ok: 2 = the fixture currency scale
 
         $lineItem = [

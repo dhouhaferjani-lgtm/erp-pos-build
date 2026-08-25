@@ -1960,7 +1960,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
     /**
      * Draw this sale line's quantity from real lots, FEFO, and snapshot what it
      * took — the LIVE-path counterpart of the retired
-     * {@see \App\Modules\POS\Application\Services\ReceiptCreationService::allocateBatches()}.
+     * `ReceiptCreationService::allocateBatches()`.
      *
      * Two legs, both keyed to the aggregate issue movement the caller just
      * wrote, so the lot ledger and the aggregate ledger are one act:
@@ -1971,7 +1971,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      *   * one `pos_receipt_line_batch_allocations` row per lot, the only record
      *     of WHICH lot went to WHICH customer. `BatchTraceabilityController`
      *     reads it for recalls and
-     *     {@see \App\Modules\POS\Application\Services\ReceiptReturnService::lotProvenanceForLine()}
+     *     `ReceiptReturnService::lotProvenanceForLine()`
      *     reads it to credit a return back to the lot the sale actually took —
      *     both were reading an empty table for every device-authored sale.
      *
@@ -1994,8 +1994,6 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * the only residual case where `Σ lots != stock_levels` after this lane.
      *
      * Rule 20: no `CompanyContext` — every scope is read off the event.
-     *
-     * @param  numeric-string  $quantity
      */
     private function consumeLotsForSaleLine(
         FiscalEvent $event,
@@ -2008,6 +2006,22 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         string $movementId,
     ): void {
         if (! $this->fefoService->productRequiresBatchTracking($productId)) {
+            return;
+        }
+
+        // `line_items[].quantity` is a positive decimal magnitude enforced by
+        // FiscalPayloadConstraintValidator's quantity regex at ingest, so this
+        // is unreachable on a verified event — but the aggregate arm already
+        // moved on this line, so a non-numeric value must not fatal the worker
+        // and strand the receipt. Same stance writeLines() takes on the cost
+        // snapshot, minus the throw (that one runs BEFORE any stock write).
+        if (! is_numeric($quantity)) {
+            Log::warning('PosCoreReceiptProjection: non-numeric canonical quantity on a batch-tracked sale line; no lot leg written', [
+                'fiscal_event_id' => $event->id,
+                'receipt_id' => $receiptId,
+                'product_id' => $productId,
+            ]);
+
             return;
         }
 
@@ -2421,9 +2435,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
     /**
      * Put a refunded line's units back on the lot(s) the SALE took — the
      * inbound mirror of {@see self::consumeLotsForSaleLine()} and the live-path
-     * counterpart of
-     * {@see \App\Modules\POS\Application\Services\ReceiptReturnService}'s
-     * restore arm.
+     * counterpart of `ReceiptReturnService`'s restore arm.
      *
      * **Provenance first (gate r5 R5-1).** `$originalLineId` names the SALE
      * line, whose `pos_receipt_line_batch_allocations` rows say exactly which
@@ -2444,8 +2456,6 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * and still better than the nothing that was written before this lane.
      *
      * Rule 20: no `CompanyContext` — tenant/company come off the event.
-     *
-     * @param  numeric-string  $quantity
      */
     private function restoreLotsForRefundLine(
         FiscalEvent $event,
@@ -2457,6 +2467,17 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         ?string $originalLineId,
     ): void {
         if (! $this->fefoService->productRequiresBatchTracking($productId)) {
+            return;
+        }
+
+        // See consumeLotsForSaleLine() — unreachable on a verified event, and a
+        // projector that has already restocked the aggregate may not fatal.
+        if (! is_numeric($quantity)) {
+            Log::warning('PosCoreReceiptProjection: non-numeric canonical quantity on a batch-tracked refund line; no lot credit written', [
+                'fiscal_event_id' => $event->id,
+                'product_id' => $productId,
+            ]);
+
             return;
         }
 
@@ -2480,7 +2501,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * {@see FEFOInventoryService::restoreBatchesForReturn()}.
      *
      * Netting mirrors
-     * {@see \App\Modules\POS\Application\Services\ReceiptReturnService::lotProvenanceForLine()}
+     * `ReceiptReturnService::lotProvenanceForLine()`
      * exactly: each lot's share is scaled by how much of the line has ALREADY
      * been returned, so refunding 2 of 5 twice credits each lot its
      * proportional share and never more than it originally took.
