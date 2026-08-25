@@ -671,8 +671,8 @@
     },
     "Accounting": {
       "lane": "treasury-spine-pgsql/feature-accounting",
-      "classes": 87,
-      "note": "Informational for lane groups: the ceiling is enforced only for deferred/excluded groups; a laned directory picks up new classes automatically. 86 on disk at the O-27 tip: 81 at the 2026-08-21 accepted tip, plus ChokepointUnbalancedGuardTest (P3 M1) and SeededChartManifestRequiredPurposeCompletenessTest (P3 M2) = 83, plus ChartPurposeBackfillSeederParityTest, LiveTenantChartValidationParityTest and BackfillChartRequiredPurposesO27MigrationTest (O-27 F-4); 87 with JournalEntryNumberingTenantScopeTest (Session B2 lane B2-1, LEDGER C-27)."
+      "classes": 88,
+      "note": "Informational for lane groups: the ceiling is enforced only for deferred/excluded groups; a laned directory picks up new classes automatically. 86 on disk at the O-27 tip: 81 at the 2026-08-21 accepted tip, plus ChokepointUnbalancedGuardTest (P3 M1) and SeededChartManifestRequiredPurposeCompletenessTest (P3 M2) = 83, plus ChartPurposeBackfillSeederParityTest, LiveTenantChartValidationParityTest and BackfillChartRequiredPurposesO27MigrationTest (O-27 F-4); 87 with JournalEntryNumberingTenantScopeTest and 88 with InventoryGlNumberingTenantScopeTest (Session B2 lane B2-1, LEDGER C-27 + fix round r1)."
     },
     "Admin": {
       "lane": "feature-lane-tenancy/Admin",

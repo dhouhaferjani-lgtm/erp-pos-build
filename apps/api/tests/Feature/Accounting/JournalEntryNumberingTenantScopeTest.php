@@ -136,20 +136,23 @@ final class JournalEntryNumberingTenantScopeTest extends TestCase
     }
 
     /**
-     * T3 — the ordering/mutual-exclusion pin. A SECOND PostgreSQL connection holds
-     * `hashtextextended('journal_entry_number:{tenant}', 0)` inside an open
-     * transaction; the request connection must then be unable to take that same
-     * key. This proves the key the service holds is exactly the key under test
-     * (a full two-connection racing post is not achievable inside this lane's
-     * 90-second tool budget — the ordering itself is pinned by T2's query log).
+     * T3 — the posting transaction actually HOLDS the tenant numbering key.
+     *
+     * Gate r1 (treasury lens) F-6: the previous form of this test asserted only
+     * that PostgreSQL's `pg_try_advisory_xact_lock` is mutually exclusive across
+     * two connections. It never invoked the service, so it was green on the
+     * unfixed base — a test that cannot fail. It now drives a REAL post and, while
+     * that transaction is still open, proves from a SECOND connection that
+     * `journal_entry_number:{tenantId}` is unavailable: the service is holding it.
+     * On the unfixed base no such lock is taken and the probe succeeds.
      */
-    public function test_the_tenant_numbering_key_is_mutually_exclusive_across_connections(): void
+    public function test_the_posting_transaction_holds_the_tenant_numbering_key(): void
     {
         if (DB::connection()->getDriverName() !== 'pgsql') {
             self::markTestSkipped('pg_advisory_xact_lock is observable on PostgreSQL only.');
         }
 
-        [$user] = $this->makeUserWithPermissions(['expenses.post', 'expenses.view']);
+        [$user, $company] = $this->makeUserWithPermissions(['expenses.post', 'expenses.view']);
         $key = "journal_entry_number:{$user->tenant_id}";
 
         $config = DB::connection()->getConfig();
@@ -158,20 +161,26 @@ final class JournalEntryNumberingTenantScopeTest extends TestCase
             \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
         ]);
 
-        $other->beginTransaction();
-        $held = $other->prepare('SELECT pg_try_advisory_xact_lock(hashtextextended(?, 0))');
-        $held->execute([$key]);
-        self::assertTrue((bool) $held->fetchColumn(), 'The second connection must acquire the key first.');
+        // Sanity: nobody holds the key before the post. (Taken and released in the
+        // probe connection's own single-statement transaction.)
+        $free = $other->prepare('SELECT pg_try_advisory_xact_lock(hashtextextended(?, 0))');
+        $free->execute([$key]);
+        self::assertTrue((bool) $free->fetchColumn(), 'The key must be free before the posting transaction opens.');
 
-        try {
-            $blocked = DB::selectOne('SELECT pg_try_advisory_xact_lock(hashtextextended(?, 0)) AS ok', [$key]);
+        DB::transaction(function () use ($user, $company, $other, $key): void {
+            $this->postExpenseForCompany($user, $company, '90.000');
+
+            // Still inside the posting transaction: the key must be UNAVAILABLE to
+            // anyone else. This is the property the fix creates — the max+1 read is
+            // serialised until commit.
+            $probe = $other->prepare('SELECT pg_try_advisory_xact_lock(hashtextextended(?, 0))');
+            $probe->execute([$key]);
             self::assertFalse(
-                (bool) $blocked->ok,
-                'A second holder of journal_entry_number:{tenantId} must be excluded — the key is the serialisation point.'
+                (bool) $probe->fetchColumn(),
+                'journal_entry_number:{tenantId} must be HELD for the life of the posting transaction — '
+                .'otherwise two concurrent minters read the same maximum.'
             );
-        } finally {
-            $other->rollBack();
-        }
+        });
     }
 
     /**

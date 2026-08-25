@@ -3768,6 +3768,21 @@ final class GeneralLedgerService
             throw UnbalancedJournalEntryPostException::forChokepoint($totalDebit, $totalCredit);
         }
 
+        // C-27 fix round r1 (stock-gl gate F-1). The tenant-keyed NUMBERING lock is
+        // taken here too, immediately before the company key, so the invariant is
+        // universal: EVERY path that takes the company chain key takes the tenant
+        // numbering key FIRST. It is not enough to order the two keys inside
+        // generateEntryNumber, because this method also runs for entries that were
+        // numbered in an EARLIER transaction and therefore mint nothing — the
+        // `$existing`-Draft replay branches of createInventoryMovementEntry and
+        // createInventoryWriteOffEntry, reached in production by
+        // InventoryGlPostingBuffer::flushIfOutermost() posting a batch inside one
+        // root transaction. Without this line such a transaction acquired
+        // company -> tenant while an ordinary mint acquired tenant -> company: a
+        // real AB-BA that PostgreSQL resolves with SQLSTATE 40P01 (reproduced by
+        // the gate). Cost of the fix: posting now also serialises tenant-wide.
+        $this->takeTenantNumberingLock($entry->tenant_id);
+
         // Serialize chain-sequence + hash reads per company via a transaction-scoped
         // advisory lock (released at commit). Concurrent posts to one company would
         // otherwise race on these unlocked max() reads and allocate duplicate
@@ -3776,8 +3791,6 @@ final class GeneralLedgerService
         // the global order is always advisory -> repo. The lock is only effective
         // inside an explicit transaction; postEntryNow enforces one, and the legacy
         // autocommit path degrades to a harmless per-statement no-op.
-        // C-27: the TENANT-keyed numbering lock (journal_entry_number:{tenantId}),
-        // when taken, is always taken BEFORE this one — see generateEntryNumber.
         if (DB::connection()->getDriverName() === 'pgsql') {
             DB::statement('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', [$entry->company_id]);
         }
@@ -5590,6 +5603,31 @@ final class GeneralLedgerService
     }
 
     /**
+     * Take the tenant-wide journal-entry NUMBERING advisory lock.
+     *
+     * The key literal lives here and ONLY here — {@see generateEntryNumber} and
+     * {@see sealAndPersistEntry} both call this so the two sites can never drift
+     * apart. String-namespaced so it cannot alias the bare-uuid per-company chain
+     * key. Transaction-scoped (released at commit); outside an explicit
+     * transaction it degrades to a harmless per-statement no-op, and on non-pgsql
+     * drivers it is a no-op entirely.
+     *
+     * INVARIANT: every path that takes the per-company chain key takes THIS key
+     * first. See gate r1 finding F-1.
+     */
+    private function takeTenantNumberingLock(string $tenantId): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return;
+        }
+
+        DB::statement(
+            'SELECT pg_advisory_xact_lock(hashtextextended(?, 0))',
+            ["journal_entry_number:{$tenantId}"],
+        );
+    }
+
+    /**
      * Allocate the next journal-entry number for the tenant.
      *
      * LEDGER C-27 (Session B2, 2026-08-25) fixes two defects here, in the shape
@@ -5613,13 +5651,16 @@ final class GeneralLedgerService
      *    transaction-scoped advisory lock keyed on the SAME (tenant) scope as the
      *    scan. The pre-existing per-COMPANY key is KEPT and taken second: the hash
      *    chain and `chain_sequence` are per company and {@see sealAndPersistEntry}
-     *    holds exactly that key. **The global order is load-bearing: the
-     *    tenant-keyed numbering lock is ALWAYS taken BEFORE the company-keyed
-     *    chain lock.** Taking both here, in that order, guarantees the ordering on
-     *    every path regardless of when `sealAndPersistEntry` runs, so two
-     *    transactions can never grab the two keys in opposite orders and deadlock.
-     *    The tenant key is string-namespaced (`journal_entry_number:{uuid}`) so it
-     *    cannot alias the bare-uuid company chain namespace.
+     *    holds exactly that key. **The invariant, enforced at BOTH sites and
+     *    nowhere else: every path that takes the company chain key takes the
+     *    tenant numbering key first.** {@see takeTenantNumberingLock} is the single
+     *    place the key literal lives, and `sealAndPersistEntry` calls it too — it
+     *    must, because it also runs for entries numbered in an EARLIER transaction
+     *    (the `$existing`-Draft replay branches), which mint nothing and would
+     *    otherwise acquire company -> tenant and AB-BA against an ordinary mint
+     *    (gate r1 F-1 reproduced SQLSTATE 40P01). The tenant key is
+     *    string-namespaced (`journal_entry_number:{uuid}`) so it cannot alias the
+     *    bare-uuid company chain namespace.
      *
      * Both locks are effective only inside an explicit transaction; every GL create
      * path wraps this in `DB::transaction`, and outside one they degrade to a
@@ -5627,13 +5668,12 @@ final class GeneralLedgerService
      */
     private function generateEntryNumber(string $tenantId, string $companyId): string
     {
+        // ORDER IS LOAD-BEARING — tenant numbering key FIRST, company chain key
+        // SECOND. See the docblock above and sealAndPersistEntry, which takes the
+        // same pair in the same order.
+        $this->takeTenantNumberingLock($tenantId);
+
         if (DB::connection()->getDriverName() === 'pgsql') {
-            // ORDER IS LOAD-BEARING — tenant numbering key FIRST, company chain key
-            // SECOND. See the docblock above and sealAndPersistEntry.
-            DB::statement(
-                'SELECT pg_advisory_xact_lock(hashtextextended(?, 0))',
-                ["journal_entry_number:{$tenantId}"],
-            );
             DB::statement('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', [$companyId]);
         }
 
