@@ -262,7 +262,32 @@ final class AdvanceReversalRefusalsAndCeilingTest extends TestCase
         $invoice = $this->postedInvoice('700.000');
         $payment = $this->payViaApi('1000.000', [['document_id' => $invoice->id, 'amount' => '700.000']]);
 
-        $this->refundService->partialRefund($payment, '100.000', 'prior refund', $this->user->id);
+        // N-6 fix round r2 (treasury gate R2-C1): `partialRefund()` now REFUSES an
+        // advance-backed payment outright — a refund posts the receivable shape
+        // only, so on an advance-backed original it would debit a 411 that was
+        // never credited and leave the 419 standing. That makes the state A-D6
+        // defends against unreachable through the product, so the LINEAGE is
+        // written directly here instead of being produced by the front door.
+        //
+        // A-D6 is not thereby dead: legacy rows created before that guard existed
+        // still carry exactly this shape, and it must keep refusing them. The
+        // assertion below is unchanged; only the fixture is.
+        Payment::query()->create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'repository_id' => $this->repository->id,
+            'original_payment_id' => $payment->id,
+            'amount' => '-100.000',
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'status' => PaymentStatus::Completed,
+            'payment_type' => PaymentType::Refund,
+            'reference' => 'REF-'.Str::random(8),
+            'created_by' => $this->user->id,
+        ]);
 
         $before = $this->snapshot();
 

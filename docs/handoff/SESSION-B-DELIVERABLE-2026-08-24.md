@@ -33,11 +33,18 @@ D-1 derives the population MECHANICALLY (every Eloquent model's `$casts` → `ap
 and reads `pg_constraint` on a freshly-migrated tenant schema. Result — **the audit's §#26 census (90 / 76 uncovered / 14 constrained)
 was wrong in both directions**:
 
-| Population | columns | COVERED | MISSING | NARROWER | baselined |
-|---|---|---|---|---|---|
-| enum-governed tenant columns (asserted) | **244** | 54 | 189 | 1 | **190** |
-| of which `*status`-suffixed (comparable to §#26) | 74 | 15 | 59 | 0 | 59 |
-| central-DB columns (reported, not asserted) | 20 | — | — | — | — |
+| Population (fix round `33e26cd69`, r2 ⏳) | columns | COVERED | MISSING | INTENDED_NARROWER | COVERED_BY_COMPOSITE | **baselined** |
+|---|---|---|---|---|---|---|
+| enum-governed tenant columns (asserted) | **245** | 54 | 189 | 1 | 1 | **189** |
+| of which `*status`-suffixed (comparable to §#26) | 74 | 15 | 59 | 0 | 0 | 59 |
+| central-DB columns (asserted on the union DB only) | 20 | 9 | 11 | 0 | 0 | 11 |
+
+Arithmetic from the first cut (244/190): +1 `products.enrichment_status` (was silently excluded — `Shared/Enums` now in scope) → 191;
+−1 `fiscal_event_quarantine.integrity_exception_class` (INTENDED_NARROWER, predicate-keyed acknowledgement) → 190;
+−1 `pos_receipts.receipt_type` (COVERED_BY_COMPOSITE via `pos_receipts_return_logic`) → **189**. The parser fixes (NOT VALID, parens,
+OR-chains) moved zero live verdicts.
+
+¹ 244 at `70adfcb2e`; the tenancy gate found `products.enrichment_status` (cast to `App\Shared\Enums\EnrichmentStatus`, no CHECK) silently excluded by the `Domain/Enums` filter — population widened to `Shared/Enums` in the fix round.
 
 Why §#26 was wrong: it grepped for `ADD CONSTRAINT … CHECK` and so missed every `$table->enum()` column (Laravel renders varchar +
 an auto-named `{table}_{column}_check` on PG) — `pos_receipts.fiscal_status`, `impersonation_grants.status`,

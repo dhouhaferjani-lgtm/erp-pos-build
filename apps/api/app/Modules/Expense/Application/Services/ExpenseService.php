@@ -17,6 +17,7 @@ use App\Modules\Document\Domain\Enums\CostApplicationPath;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\LandedCostSplitMethod;
+use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Expense\Application\DTOs\PayExpenseRequestData;
 use App\Modules\Expense\Application\Exceptions\LinkedCostException;
 use App\Modules\Expense\Domain\Enums\ExpenseKind;
@@ -57,6 +58,7 @@ final class ExpenseService
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly TreasuryMovementServiceInterface $movementService,
         private readonly OutboundInstrumentIssuerInterface $outboundInstrumentIssuer,
+        private readonly DocumentStatusService $documentStatus,
     ) {}
 
     /**
@@ -314,9 +316,11 @@ final class ExpenseService
 
         return DB::transaction(function () use ($expense, $user): Document {
             // Generate document number
-            $expense->document_number = $this->generateExpenseNumber($expense->company_id);
-            $expense->status = DocumentStatus::Posted;
-            $expense->save();
+            // N-6 fix round r1 / fiscal gate F-6 — single write path; the
+            // number lands in the same statement as the status.
+            $this->documentStatus->transition($expense, DocumentStatus::Posted, [
+                'document_number' => $this->generateExpenseNumber($expense->company_id),
+            ]);
 
             $metadata = $expense->expenseMetadata;
             if ($metadata?->expense_kind === ExpenseKind::LinkedCost) {

@@ -103,9 +103,31 @@ final class DeliveryNoteService
     private function confirmWithFiscalChain(Document $deliveryNote, InventoryGlPostingBuffer $buffer): void
     {
         // Acquire lock and get previous delivery note in chain
+        // N-6 fix round r1 / fiscal gate F-1 [CRITICAL] — THE CHAIN IS A FISCAL
+        // DIMENSION, SO ITS PREDECESSOR IS SELECTED ON THE FISCAL COLUMNS.
+        //
+        // This query used to carry `->where('status', <lifecycle>)`. A sealed
+        // document that had since MOVED ON in its lifecycle — an invoice settled
+        // to `Paid`, a delivery note or return note later cancelled — became
+        // invisible to it, so the NEXT document of that type was treated as
+        // GENESIS: `previous_hash = NULL` and `chain_sequence` restarting at 1.
+        // Nothing detects that: there is no unique index on
+        // (company_id, type, chain_sequence) and no chain verifier in `app/`, so
+        // the fork is silent. `.claude/context/compliance.md` requires an
+        // unbroken SHA-256 chain per document type.
+        //
+        // The bug predates this lane, but N-6 makes it DETERMINISTIC for the
+        // flow it introduces: `settleIfFullyPrepaid()` moves a fully-prepaid
+        // invoice to `Paid` INSIDE the sealing transaction, so such an invoice is
+        // never chain-visible for a single instant under the old predicate.
+        //
+        // `whereNotNull('fiscal_hash')` is the correct and sufficient predicate:
+        // a hash exists if and only if the document was sealed into this chain,
+        // and a VOIDED (cancelled) document keeps its hash on purpose — the link
+        // must stay in the chain, which is exactly why no status filter belongs
+        // here.
         $previousDoc = Document::where('company_id', $deliveryNote->company_id)
             ->where('type', DocumentType::DeliveryNote)
-            ->where('status', DocumentStatus::Confirmed)
             ->whereNotNull('fiscal_hash')
             ->orderByDesc('chain_sequence')
             ->lockForUpdate()

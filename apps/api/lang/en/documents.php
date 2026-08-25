@@ -3,6 +3,27 @@
 declare(strict_types=1);
 
 return [
+
+    /*
+    |----------------------------------------------------------------------
+    | N-6 — printout marker for a confirmed (not yet posted) fiscal document
+    |----------------------------------------------------------------------
+    | Dotted keys on purpose. The documents blade tree calls `__()` with
+    | ENGLISH NATURAL keys everywhere else (`__('Tax ID')`, `__('Qty')`), and
+    | no `lang/*.json` file exists, so every one of those renders as literal
+    | English regardless of locale. Only dotted keys reach these PHP arrays
+    | and actually translate — and this line has to translate.
+    */
+    'posting_marker' => [
+        'title' => 'Not yet posted — no fiscal seal',
+        'detail' => 'This document has not been posted to the accounts. It carries no fiscal seal and no hash-chain entry, and is not a definitive fiscal invoice.',
+        'cancelled_title' => 'Cancelled — this document has been voided',
+        'cancelled_detail' => 'This document was posted and sealed, and has since been cancelled. Its fiscal seal remains in the hash chain; the document itself is void and must not be used as a claim.',
+        'cancelled_unsealed_detail' => 'This document has been cancelled and must not be used as a claim. It was never posted to the accounts and carries no fiscal seal.',
+        'historical_title' => 'Opening balance — carried over from a previous system',
+        'historical_detail' => 'This document records a balance that was already standing when the accounts were opened here. It was posted in the previous system and carries no fiscal seal in this one.',
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Document Validation Messages

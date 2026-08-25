@@ -12,6 +12,7 @@ use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Observers\JournalEntryObserver;
 use App\Modules\Accounting\Domain\Observers\JournalLineObserver;
+use App\Modules\Accounting\Infrastructure\Adapters\CustomerAdvanceClearingAdapter;
 use App\Modules\Accounting\Infrastructure\Adapters\FiscalPeriodLockReader;
 use App\Modules\Company\Application\Services\LocationService;
 use App\Modules\Company\Services\CompanyContext;
@@ -40,6 +41,7 @@ use App\Services\VerticalConfigService;
 use App\Shared\Banking\Contracts\BankAccountValidatorInterface;
 use App\Shared\Banking\Domain\BankAccountValidator;
 use App\Shared\Contracts\AbilityAuthorizerInterface;
+use App\Shared\Contracts\Accounting\CustomerAdvanceClearingInterface;
 use App\Shared\Contracts\Accounting\DocumentGlCorrectionInterface;
 use App\Shared\Contracts\Accounting\DocumentGlPreflightInterface;
 use App\Shared\Contracts\Accounting\DocumentGlReversalInterface;
@@ -106,6 +108,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(DocumentGlCorrectionInterface::class, AccountingService::class);
         $this->app->bind(DocumentGlPreflightInterface::class, AccountingService::class);
         $this->app->bind(DocumentGlReversalInterface::class, AccountingService::class);
+        // N-6 — clear a customer advance (419) into the receivable (411) when the
+        // invoice that consumed it is posted. Document -> Accounting via Shared.
+        $this->app->bind(CustomerAdvanceClearingInterface::class, CustomerAdvanceClearingAdapter::class);
         // DPA-REV2-A (A5): the reversal lane's SOLE GL-shape selector. Treasury
         // reaches it through this Shared contract only (rule 6) — never through
         // the concrete reader or an Accounting model.

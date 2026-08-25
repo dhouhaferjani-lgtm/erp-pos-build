@@ -868,7 +868,13 @@
     "confirmTitle": "Confirm Credit Note",
     "confirmMessage": "Are you sure you want to confirm this credit note? Once confirmed, it cannot be edited.",
     "postTitle": "Post Credit Note",
-    "postMessage": "Are you sure you want to post this credit note? This will create accounting entries. This action cannot be undone."
+    "postMessage": "Are you sure you want to post this credit note? This will create accounting entries. This action cannot be undone.",
+    "postingMarker": {
+      "title": "Not yet posted — no fiscal seal",
+      "detail": "This document has not been posted to the accounts. It carries no fiscal seal and no hash-chain entry, and is not a definitive fiscal credit note.",
+      "cancelledTitle": "Cancelled — this document has been voided",
+      "cancelledDetail": "This credit note has been cancelled and must not be used as a claim."
+    }
   },
   "returnNotes": {
     "title": "Return Notes",

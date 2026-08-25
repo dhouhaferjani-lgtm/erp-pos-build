@@ -3,6 +3,8 @@
 @section('content')
     @include('documents.components.header')
 
+    @include('documents.components.posting_marker')
+
     @include('documents.components.parties')
 
     @if($document->source_document_id && $document->sourceDocument)

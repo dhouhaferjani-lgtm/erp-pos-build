@@ -16,6 +16,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\DocumentFullyPaid;
+use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Application\Services\WithholdingCertificateService;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
@@ -27,6 +28,7 @@ use App\Modules\Treasury\Application\Services\OutboundInstrumentIssuer;
 use App\Modules\Treasury\Application\Services\OutboundRepositoryValidator;
 use App\Modules\Treasury\Application\Services\PaymentAllocationService;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
+use App\Modules\Treasury\Domain\Enums\AllocationTreatment;
 use App\Modules\Treasury\Domain\Enums\InstrumentAccountPurpose;
 use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
@@ -43,6 +45,7 @@ use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Modules\Treasury\Domain\Services\DocumentAllocationClassifier;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use App\Shared\Presentation\Validation\ScopedExists;
@@ -69,6 +72,8 @@ class PaymentController extends Controller
         private readonly OutboundRepositoryValidator $outboundRepositoryValidator,
         private readonly OutboundInstrumentIssuer $outboundInstrumentIssuer,
         private readonly DocumentAllocationStateGuard $allocationStateGuard,
+        private readonly DocumentAllocationClassifier $allocationClassifier,
+        private readonly DocumentStatusService $documentStatus,
     ) {}
 
     private function scale(): int
@@ -970,6 +975,14 @@ class PaymentController extends Controller
                 // Calculate total allocated for GL entry
                 /** @var numeric-string $totalAllocatedForGL */
                 $totalAllocatedForGL = '0.00';
+                // N-6 — the customer-side split by POSTED-NESS. A confirmed
+                // (unposted) invoice has no 411 debit to settle, so money
+                // allocated to it is a customer advance (Cr 419), cleared to
+                // 411 when the invoice is posted.
+                /** @var numeric-string $allocatedToAdvanceGL */
+                $allocatedToAdvanceGL = '0.00';
+                /** @var list<string> $advanceAllocationIds */
+                $advanceAllocationIds = [];
 
                 // Create allocations and update document balances
                 foreach ($adjustedAllocations as $allocationData) {
@@ -1009,22 +1022,42 @@ class PaymentController extends Controller
                         ], 422));
                     }
 
-                    PaymentAllocation::create([
+                    // N-6 — classify the AR side on the LOCKED row. Supplier
+                    // invoices keep their own AP branch (Dr 401 / Cr Bank) and
+                    // their own posted-ness + Cr-401 evidence guard above; the
+                    // classifier is AR-only and refuses them by construction.
+                    $treatment = $document->type === DocumentType::SupplierInvoice
+                        ? null
+                        : $this->allocationClassifier->classify($document);
+                    $isPrepayment = $treatment === AllocationTreatment::Prepayment;
+
+                    $allocationRow = PaymentAllocation::create([
                         'payment_id' => $payment->id,
                         'document_id' => $document->id,
                         'amount' => $allocationAmount,
+                        'booked_as_advance' => $isPrepayment,
                     ]);
 
                     $totalAllocatedForGL = bcadd($totalAllocatedForGL, $allocationAmount, $this->scale());
+                    if ($isPrepayment) {
+                        $allocatedToAdvanceGL = bcadd($allocatedToAdvanceGL, $allocationAmount, $this->scale());
+                        $advanceAllocationIds[] = $allocationRow->id;
+                    }
                     $newBalance = bcsub($currentBalance, $allocationAmount, $this->scale());
                     $document->balance_due = $newBalance;
-
-                    // Mark as paid if fully paid (only for document types that support paid status)
-                    if (bccomp($newBalance, '0.00', $this->scale()) === 0 && $document->type->canTransitionToPaid()) {
-                        $document->status = DocumentStatus::Paid;
-                    }
-
                     $document->save();
+
+                    // Mark as paid if fully paid (only for document types that support paid status).
+                    // N-6 — a PREPAYMENT never moves the lifecycle: the document
+                    // is paid in advance and still owes its posting, and
+                    // `confirmed -> paid` is refused by the status machine.
+                    if (
+                        bccomp($newBalance, '0.00', $this->scale()) === 0
+                        && ! $isPrepayment
+                        && $document->type->canTransitionToPaid()
+                    ) {
+                        $this->documentStatus->markPaid($document);
+                    }
 
                     // Dispatch DocumentFullyPaid event when document is fully paid
                     if ($document->status === DocumentStatus::Paid) {
@@ -1114,18 +1147,26 @@ class PaymentController extends Controller
                             mode: PostingMode::SynchronousInTransaction,
                         );
                     } elseif ($postingDebitAccountId !== null) {
-                        $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
-                            companyId: $companyId,
-                            partnerId: $validated['partner_id'],
-                            paymentId: $payment->id,
-                            amount: $totalAllocatedForGL,
-                            paymentMethodAccountId: $postingDebitAccountId,
-                            date: new \DateTimeImmutable($validated['payment_date']),
-                            description: "Customer payment - {$payment->reference}",
-                            user: $user,
-                            currencyCode: $payment->currency,
-                            mode: PostingMode::SynchronousInTransaction,
-                        );
+                        // N-6 — only the receivable-clearing portion may credit
+                        // 411. The rest is a customer advance and is posted as
+                        // its own Cr-419 entry below.
+                        /** @var numeric-string $allocatedToReceivableGL */
+                        $allocatedToReceivableGL = bcsub($totalAllocatedForGL, $allocatedToAdvanceGL, $this->scale());
+
+                        if (bccomp($allocatedToReceivableGL, '0', $this->scale()) > 0) {
+                            $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
+                                companyId: $companyId,
+                                partnerId: $validated['partner_id'],
+                                paymentId: $payment->id,
+                                amount: $allocatedToReceivableGL,
+                                paymentMethodAccountId: $postingDebitAccountId,
+                                date: new \DateTimeImmutable($validated['payment_date']),
+                                description: "Customer payment - {$payment->reference}",
+                                user: $user,
+                                currencyCode: $payment->currency,
+                                mode: PostingMode::SynchronousInTransaction,
+                            );
+                        }
                     }
 
                     if ($journalEntry !== null) {
@@ -1134,6 +1175,40 @@ class PaymentController extends Controller
                         // Link journal entry to payment
                         $payment->journal_entry_id = $journalEntry->id;
                         $payment->save();
+                    }
+
+                    // N-6 — the prepayment portion: Dr Bank / Cr 419. Posted
+                    // inside the same transaction and BEFORE the cash movement
+                    // below, so a pure-prepayment payment still has a JE to
+                    // carry on its movement (reconciliation-readiness §9.2).
+                    if (
+                        ! $isSupplierPayment
+                        && ! $isDeferredSupplier
+                        && $postingDebitAccountId !== null
+                        && bccomp($allocatedToAdvanceGL, '0', $this->scale()) > 0
+                    ) {
+                        $prepaymentEntry = $this->glService->createCustomerAdvanceJournalEntry(
+                            companyId: $companyId,
+                            partnerId: $validated['partner_id'],
+                            advanceId: $payment->id,
+                            amount: $allocatedToAdvanceGL,
+                            paymentMethodAccountId: $postingDebitAccountId,
+                            date: new \DateTimeImmutable($validated['payment_date']),
+                            user: $user,
+                            description: "Prepayment (customer advance) - {$payment->reference}",
+                            currencyCode: $payment->currency,
+                            mode: PostingMode::SynchronousInTransaction,
+                        );
+
+                        PaymentAllocation::query()
+                            ->whereIn('id', $advanceAllocationIds)
+                            ->update(['advance_journal_entry_id' => $prepaymentEntry->id]);
+
+                        if ($primaryJournalEntryId === null) {
+                            $primaryJournalEntryId = $prepaymentEntry->id;
+                            $payment->journal_entry_id = $prepaymentEntry->id;
+                            $payment->save();
+                        }
                     }
                 }
 
@@ -1389,6 +1464,12 @@ class PaymentController extends Controller
         $this->rejectSupplierInvoiceInMultiline($primaryDocument);
         // W-7 F-6: the multi-line path writes the same `Paid` status transitions.
         $this->allocationStateGuard->assertAllocatable($primaryDocument);
+        // N-6 — classify the multi-line target once: every line settles the
+        // SAME document, so posted-ness cannot differ between them. Refuses a
+        // draft / cancelled / credit-note target with 422
+        // DOCUMENT_NOT_ALLOCATABLE before any payment row is written.
+        $primaryTreatment = $this->allocationClassifier->classify($primaryDocument);
+        $primaryIsPrepayment = $primaryTreatment === AllocationTreatment::Prepayment;
 
         /** @var numeric-string $documentBalance */
         $documentBalance = $primaryDocument->balance_due ?? $primaryDocument->total;
@@ -1449,6 +1530,7 @@ class PaymentController extends Controller
                 $tenantId,
                 $companyId,
                 $primaryDocument,
+                $primaryIsPrepayment,
                 $documentBalance,
                 $totalPaymentAmount,
                 $excessAmount,
@@ -1544,6 +1626,7 @@ class PaymentController extends Controller
                             'payment_id' => $payment->id,
                             'document_id' => $primaryDocument->id,
                             'amount' => $allocationForThisPayment,
+                            'booked_as_advance' => $primaryIsPrepayment,
                         ]);
 
                         $remainingPrimaryAllocation = bcsub($remainingPrimaryAllocation, $allocationForThisPayment, $this->scale());
@@ -1569,20 +1652,42 @@ class PaymentController extends Controller
                         if ($repository) {
                             // Create GL entry for allocated portion
                             if (bccomp($allocationForThisPayment, '0', $this->scale()) > 0 && $repository->gl_account_id) {
-                                $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
-                                    companyId: $companyId,
-                                    partnerId: $validated['partner_id'],
-                                    paymentId: $payment->id,
-                                    amount: $allocationForThisPayment,
-                                    paymentMethodAccountId: $repository->gl_account_id,
-                                    date: new \DateTimeImmutable($validated['payment_date']),
-                                    description: "Customer payment - {$payment->reference}",
-                                    user: $user,
-                                    currencyCode: $payment->currency,
-                                    mode: PostingMode::SynchronousInTransaction,
-                                );
+                                // N-6 — Cr 411 only when the target carries a
+                                // posted receivable; otherwise Cr 419.
+                                $journalEntry = $primaryIsPrepayment
+                                    ? $this->glService->createCustomerAdvanceJournalEntry(
+                                        companyId: $companyId,
+                                        partnerId: $validated['partner_id'],
+                                        advanceId: $payment->id,
+                                        amount: $allocationForThisPayment,
+                                        paymentMethodAccountId: $repository->gl_account_id,
+                                        date: new \DateTimeImmutable($validated['payment_date']),
+                                        user: $user,
+                                        description: "Prepayment (customer advance) - {$payment->reference}",
+                                        currencyCode: $payment->currency,
+                                        mode: PostingMode::SynchronousInTransaction,
+                                    )
+                                    : $this->glService->createPaymentReceivedJournalEntry(
+                                        companyId: $companyId,
+                                        partnerId: $validated['partner_id'],
+                                        paymentId: $payment->id,
+                                        amount: $allocationForThisPayment,
+                                        paymentMethodAccountId: $repository->gl_account_id,
+                                        date: new \DateTimeImmutable($validated['payment_date']),
+                                        description: "Customer payment - {$payment->reference}",
+                                        user: $user,
+                                        currencyCode: $payment->currency,
+                                        mode: PostingMode::SynchronousInTransaction,
+                                    );
                                 $payment->journal_entry_id = $journalEntry->id;
                                 $payment->save();
+
+                                if ($primaryIsPrepayment) {
+                                    PaymentAllocation::query()
+                                        ->where('payment_id', $payment->id)
+                                        ->where('document_id', $primaryDocument->id)
+                                        ->update(['advance_journal_entry_id' => $journalEntry->id]);
+                                }
                             }
 
                             // Defer the full line cash-in until after excess handling (below).
@@ -1600,8 +1705,14 @@ class PaymentController extends Controller
                 // Update primary document balance
                 $newBalance = bcsub($documentBalance, $primaryAllocationAmount, $this->scale());
                 $primaryDocument->balance_due = $newBalance;
-                if (bccomp($newBalance, '0.00', $this->scale()) === 0 && $primaryDocument->type->canTransitionToPaid()) {
-                    $primaryDocument->status = DocumentStatus::Paid;
+                $primaryDocument->save();
+                // N-6 — a prepayment clears the BALANCE but never the lifecycle.
+                if (
+                    bccomp($newBalance, '0.00', $this->scale()) === 0
+                    && ! $primaryIsPrepayment
+                    && $primaryDocument->type->canTransitionToPaid()
+                ) {
+                    $this->documentStatus->markPaid($primaryDocument);
 
                     // Dispatch DocumentFullyPaid event
                     $primaryDocId = $primaryDocument->id;
@@ -1622,7 +1733,6 @@ class PaymentController extends Controller
                         ));
                     });
                 }
-                $primaryDocument->save();
 
                 // Handle excess amount
                 /** @var array<string, mixed> $excessHandlingResult */
@@ -1683,25 +1793,41 @@ class PaymentController extends Controller
                             // W-7 F-6: manual excess targets are client-supplied
                             // document ids and reach the same status write.
                             $this->allocationStateGuard->assertAllocatable($targetDoc);
+                            // N-6 — manual excess targets are client-supplied
+                            // ids; classify each one on its own locked row.
+                            $targetTreatment = $this->allocationClassifier->classify($targetDoc);
+                            $targetIsPrepayment = $targetTreatment === AllocationTreatment::Prepayment;
 
                             /** @var numeric-string $allocAmount */
                             $allocAmount = (string) $allocation['amount'];
 
-                            PaymentAllocation::create([
+                            $targetAllocation = PaymentAllocation::create([
                                 'payment_id' => $lastPayment->id,
                                 'document_id' => $targetDoc->id,
                                 'amount' => $allocAmount,
+                                'booked_as_advance' => $targetIsPrepayment,
                             ]);
 
-                            $this->createPostedExcessAllocationJournalEntry($lastPayment, $allocAmount, $user);
+                            $this->createPostedExcessAllocationJournalEntry(
+                                $lastPayment,
+                                $allocAmount,
+                                $user,
+                                $targetTreatment,
+                                $targetAllocation,
+                            );
 
                             // Update target document balance
                             /** @var numeric-string $targetBalance */
                             $targetBalance = $targetDoc->balance_due ?? $targetDoc->total;
                             $newTargetBalance = bcsub($targetBalance, $allocAmount, $this->scale());
                             $targetDoc->balance_due = $newTargetBalance;
-                            if (bccomp($newTargetBalance, '0.00', $this->scale()) === 0 && $targetDoc->type->canTransitionToPaid()) {
-                                $targetDoc->status = DocumentStatus::Paid;
+                            $targetDoc->save();
+                            if (
+                                bccomp($newTargetBalance, '0.00', $this->scale()) === 0
+                                && ! $targetIsPrepayment
+                                && $targetDoc->type->canTransitionToPaid()
+                            ) {
+                                $this->documentStatus->markPaid($targetDoc);
 
                                 $paidDocId = $targetDoc->id;
                                 $paidDocNumber = $targetDoc->document_number;
@@ -1721,7 +1847,6 @@ class PaymentController extends Controller
                                     ));
                                 });
                             }
-                            $targetDoc->save();
 
                             $excessHandlingResult['allocations'][] = [
                                 'document_id' => $targetDoc->id,
@@ -1750,24 +1875,41 @@ class PaymentController extends Controller
                                 ->where('company_id', $companyId)
                                 ->lockForUpdate()
                                 ->findOrFail($allocation['document_id']);
+                            // N-6 — the auto preview already restricts the set
+                            // (`getOpenInvoices()`), but the row is only LOCKED
+                            // here, so the verdict is re-taken on the locked row.
+                            $targetTreatment = $this->allocationClassifier->classify($targetDoc);
+                            $targetIsPrepayment = $targetTreatment === AllocationTreatment::Prepayment;
                             /** @var numeric-string $allocAmount */
                             $allocAmount = (string) $allocation['amount'];
 
-                            PaymentAllocation::create([
+                            $targetAllocation = PaymentAllocation::create([
                                 'payment_id' => $lastPayment->id,
                                 'document_id' => $targetDoc->id,
                                 'amount' => $allocAmount,
+                                'booked_as_advance' => $targetIsPrepayment,
                             ]);
 
-                            $this->createPostedExcessAllocationJournalEntry($lastPayment, $allocAmount, $user);
+                            $this->createPostedExcessAllocationJournalEntry(
+                                $lastPayment,
+                                $allocAmount,
+                                $user,
+                                $targetTreatment,
+                                $targetAllocation,
+                            );
 
                             // Update target document balance
                             /** @var numeric-string $targetBalance */
                             $targetBalance = $targetDoc->balance_due ?? $targetDoc->total;
                             $newTargetBalance = bcsub($targetBalance, $allocAmount, $this->scale());
                             $targetDoc->balance_due = $newTargetBalance;
-                            if (bccomp($newTargetBalance, '0.00', $this->scale()) === 0 && $targetDoc->type->canTransitionToPaid()) {
-                                $targetDoc->status = DocumentStatus::Paid;
+                            $targetDoc->save();
+                            if (
+                                bccomp($newTargetBalance, '0.00', $this->scale()) === 0
+                                && ! $targetIsPrepayment
+                                && $targetDoc->type->canTransitionToPaid()
+                            ) {
+                                $this->documentStatus->markPaid($targetDoc);
 
                                 $paidDocId = $targetDoc->id;
                                 $paidDocNumber = $targetDoc->document_number;
@@ -1787,7 +1929,6 @@ class PaymentController extends Controller
                                     ));
                                 });
                             }
-                            $targetDoc->save();
 
                             $excessHandlingResult['allocations'][] = [
                                 'document_id' => $targetDoc->id,
@@ -1922,8 +2063,13 @@ class PaymentController extends Controller
         ], 201);
     }
 
-    private function createPostedExcessAllocationJournalEntry(Payment $payment, string $amount, User $user): void
-    {
+    private function createPostedExcessAllocationJournalEntry(
+        Payment $payment,
+        string $amount,
+        User $user,
+        AllocationTreatment $treatment,
+        PaymentAllocation $allocation,
+    ): void {
         if ($payment->repository_id === null) {
             return;
         }
@@ -1938,17 +2084,36 @@ class PaymentController extends Controller
             return;
         }
 
-        $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
-            companyId: $payment->company_id,
-            partnerId: $payment->partner_id,
-            paymentId: $payment->id,
-            amount: $amount,
-            paymentMethodAccountId: $repository->gl_account_id,
-            date: $payment->payment_date,
-            description: "Customer payment - {$payment->reference}",
-            user: $user,
-            currencyCode: $payment->currency
-        );
+        // N-6 — an excess allocation lands on a document like any other, so
+        // it obeys the same rule: Cr 411 only against a posted receivable,
+        // Cr 419 otherwise.
+        if ($treatment === AllocationTreatment::Prepayment) {
+            $journalEntry = $this->glService->createCustomerAdvanceJournalEntry(
+                companyId: $payment->company_id,
+                partnerId: $payment->partner_id,
+                advanceId: $payment->id,
+                amount: $amount,
+                paymentMethodAccountId: $repository->gl_account_id,
+                date: $payment->payment_date,
+                user: $user,
+                description: "Prepayment (customer advance) - {$payment->reference}",
+                currencyCode: $payment->currency,
+            );
+
+            $allocation->update(['advance_journal_entry_id' => $journalEntry->id]);
+        } else {
+            $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
+                companyId: $payment->company_id,
+                partnerId: $payment->partner_id,
+                paymentId: $payment->id,
+                amount: $amount,
+                paymentMethodAccountId: $repository->gl_account_id,
+                date: $payment->payment_date,
+                description: "Customer payment - {$payment->reference}",
+                user: $user,
+                currencyCode: $payment->currency
+            );
+        }
 
         if ($payment->journal_entry_id === null) {
             $payment->journal_entry_id = $journalEntry->id;

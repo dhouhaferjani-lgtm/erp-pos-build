@@ -14,13 +14,16 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\DocumentFullyPaid;
+use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Application\DTOs\ApplyPaymentAllocationCommand;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
+use App\Modules\Treasury\Domain\Enums\AllocationTreatment;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Events\PaymentAllocated;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Modules\Treasury\Domain\Services\DocumentAllocationClassifier;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -37,6 +40,8 @@ class PaymentAllocationService
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly CompanyContext $companyContext,
         private readonly DocumentAllocationStateGuard $allocationStateGuard,
+        private readonly DocumentAllocationClassifier $allocationClassifier,
+        private readonly DocumentStatusService $documentStatus,
     ) {}
 
     private function scale(?string $currencyCode = null): int
@@ -166,6 +171,17 @@ class PaymentAllocationService
         $result = DB::transaction(function () use ($payment, $preview, $command, $actor) {
             $createdAllocations = [];
             $totalAllocated = '0.0000';
+            // N-6 — the GL split is by POSTED-NESS, not by document type. These
+            // two buckets replace the old `type === SalesOrder ? advance : Cr 411`
+            // test, and they are accumulated HERE (in the same pass that locks
+            // and classifies each document) rather than in a second, unlocked
+            // read loop that could see a different status.
+            /** @var numeric-string $allocatedToReceivable */
+            $allocatedToReceivable = '0.00';
+            /** @var numeric-string $allocatedToAdvance */
+            $allocatedToAdvance = '0.00';
+            /** @var list<string> $advanceAllocationIds */
+            $advanceAllocationIds = [];
             /** @var array<int, array{documentId: string, tenantId: string, companyId: string, documentNumber: string, documentType: string, partnerId: string, totalPaid: string, paidAt: string}> $fullyPaidDocuments */
             $fullyPaidDocuments = [];
 
@@ -187,13 +203,28 @@ class PaymentAllocationService
                 // flip a few lines below.
                 $this->allocationStateGuard->assertAllocatable($document);
 
+                // N-6 — decide the GL treatment from the LOCKED row's state.
+                // A confirmed (unposted) invoice carries no receivable, so the
+                // money is an ADVANCE (Cr 419), not a settlement; a draft,
+                // cancelled or credit-note target is refused outright with 422
+                // DOCUMENT_NOT_ALLOCATABLE.
+                $treatment = $this->allocationClassifier->classify($document);
+                $isPrepayment = $treatment === AllocationTreatment::Prepayment;
+
                 // Create allocation record
-                PaymentAllocation::create([
+                $allocationRow = PaymentAllocation::create([
                     'payment_id' => $payment->id,
                     'document_id' => $allocation['document_id'],
                     'amount' => $allocation['amount'],
                     'tolerance_writeoff' => $allocation['tolerance_writeoff'] ?? null,
+                    // The marker the posting path reads to know how much 419
+                    // belongs to this document. It records what the LEDGER did.
+                    'booked_as_advance' => $isPrepayment,
                 ]);
+
+                if ($isPrepayment) {
+                    $advanceAllocationIds[] = $allocationRow->id;
+                }
 
                 $createdAllocations[] = [
                     'document_id' => $allocation['document_id'],
@@ -203,6 +234,12 @@ class PaymentAllocationService
                 /** @var numeric-string $allocationAmount */
                 $allocationAmount = $allocation['amount'];
                 $totalAllocated = bcadd($totalAllocated, $allocationAmount, 4);
+
+                if ($isPrepayment) {
+                    $allocatedToAdvance = bcadd($allocatedToAdvance, $allocationAmount, $this->scale($payment->currency));
+                } else {
+                    $allocatedToReceivable = bcadd($allocatedToReceivable, $allocationAmount, $this->scale($payment->currency));
+                }
 
                 // Note: balance_due is automatically updated by PostgreSQL trigger
                 // when PaymentAllocation is created. See migration: add_balance_due_cache_trigger.php
@@ -235,10 +272,22 @@ class PaymentAllocationService
 
                 // Update document status to Paid if fully paid (only for types that support it)
                 // (balance_due was just updated by trigger)
+                //
+                // N-6 — `ReceivableClearing` is the new, load-bearing half of
+                // this condition. A prepayment settles the invoice's BALANCE
+                // (the cache still reflects the allocation: the invoice is paid
+                // in advance) but moves no lifecycle status at all — posting is
+                // still owed, and `confirmed → paid` is refused by
+                // `DocumentStatusService` anyway. Flipping it here is what left
+                // INV-2026-0003 unpostable forever.
                 /** @var numeric-string $balanceDue */
                 $balanceDue = $document->balance_due ?? '0.00';
-                if (bccomp($balanceDue, '0.00', $this->scale($payment->currency)) === 0 && $document->type->canTransitionToPaid()) {
-                    $document->status = DocumentStatus::Paid;
+                if (
+                    bccomp($balanceDue, '0.00', $this->scale($payment->currency)) === 0
+                    && $treatment === AllocationTreatment::ReceivableClearing
+                    && $document->type->canTransitionToPaid()
+                ) {
+                    $this->documentStatus->markPaid($document);
                     $fullyPaidDocuments[] = [
                         'documentId' => $document->id,
                         'tenantId' => $payment->tenant_id,
@@ -250,8 +299,6 @@ class PaymentAllocationService
                         'paidAt' => now()->toIso8601String(),
                     ];
                 }
-
-                $document->save();
             }
 
             // Create GL journal entries when either the cash repository or a
@@ -259,28 +306,18 @@ class PaymentAllocationService
             $journalEntryId = null;
             $debitAccountId = $command->cashAccountOverrideId ?? $payment->repository?->gl_account_id;
             if ($payment->repository && $debitAccountId !== null && bccomp($totalAllocated, '0', 4) > 0) {
-                // Check if any allocations are to sales orders (prepayments)
+                // N-6 — `$allocatedToReceivable` / `$allocatedToAdvance` were
+                // accumulated in the locked loop above from the classifier's
+                // verdict. The second, UNLOCKED read loop that used to live here
+                // and re-tested `type === SalesOrder` is gone: it asked the wrong
+                // question (type, not posted-ness) and asked it of a row nothing
+                // held.
                 /** @var numeric-string $allocatedToOrders */
-                $allocatedToOrders = '0.00';
+                $allocatedToOrders = $allocatedToAdvance;
                 /** @var numeric-string $allocatedToInvoices */
-                $allocatedToInvoices = '0.00';
+                $allocatedToInvoices = $allocatedToReceivable;
 
-                foreach ($preview['allocations'] as $allocation) {
-                    /** @var Document $doc */
-                    $doc = Document::query()
-                        ->where('tenant_id', $command->tenantId)
-                        ->where('company_id', $command->companyId)
-                        ->find($allocation['document_id']);
-                    /** @var numeric-string $allocAmount */
-                    $allocAmount = $allocation['amount'];
-                    if ($doc->type === DocumentType::SalesOrder) {
-                        $allocatedToOrders = bcadd($allocatedToOrders, $allocAmount, $this->scale($payment->currency));
-                    } else {
-                        $allocatedToInvoices = bcadd($allocatedToInvoices, $allocAmount, $this->scale($payment->currency));
-                    }
-                }
-
-                // Create regular payment entry for invoice allocations
+                // Create regular payment entry for receivable-clearing allocations
                 if (bccomp($allocatedToInvoices, '0', $this->scale($payment->currency)) > 0) {
                     $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
                         companyId: $payment->company_id,
@@ -320,12 +357,24 @@ class PaymentAllocationService
                         paymentMethodAccountId: $debitAccountId,
                         date: $payment->payment_date,
                         user: $actor instanceof User ? $actor : null,
-                        description: "Prepayment on order - {$payment->reference}",
+                        description: "Prepayment (customer advance) - {$payment->reference}",
                         currencyCode: $payment->currency,
                         mode: $command->cashAccountOverrideId !== null
                             ? PostingMode::SynchronousInTransaction
                             : PostingMode::AfterCommit,
                     );
+
+                    // N-6 — stamp the 419 entry onto every allocation row it
+                    // booked, so the posting path can clear exactly this much
+                    // and no more. Without the back-link the clearing amount
+                    // would have to be re-derived from the journal, and
+                    // `journal_entries(source_type, source_id)` carries no
+                    // uniqueness to derive it from.
+                    if ($advanceAllocationIds !== []) {
+                        PaymentAllocation::query()
+                            ->whereIn('id', $advanceAllocationIds)
+                            ->update(['advance_journal_entry_id' => $advanceEntry->id]);
+                    }
 
                     // If no invoice allocation, use this as main journal entry
                     if ($journalEntryId === null) {
@@ -468,14 +517,23 @@ class PaymentAllocationService
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->where('partner_id', $partnerId)
-            // Allow both posted invoices AND confirmed sales orders
+            // N-6 — the allocatable set is the SQL mirror of
+            // `DocumentAllocationClassifier`: posted invoices (receivable
+            // clearing) plus confirmed invoices and confirmed sales orders
+            // (prepayments, Cr 419). A confirmed invoice used to be invisible
+            // here while the MANUAL path admitted it anyway — the two halves of
+            // one surface disagreeing about what is payable.
             ->where(function ($q) {
                 $q->where(function ($inner) {
-                    // Posted invoices
+                    // Posted invoices — receivable clearing (Cr 411)
                     $inner->where('type', DocumentType::Invoice)
                         ->where('status', DocumentStatus::Posted);
                 })->orWhere(function ($inner) {
-                    // Confirmed sales orders (for prepayments)
+                    // Confirmed invoices — prepayment (Cr 419), no status flip
+                    $inner->where('type', DocumentType::Invoice)
+                        ->where('status', DocumentStatus::Confirmed);
+                })->orWhere(function ($inner) {
+                    // Confirmed sales orders — prepayment (Cr 419)
                     $inner->where('type', DocumentType::SalesOrder)
                         ->where('status', DocumentStatus::Confirmed);
                 });
@@ -664,6 +722,13 @@ class PaymentAllocationService
             // W-7 F-6: fail the READ side too, so the smart-payment preview never
             // offers a withdrawn document as payable in the first place.
             $this->allocationStateGuard->assertAllocatable($invoice);
+            // N-6 — the MANUAL path used to admit anything that was not
+            // withdrawn: a DRAFT invoice, a quote, a credit note. Classify it
+            // here so the preview refuses with 422 DOCUMENT_NOT_ALLOCATABLE
+            // before any write, and so preview and execute agree on the same
+            // set (the auto path's SQL mirror of this rule is in
+            // `getOpenInvoices()`).
+            $this->allocationClassifier->classify($invoice);
 
             $invoiceBalance = $this->getInvoiceBalance($invoice);
 

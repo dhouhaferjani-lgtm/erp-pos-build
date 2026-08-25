@@ -868,7 +868,13 @@
     "confirmTitle": "Confirmer l'avoir",
     "confirmMessage": "Êtes-vous sûr de vouloir confirmer cet avoir ? Une fois confirmé, il ne pourra plus être modifié.",
     "postTitle": "Comptabiliser l'avoir",
-    "postMessage": "Êtes-vous sûr de vouloir comptabiliser cet avoir ? Cela créera des écritures comptables. Cette action est irréversible."
+    "postMessage": "Êtes-vous sûr de vouloir comptabiliser cet avoir ? Cela créera des écritures comptables. Cette action est irréversible.",
+    "postingMarker": {
+      "title": "Non comptabilisée — aucun scellement fiscal",
+      "detail": "Ce document n'a pas été comptabilisé. Il ne porte aucun scellement fiscal ni entrée dans la chaîne de hachage, et ne constitue pas un avoir fiscal définitif.",
+      "cancelledTitle": "Annulée — ce document a été annulé",
+      "cancelledDetail": "Cet avoir a été annulé et ne peut être utilisé comme justificatif."
+    }
   },
   "returnNotes": {
     "title": "Bons de retour",

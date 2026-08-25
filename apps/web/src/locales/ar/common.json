@@ -147,6 +147,7 @@
     "year": "السنة",
     "vin": "رقم الهيكل (VIN)",
     "totalReceivable": "إجمالي المقبوضات",
+    "customerAdvances": "الدفعات المقدمة",
     "totalPayable": "إجمالي المدفوعات",
     "description": "الوصف",
     "total": "المجموع",

@@ -1,42 +1,50 @@
 {
-    "generated_at": "2026-08-20",
-    "note": "Regenerate with: php tools/deptrac-ratchet.php --config=deptrac.yaml --baseline=deptrac.baseline.json --update-baseline",
-    "total": 182,
-    "categories": {
-        "ModuleApplication on ModuleInfrastructure": 68,
-        "ModuleDomain on ModuleApplication": 54,
-        "ModuleInfrastructure on ModulePresentation": 1,
-        "SharedContracts on ModuleApplication": 18,
-        "SharedContracts on ModuleDomain": 35,
-        "SharedDomain on ModuleDomain": 4,
-        "SharedInfrastructure on ModuleDomain": 2
+  "generated_at": "2026-08-20",
+  "note": "Regenerate with: php tools/deptrac-ratchet.php --config=deptrac.yaml --baseline=deptrac.baseline.json --update-baseline",
+  "total": 183,
+  "categories": {
+    "ModuleApplication on ModuleInfrastructure": 68,
+    "ModuleDomain on ModuleApplication": 54,
+    "ModuleInfrastructure on ModulePresentation": 1,
+    "SharedContracts on ModuleApplication": 18,
+    "SharedContracts on ModuleDomain": 36,
+    "SharedDomain on ModuleDomain": 4,
+    "SharedInfrastructure on ModuleDomain": 2
+  },
+  "waivers": [
+    {
+      "lane": "DPA G3 — shift-close cash variance GL",
+      "date": "2026-08-08",
+      "category": "SharedContracts on ModuleApplication",
+      "delta": 1,
+      "line": "app/Shared/Contracts/Treasury/RepositoryAdjustmentServiceInterface.php — post(RepositoryAdjustmentIntent)",
+      "why": "The V3 gate RECORDED this contract's target shape as a blocking G3 precondition, so the interface must exist under Shared/Contracts and must be typed. Its parameter DTO carries MovementDirection and MovementReasonCode; hosting the DTO in Shared merely relocates the violation to SharedContracts-on-ModuleDomain, and hosting the ENUMS in Shared is a 76-file / 17-file cross-cutting move that CLAUDE.md rule 4 forbids inside this lane. Exact precedent already at baseline: TreasuryMovementServiceInterface. Reduced from +7 to +1 during gate fix round 1 by removing the Domain exception imports (throws are described in prose) and by hosting the pure-scalar RepositoryAdjustmentResult in Shared/Contracts/Treasury/DTOs alongside OutboundInstrumentIssueResult. Measured: 6d117b511 base = 106, first G3 cut = 113, after restructure = 107.",
+      "not_absorbed": "The pre-existing regressions on this branch's base — 'ModuleDomain on ModuleApplication' 35 -> 36 (BLOCKER) and 'SharedContracts on ModuleDomain' 22 -> 29 — are deliberately NOT bumped here. They predate this lane and belong to the erp.deptrac-rebaseline lane; laundering them from a feature branch would hide another lane's regression."
     },
-    "waivers": [
-        {
-            "lane": "DPA G3 — shift-close cash variance GL",
-            "date": "2026-08-08",
-            "category": "SharedContracts on ModuleApplication",
-            "delta": 1,
-            "line": "app/Shared/Contracts/Treasury/RepositoryAdjustmentServiceInterface.php — post(RepositoryAdjustmentIntent)",
-            "why": "The V3 gate RECORDED this contract's target shape as a blocking G3 precondition, so the interface must exist under Shared/Contracts and must be typed. Its parameter DTO carries MovementDirection and MovementReasonCode; hosting the DTO in Shared merely relocates the violation to SharedContracts-on-ModuleDomain, and hosting the ENUMS in Shared is a 76-file / 17-file cross-cutting move that CLAUDE.md rule 4 forbids inside this lane. Exact precedent already at baseline: TreasuryMovementServiceInterface. Reduced from +7 to +1 during gate fix round 1 by removing the Domain exception imports (throws are described in prose) and by hosting the pure-scalar RepositoryAdjustmentResult in Shared/Contracts/Treasury/DTOs alongside OutboundInstrumentIssueResult. Measured: 6d117b511 base = 106, first G3 cut = 113, after restructure = 107.",
-            "not_absorbed": "The pre-existing regressions on this branch's base — 'ModuleDomain on ModuleApplication' 35 -> 36 (BLOCKER) and 'SharedContracts on ModuleDomain' 22 -> 29 — are deliberately NOT bumped here. They predate this lane and belong to the erp.deptrac-rebaseline lane; laundering them from a feature branch would hide another lane's regression."
-        },
-        {
-            "lane": "RED-GATE RECONCILIATION (owner-acked re-baseline)",
-            "date": "2026-08-20",
-            "category": "ALL (total 99 -> 176)",
-            "delta": 77,
-            "why": "Owner ack recorded 2026-08-20 in the parent orchestration session (de182ed3): the checked-in baseline (99) had drifted 77 below reality across the merged waves (3C/3D, country-defaults, receipts, sv-stage1, es-A0, ui-wave0, DN) — enforcement-P2 measured 174 at its base BEFORE the final two merges; every S-14 promotion dispatch fails on the stale number. Re-baselined at the measured 176 so CI is honest; the debt is NOT waived — see burn_down.",
-            "burn_down": "docs/superpowers/tickets/2026-08-20-deptrac-burndown-176.md — ModuleDomain on ModuleApplication 35->54 (+19, BLOCKER class); ModuleApplication on ModuleInfrastructure 21->68 (+47); SharedContracts on ModuleDomain 22->29 (+7); SharedDomain on ModuleDomain 0->4 (+4). Burn-down as-you-go alongside first-tenant stabilization, per owner sequencing."
-        },
-        {
-            "lane": "r2f4 correcting-entry documents (LEDGER O-26 / S-15)",
-            "date": "2026-08-21",
-            "category": "SharedContracts on ModuleDomain",
-            "delta": 6,
-            "line": "app/Shared/Contracts/Accounting/DocumentGlCorrectionInterface.php:58,72,82 - assertCorrectingEntryIsWellFormed / assertCorrectingEntryIsPostable / postCorrectingEntryGl, each counted twice (Document parameter + @throws UnpostableCorrectingEntryException)",
-            "why": "The SAME violation the three sibling contracts in this directory already carry inside the 29: DocumentGlPreflightInterface:36, DocumentGlReversalInterface:40 and AccountingServiceInterface:37,49 are each typed on App\\Modules\\Document\\Domain\\Document and each document a module-domain exception. A Shared contract that lets Document ask Accounting about a document CANNOT avoid naming Document; the alternative - a Shared mirror of the Document entity - relocates the same edge to SharedDomain on ModuleDomain and adds a mapping layer with its own drift surface. This lane deliberately mirrors the established shape rather than inventing a second one, because the correction and the cancellation reversal must agree about what a document's ledger IS (that disagreement is the escape-hatch dead end this lane exists to close). 4 of the 6 arrive with the original branch commits, 2 with the well-formed/postable verdict split.",
-            "burn_down": "Rides the existing SharedContracts-on-ModuleDomain burn-down: docs/superpowers/tickets/2026-08-20-deptrac-burndown-176.md. NOT independently waived - when that ticket relocates the Document-typed contracts, these three methods move with their siblings in one edit."
-        }
-    ]
+    {
+      "lane": "RED-GATE RECONCILIATION (owner-acked re-baseline)",
+      "date": "2026-08-20",
+      "category": "ALL (total 99 -> 176)",
+      "delta": 77,
+      "why": "Owner ack recorded 2026-08-20 in the parent orchestration session (de182ed3): the checked-in baseline (99) had drifted 77 below reality across the merged waves (3C/3D, country-defaults, receipts, sv-stage1, es-A0, ui-wave0, DN) — enforcement-P2 measured 174 at its base BEFORE the final two merges; every S-14 promotion dispatch fails on the stale number. Re-baselined at the measured 176 so CI is honest; the debt is NOT waived — see burn_down.",
+      "burn_down": "docs/superpowers/tickets/2026-08-20-deptrac-burndown-176.md — ModuleDomain on ModuleApplication 35->54 (+19, BLOCKER class); ModuleApplication on ModuleInfrastructure 21->68 (+47); SharedContracts on ModuleDomain 22->29 (+7); SharedDomain on ModuleDomain 0->4 (+4). Burn-down as-you-go alongside first-tenant stabilization, per owner sequencing."
+    },
+    {
+      "lane": "r2f4 correcting-entry documents (LEDGER O-26 / S-15)",
+      "date": "2026-08-21",
+      "category": "SharedContracts on ModuleDomain",
+      "delta": 6,
+      "line": "app/Shared/Contracts/Accounting/DocumentGlCorrectionInterface.php:58,72,82 - assertCorrectingEntryIsWellFormed / assertCorrectingEntryIsPostable / postCorrectingEntryGl, each counted twice (Document parameter + @throws UnpostableCorrectingEntryException)",
+      "why": "The SAME violation the three sibling contracts in this directory already carry inside the 29: DocumentGlPreflightInterface:36, DocumentGlReversalInterface:40 and AccountingServiceInterface:37,49 are each typed on App\\Modules\\Document\\Domain\\Document and each document a module-domain exception. A Shared contract that lets Document ask Accounting about a document CANNOT avoid naming Document; the alternative - a Shared mirror of the Document entity - relocates the same edge to SharedDomain on ModuleDomain and adds a mapping layer with its own drift surface. This lane deliberately mirrors the established shape rather than inventing a second one, because the correction and the cancellation reversal must agree about what a document's ledger IS (that disagreement is the escape-hatch dead end this lane exists to close). 4 of the 6 arrive with the original branch commits, 2 with the well-formed/postable verdict split.",
+      "burn_down": "Rides the existing SharedContracts-on-ModuleDomain burn-down: docs/superpowers/tickets/2026-08-20-deptrac-burndown-176.md. NOT independently waived - when that ticket relocates the Document-typed contracts, these three methods move with their siblings in one edit."
+    },
+    {
+      "lane": "N-6 / B-20 Phase 1 — advance on an unposted invoice",
+      "date": "2026-08-24",
+      "category": "SharedContracts on ModuleDomain",
+      "delta": 1,
+      "line": "app/Shared/Contracts/Accounting/CustomerAdvanceClearingInterface.php — clearCustomerAdvanceForDocument(Document, string, ?string)",
+      "why": "Exactly the shape already waived for DocumentGlCorrectionInterface / DocumentGlPreflightInterface / DocumentGlReversalInterface: a Shared contract that lets the Document module hand a Document to Accounting WITHOUT importing GeneralLedgerService (CLAUDE.md rule 6). The contract must be typed on the aggregate it is about, and the only alternatives are worse — pass a bag of scalars (losing the type safety the contract exists for) or let Document import the ledger service (a real Domain-to-Domain cross-module dependency instead of a declared seam). Clearing a customer advance at posting has to be atomic with the seal, so the call site is inside DocumentPostingService::post()'s transaction and cannot be relocated. Recorded by the treasury gate r1 (I-1) as the ACCEPTED half of that finding; the BLOCKER half (DocumentAllocationClassifier in Application) was FIXED by relocating it to Treasury\\Domain\\Services rather than waived."
+    }
+  ]
 }
