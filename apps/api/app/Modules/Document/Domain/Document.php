@@ -11,6 +11,7 @@ use App\Modules\Document\Domain\Enums\DeliveryStatus;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FacturXProfile;
+use App\Modules\Document\Domain\Enums\FiscalAuthorityStatus;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\PaymentStatus;
@@ -60,6 +61,7 @@ use Illuminate\Support\Carbon;
  * @property numeric-string|null $stamp_duty_amount Timbre fiscal (non-recoverable), scale 3
  * @property numeric-string|null $total
  * @property numeric-string|null $balance_due
+ * @property FiscalAuthorityStatus|null $fiscal_authority_status C-QR0a: NULL on every row until C-QR0b activates the dimension
  * @property string|null $fiscal_hash
  * @property string|null $facturx_xml
  * @property FacturXProfile|null $facturx_profile
@@ -195,6 +197,10 @@ class Document extends Model
             'payload' => 'array',
             'match_status' => SupplierInvoiceMatchStatus::class,
             'supplier_credit_note_reason' => SupplierCreditNoteReason::class,
+            // C-QR0a (SPEC §1 fiscal row). Deliberately absent from `$fillable`:
+            // the column is NULL on every row and only the QR acquisition service
+            // of C-QR0b may ever write it, never a mass-assigned payload.
+            'fiscal_authority_status' => FiscalAuthorityStatus::class,
         ];
     }
 
