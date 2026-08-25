@@ -55,7 +55,9 @@ function expenseWriteErrorMessage(
     return t('expenses:errors.paidWithoutRepository')
   }
 
-  return flatErrorMessage(error) ?? getErrorMessage(error) ?? t('common:errors.unexpected')
+  // getErrorMessage already falls back to its own message, so it never returns
+  // null — no third arm here (it would be dead, and the linter says so).
+  return flatErrorMessage(error) ?? getErrorMessage(error)
 }
 
 /**
