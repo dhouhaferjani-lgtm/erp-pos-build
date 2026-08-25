@@ -12,7 +12,7 @@ Gates owed: `fiscal-pos-reviewer` + `tenancy-authz-reviewer`. **NOT merged.**
 | Branch | `feat/sc-qr0a-authority-schema` |
 | Worktree | `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/sc-qr0a-authority-schema` |
 | Base (local `dev`) | `351802aac` (≥ `3910538da`, the C-F0 CI repair — brief precondition satisfied) |
-| Final SHA | see §9 |
+| Final SHA | `ffd0e1b7a` (single commit) |
 
 Vendor is a REAL copy, not a symlink; class resolution verified inside the worktree
 (`ReflectionClass(Document::class)->getFileName()` → the worktree path).
