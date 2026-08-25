@@ -4,13 +4,13 @@
 > Derived mechanically from model `$casts` (+ the `GOVERNED_AUDIT_COLUMNS` supplement) against a
 > freshly migrated throwaway database. Regenerate after any CHECK-adding batch.
 
-Generated: 2026-08-24 · schema: 274 tables declared across BOTH migration trees (32 central + 242 tenant) · registry: 265 enum-governed columns total.
+Generated: 2026-08-25 · schema: 274 tables declared across BOTH migration trees (32 central + 242 tenant) · registry: 265 enum-governed columns total.
 
 ## Denominator
 
 | Scope | Columns | Baseline | Note |
 |---|---:|---:|---|
-| tenant (ASSERTED) | 245 | 189 | the gate's primary population |
+| tenant (ASSERTED) | 245 | 188 | the gate's primary population |
 | central (ASSERTED separately) | 20 | 11 | a different SCOPE, not a different migration path — see below |
 
 **The test database is a UNION of both migration trees.** Under `APP_ENV=testing`,
@@ -24,12 +24,12 @@ would read a CHECK that no real `tenant_<uuid>` database has.
 
 | Verdict | Tenant columns |
 |---|---:|
-| COVERED | 54 |
+| COVERED | 55 |
 | COVERED_BY_COMPOSITE | 1 |
 | INTENDED_NARROWER | 1 |
-| MISSING | 189 |
+| MISSING | 188 |
 
-**Baseline size: 189.** That is the number that must go DOWN. `status`-suffixed columns: 15 of 75 covered.
+**Baseline size: 188.** That is the number that must go DOWN. `status`-suffixed columns: 16 of 75 covered.
 
 ## Acknowledged verdicts — NOT debt, and NOT waivers
 
@@ -115,7 +115,7 @@ CHECK carries an explicit `IS NULL` branch.
 | `documents` | `fiscal_category` | `App\Modules\Document\Domain\Enums\FiscalCategory` | COVERED | — | — |
 | `documents` | `fiscal_status` | `App\Modules\Document\Domain\Enums\FiscalStatus` | COVERED | — | — |
 | `documents` | `match_status` | `App\Modules\Document\Domain\Enums\SupplierInvoiceMatchStatus` | MISSING | — | yes |
-| `documents` | `status` | `App\Modules\Document\Domain\Enums\DocumentStatus` | MISSING | — | yes |
+| `documents` | `status` | `App\Modules\Document\Domain\Enums\DocumentStatus` | COVERED | — | — |
 | `documents` | `supplier_credit_note_reason` | `App\Modules\Procurement\Domain\Enums\SupplierCreditNoteReason` | MISSING | — | yes |
 | `documents` | `type` | `App\Modules\Document\Domain\Enums\DocumentType` | MISSING | — | yes |
 | `earning_rules` | `rule_type` | `App\Modules\Loyalty\Domain\Enums\EarningRuleType` | MISSING | — | yes |
@@ -343,7 +343,7 @@ burn-down denominator has to be the mechanical number, not the remembered one:
   and the whole `impersonation_*` family were filed as uncovered when they are covered.
 - **It counted a different population.** The register above is every column an `app/**/Domain/Enums/*`
   or `app/**/Shared/Enums/*` enum GOVERNS, not every column named `*status*`: 245 tenant columns, not 90.
-  Restricted to `*status`-suffixed columns the count is 75, of which 15 are covered — close to the
+  Restricted to `*status`-suffixed columns the count is 75, of which 16 are covered — close to the
   sweep's 76/14 but not equal, and the gap is columns with no enum cast at all (see the un-gateable section).
 - **`bank_reconciliations.status` cannot be asserted at all.** The table carries
   `bank_reconciliations_status_check` but has NO Eloquent model, so there is no enum to compare it to.

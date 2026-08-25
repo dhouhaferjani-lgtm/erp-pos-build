@@ -41,7 +41,6 @@
     "documents.credit_note_reason::MISSING",
     "documents.facturx_profile::MISSING",
     "documents.match_status::MISSING",
-    "documents.status::MISSING",
     "documents.supplier_credit_note_reason::MISSING",
     "documents.type::MISSING",
     "earning_rules.rule_type::MISSING",
