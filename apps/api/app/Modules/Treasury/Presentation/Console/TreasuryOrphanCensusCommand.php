@@ -64,7 +64,16 @@ use Illuminate\Support\Facades\Schema;
  * could not be opened, or whose iteration threw, means the census did not
  * see the whole fleet, and "zero orphans" from a partial run is precisely
  * the false GO that would abort a fleet migration halfway. Such a run exits
- * FAILURE and sets `"complete": false` in the JSON payload.
+ * FAILURE, sets `"complete": false` and NAMES the defect in `"reason"`.
+ *
+ * **A run that visited ZERO tenants is the worst of those cases, not the
+ * best.** An empty tenant directory produces no skips and no errors, so the
+ * naive "nothing went wrong" test passes and the payload reads
+ * `complete: true / orphans: 0 / exit 0` — a perfect GO from a run that
+ * measured nothing. The realistic trigger is a wrong `DB_CENTRAL_DATABASE`
+ * (or any `DB_*`) export in an ops shell, i.e. the most common deploy-time
+ * mistake there is. Zero visited tenants therefore reports
+ * `reason: "no_tenants_in_directory"` and exits FAILURE (gate r1 F-1).
  *
  * Rule 20 / master plan §14: runs in console context with NO CompanyContext,
  * and iterates tenants explicitly via
@@ -76,6 +85,18 @@ use Illuminate\Support\Facades\Schema;
  */
 final class TreasuryOrphanCensusCommand extends TenantScopedCommand
 {
+    /**
+     * Named `reason` values. The payload's consumer is the DS-1 constraint
+     * lane's go/no-go, so an incomplete run must say WHICH way it was
+     * incomplete — "not a GO" and "not a GO because you are pointed at the
+     * wrong central database" call for very different operator responses.
+     */
+    private const REASON_TENANTS_SKIPPED = 'tenants_skipped';
+
+    private const REASON_NO_TENANTS = 'no_tenants_in_directory';
+
+    private const REASON_ITERATION_FAILED = 'tenant_iteration_failed';
+
     private const DEFAULT_SAMPLE_LIMIT = 10;
 
     private const MAX_SAMPLE_LIMIT = 1000;
@@ -135,15 +156,9 @@ final class TreasuryOrphanCensusCommand extends TenantScopedCommand
             return self::SUCCESS;
         });
 
-        // A tenant that was skipped (no database) or that threw mid-iteration
-        // means the fleet was not fully measured. `forEachTenantFiltered()`
-        // already degraded the aggregate for the throwing case; the skipped
-        // case is a WARNING there, but for a go/no-go census it is equally
-        // disqualifying — a partial "zero orphans" is the false GO this
-        // command exists to prevent.
-        $complete = $this->skippedTenantIds() === [] && $exit === self::SUCCESS;
+        $reason = $this->incompletenessReason($exit);
 
-        $payload = $this->buildPayload($tenantReports, $complete);
+        $payload = $this->buildPayload($tenantReports, $reason);
 
         if ($json) {
             $this->line((string) json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
@@ -152,7 +167,43 @@ final class TreasuryOrphanCensusCommand extends TenantScopedCommand
         }
 
         // Findings never fail the run; incomplete coverage does.
-        return $complete ? self::SUCCESS : self::FAILURE;
+        return $reason === null ? self::SUCCESS : self::FAILURE;
+    }
+
+    /**
+     * Why this run may NOT be read as a GO — null when coverage was complete.
+     *
+     * Three disqualifying shapes, checked most-specific first:
+     *
+     *   - a tenant was SKIPPED (its database could not be opened, or the
+     *     existence probe itself could not be answered — see
+     *     {@see TenantScopedCommand::forEachTenantNarrowed()}). The base treats
+     *     the not-provisioned case as a WARNING; for a go/no-go census it is
+     *     disqualifying, because the unmeasured tenant is exactly the one whose
+     *     orphans would abort the fleet migration;
+     *   - ZERO tenants were visited. Nothing was skipped and nothing threw, so
+     *     every other signal says "clean" — this is the empty-directory false
+     *     GO of gate r1 F-1, and it is the only failure mode of this command
+     *     that looks *better* the more wrong it is;
+     *   - the aggregate exit was non-SUCCESS: a tenant's iteration threw, or an
+     *     operator's `--tenant=` filter never opened a slot
+     *     ({@see TenantScopedCommand::failIfTenantFilterUnvisited()}).
+     */
+    private function incompletenessReason(int $exit): ?string
+    {
+        if ($this->skippedTenantIds() !== []) {
+            return self::REASON_TENANTS_SKIPPED;
+        }
+
+        if ($this->visitedTenantIds() === []) {
+            return self::REASON_NO_TENANTS;
+        }
+
+        if ($exit !== self::SUCCESS) {
+            return self::REASON_ITERATION_FAILED;
+        }
+
+        return null;
     }
 
     /**
@@ -283,9 +334,10 @@ final class TreasuryOrphanCensusCommand extends TenantScopedCommand
 
     /**
      * @param  list<array<string, mixed>>  $tenantReports
+     * @param  string|null  $reason  null iff the census is complete
      * @return array<string, mixed>
      */
-    private function buildPayload(array $tenantReports, bool $complete): array
+    private function buildPayload(array $tenantReports, ?string $reason): array
     {
         $orphans = 0;
         $checked = 0;
@@ -310,7 +362,8 @@ final class TreasuryOrphanCensusCommand extends TenantScopedCommand
         return [
             'command' => 'treasury:orphan-census',
             'generated_at' => now()->toIso8601String(),
-            'complete' => $complete,
+            'complete' => $reason === null,
+            'reason' => $reason,
             'totals' => [
                 'tenants_visited' => count($this->visitedTenantIds()),
                 'tenants_skipped' => count($this->skippedTenantIds()),
@@ -367,11 +420,26 @@ final class TreasuryOrphanCensusCommand extends TenantScopedCommand
         ));
 
         if ($payload['complete'] !== true) {
-            $this->error(
-                'CENSUS INCOMPLETE — at least one tenant was skipped or errored. '.
-                'Do NOT read this run as a GO for the DS-1 constraint lane.',
-            );
+            $this->error(sprintf(
+                'CENSUS INCOMPLETE (%s) — %s Do NOT read this run as a GO for the DS-1 constraint lane.',
+                (string) $payload['reason'],
+                $this->reasonHint((string) $payload['reason']),
+            ));
         }
+    }
+
+    /**
+     * The one sentence an operator needs to act on each `reason`.
+     */
+    private function reasonHint(string $reason): string
+    {
+        return match ($reason) {
+            self::REASON_NO_TENANTS => 'the central tenant directory yielded NO tenants, so nothing was measured — '.
+                'check DB_CENTRAL_DATABASE / the DB_* environment of this shell before re-running.',
+            self::REASON_TENANTS_SKIPPED => 'at least one tenant database could not be opened or probed, '.
+                'so part of the fleet is unmeasured — restore it and re-run.',
+            default => 'at least one tenant iteration failed, or a --tenant filter was never reached.',
+        };
     }
 
     /**
