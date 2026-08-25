@@ -1,9 +1,14 @@
-import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios'
+import { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { api, handleCompanyScopeRejection } from '../api'
 import { useAuthStore } from '../../stores/authStore'
-import { useCompanyStore, type Company } from '../../stores/companyStore'
+import {
+  clearDeniedCompanyIds,
+  resolveCompanySelection,
+  useCompanyStore,
+  type Company,
+} from '../../stores/companyStore'
 import { useLocationStore } from '../../stores/locationStore'
 
 /**
@@ -23,6 +28,7 @@ import { useLocationStore } from '../../stores/locationStore'
  */
 
 const STALE_COMPANY_ID = '01a034af-94ea-713d-8ce0-462216bf6ab5'
+const OTHER_COMPANY_ID = '3f1b8d02-6c1e-4a55-9d21-9a0f0b6e77aa'
 const COMPANY_SELECTION_KEY = 'autoerp-company-selection'
 
 const seen: InternalAxiosRequestConfig[] = []
@@ -56,6 +62,7 @@ beforeEach(() => {
   useAuthStore.setState({ user: null, token: null, isAuthenticated: false, isLoading: false })
   useCompanyStore.setState({ currentCompanyId: null, companies: [], isLoading: false })
   useLocationStore.getState().reset()
+  clearDeniedCompanyIds()
 
   api.defaults.adapter = (config) => {
     seen.push(config)
@@ -111,7 +118,7 @@ describe('handleCompanyScopeRejection', () => {
   it('resets the stale selection on COMPANY_ACCESS_DENIED', () => {
     selectStaleCompany()
 
-    expect(handleCompanyScopeRejection('COMPANY_ACCESS_DENIED')).toBe(true)
+    expect(handleCompanyScopeRejection('COMPANY_ACCESS_DENIED', STALE_COMPANY_ID)).toBe(true)
 
     expect(useCompanyStore.getState().currentCompanyId).toBeNull()
     expect(useCompanyStore.getState().companies).toEqual([])
@@ -121,7 +128,7 @@ describe('handleCompanyScopeRejection', () => {
   it('resets the stale selection on INVALID_COMPANY_ID', () => {
     selectStaleCompany()
 
-    expect(handleCompanyScopeRejection('INVALID_COMPANY_ID')).toBe(true)
+    expect(handleCompanyScopeRejection('INVALID_COMPANY_ID', STALE_COMPANY_ID)).toBe(true)
 
     expect(useCompanyStore.getState().currentCompanyId).toBeNull()
     expect(localStorage.getItem(COMPANY_SELECTION_KEY)).toBeNull()
@@ -131,7 +138,7 @@ describe('handleCompanyScopeRejection', () => {
     selectStaleCompany()
     useLocationStore.setState({ currentLocationId: 'loc-1', locations: [], isLoading: false })
 
-    handleCompanyScopeRejection('COMPANY_ACCESS_DENIED')
+    handleCompanyScopeRejection('COMPANY_ACCESS_DENIED', STALE_COMPANY_ID)
 
     expect(useLocationStore.getState().currentLocationId).toBeNull()
   })
@@ -139,19 +146,111 @@ describe('handleCompanyScopeRejection', () => {
   it('is a no-op the SECOND time — the reset can never loop', () => {
     selectStaleCompany()
 
-    expect(handleCompanyScopeRejection('COMPANY_ACCESS_DENIED')).toBe(true)
-    expect(handleCompanyScopeRejection('COMPANY_ACCESS_DENIED')).toBe(false)
-    expect(handleCompanyScopeRejection('INVALID_COMPANY_ID')).toBe(false)
+    expect(handleCompanyScopeRejection('COMPANY_ACCESS_DENIED', STALE_COMPANY_ID)).toBe(true)
+    expect(handleCompanyScopeRejection('COMPANY_ACCESS_DENIED', STALE_COMPANY_ID)).toBe(false)
+    expect(handleCompanyScopeRejection('INVALID_COMPANY_ID', STALE_COMPANY_ID)).toBe(false)
   })
 
   it('leaves the selection alone for an unrelated 403 code', () => {
     selectStaleCompany()
 
-    expect(handleCompanyScopeRejection('FORBIDDEN')).toBe(false)
-    expect(handleCompanyScopeRejection('NO_COMPANY_ACCESS')).toBe(false)
-    expect(handleCompanyScopeRejection(null)).toBe(false)
+    expect(handleCompanyScopeRejection('FORBIDDEN', STALE_COMPANY_ID)).toBe(false)
+    expect(handleCompanyScopeRejection('NO_COMPANY_ACCESS', STALE_COMPANY_ID)).toBe(false)
+    expect(handleCompanyScopeRejection(null, STALE_COMPANY_ID)).toBe(false)
 
     expect(useCompanyStore.getState().currentCompanyId).toBe(STALE_COMPANY_ID)
     expect(localStorage.getItem(COMPANY_SELECTION_KEY)).toBe(STALE_COMPANY_ID)
+  })
+})
+
+describe('handleCompanyScopeRejection — the rejection must match what was SENT (F-3)', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  })
+
+  it('ignores a 403 for a company that is NOT the current selection', () => {
+    // The user switched STALE -> OTHER; a request issued moments earlier, still
+    // carrying STALE, comes back 403. Wiping OTHER would silently undo the
+    // user's deliberate switch.
+    selectStaleCompany()
+    useCompanyStore.setState({
+      currentCompanyId: OTHER_COMPANY_ID,
+      companies: [company(OTHER_COMPANY_ID)],
+      isLoading: false,
+    })
+    localStorage.setItem(COMPANY_SELECTION_KEY, OTHER_COMPANY_ID)
+
+    expect(handleCompanyScopeRejection('COMPANY_ACCESS_DENIED', STALE_COMPANY_ID)).toBe(false)
+
+    expect(useCompanyStore.getState().currentCompanyId).toBe(OTHER_COMPANY_ID)
+    expect(localStorage.getItem(COMPANY_SELECTION_KEY)).toBe(OTHER_COMPANY_ID)
+  })
+
+  it('ignores a 403 on a request that carried no company header', () => {
+    selectStaleCompany()
+
+    expect(handleCompanyScopeRejection('COMPANY_ACCESS_DENIED', null)).toBe(false)
+    expect(useCompanyStore.getState().currentCompanyId).toBe(STALE_COMPANY_ID)
+  })
+
+  it('marks the denied company so the bootstrap cannot re-pick it (F-2)', () => {
+    selectStaleCompany()
+
+    handleCompanyScopeRejection('COMPANY_ACCESS_DENIED', STALE_COMPANY_ID)
+
+    // The membership list still contains it — the server lists it, the
+    // middleware denies it. resolveCompanySelection must not choose it again.
+    expect(resolveCompanySelection([company(STALE_COMPANY_ID)], null)).toBeNull()
+    expect(
+      resolveCompanySelection([company(STALE_COMPANY_ID), company(OTHER_COMPANY_ID)], null),
+    ).toBe(OTHER_COMPANY_ID)
+  })
+})
+
+describe('the response interceptor feeds the SENT company id through', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  })
+
+  function denyWith(config: InternalAxiosRequestConfig, onSend?: () => void): Promise<never> {
+    onSend?.()
+    const response = {
+      data: { error: { code: 'COMPANY_ACCESS_DENIED', message: 'denied' } },
+      status: 403,
+      statusText: 'Forbidden',
+      headers: {},
+      config,
+    } as AxiosResponse
+    return Promise.reject(new AxiosError('denied', 'ERR_BAD_REQUEST', config, {}, response))
+  }
+
+  it('resets when the denied company is still the current selection', async () => {
+    selectStaleCompany()
+    api.defaults.adapter = (config) => denyWith(config)
+
+    await expect(api.get('/products')).rejects.toThrow()
+
+    expect(useCompanyStore.getState().currentCompanyId).toBeNull()
+    expect(localStorage.getItem(COMPANY_SELECTION_KEY)).toBeNull()
+  })
+
+  it('leaves a selection made WHILE the request was in flight alone', async () => {
+    selectStaleCompany()
+    api.defaults.adapter = (config) =>
+      denyWith(config, () => {
+        // the user switches company before the 403 lands
+        useCompanyStore.setState({
+          currentCompanyId: OTHER_COMPANY_ID,
+          companies: [company(OTHER_COMPANY_ID)],
+          isLoading: false,
+        })
+        localStorage.setItem(COMPANY_SELECTION_KEY, OTHER_COMPANY_ID)
+      })
+
+    await expect(api.get('/products')).rejects.toThrow()
+
+    expect(useCompanyStore.getState().currentCompanyId).toBe(OTHER_COMPANY_ID)
+    expect(localStorage.getItem(COMPANY_SELECTION_KEY)).toBe(OTHER_COMPANY_ID)
   })
 })

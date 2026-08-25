@@ -1,5 +1,5 @@
 import axios, { type AxiosError, type AxiosInstance, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
-import { useCompanyStore } from '../stores/companyStore'
+import { markCompanyAccessDenied, useCompanyStore } from '../stores/companyStore'
 import { useLocationStore } from '../stores/locationStore'
 import { useAuthStore } from '../stores/authStore'
 
@@ -167,24 +167,42 @@ const COMPANY_SCOPE_REJECTION_CODES = ['COMPANY_ACCESS_DENIED', 'INVALID_COMPANY
  * relearns the real membership list and `resolveCompanySelection` picks the
  * user's primary company.
  *
- * LOOP SAFETY: the reset only fires while a selection actually exists. After
- * it, `currentCompanyId` is null, the header stops being sent, and the server
- * falls back to the user's default company — so a second rejection cannot
- * trigger a second reset, and reset/refetch cannot ping-pong.
+ * MATCHING (F-3): `sentCompanyId` is the `X-Company-Id` the FAILING request
+ * actually carried. The reset fires only when it is still the current
+ * selection. Without that check a 403 for company A, issued moments before the
+ * user switched to B, would wipe B — silently undoing a deliberate switch. A
+ * request that carried no header was resolved server-side against the user's
+ * default company, which no client-side reset can fix, so it is ignored too.
+ *
+ * LOOP SAFETY: the denied company is recorded (`markCompanyAccessDenied`) so
+ * `resolveCompanySelection` cannot re-pick it on the re-bootstrap that follows.
+ * Without that, "the selection is null now" is only half the cycle — the
+ * provider re-picks `isPrimary`/`companies[0]` deterministically, and if the
+ * server denies that one too the pair resets forever. Belt: the reset is also a
+ * no-op once `currentCompanyId` is null.
  *
  * @returns whether this call reset the scope.
  */
-export function handleCompanyScopeRejection(code: string | null): boolean {
+export function handleCompanyScopeRejection(
+  code: string | null,
+  sentCompanyId: string | null,
+): boolean {
   if (code === null || !COMPANY_SCOPE_REJECTION_CODES.includes(code)) {
     return false
   }
 
   const companyStore = useCompanyStore.getState()
-  if (companyStore.currentCompanyId === null) {
+  const currentCompanyId = companyStore.currentCompanyId
+  if (currentCompanyId === null) {
+    return false
+  }
+
+  if (sentCompanyId === null || sentCompanyId !== currentCompanyId) {
     return false
   }
 
   console.warn('Stale company scope rejected by the API, resetting selection:', code)
+  markCompanyAccessDenied(currentCompanyId)
   companyStore.reset()
   useLocationStore.getState().reset()
 
@@ -319,7 +337,11 @@ function createApiClient(): AxiosInstance {
         // CompanyContextMiddleware.
         if (response.status === 403 || response.status === 400) {
           const envelope = isRecord(response.data) ? response.data['error'] : null
-          handleCompanyScopeRejection(readString(envelope, 'code'))
+          const sentCompanyId = error.config?.headers['X-Company-Id']
+          handleCompanyScopeRejection(
+            readString(envelope, 'code'),
+            typeof sentCompanyId === 'string' ? sentCompanyId : null,
+          )
         }
 
         // Handle 403 Forbidden

@@ -7,9 +7,10 @@ import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { handleCompanyScopeRejection } from '@/lib/api'
 import { clearScopeForNewSession } from '@/lib/clearAppState'
 import { useAuthStore } from '@/stores/authStore'
-import { useCompanyStore } from '@/stores/companyStore'
+import { clearDeniedCompanyIds, useCompanyStore } from '@/stores/companyStore'
 import { useLocationStore } from '@/stores/locationStore'
 
 import { CompanyProvider } from '../../company/CompanyProvider'
@@ -113,6 +114,7 @@ beforeEach(() => {
   useAuthStore.setState({ user: null, token: null, isAuthenticated: false, isLoading: false })
   useCompanyStore.setState({ currentCompanyId: null, companies: [], isLoading: false })
   useLocationStore.getState().reset()
+  clearDeniedCompanyIds()
 })
 
 afterEach(() => {
@@ -179,9 +181,117 @@ describe('bootstrap after a scope clear', () => {
 })
 
 /**
+ * Gate r1 F-2 — the reviewer's probe, kept as a permanent regression test.
+ *
+ * "The reset cannot loop because currentCompanyId becomes null" is only half the
+ * cycle: CompanyProvider immediately re-bootstraps on the re-keyed query and
+ * `resolveCompanySelection` deterministically re-picks `isPrimary` /
+ * `companies[0]`. If the server denies THAT company, the next 403 resets again —
+ * forever. Loop safety has to be an enforced invariant, not a comment.
+ */
+describe('a denied company is never re-picked by the bootstrap (F-2)', () => {
+  const DENIED_ID = NEW_COMPANY_ID
+  const FALLBACK_ID = '7c9e2f14-2b7a-4f0e-8c33-1d5a6b2e9f01'
+
+  function listResponse(ids: string[]) {
+    return {
+      data: {
+        data: ids.map((id, index) => ({
+          id,
+          name: `Company ${index}`,
+          legal_name: `Company ${index}`,
+          tax_id: null,
+          country_code: 'TN',
+          currency: 'TND',
+          locale: 'fr',
+          timezone: 'Africa/Tunis',
+          // The denied one is the primary — the id resolveCompanySelection
+          // would otherwise choose every single time.
+          is_primary: id === DENIED_ID,
+        })),
+      },
+    }
+  }
+
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  })
+
+  it('re-bootstraps onto a DIFFERENT company after the denied one is rejected', async () => {
+    mockApiGet.mockResolvedValue(listResponse([DENIED_ID, FALLBACK_ID]))
+    authenticateAs('tenant-new')
+    useCompanyStore.setState({
+      currentCompanyId: DENIED_ID,
+      companies: [],
+      isLoading: false,
+    })
+
+    expect(handleCompanyScopeRejection('COMPANY_ACCESS_DENIED', DENIED_ID)).toBe(true)
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<CompanyProvider><div>ready</div></CompanyProvider>, { wrapper: wrapper(queryClient) })
+
+    await waitFor(() => {
+      expect(useCompanyStore.getState().companies).toHaveLength(2)
+    })
+
+    expect(useCompanyStore.getState().currentCompanyId).toBe(FALLBACK_ID)
+    // ...and the second rejection cannot fire, because nothing re-picked it.
+    expect(handleCompanyScopeRejection('COMPANY_ACCESS_DENIED', DENIED_ID)).toBe(false)
+  })
+
+  it('leaves the selection null when the ONLY listed company is denied', async () => {
+    mockApiGet.mockResolvedValue(listResponse([DENIED_ID]))
+    authenticateAs('tenant-new')
+    useCompanyStore.setState({ currentCompanyId: DENIED_ID, companies: [], isLoading: false })
+
+    expect(handleCompanyScopeRejection('COMPANY_ACCESS_DENIED', DENIED_ID)).toBe(true)
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<CompanyProvider><div>ready</div></CompanyProvider>, { wrapper: wrapper(queryClient) })
+
+    await waitFor(() => {
+      expect(useCompanyStore.getState().companies).toHaveLength(1)
+    })
+
+    expect(useCompanyStore.getState().currentCompanyId).toBeNull()
+    expect(localStorage.getItem(COMPANY_SELECTION_KEY)).toBeNull()
+  })
+
+  it('a new session forgets earlier denials — a regained membership is selectable', () => {
+    useCompanyStore.setState({ currentCompanyId: DENIED_ID, companies: [], isLoading: false })
+    handleCompanyScopeRejection('COMPANY_ACCESS_DENIED', DENIED_ID)
+
+    clearScopeForNewSession(new QueryClient())
+
+    useCompanyStore.getState().setCompanies([
+      {
+        id: DENIED_ID,
+        name: 'Regained',
+        legalName: 'Regained',
+        taxId: null,
+        countryCode: 'TN',
+        currency: 'TND',
+        locale: 'fr',
+        timezone: 'Africa/Tunis',
+        isPrimary: true,
+      },
+    ])
+
+    expect(useCompanyStore.getState().currentCompanyId).toBe(DENIED_ID)
+  })
+})
+
+/**
  * The behaviour above is only reachable if the two entry points actually call
  * it. Both pages previously called `setAuth(...)` and navigated, which is
  * exactly how W2-1 shipped; these guards fail if that regresses.
+ *
+ * HEURISTIC GUARDS, not behavioural tests (gate r1 F-5). They read source text:
+ * they pass on a commented-out call, break on a rename, and the `indexOf`
+ * ordering check would mis-anchor if a `setAuth(` string ever appeared earlier
+ * in the file. They exist because neither page has a seam worth extracting for
+ * a 4-step wizard; do not read them as proof the call executes.
  */
 describe('register and login clear the scope before the first authenticated call', () => {
   const authDir = join(__dirname, '..')

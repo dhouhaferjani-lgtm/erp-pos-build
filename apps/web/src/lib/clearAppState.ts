@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../stores/authStore'
-import { useCompanyStore } from '../stores/companyStore'
+import { clearDeniedCompanyIds, useCompanyStore } from '../stores/companyStore'
 import { useLocationStore } from '../stores/locationStore'
 
 /**
@@ -23,6 +23,9 @@ export function clearScopeForNewSession(queryClient: QueryClient): void {
   // immediately, and they must be re-keyed and header-free when they do.
   useCompanyStore.getState().reset()
   useLocationStore.getState().reset()
+  // A different account: earlier denials say nothing about this one, and a
+  // membership that was revoked may since have been restored.
+  clearDeniedCompanyIds()
 
   // Drop the previous account's cached data. `removeQueries` (not `clear`)
   // leaves the mutation cache intact — this runs inside the login/register
@@ -44,4 +47,5 @@ export function clearAllAppState(queryClient: QueryClient): void {
   useAuthStore.getState().logout()
   useCompanyStore.getState().reset()
   useLocationStore.getState().reset()
+  clearDeniedCompanyIds()
 }
