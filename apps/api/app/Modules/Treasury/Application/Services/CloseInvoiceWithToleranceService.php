@@ -68,6 +68,29 @@ final class CloseInvoiceWithToleranceService
             // reappearing as collected revenue.
             $this->allocationStateGuard->assertAllocatable($invoice);
 
+            // Treasury gate IMPORTANT (W-6 D2 consumer sweep): this used to be
+            // `$invoice->balance_due ?? '0'`. `outstandingBalance()` treats a
+            // NON-NULL cache as authoritative (unchanged for this trigger- or
+            // opening-balance-maintained value) and only falls back to the
+            // allocation-derived computation when the cache is genuinely NULL.
+            // Scale 3 (not `self::SCALE`) to match `balance_due`'s own
+            // `decimal:3` cast — this value flows into the tolerance checker,
+            // the GL write-off amount and the API response, all of which
+            // expect the money scale, not the wider internal comparison scale.
+            $balance = $invoice->outstandingBalance(3);
+            if ($invoice->status === DocumentStatus::Paid || bccomp($balance, '0', self::SCALE) <= 0) {
+                throw new InvoiceAlreadyPaidException($invoiceId);
+            }
+
+            // C-0a0 — the ALREADY-SETTLED check above must stay FIRST. `paid` is
+            // a retired lifecycle value (F-88) and the classifier now refuses it
+            // as `document_not_live`; running the classifier first would replace
+            // this endpoint's specific `INVOICE_ALREADY_PAID` with a generic
+            // `DOCUMENT_NOT_ALLOCATABLE` and tell the operator nothing about why
+            // there is nothing left to write off. Order, not policy: everything
+            // that is NOT already settled still has to clear the classifier
+            // before a single row is written.
+            //
             // N-6 — closing with tolerance writes off a RECEIVABLE residual, so
             // it presupposes a posted receivable. On a confirmed (unposted)
             // invoice there is nothing in 411 to write off and nothing to
@@ -86,20 +109,6 @@ final class CloseInvoiceWithToleranceService
                         ],
                     ],
                 ], 422));
-            }
-
-            // Treasury gate IMPORTANT (W-6 D2 consumer sweep): this used to be
-            // `$invoice->balance_due ?? '0'`. `outstandingBalance()` treats a
-            // NON-NULL cache as authoritative (unchanged for this trigger- or
-            // opening-balance-maintained value) and only falls back to the
-            // allocation-derived computation when the cache is genuinely NULL.
-            // Scale 3 (not `self::SCALE`) to match `balance_due`'s own
-            // `decimal:3` cast — this value flows into the tolerance checker,
-            // the GL write-off amount and the API response, all of which
-            // expect the money scale, not the wider internal comparison scale.
-            $balance = $invoice->outstandingBalance(3);
-            if ($invoice->status === DocumentStatus::Paid || bccomp($balance, '0', self::SCALE) <= 0) {
-                throw new InvoiceAlreadyPaidException($invoiceId);
             }
 
             $companyId = (string) $invoice->company_id;
