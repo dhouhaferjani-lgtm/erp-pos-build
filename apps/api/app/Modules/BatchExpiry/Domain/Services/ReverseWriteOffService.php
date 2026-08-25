@@ -122,9 +122,21 @@ final class ReverseWriteOffService
         //                  scrap writes NO inventory_batch_movements row, so the
         //                  lot-restore branch below is skipped, but receive() with
         //                  batchId: null runs ensureDefaultBatchForImplicitPositiveStock,
-        //                  which tops the DEFAULT lot up to the WHOLE aggregate on
-        //                  top of the real lots — SUM(inventory_batch_stock) >
-        //                  stock_levels.quantity.
+        //                  which tops the DEFAULT lot up on top of the real lots —
+        //                  SUM(inventory_batch_stock) > stock_levels.quantity.
+        //
+        //                  🚨 Campaign W2-7, gate r1 finding 8 — that helper now
+        //                  seeds only the UNTRACKED REMAINDER, AND this service
+        //                  passes `creditsLotItself: true` when it is about to
+        //                  credit the original lot at step 3 below, so the reversed
+        //                  units are booked exactly once. Before the flag the
+        //                  ORDERING alone double-booked them: the implicit helper
+        //                  runs BEFORE the lot credit, so at helper time the units
+        //                  looked untracked, got a DEFAULT lot, and step 3 then
+        //                  booked them into the real lot as well (probe: real lot
+        //                  26 / aggregate 26 / reverse 4 -> Sigma lots 34 vs 30).
+        //                  Pinned by SiblingSeamsUntrackedRemainderTest::
+        //                  test_reversing_a_write_off_does_not_double_book_the_reversed_units.
         //
         //            A scrap disposition is undone by CORRECTING THE RETURN (which
         //            re-authors both legs through the fiscal document), never by a
@@ -177,6 +189,13 @@ final class ReverseWriteOffService
                     variantId: $original->variant_id,
                     reason: $original->reason,
                     unitCost: $unitCost,
+                    // Gate r1 finding 8 — step 3 below credits the ORIGINAL lot
+                    // itself. Without this flag the implicit DEFAULT-lot helper runs
+                    // FIRST, sees the reversed units as untracked (the lot has not
+                    // been credited yet) and backs them with a DEFAULT lot; step 3
+                    // then books the same units into the real lot, leaving
+                    // SUM(inventory_batch_stock) above stock_levels.quantity.
+                    creditsLotItself: $originalBatchMovement !== null,
                 );
 
                 // 5. Link the inverse to the original. The PG partial unique index

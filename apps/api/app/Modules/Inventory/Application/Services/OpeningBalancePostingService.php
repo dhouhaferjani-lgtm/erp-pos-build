@@ -155,12 +155,20 @@ final class OpeningBalancePostingService
                         // transfers and POS lot selection all have a lot to pick.
                         $product = $products->get($line->productId);
                         if ($product !== null && $product->requires_batch_tracking) {
-                            $this->batchStockService->ensureDefaultBatch(
+                            // Gate r1 finding 12 — `ensureDefaultBatch()` sets the
+                            // lot TO the target, it does not add to it, so passing
+                            // the LINE quantity was only correct while the DEFAULT
+                            // lot was empty. Passing the post-opening aggregate
+                            // through the remainder helper is correct
+                            // unconditionally: it subtracts whatever real lots
+                            // already hold, so it can neither under-seed a second
+                            // opening nor double-book stock that arrived in a lot.
+                            $this->batchStockService->ensureDefaultBatchForUntrackedRemainder(
                                 companyId: $posting->companyId,
                                 tenantId: $posting->tenantId,
                                 productId: $line->productId,
                                 locationId: $line->locationId,
-                                targetQuantity: $line->quantity,
+                                aggregateQuantity: $quantityAfter,
                                 shelfLifeDays: $product->default_shelf_life_days,
                                 asOfDate: $posting->entryDate->toDateString(),
                                 variantId: $line->variantId,
