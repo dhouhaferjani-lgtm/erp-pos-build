@@ -248,13 +248,25 @@ describe('ReconciliationTable replay columns + flags', () => {
 
   it('shows a "not posted — recount" hint for skipped-at-apply flags', () => {
     h.reconciliation = makeReconciliation([
-      makeItem({ flag_reasons: ['basket_window'], is_flagged: true }),
+      makeItem({ flag_reasons: ['negative_at_apply'], is_flagged: true }),
     ])
     render(<ReconciliationTable countingId="77777777-7777-4777-8777-777777777777" />)
 
     expect(screen.getByTestId('flag-hint-not-posted')).toHaveTextContent(
       'counting.flags.notPostedRecount'
     )
+  })
+
+  // W4-6: basket_window is an annotation now — the correction posts, so the
+  // "not posted, recount" hint must NOT appear for it.
+  it('shows no "not posted" hint for a basket_window line', () => {
+    h.reconciliation = makeReconciliation([
+      makeItem({ flag_reasons: ['basket_window'], is_flagged: true }),
+    ])
+    render(<ReconciliationTable countingId="77777777-7777-4777-8777-777777777777" />)
+
+    expect(screen.getByTestId('flag-chip-basket_window')).toBeInTheDocument()
+    expect(screen.queryByTestId('flag-hint-not-posted')).not.toBeInTheDocument()
   })
 })
 

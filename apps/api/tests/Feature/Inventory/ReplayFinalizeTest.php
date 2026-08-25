@@ -154,7 +154,7 @@ final class ReplayFinalizeTest extends TestCase
             'company_id' => $this->company->id,
             'scope_type' => CountingScopeType::Location,
             'scope_filters' => ['location_id' => $this->location->id],
-            'counting_number' => 'CNT-RPL-'.uniqid(),
+            'counting_number' => 'CR'.uniqid(), // <= 20 chars: inventory_countings.counting_number is varchar(20)
             'status' => CountingStatus::Finalized,
             'ambiguity_window_minutes' => $windowMinutes,
             'created_by_user_id' => $this->user->id,
@@ -240,8 +240,19 @@ final class ReplayFinalizeTest extends TestCase
         $this->assertSame('17.0000', StockLevel::where('product_id', $this->product->id)->value('quantity'));
     }
 
-    // (c) a movement 5 min from T (window 15) → basket_window flag, nothing posted.
-    public function test_case_c_basket_window_flags_and_skips(): void
+    /**
+     * (c) a movement 5 min from T (window 15) → basket_window is ANNOTATED and
+     * the correction still posts.
+     *
+     * 🚨 Campaign W4-6 rewrote this sentinel. It used to pin "nothing posted",
+     * which is exactly the behaviour that made a finalized count report zero
+     * variance and change nothing: in a shop that keeps selling while it counts,
+     * every counted line has moved within ±15 minutes of being counted. The
+     * replay — `expected_now = 20 + (−1) = 19` here — is what keeps the nearby
+     * sale counted exactly once; the nearby movement is evidence for the
+     * reviewer, not grounds to leave shelf and ledger disagreeing.
+     */
+    public function test_case_c_basket_window_annotates_but_still_posts(): void
     {
         $t = CarbonImmutable::now()->subHours(3);
         $this->setOnHand('10.0000');
@@ -252,15 +263,46 @@ final class ReplayFinalizeTest extends TestCase
 
         $this->fire($counting);
 
-        $this->assertSame('10.0000', StockLevel::where('product_id', $this->product->id)->value('quantity'));
+        // 20 counted at T, 1 sold after T → 19 expected, 10 on hand → +9.
+        $this->assertSame('19.0000', StockLevel::where('product_id', $this->product->id)->value('quantity'));
+        $this->assertDatabaseHas('stock_movements', [
+            'product_id' => $this->product->id,
+            'movement_type' => MovementType::Adjustment->value,
+            'reason' => MovementReason::CountCorrection->value,
+            'quantity' => '9.0000',
+        ]);
+
+        $item->refresh();
+        $this->assertContains(CountingItemFlagReason::BasketWindow->value, $item->flag_reasons ?? []);
+        $this->assertTrue($item->is_flagged, 'the reviewer still sees the ambiguity');
+        $this->assertNotNull($item->replay_audit);
+    }
+
+    /**
+     * Document-per-action: a count that AGREES with the shelf writes no movement
+     * at all. The campaign found the inverse — the only rows written were
+     * `qty 0.0000, 25 -> 25` no-ops for the two agreeing lines, while the two
+     * real variances were suppressed.
+     */
+    public function test_an_agreeing_line_writes_no_movement(): void
+    {
+        $t = CarbonImmutable::now()->subHours(3);
+        $this->setOnHand('25.0000');
+
+        $counting = $this->counting(15);
+        $item = $this->item($counting, '25.0000', $t, theoretical: '25.0000');
+
+        $this->fire($counting);
+
+        $this->assertSame('25.0000', StockLevel::where('product_id', $this->product->id)->value('quantity'));
         $this->assertDatabaseMissing('stock_movements', [
             'product_id' => $this->product->id,
             'reason' => MovementReason::CountCorrection->value,
         ]);
 
+        // The line was still evaluated — the audit is the proof.
         $item->refresh();
-        $this->assertContains(CountingItemFlagReason::BasketWindow->value, $item->flag_reasons ?? []);
-        $this->assertTrue($item->is_flagged);
+        $this->assertNotNull($item->replay_audit);
     }
 
     // (d) non-onboarding negative-at-apply → negative_at_apply flag, nothing posted.
