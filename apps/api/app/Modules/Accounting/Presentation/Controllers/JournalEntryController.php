@@ -184,8 +184,31 @@ class JournalEntryController extends Controller
         ]);
     }
 
+    /**
+     * Allocate the next journal-entry number for the MANUAL-entry endpoint.
+     *
+     * LEDGER C-27 (Session B2, 2026-08-25): this scan was already tenant-wide —
+     * matching `journal_entries_tenant_id_entry_number_unique` on
+     * `(tenant_id, entry_number)` — but it took NO lock, so it raced
+     * `GeneralLedgerService::generateEntryNumber()` on the SAME sequence and two
+     * concurrent minters could read the same maximum. The lock key here is
+     * deliberately byte-identical to the service's (`journal_entry_number:{tenantId}`):
+     * one sequence, one serialisation point. The caller (`store()`) runs this
+     * inside `DB::transaction`, so the transaction-scoped lock is held to commit.
+     * No company-keyed chain lock is taken here — this path creates a DRAFT entry
+     * and never touches `chain_sequence`; the per-company chain lock is taken later
+     * by `sealAndPersistEntry` when the entry is posted, which preserves the global
+     * tenant-key-before-company-key order.
+     */
     private function generateEntryNumber(string $tenantId): string
     {
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement(
+                'SELECT pg_advisory_xact_lock(hashtextextended(?, 0))',
+                ["journal_entry_number:{$tenantId}"],
+            );
+        }
+
         $year = date('Y');
         $lastEntry = JournalEntry::query()
             ->where('tenant_id', $tenantId)

@@ -77,6 +77,7 @@ final class CountingReplayPreviewService
                 onHandNow: $stockByGrain[$this->grainKey($item->product_id, $item->location_id, $item->variant_id)] ?? '0.0000',
                 from: $asOf,
                 windowMinutes: $counting->ambiguity_window_minutes,
+                marker: $item->final_qty_movement_marker ?? $this->asOfResolver->resolveMarker($item),
             );
         }
 
@@ -106,7 +107,10 @@ final class CountingReplayPreviewService
             $result = $batch[$item->id];
             $onboarding = (bool) $item->location->onboarding_mode;
             $gate = $openingGates[$item->id];
-            $blocked = $this->guardEvaluator->preApply($result->hasMovementNear, $gate['opening_cost_missing'])
+            // W4-6: only a reason that answers blocksStockApplication() stops the
+            // auto-post. `basket_window` is recorded on the item at apply time
+            // but the correction posts, so the preview must not promise a skip.
+            $blocked = $this->guardEvaluator->preApplyBlocker($result->hasMovementNear, $gate['opening_cost_missing'])
                 ?? $this->guardEvaluator->atApply($onboarding, $result->computation->expectedNow);
             $previews[$item->id] = new ReplayPreviewDto(
                 mode: ReplayPreviewMode::TimestampReplay,

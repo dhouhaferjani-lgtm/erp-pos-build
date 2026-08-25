@@ -190,3 +190,90 @@ This is a **numbering-contract change**. JE numbers and income document numbers 
 4. **Lock-primitive drift:** the four openings minters use 32-bit `hashtext(?)` while GL/Expense/Income use 64-bit `hashtextextended(?, 0)`. Disjoint key spaces today, but two different hash families guarding one table is a hazard worth unifying when Session W lands.
 5. **`Document/Domain/Services/DocumentNumberingService.php:47,84`** — the canonical `DocumentSequence` is keyed on `company_id` against the same tenant-wide `documents` unique index, so `INV-YYYY-0001` from a second company collides too; its one-shot retry re-reads the same company sequence and cannot help. Flagged by the Q-11 gate as well; out of this lane's scope.
 6. **T3 honesty note:** the two-connection test proves the tenant key is mutually exclusive across PG sessions and that the key string is the one under test; it does **not** by itself prove the service holds it — that is pinned by T2's query-log ordering assertion (tenant lock index < company lock index). A true racing two-connection post was not attempted inside the 90-second tool budget, exactly as the brief permits.
+
+---
+
+Fix round committed on top of `eaccb7323`. Not merged, not pushed.
+
+# C-27 FIX ROUND r1 — REPORT
+
+**Branch** `fix/sb2-c27-je-numbering-tenant-scope` · **worktree** `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/sb2-c27-je-numbering` · **new commit `47bf340c4`** (on `eaccb7323`).
+
+## 1. F-1 — universal tenant-before-company order (done, in code)
+
+`GeneralLedgerService.php`:
+- **`:5618-5628`** new `private function takeTenantNumberingLock(string $tenantId): void` — the `journal_entry_number:{tenantId}` literal now exists exactly once; pgsql-guarded, early-return on other drivers.
+- **`:3784`** `sealAndPersistEntry` calls it immediately before the company chain lock at **`:3794-3796`**, with a comment (`:3771-3783`) naming the replay branches and the reproduced `40P01`. Nothing else in `sealAndPersistEntry` changed — no reorder, no lock removed, hash-chain sequence byte-identical.
+- **`:5674`** `generateEntryNumber` calls the same helper, then the company key at `:5676-5678`.
+- **`:5651-5663`** docblock rewritten to the truthful invariant: *"every path that takes the company chain key takes the tenant numbering key first"*, with the reason `sealAndPersistEntry` must participate (entries numbered in an earlier transaction mint nothing). Cost stated explicitly: posting now also serialises tenant-wide.
+
+**Red → green (PG 5433, `autoerp_c27_test`), new file `tests/Feature/Accounting/InventoryGlNumberingTenantScopeTest.php::test_posting_a_pre_numbered_entry_takes_the_tenant_key_before_the_company_key`** — txn 1 mints the Draft via `createInventoryMovementEntry(postSynchronously: false)`, txn 2 replays with `postSynchronously: true` (hits `$existing` → `postEntryNow` → `sealAndPersistEntry`, mints nothing), query log of txn 2 asserted.
+
+RED on `eaccb7323`:
+```
+A transaction that posts a PRE-NUMBERED entry takes the company chain key; it must take the
+tenant numbering key first, or it can AB-BA against a concurrent mint (reviewer reproduced
+SQLSTATE 40P01). Failed asserting that null is not null.
+Tests: 1, Assertions: 3, Failures: 1.
+```
+(The `chain_sequence === 1` assertion passed first, proving the replay really did post — so the log inspected is the sealing transaction.) GREEN after: file `OK (2 tests, 12 assertions)`.
+
+## 2. F-2 — stock side of the seam (done)
+
+Second test in the same new file: `test_inventory_gl_mints_tenant_unique_numbers_for_a_second_company_with_no_company_context`. PG-only, `connectionsToTransact()` empty (buffer sees production transaction levels, same contract as `InventoryGlPostingSeamTest`). Two companies of one tenant, real `StockMovement` rows (real `Product` + `Location`), `app(CompanyContext::class)->clear()` before flushing, minted through the production `InventoryGlPostingBuffer::enqueue()/flushIfOutermost()` inside a root transaction. Asserts **both sides**: both `stock_movements` rows survive, `journal_entries.source_id` links to each, company A `JE-YYYY-000001` / company B `JE-YYYY-000002`, `chain_sequence` 1 and 1.
+
+RED via the restore-file technique (`git checkout 834c8c017 -- GeneralLedgerService.php`, run, `git checkout HEAD --`; **no stash**, worktree verified clean after):
+```
+Illuminate\Database\UniqueConstraintViolationException: SQLSTATE[23505]: Unique violation: 7
+ERROR: duplicate key value violates unique constraint "journal_entries_tenant_id_entry_number_unique"
+Tests: 1, Assertions: 0, Errors: 1.
+```
+GREEN on the branch before the F-1 change (`OK (1 test, 8 assertions)`) and after it (`OK (2 tests, 12 assertions)`).
+
+## 3. Treasury F-6 — T3 replaced with a test that can fail (done)
+
+`JournalEntryNumberingTenantScopeTest.php`: `test_the_tenant_numbering_key_is_mutually_exclusive_across_connections` → **`test_the_posting_transaction_holds_the_tenant_numbering_key`**. It now drives a real expense post inside an explicit `DB::transaction` and, while that transaction is open, proves from a second PDO connection that `pg_try_advisory_xact_lock` on `journal_entry_number:{tenant}` returns **false** — the service is holding it. A pre-check asserts the key is free beforehand, so the assertion is not vacuous.
+
+RED against `834c8c017`'s generator:
+```
+journal_entry_number:{tenantId} must be HELD for the life of the posting transaction —
+otherwise two concurrent minters read the same maximum.
+Failed asserting that true is false.
+Tests: 1, Assertions: 4, Failures: 1.
+```
+GREEN after: file `OK (5 tests, 26 assertions)` on PG.
+
+## 4. Full re-run by path (one file per invocation)
+
+| File | sqlite | pgsql:5433 | gate baseline |
+|---|---|---|---|
+| `Accounting/InventoryGlNumberingTenantScopeTest.php` (new) | 2 skipped | **OK 2 / 12** | n/a |
+| `Accounting/JournalEntryNumberingTenantScopeTest.php` | OK 5 / 15 (3 skip) | **OK 5 / 26** | n/a |
+| `Income/IncomeNumberingTenantScopeTest.php` | OK 2 / 6 (1 skip) | **OK 2 / 9** | n/a |
+| `Accounting/CreateJournalEntryTest.php` | **OK 11 / 29** | — | 11 / 29 ✓ |
+| `Accounting/ChainSequenceUniqueIndexTest.php` | **OK 2 / 3** | — | 2 / 3 ✓ |
+| `Accounting/PostEntryNowAtomicityTest.php` | — | **OK 5 / 15** | 5 / 15 ✓ |
+| `Expense/ExpensePostTest.php` | — | **OK 5 / 16** | 5 / 16 ✓ |
+| `Inventory/InventoryGlVoucherLockOrderTraceTest.php` | — | **OK 2 / 30** | 2 / 30 ✓ |
+| `Inventory/InventoryGlLockOrderContentionTest.php` | — | **OK 15 / 174** | 15 / 174 ✓ |
+| `Inventory/InventoryGlPostingSeamTest.php` | — | **OK 27 / 112** | 27 / 112 ✓ |
+| `Inventory/GoodsReceiptGlPostingOrderTest.php` | — | **OK 12 / 42** | 12 / 42 ✓ |
+
+Every inventory/GR baseline matches exactly — notably the I-1 terminal-advisory trace (2/30), so the new tenant key sits after the inventory row locks, equally terminal.
+
+**Gates:** PHPStan level 8 on `GeneralLedgerService.php` + both touched test files → `[OK] No errors`. `pint --dirty` → `{"result":"pass"}`. `feature-lane-manifest-check.php` → OK, **1424** Feature classes / 74 groups; parked 70 groups / **1174** classes; debt 1/1. `groups.Accounting.classes` bumped 87 → 88 (informational only — live lane `treasury-spine-pgsql/feature-accounting`; the ceiling is not enforced there). No other manifest change this round; `gated_ceiling` stays 1174 and `Income` stays 4.
+
+## 5. Exact production changes this round
+
+Only one production file touched: `apps/api/app/Modules/Accounting/Domain/Services/GeneralLedgerService.php` — `:3771-3784` (comment + tenant lock call), `:5618-5628` (new helper), `:5651-5663` (docblock), `:5671-5678` (generator uses the helper). +70/−… on that file; `IncomeService.php` and `JournalEntryController.php` were **not** touched this round.
+
+## 6. Residuals — not addressed, deliberately
+
+- **F-3** (Session W): `OpeningBalancePostingService.php:290-306` (`INV-OB-`), `ResetOpeningBalanceService.php:263-272` (`INV-OBR-`), `AccountingOpeningService.php:474-492` (`OB-`), `ArApOpeningService.php:448-472` (`HIST-`) still carry the exact defect, and use 32-bit `hashtext` vs the 64-bit `hashtextextended` used here. The two `INV-` ones are stock↔GL exposures.
+- **F-4** (999999 wrap): not taken — the coordinator's list did not include it. `sprintf('JE-%s-%06d')` + `substr(-6)` still restarts silently at 1,000,000 entries/year, and widening to the tenant divides the ceiling by the company count. Same shape in `IncomeService.php`. Needs an explicit throw; file it.
+- **F-5** (I-1 guard blind to the new key): not taken — not in the coordinator's list. `InventoryGlVoucherLockOrderTraceTest.php:159-180` matches an advisory statement only when `bindings[0] === $this->companyId`, so the strictly-wider tenant key is invisible to that guard. The test is green today (2/30) because the new key is taken adjacent to the company key, but nothing would catch a future regression that hoists it above the inventory row locks.
+- **F-6 (owner ack)** and **F-7 (fleet census)** are unchanged and still owed before promotion — the local census remains zero-exposure and non-fleet (no `tenant_*` / `synerivia_central` DBs on this laptop).
+- **`DocumentNumberingService.php:47,84`** — per-company `DocumentSequence` against the tenant-wide `documents` unique index, with a one-shot retry that re-reads the same company sequence. Out of lane.
+- Throwaway DB `autoerp_c27_test` (5433) left in place for the re-gate; drop with `dropdb` when done.
+
+**Not merged.**

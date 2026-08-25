@@ -370,6 +370,77 @@ final class CountCorrectionGlPostingTest extends TestCase
         $this->assertEntryAmountEqualsRowCostTimesAbsoluteDelta($movement, $entry);
     }
 
+    /**
+     * Campaign W4-6 — the shape the campaign actually ran: a goods receipt 13
+     * minutes before the count instant (inside ±15) used to raise a blocking
+     * `basket_window` flag, so the shrinkage reached neither stock nor the
+     * ledger. The annotation must not cost the tenant its journal entry.
+     */
+    public function test_a_basket_window_line_still_posts_its_balanced_entry(): void
+    {
+        $this->enableFlag();
+        $chart = $this->optionAChart();
+        $asOf = CarbonImmutable::now()->subHours(2);
+        $this->setOnHand('70.0000');
+
+        // The near movement: a receipt 13 minutes BEFORE the count instant.
+        StockMovement::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'location_id' => $this->location->id,
+            'movement_type' => MovementType::Receipt,
+            'quantity' => '20.0000',
+            'quantity_before' => '50.0000',
+            'quantity_after' => '70.0000',
+            'occurred_at' => $asOf->subMinutes(13),
+        ]);
+
+        $counting = $this->counting(15);
+        $item = $this->item($counting, '68.0000', $asOf, '70.0000');
+
+        $this->fire($counting);
+
+        self::assertSame('68.0000', StockLevel::query()->where('product_id', $this->product->id)->value('quantity'));
+
+        $movement = $this->countCorrectionMovement();
+        self::assertSame('-2.0000', (string) $movement->quantity);
+
+        $entry = $this->entryFor($movement);
+        // 4.250000 x |68 − 70| = 8.500 — Dr shrinkage / Cr inventory, balanced.
+        self::assertSame('8.500', (string) $entry->lines[0]->debit);
+        self::assertSame($chart['shrinkage']->id, $entry->lines[0]->account_id);
+        self::assertSame('8.500', (string) $entry->lines[1]->credit);
+        self::assertSame($chart['inventory']->id, $entry->lines[1]->account_id);
+        $this->assertEntryAmountEqualsRowCostTimesAbsoluteDelta($movement, $entry);
+
+        // The reviewer still sees the ambiguity that used to veto the posting.
+        $item->refresh();
+        self::assertContains('basket_window', $item->flag_reasons ?? []);
+    }
+
+    /**
+     * An AGREEING line posts neither a movement nor an entry (W4-6 /
+     * document-per-action): the campaign found `qty 0.0000, 25 -> 25` no-ops as
+     * the only rows a whole count produced.
+     */
+    public function test_an_agreeing_line_posts_no_movement_and_no_entry(): void
+    {
+        $this->enableFlag();
+        $this->optionAChart();
+        $asOf = CarbonImmutable::now()->subHours(2);
+        $this->setOnHand('25.0000');
+
+        $counting = $this->counting();
+        $this->item($counting, '25.0000', $asOf, '25.0000');
+
+        $this->fire($counting);
+
+        self::assertSame(0, $this->countCorrectionMovements());
+        self::assertSame(0, $this->shrinkageEntries());
+        self::assertSame('25.0000', StockLevel::query()->where('product_id', $this->product->id)->value('quantity'));
+    }
+
     /** REPLAY path, overage: Dr Inventory / Cr Gain. */
     public function test_replay_overage_credits_the_gain_account(): void
     {

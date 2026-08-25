@@ -117,8 +117,13 @@ describe('countingApi.getReport', () => {
         late_sales_corrections: 1,
         opening_items: 1,
         opening_value: '12.000',
+        // W4-6: the three partition total_items_counted; applied/not-applied
+        // count VARYING lines only.
+        items_agreeing: 1,
+        items_applied: 1,
+        items_not_applied: 0,
       },
-      flagged_items: [
+      items: [
         {
           id: 'item-1',
           product: { id: 1, name: 'Bandage', sku: 'BAND', barcode: null, image_url: null, quantity_decimals: 4 },
@@ -149,8 +154,17 @@ describe('countingApi.getReport', () => {
           opening_unit_cost: '4.000000',
           will_post_as_opening: true,
           opening_cost_missing: false,
+          // W4-6 report columns: expected is on-hand AS OF the count instant
+          // (onHandAtApply − replayedDelta = 9 − (−1) = 10), counted 12,
+          // variance +2, and it reached stock.
+          expected_qty: '10.0000',
+          counted_qty: '12.0000',
+          variance_qty: '2.0000',
+          variance_applied: true,
+          not_applied_reason: null,
         },
       ],
+      flagged_items: [],
       counter_performance: [
         {
           user: { id: 'user-2', name: 'Counter One' },

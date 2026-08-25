@@ -62,7 +62,13 @@ const mockReport = {
     },
     late_sales_corrections: 0,
     opening_value: '0.000',
+    // W4-6 counters; the rendering of the per-row columns is pinned in
+    // __tests__/DiscrepancyReportVarianceColumns.test.tsx.
+    items_agreeing: 1,
+    items_applied: 1,
+    items_not_applied: 0,
   },
+  items: [],
   flagged_items: [],
   counter_performance: [],
   late_sync_residuals: [],
