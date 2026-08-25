@@ -19,6 +19,7 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 final class StockReservationDefaultBatchTest extends TestCase
@@ -71,13 +72,18 @@ final class StockReservationDefaultBatchTest extends TestCase
             'reserved' => '0.0000',
         ]);
 
+        // `stock_reservations.source_id` is a `uuid` column — a slug literal is
+        // accepted by SQLite's loose affinity but raises 22P02 on PostgreSQL,
+        // which is why this class never ran green on PG.
+        $sourceId = Str::uuid()->toString();
+
         $reservation = app(StockReservationService::class)->reserve(
             company: $company,
             productId: $product->id,
             locationId: $location->id,
             quantity: '4.0000',
             sourceType: ReservationSource::ManualHold,
-            sourceId: 'manual-default-batch',
+            sourceId: $sourceId,
         );
 
         $batch = Batch::where('product_id', $product->id)
