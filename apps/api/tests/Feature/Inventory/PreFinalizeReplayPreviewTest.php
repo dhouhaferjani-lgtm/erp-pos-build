@@ -201,12 +201,54 @@ final class PreFinalizeReplayPreviewTest extends TestCase
         $this->assertTrue($preview->willAutoPost);
     }
 
-    public function test_basket_window_preview_matches_the_flag_stamped_at_apply(): void
+    /**
+     * 🚨 Campaign W4-6 rewrote this sentinel. `basket_window` is an ANNOTATION,
+     * not a veto — so the preview must promise an auto-post, name no blocking
+     * reason, and the apply must both stamp the reason and post the correction.
+     * The preview promising a skip was half of why an operator could read
+     * "finalized successfully" over an unapplied two-unit shrinkage.
+     */
+    public function test_basket_window_preview_promises_the_post_it_will_make(): void
     {
         [$counting, $item] = $this->fixture();
         $this->movement('12.0000', '11.0000', CarbonImmutable::parse('2026-07-28 10:05:00 UTC'));
 
-        $this->assertPreviewAndApplyBlockedBy($counting, $item, 'basket_window');
+        $preview = app(CountingReplayPreviewService::class)->forItem($counting, $item);
+        $this->assertNotNull($preview);
+        $this->assertTrue($preview->willAutoPost);
+        $this->assertNull($preview->blockedReason);
+
+        $counting->status = CountingStatus::Finalized;
+        $counting->finalized_at = now();
+        $counting->save();
+        $item->final_qty_as_of = $item->count_1_at_estimate;
+        $item->save();
+
+        app(CompanyContext::class)->clear();
+        app(ApplyStockAdjustmentsOnCountingCompleted::class)->handle(
+            new InventoryCountingCompleted(
+                countingId: $counting->id,
+                tenantId: $this->tenant->id,
+                companyId: $this->company->id,
+                locationId: $this->location->id,
+                countingNumber: (string) $counting->counting_number,
+                itemsCount: 1,
+                totalVariance: '0.0000',
+                completedBy: $this->user->id,
+                completedAt: now()->toIso8601String(),
+            )
+        );
+
+        $applied = $item->fresh();
+        $this->assertNotNull($applied);
+        $this->assertContains('basket_window', $applied->flag_reasons ?? []);
+
+        $posted = StockMovement::query()
+            ->where('product_id', $item->product_id)
+            ->where('reason', MovementReason::CountCorrection)
+            ->sole();
+        $this->assertSame($preview->adjustment, (string) $posted->quantity);
+        $this->assertSame($preview->expectedNow, (string) $posted->quantity_after);
     }
 
     public function test_negative_at_apply_preview_matches_the_flag_stamped_at_apply(): void
