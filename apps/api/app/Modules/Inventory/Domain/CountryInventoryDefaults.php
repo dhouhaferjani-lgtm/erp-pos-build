@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Domain;
 
+use App\Modules\Inventory\Application\Services\CountCorrectionGlPostingResolver;
 use App\Modules\Inventory\Domain\Enums\InventoryValuationMode;
 use App\Shared\Domain\CountryPaymentDefaults;
 
@@ -93,7 +94,7 @@ final class CountryInventoryDefaults
     /**
      * The pinned posting default for a country, or null when it has none —
      * callers fall through to the SYSTEM default explicitly, through
-     * {@see \App\Modules\Inventory\Application\Services\CountCorrectionGlPostingResolver},
+     * {@see CountCorrectionGlPostingResolver},
      * so the choice stays visible in the resolved `source`.
      */
     public static function countCorrectionGlPostingForCountry(string $countryCode): ?bool
