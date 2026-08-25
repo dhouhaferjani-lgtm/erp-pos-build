@@ -24,6 +24,11 @@
       "policyBlocked": "الهامش محظور: {{permission}}",
       "policyWarning": "تحذير الهامش"
     },
+    "priceSource": {
+      "productPurchasePrice": "من سعر الشراء",
+      "none": "لا يوجد سعر شراء مسجّل — أدخل سعر الوحدة",
+      "required": "أدخل سعر الوحدة"
+    },
     "discount": "الخصم",
     "discountAmountPerLine": "مبلغ الخصم (لكل بند)",
     "discountMaxHint": "الحد الأقصى {{amount}}",
@@ -173,6 +178,9 @@
     "messages": {
       "revertedToDraft": "تم إرجاع المستند إلى المسودة",
       "goodsReceivedWithReceipt": "تم استلام البضائع ضمن {{receiptNumber}}"
+    },
+    "errors": {
+      "unitPriceRequired": "أدخل سعر الوحدة في كل سطر قبل الحفظ."
     }
   },
   "invoices": {
