@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Console\TenantScopedCommand;
 use App\Modules\BatchExpiry\Application\Services\BatchStockService;
+use App\Modules\BatchExpiry\Application\Services\LotLedgerDriftCensus;
 use App\Modules\BatchExpiry\Domain\Entities\BatchMovement;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\Company\Domain\Company;
@@ -116,6 +117,11 @@ final class RepairPhantomDefaultBatchesCommand extends TenantScopedCommand
     public function __construct(
         CompanyContext $companyContext,
         private readonly BatchStockService $batchStockService,
+        // W4R-2 gate r1 F-4 — the tuple census moved to a shared read-only
+        // service so `inventory:lot-drift-census` can run the SAME query
+        // without this command's maintenance-window scope guards. The repair
+        // arm's own reporting is unchanged; it just no longer owns the query.
+        private readonly LotLedgerDriftCensus $driftCensus,
     ) {
         parent::__construct($companyContext);
     }
@@ -539,31 +545,7 @@ final class RepairPhantomDefaultBatchesCommand extends TenantScopedCommand
      */
     private function batchTrackedTuples(string $companyId): Collection
     {
-        /** @var Collection<int, \stdClass> $rows */
-        $rows = DB::table('stock_levels as sl')
-            ->join('products as p', 'p.id', '=', 'sl.product_id')
-            ->leftJoin('product_batches as pb', function ($join): void {
-                $join->on('pb.product_id', '=', 'sl.product_id')
-                    ->whereRaw('pb.variant_id IS NOT DISTINCT FROM sl.variant_id');
-            })
-            ->leftJoin('inventory_batch_stock as ibs', function ($join): void {
-                $join->on('ibs.batch_id', '=', 'pb.id')
-                    ->on('ibs.location_id', '=', 'sl.location_id');
-            })
-            ->where('sl.company_id', $companyId)
-            ->where('p.requires_batch_tracking', true)
-            ->groupBy('sl.product_id', 'sl.variant_id', 'sl.location_id', 'sl.quantity')
-            ->orderBy('sl.product_id')
-            ->select([
-                'sl.product_id as product_id',
-                'sl.variant_id as variant_id',
-                'sl.location_id as location_id',
-                'sl.quantity as aggregate',
-                DB::raw('COALESCE(SUM(ibs.quantity), 0) as lot_total'),
-            ])
-            ->get();
-
-        return $rows;
+        return $this->driftCensus->batchTrackedTuples($companyId);
     }
 
     /**

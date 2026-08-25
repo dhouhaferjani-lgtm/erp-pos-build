@@ -14,6 +14,7 @@ use App\Modules\BatchExpiry\Domain\Entities\BatchMovement;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\BatchExpiry\Domain\Events\BatchStockConsumed;
 use App\Modules\BatchExpiry\Domain\Exceptions\InsufficientBatchStockException;
+use App\Modules\Document\Domain\Services\ReturnNoteService;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\ProductVariantLookup;
@@ -386,11 +387,55 @@ class FEFOInventoryService
      * inbound movement (document-per-action), positive by the signed-ledger
      * convention this class already uses for consumption.
      *
+     * 🚨 **W4R-2 gate r1 F-2 — a provenance hint may name the `DEFAULT` lot, and
+     * until this fix that hint was silently DROPPED.** Step 1 caps each hint by
+     * the lot's outstanding outbound, read from
+     * {@see self::outstandingShippedLots()} — which excluded `DEFAULT` lots by
+     * construction. A hint naming a `DEFAULT` lot therefore found no ceiling and
+     * `continue`d, and the credit fell through to the step-2 heuristic: exactly
+     * the "credits whichever lot shipped last" behaviour the provenance arm was
+     * built to prevent. On the first tenant that is the DOMINANT shape, not an
+     * edge case — every batch-tracked product carries a `DEFAULT` lot, and on
+     * every product that also has a dated lot the `DEFAULT` one has the EARLIER
+     * expiry, so FEFO draws it first on essentially every POS sale. Measured:
+     * `DEFAULT` at +10 days and `LOT-DATED` at +200 days, receipt 1 sells 4 from
+     * `DEFAULT`, receipt 2 drains it and bites `LOT-DATED`; refunding receipt 1
+     * credited 2 of its 4 units to `LOT-DATED`, a lot that never shipped them.
+     * `Σ lots == stock_levels` still reconciled, which is why nothing else
+     * caught it. The ceiling map is now built WITH `DEFAULT` lots for the
+     * provenance pass and the heuristic still skips them (step 2's comment says
+     * why), so `DEFAULT` is reachable by EVIDENCE but never by GUESS.
+     *
+     * 🚨 **W4R-2 gate r1 F-3 — `$mintDefaultLotForUnattributed`.** Step 3 exists
+     * so `Σ lots` reconciles with `stock_levels` after a return the ERP cannot
+     * attribute. That is right for a channel whose sales always wrote lot legs.
+     * It is WRONG for a return of a sale that never wrote one: there the
+     * aggregate was decremented and the lot ledger was not, so `Σ lots` already
+     * SITS ABOVE the aggregate by exactly that quantity, and restoring the
+     * aggregate alone brings the two back into line — drift returns to zero all
+     * by itself. Minting a `DEFAULT` lot at `today + 365` on top of that turns a
+     * self-healing case into a PERMANENT overstatement, and re-mints the very
+     * phantom `inventory:repair-phantom-default-batches` (W2-7) exists to
+     * remove, re-labelling short-dated goods as untracked stock that FEFO will
+     * ship LAST. Pass `false` and the unattributed remainder simply stays in the
+     * untracked remainder (`BatchStockService::untrackedRemainderAt()`), which is
+     * W2-7's own semantics: a `DEFAULT` lot backs the untracked remainder, and
+     * minting one is a deliberate, evidence-gated act — never a side effect of a
+     * refund. Defaults to `true` so the document channel
+     * ({@see ReturnNoteService}) is
+     * bit-for-bit unchanged.
+     *
      * @param  numeric-string  $quantity  Positive quantity being returned.
      * @param  string  $movementId  FK → stock_movements.id (the caller's inbound movement).
      * @param  ?int  $defaultShelfLifeDays  Product default expiry period, for the fallback lot.
      * @param  array<int, numeric-string>  $preferredLots  batch id => quantity this line is
      *                                                     KNOWN to have taken from that lot.
+     * @param  bool  $mintDefaultLotForUnattributed  When false, a remainder no lot can be
+     *                                               evidenced for is LEFT in the untracked
+     *                                               remainder instead of minting a DEFAULT lot.
+     * @return numeric-string The quantity that could NOT be attributed to any lot. Zero on
+     *                        every fully-attributed return, and (when minting is on) always
+     *                        zero because step 3 absorbs it.
      */
     public function restoreBatchesForReturn(
         string $tenantId,
@@ -402,15 +447,19 @@ class FEFOInventoryService
         ?int $defaultShelfLifeDays = null,
         ?string $variantId = null,
         array $preferredLots = [],
-    ): void {
+        bool $mintDefaultLotForUnattributed = true,
+    ): string {
         /** @var numeric-string $remaining */
         $remaining = QuantityScale::round($quantity, QuantityScale::SCALE, QuantityScale::HALF_UP);
 
         if (bccomp($remaining, '0', QuantityScale::SCALE) <= 0) {
-            return;
+            return QuantityScale::round('0', QuantityScale::SCALE, QuantityScale::FLOOR);
         }
 
-        $outstanding = $this->outstandingShippedLots($companyId, $productId, $locationId, $variantId);
+        // ONE ceiling map, built WITH the DEFAULT lots (F-2). The heuristic pass
+        // filters them back out; the provenance pass does not.
+        $outstanding = $this->outstandingShippedLots($companyId, $productId, $locationId, $variantId, includeDefaultLots: true);
+        $defaultLotIds = $this->defaultLotIds($productId, $variantId);
 
         // 1. Provenance first, each hint capped by the lot's outstanding outbound
         //    so a stale or over-stated hint can never over-credit a lot.
@@ -444,9 +493,20 @@ class FEFOInventoryService
         }
 
         // 2. Heuristic for whatever provenance did not cover.
+        //
+        // DEFAULT lots stay OUT of this pass (F-2 kept the exclusion here on
+        // purpose): the heuristic is a GUESS ordered by "most recently shipped",
+        // and letting it guess the DEFAULT lot would pre-empt step 3, whose
+        // whole job is to decide deliberately whether unattributed goods become
+        // untracked remainder. Step 1 above may still credit a DEFAULT lot,
+        // because there the hint IS evidence.
         foreach ($outstanding as $batchId => $shipped) {
             if (bccomp($remaining, '0', QuantityScale::SCALE) <= 0) {
                 break;
+            }
+
+            if (isset($defaultLotIds[$batchId])) {
+                continue;
             }
 
             /** @var numeric-string $credit */
@@ -458,7 +518,13 @@ class FEFOInventoryService
         }
 
         if (bccomp($remaining, '0', QuantityScale::SCALE) <= 0) {
-            return;
+            return QuantityScale::round('0', QuantityScale::SCALE, QuantityScale::FLOOR);
+        }
+
+        // 3. Unattributed remainder — goods the ERP never saw leave a lot.
+        if (! $mintDefaultLotForUnattributed) {
+            /** @var numeric-string $remaining */
+            return $remaining;
         }
 
         $this->creditLot(
@@ -468,6 +534,41 @@ class FEFOInventoryService
             $remaining,
             $movementId,
         );
+
+        return QuantityScale::round('0', QuantityScale::SCALE, QuantityScale::FLOOR);
+    }
+
+    /**
+     * The `DEFAULT` lot ids for this product grain, as a set keyed by batch id.
+     *
+     * Read as its own tiny query rather than carried out of
+     * {@see self::outstandingShippedLots()} so that method keeps returning the
+     * flat `batch id => outstanding` map every caller and test already expects.
+     * There is at most one `DEFAULT` lot per (product, variant) by construction
+     * ({@see BatchStockService}
+     * looks one up before minting), so this is a single-row lookup in practice.
+     *
+     * @return array<int, true>
+     */
+    private function defaultLotIds(string $productId, ?string $variantId): array
+    {
+        $ids = DB::table('product_batches')
+            ->where('product_id', $productId)
+            ->where('batch_number', self::DEFAULT_BATCH_NUMBER)
+            ->when(
+                $variantId === null,
+                fn ($query) => $query->whereNull('variant_id'),
+                fn ($query) => $query->where('variant_id', $variantId),
+            )
+            ->pluck('id');
+
+        $set = [];
+
+        foreach ($ids as $id) {
+            $set[(int) $id] = true;
+        }
+
+        return $set;
     }
 
     /**
@@ -512,6 +613,7 @@ class FEFOInventoryService
         string $productId,
         string $locationId,
         ?string $variantId,
+        bool $includeDefaultLots = false,
     ): array {
         $returnReasons = [
             MovementReason::CustomerReturn->value,
@@ -543,8 +645,14 @@ class FEFOInventoryService
             // under database-per-tenant, load-bearing in single-schema mode.
             ->where('sm.company_id', $companyId)
             ->where('sm.product_id', $productId)
-            ->where('sm.location_id', $locationId)
-            ->where('pb.batch_number', '!=', self::DEFAULT_BATCH_NUMBER);
+            ->where('sm.location_id', $locationId);
+
+        // W4R-2 gate r1 F-2: the DEFAULT lot is excluded from the HEURISTIC pass
+        // (a guess must never pre-empt step 3) but MUST be visible to the
+        // PROVENANCE pass, which is reading a hint the sale itself recorded.
+        if (! $includeDefaultLots) {
+            $query->where('pb.batch_number', '!=', self::DEFAULT_BATCH_NUMBER);
+        }
 
         if ($variantId === null) {
             $query->whereNull('pb.variant_id');

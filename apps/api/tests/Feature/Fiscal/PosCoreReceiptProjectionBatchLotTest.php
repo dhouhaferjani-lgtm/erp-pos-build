@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Fiscal;
 
+use App\Modules\BatchExpiry\Application\Services\LotLedgerDriftCensus;
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
+use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
@@ -56,7 +58,22 @@ use Tests\TestCase;
  *       deliberately never re-enter a sellable lot, and the write-off leg
  *       writes no lot leg either — crediting here would push Σ lots ABOVE the
  *       aggregate);
- *   (h) a composite line explodes to its recipe leaves and moves leaf lots.
+ *   (h) a composite line moves NOTHING on this path — no aggregate stock and no
+ *       lot stock — so it contributes zero drift. That is the W4R-3 residual
+ *       (`decrementStockForLines()`'s own docblock and handback §8), not a
+ *       contract this class pins; there is deliberately no test for it, because
+ *       a composite line's sealed `product_id` never survives `Str::isUuid()`.
+ *
+ * Fix round r1 adds the gates' four conditions:
+ *
+ *   (i) a lot arm that THROWS never takes the sealed receipt down with it
+ *       (inventory F-1 / fiscal F-1+F-2);
+ *   (j) a provenance hint naming the `DEFAULT` lot is honoured, not dropped
+ *       (inventory F-2);
+ *   (k) refunding a PRE-LANE sale mints no phantom `DEFAULT@today+365` and
+ *       leaves drift at zero (inventory F-3);
+ *   (l) the drift a shortfall leaves is DETECTABLE, not merely logged
+ *       (inventory F-4 / fiscal F-5).
  *
  * **Rule 20 — projections run with NO CompanyContext.** Every `apply()` below
  * is preceded by `app(CompanyContext::class)->clear()` so the suite mirrors the
@@ -374,8 +391,382 @@ final class PosCoreReceiptProjectionBatchLotTest extends TestCase
     }
 
     // =====================================================================
+    // FIX ROUND r1 — (i) containment: a failing lot arm never loses the receipt
+    //   inventory gate F-1 · fiscal gate F-1 + F-2
+    // =====================================================================
+
+    public function test_a_throwing_lot_arm_never_takes_the_sealed_receipt_down(): void
+    {
+        // Deliberately the MIRROR of `requiresPostgresLotDraw()`: this one runs
+        // ONLY where the FEFO draw cannot. On SQLite `consumeBatchesAtomically()`
+        // raises a real `QueryException` (`FOR UPDATE … SKIP LOCKED` is
+        // unparseable), which is precisely the "any other exception" shape the
+        // fiscal gate proved took the whole projection down — it injected a
+        // `LogicException` and measured `receipts = 0`. So the driver limitation
+        // is not worked around here, it is USED as an honest fault injector, and
+        // this is the one containment proof that needs no mock of a final class.
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            $this->markTestSkipped('Needs a driver on which the FEFO draw genuinely throws; on PostgreSQL it succeeds.');
+        }
+
+        $product = $this->seedProduct(requiresBatchTracking: true);
+        $stock = $this->seedStockLevel($product->id, null, '10.0000');
+        $lot = $this->seedLot($product->id, 'LOT-A', now()->addDays(30)->toDateString(), '10.0000');
+
+        $event = $this->saleEvent($product->id, '4.000');
+
+        Log::spy();
+        app(CompanyContext::class)->clear();
+        $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+
+        // The sealed receipt, its lines, its VAT rows and its payment legs all
+        // survive. THIS is the contract: a projector may never reject a signed
+        // event, and an inventory sub-act is not allowed to become a rejection.
+        $this->assertSame(1, DB::table('pos_receipts')->count());
+        $this->assertSame(1, DB::table('pos_receipt_lines')->count());
+        $this->assertSame(1, DB::table('pos_receipt_payments')->count());
+
+        // The aggregate arm ran and committed — it is upstream of the savepoint.
+        $stock->refresh();
+        $this->assertSame('6.0000', $stock->quantity);
+        $this->assertSame(1, DB::table('stock_movements')->where('reason', 'pos_sale')->count());
+
+        // The lot arm rolled back cleanly inside its own savepoint: no half leg,
+        // no orphan allocation row.
+        $this->assertSame('10.0000', $this->lotQuantity($lot->id));
+        $this->assertSame(0, DB::table('inventory_batch_movements')->count());
+        $this->assertSame(0, DB::table('pos_receipt_line_batch_allocations')->count());
+
+        // And it is loud: the tuple is now drifted and the operator is told where
+        // to find it.
+        Log::shouldHaveReceived('error')->withArgs(
+            fn (string $message, array $context = []): bool => str_contains($message, 'the lot arm failed')
+                && str_contains($message, 'inventory:lot-drift-census')
+                && ($context['arm'] ?? null) === 'sale'
+        );
+    }
+
+    public function test_refund_of_a_product_level_line_on_a_variant_bearing_product_still_projects(): void
+    {
+        // The inventory gate's probe P6 / the fiscal gate's probe P1. A
+        // batch-tracked product that has an ACTIVE variant, refunded on a
+        // PRODUCT-level line whose sale left no lot provenance, drove
+        // `restoreBatchesForReturn()` into `defaultBatchId()`, which REFUSES to
+        // mint a product-level DEFAULT lot for such a product
+        // (`MissingVariantException`). Deterministic, so every Horizon retry
+        // reproduced it and the signed refund dead-lettered: no receipt, no VAT,
+        // no payment leg, no drawer movement, for money already handed back.
+        //
+        // Two independent fixes close it — the containment savepoint, and F-3's
+        // `mintDefaultLotForUnattributed: false`, which means the refund arm no
+        // longer calls `defaultBatchId()` at all. This test asserts the OUTCOME
+        // rather than either mechanism, so it keeps biting if either is undone.
+        $this->requiresPostgresLotDraw();
+
+        $product = $this->seedProduct(requiresBatchTracking: true);
+        ProductVariant::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'product_id' => $product->id,
+            'is_active' => true,
+        ]);
+
+        $stock = $this->seedStockLevel($product->id, null, '10.0000');
+        $lot = $this->seedLot($product->id, 'LOT-A', now()->addDays(30)->toDateString(), '10.0000');
+
+        $projector = $this->app->make(PosCoreReceiptProjection::class);
+
+        $sale = $this->saleEvent($product->id, '4.000', sequenceNumber: 1, receiptUuid: $this->uuid(1));
+        app(CompanyContext::class)->clear();
+        $projector->apply($sale);
+
+        // Rewind the lot side to the PRE-LANE historical state: the sale moved the
+        // aggregate and the lot ledger never heard about it. That is exactly the
+        // shape of all 27 drifted units on the re-run tenant.
+        $this->rewindLotSideToPreLaneState($lot->id, '10.0000');
+
+        $refund = $this->refundEvent($sale, $product->id, '4.000', 'restock', sequenceNumber: 2);
+        app(CompanyContext::class)->clear();
+        $projector->apply($refund);
+
+        $this->assertSame(2, DB::table('pos_receipts')->count(), 'the sealed refund must be projected, never dead-lettered');
+        $this->assertSame(
+            1,
+            DB::table('pos_receipts')->where('fiscal_event_id', $refund->id)->count(),
+            'the refund receipt row itself must exist',
+        );
+
+        $stock->refresh();
+        $this->assertSame('10.0000', $stock->quantity, 'the aggregate is restored');
+    }
+
+    // =====================================================================
+    // FIX ROUND r1 — (j) a provenance hint naming the DEFAULT lot is honoured
+    //   inventory gate F-2 (probe P4)
+    // =====================================================================
+
+    public function test_refund_credits_the_default_lot_when_that_is_the_lot_the_sale_took(): void
+    {
+        $this->requiresPostgresLotDraw();
+
+        // The first tenant's dominant shape, not an edge case: every batch-tracked
+        // product there carries a DEFAULT lot, and where a dated lot also exists
+        // the DEFAULT one has the EARLIER expiry — so FEFO draws DEFAULT first on
+        // essentially every POS sale, and every refund of one takes this path.
+        $product = $this->seedProduct(requiresBatchTracking: true);
+        $stock = $this->seedStockLevel($product->id, null, '20.0000');
+        $default = $this->seedLot($product->id, 'DEFAULT', now()->addDays(10)->toDateString(), '10.0000');
+        $dated = $this->seedLot($product->id, 'LOT-DATED', now()->addDays(200)->toDateString(), '10.0000');
+
+        $projector = $this->app->make(PosCoreReceiptProjection::class);
+
+        $sale1 = $this->saleEvent($product->id, '4.000', sequenceNumber: 1, receiptUuid: $this->uuid(1));
+        app(CompanyContext::class)->clear();
+        $projector->apply($sale1);
+
+        $sale2 = $this->saleEvent($product->id, '8.000', sequenceNumber: 2, receiptUuid: $this->uuid(2));
+        app(CompanyContext::class)->clear();
+        $projector->apply($sale2);
+
+        $this->assertSame('0.0000', $this->lotQuantity($default->id), 'FEFO drained the earlier-expiry DEFAULT lot first');
+        $this->assertSame('8.0000', $this->lotQuantity($dated->id));
+
+        $refund = $this->refundEvent($sale1, $product->id, '4.000', 'restock', sequenceNumber: 3);
+        app(CompanyContext::class)->clear();
+        $projector->apply($refund);
+
+        $stock->refresh();
+        $this->assertSame('12.0000', $stock->quantity);
+        // Pre-fix this credited 2 of the 4 units to LOT-DATED — a lot that never
+        // shipped them — because the ceiling map excluded DEFAULT lots, so the
+        // hint found no ceiling and fell through to the "most recently shipped"
+        // heuristic. Σ lots still reconciled, which is why nothing caught it.
+        $this->assertSame('4.0000', $this->lotQuantity($default->id), 'the DEFAULT lot shipped them, so the DEFAULT lot gets them back');
+        $this->assertSame('8.0000', $this->lotQuantity($dated->id), 'the dated lot must not be credited units it never shipped');
+        $this->assertSame('12.0000', $this->lotSum($product->id));
+    }
+
+    // =====================================================================
+    // FIX ROUND r1 — (k) refunding a PRE-LANE sale mints no phantom DEFAULT
+    //   inventory gate F-3 (probe P1)
+    // =====================================================================
+
+    public function test_refund_of_a_pre_lane_sale_mints_no_phantom_default_lot_and_closes_the_drift(): void
+    {
+        $this->requiresPostgresLotDraw();
+
+        $product = $this->seedProduct(requiresBatchTracking: true);
+        $stock = $this->seedStockLevel($product->id, null, '10.0000');
+        $lot = $this->seedLot($product->id, 'LOT-A', now()->addDays(30)->toDateString(), '10.0000');
+
+        $projector = $this->app->make(PosCoreReceiptProjection::class);
+
+        $sale = $this->saleEvent($product->id, '4.000', sequenceNumber: 1, receiptUuid: $this->uuid(1));
+        app(CompanyContext::class)->clear();
+        $projector->apply($sale);
+
+        $this->rewindLotSideToPreLaneState($lot->id, '10.0000');
+
+        // The historical state: aggregate 6, Σ lots 10 — drift +4.
+        $stock->refresh();
+        $this->assertSame('6.0000', $stock->quantity);
+        $this->assertSame('10.0000', $this->lotSum($product->id));
+
+        $refund = $this->refundEvent($sale, $product->id, '4.000', 'restock', sequenceNumber: 2);
+        app(CompanyContext::class)->clear();
+        $projector->apply($refund);
+
+        $stock->refresh();
+        $this->assertSame('10.0000', $stock->quantity, 'the aggregate is restored');
+        $this->assertSame('10.0000', $this->lotQuantity($lot->id), 'no lot is credited — nothing is attributable');
+        $this->assertSame('10.0000', $this->lotSum($product->id));
+
+        // The whole point: restoring the aggregate ALONE closes the drift. The
+        // first cut of this lane minted a DEFAULT@today+365 for the full 4 units
+        // here, turning a self-healing case into a permanent +4 AND re-creating
+        // the exact phantom `inventory:repair-phantom-default-batches` exists to
+        // delete — short-dated goods re-labelled untracked so FEFO ships them last.
+        $this->assertSame(
+            0,
+            DB::table('product_batches')->where('batch_number', 'DEFAULT')->count(),
+            'a refund must never mint a DEFAULT lot',
+        );
+        $this->assertSame('0.0000', $this->driftFor($product->id));
+    }
+
+    // =====================================================================
+    // FIX ROUND r1 — (l) the drift a shortfall leaves is DETECTABLE
+    //   inventory gate F-4 · fiscal gate F-5
+    // =====================================================================
+
+    public function test_a_lot_shortfall_is_reported_by_the_drift_census(): void
+    {
+        $this->requiresPostgresLotDraw();
+
+        // The inventory gate's probe P5, and the cleanest shortfall shape there
+        // is: the tuple starts perfectly RECONCILED (10 aggregate, 10 in lots) and
+        // its only lot is EXPIRED. FEFO's candidate predicate excludes expired
+        // lots — deliberately, a parapharmacy must not ship them — so the draw
+        // finds nothing while the aggregate happily decrements.
+        $product = $this->seedProduct(requiresBatchTracking: true);
+        $this->seedStockLevel($product->id, null, '10.0000');
+        $this->seedLot($product->id, 'LOT-EXPIRED', now()->subDay()->toDateString(), '10.0000');
+
+        $this->assertSame('0.0000', $this->driftFor($product->id), 'the fixture starts reconciled');
+
+        $event = $this->saleEvent($product->id, '4.000');
+
+        app(CompanyContext::class)->clear();
+        $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+
+        // None of the 4 sold units could be drawn from a lot, so the ledger now
+        // overstates on-hand by 4. Before this fix round that fact lived in a
+        // Log::warning and nowhere else.
+        $this->assertSame('4.0000', $this->driftFor($product->id));
+
+        $census = $this->app->make(LotLedgerDriftCensus::class)->driftedTuples($this->companyId);
+
+        $this->assertCount(1, $census);
+        $this->assertSame($product->id, $census[0]['product_id']);
+        $this->assertSame($this->locationId, $census[0]['location_id']);
+        $this->assertSame('4.0000', $census[0]['drift']);
+        $this->assertSame('6.0000', $census[0]['aggregate']);
+        $this->assertSame('10.0000', $census[0]['lot_total']);
+    }
+
+    public function test_the_operator_command_reports_the_shortfall_drift_and_writes_nothing(): void
+    {
+        $this->requiresPostgresLotDraw();
+
+        $product = $this->seedProduct(requiresBatchTracking: true);
+        $this->seedStockLevel($product->id, null, '10.0000');
+        $this->seedLot($product->id, 'LOT-EXPIRED', now()->subDay()->toDateString(), '10.0000');
+
+        $event = $this->saleEvent($product->id, '4.000');
+        app(CompanyContext::class)->clear();
+        $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+
+        $movementsBefore = DB::table('stock_movements')->count();
+        $lotLegsBefore = DB::table('inventory_batch_movements')->count();
+
+        $this->artisan('inventory:lot-drift-census', ['--tenant' => $this->tenantId])
+            ->expectsOutputToContain('DRIFT 4.0000')
+            ->expectsOutputToContain('an outbound act moved stock_levels, not the lot ledger')
+            ->expectsOutputToContain('Tuples drifted: 1')
+            ->expectsOutputToContain('Read-only census: nothing was written.')
+            ->assertExitCode(0);
+
+        // A detector that mutates is not a detector.
+        $this->assertSame($movementsBefore, DB::table('stock_movements')->count());
+        $this->assertSame($lotLegsBefore, DB::table('inventory_batch_movements')->count());
+        $this->assertSame('10.0000', $this->lotSum($product->id));
+
+        // --fail-on-drift is what makes it usable as a scheduled check.
+        $this->artisan('inventory:lot-drift-census', [
+            '--tenant' => $this->tenantId,
+            '--fail-on-drift' => true,
+        ])->assertExitCode(1);
+    }
+
+    public function test_the_census_command_refuses_to_run_without_an_explicit_scope(): void
+    {
+        $this->artisan('inventory:lot-drift-census')
+            ->expectsOutputToContain('Refusing to run without an explicit scope')
+            ->assertExitCode(2);
+    }
+
+    public function test_the_census_is_silent_when_every_lot_leg_was_written(): void
+    {
+        $this->requiresPostgresLotDraw();
+
+        $product = $this->seedProduct(requiresBatchTracking: true);
+        $this->seedStockLevel($product->id, null, '10.0000');
+        $this->seedLot($product->id, 'LOT-A', now()->addDays(30)->toDateString(), '10.0000');
+
+        $event = $this->saleEvent($product->id, '4.000');
+
+        app(CompanyContext::class)->clear();
+        $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+
+        $this->assertSame([], $this->app->make(LotLedgerDriftCensus::class)->driftedTuples($this->companyId));
+    }
+
+    // =====================================================================
+    // FIX ROUND r1 — partial refund lot order is contract, not luck
+    //   inventory gate F-6
+    // =====================================================================
+
+    public function test_partial_refund_credits_the_earliest_expiry_lot_the_line_took(): void
+    {
+        $this->requiresPostgresLotDraw();
+
+        $product = $this->seedProduct(requiresBatchTracking: true);
+        $stock = $this->seedStockLevel($product->id, null, '13.0000');
+        $early = $this->seedLot($product->id, 'LOT-EARLY', now()->addDays(30)->toDateString(), '3.0000');
+        $late = $this->seedLot($product->id, 'LOT-LATE', now()->addDays(120)->toDateString(), '10.0000');
+
+        $projector = $this->app->make(PosCoreReceiptProjection::class);
+
+        // One line spanning two lots: 3 from LOT-EARLY, 2 from LOT-LATE.
+        $sale = $this->saleEvent($product->id, '5.000', sequenceNumber: 1, receiptUuid: $this->uuid(1));
+        app(CompanyContext::class)->clear();
+        $projector->apply($sale);
+
+        $this->assertSame('0.0000', $this->lotQuantity($early->id));
+        $this->assertSame('8.0000', $this->lotQuantity($late->id));
+
+        // Refund only 2 of the 5. Which lot gets them was previously decided by
+        // whatever order PostgreSQL returned the allocation rows in.
+        $refund = $this->refundEvent($sale, $product->id, '2.000', 'restock', sequenceNumber: 2);
+        app(CompanyContext::class)->clear();
+        $projector->apply($refund);
+
+        $stock->refresh();
+        $this->assertSame('10.0000', $stock->quantity);
+        $this->assertSame('2.0000', $this->lotQuantity($early->id), 'the short-dated lot is restored first, so FEFO ships those units NEXT');
+        $this->assertSame('8.0000', $this->lotQuantity($late->id));
+        $this->assertSame('10.0000', $this->lotSum($product->id));
+    }
+
+    // =====================================================================
     // Helpers
     // =====================================================================
+
+    /**
+     * Rewind the lot side of a just-projected sale to the PRE-LANE historical
+     * state: the aggregate moved, the lot ledger never heard about it, and no
+     * allocation row was ever written.
+     *
+     * This is a FIXTURE, not a behaviour: it reproduces, exactly, the state the
+     * 27 drifted units on the re-run tenant are in — a sale projected by the
+     * code as it stood before this lane. It cannot be produced by running the
+     * fixed projection, which is the whole point.
+     */
+    private function rewindLotSideToPreLaneState(int $batchId, string $quantity): void
+    {
+        DB::table('inventory_batch_movements')->delete();
+        DB::table('pos_receipt_line_batch_allocations')->delete();
+        DB::table('inventory_batch_stock')
+            ->where('batch_id', $batchId)
+            ->where('location_id', $this->locationId)
+            ->update(['quantity' => $quantity]);
+    }
+
+    /**
+     * Σ lots − stock_levels for the product at this test's location, at scale 4.
+     * Positive means the lot ledger overstates on-hand.
+     */
+    private function driftFor(string $productId): string
+    {
+        /** @var numeric-string $aggregate */
+        $aggregate = bcadd((string) DB::table('stock_levels')
+            ->where('product_id', $productId)
+            ->where('location_id', $this->locationId)
+            ->whereNull('variant_id')
+            ->value('quantity'), '0', 4); // precision-ok: 4 = canonical quantity storage scale
+
+        return bcsub($this->lotSum($productId), $aggregate, 4); // precision-ok: 4 = canonical quantity storage scale
+    }
 
     /**
      * The raw sealed bytes. `fiscal_events.canonical_bytes` is `bytea` on
