@@ -12,6 +12,8 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Contracts\Http\Kernel as HttpKernelContract;
+use Illuminate\Foundation\Http\Kernel as HttpKernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -131,6 +133,94 @@ final class CompanyContextMiddlewareTypedErrorsTest extends TestCase
             'numeric' => ['12345'],
             'uuid with trailing junk' => ['01a034af-94ea-713d-8ce0-462216bf6ab5x'],
         ];
+    }
+
+    /**
+     * Gate r1 item 5 / F-4 — the company BOOTSTRAP route resolves no company
+     * context at all, so a stale, foreign or junk `X-Company-Id` can never deny
+     * the one call that would correct it. Without this the deadlock is
+     * unrecoverable for any client that sends the header on every request —
+     * which is exactly what `apps/pos/src/lib/api.ts` still does, and its own
+     * stale-company recovery depends on this call succeeding.
+     */
+    public function test_user_companies_bootstrap_route_ignores_a_foreign_company_header(): void
+    {
+        $foreign = Company::factory()->create(['tenant_id' => Tenant::factory()->create()->id]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $foreign->id)
+            ->getJson('/api/v1/user/companies');
+
+        $response->assertOk();
+        $response->assertJsonPath('data.0.id', $this->memberCompany->id);
+        $response->assertJsonCount(1, 'data');
+    }
+
+    public function test_user_companies_bootstrap_route_ignores_a_malformed_company_header(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', 'not-a-uuid')
+            ->getJson('/api/v1/user/companies');
+
+        $response->assertOk();
+        $response->assertJsonPath('data.0.id', $this->memberCompany->id);
+    }
+
+    /**
+     * The recovery-screen state: a user with no ACTIVE membership. Ignoring only
+     * the header would still 403 here with NO_COMPANY_ACCESS; skipping company
+     * resolution wholesale answers with an honest empty list.
+     */
+    public function test_user_companies_bootstrap_route_answers_a_user_with_no_active_membership(): void
+    {
+        $orphan = User::factory()->create(['tenant_id' => $this->tenant->id]);
+
+        $response = $this->actingAs($orphan, 'sanctum')
+            ->getJson('/api/v1/user/companies');
+
+        $response->assertOk();
+        $response->assertJsonCount(0, 'data');
+    }
+
+    /**
+     * F-2 — the list the client may select from must be exactly the set
+     * `userHasAccessToCompany` accepts. When they disagreed, a scope reset could
+     * deterministically re-pick a company the middleware denies, and loop.
+     */
+    public function test_user_companies_lists_only_active_memberships(): void
+    {
+        $revoked = Company::factory()->create(['tenant_id' => $this->tenant->id]);
+        UserCompanyMembership::create([
+            'user_id' => $this->user->id,
+            'company_id' => $revoked->id,
+            'role' => 'admin',
+            'status' => MembershipStatus::Revoked->value,
+            'is_primary' => false,
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/user/companies');
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $this->memberCompany->id);
+
+        $context = new CompanyContext;
+        $this->assertFalse($context->userHasAccessToCompany($this->user, $revoked->id));
+    }
+
+    /**
+     * F-6 — the probe route above mounts the middleware directly, so nothing
+     * else in this file pins that it is still wired into the global `api` group
+     * (bootstrap/app.php). If that registration is ever dropped, every
+     * company-scoped route silently loses its membership check.
+     */
+    public function test_company_context_middleware_is_registered_in_the_api_middleware_group(): void
+    {
+        $kernel = $this->app->make(HttpKernelContract::class);
+        $this->assertInstanceOf(HttpKernel::class, $kernel);
+
+        $this->assertContains(CompanyContextMiddleware::class, $kernel->getMiddlewareGroups()['api']);
     }
 
     /**
