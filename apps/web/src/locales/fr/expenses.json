@@ -147,6 +147,7 @@
     "confirmDelete": "Êtes-vous sûr de vouloir supprimer cette dépense ?"
   },
   "errors": {
+    "paidWithoutRepository": "Une dépense réglée en espèces doit indiquer la caisse d'où l'argent est sorti. Choisissez une caisse, choisissez un mode de paiement autre qu'espèces, ou laissez-la impayée pour la régler plus tard.",
     "notFound": "Dépense introuvable"
   },
   "pay": {

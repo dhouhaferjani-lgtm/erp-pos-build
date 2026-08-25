@@ -32,6 +32,7 @@ use App\Modules\Treasury\Domain\Enums\CancellationShape;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Payment;
+use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Voucher\Domain\Enums\VoucherEvent;
 use App\Modules\Voucher\Domain\Enums\VoucherSource;
@@ -154,7 +155,7 @@ final class GeneralLedgerService
             $revenueAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::ProductRevenue);
             $taxAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::VatCollected);
 
-            $entryNumber = $this->generateEntryNumber($companyId);
+            $entryNumber = $this->generateEntryNumber($invoice->tenant_id, $companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $invoice->tenant_id,
@@ -238,7 +239,7 @@ final class GeneralLedgerService
             $revenueAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::ProductRevenue);
             $taxAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::VatCollected);
 
-            $entryNumber = $this->generateEntryNumber($companyId);
+            $entryNumber = $this->generateEntryNumber($creditNote->tenant_id, $companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $creditNote->tenant_id,
@@ -361,7 +362,7 @@ final class GeneralLedgerService
         ?string $partnerId = null,
     ): JournalEntry {
         $entry = DB::transaction(function () use ($companyId, $amount, $debitAccountId, $creditAccountId, $description, $user, $partnerId): JournalEntry {
-            $entryNumber = $this->generateEntryNumber($companyId);
+            $entryNumber = $this->generateEntryNumber($user->tenant_id, $companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $user->tenant_id,
@@ -460,7 +461,7 @@ final class GeneralLedgerService
             $entry = JournalEntry::create([
                 'tenant_id' => $company->tenant_id,
                 'company_id' => $companyId,
-                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_number' => $this->generateEntryNumber($company->tenant_id, $companyId),
                 'entry_date' => $date,
                 'description' => $description,
                 'status' => JournalEntryStatus::Draft,
@@ -534,13 +535,12 @@ final class GeneralLedgerService
             $companyId, $partnerId, $advanceId, $amount, $paymentMethodAccountId,
             $date, $description, $advanceAccount
         ): JournalEntry {
-            $entryNumber = $this->generateEntryNumber($companyId);
-
             // Derive tenant_id from the company (not the actor): the actor is
             // nullable now — an offline-authored ACCOUNT_PAYMENT whose cashier is
             // not a resolvable company member still moves cash and must post its
             // customer-advance GL consequence (Task 24 Fix A).
             $company = Company::findOrFail($companyId);
+            $entryNumber = $this->generateEntryNumber($company->tenant_id, $companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $company->tenant_id,
@@ -639,9 +639,8 @@ final class GeneralLedgerService
             $companyId, $partnerId, $refundId, $amount, $paymentMethodAccountId,
             $date, $description, $advanceAccount
         ): JournalEntry {
-            $entryNumber = $this->generateEntryNumber($companyId);
-
             $company = Company::findOrFail($companyId);
+            $entryNumber = $this->generateEntryNumber($company->tenant_id, $companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $company->tenant_id,
@@ -751,9 +750,8 @@ final class GeneralLedgerService
             $companyId, $partnerId, $reversalPaymentId, $amount, $paymentMethodAccountId,
             $date, $description, $advanceAccount
         ): JournalEntry {
-            $entryNumber = $this->generateEntryNumber($companyId);
-
             $company = Company::findOrFail($companyId);
+            $entryNumber = $this->generateEntryNumber($company->tenant_id, $companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $company->tenant_id,
@@ -849,9 +847,8 @@ final class GeneralLedgerService
             $companyId, $partnerId, $refundPaymentId, $amount, $paymentMethodAccountId,
             $date, $description, $receivableAccount
         ): JournalEntry {
-            $entryNumber = $this->generateEntryNumber($companyId);
-
             $company = Company::findOrFail($companyId);
+            $entryNumber = $this->generateEntryNumber($company->tenant_id, $companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $company->tenant_id,
@@ -928,7 +925,7 @@ final class GeneralLedgerService
             $companyId, $partnerId, $invoiceId, $totalAmount, $netAmount, $vatAmount,
             $expenseAccountId, $date, $description, $payableAccount, $vatAccount, $user
         ): JournalEntry {
-            $entryNumber = $this->generateEntryNumber($companyId);
+            $entryNumber = $this->generateEntryNumber($user->tenant_id, $companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $user->tenant_id,
@@ -1016,7 +1013,7 @@ final class GeneralLedgerService
             $companyId, $partnerId, $paymentId, $amount, $paymentMethodAccountId,
             $date, $description, $payableAccount, $user
         ): JournalEntry {
-            $entryNumber = $this->generateEntryNumber($companyId);
+            $entryNumber = $this->generateEntryNumber($user->tenant_id, $companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $user->tenant_id,
@@ -1195,7 +1192,7 @@ final class GeneralLedgerService
             $entry = JournalEntry::query()->create([
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
-                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_number' => $this->generateEntryNumber($tenantId, $companyId),
                 'entry_date' => $date,
                 'description' => $description,
                 'status' => JournalEntryStatus::Draft,
@@ -1262,7 +1259,7 @@ final class GeneralLedgerService
             $companyId, $partnerId, $expenseId, $amount, $paymentMethodAccountId,
             $date, $description, $payableAccount, $user
         ): JournalEntry {
-            $entryNumber = $this->generateEntryNumber($companyId);
+            $entryNumber = $this->generateEntryNumber($user->tenant_id, $companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $user->tenant_id,
@@ -1355,7 +1352,7 @@ final class GeneralLedgerService
         $entry = DB::transaction(function () use (
             $companyId, $tenantId, $adjustmentId, $repositoryGlAccountId, $direction, $amount, $date, $description, $varianceAccount
         ): JournalEntry {
-            $entryNumber = $this->generateEntryNumber($companyId);
+            $entryNumber = $this->generateEntryNumber($tenantId, $companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $tenantId,
@@ -1454,7 +1451,7 @@ final class GeneralLedgerService
             $entry = JournalEntry::create([
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
-                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_number' => $this->generateEntryNumber($tenantId, $companyId),
                 'entry_date' => $date,
                 'description' => 'Card acquirer fee retained from statement settlement',
                 'status' => JournalEntryStatus::Draft,
@@ -1524,7 +1521,7 @@ final class GeneralLedgerService
             $entry = JournalEntry::create([
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
-                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_number' => $this->generateEntryNumber($tenantId, $companyId),
                 'entry_date' => $date,
                 'description' => $description,
                 'status' => JournalEntryStatus::Draft,
@@ -1585,10 +1582,9 @@ final class GeneralLedgerService
             $companyId, $partnerId, $paymentId, $amount, $paymentMethodAccountId,
             $date, $description, $receivableAccount
         ): JournalEntry {
-            $entryNumber = $this->generateEntryNumber($companyId);
-
             // Get tenant_id from company
             $company = Company::findOrFail($companyId);
+            $entryNumber = $this->generateEntryNumber($company->tenant_id, $companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $company->tenant_id,
@@ -1686,10 +1682,9 @@ final class GeneralLedgerService
             $companyId, $partnerId, $documentId, $amount, $type,
             $date, $description, $receivableAccount, $writeoffAccount
         ): JournalEntry {
-            $entryNumber = $this->generateEntryNumber($companyId);
-
             // Get tenant_id from company
             $company = Company::findOrFail($companyId);
+            $entryNumber = $this->generateEntryNumber($company->tenant_id, $companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $company->tenant_id,
@@ -1836,10 +1831,9 @@ final class GeneralLedgerService
                 );
             }
 
-            $entryNumber = $this->generateEntryNumber($companyId);
-
             // Get tenant_id from company
             $company = Company::findOrFail($companyId);
+            $entryNumber = $this->generateEntryNumber($company->tenant_id, $companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $company->tenant_id,
@@ -2125,7 +2119,7 @@ final class GeneralLedgerService
             }
 
             $company = Company::findOrFail($companyId);
-            $entryNumber = $this->generateEntryNumber($companyId);
+            $entryNumber = $this->generateEntryNumber($company->tenant_id, $companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $company->tenant_id,
@@ -2275,7 +2269,7 @@ final class GeneralLedgerService
         $entry = JournalEntry::create([
             'tenant_id' => $company->tenant_id,
             'company_id' => $companyId,
-            'entry_number' => $this->generateEntryNumber($companyId),
+            'entry_number' => $this->generateEntryNumber($company->tenant_id, $companyId),
             'entry_date' => $supplierInvoice->document_date,
             'description' => "Supplier invoice {$supplierInvoice->document_number} — GR-IR clearing",
             'status' => JournalEntryStatus::Draft,
@@ -2492,7 +2486,7 @@ final class GeneralLedgerService
         $entry = JournalEntry::create([
             'tenant_id' => $company->tenant_id,
             'company_id' => $companyId,
-            'entry_number' => $this->generateEntryNumber($companyId),
+            'entry_number' => $this->generateEntryNumber($company->tenant_id, $companyId),
             'entry_date' => $creditNote->document_date,
             'description' => "Supplier credit note {$creditNote->document_number} — reversal",
             'status' => JournalEntryStatus::Draft,
@@ -2688,7 +2682,7 @@ final class GeneralLedgerService
         $entry = JournalEntry::create([
             'tenant_id' => $company->tenant_id,
             'company_id' => $companyId,
-            'entry_number' => $this->generateEntryNumber($companyId),
+            'entry_number' => $this->generateEntryNumber($company->tenant_id, $companyId),
             'entry_date' => $creditNote->document_date,
             'description' => "Supplier credit note {$creditNote->document_number} — reversal",
             'status' => JournalEntryStatus::Draft,
@@ -2925,7 +2919,7 @@ final class GeneralLedgerService
 
         $entry = DB::transaction(function () use ($ledgerRow, $voucher, $scale): JournalEntry {
             $companyId = $voucher->company_id;
-            $entryNumber = $this->generateEntryNumber($companyId);
+            $entryNumber = $this->generateEntryNumber($voucher->tenant_id, $companyId);
             /** @var numeric-string $rawAmount */
             $rawAmount = $ledgerRow->amount;
             $absAmount = bccomp($rawAmount, '0', $scale) < 0
@@ -3200,7 +3194,7 @@ final class GeneralLedgerService
             $entry = JournalEntry::query()->create([
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
-                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_number' => $this->generateEntryNumber($tenantId, $companyId),
                 'entry_date' => $date,
                 'description' => 'Instrument clearing',
                 'status' => JournalEntryStatus::Draft,
@@ -3309,7 +3303,7 @@ final class GeneralLedgerService
             $entry = JournalEntry::query()->create([
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
-                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_number' => $this->generateEntryNumber($tenantId, $companyId),
                 'entry_date' => $date,
                 'description' => $afterClearing ? 'Instrument dishonor after clearing' : 'Instrument bounce before clearing',
                 'status' => JournalEntryStatus::Draft,
@@ -3395,7 +3389,7 @@ final class GeneralLedgerService
             $entry = JournalEntry::query()->create([
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
-                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_number' => $this->generateEntryNumber($tenantId, $companyId),
                 'entry_date' => $date,
                 'description' => 'Tolerance reversal after instrument dishonor',
                 'status' => JournalEntryStatus::Draft,
@@ -3450,7 +3444,7 @@ final class GeneralLedgerService
             $entry = JournalEntry::query()->create([
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
-                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_number' => $this->generateEntryNumber($tenantId, $companyId),
                 'entry_date' => $date,
                 'description' => $description,
                 'status' => JournalEntryStatus::Draft,
@@ -3535,7 +3529,7 @@ final class GeneralLedgerService
             $entry = JournalEntry::query()->create([
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
-                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_number' => $this->generateEntryNumber($tenantId, $companyId),
                 'entry_date' => $date,
                 'description' => 'Instrument receipt cancellation',
                 'status' => JournalEntryStatus::Draft,
@@ -3775,6 +3769,21 @@ final class GeneralLedgerService
             throw UnbalancedJournalEntryPostException::forChokepoint($totalDebit, $totalCredit);
         }
 
+        // C-27 fix round r1 (stock-gl gate F-1). The tenant-keyed NUMBERING lock is
+        // taken here too, immediately before the company key, so the invariant is
+        // universal: EVERY path that takes the company chain key takes the tenant
+        // numbering key FIRST. It is not enough to order the two keys inside
+        // generateEntryNumber, because this method also runs for entries that were
+        // numbered in an EARLIER transaction and therefore mint nothing — the
+        // `$existing`-Draft replay branches of createInventoryMovementEntry and
+        // createInventoryWriteOffEntry, reached in production by
+        // InventoryGlPostingBuffer::flushIfOutermost() posting a batch inside one
+        // root transaction. Without this line such a transaction acquired
+        // company -> tenant while an ordinary mint acquired tenant -> company: a
+        // real AB-BA that PostgreSQL resolves with SQLSTATE 40P01 (reproduced by
+        // the gate). Cost of the fix: posting now also serialises tenant-wide.
+        $this->takeTenantNumberingLock($entry->tenant_id);
+
         // Serialize chain-sequence + hash reads per company via a transaction-scoped
         // advisory lock (released at commit). Concurrent posts to one company would
         // otherwise race on these unlocked max() reads and allocate duplicate
@@ -3855,7 +3864,7 @@ final class GeneralLedgerService
             $revenueAccount,
         ): JournalEntry {
             $company = Company::findOrFail($companyId);
-            $entryNumber = $this->generateEntryNumber($companyId);
+            $entryNumber = $this->generateEntryNumber($company->tenant_id, $companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $company->tenant_id,
@@ -3948,7 +3957,7 @@ final class GeneralLedgerService
         $entry = DB::transaction(function () use ($payment, $receipt, $repository, $cashAccountOverrideId, $vatSplit, $tender): JournalEntry {
             $companyId = $payment->company_id;
 
-            $entryNumber = $this->generateEntryNumber($companyId);
+            $entryNumber = $this->generateEntryNumber($payment->tenant_id, $companyId);
 
             // Get tenant_id from payment
             $entry = JournalEntry::create([
@@ -4214,7 +4223,7 @@ final class GeneralLedgerService
         $entry = DB::transaction(function () use ($payment, $receipt, $repository, $vatSplit, $tender): JournalEntry {
             $companyId = $payment->company_id;
 
-            $entryNumber = $this->generateEntryNumber($companyId);
+            $entryNumber = $this->generateEntryNumber($payment->tenant_id, $companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $payment->tenant_id,
@@ -4338,7 +4347,7 @@ final class GeneralLedgerService
             $entry = JournalEntry::create([
                 'tenant_id' => (string) $receipt->tenant_id,
                 'company_id' => $companyId,
-                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_number' => $this->generateEntryNumber((string) $receipt->tenant_id, $companyId),
                 'entry_date' => $receipt->posted_at,
                 'description' => "POS cash rounding {$receipt->receipt_number}",
                 'status' => JournalEntryStatus::Draft,
@@ -4442,7 +4451,7 @@ final class GeneralLedgerService
         $entry = JournalEntry::create([
             'tenant_id' => $tenantId,
             'company_id' => $companyId,
-            'entry_number' => $this->generateEntryNumber($companyId),
+            'entry_number' => $this->generateEntryNumber($tenantId, $companyId),
             'entry_date' => $entryDate,
             'description' => "Refund compensation ({$compensationClass}) for fiscal_event {$fiscalEventId}",
             'status' => JournalEntryStatus::Draft,
@@ -4508,7 +4517,7 @@ final class GeneralLedgerService
             $entry = JournalEntry::create([
                 'tenant_id' => (string) $receipt->tenant_id,
                 'company_id' => $companyId,
-                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_number' => $this->generateEntryNumber((string) $receipt->tenant_id, $companyId),
                 'entry_date' => $receipt->posted_at,
                 'description' => "POS tender tolerance {$receipt->receipt_number}",
                 'status' => JournalEntryStatus::Draft,
@@ -4579,7 +4588,7 @@ final class GeneralLedgerService
             $entry = JournalEntry::create([
                 'tenant_id' => $command->tenantId,
                 'company_id' => $command->companyId,
-                'entry_number' => $this->generateEntryNumber($command->companyId),
+                'entry_number' => $this->generateEntryNumber($command->tenantId, $command->companyId),
                 'entry_date' => $command->businessDate,
                 'description' => "POS Account Charge {$command->accountChargeUuid}",
                 'status' => JournalEntryStatus::Draft,
@@ -4653,6 +4662,45 @@ final class GeneralLedgerService
      *              vendor partner for the AP subledger. NO cash is credited: an unpaid
      *              expense has not moved any money yet (Wave D bug fix).
      */
+    /**
+     * The GL account a NON-CASH payment method settles through, when an expense
+     * was paid without naming a treasury repository (W4-10's sanctioned
+     * carve-out; gate r1 F-3).
+     *
+     * Resolved from `payment_methods.default_account_id` — seeded configuration,
+     * never a hardcoded code — and scoped by tenant+company so a foreign
+     * method's account can never be reached. Null when the method is absent,
+     * carries no default account, or that account does not resolve for this
+     * company; the caller then falls back to the BANK purpose account.
+     */
+    private function paymentMethodAccountForExpense(
+        Document $expense,
+        string $companyId,
+        ?string $paymentMethodId,
+    ): ?Account {
+        if ($paymentMethodId === null) {
+            return null;
+        }
+
+        $accountId = PaymentMethod::query()
+            ->where('tenant_id', $expense->tenant_id)
+            ->where('company_id', $companyId)
+            ->whereKey($paymentMethodId)
+            ->value('default_account_id');
+
+        if (! is_string($accountId) || $accountId === '') {
+            return null;
+        }
+
+        $account = Account::query()
+            ->where('tenant_id', $expense->tenant_id)
+            ->where('company_id', $companyId)
+            ->whereKey($accountId)
+            ->first();
+
+        return $account instanceof Account ? $account : null;
+    }
+
     public function createFromExpense(Document $expense, User $user, PostingMode $mode = PostingMode::AfterCommit): JournalEntry
     {
         if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
@@ -4688,11 +4736,55 @@ final class GeneralLedgerService
             $isPaid = $metadata?->is_paid === true;
             if ($isPaid) {
                 // $isPaid === true implies $metadata is non-null (is_paid was read off it).
-                $repositoryType = $metadata->paymentRepository !== null ? $metadata->paymentRepository->type : RepositoryType::CashRegister;
-                $creditAccount = match ($repositoryType) {
-                    RepositoryType::BankAccount => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Bank),
-                    default => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Cash),
-                };
+                $repository = $metadata->paymentRepository;
+
+                // W4-10: credit the repository's OWN cash/bank account when it
+                // has one, so the treasury movement and the GL line land on the
+                // same account and ReconcileTreasuryCommand's check 2 (which
+                // treats the repository's own gl_account_id line as
+                // AUTHORITATIVE) actually enforces till == ledger. The
+                // purpose-based lookup stays as the fallback for a repository
+                // with no GL link and for the legacy no-repository shape — on
+                // the seeded chart the two resolve to the same account
+                // (PaymentRepositorySeeder links both tills to the Cash
+                // purpose account), so this is a no-op there and only bites
+                // when a tenant splits its cash accounts per till.
+                $repositoryGlAccount = $repository?->gl_account_id !== null
+                    ? Account::query()
+                        ->where('tenant_id', $expense->tenant_id)
+                        ->where('company_id', $companyId)
+                        ->whereKey($repository->gl_account_id)
+                        ->first()
+                    : null;
+
+                if ($repositoryGlAccount instanceof Account) {
+                    $creditAccount = $repositoryGlAccount;
+                } elseif ($repository !== null) {
+                    // A repository with no GL link: fall back on its TYPE.
+                    $creditAccount = match ($repository->type) {
+                        RepositoryType::BankAccount => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Bank),
+                        default => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Cash),
+                    };
+                } else {
+                    // NO repository at all. Since W4-10 this is reachable ONLY
+                    // through the sanctioned non-cash carve-out: an expense paid
+                    // by a method whose `is_cash_tender` is false
+                    // (ExpenseService::assertPaidExpenseNamesRepository refuses
+                    // every other shape). Crediting Cash here — which is what
+                    // shipped — put a CARD payment against `53 Caisse` and moved
+                    // no till, silently breaking the `Σ till balances == GL cash`
+                    // equality W4-2 establishes, in a way treasury:reconcile
+                    // cannot see because there is no movement to check
+                    // (gate r1 F-3, PROBE F: `credit53=45 credit512=0 movements=0`).
+                    //
+                    // The money left through the method's own rail, so credit the
+                    // account that rail is configured with — `payment_methods
+                    // .default_account_id` — and fall back to the BANK purpose
+                    // account, never Cash: a non-cash tender by definition did not
+                    // come out of a drawer.
+                    $creditAccount = $this->paymentMethodAccountForExpense($expense, $companyId, $metadata->payment_method_id)
+                        ?? $this->getAccountByPurpose($companyId, SystemAccountPurpose::Bank);
+                }
                 $creditPartnerId = null;
                 $creditDescription = 'Expense payment';
             } else {
@@ -4701,7 +4793,7 @@ final class GeneralLedgerService
                 $creditDescription = 'Expense payable';
             }
 
-            $entryNumber = $this->generateEntryNumber($companyId);
+            $entryNumber = $this->generateEntryNumber($expense->tenant_id, $companyId);
             $vendorName = $metadata->vendor_name ?? 'General Expense';
 
             $entry = JournalEntry::create([
@@ -4840,7 +4932,7 @@ final class GeneralLedgerService
                 };
             }
 
-            $entryNumber = $this->generateEntryNumber($companyId);
+            $entryNumber = $this->generateEntryNumber($income->tenant_id, $companyId);
             $sourceName = $metadata->source_name ?? 'Income';
 
             $entry = JournalEntry::create([
@@ -4926,7 +5018,7 @@ final class GeneralLedgerService
             $entry = JournalEntry::create([
                 'tenant_id' => $expense->tenant_id,
                 'company_id' => $companyId,
-                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_number' => $this->generateEntryNumber($expense->tenant_id, $companyId),
                 'entry_date' => $metadata->payment_date ?? $expense->document_date,
                 'description' => "Linked cost capitalization: {$expense->document_number}",
                 'status' => JournalEntryStatus::Draft,
@@ -5014,7 +5106,7 @@ final class GeneralLedgerService
             $entry = JournalEntry::create([
                 'tenant_id' => $expense->tenant_id,
                 'company_id' => $companyId,
-                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_number' => $this->generateEntryNumber($expense->tenant_id, $companyId),
                 'entry_date' => now()->toDateString(),
                 'description' => "Linked cost reversal: {$expense->document_number}",
                 'status' => JournalEntryStatus::Draft,
@@ -5196,7 +5288,7 @@ final class GeneralLedgerService
             $entry = JournalEntry::create([
                 'tenant_id' => $company->tenant_id,
                 'company_id' => $companyId,
-                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_number' => $this->generateEntryNumber($company->tenant_id, $companyId),
                 'entry_date' => $entryDate->format('Y-m-d'),
                 'description' => $description,
                 'status' => JournalEntryStatus::Draft,
@@ -5274,7 +5366,7 @@ final class GeneralLedgerService
             $reversal = JournalEntry::create([
                 'tenant_id' => $locked->tenant_id,
                 'company_id' => $locked->company_id,
-                'entry_number' => $this->generateEntryNumber($locked->company_id),
+                'entry_number' => $this->generateEntryNumber($locked->tenant_id, $locked->company_id),
                 'entry_date' => $entryDate,
                 'description' => 'Cutover reversal of '.$locked->entry_number,
                 'status' => JournalEntryStatus::Draft,
@@ -5407,8 +5499,8 @@ final class GeneralLedgerService
                 return $existing;
             }
 
-            $entryNumber = $this->generateEntryNumber($companyId);
             $company = Company::findOrFail($companyId);
+            $entryNumber = $this->generateEntryNumber($company->tenant_id, $companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $company->tenant_id,
@@ -5528,7 +5620,7 @@ final class GeneralLedgerService
             }
 
             $company = Company::findOrFail($companyId);
-            $entryNumber = $this->generateEntryNumber($companyId);
+            $entryNumber = $this->generateEntryNumber($company->tenant_id, $companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $company->tenant_id,
@@ -5594,31 +5686,94 @@ final class GeneralLedgerService
         return Account::findByPurpose($companyId, $purpose) !== null;
     }
 
-    private function generateEntryNumber(string $companyId): string
+    /**
+     * Take the tenant-wide journal-entry NUMBERING advisory lock.
+     *
+     * The key literal lives here and ONLY here — {@see generateEntryNumber} and
+     * {@see sealAndPersistEntry} both call this so the two sites can never drift
+     * apart. String-namespaced so it cannot alias the bare-uuid per-company chain
+     * key. Transaction-scoped (released at commit); outside an explicit
+     * transaction it degrades to a harmless per-statement no-op, and on non-pgsql
+     * drivers it is a no-op entirely.
+     *
+     * INVARIANT: every path that takes the per-company chain key takes THIS key
+     * first. See gate r1 finding F-1.
+     */
+    private function takeTenantNumberingLock(string $tenantId): void
     {
-        // Same per-company advisory lock as sealAndPersistEntry so entry-number and
-        // chain-sequence allocation share serialization: concurrent creates would
-        // otherwise race on this unlocked max()+1 read and allocate a duplicate
-        // entry_number (Task 7). Transaction-scoped, released at commit; when
-        // running outside a transaction it degrades to a harmless per-statement
-        // no-op — every GL create path wraps this in DB::transaction.
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return;
+        }
+
+        DB::statement(
+            'SELECT pg_advisory_xact_lock(hashtextextended(?, 0))',
+            ["journal_entry_number:{$tenantId}"],
+        );
+    }
+
+    /**
+     * Allocate the next journal-entry number for the tenant.
+     *
+     * LEDGER C-27 (Session B2, 2026-08-25) fixes two defects here, in the shape
+     * Q-11 already applied to `ExpenseService::generateExpenseNumber()`:
+     *
+     * 1. SCOPE. The scan is TENANT-scoped, not company-scoped, because the only
+     *    unique index on the column is
+     *    `journal_entries_tenant_id_entry_number_unique` on
+     *    `(tenant_id, entry_number)`. A company-scoped max+1 is NARROWER than the
+     *    constraint it must satisfy: in a tenant with two companies, the second
+     *    company's first entry of the year minted `JE-YYYY-000001`, which the
+     *    first company already held — an unconditional `SQLSTATE 23505` that
+     *    rolled back the whole posting transaction on EVERY JE-minting flow,
+     *    leaving that company GL-dead for the year. Consequence of the widening:
+     *    sequential entry numbers now interleave across the companies of a tenant
+     *    (company A gets ...0001 and ...0003, company B ...0002). The index is
+     *    deliberately left untouched — widening it is an owner ruling
+     *    (FEC-quoted identifier).
+     *
+     * 2. LOCK SCOPE AND ORDER. The max+1 read is serialised by a
+     *    transaction-scoped advisory lock keyed on the SAME (tenant) scope as the
+     *    scan. The pre-existing per-COMPANY key is KEPT and taken second: the hash
+     *    chain and `chain_sequence` are per company and {@see sealAndPersistEntry}
+     *    holds exactly that key. **The invariant, enforced at BOTH sites and
+     *    nowhere else: every path that MINTS or SEALS a journal entry takes the
+     *    tenant numbering key before the company chain key.** Two callers take the
+     *    bare company key without ever minting or sealing in that transaction
+     *    (`AccountingService`, `TreasuryMovementService::transfer()` — the latter
+     *    is safe only because `RepositoryTransferService` mints the JE BEFORE
+     *    calling it; gate r2 F-8); a future caller that takes the company key and
+     *    then mints must go through this helper first. {@see takeTenantNumberingLock} is the single
+     *    place the key literal lives, and `sealAndPersistEntry` calls it too — it
+     *    must, because it also runs for entries numbered in an EARLIER transaction
+     *    (the `$existing`-Draft replay branches), which mint nothing and would
+     *    otherwise acquire company -> tenant and AB-BA against an ordinary mint
+     *    (gate r1 F-1 reproduced SQLSTATE 40P01). The tenant key is
+     *    string-namespaced (`journal_entry_number:{uuid}`) so it cannot alias the
+     *    bare-uuid company chain namespace.
+     *
+     * Both locks are effective only inside an explicit transaction; every GL create
+     * path wraps this in `DB::transaction`, and outside one they degrade to a
+     * harmless per-statement no-op.
+     */
+    private function generateEntryNumber(string $tenantId, string $companyId): string
+    {
+        // ORDER IS LOAD-BEARING — tenant numbering key FIRST, company chain key
+        // SECOND. See the docblock above and sealAndPersistEntry, which takes the
+        // same pair in the same order.
+        $this->takeTenantNumberingLock($tenantId);
+
         if (DB::connection()->getDriverName() === 'pgsql') {
             DB::statement('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', [$companyId]);
         }
 
         $year = date('Y');
-        $lastEntry = JournalEntry::query()
-            ->where('company_id', $companyId)
+        $lastNumber = JournalEntry::query()
+            ->where('tenant_id', $tenantId)
             ->where('entry_number', 'like', "JE-{$year}-%")
             ->orderByDesc('entry_number')
-            ->first();
+            ->value('entry_number');
 
-        if ($lastEntry !== null) {
-            $lastNumber = (int) substr($lastEntry->entry_number, -6);
-            $nextNumber = $lastNumber + 1;
-        } else {
-            $nextNumber = 1;
-        }
+        $nextNumber = is_string($lastNumber) ? ((int) substr($lastNumber, -6)) + 1 : 1;
 
         return sprintf('JE-%s-%06d', $year, $nextNumber);
     }

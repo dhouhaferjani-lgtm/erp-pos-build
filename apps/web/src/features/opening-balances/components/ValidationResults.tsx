@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react'
-import type { OpeningBalanceImportRow } from '../types'
+import type { BatchLevelError, OpeningBalanceImportRow, ValidationErrors } from '../types'
+import { batchLevelErrors } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface ValidationResultsProps {
@@ -11,7 +12,46 @@ interface ValidationResultsProps {
     total_rows: number
     valid_rows: number
     invalid_rows: number
+    /**
+     * gate r2 G-1 — batch-level refusals live under `errors._batch`. They used
+     * to be dropped here, which left a legacy four-column sheet validating
+     * every row VALID, reporting "0 invalid" and refusing to advance with no
+     * message at all.
+     */
+    errors?: ValidationErrors
   } | null
+}
+
+/**
+ * Batch-level codes this build knows how to phrase. A code that is not here
+ * renders through the `unknown` key WITH its code — never the server's English
+ * `message`, which is not translated (rule 11).
+ */
+const KNOWN_BATCH_ERROR_CODES = ['OPENING_CASH_NOT_FULLY_SEEDED', 'OPENING_BATCH_NOT_BALANCED'] as const
+
+function BatchErrorList({ errors }: { errors: BatchLevelError[] }) {
+  const { t } = useTranslation()
+
+  if (errors.length === 0) return null
+
+  return (
+    <ul className="mt-3 space-y-2">
+      {errors.map((error, index) => {
+        const known = (KNOWN_BATCH_ERROR_CODES as readonly string[]).includes(error.code)
+
+        return (
+          <li
+            key={`${error.code}-${String(index)}`}
+            className={`rounded-md border ${colorTokens.intent.danger.borderSubtle} ${colorTokens.intent.danger.bgSubtle} px-3 py-2 text-sm ${colorTokens.intent.danger.textStrong}`}
+          >
+            {known
+              ? t(`openingBalances.validation.batchErrors.${error.code}`, error.params)
+              : t('openingBalances.validation.batchErrors.unknown', { code: error.code })}
+          </li>
+        )
+      })}
+    </ul>
+  )
 }
 
 const rowBadgeConfig = {
@@ -114,6 +154,8 @@ export function ValidationResults({ rows, validationResult }: ValidationResultsP
     ? rows.filter((r) => r.status === 'INVALID')
     : rows
 
+  const batchErrors = batchLevelErrors(validationResult?.errors)
+
   const validCount = rows.filter((r) => r.status === 'VALID').length
   const invalidCount = rows.filter((r) => r.status === 'INVALID').length
   const pendingCount = rows.filter((r) => r.status === 'PENDING').length
@@ -128,6 +170,7 @@ export function ValidationResults({ rows, validationResult }: ValidationResultsP
               ? `${colorTokens.intent.success.bgSubtle} border ${colorTokens.intent.success.borderSubtle}`
               : `${colorTokens.intent.caution.bgSubtle} border ${colorTokens.intent.caution.borderSubtle}`
           }`}
+          data-testid="validation-summary"
         >
           <div className="flex items-center gap-3">
             {validationResult.valid ? (
@@ -152,6 +195,10 @@ export function ValidationResults({ rows, validationResult }: ValidationResultsP
                   total: validationResult.total_rows,
                 })}
               </p>
+              {/* The batch-level refusal, right under the summary it otherwise
+                  contradicts ("2 valid, 0 invalid" beside a batch that cannot
+                  post). */}
+              <BatchErrorList errors={batchErrors} />
             </div>
           </div>
         </div>

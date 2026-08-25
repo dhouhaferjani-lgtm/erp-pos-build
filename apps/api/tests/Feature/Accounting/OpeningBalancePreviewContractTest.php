@@ -126,7 +126,7 @@ final class OpeningBalancePreviewContractTest extends TestCase
             $this->sortedKeys($data['entry'])
         );
         $this->assertSame(
-            ['account_code', 'account_name', 'credit', 'debit', 'description', 'row_number'],
+            ['account_code', 'account_name', 'credit', 'debit', 'description', 'repository_code', 'repository_name', 'row_number'],
             $this->sortedKeys($data['lines'][0])
         );
         $this->assertSame(

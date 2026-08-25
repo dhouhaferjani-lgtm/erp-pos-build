@@ -7,12 +7,14 @@ namespace App\Modules\Accounting\Presentation\Controllers;
 use App\Modules\Accounting\Application\Services\AccountingOpeningService;
 use App\Modules\Accounting\Application\Services\OpeningBalanceBatchService;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
+use App\Modules\Accounting\Domain\Exceptions\OpeningCashNotFullySeededException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Accounting\Presentation\Concerns\RequiresCompanyAccess;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Application\Services\ArApOpeningService;
 use App\Modules\Inventory\Application\Services\InventoryOpeningService;
+use App\Modules\Treasury\Domain\Exceptions\RepositoryAlreadySeededException;
 use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -399,6 +401,11 @@ class OpeningBalanceBatchController extends Controller
                 'rows.*.debit' => ['nullable', 'numeric', 'min:0', 'regex:/^-?\d+(\.\d{1,3})?$/'],
                 'rows.*.credit' => ['nullable', 'numeric', 'min:0', 'regex:/^-?\d+(\.\d{1,3})?$/'],
                 'rows.*.description' => ['nullable', 'string', 'max:255'],
+                // W4-2 — optional; names the payment repository whose day-one
+                // cash float this line seeds. AccountingOpeningService validates
+                // existence, the debit-only rule, the GL-account match and the
+                // never-traded rule per row; this is ingress shape only.
+                'rows.*.repository_code' => ['nullable', 'string', 'max:50'],
             ],
             OpeningBatchType::Inventory => [
                 'rows.*.product_code' => ['required', 'string'],
@@ -618,6 +625,30 @@ class OpeningBalanceBatchController extends Controller
                     'timestamp' => now()->toIso8601String(),
                 ],
             ]);
+        } catch (RepositoryAlreadySeededException $e) {
+            // gate r1 F-5 — this used to fall through to the global handler and
+            // reach the operator as `BUSINESS_ERROR` plus raw server English,
+            // while the sibling W4-10 refusal got a typed code and en/fr/ar.
+            // Same lane, same operator: same treatment.
+            return response()->json([
+                'error' => [
+                    'code' => RepositoryAlreadySeededException::ERROR_CODE,
+                    'message' => __('messages.treasury.repository_already_seeded', [
+                        'repository' => $e->repositoryName,
+                        'code' => $e->repositoryCode,
+                    ]),
+                ],
+                'meta' => ['timestamp' => now()->toIso8601String()],
+            ], 422);
+        } catch (OpeningCashNotFullySeededException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => OpeningCashNotFullySeededException::ERROR_CODE,
+                    'message' => __('messages.accounting.opening_cash_not_fully_seeded'),
+                    'gaps' => $e->gaps,
+                ],
+                'meta' => ['timestamp' => now()->toIso8601String()],
+            ], 422);
         } catch (RuntimeException $e) {
             return response()->json([
                 'error' => [

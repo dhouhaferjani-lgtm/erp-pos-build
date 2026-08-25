@@ -642,6 +642,48 @@ final class EnumCheckParityDetectorLivenessTest extends TestCase
                 "CHECK (((a)::text = 'p'::text) OR ((b)::text = 'q'::text))",
                 null,
             ],
+            // ---- R2-1: a cross-column AND is NEVER a single-column value set.
+            // PostgreSQL renders `CHECK (status IN (…) AND origin IN (…))` as two
+            // `= ANY (ARRAY[…])` predicates joined by AND. The ARRAY-body capture
+            // used to be greedy (`ARRAY\[(.*)\]\s*$`), so it spanned the
+            // intervening `] … ARRAY[` and reported ONE column admitting the UNION
+            // of both sets. That union is frequently EXACTLY the enum's case list,
+            // so the gate returns COVERED for a column PostgreSQL is in fact
+            // restricting to half of it — a live NARROWER write bomb reported as
+            // covered. Reproduced live on `payments.status` (gate r2 §R2-1).
+            // FALSE COVERED is the one failure mode that makes the whole gate lie,
+            // so this shape must return null (which reads MISSING — the safe
+            // direction) no matter how it is dressed up.
+            'an AND of two ARRAY value sets is NOT a single-column value set — R2-1' => [
+                "CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'completed'::character varying])::text[])) AND ((origin)::text = ANY ((ARRAY['failed'::character varying, 'reversed'::character varying])::text[])))",
+                null,
+            ],
+            'NOT VALID does not launder an AND of two ARRAY value sets — R2-1' => [
+                "CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'completed'::character varying])::text[])) AND ((origin)::text = ANY ((ARRAY['failed'::character varying, 'reversed'::character varying])::text[]))) NOT VALID",
+                null,
+            ],
+            'an AND of an ARRAY value set and a non-set clause is NOT a value set — R2-1' => [
+                "CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'completed'::character varying])::text[])) AND (settled_at IS NOT NULL))",
+                null,
+            ],
+            'an AND of an ARRAY value set and a null guard on ANOTHER column is NOT a value set — R2-1' => [
+                "CHECK (((status)::text = ANY ((ARRAY['a'::character varying])::text[])) AND (origin IS NULL))",
+                null,
+            ],
+            'an OR-chain with a nested AND branch is NOT a value set — R2-1' => [
+                "CHECK ((((state)::text = 'open'::text) OR (((state)::text = 'void'::text) AND (voided_at IS NOT NULL))))",
+                null,
+            ],
+            // The counterweight to the two clauses above: the ` AND ` rejection is
+            // QUOTE-AWARE, so a literal that merely CONTAINS the word AND is still
+            // an ordinary value set. A naive `str_contains($flat, ' AND ')` would
+            // turn this into a false MISSING — safe, but a real regression in the
+            // burn-down denominator, and exactly the kind of silent over-rejection
+            // conv. 08 exists to catch.
+            'a literal containing the word AND is still a value set — R2-1 must not over-reject' => [
+                "CHECK (((label)::text = ANY ((ARRAY['salt AND pepper'::character varying, 'z'::character varying])::text[])))",
+                ['column' => 'label', 'values' => ['salt AND pepper', 'z'], 'nullable' => false, 'not_validated' => false],
+            ],
             // The carve-outs. These are NOT value-set constraints and must not be
             // folded into the parity comparison, or the gate becomes meaningless.
             'cross-column state invariant is NOT a value set — pos_shifts_closed_logic' => [
@@ -696,7 +738,7 @@ final class EnumCheckParityDetectorLivenessTest extends TestCase
 
         $table = 'enum_check_parity_liveness_probe';
         DB::statement("DROP TABLE IF EXISTS {$table}");
-        DB::statement("CREATE TABLE {$table} (id int, status varchar(32), tone varchar(32) NULL, level int, pending varchar(32), label varchar(32))");
+        DB::statement("CREATE TABLE {$table} (id int, status varchar(32), tone varchar(32) NULL, level int, pending varchar(32), label varchar(32), and_status varchar(32), and_origin varchar(32))");
         DB::statement("ALTER TABLE {$table} ADD CONSTRAINT {$table}_status_chk CHECK (status IN ('open', 'closed'))");
         DB::statement("ALTER TABLE {$table} ADD CONSTRAINT {$table}_tone_chk CHECK (tone IS NULL OR tone IN ('warm'))");
         DB::statement("ALTER TABLE {$table} ADD CONSTRAINT {$table}_level_chk CHECK (level IN (1, 2))");
@@ -707,6 +749,13 @@ final class EnumCheckParityDetectorLivenessTest extends TestCase
         DB::statement("ALTER TABLE {$table} ADD CONSTRAINT {$table}_pending_chk CHECK (pending IN ('draft', 'live')) NOT VALID");
         // F-3: a literal containing a parenthesis must survive the read verbatim.
         DB::statement("ALTER TABLE {$table} ADD CONSTRAINT {$table}_label_chk CHECK (label IN ('a(b)', 'z'))");
+        // R2-1: the FALSE-COVERED shape, planted for real rather than argued from
+        // a hand-written definition string. PostgreSQL renders this as two
+        // `= ANY (ARRAY[…])` predicates joined by AND; the greedy body capture read
+        // it as ONE column (`and_status`) admitting the UNION {a,b,c,d}, while the
+        // database in fact rejects 'c' and 'd' on that column. Reproduced live on
+        // `payments.status` in gate r2.
+        DB::statement("ALTER TABLE {$table} ADD CONSTRAINT {$table}_and_chk CHECK (and_status IN ('a', 'b') AND and_origin IN ('c', 'd'))");
 
         try {
             $read = (new PgValueSetCheckReader)->read(DB::connection());
@@ -727,6 +776,37 @@ final class EnumCheckParityDetectorLivenessTest extends TestCase
 
             // F-3 — a literal containing a parenthesis is read verbatim.
             $this->assertSame(['a(b)', 'z'], $read[$table]['label']['accepted'], 'The tokenizer corrupted a literal containing a parenthesis.');
+
+            // R2-1 — the planted cross-column AND. NEITHER column may be reported
+            // as a value set: the reader has no way to attribute the two halves,
+            // and reporting the union is a FALSE COVERED on a column the database
+            // is actually restricting to half of it.
+            $this->assertArrayNotHasKey(
+                'and_status',
+                $read[$table],
+                'A cross-column AND of two value sets was parsed as a single-column value set — '
+                .'the accepted set is the UNION of both halves, i.e. a FALSE COVERED (gate r2 R2-1). Read: '
+                .json_encode($read[$table]['and_status'] ?? null),
+            );
+            $this->assertArrayNotHasKey('and_origin', $read[$table], 'The second half of a cross-column AND was parsed as a value set.');
+
+            // …and the consequence, stated in the gate's own currency: the verdict
+            // for that column must be MISSING (an honest, baselineable gap), never
+            // COVERED. With the greedy parser this assertion read COVERED.
+            $verdicts = [];
+            foreach ((new EnumCheckParityAnalyzer)->analyze(
+                [$this->column($table, 'and_status', ['a', 'b', 'c', 'd'])],
+                $read,
+                [$table => ['and_status']],
+            ) as $finding) {
+                $verdicts[$finding['table'].'.'.$finding['column']] = $finding['verdict'];
+            }
+            $this->assertSame(
+                [$table.'.and_status' => EnumCheckParityAnalyzer::VERDICT_MISSING],
+                $verdicts,
+                'A cross-column AND must leave the column MISSING (honest, baselineable) — reporting the '
+                .'UNION of the two halves makes a live NARROWER write bomb read as COVERED.',
+            );
 
             DB::statement("ALTER TABLE {$table} DROP CONSTRAINT {$table}_status_chk");
             $afterDrop = (new PgValueSetCheckReader)->read(DB::connection());

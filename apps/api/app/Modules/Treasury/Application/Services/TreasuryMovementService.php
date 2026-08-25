@@ -241,7 +241,12 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
             // repo, via postEntryNow). Same key/shape as postEntryNow, so a JE
             // post below re-acquires the same transaction-scoped lock harmlessly.
             // GUC/advisory locking is a Postgres concept — no-op on sqlite (test
-            // driver).
+            // driver). LOCK-ORDER CAVEAT (C-27 gate r2 F-8): this takes the company
+            // chain key WITHOUT the tenant numbering key. That is safe only because
+            // the JE is minted by RepositoryTransferService BEFORE transfer() is
+            // called, so nothing in this transaction mints; a caller that mints
+            // inside this transaction must take the tenant key first (see
+            // GeneralLedgerService::takeTenantNumberingLock).
             if ($isPgsql) {
                 DB::statement('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', [$intent->companyId]);
             }

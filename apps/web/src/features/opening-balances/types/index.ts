@@ -73,12 +73,55 @@ export interface OpeningBatchStatusResponse {
   inventory_ready: boolean
 }
 
+/**
+ * A BATCH-level validation refusal — one that belongs to the sheet as a whole
+ * rather than to a row (an unbalanced batch, or cash debited to an account whose
+ * tills the sheet never names).
+ *
+ * Structured on purpose (treasury gate r2 G-1): `message` is the server's
+ * English fallback, kept for logs and non-wizard consumers, and the wizard
+ * renders `code` + `params` through `t()` so the operator reads their own
+ * language. Never render `message` in the UI.
+ */
+export interface BatchLevelError {
+  code: string
+  params: Record<string, string>
+  message: string
+}
+
+/**
+ * `errors._batch` carries {@link BatchLevelError}s; every other key is a row id
+ * carrying that row's per-field messages.
+ */
+export type ValidationErrors = Record<string, BatchLevelError[] | Record<string, string[]>>
+
+/**
+ * The `_batch` entries of a validation result, or `[]`.
+ *
+ * A narrowing helper rather than a cast: the server may add batch-level codes
+ * this build has never heard of, and a malformed entry must not crash the
+ * wizard on the day-one path.
+ */
+export function batchLevelErrors(errors: ValidationErrors | undefined): BatchLevelError[] {
+  // Deliberately read as `unknown`: the server may add batch-level codes this
+  // build has never heard of, and a malformed entry must not crash the wizard
+  // on the day-one path. The declared type is the contract, not a guarantee.
+  const batch: unknown = errors?.['_batch']
+  if (!Array.isArray(batch)) return []
+
+  return batch.filter(isBatchLevelError)
+}
+
+function isBatchLevelError(entry: unknown): entry is BatchLevelError {
+  return typeof entry === 'object' && entry !== null && 'code' in entry && typeof entry.code === 'string'
+}
+
 export interface ValidationResult {
   valid: boolean
   total_rows: number
   valid_rows: number
   invalid_rows: number
-  errors: Record<string, Record<string, string[]>>
+  errors: ValidationErrors
   total_value?: string
   total_debit?: string
   total_credit?: string
@@ -107,6 +150,14 @@ export interface AccountingPreviewLine {
   debit: string
   credit: string
   description: string
+  /**
+   * W4-2: null on an ordinary GL line; set when this row also seeds a treasury
+   * repository's day-one cash float, so the operator sees WHICH till the money
+   * lands in before locking the batch. Pinned server-side by
+   * `apps/api/tests/Feature/Accounting/OpeningBalancePreviewContractTest.php`.
+   */
+  repository_code: string | null
+  repository_name: string | null
 }
 
 export interface InventoryPreviewLine {
@@ -220,7 +271,16 @@ export interface ImportRowPayload {
 }
 
 // CSV Column definitions for each batch type
-export const GL_COLUMNS = ['account_code', 'debit', 'credit', 'reference'] as const
+export const GL_COLUMNS = ['account_code', 'debit', 'credit', 'reference', 'repository_code'] as const
+
+/**
+ * The headers an ACCOUNTING CSV MUST carry. `repository_code` (W4-2) is
+ * deliberately absent: it is optional, and every sheet written before it existed
+ * has exactly these four columns. Treating GL_COLUMNS as the required set made
+ * the upload refuse "missing columns: repository_code" and bricked the day-one
+ * wizard for every legacy file (treasury gate r1 F-1).
+ */
+export const GL_REQUIRED_COLUMNS = ['account_code', 'debit', 'credit', 'reference'] as const
 export const INVENTORY_COLUMNS = ['product_code', 'location_code', 'quantity', 'unit_cost'] as const
 export const AR_AP_COLUMNS = [
   'partner_code',
