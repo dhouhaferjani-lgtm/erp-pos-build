@@ -312,6 +312,8 @@ class Payment extends Model
             PaymentType::Refund->value,
             PaymentType::SupplierPayment->value,
             PaymentType::Reversal->value,
+            // W4R2-2: the POS refund leg is outgoing money too.
+            PaymentType::POSRefund->value,
         ]);
     }
 

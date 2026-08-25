@@ -1458,7 +1458,14 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                 'currency' => $receipt->currency,
                 'payment_date' => $receipt->posted_at,
                 'status' => PaymentStatus::Completed,
-                'payment_type' => PaymentType::POS,
+                // W4R2-2 — a refund/void receipt hands cash BACK, so its payment
+                // leg must not be typed with an `isIncoming() === true` type. The
+                // amount stays POSITIVE (the sealed receipt states the refund
+                // total positively and the GL entry below is the reversal); the
+                // direction lives in the type. `$isRefund` is the same flag that
+                // already selects `createPOSRefundReversalEntry()` eleven lines
+                // down, so the type and the journal shape cannot drift apart.
+                'payment_type' => $isRefund ? PaymentType::POSRefund : PaymentType::POS,
                 // §13 row 1 — both columns stamped on the same write.
                 'origin' => PaymentOrigin::Pos,
                 'fiscal_event_id' => $event->id,

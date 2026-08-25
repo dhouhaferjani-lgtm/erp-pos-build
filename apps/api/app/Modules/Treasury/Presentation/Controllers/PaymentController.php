@@ -912,10 +912,29 @@ class PaymentController extends Controller
                     ));
                 }
 
-                // Determine payment type: advance if no allocations, otherwise document payment
-                $paymentType = empty($adjustedAllocations)
-                    ? PaymentType::Advance
-                    : PaymentType::DocumentPayment;
+                // Determine payment type.
+                //
+                // W4R2-2 — the supplier arm comes FIRST. Before this fix the
+                // ternary below was the whole rule, so a supplier payment (which
+                // always carries allocations: `:803` refuses one that exceeds
+                // `$totalAllocated`) was written as `DocumentPayment`, whose
+                // `isIncoming()` is `true`. Every web-admin supplier payment was
+                // therefore counted by the dashboard's "Payments Received" tile as
+                // money that had come IN, while the GL correctly showed it going
+                // out (Dr 401 / Cr bank).
+                //
+                // `$isSupplierPayment` is decided at `:526` from the allocated
+                // documents' `DocumentType::SupplierInvoice`, and `:634` refuses a
+                // batch that mixes supplier and non-supplier documents — so the
+                // flag is unambiguous for the whole payment by the time we get
+                // here. `storeMultiple()` cannot reach this branch at all
+                // (`rejectSupplierInvoiceInMultiline()`), which is why `store()`
+                // is the only writer that needed the arm.
+                $paymentType = match (true) {
+                    $isSupplierPayment => PaymentType::SupplierPayment,
+                    empty($adjustedAllocations) => PaymentType::Advance,
+                    default => PaymentType::DocumentPayment,
+                };
 
                 // Spec §13 writer-inventory row 2 — `PaymentController::store()` →
                 // `web_admin`. `fiscal_event_id` stays NULL (no fiscal event for

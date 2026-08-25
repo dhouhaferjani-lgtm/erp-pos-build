@@ -95,6 +95,11 @@ final readonly class CashMovementsReportService
     private const OUTGOING_PAYMENT_TYPES = [
         PaymentType::Refund->value,
         PaymentType::SupplierPayment->value,
+        // W4R2-2: the POS refund leg used to be typed `POS` and reached this
+        // report through INCOMING_PAYMENT_TYPES. It is now typed `POSRefund`, so
+        // it must be admitted here or `movingPaymentTypes()` would drop POS
+        // refunds out of the report entirely.
+        PaymentType::POSRefund->value,
     ];
 
     /**
@@ -301,7 +306,7 @@ final readonly class CashMovementsReportService
                             AND refund_entries.status = ?
                             AND refund_entries.source_type = ?
                     ) THEN ?
-                    WHEN payments.payment_type IN (?, ?) THEN ?
+                    WHEN payments.payment_type IN (?, ?, ?) THEN ?
                     ELSE ?
                 END as direction',
                 [
@@ -326,6 +331,13 @@ final readonly class CashMovementsReportService
                     // reversal is reported through its GL twin, not this leg.
                     PaymentType::Refund->value,
                     PaymentType::SupplierPayment->value,
+                    // W4R2-2: third binding for the widened `IN (?, ?, ?)` above.
+                    // The `pos_receipt_refund` arm two lines up already resolves a
+                    // POS refund to Out whenever its reversal entry is POSTED; this
+                    // arm is the belt for a refund leg whose entry is not (it would
+                    // otherwise fall to ELSE = In, the exact phantom-inflow shape
+                    // the arm above exists to prevent).
+                    PaymentType::POSRefund->value,
                     CashMovementDirection::Out->value,
                     CashMovementDirection::In->value,
                 ],
