@@ -198,8 +198,8 @@ describe('a denied company is never re-picked by the bootstrap (F-2)', () => {
       data: {
         data: ids.map((id, index) => ({
           id,
-          name: `Company ${index}`,
-          legal_name: `Company ${index}`,
+          name: `Company ${String(index)}`,
+          legal_name: `Company ${String(index)}`,
           tax_id: null,
           country_code: 'TN',
           currency: 'TND',

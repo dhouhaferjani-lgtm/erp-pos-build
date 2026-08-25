@@ -336,8 +336,9 @@ function createApiClient(): AxiosInstance {
         // 403 carries COMPANY_ACCESS_DENIED; both are typed by
         // CompanyContextMiddleware.
         if (response.status === 403 || response.status === 400) {
-          const envelope = isRecord(response.data) ? response.data['error'] : null
-          const sentCompanyId = error.config?.headers['X-Company-Id']
+          const responseData: unknown = response.data
+          const envelope = isRecord(responseData) ? responseData['error'] : null
+          const sentCompanyId: unknown = error.config?.headers['X-Company-Id']
           handleCompanyScopeRejection(
             readString(envelope, 'code'),
             typeof sentCompanyId === 'string' ? sentCompanyId : null,
