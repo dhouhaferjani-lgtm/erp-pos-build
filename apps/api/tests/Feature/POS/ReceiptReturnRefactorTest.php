@@ -539,6 +539,9 @@ final class ReceiptReturnRefactorTest extends TestCase
      * `postedAt` is accepted at CREATION time on purpose: `posted_at` is one of
      * the fields frozen by the `prevent_receipt_modification()` trigger, so a
      * sealed receipt cannot be back-dated with a follow-up UPDATE.
+     *
+     * @param  numeric-string  $subtotal
+     * @param  numeric-string  $total
      */
     private function createSaleReceipt(
         string $subtotal = '100.000',

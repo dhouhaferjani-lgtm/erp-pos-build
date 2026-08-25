@@ -209,9 +209,6 @@ final class PartiesImportBalancesTest extends TestCase
     }
 
     /**
-     * @param  array<int, array<string, mixed>>  $rows
-     */
-    /**
      * Compare a decoded JSON/JSONB object without depending on key ORDER.
      *
      * C-10: `import_file_reference` is a `jsonb` column. PostgreSQL's jsonb
@@ -235,6 +232,9 @@ final class PartiesImportBalancesTest extends TestCase
         $this->assertSame($expected, $actual);
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     */
     private function makeValidatedJob(array $rows): ImportJob
     {
         $job = $this->importService->createJob(

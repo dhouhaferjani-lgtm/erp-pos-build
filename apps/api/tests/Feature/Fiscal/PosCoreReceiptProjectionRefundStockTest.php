@@ -568,24 +568,4 @@ final class PosCoreReceiptProjectionRefundStockTest extends TestCase
     {
         return DB::table('stock_movements')->where('tenant_id', $this->tenantId);
     }
-
-    /** `pos_receipts` rows created by THIS test. */
-    private function myReceipts(): Builder
-    {
-        return DB::table('pos_receipts')->where('tenant_id', $this->tenantId);
-    }
-
-    /**
-     * Child rows of THIS test's receipts. `pos_receipt_lines`,
-     * `pos_receipt_payments` and `pos_receipt_vat_details` carry no tenant
-     * column, so the scope walks the `receipt_id` FK back to the
-     * tenant-scoped parent.
-     */
-    private function myReceiptChildren(string $table): Builder
-    {
-        return DB::table($table)->whereIn(
-            'receipt_id',
-            DB::table('pos_receipts')->select('id')->where('tenant_id', $this->tenantId),
-        );
-    }
 }

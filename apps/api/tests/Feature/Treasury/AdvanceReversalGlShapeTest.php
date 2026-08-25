@@ -1544,7 +1544,9 @@ final class AdvanceReversalGlShapeTest extends TestCase
         }
 
         // Half-up rounding at $scale: add 5 at the (scale+1)-th place, then truncate.
+        /** @var numeric-string $half */
         $half = '0.'.str_repeat('0', $scale).'5';
+        /** @var numeric-string $magnitude */
         $rounded = bcadd($magnitude, $half, $scale + 1);
         $result = bcadd($rounded, '0', $scale);
 
