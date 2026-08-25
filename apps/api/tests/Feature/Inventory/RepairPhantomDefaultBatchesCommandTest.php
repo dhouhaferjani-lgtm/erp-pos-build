@@ -23,6 +23,7 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Domain\Enums\StockMovementReferenceType;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -191,11 +192,11 @@ final class RepairPhantomDefaultBatchesCommandTest extends TestCase
             bccomp('30.0000', (string) BatchStock::where('batch_id', $this->phantomLot->id)->value('quantity'), 4),
             'A dry run must not touch the phantom lot.',
         );
-        $this->assertSame(0, StockMovement::query()->count());
-        $this->assertSame(0, BatchMovement::query()->count());
+        $this->assertSame(0, $this->myStockMovements()->count());
+        $this->assertSame(0, $this->myBatchMovements()->count());
         $this->assertSame(
             $this->phantomLot->id,
-            StockReservation::query()->sole()->batch_id,
+            $this->myStockReservations()->sole()->batch_id,
             'A dry run must not re-point reservations.',
         );
     }
@@ -220,10 +221,10 @@ final class RepairPhantomDefaultBatchesCommandTest extends TestCase
         $this->assertSame(0, bccomp('30.0000', (string) $realStock->quantity, 4));
         $this->assertSame(0, bccomp('1.0000', (string) $realStock->reserved_quantity, 4));
 
-        $this->assertSame($this->realLot->id, StockReservation::query()->sole()->batch_id);
+        $this->assertSame($this->realLot->id, $this->myStockReservations()->sole()->batch_id);
 
         // Document-per-action: the lot reduction carries its own justifying pair.
-        $movement = StockMovement::query()->sole();
+        $movement = $this->myStockMovements()->sole();
         $this->assertSame(MovementType::Adjustment, $movement->movement_type);
         $this->assertSame('batch_ledger_repair', $movement->reference_type);
         $this->assertSame(0, bccomp('0.0000', (string) $movement->quantity, 4),
@@ -231,7 +232,7 @@ final class RepairPhantomDefaultBatchesCommandTest extends TestCase
         $this->assertSame(0, bccomp('30.0000', (string) $movement->quantity_before, 4));
         $this->assertSame(0, bccomp('30.0000', (string) $movement->quantity_after, 4));
 
-        $batchMovement = BatchMovement::query()->sole();
+        $batchMovement = $this->myBatchMovements()->sole();
         $this->assertSame($movement->id, $batchMovement->movement_id);
         $this->assertSame((int) $this->phantomLot->id, (int) $batchMovement->batch_id);
         $this->assertSame(0, bccomp('-30.0000', (string) $batchMovement->quantity, 4));
@@ -239,20 +240,20 @@ final class RepairPhantomDefaultBatchesCommandTest extends TestCase
         // Aggregate stock is untouched.
         $this->assertSame(
             0,
-            bccomp('30.0000', (string) StockLevel::query()->sole()->quantity, 4),
+            bccomp('30.0000', (string) $this->myStockLevels()->sole()->quantity, 4),
         );
     }
 
     public function test_it_keeps_the_untracked_remainder_and_floors_at_reservations_no_real_lot_can_cover(): void
     {
         // 33 aggregate units: 30 in the dated lot, 3 genuinely untracked.
-        StockLevel::query()->update(['quantity' => '33.0000']);
+        $this->myStockLevels()->update(['quantity' => '33.0000']);
 
         // The dated lot is almost entirely spoken for (29 of its 30 units), so
         // the 5-unit reservation parked on the DEFAULT lot cannot be moved and
         // the DEFAULT lot must be floored at it instead of dropping to 3.
         BatchStock::where('batch_id', $this->realLot->id)->update(['reserved_quantity' => '29.0000']);
-        StockReservation::query()->update(['quantity' => '5.0000']);
+        $this->myStockReservations()->update(['quantity' => '5.0000']);
         BatchStock::where('batch_id', $this->phantomLot->id)->update(['reserved_quantity' => '5.0000']);
 
         $this->artisan('inventory:repair-phantom-default-batches', [
@@ -271,13 +272,13 @@ final class RepairPhantomDefaultBatchesCommandTest extends TestCase
             bccomp('5.0000', (string) $phantomStock->quantity, 4),
             'Floored at the un-movable reservation rather than dropped to the 3-unit remainder.',
         );
-        $this->assertSame($this->phantomLot->id, StockReservation::query()->sole()->batch_id);
+        $this->assertSame($this->phantomLot->id, $this->myStockReservations()->sole()->batch_id);
     }
 
     public function test_a_correctly_sized_default_lot_is_left_alone(): void
     {
         // Make the DEFAULT lot honest: 33 aggregate − 30 tracked = 3.
-        StockLevel::query()->update(['quantity' => '33.0000']);
+        $this->myStockLevels()->update(['quantity' => '33.0000']);
         BatchStock::where('batch_id', $this->phantomLot->id)
             ->update(['quantity' => '3.0000', 'reserved_quantity' => '1.0000']);
 
@@ -293,8 +294,8 @@ final class RepairPhantomDefaultBatchesCommandTest extends TestCase
             0,
             bccomp('3.0000', (string) BatchStock::where('batch_id', $this->phantomLot->id)->value('quantity'), 4),
         );
-        $this->assertSame(0, StockMovement::query()->count());
-        $this->assertSame($this->phantomLot->id, StockReservation::query()->sole()->batch_id);
+        $this->assertSame(0, $this->myStockMovements()->count());
+        $this->assertSame($this->phantomLot->id, $this->myStockReservations()->sole()->batch_id);
     }
     // ─────────────────────────── gate r1 fix round ───────────────────────────
 
@@ -312,7 +313,7 @@ final class RepairPhantomDefaultBatchesCommandTest extends TestCase
             '--execute' => true,
         ])->assertExitCode(0);
 
-        $movement = StockMovement::query()->sole();
+        $movement = $this->myStockMovements()->sole();
 
         $this->assertSame(
             StockMovementReferenceType::BatchLedgerRepair,
@@ -364,7 +365,7 @@ final class RepairPhantomDefaultBatchesCommandTest extends TestCase
      */
     public function test_the_census_reports_a_drifted_tuple_that_carries_no_phantom_at_all(): void
     {
-        StockReservation::query()->delete();
+        $this->myStockReservations()->delete();
         BatchStock::where('batch_id', $this->phantomLot->id)->delete();
         Batch::whereKey($this->phantomLot->id)->delete();
         BatchStock::where('batch_id', $this->realLot->id)->update(['quantity' => '25.0000']);
@@ -379,7 +380,7 @@ final class RepairPhantomDefaultBatchesCommandTest extends TestCase
             ->expectsOutputToContain('Tuples still drifted: 1')
             ->assertExitCode(0);
 
-        $this->assertSame(0, StockMovement::query()->count());
+        $this->assertSame(0, $this->myStockMovements()->count());
     }
 
     /**
@@ -388,9 +389,9 @@ final class RepairPhantomDefaultBatchesCommandTest extends TestCase
      */
     public function test_the_census_reports_a_batch_tracked_tuple_with_no_lots_at_all(): void
     {
-        StockReservation::query()->delete();
-        BatchStock::query()->delete();
-        Batch::query()->delete();
+        $this->myStockReservations()->delete();
+        $this->myBatchStocks()->delete();
+        $this->myBatches()->delete();
 
         $this->artisan('inventory:repair-phantom-default-batches', [
             '--tenant' => $this->tenant->id,
@@ -415,10 +416,10 @@ final class RepairPhantomDefaultBatchesCommandTest extends TestCase
      */
     public function test_the_dry_run_reports_the_drift_that_would_remain_after_the_correction(): void
     {
-        StockLevel::query()->update(['quantity' => '29.0000']);
+        $this->myStockLevels()->update(['quantity' => '29.0000']);
         BatchStock::where('batch_id', $this->phantomLot->id)
             ->update(['quantity' => '29.0000', 'reserved_quantity' => '0.0000']);
-        StockReservation::query()->delete();
+        $this->myStockReservations()->delete();
 
         $this->artisan('inventory:repair-phantom-default-batches', [
             '--tenant' => $this->tenant->id,
@@ -431,7 +432,7 @@ final class RepairPhantomDefaultBatchesCommandTest extends TestCase
             ->assertExitCode(0);
 
         // Still a pure read.
-        $this->assertSame(0, StockMovement::query()->count());
+        $this->assertSame(0, $this->myStockMovements()->count());
         $this->assertSame(
             0,
             bccomp('29.0000', (string) BatchStock::where('batch_id', $this->phantomLot->id)->value('quantity'), 4),
@@ -448,10 +449,10 @@ final class RepairPhantomDefaultBatchesCommandTest extends TestCase
      */
     public function test_residual_ledger_drift_is_reported_rather_than_read_as_reconciled(): void
     {
-        StockLevel::query()->update(['quantity' => '29.0000']);
+        $this->myStockLevels()->update(['quantity' => '29.0000']);
         BatchStock::where('batch_id', $this->phantomLot->id)
             ->update(['quantity' => '29.0000', 'reserved_quantity' => '0.0000']);
-        StockReservation::query()->delete();
+        $this->myStockReservations()->delete();
 
         $this->artisan('inventory:repair-phantom-default-batches', [
             '--tenant' => $this->tenant->id,
@@ -476,10 +477,10 @@ final class RepairPhantomDefaultBatchesCommandTest extends TestCase
      */
     public function test_the_movement_records_the_variant_scoped_aggregate(): void
     {
-        StockReservation::query()->delete();
-        BatchStock::query()->delete();
-        Batch::query()->delete();
-        StockLevel::query()->delete();
+        $this->myStockReservations()->delete();
+        $this->myBatchStocks()->delete();
+        $this->myBatches()->delete();
+        $this->myStockLevels()->delete();
 
         // A SIBLING variant row at the same location, created FIRST and holding a
         // different quantity. This is what makes the assertion discriminating: a
@@ -564,7 +565,7 @@ final class RepairPhantomDefaultBatchesCommandTest extends TestCase
             '--execute' => true,
         ])->assertExitCode(0);
 
-        $movement = StockMovement::query()->sole();
+        $movement = $this->myStockMovements()->sole();
 
         $this->assertSame(
             0,
@@ -576,6 +577,66 @@ final class RepairPhantomDefaultBatchesCommandTest extends TestCase
         $this->assertSame(
             0,
             bccomp('0.0000', (string) BatchStock::where('batch_id', $variantDefault->id)->value('quantity'), 4),
+        );
+    }
+
+    // =================================================================
+    // Helpers — scoped reads (LEDGER C-7)
+    // =================================================================
+
+    /**
+     * Ledger rows created by THIS test.
+     *
+     * `setUp()` mints a fresh tenant/company per test, so these filters are an
+     * exact "the rows I created" scope. Unscoped, the same reads also see the
+     * rows COMMITTED by `PosCoreReceiptProjectionRefundDispositionStockTest`,
+     * which disables RefreshDatabase transactions to assert real rollback
+     * semantics and therefore leaves its rows behind for the rest of the PHP
+     * process — this class was green standalone and red in any multi-class run
+     * (`sole()` raising MultipleRecordsFoundException, `count()` returning 28
+     * instead of 0). Same root cause and same fix shape as the C-7 lane.
+     *
+     * @return EloquentBuilder<StockMovement>
+     */
+    private function myStockMovements(): EloquentBuilder
+    {
+        return StockMovement::query()->where('tenant_id', $this->tenant->id);
+    }
+
+    /** @return EloquentBuilder<BatchMovement> */
+    private function myBatchMovements(): EloquentBuilder
+    {
+        return BatchMovement::query()->where('tenant_id', $this->tenant->id);
+    }
+
+    /**
+     * `stock_reservations` carries no tenant column — scope on company_id.
+     *
+     * @return EloquentBuilder<StockReservation>
+     */
+    private function myStockReservations(): EloquentBuilder
+    {
+        return StockReservation::query()->where('company_id', $this->company->id);
+    }
+
+    /** @return EloquentBuilder<StockLevel> */
+    private function myStockLevels(): EloquentBuilder
+    {
+        return StockLevel::query()->where('tenant_id', $this->tenant->id);
+    }
+
+    /** @return EloquentBuilder<Batch> */
+    private function myBatches(): EloquentBuilder
+    {
+        return Batch::query()->where('tenant_id', $this->tenant->id);
+    }
+
+    /** @return EloquentBuilder<BatchStock> */
+    private function myBatchStocks(): EloquentBuilder
+    {
+        return BatchStock::query()->whereIn(
+            'batch_id',
+            Batch::query()->select('id')->where('tenant_id', $this->tenant->id),
         );
     }
 }
