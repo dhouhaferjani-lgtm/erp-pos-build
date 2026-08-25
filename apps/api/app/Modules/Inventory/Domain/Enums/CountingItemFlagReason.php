@@ -13,6 +13,17 @@ namespace App\Modules\Inventory\Domain\Enums;
  * is informational only — it is appended to `flag_reasons` but NEVER sets
  * `is_flagged`.
  *
+ * `is_flagged` (REVIEW visibility) and {@see self::blocksStockApplication()}
+ * (POSTING) are two different questions and a reason may answer them
+ * differently. `basket_window` is the case that proves it: campaign W4-6 showed
+ * it blocking every line that had moved within ±`ambiguity_window_minutes` of
+ * the count instant — which, in a shop that keeps selling while it counts, is
+ * every line — so real shrinkage was flagged and discarded. The replay
+ * (`expected_now = counted + Σ(as_of, now]`) is what keeps an in-window sale
+ * counted exactly ONCE; the near-movement itself is evidence for the reviewer,
+ * never a reason to leave the shelf and the ledger disagreeing. It therefore
+ * still raises `is_flagged`, and no longer blocks the stock write.
+ *
  * `pending_opening_cost` (D3) is raised when an onboarding first-count line has
  * no resolvable positive opening cost (item override unset AND the product's
  * `cost_price` is ≤ 0). Posting it would silently establish a zero-cost opening
@@ -39,12 +50,17 @@ enum CountingItemFlagReason: string
         };
     }
 
-    /** Whether the replay apply listener leaves the stock grain untouched. */
+    /**
+     * Whether the replay apply listener leaves the stock grain untouched.
+     *
+     * `basket_window` is deliberately ABSENT (W4-6): an ambiguous movement near
+     * the count instant is annotated and still applied.
+     */
     public function blocksStockApplication(): bool
     {
         return match ($this) {
-            self::BasketWindow, self::NegativeAtApply, self::PendingOpeningCost => true,
-            self::ClockSkew, self::NormalizedAgreement => false,
+            self::NegativeAtApply, self::PendingOpeningCost => true,
+            self::BasketWindow, self::ClockSkew, self::NormalizedAgreement => false,
         };
     }
 

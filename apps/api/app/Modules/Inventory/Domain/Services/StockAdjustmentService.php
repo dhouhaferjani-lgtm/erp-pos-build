@@ -1015,10 +1015,15 @@ final class StockAdjustmentService
             // theoretical backstop. It cannot overshoot (see the method) and it
             // strictly narrows any gap.
             $this->issueFromDefaultBatchByDelta($stockLevel, $productId, $difference, $movement->id);
+        } else {
+            // The LEGACY absolute adjust() reaching a lot-less negative. Its
+            // ONE caller is the legacy counting path
+            // (ApplyStockAdjustmentsOnCountingCompleted::applyLegacyDelta), and
+            // campaign W4-6 established that a count shortage must move the lot
+            // ledger with the aggregate or Σ lots drifts permanently above it.
+            // Same FEFO, same tolerance as the replay path's own arm.
+            $this->drawLotsDownForCountShortage($stockLevel, $productId, $difference, $movement->id);
         }
-        // The LEGACY absolute adjust() can still reach a lot-less negative; its
-        // behaviour is deliberately unchanged (no lot is touched) — see
-        // $deltaBasedDefaultLot above.
 
         // Dispatch StockMovementRecorded event after transaction commits
         $movementSnapshot = $movement;
@@ -1384,6 +1389,16 @@ final class StockAdjustmentService
         ?string $referenceId,
         ?\Closure $onCountCorrection = null,
     ): void {
+        // Campaign W4-6 / document-per-action: a zero adjustment justifies
+        // nothing. The count AGREES with the shelf, so there is no stock event
+        // to record — writing `qty 0.0000, 25 -> 25` produced exactly the rows
+        // the campaign found (no-ops for the two agreeing lines while the real
+        // variances were suppressed). The replay audit the caller stamps is the
+        // evidence that the line WAS evaluated.
+        if (bccomp($adjustment, '0', self::SCALE) === 0) {
+            return;
+        }
+
         $stockLevel->update(['quantity' => $expectedNow]);
 
         $movement = $this->recordMovement(
@@ -1415,6 +1430,8 @@ final class StockAdjustmentService
 
         if (bccomp($adjustment, '0', self::SCALE) > 0) {
             $this->ensureDefaultBatchForImplicitPositiveStock($stockLevel, $productId);
+        } else {
+            $this->drawLotsDownForCountShortage($stockLevel, $productId, $adjustment, $movement->id);
         }
 
         $this->dispatchCountMovementEvents(
@@ -1428,6 +1445,105 @@ final class StockAdjustmentService
             $expectedNow,
             $variantId,
         );
+    }
+
+    /**
+     * Move the LOT ledger down with a count SHORTAGE (campaign W4-6 / W2-7).
+     *
+     * The aggregate `stock_levels` row and the lot ledger have to move together
+     * or FEFO becomes fiction: before this arm a count that found two units
+     * missing lowered the aggregate and left every lot where it was, so
+     * Σ lots > aggregate and the earliest-expiring lot kept promising stock that
+     * is not on the shelf. The positive direction already has its counterpart —
+     * `ensureDefaultBatchForImplicitPositiveStock()`, which since W2-7 tops the
+     * DEFAULT lot up only to the UNTRACKED REMAINDER and therefore never
+     * re-mints a phantom lot on top of real ones.
+     *
+     * FEFO order, EXPIRED LOTS INCLUDED. The count has no lot grain
+     * (`inventory_counting_items` is keyed on product/variant/location — W4-8),
+     * so soonest-expiry-first is the only defensible attribution available here;
+     * and stock that has gone missing off a shelf is more likely the oldest than
+     * the newest, so skipping expired lots would push the shortfall onto
+     * saleable stock and leave the expired lot claiming units that are gone.
+     *
+     * TOLERANT, for the same reason `issueFromDefaultBatchByDelta()` is: the
+     * aggregate has already moved inside this lock, so a refusal would strand
+     * the operator mid-correction. Each lot gives `min(available, remaining)`,
+     * which can never overshoot and strictly narrows any gap.
+     *
+     * Driver-agnostic on purpose — it reads the FEFO order unlocked and lets
+     * `issueBatchStock()` take the `inventory_batch_stock` row lock per lot,
+     * exactly as the sibling DEFAULT-lot arm does. No new lock is taken on
+     * `product_batches`, so the established `stock_levels` →
+     * `inventory_batch_stock` order is unchanged.
+     *
+     * @param  numeric-string  $adjustment  Negative delta already applied to the aggregate
+     */
+    private function drawLotsDownForCountShortage(
+        StockLevel $stockLevel,
+        string $productId,
+        string $adjustment,
+        string $movementId,
+    ): void {
+        $product = Product::query()
+            ->where('company_id', $stockLevel->company_id)
+            ->findOrFail($productId);
+
+        if (! $product->requires_batch_tracking) {
+            return;
+        }
+
+        /** @var numeric-string $remaining */
+        $remaining = bcmul($adjustment, '-1', self::SCALE);
+
+        if (bccomp($remaining, '0', self::SCALE) <= 0) {
+            return;
+        }
+
+        $lots = BatchStock::query()
+            ->join('product_batches', 'product_batches.id', '=', 'inventory_batch_stock.batch_id')
+            ->where('product_batches.company_id', $stockLevel->company_id)
+            ->where('product_batches.product_id', $productId)
+            ->where('product_batches.is_recalled', false)
+            ->when(
+                $stockLevel->variant_id === null,
+                static fn ($query) => $query->whereNull('product_batches.variant_id'),
+                static fn ($query) => $query->where('product_batches.variant_id', $stockLevel->variant_id),
+            )
+            ->where('inventory_batch_stock.location_id', $stockLevel->location_id)
+            ->orderBy('product_batches.expiry_date')
+            ->orderBy('product_batches.created_at')
+            ->get([
+                'inventory_batch_stock.batch_id',
+                'inventory_batch_stock.quantity',
+                'inventory_batch_stock.reserved_quantity',
+            ]);
+
+        foreach ($lots as $lot) {
+            if (bccomp($remaining, '0', self::SCALE) <= 0) {
+                break;
+            }
+
+            /** @var numeric-string $available */
+            $available = bcsub((string) $lot->quantity, (string) $lot->reserved_quantity, self::SCALE);
+
+            if (bccomp($available, '0', self::SCALE) <= 0) {
+                continue;
+            }
+
+            /** @var numeric-string $take */
+            $take = bccomp($available, $remaining, self::SCALE) < 0 ? $available : $remaining;
+
+            $this->batchStockService->issueBatchStock(
+                tenantId: $stockLevel->tenant_id,
+                batchId: (int) $lot->batch_id,
+                locationId: $stockLevel->location_id,
+                quantity: $take,
+                movementId: $movementId,
+            );
+
+            $remaining = bcsub($remaining, $take, self::SCALE);
+        }
     }
 
     /**

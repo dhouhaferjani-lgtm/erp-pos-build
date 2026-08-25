@@ -106,7 +106,10 @@ final class CountingReplayPreviewService
             $result = $batch[$item->id];
             $onboarding = (bool) $item->location->onboarding_mode;
             $gate = $openingGates[$item->id];
-            $blocked = $this->guardEvaluator->preApply($result->hasMovementNear, $gate['opening_cost_missing'])
+            // W4-6: only a reason that answers blocksStockApplication() stops the
+            // auto-post. `basket_window` is recorded on the item at apply time
+            // but the correction posts, so the preview must not promise a skip.
+            $blocked = $this->guardEvaluator->preApplyBlocker($result->hasMovementNear, $gate['opening_cost_missing'])
                 ?? $this->guardEvaluator->atApply($onboarding, $result->computation->expectedNow);
             $previews[$item->id] = new ReplayPreviewDto(
                 mode: ReplayPreviewMode::TimestampReplay,

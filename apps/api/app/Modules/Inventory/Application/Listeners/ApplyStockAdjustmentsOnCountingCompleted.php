@@ -273,12 +273,31 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
 
         $item->loadMissing('product');
         $openingGate = $this->openingCostGate->evaluateItem($item, $onboarding);
-        $preApplyBlock = $this->guardEvaluator->preApply($hasMovementNear, $openingGate['opening_cost_missing']);
+
+        // W4-6. Every pre-apply reason is RECORDED; only a reason that answers
+        // `blocksStockApplication()` withholds the posting. `basket_window` is
+        // recorded and does NOT withhold: the replay window inside
+        // applyCountResult() is what keeps an in-count sale counted exactly once,
+        // and suppressing the whole line on the strength of a nearby movement
+        // discarded the very shrinkage the count exists to find.
+        $preApplyReasons = $this->guardEvaluator->preApply($hasMovementNear, $openingGate['opening_cost_missing']);
+        $preApplyBlock = null;
+        foreach ($preApplyReasons as $reason) {
+            if ($reason->blocksStockApplication()) {
+                $preApplyBlock = $reason;
+                break;
+            }
+        }
+
         if ($preApplyBlock !== null) {
-            $this->flagItem($item, $preApplyBlock, $asOf);
+            $this->flagItem($item, $preApplyBlock, $asOf, $preApplyReasons);
 
             return false;
         }
+
+        // Advisory reasons are stamped on the row BEFORE the posting so the
+        // annotation survives even if the posting throws and the job retries.
+        $this->annotateItem($item, $preApplyReasons);
 
         $openingUnitCost = $this->resolveOpeningUnitCost($item, $counting->company_id);
 
@@ -443,17 +462,56 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
     }
 
     /**
+     * Record advisory (non-blocking) reasons on a line that IS being posted.
+     *
+     * `basket_window` reaches this path: the reviewer still needs to see that
+     * stock moved near the count instant, but the correction is applied.
+     *
+     * @param  list<CountingItemFlagReason>  $reasons
+     */
+    private function annotateItem(InventoryCountingItem $item, array $reasons): void
+    {
+        if ($reasons === []) {
+            return;
+        }
+
+        $existing = $item->flag_reasons ?? [];
+        $flagged = (bool) $item->is_flagged;
+
+        foreach ($reasons as $reason) {
+            if (! in_array($reason->value, $existing, true)) {
+                $existing[] = $reason->value;
+            }
+
+            if ($reason->isBlocking()) {
+                $flagged = true;
+            }
+        }
+
+        $item->flag_reasons = $existing;
+        $item->is_flagged = $flagged;
+        $item->save();
+    }
+
+    /**
      * Append a blocking flag reason to the item (dedup) and persist a best-effort
      * replay audit for the review page. Nothing was posted for a flagged item.
+     *
+     * @param  list<CountingItemFlagReason>  $alsoRecord  Advisory reasons observed on
+     *                                                    the same evaluation, recorded
+     *                                                    alongside the blocker.
      */
     private function flagItem(
         InventoryCountingItem $item,
         CountingItemFlagReason $reason,
         CarbonInterface $asOf,
+        array $alsoRecord = [],
     ): void {
         $reasons = $item->flag_reasons ?? [];
-        if (! in_array($reason->value, $reasons, true)) {
-            $reasons[] = $reason->value;
+        foreach ([...$alsoRecord, $reason] as $recorded) {
+            if (! in_array($recorded->value, $reasons, true)) {
+                $reasons[] = $recorded->value;
+            }
         }
 
         $item->flag_reasons = $reasons;
