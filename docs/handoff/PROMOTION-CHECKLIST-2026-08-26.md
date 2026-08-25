@@ -4,10 +4,10 @@ Scope: ~571 local commits on top of `origin/dev` (Sessions A/B/C, 2026-08-21 →
 Owner owns the promotion. Promoting to `origin/dev` = staging auto-deploy incl. `tenants:migrate` — everything below is ordered for that.
 
 ## 0. Preconditions (tick before promoting)
-- [ ] Every Session A lane merged or explicitly deferred: N-1, N-2, N-3/4/7, N-5, N-6 Ph1, W2-3, W2-6, W2-7+W4-5, W4-9, W4-6, W4-2 ✅ · W4-3 (OQ-74) · D-1 · P-1 · W2-1 (in gates at time of writing — update).
+- [x] Every Session A lane merged (2026-08-25 end): N-1, N-2, N-3/4/7, N-5, N-6 Ph1 (+DPA rollback), W2-3, W2-6, W2-7+W4-5, W4-9, W4-6, W4-2 (+fixture), W4-3, D-1, P-1, W2-1, W4R-2, CI-hygiene, test-infra r1+r2. Hold-list (NOT blocking promotion): W4R2-2 dashboard tile, W4-1, N-12, W4R-1, W4R-3 (Menu tenants).
 - [ ] Session B / C lanes: per their session logs — each with a register row in OWNER-SHEET §E.
 - [ ] End-of-day consolidation on merged dev GREEN: CI-shaped filtered suites on a throwaway PG (backend-test-pgsql allowlist + the parked-lane classes touched this week), deptrac 183/183, manifest EXIT=0, web lint ≤ baseline, pos lint 84, i18n audit, DPA scanner, tanstack-keys audit. Non-inherited reds fixed or reverted.
-- [ ] Wave-4 re-run on a FRESH tenant: balances-sanity table (supplier / customer / drawer / safe / bank) all == GL; counting-with-sales-on green.
+- [x] Wave-4 re-run (`PLAYWRIGHT-first-tenant-campaign-wave4-RERUN-2026-08-25.md`) + targeted re-check (`PLAYWRIGHT-w4r2-w43-recheck-2026-08-25.md`): balances tie on every entity; lots + AP arm verified on fresh tenants.
 - [ ] Owner manual smoke sheet (`SMOKE-TEST-tenant-critical-path-treasury-2026-08-24.md`) 🟠 rows done on the Tauri POS.
 
 ## 1. Git (rule 21 + the dev push-guard hook)
@@ -25,12 +25,12 @@ ORDER RULE: `tenants:migrate` BEFORE any manual `accounting:backfill-chart-purpo
 ## 3. Seeders / one-shot steps that do NOT self-run
 - [ ] `CountryDocumentSettingsSeeder`, `CountryInventorySettingsSeeder` (P-1), `PlansSeeder` if plans empty, `RolesAndPermissionsSeeder` + `permission:cache-reset` per tenant (S-18; new perms: `pos.manage_terminals` Q-7, others per register).
 - [ ] i18n baseline re-pin (B-10) if the audit says the blob moved; `I18N_BASELINE_PROTECTED_BLOB`.
-- [ ] `ProvisioningRequiredPurposesV1` AST ratchet regen (W4-9: ADD 3 / REMOVE 3 / re-pin) — dedicated commit, safe to defer.
+- [x] `ProvisioningRequiredPurposesV1` AST ratchet regen — DONE `e917a3d38` (CI-hygiene lane; 100→103 sites).
 - [ ] Impersonation seeder + role reseed (country-defaults promotion owes).
 
 ## 4. CI (S-14) — `.github/workflows/ci.yml` changed by 10+ lanes (allowlist appends, lane jobs)
 - [ ] Actions quota / self-hosted runner (B-11): if CI can run, dispatch the `workflow_dispatch` leg on the candidate BEFORE promoting; else the register rows already say CI-UNVERIFIED and the consolidation (§0) is the local substitute.
-- [ ] `actionlint` on ci.yml (owed since G-4).
+- [x] `actionlint` on all workflows — DONE `e917a3d38` (10→0).
 
 ## 5. Device / client coupling
 - [ ] **POS build required for D-1** (event_version 5, remise ventilation, zero-tender comps). Until the build ships, tills seal v≤4 and W4-9's legacy ledger shape applies — correct, just pre-remise. The build also carries C-2+C-6 device-Z (mandatory coupling, LEDGER C-2) and the W2-7 device residuals.
