@@ -40,23 +40,9 @@ class AccountingOpeningService
      */
     private const MONEY_STORAGE_SCALE = 3;
 
-    /**
-     * The partner CONTROL accounts, keyed by system purpose, mapped to the batch
-     * that owns their cutover balance (W4-4).
-     *
-     * Keyed on the PURPOSE, never on a code: the code is `411`/`401` in Tunisia,
-     * `411`/`401` in France and `4100`/`4010` on the generic chart, and on a
-     * provisioned tenant it is whatever the country template assigned.
-     *
-     * @var array<string, string>
-     */
-    private const CONTROL_ACCOUNT_BATCHES = [
-        SystemAccountPurpose::CustomerReceivable->value => 'AR open items',
-        SystemAccountPurpose::SupplierPayable->value => 'AP open items',
-    ];
-
     public function __construct(
         private readonly OpeningBalanceBatchService $batchService,
+        private readonly PartnerControlAccountResolver $controlAccounts,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
@@ -201,27 +187,17 @@ class AccountingOpeningService
 
             if ($account === null) {
                 $errors['account_code'] = ["Account '{$rawData['account_code']}' not found or inactive"];
-            } elseif (($controlBatch = self::CONTROL_ACCOUNT_BATCHES[$account->system_purpose?->value] ?? null) !== null) {
+            } elseif (($controlBatch = $this->controlAccounts->batchLabelFor($account)) !== null) {
                 // W4-4: partner CONTROL accounts are sub-ledger territory and may
-                // not be stated here.
-                //
-                // Their cutover balance is the SUM of the open items, one line per
-                // partner, and it is posted by the AR/AP open-items batch
-                // (`Document\Application\Services\ArApOpeningService`, named not
-                // imported — module boundaries are enforced by deptrac and a
-                // docblock is not a dependency). Accepting the same balance here
-                // too would DOUBLE the control account and leave the sub-ledger
-                // permanently disagreeing with the GL — which is precisely what a
-                // reconciliation at cutover is supposed to prove cannot happen.
+                // not be stated here — see PartnerControlAccountResolver for why,
+                // and for the ancestor walk that stops the same restatement landing
+                // one account down (gate r1 I-4).
                 //
                 // Refused at validation, before anything posts, so the operator
-                // fixes the file rather than unwinding a locked batch.
-                $errors['account_code'] = [
-                    "Account '{$account->code}' is the partner control account for {$controlBatch}. ".
-                    "Its opening balance is posted by the {$controlBatch} batch (one entry per open item, ".
-                    'carrying the partner), not by the GL accounting opening. Remove this line and import '.
-                    'the open items instead — stating it here would double the control account.',
-                ];
+                // fixes the file rather than unwinding a locked batch. The same
+                // refusal runs again in postBatch(): rows that were already `Valid`
+                // before this shipped would otherwise post after it (gate r1 I-2).
+                $errors['account_code'] = [$this->controlAccounts->refusalMessage($account, $controlBatch)];
             } else {
                 $mappedData['account_id'] = $account->id;
                 $mappedData['account_code'] = $account->code;
@@ -343,6 +319,18 @@ class AccountingOpeningService
 
                 if (! is_array($mappedData) || ! isset($mappedData['account_id'])) {
                     continue;
+                }
+
+                // Gate r1 I-2: validation is not the last word. postBatch() posts
+                // whatever is already `Valid`, so a batch validated BEFORE the
+                // control-account rule shipped would post a 411/401 line AFTER it
+                // shipped and double the control account against the AR/AP openings.
+                // Re-assert on the row that is actually about to be written.
+                $postingAccount = Account::query()->whereKey($mappedData['account_id'])->first();
+
+                if ($postingAccount !== null
+                    && ($controlBatch = $this->controlAccounts->batchLabelFor($postingAccount)) !== null) {
+                    throw new RuntimeException($this->controlAccounts->refusalMessage($postingAccount, $controlBatch));
                 }
 
                 $debit = $mappedData['debit'] ?? '0';

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Application\Services;
 
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Partner\Domain\Partner;
 use Illuminate\Http\Exceptions\HttpResponseException;
 
 /**
@@ -50,6 +52,78 @@ final class DocumentAllocationStateGuard
                     'document_number' => $document->document_number,
                     'status' => $document->status->value,
                     'fiscal_status' => $document->fiscal_status->value,
+                ],
+            ],
+        ], 422));
+    }
+
+    /**
+     * W4-3 — refuse to settle a document whose SIDE disagrees with its partner's ROLE.
+     *
+     * The AR-vs-AP direction of every settlement is inferred from the allocated
+     * document's TYPE alone. Nothing checked that the type was plausible for the
+     * partner, so a customer-typed document owned by a SUPPLIER — what the AP
+     * opening batch minted before W4-3, and what every tenant migrated before that
+     * fix still carries — took the AR arm in silence: `Dr bank / Cr 411`, repository
+     * movement direction IN, the `401` debt untouched, the document marked `paid`.
+     * The operator sent 500.000 to a supplier and the system recorded 500.000
+     * arriving. Nothing warned.
+     *
+     * It lives HERE, beside `assertAllocatable()`, for the reason that guard gives:
+     * the settlement routes are four (`PaymentController::store` /
+     * `::storeMultiple`, `MultiPaymentController::createSplitPayment` /
+     * `::applyDeposit`, and `PaymentAllocationService` for the smart-payment and
+     * credit paths), and a guard patched onto one of them is not a guard. Gate r1
+     * I-1 proved the point: with the check on `store()` alone, the legacy row was
+     * still reachable through the other three.
+     *
+     * The question is asked of the DOCUMENT'S OWN partner, not of the payer, so no
+     * call site has to plumb a partner through: every route already forces the
+     * payment onto the document's partner (`ALLOCATION_PARTNER_MISMATCH`), and a
+     * document whose own partner cannot own its type is wrong no matter who pays it.
+     *
+     * `PartnerType::Both` satisfies both sides, so a dual-role partner is never
+     * refused. A document with no partner, and every type outside AR/AP (advances,
+     * expenses, POS, order-stage documents), returns without an opinion — this guard
+     * answers one question and must not acquire views on flows it was not written for.
+     *
+     * @throws HttpResponseException 422 when the type and the partner role disagree.
+     */
+    public function assertDirectionMatchesPartner(Document $document): void
+    {
+        // `documents.partner_id` is typed non-nullable in the model docblock but the
+        // COLUMN is nullable, so the relation is resolved through the query builder
+        // (which types it `?Partner`) rather than read as a property. The eager-loaded
+        // relation is reused when a caller already fetched it, so this adds a query
+        // only on the paths that did not.
+        $partner = $document->relationLoaded('partner')
+            ? $document->getRelation('partner')
+            : $document->partner()->first();
+
+        if (! $partner instanceof Partner) {
+            return;
+        }
+
+        $matches = match ($document->type) {
+            DocumentType::Invoice, DocumentType::CreditNote => $partner->isCustomer(),
+            DocumentType::SupplierInvoice, DocumentType::SupplierCreditNote => $partner->isSupplier(),
+            default => true,
+        };
+
+        if ($matches) {
+            return;
+        }
+
+        throw new HttpResponseException(response()->json([
+            'error' => [
+                'code' => 'PAYMENT_DIRECTION_MISMATCH',
+                'message' => "This document's type does not match the partner's role, so the payment direction cannot be determined. A customer invoice must belong to a customer and a supplier invoice to a supplier.",
+                'details' => [
+                    'document_id' => $document->id,
+                    'document_number' => $document->document_number,
+                    'document_type' => $document->type->value,
+                    'partner_id' => $partner->id,
+                    'partner_type' => $partner->type->value,
                 ],
             ],
         ], 422));

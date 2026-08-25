@@ -35,6 +35,8 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -368,6 +370,74 @@ final class ArApOpeningLedgerTest extends TestCase
             $receivables->grand_total,
             'The applied credit is already netted at the invoice; the credit note must not also appear as a negative.'
         );
+    }
+
+    // --------------------------------------------- I-3 (gate r1) ----------
+
+    public function test_an_ap_opening_batch_refuses_when_the_gl_opening_already_stated_the_payable(): void
+    {
+        // The campaign's own §A.6 order: the operator locked a GL opening containing
+        // `Cr 401 500.000` (which the shipped CSV template taught), and only then
+        // imported the parties balances. Refusing the GL opening going forward does
+        // nothing for that company — the batch is locked and not deletable — so the
+        // rule has to hold from this side too or the control account simply doubles.
+        $this->postedGlOpeningOn(SystemAccountPurpose::SupplierPayable, credit: '500.000');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/already states the payable control account/');
+
+        $this->postApBatch('500.000');
+    }
+
+    public function test_an_ar_opening_batch_refuses_when_the_gl_opening_already_stated_the_receivable(): void
+    {
+        $this->postedGlOpeningOn(SystemAccountPurpose::CustomerReceivable, debit: '150.000');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/already states the receivable control account/');
+
+        $this->postArBatch('150.000');
+    }
+
+    public function test_an_ar_opening_batch_is_not_blocked_by_a_gl_opening_that_stated_only_the_payable(): void
+    {
+        // Scoped to the side being posted: the two batches are independent.
+        $this->postedGlOpeningOn(SystemAccountPurpose::SupplierPayable, credit: '500.000');
+
+        $this->postArBatch('150.000');
+
+        self::assertSame('150.000', $this->customer->refresh()->receivable_balance);
+    }
+
+    /**
+     * A posted GL opening entry carrying one line on the given control account —
+     * the shape a company that ran the accounting opening first is left with.
+     */
+    private function postedGlOpeningOn(SystemAccountPurpose $purpose, string $debit = '0.000', string $credit = '0.000'): void
+    {
+        $entry = JournalEntry::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'entry_number' => 'OB-2026-009999',
+            'entry_date' => '2026-08-25',
+            'description' => 'GL Opening Balance - legacy',
+            'status' => JournalEntryStatus::Posted,
+            'source_type' => 'opening_balance',
+            'source_id' => (string) Str::uuid(),
+            'is_historical' => true,
+            'posted_at' => now(),
+            'posted_by' => $this->user->id,
+        ]);
+
+        JournalLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $this->accountFor($purpose)->id,
+            'partner_id' => null,
+            'debit' => $debit,
+            'credit' => $credit,
+            'description' => 'Opening balance',
+            'line_order' => 0,
+        ]);
     }
 
     // ------------------------------------------------------------ helpers ---

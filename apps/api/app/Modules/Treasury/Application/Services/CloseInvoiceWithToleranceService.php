@@ -67,6 +67,8 @@ final class CloseInvoiceWithToleranceService
             // a GL write-off and `DocumentStatus::Paid` — a withdrawn document
             // reappearing as collected revenue.
             $this->allocationStateGuard->assertAllocatable($invoice);
+            // W4-3 / gate r1 I-1 — a tolerance close writes off the receivable.
+            $this->allocationStateGuard->assertDirectionMatchesPartner($invoice);
 
             // N-6 — closing with tolerance writes off a RECEIVABLE residual, so
             // it presupposes a posted receivable. On a confirmed (unposted)

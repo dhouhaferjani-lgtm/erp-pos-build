@@ -6,8 +6,13 @@ namespace App\Modules\Document\Application\Services;
 
 use App\Modules\Accounting\Application\Services\ArApOpeningLedgerService;
 use App\Modules\Accounting\Application\Services\OpeningBalanceBatchService;
+use App\Modules\Accounting\Application\Services\PartnerControlAccountResolver;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
 use App\Modules\Accounting\Domain\Enums\OpeningImportRowStatus;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Accounting\Domain\OpeningBalanceImportRow;
 use App\Modules\Company\Domain\Company;
@@ -19,6 +24,7 @@ use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Partner\Domain\Partner;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -48,6 +54,7 @@ class ArApOpeningService
     public function __construct(
         private readonly OpeningBalanceBatchService $batchService,
         private readonly ArApOpeningLedgerService $ledgerService,
+        private readonly PartnerControlAccountResolver $controlAccounts,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
@@ -314,6 +321,18 @@ class ArApOpeningService
                 throw new RuntimeException('No valid rows to post. Please validate the batch first.');
             }
 
+            // Gate r1 I-3 — the control-account rule has to hold in BOTH posting
+            // orders, or it is not a rule.
+            //
+            // AccountingOpeningService refuses a GL opening that states 411/401, so
+            // going forward this batch is their single writer. But posting ORDER
+            // decides everything: a company that LOCKED a GL opening containing
+            // `411 150` / `401 500` before that guard shipped — the campaign's own
+            // §A.6, and what the shipped CSV template taught — would get both, and a
+            // locked batch is not deletable, so there is no recovery path in
+            // product. Refuse here rather than silently double the control account.
+            $this->assertGlOpeningDidNotStateControlAccounts($company->id, $isAr);
+
             $documentsCreated = [];
             $rowEntityMap = [];
             /** @var list<string> $partnerIds */
@@ -523,6 +542,54 @@ class ArApOpeningService
         }
 
         return sprintf('%s-%s-%05d', $prefix, $year, $nextNumber);
+    }
+
+    /**
+     * Refuse the batch when a posted GL opening already carries the control account
+     * this batch is about to write (gate r1 I-3).
+     *
+     * Scoped to the side being posted: an AR batch is not blocked by a GL opening
+     * that stated only the payable. The account set walks the purpose tree, so a GL
+     * opening that stated `4011` rather than `401` is caught too (I-4).
+     *
+     * @throws RuntimeException
+     */
+    private function assertGlOpeningDidNotStateControlAccounts(string $companyId, bool $isAr): void
+    {
+        $purpose = $isAr
+            ? SystemAccountPurpose::CustomerReceivable
+            : SystemAccountPurpose::SupplierPayable;
+
+        $controlAccountIds = $this->controlAccounts->controlAccountIds($companyId, $purpose);
+
+        if ($controlAccountIds === []) {
+            return;
+        }
+
+        $conflicting = JournalEntry::query()
+            ->where('company_id', $companyId)
+            ->where('source_type', 'opening_balance')
+            ->where('status', JournalEntryStatus::Posted)
+            ->whereHas('lines', static function (Builder $q) use ($controlAccountIds): void {
+                /** @var Builder<JournalLine> $q */
+                $q->whereIn('account_id', $controlAccountIds);
+            })
+            ->pluck('entry_number')
+            ->all();
+
+        if ($conflicting === []) {
+            return;
+        }
+
+        $side = $isAr ? 'receivable' : 'payable';
+        $entries = implode(', ', array_map(strval(...), $conflicting));
+
+        throw new RuntimeException(
+            "The GL accounting opening ({$entries}) already states the {$side} control account, so posting these ".
+            'open items would count the same balance twice. The control account belongs to this batch: remove the '.
+            'control-account line from the GL opening and post it again, or post these open items into a company '.
+            'whose GL opening does not state it.'
+        );
     }
 
     /**

@@ -23,6 +23,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -147,6 +148,126 @@ final class OpeningControlAccountGuardTest extends TestCase
 
         self::assertTrue($result['valid'], 'The guard must only refuse partner control accounts.');
         self::assertSame(2, $result['valid_rows']);
+    }
+
+    public function test_the_refusal_names_the_catch_all_partner_escape(): void
+    {
+        // Judgement-call ruling at gate r1: the refusal stays, but a tenant that
+        // arrives with a trial balance and no per-partner detail must be told the
+        // way out — openings lock with no in-product correction path, so an
+        // operator who hits this at cutover and is not told has a support ticket.
+        $payable = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::SupplierPayable);
+        $counterpart = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::OpeningBalanceEquity);
+
+        $batch = $this->makeAccountingBatch([
+            ['account_code' => $payable->code, 'debit' => '0.000', 'credit' => '500.000', 'description' => 'F'],
+            ['account_code' => $counterpart->code, 'debit' => '500.000', 'credit' => '0.000', 'description' => 'O'],
+        ]);
+
+        app(AccountingOpeningService::class)->validateBatch($batch->refresh());
+
+        $message = $batch->rows()->where('row_number', 1)->firstOrFail()->validation_errors['account_code'][0] ?? '';
+        self::assertStringContainsString('DIVERS FOURNISSEURS', $message);
+    }
+
+    // ------------------------------------------------- gate r1 I-4 ----------
+
+    public function test_a_child_of_a_control_account_is_refused_too(): void
+    {
+        // Only 401 and 411 carry the purposes in the TN chart; `4011 Fournisseurs -
+        // Achats de biens` is its child and carries none. An operator whose old
+        // trial balance is stated at the child level would otherwise pass the guard
+        // and restate the payable one account down, where PartnerBalanceService —
+        // which filters on the purpose-tagged account — can never see it.
+        $child = Account::query()
+            ->where('company_id', $this->company->id)
+            ->where('code', '4011')
+            ->firstOrFail();
+
+        self::assertNull($child->system_purpose, 'Precondition: the child carries no purpose of its own.');
+
+        $counterpart = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::OpeningBalanceEquity);
+
+        $batch = $this->makeAccountingBatch([
+            ['account_code' => $child->code, 'debit' => '0.000', 'credit' => '500.000', 'description' => 'F'],
+            ['account_code' => $counterpart->code, 'debit' => '500.000', 'credit' => '0.000', 'description' => 'O'],
+        ]);
+
+        $result = app(AccountingOpeningService::class)->validateBatch($batch->refresh());
+
+        self::assertFalse($result['valid']);
+        self::assertStringContainsString(
+            'AP open items',
+            $batch->rows()->where('row_number', 1)->firstOrFail()->validation_errors['account_code'][0] ?? ''
+        );
+    }
+
+    public function test_a_sibling_control_account_that_is_not_a_descendant_is_not_refused(): void
+    {
+        // `413 Clients - Effets à recevoir` hangs off `41`, NOT off `411`. It is a
+        // distinct control account with its own semantics, not a restatement of the
+        // open items, and the guard must not acquire an opinion about it.
+        $effets = Account::query()
+            ->where('company_id', $this->company->id)
+            ->where('code', '413')
+            ->firstOrFail();
+        $counterpart = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::OpeningBalanceEquity);
+
+        $batch = $this->makeAccountingBatch([
+            ['account_code' => $effets->code, 'debit' => '90.000', 'credit' => '0.000', 'description' => 'Effets'],
+            ['account_code' => $counterpart->code, 'debit' => '0.000', 'credit' => '90.000', 'description' => 'O'],
+        ]);
+
+        $result = app(AccountingOpeningService::class)->validateBatch($batch->refresh());
+
+        self::assertTrue($result['valid']);
+    }
+
+    // ------------------------------------------------- gate r1 I-2 ----------
+
+    public function test_a_row_marked_valid_before_the_guard_shipped_is_still_refused_at_post(): void
+    {
+        // postBatch() posts whatever is already `Valid`. A GL opening validated
+        // BEFORE this rule shipped would otherwise post a 411/401 line AFTER it
+        // shipped and double the control account against the AR/AP openings. The
+        // pre-guard state is reproduced by writing the row's mapped_data and status
+        // directly — which is exactly what such a batch looks like in the database.
+        $receivable = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::CustomerReceivable);
+        $counterpart = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::OpeningBalanceEquity);
+
+        $batch = $this->makeAccountingBatch([
+            ['account_code' => $receivable->code, 'debit' => '150.000', 'credit' => '0.000', 'description' => 'Clients'],
+            ['account_code' => $counterpart->code, 'debit' => '0.000', 'credit' => '150.000', 'description' => 'O'],
+        ]);
+
+        $this->markRowValid($batch, 1, $receivable, debit: '150.000', credit: '0.000');
+        $this->markRowValid($batch, 2, $counterpart, debit: '0.000', credit: '150.000');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/partner control account for AR open items/');
+
+        app(AccountingOpeningService::class)->postBatch($batch->refresh(), $this->user->id);
+    }
+
+    private function markRowValid(
+        OpeningBalanceBatch $batch,
+        int $rowNumber,
+        Account $account,
+        string $debit,
+        string $credit,
+    ): void {
+        $batch->rows()->where('row_number', $rowNumber)->firstOrFail()->update([
+            'status' => OpeningImportRowStatus::Valid,
+            'mapped_data' => [
+                'account_id' => $account->id,
+                'account_code' => $account->code,
+                'account_name' => $account->name,
+                'debit' => $debit,
+                'credit' => $credit,
+                'description' => 'pre-guard row',
+            ],
+            'validation_errors' => null,
+        ]);
     }
 
     /**

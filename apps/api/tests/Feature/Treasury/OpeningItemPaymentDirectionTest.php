@@ -28,13 +28,17 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
+use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -234,28 +238,7 @@ final class OpeningItemPaymentDirectionTest extends TestCase
 
     public function test_a_customer_typed_document_owned_by_a_supplier_cannot_be_paid(): void
     {
-        // The exact row every tenant migrated before this fix already carries: a
-        // HIST-INV customer invoice whose partner is a SUPPLIER. Nothing in the
-        // payment path used to notice, so it took the AR arm and moved cash IN.
-        $legacyMisTypedOpening = Document::create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'partner_id' => $this->supplier->id,
-            'type' => DocumentType::Invoice,
-            'status' => DocumentStatus::Posted,
-            'fiscal_category' => FiscalCategory::NonFiscal,
-            'fiscal_status' => FiscalStatus::Draft,
-            'document_number' => 'HIST-INV-2026-09001',
-            'document_date' => '2026-06-15',
-            'due_date' => '2026-07-15',
-            'currency' => 'TND',
-            'subtotal' => '500.000',
-            'discount_amount' => '0.000',
-            'tax_amount' => '0.000',
-            'total' => '500.000',
-            'balance_due' => '500.000',
-            'is_historical' => true,
-        ]);
+        $legacyMisTypedOpening = $this->legacyMisTypedOpening();
 
         $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
             'partner_id' => $this->supplier->id,
@@ -323,6 +306,133 @@ final class OpeningItemPaymentDirectionTest extends TestCase
 
         $response->assertStatus(422);
         $response->assertJsonPath('error.code', 'PAYMENT_DIRECTION_MISMATCH');
+    }
+
+    // ------------------------------ gate r1 I-1: the OTHER settlement routes ---
+    //
+    // The guard was on POST /payments single-payment alone, and the legacy
+    // mis-typed row stayed reachable through three more routes. `storeMultiple`'s
+    // only type guard was `rejectSupplierInvoiceInMultiline()`, a pure
+    // `=== SupplierInvoice` test that a customer-typed document passes;
+    // `MultiPaymentController` and the smart-payment path have the same shape. One
+    // test per route, mirroring `PaymentAllocationDocumentStateTest` (W-7 F-6),
+    // because that is what proved a one-site guard is not a guard.
+
+    public function test_the_multi_payment_path_refuses_a_direction_mismatch(): void
+    {
+        $document = $this->legacyMisTypedOpening();
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $this->supplier->id,
+            'document_id' => $document->id,
+            'payment_date' => '2026-08-25',
+            'payments' => [
+                [
+                    'payment_method_id' => $this->bankMethod->id,
+                    'repository_id' => $this->repository->id,
+                    'amount' => '500.000',
+                ],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'PAYMENT_DIRECTION_MISMATCH');
+        $this->assertDatabaseMissing('payment_allocations', ['document_id' => $document->id]);
+        self::assertSame(0, Payment::query()->count());
+    }
+
+    public function test_the_split_payment_path_refuses_a_direction_mismatch(): void
+    {
+        $document = $this->legacyMisTypedOpening();
+
+        $response = $this->actingAs($this->user)->postJson("/api/v1/documents/{$document->id}/split-payment", [
+            'splits' => [
+                ['payment_method_id' => $this->bankMethod->id, 'repository_id' => $this->repository->id, 'amount' => '250.000'],
+                ['payment_method_id' => $this->bankMethod->id, 'repository_id' => $this->repository->id, 'amount' => '250.000'],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'PAYMENT_DIRECTION_MISMATCH');
+        $this->assertDatabaseMissing('payment_allocations', ['document_id' => $document->id]);
+        self::assertSame(0, Payment::query()->count());
+    }
+
+    public function test_the_apply_deposit_path_refuses_a_direction_mismatch(): void
+    {
+        $document = $this->legacyMisTypedOpening();
+        $deposit = $this->unallocatedDeposit('500.000');
+
+        $response = $this->actingAs($this->user)->postJson("/api/v1/payments/{$deposit->id}/apply-deposit", [
+            'document_id' => $document->id,
+            'amount' => '500.000',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'PAYMENT_DIRECTION_MISMATCH');
+        $this->assertDatabaseMissing('payment_allocations', ['document_id' => $document->id]);
+    }
+
+    public function test_the_smart_payment_path_refuses_a_direction_mismatch(): void
+    {
+        $document = $this->legacyMisTypedOpening();
+        $deposit = $this->unallocatedDeposit('500.000');
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/smart-payment/apply-allocation', [
+            'payment_id' => $deposit->id,
+            'allocation_method' => 'fifo',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'PAYMENT_DIRECTION_MISMATCH');
+        $this->assertDatabaseMissing('payment_allocations', ['document_id' => $document->id]);
+    }
+
+    /**
+     * The exact row every tenant migrated before W4-3 already carries, and the one
+     * the campaign tenant holds as `HIST-INV-2026-00002`: a customer-typed invoice
+     * whose partner is a SUPPLIER. Nothing in the payment path used to notice, so
+     * it took the AR arm — `Dr bank / Cr 411`, movement IN — for money going out.
+     */
+    private function legacyMisTypedOpening(): Document
+    {
+        return Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'type' => DocumentType::Invoice,
+            'status' => DocumentStatus::Posted,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'document_number' => 'HIST-INV-2026-09001',
+            'document_date' => '2026-06-15',
+            'due_date' => '2026-07-15',
+            'currency' => 'TND',
+            'subtotal' => '500.000',
+            'discount_amount' => '0.000',
+            'tax_amount' => '0.000',
+            'total' => '500.000',
+            'balance_due' => '500.000',
+            'is_historical' => true,
+        ]);
+    }
+
+    private function unallocatedDeposit(string $amount): Payment
+    {
+        return Payment::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'payment_method_id' => $this->bankMethod->id,
+            'amount' => $amount,
+            'currency' => 'TND',
+            'payment_date' => '2026-08-25',
+            'status' => PaymentStatus::Completed,
+            'origin' => PaymentOrigin::WebAdmin,
+            'reference' => 'Deposit for direction-guard test',
+            'notes' => 'Advance payment/deposit [UNALLOCATED]',
+        ]);
     }
 
     private function postApOpening(string $amount): Document

@@ -110,10 +110,16 @@ class ArApOpeningLedgerService
         $companyId = (string) $document->company_id;
         $partnerId = $document->partner_id;
 
-        // `documents.partner_id` is typed non-nullable in the model docblock but the
-        // COLUMN is nullable, and an opening entry with no partner would post to the
-        // control account outside every sub-ledger — the exact invisibility W4-4 is
-        // about. Fail the batch closed rather than write an untraceable line.
+        // An opening entry with no partner would post to the control account
+        // outside every sub-ledger — the exact invisibility W4-4 is about — so fail
+        // the batch closed rather than write an untraceable line.
+        //
+        // Gate r1 M-2: this comment used to claim it also caught a NULL
+        // `partner_id`. It does not, and it cannot: `documents.partner_id` is typed
+        // non-nullable in the model docblock, so PHPStan rejects a `=== null` test
+        // as always-false. The empty string is the only shape reachable here, and
+        // even that is defence in depth — `validateRow()` requires `partner_code`
+        // and `postBatch()` skips any row whose `mapped_data` has no `partner_id`.
         if ($partnerId === '') {
             throw new RuntimeException(
                 "Opening document {$document->document_number} has no partner — it cannot reach the sub-ledger."

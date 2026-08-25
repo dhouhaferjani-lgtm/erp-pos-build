@@ -202,6 +202,9 @@ class PaymentAllocationService
                 // this write path reaches its own `canTransitionToPaid()` status
                 // flip a few lines below.
                 $this->allocationStateGuard->assertAllocatable($document);
+                // W4-3 / gate r1 I-1 — the smart-payment and allocation paths reach the
+                // same AR arm as PaymentController::store().
+                $this->allocationStateGuard->assertDirectionMatchesPartner($document);
 
                 // N-6 — decide the GL treatment from the LOCKED row's state.
                 // A confirmed (unposted) invoice carries no receivable, so the
@@ -722,6 +725,8 @@ class PaymentAllocationService
             // W-7 F-6: fail the READ side too, so the smart-payment preview never
             // offers a withdrawn document as payable in the first place.
             $this->allocationStateGuard->assertAllocatable($invoice);
+            // W4-3 / gate r1 I-1.
+            $this->allocationStateGuard->assertDirectionMatchesPartner($invoice);
             // N-6 — the MANUAL path used to admit anything that was not
             // withdrawn: a DRAFT invoice, a quote, a credit note. Classify it
             // here so the preview refuses with 422 DOCUMENT_NOT_ALLOCATABLE

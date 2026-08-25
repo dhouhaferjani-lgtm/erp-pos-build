@@ -181,6 +181,9 @@ class MultiPaymentController extends Controller
         // to its own structured 422, and the generic `catch (\Exception $e)`
         // below would otherwise re-wrap it as a bare message string.
         $this->allocationStateGuard->assertAllocatable($document);
+        // W4-3 / gate r1 I-1 — split payment and apply-deposit both settle a
+        // document and both infer their direction from its type.
+        $this->allocationStateGuard->assertDirectionMatchesPartner($document);
 
         try {
             /** @var string|null $userId */
@@ -383,6 +386,9 @@ class MultiPaymentController extends Controller
         // `applyDepositToDocument()`'s transaction so a withdrawn document
         // never reaches the allocation write.
         $this->allocationStateGuard->assertAllocatable($document);
+        // W4-3 / gate r1 I-1 — split payment and apply-deposit both settle a
+        // document and both infer their direction from its type.
+        $this->allocationStateGuard->assertDirectionMatchesPartner($document);
 
         try {
             $allocation = $this->multiPaymentService->applyDepositToDocument(
