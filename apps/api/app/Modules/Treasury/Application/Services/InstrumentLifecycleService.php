@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Application\Services;
 
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\DTOs\PosRevenueVatSplit;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
@@ -601,13 +602,20 @@ final readonly class InstrumentLifecycleService implements InstrumentReversalCan
         });
     }
 
+    /**
+     * @param  ?PosRevenueVatSplit  $posRevenueSplit  REQUIRED on the `PosRevenue` shape (W4-9 gate r1 / F-1):
+     *                                                the POS sale it reverses recognised revenue NET with its
+     *                                                output VAT on `4457`, so the cancellation has to reverse
+     *                                                the same decomposition rather than one gross revenue debit.
+     */
     public function cancel(
         string $instrumentId,
         ?string $userId,
         string $reason,
         CancellationShape $shape = CancellationShape::B2b,
+        ?PosRevenueVatSplit $posRevenueSplit = null,
     ): void {
-        DB::transaction(function () use ($instrumentId, $userId, $reason, $shape): void {
+        DB::transaction(function () use ($instrumentId, $userId, $reason, $shape, $posRevenueSplit): void {
             $instrument = PaymentInstrument::query()->lockForUpdate()->findOrFail($instrumentId);
             if ($instrument->direction === InstrumentDirection::Outbound) {
                 throw new DomainException('Outbound instruments must be cancelled through the outbound cancellation lifecycle.');
@@ -623,7 +631,7 @@ final readonly class InstrumentLifecycleService implements InstrumentReversalCan
                 throw new DomainException('Settle or reverse the linked payment before cancelling its instrument.');
             }
 
-            $this->performCancellation($instrument, $payment, $userId, $reason, $shape);
+            $this->performCancellation($instrument, $payment, $userId, $reason, $shape, $posRevenueSplit);
         });
     }
 
@@ -811,6 +819,7 @@ final readonly class InstrumentLifecycleService implements InstrumentReversalCan
         ?string $userId,
         string $reason,
         CancellationShape $shape,
+        ?PosRevenueVatSplit $posRevenueSplit = null,
     ): ?string {
         $fromStatus = $instrument->status;
 
@@ -843,6 +852,7 @@ final readonly class InstrumentLifecycleService implements InstrumentReversalCan
                 shape: $shape,
                 date: now(),
                 partition: $partition,
+                posRevenueSplit: $posRevenueSplit,
             );
             $this->generalLedger->postEntryNow($entry, User::query()->find($userId), $instrument->currency);
             $journalEntryId = $entry->id;
