@@ -38,6 +38,18 @@ return [
         'title' => 'Proforma — non-fiscal document',
         'detail' => 'This is an estimate issued before the sale has been entered in the accounts. It is not a definitive fiscal document, it carries no seal, and it confers no right of deduction. A definitive document will be issued once the sale is entered.',
         'estimated_total' => 'Estimated total',
+        /*
+        | Gate r2 §3 (residual R-8) — the two rows that make a proforma's totals box
+        | close over its tax-inclusive line amounts. DUTY WORDS, NEVER TAX WORDS: a
+        | document-level discount is not a tax mention, and the TN timbre is a *droit
+        | de timbre* under the Code des droits d'enregistrement et de timbre — Art. 18
+        | attaches liability to VAT mentioned on an issued invoice and to nothing
+        | else. `adjustment` is the neutral label for a residual that runs the other
+        | way; calling an increase a discount would be a lie.
+        */
+        'stamp_duty' => 'Stamp duty',
+        'discount' => 'Discount',
+        'adjustment' => 'Adjustment',
     ],
 
     'posting_marker' => [

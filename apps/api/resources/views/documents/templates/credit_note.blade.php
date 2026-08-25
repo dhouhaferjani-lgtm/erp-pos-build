@@ -61,10 +61,29 @@
         <div class="totals-box">
             <table class="totals-table">
                 @if($isProforma)
-                {{-- C-F0 / F-95 — see components/totals.blade.php: one estimated
-                     gross row, no net line to subtract from. The credit note has
-                     its own totals block rather than the shared component, which
-                     is exactly how a gate gets missed; it is gated here. --}}
+                {{-- C-F0 / F-95 — see components/totals.blade.php: gross line
+                     figures, no net line to subtract from, and (gate r2 §3 / R-8)
+                     the duty and derived-discount rows that make the box close over
+                     them. The credit note has its own totals block rather than the
+                     shared component, which is exactly how a gate gets missed; it is
+                     gated here, and it must stay in step with the component. --}}
+                @if(($proformaTotals ?? null) !== null && $proformaTotals->stampDuty !== null)
+                <tr>
+                    <td>{{ __('documents.proforma.stamp_duty') }}</td>
+                    <td>{{ $formatMoney($proformaTotals->stampDuty) }}</td>
+                </tr>
+                @endif
+                @if(($proformaTotals ?? null) !== null && $proformaTotals->discount !== null)
+                <tr>
+                    <td>{{ __('documents.proforma.discount') }}</td>
+                    <td>-{{ $formatMoney($proformaTotals->discount) }}</td>
+                </tr>
+                @elseif(($proformaTotals ?? null) !== null && $proformaTotals->surcharge !== null)
+                <tr>
+                    <td>{{ __('documents.proforma.adjustment') }}</td>
+                    <td>{{ $formatMoney($proformaTotals->surcharge) }}</td>
+                </tr>
+                @endif
                 <tr class="total-row" style="background-color: #dc2626;">
                     <td>{{ __('documents.proforma.estimated_total') }}</td>
                     <td>{{ $formatMoney($document->total) }}</td>

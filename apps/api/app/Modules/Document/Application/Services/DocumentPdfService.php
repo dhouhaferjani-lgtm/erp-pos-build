@@ -177,6 +177,7 @@ final class DocumentPdfService
         // so the human-readable PDF and the embedded XML agree. documents.location_id
         // is nullable, so fall back to the company when absent.
         $seller = $this->sellerTaxIdentity($company, $document->location);
+        $isProforma = $this->proformaPolicy->isProforma($document);
 
         return [
             'document' => $document,
@@ -195,7 +196,7 @@ final class DocumentPdfService
             // exist only for direct `view('documents.templates.*')` renders in
             // tests; `ProformaTemplateCensusTest` pins that this key is always
             // present on the production path.
-            'isProforma' => $this->proformaPolicy->isProforma($document),
+            'isProforma' => $isProforma,
             // SPEC §2.4 r11.2 (gate r1 F-2) — the tax-inclusive figures a proforma
             // line prints. Passed as closures, like `$formatMoney` above, so the
             // POSTED branch of the template never calls them and its rendering is
@@ -203,6 +204,14 @@ final class DocumentPdfService
             // them something else.
             'proformaUnitPrice' => fn (DocumentLine $line): string => $this->proformaGrossAmounts->unitPrice($line, $currency),
             'proformaLineAmount' => fn (DocumentLine $line): string => $this->proformaGrossAmounts->lineAmount($line, $currency),
+            // Gate r2 §3 (residual R-8) — the rows that make a proforma's totals box
+            // close over its gross lines when the document carries a TN timbre or a
+            // document-level discount. Resolved here, once, so the two fiscal
+            // templates render it and compute nothing; `null` on the posted path,
+            // where the blades never reach it.
+            'proformaTotals' => $isProforma
+                ? $this->proformaGrossAmounts->totals($document, $currency)
+                : null,
             'formatMoney' => fn (string|float|null $amount) => $this->formatMoney($amount, $currency, $locale),
             'formatDate' => fn (Carbon|string|null $date) => $this->formatDate($date, $company->date_format, $locale),
             'formatNumber' => fn (string|float|null $number, int $decimals = 2) => $this->formatNumber($number, $decimals, $locale),

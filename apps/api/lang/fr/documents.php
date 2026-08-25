@@ -27,6 +27,10 @@ return [
         'title' => 'Proforma — document non fiscal',
         'detail' => "Il s'agit d'une estimation établie avant l'enregistrement de la vente dans les comptes. Ce n'est pas un document fiscal définitif, il ne porte aucun scellement et n'ouvre aucun droit à déduction. Un document définitif sera émis une fois la vente enregistrée.",
         'estimated_total' => 'Total estimé',
+        // Gate r2 §3 (R-8) — mots de droit, jamais de taxe. Voir lang/en.
+        'stamp_duty' => 'Droit de timbre',
+        'discount' => 'Remise',
+        'adjustment' => 'Ajustement',
     ],
 
     'posting_marker' => [

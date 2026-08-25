@@ -73,6 +73,20 @@ final class ProformaOutputTest extends TestCase
         '/comptabilis/i',
     ];
 
+    /**
+     * The three rows of `discountedUnpostedInvoice()`, as PRINTED: unit price,
+     * quantity, line amount. Every one divides exactly, so `unit × qty == amount`
+     * is asserted without a tolerance — see the residual note in the handback for
+     * the quantities that do not divide.
+     *
+     * @var array<string, array{0: numeric-string, 1: numeric-string, 2: numeric-string}>
+     */
+    private const DISCOUNTED_ROWS = [
+        'qty 2, persisted tax ≠ rate × net' => ['118.240', '2.0000', '236.480'],
+        'qty 1' => ['59.120', '1.0000', '59.120'],
+        'qty 4, line-level discount' => ['26.604', '4.0000', '106.416'],
+    ];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -324,6 +338,218 @@ final class ProformaOutputTest extends TestCase
         }
     }
 
+    /**
+     * FIX ROUND r2 / gate F-7 + F-8 [BLOCKING] — EVERY ROW CLOSES ON ITS OWN FACE.
+     *
+     * r1 fixed the page and broke the row. `unitPrice()` was rate-derived while
+     * `lineAmount()` took the persisted, post-document-discount `tax_amount`, and
+     * the two bases cannot agree once a document-level discount exists: the tax
+     * engine prorates that discount into every rate bucket
+     * (`TaxCalculationService:171-183`) and a rate-derived unit price knows nothing
+     * about it. The gate's probe printed `Qty 1,00 · Unit Price 59,500 · Amount
+     * 59,120` — the customer-facing document contradicting itself on one line, which
+     * is r1's F-2 defect one level down. The population is real:
+     * `POSAccountChargeDraftService:62,164` writes a document-level discount.
+     *
+     * Both printed figures now come from ONE basis: the gross line amount is built
+     * from the persisted post-discount facts, and the unit price is that amount
+     * divided by the quantity.
+     *
+     * THIS FIXTURE ALSO PINS F-8, which r1 left unpinned — a rewrite to either
+     * forbidden derivation passed all 24 tests, because line 1 had a NULL
+     * `tax_amount` (forcing the rate path) and line 2 had `quantity = 1` (where
+     * every derivation coincides). Here:
+     *   - line 1 has quantity 2 AND a persisted `tax_amount` (36.480) that is NOT
+     *     `rate × line_total` (38.000) ⇒ a rate-derived unit price prints 119.000
+     *     and 119.000 × 2 = 238.000 ≠ 236.480. RED.
+     *   - line 3 carries a LINE-level discount, so `line_total ≠ unit_price × qty`
+     *     ⇒ the `unit_price + tax_amount ÷ qty` derivation prints 29.104 and
+     *     29.104 × 4 = 116.416 ≠ 106.416. RED.
+     * One fixture, both forbidden derivations falsified.
+     */
+    public function test_every_proforma_row_closes_on_its_own_face(): void
+    {
+        $this->app->setLocale('en');
+        $invoice = $this->discountedUnpostedInvoice();
+
+        $money = $this->moneyFormatter($invoice);
+        $printed = $this->itemsTableRightCells($this->renderHtml($invoice));
+
+        $expected = [];
+
+        foreach (self::DISCOUNTED_ROWS as $label => [$unitPrice, $quantity, $lineAmount]) {
+            // The identity the customer performs with a calculator, at the
+            // currency's own scale. If this ever needs a tolerance, the two
+            // printed figures have stopped coming from one basis.
+            $this->assertSame(
+                $lineAmount,
+                bcmul($unitPrice, $quantity, 3),
+                "row {$label}: printed unit price × quantity must be the printed amount",
+            );
+
+            $expected[] = $money($unitPrice);
+            $expected[] = $money($lineAmount);
+        }
+
+        $this->assertSame($expected, $printed, 'the page must print exactly those figures');
+    }
+
+    /**
+     * FIX ROUND r2 / gate r2 §3 ruling on R-8 — the page reconciles WITH a stamp
+     * duty and a document-level discount, and the reconciling row is DERIVED.
+     *
+     * `Stamp duty` is the stored statutory figure. The discount row is computed as
+     * `Σ printed gross lines + stamp − total`, never assembled from
+     * `discount_amount`: the two coincide only when every line carries a persisted
+     * `tax_amount`, and the NULL-`tax_amount` fallback taxes the PRE-discount net,
+     * so an assembled figure would leave a silent remainder on a legacy row. A
+     * derived row reconciles by construction on every shape.
+     *
+     * Neither word is a tax word. A document-level discount is not a tax mention,
+     * and the TN timbre is a *droit de timbre* under the Code des droits
+     * d'enregistrement et de timbre — naming a separate duty is not mentioning TVA,
+     * which is the only thing Art. 18 attaches liability to.
+     */
+    public function test_the_proforma_totals_box_reconciles_with_a_stamp_duty_and_a_discount(): void
+    {
+        $this->app->setLocale('en');
+        $invoice = $this->discountedUnpostedInvoice();
+
+        $money = $this->moneyFormatter($invoice);
+
+        $this->assertSame(
+            [$money('1.000'), '-'.$money('10.000'), $money('393.016')],
+            $this->totalsTableCells($this->renderHtml($invoice)),
+            'stamp duty, then the derived discount, then the estimated total',
+        );
+
+        $grossLines = '0.000';
+        foreach (self::DISCOUNTED_ROWS as [, , $lineAmount]) {
+            $grossLines = bcadd($grossLines, $lineAmount, 3);
+        }
+
+        $this->assertSame('402.016', $grossLines);
+        $this->assertSame(
+            (string) $invoice->total,
+            bcsub(bcadd($grossLines, '1.000', 3), '10.000', 3),
+            'Σ printed gross lines + printed stamp duty − printed discount == the estimated total',
+        );
+    }
+
+    #[DataProvider('localeProvider')]
+    public function test_a_proforma_with_a_stamp_duty_and_a_discount_stays_clean(string $locale): void
+    {
+        $this->app->setLocale($locale);
+        $invoice = $this->discountedUnpostedInvoice();
+
+        $this->assertNoForbiddenToken(
+            $this->scannable($this->renderHtml($invoice)),
+            "discounted invoice HTML in {$locale}",
+        );
+        $this->assertNoForbiddenToken(
+            $this->renderPdfText($invoice),
+            "discounted invoice PDF text in {$locale}",
+        );
+
+        $this->assertStringContainsString(__('documents.proforma.stamp_duty'), $this->renderHtml($invoice));
+        $this->assertStringContainsString(__('documents.proforma.discount'), $this->renderHtml($invoice));
+    }
+
+    /**
+     * The duty and discount rows must not hand back what the gross lines were
+     * hiding. Exact membership again — `236,480 DT` contains `36,480 DT`.
+     */
+    public function test_the_duty_and_discount_rows_do_not_reveal_the_vat(): void
+    {
+        $this->app->setLocale('en');
+        $invoice = $this->discountedUnpostedInvoice();
+
+        $rendered = $this->renderHtml($invoice);
+        $money = $this->moneyFormatter($invoice);
+
+        $printedInHtml = array_merge(
+            $this->itemsTableRightCells($rendered),
+            $this->totalsTableCells($rendered),
+        );
+        $printedInPdf = $this->pdfLines($this->renderPdfText($invoice));
+
+        foreach ([
+            '62.016' => 'the VAT total',
+            '340.000' => 'the net subtotal',
+            '330.000' => 'the discounted net',
+            '200.000' => 'line 1 net amount',
+            '100.000' => 'line 1 net unit price',
+            '50.000' => 'line 2 net amount and unit price',
+            '90.000' => 'line 3 net amount',
+            '25.000' => 'line 3 net unit price',
+            '36.480' => 'line 1 VAT',
+            '9.120' => 'line 2 VAT',
+            '16.416' => 'line 3 VAT',
+        ] as $amount => $why) {
+            $this->assertNotContains($money($amount), $printedInHtml, "the HTML must not print {$why}");
+            $this->assertNotContains($money($amount), $printedInPdf, "the PDF must not print {$why}");
+        }
+    }
+
+    /**
+     * The other sign. A derived reconciling row has to close the page when the
+     * residual runs the other way — a legacy row whose NULL `tax_amount` made the
+     * fallback tax the PRE-discount net is exactly how that happens — and calling
+     * an increase a "Discount" would be a lie. It gets its own neutral label.
+     */
+    public function test_a_residual_that_runs_the_other_way_is_not_called_a_discount(): void
+    {
+        $this->app->setLocale('en');
+        $invoice = $this->surchargedUnpostedInvoice();
+
+        $money = $this->moneyFormatter($invoice);
+        $cells = $this->totalsTableCells($this->renderHtml($invoice));
+
+        $this->assertSame([$money('5.000'), $money('243.000')], $cells);
+        $this->assertSame(
+            (string) $invoice->total,
+            bcadd('238.000', '5.000', 3),
+            'Σ printed gross lines + the printed adjustment == the estimated total',
+        );
+    }
+
+    /**
+     * FIX ROUND r2 — the reconciling row is DERIVED, and this is the shape that
+     * proves it, because on every other fixture "derived" and "assembled from
+     * `stamp − discount`" give the same number.
+     *
+     * One line with a NULL `document_lines.tax_amount` — every row written before
+     * the tax engine existed — under a document-level discount. The fallback taxes
+     * the PRE-discount net (19% of 200.000 = 38.000), while the document's own
+     * `line_tax_amount` was taken on the discounted base (19% of 190.000 = 36.100).
+     * So Σ printed gross = 238.000 against a stored total of 226.100:
+     *
+     *   derived   : 238.000 − 226.100 = 11.900  → the page closes
+     *   assembled : stamp − discount  = 10.000  → 238.000 − 10.000 = 228.000, a
+     *               silent 1.900 remainder in front of the customer
+     *
+     * This is gate r2 §3's first condition, and without this test it would be
+     * unpinned exactly the way F-8's invariant was.
+     */
+    public function test_the_reconciling_row_is_derived_and_not_assembled_from_the_stored_discount(): void
+    {
+        $this->app->setLocale('en');
+        $invoice = $this->legacyTaxRowUnpostedInvoice();
+
+        $money = $this->moneyFormatter($invoice);
+
+        $this->assertSame(
+            ['-'.$money('11.900'), $money('226.100')],
+            $this->totalsTableCells($this->renderHtml($invoice)),
+            'the discount row must be total − Σ gross lines, not the stored discount_amount',
+        );
+        $this->assertSame(
+            (string) $invoice->total,
+            bcsub('238.000', '11.900', 3),
+            'and the page closes on the figures it actually prints',
+        );
+    }
+
     public function test_a_posted_invoice_renders_identically_to_the_pre_change_snapshot(): void
     {
         $this->assertPostedRenderingUnchanged($this->postedInvoice(), 'posted-invoice');
@@ -452,7 +678,12 @@ final class ProformaOutputTest extends TestCase
 
         preg_match_all('#<td[^>]*>(.*?)</td>#s', $table[1], $cells);
 
-        $labels = [__('documents.proforma.estimated_total')];
+        $labels = [
+            __('documents.proforma.estimated_total'),
+            __('documents.proforma.stamp_duty'),
+            __('documents.proforma.discount'),
+            __('documents.proforma.adjustment'),
+        ];
 
         return array_values(array_filter(
             array_map(static fn (string $cell): string => trim($cell), $cells[1]),
@@ -487,6 +718,110 @@ final class ProformaOutputTest extends TestCase
      * line 1 carries only `tax_rate` (`document_lines.tax_amount` is nullable and
      * NULL on older rows), line 2 carries a persisted `tax_amount`.
      */
+    /**
+     * The shape gate r2 F-7 was found on: a document-level discount prorated into
+     * the line taxes by the tax engine, plus the TN timbre, plus a line-level
+     * discount on one row.
+     *
+     *   L1  qty 2  net 200.000  VAT 36.480 (persisted; rate × net would be 38.000)
+     *   L2  qty 1  net  50.000  VAT  9.120 (persisted)
+     *   L3  qty 4  net  90.000  VAT 16.416 (persisted; line discount 10.000)
+     *   subtotal 340.000 − discount 10.000 + line VAT 62.016 + stamp 1.000 = 393.016
+     *   Σ gross lines 402.016; 402.016 + 1.000 − 10.000 = 393.016
+     */
+    private function discountedUnpostedInvoice(): Document
+    {
+        $invoice = $this->dpConfirmedInvoice([
+            $this->dpPhysicalLine('2.0000', '100.000'),
+            $this->dpPhysicalLine('1.0000', '50.000'),
+            $this->dpPhysicalLine('4.0000', '25.000'),
+        ]);
+
+        $this->dpCompany->forceFill([
+            'vat_number' => 'TN-VAT-1234567',
+            'phone' => null,
+            'email' => null,
+            'registration_number' => null,
+        ])->save();
+
+        $lines = $invoice->lines->sortBy('line_number')->values();
+        $lines->firstOrFail()->forceFill(['tax_rate' => '19.00', 'tax_amount' => '36.480'])->save();
+        $lines->skip(1)->firstOrFail()->forceFill(['tax_rate' => '19.00', 'tax_amount' => '9.120'])->save();
+        $lines->skip(2)->firstOrFail()->forceFill([
+            'tax_rate' => '19.00',
+            'tax_amount' => '16.416',
+            'discount_amount' => '10.000',
+            'line_total' => '90.000',
+        ])->save();
+
+        $invoice->forceFill([
+            'document_number' => 'INV-PROFORMA-0003',
+            'document_date' => '2026-01-15',
+            'due_date' => '2026-02-15',
+            'subtotal' => '340.000',
+            'discount_amount' => '10.000',
+            'line_tax_amount' => '62.016',
+            'stamp_duty_amount' => '1.000',
+            'tax_amount' => '63.016',
+            'total' => '393.016',
+            'balance_due' => '393.016',
+            'notes' => null,
+        ])->save();
+        $invoice->refresh();
+
+        return $invoice;
+    }
+
+    /**
+     * One line, gross 238.000, and a stored total 5.000 ABOVE it with no stamp and
+     * no discount — the residual runs the other way.
+     */
+    /**
+     * A pre-tax-engine row (`document_lines.tax_amount` NULL) under a document-level
+     * discount — the shape that separates a derived reconciling row from an
+     * assembled one.
+     */
+    private function legacyTaxRowUnpostedInvoice(): Document
+    {
+        $invoice = $this->deterministic(
+            $this->dpConfirmedInvoice([$this->dpPhysicalLine()]),
+            'INV-PROFORMA-0005',
+        );
+
+        $invoice->lines->firstOrFail()->forceFill(['tax_rate' => '19.00', 'tax_amount' => null])->save();
+        $invoice->forceFill([
+            'subtotal' => '200.000',
+            'discount_amount' => '10.000',
+            'line_tax_amount' => '36.100',
+            'stamp_duty_amount' => '0.000',
+            'tax_amount' => '36.100',
+            'total' => '226.100',
+            'balance_due' => '226.100',
+        ])->save();
+        $invoice->refresh();
+
+        return $invoice;
+    }
+
+    private function surchargedUnpostedInvoice(): Document
+    {
+        $invoice = $this->deterministic(
+            $this->dpConfirmedInvoice([$this->dpPhysicalLine()]),
+            'INV-PROFORMA-0004',
+        );
+
+        $invoice->lines->firstOrFail()->forceFill(['tax_rate' => '19.00', 'tax_amount' => '38.000'])->save();
+        $invoice->forceFill([
+            'stamp_duty_amount' => '0.000',
+            'discount_amount' => '0.000',
+            'total' => '243.000',
+            'balance_due' => '243.000',
+        ])->save();
+        $invoice->refresh();
+
+        return $invoice;
+    }
+
     private function twoLineUnpostedInvoice(): Document
     {
         $invoice = $this->dpConfirmedInvoice([

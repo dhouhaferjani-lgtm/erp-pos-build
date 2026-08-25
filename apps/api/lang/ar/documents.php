@@ -38,6 +38,16 @@ return [
         'title' => 'مبدئية — مستند غير ضريبي',
         'detail' => 'هذا تقدير صادر قبل إدخال البيع في الحسابات. ليس مستنداً ضريبياً نهائياً، ولا يحمل أي ختم، ولا ينشئ أي حق في الخصم. سيُصدر مستند نهائي بعد إدخال البيع.',
         'estimated_total' => 'المجموع التقديري',
+        /*
+        | Gate r2 §3 (R-8). Le balayage de jetons est en alphabet latin : il ne peut
+        | PAS attraper un mot de taxe écrit en arabe, donc ces trois chaînes sont une
+        | décision humaine et non une garantie de test. « معلوم الطابع » est le terme
+        | tunisien du droit de timbre SANS l'adjectif « جبائي » (fiscal) — un droit
+        | nommé, pas une mention de TVA.
+        */
+        'stamp_duty' => 'معلوم الطابع',
+        'discount' => 'تخفيض',
+        'adjustment' => 'تعديل',
     ],
 
     'posting_marker' => [

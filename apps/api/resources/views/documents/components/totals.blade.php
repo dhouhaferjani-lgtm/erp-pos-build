@@ -42,13 +42,38 @@
                 this row. Settlement rows (Paid / Balance Due) go as well: a proforma
                 is not a statement of account.
 
-                This row is the STORED `documents.total` and is never recomputed. A
-                document carrying a document-level charge (the TN timbre in
-                `stamp_duty_amount`) or a document-level discount therefore does not
-                sum exactly from its lines — the residual is that charge or discount,
-                never the VAT, so nothing about the invariant depends on it. Lane
-                handback residual R-8.
+                The total row is the STORED `documents.total` and is never
+                recomputed. A document carrying a document-level charge (the TN
+                timbre in `stamp_duty_amount`) or a document-level discount does not
+                sum exactly from its lines, so — gate r2 §3's ruling on residual R-8
+                — the two rows above it say so in words the customer can act on. A
+                *droit de timbre* and a discount are not VAT mentions, and Art. 18
+                attaches to nothing else.
+
+                Both rows come from `ProformaTotals`, already decided: the blade
+                renders and computes nothing. The reconciling row is DERIVED from
+                `total − (Σ printed gross lines + stamp)`, never assembled from the
+                stored discount, so the page closes on every shape — including a
+                legacy row whose NULL `tax_amount` made the fallback tax the
+                pre-discount net.
             --}}
+            @if(($proformaTotals ?? null) !== null && $proformaTotals->stampDuty !== null)
+            <tr>
+                <td>{{ __('documents.proforma.stamp_duty') }}</td>
+                <td>{{ $formatMoney($proformaTotals->stampDuty) }}</td>
+            </tr>
+            @endif
+            @if(($proformaTotals ?? null) !== null && $proformaTotals->discount !== null)
+            <tr>
+                <td>{{ __('documents.proforma.discount') }}</td>
+                <td>-{{ $formatMoney($proformaTotals->discount) }}</td>
+            </tr>
+            @elseif(($proformaTotals ?? null) !== null && $proformaTotals->surcharge !== null)
+            <tr>
+                <td>{{ __('documents.proforma.adjustment') }}</td>
+                <td>{{ $formatMoney($proformaTotals->surcharge) }}</td>
+            </tr>
+            @endif
             <tr class="total-row">
                 <td>{{ __('documents.proforma.estimated_total') }}</td>
                 <td>{{ $formatMoney($document->total) }}</td>
