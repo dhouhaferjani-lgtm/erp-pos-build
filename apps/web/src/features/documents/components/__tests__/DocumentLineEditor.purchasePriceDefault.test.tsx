@@ -15,7 +15,7 @@
  * Sale documents keep defaulting to `sale_price` (regression guard below).
  */
 
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -41,6 +41,8 @@ vi.mock('react-i18next', () => ({
         'sales:lineItems.priceSource.productPurchasePrice': 'From purchase price',
         'sales:lineItems.priceSource.none': 'No purchase price on file',
         'sales:lineItems.priceSource.required': 'Enter the unit price',
+        'sales:lineItems.priceEntryMode.unit': 'Per unit',
+        'sales:lineItems.priceEntryMode.total': 'Total',
       }
       const resolved = map[key] ?? key
       const amount = options?.['amount']
@@ -73,10 +75,19 @@ vi.mock('../../../../components/atoms/TaxConfigurationSelect/TaxConfigurationSel
   TaxConfigurationSelect: () => <span data-testid="tax-select">Tax</span>,
 }))
 
+// Purchase-bonus gating drives the unit/total price-entry toggle. It is a DEFAULT
+// module of the parapharmacy vertical (config/verticals.php), i.e. on for the
+// campaign tenant, so the toggle is reachable on the very screen W2-6 fixes.
+const companyConfigState = vi.hoisted(() => ({ purchaseBonusEnabled: false }))
+
 vi.mock('@/contexts/CompanyConfigContext', () => ({
   useCompanyConfig: () => ({
-    config: { line_designation_override_enabled: false },
-    hasModule: () => false,
+    config: {
+      line_designation_override_enabled: false,
+      purchase_bonus_enabled: companyConfigState.purchaseBonusEnabled,
+    },
+    hasModule: (moduleKey: string) =>
+      companyConfigState.purchaseBonusEnabled && moduleKey === 'PurchaseBonus',
   }),
 }))
 
@@ -101,9 +112,17 @@ vi.mock('../../../../components/molecules/line-items/LineItemEntryBar', () => ({
 
 let addedProduct: ProductLineProduct = PRODUCT
 
-function Harness({ documentType }: { documentType: DocumentType }) {
+function Harness({ documentType, refuseAll = false }: { documentType: DocumentType; refuseAll?: boolean }) {
   const [lines, setLines] = useState<DocumentLine[]>([])
-  return <DocumentLineEditor lines={lines} onChange={setLines} documentType={documentType} />
+  const invalidLineIds = refuseAll ? new Set(lines.map((line) => line.id)) : undefined
+  return (
+    <DocumentLineEditor
+      lines={lines}
+      onChange={setLines}
+      documentType={documentType}
+      {...(invalidLineIds !== undefined ? { invalidLineIds } : {})}
+    />
+  )
 }
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -111,11 +130,20 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 }
 
-async function addLine(documentType: DocumentType, product: ProductLineProduct): Promise<HTMLInputElement> {
+async function addLine(
+  documentType: DocumentType,
+  product: ProductLineProduct,
+  options: { refuseAll?: boolean } = {},
+): Promise<HTMLInputElement> {
   addedProduct = product
-  render(<Harness documentType={documentType} />, { wrapper })
+  render(<Harness documentType={documentType} refuseAll={options.refuseAll ?? false} />, { wrapper })
   await userEvent.click(screen.getByText('add-product'))
   return screen.getByLabelText<HTMLInputElement>('Unit price')
+}
+
+/** Flips the line's price-entry mode via the real toggle button. */
+async function toggleEntryMode(): Promise<void> {
+  await userEvent.click(screen.getByRole('button', { name: /^(Total|Per unit)$/ }))
 }
 
 function priceInput(): HTMLInputElement {
@@ -189,6 +217,76 @@ describe('DocumentLineEditor — price hint presentation (W2-6 r1 #5/#6)', () =>
     const describedBy = input.getAttribute('aria-describedby')
     expect(describedBy).not.toBeNull()
     expect(document.getElementById(describedBy ?? '')).toHaveTextContent(/No purchase price on file/)
+  })
+})
+
+/**
+ * Gate r2 finding 1 (C1, MAJOR). `handleUpdateLine` recomputes on
+ * `'price_entry_mode' in updates`, and its TOTAL branch ran the blank through
+ * `deriveUnitPrice`, which never returns blank — so ONE toggle click turned the
+ * lane's protective EMPTY into a priced-at-zero line:
+ *
+ *     BEFORE TOGGLE: [{"p":"","m":"unit"}]
+ *     AFTER  TOGGLE: [{"p":"0.000","m":"total"}]
+ *
+ * `findBlankPriceLineIds` then saw no blank (submit proceeded), `priceIsBlank`
+ * went false (hint vanished), and the total-mode input never received the
+ * refusal wiring at all. The toggle is gated on purchase-bonus, a DEFAULT module
+ * of the parapharmacy vertical — the campaign tenant.
+ */
+describe('DocumentLineEditor — blank survives the price-entry mode toggle (W2-6 r2 C1)', () => {
+  beforeEach(() => {
+    companyConfigState.purchaseBonusEnabled = true
+  })
+
+  afterEach(() => {
+    companyConfigState.purchaseBonusEnabled = false
+  })
+
+  it('keeps an unpriced purchase line blank when toggled to TOTAL entry mode', async () => {
+    await addLine('purchase_order', { ...PRODUCT, purchase_price: null })
+    await toggleEntryMode()
+
+    expect(priceInput().value).toBe('')
+    expect(priceInput().value).not.toBe('0.000')
+  })
+
+  it('keeps the blank-price warning visible after the toggle', async () => {
+    await addLine('purchase_order', { ...PRODUCT, purchase_price: null })
+    await toggleEntryMode()
+
+    expect(screen.getByText(/Enter the unit price|No purchase price on file/)).toBeInTheDocument()
+  })
+
+  it('keeps the line blank when toggled back to per-unit mode', async () => {
+    await addLine('purchase_order', { ...PRODUCT, purchase_price: null })
+    await toggleEntryMode()
+    await toggleEntryMode()
+
+    expect(priceInput().value).toBe('')
+  })
+
+  it('still derives the unit price from a real total the operator enters', async () => {
+    await addLine('purchase_order', PRODUCT)
+    await toggleEntryMode()
+
+    const input = priceInput()
+    await userEvent.click(input)
+    fireEvent.change(input, { target: { value: '450.000' } })
+    fireEvent.blur(input)
+
+    // 450.000 over the seeded quantity of 1 → the unit price follows the total.
+    expect(screen.queryByText(/Enter the unit price/)).not.toBeInTheDocument()
+  })
+
+  it('surfaces the refusal on the TOTAL-mode input too', async () => {
+    await addLine('purchase_order', { ...PRODUCT, purchase_price: null }, { refuseAll: true })
+    await toggleEntryMode()
+
+    const input = priceInput()
+    const describedBy = input.getAttribute('aria-describedby')
+    expect(describedBy).not.toBeNull()
+    expect(document.getElementById(describedBy ?? '')).toHaveTextContent(/Enter the unit price|No purchase price on file/)
   })
 })
 

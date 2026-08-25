@@ -8,6 +8,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\PurchaseOrderConfirmed;
+use App\Modules\Document\Domain\Exceptions\UnpricedPurchaseOrderLineException;
 use App\Modules\Inventory\Application\Services\LandedCostService;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use Illuminate\Support\Facades\DB;
@@ -42,6 +43,7 @@ final class PurchaseOrderService
      * - Confirmation event is dispatched for audit trail
      *
      * @throws \DomainException If purchase order cannot be confirmed
+     * @throws UnpricedPurchaseOrderLineException If any non-bonus line has no price
      */
     public function confirm(Document $purchaseOrder, ?string $actorId = null): Document
     {
@@ -57,6 +59,8 @@ final class PurchaseOrderService
             );
         }
 
+        $this->guardAgainstUnpricedLines($purchaseOrder);
+
         return DB::transaction(function () use ($purchaseOrder, $actorId): Document {
             $this->confirmAndAllocateCosts($purchaseOrder, $actorId);
 
@@ -65,6 +69,35 @@ final class PurchaseOrderService
             /** @var Document */
             return $purchaseOrder->load(['lines']);
         });
+    }
+
+    /**
+     * Refuse to confirm while any line is unpriced (W2-6 / gate r2 C2).
+     *
+     * A price of 0 on a purchase order is what the draft autosave writes for a line the
+     * operator never priced, and nothing downstream can distinguish it from a deliberate
+     * zero afterwards — see {@link UnpricedPurchaseOrderLineException} for the full
+     * reasoning and for why `is_bonus_line` is the one legitimate exemption.
+     *
+     * Compared with bccomp at the money scale, never as a float (rule 19).
+     */
+    private function guardAgainstUnpricedLines(Document $purchaseOrder): void
+    {
+        foreach ($purchaseOrder->lines as $line) {
+            if ($line->is_bonus_line) {
+                continue;
+            }
+
+            if (bccomp((string) $line->unit_price, '0', 6) > 0) {
+                continue;
+            }
+
+            throw new UnpricedPurchaseOrderLineException(
+                $purchaseOrder->id,
+                $line->line_number,
+                $line->description,
+            );
+        }
     }
 
     /**
