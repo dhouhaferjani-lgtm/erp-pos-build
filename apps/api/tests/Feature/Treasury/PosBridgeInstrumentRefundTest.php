@@ -36,6 +36,7 @@ use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -223,6 +224,105 @@ final class PosBridgeInstrumentRefundTest extends TestCase
             ->count());
     }
 
+    public function test_vat_bearing_check_refund_reverses_revenue_net_and_output_vat_per_rate(): void
+    {
+        // W4-9 gate r1, F-1. A maturity-instrument (cheque/effet) POS refund does
+        // NOT take `createPOSRefundReversalEntry` — it cancels the paper through
+        // `CancellationShape::PosRevenue`. That arm debited revenue at the GROSS
+        // instrument nominal and reversed no VAT at all, so once the SALE started
+        // crediting `70x` net + `4457` per rate, every cheque-tendered POS refund
+        // left `4457` permanently overstated by the VAT while the DGI declaration
+        // netted the same refund out. Books and filing diverged again on exactly
+        // the transaction this lane exists to fix.
+        //
+        // The pre-existing cases here all seal `vat_total = 0.00`, which is why
+        // the asymmetry was invisible to them: reversing gross and reversing net
+        // are the same number on a 0 % receipt. 10.00 TTC at 25 % = net 8.00 +
+        // VAT 2.00, exact at scale 2.
+        [$refundEvent, $saleEvent] = $this->projectedRefundReceipt('10.00', vatRate: '25.00');
+        $bridge = $this->app->make(TreasuryReceiptBridge::class);
+
+        $bridge->apply($saleEvent);
+        $instrument = PaymentInstrument::query()
+            ->where('idempotency_key', "fiscal_event:{$saleEvent->id}:instrument:0")
+            ->sole();
+        $this->assertSame(InstrumentStatus::Received, $instrument->status);
+
+        $revenueAccount = Account::findByPurposeOrFail($this->companyId, SystemAccountPurpose::ProductRevenue);
+        $vatAccount = Account::findByPurposeOrFail($this->companyId, SystemAccountPurpose::VatCollected);
+
+        // The SALE recognised net revenue + output VAT (the portfolio account
+        // carries the paper instead of cash — that part is unchanged).
+        $this->assertSame(['8.000', '0.000'], $this->accountTotals($revenueAccount->id));
+        $this->assertSame(['2.000', '0.000'], $this->accountTotals($vatAccount->id));
+
+        $bridge->apply($refundEvent);
+
+        $cancellationEntry = DB::table('journal_entries')
+            ->where('source_type', 'instrument')
+            ->where('source_id', $instrument->id)
+            ->sole();
+
+        // The cancellation reverses the SAME decomposition: net revenue and the
+        // output VAT per sealed rate, NOT one gross revenue debit.
+        $this->assertDatabaseHas('journal_lines', [
+            'journal_entry_id' => $cancellationEntry->id,
+            'account_id' => $revenueAccount->id,
+            'debit' => '8.000',
+            'credit' => '0.000',
+        ]);
+        $this->assertDatabaseHas('journal_lines', [
+            'journal_entry_id' => $cancellationEntry->id,
+            'account_id' => $vatAccount->id,
+            'debit' => '2.000',
+            'credit' => '0.000',
+        ]);
+        $this->assertSame(
+            'POS output VAT reversed (instrument cancellation) 25.00%',
+            (string) DB::table('journal_lines')
+                ->where('journal_entry_id', $cancellationEntry->id)
+                ->where('account_id', $vatAccount->id)
+                ->value('description'),
+            'the reversal line must name the sealed rate it reverses',
+        );
+
+        // The property that matters: sale + refund leaves BOTH accounts flat.
+        [$revenueCredit, $revenueDebit] = $this->accountTotals($revenueAccount->id);
+        $this->assertSame(0, bccomp($revenueCredit, $revenueDebit, 3), 'revenue must be flat after sale+refund');
+        [$vatCredit, $vatDebit] = $this->accountTotals($vatAccount->id);
+        $this->assertSame(0, bccomp($vatCredit, $vatDebit, 3), '4457 must be flat after sale+refund');
+
+        // Still no cash and no separate refund entry — the instrument lane owns it.
+        $this->assertSame(0, DB::table('repository_movements')->where('source_id', $refundEvent->id)->count());
+        $this->assertSame('100.000', (string) PaymentRepository::query()->findOrFail($this->repositoryId)->balance);
+        $this->assertSame(InstrumentStatus::Cancelled, $instrument->refresh()->status);
+    }
+
+    public function test_the_vat_leg_census_reports_an_instrument_tendered_refund_as_clean(): void
+    {
+        // W4-9 gate r2, R2-2. This refund writes NO `pos_receipt_refund` entry:
+        // the instrument lane cancels the paper, and the cancellation is keyed
+        // `source_type='instrument'`, `source_id=<instrument id>`. The census
+        // only knew about `pos_receipt*` entries keyed on `pos_receipts.id`, so
+        // it flagged the very receipt F-1 had just taught to reverse `4457` —
+        // and called it "never reached the GL", which points the operator at
+        // re-provisioning something that is booked correctly. On a tenant that
+        // takes cheques that is systematic noise in the one command that has to
+        // be trusted at deploy time.
+        [$refundEvent, $saleEvent] = $this->projectedRefundReceipt('10.00', vatRate: '25.00');
+        $bridge = $this->app->make(TreasuryReceiptBridge::class);
+        $bridge->apply($saleEvent);
+        $bridge->apply($refundEvent);
+
+        $code = Artisan::call('pos:census-vat-legs');
+
+        $this->assertSame(
+            0,
+            $code,
+            'a correctly booked instrument-tendered refund is not drift: '.Artisan::output(),
+        );
+    }
+
     public function test_refund_after_remittance_uses_standard_cash_reversal_and_one_alert(): void
     {
         [$refundEvent, $saleEvent] = $this->projectedRefundReceipt('10.00');
@@ -340,14 +440,15 @@ final class PosBridgeInstrumentRefundTest extends TestCase
      * @param  numeric-string  $amount
      * @return array{0: FiscalEvent, 1: FiscalEvent} [refundEvent, originalSaleEvent]
      */
-    private function projectedRefundReceipt(string $amount): array
+    private function projectedRefundReceipt(string $amount, string $vatRate = '0.00'): array
     {
-        $original = $this->projectedSaleReceipt($amount, invoiceTypeCode: 'SALE', originalReceiptReference: null);
+        $original = $this->projectedSaleReceipt($amount, invoiceTypeCode: 'SALE', originalReceiptReference: null, vatRate: $vatRate);
         $originalReceipt = Receipt::query()->where('fiscal_event_id', $original->id)->firstOrFail();
 
         $refund = $this->projectedSaleReceipt(
             $amount,
             invoiceTypeCode: 'REFUND',
+            vatRate: $vatRate,
             originalReceiptReference: [
                 'fiscal_event_id' => $original->id,
                 'original_business_date' => $original->business_date->toDateString(),
@@ -371,8 +472,9 @@ final class PosBridgeInstrumentRefundTest extends TestCase
         string $amount,
         string $invoiceTypeCode,
         ?array $originalReceiptReference,
+        string $vatRate = '0.00',
     ): FiscalEvent {
-        return $this->projectedSaleReceiptLines([$amount], $invoiceTypeCode, $originalReceiptReference);
+        return $this->projectedSaleReceiptLines([$amount], $invoiceTypeCode, $originalReceiptReference, $vatRate);
     }
 
     /**
@@ -383,11 +485,30 @@ final class PosBridgeInstrumentRefundTest extends TestCase
         array $amounts,
         string $invoiceTypeCode,
         ?array $originalReceiptReference,
+        string $vatRate = '0.00',
     ): FiscalEvent {
-        $event = $this->storeSaleReceiptFiscalEvent($amounts, $invoiceTypeCode, $originalReceiptReference);
+        $event = $this->storeSaleReceiptFiscalEvent($amounts, $invoiceTypeCode, $originalReceiptReference, $vatRate);
         $this->app->make(PosCoreReceiptProjection::class)->apply($event);
 
         return $event;
+    }
+
+    /**
+     * Ledger totals for one account across EVERY posted entry, as
+     * `[credit, debit]` at scale 3.
+     *
+     * @return array{0: numeric-string, 1: numeric-string}
+     */
+    private function accountTotals(string $accountId): array
+    {
+        $credit = '0.000';
+        $debit = '0.000';
+        foreach (DB::table('journal_lines')->where('account_id', $accountId)->get() as $line) {
+            $credit = bcadd($credit, $this->numeric($line->credit), 3);
+            $debit = bcadd($debit, $this->numeric($line->debit), 3);
+        }
+
+        return [$credit, $debit];
     }
 
     /** @return numeric-string */
@@ -409,6 +530,7 @@ final class PosBridgeInstrumentRefundTest extends TestCase
         array $amounts,
         string $invoiceTypeCode,
         ?array $originalReceiptReference,
+        string $vatRate = '0.00',
     ): FiscalEvent {
         $eventTime = now()->utc();
         $businessDate = $eventTime->copy()->startOfDay();
@@ -428,6 +550,21 @@ final class PosBridgeInstrumentRefundTest extends TestCase
             ];
         }
 
+        // W4-9 gate r1 (F-1) — the 0 % default is kept so every pre-existing
+        // case stays byte-identical, but a VAT-bearing arm is now expressible.
+        // The tender is TTC, so the net is backed OUT of it: at 25 % a 10.00
+        // cheque is net 8.00 + VAT 2.00, exact at scale 2 with no rounding to
+        // argue about. `vat_breakdown` is the sealed fact the ledger reads.
+        $net = bccomp($vatRate, '0', 2) === 0
+            ? $total
+            : bcdiv(bcmul($total, '100', 4), bcadd('100', $vatRate, 4), 2);
+        $vat = bcsub($total, $net, 2);
+        // R2-5 — the category has to follow the rate, or the fixture describes a
+        // receipt that cannot exist ('Z' = zero-rated at 25 %). Nothing in the
+        // projector or the allocator reads it (that was F-6's point), but the
+        // next person to parameterise this must not be misled.
+        $taxCategory = bccomp($vatRate, '0', 2) === 0 ? 'Z' : 'S';
+
         $payload = [
             'business_date' => $businessDate->toDateString(),
             'approval_references' => [],
@@ -443,16 +580,16 @@ final class PosBridgeInstrumentRefundTest extends TestCase
                 'gtin' => null,
                 'line_discount_amount' => '0.00',
                 'line_discount_reason' => null,
-                'line_subtotal' => $total,
-                'line_vat' => '0.00',
+                'line_subtotal' => $net,
+                'line_vat' => $vat,
                 'name' => 'Default item',
                 'non_collected_subtype' => null,
                 'product_id' => 'prod-default',
                 'quantity' => '1.000',
                 'sku' => 'X',
-                'tax_category_code' => 'Z',
+                'tax_category_code' => $taxCategory,
                 'unit_price' => $total,
-                'vat_rate' => '0.00',
+                'vat_rate' => $vatRate,
             ]],
             'lottery_code' => null,
             'notes' => null,
@@ -466,7 +603,7 @@ final class PosBridgeInstrumentRefundTest extends TestCase
                 'tax_number' => '12345678901234',
             ],
             'shift_id' => '22222222-2222-4222-8222-222222222222',
-            'subtotal' => $total,
+            'subtotal' => $net,
             'table_id' => null,
             'terminal_id' => '33333333-3333-4333-8333-333333333333',
             'total' => $total,
@@ -475,12 +612,12 @@ final class PosBridgeInstrumentRefundTest extends TestCase
             'transaction_discount_reason' => null,
             'vat_breakdown' => [[
                 'gross_amount' => $total,
-                'net_amount' => $total,
-                'rate' => '0.00',
-                'tax_category_code' => 'Z',
-                'vat_amount' => '0.00',
+                'net_amount' => $net,
+                'rate' => $vatRate,
+                'tax_category_code' => $taxCategory,
+                'vat_amount' => $vat,
             ]],
-            'vat_total' => '0.00',
+            'vat_total' => $vat,
             'vouchers_redeemed' => [],
         ];
 

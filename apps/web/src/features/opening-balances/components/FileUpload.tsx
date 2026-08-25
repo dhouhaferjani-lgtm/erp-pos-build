@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Upload, FileText, CheckCircle, XCircle, Loader2, Download } from 'lucide-react'
 import type { OpeningBatchType } from '../types'
-import { GL_COLUMNS, INVENTORY_COLUMNS, AR_AP_COLUMNS } from '../types'
+import { GL_COLUMNS, GL_REQUIRED_COLUMNS, INVENTORY_COLUMNS, AR_AP_COLUMNS } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
@@ -35,6 +35,10 @@ function parseCSV(text: string): { headers: string[]; rows: Array<Record<string,
   return { headers, rows }
 }
 
+/**
+ * Every column the template offers — the chip list and the downloadable sample.
+ * A superset of the REQUIRED set below.
+ */
 function getExpectedColumns(batchType: OpeningBatchType): readonly string[] {
   switch (batchType) {
     case 'ACCOUNTING':
@@ -49,10 +53,32 @@ function getExpectedColumns(batchType: OpeningBatchType): readonly string[] {
   }
 }
 
+/**
+ * The columns whose ABSENCE blocks the upload. Only ACCOUNTING differs from its
+ * expected set today: `repository_code` is optional (W4-2), so a four-column
+ * legacy sheet must still parse and upload (treasury gate r1 F-1).
+ */
+function getRequiredColumns(batchType: OpeningBatchType): readonly string[] {
+  switch (batchType) {
+    case 'ACCOUNTING':
+      return GL_REQUIRED_COLUMNS
+    default:
+      return getExpectedColumns(batchType)
+  }
+}
+
 function getTemplateContent(batchType: OpeningBatchType): string {
   switch (batchType) {
     case 'ACCOUNTING':
-      return 'account_code,debit,credit,reference\n101000,10000.00,0.00,Opening Cash\n401000,0.00,5000.00,Opening Payables\n301000,0.00,5000.00,Opening Equity'
+      // W4-2: `repository_code` is optional and only meaningful on a cash/bank
+      // DEBIT line — it names the payment repository whose day-one float this
+      // line seeds, so the same row posts the GL leg AND the till's opening
+      // movement. Leave it blank on every other line.
+      // No payables line: W4-3 refuses a supplier balance entered as a bare GL
+      // credit (it has to come through the AP open-items batch), so a sample
+      // that showed one would teach the wrong shape. Debits 1200.000 against
+      // equity 1200.000 — balanced as printed.
+      return 'account_code,debit,credit,reference,repository_code\n101000,200.000,0.000,Opening drawer float,CASH-01\n101000,1000.000,0.000,Opening safe float,SAFE-01\n301000,0.000,1200.000,Opening Equity,'
     case 'INVENTORY':
       return 'product_code,location_code,quantity,unit_cost\nSKU-001,MAIN,100,25.50\nSKU-002,MAIN,50,15.00\nSKU-003,WAREHOUSE,200,10.00'
     case 'AR_OPEN_ITEMS':
@@ -75,6 +101,7 @@ export function FileUpload({ batchType, onUpload, isUploading }: FileUploadProps
   const [parseError, setParseError] = useState<string | null>(null)
 
   const expectedColumns = getExpectedColumns(batchType)
+  const requiredColumns = getRequiredColumns(batchType)
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -91,7 +118,7 @@ export function FileUpload({ batchType, onUpload, isUploading }: FileUploadProps
         }
 
         // Check for required columns
-        const missingColumns = expectedColumns.filter(
+        const missingColumns = requiredColumns.filter(
           (col) => !parsed.headers.includes(col)
         )
 
@@ -108,7 +135,7 @@ export function FileUpload({ batchType, onUpload, isUploading }: FileUploadProps
         setParseError(t('openingBalances.upload.errors.parseError'))
       }
     },
-    [expectedColumns, t]
+    [requiredColumns, t]
   )
 
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -171,14 +198,23 @@ export function FileUpload({ batchType, onUpload, isUploading }: FileUploadProps
           {t('openingBalances.upload.expectedColumns')}
         </h3>
         <div className="flex flex-wrap gap-2">
-          {expectedColumns.map((col) => (
-            <span
-              key={col}
-              className={`inline-flex items-center rounded ${colorTokens.intent.primary.bgSoft} px-2 py-0.5 text-xs font-medium ${colorTokens.intent.primary.textStronger}`}
-            >
-              {col}
-            </span>
-          ))}
+          {expectedColumns.map((col) => {
+            // Shown, never demanded: a sheet without it uploads unchanged.
+            const isOptional = !requiredColumns.includes(col)
+            return (
+              <span
+                key={col}
+                className={`inline-flex items-center rounded ${colorTokens.intent.primary.bgSoft} px-2 py-0.5 text-xs font-medium ${colorTokens.intent.primary.textStronger}`}
+              >
+                {col}
+                {isOptional && (
+                  <span className={`ms-1 font-normal ${colorTokens.text.subtle}`}>
+                    {t('openingBalances.upload.optionalColumn')}
+                  </span>
+                )}
+              </span>
+            )
+          })}
         </div>
         <button
           type="button"

@@ -47,7 +47,19 @@ final class TemplatePublishGateTest extends TestCase
         self::assertSame('v1', $published->capability_registry_version);
         self::assertSame($actor->id, $published->certified_by);
         self::assertNotNull($published->published_at);
-        self::assertSame('cffde0426400e33746f2e6a133d577ec6967368a9e806d2c835cea518be251b6', $published->content_hash);
+        // RE-PINNED by W4-9 treasury gate I-3. `validDraft()` derives every row's
+        // `type` from `SystemAccountPurpose::expectedAccountType()`, and that
+        // mapping moved `sales_discount` from `expense` to `revenue` — `709x
+        // Rabais, remises et ristournes accordés` is contra-revenue, a
+        // debit-balance account inside the revenue class, and typing it
+        // `expense` made `ProfitLossService` report turnover GROSS with the
+        // discount as an operating charge. The canonical bytes therefore change
+        // by exactly one field on one row, and this pin is the deliberate record
+        // of it. The three frozen chart goldens
+        // (`tests/Fixtures/CountryDefaults/goldens/*.legacy-v1.txt` + their
+        // `.sha256` sidecars) moved by the same single field, regenerated
+        // through `LegacyCoaGoldenExporter` rather than hand-edited.
+        self::assertSame('a3cc014c2cfc72a39f6b6c1e4b214e4a58cda3488ef3fda3e8f376b6ec27185c', $published->content_hash);
         self::assertDatabaseHas('admin_audit_logs', [
             'action' => 'country_defaults.template.published',
             'entity_id' => $template->id,

@@ -209,7 +209,7 @@ class GenericChartOfAccountsSeeder extends Seeder
                 'system_purpose' => SystemAccountPurpose::ProductRevenue->value, 'is_system' => true],
             ['code' => '7090', 'name' => 'Sales Returns', 'type' => 'expense', 'parent_code' => '7000',
                 'system_purpose' => SystemAccountPurpose::SalesReturn->value, 'is_system' => true],
-            ['code' => '7091', 'name' => 'Sales Discounts', 'type' => 'expense', 'parent_code' => '7000',
+            ['code' => '7091', 'name' => 'Sales Discounts', 'type' => 'revenue', 'parent_code' => '7000',
                 'system_purpose' => SystemAccountPurpose::SalesDiscount->value, 'is_system' => true],
             ['code' => '7580', 'name' => 'Payment Tolerance Income', 'type' => 'revenue', 'parent_code' => '7000',
                 'system_purpose' => SystemAccountPurpose::PaymentToleranceIncome->value, 'is_system' => true],

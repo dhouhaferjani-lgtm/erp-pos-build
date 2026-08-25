@@ -7,6 +7,7 @@ namespace Tests\Feature\Treasury;
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\DTOs\PosRevenueVatSplit;
 use App\Modules\Accounting\Domain\Enums\JournalCode;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\PostingMode;
@@ -928,11 +929,18 @@ final class AdvanceReversalGlShapeTest extends TestCase
         $instrument->payment_id = $payment->id;
         $instrument->save();
 
+        // W4-9 gate r1 (F-1): the PosRevenue shape now REQUIRES the sale's
+        // revenue/VAT decomposition, because a POS sale recognises revenue net
+        // with its output VAT on 4457. The synthetic sale above is VAT-free
+        // (Cr ProductRevenue 80.000, no 4457 line), so the VAT-free split is the
+        // faithful one — and the shape assertion below is unchanged by it: a
+        // VAT-free sale still reverses one Dr ProductRevenue at the full amount.
         app(InstrumentLifecycleService::class)->cancel(
             $instrument->id,
             $this->user->id,
             'POS refund/void',
             CancellationShape::PosRevenue,
+            PosRevenueVatSplit::vatFree('80.000', 3),
         );
 
         $debits = $this->postedDebitsByPurposeForSource($instrument->id, 'instrument');

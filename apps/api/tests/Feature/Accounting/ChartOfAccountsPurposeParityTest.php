@@ -316,7 +316,15 @@ final class ChartOfAccountsPurposeParityTest extends TestCase
 
             $discount = $this->purposeAccount($company, SystemAccountPurpose::SalesDiscount);
             $this->assertSame($expectedCode, $discount['code']);
-            $this->assertSame(AccountType::Expense, $discount['type']);
+            // W4-9 treasury gate I-3 — `709x Rabais, remises et ristournes
+            // accordés` is CONTRA-REVENUE: a debit-balance account inside the
+            // revenue class. `ProfitLossService` partitions on `accounts.type`,
+            // so typing it `expense` reported turnover GROSS with the discount
+            // as an operating charge, where the PCG/PCG-TN presentation is
+            // `chiffre d'affaires NET de RRR`. Kept in lockstep with
+            // `SystemAccountPurpose::expectedAccountType()`, which
+            // `TemplatePublishingService` validates a published chart against.
+            $this->assertSame(AccountType::Revenue, $discount['type']);
 
             $uninvoiced = $this->purposeAccount($company, SystemAccountPurpose::UninvoicedRevenue);
             $this->assertSame('418', $uninvoiced['code']);

@@ -502,7 +502,7 @@ final class BackfillChartPurposesCommand extends Command
             [
                 'code' => '7097',
                 'name' => 'Rabais, remises et ristournes accordés sur ventes de marchandises',
-                'type' => 'expense',
+                'type' => 'revenue',
                 'parent_code' => '70',
                 'purpose' => SystemAccountPurpose::SalesDiscount->value,
             ],
@@ -737,7 +737,7 @@ final class BackfillChartPurposesCommand extends Command
             [
                 'code' => '7091',
                 'name' => 'Sales Discounts',
-                'type' => 'expense',
+                'type' => 'revenue',
                 'parent_code' => '7000',
                 'purpose' => SystemAccountPurpose::SalesDiscount->value,
             ],

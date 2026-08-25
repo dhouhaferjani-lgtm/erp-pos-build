@@ -297,6 +297,14 @@ export interface DiscrepancyReportSummary {
   late_sales_corrections?: number
   opening_items?: number
   opening_value?: string
+
+  // Campaign W4-6. `items_agreeing` + `items_applied` + `items_not_applied`
+  // partition `total_items_counted`: the last two count VARYING lines only, so
+  // "applied" answers "did this count's correction reach stock", never "was
+  // there anything to correct".
+  items_agreeing: number
+  items_applied: number
+  items_not_applied: number
 }
 
 export interface DiscrepancyReportUser {
@@ -313,13 +321,35 @@ export interface DiscrepancyReportCounterPerformance {
   accuracy_rate: number
 }
 
+/**
+ * A reconciliation row as the POST-FINALIZE report renders it (campaign W4-6).
+ *
+ * `expected_qty` is what the system believed was on the shelf AT the count
+ * instant — not `theoretical_qty` (snapshotted at activation) and not
+ * `expected_qty_at_apply` (the replay TARGET, which is derived from the counted
+ * quantity and so can never disagree with it). `variance_qty` is the bcmath
+ * string `counted − expected`, the same number the finalize listener posted;
+ * the legacy float `variance` on the base row is the pre-W4-6 baseline and must
+ * not be rendered here.
+ */
+export interface DiscrepancyReportItem extends ReconciliationItem {
+  expected_qty: string
+  counted_qty: string | null
+  variance_qty: string
+  /** Did this line's variance reach stock? True when the line agrees (nothing outstanding). */
+  variance_applied: boolean
+  /** The flag reason that withheld the stock write, when `variance_applied` is false. */
+  not_applied_reason: CountingItemFlagReason | null
+}
+
 export interface DiscrepancyReport {
   report_id: string
   generated_at: string
   generated_by: DiscrepancyReportUser
   counting: InventoryCounting
   summary: DiscrepancyReportSummary
-  flagged_items: ReconciliationItem[]
+  items: DiscrepancyReportItem[]
+  flagged_items: DiscrepancyReportItem[]
   counter_performance: DiscrepancyReportCounterPerformance[]
   late_sync_residuals: LateSyncResidual[]
 }

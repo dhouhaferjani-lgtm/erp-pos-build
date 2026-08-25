@@ -5,13 +5,16 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Application\Services;
 
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\Enums\CountingItemFlagReason;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryCountingAssignment;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
 use App\Modules\Inventory\Domain\InventoryScale;
+use App\Modules\Inventory\Domain\StockMovement;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
+use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
@@ -36,8 +39,19 @@ final class CountingDiscrepancyReportService
 
         $currency = (string) ($counting->company->currency ?? 'TND');
         $moneyScale = $this->scaleResolver->getScale($currency);
-        $summary = $this->summary($counting, $items, $currency, $moneyScale);
-        $reconciliationItems = $this->payloadBuilder->transformMany($items);
+        $appliedGrains = $this->appliedGrains($counting);
+        $summary = $this->summary($counting, $items, $currency, $moneyScale, $appliedGrains);
+
+        // Campaign W4-6 — every row carries the four numbers the operator came
+        // for: what the system expected on the shelf, what was counted, the
+        // difference, and whether that difference reached stock. `flagged_items`
+        // alone was never enough: it held the real variances while the summary
+        // said there were none.
+        $reconciliationItems = array_map(
+            fn (array $row, InventoryCountingItem $item): array => $row + $this->varianceColumns($item, $appliedGrains),
+            $this->payloadBuilder->transformMany($items),
+            $items->values()->all(),
+        );
 
         return [
             'report_id' => Str::uuid()->toString(),
@@ -48,6 +62,7 @@ final class CountingDiscrepancyReportService
             ],
             'counting' => $countingPayload,
             'summary' => $summary,
+            'items' => $reconciliationItems,
             'flagged_items' => array_values(array_filter(
                 $reconciliationItems,
                 static fn (array $item): bool => $item['is_flagged'] === true,
@@ -59,10 +74,16 @@ final class CountingDiscrepancyReportService
 
     /**
      * @param  Collection<int, InventoryCountingItem>  $items
+     * @param  array<string, true>  $appliedGrains
      * @return array<string, mixed>
      */
-    private function summary(InventoryCounting $counting, Collection $items, string $currency, int $moneyScale): array
-    {
+    private function summary(
+        InventoryCounting $counting,
+        Collection $items,
+        string $currency,
+        int $moneyScale,
+        array $appliedGrains,
+    ): array {
         $positive = CurrencyScale::bcformatStrict('0', $moneyScale);
         $negative = CurrencyScale::bcformatStrict('0', $moneyScale);
         $net = CurrencyScale::bcformatStrict('0', $moneyScale);
@@ -70,6 +91,8 @@ final class CountingDiscrepancyReportService
         $openingItems = 0;
         $itemsNoVariance = 0;
         $itemsWithVariance = 0;
+        $itemsApplied = 0;
+        $itemsNotApplied = 0;
 
         $breakdown = [
             ItemResolutionMethod::AutoAllMatch->value => 0,
@@ -88,6 +111,12 @@ final class CountingDiscrepancyReportService
                 $itemsNoVariance++;
             } else {
                 $itemsWithVariance++;
+
+                if ($this->varianceWasApplied($item, $varianceQty, $appliedGrains)) {
+                    $itemsApplied++;
+                } else {
+                    $itemsNotApplied++;
+                }
             }
 
             $value = $this->varianceValue($varianceQty, $this->unitCostBasis($item), $moneyScale);
@@ -120,6 +149,15 @@ final class CountingDiscrepancyReportService
                 'net' => $net,
                 'currency' => $currency,
             ],
+            // Gate r1 F-6 — these three partition `total_items_counted`, and
+            // `items_applied`/`items_not_applied` count VARYING lines only. A
+            // row that agrees with the shelf reports `variance_applied: true`
+            // (nothing is outstanding on it) but is counted under
+            // `items_agreeing`, not `items_applied`, so a consumer reconciling
+            // the rows against the summary does not find them contradicting.
+            'items_agreeing' => $itemsNoVariance,
+            'items_applied' => $itemsApplied,
+            'items_not_applied' => $itemsNotApplied,
             'late_sales_corrections' => count($counting->late_sales_flags ?? []),
             'opening_items' => $openingItems,
             'opening_value' => $openingValue,
@@ -127,16 +165,148 @@ final class CountingDiscrepancyReportService
     }
 
     /**
+     * The line's REAL variance: counted − expected-on-the-shelf.
+     *
+     * 🚨 Campaign W4-6. This used to subtract `expected_qty_at_apply`, which is
+     * the replay TARGET (`final_qty + Σ movements after the count`) and is
+     * therefore derived FROM `final_qty`: the subtraction collapsed to
+     * `−replayed_delta` and read 0.0000 on every line that had not moved since
+     * it was counted. The summary consequently reported `items_with_variance: 0`
+     * while `flagged_items[]` carried a genuine two-unit shrinkage.
+     *
+     * On a replayed line the honest baseline is the on-hand quantity AS OF the
+     * count instant — `on_hand_at_apply − replayed_delta` — so the variance
+     * equals the adjustment the replay posted, and an in-count sale (which sits
+     * in `replayed_delta`) contributes nothing to it. A legacy line has no
+     * replay audit and keeps `final − theoretical`.
+     *
      * @return numeric-string
      */
     private function varianceQuantity(InventoryCountingItem $item): string
     {
         /** @var numeric-string $finalQty */
         $finalQty = (string) ($item->final_qty ?? '0.0000');
-        /** @var numeric-string $baseline */
-        $baseline = (string) ($item->expected_qty_at_apply ?? $item->theoretical_qty);
 
-        return bcsub($finalQty, $baseline, InventoryScale::QUANTITY_SCALE);
+        return bcsub($finalQty, $this->expectedQuantity($item), InventoryScale::QUANTITY_SCALE);
+    }
+
+    /**
+     * What the system believed was on the shelf at the instant it was counted.
+     *
+     * @return numeric-string
+     */
+    private function expectedQuantity(InventoryCountingItem $item): string
+    {
+        $audit = $item->replay_audit;
+
+        if (is_array($audit)
+            && isset($audit['onHandAtApply'], $audit['replayedDelta'])
+            && is_string($audit['onHandAtApply'])
+            && is_string($audit['replayedDelta'])
+        ) {
+            /** @var numeric-string $onHandAtApply */
+            $onHandAtApply = $audit['onHandAtApply'];
+            /** @var numeric-string $replayedDelta */
+            $replayedDelta = $audit['replayedDelta'];
+
+            return bcsub($onHandAtApply, $replayedDelta, InventoryScale::QUANTITY_SCALE);
+        }
+
+        /** @var numeric-string $theoretical */
+        $theoretical = (string) $item->theoretical_qty;
+
+        return bcadd($theoretical, '0', InventoryScale::QUANTITY_SCALE);
+    }
+
+    /**
+     * The expected / counted / variance / applied block appended to every
+     * report row (W4-6).
+     *
+     * @param  array<string, true>  $appliedGrains
+     * @return array<string, mixed>
+     */
+    private function varianceColumns(InventoryCountingItem $item, array $appliedGrains): array
+    {
+        $varianceQty = $this->varianceQuantity($item);
+        $applied = $this->varianceWasApplied($item, $varianceQty, $appliedGrains);
+
+        return [
+            'expected_qty' => $this->expectedQuantity($item),
+            'counted_qty' => $item->final_qty,
+            'variance_qty' => $varianceQty,
+            'variance_applied' => $applied,
+            'not_applied_reason' => $applied ? null : $this->notAppliedReason($item),
+        ];
+    }
+
+    /**
+     * Whether this line's variance reached stock.
+     *
+     * A line that agrees with the shelf has nothing outstanding, so it counts as
+     * applied. Otherwise the proof is a posted stock movement carrying this
+     * counting as its source document — evidence, not the absence of a flag.
+     *
+     * @param  numeric-string  $varianceQty
+     * @param  array<string, true>  $appliedGrains
+     */
+    private function varianceWasApplied(InventoryCountingItem $item, string $varianceQty, array $appliedGrains): bool
+    {
+        if (bccomp($varianceQty, '0', InventoryScale::QUANTITY_SCALE) === 0) {
+            return true;
+        }
+
+        return isset($appliedGrains[$this->grainKey(
+            (string) $item->product_id,
+            (string) $item->location_id,
+            $item->variant_id !== null ? (string) $item->variant_id : null,
+        )]);
+    }
+
+    /** The first recorded reason that withheld this line's stock write. */
+    private function notAppliedReason(InventoryCountingItem $item): ?string
+    {
+        foreach ($item->flag_reasons ?? [] as $reason) {
+            $case = CountingItemFlagReason::tryFrom($reason);
+            if ($case !== null && $case->blocksStockApplication()) {
+                return $case->value;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Every stock grain this counting actually moved, in ONE query.
+     *
+     * Keyed on the movement's own source-document linkage, so it covers the
+     * replay corrections, the legacy `COUNTING:{number}` corrections and the
+     * onboarding opening movements alike.
+     *
+     * @return array<string, true>
+     */
+    private function appliedGrains(InventoryCounting $counting): array
+    {
+        $grains = [];
+
+        $rows = StockMovement::query()
+            ->where('reference_type', StockMovementReferenceType::InventoryCounting)
+            ->where('reference_id', $counting->id)
+            ->get(['product_id', 'location_id', 'variant_id']);
+
+        foreach ($rows as $row) {
+            $grains[$this->grainKey(
+                (string) $row->product_id,
+                (string) $row->location_id,
+                $row->variant_id !== null ? (string) $row->variant_id : null,
+            )] = true;
+        }
+
+        return $grains;
+    }
+
+    private function grainKey(string $productId, string $locationId, ?string $variantId): string
+    {
+        return $productId."\0".$locationId."\0".($variantId ?? '');
     }
 
     /**
@@ -259,13 +429,14 @@ final class CountingDiscrepancyReportService
     }
 
     /**
+     * The counter-accuracy baseline — the same expected-at-count quantity the
+     * variance is measured against (W4-6), so "matched theoretical" cannot
+     * disagree with "no variance" on the same row.
+     *
      * @return numeric-string
      */
     private function baselineQuantity(InventoryCountingItem $item): string
     {
-        /** @var numeric-string $baseline */
-        $baseline = (string) ($item->expected_qty_at_apply ?? $item->theoretical_qty);
-
-        return $baseline;
+        return $this->expectedQuantity($item);
     }
 }
