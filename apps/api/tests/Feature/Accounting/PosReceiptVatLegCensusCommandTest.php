@@ -194,6 +194,24 @@ final class PosReceiptVatLegCensusCommandTest extends TestCase
         $this->assertStringContainsString('none', $output);
     }
 
+    public function test_a_ledger_vat_leg_that_exceeds_the_sealed_figure_is_drift_too(): void
+    {
+        // R2-4 — the opposite drift direction: a double-booked or twice-replayed
+        // receipt whose 4457 carries MORE than the sealed rows say. The amount
+        // comparison catches it because magnitude inequality is symmetric, but
+        // nothing pinned that until now, and a census that only ever looked for
+        // "too little" would miss the replay defect entirely.
+        $receipt = $this->receipt('119.000', '19.000', true);
+        $this->bookEntry($receipt, withVatLeg: true);
+        $this->bookEntry($receipt, withVatLeg: true);
+
+        [$code, $output] = $this->runCensus();
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('sealed_vat=19.000  ledger_vat=38.000', $output);
+        $this->assertStringContainsString('wrong or partial VAT leg', $output);
+    }
+
     public function test_a_correctly_booked_refund_is_clean_even_though_it_debits_the_vat_account(): void
     {
         // A refund receipt DEBITS 4457. Comparing the raw signed sum against the

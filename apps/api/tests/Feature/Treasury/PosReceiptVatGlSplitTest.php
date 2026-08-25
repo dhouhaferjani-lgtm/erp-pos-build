@@ -442,6 +442,64 @@ final class PosReceiptVatGlSplitTest extends TestCase
         }
     }
 
+    public function test_a_discount_larger_than_the_net_subtotal_still_books(): void
+    {
+        // W4-9 gate r2, R2-1. `cartTotals.ts` clamps the transaction discount to
+        // the GROSS subtotal, so a 620.000 discount on a 690.000 gross ticket is
+        // device-authorable and device-SIGNED (`600 + 90 == 70 + 620` ✓). F-4
+        // taught the per-leg net guard about the discount but left the
+        // receipt-level one comparing the sealed VAT against the bare TENDER, so
+        // any receipt whose discount exceeds its net subtotal was refused —
+        // and nothing catches the refusal, so the projection job failed forever:
+        // no payment, no movement, no GL entry, while the declaration still
+        // reported the sealed VAT. The guard now compares against the gross base
+        // the device actually sealed the VAT on, `tender + discount`.
+        $event = $this->projectedThreeRateSale(
+            [['amount' => '70.000', 'method_code' => 'CASH']],
+            total: '70.000',
+            discountTotal: '620.000',
+        );
+
+        $this->app->make(CompanyContext::class)->clear();
+        $this->app->make(TreasuryReceiptBridge::class)->apply($event);
+
+        $receipt = Receipt::query()->where('fiscal_event_id', $event->id)->firstOrFail();
+        $lines = $this->posEntryLines($receipt->id, 'pos_receipt');
+
+        $this->assertSame('70.000', $this->sumDebits($lines, $this->cashAccountId));
+        $this->assertSame('620.000', $this->sumDebits($lines, $this->discountAccountId));
+        $this->assertSame('600.000', $this->sumCredits($lines, $this->revenueAccountId));
+        $this->assertSame($this->sealedVatByRate($receipt->id), $this->ledgerVatByRate($lines));
+        $this->assertSame($this->sumColumn($lines, 'debit'), $this->sumColumn($lines, 'credit'));
+    }
+
+    public function test_a_hundred_percent_comp_books_its_revenue_vat_and_discount_with_no_cash(): void
+    {
+        // The limiting case of R2-1: the whole ticket is comped, so the tender is
+        // 0.000 and the discount is the entire gross. The sale still HAPPENED —
+        // the goods left, the device sealed 90.000 of VAT on a 600.000 base, and
+        // the declaration will report both — so the ledger has to recognise the
+        // revenue and the VAT it owes, and carry the give-away on 709. What it
+        // must NOT do is refuse the receipt outright.
+        $event = $this->projectedThreeRateSale(
+            [['amount' => '0.000', 'method_code' => 'CASH']],
+            total: '0.000',
+            discountTotal: '690.000',
+        );
+
+        $this->app->make(CompanyContext::class)->clear();
+        $this->app->make(TreasuryReceiptBridge::class)->apply($event);
+
+        $receipt = Receipt::query()->where('fiscal_event_id', $event->id)->firstOrFail();
+        $lines = $this->posEntryLines($receipt->id, 'pos_receipt');
+
+        $this->assertSame('0.000', $this->sumDebits($lines, $this->cashAccountId));
+        $this->assertSame('690.000', $this->sumDebits($lines, $this->discountAccountId));
+        $this->assertSame('600.000', $this->sumCredits($lines, $this->revenueAccountId));
+        $this->assertSame($this->sealedVatByRate($receipt->id), $this->ledgerVatByRate($lines));
+        $this->assertSame($this->sumColumn($lines, 'debit'), $this->sumColumn($lines, 'credit'));
+    }
+
     // =================================================================
     // Zero-rated + refusal
     // =================================================================

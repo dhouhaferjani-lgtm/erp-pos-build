@@ -36,6 +36,7 @@ use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -297,6 +298,31 @@ final class PosBridgeInstrumentRefundTest extends TestCase
         $this->assertSame(InstrumentStatus::Cancelled, $instrument->refresh()->status);
     }
 
+    public function test_the_vat_leg_census_reports_an_instrument_tendered_refund_as_clean(): void
+    {
+        // W4-9 gate r2, R2-2. This refund writes NO `pos_receipt_refund` entry:
+        // the instrument lane cancels the paper, and the cancellation is keyed
+        // `source_type='instrument'`, `source_id=<instrument id>`. The census
+        // only knew about `pos_receipt*` entries keyed on `pos_receipts.id`, so
+        // it flagged the very receipt F-1 had just taught to reverse `4457` —
+        // and called it "never reached the GL", which points the operator at
+        // re-provisioning something that is booked correctly. On a tenant that
+        // takes cheques that is systematic noise in the one command that has to
+        // be trusted at deploy time.
+        [$refundEvent, $saleEvent] = $this->projectedRefundReceipt('10.00', vatRate: '25.00');
+        $bridge = $this->app->make(TreasuryReceiptBridge::class);
+        $bridge->apply($saleEvent);
+        $bridge->apply($refundEvent);
+
+        $code = Artisan::call('pos:census-vat-legs');
+
+        $this->assertSame(
+            0,
+            $code,
+            'a correctly booked instrument-tendered refund is not drift: '.Artisan::output(),
+        );
+    }
+
     public function test_refund_after_remittance_uses_standard_cash_reversal_and_one_alert(): void
     {
         [$refundEvent, $saleEvent] = $this->projectedRefundReceipt('10.00');
@@ -533,6 +559,11 @@ final class PosBridgeInstrumentRefundTest extends TestCase
             ? $total
             : bcdiv(bcmul($total, '100', 4), bcadd('100', $vatRate, 4), 2);
         $vat = bcsub($total, $net, 2);
+        // R2-5 — the category has to follow the rate, or the fixture describes a
+        // receipt that cannot exist ('Z' = zero-rated at 25 %). Nothing in the
+        // projector or the allocator reads it (that was F-6's point), but the
+        // next person to parameterise this must not be misled.
+        $taxCategory = bccomp($vatRate, '0', 2) === 0 ? 'Z' : 'S';
 
         $payload = [
             'business_date' => $businessDate->toDateString(),
@@ -556,7 +587,7 @@ final class PosBridgeInstrumentRefundTest extends TestCase
                 'product_id' => 'prod-default',
                 'quantity' => '1.000',
                 'sku' => 'X',
-                'tax_category_code' => 'Z',
+                'tax_category_code' => $taxCategory,
                 'unit_price' => $total,
                 'vat_rate' => $vatRate,
             ]],
@@ -583,7 +614,7 @@ final class PosBridgeInstrumentRefundTest extends TestCase
                 'gross_amount' => $total,
                 'net_amount' => $net,
                 'rate' => $vatRate,
-                'tax_category_code' => 'Z',
+                'tax_category_code' => $taxCategory,
                 'vat_amount' => $vat,
             ]],
             'vat_total' => $vat,

@@ -126,8 +126,23 @@ final class PosReceiptVatAllocator
             );
         }
 
-        if (bccomp($vatTotal, $tenderTotal, $currencyScale) > 0) {
-            throw PosVatProjectionRefusedException::vatExceedsTender($receiptId, $vatTotal, $tenderTotal);
+        // The base the VAT can legitimately sit on is the tender PLUS the
+        // transaction discount — the gross the sale was struck at before the
+        // discount was granted, which is exactly the base the device sealed the
+        // VAT on (`subtotal + vat_total == total + transaction_discount_amount`).
+        //
+        // W4-9 gate r2 (R2-1). Comparing against the bare TENDER was correct
+        // only while `net = tender − vat`; F-4 changed it to
+        // `net = tender + discount − vat`. Left uncorrected, the guard fired
+        // whenever `discount > net subtotal` — which is EVERY 100 %-off comp —
+        // and since nothing catches the refusal it failed the projection job
+        // forever: no payment, no movement, no GL entry, on a receipt the device
+        // signed and whose VAT the declaration still reports from the sealed
+        // rows. Books ≠ filing again, from the other side, on a receipt that
+        // booked (wrongly) before this lane.
+        $grossBase = bcadd($tenderTotal, $declaredDiscount, $currencyScale);
+        if (bccomp($vatTotal, $grossBase, $currencyScale) > 0) {
+            throw PosVatProjectionRefusedException::vatExceedsTender($receiptId, $vatTotal, $grossBase);
         }
 
         $residualLeg = $this->residualLegIndex($amounts, $currencyScale);
@@ -268,15 +283,16 @@ final class PosReceiptVatAllocator
     }
 
     /**
-     * Split ONE sealed rate across the legs so the shares sum to it EXACTLY.
+     * Split ONE receipt-level figure across the legs so the shares sum to it
+     * EXACTLY. Used for each sealed VAT rate AND for the transaction discount.
      *
-     * @param  numeric-string  $rateVat
+     * @param  numeric-string  $total
      * @param  list<numeric-string>  $legAmounts
      * @param  numeric-string  $tenderTotal
      * @return array<int, numeric-string> index-aligned with $legAmounts
      */
     private function apportion(
-        string $rateVat,
+        string $total,
         array $legAmounts,
         string $tenderTotal,
         int $residualLeg,
@@ -284,15 +300,25 @@ final class PosReceiptVatAllocator
     ): array {
         $shares = [];
 
-        // A zero tender total can only pair with a zero VAT total (the caller
-        // already refused vat > tender), so every share is zero and the
-        // proportional division — which would divide by zero — is skipped.
+        // Nothing to divide BY (a zero tender makes the proportional split a
+        // division by zero) or nothing to divide AMONG (a single leg): either
+        // way the WHOLE amount goes to the residual leg, which is what keeps
+        // `Σ shares == $total` in every branch.
+        //
+        // W4-9 gate r2 (R2-3). This used to zero every share on a zero tender,
+        // justified by "a zero tender can only pair with a zero VAT". That was a
+        // VAT premise, and F-4 routed the DISCOUNT through this same helper — a
+        // 100 %-off comp is precisely a zero tender with a large discount. On a
+        // multi-leg comp the discount shares would all have been zeroed,
+        // `netRevenue` would have quietly fallen back to the post-discount base,
+        // and `assertReconciles()` would still have passed (`0 + 0 − 0 == 0`).
+        // A silent wrong base is worse than a refusal.
         if (bccomp($tenderTotal, '0', $currencyScale) === 0 || count($legAmounts) === 1) {
             foreach (array_keys($legAmounts) as $index) {
                 $shares[$index] = bcadd('0', '0', $currencyScale);
             }
-            if (count($legAmounts) === 1) {
-                $shares[$residualLeg] = bcadd($rateVat, '0', $currencyScale);
+            if ($legAmounts !== []) {
+                $shares[$residualLeg] = bcadd($total, '0', $currencyScale);
             }
 
             return $shares;
@@ -307,12 +333,12 @@ final class PosReceiptVatAllocator
             // Truncating division at the currency scale: intermediates at
             // scale+4 per the precision contract, never a float.
             /** @var numeric-string $share */
-            $share = bcdiv(bcmul($rateVat, $amount, $currencyScale + 4), $tenderTotal, $currencyScale);
+            $share = bcdiv(bcmul($total, $amount, $currencyScale + 4), $tenderTotal, $currencyScale);
             $shares[$index] = $share;
             $assigned = bcadd($assigned, $share, $currencyScale);
         }
 
-        $shares[$residualLeg] = bcsub($rateVat, $assigned, $currencyScale);
+        $shares[$residualLeg] = bcsub($total, $assigned, $currencyScale);
 
         ksort($shares);
 

@@ -49,6 +49,11 @@ final class PosVatProjectionRefusedException extends RuntimeException
     }
 
     /**
+     * `$tenderTotal` is the base the VAT may legitimately sit on — the tender
+     * PLUS any transaction discount, i.e. the gross the sale was struck at,
+     * which is the base the device sealed the VAT on. Comparing against the
+     * bare tender refused every 100 %-off comp (gate r2, R2-1).
+     *
      * @param  numeric-string  $vatTotal
      * @param  numeric-string  $tenderTotal
      */
@@ -58,8 +63,8 @@ final class PosVatProjectionRefusedException extends RuntimeException
             PosVatRefusalReason::VatExceedsTender,
             $receiptId,
             sprintf(
-                'pos_vat_projection_refused:%s:receipt=%s:vat=%s:tender=%s — the sealed VAT total exceeds the '
-                .'retained tender, so at least one revenue credit would be negative.',
+                'pos_vat_projection_refused:%s:receipt=%s:vat=%s:gross_base=%s — the sealed VAT total exceeds '
+                .'the tender plus the transaction discount, so at least one revenue credit would be negative.',
                 PosVatRefusalReason::VatExceedsTender->value,
                 $receiptId,
                 $vatTotal,

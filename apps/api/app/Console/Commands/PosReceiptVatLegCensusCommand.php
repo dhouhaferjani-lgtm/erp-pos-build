@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Console\Command;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -58,6 +60,18 @@ final class PosReceiptVatLegCensusCommand extends Command
      * @var list<string>
      */
     private const POS_SOURCE_TYPES = ['pos_receipt', 'pos_receipt_refund'];
+
+    /**
+     * A cheque/effet-tendered POS refund writes NO `pos_receipt_refund` entry at
+     * all: `TreasuryReceiptBridge::handleMaturityRefundLeg()` cancels the paper
+     * and returns, and the cancellation lands as
+     * `source_type='instrument'`, `source_id=<instrument id>` (gate r2, R2-2).
+     * Keyed on the instrument, it is unreachable from `pos_receipts.id`, so the
+     * census used to flag the one refund F-1 had just taught to reverse `4457`
+     * — and label it "never reached the GL", pointing the operator at
+     * re-provisioning a receipt that is booked correctly.
+     */
+    private const INSTRUMENT_SOURCE_TYPE = 'instrument';
 
     protected $signature = 'pos:census-vat-legs
         {--tenant= : Optional tenant UUID filter on the current connection}
@@ -137,6 +151,36 @@ final class PosReceiptVatLegCensusCommand extends Command
                 '=',
                 'pos_receipts.id',
             )
+            // The instrument-cancellation arm, reached the only way it can be:
+            // the refund receipt names its original, the original's POS payments
+            // carry the paper, and the cancellation entry is keyed on that
+            // instrument. Attributed to the REFUND receipt (not the sale) —
+            // the sale keeps its own credit, the refund gets the matching debit,
+            // and both reconcile against their own sealed rows.
+            ->leftJoin('pos_receipts as original', 'original.id', '=', 'pos_receipts.original_receipt_id')
+            ->leftJoinSub(
+                DB::table('payments')
+                    ->join('payment_instruments', 'payment_instruments.payment_id', '=', 'payments.id')
+                    ->join('journal_entries', function (JoinClause $join): void {
+                        $join->on('journal_entries.source_id', '=', 'payment_instruments.id')
+                            ->where('journal_entries.source_type', '=', self::INSTRUMENT_SOURCE_TYPE);
+                    })
+                    ->join('journal_lines', 'journal_lines.journal_entry_id', '=', 'journal_entries.id')
+                    ->whereIn('journal_lines.account_id', $vatAccounts)
+                    ->where('payments.origin', PaymentOrigin::Pos->value)
+                    ->whereNotNull('payments.fiscal_event_id')
+                    ->select(
+                        'payments.fiscal_event_id',
+                        DB::raw('SUM(journal_lines.credit) AS vat_credit'),
+                        DB::raw('SUM(journal_lines.debit) AS vat_debit'),
+                        DB::raw('COUNT(DISTINCT journal_entries.id) AS entry_count'),
+                    )
+                    ->groupBy('payments.fiscal_event_id'),
+                'instrument_ledger',
+                'instrument_ledger.fiscal_event_id',
+                '=',
+                'original.fiscal_event_id',
+            )
             ->select([
                 'pos_receipts.id',
                 'pos_receipts.receipt_number',
@@ -146,6 +190,9 @@ final class PosReceiptVatLegCensusCommand extends Command
                 'entries.entry_count',
                 'ledger.vat_credit',
                 'ledger.vat_debit',
+                'instrument_ledger.vat_credit as instrument_vat_credit',
+                'instrument_ledger.vat_debit as instrument_vat_debit',
+                'instrument_ledger.entry_count as instrument_entry_count',
             ])
             ->orderBy('pos_receipts.posted_at')
             ->orderBy('pos_receipts.id');
@@ -216,11 +263,21 @@ final class PosReceiptVatLegCensusCommand extends Command
 
             // A sale credits 4457, its refund debits it; the sealed rows are
             // non-negative either way (table CHECK). Compare magnitudes.
-            $ledger = bcsub(
+            //
+            // The instrument-cancellation arm is summed in alongside the
+            // `pos_receipt*` entries: for a cheque/effet refund it IS the whole
+            // ledger side.
+            $credit = bcadd(
                 $this->money($row->vat_credit ?? '0', $scale),
-                $this->money($row->vat_debit ?? '0', $scale),
+                $this->money($row->instrument_vat_credit ?? '0', $scale),
                 $scale,
             );
+            $debit = bcadd(
+                $this->money($row->vat_debit ?? '0', $scale),
+                $this->money($row->instrument_vat_debit ?? '0', $scale),
+                $scale,
+            );
+            $ledger = bcsub($credit, $debit, $scale);
             $ledgerMagnitude = bccomp($ledger, '0', $scale) < 0
                 ? bcmul($ledger, '-1', $scale)
                 : $ledger;
@@ -230,7 +287,7 @@ final class PosReceiptVatLegCensusCommand extends Command
             }
 
             $drift++;
-            $entryCount = (int) ($row->entry_count ?? 0);
+            $entryCount = (int) ($row->entry_count ?? 0) + (int) ($row->instrument_entry_count ?? 0);
             if ($entryCount === 0) {
                 $neverPosted++;
             }
