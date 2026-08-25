@@ -470,6 +470,7 @@ export function InvoiceDetailPage() {
         <DocumentHeader
           document={invoice}
           backPath="/sales/invoices"
+          suppressStatusBadge={isProforma}
           actions={
             <DocumentActionBar
               document={invoice}
@@ -500,7 +501,13 @@ export function InvoiceDetailPage() {
             ) : undefined
           }
         >
-          {isConfirmedOrPosted && paymentStatus !== null && PaymentStatusIcon !== null && (
+          {/*
+            * No payment chip on a proforma (gate r1 W-1). An estimate is not a
+            * statement of account — the same reason the proforma totals box drops
+            * the settlement rows — and `Unpaid` beside the banner reads as a debt
+            * the customer already owes on a document the ledger has never seen.
+            */}
+          {isConfirmedOrPosted && !isProforma && paymentStatus !== null && PaymentStatusIcon !== null && (
             <StatusBadge tone={paymentStatusTone(paymentStatus)} className="gap-1.5">
               <PaymentStatusIcon className="h-3 w-3" />
               {t(`sales:invoices.paymentStatus.${paymentStatus}`, {

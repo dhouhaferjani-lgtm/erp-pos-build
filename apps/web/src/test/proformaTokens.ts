@@ -12,16 +12,29 @@
  * unanchored `ht` matches `height`, `right` and `white`.
  */
 export const FORBIDDEN_PROFORMA_TOKENS: readonly RegExp[] = [
+  // — the TAX half: `ProformaOutputTest::FORBIDDEN_TOKENS`, verbatim —
   /VAT/i,
   /TVA/i,
   /\btax/i,
   /TTC/i,
   /\bHT\b/,
   /fiscal_hash/i,
+  /chain/i,
   /\bQR\b/i,
+  /comptabilis/i,
+  // — the SEAL AND SETTLEMENT half, which the web needs and the PDF does not —
+  //
+  // A blade has no status chip to render; a detail PAGE does, and gate r1 W-1
+  // caught exactly that: an unsealed invoice wearing a green `Posted` chip and an
+  // `Unpaid` chip beside a banner saying the sale has not been entered in the
+  // accounts. `Paid` / `Unpaid` are here for the reason
+  // `components/proforma_totals_rows.blade.php` drops the settlement rows — "a
+  // proforma is not a statement of account" — which the backend never has to state
+  // as a token because no blade could emit one.
   /sealed/i,
   /posted/i,
-  /comptabilis/i,
+  /\bunpaid\b/i,
+  /\bpaid\b/i,
 ]
 
 function isRecord(value: unknown): value is Record<string, unknown> {

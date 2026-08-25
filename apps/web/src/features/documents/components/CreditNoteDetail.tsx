@@ -66,8 +66,14 @@ export function CreditNoteDetail({
     }
   }
 
-  // C-F0w / SPEC §2.4 — this component owns the only in-browser document PRINT
-  // surface (`window.print()` above), so it renders what the PDF renders.
+  // C-F0w / SPEC §2.4 — this component carries an in-browser PRINT surface
+  // (`window.print()` above), so it renders what the PDF renders.
+  //
+  // CAVEAT (gate r1 W-7): the component is currently UNMOUNTED — it is exported
+  // from `components/index.ts` and rendered by no route; the live credit-note
+  // screen is `CreditNoteDetailPage`. It is fixed here because the brief named it
+  // and because a surface that gets mounted later must not arrive carrying the
+  // defect. Mount-or-delete is a separate ticket, not this lane's call.
   //
   // N-6 decided from `status` because that was the only signal the API gave it,
   // and said so: "if a credit note is ever POSTED without a seal, this view cannot

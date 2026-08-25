@@ -105,11 +105,14 @@ export function DocumentTotals({
    * this line may ever render for an unsealed document.
    */
   if (isProforma) {
+    // `!= null` throughout, not `!== null` (gate r1 W-6): the generated type says
+    // these are non-optional, but a payload that OMITS a key would otherwise walk
+    // straight into `formatAmount(undefined)`.
     return (
       <div className={cn('space-y-2', className)}>
-        {proformaTotals !== null && proformaTotals !== undefined && (
+        {proformaTotals != null && (
           <>
-            {proformaTotals.stamp_duty !== null && (
+            {proformaTotals.stamp_duty != null && (
               <div className="flex items-center justify-between py-1">
                 <span className={`text-sm ${semanticColorTokens.text.muted}`}>
                   {t('documents.proforma.stampDuty')}
@@ -122,7 +125,7 @@ export function DocumentTotals({
               </div>
             )}
 
-            {proformaTotals.discount !== null ? (
+            {proformaTotals.discount != null ? (
               <div className="flex items-center justify-between py-1">
                 <span className={`text-sm ${semanticColorTokens.text.muted}`}>
                   {t('documents.proforma.discount')}
@@ -133,7 +136,7 @@ export function DocumentTotals({
                   -{formatAmount(proformaTotals.discount)} {currency}
                 </span>
               </div>
-            ) : proformaTotals.adjustment !== null ? (
+            ) : proformaTotals.adjustment != null ? (
               /* An increase is never called a discount. */
               <div className="flex items-center justify-between py-1">
                 <span className={`text-sm ${semanticColorTokens.text.muted}`}>

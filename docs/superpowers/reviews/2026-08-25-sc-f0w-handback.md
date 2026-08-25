@@ -342,3 +342,190 @@ $ ./vendor/bin/deptrac analyse --no-progress
    close this properly.
 8. **Arabic RTL print, the email note (C-26 ii) and the POS app** are out of scope per
    the brief and untouched.
+
+---
+
+# Fix round r1
+
+Against `2026-08-25-sc-f0w-gate-r1-conventions.md` (ACCEPT-WITH-CONDITIONS, merge-blocking
+W-1 + W-2). Same branch and worktree; **no `apps/api` or `packages/` file was touched this
+round** (`git diff --name-only <r1 base> -- apps/api packages` → 0), so every backend
+evidence line in §4.1 and §5 above still stands unchanged.
+
+| Item | Verdict | Status |
+|---|---|---|
+| W-1 status + payment chip on a proforma invoice | MAJOR · blocking | **CLOSED** |
+| W-2 no test renders either live page | MAJOR · blocking | **CLOSED** |
+| W-3 hand-written mirrors of generated DTOs | MAJOR | **CLOSED** |
+| W-6 `!= null` on inner projection fields | MINOR | **CLOSED** |
+| W-7 `CreditNoteDetail` docblock overstates reachability | MINOR | **CLOSED** (docblock only; mount-or-delete stays a ticket) |
+| W-4 / W-5 / W-8 | MINOR · fiscal lens + owner | **NOT TOUCHED**, by instruction |
+| W-9 stale evidence in the handback | MINOR | **CLOSED** — every number below is from a fresh run at the fix-round tip |
+
+## W-1 — the chips come off (`InvoiceDetailPage`)
+
+The credit-note page already did this; the invoice page now matches it.
+
+- `apps/web/src/features/documents/components/DocumentHeader.tsx:61-71,95,137-142` —
+  new `suppressStatusBadge?: boolean`, **default `false`**, so the other three callers
+  (`QuoteDetailPage:240`, `SalesOrderDetailPage:386`, `PurchaseOrderDetailPage:334`) are
+  untouched and pass nothing. The header stays ignorant of fiscal semantics: the caller
+  owns the `is_proforma` decision and passes the consequence.
+- `apps/web/src/features/documents/invoices/InvoiceDetailPage.tsx:473` —
+  `suppressStatusBadge={isProforma}`.
+- `apps/web/src/features/documents/invoices/InvoiceDetailPage.tsx:504-510` — the
+  payment-status chip gains `&& !isProforma`, with the blade's own reason recorded
+  above it ("a proforma is not a statement of account").
+
+## W-2 — both live pages, scanned whole, with the real header
+
+Two new files, and the scanner they use was widened first.
+
+- `apps/web/src/test/proformaTokens.ts:14-38` — `FORBIDDEN_PROFORMA_TOKENS` is now
+  explicitly two halves: the TAX half (the backend list verbatim, `/chain/i` restored)
+  and a SEAL-AND-SETTLEMENT half — `/sealed/i`, `/posted/i`, `/\bunpaid\b/i`,
+  `/\bpaid\b/i`. The last two are new. A blade has no status chip to emit, so
+  `ProformaOutputTest` never had to name them; a detail page does, which is the whole
+  of W-1.
+- `apps/web/src/features/documents/invoices/__tests__/InvoiceDetailPage.proforma.test.tsx`
+  (new, 6 cases) and
+  `apps/web/src/features/documents/credit-notes/__tests__/CreditNoteDetailPage.proforma.test.tsx`
+  (new, 6 cases).
+
+Both render the LIVE page with the **real** `DocumentHeader`, `DocumentTotals`,
+`StatusBadge`, `ProformaBanner`, items table **and** the real `CompanyConfigProvider`
+(which renders its children unconditionally, so nothing is hidden from the scan). Only
+network-bound children are mocked, and each mock is commented with why. Copy is the real
+`en` bundle via `translateFrom` — an identity `t` renders
+`sales:documents.statuses.posted` and hides the exact word the scan hunts, which is the
+second half of why W-1 survived round 1 (the first half being
+`InvoiceDetailPage.tenantScope.test.tsx:50-65`, which mocks `DocumentHeader` away).
+
+Fixture is the worst shape on purpose: `status: 'posted'` + `payment_status: 'unpaid'`
+on a document the chain never sealed.
+
+Cases per file: whole-page token scan · no lifecycle/payment/sealed chip · gross line
+figures present and the net basis (`100.000` / `200.000`) absent · `Estimated total`
+present and `Subtotal` absent · **the projection-less fail-open path scanned clean** ·
+and a DEFINITIVE posted-sealed case asserting the chips, `Subtotal`, `TVA 19%` and the
+net line figures ARE back and the banner is not.
+
+### RED → GREEN
+
+RED, both files at the pre-fix tip `ddee0a195`:
+```
+$ npx vitest run src/features/documents/invoices/__tests__/InvoiceDetailPage.proforma.test.tsx
+ × scans clean over the WHOLE page, real header included
+   → the LIVE invoice page WITH its real header must not contain /posted/i — found: Posted
+ × wears no lifecycle chip and no payment chip
+   → expect(element).not.toBeInTheDocument()
+ × still hides everything when the server ships NO proforma projection
+   → a proforma invoice page with no projection must not contain /posted/i — found: Posted
+ ✓ prints GROSS line figures and never the net basis
+ ✓ heads the totals box with the estimated total
+ ✓ leaves a DEFINITIVE posted invoice exactly as it was
+      Tests  3 failed | 3 passed (6)
+
+$ npx vitest run src/features/documents/credit-notes/__tests__/CreditNoteDetailPage.proforma.test.tsx
+      Tests  6 passed (6)
+```
+The credit-note page is **green from the start** — it already suppressed its chips — and
+that is the control: it proves the invoice failures are a real defect in that page, not
+an artefact of the new harness. The three invoice cases that passed red are the ones
+pinning behaviour W-1 does not affect (gross figures, estimated total, and the definitive
+document), so they had to be green before the fix.
+
+GREEN after W-1:
+```
+$ npx vitest run …/InvoiceDetailPage.proforma.test.tsx …/CreditNoteDetailPage.proforma.test.tsx
+ ✓ CreditNoteDetailPage.proforma.test.tsx (6 tests)
+ ✓ InvoiceDetailPage.proforma.test.tsx   (6 tests)
+      Tests  12 passed (12)
+```
+
+## W-3 — aliases, not mirrors
+
+`apps/web/src/types/document.ts:53-72` — both bodies replaced by
+`export type ProformaLineAmounts = App.Modules.Document.Application.DTOs.ProformaLineAmounts`
+and `export type ProformaPresentation = App.Modules.Document.Application.DTOs.ProformaPresentationData`,
+docblocks kept and extended with the reason. House pattern per
+`features/admin/country-defaults/types.ts:1-4`. A DTO field rename is now a compile
+error rather than silent drift. The optional `is_proforma?` / `proforma?` stay on the
+pre-existing hand-written `Document` mirror, as the gate directed.
+
+## W-6 / W-7
+
+- `apps/web/src/features/documents/components/DocumentTotals.tsx:108-142` — every inner
+  projection guard is `!= null` (the object guard too), with the reason inline: the
+  generated type says non-optional, but a payload that OMITS a key would otherwise walk
+  into `formatAmount(undefined)`.
+- `apps/web/src/features/documents/components/CreditNoteDetail.tsx:69-77` — the docblock
+  no longer claims the component "owns the only in-browser document PRINT surface"; it
+  records that the component is currently UNMOUNTED (exported from
+  `components/index.ts`, rendered by no route; the live screen is
+  `CreditNoteDetailPage`), that it was fixed because the brief named it and because a
+  surface mounted later must not arrive carrying the defect, and that mount-or-delete is
+  a separate ticket.
+
+## Fresh evidence at the fix-round tip (W-9)
+
+```
+$ npx tsc --noEmit -p tsconfig.json                     → clean, exit 0
+$ npx pnpm lint                                          → exit 0
+$ npx eslint .  (inside the chain)                       → ✖ 6449 problems (0 errors, 6449 warnings)
+$ node tools/audit-tanstack-keys.mjs                     → Gate C 0 · 0 acknowledged, 0 new, 0 stale
+$ node tools/audit-design-system.mjs                     → 807 · 807 acknowledged, 0 NEW, 0 stale
+$ node tools/audit-quantity-display.mjs                  → 0 total, 0 new, 0 stale
+$ I18N_BASELINE_PROTECTED_BLOB=26a9ae16… node tools/audit-i18n-completeness.mjs
+    → OK — 55 ns, authored en=9351 fr=9367 ar=4982 (1986 behind aliases),
+      2762 gaps held at the baseline, 1 burned down, 0 new
+$ npx vitest run src/features/documents src/locales/__tests__/proformaCopyParity.test.ts
+    → Test Files 54 passed (54)   Tests 463 passed (463)
+$ pgrep -fl vitest                                       → empty
+```
+
+**Warning count:** the gate measured **6448** at `ddee0a195`; the tip reports **6449**.
+The delta is one, and it is not in this lane's code — the two new test files lint at
+**zero** warnings (`npx eslint` on both → no output), and the four `require-await`
+warnings the first draft of them produced were removed by returning
+`Promise.resolve(...)` from the `mockImplementation`s instead of declaring them `async`.
+
+**Audit baselines, r1-entry → fix-round tip:** tanstack `0 → 0`; design-system
+`807 acknowledged / 0 new → 807 acknowledged / 0 new`; quantity `0 → 0`; i18n
+`2762 gaps / 0 new → 2762 gaps / 0 new`, authored counts unchanged (no locale file was
+touched this round). **No ratchet moved.**
+
+## Residuals after r1
+
+Residuals 1–8 in §6 above stand, with two updates:
+
+- **§6.5** (`CreditNoteDetail` is an orphan) is now also written into the component's own
+  docblock (W-7) and remains an open mount-or-delete ticket for the owner.
+- **§6.7** (optional `is_proforma?` / `proforma?`) is narrowed: it now applies only to the
+  two fields on the pre-existing `Document` mirror. The two new types are aliases to the
+  generated bundle (W-3), so that half of the residual is closed.
+
+New, from this round:
+
+9. **`FORBIDDEN_PROFORMA_TOKENS` is now a superset of the backend list** (`/\bpaid\b/i`,
+   `/\bunpaid\b/i`, `/sealed/i` on top of `ProformaOutputTest::FORBIDDEN_TOKENS`). That is
+   deliberate and documented in the file, but it means the two lists can now drift in the
+   direction the FE has extended. If the fiscal lens wants one canonical list, the FE half
+   should be derived rather than re-declared.
+10. **W-4 is now load-bearing on the page scan.** The settlement surfaces the gate flagged
+    (`DocumentOutstandingCallout`, the payments tab's `OutstandingAmountSection`) currently
+    render no forbidden token — the callout says "Amount Due", and the tab body only mounts
+    when the user selects it, so the whole-page scan passes today. If the fiscal lens rules
+    that those surfaces must go on a proforma, the fix is one more `!isProforma` term and
+    the existing tests will not need to change; if it rules the opposite, note that a copy
+    change to "Unpaid balance" anywhere in that callout would turn the page scan red.
+
+### react-doctor at the fix-round tip
+
+The pre-commit hook reported "staged regressions" again. Re-derived: this round's hunks
+are `DocumentTotals.tsx:108-139` and `InvoiceDetailPage.tsx:473,504-510`
+(`git diff HEAD~1 HEAD -U0 | grep '^@@'`). Every react-doctor finding sits outside them —
+`DocumentTotals.tsx:213,221` (the untouched `tax_details` map, shifted +3 lines by an
+added comment), `InvoiceDetailPage.tsx:71,912-928`, and
+`CreditNoteDetailPage.tsx:33,398-423` in a file this commit does not modify at all. All
+pre-existing; the tool is reacting to changed files, not changed lines.

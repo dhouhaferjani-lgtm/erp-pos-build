@@ -51,32 +51,25 @@ export interface DocumentLineData {
 }
 
 /**
- * The two tax-INCLUSIVE figures one line of a proforma prints — mirrors
- * `App\Modules\Document\Application\DTOs\ProformaLineAmounts`.
+ * The two tax-INCLUSIVE figures one line of a proforma prints.
+ *
+ * An ALIAS to the generated type, not a hand-written mirror (rule 7, gate r1 W-3):
+ * a DTO field rename must be a compile error here, not silent drift. Same pattern as
+ * `features/admin/country-defaults/types.ts:1-4`. The rest of this file predates the
+ * rule and is left alone.
  */
-export interface ProformaLineAmounts {
-  line_id: string
-  unit_price: string
-  line_total: string
-}
+export type ProformaLineAmounts = App.Modules.Document.Application.DTOs.ProformaLineAmounts
 
 /**
- * Everything a detail page needs to render a PROFORMA — mirrors
- * `App\Modules\Document\Application\DTOs\ProformaPresentationData`.
+ * Everything a detail page needs to render a PROFORMA — the generated
+ * `ProformaPresentationData`, aliased for the reason above.
  *
  * Present on the payload only when `is_proforma` is true AND the endpoint builds
  * the projection (every fiscal DETAIL endpoint does). A page gates its VAT
  * rendering on `is_proforma`, never on this object being present, so an endpoint
  * that ships no projection can only cost the reader rows — never leak a tax figure.
  */
-export interface ProformaPresentation {
-  estimated_total: string
-  gross_lines: string
-  stamp_duty: string | null
-  discount: string | null
-  adjustment: string | null
-  lines: ProformaLineAmounts[]
-}
+export type ProformaPresentation = App.Modules.Document.Application.DTOs.ProformaPresentationData
 
 export interface Document {
   id: string
