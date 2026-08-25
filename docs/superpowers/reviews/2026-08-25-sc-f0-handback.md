@@ -857,3 +857,313 @@ the page still reconciles; only the per-row multiplication does not, and by a su
 The alternative — printing unit prices at a wider scale than the currency — trades a visible oddity for an
 invisible one and was not taken unilaterally. Recorded so the choice is the orchestrator's; the behaviour is
 documented at `ProformaGrossAmountResolver.php:107-113`.
+
+---
+
+# Fix round r3 — response to the conventions gate r1 and the fiscal gate r3
+
+Two records on `cbf3d6af5`: `2026-08-25-sc-f0-gate-r1-conventions.md`
+(**ACCEPT-WITH-CONDITIONS, merge-blocking on F-C2 and F-C3**) and
+`2026-08-25-sc-f0-gate-r3-fiscal.md` (**ACCEPT-WITH-CONDITIONS, merge-blocking: NO**). Same worktree, same
+branch, LANE-PROTOCOL unchanged. The worktree was confirmed clean at `cbf3d6af5` before starting — the
+conventions gate's §0 warning about an uncommitted `// TAMPER B` probe from the concurrent fiscal r3 gate was
+real, and it was gone by the time this round began (`git status --short` empty, `git log -1` = `cbf3d6af5`).
+
+**Code SHA: `add2a0a68`.** This handback section is the commit after it.
+
+| item | finding | status |
+|---|---|---|
+| 1 [BLOCKING] | F-C2 / F-12 — duplicated CN totals block, no coverage | **CLOSED** — one partial + both types tested |
+| 2 [BLOCKING] | F-C3 — CN closing sentence contradicts the banner | **CLOSED** |
+| 3 | F-C1 — three-locale assertions tautological | **CLOSED** — literals + a parity test, both proven red |
+| 4 | F-11 / R-10 — drift bound wrong and unpinned | **CLOSED** |
+| 5 | F-13 — fixture line taxes vs the engine's proration | **CLOSED** — re-labelled synthetic |
+| 6 | F-C4, F-C5, per-file census note | **CLOSED** |
+| 7 | conventions cond 6 — clean-checkout re-run | **DONE** — outputs below |
+| — | fiscal cond 4 (LEDGER R-9), FE lane (C-4/R-1/R-2), OQ-14 | orchestrator-owned, untouched |
+
+## Item 1 — F-C2 / F-12 [BLOCKING]: one partial, and both types tested
+
+Two halves, both landed.
+
+**Structural.** `resources/views/documents/components/proforma_totals_rows.blade.php` (new, 69 lines) holds the
+four rows once. `components/totals.blade.php:59` includes it; `templates/credit_note.blade.php:74` includes it
+with `['totalRowStyle' => 'background-color: #dc2626;']` — the colour band was the *only* thing the two
+copies disagreed about. The credit note keeps its own totals **block** (its posted arm says `Credit Total`,
+not `Total`) but no longer its own copy of these rows.
+
+**The partial gates itself**, at `:47` — `@if($isProforma ?? false)` wrapping the whole body. That is not
+decoration: `ProformaTemplateCensusTest` went **red the moment the file appeared** —
+
+```
+these blade files put a tax mention on the page without consulting $isProforma: components/proforma_totals_rows.blade.php
+```
+
+— because the partial's own docblock names `stamp_duty_amount` and `tax_amount` while its markup consulted
+only `$proformaTotals`. The census doing exactly its job on a file created in the same round is the best
+evidence available that F-C4's widened heuristics work. The honest fix was to make the file gated in its own
+right rather than by the accident of who includes it: a third call site that forgets the arm now renders
+nothing instead of printing an estimate on a definitive document.
+
+**Coverage.** `fiscalTypeProvider()` (invoice · credit note) and `localeAndFiscalTypeProvider()` (3 locales ×
+2 types) now drive **five** R-8 tests that r2 ran on invoices only:
+`test_every_proforma_row_closes_on_its_own_face`,
+`test_the_proforma_totals_box_reconciles_with_a_stamp_duty_and_a_discount`,
+`test_a_proforma_with_a_stamp_duty_and_a_discount_stays_clean`,
+`test_the_duty_and_discount_rows_do_not_reveal_the_vat`,
+`test_a_residual_that_runs_the_other_way_is_not_called_a_discount`. The three R-8 fixtures take a
+`DocumentType` and dispatch through `confirmedOfType()`.
+
+The credit-note cases were **green before the extraction** — as the fiscal gate's own probe found, the
+hand-copy was correct on the day. That is precisely why this is a coverage finding: `OK (39 tests, 492
+assertions)` before the partial and `OK (39 tests, 492 assertions)` after it is the evidence that the
+extraction is behaviour-preserving, and the type provider is what stops the next edit diverging silently.
+
+## Item 2 — F-C3 [BLOCKING]: a proforma credit note does not reduce anything
+
+`templates/credit_note.blade.php:108-112`. The closing sentence is now wrapped in `@if(! $isProforma)` and
+reads `__('documents.credit_note.balance_note')` instead of a non-dotted English literal.
+
+It had been printing *"This credit note reduces your balance by the amount shown above."* under a banner
+saying *"Proforma — non-fiscal document … it confers no right of deduction"*, on a page from which this lane
+had deliberately deleted the Paid and Balance Due rows because a proforma is not a statement of account — and
+it used the definitive noun in the one place the lane took care not to. Being non-dotted with no `lang/*.json`
+in the repo, a French or Tunisian customer read it in English as well.
+
+The English value of the new key is **byte-identical** to the old literal, on purpose: the posted credit-note
+snapshots must not move, and they did not.
+
+**RED on `cbf3d6af5`:**
+```
+1) …test_a_proforma_credit_note_does_not_claim_it_reduces_your_balance
+2) …test_a_definitive_credit_note_still_states_the_balance_effect
+Tests: 44, Assertions: 505, Failures: 3.
+```
+(the third was item 6's Arabic title). Both tests are green now — the first asserts the sentence is absent
+from a proforma credit note's HTML **and** its PDF text; the second asserts the key's English value is
+unchanged and still renders on a definitive credit note.
+
+## Item 3 — F-C1: the three-locale claim, pinned for real
+
+The old form was `assertStringContainsString(__('documents.proforma.title'), $html)` — both sides resolve
+through the same Translator at the same locale, so a missing `ar` block falls back to `en` for the assertion
+**and** for the blade, and the test passes on a page that renders English to an Arabic tenant.
+
+Fixed two ways:
+
+1. **Literal strings** — `localeLiteralProvider()` +
+   `test_the_proforma_renders_the_literal_strings_of_its_locale` assert the actual `fr` and `ar` values
+   (`Proforma — document non fiscal`, `Total estimé`, `Droit de timbre`, `Remise`;
+   `مستند مبدئي — غير ضريبي`, `المجموع التقديري`, `معلوم الطابع`, `تخفيض`) against the rendered page, the way
+   `en` already was.
+2. **`tests/Unit/Lang/DocumentsProformaLangParityTest.php`** (new, 138 lines) — key sets, `:placeholder` sets
+   and "no locale silently ships the English string" over `documents.proforma.*` and
+   `documents.credit_note.*`. It is a **Unit** test on purpose: `backend-test` runs `--testsuite=Unit` on
+   every CI event, unlike the parked Feature lane. Scope is deliberately these two subtrees — `lang/ar` is
+   missing 13 keys that predate C-F0, and asserting whole-file parity would have to be baselined, which is how
+   a guard becomes decoration. The class says so.
+
+**RED PROOF — `proforma` block deleted from `lang/ar/documents.php`:**
+```
+--- parity test
+1) …DocumentsProformaLangParityTest::test_every_locale_carries_the_same_keys with data set "proforma"
+documents.proforma keys differ in ar: a missing key silently falls back to English
+Tests: 6, Assertions: 89, Failures: 1.
+--- literal-string test
+1) …test_the_proforma_renders_the_literal_strings_of_its_locale with data set "arabic"
+documents.proforma.title must render its own ar string, not a fallback
+Tests: 2, Assertions: 5, Failures: 1.
+--- the OLD tautological assertions, for contrast, on the SAME broken lang file
+OK (6 tests, 72 assertions)
+```
+That last line is the finding, reproduced: the r2 assertions stay green on a page that has lost its Arabic.
+`lang/ar/documents.php` restored immediately; parity green again.
+
+## Item 4 — F-11 / R-10: the drift bound is linear in quantity
+
+`ProformaGrossAmountResolver.php:106-124`. The docblock claimed `unit × qty` differs from the printed amount
+"by less than half a currency unit per line item". Wrong: the unit price is rounded once and *then multiplied
+by the quantity*, so the bound is
+
+```
+qty × 0.5 × 10^-scale
+```
+
+At 10 000 units of a 0.333 part that is 5.000 DT, and the actual drift is 2.700 DT — five times the claimed
+ceiling and plainly visible. The docblock now states the linear bound, cites the measurement, and records why
+the scale nevertheless stays at the currency's own (gate r3 ruling R-10: `unit × qty == amount` is
+unattainable at any finite scale for a non-terminating quotient, and a scale-5 unit price would be the only
+figure on the page off convention). The posted invoice has no such drift because its unit price is stored,
+not derived — that sentence is in the docblock too.
+
+`test_a_bulk_non_dividing_row_drifts_within_the_stated_bound` over `bulkNonDividingUnpostedInvoice()`
+(qty 10 000 × net 0.333 @ 19%) asserts: printed cells `[0.396, 3962.700]`; the totals box prints exactly the
+authoritative amount `3962.700`; the drift is `-2.700` **exactly** (so the test fails if it ever changes size,
+in either direction); and `|drift| ≤ 5.0000`. Stated plainly: this test was **green on first run** — the
+implementation always behaved this way, only the claim about it was false — so it is a characterisation pin,
+not a red-first fix.
+
+## Item 5 — F-13: the discounted fixture is labelled synthetic
+
+`ProformaOutputTest::discountedUnposted()`'s docblock now says outright that `36.480 / 9.120 / 16.416` are
+**not** the tax engine's proration of the fixture's own `discount_amount` — they imply a 4% reduction where
+the stated discount is 2.94% — that they were chosen so every row divides its quantity exactly and the
+row-closure assertion can be exact with no tolerance, that the document is internally consistent
+(`340.000 − 10.000 + 62.016 + 1.000 = 393.016`), and that the SHAPE (persisted post-discount line taxes that
+are not `rate × line_total`) is what the tests need while the exact proration is not. A reader who tries to
+reconcile it against `TaxCalculationService:171-183` is told, in the fixture, not to.
+
+## Item 6 — F-C4, F-C5, and the per-file census note
+
+- **F-C4** — the six-line French rationale that lived inside `lang/ar/documents.php` (the one file an Arabic
+  translator opens) is gone. `lang/en/documents.php` now carries it in English, next to the rule it belongs
+  to, covering both the `stamp_duty` wording and the `title` form; `lang/ar/documents.php:32-49` keeps a short
+  **English** pointer back to it plus the two things an editor must know before touching those strings.
+- **F-C5** — `lang/ar/documents.php:52`: `مبدئية — مستند غير ضريبي` → **`مستند مبدئي — غير ضريبي`**. The old
+  string was a bare feminine adjective agreeing with an elided فاتورة (invoice, f.), and the *same key* titles
+  a credit note (إشعار, m.), where it disagreed. The new form is noun-headed and type-neutral — `مبدئي`
+  agrees with the masculine `مستند` already in the line — which is how `en` and `fr` avoid the problem with
+  the noun "Proforma". Pinned by the literal-string test, so it cannot silently revert.
+- **Per-file census note** — `ProformaTemplateCensusTest.php:204-212` now records that
+  `consultsTheFlagInCode()` is a **per-FILE** check, not a per-emission one: a file that consults the flag
+  anywhere satisfies it everywhere, so `line_items` and `totals` could grow a new ungated tax cell without
+  this census noticing. What actually covers that is `ProformaOutputTest` rendering the two real templates and
+  scanning the output; this class's narrower job is catching a file that emits a tax mention and never
+  mentions the flag at all — which is the shape a NEW template arrives in, and which is exactly what it did to
+  the new partial this round.
+
+## Item 7 — clean-checkout re-run (conventions condition 6)
+
+A second, detached worktree was created at the code SHA, given its own real `vendor` copy and `.env`, verified
+clean and verified to resolve classes from inside itself, then removed (and its throwaway database dropped).
+
+```
+CLEAN CHECKOUT AT add2a0a68            git status --short: (empty)
+class resolution: .worktrees/sc-f0-cleanverify/apps/api/app/Modules/Document/Application/Services/ProformaGrossAmountResolver.php
+
+=== CLEAN CHECKOUT add2a0a68 · sqlite ===
+--- tests/Feature/Document/ProformaOutputTest.php
+OK (44 tests, 511 assertions)
+--- tests/Feature/Document/ProformaTemplateCensusTest.php
+OK (7 tests, 24 assertions)
+--- tests/Unit/Lang/DocumentsProformaLangParityTest.php
+OK (6 tests, 101 assertions)
+
+=== CLEAN CHECKOUT add2a0a68 · PostgreSQL 16 (autoerp_test_scf0_clean) ===
+--- tests/Feature/Document/ProformaOutputTest.php
+OK (44 tests, 511 assertions)
+--- tests/Feature/Document/ProformaTemplateCensusTest.php
+OK (7 tests, 24 assertions)
+--- tests/Unit/Lang/DocumentsProformaLangParityTest.php
+OK (6 tests, 101 assertions)
+```
+
+The conventions gate's four failures are accounted for: they were the uncommitted `// TAMPER B` probe, and on
+a clean tree at the r3 SHA nothing fails.
+
+## Fix round r3 — verification
+
+| test file | RED (at `cbf3d6af5`) | GREEN sqlite | GREEN PG |
+|---|---|---|---|
+| `tests/Feature/Document/ProformaOutputTest.php` | `Tests: 44, Assertions: 505, Failures: 3` | `OK (44 tests, 511 assertions)` | `OK (44 tests, 511 assertions)` |
+| `tests/Unit/Lang/DocumentsProformaLangParityTest.php` (new) | `Tests: 6, Assertions: 89, Failures: 1` (ar block deleted) | `OK (6 tests, 101 assertions)` | `OK (6 tests, 101 assertions)` |
+| `tests/Feature/Document/ProformaTemplateCensusTest.php` | `Failures: 1` — the new partial, ungated | `OK (7 tests, 24 assertions)` | `OK (7 tests, 24 assertions)` |
+| `tests/Feature/Document/PostingMarkerPrintTest.php` | — | `OK (10 tests, 20 assertions)` | `OK (10 tests, 20 assertions)` |
+| `tests/Feature/Modules/Document/DocumentPdfSellerTaxIdTest.php` | — | `OK (3 tests, 5 assertions)` | `OK (3 tests, 5 assertions)` |
+| `tests/Feature/Modules/Document/DocumentPdfRenderTest.php` | — | `OK (6 tests, 20 assertions)` | `OK (6 tests, 20 assertions)` — green again, see R-9 |
+| `tests/Feature/Compliance/FacturXWorkOrderInvoiceTest.php` | — | `OK (2 tests, 7 assertions)` | — |
+| `tests/Feature/Document/FacturXBranchSellerTest.php` | — | `OK (2 tests, 7 assertions)` | — |
+| `tests/Feature/Modules/Document/FacturXDescriptionTest.php` | — | `OK (3 tests, 7 assertions)` | — |
+
+PG leg: throwaway `autoerp_test_scf0` (and `autoerp_test_scf0_clean` for item 7), both **dropped**.
+
+### Posted pins — byte-identical, fourth round running
+
+Inside the `OK (44 …)` above on sqlite and PG. `git diff --name-only 394aecc0d..add2a0a68 -- apps/api/tests/Fixtures/proforma`
+is **empty** — the snapshots have not been touched since they were captured on the base commit. The two r3
+changes that touch a shared surface are structurally confined to the proforma arm: the extracted partial is
+included only from inside each template's `@if($isProforma)` branch *and* gates itself again at `:47`, and the
+credit-note sentence is wrapped in `@if(! $isProforma)` with an English value byte-identical to the literal it
+replaced.
+
+### Guards
+
+| gate | result |
+|---|---|
+| `./vendor/bin/pint` on all touched paths | `{"result":"pass"}` |
+| `./vendor/bin/phpstan analyse` (level 8) on the 4 app files + 3 test files | `[OK] No errors` |
+| `php tools/deptrac-ratchet.php` | `RESULT: PASS — no boundary regression against baseline` |
+| `php tools/feature-lane-manifest-check.php` | `OK — 1420 Feature classes in 74 groups … every --filter entry is anchored and uniquely matched against 1816 test classes` |
+
+**Ceilings unchanged: `Document` 86, `gated_ceiling` 1175.** `DocumentsProformaLangParityTest` is in
+`tests/Unit`, which the feature-lane manifest does not govern (it enumerates `tests/Feature` top-level groups
+only — the same reason N-6's `DocumentStatusMachineTest` needed no raise). The all-suite class count in the
+checker's summary moves 1815 → 1816, which is that one Unit class and is not a ceiling.
+`proforma_totals_rows.blade.php` is a view, not a test class. Still **migration: NONE**; no route, no
+controller, no `apps/web` / `apps/pos` file (`git diff --name-only cbf3d6af5..add2a0a68 | grep -E 'apps/(web|pos)|migrations'`
+is empty).
+
+### Files changed in fix round r3 (`git diff --stat cbf3d6af5 add2a0a68`)
+
+```
+apps/api/resources/views/documents/components/proforma_totals_rows.blade.php   (new, 69)
+apps/api/tests/Unit/Lang/DocumentsProformaLangParityTest.php                   (new, 138)
+apps/api/app/Modules/Document/Application/Services/ProformaGrossAmountResolver.php
+apps/api/lang/{en,fr,ar}/documents.php
+apps/api/resources/views/documents/components/totals.blade.php
+apps/api/resources/views/documents/templates/credit_note.blade.php
+apps/api/tests/Feature/Document/ProformaOutputTest.php
+apps/api/tests/Feature/Document/ProformaTemplateCensusTest.php
+10 files changed, 616 insertions(+), 92 deletions(-)
+```
+
+## New residuals from this round
+
+### R-11 — the estimated-total row still wears the definitive brand band (conventions F-C7)
+
+`proforma_totals_rows.blade.php:65` keeps `class="total-row"`, and the credit-note call site still passes the
+`#dc2626` band its definitive `Credit Total` row uses. With `getDocumentTitle()` printing `Invoice` /
+`Facture` / `Avoir` and the document number unchanged, the only visual difference between a proforma and a
+definitive document is the banner. Spec-conformant — the brief asked for the banner and the lane delivered it
+— but the owner's *one main element* rule argues the banner, not the total band, should dominate. A watermark
+or title treatment is an owner decision, not a lane fix. Recorded, not taken.
+
+### R-12 — this lane put the first real Arabic text into an LTR-only print table (conventions F-C6)
+
+`grep -rn "dir=\|rtl\|direction" apps/api/resources/views/documents/` returns **zero hits**, and the totals
+table aligns physically (`text-align: left/right`, not `start/end`). Before this lane the proforma totals box
+contained only non-dotted keys that never translate, so it was Latin text in every locale; the four dotted
+keys are the first Arabic content ever placed there. The discount row also prints a manual ASCII `-` in front
+of an ICU-formatted amount (`proforma_totals_rows.blade.php:56`), copied verbatim from the pre-existing posted
+discount row — under `ar` the sign should come from the formatter's negative pattern. This raises the priority
+of residual **R-4** (Arabic in the PDF stack) rather than creating a new problem; the owning lane is still the
+Arabic-PDF one.
+
+### R-13 — `getDocumentTitle()` has no `ar` entry and no `__()`
+
+`DocumentPdfService.php:250-278` is a hardcoded per-locale PHP map with `en` and `fr` only, so an Arabic
+proforma's headline reads `Invoice` in Latin above an Arabic banner. Pre-existing and out of this lane's
+scope, recorded because it bounds what "the proforma renders in Arabic" can mean today.
+
+---
+
+## ⚠️ MERGE-TIME ARITHMETIC — `gated_ceiling` must be re-derived (dev moved again)
+
+At this lane's base `0ae906b0e`, dev carried `gated_ceiling 1173` / `Document 84`, so the branch sets
+**1175 / 86** (+2 Document classes, +2 ceiling). **dev has since moved to `a7776dda9`, where
+`gated_ceiling` is 1176 and `Document` is still 84.**
+
+Therefore, at the moment of merge:
+
+- `groups.Document.classes` → **86** — correct as committed (dev's 84 + this lane's 2).
+- `gated_ceiling` → **dev's value at merge + 2**, i.e. **1178** against `a7776dda9`, **not** the 1175 on this
+  branch. Taking the branch value verbatim would set the ceiling BELOW the real parked count and turn
+  `feature-lane-manifest-check.php` red on the merge commit.
+
+Left un-guessed on purpose: dev has moved three times during this lane, and the manifest's own convention
+(recorded in the `Document` group note) is that the union is a merge-time value re-derived by whoever
+squashes. Verify with `git show dev:apps/api/tests/feature-lane-manifest.json` immediately before the merge and
+set `gated_ceiling` to that number plus 2.
+
+`DocumentsProformaLangParityTest` does **not** enter this arithmetic — it is `tests/Unit`, which the
+feature-lane manifest does not govern.
