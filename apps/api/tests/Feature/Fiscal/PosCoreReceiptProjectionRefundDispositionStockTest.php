@@ -80,6 +80,24 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
     {
         parent::setUp();
 
+        // DRIVER-AWARE (inherited red). This class opts OUT of RefreshDatabase's
+        // wrapping transaction (`connectionsToTransact(): []` above) because it
+        // asserts REAL transaction-rollback semantics, which an enclosing test
+        // transaction would mask. On the default SQLite `:memory:` connection
+        // that combination is unworkable: without the wrapping transaction the
+        // connection is torn down between tests, the in-memory database goes
+        // with it, and every case after the first died with
+        // `no such table: tenants` (15 failures / 1 pass, identical on `dev`).
+        // The class is listed in the `backend-test-pgsql` CI filter, which is
+        // where it actually proves anything; skip it on any other driver rather
+        // than leave 15 permanently-waived reds on the SQLite leg.
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped(
+                'Requires a persistent database: this class disables RefreshDatabase transactions '
+                .'to assert real rollback semantics, which SQLite :memory: cannot survive.'
+            );
+        }
+
         $tenant = Tenant::factory()->create();
         $this->tenantId = $tenant->id;
 

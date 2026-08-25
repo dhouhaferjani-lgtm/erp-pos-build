@@ -291,6 +291,20 @@ final class RepositoryMovementsEndpointTest extends TestCase
 
     public function test_search_returns_allocation_capacity_for_manual_matching(): void
     {
+        // DRIVER-AWARE (inherited red). This is the only case in the class that
+        // actually populates the `withSum('statementAllocations as
+        // allocated_amount', 'matched_amount')` aggregate. On PostgreSQL —
+        // production's only driver — the numeric aggregate is returned as a
+        // decimal STRING, which is what
+        // RepositoryMovementController::index()'s fail-loud money guard
+        // (`! is_string($rawAllocatedAmount)`) requires. SQLite has no DECIMAL
+        // type and hands the same aggregate back as a float, so the guard
+        // (correctly) refuses and the endpoint 500s under SQLite only. There is
+        // no fixture that can change the driver's aggregate type, so the
+        // assertion is pinned to PostgreSQL and the class is listed in the
+        // `backend-test-pgsql` CI filter so this case is really exercised.
+        $this->skipUnlessPostgres();
+
         $wantedSourceId = Str::uuid()->toString();
         $this->recordMovement(
             $this->repository,
@@ -467,5 +481,15 @@ final class RepositoryMovementsEndpointTest extends TestCase
             ->getJson("/api/v1/payment-repositories/{$this->repository->id}/movements");
 
         $response->assertStatus(403);
+    }
+
+    private function skipUnlessPostgres(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped(
+                'Decimal aggregates are only returned as decimal strings by PostgreSQL; '
+                .'SQLite returns a float, which the controller money guard refuses by design.'
+            );
+        }
     }
 }

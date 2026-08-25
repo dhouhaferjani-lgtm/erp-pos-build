@@ -11,6 +11,7 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Domain\Exceptions\MissingVariantException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -156,6 +157,18 @@ class BatchStockServiceVariantTest extends TestCase
      */
     public function test_variant_and_product_level_batches_coexist(): void
     {
+        // DRIVER-AWARE (inherited red). Coexistence is a property of the two
+        // PostgreSQL PARTIAL unique indexes
+        // (`product_batches_non_variant` / `product_batches_with_variant`).
+        // `2026_06_02_100008_add_variant_id_to_product_batches` returns early on
+        // any non-pgsql driver, so under SQLite the pre-variant
+        // `unique_batch_per_product (company_id, product_id, batch_number)`
+        // constraint is still in force and rejects the second insert. The other
+        // four cases in this class are driver-neutral and keep running on both.
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('Partial unique indexes are PostgreSQL-only.');
+        }
+
         // First, create the product-level batch (product has no variants yet).
         $productBatch = $this->service->findOrCreateBatch(
             companyId: $this->company->id,

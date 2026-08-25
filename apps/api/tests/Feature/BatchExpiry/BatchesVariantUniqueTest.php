@@ -81,6 +81,18 @@ class BatchesVariantUniqueTest extends TestCase
      */
     public function test_can_have_non_variant_and_variant_batch_with_same_number(): void
     {
+        // DRIVER-AWARE (inherited red). The two sibling cases below already
+        // carry this guard; this one needs it for the SAME reason and had been
+        // erroring on the SQLite leg ever since the partial indexes landed.
+        // `2026_06_02_100008_add_variant_id_to_product_batches` returns early on
+        // any non-pgsql driver, so under SQLite the pre-variant
+        // `unique_batch_per_product (company_id, product_id, batch_number)`
+        // constraint survives and rejects exactly the coexistence this test
+        // asserts. The partitioning it pins only exists on PostgreSQL.
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('Partial unique indexes are PostgreSQL-only.');
+        }
+
         $variant = ProductVariant::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,

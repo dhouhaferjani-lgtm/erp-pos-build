@@ -20,6 +20,7 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -127,8 +128,8 @@ final class PosCoreReceiptProjectionRefundStockTest extends TestCase
         $this->assertSame('10.0000', $productLevel->quantity, 'refund must restock to pre-sale level, not double-remove');
 
         // The refund wrote a restock movement: receipt / pos_return, +qty, no variant.
-        $this->assertSame(1, DB::table('stock_movements')->where('reason', 'pos_return')->count());
-        $movement = DB::table('stock_movements')->where('reason', 'pos_return')->first();
+        $this->assertSame(1, $this->myStockMovements()->where('reason', 'pos_return')->count());
+        $movement = $this->myStockMovements()->where('reason', 'pos_return')->first();
         $this->assertNotNull($movement);
         $this->assertSame('receipt', (string) $movement->movement_type);
         $this->assertNull($movement->variant_id);
@@ -138,7 +139,7 @@ final class PosCoreReceiptProjectionRefundStockTest extends TestCase
         $this->assertSame('8.0000', bcadd((string) $movement->quantity_before, '0', 4));
         $this->assertSame('10.0000', bcadd((string) $movement->quantity_after, '0', 4));
         // Exactly one issue (the sale) and one receipt (the refund) — no double-issue.
-        $this->assertSame(1, DB::table('stock_movements')->where('reason', 'pos_sale')->count());
+        $this->assertSame(1, $this->myStockMovements()->where('reason', 'pos_sale')->count());
     }
 
     // =================================================================
@@ -165,7 +166,7 @@ final class PosCoreReceiptProjectionRefundStockTest extends TestCase
         $productLevel->refresh();
         $this->assertSame('10.0000', $productLevel->quantity, 'product-level row must not move for a variant refund');
 
-        $movement = DB::table('stock_movements')->where('reason', 'pos_return')->first();
+        $movement = $this->myStockMovements()->where('reason', 'pos_return')->first();
         $this->assertNotNull($movement);
         $this->assertSame('receipt', (string) $movement->movement_type);
         $this->assertSame($variant->id, $movement->variant_id);
@@ -191,7 +192,7 @@ final class PosCoreReceiptProjectionRefundStockTest extends TestCase
 
         $productLevel->refresh();
         $this->assertSame('5.0000', $productLevel->quantity, 'void must restock, mirroring the legacy ReceiptVoidService reversal');
-        $this->assertSame(1, DB::table('stock_movements')->where('reason', 'pos_return')->count());
+        $this->assertSame(1, $this->myStockMovements()->where('reason', 'pos_return')->count());
     }
 
     // =================================================================
@@ -214,7 +215,7 @@ final class PosCoreReceiptProjectionRefundStockTest extends TestCase
 
         $productLevel->refresh();
         $this->assertSame('10.0000', $productLevel->quantity);
-        $this->assertSame(1, DB::table('stock_movements')->where('reason', 'pos_return')->count());
+        $this->assertSame(1, $this->myStockMovements()->where('reason', 'pos_return')->count());
 
         // Replay — fiscal_event_id idempotency guard short-circuits before any
         // stock write. No second restock, no duplicate movement.
@@ -223,7 +224,7 @@ final class PosCoreReceiptProjectionRefundStockTest extends TestCase
 
         $productLevel->refresh();
         $this->assertSame('10.0000', $productLevel->quantity, 'replay must not double-restock');
-        $this->assertSame(1, DB::table('stock_movements')->where('reason', 'pos_return')->count());
+        $this->assertSame(1, $this->myStockMovements()->where('reason', 'pos_return')->count());
     }
 
     // =================================================================
@@ -265,7 +266,7 @@ final class PosCoreReceiptProjectionRefundStockTest extends TestCase
         $productLevel->refresh();
         $this->assertSame('10.0001', $productLevel->quantity);
 
-        $movement = DB::table('stock_movements')->where('reason', 'pos_return')->first();
+        $movement = $this->myStockMovements()->where('reason', 'pos_return')->first();
         $this->assertNotNull($movement);
         $this->assertSame('9.7001', (string) $movement->quantity_before);
         $this->assertSame('10.0001', (string) $movement->quantity_after);
@@ -293,7 +294,7 @@ final class PosCoreReceiptProjectionRefundStockTest extends TestCase
         $productLevel->refresh();
         $this->assertSame('7.0000', $productLevel->quantity);
 
-        $movement = DB::table('stock_movements')->where('reason', 'pos_return')->first();
+        $movement = $this->myStockMovements()->where('reason', 'pos_return')->first();
         $this->assertNotNull($movement);
         $this->assertSame('2.0000', bcadd((string) $movement->quantity, '0', 4));
     }
@@ -544,5 +545,27 @@ final class PosCoreReceiptProjectionRefundStockTest extends TestCase
         ksort($value);
 
         return array_map(fn ($v) => $this->sortRecursive($v), $value);
+    }
+
+    // =================================================================
+    // Helpers — scoped reads (LEDGER C-7)
+    // =================================================================
+
+    /**
+     * `stock_movements` rows created by THIS test.
+     *
+     * `setUp()` mints a fresh `Tenant` per test, so a `tenant_id` filter is an
+     * exact "the rows I created" scope. Without it these reads also see the
+     * rows COMMITTED by `PosCoreReceiptProjectionRefundDispositionStockTest`,
+     * which overrides `connectionsToTransact()` to `[]` (it has to: it asserts
+     * real transaction-rollback semantics, which a wrapping RefreshDatabase
+     * transaction would mask) and therefore leaves its rows behind for the rest
+     * of the PHP process. That bleed is why this class was green standalone and
+     * red in any multi-class run — the same root cause and the same fix shape
+     * the C-7 lane applied to `PosCoreReceiptProjectionTest`.
+     */
+    private function myStockMovements(): Builder
+    {
+        return DB::table('stock_movements')->where('tenant_id', $this->tenantId);
     }
 }

@@ -257,10 +257,16 @@ final class LiveCountingSchemaTest extends TestCase
         $this->assertSame('8.0000', $item->expected_qty_at_apply);
         $this->assertSame('12.500000', $item->opening_unit_cost);
         $this->assertSame($flagReasons, $item->flag_reasons);
-        $this->assertSame(
-            $replayAudit->toArray(),
-            $item->replay_audit,
-        );
+        // `replay_audit` is a jsonb column: PostgreSQL normalises object key
+        // order on storage (shortest-first, then bytewise), SQLite preserves
+        // insertion order. Compare the decoded object without depending on key
+        // ORDER — values and value types are still compared strictly.
+        $this->assertIsArray($item->replay_audit);
+        $expectedReplayAudit = $replayAudit->toArray();
+        $actualReplayAudit = $item->replay_audit;
+        ksort($expectedReplayAudit);
+        ksort($actualReplayAudit);
+        $this->assertSame($expectedReplayAudit, $actualReplayAudit);
         $this->assertTrue($item->is_flagged);
     }
 
@@ -334,15 +340,52 @@ final class LiveCountingSchemaTest extends TestCase
         $this->assertSame('array', $itemCasts['flag_reasons']);
     }
 
+    /**
+     * DRIVER-AWARE. This used to issue a literal `PRAGMA table_info(...)`, which
+     * is SQLite-only syntax — on PostgreSQL it raises 42601 and the case died,
+     * so the precision contract it exists to pin was never checked against the
+     * driver that production actually runs on. Read the column metadata through
+     * whichever catalog the connected driver exposes and assert the SAME
+     * contract on both: nullable, numeric/decimal typed.
+     */
     #[Test]
-    public function sqlite_column_types_match_the_precision_contract(): void
+    public function column_types_match_the_precision_contract(): void
     {
+        $driver = DB::connection()->getDriverName();
+
+        if ($driver === 'pgsql') {
+            /** @var list<object{column_name: string, data_type: string, is_nullable: string}> $columns */
+            $columns = DB::select(
+                'SELECT column_name, data_type, is_nullable
+                   FROM information_schema.columns
+                  WHERE table_name = ?',
+                ['inventory_counting_items']
+            );
+
+            $byName = [];
+            foreach ($columns as $column) {
+                $byName[$column->column_name] = $column;
+            }
+
+            $this->assertArrayHasKey('expected_qty_at_apply', $byName);
+            $this->assertArrayHasKey('opening_unit_cost', $byName);
+            $this->assertStringContainsStringIgnoringCase('numeric', $byName['expected_qty_at_apply']->data_type);
+            $this->assertStringContainsStringIgnoringCase('numeric', $byName['opening_unit_cost']->data_type);
+            $this->assertSame('YES', $byName['expected_qty_at_apply']->is_nullable);
+            $this->assertSame('YES', $byName['opening_unit_cost']->is_nullable);
+
+            return;
+        }
+
+        /** @var list<object{name: string, type: string, notnull: int}> $columns */
         $columns = DB::select("PRAGMA table_info('inventory_counting_items')");
         $byName = [];
         foreach ($columns as $column) {
             $byName[$column->name] = $column;
         }
 
+        $this->assertArrayHasKey('expected_qty_at_apply', $byName);
+        $this->assertArrayHasKey('opening_unit_cost', $byName);
         $this->assertStringContainsStringIgnoringCase('numeric', (string) $byName['expected_qty_at_apply']->type);
         $this->assertStringContainsStringIgnoringCase('numeric', (string) $byName['opening_unit_cost']->type);
         $this->assertSame(0, (int) $byName['expected_qty_at_apply']->notnull);
