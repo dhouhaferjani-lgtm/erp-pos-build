@@ -290,6 +290,15 @@ class RolesAndPermissionsSeeder extends Seeder
             // Locked periods stay terminal: the service refuses them.
             'fiscal-periods.reopen',
 
+            // The MANUAL close (Session B2 lane C-24 (i)), the other half of the
+            // pair: Q-10's reopen left a corrected period — and its fiscal year —
+            // Open forever, because the nightly auto-lock now steps around it.
+            // Same role set as the reopen (accountant + admin, manager excluded),
+            // but its OWN permission: settling a period and reversing a settlement
+            // are different acts, and a tenant-custom role must be able to grant
+            // the first without the second.
+            'fiscal-periods.close',
+
             // DEPRECATED (W-6 D5, 2026-08-05 owner ruling "Option B split") —
             // reports.view no longer gates any route as of this release; the
             // reports/* endpoints now check reports.financial or
@@ -810,10 +819,13 @@ class RolesAndPermissionsSeeder extends Seeder
                 'accounts.view', 'accounts.manage',
                 'ledger.view',
                 'reports.financial', 'reports.operational', 'reports.manage',
-                // Session B lane Q-10 (c): the Closed -> Open fiscal-period edge.
-                // Same rationale as reports.manage above — accountant holds it,
-                // manager deliberately does not (2026-08-06 gate finding I-1).
+                // Session B lane Q-10 (c): the Closed -> Open fiscal-period edge,
+                // and Session B2 lane C-24 (i): the manual Open -> Closed edge that
+                // makes a reopen finishable. Same rationale as reports.manage above —
+                // accountant holds both, manager deliberately holds neither
+                // (2026-08-06 gate finding I-1).
                 'fiscal-periods.reopen',
+                'fiscal-periods.close',
                 'taxation.tax_configurations.manage',
                 'taxation.withholding_rules.manage',
                 'withholding.view', 'withholding.create', 'withholding.update',

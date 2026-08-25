@@ -73,6 +73,25 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:fiscal-periods.reopen')
         ->name('fiscal-periods.reopen');
 
+    // The MANUAL close — Session B2 lane C-24 (i), the other half of the pair above.
+    //
+    // Q-10 made the nightly auto-lock skip a reopened period AND hold the close of its
+    // fiscal year, so that without a human `Open -> Closed` edge a correction kept the
+    // period — and the whole year — open forever. This route is that edge; the scheduler
+    // needed no change at all, because `lockPeriodsInClosedFiscalYears()` already treats
+    // "reopened but Closed again by a human" as lockable.
+    //
+    // Its own permission, `fiscal-periods.close`, rather than reusing
+    // `fiscal-periods.reopen`: they are seeded to the same roles today (accountant +
+    // admin), but they are different acts — one reverses a settlement, the other makes
+    // one — and a tenant-custom role must be able to grant the settling half without the
+    // reversing half. `whereUuid` for the same reason as the reopen route: a malformed
+    // `{id}` would otherwise reach `findOrFail()` and raise PostgreSQL 22P02 as a 500.
+    Route::post('fiscal-periods/{id}/close', [FiscalPeriodController::class, 'close'])
+        ->whereUuid('id')
+        ->middleware('can:fiscal-periods.close')
+        ->name('fiscal-periods.close');
+
     Route::get('company/locations', [LocationController::class, 'scopedIndex'])
         ->name('company.locations.scoped');
 
