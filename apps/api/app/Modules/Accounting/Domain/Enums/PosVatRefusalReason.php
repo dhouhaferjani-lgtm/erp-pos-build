@@ -39,6 +39,15 @@ enum PosVatRefusalReason: string
      */
     case SealedVatDisagreesWithReceipt = 'sealed_vat_disagrees_with_receipt';
 
+    /**
+     * The chart of accounts has no account for a system purpose this entry
+     * needs. Since W4-9 a POS tender leg resolves up to three
+     * (`ProductRevenue`, `VatCollected`, `SalesDiscount`); a chart missing any
+     * of them cannot express the sale, and the projection refuses rather than
+     * booking a partial one.
+     */
+    case ChartPurposeMissing = 'chart_purpose_missing';
+
     /** A tender or sealed VAT amount is not a plain decimal string. */
     case NonNumericAmount = 'non_numeric_amount';
 }

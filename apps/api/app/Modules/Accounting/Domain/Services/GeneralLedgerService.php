@@ -3577,6 +3577,7 @@ final class GeneralLedgerService
                         $companyId,
                         // Non-null on this arm: asserted before the transaction opened.
                         $posRevenueSplit ?? throw PosVatProjectionRefusedException::missingSealedVatDetails($instrumentId),
+                        $instrumentId,
                         'POS revenue reversed',
                         'POS output VAT reversed (instrument cancellation)',
                     ),
@@ -3979,6 +3980,7 @@ final class GeneralLedgerService
                 entry: $entry,
                 companyId: (string) $companyId,
                 vatSplit: $vatSplit,
+                subjectId: (string) $receipt->id,
                 onDebitSide: false,
                 revenueDescription: 'POS sales revenue',
                 vatDescriptionPrefix: 'POS output VAT',
@@ -4028,13 +4030,14 @@ final class GeneralLedgerService
         JournalEntry $entry,
         string $companyId,
         PosRevenueVatSplit $vatSplit,
+        string $subjectId,
         bool $onDebitSide,
         string $revenueDescription,
         string $vatDescriptionPrefix,
     ): void {
         $lineOrder = 1;
 
-        foreach ($this->posRevenueAndVatLineSpecs($companyId, $vatSplit, $revenueDescription, $vatDescriptionPrefix) as $spec) {
+        foreach ($this->posRevenueAndVatLineSpecs($companyId, $vatSplit, $subjectId, $revenueDescription, $vatDescriptionPrefix) as $spec) {
             // `contra` sits on the OPPOSITE side from revenue: the sales-discount
             // line is a debit on a sale and a credit on its reversal, always the
             // mirror of the revenue it reduces.
@@ -4048,6 +4051,35 @@ final class GeneralLedgerService
                 'description' => $spec['description'],
                 'line_order' => $lineOrder++,
             ]);
+        }
+    }
+
+    /**
+     * Precheck every purpose the decomposition will resolve — and only those it
+     * will actually use — before a single line is built.
+     *
+     * @throws PosVatProjectionRefusedException when the chart cannot express this decomposition
+     */
+    private function assertPosPurposesProvisioned(
+        string $companyId,
+        PosRevenueVatSplit $vatSplit,
+        string $subjectId,
+    ): void {
+        $required = [];
+        if ($vatSplit->hasNetRevenue()) {
+            $required[] = SystemAccountPurpose::ProductRevenue;
+        }
+        if ($vatSplit->hasDiscount()) {
+            $required[] = SystemAccountPurpose::SalesDiscount;
+        }
+        if ($vatSplit->nonZeroVatAllocations() !== []) {
+            $required[] = SystemAccountPurpose::VatCollected;
+        }
+
+        foreach ($required as $purpose) {
+            if (! $this->hasAccountForPurpose($companyId, $purpose)) {
+                throw PosVatProjectionRefusedException::chartPurposeMissing($subjectId, $purpose);
+            }
         }
     }
 
@@ -4078,9 +4110,21 @@ final class GeneralLedgerService
     private function posRevenueAndVatLineSpecs(
         string $companyId,
         PosRevenueVatSplit $vatSplit,
+        string $subjectId,
         string $revenueDescription,
         string $vatDescriptionPrefix,
     ): array {
+        // Treasury gate I-2 — precheck EVERY purpose this decomposition will
+        // resolve, and only those it will actually use, before a single line is
+        // built. `getAccountByPurpose()` throws a bare `RuntimeException` from
+        // the depths of the writer; from inside `TreasuryReceiptBridge`'s
+        // transaction that costs the receipt its Treasury payment, its
+        // `repository_movements` row and its cash balance too, with nothing
+        // naming the missing purpose. Same posture the §4.6 rounding and
+        // tolerance entries already take ("Both halves of the entry are
+        // prechecked") — fail closed, but say what is missing.
+        $this->assertPosPurposesProvisioned($companyId, $vatSplit, $subjectId);
+
         $specs = [];
 
         if ($vatSplit->hasNetRevenue()) {
@@ -4207,6 +4251,7 @@ final class GeneralLedgerService
                 entry: $entry,
                 companyId: (string) $companyId,
                 vatSplit: $vatSplit,
+                subjectId: (string) $receipt->id,
                 onDebitSide: true,
                 revenueDescription: 'POS sales revenue reversed (refund)',
                 vatDescriptionPrefix: 'POS output VAT reversed (refund)',

@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Tests\Feature\Treasury;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Application\Services\Reports\ProfitLossService;
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\PosVatRefusalReason;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Exceptions\PosVatProjectionRefusedException;
@@ -368,6 +370,20 @@ final class PosReceiptVatGlSplitTest extends TestCase
         //
         // This is how the POS's own ACCOUNT_CHARGE arm already books a
         // discounted sale (`createPOSChargeEntry`), so the two POS arms agree.
+        //
+        // ⚠ OWNER RULING D-1 (2026-08-25) — READ BEFORE RE-PINNING THIS TEST.
+        // D-1 rules that a POS transaction discount REDUCES the VAT base,
+        // ventilated pro-rata per rate line (largest-remainder) and sealed
+        // POST-discount; it is a forward-only device lane. When it lands, the
+        // SEALED NUMBERS change (this receipt would seal base 550.000 / VAT
+        // 82.500) but THIS LEDGER SHAPE DOES NOT: the same code books
+        // `Dr 53 · Dr 709 · Cr 70x · Cr 4457` from whatever the device sealed.
+        // What flips is WHICH equality the ledger satisfies — today the GROSS
+        // `70x` credit equals the declared base; after D-1 the NET
+        // (`70x − 709`) does. The invariant the arm actually relies on is
+        // version-agnostic and lives in `assertReconciles()`:
+        // `net + Σvat − discount == tender`. The assertion below pins the
+        // PRE-D-1 equality on purpose; the D-1 lane owns re-pinning it.
         $event = $this->projectedThreeRateSale(
             [['amount' => '640.000', 'method_code' => 'CASH']],
             total: '640.000',
@@ -397,6 +413,67 @@ final class PosReceiptVatGlSplitTest extends TestCase
         );
 
         $this->assertSame($this->sumColumn($lines, 'debit'), $this->sumColumn($lines, 'credit'));
+    }
+
+    public function test_the_profit_and_loss_reports_turnover_net_of_the_discount(): void
+    {
+        // Treasury gate I-3. `ProfitLossService` partitions strictly on
+        // `accounts.type`: revenue = credit − debit, expenses = debit − credit.
+        // `709x Rabais, remises et ristournes accordés` is CONTRA-REVENUE — a
+        // debit-balance account inside the revenue class — but it was seeded
+        // `expense`, so the statement read *chiffre d'affaires 600 / charges
+        // 100* where the PCG-TN presentation is *CA net de RRR 500*. Net income
+        // was right either way and the trial balance closed, so nothing failed;
+        // only the face of the P&L was wrong.
+        //
+        // W4-9 is what makes it material: before this lane a discounted POS sale
+        // credited the post-discount tender straight to 70x and posted no 709x
+        // line at all, so the presentation appeared only on the rare
+        // ACCOUNT_CHARGE arm. Now it appears on every discounted counter sale.
+        $event = $this->projectedThreeRateSale(
+            [['amount' => '640.000', 'method_code' => 'CASH']],
+            total: '640.000',
+            discountTotal: '50.000',
+        );
+
+        $this->app->make(CompanyContext::class)->clear();
+        $this->app->make(TreasuryReceiptBridge::class)->apply($event);
+
+        $receipt = Receipt::query()->where('fiscal_event_id', $event->id)->firstOrFail();
+
+        $this->app->make(CompanyContext::class)->setCompanyId($this->companyId);
+        $statement = $this->app->make(ProfitLossService::class)->generate(
+            $this->companyId,
+            now()->subDay()->startOfDay(),
+            now()->addDay()->endOfDay(),
+        );
+
+        // Turnover is reported NET of the discount…
+        $this->assertSame(
+            '550.000',
+            bcadd((string) $statement['total_revenue'], '0', 3),
+            'P&L turnover must be reported net of the RRR, not gross with the discount as a charge',
+        );
+        // …and the discount is NOT sitting in the expense block.
+        $this->assertSame('0.000', bcadd((string) $statement['total_expenses'], '0', 3));
+
+        // The identity that matters to an accountant reconciling the two
+        // statements: net turnover == the declared taxable base MINUS the
+        // discount granted on the ticket. Read from the SEALED rows, never a
+        // literal.
+        $sealedBase = (string) DB::table('pos_receipt_vat_details')
+            ->where('receipt_id', $receipt->id)
+            ->sum('net_amount');
+        $this->assertSame(
+            bcsub(bcadd($sealedBase, '0', 3), '50.000', 3),
+            bcadd((string) $statement['total_revenue'], '0', 3),
+        );
+
+        // And the account really is typed as revenue on the seeded chart.
+        $this->assertSame(
+            AccountType::Revenue,
+            Account::query()->findOrFail($this->discountAccountId)->type,
+        );
     }
 
     public function test_a_discounted_refund_credits_the_discount_account_back(): void
@@ -502,6 +579,43 @@ final class PosReceiptVatGlSplitTest extends TestCase
             )),
             'a 0 % sale must not post a 0.000 VAT line',
         );
+    }
+
+    public function test_a_chart_missing_the_sales_discount_purpose_refuses_by_name(): void
+    {
+        // Treasury gate I-2. Before W4-9 a POS tender leg resolved ONE purpose
+        // (`ProductRevenue`); it now resolves up to three. `getAccountByPurpose`
+        // raises a bare `RuntimeException` from the depths of the writer, and
+        // from inside the bridge's transaction that costs the receipt its
+        // Treasury payment, its `repository_movements` row and its cash balance
+        // too — on a device-signed receipt, with nothing anywhere naming the
+        // missing purpose and a Horizon job retrying forever. Fail-closed is
+        // right; anonymous is not.
+        $event = $this->projectedThreeRateSale(
+            [['amount' => '640.000', 'method_code' => 'CASH']],
+            total: '640.000',
+            discountTotal: '50.000',
+        );
+
+        DB::table('accounts')
+            ->where('system_purpose', SystemAccountPurpose::SalesDiscount->value)
+            ->update(['system_purpose' => null]);
+
+        $this->app->make(CompanyContext::class)->clear();
+
+        try {
+            $this->app->make(TreasuryReceiptBridge::class)->apply($event);
+            $this->fail('a chart that cannot express the decomposition must refuse');
+        } catch (PosVatProjectionRefusedException $e) {
+            $this->assertSame(PosVatRefusalReason::ChartPurposeMissing, $e->reason);
+            $this->assertStringContainsString(SystemAccountPurpose::SalesDiscount->value, $e->getMessage());
+        }
+
+        // Fail-CLOSED, and the whole projection rolls back — no half-booked
+        // receipt, and nothing for a later reconciliation to trip over.
+        $this->assertSame(0, DB::table('payments')->count());
+        $this->assertSame(0, DB::table('journal_entries')->where('source_type', 'pos_receipt')->count());
+        $this->assertSame(0, DB::table('repository_movements')->count());
     }
 
     public function test_receipt_without_sealed_vat_details_is_refused_and_nothing_is_written(): void

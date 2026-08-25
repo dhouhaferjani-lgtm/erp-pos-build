@@ -78,7 +78,13 @@ final class PosReceiptVatLegCensusCommand extends Command
         {--company= : Optional company UUID filter}
         {--limit=50 : Maximum receipts to list individually}';
 
-    protected $description = 'Report-only: POS receipts whose journal entries do not carry their sealed output VAT';
+    /**
+     * Exit code for "the chart of accounts cannot support POS at all", distinct
+     * from `FAILURE` (= drift found) so a deploy script can branch on it.
+     */
+    private const UNPROVISIONED = 2;
+
+    protected $description = 'Report-only: POS receipts whose journal entries do not carry their sealed output VAT. Exit 0 = clean, 1 = drift found, 2 = chart of accounts not provisioned for POS.';
 
     public function __construct(
         private readonly CurrencyScaleResolverInterface $scaleResolver,
@@ -93,26 +99,58 @@ final class PosReceiptVatLegCensusCommand extends Command
         $limitOption = $this->option('limit');
         $limit = is_numeric($limitOption) ? max(1, (int) $limitOption) : 50;
 
-        // The 4457 account is resolved by SYSTEM PURPOSE, never by code: the
-        // TN, FR, UK and IT charts all number output VAT differently and the
-        // code lives in seeded country defaults.
-        $vatAccounts = DB::table('accounts')
-            ->where('system_purpose', SystemAccountPurpose::VatCollected->value)
-            ->pluck('id')
-            ->map(static fn (mixed $id): string => (string) $id)
-            ->all();
+        // Accounts are resolved by SYSTEM PURPOSE, never by code: the TN, FR, UK
+        // and IT charts all number output VAT and RRR differently, and the codes
+        // live in seeded country defaults.
+        //
+        // Treasury gate I-2 / M-2: scoped by `--company` like the receipt arms
+        // below. On a multi-company tenant an unscoped pluck would let a leg
+        // booked to company B's `4457` satisfy company A's receipt.
+        $vatAccounts = $this->accountsForPurpose(SystemAccountPurpose::VatCollected, $companyId);
 
+        // BOTH hard purposes are prechecked, not just the one the census counts
+        // (treasury gate I-2). Since W4-9 a POS tender leg resolves up to three
+        // purposes — `ProductRevenue`, `VatCollected` and, on a discounted
+        // receipt, `SalesDiscount` — and a chart missing any of them fails the
+        // projection. A deploy gate that names only the first sends the operator
+        // back for a second round trip.
+        $missingPurposes = [];
         if ($vatAccounts === []) {
-            $this->error(
-                'No account carries the `'.SystemAccountPurpose::VatCollected->value.'` system purpose on this '
-                .'tenant database. Every POS receipt on it is by definition missing its output-VAT leg, and the '
-                .'chart of accounts must be provisioned before the census can say anything more precise.'
-            );
+            $missingPurposes[] = SystemAccountPurpose::VatCollected;
+        }
+        if ($this->accountsForPurpose(SystemAccountPurpose::SalesDiscount, $companyId) === []) {
+            $missingPurposes[] = SystemAccountPurpose::SalesDiscount;
+        }
 
-            return self::FAILURE;
+        if ($missingPurposes !== []) {
+            $this->error(sprintf(
+                'Chart of accounts is not provisioned for POS: no account carries %s on this tenant database. '
+                .'Every POS receipt that needs one is refused by the projection — payment, cash movement and GL '
+                .'entry alike — so provision the chart before reading anything else into this census.',
+                implode(' or ', array_map(
+                    static fn (SystemAccountPurpose $purpose): string => '`'.$purpose->value.'`',
+                    $missingPurposes,
+                )),
+            ));
+
+            // A DISTINCT code (treasury gate M-3): "the chart is not provisioned"
+            // and "these receipts have drifted" need different remedies, and a
+            // deploy script that branches on the exit code must be able to tell
+            // them apart. 0 = clean, 1 = drift, 2 = unprovisioned.
+            return self::UNPROVISIONED;
         }
 
         $query = DB::table('pos_receipts')
+            // Mirror the declaration's own predicate
+            // (`EloquentVatDataRepository`): a TRAINING receipt is a rehearsal —
+            // it seals its `pos_receipt_vat_details` rows and, by design, writes
+            // NO journal entry, and a VOIDED one is likewise excluded from the
+            // filing. Counting either as drift (treasury gate I-1) makes this
+            // command return 1 forever on any tenant that trains its cashiers
+            // during onboarding — which tenant #1 does — and an operator who
+            // learns to ignore the deploy gate will ignore the real drift too.
+            ->where('pos_receipts.is_training', false)
+            ->where('pos_receipts.is_voided', false)
             // Aggregate FIRST, join second: one row per receipt on both sides,
             // so neither the rate rows nor the per-leg entries can multiply the
             // other (F-2).
@@ -307,6 +345,31 @@ final class PosReceiptVatLegCensusCommand extends Command
         }
 
         return [$drift, $neverPosted, $listed];
+    }
+
+    /**
+     * Account ids carrying a system purpose, scoped to `--company` when given
+     * (treasury gate M-2). The receipt arms honour `--company`; an unscoped
+     * pluck would let a leg booked to company B's `4457` satisfy company A's
+     * receipt on a multi-company tenant.
+     *
+     * @return list<string>
+     */
+    private function accountsForPurpose(SystemAccountPurpose $purpose, mixed $companyId): array
+    {
+        $query = DB::table('accounts')->where('system_purpose', $purpose->value);
+
+        if (is_string($companyId) && $companyId !== '') {
+            $query->where('company_id', $companyId);
+        }
+
+        /** @var list<string> $ids */
+        $ids = array_values(array_map(
+            static fn (mixed $id): string => (string) $id,
+            $query->pluck('id')->all(),
+        ));
+
+        return $ids;
     }
 
     /**

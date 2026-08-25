@@ -223,6 +223,91 @@ final class PosReceiptVatLegCensusCommandTest extends TestCase
         $this->assertSame(0, $this->runCensus()[0]);
     }
 
+    public function test_a_training_receipt_is_not_drift(): void
+    {
+        // Treasury gate I-1. A training receipt is a rehearsal on a live
+        // terminal: it seals its `pos_receipt_vat_details` rows and, BY DESIGN,
+        // writes no journal entry at all (`TreasuryReceiptBridge` returns on
+        // `trainingFlag`). The declaration excludes it
+        // (`EloquentVatDataRepository`: `is_voided = false AND is_training =
+        // false`), so a census that counts it reports drift that cannot be
+        // fixed — exit 1 forever on any tenant that trains its cashiers during
+        // onboarding, which tenant #1 does. An operator who learns to ignore
+        // this gate will ignore the real drift with it.
+        $this->receipt('119.000', '19.000', true, isTraining: true);
+
+        [$code, $output] = $this->runCensus();
+
+        $this->assertSame(0, $code, $output);
+        $this->assertStringContainsString('none', $output);
+    }
+
+    public function test_a_voided_receipt_is_not_drift(): void
+    {
+        // Same predicate, other flag — mirrored on the declaration's own filter
+        // rather than reasoned about separately, so the two cannot drift apart.
+        $this->receipt('119.000', '19.000', true, isVoided: true);
+
+        $this->assertSame(0, $this->runCensus()[0]);
+    }
+
+    public function test_a_training_receipt_does_not_mask_a_real_drift_next_to_it(): void
+    {
+        // The control that stops the I-1 fix from becoming a blanket suppressor.
+        $this->receipt('119.000', '19.000', true, isTraining: true);
+        $real = $this->receipt('119.000', '19.000', true);
+        $this->bookEntry($real, withVatLeg: false);
+
+        [$code, $output] = $this->runCensus();
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString((string) $real->receipt_number, $output);
+        $this->assertSame(
+            1,
+            substr_count($output, 'sealed_vat='),
+            'exactly one receipt is drift; the training one must not appear: '.$output,
+        );
+    }
+
+    public function test_an_unprovisioned_chart_exits_with_its_own_code_and_names_every_missing_purpose(): void
+    {
+        // Treasury gate I-2 + M-3. Since W4-9 a POS tender leg resolves up to
+        // three purposes, so the deploy gate has to check BOTH hard ones — a
+        // gate that names only `vat_collected` sends the operator back for a
+        // second round trip when `sales_discount` is also absent. And
+        // "unprovisioned" needs an exit code distinct from "drift found": they
+        // have different remedies and a deploy script branches on the number.
+        $this->receipt('119.000', '19.000', true);
+
+        DB::table('accounts')
+            ->whereIn('system_purpose', [
+                SystemAccountPurpose::VatCollected->value,
+                SystemAccountPurpose::SalesDiscount->value,
+            ])
+            ->update(['system_purpose' => null]);
+
+        [$code, $output] = $this->runCensus();
+
+        $this->assertSame(2, $code, $output);
+        $this->assertStringContainsString('`vat_collected`', $output);
+        $this->assertStringContainsString('`sales_discount`', $output);
+    }
+
+    public function test_a_chart_missing_only_the_sales_discount_purpose_is_still_reported(): void
+    {
+        $this->receipt('119.000', '19.000', true);
+
+        DB::table('accounts')
+            ->where('system_purpose', SystemAccountPurpose::SalesDiscount->value)
+            ->update(['system_purpose' => null]);
+
+        [$code, $output] = $this->runCensus();
+
+        $this->assertSame(2, $code, $output);
+        $this->assertStringContainsString('`sales_discount`', $output);
+        $this->assertStringNotContainsString('`vat_collected`', $output);
+    }
+
     // =================================================================
     // Helpers
     // =================================================================
@@ -256,6 +341,8 @@ final class PosReceiptVatLegCensusCommandTest extends TestCase
         string $taxAmount,
         bool $withSealedRows,
         ?array $sealedRates = null,
+        bool $isTraining = false,
+        bool $isVoided = false,
     ): Receipt {
         $receipt = Receipt::factory()
             ->withTotal($total, $taxAmount)
@@ -266,6 +353,8 @@ final class PosReceiptVatLegCensusCommandTest extends TestCase
                 'terminal_id' => $this->terminalId,
                 'cashier_id' => $this->cashierId,
                 'currency' => 'TND',
+                'is_training' => $isTraining,
+                'is_voided' => $isVoided,
             ]);
 
         if ($withSealedRows) {

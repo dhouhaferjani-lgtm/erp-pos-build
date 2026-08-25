@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Accounting\Domain\Exceptions;
 
 use App\Modules\Accounting\Domain\Enums\PosVatRefusalReason;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use RuntimeException;
 
 /**
@@ -119,6 +120,34 @@ final class PosVatProjectionRefusedException extends RuntimeException
                 $receiptId,
                 $sealedVat,
                 $receiptTaxAmount,
+            ),
+        );
+    }
+
+    /**
+     * Named preflight refusal for an unprovisionable chart (treasury gate I-2).
+     *
+     * Before W4-9 a POS tender leg resolved ONE purpose; it now resolves up to
+     * three, so the blast radius of a missing account grew from "one wrong
+     * revenue line" to "the whole receipt is lost — payment, cash movement and
+     * GL alike — on a queue job that retries forever". `getAccountByPurpose()`
+     * raises a bare `RuntimeException` from the depths of the writer; this says
+     * WHICH purpose is missing, in the same typed shape as every other refusal
+     * on this path, so an operator reading a failed job knows what to provision.
+     */
+    public static function chartPurposeMissing(string $subjectId, SystemAccountPurpose $purpose): self
+    {
+        return new self(
+            PosVatRefusalReason::ChartPurposeMissing,
+            $subjectId,
+            sprintf(
+                'pos_vat_projection_refused:%s:receipt=%s:purpose=%s — the chart of accounts has no account '
+                .'carrying this system purpose, so the POS revenue/VAT decomposition cannot be posted. Provision '
+                .'it (Settings → Accounting → Chart of accounts) and the projection will retry cleanly; '
+                .'`php artisan pos:census-vat-legs` reports the same gap with exit code 2.',
+                PosVatRefusalReason::ChartPurposeMissing->value,
+                $subjectId,
+                $purpose->value,
             ),
         );
     }

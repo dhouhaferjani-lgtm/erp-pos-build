@@ -263,12 +263,28 @@ enum SystemAccountPurpose: string
             self::ProductRevenue, self::ServiceRevenue,
             self::PaymentToleranceIncome, self::PurchasePriceVarianceIncome, self::RealizedFxGain,
             self::VoucherBreakageIncome, self::SalesRoundingDifferenceIncome => AccountType::Revenue,
+
+            // CONTRA-REVENUE, not an expense (treasury gate I-3). `709x Rabais,
+            // remises et ristournes accordés` is a debit-balance account that
+            // SITS IN the revenue class: the PCG/PCG-TN presentation is
+            // `chiffre d'affaires NET de RRR`, and `ProfitLossService` partitions
+            // strictly on `accounts.type` (revenue = credit − debit), so typing
+            // it `expense` reported turnover GROSS with the discount as an
+            // operating charge. Net income was right either way; the FACE of the
+            // statement was not. W4-9 made this material for the POS channel —
+            // before it, a discounted POS sale credited the post-discount tender
+            // to 707 and posted no 709x line at all.
+            //
+            // `SalesReturn` (709 proper) is deliberately NOT moved here: it is a
+            // pre-existing chart decision with its own consumers, and changing it
+            // is a separate reporting call.
+            self::SalesDiscount => AccountType::Revenue,
             self::InventoryGainIncome => AccountType::Revenue,
 
             self::CostOfGoodsSold, self::PurchaseExpenses, self::OfficeExpense,
             self::TravelExpense, self::MealsExpense, self::UtilitiesExpense, self::GeneralExpense,
             self::PaymentToleranceExpense, self::PurchasePriceVarianceExpense, self::SalesReturn, self::RefundWriteOff, self::RealizedFxLoss,
-            self::SalesDiscount, self::SalesReturnsClearing,
+            self::SalesReturnsClearing,
             self::MarketingGoodwillExpense, self::RoundingLossExpense,
             self::SalesRoundingDifferenceExpense,
             self::PurchaseStampDuty => AccountType::Expense,
