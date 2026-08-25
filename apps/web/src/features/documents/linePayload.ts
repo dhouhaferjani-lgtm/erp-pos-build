@@ -10,6 +10,7 @@
  */
 
 import type { DocumentLine } from '../../components/documents/DocumentLineEditor'
+import type { DocumentType } from './DocumentListPage'
 
 export interface LinePayload {
   product_id?: string
@@ -140,6 +141,13 @@ export function buildAutoSaveLinePayload(line: DocumentLine): LinePayload {
   if (isBlank(payload.unit_price)) {
     payload.unit_price = '0'
   }
+  // A TOTAL-entry-mode line that has not been priced yet carries a blank
+  // `line_total` too (gate r2 C1 — the editor no longer synthesises 0.000 out of
+  // an unentered total). `line_total` is a required numeric on the draft
+  // endpoint as well, so it needs the same draft-only coercion.
+  if (isBlank(payload.line_total)) {
+    payload.line_total = '0'
+  }
   return payload
 }
 
@@ -151,5 +159,81 @@ export function buildAutoSaveLinePayload(line: DocumentLine): LinePayload {
  * client message is added, the refusal is kept.
  */
 export function findBlankPriceLineIds(lines: DocumentLine[]): string[] {
-  return lines.filter((line) => isBlank(line.unit_price)).map((line) => line.id)
+  return lines
+    .filter((line) => {
+      if (isBlank(line.unit_price)) return true
+      // TOTAL entry mode: the operator prices the line by its net amount, so an
+      // unentered total is an unpriced line even if a unit price were somehow
+      // present. Belt to the brace above (gate r2 C1).
+      return (line.price_entry_mode ?? 'unit') === 'total' && isBlank(line.line_total)
+    })
+    .map((line) => line.id)
+}
+
+/**
+ * Is this document type a PURCHASE (money leaving the company)? Its line price is
+ * then a BUYING price and must never be seeded from the retail `sale_price` —
+ * see {@link resolveLineUnitPriceDefault}.
+ *
+ * An EXHAUSTIVE `Record` over the document-type union on purpose (gate r1
+ * finding 4): a `Set<string>` let a newly added or renamed purchase type fall
+ * silently through to the sale-price branch — the exact defect this file fixes.
+ * Adding a member to `DocumentType` now fails to compile until it is classified
+ * here.
+ *
+ * `purchase_order` is the only purchase type actually routed through this editor
+ * today (DocumentForm.tsx documentTypeToApiEndpoint); RFQ lines have their own
+ * page and the RFQ → PO award carries the supplier's QUOTED price across
+ * (PurchaseQuoteRequestAwardService.php:136), so it needs no default here.
+ */
+const IS_PURCHASE_DOCUMENT_TYPE: Record<DocumentType, boolean> = {
+  quote: false,
+  sales_order: false,
+  invoice: false,
+  credit_note: false,
+  delivery_note: false,
+  return_note: false,
+  purchase_order: true,
+}
+
+/**
+ * Lives here rather than in the editor component so BOTH consumers share one
+ * classification: the line editor (which price to seed) and the edit-mode
+ * hydration in DocumentForm (whether a persisted 0 means "never priced").
+ */
+export function isPurchaseDocumentType(documentType: DocumentType | undefined): boolean {
+  return documentType !== undefined && IS_PURCHASE_DOCUMENT_TYPE[documentType]
+}
+
+/**
+ * Unit price for a line loaded from the API into the editor.
+ *
+ * The draft autosave deliberately writes `'0'` for a line the operator never
+ * priced (see {@link buildAutoSaveLinePayload}), which converts "unpriced" into
+ * "priced at zero" at the persistence boundary. Re-opening the draft used to
+ * load that `'0.000'` verbatim: no longer blank, so the submit guard waved it
+ * through and the server's `required|numeric` rule accepts `'0'`. A price nobody
+ * entered must not come back looking like one they did (gate r2 finding 2).
+ *
+ * Scoped to PURCHASE documents, matching the server-side confirm refusal in
+ * `PurchaseOrderService::guardAgainstUnpricedLines`: on a purchase order a
+ * non-bonus line at 0 is never valid, whereas a sales document may legitimately
+ * carry one and the server accepts it — so a sales line is loaded untouched.
+ *
+ * String comparison via a zero-shaped regex, never `parseFloat` (rule 19).
+ */
+export function hydrateLineUnitPrice(
+  unitPrice: string | number | null | undefined,
+  documentType: DocumentType | undefined,
+): string | number {
+  if (!isPurchaseDocumentType(documentType)) {
+    return unitPrice ?? ''
+  }
+  return isZeroMoney(unitPrice) ? '' : (unitPrice ?? '')
+}
+
+/** True for '', null, undefined, '0', '0.000', '00.00' — never via parseFloat. */
+function isZeroMoney(value: string | number | null | undefined): boolean {
+  if (isBlank(value)) return true
+  return /^0*(\.0*)?$/.test(String(value).trim())
 }

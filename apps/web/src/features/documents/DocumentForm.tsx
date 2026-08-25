@@ -146,10 +146,8 @@ import {
   buildAutoSaveLinePayload,
   buildLinePayload,
   findBlankPriceLineIds,
+  hydrateLineUnitPrice,
 } from './linePayload'
-
-// Re-exported for the payload suites that already import it from this module.
-export { buildLinePayload }
 
 
 function scopedNamespacePredicate(
@@ -371,7 +369,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
       free_quantity: l.free_quantity ?? '0',
       free_quantity_received: l.free_quantity_received ?? '0',
       free_quantity_invoiced: l.free_quantity_invoiced ?? '0',
-      unit_price: l.unit_price,
+      unit_price: hydrateLineUnitPrice(l.unit_price, effectiveType),
       discount_percent: l.discount_percent ?? null,
       discount_amount: l.discount_amount ?? null,
       tax_rate: l.tax_rate ?? '0',

@@ -94,7 +94,6 @@ final class PurchaseOrderUnpricedLineConfirmTest extends TestCase
         ]);
 
         $this->location = Location::create([
-            'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'name' => 'Main Location',
             'code' => 'MAIN',
@@ -154,7 +153,7 @@ final class PurchaseOrderUnpricedLineConfirmTest extends TestCase
 
         $this->assertSame(
             DocumentStatus::Draft,
-            $purchaseOrder->fresh()->status,
+            $this->reload($purchaseOrder)->status,
             'the purchase order must stay a draft',
         );
     }
@@ -200,7 +199,7 @@ final class PurchaseOrderUnpricedLineConfirmTest extends TestCase
             ->postJson("/api/v1/purchase-orders/{$purchaseOrder->id}/confirm")
             ->assertOk();
 
-        $this->assertSame(DocumentStatus::Confirmed, $purchaseOrder->fresh()->status);
+        $this->assertSame(DocumentStatus::Confirmed, $this->reload($purchaseOrder)->status);
     }
 
     public function test_confirm_still_works_for_a_fully_priced_purchase_order(): void
@@ -215,7 +214,13 @@ final class PurchaseOrderUnpricedLineConfirmTest extends TestCase
             ->postJson("/api/v1/purchase-orders/{$purchaseOrder->id}/confirm")
             ->assertOk();
 
-        $this->assertSame(DocumentStatus::Confirmed, $purchaseOrder->fresh()->status);
+        $this->assertSame(DocumentStatus::Confirmed, $this->reload($purchaseOrder)->status);
+    }
+
+    private function reload(Document $document): Document
+    {
+        /** @var Document */
+        return Document::query()->findOrFail($document->id);
     }
 
     /**
@@ -225,7 +230,11 @@ final class PurchaseOrderUnpricedLineConfirmTest extends TestCase
     {
         $subtotal = '0.000';
         foreach ($lines as $line) {
-            $subtotal = bcadd($subtotal, bcmul($line['quantity'], $line['unit_price'], 3), 3);
+            /** @var numeric-string $quantity */
+            $quantity = $line['quantity'];
+            /** @var numeric-string $unitPrice */
+            $unitPrice = $line['unit_price'];
+            $subtotal = bcadd($subtotal, bcmul($quantity, $unitPrice, 3), 3);
         }
 
         $purchaseOrder = Document::create([
@@ -244,16 +253,20 @@ final class PurchaseOrderUnpricedLineConfirmTest extends TestCase
         ]);
 
         foreach ($lines as $index => $lineData) {
+            /** @var numeric-string $quantity */
+            $quantity = $lineData['quantity'];
+            /** @var numeric-string $unitPrice */
+            $unitPrice = $lineData['unit_price'];
             DocumentLine::create([
                 'document_id' => $purchaseOrder->id,
                 'product_id' => $this->product->id,
                 'line_number' => $index + 1,
                 'description' => 'Purchase line '.($index + 1),
-                'quantity' => $lineData['quantity'],
-                'unit_price' => $lineData['unit_price'],
+                'quantity' => $quantity,
+                'unit_price' => $unitPrice,
                 'tax_rate' => '0.00',
                 'tax_amount' => '0.000',
-                'line_total' => bcmul($lineData['quantity'], $lineData['unit_price'], 3),
+                'line_total' => bcmul($quantity, $unitPrice, 3),
                 'is_bonus_line' => $lineData['is_bonus_line'] ?? false,
             ]);
         }

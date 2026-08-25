@@ -130,7 +130,12 @@ vi.mock('../../../components/documents/DocumentLineEditor', () => ({
   }) => (
     <div data-testid="line-editor">
       {lines.map((line) => (
-        <div key={line.id} data-testid={`line-${line.id}`} data-invalid={invalidLineIds?.has(line.id) === true ? 'true' : 'false'}>
+        <div
+          key={line.id}
+          data-testid={`line-${line.id}`}
+          data-invalid={invalidLineIds?.has(line.id) === true ? 'true' : 'false'}
+          data-price={String(line.unit_price)}
+        >
           {line.product_name}
         </div>
       ))}
@@ -243,6 +248,88 @@ describe('DocumentForm — a blank unit price blocks the submit', () => {
       const draft = autoSaveState.lastDraftData
       expect(isLinesPayload(draft) ? draft.lines[0]?.unit_price : undefined).toBe('0')
     })
+  })
+
+  /**
+   * Gate r2 finding 2 (C2), client half. The draft autosave writes '0' for a line
+   * the operator never priced. Re-opening that draft used to load '0.000'
+   * verbatim — no longer blank, so the submit guard waved it through and the
+   * server's `required|numeric` rule accepts '0' (probed: '' REJECTED, null
+   * REJECTED, '0' ACCEPTED). A price nobody entered must not come back looking
+   * like one they did.
+   *
+   * Scoped to PURCHASE documents, matching the server-side confirm guard
+   * (PurchaseOrderService::guardAgainstUnpricedLines): on a purchase order 0 is
+   * never a valid price for a non-bonus line, whereas a sales document may
+   * legitimately carry one and the server accepts it.
+   */
+  it('reloads a zero-priced PURCHASE line from autosave as blank, and refuses to submit it', async () => {
+    routerState.id = 'po-1'
+    routerState.pathname = '/purchases/orders/po-1/edit'
+    reactQueryState.document = {
+      id: 'po-1',
+      type: 'purchase_order',
+      status: 'draft',
+      partner_id: 'partner-1',
+      document_date: '2026-08-25',
+      due_date: null,
+      notes: null,
+      external_document_number: null,
+      external_document_date: null,
+      lines: [{
+        id: 'po-line-1',
+        product_id: 'prod-1',
+        product_name: 'Crème hydratante Bébé 200ml',
+        description: 'Crème hydratante Bébé 200ml',
+        quantity: '30',
+        unit_price: '0.000',
+        tax_rate: '7.00',
+        line_total: '0.000',
+      }],
+    }
+
+    render(<DocumentForm documentType="purchase_order" />)
+
+    const line = await screen.findByTestId('line-po-line-1')
+    expect(line).toHaveAttribute('data-price', '')
+
+    fireEvent.click(screen.getByRole('button', { name: 'actions.save' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('sales:documents.errors.unitPriceRequired')).toBeInTheDocument()
+    })
+    expect(reactQueryState.mutationPayloads).toHaveLength(0)
+  })
+
+  it('leaves a zero-priced SALES line alone on reload (0 is accepted there)', async () => {
+    routerState.id = 'inv-1'
+    routerState.pathname = '/sales/invoices/inv-1/edit'
+    reactQueryState.document = {
+      id: 'inv-1',
+      type: 'invoice',
+      status: 'draft',
+      partner_id: 'partner-1',
+      document_date: '2026-08-25',
+      due_date: null,
+      notes: null,
+      external_document_number: null,
+      external_document_date: null,
+      lines: [{
+        id: 'inv-line-1',
+        product_id: 'prod-1',
+        product_name: 'Sample',
+        description: 'Sample',
+        quantity: '1',
+        unit_price: '0.000',
+        tax_rate: '0',
+        line_total: '0.000',
+      }],
+    }
+
+    render(<DocumentForm documentType="invoice" />)
+
+    const line = await screen.findByTestId('line-inv-line-1')
+    expect(line).toHaveAttribute('data-price', '0.000')
   })
 
   it('submits normally once the operator types a price', async () => {

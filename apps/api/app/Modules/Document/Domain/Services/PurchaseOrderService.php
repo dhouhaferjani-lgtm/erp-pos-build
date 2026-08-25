@@ -11,6 +11,7 @@ use App\Modules\Document\Domain\Events\PurchaseOrderConfirmed;
 use App\Modules\Document\Domain\Exceptions\UnpricedPurchaseOrderLineException;
 use App\Modules\Inventory\Application\Services\LandedCostService;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -31,6 +32,7 @@ final class PurchaseOrderService
     public function __construct(
         private readonly LandedCostService $landedCostService,
         private readonly TaxCalculationService $taxCalculationService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     /**
@@ -79,16 +81,21 @@ final class PurchaseOrderService
      * zero afterwards — see {@link UnpricedPurchaseOrderLineException} for the full
      * reasoning and for why `is_bonus_line` is the one legitimate exemption.
      *
-     * Compared with bccomp at the money scale, never as a float (rule 19).
+     * Compared with bccomp, never as a float, at the DOCUMENT currency's scale —
+     * resolved through the injected resolver rather than a hardcoded literal, and via
+     * `getScaleSafe` because confirm also runs from console/queued contexts with no
+     * CompanyContext bound (rule 19).
      */
     private function guardAgainstUnpricedLines(Document $purchaseOrder): void
     {
+        $scale = $this->scaleResolver->getScaleSafe($purchaseOrder->currency, 3);
+
         foreach ($purchaseOrder->lines as $line) {
             if ($line->is_bonus_line) {
                 continue;
             }
 
-            if (bccomp((string) $line->unit_price, '0', 6) > 0) {
+            if (bccomp((string) $line->unit_price, '0', $scale) > 0) {
                 continue;
             }
 
