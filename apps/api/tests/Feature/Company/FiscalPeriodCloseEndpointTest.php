@@ -256,6 +256,40 @@ final class FiscalPeriodCloseEndpointTest extends TestCase
         $this->assertSame(PeriodStatus::Open, $period->refresh()->status);
     }
 
+    public function test_a_period_that_has_not_ended_refuses_on_not_ended_even_behind_an_open_predecessor(): void
+    {
+        // PRECEDENCE PIN — parent ruling on treasury gate r1, finding C-1.
+        // BOTH refusal conditions are true here: the period has not ended AND an earlier
+        // period of the same company is still Open. The contract says the caller is told
+        // NOT_ENDED, because a period that has not ended is never closable whatever its
+        // neighbours look like — reporting PREDECESSOR_OPEN would send the operator to go
+        // close December first, which cannot make this period closable.
+        $currentYear = $this->year($this->company, Carbon::today()->startOfYear());
+        $period = $this->period((int) Carbon::today()->format('n'), PeriodStatus::Open, $currentYear);
+
+        // The predecessor: the last period of the PREVIOUS fiscal year, still Open. Taken
+        // from last year rather than from this one so the fixture holds in January too.
+        $predecessor = $this->period(12, PeriodStatus::Open);
+
+        // Both preconditions asserted explicitly — a precedence test proves nothing if one
+        // of the two conditions silently stopped holding.
+        $this->assertTrue(
+            $period->end_date->gte(Carbon::today()),
+            'precondition: the period has NOT ended'
+        );
+        $this->assertTrue(
+            $predecessor->start_date->lt($period->start_date) && $predecessor->status === PeriodStatus::Open,
+            'precondition: an EARLIER period of the same company is still Open'
+        );
+
+        $response = $this->actingAs($this->userWithRole('accountant'))
+            ->postJson("/api/v1/fiscal-periods/{$period->id}/close", []);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', FiscalPeriodCloseRefusalCode::PeriodNotEnded->value);
+        $this->assertSame(PeriodStatus::Open, $period->refresh()->status);
+    }
+
     // ── Authorization ──────────────────────────────────────────────────
 
     public function test_viewer_cannot_close_a_period(): void

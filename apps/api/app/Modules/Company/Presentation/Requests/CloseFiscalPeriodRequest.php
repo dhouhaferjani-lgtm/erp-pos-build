@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Company\Presentation\Requests;
 
+use App\Modules\Company\Domain\Enums\FiscalPeriodCloseRefusalCode;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -23,6 +24,12 @@ use Illuminate\Foundation\Http\FormRequest;
  *     justification the product then throws away would be dishonest.
  * When one IS supplied it must still be a usable note (3..500), the same bounds as the
  * reopen reason, so an eventual `close_reason` column can adopt the payload unchanged.
+ *
+ * Body validation runs BEFORE any of the five state refusals: a 422 carrying
+ * `error.errors.reason` is a malformed request, a 422 carrying `error.code` is a refused
+ * transition. The refusals themselves are then evaluated in the fixed precedence
+ * LOCKED → NOT_OPEN → FISCAL_YEAR_CLOSED → NOT_ENDED → PREDECESSOR_OPEN
+ * ({@see FiscalPeriodCloseRefusalCode}).
  */
 final class CloseFiscalPeriodRequest extends FormRequest
 {

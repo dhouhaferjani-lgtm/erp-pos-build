@@ -7,6 +7,7 @@ namespace App\Modules\Company\Presentation\Controllers;
 use App\Modules\Company\Application\Services\FiscalPeriodAutoLockService;
 use App\Modules\Company\Application\Services\FiscalPeriodCloseService;
 use App\Modules\Company\Application\Services\FiscalPeriodReopenService;
+use App\Modules\Company\Domain\Enums\FiscalPeriodCloseRefusalCode;
 use App\Modules\Company\Domain\Exceptions\FiscalPeriodCloseRefusedException;
 use App\Modules\Company\Domain\Exceptions\FiscalPeriodReopenRefusedException;
 use App\Modules\Company\Domain\FiscalPeriod;
@@ -82,6 +83,12 @@ final class FiscalPeriodController extends Controller
      * forever, because the nightly {@see FiscalPeriodAutoLockService} deliberately skips
      * it AND holds the close of its fiscal year. Nothing in the scheduler changes — the
      * `Open -> Closed` write is all it was waiting for.
+     *
+     * The 422 body carries the FIRST blocking refusal in the service's fixed precedence —
+     * LOCKED -> NOT_OPEN -> FISCAL_YEAR_CLOSED -> NOT_ENDED -> PREDECESSOR_OPEN
+     * ({@see FiscalPeriodCloseRefusalCode}, parent ruling on treasury gate r1 C-1) — not
+     * a list. Clearing the reported one can reveal a later one, so a front end retries
+     * rather than assuming the code it holds was the only problem.
      */
     public function close(CloseFiscalPeriodRequest $request, string $id): JsonResponse
     {

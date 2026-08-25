@@ -23,12 +23,22 @@ use App\Modules\Company\Domain\Exceptions\FiscalPeriodCloseRefusedException;
  *  - `FISCAL_PERIOD_CLOSE_FISCAL_YEAR_CLOSED` — the period's fiscal YEAR is already
  *    closed. Its periods belong to the nightly STEP 3 lock, not to a human close; the
  *    thing that would have to be reopened (the year) is named in the code.
+ *  - `FISCAL_PERIOD_CLOSE_NOT_ENDED` — the period has not ended yet (`end_date` is today
+ *    or later). Recoverable, but by WAITING rather than by acting, which is why it is not
+ *    folded into any of the above.
  *  - `FISCAL_PERIOD_CLOSE_PREDECESSOR_OPEN` — an EARLIER period of the same company is
  *    still Open. Recoverable, and the remedy is a concrete next step the other codes
  *    cannot offer: close the earlier period first. Periods settle oldest-first.
- *  - `FISCAL_PERIOD_CLOSE_NOT_ENDED` — the period has not ended yet (`end_date` is today
- *    or later). Also recoverable, but by WAITING rather than by acting, which is why it
- *    is not folded into any of the above.
+ *
+ * THE ORDER ABOVE IS THE EVALUATION ORDER, and it is part of the contract (parent ruling
+ * on treasury gate r1, finding C-1): LOCKED → NOT_OPEN → FISCAL_YEAR_CLOSED → NOT_ENDED →
+ * PREDECESSOR_OPEN. When more than one condition holds, the caller is told the one that is
+ * true of THIS period alone before any that is true only of its relationship to other
+ * rows. In particular NOT_ENDED outranks PREDECESSOR_OPEN: a period that has not ended is
+ * never closable whatever its neighbours look like, so "close the earlier period first"
+ * would be an instruction to do work that cannot help. A front end may therefore treat the
+ * code it receives as the FIRST blocking reason, not the only one — clearing it can reveal
+ * a later one.
  *
  * As with the reopen family, the messages on
  * {@see FiscalPeriodCloseRefusedException} are literal English rather than
