@@ -203,3 +203,40 @@ The field name `unit_price` carries **different tax semantics depending on the f
 - When reading a `unit_price`, determine the flow (POS vs document/B2B) before doing tax math; convert explicitly (`net = gross / (1+rate)` or `gross = net × (1+rate)`), never assume.
 
 **Deferred disambiguation (owner-flagged):** the cleanest long-term fix is to rename to unambiguous **English** fields — e.g. `unit_price_incl_tax` / `unit_price_excl_tax` (English, congruent with existing naming — avoid French TTC/HT) — across the POS cart, canonical payload, and document layers. That is a broad, multi-app, fixture-regenerating change (canonical payload field rename = versioned fiscal event), so it is **deferred**; until then, this section + the CLAUDE.md pointer are the contract. Any new feature touching price fields MUST consult this.
+
+---
+
+## The post-remise VAT base: per-group VAT can sit 1 ulp off `base × rate` (D-1, 2026-08-25)
+
+Read this next to the `unit_price` section above — the next person to re-derive
+a POS VAT figure by hand will land here and think they have found a bug.
+
+Since the D-1 owner ruling, a POS transaction remise reduces the taxable base,
+ventilated pro-rata per rate (`apps/pos/src/lib/fiscal/vatDiscountAllocation.ts`,
+`App\Shared\Domain\TransactionRemiseSplit`). The per-group figures are derived by
+**subtracting the group's share of the remise from its line sums**:
+
+```
+net_r = Σ line_subtotal_r − discNet_r
+vat_r = Σ line_vat_r      − discVat_r
+```
+
+and **not** by re-deriving `net_r = net_ttc_r / (1 + rate)`. That choice is
+deliberate and load-bearing:
+
+- with a zero remise the group is returned byte-identical to the pre-D-1
+  roll-up, so an undiscounted ticket's sealed bytes never moved;
+- the server can re-validate the split with pure subtraction and equality
+  (`FiscalPayloadConstraintValidator::validateVatPartitionGroupV5()`), so it
+  never becomes a second authority for the VAT the device sealed;
+- a 100 %-comp lands on exactly `net == vat == 0` instead of a ±1 ulp residue,
+  because the split is clamped inside the group's own line sums.
+
+**The consequence:** `vat_r` can differ from `net_r × rate` by up to one ulp
+per rounded input — the per-line VAT roundings and the remise-split rounding
+each contribute at most half. A probe on a small group produced
+`net 0.083 / vat 0.016` where `0.083 × 19 % = 0.01577`. A ±1-centime deviation
+is universally tolerated in TN and FR VAT practice, and the sealed pair is
+always internally consistent (`net + vat == gross`, exactly). **It is a
+property of the chosen derivation, not a defect — do not "fix" it by
+re-dividing, or every undiscounted ticket's sealed bytes change.**

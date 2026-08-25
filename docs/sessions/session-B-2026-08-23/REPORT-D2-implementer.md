@@ -137,3 +137,118 @@ Manifest updated instead: `tests/feature-lane-manifest.json` Treasury `classes` 
 4. `instrument_events` carries a pre-existing cross-column CHECK `instrument_events_action_digest_chk` (`action_key IS NULL OR semantic_digest IS NOT NULL`). Correctly unparseable as a value set, untouched, and it does not interact with the three new constraints.
 5. `payments.payment_type` and `journal_entries.status` carry PG column **defaults** (`'document_payment'`, `'draft'`) that are inside their enums — no conflict, noted only because a future enum rename would have to move the default too.
 6. `docs/handoff/progress/slice-d-parity.progress.yaml` `enum_check_parity_pin_tag: ci-pin/enum-check-parity-r1` is still marked **NOT YET CREATED** — an owner ops step (O-31), not blocked by this lane.
+
+---
+
+Fix round done and committed. Nothing merged, nothing pushed; working tree clean.
+
+## SHA
+
+`824ad7118` — `fix(sb2-d2): r1 fix round — retract two false docblock claims, ship the freeze pin that actually enforces them`, on top of `3535d55b1`, branch `fix/sb2-d2-slice-d-batch1`, worktree `.worktrees/sb2-d2-slice-d-batch1`. 7 files, +596/−57.
+
+**Zero executable change to the five migrations.** `git diff -U0 3535d55b1..HEAD -- database/migrations/tenant/` filtered to non-comment lines returns **nothing** — every one of the 75 changed lines per file is a `*` docblock line. The 13 constraints, value sets, census, `down()` and re-runnability are byte-for-byte what both r1 gates verified.
+
+## 1+2. Docblock edits — file:line (all five files, identical blocks)
+
+| edit | vouchers | journal_entries | payments | documents | instrument_events |
+|---|---|---|---|---|---|
+| **C2/F-1** "NO LOCK RELIEF AS EXECUTED" (replaces the two deleted lock bullets) | `:36` | `:40` | `:42` | `:42` | `:44` |
+| **C2** "THE TRANSACTION IS KEPT DELIBERATELY" (parent ruling + trade) | `:48` | `:52` | `:54` | `:54` | `:56` |
+| **C1/F-2** "`EnumCheckParityTest` DOES NOT ENFORCE THAT OBLIGATION" | `:105` | `:99` | `:106` | `:96` | `:108` |
+| **F-2** "REMOVING A CASE IS EQUALLY MIGRATION-BEARING" (→ LEDGER C-38) | `:121` | `:115` | `:122` | `:112` | `:124` |
+| **F-3** "NOT-NULL-DRIFT DETECTOR" (census rationale) | `:219` | `:211` | `:219` | `:207` | `:221` |
+
+`grep -n "brief ACCESS EXCLUSIVE\|does not block readers\|enforced, not merely documented\|does not scan the table\|SHARE UPDATE EXCLUSIVE"` over the five files → **no matches**. All four false-claim strings are gone.
+
+Substance now stated: `Migration::$withinTransaction` defaults true and `Migrator.php:449` honours it, so census + `ADD … NOT VALID` + `VALIDATE` hold ACCESS EXCLUSIVE until COMMIT (r1 proof: a reader blocked to `statement_timeout`); net profile equals a plain `ADD CONSTRAINT`; use a maintenance window on non-small tenants; the transaction is **kept** because atomicity (failed census → zero constraints, proven) beats lock relief on green-field tenants, and the split is retained only as the idiom for a future `public $withinTransaction = false;` — at which point the abort stops being atomic. F-3 now says the NOT NULL arm deliberately over-rejects as a *drift detector*, and explicitly that `col IN (…)` yields NULL for NULL input so VALIDATE would **not** have failed.
+
+## 3. Freeze test — RED → GREEN
+
+`apps/api/tests/Feature/Treasury/SliceDBatch1EnumFreezeTest.php`, 274 lines, **driver-free** (no DB, no `RefreshDatabase`, no pgsql guard → it does **not** self-skip on SQLite, unlike its sibling). Pins the 13 value sets as **string literals** keyed by constraint name (12 distinct enums; `InstrumentStatus` governs two columns), transcribed from the migrations' census SQL, asserted `===` against `Enum::cases()` values.
+
+**RED** — added `case Escheated = 'escheated';` to `VoucherStatus` in the worktree (backed up to `/tmp` and restored by `cp`; **no stash**; `git status -- apps/api/app/` clean afterwards, md5 `94e43072c65f970743e0168211aa4274` restored). Default SQLite suite:
+```
+F..............................                     31 / 31 (100%)
+1) …::test_enum_still_matches_the_value_set_frozen_into_its_check with data set "chk_vouchers_status_enum"
+App\Modules\Voucher\Domain\Enums\VoucherStatus changed after Slice D batch 1 froze it into `chk_vouchers_status_enum`.
+  - a case you ADDED will be rejected there with SQLSTATE 23514 → ship a WIDENING migration;
+  - a case you REMOVED leaves the DB WIDER than the enum → ship a NARROWING migration plus a
+    per-tenant census (the O-31 ceiling will not let you baseline it away);
+  - a pure REORDER needs no migration, only a deliberate re-pin.
+Then re-pin the list in …::frozenValueSets(). Do NOT 'fix' this by regenerating the pin from the enum…
++    5 => 'escheated',
+Tests: 31, Assertions: 36, Failures: 1.
+```
+That is exactly the failure both r1 gates proved nothing in the tree could catch.
+
+**GREEN** after restore: `OK (31 tests, 36 assertions)` on sqlite **and** `OK (31 tests, 36 assertions)` on pgsql (no skips on either driver).
+
+Also included (treasury M-2): the four PG column defaults asserted inside their frozen sets — `journal_entries.status='draft'`, `payments.payment_type='document_payment'`, `payments.status='pending'`, `vouchers.voucher_kind='MPV'` — driver-free, because a default outside its set is a 23514 bomb on every INSERT that omits the column and neither the census (existing rows) nor the parity gate (CHECK vs enum) can see it. Plus a duplicate-transcription guard and a "the pin covers all 13" completeness assertion.
+
+Manifest: Treasury `classes` 121 → 122 with the rationale; `feature-lane-manifest-check.php` **EXIT=0** (1429 classes / 74 groups).
+
+## 4. Promoter block (replaces §5 of the r1 report)
+
+**Command — MANDATORY.** Deploy with **`php artisan tenants:migrate-rolling --force`**, never bare `tenants:migrate`. Verified in-tree: `apps/api/docker/entrypoint.sh:141` already uses it, and `RollingTenantMigrationCommand.php:91` is the continue-and-collect isolate (`// Isolate: never let one tenant's failure abort the fleet.`). Stancl's `tenants:migrate` is fail-fast — one dirty tenant's `RuntimeException` would leave the rest of the fleet unmigrated.
+
+**Lock warning.** The migrations run inside Laravel's migration transaction, so each table is ACCESS EXCLUSIVE (readers **and** writers blocked) for the whole census + ADD + VALIDATE. Small on green-field tenants; schedule a maintenance window for any tenant with large `documents` / `payments` / `journal_entries`.
+
+**PRE-flight:** the 13 census queries from the r1 report §5 (unchanged, still correct — machine-checked by the treasury gate).
+
+**POST-flight — the only proof VALIDATE ran** (a `NOT VALID` constraint reads `COVERED` in the parity gate, fiscal F-4b):
+```sql
+SELECT conname, convalidated
+  FROM pg_constraint
+ WHERE conname IN ('chk_vouchers_status_enum','chk_vouchers_source_enum','chk_vouchers_voucher_kind_enum',
+                   'chk_vouchers_redemption_mode_enum','chk_journal_entries_status_enum',
+                   'chk_journal_entries_journal_code_enum','chk_payments_status_enum',
+                   'chk_payments_payment_type_enum','chk_payments_origin_enum','chk_documents_type_enum',
+                   'chk_instrument_events_event_type_enum','chk_instrument_events_from_status_enum',
+                   'chk_instrument_events_to_status_enum')
+ ORDER BY conname;
+```
+Expect **13 rows, `convalidated = t` on every one**. (The looser `WHERE conname LIKE 'chk_%_enum'` returns **16 | 16** on a fully-migrated tenant — the three pre-existing `documents` CHECKs match the pattern; use the explicit list if you want the batch-scoped 13.) Measured on `autoerp_d2_test`: 16/16 `t`, the 13 batch constraints among them.
+
+**Complete defaults census — all 13 columns** (was 4 in the r1 report, fiscal F-5). From `information_schema` on the migrated schema:
+
+| column | nullable | default |
+|---|---|---|
+| `documents.type` | NO | — |
+| `instrument_events.event_type` | NO | — |
+| `instrument_events.from_status` | YES | — |
+| `instrument_events.to_status` | YES | — |
+| `journal_entries.journal_code` | YES | — |
+| `journal_entries.status` | NO | `'draft'` |
+| `payments.origin` | YES | — |
+| `payments.payment_type` | NO | `'document_payment'` |
+| `payments.status` | NO | `'pending'` |
+| `vouchers.redemption_mode` | NO | — |
+| `vouchers.source` | NO | — |
+| `vouchers.status` | NO | — |
+| `vouchers.voucher_kind` | NO | `'MPV'` |
+
+9 columns carry no default; the 4 that do are all in-set and are now **asserted** by the freeze test rather than merely observed.
+
+## 5. Re-run results (by path, one file per invocation, never the suite)
+
+| check | driver | result |
+|---|---|---|
+| `SliceDBatch1EnumFreezeTest` | sqlite | **OK (31, 36)** |
+| `SliceDBatch1EnumFreezeTest` | pgsql | **OK (31, 36)** |
+| `SliceDBatch1CheckConstraintsTest` | pgsql | **OK (19, 70)** |
+| `EnumCheckParityTest` armed (`ENUM_CHECK_PARITY_PROTECTED_SEED=da5ae13792e2a5067edde96f85858d2ea37efccf`) | pgsql | **OK (11, 790)** |
+| `pint --test` (7 touched files) | — | `{"result":"pass"}` |
+| PHPStan (5 migrations + 2 tests, live-DB env) | — | `[OK] No errors` |
+| `tools/feature-lane-manifest-check.php` | — | **EXIT=0** |
+
+## ⚠ One thing the parent must resolve: the `C-38` id collides
+
+You told me to reference **LEDGER C-38**, and I wrote that into all five docblocks. But at my base (`68de40b44`) the LEDGER ends at **C-37**, and the main checkout — Session A, already merged `623b6fab1` — has allocated **C-38 to the W2-1 POS `X-Company-Id` residual**. So `C-38` is taken by a different row. If the R-D2/R-D3/R-D8 coupling lands as C-39 (or anything else), it is a one-command fix on the branch:
+`sed -i '' 's/LEDGER C-38 couples/LEDGER C-39 couples/' apps/api/database/migrations/tenant/2026_08_25_130[1-5]*.php` — plus the same string in `SliceDBatch1EnumFreezeTest.php:53`. Say the word and I'll do it; I did not renumber unilaterally.
+
+## Residuals still open (not addressed here, by scope)
+
+- **treasury M-1** — the census throws on the first offending value of the first offending column; a tenant dirty in three columns needs three fix-and-rerun cycles. Aggregating the throw is a code change; left for the L2 lane.
+- **treasury M-3** — the 13 census queries are still hand-transcribed prose in the docblocks (machine-checked correct at r1, but a second unguarded copy of the value domain). The freeze test now pins the *sets*, which removes most of the drift risk, but not the transcription itself.
+- **treasury L5** — the writer's docblock should record that a *symlinked* `vendor` collapses the registry population from 245 to 2. That file is outside this lane's scope.
+- **fiscal F-6 / R3, C-26(i), C-37(ii)/(iv), F-7** — unchanged, all inherited and out of lane scope (`.github/**` forbidden).

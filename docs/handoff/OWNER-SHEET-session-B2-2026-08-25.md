@@ -16,11 +16,11 @@
 - **S-19** one `grep -E 'status=(BLOCKED|FAILED)'` on the Q-7 token after `tenants:migrate`.
 - **S-20** re-run `RolesAndPermissionsSeeder` + permission cache reset (`fiscal-periods.reopen`; `fiscal-periods.close` joins it when C-24 lands).
 - **S-14 leg** (workflow edits): wire `EnumCheckParityTest` + liveness into `treasury-spine-pgsql` / `backend-architecture` — hand-place the hunk from `REPORT-C26-implementer.md` §5 with the C-37(i) corrections (sqlite-skip grep, job name, anchors); plus the `backend-pgsql` allowlist appends named in the register rows.
-- **Slice D batch 1 (B2-4)** is MIGRATION-BEARING: per-tenant census for 12 columns is in its lane report/migration docblocks (in-migration abort protects the fleet; green-field ruling 2026-08-24 applies).
+- **S-22** Slice D batch 1 is MIGRATION-BEARING: `tenants:migrate-rolling --force` (never bare `tenants:migrate`), 13 pre-flight census queries + the `convalidated` post-flight query in `REPORT-D2-implementer.md`; in-migration abort protects the fleet (green-field ruling 2026-08-24 applies). NOTE for §R-D rulings: the 13 enum sets are now frozen in the DB — deleting a dead case is a narrowing migration (LEDGER C-40).
 
 ## 3. Program spec §R — ratification questions STILL OUTSTANDING (none ruled as of 2026-08-25)
 Source: `docs/superpowers/specs/2026-08-23-state-machine-program-spec-skeleton.md` §R. The program does not start
-without these; Session B's erratum applies (§#26 census superseded by D-1: 245 tenant columns, baseline 188 → 176 after batch 1).
+without these; Session B's erratum applies (§#26 census superseded by D-1: 245 tenant columns, baseline 188 → 175 after batch 1).
 - **R-A graphs to sign:** R-A1 POS Order (retire `Closed`? un-bump edge? Cancelled terminal) · R-A2 OrderLine (`pending→sent`, `ready→served`, Cancelled terminal) · R-A3 Document (`Paid→Cancelled`? `Received` terminal? `revert` reach) · R-A4 Voucher (ratify Q-5 allow-list; Expired reactivation?) · R-A5 Import (`Pending` legal start?) · R-A6 Replenishment (`Fulfilled→Pending` compensating edge) · R-A7 FiscalPeriod (ratify Q-10 reopen + the C-24 manual close; `Locked` terminal-except-support) · R-A8 `pos_receipts.fiscal_status` sync-state split.
 - **R-B:** R-B1 no Treasury/Inventory workstream (Slice D only) · R-B2 workstream B absorbs C-8 trigger widening · R-B3 TableStatus/F&B deferred to the Dhouha track.
 - **R-C guard shape:** R-C1 one map-driven PHPStan rule · R-C2 `status` out of `$fillable` on governed aggregates (breaking sweep).
@@ -34,5 +34,6 @@ without these; Session B's erratum applies (§#26 census superseded by D-1: 245 
 | B2-1 C-27 JE/income numbering tenant scope + lock (multi-company block LIFTED) | `0613e2ce8` | stock-gl r1→r2 ACCEPT-w/-cond · treasury r1 ACCEPT-w/-cond |
 | B2-2 C-26 parity parser + owner-pin reader | `19f9e61bb` | fiscal-pos r1 ACCEPT-w/-cond |
 | B2-3 O-31 seed + steps | doc `OWNER-O31-…` | parent-verified |
-| B2-4 Slice D batch 1 | _in flight_ | treasury + fiscal-pos |
-| B2-5 C-24 manual period close | _queued_ (brief + worktree ready) | treasury |
+| B2-4 Slice D batch 1 — 13 CHECKs, baseline 188→175 (MIGRATION-BEARING → S-22) | `42f7f8bad` | fiscal-pos r1 + treasury r1 ACCEPT-w/-cond → fix round |
+| B2-5 C-24 manual period close (`POST /fiscal-periods/{id}/close`; S-20 seeder step) | `bd03bd8cb` | treasury r1 ACCEPT-w/-cond → micro round |
+| B2-6 residual sweep (C-30i, C-14ii-iv, C-16iii, C-17ii/iv/vii/viii, C-28i) | _in flight_ | tenancy + inventory (+ FE conventions) |

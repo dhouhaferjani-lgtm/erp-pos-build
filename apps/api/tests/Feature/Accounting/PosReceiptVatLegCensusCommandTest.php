@@ -336,6 +336,88 @@ final class PosReceiptVatLegCensusCommandTest extends TestCase
      * @param  list<array{0: string, 1: string, 2: string}>|null  $sealedRates  [rate, net, vat]; null = one row
      *                                                                          derived from $taxAmount
      */
+    // =====================================================================
+    // D-1 gate r1 (treasury) F-1 — the BASE arm
+    // =====================================================================
+
+    /**
+     * D-1's own defect class is a WRONG REVENUE BASE with a CORRECT VAT. The
+     * P0 this lane closed booked 574.547 against a sealed base of 524.547 while
+     * the VAT matched to the millime — and before the base arm this census
+     * returned exit 0 on exactly that. The deploy gate the fleet is told to
+     * trust could not see the failure the lane exists to prevent.
+     *
+     * Era-agnostic by construction: the identity is
+     * `Σ sealed net_amount == Σ (credit − debit) on ProductRevenue`, which the
+     * derivation reproduces in BOTH eras.
+     */
+    public function test_a_receipt_whose_revenue_base_drifts_from_the_sealed_base_is_flagged(): void
+    {
+        // Sealed: base 100.000 + VAT 19.000 = 119.000. The VAT leg is exactly
+        // right; only the revenue credit is wrong.
+        $receipt = $this->receipt('119.000', '19.000', true);
+        $this->writeEntry($receipt, 'pos_receipt', [
+            [SystemAccountPurpose::Cash, '119.000', '0'],
+            // 110.000, not the sealed 100.000 — D-1's defect class exactly.
+            [SystemAccountPurpose::ProductRevenue, '0', '110.000'],
+            [SystemAccountPurpose::VatCollected, '0', '19.000'],
+        ]);
+
+        [$code, $output] = $this->runCensus();
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('sealed_base=100.000  ledger_base=110.000', $output);
+        // The VAT arm alone would have said "clean".
+        $this->assertStringContainsString('sealed_vat=19.000  ledger_vat=19.000', $output);
+    }
+
+    /** A post-remise (v5) receipt booked at its sealed base is clean. */
+    public function test_a_post_remise_receipt_booked_at_its_sealed_base_is_clean(): void
+    {
+        $receipt = $this->receipt('119.000', '19.000', true);
+        DB::table('pos_receipt_vat_details')
+            ->where('receipt_id', $receipt->id)
+            ->update(['discount_allocated' => '10.000']);
+        $this->writeEntry($receipt, 'pos_receipt', [
+            [SystemAccountPurpose::Cash, '119.000', '0'],
+            [SystemAccountPurpose::ProductRevenue, '0', '100.000'],
+            [SystemAccountPurpose::VatCollected, '0', '19.000'],
+        ]);
+
+        $this->assertSame(0, $this->runCensus()[0]);
+    }
+
+    /**
+     * A FULLY EXEMPT sale has a real taxable base and zero VAT. The base arm
+     * must still check it — the VAT-only skip used to wave the whole receipt
+     * through.
+     */
+    public function test_a_fully_exempt_receipt_with_a_wrong_revenue_base_is_flagged(): void
+    {
+        $receipt = $this->receipt('100.000', '0.000', true);
+        $this->writeEntry($receipt, 'pos_receipt', [
+            [SystemAccountPurpose::Cash, '100.000', '0'],
+            [SystemAccountPurpose::ProductRevenue, '0', '90.000'],
+        ]);
+
+        [$code, $output] = $this->runCensus();
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('sealed_base=100.000  ledger_base=90.000', $output);
+    }
+
+    /** A correctly booked exempt sale stays clean — no new false positives. */
+    public function test_a_fully_exempt_receipt_booked_at_its_sealed_base_is_clean(): void
+    {
+        $receipt = $this->receipt('100.000', '0.000', true);
+        $this->writeEntry($receipt, 'pos_receipt', [
+            [SystemAccountPurpose::Cash, '100.000', '0'],
+            [SystemAccountPurpose::ProductRevenue, '0', '100.000'],
+        ]);
+
+        $this->assertSame(0, $this->runCensus()[0]);
+    }
+
     private function receipt(
         string $total,
         string $taxAmount,

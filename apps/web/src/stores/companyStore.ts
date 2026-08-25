@@ -44,6 +44,39 @@ function persistCompanyId(companyId: string): void {
 }
 
 /**
+ * Companies the API has explicitly denied during THIS browser session
+ * (403 `COMPANY_ACCESS_DENIED` / 400 `INVALID_COMPANY_ID`).
+ *
+ * W2-1 gate r1, F-2: "the reset cannot loop because the selection becomes null"
+ * is only half the cycle. CompanyProvider re-bootstraps immediately on the
+ * re-keyed query and {@link resolveCompanySelection} deterministically re-picks
+ * `isPrimary` / `companies[0]` — so if the server denies THAT company, the next
+ * 403 resets again, forever. Remembering the denial makes loop-freedom an
+ * enforced invariant instead of a comment.
+ *
+ * Deliberately module-level and NOT part of the persisted store state: a denial
+ * is a fact about the current session, not a durable user preference, and a
+ * reload should re-ask the server. Cleared on logout and on every new session
+ * (see `clearAppState.ts`), and by an explicit user pick in `setCurrentCompany`.
+ */
+const deniedCompanyIds = new Set<string>()
+
+/** Record that the API denied this company for the current user. */
+export function markCompanyAccessDenied(companyId: string): void {
+  deniedCompanyIds.add(companyId)
+}
+
+/** Forget every denial — a new session, or a logout. */
+export function clearDeniedCompanyIds(): void {
+  deniedCompanyIds.clear()
+}
+
+/** Whether the API has denied this company during this session. */
+export function isCompanyAccessDenied(companyId: string): boolean {
+  return deniedCompanyIds.has(companyId)
+}
+
+/**
  * Deterministic company auto-select rule — the single source of truth for
  * "which company is active".
  *
@@ -66,18 +99,25 @@ export function resolveCompanySelection(
   if (companies.length === 0) {
     return currentId
   }
-  if (currentId && companies.some((c) => c.id === currentId)) {
+  // A company the API has already denied is never a candidate, however it ranks
+  // (F-2). The server lists memberships; the middleware decides access; when the
+  // two disagree, re-picking a denied company loops reset -> bootstrap -> 403.
+  const selectable = companies.filter((c) => !deniedCompanyIds.has(c.id))
+  if (selectable.length === 0) {
+    return null
+  }
+  if (currentId && selectable.some((c) => c.id === currentId)) {
     return currentId
   }
   const persisted = readPersistedCompanyId()
-  if (persisted && companies.some((c) => c.id === persisted)) {
+  if (persisted && selectable.some((c) => c.id === persisted)) {
     return persisted
   }
-  const primary = companies.find((c) => c.isPrimary)
+  const primary = selectable.find((c) => c.isPrimary)
   if (primary) {
     return primary.id
   }
-  return companies[0].id
+  return selectable[0].id
 }
 
 /**
@@ -146,6 +186,10 @@ export const useCompanyStore = create<CompanyStore>()(
         const { companies } = get()
         // Validate that the company exists in the list
         if (companies.find((c) => c.id === companyId)) {
+          // An explicit user pick outranks a remembered denial: the user asked
+          // for this company. If the server still denies it they get exactly one
+          // more 403 and it is re-denied — a user action, never a loop.
+          deniedCompanyIds.delete(companyId)
           set({ currentCompanyId: companyId })
           // Manually persist to separate key to avoid Zustand persist middleware conflicts
           persistCompanyId(companyId)

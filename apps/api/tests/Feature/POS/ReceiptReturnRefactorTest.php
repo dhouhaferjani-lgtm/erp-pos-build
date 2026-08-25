@@ -21,6 +21,7 @@ use App\Modules\POS\Domain\Exceptions\DailyRefundCapExceededException;
 use App\Modules\POS\Domain\Exceptions\ManagerOverrideRequiredException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
+use App\Modules\POS\Domain\ReceiptVatDetail;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
@@ -535,6 +536,148 @@ final class ReceiptReturnRefactorTest extends TestCase
             'currency' => 'EUR',
             'fiscal_status' => FiscalStatus::Fiscalized,
         ]);
+    }
+
+    // =====================================================================
+    // D-1 gate r1 (treasury) F-2 — returns of a POST-remise (v5) original
+    // =====================================================================
+
+    /**
+     * The live server refund route recomputed the return's VAT from
+     * `line_total` — the PRE-remise line gross. On an original sealed at
+     * SALE_RECEIPT `event_version >= 5` that base no longer exists, so the
+     * return reversed VAT the tenant never collected, on a row the declaration
+     * reads verbatim as `-ABS(...)`.
+     *
+     * Fixture: one 19 % group, 2 units at 119.00 TTC each (gross 238.00, VAT
+     * 38.00), a 50.00 remise ventilated to base 157.98 / VAT 30.02. Returning
+     * ONE unit is half the group's pre-remise gross, so exactly half of each
+     * sealed figure comes back.
+     *
+     * The broken path would have reversed 19.00 of VAT (119.00 / 1.19) — 3.99
+     * more than was ever declared.
+     */
+    public function test_a_partial_return_of_a_post_remise_original_reverses_the_sealed_share(): void
+    {
+        [$sale, $line] = $this->createPostRemiseSaleWithSealedRows();
+
+        $return = $this->callProcessReturn($sale, $line, '1');
+
+        $this->assertSame(0, bccomp((string) $return->tax_amount, '-15.01', 2));
+        $this->assertSame(0, bccomp((string) $return->subtotal, '-78.99', 2));
+        $this->assertSame(0, bccomp((string) $return->total, '-94.00', 2));
+        // NOT the pre-remise recomputation.
+        $this->assertSame(1, bccomp('-15.01', '-19.00', 2));
+
+        $rows = DB::table('pos_receipt_vat_details')->where('receipt_id', $return->id)->get();
+        $this->assertCount(1, $rows);
+        $this->assertSame(0, bccomp((string) $rows[0]->net_amount, '-78.99', 2));
+        $this->assertSame(0, bccomp((string) $rows[0]->vat_amount, '-15.01', 2));
+    }
+
+    /** A FULL return of a post-remise original reverses the sealed rows EXACTLY. */
+    public function test_a_full_return_of_a_post_remise_original_reverses_the_sealed_rows_exactly(): void
+    {
+        [$sale, $line] = $this->createPostRemiseSaleWithSealedRows();
+
+        $return = $this->callProcessReturn($sale, $line, '2');
+
+        $sealed = DB::table('pos_receipt_vat_details')->where('receipt_id', $sale->id)->first();
+        $this->assertNotNull($sealed);
+        $this->assertSame(0, bccomp((string) $return->subtotal, '-'.$sealed->net_amount, 2));
+        $this->assertSame(0, bccomp((string) $return->tax_amount, '-'.$sealed->vat_amount, 2));
+    }
+
+    /**
+     * The era control: an original sealed BEFORE the cutover keeps the
+     * recomputation verbatim — its sealed base IS the line roll-up, so the two
+     * agree and nothing may move on receipts that are already correct.
+     */
+    public function test_a_return_of_a_pre_remise_original_keeps_the_recomputed_shape(): void
+    {
+        [$sale, $line] = $this->createPostRemiseSaleWithSealedRows(preRemiseEra: true);
+
+        $return = $this->callProcessReturn($sale, $line, '1');
+
+        // 119.00 / 1.19 = 100.00 net, 19.00 VAT — the pre-D-1 derivation.
+        $this->assertSame(0, bccomp((string) $return->tax_amount, '-19.00', 2));
+    }
+
+    /**
+     * A sealed set that carries `discount_allocated` on some rows and not
+     * others cannot be reversed under either era, and guessing would put the
+     * declaration out by an amount nobody could reconstruct.
+     */
+    public function test_a_return_of_a_mixed_era_original_is_refused(): void
+    {
+        [$sale, $line] = $this->createPostRemiseSaleWithSealedRows();
+        ReceiptVatDetail::create([
+            'id' => Str::uuid()->toString(),
+            'receipt_id' => $sale->id,
+            'tax_rate' => '7.00',
+            'net_amount' => '0.00',
+            'vat_amount' => '0.00',
+            'gross_amount' => '0.00',
+            'discount_allocated' => null,
+        ]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/pos_return_sealed_base_era_ambiguous/');
+
+        $this->callProcessReturn($sale, $line, '1');
+    }
+
+    /**
+     * A sale receipt sealed at v5: header on the POST-remise base, one 19 %
+     * sealed row carrying its ventilated share.
+     *
+     * @return array{Receipt, ReceiptLine}
+     */
+    private function createPostRemiseSaleWithSealedRows(bool $preRemiseEra = false): array
+    {
+        $receipt = Receipt::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $this->location->id,
+            'terminal_id' => $this->terminal->id,
+            'cashier_id' => $this->cashier->id,
+            'receipt_type' => ReceiptType::Sale,
+            // Pre-remise era: the header is the PRE-remise base and the CHECK's
+            // first arm governs (238.00 = 200.00 + 38.00 − 0.00).
+            'subtotal' => $preRemiseEra ? '200.00' : '157.98',
+            'tax_amount' => $preRemiseEra ? '38.00' : '30.02',
+            'discount_amount' => $preRemiseEra ? '0.00' : '50.00',
+            'total' => $preRemiseEra ? '238.00' : '188.00',
+            'currency' => 'EUR',
+            'fiscal_status' => FiscalStatus::Fiscalized,
+        ]);
+
+        $line = ReceiptLine::create([
+            'receipt_id' => $receipt->id,
+            'line_number' => 1,
+            'product_id' => null,
+            'product_code' => 'PROD-D1',
+            'product_name' => 'Widget D1',
+            'quantity' => '2',
+            'unit' => 'pcs',
+            'unit_price' => '119.00',
+            'line_total' => '238.00',
+            'tax_rate' => '19.00',
+            'tax_amount' => '38.00',
+            'discount_amount' => '0.00',
+        ]);
+
+        ReceiptVatDetail::create([
+            'id' => Str::uuid()->toString(),
+            'receipt_id' => $receipt->id,
+            'tax_rate' => '19.00',
+            'net_amount' => $preRemiseEra ? '200.00' : '157.98',
+            'vat_amount' => $preRemiseEra ? '38.00' : '30.02',
+            'gross_amount' => $preRemiseEra ? '238.00' : '188.00',
+            'discount_allocated' => $preRemiseEra ? null : '50.00',
+        ]);
+
+        return [$receipt->refresh(), $line];
     }
 
     private function createLine(

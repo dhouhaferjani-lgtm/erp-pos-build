@@ -10,6 +10,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\Services\CountCorrectionGlPostingResolver;
 use App\Modules\Inventory\Application\Services\InventoryValuationModeResolver;
 use App\Modules\Tenant\Application\DTOs\CompanySettingsData;
 use App\Modules\Tenant\Domain\Tenant;
@@ -44,6 +45,7 @@ class CompanySettingsController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly InventoryValuationModeResolver $valuationModeResolver,
+        private readonly CountCorrectionGlPostingResolver $countCorrectionGlPostingResolver,
         private readonly CompanyFiscalIdentityService $companyFiscalIdentityService,
         private readonly AuditService $auditService,
     ) {}
@@ -82,6 +84,7 @@ class CompanySettingsController extends Controller
             'data' => CompanySettingsData::fromCompany(
                 $company,
                 $this->valuationModeResolver->resolve($company->id),
+                $this->countCorrectionGlPostingResolver->resolve($company->id),
             ),
             'meta' => $this->getMeta($request),
         ]);
@@ -179,6 +182,9 @@ class CompanySettingsController extends Controller
             // DPA Wave 3 T9. NULL clears the override; the resolver then falls
             // back to the country row and, failing that, the system default.
             'inventory_valuation_mode' => 'inventory_valuation_mode',
+            // Lane P-1. NULL clears the override; the resolver then falls back
+            // to the country row and, failing that, the system default.
+            'count_correction_gl_posting_enabled' => 'count_correction_gl_posting_enabled',
         ];
 
         $attributes = [];
@@ -238,6 +244,7 @@ class CompanySettingsController extends Controller
             'data' => CompanySettingsData::fromCompany(
                 $company->refresh(),
                 $this->valuationModeResolver->resolve($company->id),
+                $this->countCorrectionGlPostingResolver->resolve($company->id),
             ),
             'meta' => $this->getMeta($request),
         ]);

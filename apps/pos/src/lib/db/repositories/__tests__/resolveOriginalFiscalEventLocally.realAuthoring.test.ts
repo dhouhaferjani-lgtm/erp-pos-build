@@ -92,7 +92,15 @@ async function seedTerminalState(adapter: SqliteTestAdapter): Promise<void> {
 
 /** A structurally-valid v3 SALE_RECEIPT payload — same shape proven valid
  *  in FiscalEventEngine.test.ts's own `validSaleReceiptPayload()`. */
-function saleReceiptV3Payload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+/**
+ * A SALE_RECEIPT payload at the version the device CURRENTLY authors.
+ *
+ * `engine.append()` resolves that version from the payload, so this fixture
+ * must track it: since D-1 (2026-08-25) it is v5, whose `vat_breakdown[]` rows
+ * carry `discount_allocated`. Renamed off `saleReceiptV3Payload` so the name
+ * stops asserting a version it no longer produces.
+ */
+function saleReceiptCurrentVersionPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     approval_references: [],
     business_date: '2026-08-01',
@@ -161,6 +169,9 @@ function saleReceiptV3Payload(overrides: Record<string, unknown> = {}): Record<s
     transaction_discount_reason: null,
     vat_breakdown: [
       {
+        // D-1 (v5): every breakdown row carries its share of the ticket
+        // remise; canonical zero on this discount-free fixture.
+        discount_allocated: '0.000',
         gross_amount: '12.000',
         net_amount: '10.000',
         rate: '20.00',
@@ -268,7 +279,7 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
 
   it('§3.7 — a REAL sealed training original resolves trainingFlag: true (not the old silent false)', async () => {
     const receiptId = '55555555-5555-4555-8555-555555555555';
-    await sealOriginal(receiptId, saleReceiptV3Payload({ training_flag: true, invoice_type_code: 'TRAINING' }));
+    await sealOriginal(receiptId, saleReceiptCurrentVersionPayload({ training_flag: true, invoice_type_code: 'TRAINING' }));
 
     const view = await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId);
 
@@ -279,7 +290,7 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
 
   it('§3.7 — assertOriginalRefundable (the EXACT check begin() runs) throws TrainingOriginalRefundRefusedError on the real resolved view', async () => {
     const receiptId = '66666666-6666-4666-8666-666666666666';
-    await sealOriginal(receiptId, saleReceiptV3Payload({ training_flag: true, invoice_type_code: 'TRAINING' }));
+    await sealOriginal(receiptId, saleReceiptCurrentVersionPayload({ training_flag: true, invoice_type_code: 'TRAINING' }));
 
     const view = await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId);
     expect(view).not.toBeNull();
@@ -293,10 +304,24 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
     const receiptId = '77777777-7777-4777-8777-777777777777';
     await sealOriginal(
       receiptId,
-      saleReceiptV3Payload({
+      saleReceiptCurrentVersionPayload({
+        // D-1: a valid POST-remise ticket — 12.000 gross, a 2.000 remise, so
+        // the declared base is 8.333 and the declared VAT 1.667.
         total: '10.000',
+        subtotal: '8.333',
+        vat_total: '1.667',
         transaction_discount_amount: '2.000',
         transaction_discount_reason: 'loyalty',
+        vat_breakdown: [
+          {
+            discount_allocated: '2.000',
+            gross_amount: '10.000',
+            net_amount: '8.333',
+            rate: '20.00',
+            tax_category_code: '',
+            vat_amount: '1.667',
+          },
+        ],
       }),
     );
 
@@ -310,10 +335,24 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
     const receiptId = '88888888-8888-4888-8888-888888888888';
     await sealOriginal(
       receiptId,
-      saleReceiptV3Payload({
+      saleReceiptCurrentVersionPayload({
+        // D-1: a valid POST-remise ticket — 12.000 gross, a 2.000 remise, so
+        // the declared base is 8.333 and the declared VAT 1.667.
         total: '10.000',
+        subtotal: '8.333',
+        vat_total: '1.667',
         transaction_discount_amount: '2.000',
         transaction_discount_reason: 'loyalty',
+        vat_breakdown: [
+          {
+            discount_allocated: '2.000',
+            gross_amount: '10.000',
+            net_amount: '8.333',
+            rate: '20.00',
+            tax_category_code: '',
+            vat_amount: '1.667',
+          },
+        ],
       }),
     );
 
@@ -327,7 +366,7 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
 
   it('a clean (non-training, zero-discount) real original resolves normally and passes assertOriginalRefundable', async () => {
     const receiptId = '99999999-9999-4999-8999-999999999999';
-    await sealOriginal(receiptId, saleReceiptV3Payload());
+    await sealOriginal(receiptId, saleReceiptCurrentVersionPayload());
 
     const view = await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId);
 
@@ -411,7 +450,12 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
   ): Promise<void> {
     const bytes = typeof envelope === 'string' ? envelope : JSON.stringify(envelope);
     const eventType = columns.eventType ?? 'SALE_RECEIPT';
-    const eventVersion = columns.eventVersion ?? 3;
+    // D-1: the default tracks the version the fixtures' payload shape carries
+    // (v5 since 2026-08-25). The resolver validates the payload against the
+    // ROW's `event_version`, so a v5-shaped payload seeded as v3 is refused
+    // for extra keys — that is the version gate working, not the identity
+    // check under test here.
+    const eventVersion = columns.eventVersion ?? 5;
     const businessDate = columns.businessDate ?? '2026-08-01';
     await adapter.execute(
       `INSERT INTO fiscal_events (
@@ -484,11 +528,11 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
       // MIRROR is rewritten to claim training_flag:false + zero discount —
       // the exact permissive payload the old code would have trusted.
       const tamperedEnvelope = JSON.stringify({
-        payload: saleReceiptV3Payload({ receipt_uuid: receiptId, training_flag: false }),
+        payload: saleReceiptCurrentVersionPayload({ receipt_uuid: receiptId, training_flag: false }),
       });
       await sealOriginal(
         receiptId,
-        saleReceiptV3Payload({ training_flag: true, invoice_type_code: 'TRAINING' }),
+        saleReceiptCurrentVersionPayload({ training_flag: true, invoice_type_code: 'TRAINING' }),
         { mirrorCanonicalBytes: tamperedEnvelope },
       );
 
@@ -499,7 +543,7 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
       const receiptId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
       // Byte-equality holds (both rows carry these bytes) — identity does not.
       await seedRawOriginalPair(receiptId, {
-        payload: saleReceiptV3Payload({ receipt_uuid: '12121212-1212-4121-8121-121212121212' }),
+        payload: saleReceiptCurrentVersionPayload({ receipt_uuid: '12121212-1212-4121-8121-121212121212' }),
       });
 
       expect(await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId)).toBeNull();
@@ -509,7 +553,7 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
       const receiptId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
       await seedRawOriginalPair(
         receiptId,
-        { payload: saleReceiptV3Payload({ receipt_uuid: receiptId }) },
+        { payload: saleReceiptCurrentVersionPayload({ receipt_uuid: receiptId }) },
         { eventType: 'OPERATOR_APPROVAL_GRANTED' },
       );
 
@@ -519,7 +563,7 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
     it('fails closed on an unrecognized original receipt discriminator (a refund cannot be the original of a refund)', async () => {
       const receiptId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
       await seedRawOriginalPair(receiptId, {
-        payload: saleReceiptV3Payload({ receipt_uuid: receiptId, invoice_type_code: 'REFUND' }),
+        payload: saleReceiptCurrentVersionPayload({ receipt_uuid: receiptId, invoice_type_code: 'REFUND' }),
       });
 
       expect(await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId)).toBeNull();
@@ -528,7 +572,7 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
     it('fails closed on structurally invalid line/payment members (unvalidated element shapes)', async () => {
       const receiptId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
       await seedRawOriginalPair(receiptId, {
-        payload: saleReceiptV3Payload({ receipt_uuid: receiptId, line_items: ['not-an-object'] }),
+        payload: saleReceiptCurrentVersionPayload({ receipt_uuid: receiptId, line_items: ['not-an-object'] }),
       });
 
       expect(await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId)).toBeNull();
@@ -543,7 +587,7 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
         event_version: 3,
         terminal_id: 'some-other-terminal',
         sequence_number: 1,
-        payload: saleReceiptV3Payload({ receipt_uuid: receiptId }),
+        payload: saleReceiptCurrentVersionPayload({ receipt_uuid: receiptId }),
       });
 
       expect(await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId)).toBeNull();
@@ -556,7 +600,7 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
         event_version: 3,
         terminal_id: TERMINAL_ID,
         sequence_number: 99,
-        payload: saleReceiptV3Payload({ receipt_uuid: receiptId }),
+        payload: saleReceiptCurrentVersionPayload({ receipt_uuid: receiptId }),
       });
 
       expect(await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId)).toBeNull();
@@ -569,7 +613,7 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
         event_version: 4,
         terminal_id: TERMINAL_ID,
         sequence_number: 1,
-        payload: saleReceiptV3Payload({ receipt_uuid: receiptId }),
+        payload: saleReceiptCurrentVersionPayload({ receipt_uuid: receiptId }),
       });
 
       expect(await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId)).toBeNull();
@@ -579,10 +623,10 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
       const receiptId = 'ad0d0d0d-0d0d-40d0-80d0-0d0d0d0d0d0d';
       await seedRawOriginalPair(receiptId, {
         event_type: 'SALE_RECEIPT',
-        event_version: 3,
+        event_version: 5,
         terminal_id: TERMINAL_ID,
         sequence_number: 1,
-        payload: saleReceiptV3Payload({ receipt_uuid: receiptId }),
+        payload: saleReceiptCurrentVersionPayload({ receipt_uuid: receiptId }),
       });
 
       const view = await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId);
@@ -594,7 +638,7 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
       const receiptId = '1a1a1a1a-1a1a-41a1-81a1-1a1a1a1a1a1a';
       await seedRawOriginalPair(
         receiptId,
-        { payload: saleReceiptV3Payload({ receipt_uuid: receiptId, business_date: '2026-08-01' }) },
+        { payload: saleReceiptCurrentVersionPayload({ receipt_uuid: receiptId, business_date: '2026-08-01' }) },
         { businessDate: '2026-01-01' },
       );
 
@@ -605,7 +649,7 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
   describe('finding 7 — the ORIGINAL\'s own business date is resolved, not the refund day\'s', () => {
     it('exposes the signed payload\'s business_date on the resolved view', async () => {
       const receiptId = '2b2b2b2b-2b2b-42b2-82b2-2b2b2b2b2b2b';
-      await sealOriginal(receiptId, saleReceiptV3Payload({ business_date: '2026-08-01' }));
+      await sealOriginal(receiptId, saleReceiptCurrentVersionPayload({ business_date: '2026-08-01' }));
 
       const view = await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId);
 
@@ -623,7 +667,7 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
       const receiptId = '3c3c3c3c-3c3c-43c3-83c3-3c3c3c3c3c3c';
       await sealOriginal(
         receiptId,
-        saleReceiptV3Payload({
+        saleReceiptCurrentVersionPayload({
           payments: [{
             amount: '12.000',
             foreign_currency_amount: null,
@@ -646,7 +690,7 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
       const receiptId = '4d4d4d4d-4d4d-44d4-84d4-4d4d4d4d4d4d';
       await sealOriginal(
         receiptId,
-        saleReceiptV3Payload({
+        saleReceiptCurrentVersionPayload({
           payments: [
             {
               amount: '2.000', foreign_currency_amount: null, foreign_currency_code: null,
@@ -669,7 +713,7 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
 
     it('allows a single cash-tendered original (case-insensitive on the tenant-authored method code)', async () => {
       const receiptId = '5e5e5e5e-5e5e-45e5-85e5-5e5e5e5e5e5e';
-      await sealOriginal(receiptId, saleReceiptV3Payload());
+      await sealOriginal(receiptId, saleReceiptCurrentVersionPayload());
 
       const view = await resolveOriginalFiscalEventLocally(adapter.asDatabase(), receiptId);
       expect(view).not.toBeNull();
@@ -679,7 +723,7 @@ d('resolveOriginalFiscalEventLocally — real sealed original (wave-2 fix)', () 
     it('fails closed on an EMPTY payments[] (cannot prove the original was cash)', async () => {
       const receiptId = '6f6f6f6f-6f6f-46f6-86f6-6f6f6f6f6f6f';
       await seedRawOriginalPair(receiptId, {
-        payload: saleReceiptV3Payload({ receipt_uuid: receiptId, payments: [] }),
+        payload: saleReceiptCurrentVersionPayload({ receipt_uuid: receiptId, payments: [] }),
       });
 
       // An empty `payments[]` may not even be a valid SALE_RECEIPT payload —

@@ -63,6 +63,13 @@ class UpdateCompanySettingsRequest extends FormRequest
                 'string',
                 'in:'.implode(',', InventoryValuationMode::supportedValues()),
             ],
+            // Lane P-1 (owner ruling 2026-08-25) — the tenant override for
+            // count-correction GL posting. `null` CLEARS the override and
+            // re-inherits the seeded country default, which is why the rule is
+            // `nullable` and not just `boolean`: without it a tenant could never
+            // get back to "whatever my jurisdiction says", only to a frozen
+            // copy of today's answer.
+            'count_correction_gl_posting_enabled' => ['sometimes', 'nullable', 'boolean'],
         ];
     }
 

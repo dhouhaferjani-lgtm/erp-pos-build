@@ -137,6 +137,20 @@ export class FiscalEventTypeNotImplementedError extends Error {
 }
 
 /**
+ * The `event_version` this build AUTHORS for a SALE / TRAINING receipt.
+ *
+ * D-1 (2026-08-25) moved it from 3 to 5: the sealed taxable base is now NET of
+ * the ticket-level remise, ventilated pro-rata per rate. It is the SINGLE
+ * cutover discriminator the server gates on — a v3 sale payload is still
+ * accepted forever (older devices in the field), but a device that has this
+ * build may never author one again.
+ *
+ * The PHP authority is
+ * `FiscalPayloadConstraintValidator::SALE_RECEIPT_AUTHORED_EVENT_VERSION`.
+ */
+export const SALE_RECEIPT_AUTHORED_EVENT_VERSION = 5;
+
+/**
  * v3-refund-chain-integration spec §2 — thrown by `eventVersionFor()` when
  * a payload-aware `SALE_RECEIPT` call resolves `invoice_type_code ===
  * 'VOID'`. VOID authoring does not exist on the device (§8/§17's
@@ -198,8 +212,8 @@ export class FiscalEventPayloadRegistry {
    *
    *   | second arg          | `invoice_type_code`     | resolution |
    *   |----------------------|--------------------------|------------|
-   *   | absent                | n/a                       | `3`        |
-   *   | present                | `'SALE'` / `'TRAINING'`   | `3`        |
+   *   | absent                | n/a                       | `5`        |
+   *   | present                | `'SALE'` / `'TRAINING'`   | `5`        |
    *   | present                | `'REFUND'`                | `4`        |
    *   | present                | `'VOID'`                  | throws `VoidAuthoringProhibitedError` |
    *   | present                | missing/non-string/other  | throws `FiscalEventTypeNotImplementedError` (fail-closed) |
@@ -219,19 +233,22 @@ export class FiscalEventPayloadRegistry {
     if (!this.implemented.has(type as ImplementedEventType)) {
       throw new FiscalEventTypeNotImplementedError(type);
     }
-    // SaleReceiptV3 (cash rounding, 2026-07-27): SALE_RECEIPT carries the
-    // signed rounding adjustment + denomination since event_version 3. The
-    // server accepts {1, 2, 3, 4} for parse; the device AUTHORS 3 (sale/
-    // training) or 4 (refund, §2).
+    // SaleReceiptV5 (D-1 post-remise VAT base, owner ruling 2026-08-25):
+    // SALE_RECEIPT seals `subtotal` / `vat_total` / `vat_breakdown[]` NET of
+    // the ticket-level remise, ventilated pro-rata per rate, and each
+    // breakdown row carries its `discount_allocated`. The server accepts
+    // {1, 2, 3, 4, 5} for parse — v3 stays valid forever so receipts authored
+    // by not-yet-upgraded devices keep projecting (forward-only); the device
+    // AUTHORS 5 (sale/training) or 4 (refund, §2).
     if (type === 'SALE_RECEIPT') {
       if (payload === undefined) {
-        return 3;
+        return SALE_RECEIPT_AUTHORED_EVENT_VERSION;
       }
       const invoiceTypeCode = readInvoiceTypeCode(payload);
       switch (invoiceTypeCode) {
         case 'SALE':
         case 'TRAINING':
-          return 3;
+          return SALE_RECEIPT_AUTHORED_EVENT_VERSION;
         case 'REFUND':
           return 4;
         case 'VOID':

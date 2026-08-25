@@ -1014,7 +1014,8 @@
     },
     "errors": {
       "customer_required": "Un client est requis pour la facturation sur compte.",
-      "not_enabled": "Ce client n'est pas autorisé à facturer sur compte."
+      "not_enabled": "Ce client n'est pas autorisé à facturer sur compte.",
+      "remise_not_supported": "Une remise ne peut pas encore être appliquée à une vente à crédit. Retirez la remise, ou encaissez maintenant."
     }
   },
   "customer": {

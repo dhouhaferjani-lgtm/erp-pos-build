@@ -230,13 +230,41 @@ final class CountingDiscrepancyReportService
         $varianceQty = $this->varianceQuantity($item);
         $applied = $this->varianceWasApplied($item, $varianceQty, $appliedGrains);
 
+        $glNotPostedReason = $this->glNotPostedReason($item);
+
         return [
             'expected_qty' => $this->expectedQuantity($item),
             'counted_qty' => $item->final_qty,
             'variance_qty' => $varianceQty,
             'variance_applied' => $applied,
             'not_applied_reason' => $applied ? null : $this->notAppliedReason($item),
+            // Lane P-1, gate r1 F-2. `variance_applied` has always meant
+            // "reached STOCK" and still does; this pair is the VALUE half, which
+            // that column never spoke for. A line can be applied and unbooked.
+            'gl_posted' => $applied && $glNotPostedReason === null,
+            'gl_not_posted_reason' => $glNotPostedReason,
         ];
+    }
+
+    /**
+     * The first recorded reason that withheld this line's JOURNAL ENTRY while
+     * letting its stock correction through (lane P-1, gate r1 F-2).
+     *
+     * Null does NOT assert that an entry exists — count-correction posting can
+     * also be off for the whole company, which is a setting rather than a
+     * property of the line. It asserts only that no reason on THIS line
+     * withheld it.
+     */
+    private function glNotPostedReason(InventoryCountingItem $item): ?string
+    {
+        foreach ($item->flag_reasons ?? [] as $reason) {
+            $case = CountingItemFlagReason::tryFrom($reason);
+            if ($case !== null && $case->blocksGlPosting()) {
+                return $case->value;
+            }
+        }
+
+        return null;
     }
 
     /**

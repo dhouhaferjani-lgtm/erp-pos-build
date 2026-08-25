@@ -140,6 +140,10 @@ final class OutboxIngestor
         // (the detector has zero constructor dependencies beyond
         // `config('fiscal.clock_drift_limit_seconds')`).
         private readonly ClockAnomalyDetector $clockAnomalyDetector,
+        // D-1 (owner ruling 2026-08-25) — forward-only cutover to the
+        // post-remise VAT base. Constructor-injected, no nullable default
+        // (rule 13); the container auto-resolves it from the connection.
+        private readonly SaleReceiptForwardVersionGate $saleReceiptForwardVersionGate,
     ) {}
 
     /**
@@ -177,6 +181,25 @@ final class OutboxIngestor
         $sealedCoordinateFailure = $this->validateSealedCoordinates($envelope, $parseResult);
         if ($sealedCoordinateFailure !== null) {
             $parseResult = ParseResult::failure($sealedCoordinateFailure);
+        }
+
+        // ---- D-1 forward-only version gate. A terminal that has already
+        // ---- sealed a post-remise SALE_RECEIPT (v5) may never author the
+        // ---- pre-discount base again. Routed as a parse failure so the
+        // ---- envelope follows the SAME path as every other payload-contract
+        // ---- violation: STORED with its bytes intact, NOT projected. Older
+        // ---- devices (no v5 watermark on their chain) are unaffected. Since
+        // ---- gate r2 the same call also carries the ACCOUNT_CHARGE remise
+        // ---- refusal, on the same watermark — which is why the parsed payload
+        // ---- is threaded in.
+        if ($parseResult->ok) {
+            $downgradeFailure = $this->saleReceiptForwardVersionGate->verdict(
+                $envelope,
+                $parseResult->payload,
+            );
+            if ($downgradeFailure !== null) {
+                $parseResult = ParseResult::failure($downgradeFailure);
+            }
         }
 
         /** @var stdClass|null $prior */

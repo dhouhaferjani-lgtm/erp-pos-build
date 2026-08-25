@@ -6,6 +6,7 @@ import { ChevronRight, ChevronLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, ensureCsrfCookie, getErrorMessage } from '../../lib/api'
 import { useAuthStore } from '../../stores/authStore'
+import { clearScopeForNewSession } from '../../lib/clearAppState'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
 import { useRegisterForm } from './hooks/useRegisterForm'
 import { useCountryDetect } from './hooks/useCountryDetect'
@@ -96,6 +97,11 @@ export function RegisterPage() {
         permissions: data.user.permissions,
         email_verified_at: null,
       }
+      // W2-1: a signup done on a browser that already knew another company
+      // inherited its selection and 403'd on every authenticated call — including
+      // /user/companies, so the deadlock could not self-heal. Clear the scope
+      // before the new session is installed.
+      clearScopeForNewSession(queryClient)
       setAuth(user, data.token)
       void queryClient.invalidateQueries({ queryKey: ['auth', 'me'] })
       void navigate('/', { replace: true })
