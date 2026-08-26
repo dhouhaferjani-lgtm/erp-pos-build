@@ -111,6 +111,25 @@ final class PosBridgeLocationAttributionTest extends TestCase
             'currency' => 'TND',
         ]);
         $this->repositoryId = $repository->id;
+
+        // Campaign lane N-12 — the tender resolver no longer routes a terminal's
+        // cash into a drawer that belongs to ANOTHER location, so the receipt
+        // bridge would refuse this fixture outright. The legacy, never-attributed
+        // drawer below is the resolver's tier 2 and is what the terminal's own
+        // (drawer-less) location resolves to. It keeps this file testing what it
+        // is named for: `payments.location_id` comes from the TERMINAL, not from
+        // whichever repository the money landed in — here the resolved drawer has
+        // no location at all, and the payment still carries the terminal's.
+        PaymentRepository::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'location_id' => null,
+            'type' => RepositoryType::CashRegister,
+            'account_id' => $cashAccount->id,
+            'gl_account_id' => $cashAccount->id,
+            'currency' => 'TND',
+        ]);
+
         app(CompanyContext::class)->clear();
     }
 
