@@ -211,3 +211,95 @@ terminal — say so.
 Fix the expected-cash derivation (read the v3 shift's `z_session_events` movements, handle the
 negative case with a typed exit) and correct the two false claims in prose — `release()`'s stale
 "residual not taken" docblock and the "a later device close must win" assertion.
+
+---
+
+## r2 scoped re-review
+
+**Range:** `56f34a464..3136c89bc` (4 commits, 19 files, +1720/−214) · **Date:** 2026-08-26 · read-only
+
+### VERDICT: spec ❌ + quality CHANGES-REQUESTED — every r1 item is ADDRESSED, but the new derivation introduces one Critical of its own
+
+### r1 disposition
+
+| r1 finding | Status | Evidence |
+|---|---|---|
+| **[CRITICAL] expected cash read `pos_cash_drawer_operations`** | **ADDRESSED** | `ShiftExpectedCashService.php:189-228` — v3 arm = `opening_cash` + `cashTenderedNetOfChange()` (`:157-171`) + `zSessionMovements()` (`:302-336`); v2 arm keeps the CDO sum (`:343-363`). Source chosen by `fiscal_schema_version` (`:204`), typed by `ShiftCashMovementSource`. Command no longer computes anything (`CloseOrphanedShiftCommand.php:301`). Pinned by `CloseOrphanedShiftCommandTest` v3 case (asserts 120 **and** `≠ 100`) and the v3-ignores-CDO case. |
+| **[CRITICAL] negative expected cash → uncaught 23514** | **ADDRESSED** | `EXIT_EXPECTED_CASH_NEGATIVE = 6` (`:161`), checked before any write (`:311-324`) via `ShiftExpectedCashBreakdown::isNegative()` (`bccomp` at scale). Pinned with real data (float 100, `CASH_OUT` 300): exit 6, shift still OPEN, zero audit rows. |
+| **[IMPORTANT] late device `SESSION_CLOSE` does not win** | **ADDRESSED** | `ZSessionLifecycleProjection.php:256-274` now calls `OrphanedShiftDeviceCloseReconciler::reconcile()`; the reconciler swaps expected/counted/variance/severity, appends a notes marker, emits `OrphanedShiftDeviceCloseApplied` with both sides. Device-closed shifts still no-op (`:73-79`). Three tests. Field-for-field faithful to `projectPosShiftClose()`'s own path (same `generated_at_device` fallback, same `VarianceSeverity::tryFrom`, same `bcsub(...,4)` at column scale). |
+| **[IMPORTANT] stale `release()` docblock** | **ADDRESSED** | `TerminalController.php:541-563` — names all three lock sites, the shared `pos_terminals → pos_shifts` order, an explicit "do not remove either of those locks as redundant", and the surviving late-sync residual. |
+| **[IMPORTANT] audit provenance best-effort, exit 0** | **ADDRESSED** | Event dispatched **inside** the close transaction and the row read back (`CloseOrphanedShiftCommand.php:496-520`); absent row → `OrphanCloseProvenanceLostException` → rollback → exit 7. `AuditEvent` declares no `$connection`, so it shares the tenant transaction — the rollback is real. Pinned by `Event::fake`: exit 7, status OPEN, `closed_at` NULL, no audit row. |
+| **[IMPORTANT] archived terminal → TypeError** | **ADDRESSED** | `CloseOrphanedShiftCommand.php:250-261` (`->terminal()->withTrashed()->first()`, typed exit 4 on a genuinely absent row) and `ZSessionLifecycleProjection.php:183` (`withTrashed()` on the C-17(viii) lock probe). Pinned. |
+| [MINOR] `audit_events.user_id` NULL | ADDRESSED | Runbook §4 block. |
+| [MINOR] `--closed-by` existence-only | ADDRESSED as ruled | Left deliberate, stated in the runbook, owner row. |
+| [MINOR] §1b uuid cast | ADDRESSED | `s.id::text = a.payload->>'open_shift_id'`; §1c caveat added. |
+
+### Is the server mirror faithful to the device Z? — term by term
+
+Device formula: `openingCash + cashSales + drawerNet + cashAccountCollections − cashRefundImpact` (`apps/pos/src/lib/offline/zReportService.ts:277-289`).
+
+| Term | Server | Faithful? |
+|---|---|---|
+| `openingCash` | `pos_shifts.opening_cash`, `OPENING_FLOAT` excluded (`:325-329`) | ✅ |
+| `cashSales` = Σ cash tendered − `change_due` per receipt, refunds subtracted | `:157-171` + `:262-286` (`MAX(change_due)` per receipt, non-return only, CASH-line-joined); returns as `-ABS` | ✅ — and `pos_receipt_payments.amount` really is the **tendered** amount (`PosCoreReceiptProjection.php:1481-1488`), `posted_at = event_time_device` (`:306`, `:391`), `fiscal_status = Fiscalized` (`:406`), so the fixture shape matches production even though the test hand-writes the rows |
+| `drawerNet` (`deposit +`, `payout −`) | `CASH_IN '+'`, `CASH_OUT '-'` (`:80-84`), matching `cashDrawerApi.ts:177` | ✅ |
+| `cashAccountCollections` | **absent** | ❌ see N-2 |
+| `cashRefundImpact` (`local_refund_records`) | **absent** (device-local table) | ⚠️ legacy-only, disjoint from v4 returns; acceptable |
+| — | `SAFE_DROP '-'` (server-only) | ⚠️ see N-5 |
+| shift window | **terminal + time, unbounded to `now()`** | ❌ see N-1 |
+
+Scale handling is rule-19 clean throughout: `getScale($currencyCode)` with the currency passed explicitly (`:195`, required by the signature docblock), intermediates at `scale + 1` (`:200`), rounded once through `bcformatStrict` (`:219-222`). No float. Placement in `POS/Application/Services` is right — it is consumed by a POS console command and `ReportGenerationService`, not by a projector; the `ReportGenerationService` extraction is byte-faithful to the query it replaced.
+
+### New findings in the fix diff
+
+#### [CRITICAL] `ShiftExpectedCashService.php:245` + `:196` + `CloseOrphanedShiftCommand.php:301` — the receipt window runs to `now()`, so the REPLACEMENT till's cash sales are added to the orphan's expected cash
+
+`shiftReceiptPaymentsQuery()` bounds receipts by `terminal_id` + `posted_at BETWEEN $shift->opened_at AND $until`, and the command calls `breakdown()` with no `$until`, so `$until = Carbon::now()` (`:196`). `pos_receipts` carries **no `shift_id`** (confirmed: no shift column in any `pos_receipts` migration) and `PosCoreReceiptProjection` has **zero** references to `pos_shifts`/`shift_id`/`ShiftStatus` — so a replacement device's `SALE_RECEIPT` events project normally even while its `SESSION_OPEN` is being dropped. That is precisely this lane's own incident narrative (`CloseOrphanedShiftCommand.php:34-39`): the replacement till sells while the orphan blocks its shift.
+
+Timeline: orphan opens Mon 08:00 → device stolen 12:00 → forced release 13:00 → replacement claims the terminal and sells all week → operator runs the command at month-end (the cadence the runbook itself prescribes, §4). Every replacement receipt from Mon 13:00 onward falls inside the orphan's window and inflates `expected_cash` — which `Nf525DataProvider::mapShift()` exports as `EspecesAttendues` with `Ecart = 0` against the **original** cashier. r1's defect understated the figure; this one overstates it by another till's takings, in the same certified export.
+
+The fix is cheap and the data is already in hand: the command holds `$release['occurred_at']` (`:263`, `:410-414`) — pass it as `$until`. After a forced release the orphan's device no longer holds the terminal, and `posted_at` is device time (`PosCoreReceiptProjection.php:306`), so the dead device's late-synced receipts still fall inside. Pin it: a receipt posted after the release must not enter the orphan's figure. (`ReportGenerationService`'s own `now()` is correct there — it closes a live shift.)
+
+#### [IMPORTANT] `RUNBOOK-orphaned-shift.md` residual + `ShiftExpectedCashService.php:189-228` — the account-collections gap is stated as impossible, but the data is present; and the same commit fails closed on a movement that cannot happen while under-reporting one that can
+
+The runbook says `pos_account_payment_receipts` "carries no `shift_id` and no tender breakdown, so there is no reliable per-shift cash term to add". The **column** has none; the **row** does. `AccountPaymentReceiptProjection.php:71` stores `payload_snapshot => $payload->toArray()`, and `AccountPaymentPayload::toArray()` emits `'shift_id'` (`:111`) and `'payment'` (`:106`, carrying `method_code` / `amount`) — written by the device at `accountPaymentService.ts:245,258` and integrity-joinable through the row's `fiscal_event_id`. So the term is derivable today with one query.
+
+Severity for tenant #1 (account charges in use): a cash collection against a customer account physically enters the drawer and the device folds it in (`zReportService.ts:272-275`); the server figure is short by exactly that amount, and the shortfall is exported as a balanced count. It is smaller than r1's Critical (zero on shifts that took no cash collections) but it is the same defect class.
+
+What makes it merge-blocking rather than ledgerable is the **inconsistency inside this one commit**: `CASH_CORRECTION` gets a hard refusal (exit 8) for a movement with no authoring path, while account collections — which have a live, shipped authoring path — are silently omitted with a runbook sentence. Pick one standard. Either add the term (preferred; the data is there) or refuse the close with a typed exit when the shift has any cash `ACCOUNT_PAYMENT` row. Correct the runbook sentence either way.
+
+#### [IMPORTANT] `OrphanedShiftDeviceCloseReconciler.php:34-50` — the placement is defensible, but it lands in a blind spot `ProjectorEmissionRatchetTest` had already named, and the baseline is left asserting something now false
+
+Keeping the emission out of the projector to avoid a false ES-03/ES-02/ES-05 closure is the right call — I agree with the reasoning. But the ratchet's own docblock pre-declares this exact shape: *"**Over-report (reads as non-emitting when it emits).** A projector that emits by delegating to a collaborator service reads as silent here … widen the detection deliberately rather than silently dropping the entry."* Applying a `SESSION_CLOSE` now **does** emit a domain event; the file-scan says otherwise, so the baseline line for `ZSessionLifecycleProjection` is true only about ES-03/02/05 and false about the projector as a whole — and this lane establishes a citable precedent for moving `event(new …)` one call deep to keep the ratchet green.
+
+Minimum fix: annotate the baseline entry (or the ratchet docblock) with "emits `OrphanedShiftDeviceCloseApplied` via `OrphanedShiftDeviceCloseReconciler` — O-30; the ES rows this line names are still open". Do not delete the line.
+
+#### [IMPORTANT] `PosShiftProjectionTest::test_a_late_device_session_close_is_replay_safe` — asserts the projector's guard, not the reconciler's, while its docblock claims the opposite
+
+The test applies **the same** `$closeEvent` twice. `ZSessionLifecycleProjection::apply()` short-circuits at `:65` (`ZSessionEvent::where('fiscal_event_id', $event->id)->exists()`) before reaching `projectPosShiftClose()`, so `OrphanedShiftDeviceCloseReconciler::deviceCloseAlreadyApplied()` (`:192-200`) is never reached on the second call. The docblock says "Replay-safe on its own guard, not merely on the projector's" — it is not established. Use a **second, distinct** fiscal event id for the same shift (the realistic shape: a re-authored close after a device restore), or call the reconciler directly.
+
+#### [MINOR] `ShiftExpectedCashService.php:83` — `SAFE_DROP` is signed `'-'` server-side but the device Z never sees it
+
+The device folds only `local_cash_drawer_ops`, written exclusively as `deposit`/`payout` → `CASH_IN`/`CASH_OUT` (`cashDrawerApi.ts:177`). `SAFE_DROP` has no device authoring path today, so the sign is unexercised; the day one appears, the device's expected cash and the server mirror will differ by its full value. Worth one line in the class docblock (which currently justifies the sign as "matching the v2 side", not as matching the device).
+
+#### [MINOR] `ShiftExpectedCashService.php:308-309` — magic strings where enums exist (rule 9)
+
+`'verified'` (vs `IntegrityStatus::Verified->value`), `'z_session'`, and the four event-type literals. They are correct today (`IntegrityStatus.php:9`) but drift silently.
+
+#### [MINOR] `OrphanedShiftDeviceCloseReconciler.php:159-172` — the swap's own audit row is not read back
+
+The reconciler's replay guard is the `shift.orphan_device_close_applied` row, but `persistEvent()` still swallows every `Throwable` — the very asymmetry r1 raised and the command now closes. Impact is small (a second swap rewrites the same device figures and duplicates a notes marker), so this is a note, not a blocker.
+
+#### [MINOR] `ShiftExpectedCashService.php:41-42` — "one derivation, one place" overclaims
+
+Only `expectedPerPaymentMethod()` is genuinely shared. `ReportGenerationService:232` still takes `expected_cash` from `CashDrawerService::calculateExpectedCash()`. That is harmless **only** because `generateZReport()` refuses v3 at `:196` (`assertServerReportAuthoringAllowed`) — i.e. the v3 arm of the new service has no second consumer to agree with. Say so, so nobody later removes that refusal believing the figures are unified.
+
+### Rulings requested
+
+**`CASH_CORRECTION` → exit 8: ACCEPT as fail-closed; do NOT resolve the convention now.** Verified unreachable: the only device writer of a Z cash movement is `cashDrawerApi.ts:177`, which emits `CASH_IN`/`CASH_OUT` only; `CASH_CORRECTION` exists solely in type unions, payload registries and validators (`FiscalEventEngine.ts:3884`, `FiscalPayloadConstraintValidator.php:835`, `FiscalEventCoveragePolicy.php:57`) with no authoring call path in either app. So exit 8 is unreachable in production today and costs nothing operationally, while the refusal is exactly right if the type ever ships — its direction genuinely lives in the amount's sign, and guessing would put a short figure into a JET as a balanced count. Ledger the convention against whatever lane introduces the authoring path; blocking O-30 on it would be inventing a semantic for an event nobody has written.
+
+**Account-collection exclusion: Important, and must be CLOSED before merge — not ledgered.** Not because the magnitude is large, but because (a) the stated justification is factually wrong (`payload_snapshot` carries `shift_id` and `payment.method_code`), (b) tenant #1 takes account charges, so the collection leg is live, and (c) the same commit refuses a movement that cannot occur while silently under-reporting one that does. Add the term or refuse the close; either is a small change.
+
+### One line to fix before merge
+
+Bound the receipt window at the authorising release's `occurred_at` (or the orphan's expected cash absorbs the replacement till's takings into the JET), and give account collections the same fail-closed treatment `CASH_CORRECTION` already gets.

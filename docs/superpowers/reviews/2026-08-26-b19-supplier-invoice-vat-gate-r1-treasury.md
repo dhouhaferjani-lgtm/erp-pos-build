@@ -390,3 +390,85 @@ payloads. The r1 tautology is closed.
 N1 (short-circuit the already-posted invoice before the period guard, as the credit-note arm already does);
 get an owner ruling or a ledger row for N2 (a back-dated or NULL-rate supplier invoice is now permanently
 unpostable with no correction route) and N3 (AP openings poison the census the owner is told to review).
+
+---
+
+## r3 scoped re-review
+
+Range `50c09c0c5..dad0c56f1` (3 commits, 11 files, +961/-36) · READ-ONLY, 2026-08-26.
+Package: `.worktrees/b19-supplier-invoice-vat/.superpowers/sdd/PLAN/review-50c09c0c5..dad0c56f1.diff`.
+Report read this round: `.superpowers/sdd/PLAN/task-6-report.md` §"Fix round 2" (FR2-1..FR2-8) — it exists now.
+
+**VERDICT: spec ✅ + quality APPROVED**
+
+### r2 disposition — treasury N1–N8 and fiscal N-1..N-5, all ADDRESSED
+
+| Item | Verdict | Evidence |
+|---|---|---|
+| **N1** / fiscal **N-1** idempotency before the period guard | ADDRESSED | `SupplierInvoicePostingService.php:115-117` (`hasClearingEntry()` pre-probe → `return`) now precedes the guard at `:119-123`. The authoritative under-lock re-check is unchanged in position — still after the PO-line / receipt-line / PO-document `lockForUpdate()` at `:134-165`, at `:172-174`. Pinned at both levels: `SupplierInvoiceVatDeclarationTest::test_reposting_after_the_period_closed_is_still_a_no_op` and `…::test_posting_a_back_dated_ap_opening_document_is_a_no_op_not_a_refusal`; HTTP-level `SupplierInvoiceApiTest::test_reposting_an_already_posted_invoice_is_still_a_no_op_after_the_period_closes` (asserts 200 **and** exactly one journal entry). All green here (SQLite + PG for the taxation legs). |
+| **N2** actionable refusal (RULED: keep the refusal) | ADDRESSED | `PeriodBackdatingGuardInterface::backdatingRefusalDetail()` (`PeriodBackdatingGuardInterface.php:922-958` in the diff; primitives in/out, no module-tier leak — rule 6 clean, and the controller injects the Shared contract at `SupplierInvoiceController.php:63`). Implementation `VatPeriodBackdatingGuard.php:720-756` mirrors `assertBackdatingPeriodIsOpen()`'s lookup order exactly (vat_periods first, then `isDateInClosedFiscalPeriod`). Envelope `SupplierInvoiceController::periodLockedResponse()` reproduces the shared renderer's six keys verbatim (`bootstrap/app.php:853-865`) and adds `period` + `remedies`. Three tests. LEDGER `D-B19-4` on `dev` carries the stranded-draft gap. |
+| **N3** AP openings out of the census | ADDRESSED | `BackfillTaxDetailsCommand` scope gains `->where('is_historical', false)` and a 6th census bucket `historical`. `documents.is_historical` is **NOT NULL DEFAULT false** (migration `2025_12_11_100001_add_is_historical_to_tables.php`; confirmed on live PG `information_schema`: `is_nullable = NO`), so the partition still partitions — no NULL-poisoned rows silently drop out of scope. The only producer of `documents.is_historical = true` is `ArApOpeningService.php:372` (grep over `app/`, `database/`), so the exclusion is precisely scoped. Two tests, both green on PostgreSQL. |
+| **N4** builder sums at currency scale | PARKED per ruling, honestly recorded | handback §3 "N4, RULED PARKED". The stated ground checks out: `bcadd` at scale N over values already persisted at ≤N decimals is exact, `CreateSupplierInvoiceService` writes `line_total`/`recoverable_tax_amount` rounded to `$scale`, and check 3 refuses rather than mis-declares if a sub-scale amount ever appears. |
+| **N5** NULL/empty currency | ADDRESSED (RULED: refusal) | `PostedLineTaxSnapshotBuilder::scaleFor()` now throws on an empty currency and `currencyRefusal()` is the non-throwing precondition; all three callers consult it first (`SupplierInvoicePostingService.php:406`, `SupplierCreditNotePostingService.php:431`, `BackfillTaxDetailsCommand.php:813`), and the census `scaleFor()` at `:898` is downstream of that `continue`. The divergence property is genuinely closed: `CurrencyScaleResolver::getScale()` short-circuits any non-null code into the static ISO map (`CurrencyScaleResolver.php:39-41`) and never consults `CompanyContext`, so console and HTTP now resolve identically or both refuse. Test green on PG. |
+| **N6** dead evidence pointers | ADDRESSED | `docs/superpowers/reviews/2026-08-26-b19-handback.md` added (251 lines, tracked). `git show dev:docs/handoff/LEDGER.md` and `…:PROMOTION-CHECKLIST-2026-08-26.md` both contain **zero** `.superpowers` paths; `D-B19-1..4` and `S-23` cite the handback + the two gate files. Note the pointer only resolves once this branch merges — the rows are already on `dev`, the file they cite is not. |
+| **N7** stale guard docblock | ADDRESSED | `VatPeriodBackdatingGuard.php:50-52` now lists `supplier_credit_note`. |
+| **N8** multi-currency census test | ADDRESSED | `BackfillTaxDetailsCommandTest::test_supplier_leg_census_totals_each_currency_separately` (TND 38.000 / EUR 20.00, two rate rows). Reported honestly in the report as "passed as written — a pin, not a caught bug". |
+| fiscal **N-2** `fiscal_periods` widening | ADDRESSED as documentation | handback §5 + `D-B19-4` ("release-note item"). No code change, as the gate asked. |
+| fiscal **N-3** lineless openings skipped forever | ADDRESSED | same `is_historical` exclusion; `test_supplier_leg_excludes_historical_ar_ap_opening_documents` asserts `Scanned 0` and **no** `needs manual review`. |
+| fiscal **N-4** SCN guard comment overstated | ADDRESSED | `SupplierCreditNotePostingService.php:286-297` now says the credit note's own row lock IS already held and that the earlier comment was wrong. |
+| fiscal **N-5** successor probe not memoised | ADDRESSED | `$successorProbeCache` keyed on period id, consulted at `BackfillTaxDetailsCommand.php:1256-1262`. |
+
+### The four scrutiny points
+
+* **The hoisted pre-probe cannot double-post.** Both reads go through the same `hasClearingEntry()`; the second one (`SupplierInvoicePostingService.php:172`) sits exactly where the old `$alreadyPosted` block sat, i.e. after every `lockForUpdate()`. A concurrent first post that commits between probe and lock is caught by the second read, and a loser that sees `true` returns before writing anything. The residual race — an invoice with **no** matched PO lines locks nothing (`whereIn('id', [])` at `:134-140`), so two concurrent first posts could both pass the second check — is **byte-for-byte pre-existing** (same check, same position, before this diff) and is not introduced here. What the diff *does* slightly overstate is the docblock at `:467-469` ("the locks taken in between are precisely what makes the second read authoritative"): that holds only when the invoice actually has matched PO lines. Same class of comment inaccuracy as fiscal N-4, which this round fixed. [MINOR]
+* **`reopenable` mirrors `reopenPeriod()`.** `VatPeriodManagementService::reopenPeriod():135-141` refuses `! $period->isClosed()` (i.e. anything but `VatPeriodStatus::Closed`, `VatPeriod.php:143-146`) and refuses `hasClosedOrFiledSuccessor()`. `backdatingRefusalDetail()` computes `status === Closed && ! hasClosedOrFiledSuccessor(...)` — the same two conditions, same repository method. FILED → false (test `…reports_the_period_as_not_reopenable`), CLOSED-with-successor → false (test `…with_a_closed_successor_is_reported_as_not_reopenable`), and the `fiscal_periods` arm hard-codes `reopenable = false` with NULL period fields. `reopen_period` is emitted only when `reopenable` — no remedy the system would reject.
+* **`@phpstan-impure` is honest.** The method's result genuinely varies with external DB state, which is exactly what the tag asserts; it is not a silencer and there is no baseline entry or `@phpstan-ignore`. Independently re-ran `APP_ENV=local phpstan analyse` over all 7 touched `app/` files → **No errors**. I did not reproduce the "without the tag PHPStan reports `if.alwaysFalse`" claim (that needs a mutation of the worktree) — report claim, plausible, **not independently verified**.
+* **The refusal envelope is the house convention.** `bootstrap/app.php:853-865` (`ReturnPeriodLockedException`) and `:876-880` (`ReturnQuantityExceededException`) both emit `{ error: { code, message, … } }` at 422; `periodLockedResponse()` reproduces the first one's six keys exactly and nests the additions under `error.period` / `error.remedies`. Nothing keying on the existing keys regresses (pinned: the tests assert `error.code` and `error.period_label` as well as the new fields). The generic `\DomainException` arm still flattens to `POSTING_BLOCKED` and is registered *after* the typed catch, so the CLOSED/FILED/LOCKED distinction survives.
+* **`D-B19-4` row text is factual.** Verified line by line against `Procurement/Presentation/routes.php:83-120` (index / duplicate-reference / show / store / match / link-receipts / post — no `Route::put`, `patch` or `delete`), the guard's own `fiscal_periods` consultation (`VatPeriodBackdatingGuard.php:74-80`), the `reopenable` derivation above, and the NULL-`tax_rate` trap whose message now carries the remedy (`PostedLineTaxSnapshotBuilder` check 4). No overstatement found.
+
+### New findings in the fix diff
+
+#### [MINOR] R3-1 — `$successorProbeCache` is never reset, and the docblock's "one command run" is not quite the runtime
+`BackfillTaxDetailsCommand.php:38-45` (property + docblock) · `handle()` at `:47`.
+Artisan reuses a registered command instance across `Artisan::call()` invocations, so under
+`tenants:run vat:backfill-tax-details` the cache survives from one tenant's `handle()` into the next.
+Harmless in practice — `VatPeriod` uses `HasUuids`, so a cross-tenant key collision is not a real risk —
+but the correctness argument in the docblock ("for the lifetime of one command run") is not the property
+the code actually has. Reset it at the top of `handle()` and the argument becomes true by construction.
+
+#### [MINOR] R3-2 — the `fiscal_periods` arm of the new refusal detail has no test, and its remedy text names the wrong period kind
+`VatPeriodBackdatingGuard.php:742-752` returns all-NULL period fields + `reopenable = false` when the
+refusal comes from `fiscal_periods`; `SupplierInvoiceController::periodLockedResponse()` then emits the
+single remedy "Re-create this supplier invoice with an issue date inside an open **VAT** period". For a
+`PERIOD_LOCKED` (accounting-period) refusal that instruction can be followed and still fail. The three
+new HTTP tests cover CLOSED and FILED `vat_periods` only. Behaviour is safe (nothing is written, no
+false `reopen_period` offer); the wording and the coverage are the gap.
+
+#### [MINOR] R3-3 — a fully-settled AP opening still 422s instead of no-opping
+`ArApOpeningLedgerService::postOpeningEntry():131-134` returns `null` when `balance_due <= 0`, so an
+opening document with nothing outstanding exists **without** a journal entry. `hasClearingEntry()` is
+therefore false for it, and posting one (it is `type = supplier_invoice`, so the route accepts it) hits
+the period guard and refuses — the exact population N1 set out to protect, minus the JE. Nothing is
+written either way and no one has a reason to post a settled opening, so this is a completeness note on
+the N1 fix, not a defect: pre-B-19 the same call would have posted a GR/IR entry for a lineless invoice,
+which is worse.
+
+### Test quality
+`RefreshDatabase`, real models, real services and the real HTTP route; concrete assertions (status,
+`error.code`, period bounds, remedy actions, journal-entry **count**, `document_tax_details` count, exact
+printed census string). No `assertTrue(true)`, no mocked subject, no faked payloads. The AP-opening
+fixture is built to `ArApOpeningService`'s real shape (Posted, `is_historical`, no lines, own JE with
+`source_type = 'supplier_invoice'`).
+
+### Gates re-run in this review
+- `pint --test` on all 7 changed `app/` files → `{"result":"pass"}`.
+- `APP_ENV=local phpstan analyse` on the same 7 files → **No errors**.
+- SQLite: 4 new `SupplierInvoiceApiTest` + 4 new `BackfillTaxDetailsCommandTest` + 2 new
+  `SupplierInvoiceVatDeclarationTest` cases → **10 passed**.
+- PostgreSQL (`phpunit-pgsql.xml`): the 4 new backfill cases → **4 passed** (the fiscal-aggregate house rule).
+- RED-before-GREEN not independently reproduced (would require mutating a read-only worktree) — the
+  separate `test(b19): RED …` commit `5f591e83b` precedes the fix commit `a1b1928bc`.
+
+### What to fix before merge (r3)
+Nothing. R3-1/R3-2/R3-3 are minors and can ride a later lane. `D-B19-4` remains an OPEN owner ruling, as
+ruled — it is not a merge blocker.
