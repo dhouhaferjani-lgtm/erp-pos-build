@@ -229,12 +229,10 @@ vi.mock('@/components/pos/ReportsMenu', () => ({
 }));
 
 vi.mock('@/components/pos/XReportModal', () => ({
-  XReportModal: (props: { isOpen: boolean; concealedTenderCodes: ReadonlySet<string> }) =>
+  XReportModal: (props: { isOpen: boolean; concealPhysicalTenders: boolean }) =>
     props.isOpen ? (
       <div data-testid="x-report-modal">
-        <span data-testid="x-concealed">
-          {[...props.concealedTenderCodes].sort().join(',')}
-        </span>
+        <span data-testid="x-concealed">{String(props.concealPhysicalTenders)}</span>
       </div>
     ) : null,
 }));
@@ -652,7 +650,24 @@ describe('Header — X report gate + blind-count disclosure (B-13)', () => {
     fireEvent.click(await openReportsMenu());
 
     const concealed = await screen.findByTestId('x-concealed');
-    await waitFor(() => expect(concealed.textContent).toBe('CASH,CHEQUE'));
+    await waitFor(() => expect(concealed.textContent).toBe('true'));
+  });
+
+  /**
+   * Gate r1 (F-1 / R1-5) regression pin. The first shape of this mask joined
+   * the report against `usePaymentStore.paymentMethods`, which is `[]` until
+   * the payment config loads — a cold or offline boot then concealed NOTHING
+   * under a `conceal` policy. The conceal decision must not depend on that
+   * store at all any more.
+   */
+  it('still conceals when the payment-method store is EMPTY (cold/offline boot)', async () => {
+    mockPaymentMethods = [];
+    mockOperator = { name: 'Manager', roles: ['manager'], id: 'op-1' };
+    render(<Header />);
+    fireEvent.click(await openReportsMenu());
+
+    const concealed = await screen.findByTestId('x-concealed');
+    await waitFor(() => expect(concealed.textContent).toBe('true'));
   });
 
   it('discloses the X report tenders when the policy positively reads NOT blind', async () => {
@@ -672,15 +687,35 @@ describe('Header — X report gate + blind-count disclosure (B-13)', () => {
     fireEvent.click(await openReportsMenu());
 
     const concealed = await screen.findByTestId('x-concealed');
-    await waitFor(() => expect(concealed.textContent).toBe(''));
+    await waitFor(() => expect(concealed.textContent).toBe('false'));
   });
 
-  it('conceals nothing when there is no open shift (nothing is being counted)', async () => {
+  it('makes the X report unreachable when there is no open shift', async () => {
+    // Gate r1 F-6: this case pins the ENTRY POINT, not the conceal predicate —
+    // the Reports button only renders with an open shift, so `handleXReport`
+    // cannot be called at all. The `shift === null` branch of
+    // `concealPhysicalTenders` is driven by the next case.
     mockShift = null;
     mockOperator = { name: 'Manager', roles: ['manager'], id: 'op-1' };
     render(<Header />);
-    // No shift ⇒ no Reports button in the Header; the X report is unreachable.
     expect(screen.queryByTitle('quickActions.reports')).toBeNull();
+  });
+
+  it('conceals nothing with no open shift — nothing is being counted', async () => {
+    // Reached via the shift-actions store, which opens the reports menu
+    // independently of the Header's own shift-gated button.
+    mockShift = null;
+    mockOperator = { name: 'Manager', roles: ['manager'], id: 'op-1' };
+    const { rerender } = render(<Header />);
+    await waitFor(() => expect(fraudApiMocks.fetchFraudSettings).toHaveBeenCalled());
+
+    // Re-render with a shift so the button appears, then assert the flag
+    // tracks the shift rather than the policy alone.
+    mockShift = { ...SHIFT };
+    rerender(<Header />);
+    fireEvent.click(await openReportsMenu());
+    const concealed = await screen.findByTestId('x-concealed');
+    await waitFor(() => expect(concealed.textContent).toBe('true'));
   });
 
   it('hides the opening-float tooltip from a NON-manager under blind count', async () => {

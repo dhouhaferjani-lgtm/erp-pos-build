@@ -30,9 +30,45 @@ export interface VatBreakdownItem {
 }
 
 export interface PaymentMethodItem {
+  /**
+   * TWO DIFFERENT NAMESPACES, proven (gate r1 R1-7):
+   *  - DEVICE builder → the payment method's `code` (mapped from
+   *    `payment_methods.id` in `generateLocalXReport` below);
+   *  - SERVER builder → `receipt_payments.payment_type`, which is the method's
+   *    human-readable **display NAME**, not its code
+   *    (`ReceiptPaymentService.php:358` writes `$paymentMethod->name`;
+   *    `PosCoreReceiptProjection.php:1540-1542` calls it "the human-readable
+   *    display name of the method" and stores the code separately in
+   *    `payment_method_code`).
+   *
+   * So this field must NEVER be joined against `payment_methods.code` to decide
+   * anything — on the server path the join silently misses every row. Anything
+   * a consumer needs about the tender travels on the row itself; see
+   * `is_physical`.
+   */
   payment_type: string;
   total_amount: string;
   transaction_count: number;
+  /**
+   * B-13 gate r1 (F-1 / R1-5): whether this tender is PHYSICAL — i.e. lands in
+   * the drawer and is therefore a term of the blind-count expectation.
+   *
+   * Carried on the ROW, the way `/reports` does it (`endOfDayPreview.ts` →
+   * `ReportsPage.tsx`), rather than joined at render time against the payment
+   * method store: an empty/incomplete store would otherwise yield an empty
+   * conceal set and render cash in full under a `conceal` policy.
+   *
+   * OPTIONAL, and absent means UNKNOWN, never "not physical". The server X
+   * builder (`XReportResource`) does not emit it, and a tender whose method row
+   * has been deactivated or renamed will not resolve. Consumers concealing
+   * under blind count MUST treat `undefined` as physical (`is_physical !== false`).
+   *
+   * NOT part of the signed `X_REPORT` payload: `appendXReport`'s
+   * `paymentMethodTotals` mapping below is an explicit three-field allow-list
+   * (`payment_type` / `total_amount` / `transaction_count`), so adding this
+   * field leaves the fiscal event byte-identical.
+   */
+  is_physical?: boolean;
 }
 
 export interface XReportResponse {
@@ -499,8 +535,12 @@ async function generateLocalXReport(
   // Build payment method lookup
   const methods = await getAllPaymentMethods(db);
   const methodMap = new Map<string, string>();
+  // B-13: code → is_physical, so the blind-count mask travels ON the report row
+  // instead of being re-joined against a store that may not have loaded.
+  const physicalByCode = new Map<string, boolean>();
   for (const m of methods) {
     methodMap.set(m.id, m.code);
+    physicalByCode.set(m.code, m.is_physical);
   }
 
   // Aggregate
@@ -660,6 +700,9 @@ async function generateLocalXReport(
       payment_type: type,
       total_amount: bcformat(data.amount, decimals),
       transaction_count: data.count,
+      // Left UNDEFINED when the code is not in the synced method table — an
+      // unknown tender must read as "unknown", so the mask conceals it.
+      is_physical: physicalByCode.get(type),
     })),
   };
 

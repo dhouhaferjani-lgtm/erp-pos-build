@@ -54,9 +54,6 @@ import { getTerminalState, setManagerPinThrottle, setManagerPinFailedAttempts } 
 import { hasManagerAccess } from '@/lib/auth/roles';
 import { useCashDisclosure } from '@/hooks/useCashDisclosure';
 
-/** Stable empty set so the disclose case never re-renders XReportModal. */
-const NO_CONCEALED_TENDERS: ReadonlySet<string> = new Set<string>();
-
 export function Header() {
   const { t } = useTranslation('pos');
   const navigate = useNavigate();
@@ -98,8 +95,6 @@ export function Header() {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
   const [showCashDrawerModal, setShowCashDrawerModal] = useState(false);
-  const [physicalTenderCodes, setPhysicalTenderCodes] =
-    useState<ReadonlySet<string>>(NO_CONCEALED_TENDERS);
   // Refs for passing EOD data to handlePrintZReport after confirmation
   const lastCashCountPayloadRef = useRef<CashCountCommitPayload | null>(null);
   const lastZReportCashCountsRef = useRef<ZReportCountEntry[] | null>(null);
@@ -134,31 +129,21 @@ export function Header() {
    */
   const cashDisclosure = useCashDisclosure(companyId);
 
-  // Snapshot which tenders are PHYSICAL when the X report is opened. Payment
-  // methods are a synced reference table, so reading them at open time is both
-  // current and cheap.
-  useEffect(() => {
-    if (!showXReportModal) return;
-    const physical = new Set<string>();
-    for (const method of usePaymentStore.getState().paymentMethods ?? []) {
-      if (method.is_physical) physical.add(method.code);
-    }
-    setPhysicalTenderCodes(physical);
-  }, [showXReportModal]);
-
   /**
    * B-13 (ii): while a shift is OPEN under blind counting, this shift's
    * physical-tender takings are the raw material for the drawer expectation
    * the counter must not see — the same predicate `/reports` applies
-   * (`ReportsPage.tsx`, `concealCash`). With no open shift nothing is being
-   * counted, so nothing is concealed.
+   * (`ReportsPage.tsx:164`, `concealCash`). With no open shift nothing is
+   * being counted, so nothing is concealed.
+   *
+   * Gate r1 (F-1 / R1-5): this is a plain BOOLEAN, and WHICH rows it covers is
+   * decided inside `XReportModal` from each row's own `is_physical`. The
+   * earlier shape joined the report against `usePaymentStore.paymentMethods`,
+   * which is `[]` until the payment config loads — a cold or offline boot then
+   * produced an empty conceal set and disclosed cash under `conceal`. There is
+   * no store to be empty any more.
    */
-  const concealedTenderCodes = useMemo(
-    () => (cashDisclosure === 'conceal' && shift !== null
-      ? physicalTenderCodes
-      : NO_CONCEALED_TENDERS),
-    [cashDisclosure, shift, physicalTenderCodes],
-  );
+  const concealPhysicalTenders = cashDisclosure === 'conceal' && shift !== null;
 
   /**
    * B-13 (iii): the opening float is the OTHER term of the drawer
@@ -841,7 +826,7 @@ export function Header() {
         report={xReport}
         isLoading={reportLoading}
         error={reportError}
-        concealedTenderCodes={concealedTenderCodes}
+        concealPhysicalTenders={concealPhysicalTenders}
       />
 
       {/* Cash Drawer Modal */}
