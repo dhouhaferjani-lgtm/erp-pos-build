@@ -16,6 +16,7 @@ use App\Modules\POS\Application\Services\CashCountDispatcher;
 use App\Modules\POS\Application\Services\CashCountValidationService;
 use App\Modules\POS\Application\Services\FraudSettingsResolver;
 use App\Modules\POS\Application\Services\ReportGenerationService;
+use App\Modules\POS\Application\Services\ShiftExpectedCashService;
 use App\Modules\POS\Domain\DTOs\CashCountInputDTO;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ReturnReason;
@@ -96,18 +97,24 @@ final class GenerateZReportWithCountsTest extends TestCase
         // Bind CompanyContext so CurrencyScaleResolver inside container-resolved services has context.
         $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
 
+        // ONE resolver instance shared with ShiftExpectedCashService: the two
+        // must agree on scale or the per-tender expected totals and the report's
+        // own rounding drift apart.
+        $scaleResolver = $this->mockCurrencyScale(4);
+
         $this->service = new ReportGenerationService(
             $this->app->make(ShiftManagementService::class),
             $this->app->make(CashDrawerService::class),
             $this->app->make(ZReportHashService::class),
             $this->app->make(GrandtotalService::class),
-            $this->mockCurrencyScale(4),
+            $scaleResolver,
             $this->app->make(CashCountValidationService::class),
             $this->app->make(FraudSettingsResolver::class),
             $this->app->make(ZReportCountRepository::class),
             $this->app->make(PaymentToleranceQueryService::class),
             $this->app->make(TaxIdentityResolver::class),
             $this->app->make(CashCountDispatcher::class),
+            new ShiftExpectedCashService($scaleResolver),
         );
         $this->location = Location::factory()->create(['company_id' => $this->company->id]);
         $this->cashier = User::factory()->create(['tenant_id' => $this->tenant->id]);

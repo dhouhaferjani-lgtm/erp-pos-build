@@ -68,6 +68,11 @@ final class ReportGenerationService
         // (now including a queue push, since PostShiftCashVarianceAdjustment is
         // ShouldQueue) from surfacing as a 500 on a close that succeeded.
         private readonly CashCountDispatcher $cashCountDispatcher,
+        // O-30 gate r1, CRITICAL 1: the per-tender expected query used to live
+        // inline in buildExpectedPerMethod() below. It is now the shared
+        // derivation, so the orphan-close command cannot grow a third copy that
+        // reads a different table.
+        private readonly ShiftExpectedCashService $shiftExpectedCashService,
     ) {}
 
     private function scale(): int
@@ -534,65 +539,7 @@ final class ReportGenerationService
      */
     private function buildExpectedPerMethod(Shift $shift, array $inputs): array
     {
-        $scale = 4;
-
-        /** @var array<string, string> $totals */
-        $totals = [];
-
-        $rows = DB::table('pos_receipt_payments')
-            ->join('pos_receipts', 'pos_receipt_payments.receipt_id', '=', 'pos_receipts.id')
-            ->where('pos_receipts.terminal_id', $shift->terminal_id)
-            ->where('pos_receipts.fiscal_status', FiscalStatus::Fiscalized->value)
-            ->where('pos_receipts.is_voided', false)
-            ->where('pos_receipts.is_training', false)
-            ->whereBetween('pos_receipts.posted_at', [$shift->opened_at, now()])
-            ->selectRaw("pos_receipt_payments.payment_method_id as payment_method_id, SUM(CASE WHEN pos_receipts.receipt_type = 'return' THEN -ABS(pos_receipt_payments.amount) ELSE pos_receipt_payments.amount END) as total")
-            ->groupBy('pos_receipt_payments.payment_method_id')
-            ->get();
-
-        $cashReceiptChanges = DB::query()
-            ->fromSub(
-                DB::table('pos_receipt_payments')
-                    ->join('pos_receipts', 'pos_receipt_payments.receipt_id', '=', 'pos_receipts.id')
-                    ->where('pos_receipts.terminal_id', $shift->terminal_id)
-                    ->where('pos_receipts.fiscal_status', FiscalStatus::Fiscalized->value)
-                    ->where('pos_receipts.is_voided', false)
-                    ->where('pos_receipts.is_training', false)
-                    ->whereBetween('pos_receipts.posted_at', [$shift->opened_at, now()])
-                    // Change-due is a SALE concept (money handed back on an
-                    // over-tender). A refund's payout leg IS the cash that left
-                    // the drawer, so a non-zero change_due on a return row
-                    // (possible only via cash-rounding over-tender arithmetic)
-                    // must not be subtracted a second time.
-                    ->where('pos_receipts.receipt_type', '!=', ReceiptType::Return->value)
-                    ->whereRaw('UPPER(pos_receipt_payments.payment_method_code) = ?', ['CASH'])
-                    ->selectRaw('pos_receipt_payments.payment_method_id as payment_method_id, pos_receipts.id as receipt_id, MAX(COALESCE(pos_receipts.change_due, 0)) as change_due')
-                    ->groupBy('pos_receipt_payments.payment_method_id', 'pos_receipts.id'),
-                'cash_receipt_changes',
-            )
-            ->selectRaw('payment_method_id, SUM(change_due) as total_change_due')
-            ->groupBy('payment_method_id')
-            ->get()
-            ->keyBy('payment_method_id');
-
-        foreach ($rows as $row) {
-            /** @var string $pmId */
-            $pmId = $row->payment_method_id;
-            /** @var string|float|int|null $rawTotal */
-            $rawTotal = $row->total;
-            /** @var numeric-string $totalString */
-            $totalString = (string) ($rawTotal ?? '0');
-            $total = bcadd($totalString, '0', $scale);
-
-            $changeRow = $cashReceiptChanges->get($pmId);
-            if ($changeRow !== null) {
-                /** @var string|float|int|null $rawChangeDue */
-                $rawChangeDue = $changeRow->total_change_due;
-                $total = bcsub($total, $this->normaliseNumericString($rawChangeDue), $scale);
-            }
-
-            $totals[$pmId] = $total;
-        }
+        $totals = $this->shiftExpectedCashService->expectedPerPaymentMethod($shift);
 
         // Ensure every input has an entry (default '0.0000' if no receipts yet for that method).
         foreach ($inputs as $input) {
@@ -602,18 +549,6 @@ final class ReportGenerationService
         }
 
         return $totals;
-    }
-
-    /**
-     * @return numeric-string
-     */
-    private function normaliseNumericString(string|int|float|null $value): string
-    {
-        if (! is_numeric($value)) {
-            return '0';
-        }
-
-        return (string) $value;
     }
 
     /**
