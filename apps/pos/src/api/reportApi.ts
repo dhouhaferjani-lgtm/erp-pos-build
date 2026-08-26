@@ -1,5 +1,5 @@
 import Big from 'big.js';
-import { apiGet, apiGetRaw, apiPost } from '@/lib/api';
+import { apiGet, apiGetRaw, apiPost, ApiRequestError } from '@/lib/api';
 import { getDatabase } from '@/lib/db';
 import { queryAll } from '@/lib/db';
 import { toSqliteUtc } from '@/lib/db/sqliteTime';
@@ -202,10 +202,33 @@ export async function generateXReport(
 
   try {
     return await apiPost<XReportResponse>('/pos/reports/x', { terminal_id: terminalId });
-  } catch {
+  } catch (error) {
+    // B-13 gate r1 (R1-1). This used to be a bare `catch` that fell back on
+    // ANY failure — which cannot tell "the server refused you" from "the
+    // network dropped". A terminal whose account lacks `pos.view_reports`
+    // (`ReportController.php:59`) was therefore refused by the server and then
+    // SILENTLY SUCCEEDED locally, appending an immutable `X_REPORT` fiscal
+    // event on the way (rule 8: never correctable, only superseded). An authz
+    // denial must never produce a fiscal write.
+    //
+    // 401/403 only. A 404 (an older API build that does not carry the route),
+    // a 5xx (a broken server) and a transport error are all OUTAGES, and the
+    // offline-first fallback is the correct answer to an outage.
+    if (isAuthorizationRefusal(error)) {
+      throw error;
+    }
     // Offline fallback: generate X report from local SQLite data
     return await generateLocalXReport(terminalId, opts);
   }
+}
+
+/**
+ * A server answer that means "you may not", as opposed to "I could not reach
+ * the server". Only these two statuses are refusals: everything else the POS
+ * treats as an outage it is designed to keep trading through.
+ */
+function isAuthorizationRefusal(error: unknown): boolean {
+  return error instanceof ApiRequestError && (error.status === 401 || error.status === 403);
 }
 
 /**
