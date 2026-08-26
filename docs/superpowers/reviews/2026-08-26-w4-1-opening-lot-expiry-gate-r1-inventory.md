@@ -323,3 +323,67 @@ negative is the correct call and is pinned in `SpreadsheetParserDateCellTest`. `
 Land (or truthfully retract) the `ci.yml --filter` entry that the report and `feature-lane-manifest.json:830`
 already claim, and surface the wizard-path expiry conflict instead of discarding
 `expiryOutcomesInInputOrder` at `InventoryOpeningService.php:330`.
+
+## r3 scoped re-review
+
+Fix range `fba317686..a7d9f9a79` (4 commits). READ-ONLY, re-verified against the tree checked out at
+`a7d9f9a79` in `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/w4-1-opening-lot-expiry/` (clean
+tree, `git status --short` empty).
+
+### VERDICT: ALL ADDRESSED — mergeable (inventory lens)
+
+### r2 findings → disposition
+
+| r2 finding | disposition | evidence |
+|---|---|---|
+| **OPEN-1** — CI allowlist entry claimed but absent; manifest note false | **ADDRESSED** | `.github/workflows/ci.yml:1063` `--filter` now contains `OpeningLotExpiryW41Test\|NullInventedDefaultLotExpiryMigrationTest\|SpreadsheetParserDateCellTest` (grep-confirmed), on the `backend-test-pgsql` job (`ci.yml:578`). `actionlint .github/workflows/ci.yml` → clean, exit 0. `python3 -c "yaml.safe_load(...)"` → valid. `php tools/feature-lane-manifest-check.php` → `OK`, exit 0, "every declared lane is present in ci.yml; every --filter entry is anchored and uniquely matched". `feature-lane-manifest.json:830` note now reads "*added in fix round 2, 2026-08-26 — round 1 asserted this before the edit existed; gate r1 OPEN-1*" — matches the actual commit history (`09e51de94` is the first commit to touch `.github/`). |
+| **OPEN-2** — wizard discards `expiryOutcomesInInputOrder`; preview doesn't predict the conflict | **ADDRESSED** | `InventoryOpeningService.php:335-341` reads `$result->expiryOutcomesInInputOrder[$i]`, stashes `mapped['expiry_outcome']` on the row when `$outcome->isNoteworthy()` (`OpeningLotExpiryOutcome.php:455-461`); `:398-419` `expiryNoticesFor()` reads it back; `OpeningBalanceBatchController.php:620-630` calls it under `OpeningBatchType::Inventory` and attaches `expiry_notices` to the POST response. Preview: `InventoryOpeningService.php:364-374` `expiryConflictsWithExistingLot()` reads the DEFAULT lot via `BatchStockService::findDefaultBatch()` and flags `true` only when it exists with a different non-null date — exactly the set-once refusal condition. Ran the real tests, not just read them: `tests/Feature/Inventory/OpeningLotExpiryW41Test.php` — **15 passed** on PostgreSQL (`autoerp_w41_review_r3`, port 5433, thrown away after), including `test_the_wizard_names_a_conflicting_expiry_instead_of_discarding_it`, `test_the_preview_flags_a_date_that_the_post_will_refuse_to_apply`, `test_a_batch_tracked_product_is_never_told_it_is_not_batch_tracked`. |
+| **MINOR-1** — residual line under-reports its own count | **ADDRESSED** | `…2026_08_26_100100…:171` `$total = $this->residualQuery()->count()` (unlimited) drives the printed number; `:186` message uses `$total`, not `$listed->count()`; `:189` `$shown` appends `"(showing %d of %d)"` only when `$total > $listed->count()`. Count and name-list share `residualQuery()` (`:215-224`) so they cannot drift. |
+| **MINOR-2** — loud-skip branch (`SKIPPED:`) not pinned | **ADDRESSED** | `NullInventedDefaultLotExpiryMigrationTest::test_the_out_of_order_skip_announces_itself_on_stdout` — PG-only (`markTestSkipped` unless `pgsql`), re-tightens `expiry_date` to `NOT NULL`, runs `up()`, asserts `[W4-1] SKIPPED:` + the migration filename reach stdout, asserts the lot's expiry is unchanged, restores the column in `finally`. Ran for real on PostgreSQL: **passed** (7/7 in the class, this case included; it `markTestSkipped`s only under SQLite, where it correctly showed 1 skipped). |
+| **MINOR-3** — `is_expired` resurrection not censused | **ADDRESSED** | `…100100…:104-108` counts `is_expired = true` rows in `$ids` **before** the update; `:130-138` emits `previously flagged expired: N ... VERIFY THE PHYSICAL STOCK` only when `$resurrected > 0`. `test_it_counts_the_previously_expired_lots_it_resurrects` — passed on both SQLite and PostgreSQL, asserting the message text, the nulled expiry, and the cleared flag. |
+| **MINOR-4** — `IgnoredNotBatchTracked` false on a batch-tracked product | **ADDRESSED** | New `OpeningLotExpiryOutcome::IgnoredNoDefaultLot` case (`OpeningLotExpiryOutcome.php:436-446`). `OpeningBalancePostingService::classifyExpiryOutcome()` (`:347-374`) is called ONLY inside the `requires_batch_tracking` branch (`:175,210`) — the non-batch-tracked branch assigns `IgnoredNotBatchTracked` directly and unconditionally at `:216`, so the two codes cannot cross. `ProductOpeningStockPhase.php:166-175` renders the new code with truthful wording ("existing lots already account for the whole opening quantity … set the expiry on the relevant lot directly"). `test_a_batch_tracked_product_is_never_told_it_is_not_batch_tracked` — passed. |
+
+### Independently verified (not just re-read against the diff)
+
+- **PostgreSQL, not just SQLite.** Created a throwaway `autoerp_w41_review_r3` DB (port 5433, dropped
+  after), ran `-c phpunit-pgsql.xml`:
+  - `NullInventedDefaultLotExpiryMigrationTest` — **7 passed** (20 assertions), including the two new
+    MINOR-2/MINOR-3 cases that only run on the real PG driver.
+  - `OpeningLotExpiryW41Test` — **15 passed** (23 assertions), including all three OPEN-2/MINOR-4 cases.
+  - Local dev `autoerp` DB was never touched (separate throwaway DB, matching the report's own protocol).
+- **SQLite.** `OpeningLotExpiryW41Test` + `NullInventedDefaultLotExpiryMigrationTest` +
+  `SpreadsheetParserDateCellTest` together — **26 passed, 1 skipped** (the PG-only MINOR-2 case, correctly
+  skipped with a stated reason, not silently green).
+- **PHPStan level 8** on the 7 touched inventory/import files (`InventoryOpeningService`,
+  `OpeningBalancePostingService`, `OpeningLotExpiryOutcome`, `OpeningBalanceBatchController`,
+  `ProductOpeningStockPhase`, `MigrationWizardService`, the backfill migration) — **[OK] No errors**.
+- **Frontend.** `pnpm vitest run BatchPreview.test.tsx` — **8 passed**, including the two new r2 badge
+  cases (`expiry-past-1`, `expiry-conflict-1`) and the "clean line stays unbadged" negative.
+- **CI wiring, not just presence of the string.** `actionlint` clean, YAML parses, and
+  `php tools/feature-lane-manifest-check.php` passes with the exact statement "every declared lane is
+  present in ci.yml; every --filter entry is anchored and uniquely matched" — this is the checker OPEN-1
+  said could not catch a false *note*, and it is now checking a filter that is actually true.
+- **No `variantId` regression in `expiryConflictsWithExistingLot()`.** `InventoryOpeningService.php:369`
+  calls `findDefaultBatch($companyId, $productId)` with no `$variantId` — `findByBatchNumberAndVariant()`
+  (`BatchRepository.php:32-49`) then filters `whereNull('variant_id')`. Checked this is not a new
+  false-negative: the wizard's own `OpeningBalanceLine::make()` call hard-codes `variantId: null`
+  (`InventoryOpeningService.php:284`, unchanged by this fix range) — the wizard path does not support
+  variants at all, pre-existing scope, not a regression introduced here.
+- **`companyIdFor()` scoping** (`InventoryOpeningService.php:307-310`) reads `company_id` off the
+  `Product` row directly rather than `$batch->company_id`; harmless under database-per-tenant (the
+  connection is already the tenant's DB) and only feeds a further-scoped lookup — not a new leak.
+
+### Precision (rule 19) — clean
+
+No float touches money or quantity in this fix range. The new `$total`/`$resurrected`/`$census` counters
+are all PHP `int` row counts, not decimal values. `expiry_is_past` / `expiry_conflicts_with_existing_lot`
+are booleans. Nothing new here.
+
+### New Critical/Important in this fix range
+
+None found.
+
+### What to fix before merge
+
+Nothing outstanding from the inventory lens. `expiry_notices` still has no FE consumer (fix round 2's own
+"Concerns" item 2) — named there as a residual, not a promised fix, and out of this gate's scope.
