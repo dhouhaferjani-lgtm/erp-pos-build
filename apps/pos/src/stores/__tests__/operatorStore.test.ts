@@ -95,6 +95,14 @@ const mockOperator: Operator = {
 // Pre-compute a real bcrypt hash of '1234' for offline tests
 const PIN_1234_HASH = bcrypt.hashSync('1234', 10);
 
+/**
+ * Gate r1 (R1-3): cached operator rows now carry the roster-pull stamp that the
+ * offline authority TTL reads. These fixtures are deliberately FRESH — the TTL
+ * itself is covered in `lib/auth/__tests__/operatorAuthorityFreshness.test.ts`
+ * and `lib/auth/roles.test.ts`.
+ */
+const FRESH_SYNCED_AT = new Date().toISOString();
+
 describe('operatorStore', () => {
   beforeEach(() => {
     _authState = { companyId: 'company-1', user: defaultUser };
@@ -136,6 +144,7 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
+      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -163,6 +172,7 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
+      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -187,6 +197,7 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
+      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -216,6 +227,7 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
+      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -238,6 +250,7 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
+      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -264,6 +277,7 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
+      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -288,6 +302,7 @@ describe('operatorStore', () => {
         name: 'Jane',
         email: 'jane@example.com',
         pin_hash: PIN_1234_HASH,
+        synced_at: FRESH_SYNCED_AT,
         roles: ['cashier'],
         permissions: ['pos.sell'],
         can_discount: false,
@@ -301,6 +316,7 @@ describe('operatorStore', () => {
         name: 'Bob',
         email: 'bob@example.com',
         pin_hash: secondHash,
+        synced_at: FRESH_SYNCED_AT,
         roles: ['manager'],
         permissions: ['pos.manage'],
         can_discount: true,
@@ -451,6 +467,7 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
+      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -475,6 +492,7 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
+      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -505,6 +523,7 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
+      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -533,6 +552,7 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
+      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -680,6 +700,7 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
+      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -714,6 +735,7 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
+      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,

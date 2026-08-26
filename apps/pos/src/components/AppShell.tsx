@@ -78,7 +78,7 @@ export function AppShell() {
   // B-13 (iv): manager gating follows the ACTIVE PIN OPERATOR only. The
   // account the terminal is signed in with (usually the owner's) is a
   // provisioning identity and grants nothing to whoever holds the till.
-  const isManager = hasManagerAccess(operator?.roles);
+  const isManager = hasManagerAccess(operator);
   const navItems: { id: NavDest; label: string; icon: React.ReactNode }[] = [
     { id: 'caisse', label: t('nav.caisse'), icon: <ShoppingCart className="h-5 w-5" /> },
     { id: 'clients', label: t('nav.clients'), icon: <Users className="h-5 w-5" /> },

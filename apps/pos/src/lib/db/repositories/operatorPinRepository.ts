@@ -23,6 +23,17 @@ export interface CachedOperator {
   discount_permissions_fetched_at: string | null;
   discount_permissions_terminal_code: string | null;
   discount_permissions_status: DiscountPermissionStatus;
+  /**
+   * `operator_pins.synced_at`, stamped `datetime('now')` by `upsertOperators`
+   * — so `YYYY-MM-DD HH:MM:SS` UTC with a SPACE separator (rule 20). NEVER
+   * `new Date()` this directly; use `sqliteUtcToDate`.
+   *
+   * OPTIONAL only for hand-built fixtures: `rowToOperator` always populates it
+   * from the row. Absent reads as STALE in
+   * `isOperatorAuthorityStale`, which closes the manager gates — the safe
+   * answer for an authority we cannot date (gate r1 R1-3).
+   */
+  synced_at?: string | null;
 }
 
 interface OperatorPinRow {
@@ -33,6 +44,7 @@ interface OperatorPinRow {
   pin_hash: string;
   roles: string;
   permissions: string;
+  synced_at?: string | null;
   company_ids?: string | null;
   terminal_ids?: string | null;
   approval_scopes?: string | null;
@@ -76,6 +88,7 @@ function rowToOperator(row: OperatorPinRow): CachedOperator {
     discount_permissions_fetched_at: row.discount_permissions_fetched_at ?? null,
     discount_permissions_terminal_code: row.discount_permissions_terminal_code ?? null,
     discount_permissions_status: permissionStatus,
+    synced_at: row.synced_at ?? null,
   };
 }
 

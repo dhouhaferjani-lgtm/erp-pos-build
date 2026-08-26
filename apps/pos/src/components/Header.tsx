@@ -118,7 +118,9 @@ export function Header() {
    * B-13 (iv): every manager gate in the POS reads the ACTIVE PIN OPERATOR,
    * never the back-office account the terminal is signed in with.
    */
-  const isManager = hasManagerAccess(operator?.roles);
+  const isManager = hasManagerAccess(operator);
+  // R1-2: the cash drawer has its own seeded manager permission.
+  const canOperateCashDrawer = hasManagerAccess(operator, 'cash_drawer');
 
   /**
    * B-13 (ii)/(iii): the blind-cash-count policy, resolved AT MOUNT rather
@@ -371,6 +373,24 @@ export function Header() {
     },
     [terminal, companyId],
   );
+
+  /**
+   * Gate r1 (R1-2). `ReportsMenu` FILTERS manager-only entries, but a filtered
+   * menu is not a boundary — the same argument the X report already acts on.
+   * Cash-drawer ops needed it MORE, not less: the server authorizes
+   * deposit/payout on `pos.operate_terminal` (`CashDrawerController.php:42`,
+   * `:111`), which CASHIERS HOLD (`RolesAndPermissionsSeeder.php:685`), so for
+   * real cash movement the device gate is the ONLY gate. That server-side
+   * permission gap is recorded in the LEDGER; it is out of this lane.
+   */
+  const handleCashDrawerOps = () => {
+    setShowReportsMenu(false);
+    if (!canOperateCashDrawer) {
+      toast.error(t('reports.managerOnly'));
+      return;
+    }
+    setShowCashDrawerModal(true);
+  };
 
   const handleXReport = async () => {
     if (!terminal) return;
@@ -814,7 +834,7 @@ export function Header() {
         onClose={() => setShowReportsMenu(false)}
         onXReport={() => void handleXReport()}
         onTransactionHistory={() => { setShowReportsMenu(false); navigate('/sales'); }}
-        onCashDrawerOps={() => { setShowReportsMenu(false); setShowCashDrawerModal(true); }}
+        onCashDrawerOps={handleCashDrawerOps}
         onTodaySales={() => { setShowReportsMenu(false); navigate('/sales'); }}
         onZReportHistory={() => { setShowReportsMenu(false); navigate('/reports/z'); }}
       />

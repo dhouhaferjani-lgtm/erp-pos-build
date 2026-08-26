@@ -96,7 +96,7 @@ export function SettingsPage() {
   const operator = useOperatorStore((s) => s.operator);
   // B-13 (iv): PIN operator only — device unbind is a manager action and the
   // terminal's login account must not confer it on a cashier.
-  const isManager = hasManagerAccess(operator?.roles);
+  const isManager = hasManagerAccess(operator);
 
   const [showUnbindConfirm, setShowUnbindConfirm] = useState(false);
 

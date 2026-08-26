@@ -98,9 +98,12 @@ const mockLogout = vi.fn();
 const mockLockScreen = vi.fn();
 const mockClearOperator = vi.fn();
 
-let mockOperator: { name: string; roles: string[]; id: string } | null = {
-  name: 'Test Manager', roles: ['manager'], id: 'op-1',
-};
+let mockOperator: {
+  name: string;
+  roles: string[];
+  id: string;
+  permissions?: string[];
+} | null = { name: 'Test Manager', roles: ['manager'], id: 'op-1' };
 let mockTerminal: {
   id: string;
   code: string;
@@ -222,9 +225,16 @@ vi.mock('@/components/pos/EndOfDayPreviewModal', () => ({
 }));
 
 vi.mock('@/components/pos/ReportsMenu', () => ({
-  ReportsMenu: (props: { isOpen: boolean; onXReport: () => void }) =>
+  ReportsMenu: (props: {
+    isOpen: boolean;
+    onXReport: () => void;
+    onCashDrawerOps: () => void;
+  }) =>
     props.isOpen ? (
-      <button type="button" onClick={props.onXReport}>menu-x-report</button>
+      <>
+        <button type="button" onClick={props.onXReport}>menu-x-report</button>
+        <button type="button" onClick={props.onCashDrawerOps}>menu-cash-drawer</button>
+      </>
     ) : null,
 }));
 
@@ -238,7 +248,8 @@ vi.mock('@/components/pos/XReportModal', () => ({
 }));
 
 vi.mock('@/components/organisms/CashDrawerModal', () => ({
-  CashDrawerModal: () => null,
+  CashDrawerModal: (props: { isOpen: boolean }) =>
+    props.isOpen ? <div data-testid="cash-drawer-modal" /> : null,
 }));
 
 import { Header } from '../Header';
@@ -758,5 +769,59 @@ describe('Header — X report gate + blind-count disclosure (B-13)', () => {
     mockOperator = { name: 'Cashier', roles: ['cashier'], id: 'op-2' };
     render(<Header />);
     expect(screen.queryByTitle('shift.opening')).toBeNull();
+  });
+
+  /**
+   * Gate r1 (R1-2) — cash-drawer ops need the execution-time re-check MORE
+   * than the X report does: the server authorizes deposit/payout on
+   * `pos.operate_terminal`, which cashiers hold, so the device gate is the
+   * only manager control on real cash movement.
+   */
+  it('REFUSES cash-drawer operations to a cashier PIN operator', async () => {
+    mockOperator = {
+      name: 'Cashier',
+      roles: ['cashier'],
+      id: 'op-2',
+      permissions: ['pos.operate_terminal'],
+    };
+    render(<Header />);
+    fireEvent.click(screen.getByTitle('quickActions.reports'));
+    fireEvent.click(await screen.findByText('menu-cash-drawer'));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('reports.managerOnly');
+    });
+    expect(screen.queryByTestId('cash-drawer-modal')).toBeNull();
+  });
+
+  it('opens cash-drawer operations for an operator holding the drawer permission', async () => {
+    mockOperator = {
+      name: 'Manager',
+      roles: ['manager'],
+      id: 'op-1',
+      permissions: ['pos.view_reports', 'pos.approve_cash_drawer_control'],
+    };
+    render(<Header />);
+    fireEvent.click(screen.getByTitle('quickActions.reports'));
+    fireEvent.click(await screen.findByText('menu-cash-drawer'));
+
+    expect(await screen.findByTestId('cash-drawer-modal')).toBeInTheDocument();
+  });
+
+  it('REFUSES cash-drawer ops to a reports-only manager (surface-specific permission)', async () => {
+    mockOperator = {
+      name: 'Reports Manager',
+      roles: ['manager'],
+      id: 'op-3',
+      permissions: ['pos.view_reports'],
+    };
+    render(<Header />);
+    fireEvent.click(screen.getByTitle('quickActions.reports'));
+    fireEvent.click(await screen.findByText('menu-cash-drawer'));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('reports.managerOnly');
+    });
+    expect(screen.queryByTestId('cash-drawer-modal')).toBeNull();
   });
 });

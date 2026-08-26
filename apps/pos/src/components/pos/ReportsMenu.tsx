@@ -30,7 +30,7 @@ export function ReportsMenu({
   // transaction history + today's sales views stay open to every operator.
   // B-13 (iv): the gate reads the PIN operator, never the login account.
   const operator = useOperatorStore((s) => s.operator);
-  const isManager = hasManagerAccess(operator?.roles);
+  const isManager = hasManagerAccess(operator);
 
   useEffect(() => {
     if (!isOpen) return;
