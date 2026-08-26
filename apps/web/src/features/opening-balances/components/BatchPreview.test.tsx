@@ -61,6 +61,7 @@ const inventoryPreview: InventoryPostPreview = {
       quantity_decimals: 3,
       unit_cost: '2.000',
       line_value: '2.500',
+      expiry_date: null,
     },
   ],
   totals: {

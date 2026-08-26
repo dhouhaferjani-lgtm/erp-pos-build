@@ -150,9 +150,21 @@ final class OpeningBalancePostingService
 
                         // Default-batch invariant: a batch-tracked product must
                         // never hold stock that isn't inside a lot. Back the
-                        // opened quantity with a DEFAULT lot (expiry = entry date
-                        // + the product's default expiry period) so PO receipt,
+                        // opened quantity with a DEFAULT lot so PO receipt,
                         // transfers and POS lot selection all have a lot to pick.
+                        //
+                        // 🚨 W4-1 — the lot's EXPIRY, in precedence order:
+                        //   1. the `expiry_date` the operator supplied on THIS
+                        //      opening line (import column / wizard column);
+                        //   2. the product's configured `default_shelf_life_days`,
+                        //      measured from the entry date;
+                        //   3. nothing — the lot is minted UNDATED and FEFO ranks
+                        //      it after every dated lot.
+                        // Case 3 used to fabricate `entry date + 365`. On the launch
+                        // tenant every product is batch-tracked and all day-one stock
+                        // is an opening, so that invented date became the EARLIEST on
+                        // every product and the FEFO guards COMPELLED shipping the
+                        // fabricated lot first. Never re-add a fallback here.
                         $product = $products->get($line->productId);
                         if ($product !== null && $product->requires_batch_tracking) {
                             // Gate r1 finding 12 — `ensureDefaultBatch()` sets the
@@ -172,6 +184,7 @@ final class OpeningBalancePostingService
                                 shelfLifeDays: $product->default_shelf_life_days,
                                 asOfDate: $posting->entryDate->toDateString(),
                                 variantId: $line->variantId,
+                                expiryDate: $line->expiryDate,
                             );
                         }
 

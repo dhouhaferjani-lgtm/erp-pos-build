@@ -83,6 +83,23 @@ function isBatchTransferableAtSource(batch: Batch, sourceLocationId: string): bo
   return batch.can_be_sold && bccomp(quantityAtSource(batch, sourceLocationId), '0') > 0
 }
 
+/**
+ * FEFO order, matching the SERVER's ranking exactly (W4-1): earliest expiry
+ * first, and a lot that records NO expiry LAST. This is not cosmetic — the
+ * transfer endpoint REFUSES an allocation that does not follow its own FEFO
+ * order ("Batch allocations must follow FEFO"), so a client that sorted undated
+ * lots first would build a draft the server rejects.
+ */
+function compareByFefo(a: Batch, b: Batch): number {
+  if (a.expiry_date === null || b.expiry_date === null) {
+    if (a.expiry_date === b.expiry_date) {
+      return 0
+    }
+    return a.expiry_date === null ? 1 : -1
+  }
+  return a.expiry_date.localeCompare(b.expiry_date)
+}
+
 function buildFefoAllocations(
   batches: Batch[],
   sourceLocationId: string,
@@ -93,7 +110,7 @@ function buildFefoAllocations(
 
   const eligible = batches
     .filter((batch) => isBatchTransferableAtSource(batch, sourceLocationId))
-    .sort((a, b) => a.expiry_date.localeCompare(b.expiry_date))
+    .sort(compareByFefo)
 
   for (const batch of eligible) {
     if (bccomp(remaining, '0') <= 0) {
@@ -127,7 +144,7 @@ function isBatchAllocationCovered(allocations: DraftBatchAllocation[], requested
 }
 
 function sortBatchesByExpiry(batches: Batch[]): Batch[] {
-  return Array.from(batches).sort((a, b) => a.expiry_date.localeCompare(b.expiry_date))
+  return Array.from(batches).sort(compareByFefo)
 }
 
 interface RemoveLineButtonProps {
@@ -211,7 +228,10 @@ function BatchAllocationPanel({ line, sourceLocationId, batches, onChange }: Bat
     next.sort((a, b) => {
       const batchA = batches.find((batch) => batch.id === a.batch_id)
       const batchB = batches.find((batch) => batch.id === b.batch_id)
-      return (batchA?.expiry_date ?? '').localeCompare(batchB?.expiry_date ?? '')
+      if (batchA === undefined || batchB === undefined) {
+        return 0
+      }
+      return compareByFefo(batchA, batchB)
     })
     onChange(next)
   }
@@ -233,7 +253,9 @@ function BatchAllocationPanel({ line, sourceLocationId, batches, onChange }: Bat
               <div key={batch.id} className="grid grid-cols-1 gap-2 md:grid-cols-12 md:items-center md:gap-3">
                 <div className="md:col-span-4">
                   <div className={`text-sm font-medium ${textColors.primary}`}>{batch.batch_number}</div>
-                  <div className={`text-xs ${textColors.tertiary}`}>{batch.expiry_date}</div>
+                  <div className={`text-xs ${textColors.tertiary}`}>
+                    {batch.expiry_date ?? t('create.batch.noExpiry')}
+                  </div>
                 </div>
                 <div className={`text-xs ${textColors.tertiary} md:col-span-2`}>
                   <span className="md:hidden">{t('create.batch.statusLabel')}: </span>

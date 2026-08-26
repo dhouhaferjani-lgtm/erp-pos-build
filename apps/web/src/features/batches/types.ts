@@ -18,7 +18,13 @@ export interface Batch {
   product_variant_id: string | null
   batch_number: string
   manufacturing_date: string | null
-  expiry_date: string
+  /**
+   * W4-1 — null when the lot records NO expiry. That is a fact about the stock,
+   * not a missing value: nobody supplied an expiry and the server no longer
+   * invents one. Render it as "no expiry", and rank such a lot LAST wherever
+   * FEFO order is shown, matching the server.
+   */
+  expiry_date: string | null
   expiry_status: ExpiryStatus
   is_active: boolean
   is_recalled: boolean
@@ -27,7 +33,8 @@ export interface Batch {
   recalled_at: string | null
   notes: string | null
   can_be_sold: boolean
-  days_until_expiry: number
+  /** Null for a lot with no recorded expiry (W4-1). */
+  days_until_expiry: number | null
   total_quantity: number
   available_quantity: number
   created_at: string
@@ -116,9 +123,10 @@ export interface FEFOSuggestion {
   batch_number: string
   /** Suggested draw from this lot (4dp numeric string) */
   quantity: string
-  /** ISO date string "YYYY-MM-DD" */
-  expiry_date: string
-  days_until_expiry: number
+  /** ISO date string "YYYY-MM-DD", null when the lot records no expiry (W4-1). */
+  expiry_date: string | null
+  /** Null for a lot with no recorded expiry (W4-1). */
+  days_until_expiry: number | null
   expiry_status: FEFOExpiryStatus
   expiry_status_label: string
   expiry_status_color: string

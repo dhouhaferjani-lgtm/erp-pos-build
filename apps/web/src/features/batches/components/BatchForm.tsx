@@ -52,7 +52,10 @@ export function BatchForm({ batch, onSave, isSubmitting = false, submitLabel }: 
     if (batch) {
       setValue('product_id', batch.product_id)
       setValue('batch_number', batch.batch_number)
-      setValue('expiry_date', batch.expiry_date.split('T')[0])
+      // W4-1: a lot may record NO expiry. Editing it leaves the field blank, and
+      // the form's own `min(1)` rule then makes the operator supply a real date
+      // rather than letting a hand-edit silently re-invent one.
+      setValue('expiry_date', batch.expiry_date === null ? '' : (batch.expiry_date.split('T')[0] ?? ''))
       setValue('manufacturing_date', batch.manufacturing_date ? batch.manufacturing_date.split('T')[0] : '')
       setValue('notes', batch.notes || '')
     }

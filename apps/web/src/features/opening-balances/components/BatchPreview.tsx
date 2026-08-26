@@ -185,6 +185,9 @@ export function BatchPreview({ preview }: BatchPreviewProps) {
                   <th className={`px-4 py-2 text-right text-xs font-medium ${colorTokens.text.subtle}`}>
                     {t('openingBalances.preview.unitCost')}
                   </th>
+                  <th className={`px-4 py-2 text-left text-xs font-medium ${colorTokens.text.subtle}`}>
+                    {t('openingBalances.preview.expiryDate')}
+                  </th>
                   <th className={`px-4 py-2 text-right text-xs font-medium ${colorTokens.text.subtle}`}>
                     {t('openingBalances.preview.value')}
                   </th>
@@ -202,6 +205,9 @@ export function BatchPreview({ preview }: BatchPreviewProps) {
                       {formatQuantity(line.quantity, getQuantityDecimals(line))}
                     </td>
                     <td className={`px-4 py-2 text-sm text-right ${colorTokens.text.muted}`}>{line.unit_cost}</td>
+                    <td className={`px-4 py-2 text-sm ${colorTokens.text.subtle}`}>
+                      {line.expiry_date ?? t('openingBalances.preview.noExpiry')}
+                    </td>
                     <td className={`px-4 py-2 text-sm text-right font-medium ${colorTokens.intent.primary.text}`}>
                       {line.line_value}
                     </td>
@@ -210,6 +216,11 @@ export function BatchPreview({ preview }: BatchPreviewProps) {
               </tbody>
             </DataTable>
           </div>
+          {inventory.lines.some((line) => line.expiry_date === null) && (
+            <div className={`${colorTokens.surface.page} px-4 py-2 text-xs ${colorTokens.text.subtle}`}>
+              {t('openingBalances.preview.noExpiryHint')}
+            </div>
+          )}
           {inventory.lines.length > 20 && (
             <div className={`${colorTokens.surface.page} px-4 py-2 text-xs ${colorTokens.text.subtle}`}>
               {t('openingBalances.preview.moreRows', { count: inventory.lines.length - 20 })}

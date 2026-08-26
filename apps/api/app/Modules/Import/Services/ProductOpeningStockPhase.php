@@ -98,6 +98,13 @@ final class ProductOpeningStockPhase
                                     CurrencyScale::bcformatStrict((string) $data['quantity'], 4),
                                     CurrencyScale::bcformatStrict((string) $data['purchase_price'], $scale),
                                     $scale,
+                                    // W4-1 — the optional `expiry_date` column. Blank
+                                    // stays blank all the way down: the opening lot is
+                                    // then dated by the product's configured shelf
+                                    // life, or minted undated. Never invented.
+                                    $this->present($data['expiry_date'] ?? null)
+                                        ? (string) $data['expiry_date']
+                                        : null,
                                 ),
                             ],
                         ));

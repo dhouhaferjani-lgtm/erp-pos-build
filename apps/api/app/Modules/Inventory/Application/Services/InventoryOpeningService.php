@@ -17,6 +17,7 @@ use App\Modules\Inventory\Application\DTOs\OpeningBalancePosting;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\QuantityScale;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -122,7 +123,8 @@ class InventoryOpeningService
      *   "product_code": "SKU-001",
      *   "location_code": "MAIN",
      *   "quantity": "100.00",
-     *   "unit_cost": "25.50"
+     *   "unit_cost": "25.50",
+     *   "expiry_date": "2027-03-31"   // optional (W4-1)
      * }
      *
      * @return array{valid: bool, errors: array<string, array<string>>, mapped_data: array<string, mixed>}
@@ -183,6 +185,30 @@ class InventoryOpeningService
             $errors['unit_cost'] = ['Unit cost must be a non-negative number'];
         } else {
             $mappedData['unit_cost'] = bcadd('0.00', (string) $unitCost, $this->monetaryScale());
+        }
+
+        // W4-1 — OPTIONAL expiry for the lot this opening row seeds. Absent or
+        // blank means "not supplied", NOT "no expiry rule": the posting service
+        // still applies the product's configured `default_shelf_life_days`, and
+        // only mints the lot UNDATED when there is no shelf life either. Nothing
+        // downstream invents a date any more.
+        $expiryDate = $rawData['expiry_date'] ?? null;
+        if (is_string($expiryDate) && trim($expiryDate) !== '') {
+            $expiryDate = trim($expiryDate);
+
+            // hasFormat() BEFORE parsing (Carbon 3 throws on a malformed value),
+            // then the parsed result is re-checked because createFromFormat is
+            // typed nullable — a null must become a row error, never a dropped
+            // expiry that leaves the lot silently undated.
+            $parsed = CarbonImmutable::hasFormat($expiryDate, 'Y-m-d')
+                ? CarbonImmutable::createFromFormat('Y-m-d', $expiryDate)
+                : null;
+
+            if ($parsed === null) {
+                $errors['expiry_date'] = ['Expiry date must be a calendar date in YYYY-MM-DD form'];
+            } else {
+                $mappedData['expiry_date'] = $parsed->toDateString();
+            }
         }
 
         return [
@@ -255,6 +281,9 @@ class InventoryOpeningService
                     quantity: (string) ($mappedData['quantity'] ?? '0.0000'),
                     unitCost: (string) ($mappedData['unit_cost'] ?? '0.000'),
                     currencyScale: $monetaryScale,
+                    expiryDate: isset($mappedData['expiry_date']) && is_string($mappedData['expiry_date'])
+                        ? $mappedData['expiry_date']
+                        : null,
                 );
 
                 $lineRows[] = $row;
@@ -354,6 +383,13 @@ class InventoryOpeningService
                 'quantity_decimals' => $quantityDecimalsByProductId[$productId] ?? QuantityScale::SCALE,
                 'unit_cost' => $unitCost,
                 'line_value' => $lineValue,
+                // W4-1 — null renders as "no expiry recorded" in the preview. The
+                // operator has to be able to SEE, before posting, that the lot they
+                // are about to open carries no expiry, because that is exactly the
+                // fact the old build hid behind a fabricated cutover+365 date.
+                'expiry_date' => isset($mappedData['expiry_date']) && is_string($mappedData['expiry_date'])
+                    ? $mappedData['expiry_date']
+                    : null,
             ];
         });
 

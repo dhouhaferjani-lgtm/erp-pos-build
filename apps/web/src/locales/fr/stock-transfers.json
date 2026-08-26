@@ -73,6 +73,7 @@
       "needsAllocation": "Allocation requise",
       "title": "Affectation lots et péremption",
       "fefoHint": "FEFO propose d'abord la date de péremption la plus proche.",
+      "noExpiry": "Sans péremption",
       "quantityFor": "Quantité depuis {{batch}}",
       "statusLabel": "Statut",
       "availableLabel": "Disponible",

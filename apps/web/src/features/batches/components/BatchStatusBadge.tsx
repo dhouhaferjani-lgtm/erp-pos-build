@@ -5,7 +5,8 @@ import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface BatchStatusBadgeProps {
   status: ExpiryStatus
-  daysUntilExpiry?: number
+  /** Null for a lot that records no expiry (W4-1) — the day count is then hidden. */
+  daysUntilExpiry?: number | null
   showIcon?: boolean
   showDays?: boolean
   size?: 'sm' | 'md' | 'lg'
@@ -47,7 +48,7 @@ export function BatchStatusBadge({
       <span className="font-medium">
         {t(`batches:expiryStatus.${status.toLowerCase()}`)}
       </span>
-      {showDays && daysUntilExpiry !== undefined && status !== 'EXPIRED' && (
+      {showDays && daysUntilExpiry !== undefined && daysUntilExpiry !== null && status !== 'EXPIRED' && (
         <span className="font-normal opacity-90">
           ({daysUntilExpiry} {t('batches:daysRemaining', 'days')})
         </span>

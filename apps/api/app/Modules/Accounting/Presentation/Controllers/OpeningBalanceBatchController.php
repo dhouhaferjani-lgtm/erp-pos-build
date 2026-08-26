@@ -412,6 +412,14 @@ class OpeningBalanceBatchController extends Controller
                 'rows.*.location_code' => ['required', 'string'],
                 'rows.*.quantity' => ['required', 'numeric', 'gt:0', 'regex:/^-?\d+(\.\d{1,4})?$/'],
                 'rows.*.unit_cost' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+                // W4-1 — optional; the expiry of the opening lot this row seeds.
+                // Blank means "not supplied": the lot takes the product's configured
+                // shelf life if it has one, and is otherwise minted UNDATED so FEFO
+                // ranks it after every dated lot. InventoryOpeningService re-validates
+                // per row (and refuses a past date); this is ingress shape only.
+                // `date_format` rather than `date` so a locale-ambiguous cell is
+                // rejected here instead of silently parsed as the wrong day.
+                'rows.*.expiry_date' => ['nullable', 'date_format:Y-m-d'],
             ],
             OpeningBatchType::ArOpenItems, OpeningBatchType::ApOpenItems => [
                 'rows.*.partner_code' => ['required', 'string'],
