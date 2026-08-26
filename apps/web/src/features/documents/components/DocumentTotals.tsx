@@ -104,6 +104,19 @@ export function DocumentTotals({
    * Printing a net subtotal beside a gross total is a VAT breakdown written as a
    * subtraction, and a proforma is not a statement of account.
    *
+   * W-4 RULING (fiscal gate 2026-08-26): settlement surfaces DO stay on a
+   * proforma, and that is not a contradiction of the paragraph above. THIS BOX is
+   * a mirror of the customer-facing PDF (`proforma_totals_rows.blade.php`) and
+   * correctly drops the settlement rows; the REST of the page — the outstanding
+   * callout, the payments tab, close-with-writeoff — is an internal working
+   * surface for staff, and every figure on it is a GROSS amount (`total`,
+   * `amount_paid`, `outstanding_amount`, `balance_due`) with no net basis and no
+   * rate beside it, so no subtraction recovers the VAT. Settling an unsealed
+   * invoice is a supported flow (`paidNeverSealedInvoice` is one of the nine
+   * shapes the predicate is defined over), and suppressing those surfaces would
+   * remove the only in-product way to record a payment against a confirmed
+   * invoice. Recorded here so the next reviewer does not reopen it.
+   *
    * It returns BEFORE the breakdown query's loading and error arms on purpose:
    * the query is disabled here, so it stays pending forever, and nothing below
    * this line may ever render for an unsealed document.

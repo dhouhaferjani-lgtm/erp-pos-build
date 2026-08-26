@@ -84,8 +84,14 @@ export interface CreditNote {
    *
    * This view used to guess from `status` and its own comment conceded it "cannot
    * tell" whether a `posted` credit note was ever sealed. It is told now. Never
-   * re-derive it. Optional only because existing fixtures predate the field;
-   * compare with `=== true`.
+   * re-derive it. Optional only because existing fixtures predate the field.
+   *
+   * Compare with `!== false`, NOT `=== true` (fiscal gate r1 F-3, and what
+   * `CreditNoteDetailPage.tsx` does). An omitted field must degrade toward
+   * "print less" — treated as a proforma — rather than toward claiming a seal on
+   * a document nothing has sealed. (`components/CreditNoteDetail.tsx` still reads
+   * `=== true`; it is exported but mounted by no route, per its own docblock, and
+   * aligning it belongs with the mount-or-delete ticket.)
    */
   is_proforma?: boolean;
   created_at: string; // ISO 8601

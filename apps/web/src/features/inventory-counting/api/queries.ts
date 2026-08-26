@@ -127,8 +127,12 @@ export function useActivateCounting() {
       ])
       toast.success(t('counting.messages.activated'))
     },
-    onError: (error: Error) => {
-      toast.error(t('counting.messages.activateFailed', { error: error.message }))
+    onError: (error: unknown) => {
+      // Same reason as the finalize handler below: `error` is the RAW AxiosError
+      // (the response interceptor re-rejects unchanged), so `.message` is always
+      // "Request failed with status code 422". `getErrorMessage()` reads the
+      // envelope, which is where the backend-localised refusal actually lives.
+      toast.error(t('counting.messages.activateFailed', { error: getErrorMessage(error) }))
     },
   })
 }
