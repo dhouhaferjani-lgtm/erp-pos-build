@@ -316,11 +316,18 @@ final readonly class CashMovementsReportService
                     JournalEntryStatus::Posted->value,
                     ...self::PAYMENT_BACKED_SOURCE_TYPES,
                     CashMovementDirection::Out->value,
-                    // A POS refund leg keeps payment_type=POS (indistinguishable
-                    // from a sale on that column), so it would fall to ELSE=In
-                    // and report a phantom inflow. It is linked via
-                    // journal_entry_id to its `pos_receipt_refund` reversal
-                    // entry — resolve that leg to Out.
+                    // A POS refund leg is linked via journal_entry_id to its
+                    // `pos_receipt_refund` reversal entry — resolve that leg to
+                    // Out. W4R2-2 (gate r1): this arm PREDATES the `pos_refund`
+                    // payment type and its comment used to say the leg "keeps
+                    // payment_type=POS (indistinguishable from a sale on that
+                    // column)". That is no longer true — the whole point of the
+                    // lane is that it IS distinguishable, and the
+                    // `PaymentType::POSRefund` binding two arms down now catches
+                    // the same leg on the column. The arms are kept BOTH ways
+                    // round on purpose: this one still covers a leg written
+                    // before the lane and not yet backfilled, and the type arm
+                    // still covers a leg whose reversal entry is not Posted.
                     JournalEntryStatus::Posted->value,
                     CashMovementSourceType::PosReceiptRefund->value,
                     CashMovementDirection::Out->value,
