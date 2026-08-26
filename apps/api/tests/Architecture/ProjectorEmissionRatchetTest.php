@@ -168,6 +168,22 @@ final class ProjectorEmissionRatchetTest extends TestCase
         // row: no pos_cash_drawer_operations row and no
         // CashDrawerOperationRecorded, so calculateExpectedCash() is blind.
         // Three register rows, one class.
+        //
+        // ⚠️ THIS LINE IS TRUE ABOUT ES-03/ES-02/ES-05, AND NO LONGER TRUE ABOUT
+        // THE PROJECTOR AS A WHOLE (LEDGER O-30, 2026-08-26). Applying a
+        // SESSION_CLOSE to a shift an operator closed with
+        // `pos:shift:close-orphaned` DOES emit a domain event —
+        // `OrphanedShiftDeviceCloseApplied` — but it emits it by delegating to
+        // `OrphanedShiftDeviceCloseReconciler`, so the file scan above cannot
+        // see it. That is the "Over-report" blind spot this test's own docblock
+        // names, hit deliberately: emitting inline would shrink the discovered
+        // list, turn this test red, and offer exactly one "fix" — deleting this
+        // line, which would silently claim ES-03/ES-02/ES-05 are closed. They
+        // are not.
+        //
+        // DO NOT DELETE THIS LINE on the strength of the O-30 emission. It comes
+        // out when A1 ships ShiftOpened/ShiftClosed, CashCountRecorded and
+        // CashDrawerOperationRecorded — the three events it actually names.
         'App\Modules\POS\Application\Projections\ZSessionLifecycleProjection',
     ];
 

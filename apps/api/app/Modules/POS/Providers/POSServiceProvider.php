@@ -14,6 +14,7 @@ use App\Modules\POS\Application\Projections\ZSessionLifecycleProjection;
 use App\Modules\POS\Application\Services\Nf525DataProvider;
 use App\Modules\POS\Application\Services\PosPartnerReferenceSource;
 use App\Modules\POS\Application\Services\TerminalSyncHealthSourceService;
+use App\Modules\POS\Commands\CloseOrphanedShiftCommand;
 use App\Modules\POS\Commands\VerifyPosChainCommand;
 use App\Shared\Contracts\Compliance\Nf525DataProviderContract;
 use App\Shared\Contracts\Partner\PartnerReferenceSource;
@@ -83,6 +84,7 @@ final class POSServiceProvider extends ServiceProvider
         // Register console commands
         if ($this->app->runningInConsole()) {
             $this->commands([
+                CloseOrphanedShiftCommand::class,
                 VerifyPosChainCommand::class,
             ]);
         }

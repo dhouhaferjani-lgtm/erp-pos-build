@@ -15,7 +15,9 @@ use App\Modules\POS\Domain\Services\CashDrawerService;
 use App\Modules\POS\Domain\Services\ShiftManagementService;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 use Tests\Traits\WithCurrencyScale;
 
@@ -77,6 +79,49 @@ final class ShiftManagementServiceTest extends TestCase
         $secondShift = $this->service->openShift($this->terminal, $this->cashier, '150.00');
 
         $this->assertEquals(2, $secondShift->shift_number);
+    }
+
+    /**
+     * LEDGER C-17(viii) — the v2/legacy half.
+     *
+     * `TerminalController::release()` probes `pos_shifts` for an OPEN row under
+     * `lockForUpdate()` on the terminal row, but a lock only serialises writers
+     * who take the same lock. This path took none, so a shift opened inside the
+     * release's window slipped past a probe that had just decided there was
+     * none. v3 terminals reach `ZSessionLifecycleProjection` instead and are
+     * pinned there; this is the path a v2 web terminal still uses.
+     *
+     * PostgreSQL only: `SQLiteGrammar::compileLock()` compiles `FOR UPDATE`
+     * away, so the ordering is unobservable on the SQLite leg.
+     */
+    public function test_open_shift_takes_the_terminal_row_lock_before_inserting_the_shift(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('FOR UPDATE is compiled away by SQLiteGrammar::compileLock().');
+        }
+
+        /** @var list<string> $statements */
+        $statements = [];
+        DB::listen(function (QueryExecuted $query) use (&$statements): void {
+            $statements[] = strtolower($query->sql);
+        });
+
+        $this->service->openShift($this->terminal, $this->cashier, '100.00');
+
+        $lockAt = null;
+        $insertAt = null;
+        foreach ($statements as $i => $sql) {
+            if ($lockAt === null && str_contains($sql, 'from "pos_terminals"') && str_contains($sql, 'for update')) {
+                $lockAt = $i;
+            }
+            if ($insertAt === null && str_contains($sql, 'insert into "pos_shifts"')) {
+                $insertAt = $i;
+            }
+        }
+
+        $this->assertNotNull($lockAt, 'openShift() must take the terminal row FOR UPDATE.');
+        $this->assertNotNull($insertAt, 'The shift was never inserted — the trace point moved.');
+        $this->assertLessThan($insertAt, $lockAt, 'The terminal row lock must be taken BEFORE the shift insert.');
     }
 
     public function test_open_shift_throws_when_shift_already_open(): void

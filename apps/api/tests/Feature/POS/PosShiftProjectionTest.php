@@ -6,6 +6,7 @@ namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityExceptionClass;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
@@ -14,13 +15,17 @@ use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Projections\ZSessionLifecycleProjection;
+use App\Modules\POS\Commands\CloseOrphanedShiftCommand;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
+use App\Modules\POS\Domain\Events\TerminalReleased;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Presentation\Resources\ShiftResource;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -234,6 +239,313 @@ final class PosShiftProjectionTest extends TestCase
         $this->assertSame(4, $array['shift_number']);
         $this->assertSame($shiftId, $array['session_id']);
         $this->assertSame($shift->opened_at->toIso8601String(), $array['opened_at_device']);
+    }
+
+    // ------------------------------------------------- O-30 orphaned shift
+
+    /**
+     * LEDGER O-30, HALF ONE — the defect, pinned as it behaves TODAY.
+     *
+     * A forced terminal release leaves the OPEN `pos_shifts` row behind. The
+     * replacement device then binds to the same terminal and opens its own
+     * shift — and `projectPosShiftOpen()` sees a different shift already OPEN
+     * on that terminal and silently returns. Nothing dead-letters, nothing
+     * warns: the new till's shift simply does not exist server-side, which is
+     * why its SESSION_CLOSE retries to exhaustion and its Z report can never
+     * land (`pos_z_reports.shift_id` is FK-RESTRICTed).
+     *
+     * This is NOT a bug in the projection — the drop is what keeps
+     * `pos_shifts_one_open_per_terminal` from dead-lettering the projector on a
+     * replayed open. The bug was that nothing could clear the orphan.
+     */
+    public function test_a_replacement_devices_session_open_is_dropped_while_the_orphan_is_open(): void
+    {
+        $orphanId = $this->orphanShiftLeftByForcedRelease();
+
+        $replacementShiftId = Str::uuid()->toString();
+        $this->app->make(CompanyContext::class)->clear();
+        $this->app->make(ZSessionLifecycleProjection::class)
+            ->apply($this->makeSessionOpenEvent($replacementShiftId, shiftNumber: 2, sequenceNumber: 2));
+
+        $this->assertNull(
+            Shift::query()->find($replacementShiftId),
+            'While the orphan is OPEN the replacement device is invisible server-side.',
+        );
+        $this->assertSame(
+            ShiftStatus::Open,
+            Shift::query()->findOrFail($orphanId)->status,
+            'And nothing has closed the orphan.',
+        );
+    }
+
+    /**
+     * LEDGER O-30, HALF TWO — the remedy, end to end.
+     *
+     * `pos:shift:close-orphaned` closes the orphan, and the SAME SESSION_OPEN
+     * that was dropped a moment ago now projects. This is the assertion that
+     * makes the command worth having: closing the row is not the goal, getting
+     * the replacement till back onto the server's projections is.
+     */
+    public function test_a_replacement_devices_session_open_projects_once_the_orphan_is_closed(): void
+    {
+        $orphanId = $this->orphanShiftLeftByForcedRelease();
+
+        $this->closeOrphanViaCommand($orphanId);
+
+        $this->assertSame(ShiftStatus::Closed, Shift::query()->findOrFail($orphanId)->status);
+
+        $replacementShiftId = Str::uuid()->toString();
+        // Rule 20: the projector runs on a queue worker with NO CompanyContext.
+        // Binding one here (the HTTP shape) would mask that reality.
+        $this->app->make(CompanyContext::class)->clear();
+        $this->app->make(ZSessionLifecycleProjection::class)
+            ->apply($this->makeSessionOpenEvent($replacementShiftId, shiftNumber: 2, sequenceNumber: 2));
+
+        $replacement = Shift::query()->find($replacementShiftId);
+        $this->assertNotNull($replacement, 'Once the orphan is closed the replacement device projects again.');
+        $this->assertSame(ShiftStatus::Open, $replacement->status);
+        $this->assertSame($this->terminal->id, $replacement->terminal_id);
+        $this->assertSame(2, $replacement->shift_number);
+    }
+
+    /**
+     * LEDGER C-17(viii), the half the row lock in `release()` could NOT buy on
+     * its own.
+     *
+     * `TerminalController::release()` probes `pos_shifts` for an OPEN row under
+     * `lockForUpdate()` on the terminal — but a lock only serialises writers who
+     * take THE SAME LOCK, and this projection (the v3 shift-open path) took
+     * none. So a `SESSION_OPEN` landing between the probe and the release's
+     * commit opened a shift the release had just decided did not exist: on the
+     * non-forced arm the release succeeded against an open shift it should have
+     * refused, and on the FORCED arm the shift was orphaned WITHOUT being named
+     * in the `terminal.released` audit row — which is precisely the evidence
+     * `pos:shift:close-orphaned` demands before it will close anything. The
+     * orphan would have been unresolvable by the very command that exists to
+     * resolve it.
+     *
+     * The projection now takes the same terminal row lock before it decides
+     * whether the terminal already has an OPEN shift, so the two paths
+     * serialise and `release()`'s probe is still true when it commits.
+     *
+     * PostgreSQL only: `SQLiteGrammar::compileLock()` returns '', so `FOR UPDATE`
+     * is compiled away and the ordering could never be observed on the SQLite leg.
+     */
+    public function test_session_open_takes_the_terminal_row_lock_before_inserting_the_shift(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('FOR UPDATE is compiled away by SQLiteGrammar::compileLock().');
+        }
+
+        $shiftId = Str::uuid()->toString();
+        $event = $this->makeSessionOpenEvent($shiftId, shiftNumber: 1);
+
+        /** @var list<string> $statements */
+        $statements = [];
+        DB::listen(function (QueryExecuted $query) use (&$statements): void {
+            $statements[] = strtolower($query->sql);
+        });
+
+        $this->app->make(CompanyContext::class)->clear();
+        $this->app->make(ZSessionLifecycleProjection::class)->apply($event);
+
+        $lockAt = null;
+        $insertAt = null;
+        foreach ($statements as $i => $sql) {
+            if ($lockAt === null && str_contains($sql, 'from "pos_terminals"') && str_contains($sql, 'for update')) {
+                $lockAt = $i;
+            }
+            if ($insertAt === null && str_contains($sql, 'insert into "pos_shifts"')) {
+                $insertAt = $i;
+            }
+        }
+
+        $this->assertNotNull($lockAt, 'projectPosShiftOpen() must take the terminal row FOR UPDATE.');
+        $this->assertNotNull($insertAt, 'The shift was never inserted — the trace point moved.');
+        $this->assertLessThan($insertAt, $lockAt, 'The terminal row lock must be taken BEFORE the shift insert.');
+
+        $this->assertNotNull(Shift::query()->find($shiftId));
+    }
+
+    /**
+     * LEDGER O-30, gate r1 finding 3 — THE DEVICE STILL WINS IF IT COMES BACK.
+     *
+     * `pos:shift:close-orphaned` is used on the BELIEF that a device is gone,
+     * and "belief" is doing real work: a till that was merely offline can sync
+     * weeks later carrying a real counted drawer with a real variance. Before
+     * this, `projectPosShiftClose()` returned early on an already-CLOSED shift,
+     * so that count was silently discarded and the operator's derived
+     * zero-variance pair stayed in `pos_shifts` — and therefore in the NF525
+     * JET's `FERMETURE_CAISSE` — forever.
+     */
+    public function test_a_late_device_session_close_replaces_the_operator_closed_figures(): void
+    {
+        $orphanId = $this->orphanShiftLeftByForcedRelease();
+        $this->closeOrphanViaCommand($orphanId);
+
+        $operatorClosedAt = Shift::query()->findOrFail($orphanId)->closed_at;
+        $this->assertNotNull($operatorClosedAt);
+
+        $this->app->make(CompanyContext::class)->clear();
+        $this->app->make(ZSessionLifecycleProjection::class)->apply(
+            $this->makeSessionCloseEvent($orphanId, sequenceNumber: 3, payloadOverrides: [
+                'counted_cash' => '140.000',
+                'expected_cash' => '150.000',
+                'variance_amount' => '10.000',
+                'variance_direction' => 'short',
+                'variance_severity' => 'warning',
+            ]),
+        );
+
+        $shift = Shift::query()->findOrFail($orphanId);
+        $this->assertSame(ShiftStatus::Closed, $shift->status);
+        $this->assertSame(0, bccomp((string) $shift->expected_cash, '150', 4));
+        $this->assertSame(0, bccomp((string) $shift->actual_cash, '140', 4));
+        $this->assertSame(0, bccomp((string) $shift->variance, '-10', 4), 'The device counted a real shortage.');
+        $this->assertSame('warning', $shift->variance_severity);
+        $this->assertStringContainsString('device close applied', (string) $shift->notes);
+
+        $audit = DB::table('audit_events')
+            ->where('aggregate_type', 'Shift')
+            ->where('aggregate_id', $orphanId)
+            ->where('event_type', 'shift.orphan_device_close_applied')
+            ->first();
+        $this->assertNotNull($audit, 'The swap must be its own audit fact.');
+
+        /** @var array<string, mixed> $payload */
+        $payload = json_decode((string) $audit->payload, true);
+        $this->assertSame(0, bccomp((string) $payload['superseded_variance'], '0', 4));
+        $this->assertSame(0, bccomp((string) $payload['device_variance'], '-10', 4));
+    }
+
+    /**
+     * Replay-safe on the RECONCILER's own guard, not merely on the projector's.
+     *
+     * The distinction is the whole point of this test, and the first version of
+     * it did not establish the claim: applying the SAME event twice
+     * short-circuits in `apply()` on the `z_session_events` idempotency probe,
+     * so `OrphanedShiftDeviceCloseReconciler::deviceCloseAlreadyApplied()` was
+     * never reached on the second call.
+     *
+     * Two DISTINCT fiscal events for the same shift is also the realistic shape
+     * — a close re-authored after a device restore — and it is the only one that
+     * gets past the projector's guard and into the reconciler's.
+     */
+    public function test_a_late_device_session_close_is_replay_safe_on_the_reconcilers_own_guard(): void
+    {
+        $orphanId = $this->orphanShiftLeftByForcedRelease();
+        $this->closeOrphanViaCommand($orphanId);
+
+        $projector = $this->app->make(ZSessionLifecycleProjection::class);
+        $this->app->make(CompanyContext::class)->clear();
+
+        $first = $this->makeSessionCloseEvent($orphanId, sequenceNumber: 3, payloadOverrides: [
+            'counted_cash' => '140.000',
+            'expected_cash' => '150.000',
+        ]);
+        // A SECOND, DISTINCT fiscal event id — makeSessionCloseEvent() mints a
+        // fresh one — so `apply()`'s per-event short-circuit does not fire and
+        // the reconciler's own guard is the thing under test.
+        $second = $this->makeSessionCloseEvent($orphanId, sequenceNumber: 4, payloadOverrides: [
+            'counted_cash' => '999.000',
+            'expected_cash' => '999.000',
+        ]);
+        $this->assertNotSame($first->id, $second->id, 'The two closes must be distinct fiscal events.');
+
+        $projector->apply($first);
+        $projector->apply($second);
+
+        $shift = Shift::query()->findOrFail($orphanId);
+        $this->assertSame(
+            0,
+            bccomp((string) $shift->actual_cash, '140', 4),
+            'The FIRST device close stands; a second must not overwrite it.',
+        );
+
+        $rows = DB::table('audit_events')
+            ->where('aggregate_type', 'Shift')
+            ->where('aggregate_id', $orphanId)
+            ->where('event_type', 'shift.orphan_device_close_applied')
+            ->get();
+
+        $this->assertCount(1, $rows, 'Exactly one correction, from the first close through.');
+
+        /** @var array<string, mixed> $payload */
+        $payload = json_decode((string) $rows->first()->payload, true);
+        $this->assertSame($first->id, $payload['fiscal_event_id']);
+        $this->assertSame(0, bccomp((string) $payload['device_counted_cash'], '140', 4));
+    }
+
+    /**
+     * The early return that was always right STAYS right: a shift closed by a
+     * DEVICE is not upgraded by a second device close. Only an operator close
+     * is provisional.
+     */
+    public function test_a_session_close_on_a_device_closed_shift_is_still_a_no_op(): void
+    {
+        $shiftId = Str::uuid()->toString();
+        $projector = $this->app->make(ZSessionLifecycleProjection::class);
+
+        $this->app->make(CompanyContext::class)->clear();
+        $projector->apply($this->makeSessionOpenEvent($shiftId, shiftNumber: 1));
+        $projector->apply($this->makeSessionCloseEvent($shiftId, sequenceNumber: 2));
+
+        $closedAt = Shift::query()->findOrFail($shiftId)->closed_at;
+
+        $projector->apply($this->makeSessionCloseEvent($shiftId, sequenceNumber: 3, payloadOverrides: [
+            'counted_cash' => '999.000',
+            'expected_cash' => '999.000',
+        ]));
+
+        $shift = Shift::query()->findOrFail($shiftId);
+        $this->assertSame(0, bccomp((string) $shift->actual_cash, '150', 4), 'A device close must not be re-applied.');
+        $this->assertEquals($closedAt, $shift->closed_at);
+        $this->assertSame(
+            0,
+            DB::table('audit_events')
+                ->where('aggregate_type', 'Shift')
+                ->where('aggregate_id', $shiftId)
+                ->where('event_type', 'shift.orphan_device_close_applied')
+                ->count(),
+        );
+    }
+
+    private function closeOrphanViaCommand(string $shiftId): void
+    {
+        $this->artisan('pos:shift:close-orphaned', [
+            'shift' => $shiftId,
+            '--reason' => 'Till stolen 2026-06-14; device never recovered',
+            '--closed-by' => $this->cashier->id,
+            '--apply' => true,
+        ])->assertExitCode(CloseOrphanedShiftCommand::SUCCESS);
+    }
+
+    /**
+     * The shape a forced release leaves behind: an OPEN shift on a terminal
+     * whose binding has been cleared, plus the `terminal.released` audit row
+     * (forced, naming the shift) that the command demands as its authorisation.
+     */
+    private function orphanShiftLeftByForcedRelease(): string
+    {
+        $orphanId = Str::uuid()->toString();
+        $this->app->make(CompanyContext::class)->clear();
+        $this->app->make(ZSessionLifecycleProjection::class)
+            ->apply($this->makeSessionOpenEvent($orphanId, shiftNumber: 1));
+
+        $this->terminal->update(['hardware_identifier' => null]);
+
+        event(new TerminalReleased(
+            terminalId: $this->terminal->id,
+            terminalCode: $this->terminal->code,
+            companyId: $this->companyId,
+            hardwareIdentifier: 'HW-LOST-BOX',
+            reason: 'Till stolen mid-shift; shift cannot be closed from the device',
+            releasedBy: $this->cashier->id,
+            forced: true,
+            openShiftId: $orphanId,
+        ));
+
+        return $orphanId;
     }
 
     /**

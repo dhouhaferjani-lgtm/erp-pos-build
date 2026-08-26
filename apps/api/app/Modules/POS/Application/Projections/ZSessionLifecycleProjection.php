@@ -8,8 +8,10 @@ use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
+use App\Modules\POS\Application\Services\OrphanedShiftDeviceCloseReconciler;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Shift;
+use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Domain\ZSessionEvent;
 use App\Shared\Domain\Enums\VarianceSeverity;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +19,10 @@ use RuntimeException;
 
 final class ZSessionLifecycleProjection implements FiscalEventProjector
 {
+    public function __construct(
+        private readonly OrphanedShiftDeviceCloseReconciler $deviceCloseReconciler,
+    ) {}
+
     public function name(): string
     {
         return 'pos_core_z_session_lifecycle';
@@ -131,6 +137,31 @@ final class ZSessionLifecycleProjection implements FiscalEventProjector
      *     replayed SESSION_OPEN; mirrors `pos_shifts_one_open_per_terminal`),
      *     so dead-letter replay never crashes the projector (Codex F-15).
      *
+     * LEDGER C-17(viii) — the terminal row is taken FOR UPDATE before that
+     * one-open decision, inside the caller's transaction. Not for this
+     * projection's own sake: it is what makes
+     * `TerminalController::release()`'s open-shift probe TRUE at the moment it
+     * commits. That probe already runs under `lockForUpdate()` on the same
+     * terminal row, but a lock only serialises writers who take the same lock,
+     * and this path took none — so a SESSION_OPEN landing inside the release's
+     * window opened a shift the release had just decided did not exist. On the
+     * non-forced arm that released a terminal with a live shift; on the FORCED
+     * arm it orphaned a shift WITHOUT naming it in the `terminal.released`
+     * audit row, which is the evidence `pos:shift:close-orphaned` (LEDGER O-30)
+     * requires before it will close anything — an orphan unresolvable by the
+     * command built to resolve it.
+     *
+     * Lock ORDER is `pos_terminals` then `pos_shifts`, matching `release()`, so
+     * the two cannot deadlock against each other. The lock is a no-op on the
+     * SQLite test leg (`SQLiteGrammar::compileLock()` returns '').
+     *
+     * RESIDUAL, stated rather than papered over: this closes the CONCURRENT
+     * window only. A SESSION_OPEN authored by the dead device but synced AFTER
+     * the release commits still projects a shift onto a released terminal, and
+     * the audit row cannot have named it. That population is found by
+     * `pos_shifts` rows whose terminal has no binding, not by the release
+     * register.
+     *
      * @param  array<string, mixed>  $payload
      */
     private function projectPosShiftOpen(FiscalEvent $event, array $payload, mixed $shiftId): void
@@ -144,6 +175,13 @@ final class ZSessionLifecycleProjection implements FiscalEventProjector
         }
 
         $terminalId = (string) $event->terminal_id;
+
+        // `withTrashed()`: `Terminal` uses SoftDeletes and the default scope
+        // would silently match NO row on an archived terminal — degrading the
+        // C-17(viii) lock to no lock at all in exactly the population that needs
+        // it (a terminal archived after the release that orphaned its shift).
+        Terminal::query()->withTrashed()->whereKey($terminalId)->lockForUpdate()->first();
+
         if (Shift::query()
             ->where('terminal_id', $terminalId)
             ->where('status', ShiftStatus::Open)
@@ -216,6 +254,22 @@ final class ZSessionLifecycleProjection implements FiscalEventProjector
             ));
         }
         if ($shift->status === ShiftStatus::Closed) {
+            // Already closed — but by WHOM? (LEDGER O-30, gate r1 finding 3.)
+            //
+            // A re-delivered DEVICE close must be a no-op, and it is: the
+            // reconciler answers false unless the audit register says an
+            // OPERATOR closed this shift with `pos:shift:close-orphaned`.
+            //
+            // When an operator did, the shift was closed on the belief that the
+            // device was gone — and "belief" is doing real work there. A till
+            // that was merely offline can sync weeks later, and its
+            // SESSION_CLOSE carries a REAL counted drawer. The device is
+            // authoritative for the shift lifecycle, so its figures replace the
+            // operator's derived stand-in and the swap is recorded as its own
+            // audit fact. Before this, the early return discarded that count
+            // silently and the JET's FERMETURE_CAISSE kept the stand-in forever.
+            $this->deviceCloseReconciler->reconcile($shift, $event, $payload);
+
             return;
         }
 

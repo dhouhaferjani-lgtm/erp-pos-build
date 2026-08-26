@@ -12,6 +12,7 @@ use App\Modules\POS\Application\Services\CashCountDispatcher;
 use App\Modules\POS\Application\Services\CashCountValidationService;
 use App\Modules\POS\Application\Services\FraudSettingsResolver;
 use App\Modules\POS\Application\Services\ReportGenerationService;
+use App\Modules\POS\Application\Services\ShiftExpectedCashService;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ReturnReason;
@@ -62,18 +63,24 @@ class ZReportV3AggregationTest extends TestCase
     {
         parent::setUp();
 
+        // ONE resolver instance shared with ShiftExpectedCashService: the two
+        // must agree on scale or the per-tender expected totals and the report's
+        // own rounding drift apart.
+        $scaleResolver = $this->mockCurrencyScale(3);
+
         $this->service = new ReportGenerationService(
             $this->app->make(ShiftManagementService::class),
             $this->app->make(CashDrawerService::class),
             $this->app->make(ZReportHashService::class),
             $this->app->make(GrandtotalService::class),
-            $this->mockCurrencyScale(3),
+            $scaleResolver,
             $this->app->make(CashCountValidationService::class),
             $this->app->make(FraudSettingsResolver::class),
             $this->app->make(ZReportCountRepository::class),
             $this->app->make(PaymentToleranceQueryService::class),
             $this->app->make(TaxIdentityResolver::class),
             $this->app->make(CashCountDispatcher::class),
+            new ShiftExpectedCashService($scaleResolver),
         );
 
         $this->tenant = Tenant::factory()->create();
