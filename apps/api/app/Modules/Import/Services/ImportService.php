@@ -16,7 +16,9 @@ use App\Shared\Contracts\PartnerServiceInterface;
 use App\Shared\Contracts\ProductServiceInterface;
 use App\Shared\Contracts\TaxDefaultResolverInterface;
 use App\Shared\DTOs\CategoryResolutionDTO;
+use App\Shared\DTOs\ProductTaxDefaultDTO;
 use App\Shared\Enums\CategoryResolutionOutcome;
+use App\Shared\Enums\ProductTaxDefaultSource;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -510,25 +512,38 @@ final class ImportService
         $data = $row->data;
         $data['type'] = $this->emptyString($data['type'] ?? null) ? ProductType::Part->value : $data['type'];
         $company = $this->resolveCompany($job->tenant_id, $companyId);
-        $taxRate = $this->resolveProductTaxRate($company, $data);
+
+        // W2-3: resolve the category BEFORE the upsert so the row can report what
+        // happened. The upsert resolves the same name through the same idempotent
+        // service and therefore finds this row; nothing is created twice.
+        //
+        // W2-5 / C-23(iii): it must also come before the tax default. This method
+        // pre-sets `tax_rate`, which SATISFIES the category-aware branch inside
+        // ProductService::upsert() — so a category carrying its own
+        // `default_tax_rate` never reached an imported product while the default
+        // here was resolved company-only.
+        $category = $this->resolveRowCategory($companyId, $data);
+        if ($category !== null) {
+            $data['_results'] = array_merge($data['_results'] ?? [], ['category' => $category->outcome->value]);
+        }
+
+        $tax = $this->resolveProductTax($company, $data, $category?->categoryId);
         $authority = $this->resolvePriceAuthority($job);
-        $price = $this->productPriceResolver->resolve($data, $authority, $taxRate);
+        $price = $this->productPriceResolver->resolve($data, $authority, $tax->taxRate);
 
         if ($price['sale_price'] !== null) {
             $data['sale_price'] = $price['sale_price'];
         }
 
         if ($this->emptyString($data['tax_rate'] ?? null)) {
-            $data['tax_rate'] = $taxRate;
-            $data['_results'] = array_merge($data['_results'] ?? [], ['tax_source' => 'default']);
-        }
+            $data['tax_rate'] = $tax->taxRate;
 
-        // W2-3: resolve the category BEFORE the upsert so the row can report what
-        // happened. The upsert resolves the same name through the same idempotent
-        // service and therefore finds this row; nothing is created twice.
-        $category = $this->resolveRowCategory($companyId, $data);
-        if ($category !== null) {
-            $data['_results'] = array_merge($data['_results'] ?? [], ['category' => $category->outcome->value]);
+            // Gate r1 F-4: name the LEVEL, not just "not from the file". This is
+            // the only breadcrumb the row keeps about where its rate came from,
+            // and a flat `default` stopped being true the moment the category
+            // became a real source (W2-5) — which is the case this lane exists
+            // to fix, so it is the case the breadcrumb must get right.
+            $data['_results'] = array_merge($data['_results'] ?? [], ['tax_source' => $tax->source->value]);
         }
 
         $row->update(['data' => $data]);
@@ -598,15 +613,25 @@ final class ImportService
     }
 
     /**
+     * The rate this product row imports at, WITH the level that supplied it.
+     *
      * @param  array<string, mixed>  $data
+     * @param  int|null  $categoryId  The category the row resolved to (W2-5) — the
+     *                                default ladder is the category's configuration,
+     *                                then its rate, then the company rate, so omitting
+     *                                it silently flattened every category-specific rate
+     *                                to the company default.
      */
-    private function resolveProductTaxRate(Company $company, array $data): string
+    private function resolveProductTax(Company $company, array $data, ?int $categoryId = null): ProductTaxDefaultDTO
     {
         if (! $this->emptyString($data['tax_rate'] ?? null)) {
-            return (string) $data['tax_rate'];
+            /** @var numeric-string $fileRate */
+            $fileRate = (string) $data['tax_rate'];
+
+            return new ProductTaxDefaultDTO($fileRate, ProductTaxDefaultSource::File);
         }
 
-        return $this->taxDefaultResolver->getDefaultTaxForNewProduct($company);
+        return $this->taxDefaultResolver->resolveDefaultTaxForNewProduct($company, $categoryId);
     }
 
     /**

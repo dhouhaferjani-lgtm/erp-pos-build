@@ -155,7 +155,12 @@ export function useDraftAutoSave(
       // `response.data` directly; `apiPost` (which unwraps `response.data.data`)
       // yields `undefined` here and crashes on `.draft_id` (every auto-save,
       // even server-side successful ones).
-      const { data: body } = await api.post<{ draft_id: string; saved_at: string }>(
+      // N-14: `draft_id` is NULLABLE. A payload with no line authors no
+      // document — the server refuses to spend a number on a form nobody has
+      // put a line in — and answers 200 with `draft_id: null`. The debounced
+      // effect below never produces that payload, but `saveNow()` is callable
+      // directly and has no line guard of its own, so the type has to be honest.
+      const { data: body } = await api.post<{ draft_id: string | null; saved_at: string }>(
         '/documents/auto-save',
         {
           draft_id: existingDraftId || draftId,
@@ -165,13 +170,20 @@ export function useDraftAutoSave(
 
       if (!isUnmountedRef.current) {
         setDraftId(body.draft_id)
-        setLastSavedAt(new Date(body.saved_at))
         setIsSaving(false)
         setAutosavePending(false)
         setAutosaveFailed(false)
         setLastError(null)
 
-        onSuccess?.(body.draft_id)
+        // Gate r1 F-5: a lineless call authored NOTHING, so there is nothing to
+        // have saved. Stamping `lastSavedAt` would put a "Saved at 14:03" under
+        // an editor whose content the server never took — the indicator has to
+        // stay honest about that, and the next save (the one carrying a line) is
+        // the first one entitled to a timestamp.
+        if (body.draft_id !== null) {
+          setLastSavedAt(new Date(body.saved_at))
+          onSuccess?.(body.draft_id)
+        }
       }
     } catch (error) {
       if (!isUnmountedRef.current) {

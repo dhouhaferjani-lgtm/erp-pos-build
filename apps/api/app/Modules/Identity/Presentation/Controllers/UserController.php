@@ -481,6 +481,7 @@ class UserController extends Controller
             // company context), so a soft-deleted user without this keeps every
             // company privilege they had.
             $revoked = $this->revokeMembershipsFor($user, $currentUser);
+            $this->clearPosPinFor($user, $currentUser);
 
             // Remove the central identity index row (topology §9.1) so a
             // deactivated user no longer surfaces in email-first org discovery.
@@ -638,6 +639,7 @@ class UserController extends Controller
             // their POS override PIN (PinVerifier / pin-data roster) and their
             // company context (CompanyContext) forever.
             $revoked = $this->revokeMembershipsFor($user, $currentUser);
+            $this->clearPosPinFor($user, $currentUser);
 
             // P2 (Codex 2026-05-25): mirror destroy() — remove the central
             // identity index row so a deactivated user no longer surfaces in
@@ -994,6 +996,44 @@ class UserController extends Controller
                 'revoked_by' => $actor->id,
                 'revoked_reason' => MembershipRevocationReason::UserDeactivated->value,
             ]);
+    }
+
+    /**
+     * Third arm of the offboarding cascade: take the POS PIN with the account.
+     *
+     * C-13(i). `pos_pin` was never cleared here — only the explicit
+     * `PATCH /users/{id}/pos-pin` with a null pin cleared it — so a fired
+     * employee's bcrypt PIN hash stayed on their row forever. That is not inert:
+     * `PosAuthController::setupPin()`'s uniqueness scan is tenant-wide and
+     * unscoped, walking EVERY user who holds a `pos_pin` regardless of status or
+     * membership, so a ghost PIN goes on refusing that value to a real new
+     * operator. Both offboarding endpoints already revoke memberships and tokens
+     * in this transaction; the PIN belongs in the same breath, and the
+     * `deactivate()` docblock has been claiming it does for a while.
+     *
+     * NOT reversed by `activate()`. The stored value is a bcrypt hash — it
+     * cannot be restored, and a reactivated operator is issued a new PIN.
+     *
+     * @return bool whether a PIN was actually cleared
+     */
+    private function clearPosPinFor(User $user, User $actor): bool
+    {
+        if ($user->pos_pin === null) {
+            return false;
+        }
+
+        $user->update(['pos_pin' => null]);
+
+        // Same event type the explicit clear endpoint emits, so the PIN's whole
+        // history reads as one series in the audit trail.
+        $this->logAuditEvent(
+            eventType: 'user.pos_pin_cleared',
+            aggregateId: $user->id,
+            userId: $actor->id,
+            companyId: $this->companyContext->requireCompanyId(),
+        );
+
+        return true;
     }
 
     /**

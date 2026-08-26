@@ -24,7 +24,9 @@ use Database\Seeders\CountryTaxRatesSeeder;
 use Database\Seeders\PaymentMethodSeeder;
 use Database\Seeders\PaymentRepositorySeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Database\Seeders\UomSeeder;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -233,6 +235,34 @@ class TenantInitializationService
         // country_code FK needs the lookup rows, and this table's migration
         // deliberately seeds nothing.
         (new CountryInventorySettingsSeeder)->run();
+        $this->seedUnitsOfMeasure();
+    }
+
+    /**
+     * Seed the base unit-of-measure set (N-9).
+     *
+     * A tenant provisioned through registration came up with ZERO `units` — the
+     * table is tenant-scoped and nothing on the registration path ever seeded it,
+     * so `UomSeeder` was reachable only from the demo seeders. `products.unit_id`
+     * points at this table and `units.decimal_places` drives every quantity the
+     * operator sees or types (QuantityScale::formatForUnit), so an empty table
+     * means no product can be given a unit on day one.
+     *
+     * SELF-GUARDING, and it has to be: unlike its siblings in seedReferenceData(),
+     * UomSeeder writes with bare `create()` (it owns the categories/base-unit
+     * cycle and cannot updateOrCreate through it), so a second run would collide
+     * on `unit_categories.code` / `units.code`. The guard demands BOTH tables be
+     * empty — seeding units into existing categories, or categories over existing
+     * units, is exactly the half-state that collides. A tenant that already has
+     * any of either is left alone.
+     */
+    private function seedUnitsOfMeasure(): void
+    {
+        if (DB::table('units')->exists() || DB::table('unit_categories')->exists()) {
+            return;
+        }
+
+        (new UomSeeder)->run();
     }
 
     private function seedChartOfAccounts(Company $company): void

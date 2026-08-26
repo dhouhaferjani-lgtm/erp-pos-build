@@ -95,7 +95,15 @@ export interface Document {
    * invoice IS a proforma and a sealed-then-cancelled one is NOT.
    *
    * Optional only because this interface is a hand-maintained mirror that dozens of
-   * fixtures construct; every real API response carries it. Compare with `=== true`.
+   * fixtures construct; every real API response carries it.
+   *
+   * Compare with `!== false`, NOT `=== true` (fiscal gate r1 F-3, and what the
+   * consumers do — `InvoiceDetailPage.tsx`, `CreditNoteDetailPage.tsx`). Every real
+   * payload sets the field explicitly (`DocumentData::$is_proforma` is a
+   * non-nullable `bool`), so behaviour on a genuine response is identical; the
+   * difference is the OMITTED field, which must degrade toward "print less"
+   * (treated as a proforma) rather than toward claiming a seal on a document
+   * nothing has sealed.
    */
   is_proforma?: boolean
 

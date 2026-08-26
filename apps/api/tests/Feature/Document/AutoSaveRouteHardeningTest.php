@@ -657,6 +657,105 @@ final class AutoSaveRouteHardeningTest extends TestCase
     }
 
     /**
+     * N-14. A form that is opened and abandoned must not spend a document
+     * number. The CREATE branch used to author a numbered `Draft` for any
+     * payload at all — the campaign found `PO-2026-0001 … PO-2026-0009` sitting
+     * as orphan drafts ahead of the operator's real `PO-2026-0010`
+     * (PLAYWRIGHT-first-tenant-campaign-wave2-imports-2026-08-24 §N-14).
+     *
+     * The allocation now waits for the first LINE. Nothing else about the
+     * endpoint changes: an existing draft may still be emptied (the operator
+     * clearing the grid, pinned by the sibling test below), and the number a
+     * draft already holds is never taken back.
+     */
+    public function test_auto_save_without_a_line_does_not_author_a_document_or_burn_a_number(): void
+    {
+        $sequence = DocumentSequence::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => DocumentType::Quote->value,
+            'year' => (int) date('Y'),
+            'last_number' => 4,
+        ]);
+
+        $response = $this->actingAsUser($this->authorizedUser())
+            ->postJson('/api/v1/documents/auto-save', [
+                'type' => DocumentType::Quote->value,
+                'partner_id' => $this->customer->id,
+                'lines' => [],
+            ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('draft_id', null);
+        $response->assertJsonPath('line_count', 0);
+
+        $this->assertSame(
+            0,
+            Document::query()->where('type', DocumentType::Quote)->count(),
+            'A lineless auto-save must author no document at all.'
+        );
+        $this->assertSame(
+            4,
+            (int) $sequence->refresh()->last_number,
+            'and it must not advance the quote sequence.'
+        );
+    }
+
+    /**
+     * The other half of the same rule: the FIRST line is what allocates, and it
+     * allocates the number the abandoned form would otherwise have spent.
+     */
+    public function test_the_first_line_allocates_the_number_the_empty_form_did_not_spend(): void
+    {
+        $author = $this->authorizedUser();
+
+        $this->actingAsUser($author)
+            ->postJson('/api/v1/documents/auto-save', [
+                'type' => DocumentType::Quote->value,
+                'partner_id' => $this->customer->id,
+                'lines' => [],
+            ])
+            ->assertStatus(200);
+
+        $response = $this->actingAsUser($author)
+            ->postJson('/api/v1/documents/auto-save', [
+                'type' => DocumentType::Quote->value,
+                'partner_id' => $this->customer->id,
+                'lines' => [
+                    ['product_id' => $this->product->id, 'quantity' => '1', 'unit_price' => '10'],
+                ],
+            ]);
+
+        $response->assertStatus(200);
+        $draftId = $response->json('draft_id');
+        $this->assertIsString($draftId);
+
+        $document = Document::query()->findOrFail($draftId);
+        $this->assertStringEndsWith(
+            '0001',
+            (string) $document->document_number,
+            'The abandoned empty form must not have consumed the first number.'
+        );
+    }
+
+    /**
+     * A payload that omits `lines` entirely is the same case as an empty array
+     * on the CREATE branch — there is no line to justify a number.
+     */
+    public function test_auto_save_with_no_lines_key_does_not_author_a_document(): void
+    {
+        $this->actingAsUser($this->authorizedUser())
+            ->postJson('/api/v1/documents/auto-save', [
+                'type' => DocumentType::Quote->value,
+                'partner_id' => $this->customer->id,
+            ])
+            ->assertStatus(200)
+            ->assertJsonPath('draft_id', null);
+
+        $this->assertSame(0, Document::query()->where('type', DocumentType::Quote)->count());
+    }
+
+    /**
      * O-26 note: a lineless DRAFT stays legal — the editor auto-saves one every
      * time the operator clears the grid mid-session. The posting refusal, not
      * this route, is what stops it becoming a lineless posted document.
@@ -1045,9 +1144,15 @@ final class AutoSaveRouteHardeningTest extends TestCase
      * ISOLATION HOLDS — the foreign document is never read or mutated, because
      * the lookup in `saveDraft()` is tenant+company scoped (and row-locked).
      * But the miss falls through to `createNewDraft()`, so the caller gets a 200
-     * with a DIFFERENT `draft_id` and burns a number in their own tenant instead
-     * of a 404. Recorded, not changed: refusing an unresolvable non-null
-     * `draft_id` is a contract change beyond this fix round's findings list.
+     * with a DIFFERENT `draft_id` instead of a 404. Recorded, not changed:
+     * refusing an unresolvable non-null `draft_id` is residual R-7's contract
+     * change, not this lane's.
+     *
+     * INVERTED IN PART by N-14 (as the residuals ticket requires of a
+     * characterisation that a later lane fixes): the miss no longer BURNS A
+     * NUMBER on a lineless payload, because the create branch now refuses to
+     * author anything without a line. The second probe below keeps R-7's
+     * remaining half — a payload that does carry a line — characterised.
      */
     public function test_characterisation_a_foreign_tenant_draft_id_authors_a_new_document(): void
     {
@@ -1121,7 +1226,34 @@ final class AutoSaveRouteHardeningTest extends TestCase
             'The foreign id must not be adopted.'
         );
 
-        // Characterised, not endorsed: the miss authors a new local draft.
+        // N-14: with no line there is nothing to author, so the unresolvable id
+        // no longer costs a number.
+        $this->assertNull($response->json('draft_id'), 'A lineless miss must author nothing at all.');
+        $this->assertSame(
+            0,
+            Document::query()->where('company_id', $this->company->id)->count(),
+            'A lineless unresolvable draft_id must not author a document.'
+        );
+
+        // Characterised, not endorsed (residual R-7): WITH a line, the miss still
+        // authors a new local draft instead of 404ing.
+        $withLine = $this->actingAsUser($this->authorizedUser())
+            ->postJson('/api/v1/documents/auto-save', [
+                'draft_id' => $foreignDraft->id,
+                'type' => DocumentType::Invoice->value,
+                'partner_id' => $this->customer->id,
+                'lines' => [
+                    ['product_id' => $this->product->id, 'quantity' => '1', 'unit_price' => '10'],
+                ],
+            ]);
+
+        $withLine->assertStatus(200);
+        $this->assertNotSame($foreignDraft->id, $withLine->json('draft_id'));
+        $this->assertSame(
+            1,
+            DocumentLine::query()->where('document_id', $foreignDraft->id)->count(),
+            'A foreign tenant draft must never be touched.'
+        );
         $this->assertSame(
             1,
             Document::query()->where('company_id', $this->company->id)->count(),

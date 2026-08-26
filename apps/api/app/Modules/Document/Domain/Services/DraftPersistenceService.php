@@ -56,7 +56,31 @@ final class DraftPersistenceService
      * This is a lenient upsert that accepts partial data:
      * - No validation errors
      * - Missing fields are acceptable
-     * - Can save with 0 lines (just header)
+     * - An EXISTING draft can be saved with 0 lines (the operator clearing the
+     *   grid mid-session); a NEW one cannot — see below.
+     *
+     * RETURNS NULL when there is nothing to author yet (N-14). A document number
+     * is spent the moment a row is created — `createNewDraft()` allocates out of
+     * the `document_sequences` row that later feeds the fiscal hash chain — so
+     * authoring a header for a form nobody has put a line in burns a number for
+     * a document that does not exist. The campaign found
+     * `PO-2026-0001 … PO-2026-0009` sitting as orphan drafts ahead of the
+     * operator's real `PO-2026-0010`
+     * (PLAYWRIGHT-first-tenant-campaign-wave2-imports-2026-08-24 §N-14).
+     *
+     * The first LINE is the trigger. This mirrors what the only real caller
+     * already does — `useDraftAutoSave.ts` refuses to fire until
+     * `data.lines.length > 0` — and makes it a property of the ENDPOINT rather
+     * than of one bundle: the guard has to hold for a stale bundle, a retry, and
+     * anything hand-driving the API.
+     *
+     * Deliberately NOT the full deferred-numbering design (allocate at confirm)
+     * that residual R-2 describes
+     * (docs/superpowers/tickets/2026-08-23-autosave-residuals.md). That one owns
+     * the sequence-gap audit story, the "what does the UI show before a number
+     * exists" question, and every consumer that assumes a draft's
+     * `document_number` is non-null; two merge gates called it its own lane. A
+     * draft that reached one line and was then abandoned still holds its number.
      *
      * @param  array<string, mixed>  $data
      */
@@ -66,7 +90,7 @@ final class DraftPersistenceService
         string $userId,
         ?string $draftId,
         array $data
-    ): Document {
+    ): ?Document {
         return DB::transaction(function () use ($tenantId, $companyId, $userId, $draftId, $data) {
             // api.document.011: scope by tenant + company so a cross-tenant
             // draftId surfaces as null and a fresh draft is created instead
@@ -91,6 +115,11 @@ final class DraftPersistenceService
                 : null;
 
             if ($document === null) {
+                // N-14: no line, no document, no number. See the method docblock.
+                if (! $this->carriesALine($data)) {
+                    return null;
+                }
+
                 // Create new draft
                 $document = $this->createNewDraft($tenantId, $companyId, $userId, $data);
             } else {
@@ -114,6 +143,24 @@ final class DraftPersistenceService
 
             return $document;
         });
+    }
+
+    /**
+     * Does this payload justify authoring a document (and spending a number)?
+     *
+     * Only asked on the CREATE branch. `lines` absent and `lines: []` are the
+     * same answer here — neither is a line — which is a narrower reading than
+     * `updateDraftLines()` gives them (residual R-5), and deliberately so: on an
+     * existing draft "absent" is ambiguous, on a new one there is simply nothing
+     * to number.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function carriesALine(array $data): bool
+    {
+        $lines = $data['lines'] ?? null;
+
+        return is_array($lines) && $lines !== [];
     }
 
     /**

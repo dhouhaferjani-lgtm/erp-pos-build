@@ -390,3 +390,76 @@ as satisfied globally.
 Widen `PERCENT_DECIMAL_STRING` to `/^-?\d+(\.\d+)?$/` so an agreeing configuration is
 not cleared by a 3-decimal cell (NEW-1); everything else in the round is verified and
 green.
+
+## r3 scoped re-review
+
+**Scope:** fix round 2 only — `c596977ab..cb43b0be0` (1 commit), package
+`.superpowers/sdd/PLAN/review-c596977ab..cb43b0be0.diff`. Fixers' report section
+"Fix round 2 — imports gate r2 scoped re-review" (`.superpowers/sdd/PLAN/task-9-report.md:253-…`).
+Read-only. Items (a), (c), (d), (f) and F-1 … F-6 were untouched this round and stay approved.
+
+### VERDICT
+
+**NEW-1: ADDRESSED.** No new Critical/Important introduced by this fix diff.
+
+### What I actually ran
+
+| Command | Result |
+|---|---|
+| Diff vs. current file — regex line matches exactly | `ProductService.php:185` `PERCENT_DECIMAL_STRING = '/^-?\d+(\.\d+)?$/'` |
+| Standalone regex probe (14 hand cases incl. exponent, sign, whitespace, malformed) | `19.000`/`19.00`/`19`/`-5.5`/`0` MATCH; `1e2`/`1E2`/`' 19.00'`/`'+19.00'`/`'.5'`/`'19.'`/`'19..0'`/`'19.0.0'`/`'1e-2'` all rejected |
+| Regex/`is_numeric`/`bccomp` pairing re-probe (20 000 generated strings, matching the commit's claimed method) | 0 counterexamples — every regex-accepted string is `is_numeric`, no `bccomp` throw |
+| `phpunit --filter` the 2 new tests | **PASS**, 20 assertions |
+| **RED-first verification**: reverted `PERCENT_DECIMAL_STRING` to the pre-fix `/^-?\d+(\.\d{1,2})?$/` in place, re-ran the same 2 tests | **FAIL** — reproduces NEW-1 exactly: `default_tax_configuration_id` is `null` where `$tva19->id` is expected on the 3-decimal cell, and the re-import test shows the same "cleared, not preserved" symptom. Reverted (`git checkout --`), confirmed clean. |
+| `phpunit tests/Feature/Import/ProductsImportPipelineTest.php` (full file) | **PASS — 16 tests / 194 assertions**, matches the commit message exactly, no regressions on the 14 pre-existing tests |
+| Cross-check `ImportType::Products` `tax_rate` rule vs. `margin` rule | Confirmed: `ImportType.php:178,205` — `tax_rate => ['nullable','numeric','min:0','max:100']` (no regex); `ImportType.php:169` — `margin => ['nullable','numeric','regex:/^-?\d+(\.\d{1,2})?$/']`. Docblock's "unlike its `margin` sibling" claim is literally true. |
+| Cross-check `NumericFieldNormalizer` percent-field detection | Confirmed: `NumericFieldNormalizer.php:59` — `in_array('regex:/^-?\d+(\.\d{1,2})?$/', $rules, true)` is the sole test for "percent field"; since `tax_rate`'s rule set never contains that literal string, `19.000` reaches `ProductService` untouched, exactly as claimed at `ProductService.php:161-167`. |
+
+### NEW-1 [IMPORTANT] — ADDRESSED
+
+`ProductService.php:185` — `PERCENT_DECIMAL_STRING` widened from `/^-?\d+(\.\d{1,2})?$/`
+to `/^-?\d+(\.\d+)?$/`. This is exactly the one-line fix the r2 verdict prescribed:
+compare at scale, not at textual width. Agreement is still decided by
+`bccomp($configuredRate, $taxRate, 2)` at `:269`, unchanged — so `19.000` and `19.00`
+now correctly resolve to the same candidate, and `19.000` on a re-import no longer
+clears a configuration the rate never actually moved away from.
+
+**Both required tests exist and are the right shape, RED-first-verified above:**
+
+- `test_a_three_decimal_rate_cell_still_resolves_a_configuration` — a fresh import
+  with `tax_rate=19.000` resolves the same `$tva19` configuration a `19.00` cell
+  would (`ProductsImportPipelineTest.php:591-609`).
+- `test_a_re_import_that_reformats_the_rate_to_three_decimals_keeps_the_configuration`
+  — run 1 at `19.00` sets the config, run 2 of the same file at `19.000` (rate
+  unchanged, only cell formatting differs) must **keep** it, not null it
+  (`:618-643`). This is the idempotency half the r2 verdict called "the half that
+  matters most to an import lane", and it is now pinned.
+
+**Exponent-safety (F-6's original concern) is preserved, not reopened.** The widened
+regex is still exponent-free: `1e2`, `1E2`, `1e-2` all rejected by direct probe, and
+the 20 000-case pairing re-probe (same method the r2 verdict used to verify F-6)
+shows zero regex-accepted strings that `is_numeric` rejects or that make `bccomp`
+throw. The fix trades away textual-scale strictness only, which was never the
+property F-6 needed — `bccomp(…, 2)` was always the actual arbiter of numeric
+agreement, both before and after this change.
+
+**Scope discipline held.** The commit explicitly declines to also add a percent
+regex ceiling to `ImportType::Products` `tax_rate` — correctly: that is a separate,
+migration-shaped call (today-accepted files would start row-erroring) and is
+recorded in the round-2 report rather than folded into this fix. Confirmed it was
+NOT silently added: `ImportType.php:178,205` still carry no regex for `tax_rate`.
+
+**No new float/scale/gate violation introduced.** No `(float)`, `parseFloat`, or
+`number_format` touches `tax_rate`; the comparison stays on `bccomp` strings at
+scale 2 (percent, correctly kept off the currency scale per rule 19); no route,
+middleware, or `imports.manage` gating touched by this diff; no change to
+opening-balance sign handling, opening-stock batch-tracking, or the result
+workbook — this fix diff is scoped to exactly the one regex and its docblock/tests.
+
+### What to fix before merge
+
+Nothing outstanding in this diff. `ProductsImportPipelineTest.php` is green at
+16/194; the ticketed items from earlier rounds (F-2's category-configuration-tax
+scope note residuals, the manual-API-path coherence gap, the pre-existing
+`ImportService.php:530` exponent-to-bcmath path) remain correctly out of this
+round's scope and are already recorded above.

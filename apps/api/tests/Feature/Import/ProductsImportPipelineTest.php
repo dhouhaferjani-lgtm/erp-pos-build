@@ -24,10 +24,12 @@ use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Category;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Carbon\CarbonImmutable;
+use Database\Seeders\CountriesSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -197,7 +199,9 @@ final class ProductsImportPipelineTest extends TestCase
         $rows = $job->rows()->orderBy('row_number')->get()->keyBy('row_number');
 
         $this->assertSame('ok', $rows[1]->data['_results']['opening_stock'] ?? null);
-        $this->assertSame('default', $rows[5]->data['_results']['tax_source'] ?? null);
+        // Gate r1 F-4: the breadcrumb names the LEVEL now, not just "not from the
+        // file". This row carries no category, so the company default answered.
+        $this->assertSame('company_default', $rows[5]->data['_results']['tax_source'] ?? null);
         $this->assertSame('qty_without_cost', $rows[2]->warnings[0]['code'] ?? null);
         $this->assertSame('quantity_ignored_service', $rows[3]->warnings[0]['code'] ?? null);
         $this->assertSame('opening_exists', $rows[4]->warnings[0]['code'] ?? null);
@@ -723,6 +727,361 @@ final class ProductsImportPipelineTest extends TestCase
         $this->assertStringContainsString('Soins Bebe', $cells);
     }
 
+    /**
+     * W2-5 / C-23(iii). Two defects on the same line of the products import:
+     *
+     *  1. `ImportService::importProduct()` pre-sets `tax_rate` from
+     *     `getDefaultTaxForNewProduct($company)` with NO category, so the
+     *     category-aware branch further down in `ProductService::upsert()` is
+     *     already satisfied by the time the row reaches it. A category that
+     *     carries its own `default_tax_rate` never applied to imported products.
+     *  2. Nothing on the import path ever set `default_tax_configuration_id`, so
+     *     every imported product reached the product screen with a BLANK tax
+     *     selector even though the company has a default configuration from
+     *     provisioning.
+     */
+    public function test_imported_products_inherit_the_category_rate_and_a_default_tax_configuration(): void
+    {
+        [$tva19, $tva7] = $this->seedTunisianVatConfigurations();
+
+        Category::create([
+            'company_id' => $this->company->id,
+            'name' => 'Medicaments',
+            'slug' => 'medicaments',
+            'default_tax_rate' => '7.00',
+            'default_tax_configuration_id' => $tva7->id,
+            'is_active' => true,
+        ]);
+
+        $this->runProductImport([
+            'name,sku,type,category_name,sale_price_incl_tax',
+            'Paracetamol 500mg,PARA-500,part,Medicaments,10.000',
+            'Brosse a dents,BROS-01,part,,10.000',
+        ], 2);
+
+        $categorised = Product::where('sku', 'PARA-500')->firstOrFail();
+        $this->assertSame(
+            0,
+            bccomp((string) $categorised->tax_rate, '7.00', 2),
+            'A product whose category carries its own default rate must import at that rate, not the company default.'
+        );
+        $this->assertSame(
+            $tva7->id,
+            $categorised->default_tax_configuration_id,
+            'and it must carry the category tax configuration so the product screen selector is not blank.'
+        );
+
+        $uncategorised = Product::where('sku', 'BROS-01')->firstOrFail();
+        $this->assertSame(0, bccomp((string) $uncategorised->tax_rate, '19.00', 2));
+        $this->assertSame(
+            $tva19->id,
+            $uncategorised->default_tax_configuration_id,
+            'A product with no category falls back to the COMPANY default configuration, still not null.'
+        );
+    }
+
+    /**
+     * Gate r1 F-3(1). The coherence guard's FAILING direction, which nothing
+     * exercised: a category rate that agrees with NO available configuration
+     * must leave `default_tax_configuration_id` NULL rather than reach for the
+     * company's. A blank selector is a question; a wrong one is a wrong tax.
+     */
+    public function test_a_category_rate_matching_no_configuration_leaves_the_selector_blank(): void
+    {
+        [$tva19] = $this->seedTunisianVatConfigurations();
+
+        Category::create([
+            'company_id' => $this->company->id,
+            'name' => 'Cosmetiques',
+            'slug' => 'cosmetiques',
+            // 13 % is a real TN rate, but no 13 % configuration exists here.
+            'default_tax_rate' => '13.00',
+            'default_tax_configuration_id' => null,
+            'is_active' => true,
+        ]);
+
+        $this->runProductImport([
+            'name,sku,type,category_name,sale_price_incl_tax',
+            'Creme solaire,CREM-SOL,part,Cosmetiques,10.000',
+        ], 1);
+
+        $product = Product::where('sku', 'CREM-SOL')->firstOrFail();
+
+        $this->assertSame(0, bccomp((string) $product->tax_rate, '13.00', 2));
+        $this->assertNull(
+            $product->default_tax_configuration_id,
+            'No configuration states 13 %, so none may be stored — least of all the company 19 % one.'
+        );
+        $this->assertNotSame($tva19->id, $product->default_tax_configuration_id);
+    }
+
+    /**
+     * Gate r1 F-3(2). Re-import idempotency for the configuration: a rate that
+     * has not moved must leave the operator's chosen configuration exactly where
+     * it was.
+     */
+    public function test_a_re_import_at_the_same_rate_does_not_clobber_the_operators_configuration(): void
+    {
+        [, $tva7] = $this->seedTunisianVatConfigurations();
+
+        Category::create([
+            'company_id' => $this->company->id,
+            'name' => 'Medicaments',
+            'slug' => 'medicaments',
+            'default_tax_rate' => '7.00',
+            'default_tax_configuration_id' => $tva7->id,
+            'is_active' => true,
+        ]);
+
+        $rows = [
+            'name,sku,type,category_name,tax_rate,sale_price_incl_tax',
+            'Paracetamol 500mg,PARA-500,part,Medicaments,7.00,10.000',
+        ];
+
+        $this->runProductImport($rows, 1);
+        $first = Product::where('sku', 'PARA-500')->firstOrFail();
+        $this->assertSame($tva7->id, $first->default_tax_configuration_id);
+
+        $this->runProductImport($rows, 1);
+
+        $second = Product::where('sku', 'PARA-500')->firstOrFail();
+        $this->assertSame($first->id, $second->id, 'Pre-condition: the re-import updates the same product.');
+        $this->assertSame(
+            $tva7->id,
+            $second->default_tax_configuration_id,
+            'A re-import at an unchanged rate must leave the configuration alone.'
+        );
+    }
+
+    /**
+     * Gate r1 F-1 [CRITICAL] + F-3(3). The coherence guard used to run ONLY when
+     * the product had no configuration, while `tax_rate` was rewritten on every
+     * write. So a second import at a different rate left the first import's
+     * configuration standing beside a rate it disagrees with — and
+     * `DocumentLineTaxResolver` prefers the configuration while the POS seals
+     * `products.tax_rate`, so the same product taxed at 7 % on a document line
+     * and 19 % at the till. That is an executable N-1.
+     *
+     * The rule now: coherence is evaluated on EVERY write. A configuration that
+     * disagrees with the incoming rate is re-resolved from category -> company
+     * for the NEW rate, and nulled when nothing matches. Never left stale.
+     */
+    public function test_a_re_import_at_a_changed_rate_re_resolves_the_configuration_instead_of_leaving_it_stale(): void
+    {
+        [$tva19, $tva7] = $this->seedTunisianVatConfigurations();
+
+        Category::create([
+            'company_id' => $this->company->id,
+            'name' => 'Medicaments',
+            'slug' => 'medicaments',
+            'default_tax_rate' => '7.00',
+            'default_tax_configuration_id' => $tva7->id,
+            'is_active' => true,
+        ]);
+
+        $this->runProductImport([
+            'name,sku,type,category_name,tax_rate,sale_price_incl_tax',
+            'Paracetamol 500mg,PARA-500,part,Medicaments,7.00,10.000',
+        ], 1);
+
+        $this->assertSame($tva7->id, Product::where('sku', 'PARA-500')->firstOrFail()->default_tax_configuration_id);
+
+        // The ordinary onboarding loop: the same file re-sent with a corrected rate.
+        $this->runProductImport([
+            'name,sku,type,category_name,tax_rate,sale_price_incl_tax',
+            'Paracetamol 500mg,PARA-500,part,Medicaments,19.00,10.000',
+        ], 1);
+
+        $product = Product::where('sku', 'PARA-500')->firstOrFail();
+
+        $this->assertSame(0, bccomp((string) $product->tax_rate, '19.00', 2), 'Pre-condition: the rate moved.');
+        $this->assertNotSame(
+            $tva7->id,
+            $product->default_tax_configuration_id,
+            'A 7 % configuration must not survive beside a 19 % rate — that is the N-1 shape.'
+        );
+        $this->assertSame(
+            $tva19->id,
+            $product->default_tax_configuration_id,
+            'and the 19 % configuration is available, so it is re-resolved rather than nulled.'
+        );
+    }
+
+    /**
+     * The other half of F-1: when the changed rate matches NOTHING, the stale
+     * configuration is nulled rather than retained.
+     */
+    public function test_a_re_import_at_a_rate_no_configuration_states_nulls_the_configuration(): void
+    {
+        [, $tva7] = $this->seedTunisianVatConfigurations();
+
+        Category::create([
+            'company_id' => $this->company->id,
+            'name' => 'Medicaments',
+            'slug' => 'medicaments',
+            'default_tax_rate' => '7.00',
+            'default_tax_configuration_id' => $tva7->id,
+            'is_active' => true,
+        ]);
+
+        $this->runProductImport([
+            'name,sku,type,category_name,tax_rate,sale_price_incl_tax',
+            'Paracetamol 500mg,PARA-500,part,Medicaments,7.00,10.000',
+        ], 1);
+
+        $this->runProductImport([
+            'name,sku,type,category_name,tax_rate,sale_price_incl_tax',
+            'Paracetamol 500mg,PARA-500,part,Medicaments,13.00,10.000',
+        ], 1);
+
+        $product = Product::where('sku', 'PARA-500')->firstOrFail();
+
+        $this->assertSame(0, bccomp((string) $product->tax_rate, '13.00', 2));
+        $this->assertNull(
+            $product->default_tax_configuration_id,
+            'Nothing states 13 %, so the stale 7 % configuration must be cleared, not kept.'
+        );
+    }
+
+    /**
+     * Gate r1 F-2 [IMPORTANT]. A category may state its tax as a CONFIGURATION
+     * with `default_tax_rate` left NULL — `CategoryController` stores the two
+     * columns independently and syncs neither. The rate ladder read only
+     * `default_tax_rate`, so such a category was skipped entirely: the product
+     * imported at the COMPANY rate and then, because the company configuration
+     * agreed with that company rate, landed with a confident 19 % selector in a
+     * category the operator had marked 7 %.
+     */
+    public function test_a_category_that_states_its_tax_only_as_a_configuration_still_drives_the_rate(): void
+    {
+        [, $tva7] = $this->seedTunisianVatConfigurations();
+
+        Category::create([
+            'company_id' => $this->company->id,
+            'name' => 'Medicaments',
+            'slug' => 'medicaments',
+            'default_tax_rate' => null,
+            'default_tax_configuration_id' => $tva7->id,
+            'is_active' => true,
+        ]);
+
+        $this->runProductImport([
+            'name,sku,type,category_name,sale_price_incl_tax',
+            'Paracetamol 500mg,PARA-500,part,Medicaments,10.000',
+        ], 1);
+
+        $product = Product::where('sku', 'PARA-500')->firstOrFail();
+
+        $this->assertSame(
+            0,
+            bccomp((string) $product->tax_rate, '7.00', 2),
+            "The category's configuration IS its rate statement; the company default must not override it."
+        );
+        $this->assertSame($tva7->id, $product->default_tax_configuration_id);
+    }
+
+    /**
+     * Gate r2 NEW-1 [IMPORTANT]. The percent gate used to cap the FILE's textual
+     * scale at two decimals, mirroring a ceiling that exists on the API path
+     * (`CreateProductRequest`) but NOT on this one: `ImportType::Products` gives
+     * `tax_rate` only `numeric|min:0|max:100` — no percent regex, unlike its
+     * `margin` sibling — and `NumericFieldNormalizer` decides "percent field" by
+     * that regex being present, so it passes `19.000` through untouched.
+     *
+     * A TND sheet formats its whole numeric block to 3 decimals (every price
+     * column already reads `10.000`), so `19.000` is the ORDINARY shape of that
+     * cell — and it was returning null before the candidate ladder was reached,
+     * importing with the blank selector this lane exists to remove.
+     *
+     * Textual scale is not the question. `19.000` and `19.00` are the same rate:
+     * both land as `19.00` in `decimal(5,2)` and `bccomp(…, 2)` says so. The gate
+     * is only there to keep exponent forms away from bcmath, which it still does.
+     */
+    public function test_a_three_decimal_rate_cell_still_resolves_a_configuration(): void
+    {
+        [$tva19] = $this->seedTunisianVatConfigurations();
+
+        $this->runProductImport([
+            'name,sku,type,tax_rate,sale_price_incl_tax',
+            'Brosse a dents,BROS-01,part,19.000,10.000',
+        ], 1);
+
+        $product = Product::where('sku', 'BROS-01')->firstOrFail();
+
+        $this->assertSame(0, bccomp((string) $product->tax_rate, '19.00', 2));
+        $this->assertSame(
+            $tva19->id,
+            $product->default_tax_configuration_id,
+            'A 3-decimal cell states the same rate as a 2-decimal one; it must resolve the same configuration.'
+        );
+    }
+
+    /**
+     * Gate r2 NEW-1, the half that matters most to an import lane: re-import
+     * idempotency must not depend on cell FORMATTING. Run 1 at `19.00` set the
+     * configuration; run 2 of the same file re-exported at `19.000` cleared it,
+     * silently — the rate never moved, and the result workbook carries no reason
+     * for a nulled configuration.
+     */
+    public function test_a_re_import_that_reformats_the_rate_to_three_decimals_keeps_the_configuration(): void
+    {
+        [$tva19] = $this->seedTunisianVatConfigurations();
+
+        $this->runProductImport([
+            'name,sku,type,tax_rate,sale_price_incl_tax',
+            'Brosse a dents,BROS-01,part,19.00,10.000',
+        ], 1);
+
+        $this->assertSame($tva19->id, Product::where('sku', 'BROS-01')->firstOrFail()->default_tax_configuration_id);
+
+        // Same file, same rate, exported by a tool that pads to the currency scale.
+        $this->runProductImport([
+            'name,sku,type,tax_rate,sale_price_incl_tax',
+            'Brosse a dents,BROS-01,part,19.000,10.000',
+        ], 1);
+
+        $product = Product::where('sku', 'BROS-01')->firstOrFail();
+
+        $this->assertSame(0, bccomp((string) $product->tax_rate, '19.00', 2), 'Pre-condition: the rate did not move.');
+        $this->assertSame(
+            $tva19->id,
+            $product->default_tax_configuration_id,
+            'Re-formatting a cell is not a rate change; the agreeing configuration must survive it.'
+        );
+    }
+
+    /**
+     * Gate r1 F-4 [MINOR]. `tax_source` is the row's only breadcrumb about where
+     * its rate came from, and it said `default` for a category-derived rate —
+     * wrong for exactly the case this lane exists to fix.
+     */
+    public function test_the_row_records_which_level_of_the_ladder_supplied_the_rate(): void
+    {
+        [, $tva7] = $this->seedTunisianVatConfigurations();
+
+        Category::create([
+            'company_id' => $this->company->id,
+            'name' => 'Medicaments',
+            'slug' => 'medicaments',
+            'default_tax_rate' => '7.00',
+            'default_tax_configuration_id' => $tva7->id,
+            'is_active' => true,
+        ]);
+
+        $jobId = $this->runProductImport([
+            'name,sku,type,category_name,sale_price_incl_tax',
+            'Paracetamol 500mg,PARA-500,part,Medicaments,10.000',
+            'Brosse a dents,BROS-01,part,,10.000',
+            'Sirop,SIRO-01,part,Medicaments,10.000',
+        ], 3);
+
+        $rows = ImportJob::findOrFail($jobId)->rows()->orderBy('row_number')->get()->keyBy('row_number');
+
+        $this->assertSame('category_default', $rows[1]->data['_results']['tax_source'] ?? null);
+        $this->assertSame('company_default', $rows[2]->data['_results']['tax_source'] ?? null);
+        $this->assertSame('category_default', $rows[3]->data['_results']['tax_source'] ?? null);
+    }
+
     public function test_re_importing_the_same_categories_reuses_them_without_duplicates_or_warnings(): void
     {
         $existing = Category::create([
@@ -896,5 +1255,75 @@ final class ProductsImportPipelineTest extends TestCase
 
         // An EXACT name hit stays silent — no new noise on ordinary re-imports.
         $this->assertNull($rows[1]->warnings[1] ?? null);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Helpers
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * The two TN line-item VAT configurations these tests reason about, plus the
+     * company default (19 %) that provisioning would have set.
+     *
+     * @return array{0: TaxConfiguration, 1: TaxConfiguration} [TVA 19 %, TVA 7 %]
+     */
+    private function seedTunisianVatConfigurations(): array
+    {
+        $this->seed(CountriesSeeder::class);
+
+        $tva19 = TaxConfiguration::create([
+            'country_code' => 'TN',
+            'tax_type' => 'PERCENTAGE',
+            'name' => 'TVA 19%',
+            'code' => 'TVA_19',
+            'percentage_rate' => '19.00',
+            'applies_to' => 'LINE_ITEMS',
+            'is_default' => true,
+            'is_active' => true,
+        ]);
+
+        $tva7 = TaxConfiguration::create([
+            'country_code' => 'TN',
+            'tax_type' => 'PERCENTAGE',
+            'name' => 'TVA 7%',
+            'code' => 'TVA_7',
+            'percentage_rate' => '7.00',
+            'applies_to' => 'LINE_ITEMS',
+            'is_default' => false,
+            'is_active' => true,
+        ]);
+
+        $this->company->update(['default_tax_configuration_id' => $tva19->id]);
+
+        return [$tva19, $tva7];
+    }
+
+    /**
+     * Run one products import end to end, through the real endpoints.
+     *
+     * @param  list<string>  $lines  CSV header + rows
+     * @return string the import job id
+     */
+    private function runProductImport(array $lines, int $expectedSuccessful): string
+    {
+        $file = UploadedFile::fake()->createWithContent(
+            'products-'.bin2hex(random_bytes(4)).'.csv',
+            implode("\n", $lines),
+        );
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', ['file' => $file, 'type' => 'products']);
+        $createResponse->assertCreated();
+
+        $jobId = $createResponse->json('data.id');
+        $this->assertIsString($jobId);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.successful_rows', $expectedSuccessful)
+            ->assertJsonPath('data.failed_rows', 0);
+
+        return $jobId;
     }
 }

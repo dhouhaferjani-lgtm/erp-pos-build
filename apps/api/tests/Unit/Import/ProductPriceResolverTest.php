@@ -7,6 +7,8 @@ namespace Tests\Unit\Import;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Import\Services\ProductPriceResolver;
 use App\Shared\Contracts\TaxDefaultResolverInterface;
+use App\Shared\DTOs\ProductTaxDefaultDTO;
+use App\Shared\Enums\ProductTaxDefaultSource;
 use PHPUnit\Framework\TestCase;
 
 final class ProductPriceResolverTest extends TestCase
@@ -17,11 +19,20 @@ final class ProductPriceResolverTest extends TestCase
         {
             public function getDefaultTaxForNewProduct(Company $company, int|string|null $categoryId = null): string
             {
-                return '19.00';
+                return $this->resolveDefaultTaxForNewProduct($company, $categoryId)->taxRate;
+            }
+
+            public function resolveDefaultTaxForNewProduct(Company $company, int|string|null $categoryId = null): ProductTaxDefaultDTO
+            {
+                return new ProductTaxDefaultDTO('19.00', ProductTaxDefaultSource::CompanyDefault);
             }
         };
 
         $this->assertSame('19.00', $resolver->getDefaultTaxForNewProduct(new Company));
+        $this->assertSame(
+            ProductTaxDefaultSource::CompanyDefault,
+            $resolver->resolveDefaultTaxForNewProduct(new Company)->source,
+        );
     }
 
     public function test_ttc_authority_with_consistent_candidates_has_no_warnings(): void
