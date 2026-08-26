@@ -6,6 +6,7 @@ namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityExceptionClass;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
@@ -14,7 +15,9 @@ use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Projections\ZSessionLifecycleProjection;
+use App\Modules\POS\Commands\CloseOrphanedShiftCommand;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
+use App\Modules\POS\Domain\Events\TerminalReleased;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Presentation\Resources\ShiftResource;
@@ -234,6 +237,106 @@ final class PosShiftProjectionTest extends TestCase
         $this->assertSame(4, $array['shift_number']);
         $this->assertSame($shiftId, $array['session_id']);
         $this->assertSame($shift->opened_at->toIso8601String(), $array['opened_at_device']);
+    }
+
+    // ------------------------------------------------- O-30 orphaned shift
+
+    /**
+     * LEDGER O-30, HALF ONE — the defect, pinned as it behaves TODAY.
+     *
+     * A forced terminal release leaves the OPEN `pos_shifts` row behind. The
+     * replacement device then binds to the same terminal and opens its own
+     * shift — and `projectPosShiftOpen()` sees a different shift already OPEN
+     * on that terminal and silently returns. Nothing dead-letters, nothing
+     * warns: the new till's shift simply does not exist server-side, which is
+     * why its SESSION_CLOSE retries to exhaustion and its Z report can never
+     * land (`pos_z_reports.shift_id` is FK-RESTRICTed).
+     *
+     * This is NOT a bug in the projection — the drop is what keeps
+     * `pos_shifts_one_open_per_terminal` from dead-lettering the projector on a
+     * replayed open. The bug was that nothing could clear the orphan.
+     */
+    public function test_a_replacement_devices_session_open_is_dropped_while_the_orphan_is_open(): void
+    {
+        $orphanId = $this->orphanShiftLeftByForcedRelease();
+
+        $replacementShiftId = Str::uuid()->toString();
+        $this->app->make(CompanyContext::class)->clear();
+        $this->app->make(ZSessionLifecycleProjection::class)
+            ->apply($this->makeSessionOpenEvent($replacementShiftId, shiftNumber: 2, sequenceNumber: 2));
+
+        $this->assertNull(
+            Shift::query()->find($replacementShiftId),
+            'While the orphan is OPEN the replacement device is invisible server-side.',
+        );
+        $this->assertSame(
+            ShiftStatus::Open,
+            Shift::query()->findOrFail($orphanId)->status,
+            'And nothing has closed the orphan.',
+        );
+    }
+
+    /**
+     * LEDGER O-30, HALF TWO — the remedy, end to end.
+     *
+     * `pos:shift:close-orphaned` closes the orphan, and the SAME SESSION_OPEN
+     * that was dropped a moment ago now projects. This is the assertion that
+     * makes the command worth having: closing the row is not the goal, getting
+     * the replacement till back onto the server's projections is.
+     */
+    public function test_a_replacement_devices_session_open_projects_once_the_orphan_is_closed(): void
+    {
+        $orphanId = $this->orphanShiftLeftByForcedRelease();
+
+        $this->artisan('pos:shift:close-orphaned', [
+            'shift' => $orphanId,
+            '--reason' => 'Till stolen 2026-06-14; device never recovered',
+            '--closed-by' => $this->cashier->id,
+            '--apply' => true,
+        ])->assertExitCode(CloseOrphanedShiftCommand::SUCCESS);
+
+        $this->assertSame(ShiftStatus::Closed, Shift::query()->findOrFail($orphanId)->status);
+
+        $replacementShiftId = Str::uuid()->toString();
+        // Rule 20: the projector runs on a queue worker with NO CompanyContext.
+        // Binding one here (the HTTP shape) would mask that reality.
+        $this->app->make(CompanyContext::class)->clear();
+        $this->app->make(ZSessionLifecycleProjection::class)
+            ->apply($this->makeSessionOpenEvent($replacementShiftId, shiftNumber: 2, sequenceNumber: 2));
+
+        $replacement = Shift::query()->find($replacementShiftId);
+        $this->assertNotNull($replacement, 'Once the orphan is closed the replacement device projects again.');
+        $this->assertSame(ShiftStatus::Open, $replacement->status);
+        $this->assertSame($this->terminal->id, $replacement->terminal_id);
+        $this->assertSame(2, $replacement->shift_number);
+    }
+
+    /**
+     * The shape a forced release leaves behind: an OPEN shift on a terminal
+     * whose binding has been cleared, plus the `terminal.released` audit row
+     * (forced, naming the shift) that the command demands as its authorisation.
+     */
+    private function orphanShiftLeftByForcedRelease(): string
+    {
+        $orphanId = Str::uuid()->toString();
+        $this->app->make(CompanyContext::class)->clear();
+        $this->app->make(ZSessionLifecycleProjection::class)
+            ->apply($this->makeSessionOpenEvent($orphanId, shiftNumber: 1));
+
+        $this->terminal->update(['hardware_identifier' => null]);
+
+        event(new TerminalReleased(
+            terminalId: $this->terminal->id,
+            terminalCode: $this->terminal->code,
+            companyId: $this->companyId,
+            hardwareIdentifier: 'HW-LOST-BOX',
+            reason: 'Till stolen mid-shift; shift cannot be closed from the device',
+            releasedBy: $this->cashier->id,
+            forced: true,
+            openShiftId: $orphanId,
+        ));
+
+        return $orphanId;
     }
 
     /**
