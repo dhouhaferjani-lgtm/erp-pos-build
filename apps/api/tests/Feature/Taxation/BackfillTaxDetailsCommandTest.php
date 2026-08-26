@@ -1330,6 +1330,234 @@ final class BackfillTaxDetailsCommandTest extends TestCase
         return $document;
     }
 
+    // ---------------------------------------------------------------------
+    // Supplier-invoice leg (B-19) — the MISSING-row mirror of the main leg.
+    //
+    // The main leg only reaches documents that ALREADY carry a
+    // document_tax_details row (proof of a real confirm()). Supplier invoices
+    // posted before B-19 carry NONE, so they need their own scope.
+    // ---------------------------------------------------------------------
+
+    public function test_supplier_invoice_leg_dry_run_reports_the_missing_snapshot_without_writing(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierInvoice(DocumentStatus::Posted);
+
+        $output = $this->runBackfillAndCaptureOutput([]);
+
+        $this->assertStringContainsString('Supplier-invoice leg', $output);
+        $this->assertStringContainsString('Would snapshot 1', $output);
+        $this->assertStringContainsString('WOULD ADD', $output);
+        $this->assertStringContainsString('TOTAL deductible VAT delta: 38.000', $output);
+        $this->assertSame(
+            0,
+            DocumentTaxDetail::where('document_id', $invoice->id)->count(),
+            'Dry-run must write nothing.',
+        );
+    }
+
+    public function test_supplier_invoice_leg_apply_writes_the_missing_snapshot_from_the_persisted_lines(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierInvoice(DocumentStatus::Posted);
+
+        $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $details = DocumentTaxDetail::where('document_id', $invoice->id)->get();
+        $this->assertCount(1, $details);
+        $this->assertSame('19.00', (string) $details[0]->tax_rate);
+        $this->assertSame('200.000', (string) $details[0]->tax_base);
+        $this->assertSame('38.000', (string) $details[0]->tax_amount);
+        $this->assertFalse((bool) $details[0]->is_stamp_duty);
+    }
+
+    public function test_supplier_invoice_leg_also_reaches_a_paid_supplier_invoice(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierInvoice(DocumentStatus::Paid);
+
+        $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(1, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+    }
+
+    public function test_supplier_invoice_leg_apply_is_idempotent_on_a_second_run(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierInvoice(DocumentStatus::Posted);
+
+        $this->runBackfillAndCaptureOutput(['--apply' => true]);
+        $second = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(1, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+        $this->assertStringContainsString('Scanned 0 in-scope supplier invoice(s)', $second);
+    }
+
+    public function test_supplier_invoice_leg_excludes_a_draft_supplier_invoice(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierInvoice(DocumentStatus::Draft);
+
+        $output = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(
+            0,
+            DocumentTaxDetail::where('document_id', $invoice->id)->count(),
+            'A draft supplier invoice carries no journal entry — backfilling it would be a new over-claim.',
+        );
+        $this->assertStringContainsString('1 draft (excluded: no journal entry)', $output);
+    }
+
+    public function test_supplier_invoice_leg_excludes_a_cancelled_supplier_invoice(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierInvoice(DocumentStatus::Cancelled);
+
+        $output = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(0, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+        $this->assertStringContainsString('1 cancelled (excluded: withdrawn)', $output);
+    }
+
+    public function test_supplier_invoice_leg_skips_when_recomputed_vat_differs_from_the_posted_line_tax_amount(): void
+    {
+        // Stored line_tax_amount (38.500) is what the GL posted as recoverable
+        // input VAT; the persisted lines recompute to 38.000. Declaring a
+        // figure the ledger does not carry is a value question for a human.
+        $invoice = $this->createUnsnapshottedSupplierInvoice(
+            DocumentStatus::Posted,
+            lineTaxAmount: '38.500',
+            taxAmount: '38.500',
+            total: '238.500',
+        );
+
+        $output = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(0, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+        $this->assertStringContainsString('recomputed line VAT 38.000 != stored line_tax_amount 38.500', $output);
+        $this->assertStringContainsString('NOT backfilled', $output);
+    }
+
+    public function test_supplier_invoice_leg_skips_a_lineless_supplier_invoice(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierInvoice(DocumentStatus::Posted, withLine: false);
+
+        $output = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(0, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+        $this->assertStringContainsString('no document lines', $output);
+    }
+
+    public function test_supplier_invoice_leg_refuses_a_filed_period_document_without_include_filed(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierInvoice(DocumentStatus::Posted);
+        $this->createVatPeriod(VatPeriodStatus::Filed);
+
+        $output = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(0, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+        $this->assertStringContainsString('ALREADY-FILED VAT period -- backfill refused', $output);
+        $this->assertStringContainsString('FILED-PERIOD IMPACT (supplier-invoice leg)', $output);
+    }
+
+    public function test_supplier_invoice_leg_apply_with_include_filed_writes_into_a_filed_period(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierInvoice(DocumentStatus::Posted);
+        $this->createVatPeriod(VatPeriodStatus::Filed);
+
+        $this->runBackfillAndCaptureOutput(['--apply' => true, '--include-filed' => true]);
+
+        $this->assertSame(1, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+    }
+
+    public function test_supplier_invoice_leg_reports_a_reopen_and_reclose_instruction_for_a_closed_period(): void
+    {
+        $this->createUnsnapshottedSupplierInvoice(DocumentStatus::Posted);
+        $this->createVatPeriod(VatPeriodStatus::Closed);
+
+        $output = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertStringContainsString('CLOSED-PERIOD IMPACT (supplier-invoice leg)', $output);
+        $this->assertStringContainsString('reopen this period then re-close it', $output);
+    }
+
+    public function test_supplier_invoice_leg_census_reports_the_whole_population(): void
+    {
+        $this->createUnsnapshottedSupplierInvoice(DocumentStatus::Posted);
+        $this->createUnsnapshottedSupplierInvoice(DocumentStatus::Draft);
+        $this->createUnsnapshottedSupplierInvoice(DocumentStatus::Cancelled);
+
+        $output = $this->runBackfillAndCaptureOutput([]);
+
+        $this->assertStringContainsString('Population: 3 supplier invoice(s) total', $output);
+        $this->assertStringContainsString('1 posted/paid without a snapshot (IN SCOPE)', $output);
+        $this->assertStringContainsString('0 posted/paid already snapshotted', $output);
+    }
+
+    /**
+     * A supplier invoice as `CreateSupplierInvoiceService` + the pre-B-19
+     * `SupplierInvoicePostingService::post()` left it: real lines carrying an
+     * explicit tax_rate, a coherent header, and ZERO document_tax_details rows.
+     */
+    private function createUnsnapshottedSupplierInvoice(
+        DocumentStatus $status,
+        string $lineTaxAmount = '38.000',
+        string $taxAmount = '38.000',
+        string $total = '238.000',
+        bool $withLine = true,
+    ): Document {
+        $supplier = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Backfill Test Supplier '.uniqid(),
+            'type' => PartnerType::Supplier,
+        ]);
+
+        $document = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $supplier->id,
+            'type' => DocumentType::SupplierInvoice,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => $status,
+            'document_number' => 'SI-LEGACY-'.strtoupper(substr(uniqid(), -6)),
+            'document_date' => '2026-01-10',
+            'currency' => 'TND',
+            'subtotal' => $withLine ? '200.000' : '0.000',
+            'line_tax_amount' => $withLine ? $lineTaxAmount : '0.000',
+            'stamp_duty_amount' => '0.000',
+            'tax_amount' => $withLine ? $taxAmount : '0.000',
+            'total' => $withLine ? $total : '0.000',
+        ]);
+
+        if ($withLine) {
+            DocumentLine::create([
+                'document_id' => $document->id,
+                'line_number' => 1,
+                'description' => 'Purchased item',
+                'quantity' => '1',
+                'unit_price' => '200.000',
+                'tax_rate' => '19.00',
+                'tax_amount' => $lineTaxAmount,
+                'tax_recoverable' => true,
+                'recoverable_tax_amount' => $lineTaxAmount,
+                'non_recoverable_tax_amount' => '0.000',
+                'line_total' => '200.000',
+            ]);
+        }
+
+        return $document;
+    }
+
+    private function createVatPeriod(VatPeriodStatus $status): VatPeriod
+    {
+        return VatPeriod::create([
+            'company_id' => $this->company->id,
+            'country_code' => 'TN',
+            'period_type' => 'MONTHLY',
+            'label' => 'January 2026',
+            'period_start' => '2026-01-01',
+            'period_end' => '2026-01-31',
+            'status' => $status,
+            'closed_at' => now(),
+        ]);
+    }
+
     private function createLegacyInvoice(): Document
     {
         $document = Document::create([

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Taxation\Domain\Entities\DocumentTaxDetail;
 use App\Modules\Taxation\Domain\Entities\VatPeriod;
@@ -13,6 +14,7 @@ use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -153,17 +155,70 @@ use Illuminate\Support\Facades\Schema;
  *   tax_base, tax_amount, tax_rate — captured before the delete, in BOTH
  *   dry-run and --apply, not merely a document reference list.
  * - DRY-RUN BY DEFAULT / --apply / --company / --include-filed, same
- *   contract as the main leg (--include-filed is expense-leg-only; the
- *   main invoice/credit-note leg does not delete rows and is unaffected).
+ *   contract as the main leg (--include-filed applies to the expense and
+ *   supplier-invoice legs; the main invoice/credit-note leg does not delete
+ *   rows and is unaffected).
+ *
+ * Supplier-invoice leg (B-19, 2026-08-26, owner sheet
+ * OWNER-SHEET-2026-08-21-first-client-session.md): until B-19,
+ * `SupplierInvoicePostingService::post()` wrote no `document_tax_details`
+ * row at all, so every supplier invoice posted before the fix carries ZERO
+ * rows and its deductible VAT is absent from the declaration for good (on
+ * the local demo tenant: 43 supplier invoices, 704.401 TND of VAT, 0 rows).
+ * The main leg above cannot reach them — its `whereIn(DocumentTaxDetail
+ * ::select('document_id'))` scope deliberately requires an EXISTING row as
+ * proof the document once went through a real confirm(). This leg is the
+ * mirror image: supplier invoices with NO row at all.
+ * - Scope: `supplier_invoice` documents whose status is POSTED or PAID and
+ *   which carry NO `document_tax_details` row. DRAFT is excluded on the same
+ *   ground the writer snapshots at post() rather than at create(): an
+ *   unposted supplier invoice carries no journal entry, so declaring a
+ *   deduction for it would be a new over-claim, not a remediation. CANCELLED
+ *   is excluded because a withdrawn document has no deduction to claim.
+ * - Evidence-based, never invented: the row values come from
+ *   `TaxCalculationService::calculateDocumentTaxes()` over the document's OWN
+ *   PERSISTED LINES (grouped by each line's stored `tax_rate`, resolved
+ *   against the rate table in force on the document's own `document_date`),
+ *   written through the same `snapshotTaxDetails()` writer `post()` now uses.
+ *   A backfilled row and a natively-written row are therefore byte-identical
+ *   for the same document — the backfill can never introduce a second shape.
+ * - Idempotent by construction: the scope requires ZERO existing rows, so a
+ *   document drops out of the scan on the next run once written; and
+ *   `snapshotTaxDetails()` deletes-then-creates within a document anyway.
+ * - Three invariant guards, ALL of which must pass, or the document is
+ *   SKIPPED and reported rather than written:
+ *     1) the STORED header is self-consistent (subtotal + tax_amount ==
+ *        total) — same check as the main leg;
+ *     2) the RECOMPUTED subtotal equals the STORED subtotal;
+ *     3) the RECOMPUTED line-items tax total equals the STORED
+ *        `line_tax_amount`. Guard 3 is the supplier-invoice-specific one and
+ *        it is load-bearing: `CreateSupplierInvoiceService` computes per-line
+ *        VAT with `bcround` (half-up, per line) while
+ *        `TaxCalculationService` accumulates at scale+1 and truncates ONCE
+ *        per rate bucket, so the two can legitimately differ by a millime on
+ *        sub-scale-heavy documents. What the GL posted as recoverable input
+ *        VAT and what the declaration would claim MUST agree; when they do
+ *        not, that is a value question for a human, not something to write
+ *        silently.
+ * - Period safety: identical to the expense leg. A document whose
+ *   `document_date` falls inside an ALREADY-FILED VAT period is SKIPPED in
+ *   BOTH dry-run and --apply unless `--include-filed` is passed (writing a
+ *   NEW deductible row into a filed declaration changes a figure already sent
+ *   to the DGI); CLOSED periods are reported with the reopen + re-close
+ *   instruction, exactly as the expense leg reports them.
+ * - Census: prints the full supplier-invoice population (already-snapshotted,
+ *   draft/cancelled-excluded, in-scope) and the per-rate base/VAT that would
+ *   be ADDED to the declaration's deductible side, so the delta is reviewable
+ *   before --apply.
  */
 final class BackfillTaxDetailsCommand extends Command
 {
     protected $signature = 'vat:backfill-tax-details
                             {--apply : Actually rewrite/delete document_tax_details rows. Without this flag the command is a DRY-RUN (default) and writes nothing.}
                             {--company= : Optional company id to scope to a single company within the current tenant}
-                            {--include-filed : IMP-2 (2026-08-07 gate). Without this flag, expense-leg documents whose document_date falls inside an ALREADY-FILED VAT period are SKIPPED (never rewritten/deleted) even under --apply -- FILED is the highest-consequence case (see the FILED-PERIOD IMPACT section). Pass this flag to allow the mutation anyway.}';
+                            {--include-filed : IMP-2 (2026-08-07 gate) + B-19. Without this flag, expense-leg and supplier-invoice-leg documents whose document_date falls inside an ALREADY-FILED VAT period are SKIPPED (never rewritten/deleted/backfilled) even under --apply -- FILED is the highest-consequence case (see the FILED-PERIOD IMPACT section). Pass this flag to allow the mutation anyway.}';
 
-    protected $description = 'Recompute document_tax_details (tax_base, is_stamp_duty) for existing invoice/credit-note documents via the CURRENT TaxCalculationService pipeline, plus a separate expense leg that rewrites the declared VAT base to the full facial subtotal for partially-deductible expenses AND DELETES the row entirely for 0%-deductible expenses (I-3 expert-comptable ruling). DRY-RUN by default; documents inside an ALREADY-FILED VAT period are skipped unless --include-filed is also passed. Owner-executed only -- never wire into an automated deploy step. See docs/superpowers/reviews/2026-08-03-vat-declaration-gate.md V6, docs/superpowers/tickets/2026-08-06-expert-comptable-rulings-q2-q3.md, and docs/superpowers/reviews/2026-08-07-r2g-backend-gate.md.';
+    protected $description = 'Recompute document_tax_details (tax_base, is_stamp_duty) for existing invoice/credit-note documents via the CURRENT TaxCalculationService pipeline, plus a separate expense leg that rewrites the declared VAT base to the full facial subtotal for partially-deductible expenses AND DELETES the row entirely for 0%-deductible expenses (I-3 expert-comptable ruling), plus a supplier-invoice leg (B-19) that writes the MISSING input-VAT snapshot for posted/paid supplier invoices that carry no document_tax_details row at all. DRY-RUN by default; documents inside an ALREADY-FILED VAT period are skipped unless --include-filed is also passed. Owner-executed only -- never wire into an automated deploy step. See docs/superpowers/reviews/2026-08-03-vat-declaration-gate.md V6, docs/superpowers/tickets/2026-08-06-expert-comptable-rulings-q2-q3.md, and docs/superpowers/reviews/2026-08-07-r2g-backend-gate.md.';
 
     public function __construct(
         private readonly TaxCalculationService $taxCalculationService,
@@ -316,6 +371,7 @@ final class BackfillTaxDetailsCommand extends Command
         }
 
         $this->handleExpenseLeg($apply, $companyId, $includeFiled);
+        $this->handleSupplierInvoiceLeg($apply, $companyId, $includeFiled);
 
         return self::SUCCESS;
     }
@@ -643,6 +699,258 @@ final class BackfillTaxDetailsCommand extends Command
         if (! $apply && ($touched > 0 || $zeroDeductibleRemediated !== [])) {
             $this->info('Dry-run only for the expense leg -- re-run with --apply to write it for real.');
         }
+    }
+
+    /**
+     * Supplier-invoice leg (B-19) — see the class docblock. Writes the
+     * MISSING input-VAT snapshot for posted/paid supplier invoices that carry
+     * no `document_tax_details` row at all, deriving every value from the
+     * document's own persisted lines through the same producer/writer pair
+     * `SupplierInvoicePostingService::post()` now uses.
+     */
+    private function handleSupplierInvoiceLeg(bool $apply, ?string $companyId, bool $includeFiled): void
+    {
+        $this->line('');
+        $this->line('Supplier-invoice leg (B-19, missing deductible-VAT snapshot on posted/paid supplier invoices):');
+
+        // Full-population census FIRST, so the operator can see what the
+        // scope below deliberately leaves alone rather than inferring it
+        // from a bare "scanned N" line.
+        $population = $this->supplierInvoicePopulation($companyId);
+        $this->line(sprintf(
+            '  Population: %d supplier invoice(s) total -- %d posted/paid without a snapshot (IN SCOPE), '
+            .'%d posted/paid already snapshotted, %d draft (excluded: no journal entry), %d cancelled (excluded: withdrawn).',
+            $population['total'],
+            $population['in_scope'],
+            $population['already'],
+            $population['draft'],
+            $population['cancelled'],
+        ));
+
+        $query = $this->supplierInvoiceQuery($companyId)
+            ->whereIn('status', [DocumentStatus::Posted, DocumentStatus::Paid])
+            ->whereNotIn('id', DocumentTaxDetail::query()->select('document_id')->distinct())
+            ->with('lines');
+
+        $scanned = 0;
+        $touched = 0;
+        /** @var list<array{id: string, number: string, reason: string}> $skipped */
+        $skipped = [];
+        /** @var array<string, array{rate: string, is_stamp_duty: bool, base: numeric-string, tax: numeric-string, count: int}> $wouldAdd */
+        $wouldAdd = [];
+        /** @var array<string, VatPeriod> $affectedClosedPeriods */
+        $affectedClosedPeriods = [];
+        /** @var array<string, VatPeriod> $affectedFiledPeriods */
+        $affectedFiledPeriods = [];
+        /** @var array<string, array{closed: list<VatPeriod>, filed: list<VatPeriod>}> $periodLookupCache */
+        $periodLookupCache = [];
+
+        foreach ($query->cursor() as $document) {
+            $scanned++;
+
+            if ($document->lines->isEmpty()) {
+                $skipped[] = [
+                    'id' => (string) $document->id,
+                    'number' => (string) ($document->document_number ?? $document->id),
+                    'reason' => 'no document lines -- there is no evidence to derive a VAT base or rate from',
+                ];
+
+                continue;
+            }
+
+            $result = $this->taxCalculationService->calculateDocumentTaxes($document);
+
+            /** @var numeric-string $storedSubtotal */
+            $storedSubtotal = (string) ($document->subtotal ?? '0');
+            /** @var numeric-string $storedTaxAmount */
+            $storedTaxAmount = (string) ($document->tax_amount ?? '0');
+            /** @var numeric-string $storedTotal */
+            $storedTotal = (string) ($document->total ?? '0');
+            /** @var numeric-string $storedLineTax */
+            $storedLineTax = (string) ($document->line_tax_amount ?? '0');
+
+            $scale = $this->scaleResolver->getScaleSafe((string) $document->currency, 3);
+
+            // Guards 1-3 -- see the class docblock. Guard 3 (recomputed
+            // line-items tax vs the stored line_tax_amount) is the
+            // supplier-invoice-specific one: what the GL posted as
+            // recoverable input VAT and what the declaration would claim
+            // must agree to the millime, or a human decides.
+            $reasons = [];
+            if (bccomp(bcadd($storedSubtotal, $storedTaxAmount, $scale), $storedTotal, $scale) !== 0) {
+                $reasons[] = sprintf(
+                    'stored subtotal %s + tax_amount %s != stored total %s (header already inconsistent)',
+                    $storedSubtotal,
+                    $storedTaxAmount,
+                    $storedTotal,
+                );
+            }
+            if (bccomp($result->subtotal, $storedSubtotal, $scale) !== 0) {
+                $reasons[] = sprintf('recomputed subtotal %s != stored subtotal %s', $result->subtotal, $storedSubtotal);
+            }
+            if (bccomp($result->lineItemsTaxTotal, $storedLineTax, $scale) !== 0) {
+                $reasons[] = sprintf(
+                    'recomputed line VAT %s != stored line_tax_amount %s (the GL posted the stored figure as recoverable input VAT)',
+                    $result->lineItemsTaxTotal,
+                    $storedLineTax,
+                );
+            }
+
+            if ($reasons !== []) {
+                $skipped[] = [
+                    'id' => (string) $document->id,
+                    'number' => (string) ($document->document_number ?? $document->id),
+                    'reason' => implode('; ', $reasons),
+                ];
+
+                continue;
+            }
+
+            // Period safety, checked BEFORE the write decision (IMP-2 shape).
+            $isFiled = $this->recordPeriodImpact(
+                $document,
+                $affectedClosedPeriods,
+                $affectedFiledPeriods,
+                $periodLookupCache,
+            );
+
+            if ($isFiled && ! $includeFiled) {
+                $skipped[] = [
+                    'id' => (string) $document->id,
+                    'number' => (string) ($document->document_number ?? $document->id),
+                    'reason' => 'document_date falls inside an ALREADY-FILED VAT period -- backfill refused; pass --include-filed to override',
+                ];
+
+                continue;
+            }
+
+            if ($apply) {
+                DB::transaction(function () use ($document, $result): void {
+                    $this->taxCalculationService->snapshotTaxDetails($document, $result);
+                });
+            }
+            $touched++;
+
+            foreach ($result->taxes as $tax) {
+                /** @var numeric-string $taxBase */
+                $taxBase = $tax->base;
+                /** @var numeric-string $taxAmount */
+                $taxAmount = $tax->amount;
+                $this->accumulate($wouldAdd, CurrencyScale::bcformat($tax->rate ?? '0', 2), $tax->isStampDuty, $taxBase, $taxAmount);
+            }
+        }
+
+        $this->line(sprintf(
+            '  Scanned %d in-scope supplier invoice(s). %s %d. Skipped %d.',
+            $scanned,
+            $apply ? 'Snapshotted' : 'Would snapshot',
+            $touched,
+            count($skipped),
+        ));
+
+        $this->line(sprintf('  %s to the declaration DEDUCTIBLE (input) side:', $apply ? 'ADDED' : 'WOULD ADD'));
+        if ($wouldAdd === []) {
+            $this->line('    (nothing)');
+        } else {
+            /** @var numeric-string $totalVat */
+            $totalVat = '0';
+            ksort($wouldAdd);
+            foreach ($wouldAdd as $bucket) {
+                $this->line(sprintf(
+                    '    rate %s%% %s: base %s, VAT %s, %d row(s)',
+                    $bucket['rate'],
+                    $bucket['is_stamp_duty'] ? '(stamp)' : '(vat)',
+                    $bucket['base'],
+                    $bucket['tax'],
+                    $bucket['count'],
+                ));
+                if (! $bucket['is_stamp_duty']) {
+                    $totalVat = bcadd($totalVat, $bucket['tax'], 3);
+                }
+            }
+            $this->line(sprintf('    TOTAL deductible VAT delta: %s', $totalVat));
+        }
+
+        foreach ($skipped as $row) {
+            $this->warn(sprintf(
+                '  SKIPPED %s (%s): %s -- needs manual review, NOT backfilled',
+                $row['number'],
+                $row['id'],
+                $row['reason'],
+            ));
+        }
+
+        if ($affectedClosedPeriods !== []) {
+            $this->line('');
+            $this->warn('  CLOSED-PERIOD IMPACT (supplier-invoice leg) -- vat_period_breakdowns is a snapshot taken at period close and is now STALE for:');
+            foreach ($affectedClosedPeriods as $period) {
+                $this->warn(sprintf(
+                    '    - %s (%s, %s to %s): reopen this period then re-close it to refresh its breakdowns. This command does NOT do so automatically.',
+                    $period->label,
+                    $period->id,
+                    $period->period_start->toDateString(),
+                    $period->period_end->toDateString(),
+                ));
+            }
+        }
+
+        if ($affectedFiledPeriods !== []) {
+            $this->line('');
+            $this->error(sprintf(
+                '  FILED-PERIOD IMPACT (supplier-invoice leg) -- these periods are ALREADY FILED; a backfilled deductible row CHANGES a figure already sent to the DGI. Affected documents are SKIPPED unless --include-filed is passed%s:',
+                $includeFiled ? ' -- THIS RUN PASSED --include-filed, so affected documents WERE written' : '',
+            ));
+            foreach ($affectedFiledPeriods as $period) {
+                $this->error(sprintf(
+                    '    - %s (%s, %s to %s): remedy is a filed-declaration correction (amended filing) -- ESCALATE TO THE ACCOUNTANT before taking any action.',
+                    $period->label,
+                    $period->id,
+                    $period->period_start->toDateString(),
+                    $period->period_end->toDateString(),
+                ));
+            }
+        }
+
+        if (! $apply && $touched > 0) {
+            $this->info('Dry-run only for the supplier-invoice leg -- re-run with --apply to write it for real.');
+        }
+    }
+
+    /**
+     * Whole supplier-invoice population, split into the buckets the leg's
+     * scope keeps and the ones it deliberately drops, so the census reports
+     * what was NOT touched as explicitly as what was.
+     *
+     * @return array{total: int, in_scope: int, already: int, draft: int, cancelled: int}
+     */
+    private function supplierInvoicePopulation(?string $companyId): array
+    {
+        return [
+            'total' => $this->supplierInvoiceQuery($companyId)->count(),
+            'in_scope' => $this->supplierInvoiceQuery($companyId)
+                ->whereIn('status', [DocumentStatus::Posted, DocumentStatus::Paid])
+                ->whereNotIn('id', DocumentTaxDetail::query()->select('document_id')->distinct())
+                ->count(),
+            'already' => $this->supplierInvoiceQuery($companyId)
+                ->whereIn('status', [DocumentStatus::Posted, DocumentStatus::Paid])
+                ->whereIn('id', DocumentTaxDetail::query()->select('document_id')->distinct())
+                ->count(),
+            'draft' => $this->supplierInvoiceQuery($companyId)->where('status', DocumentStatus::Draft)->count(),
+            'cancelled' => $this->supplierInvoiceQuery($companyId)->where('status', DocumentStatus::Cancelled)->count(),
+        ];
+    }
+
+    /**
+     * @return Builder<Document>
+     */
+    private function supplierInvoiceQuery(?string $companyId): Builder
+    {
+        $query = Document::query()->where('type', DocumentType::SupplierInvoice);
+        if ($companyId !== null) {
+            $query->where('company_id', $companyId);
+        }
+
+        return $query;
     }
 
     /**
