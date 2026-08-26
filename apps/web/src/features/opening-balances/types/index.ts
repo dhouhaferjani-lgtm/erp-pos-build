@@ -177,6 +177,19 @@ export interface InventoryPreviewLine {
    * first on the launch tenant.
    */
   expiry_date: string | null
+  /**
+   * The supplied date is already in the past. Allowed by ruling — a parapharmacy
+   * may legitimately open with expired stock in order to scrap it — but the lot
+   * is born EXPIRED and cannot be sold or transferred until it is written off, so
+   * the operator has to see it BEFORE posting rather than at the first refusal.
+   */
+  expiry_is_past: boolean
+  /**
+   * The product's DEFAULT lot already carries a DIFFERENT expiry, and set-once
+   * never overwrites one. This date will NOT be applied. Showing it without this
+   * flag is the preview promising something the post will not do (gate r1 OPEN-2).
+   */
+  expiry_conflicts_with_existing_lot: boolean
 }
 
 export interface ArApPreviewDocument {

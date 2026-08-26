@@ -62,6 +62,8 @@ const inventoryPreview: InventoryPostPreview = {
       unit_cost: '2.000',
       line_value: '2.500',
       expiry_date: null,
+      expiry_is_past: false,
+      expiry_conflicts_with_existing_lot: false,
     },
   ],
   totals: {
@@ -171,6 +173,55 @@ describe('BatchPreview', () => {
 
     expect(screen.getByText('2026-07-01')).toBeInTheDocument()
     expect(screen.getByText('Inventory Opening Balance - Precision Preview')).toBeInTheDocument()
+  })
+
+  /**
+   * W4-1 gate r2 — the server emits `expiry_is_past` and
+   * `expiry_conflicts_with_existing_lot` on every INVENTORY preview line, and for a
+   * round nothing consumed them: the flags existed and the operator never saw them.
+   * These are the two facts that decide whether the stock they are about to open is
+   * usable, and the preview is the last screen before it is posted.
+   */
+  it('badges an opening line whose supplied expiry is already in the past', () => {
+    const past: InventoryPostPreview = {
+      ...inventoryPreview,
+      lines: [{ ...inventoryPreview.lines[0]!, expiry_date: '2024-01-31', expiry_is_past: true }],
+    }
+
+    render(<BatchPreview preview={past} />)
+
+    expect(screen.getByTestId('expiry-past-1')).toBeInTheDocument()
+    expect(screen.getByText('openingBalances.preview.expiryInPastHint')).toBeInTheDocument()
+    expect(screen.queryByTestId('expiry-conflict-1')).not.toBeInTheDocument()
+  })
+
+  it('badges an opening line whose supplied expiry the post will refuse to apply', () => {
+    const conflicting: InventoryPostPreview = {
+      ...inventoryPreview,
+      lines: [{
+        ...inventoryPreview.lines[0]!,
+        expiry_date: '2028-01-31',
+        expiry_conflicts_with_existing_lot: true,
+      }],
+    }
+
+    render(<BatchPreview preview={conflicting} />)
+
+    expect(screen.getByTestId('expiry-conflict-1')).toBeInTheDocument()
+    expect(screen.getByText('openingBalances.preview.expiryConflictHint')).toBeInTheDocument()
+  })
+
+  it('leaves a clean opening line unbadged', () => {
+    const clean: InventoryPostPreview = {
+      ...inventoryPreview,
+      lines: [{ ...inventoryPreview.lines[0]!, expiry_date: '2028-01-31' }],
+    }
+
+    render(<BatchPreview preview={clean} />)
+
+    expect(screen.queryByTestId('expiry-past-1')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('expiry-conflict-1')).not.toBeInTheDocument()
+    expect(screen.queryByText('openingBalances.preview.expiryInPastHint')).not.toBeInTheDocument()
   })
 
   it('renders the AR_OPEN_ITEMS documents table and server note', () => {

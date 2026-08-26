@@ -207,6 +207,22 @@ export function BatchPreview({ preview }: BatchPreviewProps) {
                     <td className={`px-4 py-2 text-sm text-right ${colorTokens.text.muted}`}>{line.unit_cost}</td>
                     <td className={`px-4 py-2 text-sm ${colorTokens.text.subtle}`}>
                       {line.expiry_date ?? t('openingBalances.preview.noExpiry')}
+                      {line.expiry_is_past && (
+                        <span
+                          data-testid={`expiry-past-${String(line.row_number)}`}
+                          className={`ms-2 rounded px-1.5 py-0.5 text-xs font-medium ${colorTokens.intent.warning.bgSubtle} ${colorTokens.intent.warning.text}`}
+                        >
+                          {t('openingBalances.preview.expiryInPast')}
+                        </span>
+                      )}
+                      {line.expiry_conflicts_with_existing_lot && (
+                        <span
+                          data-testid={`expiry-conflict-${String(line.row_number)}`}
+                          className={`ms-2 rounded px-1.5 py-0.5 text-xs font-medium ${colorTokens.intent.danger.bgSubtle} ${colorTokens.intent.danger.text}`}
+                        >
+                          {t('openingBalances.preview.expiryConflict')}
+                        </span>
+                      )}
                     </td>
                     <td className={`px-4 py-2 text-sm text-right font-medium ${colorTokens.intent.primary.text}`}>
                       {line.line_value}
@@ -219,6 +235,16 @@ export function BatchPreview({ preview }: BatchPreviewProps) {
           {inventory.lines.some((line) => line.expiry_date === null) && (
             <div className={`${colorTokens.surface.page} px-4 py-2 text-xs ${colorTokens.text.subtle}`}>
               {t('openingBalances.preview.noExpiryHint')}
+            </div>
+          )}
+          {inventory.lines.some((line) => line.expiry_is_past) && (
+            <div className={`${colorTokens.surface.page} px-4 py-2 text-xs ${colorTokens.intent.warning.text}`}>
+              {t('openingBalances.preview.expiryInPastHint')}
+            </div>
+          )}
+          {inventory.lines.some((line) => line.expiry_conflicts_with_existing_lot) && (
+            <div className={`${colorTokens.surface.page} px-4 py-2 text-xs ${colorTokens.intent.danger.text}`}>
+              {t('openingBalances.preview.expiryConflictHint')}
             </div>
           )}
           {inventory.lines.length > 20 && (
