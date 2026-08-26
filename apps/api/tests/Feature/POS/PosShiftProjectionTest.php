@@ -290,12 +290,7 @@ final class PosShiftProjectionTest extends TestCase
     {
         $orphanId = $this->orphanShiftLeftByForcedRelease();
 
-        $this->artisan('pos:shift:close-orphaned', [
-            'shift' => $orphanId,
-            '--reason' => 'Till stolen 2026-06-14; device never recovered',
-            '--closed-by' => $this->cashier->id,
-            '--apply' => true,
-        ])->assertExitCode(CloseOrphanedShiftCommand::SUCCESS);
+        $this->closeOrphanViaCommand($orphanId);
 
         $this->assertSame(ShiftStatus::Closed, Shift::query()->findOrFail($orphanId)->status);
 
@@ -370,6 +365,127 @@ final class PosShiftProjectionTest extends TestCase
         $this->assertLessThan($insertAt, $lockAt, 'The terminal row lock must be taken BEFORE the shift insert.');
 
         $this->assertNotNull(Shift::query()->find($shiftId));
+    }
+
+    /**
+     * LEDGER O-30, gate r1 finding 3 — THE DEVICE STILL WINS IF IT COMES BACK.
+     *
+     * `pos:shift:close-orphaned` is used on the BELIEF that a device is gone,
+     * and "belief" is doing real work: a till that was merely offline can sync
+     * weeks later carrying a real counted drawer with a real variance. Before
+     * this, `projectPosShiftClose()` returned early on an already-CLOSED shift,
+     * so that count was silently discarded and the operator's derived
+     * zero-variance pair stayed in `pos_shifts` — and therefore in the NF525
+     * JET's `FERMETURE_CAISSE` — forever.
+     */
+    public function test_a_late_device_session_close_replaces_the_operator_closed_figures(): void
+    {
+        $orphanId = $this->orphanShiftLeftByForcedRelease();
+        $this->closeOrphanViaCommand($orphanId);
+
+        $operatorClosedAt = Shift::query()->findOrFail($orphanId)->closed_at;
+        $this->assertNotNull($operatorClosedAt);
+
+        $this->app->make(CompanyContext::class)->clear();
+        $this->app->make(ZSessionLifecycleProjection::class)->apply(
+            $this->makeSessionCloseEvent($orphanId, sequenceNumber: 3, payloadOverrides: [
+                'counted_cash' => '140.000',
+                'expected_cash' => '150.000',
+                'variance_amount' => '10.000',
+                'variance_direction' => 'short',
+                'variance_severity' => 'warning',
+            ]),
+        );
+
+        $shift = Shift::query()->findOrFail($orphanId);
+        $this->assertSame(ShiftStatus::Closed, $shift->status);
+        $this->assertSame(0, bccomp((string) $shift->expected_cash, '150', 4));
+        $this->assertSame(0, bccomp((string) $shift->actual_cash, '140', 4));
+        $this->assertSame(0, bccomp((string) $shift->variance, '-10', 4), 'The device counted a real shortage.');
+        $this->assertSame('warning', $shift->variance_severity);
+        $this->assertStringContainsString('device close applied', (string) $shift->notes);
+
+        $audit = DB::table('audit_events')
+            ->where('aggregate_type', 'Shift')
+            ->where('aggregate_id', $orphanId)
+            ->where('event_type', 'shift.orphan_device_close_applied')
+            ->first();
+        $this->assertNotNull($audit, 'The swap must be its own audit fact.');
+
+        /** @var array<string, mixed> $payload */
+        $payload = json_decode((string) $audit->payload, true);
+        $this->assertSame(0, bccomp((string) $payload['superseded_variance'], '0', 4));
+        $this->assertSame(0, bccomp((string) $payload['device_variance'], '-10', 4));
+    }
+
+    /**
+     * Replay-safe on its own guard, not merely on the projector's: a second
+     * application must not swap the figures again or emit a second correction.
+     */
+    public function test_a_late_device_session_close_is_replay_safe(): void
+    {
+        $orphanId = $this->orphanShiftLeftByForcedRelease();
+        $this->closeOrphanViaCommand($orphanId);
+
+        $projector = $this->app->make(ZSessionLifecycleProjection::class);
+        $closeEvent = $this->makeSessionCloseEvent($orphanId, sequenceNumber: 3);
+
+        $this->app->make(CompanyContext::class)->clear();
+        $projector->apply($closeEvent);
+        $projector->apply($closeEvent);
+
+        $this->assertSame(
+            1,
+            DB::table('audit_events')
+                ->where('aggregate_type', 'Shift')
+                ->where('aggregate_id', $orphanId)
+                ->where('event_type', 'shift.orphan_device_close_applied')
+                ->count(),
+        );
+    }
+
+    /**
+     * The early return that was always right STAYS right: a shift closed by a
+     * DEVICE is not upgraded by a second device close. Only an operator close
+     * is provisional.
+     */
+    public function test_a_session_close_on_a_device_closed_shift_is_still_a_no_op(): void
+    {
+        $shiftId = Str::uuid()->toString();
+        $projector = $this->app->make(ZSessionLifecycleProjection::class);
+
+        $this->app->make(CompanyContext::class)->clear();
+        $projector->apply($this->makeSessionOpenEvent($shiftId, shiftNumber: 1));
+        $projector->apply($this->makeSessionCloseEvent($shiftId, sequenceNumber: 2));
+
+        $closedAt = Shift::query()->findOrFail($shiftId)->closed_at;
+
+        $projector->apply($this->makeSessionCloseEvent($shiftId, sequenceNumber: 3, payloadOverrides: [
+            'counted_cash' => '999.000',
+            'expected_cash' => '999.000',
+        ]));
+
+        $shift = Shift::query()->findOrFail($shiftId);
+        $this->assertSame(0, bccomp((string) $shift->actual_cash, '150', 4), 'A device close must not be re-applied.');
+        $this->assertEquals($closedAt, $shift->closed_at);
+        $this->assertSame(
+            0,
+            DB::table('audit_events')
+                ->where('aggregate_type', 'Shift')
+                ->where('aggregate_id', $shiftId)
+                ->where('event_type', 'shift.orphan_device_close_applied')
+                ->count(),
+        );
+    }
+
+    private function closeOrphanViaCommand(string $shiftId): void
+    {
+        $this->artisan('pos:shift:close-orphaned', [
+            'shift' => $shiftId,
+            '--reason' => 'Till stolen 2026-06-14; device never recovered',
+            '--closed-by' => $this->cashier->id,
+            '--apply' => true,
+        ])->assertExitCode(CloseOrphanedShiftCommand::SUCCESS);
     }
 
     /**

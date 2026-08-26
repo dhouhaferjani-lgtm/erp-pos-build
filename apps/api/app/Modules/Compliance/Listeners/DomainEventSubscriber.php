@@ -29,6 +29,7 @@ use App\Modules\Inventory\Domain\Events\ReservationReleased;
 use App\Modules\POS\Domain\Events\CashDrawerOperationRecorded;
 use App\Modules\POS\Domain\Events\ManagerOverrideAuthorized;
 use App\Modules\POS\Domain\Events\OrphanedShiftClosedByOperator;
+use App\Modules\POS\Domain\Events\OrphanedShiftDeviceCloseApplied;
 use App\Modules\POS\Domain\Events\ReceiptCreated;
 use App\Modules\POS\Domain\Events\ReceiptDrafted;
 use App\Modules\POS\Domain\Events\ReceiptPrinted;
@@ -816,6 +817,38 @@ final class DomainEventSubscriber
     }
 
     /**
+     * Handle OrphanedShiftDeviceCloseApplied events (LEDGER O-30, gate r1).
+     *
+     * The device believed lost came back and closed its own shift, so its
+     * counted drawer replaced the operator-derived pair. Carries BOTH sides of
+     * the swap: an auditor comparing this row with the earlier
+     * `shift.orphan_closed` one can see exactly which figures were in the
+     * projection, when they changed, and which fiscal event changed them.
+     */
+    public function handleOrphanedShiftDeviceCloseApplied(OrphanedShiftDeviceCloseApplied $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Shift',
+            aggregateId: $event->shiftId,
+            eventType: $event->getEventName(),
+            payload: [
+                'terminal_id' => $event->terminalId,
+                'fiscal_event_id' => $event->fiscalEventId,
+                'operator_id' => $event->operatorId,
+                'superseded_expected_cash' => $event->supersededExpectedCash,
+                'superseded_counted_cash' => $event->supersededCountedCash,
+                'superseded_variance' => $event->supersededVariance,
+                'device_expected_cash' => $event->deviceExpectedCash,
+                'device_counted_cash' => $event->deviceCountedCash,
+                'device_variance' => $event->deviceVariance,
+                'device_closed_at' => $event->deviceClosedAt,
+            ]
+        );
+    }
+
+    /**
      * Handle ZReportGenerated events.
      *
      * NF525 RAPPORT_Z event - Z reports with hash chain for compliance.
@@ -1231,6 +1264,7 @@ final class DomainEventSubscriber
             ShiftOpened::class => 'handleShiftOpened',
             ShiftClosed::class => 'handleShiftClosed',
             OrphanedShiftClosedByOperator::class => 'handleOrphanedShiftClosedByOperator',
+            OrphanedShiftDeviceCloseApplied::class => 'handleOrphanedShiftDeviceCloseApplied',
             ZReportGenerated::class => 'handleZReportGenerated',
             CashDrawerOperationRecorded::class => 'handleCashDrawerOperationRecorded',
             ManagerOverrideAuthorized::class => 'handleManagerOverrideAuthorized',

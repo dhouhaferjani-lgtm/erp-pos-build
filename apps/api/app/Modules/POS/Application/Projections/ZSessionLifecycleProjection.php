@@ -8,6 +8,7 @@ use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
+use App\Modules\POS\Application\Services\OrphanedShiftDeviceCloseReconciler;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
@@ -18,6 +19,10 @@ use RuntimeException;
 
 final class ZSessionLifecycleProjection implements FiscalEventProjector
 {
+    public function __construct(
+        private readonly OrphanedShiftDeviceCloseReconciler $deviceCloseReconciler,
+    ) {}
+
     public function name(): string
     {
         return 'pos_core_z_session_lifecycle';
@@ -171,7 +176,11 @@ final class ZSessionLifecycleProjection implements FiscalEventProjector
 
         $terminalId = (string) $event->terminal_id;
 
-        Terminal::query()->whereKey($terminalId)->lockForUpdate()->first();
+        // `withTrashed()`: `Terminal` uses SoftDeletes and the default scope
+        // would silently match NO row on an archived terminal — degrading the
+        // C-17(viii) lock to no lock at all in exactly the population that needs
+        // it (a terminal archived after the release that orphaned its shift).
+        Terminal::query()->withTrashed()->whereKey($terminalId)->lockForUpdate()->first();
 
         if (Shift::query()
             ->where('terminal_id', $terminalId)
@@ -245,6 +254,22 @@ final class ZSessionLifecycleProjection implements FiscalEventProjector
             ));
         }
         if ($shift->status === ShiftStatus::Closed) {
+            // Already closed — but by WHOM? (LEDGER O-30, gate r1 finding 3.)
+            //
+            // A re-delivered DEVICE close must be a no-op, and it is: the
+            // reconciler answers false unless the audit register says an
+            // OPERATOR closed this shift with `pos:shift:close-orphaned`.
+            //
+            // When an operator did, the shift was closed on the belief that the
+            // device was gone — and "belief" is doing real work there. A till
+            // that was merely offline can sync weeks later, and its
+            // SESSION_CLOSE carries a REAL counted drawer. The device is
+            // authoritative for the shift lifecycle, so its figures replace the
+            // operator's derived stand-in and the swap is recorded as its own
+            // audit fact. Before this, the early return discarded that count
+            // silently and the JET's FERMETURE_CAISSE kept the stand-in forever.
+            $this->deviceCloseReconciler->reconcile($shift, $event, $payload);
+
             return;
         }
 
