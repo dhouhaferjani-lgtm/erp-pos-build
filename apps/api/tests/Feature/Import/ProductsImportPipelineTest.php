@@ -251,6 +251,131 @@ final class ProductsImportPipelineTest extends TestCase
         $this->assertNull($row->warnings);
     }
 
+    /**
+     * Campaign W4-1 — the Products import carries the opening stock for the
+     * launch tenant, and the launch tenant is a parapharmacy: every product is
+     * batch-tracked. Before this lane the sheet had NO expiry column at all, so
+     * every opening lot took `cutover + 365` — the earliest date on the product,
+     * which the FEFO guards then compelled the operator to ship first.
+     */
+    public function test_the_optional_expiry_date_column_dates_the_opening_lot(): void
+    {
+        Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Dated Lot Product',
+            'sku' => 'LOT-DATED',
+            'type' => ProductType::Part,
+            'tax_rate' => '19.00',
+            'requires_batch_tracking' => true,
+        ]);
+
+        $file = UploadedFile::fake()->createWithContent('products-expiry.csv', implode("\n", [
+            'name,sku,type,quantity,location_code,purchase_price,expiry_date',
+            'Dated Lot Product,LOT-DATED,part,6.0000,MAIN,2.500,2027-09-30',
+        ]));
+
+        $jobId = $this->runImport($file);
+
+        $this->assertSame(
+            '2027-09-30',
+            Batch::where('product_id', Product::where('sku', 'LOT-DATED')->firstOrFail()->id)
+                ->firstOrFail()->expiry_date?->toDateString(),
+            'the expiry printed on the sheet must reach the opening lot',
+        );
+        $this->assertSame('ok', ImportJob::findOrFail($jobId)->rows()->firstOrFail()->data['_results']['opening_stock'] ?? null);
+    }
+
+    public function test_an_omitted_expiry_column_leaves_the_opening_lot_undated_rather_than_inventing_one(): void
+    {
+        Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Undated Lot Product',
+            'sku' => 'LOT-UNDATED',
+            'type' => ProductType::Part,
+            'tax_rate' => '19.00',
+            'requires_batch_tracking' => true,
+            // No default_shelf_life_days: exactly the wave-4 shape, where the
+            // Products import had no expiry column and nothing configured one.
+        ]);
+
+        $file = UploadedFile::fake()->createWithContent('products-no-expiry.csv', implode("\n", [
+            'name,sku,type,quantity,location_code,purchase_price',
+            'Undated Lot Product,LOT-UNDATED,part,6.0000,MAIN,2.500',
+        ]));
+
+        $this->runImport($file);
+
+        $batch = Batch::where('product_id', Product::where('sku', 'LOT-UNDATED')->firstOrFail()->id)->firstOrFail();
+        $this->assertNull(
+            $batch->expiry_date,
+            'W4-1: with no expiry column and no configured shelf life, the lot must record NO expiry — not cutover + 365',
+        );
+    }
+
+    public function test_a_malformed_expiry_cell_is_refused_with_its_row_rather_than_reinterpreted(): void
+    {
+        Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Bad Expiry Product',
+            'sku' => 'LOT-BADEXP',
+            'type' => ProductType::Part,
+            'tax_rate' => '19.00',
+            'requires_batch_tracking' => true,
+        ]);
+
+        // 03/04/2027 is 3 April or 4 March depending on the reader. Guessing it
+        // would put a wrong date on a parapharmacy lot, so it must be refused.
+        $file = UploadedFile::fake()->createWithContent('products-bad-expiry.csv', implode("\n", [
+            'name,sku,type,quantity,location_code,purchase_price,expiry_date',
+            'Bad Expiry Product,LOT-BADEXP,part,6.0000,MAIN,2.500,03/04/2027',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', ['file' => $file, 'type' => 'products']);
+        $createResponse->assertCreated();
+        $jobId = $createResponse->json('data.id');
+
+        // The row is refused at VALIDATION, and since it is the only row the whole
+        // job refuses rather than importing a product with a guessed expiry.
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertStatus(422)
+            ->assertJsonPath('failed_rows', 1)
+            ->assertJsonPath('valid_rows', 0);
+
+        $row = ImportJob::findOrFail($jobId)->rows()->firstOrFail();
+        $this->assertNotNull($row->errors);
+        $this->assertStringContainsString(
+            'expiry_date',
+            json_encode($row->errors, JSON_THROW_ON_ERROR),
+            'the refusal must name the offending column so the operator can fix that cell',
+        );
+
+        $this->assertSame(
+            0,
+            Batch::whereHas('product', fn ($q) => $q->where('sku', 'LOT-BADEXP'))->count(),
+            'a refused row must not have opened stock',
+        );
+    }
+
+    private function runImport(UploadedFile $file): string
+    {
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', ['file' => $file, 'type' => 'products']);
+        $createResponse->assertCreated();
+        $jobId = (string) $createResponse->json('data.id');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.failed_rows', 0);
+
+        return $jobId;
+    }
+
     public function test_missing_category_is_created_linked_and_reported_instead_of_silently_dropped(): void
     {
         // W2-3: the products import used to LOOK UP category_name and drop it on

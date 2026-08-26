@@ -19,9 +19,10 @@ use Tests\TestCase;
 /**
  * The default-batch invariant: a batch-tracked product must never hold stock
  * that isn't inside a lot. `ensureDefaultBatch()` is the shared behavior that
- * mints (or tops up) a single DEFAULT lot — expiry = asOfDate + the product's
- * default expiry period — and reconciles the location's batch stock up to the
- * target quantity. It is the single source of truth used by both the
+ * mints (or tops up) a single DEFAULT lot and reconciles the location's batch
+ * stock up to the target quantity. Its expiry is whatever the caller SUPPLIED,
+ * or the product's configured shelf life measured from asOfDate, or — when
+ * neither exists — NULL (W4-1: never an invented date). It is the single source of truth used by both the
  * opening-balance posting path and the demo seeders.
  */
 final class EnsureDefaultBatchTest extends TestCase
@@ -127,7 +128,15 @@ final class EnsureDefaultBatchTest extends TestCase
         $this->assertSame(0, bccomp('100.0000', (string) $stock->quantity, 4), 'must reconcile up to the new target');
     }
 
-    public function test_falls_back_to_default_shelf_life_when_null(): void
+    /**
+     * Campaign W4-1. This case used to assert the OPPOSITE — that a null shelf
+     * life fell back to a 365-day default. That fallback is the defect: on the
+     * launch tenant every product is batch-tracked and all day-one stock is an
+     * opening, so the whole catalogue carried the same fabricated `cutover + 365`
+     * expiry, which FEFO then ranked FIRST and the transfer/delivery guards
+     * compelled the operator to ship.
+     */
+    public function test_mints_an_undated_lot_when_no_shelf_life_is_configured(): void
     {
         $batch = $this->service->ensureDefaultBatch(
             $this->company->id, $this->tenant->id, $this->product->id,
@@ -135,10 +144,25 @@ final class EnsureDefaultBatchTest extends TestCase
         );
 
         $this->assertNotNull($batch);
+        $this->assertNull(
+            $batch->expiry_date,
+            'no configured shelf life and no supplied expiry must produce a lot with NO expiry, never an invented one',
+        );
+    }
+
+    public function test_an_explicitly_supplied_expiry_beats_the_configured_shelf_life(): void
+    {
+        $batch = $this->service->ensureDefaultBatch(
+            $this->company->id, $this->tenant->id, $this->product->id,
+            $this->location->id, '5.0000', 180, '2026-06-27',
+            expiryDate: '2027-02-28',
+        );
+
+        $this->assertNotNull($batch);
         $this->assertSame(
-            CarbonImmutable::parse('2026-06-27')->addDays(BatchStockService::DEFAULT_SHELF_LIFE_DAYS)->toDateString(),
-            $batch->expiry_date->toDateString(),
-            'null shelf life must fall back to the service default',
+            '2027-02-28',
+            $batch->expiry_date?->toDateString(),
+            'the expiry supplied for THIS stock is more specific than the product-wide shelf-life rule',
         );
     }
 
@@ -155,13 +179,17 @@ final class EnsureDefaultBatchTest extends TestCase
 
     /**
      * Gate r4 R4-10 — `FEFOInventoryService` (Domain) duplicates
-     * `DEFAULT_BATCH_NUMBER` / `DEFAULT_SHELF_LIFE_DAYS` rather than importing
-     * them, because Domain must not depend on Application (deptrac
-     * ModuleDomain → ModuleApplication). Correct, but nothing pinned the two
-     * pairs equal, so a silent divergence would split the DEFAULT-lot vocabulary
-     * in half: the outbound/repair side would look for 'DEFAULT' while the inbound
-     * restore minted something else, and every return would create a second
-     * untracked lot.
+     * `DEFAULT_BATCH_NUMBER` rather than importing it, because Domain must not
+     * depend on Application (deptrac ModuleDomain → ModuleApplication). Correct,
+     * but nothing pinned the two equal, so a silent divergence would split the
+     * DEFAULT-lot vocabulary in half: the outbound/repair side would look for
+     * 'DEFAULT' while the inbound restore minted something else, and every return
+     * would create a second untracked lot.
+     *
+     * W4-1 removed the second half of this pair. `DEFAULT_SHELF_LIFE_DAYS = 365`
+     * existed on BOTH classes and was the fabricated expiry itself; the mirror is
+     * now asserted ABSENT on both sides, so re-adding a fallback to either one
+     * fails here rather than quietly re-inventing dates for a whole catalogue.
      */
     public function test_the_domain_mirror_of_the_default_lot_constants_matches_the_application_source(): void
     {
@@ -173,9 +201,13 @@ final class EnsureDefaultBatchTest extends TestCase
             'FEFOInventoryService mirrors this constant; the two must never diverge.',
         );
 
-        $this->assertSame(
-            BatchStockService::DEFAULT_SHELF_LIFE_DAYS,
-            $mirror->getConstant('DEFAULT_SHELF_LIFE_DAYS'),
+        $this->assertFalse(
+            $mirror->hasConstant('DEFAULT_SHELF_LIFE_DAYS'),
+            'W4-1: no class may carry a fallback shelf life. An undated lot records NULL and ranks last.',
+        );
+        $this->assertFalse(
+            (new \ReflectionClass(BatchStockService::class))->hasConstant('DEFAULT_SHELF_LIFE_DAYS'),
+            'W4-1: no class may carry a fallback shelf life. An undated lot records NULL and ranks last.',
         );
     }
 }
