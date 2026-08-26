@@ -573,6 +573,76 @@ final class ProductsImportPipelineTest extends TestCase
     }
 
     /**
+     * Gate r2 NEW-1 [IMPORTANT]. The percent gate used to cap the FILE's textual
+     * scale at two decimals, mirroring a ceiling that exists on the API path
+     * (`CreateProductRequest`) but NOT on this one: `ImportType::Products` gives
+     * `tax_rate` only `numeric|min:0|max:100` — no percent regex, unlike its
+     * `margin` sibling — and `NumericFieldNormalizer` decides "percent field" by
+     * that regex being present, so it passes `19.000` through untouched.
+     *
+     * A TND sheet formats its whole numeric block to 3 decimals (every price
+     * column already reads `10.000`), so `19.000` is the ORDINARY shape of that
+     * cell — and it was returning null before the candidate ladder was reached,
+     * importing with the blank selector this lane exists to remove.
+     *
+     * Textual scale is not the question. `19.000` and `19.00` are the same rate:
+     * both land as `19.00` in `decimal(5,2)` and `bccomp(…, 2)` says so. The gate
+     * is only there to keep exponent forms away from bcmath, which it still does.
+     */
+    public function test_a_three_decimal_rate_cell_still_resolves_a_configuration(): void
+    {
+        [$tva19] = $this->seedTunisianVatConfigurations();
+
+        $this->runProductImport([
+            'name,sku,type,tax_rate,sale_price_incl_tax',
+            'Brosse a dents,BROS-01,part,19.000,10.000',
+        ], 1);
+
+        $product = Product::where('sku', 'BROS-01')->firstOrFail();
+
+        $this->assertSame(0, bccomp((string) $product->tax_rate, '19.00', 2));
+        $this->assertSame(
+            $tva19->id,
+            $product->default_tax_configuration_id,
+            'A 3-decimal cell states the same rate as a 2-decimal one; it must resolve the same configuration.'
+        );
+    }
+
+    /**
+     * Gate r2 NEW-1, the half that matters most to an import lane: re-import
+     * idempotency must not depend on cell FORMATTING. Run 1 at `19.00` set the
+     * configuration; run 2 of the same file re-exported at `19.000` cleared it,
+     * silently — the rate never moved, and the result workbook carries no reason
+     * for a nulled configuration.
+     */
+    public function test_a_re_import_that_reformats_the_rate_to_three_decimals_keeps_the_configuration(): void
+    {
+        [$tva19] = $this->seedTunisianVatConfigurations();
+
+        $this->runProductImport([
+            'name,sku,type,tax_rate,sale_price_incl_tax',
+            'Brosse a dents,BROS-01,part,19.00,10.000',
+        ], 1);
+
+        $this->assertSame($tva19->id, Product::where('sku', 'BROS-01')->firstOrFail()->default_tax_configuration_id);
+
+        // Same file, same rate, exported by a tool that pads to the currency scale.
+        $this->runProductImport([
+            'name,sku,type,tax_rate,sale_price_incl_tax',
+            'Brosse a dents,BROS-01,part,19.000,10.000',
+        ], 1);
+
+        $product = Product::where('sku', 'BROS-01')->firstOrFail();
+
+        $this->assertSame(0, bccomp((string) $product->tax_rate, '19.00', 2), 'Pre-condition: the rate did not move.');
+        $this->assertSame(
+            $tva19->id,
+            $product->default_tax_configuration_id,
+            'Re-formatting a cell is not a rate change; the agreeing configuration must survive it.'
+        );
+    }
+
+    /**
      * Gate r1 F-4 [MINOR]. `tax_source` is the row's only breadcrumb about where
      * its rate came from, and it said `default` for a category-derived rate —
      * wrong for exactly the case this lane exists to fix.

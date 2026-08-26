@@ -153,17 +153,36 @@ final class ProductService implements ProductServiceInterface
     }
 
     /**
-     * Percentage columns are `decimal(5,2)` everywhere, so a rate that reaches
-     * bcmath must be a plain decimal string. `is_numeric` is NOT that test (gate
-     * r1 F-6): it admits exponent forms like `1e2`, on which `bccomp` throws a
-     * ValueError — and this path takes its value from a spreadsheet cell on the
-     * queued import worker, where a ValueError is a dead job, not a 422.
+     * A rate that reaches bcmath must be a plain, exponent-free decimal string.
+     * `is_numeric` is NOT that test (gate r1 F-6): it admits forms like `1e2`,
+     * on which `bccomp` throws a ValueError — and this path takes its value from
+     * a spreadsheet cell on the queued import worker.
      *
-     * Mirrors the ceiling the products FormRequests apply to the same column
-     * (`CreateProductRequest`: `regex:/^\d+(\.\d{1,2})?$/`), widened only to
-     * accept a leading sign, which the DB column allows.
+     * DELIBERATELY UNBOUNDED ON FRACTIONAL DIGITS (gate r2 NEW-1). An earlier
+     * revision capped it at two, claiming to mirror the products FormRequests
+     * (`CreateProductRequest`: `regex:/^\d+(\.\d{1,2})?$/`). That ceiling is real
+     * on the API path and absent on THIS one — `ImportType::Products` gives
+     * `tax_rate` only `numeric|min:0|max:100`, with no percent regex (unlike its
+     * `margin` sibling), and `NumericFieldNormalizer` keys "is this a percent
+     * field" off that same regex being present, so `19.000` arrives untouched.
+     *
+     * Capping here therefore did not enforce a contract, it discarded agreement:
+     * a TND sheet formats its whole numeric block to three decimals, so `19.000`
+     * is the ORDINARY shape of the cell, and it was answering null before the
+     * candidate ladder ran — a blank selector on exactly the files this lane
+     * exists to fix, and worse, a re-import that CLEARED a still-agreeing
+     * configuration when the only thing that changed was cell formatting.
+     *
+     * Textual scale is not the question anywhere else either: `19.000` and
+     * `19.00` are the same rate, they land as the same `decimal(5,2)` value, and
+     * `bccomp(…, 2)` below is what decides agreement. This pattern's only job is
+     * keeping exponent forms away from bcmath, which it still does.
+     *
+     * (Adding the missing percent ceiling to `ImportType::Products` is a separate,
+     * larger call — it turns a file accepted today into a row error — and is
+     * recorded in the round-2 report rather than taken here.)
      */
-    private const PERCENT_DECIMAL_STRING = '/^-?\d+(\.\d{1,2})?$/';
+    private const PERCENT_DECIMAL_STRING = '/^-?\d+(\.\d+)?$/';
 
     /**
      * The tax configuration this product may carry ALONGSIDE the rate it is being
@@ -200,10 +219,10 @@ final class ProductService implements ProductServiceInterface
         ?string $taxRate,
         ?string $existingConfigurationId,
     ): ?string {
-        // The regex is the real ceiling (gate r1 F-6); `is_numeric` is kept AFTER
-        // it purely as the narrowing PHPStan needs to see a `numeric-string`
-        // reach `bccomp` below. Both must hold — the regex is strictly the
-        // narrower of the two, so the pair rejects exactly what the regex does.
+        // The regex is the real gate (gate r1 F-6); `is_numeric` is kept AFTER it
+        // purely as the narrowing PHPStan needs to see a `numeric-string` reach
+        // `bccomp` below. Both must hold — every string the regex accepts is a
+        // valid numeric string, so the pair rejects exactly what the regex does.
         if ($taxRate === null
             || preg_match(self::PERCENT_DECIMAL_STRING, $taxRate) !== 1
             || ! is_numeric($taxRate)
