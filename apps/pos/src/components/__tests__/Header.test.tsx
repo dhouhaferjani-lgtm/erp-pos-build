@@ -712,22 +712,19 @@ describe('Header — X report gate + blind-count disclosure (B-13)', () => {
     expect(screen.queryByTitle('quickActions.reports')).toBeNull();
   });
 
-  it('conceals nothing with no open shift — nothing is being counted', async () => {
-    // Reached via the shift-actions store, which opens the reports menu
-    // independently of the Header's own shift-gated button.
-    mockShift = null;
-    mockOperator = { name: 'Manager', roles: ['manager'], id: 'op-1' };
-    const { rerender } = render(<Header />);
-    await waitFor(() => expect(fraudApiMocks.fetchFraudSettings).toHaveBeenCalled());
-
-    // Re-render with a shift so the button appears, then assert the flag
-    // tracks the shift rather than the policy alone.
-    mockShift = { ...SHIFT };
-    rerender(<Header />);
-    fireEvent.click(await openReportsMenu());
-    const concealed = await screen.findByTestId('x-concealed');
-    await waitFor(() => expect(concealed.textContent).toBe('true'));
-  });
+  /**
+   * Gate r2 (fiscal r2-3): the `shift === null` half of
+   * `concealPhysicalTenders` is UNREACHABLE from this component — the Reports
+   * button only renders with an open shift — so faking a render for it would
+   * be another test whose title does not match its assertion, which is the
+   * defect F-6 raised twice. The predicate is now
+   * `shouldConcealTakings(disclosure, hasOpenShift)` and BOTH halves are
+   * pinned directly at that seam in
+   * `lib/offline/__tests__/cashDisclosurePolicy.test.ts`.
+   *
+   * What is testable here is that the Header passes the shift through, which
+   * the open-shift cases above already assert.
+   */
 
   it('hides the opening-float tooltip from a NON-manager under blind count', async () => {
     mockOperator = { name: 'Cashier', roles: ['cashier'], id: 'op-2' };

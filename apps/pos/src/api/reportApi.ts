@@ -211,9 +211,24 @@ export async function generateXReport(
     // event on the way (rule 8: never correctable, only superseded). An authz
     // denial must never produce a fiscal write.
     //
-    // 401/403 only. A 404 (an older API build that does not carry the route),
-    // a 5xx (a broken server) and a transport error are all OUTAGES, and the
-    // offline-first fallback is the correct answer to an outage.
+    // Gate r2 (R2-4) splits the two credential answers, because they mean
+    // different things to the operator even though NEITHER may author locally:
+    //
+    //  - 403 = "you may not". A permission refusal; surface it as such.
+    //  - 401 = "your credential is not currently valid" — on a long-lived
+    //    terminal, most often a rotated or expired token. That is not a
+    //    statement about this operator's rights, so telling a legitimate
+    //    manager they lack permission would be wrong. It must still NOT fall
+    //    through to the local builder: authoring an immutable `X_REPORT`
+    //    (rule 8) off the back of an unauthenticated request is exactly the
+    //    laundering R1-1 closed. Re-authenticate, then retry.
+    //
+    // A 404 (an older API build without the route), a 5xx (a broken server)
+    // and a transport error are all OUTAGES, and the offline-first fallback is
+    // the correct answer to an outage.
+    if (isAuthenticationFailure(error)) {
+      throw new ReauthenticationRequiredError();
+    }
     if (isAuthorizationRefusal(error)) {
       throw error;
     }
@@ -223,12 +238,36 @@ export async function generateXReport(
 }
 
 /**
+ * The device's credential is not currently valid — typically a rotated or
+ * expired token on a long-lived terminal. Distinct from a refusal: it says
+ * nothing about what this operator is allowed to do.
+ */
+function isAuthenticationFailure(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.status === 401;
+}
+
+/**
  * A server answer that means "you may not", as opposed to "I could not reach
- * the server". Only these two statuses are refusals: everything else the POS
- * treats as an outage it is designed to keep trading through.
+ * the server". Everything else the POS treats as an outage it is designed to
+ * keep trading through.
  */
 function isAuthorizationRefusal(error: unknown): boolean {
-  return error instanceof ApiRequestError && (error.status === 401 || error.status === 403);
+  return error instanceof ApiRequestError && error.status === 403;
+}
+
+/**
+ * Raised instead of falling back when the server answers 401. Carries a
+ * translation key so `Header.handleXReport` can tell the operator to sign in
+ * again rather than showing a raw "Unauthorized", and so the distinction from
+ * a permission refusal survives to the screen.
+ */
+export class ReauthenticationRequiredError extends Error {
+  readonly i18nKey = 'reports.reauthenticateRequired';
+
+  constructor() {
+    super('Re-authentication required before generating an X report.');
+    this.name = 'ReauthenticationRequiredError';
+  }
 }
 
 /**

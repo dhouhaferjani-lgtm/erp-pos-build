@@ -65,7 +65,7 @@ vi.mock('@/stores/terminalStore', () => ({
   useTerminalStore: { getState: () => ({ shift: null, terminal: null }) },
 }));
 
-import { generateXReport } from '../reportApi';
+import { generateXReport, ReauthenticationRequiredError } from '../reportApi';
 import { ApiRequestError } from '@/lib/api';
 
 describe('generateXReport — server refusal vs offline', () => {
@@ -89,11 +89,32 @@ describe('generateXReport — server refusal vs offline', () => {
     expect(mocks.queryAll).not.toHaveBeenCalled();
   });
 
-  it('REFUSES on a 401 the same way', async () => {
+  /**
+   * Gate r2 (R2-4). A 401 also refuses to author locally — an immutable
+   * `X_REPORT` must never come out of an unauthenticated request — but it is
+   * NOT a permission verdict. On a long-lived terminal it is most often a
+   * rotated or expired token, so telling a legitimate manager they lack
+   * permission would be wrong.
+   */
+  it('on a 401 does NOT author locally, and asks for re-authentication', async () => {
     mocks.apiPost.mockRejectedValue(new ApiRequestError(401, 'Unauthorized', 'UNAUTHORIZED'));
 
-    await expect(generateXReport('term-1')).rejects.toBeInstanceOf(ApiRequestError);
+    await expect(generateXReport('term-1')).rejects.toBeInstanceOf(ReauthenticationRequiredError);
+    expect(mocks.appendXReport).not.toHaveBeenCalled();
     expect(mocks.queryAll).not.toHaveBeenCalled();
+  });
+
+  it('distinguishes the 401 re-auth signal from the 403 permission refusal', async () => {
+    mocks.apiPost.mockRejectedValue(new ApiRequestError(401, 'Unauthorized', 'UNAUTHORIZED'));
+    const reauth = await generateXReport('term-1').catch((e: unknown) => e);
+    expect(reauth).toBeInstanceOf(ReauthenticationRequiredError);
+    expect((reauth as ReauthenticationRequiredError).i18nKey)
+      .toBe('reports.reauthenticateRequired');
+
+    mocks.apiPost.mockRejectedValue(new ApiRequestError(403, 'Forbidden', 'FORBIDDEN'));
+    const refusal = await generateXReport('term-1').catch((e: unknown) => e);
+    expect(refusal).toBeInstanceOf(ApiRequestError);
+    expect(refusal).not.toBeInstanceOf(ReauthenticationRequiredError);
   });
 
   it('falls back to the local builder when the network is down (existing behaviour)', async () => {

@@ -60,3 +60,26 @@ export async function resolveCashDisclosure(
     }
   }
 }
+
+/**
+ * The two-term blind-count predicate every surface shares: conceal only while
+ * the policy says conceal AND a shift is actually open.
+ *
+ * With no open shift nothing is being counted, so there is no expectation to
+ * protect — `/reports` has always worked this way (`ReportsPage.tsx`,
+ * `concealCash`). Extracted as a function (gate r2, fiscal r2-3) because the
+ * `hasOpenShift === false` half is unreachable from the Header's UI — the
+ * Reports button only renders with an open shift — so it can only be pinned
+ * at this seam rather than through a render.
+ *
+ * Role is deliberately NOT a term here. Surfaces that add one (the Header
+ * opening-float tooltip, `/sales`) compose it on top; surfaces that must
+ * conceal from the counter whoever they are (`/shift`, `/reports`, the X
+ * report) use this alone.
+ */
+export function shouldConcealTakings(
+  disclosure: CashDisclosure,
+  hasOpenShift: boolean,
+): boolean {
+  return disclosure === 'conceal' && hasOpenShift;
+}

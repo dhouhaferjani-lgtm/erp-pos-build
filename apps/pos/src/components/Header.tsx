@@ -16,7 +16,7 @@ import { StockFreshness } from '@/components/atoms/StockFreshness/StockFreshness
 import { EndOfDayPreviewModal } from '@/components/pos/EndOfDayPreviewModal';
 import { ReportsMenu } from '@/components/pos/ReportsMenu';
 import { XReportModal } from '@/components/pos/XReportModal';
-import { generateXReport, generateZReport } from '@/api/reportApi';
+import { generateXReport, generateZReport, ReauthenticationRequiredError } from '@/api/reportApi';
 import type { GenerateXReportOpts, GenerateZReportOpts, XReportResponse } from '@/api/reportApi';
 import { getErrorMessage } from '@/lib/api';
 import { Avatar, Badge, Divider, IconButton, StatusPill } from '@/components/ui';
@@ -53,6 +53,7 @@ import { useRefundDraftStore } from '@/stores/refundDraftStore';
 import { getTerminalState, setManagerPinThrottle, setManagerPinFailedAttempts } from '@/lib/db/repositories/terminalStateRepository';
 import { hasManagerAccess } from '@/lib/auth/roles';
 import { useCashDisclosure } from '@/hooks/useCashDisclosure';
+import { shouldConcealTakings } from '@/lib/offline/cashDisclosurePolicy';
 
 export function Header() {
   const { t } = useTranslation('pos');
@@ -145,7 +146,7 @@ export function Header() {
    * produced an empty conceal set and disclosed cash under `conceal`. There is
    * no store to be empty any more.
    */
-  const concealPhysicalTenders = cashDisclosure === 'conceal' && shift !== null;
+  const concealPhysicalTenders = shouldConcealTakings(cashDisclosure, shift !== null);
 
   /**
    * B-13 (iii): the opening float is the OTHER term of the drawer
@@ -445,7 +446,13 @@ export function Header() {
       const report = await generateXReport(terminal.id, xOpts);
       setXReport(report);
     } catch (err) {
-      setReportError(getErrorMessage(err));
+      // R2-4: a rotated/expired device token is not a permission problem —
+      // say "sign in again", not "you may not".
+      setReportError(
+        err instanceof ReauthenticationRequiredError
+          ? t(err.i18nKey)
+          : getErrorMessage(err),
+      );
     } finally {
       setReportLoading(false);
     }
