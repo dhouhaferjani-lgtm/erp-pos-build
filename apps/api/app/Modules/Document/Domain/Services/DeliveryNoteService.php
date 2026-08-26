@@ -340,11 +340,16 @@ final class DeliveryNoteService
             // (gate r3 R3-4). `consumeBatchesAtomically()`'s candidate predicate is
             // narrower than "the tuple has lot stock":
             //
-            //   * EXPIRED lots are invisible (`expiry_date >= today`). Stock sitting
-            //     entirely in a passed-expiry lot is UNDELIVERABLE. That is the
-            //     policy this vertical wants — a parapharmacy must not ship expired
-            //     goods, and shipping them silently is the worse failure — but it is
-            //     stated here rather than left to a WHERE clause. Disposing of
+            //   * EXPIRED lots are invisible. The predicate is
+            //     `expiry_date IS NULL OR expiry_date >= today` (W4-1): a lot that
+            //     records NO expiry is NOT expired — nobody claimed it would go off
+            //     on any particular day — so it stays deliverable and simply ranks
+            //     LAST in FEFO. Excluding it would have made the entire opening
+            //     catalogue of a batch-tracked tenant undeliverable on day one.
+            //     Stock sitting entirely in a PASSED-expiry lot is UNDELIVERABLE.
+            //     That is the policy this vertical wants — a parapharmacy must not
+            //     ship expired goods, and shipping them silently is the worse
+            //     failure — but it is stated here rather than left to a WHERE clause. Disposing of
             //     expired stock is a write-off document, not a delivery.
             //   * NO lots at all on a batch-tracked tuple is a refusal.
             //     `GoodsReceiptService` forces batch data on the common inbound path,

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -66,17 +67,27 @@ return new class extends Migration
     /** The fallback shelf life this lane retired. */
     private const int INVENTED_SHELF_LIFE_DAYS = 365;
 
+    /** How many residual lots to name individually before truncating the line. */
+    private const int RESIDUAL_LIST_LIMIT = 25;
+
+    private ?CarbonImmutable $cutoff = null;
+
     public function up(): void
     {
         if (! Schema::hasTable('product_batches') || ! Schema::hasTable('products')) {
             return;
         }
 
-        // Self-guard: refuse to write NULLs into a column that is still NOT NULL.
-        // Running out of order would otherwise abort the whole tenant migrate with
-        // a raw SQLSTATE instead of a skip.
+        // 🚨 Gate r1 — a SKIP must be as loud as a write. This migration runs on
+        // every tenant database of a fleet auto-migrate, and the failure mode of a
+        // silent skip is "that tenant's FEFO keeps ranking on fiction, forever,
+        // with no signal". A Log::warning alone is not diagnostic on the channel
+        // the deploy note tells the operator to watch.
         if (! $this->expiryDateIsNullable()) {
-            Log::warning('[W4-1] product_batches.expiry_date is still NOT NULL — skipping the invented-expiry backfill.');
+            $message = '[W4-1] SKIPPED: product_batches.expiry_date is still NOT NULL — the companion schema '
+                .'migration (2026_08_26_100000) has not run on this tenant. Invented expiries are UNFIXED here.';
+            Log::warning($message);
+            $this->emit($message);
 
             return;
         }
@@ -86,27 +97,100 @@ return new class extends Migration
 
         Log::info('[W4-1] invented DEFAULT-lot expiry census', ['lots' => $census]);
 
-        if ($census === 0) {
-            // Silent on the no-op path: this migration runs on EVERY tenant
-            // database and on every RefreshDatabase in the test suite.
+        // Echoed even at zero, so ABSENCE of a [W4-1] line means the migration did
+        // not run at all — rather than being indistinguishable from "ran and found
+        // nothing to fix".
+        $this->emit(sprintf('[W4-1] invented DEFAULT-lot expiries found: %d', $census));
+
+        if ($census > 0) {
+            foreach (array_chunk($ids, 500) as $chunk) {
+                DB::table('product_batches')
+                    ->whereIn('id', $chunk)
+                    // `is_expired` is reset alongside: a nulled lot has no expiry, so
+                    // a stale `true` left by the daily check would keep it out of
+                    // every FEFO predicate. No lot can hold a PAST invented date
+                    // today (product_batches was created 2026-01-05 and +365 has not
+                    // elapsed), but on a tenant provisioned later this WILL resurrect
+                    // previously-expired DEFAULT lots as sellable stock — correct in
+                    // principle, and stated here rather than discovered.
+                    ->update(['expiry_date' => null, 'is_expired' => false, 'updated_at' => now()]);
+            }
+
+            $remaining = count($this->inventedLotIds());
+
+            Log::info('[W4-1] invented DEFAULT-lot expiries nulled', [
+                'nulled' => $census,
+                'remaining' => $remaining,
+            ]);
+            $this->emit(sprintf('[W4-1] invented DEFAULT-lot expiries nulled: %d (remaining: %d)', $census, $remaining));
+        }
+
+        $this->reportResidual();
+    }
+
+    /**
+     * NON-MUTATING census of lots this predicate deliberately DECLINED to touch.
+     *
+     * Predicate clause (2) tests the product's CURRENT `default_shelf_life_days`,
+     * but the `?? 365` fallback fired against the value the product held WHEN THE
+     * LOT WAS MINTED. So a product that had NULL at import and has since been given
+     * a shelf life keeps its invented `mfg + 365` date, FEFO keeps ranking on the
+     * fiction, and the main census above reports it as nothing to fix.
+     *
+     * That drift is invisible from the migrate output, which is the whole problem.
+     * These rows are LISTED with their product codes and left alone: the evidence
+     * is genuinely ambiguous — the same shape is what a correctly configured
+     * 365-day shelf life produces — so an operator decides, not the migration.
+     */
+    private function reportResidual(): void
+    {
+        $rows = DB::table('product_batches')
+            ->join('products', 'products.id', '=', 'product_batches.product_id')
+            ->where('product_batches.batch_number', 'DEFAULT')
+            ->whereNotNull('products.default_shelf_life_days')
+            ->where('products.default_shelf_life_days', '!=', self::INVENTED_SHELF_LIFE_DAYS)
+            ->whereNotNull('product_batches.expiry_date')
+            ->whereNotNull('product_batches.manufacturing_date')
+            ->whereRaw($this->expiryMatchesFallbackSql())
+            ->where('product_batches.created_at', '<', $this->cutoff())
+            ->orderBy('products.sku')
+            ->limit(self::RESIDUAL_LIST_LIMIT + 1)
+            ->get(['products.sku as sku', 'products.default_shelf_life_days as shelf_life']);
+
+        if ($rows->isEmpty()) {
             return;
         }
 
-        echo sprintf('[W4-1] invented DEFAULT-lot expiries found: %d%s', $census, PHP_EOL);
+        $listed = $rows->take(self::RESIDUAL_LIST_LIMIT);
+        $codes = $listed
+            ->map(static fn (object $row): string => sprintf('%s(shelf_life=%s)', (string) $row->sku, (string) $row->shelf_life))
+            ->implode(', ');
 
-        foreach (array_chunk($ids, 500) as $chunk) {
-            DB::table('product_batches')
-                ->whereIn('id', $chunk)
-                ->update(['expiry_date' => null, 'is_expired' => false, 'updated_at' => now()]);
-        }
+        $suffix = $rows->count() > self::RESIDUAL_LIST_LIMIT ? ', …' : '';
 
-        $remaining = count($this->inventedLotIds());
+        $message = sprintf(
+            '[W4-1] RESIDUAL (not modified): %d DEFAULT lot(s) still carry manufacturing_date + %d but their product '
+            .'now configures a DIFFERENT shelf life, so this migration cannot tell an invented date from a rule-derived '
+            .'one. Review by hand: %s%s',
+            $listed->count(),
+            self::INVENTED_SHELF_LIFE_DAYS,
+            $codes,
+            $suffix,
+        );
 
-        Log::info('[W4-1] invented DEFAULT-lot expiries nulled', [
-            'nulled' => $census,
-            'remaining' => $remaining,
-        ]);
-        echo sprintf('[W4-1] invented DEFAULT-lot expiries nulled: %d (remaining: %d)%s', $census, $remaining, PHP_EOL);
+        Log::warning('[W4-1] invented-expiry residual', ['lots' => $listed->count()]);
+        $this->emit($message);
+    }
+
+    /**
+     * Write to the migrate output.
+     *
+     * `echo` rather than a logger call alone: `tenants:migrate` streams stdout per
+     * tenant, and that stream is what the deploy note asks the operator to read.
+     */
+    private function emit(string $message): void
+    {
+        echo $message.PHP_EOL;
     }
 
     /**
@@ -126,16 +210,35 @@ return new class extends Migration
     }
 
     /**
+     * The `expiry_date = manufacturing_date + 365` clause in the current driver's
+     * dialect. Shared by the mutating census and the residual census so the two can
+     * never drift apart — and so the PG branch is exercised by the same tests.
+     */
+    private function expiryMatchesFallbackSql(): string
+    {
+        $span = self::INVENTED_SHELF_LIFE_DAYS;
+
+        return DB::getDriverName() === 'pgsql'
+            ? "product_batches.expiry_date = product_batches.manufacturing_date + INTERVAL '{$span} days'"
+            : "date(product_batches.expiry_date) = date(product_batches.manufacturing_date, '+{$span} days')";
+    }
+
+    /**
+     * The instant this run started; every candidate lot must predate it.
+     *
+     * Captured ONCE so the mutating census, the re-count after the write and the
+     * residual census all measure the same window.
+     */
+    private function cutoff(): CarbonImmutable
+    {
+        return $this->cutoff ??= CarbonImmutable::now();
+    }
+
+    /**
      * @return list<int>
      */
     private function inventedLotIds(): array
     {
-        $span = self::INVENTED_SHELF_LIFE_DAYS;
-
-        $expiryMatchesFallback = DB::getDriverName() === 'pgsql'
-            ? "product_batches.expiry_date = product_batches.manufacturing_date + INTERVAL '{$span} days'"
-            : "date(product_batches.expiry_date) = date(product_batches.manufacturing_date, '+{$span} days')";
-
         /** @var list<int> $ids */
         $ids = DB::table('product_batches')
             ->join('products', 'products.id', '=', 'product_batches.product_id')
@@ -143,7 +246,16 @@ return new class extends Migration
             ->whereNull('products.default_shelf_life_days')
             ->whereNotNull('product_batches.expiry_date')
             ->whereNotNull('product_batches.manufacturing_date')
-            ->whereRaw($expiryMatchesFallback)
+            ->whereRaw($this->expiryMatchesFallbackSql())
+            // 🚨 PROVENANCE UPPER BOUND (gate r1). The Products import can now
+            // SUPPLY a 12-month expiry, and an opening posted the same day
+            // (`manufacturing_date = asOfDate`) produces evidence byte-identical to
+            // the fabricated date. Only a lot that existed BEFORE this migration ran
+            // can possibly carry the fiction, so the window is closed explicitly
+            // rather than left resting on "it runs before the column exists in
+            // anyone's sheet" — which stops being true the moment this predicate is
+            // lifted into a re-runnable repair command, or a restored DB replays it.
+            ->where('product_batches.created_at', '<', $this->cutoff())
             ->orderBy('product_batches.id')
             ->pluck('product_batches.id')
             ->map(static fn ($id): int => (int) $id)
@@ -156,9 +268,14 @@ return new class extends Migration
     {
         if (DB::getDriverName() === 'pgsql') {
             /** @var object{is_nullable: string}|null $row */
+            // Scoped to the CURRENT schema: `selectOne` takes an arbitrary row, so
+            // an unfiltered lookup would answer from a same-named table in another
+            // schema if the tenant database ever holds one.
             $row = DB::selectOne(
                 "SELECT is_nullable FROM information_schema.columns
-                 WHERE table_name = 'product_batches' AND column_name = 'expiry_date'"
+                 WHERE table_schema = current_schema()
+                   AND table_name = 'product_batches'
+                   AND column_name = 'expiry_date'"
             );
 
             return $row !== null && strtoupper($row->is_nullable) === 'YES';

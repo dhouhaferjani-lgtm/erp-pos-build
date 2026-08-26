@@ -48,6 +48,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        // Guarded like the companion backfill's up(): a rollback on a
+        // partially-migrated tenant must produce the counted refusal below, not a
+        // raw SQLSTATE from querying a table that is not there.
+        if (! Schema::hasTable('product_batches') || ! Schema::hasTable('pos_receipt_line_batch_allocations')) {
+            return;
+        }
+
         $nullBatches = (int) DB::table('product_batches')
             ->whereNull('expiry_date')
             ->count();

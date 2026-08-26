@@ -12,6 +12,7 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -129,6 +130,84 @@ final class NullInventedDefaultLotExpiryMigrationTest extends TestCase
         return substr((string) $value, 0, 10);
     }
 
+    /**
+     * Gate r1 [MINOR] — the fingerprint stopped being unique the moment the
+     * Products import could SUPPLY a 12-month expiry: an opening posted the same
+     * day (`manufacturing_date = asOfDate`) produces byte-identical evidence to
+     * the fabricated date. The provenance bound is what keeps them apart — only a
+     * lot that existed BEFORE this migration ran can carry the fiction.
+     */
+    public function test_it_never_touches_a_lot_created_after_it_ran(): void
+    {
+        $product = $this->product(shelfLifeDays: null);
+
+        // An operator-supplied 365-day expiry on an opening posted today. Same
+        // shape as the fiction in every other respect.
+        $supplied = $this->lot(
+            $product,
+            'DEFAULT',
+            CarbonImmutable::today()->toDateString(),
+            CarbonImmutable::today()->addDays(365)->toDateString(),
+            createdAt: CarbonImmutable::now(),
+        );
+
+        $this->runMigration();
+
+        $this->assertSame(
+            CarbonImmutable::today()->addDays(365)->toDateString(),
+            $this->storedExpiry($supplied),
+            'a date the operator supplied AFTER this migration ran must survive it — otherwise lifting this '
+            .'predicate into a repair command, or replaying it on a restored DB, would delete real expiry data',
+        );
+    }
+
+    /**
+     * Gate r1 [IMPORTANT] — the predicate tests the product's CURRENT
+     * `default_shelf_life_days`, but the `?? 365` fallback fired against the value
+     * the product held WHEN THE LOT WAS MINTED. A product that had NULL at import
+     * and has since been given a shelf life therefore keeps its invented date, and
+     * the mutating census reports it as nothing to fix. That drift is invisible
+     * from the migrate output, which is the whole problem — so it is CENSUSED, by
+     * product code, and deliberately not mutated: the evidence is genuinely
+     * ambiguous and an operator decides, not the migration.
+     */
+    public function test_it_censuses_but_does_not_touch_a_lot_whose_product_now_configures_a_different_shelf_life(): void
+    {
+        $product = $this->product(shelfLifeDays: 180);
+        $drifted = $this->lot($product, 'DEFAULT', '2026-08-25', '2027-08-25');
+
+        ob_start();
+        $this->runMigration();
+        $output = (string) ob_get_clean();
+
+        $this->assertSame(
+            '2027-08-25',
+            $this->storedExpiry($drifted),
+            'ambiguous evidence must never be resolved by deleting data',
+        );
+        $this->assertStringContainsString('[W4-1] RESIDUAL (not modified)', $output);
+        $this->assertStringContainsString(
+            (string) $product->sku,
+            $output,
+            'the residual line must name the product so an operator can actually review it',
+        );
+    }
+
+    /**
+     * Gate r1 [IMPORTANT] — the deploy note tells the operator to watch the
+     * migrate log for `[W4-1]` lines. A census of ZERO must therefore still print:
+     * absence of output has to mean "the migration did not run at all", never
+     * "ran and found nothing".
+     */
+    public function test_a_zero_census_still_prints_so_silence_is_unambiguous(): void
+    {
+        ob_start();
+        $this->runMigration();
+        $output = (string) ob_get_clean();
+
+        $this->assertStringContainsString('[W4-1] invented DEFAULT-lot expiries found: 0', $output);
+    }
+
     private function runMigration(): void
     {
         $migration = require base_path(self::MIGRATION);
@@ -150,13 +229,21 @@ final class NullInventedDefaultLotExpiryMigrationTest extends TestCase
         ]);
     }
 
+    /**
+     * @param  ?CarbonImmutable  $createdAt  When the lot row was written. Defaults to a
+     *                                       week ago: the migration only touches lots that
+     *                                       PREDATE its own run, so a fixture created in the
+     *                                       same instant would fall outside the window by
+     *                                       construction rather than by evidence.
+     */
     private function lot(
         Product $product,
         string $batchNumber,
         ?string $manufacturingDate,
         ?string $expiryDate,
+        ?CarbonImmutable $createdAt = null,
     ): Batch {
-        return Batch::create([
+        $batch = Batch::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'product_id' => $product->id,
@@ -167,5 +254,9 @@ final class NullInventedDefaultLotExpiryMigrationTest extends TestCase
             'is_expired' => false,
             'is_recalled' => false,
         ]);
+
+        $batch->forceFill(['created_at' => $createdAt ?? CarbonImmutable::now()->subWeek()])->save();
+
+        return $batch->refresh();
     }
 }
