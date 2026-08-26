@@ -423,10 +423,22 @@ class OpeningBalanceBatchService
      * Lock a batch after posting.
      * This makes the batch immutable.
      *
-     * @throws RuntimeException If batch is not in validated status
+     * IDEMPOTENT on an already-LOCKED batch (W4R-1). `AccountingOpeningService::postBatch()`
+     * seals the batch itself, while the AR/AP and Inventory siblings finish `post` at
+     * VALIDATED and genuinely need this transition — so the wizard, which runs the same
+     * six steps for every batch type, could only ever 422 on step 6 of an ACCOUNTING
+     * batch. Re-locking a sealed batch is a no-op: it must NOT recompute the hash or
+     * re-point `previous_hash`, which would break the chain by pointing at a second
+     * posting. A DRAFT batch is still a real error.
+     *
+     * @throws RuntimeException If batch is neither validated nor already locked
      */
     public function lockBatch(OpeningBalanceBatch $batch, string $userId): void
     {
+        if ($batch->status->isImmutable()) {
+            return;
+        }
+
         if (! $batch->canLock()) {
             throw new RuntimeException(
                 "Cannot lock batch in {$batch->status->label()} status. Batch must be validated first."

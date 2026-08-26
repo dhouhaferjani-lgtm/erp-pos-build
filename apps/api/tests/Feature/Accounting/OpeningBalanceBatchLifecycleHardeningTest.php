@@ -486,6 +486,96 @@ final class OpeningBalanceBatchLifecycleHardeningTest extends TestCase
     }
 
     // -----------------------------------------------------------------
+    // W4R-1 — the wizard's explicit Lock step must not be a dead end
+    // -----------------------------------------------------------------
+
+    /**
+     * `AccountingOpeningService::postBatch()` seals the batch itself
+     * (markBatchValidated -> lockBatch) while the AR/AP and Inventory siblings
+     * finish `post` at VALIDATED. The wizard runs the same six steps for every
+     * batch type, so its step-6 Lock button could only ever 422 on an ACCOUNTING
+     * batch ("Cannot lock batch in Locked status"). Locking an already-LOCKED
+     * batch is a no-op, not an error — and it must NOT re-seal (re-pointing
+     * hash/previous_hash at a second posting would break the chain).
+     */
+    public function test_lock_endpoint_is_idempotent_on_an_already_locked_batch(): void
+    {
+        $batch = $this->createValidatedAccountingBatch();
+        app(AccountingOpeningService::class)->postBatch($batch, (string) $this->user->id);
+
+        $batch->refresh();
+        $this->assertSame(OpeningBatchStatus::Locked, $batch->status, 'Pre-condition: posting an ACCOUNTING batch auto-locks it.');
+
+        $before = $this->batchRowSnapshot($batch->id);
+
+        $response = $this->actingAs($this->user)->postJson(
+            "/api/v1/companies/{$this->company->id}/opening-batches/{$batch->id}/lock"
+        );
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('data.status', OpeningBatchStatus::Locked->value);
+
+        $this->assertSame(
+            $before,
+            $this->batchRowSnapshot($batch->id),
+            'An idempotent lock must leave the sealed row — hash chain included — byte-identical.'
+        );
+    }
+
+    public function test_lock_endpoint_still_refuses_a_draft_batch(): void
+    {
+        $batch = $this->createAccountingBatch([
+            ['account_code' => '5100', 'debit' => '10000.000', 'credit' => '0.000', 'description' => 'Cash opening'],
+            ['account_code' => '3900', 'debit' => '0.000', 'credit' => '10000.000', 'description' => 'OBE offset'],
+        ]);
+
+        $this->assertSame(OpeningBatchStatus::Draft, $batch->refresh()->status);
+
+        $response = $this->actingAs($this->user)->postJson(
+            "/api/v1/companies/{$this->company->id}/opening-batches/{$batch->id}/lock"
+        );
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'BATCH_LOCK_FAILED');
+        $this->assertSame(OpeningBatchStatus::Draft, $batch->refresh()->status);
+    }
+
+    /**
+     * The asymmetry the re-check flagged has to stay in view: AR/AP batches finish
+     * `post` at VALIDATED and their Lock step is REQUIRED (a second batch of the
+     * same type is refused until the first is locked), so idempotency must not
+     * turn the real transition into a no-op.
+     */
+    public function test_lock_endpoint_still_seals_a_validated_arap_batch(): void
+    {
+        Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '4110',
+            'name' => 'Customer Receivable',
+            'type' => AccountType::Asset,
+            'system_purpose' => SystemAccountPurpose::CustomerReceivable,
+            'is_active' => true,
+            'is_system' => true,
+        ]);
+
+        $batch = $this->createValidatedArBatch();
+        app(ArApOpeningService::class)->postBatch($batch, (string) $this->user->id);
+
+        $batch->refresh();
+        $this->assertSame(OpeningBatchStatus::Validated, $batch->status, 'Pre-condition: AR/AP post does NOT auto-lock.');
+
+        $response = $this->actingAs($this->user)->postJson(
+            "/api/v1/companies/{$this->company->id}/opening-batches/{$batch->id}/lock"
+        );
+
+        $response->assertStatus(200);
+        $batch->refresh();
+        $this->assertSame(OpeningBatchStatus::Locked, $batch->status);
+        $this->assertNotNull($batch->hash, 'A real VALIDATED -> LOCKED transition must seal the batch.');
+    }
+
+    // -----------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------
 
