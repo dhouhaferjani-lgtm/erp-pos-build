@@ -328,7 +328,7 @@ class StockTransferController extends Controller
                         'id' => $allocation->id,
                         'batch_id' => $allocation->batch_id,
                         'batch_number' => $allocation->batch->batch_number,
-                        'expiry_date' => $allocation->batch->expiry_date->toDateString(),
+                        'expiry_date' => $allocation->batch->expiry_date?->toDateString(),
                         'expiry_status' => $allocation->batch->expiryStatus()->value,
                         'can_be_sold' => $allocation->batch->canBeSold(),
                         'quantity' => $allocation->quantity,

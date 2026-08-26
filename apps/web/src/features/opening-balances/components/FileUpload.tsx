@@ -2,7 +2,13 @@ import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Upload, FileText, CheckCircle, XCircle, Loader2, Download } from 'lucide-react'
 import type { OpeningBatchType } from '../types'
-import { GL_COLUMNS, GL_REQUIRED_COLUMNS, INVENTORY_COLUMNS, AR_AP_COLUMNS } from '../types'
+import {
+  GL_COLUMNS,
+  GL_REQUIRED_COLUMNS,
+  INVENTORY_COLUMNS,
+  INVENTORY_REQUIRED_COLUMNS,
+  AR_AP_COLUMNS,
+} from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
@@ -54,14 +60,17 @@ function getExpectedColumns(batchType: OpeningBatchType): readonly string[] {
 }
 
 /**
- * The columns whose ABSENCE blocks the upload. Only ACCOUNTING differs from its
- * expected set today: `repository_code` is optional (W4-2), so a four-column
- * legacy sheet must still parse and upload (treasury gate r1 F-1).
+ * The columns whose ABSENCE blocks the upload. Two types differ from their
+ * expected set: `repository_code` is optional on ACCOUNTING (W4-2), and
+ * `expiry_date` is optional on INVENTORY (W4-1), so the legacy sheets that
+ * predate both must still parse and upload (treasury gate r1 F-1).
  */
 function getRequiredColumns(batchType: OpeningBatchType): readonly string[] {
   switch (batchType) {
     case 'ACCOUNTING':
       return GL_REQUIRED_COLUMNS
+    case 'INVENTORY':
+      return INVENTORY_REQUIRED_COLUMNS
     default:
       return getExpectedColumns(batchType)
   }
@@ -80,7 +89,12 @@ function getTemplateContent(batchType: OpeningBatchType): string {
       // equity 1200.000 — balanced as printed.
       return 'account_code,debit,credit,reference,repository_code\n101000,200.000,0.000,Opening drawer float,CASH-01\n101000,1000.000,0.000,Opening safe float,SAFE-01\n301000,0.000,1200.000,Opening Equity,'
     case 'INVENTORY':
-      return 'product_code,location_code,quantity,unit_cost\nSKU-001,MAIN,100,25.50\nSKU-002,MAIN,50,15.00\nSKU-003,WAREHOUSE,200,10.00'
+      // W4-1: `expiry_date` is optional and only meaningful for batch-tracked
+      // stock. Fill it in and the opening lot carries that expiry; leave it blank
+      // and the lot takes the product's configured shelf life, or is opened with
+      // NO expiry — which FEFO ranks after every dated lot. It is never invented,
+      // so a blank cell is safe; a wrong date is not.
+      return 'product_code,location_code,quantity,unit_cost,expiry_date\nSKU-001,MAIN,100,25.50,2027-03-31\nSKU-002,MAIN,50,15.00,\nSKU-003,WAREHOUSE,200,10.00,'
     case 'AR_OPEN_ITEMS':
       return 'partner_code,external_invoice_number,document_date,due_date,total,open_amount,document_type,currency,notes\nCUST-001,INV-2024-001,2024-10-15,2024-11-15,1500.00,1500.00,invoice,TND,\nCUST-002,INV-2024-002,2024-11-01,2024-12-01,2500.00,1000.00,invoice,TND,Partial payment received'
     case 'AP_OPEN_ITEMS':

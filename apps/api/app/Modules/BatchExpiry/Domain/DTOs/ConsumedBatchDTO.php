@@ -19,7 +19,8 @@ final readonly class ConsumedBatchDTO
         public int $batchStockId,
         /** @var numeric-string Quantity drawn from this batch (decimal string, 4dp). */
         public string $quantityConsumed,
-        public \DateTimeInterface $expiryDate,
+        /** Null when the lot records no expiry (W4-1). */
+        public ?\DateTimeInterface $expiryDate,
     ) {}
 
     /** @return array<string, mixed> */
@@ -29,7 +30,7 @@ final readonly class ConsumedBatchDTO
             'batch_id' => $this->batchId,
             'batch_stock_id' => $this->batchStockId,
             'quantity_consumed' => $this->quantityConsumed,
-            'expiry_date' => $this->expiryDate->format('Y-m-d'),
+            'expiry_date' => $this->expiryDate?->format('Y-m-d'),
         ];
     }
 }

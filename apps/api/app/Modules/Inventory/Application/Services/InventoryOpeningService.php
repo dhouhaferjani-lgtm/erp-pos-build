@@ -10,6 +10,7 @@ use App\Modules\Accounting\Domain\Enums\OpeningImportRowStatus;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Accounting\Domain\OpeningBalanceImportRow;
+use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Inventory\Application\DTOs\OpeningBalanceLine;
@@ -17,6 +18,7 @@ use App\Modules\Inventory\Application\DTOs\OpeningBalancePosting;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\QuantityScale;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -41,6 +43,7 @@ class InventoryOpeningService
         private readonly OpeningBalanceBatchService $batchService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly OpeningBalancePostingService $postingService,
+        private readonly BatchStockService $batchStockService,
     ) {}
 
     private function monetaryScale(): int
@@ -122,7 +125,8 @@ class InventoryOpeningService
      *   "product_code": "SKU-001",
      *   "location_code": "MAIN",
      *   "quantity": "100.00",
-     *   "unit_cost": "25.50"
+     *   "unit_cost": "25.50",
+     *   "expiry_date": "2027-03-31"   // optional (W4-1)
      * }
      *
      * @return array{valid: bool, errors: array<string, array<string>>, mapped_data: array<string, mixed>}
@@ -183,6 +187,35 @@ class InventoryOpeningService
             $errors['unit_cost'] = ['Unit cost must be a non-negative number'];
         } else {
             $mappedData['unit_cost'] = bcadd('0.00', (string) $unitCost, $this->monetaryScale());
+        }
+
+        // W4-1 — OPTIONAL expiry for the lot this opening row seeds. Absent or
+        // blank means "not supplied", NOT "no expiry rule": the posting service
+        // still applies the product's configured `default_shelf_life_days`, and
+        // only mints the lot UNDATED when there is no shelf life either. Nothing
+        // downstream invents a date any more.
+        //
+        // Shape is refused (an ambiguous 03/04/2027 must never be guessed); a PAST
+        // date is ALLOWED per the gate r1 ruling — opening with expired stock in
+        // order to scrap it is legitimate — and is flagged to the operator in the
+        // post preview instead of being silently accepted.
+        $expiryDate = $rawData['expiry_date'] ?? null;
+        if (is_string($expiryDate) && trim($expiryDate) !== '') {
+            $expiryDate = trim($expiryDate);
+
+            // hasFormat() BEFORE parsing (Carbon 3 throws on a malformed value),
+            // then the parsed result is re-checked because createFromFormat is
+            // typed nullable — a null must become a row error, never a dropped
+            // expiry that leaves the lot silently undated.
+            $parsed = CarbonImmutable::hasFormat($expiryDate, 'Y-m-d')
+                ? CarbonImmutable::createFromFormat('Y-m-d', $expiryDate)
+                : null;
+
+            if ($parsed === null) {
+                $errors['expiry_date'] = ['Expiry date must be a calendar date in YYYY-MM-DD form'];
+            } else {
+                $mappedData['expiry_date'] = $parsed->toDateString();
+            }
         }
 
         return [
@@ -255,6 +288,9 @@ class InventoryOpeningService
                     quantity: (string) ($mappedData['quantity'] ?? '0.0000'),
                     unitCost: (string) ($mappedData['unit_cost'] ?? '0.000'),
                     currencyScale: $monetaryScale,
+                    expiryDate: isset($mappedData['expiry_date']) && is_string($mappedData['expiry_date'])
+                        ? $mappedData['expiry_date']
+                        : null,
                 );
 
                 $lineRows[] = $row;
@@ -282,6 +318,27 @@ class InventoryOpeningService
                 if (isset($result->movementIdsInInputOrder[$i])) {
                     $rowEntityMap[$row->id] = $result->movementIdsInInputOrder[$i];
                 }
+
+                // 🚨 W4-1 gate r1 OPEN-2 — the posting service computes what became
+                // of each line's supplied expiry, and this path used to THROW IT
+                // AWAY: only `$result->entry` was returned. Meanwhile
+                // `getPostPreview()` had already shown the operator the date they
+                // typed, so on the multi-location shape (two rows, same SKU,
+                // different dates) the lot kept row 1's date, row 2's was dropped,
+                // the preview had promised it, and nothing anywhere said otherwise.
+                //
+                // Stashed on the row itself rather than widened into the return
+                // type: `postBatch()` returns a JournalEntry to match its
+                // Accounting/ArAp siblings and the controller's `instanceof` branch,
+                // and the row is where this fact belongs anyway — it survives the
+                // request and can be read back by {@see self::expiryNoticesFor()}.
+                $outcome = $result->expiryOutcomesInInputOrder[$i] ?? null;
+
+                if ($outcome !== null && $outcome->isNoteworthy()) {
+                    $mapped = is_array($row->mapped_data) ? $row->mapped_data : [];
+                    $mapped['expiry_outcome'] = $outcome->value;
+                    $row->update(['mapped_data' => $mapped]);
+                }
             }
 
             // Mark batch validated BEFORE marking rows posted.
@@ -295,6 +352,70 @@ class InventoryOpeningService
 
             return $result->entry;
         });
+    }
+
+    /**
+     * Would this supplied expiry be REFUSED by the set-once rule?
+     *
+     * True only when the product's DEFAULT lot already exists AND already carries a
+     * DIFFERENT non-null expiry. A missing lot, or one with no expiry, will accept
+     * the date (mint or set-once fill), so neither is a conflict.
+     */
+    private function expiryConflictsWithExistingLot(string $productId, ?string $expiryDate): bool
+    {
+        if ($expiryDate === null || $productId === '') {
+            return false;
+        }
+
+        $existing = $this->batchStockService->findDefaultBatch($this->companyIdFor($productId), $productId);
+
+        return $existing?->expiry_date !== null
+            && $existing->expiry_date->toDateString() !== $expiryDate;
+    }
+
+    /**
+     * The owning company of a product in this batch's scope.
+     *
+     * Read off the product rather than a request-scoped context: `getPostPreview()`
+     * is reachable from a queued/console path where no CompanyContext is bound.
+     */
+    private function companyIdFor(string $productId): string
+    {
+        return (string) (Product::query()->where('id', $productId)->value('company_id') ?? '');
+    }
+
+    /**
+     * What became of each row's supplied `expiry_date`, for rows where the answer
+     * is not simply "it was applied" (W4-1 gate r1 OPEN-2).
+     *
+     * Read back off `mapped_data` after {@see self::postBatch()} so the POST
+     * response can NAME the outcome. Without this the wizard's only feedback is a
+     * journal entry, and a date the operator watched the preview promise would
+     * vanish with no message at all.
+     *
+     * @return list<array{row_number: int, product_sku: string, expiry_date: string, code: string}>
+     */
+    public function expiryNoticesFor(OpeningBalanceBatch $batch): array
+    {
+        $notices = [];
+
+        foreach ($batch->rows()->orderBy('row_number')->get() as $row) {
+            $mapped = is_array($row->mapped_data) ? $row->mapped_data : [];
+            $code = $mapped['expiry_outcome'] ?? null;
+
+            if (! is_string($code) || $code === '') {
+                continue;
+            }
+
+            $notices[] = [
+                'row_number' => (int) $row->row_number,
+                'product_sku' => (string) ($mapped['product_sku'] ?? ''),
+                'expiry_date' => (string) ($mapped['expiry_date'] ?? ''),
+                'code' => $code,
+            ];
+        }
+
+        return $notices;
     }
 
     /**
@@ -343,6 +464,9 @@ class InventoryOpeningService
             $unitCost = $mappedData['unit_cost'] ?? '0.00';
             $lineValue = bcmul($quantity, $unitCost, $this->monetaryScale());
             $productId = (string) ($mappedData['product_id'] ?? '');
+            $rowExpiry = isset($mappedData['expiry_date']) && is_string($mappedData['expiry_date'])
+                ? $mappedData['expiry_date']
+                : null;
 
             return [
                 'row_number' => $row->row_number,
@@ -354,6 +478,24 @@ class InventoryOpeningService
                 'quantity_decimals' => $quantityDecimalsByProductId[$productId] ?? QuantityScale::SCALE,
                 'unit_cost' => $unitCost,
                 'line_value' => $lineValue,
+                // W4-1 — null renders as "no expiry recorded" in the preview. The
+                // operator has to be able to SEE, before posting, that the lot they
+                // are about to open carries no expiry, because that is exactly the
+                // fact the old build hid behind a fabricated cutover+365 date.
+                'expiry_date' => $rowExpiry,
+                // ...and equally that a date they DID supply is already past, which
+                // opens the lot EXPIRED (unsellable, untransferable until written
+                // off). Allowed by ruling, never silent.
+                'expiry_is_past' => $rowExpiry !== null
+                    && CarbonImmutable::parse($rowExpiry)->isBefore(CarbonImmutable::today()),
+                // 🚨 W4-1 gate r1 OPEN-2 — and whether this date will actually be
+                // APPLIED. The DEFAULT lot is one row per product across ALL
+                // locations and set-once never overwrites an existing date, so a
+                // second row for the same SKU carrying a different expiry is a
+                // no-op. That is knowable HERE, before posting, and showing the
+                // date without this flag is the preview promising something the
+                // post will not do.
+                'expiry_conflicts_with_existing_lot' => $this->expiryConflictsWithExistingLot($productId, $rowExpiry),
             ];
         });
 

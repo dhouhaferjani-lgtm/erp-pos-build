@@ -189,6 +189,22 @@ final class MigrationWizardService
             'sale_price' => ['sale_price', 'selling_price', 'price', 'retail_price'],
             'purchase_price' => ['purchase_price', 'cost', 'cost_price', 'buy_price'],
             'quantity' => ['quantity', 'qty', 'stock', 'stock_qty', 'on_hand'],
+            // W4-1 — the headers a francophone parapharmacy sheet actually carries.
+            // `DLC` (date limite de consommation) and `DLUO` (date limite d'utilisation
+            // optimale) are the printed-on-the-box terms; without them `findBestMatch()`
+            // falls back to a `str_contains` test against the bare target name and
+            // returns null, so the expiry column is silently left unmapped.
+            // ACCENTED forms are listed explicitly, following the `téléphone`
+            // precedent above: `findBestMatch()` normalises only `_` and `-`, never
+            // accents, so a bare `peremption` alias would NOT match a sheet whose
+            // header reads `péremption` — which is how it is actually spelled.
+            // Spaces are not stripped either, but the match is `str_contains`, so
+            // `Date de péremption` is caught by the `péremption` entry.
+            'expiry_date' => [
+                'expiry_date', 'expiry', 'expiration', 'expiration_date', 'best_before',
+                'péremption', 'peremption', 'date_péremption', 'date_peremption',
+                'dlc', 'dluo',
+            ],
             'account_code' => ['account_code', 'account', 'code', 'gl_code'],
             'debit' => ['debit', 'dr', 'debit_amount'],
             'credit' => ['credit', 'cr', 'credit_amount'],
@@ -304,6 +320,11 @@ final class MigrationWizardService
                     'description' => 'Front brake pads for sedan',
                     'sale_price' => '29.99',
                     'purchase_price' => '15.00',
+                    // W4-1 — the strictest rule in the Products set is
+                    // `date_format:Y-m-d`, so the template has to SHOW the shape.
+                    // The second example row leaves it blank on purpose: blank means
+                    // "no expiry supplied", which is safe, whereas a wrong date is not.
+                    'expiry_date' => '2027-09-30',
                     'barcode' => '1234567890123',
                     'category_name' => 'Brake Parts',
                     'tax_rate' => '19',

@@ -654,10 +654,18 @@ final class RepairPhantomDefaultBatchesCommand extends TenantScopedCommand
             ->where('product_batches.batch_number', '!=', BatchStockService::DEFAULT_BATCH_NUMBER)
             ->where('product_batches.is_active', true)
             ->where('product_batches.is_recalled', false)
-            ->where('product_batches.expiry_date', '>=', now()->startOfDay())
+            // W4-1: "not expired" admits a lot with NO recorded expiry, exactly
+            // as the live FEFO predicate does. Keeping the bare `>=` here would
+            // make an undated real lot an invalid repair target while the fixed
+            // reservation path happily draws from it — and this method exists to
+            // write what that path would have written.
+            ->where(function ($q): void {
+                $q->whereNull('product_batches.expiry_date')
+                    ->orWhere('product_batches.expiry_date', '>=', now()->startOfDay());
+            })
             ->where('inventory_batch_stock.location_id', $locationId)
             ->where('inventory_batch_stock.available_quantity', '>=', $quantity)
-            ->orderBy('product_batches.expiry_date');
+            ->orderByRaw('(product_batches.expiry_date IS NULL) ASC, product_batches.expiry_date ASC');
 
         if ($variantId === null) {
             $query->whereNull('product_batches.variant_id');

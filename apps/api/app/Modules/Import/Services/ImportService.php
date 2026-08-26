@@ -139,20 +139,22 @@ final class ImportService
         $job->update(['status' => ImportStatus::Validating]);
 
         $rules = $job->type->getValidationRules();
+        $messages = $job->type->getValidationMessages();
         $validCount = 0;
         $invalidCount = 0;
 
         // Process in chunks to avoid loading all rows into memory
         $job->rows()
             ->orderBy('row_number')
-            ->chunk(500, function ($rows) use ($rules, $job, &$validCount, &$invalidCount): void {
+            ->chunk(500, function ($rows) use ($rules, $messages, $job, &$validCount, &$invalidCount): void {
                 $updates = [];
 
                 foreach ($rows as $row) {
                     $result = $this->validationEngine->validate(
                         $row->data,
                         $rules,
-                        $job->tenant_id
+                        $job->tenant_id,
+                        $messages,
                     );
 
                     $updates[] = [

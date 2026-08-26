@@ -191,7 +191,9 @@ export function BatchDetailPage() {
               {t('batches:fields.expiryDate')}
             </label>
             <div className={`font-medium ${colorTokens.text.primary}`}>
-              {new Date(batch.expiry_date).toLocaleDateString()}
+              {batch.expiry_date === null
+                ? t('batches:fields.noExpiry', 'No expiry')
+                : new Date(batch.expiry_date).toLocaleDateString()}
             </div>
           </div>
           {batch.manufacturing_date && (

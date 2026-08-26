@@ -16,6 +16,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Import\Domain\ImportJob;
+use App\Modules\Import\Domain\ImportRow;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
@@ -26,9 +27,11 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use Carbon\CarbonImmutable;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Spatie\Permission\PermissionRegistrar;
@@ -249,6 +252,411 @@ final class ProductsImportPipelineTest extends TestCase
         $row = ImportJob::findOrFail($jobId)->rows()->firstOrFail();
         $this->assertSame('ok', $row->data['_results']['opening_stock'] ?? null);
         $this->assertNull($row->warnings);
+    }
+
+    /**
+     * Campaign W4-1 — the Products import carries the opening stock for the
+     * launch tenant, and the launch tenant is a parapharmacy: every product is
+     * batch-tracked. Before this lane the sheet had NO expiry column at all, so
+     * every opening lot took `cutover + 365` — the earliest date on the product,
+     * which the FEFO guards then compelled the operator to ship first.
+     */
+    public function test_the_optional_expiry_date_column_dates_the_opening_lot(): void
+    {
+        Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Dated Lot Product',
+            'sku' => 'LOT-DATED',
+            'type' => ProductType::Part,
+            'tax_rate' => '19.00',
+            'requires_batch_tracking' => true,
+        ]);
+
+        $file = UploadedFile::fake()->createWithContent('products-expiry.csv', implode("\n", [
+            'name,sku,type,quantity,location_code,purchase_price,expiry_date',
+            'Dated Lot Product,LOT-DATED,part,6.0000,MAIN,2.500,2027-09-30',
+        ]));
+
+        $jobId = $this->runImport($file);
+
+        $this->assertSame(
+            '2027-09-30',
+            $this->lotExpiryForSku('LOT-DATED'),
+            'the expiry printed on the sheet must reach the opening lot',
+        );
+        $this->assertSame('ok', $this->onlyRowOf($jobId)->data['_results']['opening_stock'] ?? null);
+    }
+
+    public function test_an_omitted_expiry_column_leaves_the_opening_lot_undated_rather_than_inventing_one(): void
+    {
+        Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Undated Lot Product',
+            'sku' => 'LOT-UNDATED',
+            'type' => ProductType::Part,
+            'tax_rate' => '19.00',
+            'requires_batch_tracking' => true,
+            // No default_shelf_life_days: exactly the wave-4 shape, where the
+            // Products import had no expiry column and nothing configured one.
+        ]);
+
+        $file = UploadedFile::fake()->createWithContent('products-no-expiry.csv', implode("\n", [
+            'name,sku,type,quantity,location_code,purchase_price',
+            'Undated Lot Product,LOT-UNDATED,part,6.0000,MAIN,2.500',
+        ]));
+
+        $this->runImport($file);
+
+        $batch = Batch::where('product_id', Product::where('sku', 'LOT-UNDATED')->firstOrFail()->id)->firstOrFail();
+        $this->assertNull(
+            $batch->expiry_date,
+            'W4-1: with no expiry column and no configured shelf life, the lot must record NO expiry — not cutover + 365',
+        );
+    }
+
+    public function test_a_malformed_expiry_cell_is_refused_with_its_row_rather_than_reinterpreted(): void
+    {
+        Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Bad Expiry Product',
+            'sku' => 'LOT-BADEXP',
+            'type' => ProductType::Part,
+            'tax_rate' => '19.00',
+            'requires_batch_tracking' => true,
+        ]);
+
+        // 03/04/2027 is 3 April or 4 March depending on the reader. Guessing it
+        // would put a wrong date on a parapharmacy lot, so it must be refused.
+        $file = UploadedFile::fake()->createWithContent('products-bad-expiry.csv', implode("\n", [
+            'name,sku,type,quantity,location_code,purchase_price,expiry_date',
+            'Bad Expiry Product,LOT-BADEXP,part,6.0000,MAIN,2.500,03/04/2027',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', ['file' => $file, 'type' => 'products']);
+        $createResponse->assertCreated();
+        $jobId = $createResponse->json('data.id');
+
+        // The row is refused at VALIDATION, and since it is the only row the whole
+        // job refuses rather than importing a product with a guessed expiry.
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertStatus(422)
+            ->assertJsonPath('failed_rows', 1)
+            ->assertJsonPath('valid_rows', 0);
+
+        $row = $this->onlyRowOf($jobId);
+        $this->assertNotNull($row->errors);
+        $this->assertStringContainsString(
+            'expiry_date',
+            json_encode($row->errors, JSON_THROW_ON_ERROR),
+            'the refusal must name the offending column so the operator can fix that cell',
+        );
+
+        $this->assertSame(
+            0,
+            $this->lotCountForSku('LOT-BADEXP'),
+            'a refused row must not have opened stock',
+        );
+    }
+
+    /**
+     * Gate r1 [CRITICAL] — the WIZARD path. `runImport()` above posts NO
+     * `column_mapping`, which is `applyColumnMapping()`'s `$mapping === null`
+     * early return — the only path an operator never takes. The wizard always
+     * posts a mapping, and `applyColumnMapping()` keeps ONLY mapped targets, so
+     * this is the path where a missing target silently strips the column.
+     */
+    public function test_the_expiry_column_survives_the_wizards_column_mapping(): void
+    {
+        Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Mapped Lot Product',
+            'sku' => 'LOT-MAPPED',
+            'type' => ProductType::Part,
+            'tax_rate' => '19.00',
+            'requires_batch_tracking' => true,
+        ]);
+
+        // Headers as a real sheet carries them, mapped onto the target names —
+        // exactly what ImportWizardPage builds from TARGET_COLUMNS.
+        $file = UploadedFile::fake()->createWithContent('products-mapped.csv', implode("\n", [
+            'nom,reference,type,qte,depot,cout,peremption',
+            'Mapped Lot Product,LOT-MAPPED,part,6.0000,MAIN,2.500,2027-09-30',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', [
+                'file' => $file,
+                'type' => 'products',
+                'column_mapping' => json_encode([
+                    'nom' => 'name',
+                    'reference' => 'sku',
+                    'type' => 'type',
+                    'qte' => 'quantity',
+                    'depot' => 'location_code',
+                    'cout' => 'purchase_price',
+                    'peremption' => 'expiry_date',
+                ], JSON_THROW_ON_ERROR),
+            ]);
+        $createResponse->assertCreated();
+        $jobId = $createResponse->json('data.id');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.failed_rows', 0);
+
+        $this->assertSame(
+            '2027-09-30',
+            $this->lotExpiryForSku('LOT-MAPPED'),
+            'a mapped expiry_date must reach the lot; applyColumnMapping() drops every unmapped target',
+        );
+    }
+
+    /**
+     * RULED policy (gate r1): a PAST expiry on an opening lot is ALLOWED — a
+     * parapharmacy may legitimately open with expired stock in order to scrap it —
+     * but it is never silent. The lot is born EXPIRED, so FEFO and the transfer
+     * guard treat it as unsellable; an operator who typed the wrong year has to
+     * see that on the row, not discover it at the first refused issue.
+     */
+    public function test_a_past_expiry_opens_the_stock_and_warns_instead_of_refusing(): void
+    {
+        Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Expired Stock Product',
+            'sku' => 'LOT-PAST',
+            'type' => ProductType::Part,
+            'tax_rate' => '19.00',
+            'requires_batch_tracking' => true,
+        ]);
+
+        $past = CarbonImmutable::today()->subMonths(2)->toDateString();
+        $file = UploadedFile::fake()->createWithContent('products-past.csv', implode("\n", [
+            'name,sku,type,quantity,location_code,purchase_price,expiry_date',
+            "Expired Stock Product,LOT-PAST,part,6.0000,MAIN,2.500,{$past}",
+        ]));
+
+        $jobId = $this->runImport($file);
+
+        $batch = Batch::where('product_id', Product::where('sku', 'LOT-PAST')->firstOrFail()->id)->firstOrFail();
+        $this->assertSame($past, $batch->expiry_date?->toDateString(), 'the past date is honoured, not silently dropped');
+        $this->assertTrue($batch->isExpired(), 'and the lot is genuinely expired — which is why the row must warn');
+
+        $this->assertSame('ok', $this->onlyRowOf($jobId)->data['_results']['opening_stock'] ?? null, 'the stock still opens');
+        $this->assertContains(
+            'expiry_in_past',
+            $this->warningCodesOf($jobId),
+            'a past expiry must be reported on the row, not left for the operator to discover at the first refusal',
+        );
+    }
+
+    /**
+     * Gate r1 — one DEFAULT lot exists per product across ALL locations, so the
+     * SECOND row of a multi-location opening for the same SKU meets a lot that
+     * already exists. Its expiry used to be discarded while the row still reported
+     * `ok`: the same lost-fact defect this lane exists to remove, one layer up.
+     */
+    public function test_a_second_location_row_fills_an_undated_lot_and_reports_a_conflict_when_it_disagrees(): void
+    {
+        Location::create([
+            'company_id' => $this->company->id,
+            'code' => 'ANNEX',
+            'name' => 'Annex',
+            'type' => 'warehouse',
+            'is_active' => true,
+        ]);
+
+        Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Two Site Product',
+            'sku' => 'LOT-TWOSITE',
+            'type' => ProductType::Part,
+            'tax_rate' => '19.00',
+            'requires_batch_tracking' => true,
+        ]);
+
+        // Row 1 supplies NO expiry (lot minted undated); row 2 supplies one.
+        // Set-once must FILL it rather than drop it on the floor.
+        $file = UploadedFile::fake()->createWithContent('products-twosite.csv', implode("\n", [
+            'name,sku,type,quantity,location_code,purchase_price,expiry_date',
+            'Two Site Product,LOT-TWOSITE,part,4.0000,MAIN,2.500,',
+            'Two Site Product,LOT-TWOSITE,part,3.0000,ANNEX,2.500,2027-05-31',
+        ]));
+
+        $this->runImport($file);
+
+        $product = Product::where('sku', 'LOT-TWOSITE')->firstOrFail();
+        $this->assertSame(
+            '2027-05-31',
+            $this->lotExpiryForSku('LOT-TWOSITE'),
+            'set-once: an expiry supplied by a later row must FILL an undated lot',
+        );
+
+        // Now a third opening that disagrees: the existing date wins (rewriting a
+        // lot that already holds stock and movements would be a silent ledger
+        // correction) and the row says so.
+        Location::create([
+            'company_id' => $this->company->id,
+            'code' => 'THIRD',
+            'name' => 'Third',
+            'type' => 'warehouse',
+            'is_active' => true,
+        ]);
+
+        $conflicting = UploadedFile::fake()->createWithContent('products-conflict.csv', implode("\n", [
+            'name,sku,type,quantity,location_code,purchase_price,expiry_date',
+            'Two Site Product,LOT-TWOSITE,part,2.0000,THIRD,2.500,2028-01-31',
+        ]));
+
+        $jobId = $this->runImport($conflicting);
+
+        $this->assertSame(
+            '2027-05-31',
+            $this->lotExpiryForSku('LOT-TWOSITE'),
+            'an existing expiry is never overwritten',
+        );
+        $this->assertContains(
+            'expiry_conflict_existing_lot',
+            $this->warningCodesOf($jobId),
+            'and the operator is told their date was not used',
+        );
+    }
+
+    public function test_an_expiry_on_a_non_batch_tracked_product_is_reported_not_silently_dropped(): void
+    {
+        Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Plain Product',
+            'sku' => 'PLAIN-1',
+            'type' => ProductType::Part,
+            'tax_rate' => '19.00',
+            'requires_batch_tracking' => false,
+        ]);
+
+        $file = UploadedFile::fake()->createWithContent('products-plain.csv', implode("\n", [
+            'name,sku,type,quantity,location_code,purchase_price,expiry_date',
+            'Plain Product,PLAIN-1,part,6.0000,MAIN,2.500,2027-09-30',
+        ]));
+
+        $jobId = $this->runImport($file);
+
+        $this->assertSame(0, $this->lotCountForSku('PLAIN-1'));
+        $this->assertContains(
+            'expiry_ignored_not_batch_tracked',
+            $this->warningCodesOf($jobId),
+            'validation accepted the date and the preview echoed it — dropping it silently here would leave the '
+            .'operator believing an expiry was recorded',
+        );
+    }
+
+    public function test_the_unparseable_refusal_carries_a_machine_readable_code(): void
+    {
+        Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Coded Refusal Product',
+            'sku' => 'LOT-CODE',
+            'type' => ProductType::Part,
+            'tax_rate' => '19.00',
+            'requires_batch_tracking' => true,
+        ]);
+
+        $file = UploadedFile::fake()->createWithContent('products-code.csv', implode("\n", [
+            'name,sku,type,quantity,location_code,purchase_price,expiry_date',
+            'Coded Refusal Product,LOT-CODE,part,6.0000,MAIN,2.500,03/04/2027',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', ['file' => $file, 'type' => 'products']);
+        $createResponse->assertCreated();
+        $jobId = $createResponse->json('data.id');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertStatus(422);
+
+        $errors = $this->onlyRowOf($jobId)->errors;
+        $this->assertStringContainsString(
+            'expiry_unparseable',
+            json_encode($errors, JSON_THROW_ON_ERROR),
+            'row errors carry no separate code channel, so the refusal code rides the message and must survive into '
+            .'the failed-rows export and the result workbook',
+        );
+    }
+
+    /**
+     * The job's single row, narrowed.
+     *
+     * `ImportJob::findOrFail()` is typed `Model|Collection`, so the chained
+     * `->rows()` the rest of this file uses is untyped to static analysis. The
+     * W4-1 cases go through here instead of adding more of that idiom.
+     */
+    /**
+     * The product's single lot expiry AS STORED, or null when it records none.
+     *
+     * Read off the table rather than through the model's date cast: this asserts
+     * what the import WROTE, and the cast would hide the difference between NULL
+     * and a date the lot never received.
+     */
+    private function lotExpiryForSku(string $sku): ?string
+    {
+        $productId = Product::query()->where('sku', $sku)->value('id');
+        $value = DB::table('product_batches')->where('product_id', $productId)->value('expiry_date');
+
+        return $value === null ? null : substr((string) $value, 0, 10);
+    }
+
+    private function lotCountForSku(string $sku): int
+    {
+        $productId = Product::query()->where('sku', $sku)->value('id');
+
+        return (int) DB::table('product_batches')->where('product_id', $productId)->count();
+    }
+
+    private function onlyRowOf(string $jobId): ImportRow
+    {
+        /** @var ImportJob $job */
+        $job = ImportJob::query()->findOrFail($jobId);
+
+        /** @var ImportRow $row */
+        $row = $job->rows()->firstOrFail();
+
+        return $row;
+    }
+
+    /**
+     * @return list<string> The warning codes recorded on the job's single row.
+     */
+    private function warningCodesOf(string $jobId): array
+    {
+        return array_map(
+            static fn (array $warning): string => (string) $warning['code'],
+            $this->onlyRowOf($jobId)->warnings ?? [],
+        );
+    }
+
+    private function runImport(UploadedFile $file): string
+    {
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', ['file' => $file, 'type' => 'products']);
+        $createResponse->assertCreated();
+        $jobId = (string) $createResponse->json('data.id');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.failed_rows', 0);
+
+        return $jobId;
     }
 
     public function test_missing_category_is_created_linked_and_reported_instead_of_silently_dropped(): void

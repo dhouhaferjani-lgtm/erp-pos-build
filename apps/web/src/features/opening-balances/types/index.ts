@@ -170,6 +170,26 @@ export interface InventoryPreviewLine {
   quantity_decimals: number
   unit_cost: string
   line_value: string
+  /**
+   * W4-1 — the expiry the sheet supplied for this opening lot, or null when it
+   * supplied none. Null is shown as "No expiry", never as a date: an invented
+   * expiry on opening stock is what made FEFO ship the whole opening catalogue
+   * first on the launch tenant.
+   */
+  expiry_date: string | null
+  /**
+   * The supplied date is already in the past. Allowed by ruling — a parapharmacy
+   * may legitimately open with expired stock in order to scrap it — but the lot
+   * is born EXPIRED and cannot be sold or transferred until it is written off, so
+   * the operator has to see it BEFORE posting rather than at the first refusal.
+   */
+  expiry_is_past: boolean
+  /**
+   * The product's DEFAULT lot already carries a DIFFERENT expiry, and set-once
+   * never overwrites one. This date will NOT be applied. Showing it without this
+   * flag is the preview promising something the post will not do (gate r1 OPEN-2).
+   */
+  expiry_conflicts_with_existing_lot: boolean
 }
 
 export interface ArApPreviewDocument {
@@ -281,7 +301,28 @@ export const GL_COLUMNS = ['account_code', 'debit', 'credit', 'reference', 'repo
  * wizard for every legacy file (treasury gate r1 F-1).
  */
 export const GL_REQUIRED_COLUMNS = ['account_code', 'debit', 'credit', 'reference'] as const
-export const INVENTORY_COLUMNS = ['product_code', 'location_code', 'quantity', 'unit_cost'] as const
+export const INVENTORY_COLUMNS = [
+  'product_code',
+  'location_code',
+  'quantity',
+  'unit_cost',
+  'expiry_date',
+] as const
+
+/**
+ * The headers an INVENTORY CSV MUST carry. `expiry_date` (W4-1) is deliberately
+ * absent for the same reason `repository_code` is absent from the GL required
+ * set: it is optional, and every sheet written before it existed has exactly
+ * these four columns. Leaving it blank means "expiry not supplied" — the opening
+ * lot then takes the product's configured shelf life, or is minted undated and
+ * ranked LAST by FEFO. It is never invented.
+ */
+export const INVENTORY_REQUIRED_COLUMNS = [
+  'product_code',
+  'location_code',
+  'quantity',
+  'unit_cost',
+] as const
 export const AR_AP_COLUMNS = [
   'partner_code',
   'external_invoice_number',

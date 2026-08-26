@@ -412,6 +412,24 @@ class OpeningBalanceBatchController extends Controller
                 'rows.*.location_code' => ['required', 'string'],
                 'rows.*.quantity' => ['required', 'numeric', 'gt:0', 'regex:/^-?\d+(\.\d{1,4})?$/'],
                 'rows.*.unit_cost' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+                // W4-1 — optional; the expiry of the opening lot this row seeds.
+                // Blank means "not supplied": the lot takes the product's configured
+                // shelf life if it has one, and is otherwise minted UNDATED so FEFO
+                // ranks it after every dated lot.
+                //
+                // `date_format` rather than `date` so a locale-ambiguous cell
+                // (03/04/2027 — 3 April or 4 March?) is REFUSED here instead of
+                // silently parsed as the wrong day. `InventoryOpeningService::
+                // validateRow()` re-checks the same shape per row and reports
+                // `expiry_date` as a row error.
+                //
+                // A PAST date is deliberately NOT refused, here or downstream
+                // (gate r1 ruling): a parapharmacy may legitimately open with
+                // expired stock in order to scrap it. It is surfaced instead —
+                // `getPostPreview()` marks the line `expiry_is_past` so the
+                // operator sees it BEFORE posting, and the Products import raises
+                // the non-blocking `expiry_in_past` row warning.
+                'rows.*.expiry_date' => ['nullable', 'date_format:Y-m-d'],
             ],
             OpeningBatchType::ArOpenItems, OpeningBatchType::ApOpenItems => [
                 'rows.*.partner_code' => ['required', 'string'],
@@ -601,6 +619,17 @@ class OpeningBalanceBatchController extends Controller
                 'message' => 'Batch posted successfully',
                 'batch' => $this->formatBatch($batch),
             ];
+
+            // W4-1 gate r1 OPEN-2 — an INVENTORY batch names any row whose supplied
+            // expiry did not end up on the lot. The preview showed the operator that
+            // date; if the post could not honour it, the post has to say so.
+            if ($batch->type === OpeningBatchType::Inventory) {
+                $expiryNotices = $this->inventoryOpeningService->expiryNoticesFor($batch);
+
+                if ($expiryNotices !== []) {
+                    $responseData['expiry_notices'] = $expiryNotices;
+                }
+            }
 
             if ($result instanceof JournalEntry) {
                 // Accounting/Inventory: include journal entry info

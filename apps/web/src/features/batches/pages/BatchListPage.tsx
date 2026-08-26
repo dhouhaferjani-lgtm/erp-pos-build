@@ -197,7 +197,9 @@ export function BatchListPage() {
                       )}
                     </td>
                     <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorTokens.text.subtle}`}>
-                      {new Date(batch.expiry_date).toLocaleDateString()}
+                      {batch.expiry_date === null
+                        ? t('batches:fields.noExpiry', 'No expiry')
+                        : new Date(batch.expiry_date).toLocaleDateString()}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4">
                       <BatchStatusBadge

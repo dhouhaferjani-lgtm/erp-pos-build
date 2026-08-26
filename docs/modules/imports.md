@@ -198,11 +198,52 @@ Add these columns to your **Products** import file:
 | `quantity` | Opening quantity on hand |
 | `purchase_price` | Unit cost, seeds the weighted-average cost |
 | `location_code` | Where the stock sits |
+| `expiry_date` | *Optional.* Expiry of the opening lot, **`YYYY-MM-DD` only** |
+
+##### `expiry_date` — the lot's expiry (campaign W4-1)
+
+Only meaningful for **batch-tracked** products, whose opening stock is backed by a
+`DEFAULT` lot.
+
+- **Blank means "not supplied"**, never "no expiry rule". The lot then takes the
+  product's configured `default_shelf_life_days`, and if there is none it is opened
+  **with no expiry at all**. Nothing invents a date. An undated lot is *not* an
+  expired lot: it is sellable, and FEFO ranks it **after** every dated lot.
+  (Before W4-1 the opening lot was given `cutover + 365`, which was the *earliest*
+  date on every product — so the FEFO guards compelled shipping the fabricated lot
+  first and refused every alternative.)
+- **`YYYY-MM-DD` only.** This is the strictest rule in the Products set, and it is
+  deliberate: `03/04/2027` is 3 April or 4 March depending on the reader, so an
+  ambiguous cell is **refused with its row** (`expiry_unparseable`) rather than
+  guessed onto a parapharmacy lot.
+- **A past date is allowed**, because opening with expired stock in order to scrap
+  it is legitimate. The row carries the non-blocking warning `expiry_in_past`: that
+  lot is born EXPIRED and cannot be sold or transferred until it is written off.
+- **XLSX date cells work.** A cell Excel typed as a Date is read as `YYYY-MM-DD`,
+  not as the raw serial.
+- Map the column in the wizard. It is offered as an optional target for every
+  source column, and these headers auto-map without being pointed at it:
+  `expiry_date`, `expiry`, `expiration`, `expiration_date`, `best_before`,
+  `péremption` (and `peremption`), `date_péremption`, `DLC`, `DLUO`. Matching is
+  case-insensitive and substring-based, so `Date de péremption` is caught by the
+  `péremption` entry — but accents are **not** normalised, so an unaccented header
+  needs the unaccented alias, which is why both forms are listed.
+
+Row warnings you may see in the result workbook:
+
+| Code | Meaning |
+|---|---|
+| `expiry_in_past` | Accepted; the lot opens EXPIRED |
+| `expiry_conflict_existing_lot` | The product's `DEFAULT` lot already carried a **different** expiry. The existing date is kept — edit the lot directly to change it. There is one `DEFAULT` lot per product across **all** locations, so this is what a second row for the same SKU at another location meets. |
+| `expiry_ignored_not_batch_tracked` | The product is not batch-tracked, so its stock is not held in a lot and there is nothing to date. |
 
 Behaviour — `ProductOpeningStockPhase` → `OpeningBalancePostingService`:
 - Posts a real **Opening** `stock_movement` (a document-backed action).
 - Seeds the weighted-average cost from `purchase_price`.
 - Writes the matching GL entry.
+- Backs a batch-tracked product's opening quantity with its `DEFAULT` lot, dated by
+  the rules above. A supplied expiry **fills** an existing undated lot (set-once) but
+  never overwrites a date that is already there.
 - **Enter-once guard:** a second opening for the same product raises
   `OpeningAlreadyExistsException` rather than silently overwriting.
 - **Reset affordance:** to correct an opening, use `ResetOpeningBalanceService`,

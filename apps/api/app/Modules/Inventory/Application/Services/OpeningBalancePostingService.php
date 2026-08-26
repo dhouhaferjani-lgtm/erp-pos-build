@@ -10,12 +10,14 @@ use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\BatchExpiry\Application\Services\BatchStockService;
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Inventory\Application\DTOs\OpeningBalanceLine;
 use App\Modules\Inventory\Application\DTOs\OpeningBalancePosting;
 use App\Modules\Inventory\Application\DTOs\OpeningBalancePostingResult;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
+use App\Modules\Inventory\Domain\Enums\OpeningLotExpiryOutcome;
 use App\Modules\Inventory\Domain\Events\StockMovementRecorded;
 use App\Modules\Inventory\Domain\Events\StockMovementRecordedV2;
 use App\Modules\Inventory\Domain\Exceptions\OpeningAlreadyExistsException;
@@ -82,6 +84,8 @@ final class OpeningBalancePostingService
                     $totalInventoryValue = '0';
                     /** @var list<string> $movementIds */
                     $movementIds = [];
+                    /** @var list<OpeningLotExpiryOutcome> $expiryOutcomes */
+                    $expiryOutcomes = [];
 
                     foreach ($posting->lines as $line) {
                         // Enter-once check: reject if an active (non-reversed) opening exists.
@@ -150,10 +154,24 @@ final class OpeningBalancePostingService
 
                         // Default-batch invariant: a batch-tracked product must
                         // never hold stock that isn't inside a lot. Back the
-                        // opened quantity with a DEFAULT lot (expiry = entry date
-                        // + the product's default expiry period) so PO receipt,
+                        // opened quantity with a DEFAULT lot so PO receipt,
                         // transfers and POS lot selection all have a lot to pick.
+                        //
+                        // 🚨 W4-1 — the lot's EXPIRY, in precedence order:
+                        //   1. the `expiry_date` the operator supplied on THIS
+                        //      opening line (import column / wizard column);
+                        //   2. the product's configured `default_shelf_life_days`,
+                        //      measured from the entry date;
+                        //   3. nothing — the lot is minted UNDATED and FEFO ranks
+                        //      it after every dated lot.
+                        // Case 3 used to fabricate `entry date + 365`. On the launch
+                        // tenant every product is batch-tracked and all day-one stock
+                        // is an opening, so that invented date became the EARLIEST on
+                        // every product and the FEFO guards COMPELLED shipping the
+                        // fabricated lot first. Never re-add a fallback here.
                         $product = $products->get($line->productId);
+                        $expiryOutcome = OpeningLotExpiryOutcome::NotSupplied;
+
                         if ($product !== null && $product->requires_batch_tracking) {
                             // Gate r1 finding 12 — `ensureDefaultBatch()` sets the
                             // lot TO the target, it does not add to it, so passing
@@ -163,6 +181,20 @@ final class OpeningBalancePostingService
                             // unconditionally: it subtracts whatever real lots
                             // already hold, so it can neither under-seed a second
                             // opening nor double-book stock that arrived in a lot.
+                            // Whether the DEFAULT lot ALREADY existed decides how the
+                            // outcome reads: a fresh mint that carries the date is
+                            // `Applied`, an existing undated lot that we filled is
+                            // `FilledExistingLot`, and one that already held a
+                            // different date is a `ConflictExistingLot` the operator
+                            // has to be told about.
+                            $lotExisted = $line->expiryDate === null
+                                ? null
+                                : $this->batchStockService->findDefaultBatch(
+                                    $posting->companyId,
+                                    $line->productId,
+                                    $line->variantId,
+                                );
+
                             $this->batchStockService->ensureDefaultBatchForUntrackedRemainder(
                                 companyId: $posting->companyId,
                                 tenantId: $posting->tenantId,
@@ -172,7 +204,16 @@ final class OpeningBalancePostingService
                                 shelfLifeDays: $product->default_shelf_life_days,
                                 asOfDate: $posting->entryDate->toDateString(),
                                 variantId: $line->variantId,
+                                expiryDate: $line->expiryDate,
                             );
+
+                            $expiryOutcome = $this->classifyExpiryOutcome($posting, $line, $lotExisted);
+                        } elseif ($line->expiryDate !== null) {
+                            // W4-1 gate r1 — a non-batch-tracked product has no lot
+                            // to carry the date. Validation accepted it and the
+                            // preview showed it, so dropping it silently here would
+                            // leave the operator believing an expiry was recorded.
+                            $expiryOutcome = OpeningLotExpiryOutcome::IgnoredNotBatchTracked;
                         }
 
                         // Stamp the product's cost_price when unit_cost is positive.
@@ -186,6 +227,7 @@ final class OpeningBalancePostingService
 
                         $totalInventoryValue = bcadd($totalInventoryValue, $lineValue, $monetaryScale);
                         $movementIds[] = $movement->id;
+                        $expiryOutcomes[] = $expiryOutcome;
 
                         // Schedule post-commit event dispatch per movement.
                         // Snapshots are captured by value so each closure gets its own copy.
@@ -271,7 +313,7 @@ final class OpeningBalancePostingService
                         'line_order' => 1,
                     ]);
 
-                    return new OpeningBalancePostingResult($entry->load('lines'), $movementIds);
+                    return new OpeningBalancePostingResult($entry->load('lines'), $movementIds, $expiryOutcomes);
                 },
             );
         }, attempts: 3);
@@ -287,6 +329,54 @@ final class OpeningBalancePostingService
      * TOCTOU race between the read-max and the insert. On SQLite (test runner)
      * the advisory lock is skipped — concurrency is not meaningful there.
      */
+    /**
+     * What became of the expiry this line supplied (W4-1 gate r1).
+     *
+     * Derived by READING the lot back rather than trusting the write, because
+     * `BatchStockService::ensureDefaultBatch()` deliberately refuses to overwrite
+     * a date that is already on an existing DEFAULT lot. There is one DEFAULT lot
+     * per product+variant across ALL locations, so the second row of a
+     * multi-location opening for the same SKU routinely meets a lot that already
+     * exists — and if its date disagrees, the operator must be told rather than
+     * left with a row reported `ok`.
+     *
+     * @param  ?Batch  $lotBefore  The DEFAULT lot as it stood BEFORE this line ran,
+     *                             or null when the line supplied no expiry / the lot
+     *                             did not exist yet.
+     */
+    private function classifyExpiryOutcome(
+        OpeningBalancePosting $posting,
+        OpeningBalanceLine $line,
+        ?Batch $lotBefore,
+    ): OpeningLotExpiryOutcome {
+        if ($line->expiryDate === null) {
+            return OpeningLotExpiryOutcome::NotSupplied;
+        }
+
+        $lotAfter = $this->batchStockService->findDefaultBatch(
+            $posting->companyId,
+            $line->productId,
+            $line->variantId,
+        );
+
+        // No lot at all: real lots already covered the whole quantity, so nothing
+        // was minted and there is nothing the date could attach to. This is NOT
+        // the not-batch-tracked case — we only reach here from inside the
+        // `requires_batch_tracking` branch, so saying so would be a false
+        // statement about the operator's own catalogue (gate r1 MINOR-4).
+        if ($lotAfter === null) {
+            return OpeningLotExpiryOutcome::IgnoredNoDefaultLot;
+        }
+
+        if ($lotAfter->expiry_date?->toDateString() !== $line->expiryDate) {
+            return OpeningLotExpiryOutcome::ConflictExistingLot;
+        }
+
+        return $lotBefore !== null && $lotBefore->expiry_date === null
+            ? OpeningLotExpiryOutcome::FilledExistingLot
+            : OpeningLotExpiryOutcome::Applied;
+    }
+
     public function generateOpeningEntryNumber(string $companyId): string
     {
         $year = date('Y');

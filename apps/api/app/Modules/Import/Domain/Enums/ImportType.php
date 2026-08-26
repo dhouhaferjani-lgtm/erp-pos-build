@@ -122,11 +122,39 @@ enum ImportType: string
                 'reference',
             ],
             self::Partners => ['email', 'phone', 'vat_number', 'address', 'city', 'country'],
-            self::Products => ['sku', 'type', 'description', 'sale_price', 'sale_price_incl_tax', 'sale_price_excl_tax', 'purchase_price', 'margin', 'quantity', 'location_code', 'placement_path', 'barcode', 'category_name', 'brand', 'tax_rate', 'unit', 'is_active'],
+            self::Products => ['sku', 'type', 'description', 'sale_price', 'sale_price_incl_tax', 'sale_price_excl_tax', 'purchase_price', 'margin', 'quantity', 'location_code', 'expiry_date', 'placement_path', 'barcode', 'category_name', 'brand', 'tax_rate', 'unit', 'is_active'],
             self::StockLevels => ['notes'],
             self::OpeningBalances => ['description', 'reference'],
             self::ProductImages => [], // ZIP-based import, not CSV
             self::CompositeItems => ['vertical_type', 'production_type', 'pricing_mode', 'tax_rate', 'manual_cost', 'category_name', 'is_active', 'description'],
+        };
+    }
+
+    /**
+     * Per-rule validation messages, keyed `field.rule`.
+     *
+     * 🚨 W4-1 gate r1 — row errors are stored as `field => [message]`
+     * (`ValidationEngine::validate()`) with no separate code channel, and the
+     * failed-rows export / result workbook surface the message verbatim. So a
+     * machine-readable REFUSAL CODE is carried as the message's leading token.
+     *
+     * RULED policy for `expiry_date`: an UNPARSEABLE date refuses the row
+     * (`expiry_unparseable`) — `03/04/2027` is 3 April or 4 March depending on the
+     * reader, and guessing puts a wrong date on a parapharmacy lot. A date in the
+     * PAST is NOT refused; it is allowed (a parapharmacy may legitimately open with
+     * expired stock in order to scrap it) and reported as the non-blocking
+     * `expiry_in_past` row warning by `ProductOpeningStockPhase`.
+     *
+     * @return array<string, string>
+     */
+    public function getValidationMessages(): array
+    {
+        return match ($this) {
+            self::Products => [
+                'expiry_date.date_format' => 'expiry_unparseable: expiry_date must be written as YYYY-MM-DD (for example 2027-09-30). '
+                    .'An ambiguous date such as 03/04/2027 is refused rather than guessed.',
+            ],
+            default => [],
         };
     }
 
@@ -169,6 +197,14 @@ enum ImportType: string
                 'margin' => ['nullable', 'numeric', 'regex:/^-?\d+(\.\d{1,2})?$/'],
                 'quantity' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
                 'location_code' => ['nullable', 'string', 'max:100'],
+                // W4-1 — the expiry of the OPENING stock this row carries. Optional:
+                // a blank cell means "not supplied", and the opening lot is then
+                // minted with the product's configured shelf life if it has one, or
+                // UNDATED if it does not. It is never invented. `date_format` rather
+                // than a bare `date` so a locale-ambiguous cell (03/04/2027) is
+                // rejected with its row number instead of silently parsed as the
+                // wrong day.
+                'expiry_date' => ['nullable', 'date_format:Y-m-d'],
                 'placement_path' => ['nullable', 'string', 'max:1000'],
                 'brand' => ['nullable', 'string', 'max:255'],
                 // categories.name and categories.slug are varchar(255): an

@@ -27,6 +27,21 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
+/**
+ * 🚨 W4-1 — there is deliberately no `DEFAULT_SHELF_LIFE_DAYS` mirror in this
+ * class any more. It used to mint a `today + 365` expiry for the DEFAULT lot,
+ * and {@see BatchStockService} carried the same constant for the opening path.
+ * Both are gone: a lot whose expiry nobody supplied now records
+ * `expiry_date IS NULL`.
+ *
+ * Every ordering below therefore spells the ranking out as
+ * `(expiry_date IS NULL) ASC, expiry_date ASC` — undated lots LAST. PostgreSQL
+ * sorts NULLs last on a bare ASC, SQLite sorts them FIRST, so the flag column is
+ * stated rather than inherited from whichever driver is underneath. Every
+ * "is it expired?" predicate admits NULL for the same reason: an undated lot is
+ * not expired, and filtering it out would make the whole opening catalogue
+ * invisible to FEFO.
+ */
 class FEFOInventoryService
 {
     /**
@@ -35,9 +50,6 @@ class FEFOInventoryService
      * Application (deptrac ModuleDomain → ModuleApplication).
      */
     private const string DEFAULT_BATCH_NUMBER = 'DEFAULT';
-
-    /** Mirrors BatchStockService::DEFAULT_SHELF_LIFE_DAYS, for the same reason. */
-    private const int DEFAULT_SHELF_LIFE_DAYS = 365;
 
     public function __construct(
         private readonly ProductVariantLookup $variantLookup,
@@ -78,7 +90,9 @@ class FEFOInventoryService
             ->where('inventory_batch_stock.available_quantity', '>', 0)
             ->where('product_batches.is_active', true)
             ->where('product_batches.is_recalled', false)
-            ->orderBy('product_batches.expiry_date', 'asc');  // FEFO: earliest expiry first
+            // FEFO: earliest expiry first, undated lots last (W4-1), then the
+            // order the lots were received so a tie is deterministic.
+            ->orderByRaw('(product_batches.expiry_date IS NULL) ASC, product_batches.expiry_date ASC, product_batches.created_at ASC');
 
         // Variant predicate: null → product-level batches only; set → variant batches only.
         if ($variantId === null) {
@@ -88,7 +102,13 @@ class FEFOInventoryService
         }
 
         if (! $includeExpired) {
-            $query->where('product_batches.expiry_date', '>=', now()->startOfDay());
+            // W4-1: an undated lot is not expired, so excluding it here would make
+            // the whole opening catalogue invisible to every FEFO consumer the
+            // moment we stopped inventing expiries.
+            $query->where(function (Builder $q): void {
+                $q->whereNull('product_batches.expiry_date')
+                    ->orWhere('product_batches.expiry_date', '>=', now()->startOfDay());
+            });
         }
 
         $batchStocks = $query->with('batch')->get();
@@ -246,8 +266,9 @@ class FEFOInventoryService
                 JOIN product_batches AS b ON ibs.batch_id = b.id
                 WHERE b.product_id = ? AND {$variantPredicate}
                   AND ibs.location_id = ? AND ibs.available_quantity > 0
-                  AND b.is_active = TRUE AND b.is_recalled = FALSE AND b.expiry_date >= ?
-                ORDER BY b.expiry_date ASC, b.created_at ASC
+                  AND b.is_active = TRUE AND b.is_recalled = FALSE
+                  AND (b.expiry_date IS NULL OR b.expiry_date >= ?)
+                ORDER BY (b.expiry_date IS NULL) ASC, b.expiry_date ASC, b.created_at ASC
                 FOR UPDATE OF ibs SKIP LOCKED
             ", $bindings);
 
@@ -305,7 +326,7 @@ class FEFOInventoryService
                     batchId: (int) $row->batch_id,
                     batchStockId: (int) $row->batch_stock_id,
                     quantityConsumed: $take,
-                    expiryDate: Carbon::parse($row->expiry_date),
+                    expiryDate: $row->expiry_date === null ? null : Carbon::parse($row->expiry_date),
                 );
 
                 $remaining = bcsub($remaining, $take, 4); // precision-ok: batch quantity is decimal(15,4), canonical scale 4
@@ -795,9 +816,13 @@ class FEFOInventoryService
             'variant_id' => $variantId,
             'batch_number' => self::DEFAULT_BATCH_NUMBER,
             'manufacturing_date' => $today,
-            'expiry_date' => CarbonImmutable::now()
-                ->addDays($defaultShelfLifeDays ?? self::DEFAULT_SHELF_LIFE_DAYS)
-                ->toDateString(),
+            // W4-1: only a CONFIGURED shelf life may date this lot. With none,
+            // the returned units genuinely have no known expiry — record that,
+            // and let FEFO rank the lot last, rather than minting a `today + 365`
+            // date that would jump the whole queue.
+            'expiry_date' => $defaultShelfLifeDays === null
+                ? null
+                : CarbonImmutable::now()->addDays($defaultShelfLifeDays)->toDateString(),
             'is_active' => true,
             'is_expired' => false,
             'is_recalled' => false,
@@ -919,7 +944,11 @@ class FEFOInventoryService
             ->where('product_batches.product_id', $productId)
             ->where('product_batches.is_active', true)
             ->where('product_batches.is_recalled', false)
-            ->where('product_batches.expiry_date', '>=', now()->startOfDay());
+            // W4-1: an undated lot is sellable stock, not expired stock.
+            ->where(function (Builder $q): void {
+                $q->whereNull('product_batches.expiry_date')
+                    ->orWhere('product_batches.expiry_date', '>=', now()->startOfDay());
+            });
 
         if ($locationId) {
             $query->where('inventory_batch_stock.location_id', $locationId);

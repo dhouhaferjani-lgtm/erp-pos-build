@@ -72,19 +72,35 @@ class Batch extends Model
         return $this->hasMany(BatchStock::class, 'batch_id');
     }
 
+    /**
+     * A lot with NO recorded expiry (W4-1) is never expired: nobody claimed it
+     * would go off on any particular day, so asserting it has is exactly the
+     * fiction this lane removed.
+     */
     public function isExpired(): bool
     {
-        return $this->expiry_date->isPast();
+        return $this->expiry_date !== null && $this->expiry_date->isPast();
     }
 
-    public function daysUntilExpiry(): int
+    /** Null when the lot records no expiry — "unknown", not "far away". */
+    public function daysUntilExpiry(): ?int
     {
+        if ($this->expiry_date === null) {
+            return null;
+        }
+
         return (int) now()->diffInDays($this->expiry_date, false);
     }
 
     public function expiryStatus(): ExpiryStatus
     {
         $days = $this->daysUntilExpiry();
+
+        // No expiry recorded → nothing is approaching, nothing has passed. The
+        // lot is sellable (canSell() is true for OK) and FEFO ranks it LAST.
+        if ($days === null) {
+            return ExpiryStatus::OK;
+        }
 
         if ($days < 0) {
             return ExpiryStatus::EXPIRED;

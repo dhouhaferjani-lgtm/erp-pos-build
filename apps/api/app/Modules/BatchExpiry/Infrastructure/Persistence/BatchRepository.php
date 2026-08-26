@@ -67,7 +67,19 @@ class BatchRepository implements BatchRepositoryInterface
         // /products/{id}/batch-stock) computes per-source availability from
         // this array; without it every location reads as 0 available and FEFO
         // can never allocate — silently blocking batch-tracked transfers.
-        return $query->with(['batchStock'])->orderBy('expiry_date', 'asc')->get();
+        // W4-1 gate r1 — `id` is part of the ranking, not decoration. This list
+        // feeds the transfer screen's client-side FEFO split, and the server's
+        // canonical split (`StockTransferService::computeFefoSplit`) breaks ties on
+        // `id` while `assertAllocationsFollowFefo()` compares per-batch QUANTITIES.
+        // Without a deterministic tie-break here, a PARTIAL draw across two
+        // equal-rank lots lets the client build a split the server refuses with
+        // "Batch allocations must follow FEFO" and the operator cannot satisfy it.
+        // Equal DATES were already reachable; undated ties are new, and on the
+        // launch tenant they are the common shape.
+        return $query->with(['batchStock'])
+            ->orderByRaw('(expiry_date IS NULL) ASC, expiry_date ASC')
+            ->orderBy('id')
+            ->get();
     }
 
     /**
@@ -101,7 +113,10 @@ class BatchRepository implements BatchRepositoryInterface
             ]);
         }
 
-        return $query->with(['product', 'batchStock'])->orderBy('expiry_date', 'asc')->get();
+        return $query->with(['product', 'batchStock'])
+            ->orderByRaw('(expiry_date IS NULL) ASC, expiry_date ASC')
+            ->orderBy('id')
+            ->get();
     }
 
     /** @param  array<string, mixed>  $data */

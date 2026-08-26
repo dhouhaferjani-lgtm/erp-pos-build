@@ -14,6 +14,7 @@
     "batchNumber": "Numéro de Lot",
     "product": "Produit",
     "expiryDate": "Date d'Expiration",
+    "noExpiry": "Sans péremption",
     "manufacturingDate": "Date de Fabrication",
     "status": "Statut",
     "quantity": "Quantité",

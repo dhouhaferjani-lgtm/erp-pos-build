@@ -73,6 +73,7 @@
       "needsAllocation": "Needs allocation",
       "title": "Lot and expiry allocation",
       "fefoHint": "FEFO defaults to earliest expiry first.",
+      "noExpiry": "No expiry",
       "quantityFor": "Quantity from {{batch}}",
       "statusLabel": "Status",
       "availableLabel": "Available",

@@ -100,7 +100,7 @@ function product(id: string, overrides: Partial<ProductPickerValue> = {}): Produ
   }
 }
 
-function batch(id: number, availableQuantity: string, expiryDate: string) {
+function batch(id: number, availableQuantity: string, expiryDate: string | null) {
   const idText = String(id)
   return {
     id,
@@ -225,6 +225,62 @@ describe('CreateStockTransferPage line entry bar', () => {
     // The source guard vetoes both the search-add and the scan BEFORE the code
     // resolver is ever hit — no /line-entry/resolve-code request fires.
     expect(mockApiGet).not.toHaveBeenCalled()
+  })
+
+  /**
+   * W4-1 gate r1 finding D — the client's FEFO order must match the SERVER's
+   * exactly: `(expiry_date IS NULL) ASC, expiry_date ASC, id ASC`.
+   *
+   * `assertAllocationsFollowFefo()` on the server compares per-batch QUANTITIES,
+   * so on a PARTIAL draw across equal-rank lots a client that returned 0 for the
+   * tie and leaned on JS sort stability could build a split the endpoint refuses
+   * with "Batch allocations must follow FEFO" — and the operator would have no
+   * way to satisfy it. Undated ties are the common shape on the launch tenant.
+   */
+  it('ranks undated lots last and breaks the tie on id, matching the server', async () => {
+    const user = userEvent.setup()
+    mockApiGet.mockResolvedValue({
+      kind: 'product',
+      matched_code_type: 'product_barcode',
+      product: product(BATCH_PRODUCT_ID),
+    })
+    // Deliberately supplied in an order NO rule would produce: the higher-id
+    // undated lot first, then a dated lot, then the lower-id undated lot.
+    mockUseProductBatches.mockReturnValue({
+      data: [batch(305, '2.0000', null), batch(101, '1.0000', '2026-08-31'), batch(204, '2.0000', null)],
+      isLoading: false,
+      isFetching: false,
+    })
+
+    renderPage()
+    await selectLocations(user)
+
+    scan('123456')
+
+    expect(await screen.findByText('PARA-LOT Batch tracked product')).toBeInTheDocument()
+    await screen.findByText('LOT-101')
+
+    // Two scans -> quantity 2 against 1 + 2 + 2 available, so the draw stops after
+    // the SECOND lot. A full draw would take every lot and the ordering could not
+    // be observed; stopping early is what proves both rules at once — the dated lot
+    // came first, and of the two UNDATED lots the lower id won.
+    scan('123456')
+
+    await waitFor(() => {
+      expect(screen.getByRole('spinbutton', { name: 'Quantity' })).toHaveValue(2)
+    })
+
+    await user.click(screen.getByRole('button', { name: /create transfer/i }))
+
+    await waitFor(() => {
+      expect(mockCreate).toHaveBeenCalled()
+    })
+
+    const payload = mockCreate.mock.calls.at(-1)?.[0] as {
+      lines: { batch_allocations: { batch_id: number, quantity: string }[] }[]
+    }
+
+    expect(payload.lines[0]?.batch_allocations.map((a) => a.batch_id)).toEqual([101, 204])
   })
 
   it('auto-allocates FEFO lots and opens the batch panel for a batch-tracked scan', async () => {

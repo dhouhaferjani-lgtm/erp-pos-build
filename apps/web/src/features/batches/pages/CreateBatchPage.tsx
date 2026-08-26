@@ -13,7 +13,17 @@ export function CreateBatchPage() {
   const createMutation = useCreateBatch()
 
   const handleBatchSubmit = (data: BatchFormData) => {
-    createMutation.mutate(data, {
+    // W4-1 made `expiry_date` optional on the shared form so an already-undated
+    // lot can be EDITED without inventing a date. Creating a lot by hand still
+    // requires one — the form's resolver enforces it whenever there is no
+    // existing batch, so this branch is unreachable; it narrows the type without
+    // a cast rather than silently posting an incomplete CreateBatchInput.
+    const expiryDate = (data.expiry_date ?? '').trim()
+    if (expiryDate === '') {
+      return
+    }
+
+    createMutation.mutate({ ...data, expiry_date: expiryDate }, {
       onSuccess: (batch) => {
         navigate(`/inventory/batches/${batch.uuid}`)
       },
