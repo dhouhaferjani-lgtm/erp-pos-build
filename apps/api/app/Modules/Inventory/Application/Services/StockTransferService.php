@@ -852,7 +852,11 @@ class StockTransferService
                 fn ($q) => $q->where('variant_id', $variantId),
                 fn ($q) => $q->whereNull('variant_id'),
             )
-            ->orderBy('expiry_date')
+            // W4-1: undated lots rank AFTER every dated lot. This ordering IS the
+            // FEFO rule the transfer guard enforces ("Batch allocations must follow
+            // FEFO"), so an invented expiry here does not merely mis-sort — it
+            // compels the operator to ship the wrong lot.
+            ->orderByRaw('(expiry_date IS NULL) ASC, expiry_date ASC')
             ->orderBy('id')
             ->get();
 

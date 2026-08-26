@@ -94,7 +94,7 @@ class BatchTraceabilityController extends Controller
                     'uuid' => $batch->uuid,
                     'batch_number' => $batch->batch_number,
                     'product_name' => $batch->product->name ?? 'Unknown',
-                    'expiry_date' => $batch->expiry_date->toDateString(),
+                    'expiry_date' => $batch->expiry_date?->toDateString(),
                     'is_recalled' => $batch->is_recalled,
                 ],
                 'document_sales' => $documentSales->toArray(),

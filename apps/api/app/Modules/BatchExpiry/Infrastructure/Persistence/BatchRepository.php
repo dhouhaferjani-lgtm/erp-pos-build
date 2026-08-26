@@ -67,7 +67,9 @@ class BatchRepository implements BatchRepositoryInterface
         // /products/{id}/batch-stock) computes per-source availability from
         // this array; without it every location reads as 0 available and FEFO
         // can never allocate — silently blocking batch-tracked transfers.
-        return $query->with(['batchStock'])->orderBy('expiry_date', 'asc')->get();
+        return $query->with(['batchStock'])
+            ->orderByRaw('(expiry_date IS NULL) ASC, expiry_date ASC')
+            ->get();
     }
 
     /**
@@ -101,7 +103,9 @@ class BatchRepository implements BatchRepositoryInterface
             ]);
         }
 
-        return $query->with(['product', 'batchStock'])->orderBy('expiry_date', 'asc')->get();
+        return $query->with(['product', 'batchStock'])
+            ->orderByRaw('(expiry_date IS NULL) ASC, expiry_date ASC')
+            ->get();
     }
 
     /** @param  array<string, mixed>  $data */

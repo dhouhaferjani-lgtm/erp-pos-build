@@ -31,11 +31,21 @@ final class BatchStockService
     public const DEFAULT_BATCH_NUMBER = 'DEFAULT';
 
     /**
-     * Fallback shelf life (days) when a batch-tracked product has no
-     * `default_shelf_life_days` configured. Conservative 1-year default.
+     * 🚨 Campaign W4-1 — there is deliberately NO fallback shelf life here.
+     *
+     * A `DEFAULT_SHELF_LIFE_DAYS = 365` constant used to fill the gap whenever a
+     * batch-tracked product had no `default_shelf_life_days`. On the launch
+     * tenant (a parapharmacy, where every product is batch-tracked and ALL
+     * day-one stock is an opening balance) that meant the entire catalogue
+     * carried the same invented `cutover + 365` expiry — and because FEFO ranks
+     * on expiry, that fabricated date was the EARLIEST on every product, so the
+     * transfer and delivery-note FEFO guards actively COMPELLED shipping the
+     * fictional lot first and refused every alternative.
+     *
+     * When nobody supplies an expiry, the lot now records that it has none
+     * (`expiry_date IS NULL`) and FEFO ranks it AFTER every dated lot. Do not
+     * reintroduce a fallback.
      */
-    public const DEFAULT_SHELF_LIFE_DAYS = 365;
-
     public function __construct(
         private readonly BatchRepositoryInterface $batchRepository,
         private readonly ProductVariantLookup $variantLookup,
@@ -46,18 +56,27 @@ final class BatchStockService
      * (the default-batch invariant).
      *
      * Mints — or reuses — a single {@see self::DEFAULT_BATCH_NUMBER} lot for the
-     * product (+ variant) with expiry = asOfDate + shelf life, then reconciles
-     * the location's batch stock UP to $targetQuantity. Idempotent: re-calling
-     * with the same target is a no-op; calling with a larger target tops up the
-     * difference (multi-location / incremental seeding safe). Never reduces
-     * stock. Returns null (mints nothing) for a non-positive target.
+     * product (+ variant), then reconciles the location's batch stock UP to
+     * $targetQuantity. Idempotent: re-calling with the same target is a no-op;
+     * calling with a larger target tops up the difference (multi-location /
+     * incremental seeding safe). Never reduces stock. Returns null (mints
+     * nothing) for a non-positive target.
+     *
+     * EXPIRY, in precedence order (W4-1):
+     *   1. `$expiryDate` — an expiry the operator actually supplied for THIS
+     *      stock (import column / opening-wizard column). Wins outright.
+     *   2. `$shelfLifeDays` — the product's configured shelf life, a real
+     *      business rule: expiry = asOfDate + shelf life.
+     *   3. Neither → `null`. Nobody knows when this stock expires, the lot says
+     *      so, and FEFO ranks it after every dated lot. NEVER an invented date.
      *
      * Used by the opening-balance posting path (production) and the demo
      * seeders so seeded data mirrors real default behavior.
      *
      * @param  numeric-string  $targetQuantity  Desired batch-stock quantity at the location
-     * @param  ?int  $shelfLifeDays  Product default expiry period; null falls back to {@see self::DEFAULT_SHELF_LIFE_DAYS}
-     * @param  string  $asOfDate  Opening/seed date (Y-m-d); expiry is measured from here
+     * @param  ?int  $shelfLifeDays  Product default expiry period; null means "not configured" — no expiry is invented
+     * @param  string  $asOfDate  Opening/seed date (Y-m-d); a shelf-life expiry is measured from here
+     * @param  ?string  $expiryDate  Operator-supplied expiry (Y-m-d) for this stock; overrides $shelfLifeDays
      */
     public function ensureDefaultBatch(
         string $companyId,
@@ -68,13 +87,15 @@ final class BatchStockService
         ?int $shelfLifeDays,
         string $asOfDate,
         ?string $variantId = null,
+        ?string $expiryDate = null,
     ): ?Batch {
         if (bccomp($targetQuantity, '0', 4) <= 0) { // precision-ok: batch quantity is decimal(15,4), canonical scale 4
             return null;
         }
 
-        $days = $shelfLifeDays ?? self::DEFAULT_SHELF_LIFE_DAYS;
-        $expiryDate = CarbonImmutable::parse($asOfDate)->addDays($days)->toDateString();
+        if ($expiryDate === null && $shelfLifeDays !== null) {
+            $expiryDate = CarbonImmutable::parse($asOfDate)->addDays($shelfLifeDays)->toDateString();
+        }
 
         $batch = $this->findOrCreateBatch(
             companyId: $companyId,
@@ -218,6 +239,7 @@ final class BatchStockService
         ?int $shelfLifeDays,
         string $asOfDate,
         ?string $variantId = null,
+        ?string $expiryDate = null,
     ): ?Batch {
         $remainder = $this->untrackedRemainderAt(
             companyId: $companyId,
@@ -236,12 +258,16 @@ final class BatchStockService
             shelfLifeDays: $shelfLifeDays,
             asOfDate: $asOfDate,
             variantId: $variantId,
+            expiryDate: $expiryDate,
         );
     }
 
     /**
      * Find an existing batch or create a new one (for goods receipt).
      *
+     * @param  ?string  $expiryDate  Y-m-d, or null for a lot whose expiry is genuinely
+     *                               unknown (W4-1). Null is a FACT about the stock, never
+     *                               a placeholder — FEFO ranks a null-expiry lot last.
      * @param  ?string  $variantId  When set, the batch is scoped to this variant.
      *                              When null and the product has active variants,
      *                              throws MissingVariantException — a variant-bearing
@@ -254,7 +280,7 @@ final class BatchStockService
         string $tenantId,
         string $productId,
         string $batchNumber,
-        string $expiryDate,
+        ?string $expiryDate,
         ?string $manufacturingDate = null,
         ?string $variantId = null,
     ): Batch {

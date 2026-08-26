@@ -1100,14 +1100,20 @@ final class StockAdjustmentService
         }
 
         $asOfDate = now()->toDateString();
-        $shelfLifeDays = $product->default_shelf_life_days ?? BatchStockService::DEFAULT_SHELF_LIFE_DAYS;
+        $shelfLifeDays = $product->default_shelf_life_days;
 
         $batch = $this->batchStockService->findOrCreateBatch(
             companyId: $stockLevel->company_id,
             tenantId: $stockLevel->tenant_id,
             productId: $productId,
             batchNumber: BatchStockService::DEFAULT_BATCH_NUMBER,
-            expiryDate: Carbon::parse($asOfDate)->addDays($shelfLifeDays)->toDateString(),
+            // W4-1: only a CONFIGURED shelf life dates this lot. With none, the
+            // stock genuinely has no known expiry — record that and let FEFO rank
+            // it last, instead of minting a `today + 365` date that would sort
+            // ahead of every real, dated lot on the product.
+            expiryDate: $shelfLifeDays === null
+                ? null
+                : Carbon::parse($asOfDate)->addDays($shelfLifeDays)->toDateString(),
             manufacturingDate: $asOfDate,
             variantId: $stockLevel->variant_id,
         );
@@ -1553,7 +1559,8 @@ final class StockAdjustmentService
             )
             ->where('inventory_batch_stock.location_id', $stockLevel->location_id)
             ->orderBy('product_batches.is_recalled')
-            ->orderBy('product_batches.expiry_date')
+            // W4-1: undated lots last.
+            ->orderByRaw('(product_batches.expiry_date IS NULL) ASC, product_batches.expiry_date ASC')
             ->orderBy('product_batches.created_at')
             ->lockForUpdate()
             ->get([

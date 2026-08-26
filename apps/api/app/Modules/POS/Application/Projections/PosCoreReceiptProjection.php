@@ -2694,7 +2694,9 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         $allocations = DB::table('pos_receipt_line_batch_allocations as a')
             ->join('product_batches as pb', 'pb.id', '=', 'a.batch_id')
             ->where('a.receipt_line_id', $originalLineId)
-            ->orderBy('pb.expiry_date')
+            // W4-1: an undated lot ranks last here too, so a restore credits the
+            // short-dated lot before the one whose expiry nobody ever supplied.
+            ->orderByRaw('(pb.expiry_date IS NULL) ASC, pb.expiry_date ASC')
             ->orderBy('a.batch_id')
             ->get(['a.batch_id as batch_id', 'a.quantity as quantity']);
 

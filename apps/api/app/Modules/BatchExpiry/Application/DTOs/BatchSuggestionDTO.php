@@ -19,7 +19,8 @@ readonly class BatchSuggestionDTO
     public function __construct(
         public Batch $batch,
         public string $quantity,
-        public Carbon $expiryDate,
+        /** Null when the lot records no expiry (W4-1) — unknown, not far away. */
+        public ?Carbon $expiryDate,
         public ExpiryStatus $expiryStatus,
     ) {}
 
@@ -30,7 +31,7 @@ readonly class BatchSuggestionDTO
             'batch_id' => $this->batch->id,
             'batch_number' => $this->batch->batch_number,
             'quantity' => $this->quantity,
-            'expiry_date' => $this->expiryDate->toDateString(),
+            'expiry_date' => $this->expiryDate?->toDateString(),
             'days_until_expiry' => $this->batch->daysUntilExpiry(),
             'expiry_status' => $this->expiryStatus->value,
             'expiry_status_label' => $this->expiryStatus->label(),

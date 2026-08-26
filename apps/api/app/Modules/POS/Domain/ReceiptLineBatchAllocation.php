@@ -23,7 +23,7 @@ use Illuminate\Support\Carbon;
  * @property int $batch_id
  * @property numeric-string $quantity
  * @property string $batch_number Snapshot at time of sale
- * @property Carbon $expiry_date Snapshot at time of sale
+ * @property Carbon|null $expiry_date Snapshot at time of sale; null when the lot recorded no expiry (W4-1)
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
