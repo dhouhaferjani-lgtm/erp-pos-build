@@ -57,6 +57,7 @@ use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Spatie\Permission\Models\Permission;
@@ -1463,7 +1464,10 @@ final class SupplierInvoiceApiTest extends TestCase
         $response->assertStatus(422);
 
         // The typed refusal survives (it must NOT flatten into POSTING_BLOCKED).
-        $this->assertSame('PERIOD_CLOSED', $response->json('error.code'));
+        // The shared vocabulary is `ReturnPeriodRefusalCode` — the RETURN_ prefix
+        // is the return-note path's naming, kept verbatim rather than forked so
+        // both surfaces stay on one code set.
+        $this->assertSame('RETURN_PERIOD_CLOSED', $response->json('error.code'));
         $this->assertSame($period->label, $response->json('error.period_label'));
 
         // ... and it now names the period and both remedies.
@@ -1498,7 +1502,7 @@ final class SupplierInvoiceApiTest extends TestCase
             ->postJson("/api/v1/supplier-invoices/{$siId}/post");
 
         $response->assertStatus(422);
-        $this->assertSame('PERIOD_FILED', $response->json('error.code'));
+        $this->assertSame('RETURN_PERIOD_FILED', $response->json('error.code'));
         $this->assertFalse($response->json('error.period.reopenable'), 'reopenPeriod() refuses a FILED period.');
         $this->assertNotContains('reopen_period', array_column($response->json('error.remedies'), 'action'));
     }
@@ -1561,6 +1565,17 @@ final class SupplierInvoiceApiTest extends TestCase
         ?string $end = null,
         string $label = 'Current period',
     ): VatPeriod {
+        // This suite's setUp does not seed `countries`, and `vat_periods`
+        // carries a FK on `country_code`.
+        if (DB::table('countries')->where('code', 'TN')->doesntExist()) {
+            DB::table('countries')->insert([
+                'code' => 'TN',
+                'name' => 'Tunisia',
+                'currency_code' => 'TND',
+                'is_active' => true,
+            ]);
+        }
+
         return VatPeriod::create([
             'company_id' => $this->company->id,
             'country_code' => 'TN',

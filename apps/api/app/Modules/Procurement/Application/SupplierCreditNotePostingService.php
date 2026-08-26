@@ -196,8 +196,16 @@ final class SupplierCreditNotePostingService
             //     credit note into a CLOSED or FILED month changes a declaration
             //     figure — the same hazard the supplier-invoice arm is guarded
             //     against, in the opposite direction. Same shared contract, same
-            //     refusal codes, same absent-permits semantics. Placed before the
-            //     advisory/row locks below so a refusal never holds them.
+            //     refusal codes, same absent-permits semantics.
+            //
+            //     Placement: AFTER the step-0b Posted-with-entry early return (a
+            //     re-post writes nothing, so it must never be refused for a
+            //     declaration reason — the invoice arm had this backwards until
+            //     fix round 2), and before the ADVISORY/ROW locks taken from step 1
+            //     onward. Note the credit note's OWN row lock is already held from
+            //     `:144-147`; the transaction rolls back immediately on a refusal,
+            //     so nothing is held meaningfully — an earlier revision of this
+            //     comment claimed no lock was held at all, which was wrong.
             $this->periodBackdatingGuard->assertBackdatingPeriodIsOpen(
                 $creditNote->company_id,
                 $creditNote->document_date,
@@ -415,6 +423,20 @@ final class SupplierCreditNotePostingService
         // arm uses (`SupplierInvoicePostingService` step 9): the figure declared
         // is the figure credited to 4456 at `:344-350`.
         $creditNote->load(['company', 'partner', 'lines']);
+        // FIX ROUND 2 (N5): the scale must come from the document's OWN
+        // currency. An empty one is a check failure, never a default-3
+        // guess — otherwise this shared implementation could resolve a
+        // different scale here than in the console backfill, and every
+        // comparison in divergences() is taken at that scale.
+        $currencyRefusal = $this->postedLineTaxSnapshotBuilder->currencyRefusal($creditNote);
+        if ($currencyRefusal !== null) {
+            throw new \DomainException(sprintf(
+                'Supplier credit note [%s] cannot be posted: %s.',
+                $creditNote->document_number ?? $creditNote->id,
+                $currencyRefusal,
+            ));
+        }
+
         $derived = $this->postedLineTaxSnapshotBuilder->build($creditNote);
         $divergences = $this->postedLineTaxSnapshotBuilder->divergences($creditNote, $derived);
         if ($divergences !== []) {

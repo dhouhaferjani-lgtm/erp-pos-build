@@ -98,6 +98,24 @@ final class SupplierInvoicePostingService
             // closed a period is affected. Runs BEFORE the PO/receipt-line
             // `lockForUpdate()` below so a refusal never holds those rows for the
             // rest of the transaction.
+            //
+            // ...but AFTER the idempotency pre-probe immediately above. FIX ROUND 2
+            // (N1, both r2 gates): the guard used to sit ahead of it, so a retried
+            // `POST /supplier-invoices/{id}/post` on an ALREADY-POSTED invoice
+            // started returning a typed 422 once its month closed — refusing a call
+            // that writes nothing, for a declaration reason. The controller
+            // deliberately performs no status pre-check precisely so retries reach
+            // the no-op (`SupplierInvoiceController::post()`), and the AP-opening
+            // population (`ArApOpeningService` mints Posted `HIST-SINV`
+            // `supplier_invoice` documents whose journal entry carries
+            // `source_type = 'supplier_invoice'`) is back-dated BY CONSTRUCTION —
+            // exactly the documents most likely to sit inside a closed period.
+            // The sibling arm already ordered it this way
+            // (`SupplierCreditNotePostingService` step 0b, before its guard).
+            if ($this->hasClearingEntry($supplierInvoice)) {
+                return;
+            }
+
             $this->periodBackdatingGuard->assertBackdatingPeriodIsOpen(
                 $supplierInvoice->company_id,
                 $supplierInvoice->document_date,
@@ -146,13 +164,12 @@ final class SupplierInvoicePostingService
                 ->get()
                 ->keyBy('id');
 
-            // 3. Idempotency no-op: a clearing entry already exists for this invoice.
-            $alreadyPosted = JournalEntry::query()
-                ->where('source_type', 'supplier_invoice')
-                ->where('source_id', $supplierInvoice->id)
-                ->where('company_id', $supplierInvoice->company_id)
-                ->exists();
-            if ($alreadyPosted) {
+            // 3. Idempotency no-op, re-checked UNDER THE LOCK. The pre-probe above
+            //    is a plain unlocked `exists()` that keeps a retry cheap and keeps
+            //    the period guard off a call that writes nothing; THIS one is the
+            //    authoritative check — it runs after the PO/receipt-line locks, so
+            //    a concurrent post that committed in between is seen here.
+            if ($this->hasClearingEntry($supplierInvoice)) {
                 return;
             }
 
@@ -381,6 +398,20 @@ final class SupplierInvoicePostingService
             // deductible share differs from its gross line VAT, must not enter
             // the declaration silently.
             $supplierInvoice->load(['company', 'partner', 'lines']);
+            // FIX ROUND 2 (N5): the scale must come from the document's OWN
+            // currency. An empty one is a check failure, never a default-3
+            // guess — otherwise this shared implementation could resolve a
+            // different scale here than in the console backfill, and every
+            // comparison in divergences() is taken at that scale.
+            $currencyRefusal = $this->postedLineTaxSnapshotBuilder->currencyRefusal($supplierInvoice);
+            if ($currencyRefusal !== null) {
+                throw new \DomainException(sprintf(
+                    'Supplier invoice [%s] cannot be posted: %s.',
+                    $supplierInvoice->document_number ?? $supplierInvoice->id,
+                    $currencyRefusal,
+                ));
+            }
+
             $derived = $this->postedLineTaxSnapshotBuilder->build($supplierInvoice);
             $divergences = $this->postedLineTaxSnapshotBuilder->divergences($supplierInvoice, $derived);
             if ($divergences !== []) {
@@ -393,6 +424,31 @@ final class SupplierInvoicePostingService
 
             $this->taxCalculationService->snapshotTaxDetails($supplierInvoice, $derived);
         });
+    }
+
+    /**
+     * Does this supplier invoice already carry its GR/IR clearing entry?
+     *
+     * Called twice on purpose: once unlocked as a cheap pre-probe before the
+     * period guard (fix round 2 / N1 — a retry must stay a no-op instead of
+     * 422-ing on a closed period), and once under the PO/receipt-line locks as
+     * the authoritative idempotency check.
+     *
+     * `@phpstan-impure` is load-bearing, not a silencer: the second call is NOT
+     * redundant. A concurrent post can commit between the two, and the locks
+     * taken in between are precisely what makes the second read authoritative.
+     * Without the tag PHPStan remembers the first result and reports the second
+     * `if` as always false.
+     *
+     * @phpstan-impure
+     */
+    private function hasClearingEntry(Document $supplierInvoice): bool
+    {
+        return JournalEntry::query()
+            ->where('source_type', 'supplier_invoice')
+            ->where('source_id', $supplierInvoice->id)
+            ->where('company_id', $supplierInvoice->company_id)
+            ->exists();
     }
 
     /**

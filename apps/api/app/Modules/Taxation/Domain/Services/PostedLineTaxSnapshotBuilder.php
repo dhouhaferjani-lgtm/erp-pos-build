@@ -86,22 +86,56 @@ final class PostedLineTaxSnapshotBuilder
     ) {}
 
     /**
-     * Resolve the document's monetary scale.
+     * Resolve the document's monetary scale from ITS OWN CURRENCY, explicitly.
      *
-     * Copies {@see TaxCalculationService::scaleFor()} EXACTLY, including the
-     * empty-string guard: an empty currency must never be handed to the resolver,
-     * because the ISO 4217 map would silently answer the default scale 2 instead
-     * of the company's true scale (treasury gate M-2).
+     * FIX ROUND 2 (N5, treasury r2). Round 1 fell back to
+     * `getScaleSafe(null, 3)` on an empty currency, copying
+     * {@see TaxCalculationService::scaleFor()}. That fallback returns its default
+     * ONLY on an `UnboundCompanyContextException`, so the same document resolved
+     * scale 3 in the console backfill (no bound `CompanyContext`) and the
+     * company's own `country.currency_decimal_places` in the HTTP writer. Every
+     * `bccomp` in {@see divergences()} is taken at that scale — so the ONE shared
+     * implementation could still return different answers in its two callers,
+     * which is the exact property this class exists to make impossible.
+     *
+     * RULED: an empty/NULL document currency is a CHECK FAILURE, never a
+     * default-3 guess. Callers must consult {@see currencyRefusal()} first; this
+     * method throws rather than guessing if they do not.
+     *
+     * @throws \DomainException when the document carries no currency.
      */
     public function scaleFor(Document $document): int
     {
         $currency = (string) ($document->currency ?? '');
 
-        if ($currency !== '') {
-            return $this->scaleResolver->getScale($currency);
+        if ($currency === '') {
+            throw new \DomainException(sprintf(
+                'Document [%s] carries no currency; its monetary scale cannot be resolved. '
+                .'Call currencyRefusal() before build()/divergences().',
+                $document->document_number ?? $document->id,
+            ));
         }
 
-        return $this->scaleResolver->getScaleSafe(null, 3);
+        return $this->scaleResolver->getScale($currency);
+    }
+
+    /**
+     * The non-throwing precondition check for {@see build()} and
+     * {@see divergences()}: is this document's monetary scale resolvable at all?
+     *
+     * Separated from `divergences()` because `divergences()` cannot run without a
+     * scale — every comparison in it is a `bccomp` at that scale. A caller that
+     * writes refuses on a non-null return; a caller that reports gives it its own
+     * census bucket.
+     */
+    public function currencyRefusal(Document $document): ?string
+    {
+        if ((string) ($document->currency ?? '') === '') {
+            return 'the document currency is empty — the monetary scale cannot be resolved, '
+                .'so no figure on this document can be safely compared or declared';
+        }
+
+        return null;
     }
 
     /**
@@ -277,7 +311,8 @@ final class PostedLineTaxSnapshotBuilder
         if (bccomp($derivedLineTax, $storedLineTax, $scale) !== 0) {
             $reasons[] = sprintf(
                 'deductible line VAT (Σ recoverable_tax_amount) %s != stored line_tax_amount %s '
-                .'— the non-recoverable share is not declarable',
+                .'— the non-recoverable share is not declarable. Only the recoverable share may be claimed; '
+                .'correct the lines so recoverable_tax_amount carries exactly the VAT the ledger made deductible',
                 $derivedLineTax,
                 $storedLineTax,
             );
@@ -297,13 +332,16 @@ final class PostedLineTaxSnapshotBuilder
             && bccomp($storedLineTax, '0', $scale) !== 0
         ) {
             $reasons[] = sprintf(
-                'the header records %s of line VAT but no line carries a tax_rate — there is no rate bucket to declare it in',
+                'the header records %s of line VAT but no line carries a tax_rate — there is no rate bucket to declare it in. '
+                .'Set each line\'s tax_rate to the rate that VAT was charged at (the supplier invoice states it), '
+                .'or re-create the document through the normal purchase flow, which requires a rate on every line',
                 $storedLineTax,
             );
         }
 
         if ($document->lines->isEmpty()) {
-            $reasons[] = 'no document lines — there is no evidence to derive a VAT base or rate from';
+            $reasons[] = 'no document lines — there is no evidence to derive a VAT base or rate from. '
+                .'Re-create the document with its lines if its VAT is meant to be declared';
         }
 
         return $reasons;

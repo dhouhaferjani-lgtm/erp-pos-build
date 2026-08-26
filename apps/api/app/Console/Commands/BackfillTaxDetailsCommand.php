@@ -246,6 +246,15 @@ final class BackfillTaxDetailsCommand extends Command
         parent::__construct();
     }
 
+    /**
+     * Memoises `hasClosedOrFiledSuccessor()` per VatPeriod id for the lifetime of
+     * one command run (fiscal r2 N-5). Period statuses cannot change mid-run:
+     * this command never reopens or closes a period.
+     *
+     * @var array<string, bool>
+     */
+    private array $successorProbeCache = [];
+
     public function handle(): int
     {
         if (! Schema::hasTable('documents') || ! Schema::hasTable('document_tax_details')) {
@@ -740,11 +749,13 @@ final class BackfillTaxDetailsCommand extends Command
         $population = $this->supplierDocumentPopulation($companyId);
         $this->line(sprintf(
             '  Population: %d supplier invoice(s) + credit note(s) total = %d in scope + %d already snapshotted '
+            .'+ %d historical AR/AP opening (excluded: declared under the previous system) '
             .'+ %d draft (excluded: no journal entry) + %d cancelled without a journal entry (excluded: never posted) '
             .'+ %d in another status (excluded: not a posting state).',
             $population['total'],
             $population['in_scope'],
             $population['already'],
+            $population['historical'],
             $population['draft'],
             $population['cancelled_no_je'],
             $population['other'],
@@ -752,6 +763,14 @@ final class BackfillTaxDetailsCommand extends Command
 
         $query = $this->supplierDocumentQuery($companyId)
             ->whereNotIn('id', DocumentTaxDetail::query()->select('document_id')->distinct())
+            // N3 (treasury r2): AR/AP OPENING documents are Posted, carry no
+            // lines, and declare nothing — their VAT was declared under the
+            // PREVIOUS system. Before this they satisfied the scope, hit two
+            // divergence reasons at once and printed one "needs manual review"
+            // line each; on any tenant that ran an AP opening batch (a
+            // first-tenant launch flow) that noise IS the census S-23 and
+            // checklist §3 tell the owner to review before --apply.
+            ->where('is_historical', false)
             ->where(function (Builder $scope): void {
                 $scope->whereIn('status', [DocumentStatus::Posted, DocumentStatus::Paid])
                     ->orWhere(function (Builder $cancelled): void {
@@ -766,6 +785,8 @@ final class BackfillTaxDetailsCommand extends Command
         $nothingToDeclare = 0;
         /** @var list<array{id: string, number: string, reason: string}> $skipped */
         $skipped = [];
+        /** @var list<array{id: string, number: string, reason: string}> $unresolvableCurrency */
+        $unresolvableCurrency = [];
         /** @var array<string, array{currency: string, rate: string, base: numeric-string, tax: numeric-string, count: int}> $wouldAdd */
         $wouldAdd = [];
         /** @var array<string, VatPeriod> $affectedClosedPeriods */
@@ -786,6 +807,20 @@ final class BackfillTaxDetailsCommand extends Command
             // can never take opposite positions on the same document — the
             // asymmetry both r1 gates flagged. Values come from the persisted
             // line amounts the GL posted, never from a recomputation.
+            // N5 (treasury r2): resolve the scale from the document's own
+            // currency or refuse — never guess a default. Its own bucket, because
+            // it is a data defect of a different kind from a divergence.
+            $currencyRefusal = $this->postedLineTaxSnapshotBuilder->currencyRefusal($document);
+            if ($currencyRefusal !== null) {
+                $unresolvableCurrency[] = [
+                    'id' => (string) $document->id,
+                    'number' => (string) ($document->document_number ?? $document->id),
+                    'reason' => $currencyRefusal,
+                ];
+
+                continue;
+            }
+
             $derived = $this->postedLineTaxSnapshotBuilder->build($document);
             $divergences = $this->postedLineTaxSnapshotBuilder->divergences($document, $derived);
 
@@ -885,13 +920,21 @@ final class BackfillTaxDetailsCommand extends Command
         }
 
         $this->line(sprintf(
-            '  Scanned %d in-scope document(s). %s %d. Nothing to declare (zero VAT) %d. Skipped %d.',
+            '  Scanned %d in-scope document(s). %s %d. Nothing to declare (zero VAT) %d. Unresolvable currency %d. Skipped %d.',
             $scanned,
             $apply ? 'Snapshotted' : 'Would snapshot',
             $touched,
             $nothingToDeclare,
+            count($unresolvableCurrency),
             count($skipped),
         ));
+
+        if ($unresolvableCurrency !== []) {
+            $this->warn('  Unresolvable currency -- these documents carry no currency, so no figure on them can be compared or declared:');
+            foreach ($unresolvableCurrency as $row) {
+                $this->warn(sprintf('    - %s (%s): %s', $row['number'], $row['id'], $row['reason']));
+            }
+        }
 
         $this->line(sprintf('  %s to the declaration DEDUCTIBLE (input) side:', $apply ? 'ADDED' : 'WOULD ADD'));
         if ($wouldAdd === []) {
@@ -1003,7 +1046,7 @@ final class BackfillTaxDetailsCommand extends Command
      * Whole supplier-invoice + supplier-credit-note population, split into
      * buckets that PARTITION the total: every document lands in exactly one.
      *
-     * @return array{total: int, in_scope: int, already: int, draft: int, cancelled_no_je: int, other: int}
+     * @return array{total: int, in_scope: int, already: int, historical: int, draft: int, cancelled_no_je: int, other: int}
      */
     private function supplierDocumentPopulation(?string $companyId): array
     {
@@ -1015,7 +1058,9 @@ final class BackfillTaxDetailsCommand extends Command
         return [
             'total' => $this->supplierDocumentQuery($companyId)->count(),
             'already' => $this->supplierDocumentQuery($companyId)->whereIn('id', $snapshotted)->count(),
+            'historical' => $withoutSnapshot()->where('is_historical', true)->count(),
             'in_scope' => $withoutSnapshot()
+                ->where('is_historical', false)
                 ->where(function (Builder $scope): void {
                     $scope->whereIn('status', [DocumentStatus::Posted, DocumentStatus::Paid])
                         ->orWhere(function (Builder $cancelled): void {
@@ -1024,12 +1069,14 @@ final class BackfillTaxDetailsCommand extends Command
                         });
                 })
                 ->count(),
-            'draft' => $withoutSnapshot()->where('status', DocumentStatus::Draft)->count(),
+            'draft' => $withoutSnapshot()->where('is_historical', false)->where('status', DocumentStatus::Draft)->count(),
             'cancelled_no_je' => $withoutSnapshot()
+                ->where('is_historical', false)
                 ->where('status', DocumentStatus::Cancelled)
                 ->whereNotExists($this->postedJournalEntryExists(...))
                 ->count(),
             'other' => $withoutSnapshot()
+                ->where('is_historical', false)
                 ->whereNotIn('status', [
                     DocumentStatus::Posted,
                     DocumentStatus::Paid,
@@ -1216,7 +1263,13 @@ final class BackfillTaxDetailsCommand extends Command
         $unreopenableClosed = [];
         foreach ($periodLookupCache[$cacheKey]['closed'] as $period) {
             $affectedClosedPeriods[$period->id] = $period;
-            if ($this->vatPeriodRepository->hasClosedOrFiledSuccessor($period)) {
+            // Memoised per period id (fiscal r2 N-5): the period lookup above was
+            // already cached per (company|date), but this probe still ran once per
+            // closed period PER DOCUMENT — N queries on a large backfill.
+            if (! isset($this->successorProbeCache[$period->id])) {
+                $this->successorProbeCache[$period->id] = $this->vatPeriodRepository->hasClosedOrFiledSuccessor($period);
+            }
+            if ($this->successorProbeCache[$period->id]) {
                 $unreopenableClosed[] = $period;
             }
         }

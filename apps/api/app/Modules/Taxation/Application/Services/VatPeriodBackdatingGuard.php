@@ -47,8 +47,8 @@ use Carbon\CarbonInterface;
  * `ReturnNoteService::confirmWithFiscalChain()` calls `snapshotTaxDetails()`). The
  * correct premise is that the VAT declaration never READS return-note rows —
  * `EloquentVatDataRepository::aggregateByRateAndDirection()` restricts to
- * invoice / credit_note / expense / supplier_invoice (the last added by B-19,
- * 2026-08-26) — which is why this is document and ledger integrity rather than
+ * invoice / credit_note / expense / supplier_invoice / supplier_credit_note (the
+ * last two added by B-19, 2026-08-26) — which is why this is document and ledger integrity rather than
  * declaration integrity.
  */
 final class VatPeriodBackdatingGuard implements PeriodBackdatingGuardInterface
@@ -90,6 +90,54 @@ final class VatPeriodBackdatingGuard implements PeriodBackdatingGuardInterface
 
         if ($this->fiscalPeriodLock->isDateInClosedFiscalPeriod($companyId, $date)) {
             return ReturnPeriodRefusalCode::PeriodLocked->value;
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{
+     *     code: string,
+     *     period_id: string|null,
+     *     period_label: string|null,
+     *     period_start: string|null,
+     *     period_end: string|null,
+     *     reopenable: bool
+     * }|null
+     */
+    public function backdatingRefusalDetail(string $companyId, CarbonInterface $date): ?array
+    {
+        $vatPeriod = $this->periodRepository->findLockedPeriodCoveringDate($companyId, $date);
+
+        if ($vatPeriod !== null) {
+            // Mirrors `VatPeriodManagementService::reopenPeriod()` exactly: it
+            // throws for a FILED period, and throws for a CLOSED one whose
+            // company has ANY later closed/filed period. Reporting `true` in
+            // either case would offer a remedy the system rejects.
+            $reopenable = $vatPeriod->status === VatPeriodStatus::Closed
+                && ! $this->periodRepository->hasClosedOrFiledSuccessor($vatPeriod);
+
+            return [
+                'code' => $this->vatRefusalCode($vatPeriod->status)->value,
+                'period_id' => (string) $vatPeriod->id,
+                'period_label' => (string) $vatPeriod->label,
+                'period_start' => $vatPeriod->period_start->toDateString(),
+                'period_end' => $vatPeriod->period_end->toDateString(),
+                'reopenable' => $reopenable,
+            ];
+        }
+
+        if ($this->fiscalPeriodLock->isDateInClosedFiscalPeriod($companyId, $date)) {
+            // A `fiscal_periods` refusal: there is no vat_periods row to name,
+            // and nothing on this route reopens an accounting period.
+            return [
+                'code' => ReturnPeriodRefusalCode::PeriodLocked->value,
+                'period_id' => null,
+                'period_label' => null,
+                'period_start' => null,
+                'period_end' => null,
+                'reopenable' => false,
+            ];
         }
 
         return null;

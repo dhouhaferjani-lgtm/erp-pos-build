@@ -1624,12 +1624,20 @@ final class BackfillTaxDetailsCommandTest extends TestCase
         $this->createUnsnapshottedSupplierDocument(DocumentStatus::Draft);
         $this->createUnsnapshottedSupplierDocument(DocumentStatus::Cancelled);
         $this->createUnsnapshottedSupplierDocument(DocumentStatus::Confirmed);
+        $this->createUnsnapshottedSupplierDocument(
+            DocumentStatus::Posted,
+            withLine: false,
+            withJournalEntry: true,
+            isHistorical: true,
+        );
 
         $output = $this->runBackfillAndCaptureOutput([]);
 
-        // 4 total = 1 in scope + 0 already + 1 draft + 1 cancelled-no-JE + 1 other.
+        // 5 total = 1 in scope + 0 already + 1 historical + 1 draft
+        //           + 1 cancelled-no-JE + 1 other.
         $this->assertStringContainsString(
-            'Population: 4 supplier invoice(s) + credit note(s) total = 1 in scope + 0 already snapshotted '
+            'Population: 5 supplier invoice(s) + credit note(s) total = 1 in scope + 0 already snapshotted '
+            .'+ 1 historical AR/AP opening (excluded: declared under the previous system) '
             .'+ 1 draft (excluded: no journal entry) + 1 cancelled without a journal entry (excluded: never posted) '
             .'+ 1 in another status (excluded: not a posting state).',
             $output,
