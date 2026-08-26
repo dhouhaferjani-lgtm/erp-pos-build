@@ -14,14 +14,18 @@ final class ValidationEngine
      *
      * @param  array<string, mixed>  $data
      * @param  array<string, array<string>>  $rules
+     * @param  array<string, string>  $messages  Per-rule messages keyed `field.rule`. Row errors have
+     *                                           no separate code channel, so a type that needs a
+     *                                           machine-readable refusal code carries it as the
+     *                                           message's leading token (W4-1: `expiry_unparseable`).
      * @return array{is_valid: bool, errors: array<string, array<string>>}
      */
-    public function validate(array $data, array $rules, ?string $tenantId = null): array
+    public function validate(array $data, array $rules, ?string $tenantId = null, array $messages = []): array
     {
         // Process custom rules like unique with tenant scope
         $processedRules = $this->processRules($rules, $tenantId);
 
-        $validator = Validator::make($data, $processedRules);
+        $validator = Validator::make($data, $processedRules, $messages);
 
         if ($validator->fails()) {
             return [

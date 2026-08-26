@@ -192,6 +192,11 @@ class InventoryOpeningService
         // still applies the product's configured `default_shelf_life_days`, and
         // only mints the lot UNDATED when there is no shelf life either. Nothing
         // downstream invents a date any more.
+        //
+        // Shape is refused (an ambiguous 03/04/2027 must never be guessed); a PAST
+        // date is ALLOWED per the gate r1 ruling — opening with expired stock in
+        // order to scrap it is legitimate — and is flagged to the operator in the
+        // post preview instead of being silently accepted.
         $expiryDate = $rawData['expiry_date'] ?? null;
         if (is_string($expiryDate) && trim($expiryDate) !== '') {
             $expiryDate = trim($expiryDate);
@@ -372,6 +377,9 @@ class InventoryOpeningService
             $unitCost = $mappedData['unit_cost'] ?? '0.00';
             $lineValue = bcmul($quantity, $unitCost, $this->monetaryScale());
             $productId = (string) ($mappedData['product_id'] ?? '');
+            $rowExpiry = isset($mappedData['expiry_date']) && is_string($mappedData['expiry_date'])
+                ? $mappedData['expiry_date']
+                : null;
 
             return [
                 'row_number' => $row->row_number,
@@ -387,9 +395,12 @@ class InventoryOpeningService
                 // operator has to be able to SEE, before posting, that the lot they
                 // are about to open carries no expiry, because that is exactly the
                 // fact the old build hid behind a fabricated cutover+365 date.
-                'expiry_date' => isset($mappedData['expiry_date']) && is_string($mappedData['expiry_date'])
-                    ? $mappedData['expiry_date']
-                    : null,
+                'expiry_date' => $rowExpiry,
+                // ...and equally that a date they DID supply is already past, which
+                // opens the lot EXPIRED (unsellable, untransferable until written
+                // off). Allowed by ruling, never silent.
+                'expiry_is_past' => $rowExpiry !== null
+                    && CarbonImmutable::parse($rowExpiry)->isBefore(CarbonImmutable::today()),
             ];
         });
 

@@ -131,6 +131,34 @@ enum ImportType: string
     }
 
     /**
+     * Per-rule validation messages, keyed `field.rule`.
+     *
+     * 🚨 W4-1 gate r1 — row errors are stored as `field => [message]`
+     * (`ValidationEngine::validate()`) with no separate code channel, and the
+     * failed-rows export / result workbook surface the message verbatim. So a
+     * machine-readable REFUSAL CODE is carried as the message's leading token.
+     *
+     * RULED policy for `expiry_date`: an UNPARSEABLE date refuses the row
+     * (`expiry_unparseable`) — `03/04/2027` is 3 April or 4 March depending on the
+     * reader, and guessing puts a wrong date on a parapharmacy lot. A date in the
+     * PAST is NOT refused; it is allowed (a parapharmacy may legitimately open with
+     * expired stock in order to scrap it) and reported as the non-blocking
+     * `expiry_in_past` row warning by `ProductOpeningStockPhase`.
+     *
+     * @return array<string, string>
+     */
+    public function getValidationMessages(): array
+    {
+        return match ($this) {
+            self::Products => [
+                'expiry_date.date_format' => 'expiry_unparseable: expiry_date must be written as YYYY-MM-DD (for example 2027-09-30). '
+                    .'An ambiguous date such as 03/04/2027 is refused rather than guessed.',
+            ],
+            default => [],
+        };
+    }
+
+    /**
      * Get validation rules for this import type
      *
      * @return array<string, array<string>>

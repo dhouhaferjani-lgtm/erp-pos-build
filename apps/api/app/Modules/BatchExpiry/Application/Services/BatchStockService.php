@@ -107,6 +107,28 @@ final class BatchStockService
             variantId: $variantId,
         );
 
+        // 🚨 W4-1 gate r1 — SET-ONCE on an existing DEFAULT lot.
+        //
+        // `findOrCreateBatch()` matches on (company, product, batch_number,
+        // variant) and returns the existing row UNTOUCHED, so before this the
+        // supplied expiry only ever landed on the FIRST opening for a
+        // product+variant. There is ONE DEFAULT lot per product+variant across ALL
+        // locations (the per-location top-up is below), so a two-row
+        // multi-location opening for the same SKU — the shape the shipped opening
+        // template literally demonstrates — silently discarded the second row's
+        // date, and a first-undated/second-dated pair left the lot NULL forever.
+        //
+        // Filling a NULL is safe and is the fact the operator supplied. OVERWRITING
+        // a date that is already there is NOT done here: that lot may already hold
+        // stock, movements and sealed allocations, and rewriting it would be a
+        // silent ledger correction. The caller compares what it asked for against
+        // what the lot now carries and reports the disagreement
+        // ({@see \App\Modules\Inventory\Domain\Enums\OpeningLotExpiryOutcome}).
+        if ($expiryDate !== null && $batch->expiry_date === null) {
+            $batch->update(['expiry_date' => $expiryDate]);
+            $batch->refresh();
+        }
+
         // Reconcile the location's batch stock DIRECTLY (no BatchMovement):
         // inventory_batch_movements.movement_id is a NOT-NULL FK to
         // stock_movements, but a default/seeded backfill has no movement — and
@@ -249,6 +271,24 @@ final class BatchStockService
             variantId: $variantId,
         );
 
+        // W4-1 gate r1 — the remainder-is-zero path mints nothing (real lots
+        // already cover the whole quantity), which used to drop a supplied expiry
+        // on the floor as well. The lot the operator is talking about may still
+        // exist and still be undated, so apply the same set-once fill here before
+        // returning. The null return is preserved: it means "minted nothing", and
+        // `findDefaultBatch()` is how a caller inspects what the lot now carries.
+        if (bccomp($remainder, '0', 4) <= 0) { // precision-ok: batch quantity is decimal(15,4), canonical scale 4
+            if ($expiryDate !== null) {
+                $existing = $this->findDefaultBatch($companyId, $productId, $variantId);
+
+                if ($existing !== null && $existing->expiry_date === null) {
+                    $existing->update(['expiry_date' => $expiryDate]);
+                }
+            }
+
+            return null;
+        }
+
         return $this->ensureDefaultBatch(
             companyId: $companyId,
             tenantId: $tenantId,
@@ -259,6 +299,28 @@ final class BatchStockService
             asOfDate: $asOfDate,
             variantId: $variantId,
             expiryDate: $expiryDate,
+        );
+    }
+
+    /**
+     * The product+variant's {@see self::DEFAULT_BATCH_NUMBER} lot, or null if it
+     * has none.
+     *
+     * Read-only. Exists so a caller that supplied an expiry can see what the lot
+     * ACTUALLY ended up carrying — the set-once rule above deliberately refuses to
+     * overwrite an existing date, and a caller that silently assumed its value was
+     * applied would re-create the very class of lost fact W4-1 removes.
+     */
+    public function findDefaultBatch(
+        string $companyId,
+        string $productId,
+        ?string $variantId = null,
+    ): ?Batch {
+        return $this->batchRepository->findByBatchNumberAndVariant(
+            $companyId,
+            $productId,
+            self::DEFAULT_BATCH_NUMBER,
+            $variantId,
         );
     }
 

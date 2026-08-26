@@ -415,10 +415,20 @@ class OpeningBalanceBatchController extends Controller
                 // W4-1 — optional; the expiry of the opening lot this row seeds.
                 // Blank means "not supplied": the lot takes the product's configured
                 // shelf life if it has one, and is otherwise minted UNDATED so FEFO
-                // ranks it after every dated lot. InventoryOpeningService re-validates
-                // per row (and refuses a past date); this is ingress shape only.
-                // `date_format` rather than `date` so a locale-ambiguous cell is
-                // rejected here instead of silently parsed as the wrong day.
+                // ranks it after every dated lot.
+                //
+                // `date_format` rather than `date` so a locale-ambiguous cell
+                // (03/04/2027 — 3 April or 4 March?) is REFUSED here instead of
+                // silently parsed as the wrong day. `InventoryOpeningService::
+                // validateRow()` re-checks the same shape per row and reports
+                // `expiry_date` as a row error.
+                //
+                // A PAST date is deliberately NOT refused, here or downstream
+                // (gate r1 ruling): a parapharmacy may legitimately open with
+                // expired stock in order to scrap it. It is surfaced instead —
+                // `getPostPreview()` marks the line `expiry_is_past` so the
+                // operator sees it BEFORE posting, and the Products import raises
+                // the non-blocking `expiry_in_past` row warning.
                 'rows.*.expiry_date' => ['nullable', 'date_format:Y-m-d'],
             ],
             OpeningBatchType::ArOpenItems, OpeningBatchType::ApOpenItems => [
