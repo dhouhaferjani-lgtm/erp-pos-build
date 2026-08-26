@@ -53,6 +53,11 @@ interface LocationCashRegisterProvisionerInterface
      * resolver anyway.
      *
      * Idempotent: calling it twice never mints a second drawer.
+     *
+     * `$locationCode` only seeds the repository code (`locations.code` is
+     * nullable, and a caller may not have one) — the implementation falls back
+     * to a generic stem and, either way, resolves a code that satisfies
+     * `payment_repositories`' UNIQUE(company_id, code).
      */
-    public function provision(string $tenantId, string $companyId, string $locationId, string $locationCode): ?string;
+    public function provision(string $tenantId, string $companyId, string $locationId, ?string $locationCode): ?string;
 }

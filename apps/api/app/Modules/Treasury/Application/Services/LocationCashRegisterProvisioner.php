@@ -68,7 +68,7 @@ final readonly class LocationCashRegisterProvisioner implements LocationCashRegi
             ->exists();
     }
 
-    public function provision(string $tenantId, string $companyId, string $locationId, string $locationCode): ?string
+    public function provision(string $tenantId, string $companyId, string $locationId, ?string $locationCode): ?string
     {
         $existing = $this->ownCashRegisterQuery($tenantId, $companyId, $locationId)->first();
         if ($existing instanceof PaymentRepository) {
@@ -142,9 +142,9 @@ final readonly class LocationCashRegisterProvisioner implements LocationCashRegi
      * random discriminator rather than letting the INSERT blow up a location
      * create that has otherwise succeeded.
      */
-    private function uniqueCode(string $companyId, string $locationCode): string
+    private function uniqueCode(string $companyId, ?string $locationCode): string
     {
-        $base = strtoupper(preg_replace('/[^A-Za-z0-9\-]/', '', $locationCode) ?? '');
+        $base = strtoupper(preg_replace('/[^A-Za-z0-9\-]/', '', $locationCode ?? '') ?? '');
         $base = $base === '' ? 'LOC' : substr($base, 0, 12);
         $candidate = 'CASH-'.$base;
 
