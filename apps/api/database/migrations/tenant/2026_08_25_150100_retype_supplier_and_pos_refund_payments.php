@@ -31,7 +31,7 @@ use Illuminate\Support\Facades\Schema;
  *
  * ## Predicate rationale — the evidence is the journal entry, not the row
  *
- * ### (a) supplier payments: `document_payment` -> `supplier_payment`
+ * ### (a1) IMMEDIATE supplier payments: `document_payment` -> `supplier_payment`
  *
  * `PaymentController::store()` posts the supplier arm through
  * `GeneralLedgerService::createSupplierPaymentJournalEntry()`, the ONLY writer of
@@ -70,6 +70,51 @@ use Illuminate\Support\Facades\Schema;
  * and therefore no re-type. That is the correct answer: with no 401 there is no
  * evidence, and the migration leaves history alone.
  *
+ * ### (a2) DEFERRED supplier payments (cheque / traite): `document_payment` -> `supplier_payment`
+ *
+ * **Gate r1 [Critical].** Arm (a1) alone misses an entire live shape, and it is
+ * the shape a Tunisian tenant uses most: a supplier paid with an OUTBOUND
+ * INSTRUMENT. `PaymentController::store()` routes that through an `if` branch
+ * that sits ABOVE the `elseif` arm (a1) matches
+ * (`PaymentController.php:1163-1174`, `$isDeferredSupplier`), into
+ * `OutboundInstrumentIssuer::issueExisting()` (`OutboundInstrumentIssuer.php:180`)
+ * -> `GeneralLedgerService::createOutboundInstrumentIssueEntry()`. That builder
+ * stamps `source_type = 'instrument'` and `source_id = <INSTRUMENT id>`
+ * (`GeneralLedgerService.php:1199,1201`) — never `('supplier_payment', payment.id)`.
+ * The two branches are mutually exclusive, so arm (a1) can never see one of these
+ * rows, and every historical deferred supplier payment would have kept
+ * `document_payment` (`isIncoming() === true`) and STAYED IN THE TILE — while the
+ * fixed writer types new ones `supplier_payment`. Writer and backfill would have
+ * disagreed about what a supplier payment is.
+ *
+ * The evidence for this shape is just as unambiguous as arm (a1)'s, and it is
+ * reached by a DIFFERENT link. `PaymentController.php:1219-1221` stamps
+ * `payments.journal_entry_id = <the instrument-issue entry>`, so the join is the
+ * direct `journal_entry_id` one — the same exact link arm (b) uses, with no
+ * `source_id` ambiguity to guard against (`source_id` there is the INSTRUMENT id,
+ * so matching it against `payments.id` would find nothing):
+ *
+ *   payment_type = 'document_payment'
+ *   AND EXISTS (posted je WHERE je.id = payments.journal_entry_id
+ *                           AND je.company_id = payments.company_id
+ *                           AND je.source_type = 'instrument'
+ *                     JOIN a line on the supplier_payable account
+ *                     WITH debit > 0)
+ *
+ * The `debit > 0 on supplier_payable` belt is what makes `source_type='instrument'`
+ * safe to match on, because that source type is shared by the whole outbound
+ * instrument lifecycle. Only the ISSUE entry debits 401
+ * (`createOutboundInstrumentIssueEntry()` = Dr 401 partner-tagged / Cr
+ * ChecksToPay|EffetsPayable, `GeneralLedgerService.php:1064-1087`); CLEARING is
+ * Dr payable-instrument / Cr bank, DISHONOR is Dr bank / Cr payable-instrument,
+ * and CANCELLATION *credits* 401 — none of them can satisfy `debit > 0` on that
+ * account. A deferred CUSTOMER payment cannot match either: it takes
+ * `$isDeferredCustomer`, which falls through to `createPaymentReceivedJournalEntry()`
+ * and links a `source_type = 'customer_payment'` entry.
+ *
+ * `status = 'posted'` is required here as in arm (a1) — `issueExisting()` calls
+ * `postEntryNow()` in-transaction, so a genuine issue entry always satisfies it.
+ *
  * ### (b) POS refund legs: `pos` -> `pos_refund`
  *
  * `TreasuryReceiptBridge` links every payment leg it writes to the entry it
@@ -91,10 +136,11 @@ use Illuminate\Support\Facades\Schema;
  * ## What is NOT re-typed, and why that is the ruling
  *
  * A supplier payment whose journal entry is missing, Draft, or carries no
- * supplier-payable debit KEEPS `document_payment`. The evidence is ambiguous
- * there and this migration does not guess. Post-migration residual census — a
- * non-zero count is a finding to hand to a human, NOT a reason to widen the
- * predicate:
+ * supplier-payable debit KEEPS `document_payment`, on EITHER route. The evidence
+ * is ambiguous there and this migration does not guess. Post-migration residual
+ * census — a non-zero count is a finding to hand to a human, NOT a reason to
+ * widen the predicate. With arms (a1)+(a2) in place this should now be EMPTY on a
+ * tenant with no unposted AP:
  *
  *   SELECT p.id, p.amount, p.payment_date
  *     FROM payments p
@@ -105,7 +151,7 @@ use Illuminate\Support\Facades\Schema;
  *
  * ## Per-tenant census to run BEFORE the fleet migration (row counts to expect)
  *
- *   -- (a) rows this migration will re-type to 'supplier_payment'
+ *   -- (a1) rows this migration will re-type to 'supplier_payment' (immediate)
  *   SELECT COUNT(*) FROM payments p
  *    WHERE p.payment_type = 'document_payment'
  *      AND EXISTS (
@@ -114,6 +160,21 @@ use Illuminate\Support\Facades\Schema;
  *            JOIN accounts a ON a.id = jl.account_id
  *           WHERE je.source_id = p.id
  *             AND je.source_type = 'supplier_payment'
+ *             AND je.company_id = p.company_id
+ *             AND je.status = 'posted'
+ *             AND a.system_purpose = 'supplier_payable'
+ *             AND CAST(jl.debit AS NUMERIC) > 0);
+ *
+ *   -- (a2) rows this migration will re-type to 'supplier_payment' (deferred:
+ *   --      cheque / traite, linked to their outbound-instrument issue entry)
+ *   SELECT COUNT(*) FROM payments p
+ *    WHERE p.payment_type = 'document_payment'
+ *      AND EXISTS (
+ *          SELECT 1 FROM journal_entries je
+ *            JOIN journal_lines jl ON jl.journal_entry_id = je.id
+ *            JOIN accounts a ON a.id = jl.account_id
+ *           WHERE je.id = p.journal_entry_id
+ *             AND je.source_type = 'instrument'
  *             AND je.company_id = p.company_id
  *             AND je.status = 'posted'
  *             AND a.system_purpose = 'supplier_payable'
@@ -136,8 +197,11 @@ use Illuminate\Support\Facades\Schema;
  *
  * ## Idempotency
  *
- * Both predicates require the row to still carry the OLD value, so a re-run
- * matches zero rows.
+ * All THREE predicates require the row to still carry the OLD value, so a re-run
+ * matches zero rows. (a1) and (a2) are also mutually exclusive by construction:
+ * one matches `source_type='supplier_payment'` keyed on `source_id`, the other
+ * `source_type='instrument'` keyed on `journal_entry_id`, and a single entry
+ * carries one source type.
  *
  * Portable DML (no DDL), so the SQLite test driver runs it too and the lane's
  * migration tests can exercise both arms.
@@ -170,6 +234,31 @@ return new class extends Migration
                   )
                 SQL
             );
+
+            // Arm (a2) — DEFERRED supplier payments (cheque / traite). Separate
+            // statement rather than an OR inside arm (a1) so each predicate stays
+            // readable against the writer it mirrors, and so a census can count
+            // the two shapes apart. See the docblock section (a2) for why
+            // `source_type='instrument'` is safe once the Dr-401 belt is applied.
+            DB::statement(
+                <<<'SQL'
+                UPDATE payments
+                SET payment_type = 'supplier_payment'
+                WHERE payment_type = 'document_payment'
+                  AND EXISTS (
+                      SELECT 1
+                      FROM journal_entries je
+                      JOIN journal_lines jl ON jl.journal_entry_id = je.id
+                      JOIN accounts a ON a.id = jl.account_id
+                      WHERE je.id = payments.journal_entry_id
+                        AND je.source_type = 'instrument'
+                        AND je.company_id = payments.company_id
+                        AND je.status = 'posted'
+                        AND a.system_purpose = 'supplier_payable'
+                        AND CAST(jl.debit AS NUMERIC) > 0
+                  )
+                SQL
+            );
         }
 
         DB::statement(
@@ -192,7 +281,7 @@ return new class extends Migration
     {
         // Intentionally not reversible: re-typing back would re-introduce the
         // over-count this migration exists to remove. To inspect what was changed,
-        // run the two census queries in the docblock with the type conditions
+        // run the three census queries in the docblock with the type conditions
         // inverted ('supplier_payment' / 'pos_refund').
     }
 };
