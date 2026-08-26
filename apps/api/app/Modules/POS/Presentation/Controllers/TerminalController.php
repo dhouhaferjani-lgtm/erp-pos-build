@@ -6,6 +6,7 @@ namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Presentation\Controllers\LocationController;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Enums\TerminalType;
@@ -389,6 +390,15 @@ final class TerminalController extends Controller
             return $this->posDisabledResponse();
         }
 
+        if ($terminal->hardware_identifier !== null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'TERMINAL_ALREADY_CLAIMED',
+                    'message' => 'Terminal is already claimed by another device',
+                ],
+            ], 409);
+        }
+
         // N-12: a location whose cash has nowhere of its own to go must not
         // acquire a till. Before this lane the tender resolver answered such a
         // terminal with whichever cash register sorted first in the company —
@@ -398,23 +408,19 @@ final class TerminalController extends Controller
         // count can reconcile. The resolver now refuses instead of borrowing;
         // refusing HERE is what keeps that refusal out of the money path, where
         // it would land as a dead-lettered projection after the customer has
-        // already paid. Deliberately AFTER the pos_enabled check: "POS is off
-        // here" is the nearer cause when both are true.
-        if (! $this->cashRegisters->hasUsableCashRegister(
+        // already paid.
+        //
+        // Gate r1 (fiscal) — ordering: AFTER `pos_enabled` and AFTER
+        // TERMINAL_ALREADY_CLAIMED, per this controller's own rule that the
+        // nearer, more actionable cause reports first. A second device pointed
+        // at a taken terminal needs to hear "already claimed", not a treasury
+        // configuration message it cannot act on.
+        if (! $this->cashRegisters->hasUsableDrawer(
             (string) $terminal->tenant_id,
             (string) $terminal->company_id,
             (string) $terminal->location_id,
         )) {
             return $this->noCashRegisterResponse();
-        }
-
-        if ($terminal->hardware_identifier !== null) {
-            return response()->json([
-                'error' => [
-                    'code' => 'TERMINAL_ALREADY_CLAIMED',
-                    'message' => 'Terminal is already claimed by another device',
-                ],
-            ], 409);
         }
 
         $companyId = $this->companyContext->requireCompanyId();
@@ -984,17 +990,26 @@ final class TerminalController extends Controller
     /**
      * N-12 — typed, actionable, and never a silent reroute.
      *
-     * The message names the fix an operator can actually perform (add a cash
-     * register to this location in Treasury settings), because the alternative
-     * outcome — the device claims the terminal and its cash lands in another
-     * branch's drawer — is invisible until a cash count fails to reconcile.
+     * Gate r1 finding 2 — the message used to say "add a cash repository for the
+     * location in Treasury settings". No such screen exists: the repositories
+     * UI (`apps/web/src/features/treasury/RepositoryListPage.tsx`,
+     * `RepositoryDetailPage.tsx`) has no create form and never sends
+     * `location_id`, so the instruction was false and an affected tenant had no
+     * self-service way out of a stopped POS.
+     *
+     * The remediation named here is the one that actually works today: saving
+     * the location with POS enabled runs
+     * {@see LocationController}'s
+     * provisioning hook, which mints the location's drawer idempotently. Both
+     * clients translate the code rather than echoing this English string
+     * (`apps/pos` TerminalSetupPage, `apps/web` POS/Terminals).
      */
     private function noCashRegisterResponse(): JsonResponse
     {
         return response()->json([
             'error' => [
                 'code' => 'LOCATION_HAS_NO_CASH_REGISTER',
-                'message' => 'This location has no cash register. Add a cash repository for the location in Treasury settings before using a terminal there — otherwise its cash would be booked against another location.',
+                'message' => 'This location has no cash register. Open Settings → Locations, and save this location with POS enabled — that creates its cash register. Until then its cash would be booked against another location.',
             ],
         ], 422);
     }

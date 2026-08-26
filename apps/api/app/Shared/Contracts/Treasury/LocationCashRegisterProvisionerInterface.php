@@ -24,26 +24,27 @@ namespace App\Shared\Contracts\Treasury;
 interface LocationCashRegisterProvisionerInterface
 {
     /**
-     * Does this location have a GL-linked cash register of its own?
+     * Does this location have a GL-linked drawer of its own?
      *
      * False does NOT mean "no cash can be taken here": a tenant provisioned
      * before N-12 carries `location_id = NULL` repositories that still serve
-     * every terminal (the resolver's tier 2). Use {@see hasUsableCashRegister}
+     * every terminal (the resolver's tier 2). Use {@see hasUsableDrawer}
      * for the "can this terminal take money?" question.
      */
-    public function hasOwnCashRegister(string $tenantId, string $companyId, string $locationId): bool;
+    public function hasOwnDrawer(string $tenantId, string $companyId, string $locationId): bool;
 
     /**
      * Can a POS receipt authored at this location resolve a cash repository at
      * all — i.e. does the resolver have a candidate for it?
      *
-     * True when the location owns a GL-linked cash register, OR when the
-     * company still has an unattributed (legacy) one. This is the predicate an
+     * True when the location owns an active, GL-linked DRAWER (a till or a
+     * safe — gate r1 finding 6 aligned this with the resolver's definition), OR
+     * when the company still has an unattributed (legacy) one. This is the predicate an
      * acquisition path refuses on: it is exactly "will the treasury bridge be
      * able to book this terminal's cash without borrowing another branch's
      * till?".
      */
-    public function hasUsableCashRegister(string $tenantId, string $companyId, string $locationId): bool;
+    public function hasUsableDrawer(string $tenantId, string $companyId, string $locationId): bool;
 
     /**
      * Create the location's own cash register if it has none, and return its id

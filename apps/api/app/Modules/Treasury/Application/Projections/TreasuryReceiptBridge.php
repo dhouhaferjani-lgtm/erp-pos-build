@@ -1309,7 +1309,17 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                 ->where('company_id', $event->company_id)
                 ->find($existing->repository_id);
         } else {
-            $repository = $this->resolveRepositoryForTender($event, $paymentMethod, $terminalLocationId);
+            // N-12 gate r1 finding D — ATTRIBUTION and RESOLUTION ask different
+            // questions of the same terminal. `$terminalLocationId` (null-able)
+            // is what the payment BELONGS to; the repository is resolved against
+            // the company's default location when the terminal cannot be read,
+            // so an unreadable terminal can never route a branch's money to
+            // whichever till sorts first company-wide.
+            $repository = $this->resolveRepositoryForTender(
+                $event,
+                $paymentMethod,
+                $this->resolveRepositoryLocationId($event),
+            );
         }
 
         if ($repository === null) {
