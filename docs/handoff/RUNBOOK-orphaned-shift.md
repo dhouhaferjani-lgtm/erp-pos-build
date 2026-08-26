@@ -144,6 +144,7 @@ php artisan tenants:run pos:shift:close-orphaned \
 | `6` | The derived expected cash is **negative** | The movement set is incomplete or mis-signed. A drawer cannot hold less than nothing and `pos_shifts_positive_amounts` refuses to store it. Read the movements the message names and resolve them with an accountant — do **not** look for a way to force a zero |
 | `7` | The close was **rolled back** because its `shift.orphan_closed` audit row could not be confirmed | Nothing was written; the orphan is still OPEN and still closable. Check `audit_events` is writable and the log for the subscriber's error, then re-run |
 | `8` | The shift carries a cash movement the server **cannot sign** (today: `CASH_CORRECTION`) | Resolve the movement with an accountant. The command refuses rather than dropping it silently — a dropped movement would be exported to the JET as a balanced count that is short by its value |
+| `9` | A customer **account collection** on this terminal, inside the shift's window, carries no `shift_id` and cannot be attributed | Same standard as exit 8. Attribute the collection, or confirm it belongs to another shift, before closing. Cash collected against an account is physically in the drawer; leaving it out exports a short figure as a balanced count |
 
 **Exit 4 is the whole point of the command and must not be worked around.** This is the only
 operator-reachable writer of `ShiftStatus::Closed`; if it closed any shift on request it would be a
@@ -166,12 +167,20 @@ the shift from the device.
 - **Which table the movements come from depends on the terminal, and the command prints it.** A v3
   (device-authoritative) terminal books every drawer movement as a fiscal event in
   `pos_z_session_events` and writes no `pos_cash_drawer_operations` row at all, so its expected cash
-  is `opening float + net cash tendered on the shift's receipts + its z-session movements`. A v2
-  terminal's movements are `pos_cash_drawer_operations`, and its figure is the one
+  is `opening float + net cash tendered on the shift's receipts + its z-session movements + cash
+  collected against customer accounts` — the device's own Z arithmetic. A v2 terminal's movements are
+  `pos_cash_drawer_operations`, and its figure is the one
   `CashDrawerService::calculateExpectedCash()` produces for the v2 Z report. **Read the
-  `movement source` and `drawer movements` rows in the preview table.** A movement count of `0` is
-  printed with a warning: it is normal for a shift that never had one, and a red flag for a till that
-  did.
+  `movement source`, `drawer movements` and `cash account collections` rows in the preview table.** A
+  movement count of `0` is printed with a warning: it is normal for a shift that never had one, and a
+  red flag for a till that did.
+- **The window ends at the RELEASE, not at now — and the preview prints it.** `pos_receipts` carries
+  no shift id, so the receipt and collection window is `terminal + time`. Nothing stops a replacement
+  device claiming the terminal and selling for weeks while the orphan sits OPEN, so the window is
+  closed at the authorising release's `occurred_at`: the dead device's late-synced receipts still
+  count (`posted_at` is device time), the replacement till's never do. Check the
+  `window ends at (release time)` row before applying — if it looks wrong, the command matched the
+  wrong release.
 - An audit event `shift.orphan_closed` (`aggregate_type = 'Shift'`) carrying the shift, terminal,
   cashier, reason, `closed_by`, the money pair, and `release_audit_event_id`. This is a **new** event
   class (`OrphanedShiftClosedByOperator`) — the device's own `shift.closed` is deliberately **not**
@@ -265,15 +274,23 @@ Both remain **OPEN** on the LEDGER. This runbook does not pre-empt either.
 
 ### Known residuals (code, not owner rulings)
 
+> **Corrected at fiscal gate r2:** an earlier version of this section claimed customer account
+> collections could not be derived because `pos_account_payment_receipts` "carries no `shift_id` and
+> no tender breakdown". That was wrong — the *column* has none, the *row* does
+> (`payload_snapshot` is the whole `AccountPaymentPayload`, carrying `shift_id` and
+> `payment.method_code` / `payment.amount`). The term is now part of the v3 derivation, and a
+> collection that genuinely cannot be attributed refuses the close (exit 9) rather than deriving
+> short.
+
 - The concurrent race between `release()` and a shift opening is closed — all three sites
   (`TerminalController::release()`, `ZSessionLifecycleProjection::projectPosShiftOpen()`,
   `ShiftManagementService::openShift()`) now take the `pos_terminals` row `FOR UPDATE` in the same
   order. What is **not** closed: a `SESSION_OPEN` authored by the dead device but **synced after**
   the release commits. That shift is orphaned and no audit row names it — query §1c finds it, and the
   command refuses it (exit 4).
-- **Customer account collections are not in the v3 expected-cash derivation.** The device folds cash
-  collected against customer credit accounts into its own expected cash
-  (`zReportService.ts:272-277`), but server-side `pos_account_payment_receipts` carries no `shift_id`
-  and no tender breakdown, so there is no reliable per-shift cash term to add. On a shift that took
-  account collections in cash the derived figure is short by that amount. Check the shift's
-  `pos_account_payment_receipts` before closing if the till takes account payments.
+- **Legacy refund cash impact is not in the v3 derivation.** The device subtracts it
+  (`zReportService.ts:253-258`) from a device-LOCAL table, `local_refund_records`, that has no server
+  mirror. It is written only by the pre-v4 refund path, and a v4 return is already netted out of the
+  receipts term — so this is zero for any terminal that has completed its v4 rollout. On one that has
+  not, and that took a legacy cash refund in the orphaned shift, the derived figure is long by that
+  amount.
