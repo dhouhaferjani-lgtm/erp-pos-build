@@ -58,11 +58,37 @@ use Illuminate\Database\QueryException;
  * with no drawer of its own resolves to NULL, which every caller treats as a
  * refusal. Borrowing another branch's till is never an outcome.
  *
+ * ### A DRAWER is what the tier is about — not every repository
+ *
+ * "Tier 1 is armed" therefore means *this location owns a till or a safe*, and
+ * what tier 1 excludes is the unattributed **drawers**. An unattributed
+ * `bank_account` / `virtual` repository is not a branch thing at all: the
+ * seeder never mints one, the repositories UI leaves `location_id` null on the
+ * ones an operator adds, and a card tender at any branch settles into the same
+ * company account. Excluding those alongside the drawers would drop a CARD
+ * method's mapped bank account at every branch that owns a till and fall the
+ * leg through to that till — card money booked into the cash drawer, on every
+ * tenant, the moment day-one attribution arms tier 1. A company-wide instrument
+ * stays reachable from every location; one an operator has BOUND to a location
+ * is that location's, and stays refused elsewhere like any other.
+ *
  * A `null` `$locationId` (server-authored flows with no terminal, and every
  * pre-existing caller) keeps the historical company-wide rule verbatim.
  */
 final readonly class TenderRepositoryResolver
 {
+    /**
+     * The repository types that BELONG to a location — the physical drawers a
+     * branch counts at close. Everything else (`bank_account`, `virtual`) is a
+     * company-wide instrument unless an operator has bound it to a location.
+     *
+     * @var list<string>
+     */
+    private const DRAWER_TYPES = [
+        RepositoryType::CashRegister->value,
+        RepositoryType::Safe->value,
+    ];
+
     public function resolve(
         string $tenantId,
         string $companyId,
@@ -77,13 +103,12 @@ final readonly class TenderRepositoryResolver
             // company-wide `default_repository_id` is operator routing policy,
             // and letting it point a branch's cash at Main's till would
             // reinstate the exact commingling this lane removes.
-            $tier = $locationId === null
-                ? null
-                : ($this->locationHasRepositories($tenantId, $companyId, $locationId) ? $locationId : false);
+            $excludeUnattributedDrawers = $locationId !== null
+                && $this->locationOwnsDrawer($tenantId, $companyId, $locationId);
 
             $mappedRepositoryId = $method?->default_repository_id;
             if (is_string($mappedRepositoryId)) {
-                $mapped = $this->scoped($tenantId, $companyId, $tier)
+                $mapped = $this->scoped($tenantId, $companyId, $locationId, $excludeUnattributedDrawers)
                     ->where('is_active', true)
                     ->whereNotNull('gl_account_id')
                     ->find($mappedRepositoryId);
@@ -110,7 +135,7 @@ final readonly class TenderRepositoryResolver
             // unchanged. The `is_active` filter deliberately stays on the mapped
             // branch only; widening it here would change fiscal projection
             // behaviour (see the class docblock).
-            return $this->scoped($tenantId, $companyId, $tier)
+            return $this->scoped($tenantId, $companyId, $locationId, $excludeUnattributedDrawers)
                 ->whereNotNull('gl_account_id')
                 ->orderByRaw(
                     'CASE WHEN type = ? THEN 0 WHEN type = ? THEN 1 ELSE 2 END',
@@ -173,37 +198,55 @@ final readonly class TenderRepositoryResolver
     /**
      * Tenant+company base query, narrowed to the resolved N-12 tier.
      *
-     * `$tier` is a location id (tier 1), `false` (tier 2 — the never-attributed
-     * rows), or `null` (no location known: the historical company-wide set).
+     * A `null` `$locationId` is "no location known" — the historical
+     * company-wide set, verbatim. Otherwise the candidates are this location's
+     * own repositories plus the unattributed ones, minus the unattributed
+     * DRAWERS once this location owns a drawer of its own. A repository
+     * attributed to a different location is never a candidate.
      *
      * @return Builder<PaymentRepository>
      */
-    private function scoped(string $tenantId, string $companyId, string|false|null $tier): Builder
-    {
+    private function scoped(
+        string $tenantId,
+        string $companyId,
+        ?string $locationId,
+        bool $excludeUnattributedDrawers,
+    ): Builder {
         $query = PaymentRepository::query()
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId);
 
-        if (is_string($tier)) {
-            return $query->where('location_id', $tier);
+        if ($locationId === null) {
+            return $query;
         }
 
-        if ($tier === false) {
-            return $query->whereNull('location_id');
-        }
+        return $query->where(function (Builder $scope) use ($locationId, $excludeUnattributedDrawers): void {
+            $scope->where('location_id', $locationId)
+                ->orWhere(function (Builder $unattributed) use ($excludeUnattributedDrawers): void {
+                    $unattributed->whereNull('location_id');
 
-        return $query;
+                    if ($excludeUnattributedDrawers) {
+                        $unattributed->whereNotIn('type', self::DRAWER_TYPES);
+                    }
+                });
+        });
     }
 
-    private function locationHasRepositories(string $tenantId, string $companyId, string $locationId): bool
+    /**
+     * Does this location own a till or a safe of its own?
+     *
+     * The question the tier turns on — see the class docblock. A location that
+     * owns only, say, a bound bank account has no drawer, so the unattributed
+     * legacy drawers remain its candidates exactly as before N-12.
+     */
+    private function locationOwnsDrawer(string $tenantId, string $companyId, string $locationId): bool
     {
         return PaymentRepository::query()
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->where('location_id', $locationId)
+            ->whereIn('type', self::DRAWER_TYPES)
             ->whereNotNull('gl_account_id')
             ->exists();
     }
-
-
 }
