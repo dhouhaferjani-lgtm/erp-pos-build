@@ -6,7 +6,6 @@ namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Domain\Location;
-use App\Modules\Company\Presentation\Controllers\LocationController;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Enums\TerminalType;
@@ -998,11 +997,17 @@ final class TerminalController extends Controller
      * self-service way out of a stopped POS.
      *
      * The remediation named here is the one that actually works today: saving
-     * the location with POS enabled runs
-     * {@see LocationController}'s
-     * provisioning hook, which mints the location's drawer idempotently. Both
-     * clients translate the code rather than echoing this English string
-     * (`apps/pos` TerminalSetupPage, `apps/web` POS/Terminals).
+     * the location with POS enabled runs `LocationController`'s provisioning
+     * hook, which mints the location's drawer idempotently. Named in backticks,
+     * not `{@see}` — pint hoists a fully-qualified `@see` into a real import,
+     * and a POS-Presentation → Company-Presentation edge for a docblock is not
+     * a dependency this module should own (gate r2 minor).
+     *
+     * A second gate r2 minor: an earlier revision claimed both clients translate
+     * the code. Only `apps/pos` does (`TerminalSetupPage` maps it to
+     * `terminal.locationHasNoCashRegister`), and that is the whole population —
+     * `claim()` is a device endpoint and nothing in `apps/web` calls it. This
+     * English string is a log/debug value, never operator-facing.
      */
     private function noCashRegisterResponse(): JsonResponse
     {

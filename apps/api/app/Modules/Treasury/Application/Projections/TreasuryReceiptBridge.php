@@ -1315,11 +1315,8 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             // the company's default location when the terminal cannot be read,
             // so an unreadable terminal can never route a branch's money to
             // whichever till sorts first company-wide.
-            $repository = $this->resolveRepositoryForTender(
-                $event,
-                $paymentMethod,
-                $this->resolveRepositoryLocationId($event),
-            );
+            $repositoryLocationId = $this->resolveRepositoryLocationId($event);
+            $repository = $this->resolveRepositoryForTender($event, $paymentMethod, $repositoryLocationId);
         }
 
         if ($repository === null) {
@@ -1336,7 +1333,12 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                 'cannot create POS-payment GL post for fiscal_event %s',
                 $event->tenant_id,
                 $event->company_id,
-                $terminalLocationId ?? '(none)',
+                // Gate r2 minor — the location resolution actually RAN against,
+                // not the attribution location. They differ whenever the terminal
+                // row could not be read: attribution stays null while resolution
+                // falls to the company default, and a dead-lettered job that says
+                // `(none)` sends an operator looking at the wrong location.
+                $repositoryLocationId ?? '(none)',
                 $event->id,
             ));
         }
@@ -1600,10 +1602,14 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
      * Campaign lane N-12: the terminal's LOCATION is now part of the question.
      * A receipt authored at Boutique Ariana resolves against Ariana's own
      * drawers; Main's till is not a candidate, and neither is any other
-     * branch's. `$locationId` is null only when the terminal row could not be
-     * read at all ({@see ResolvesTerminalLocation}), in which case the resolver
-     * keeps its historical company-wide behaviour rather than refusing money
-     * over a lookup blip.
+     * branch's.
+     *
+     * `$locationId` comes from {@see ResolvesTerminalLocation::resolveRepositoryLocationId},
+     * which falls back to the company's DEFAULT location when the terminal row
+     * cannot be read — so it is null only for a company with no locations at
+     * all. (Gate r1 finding D: degrading to "no location known" meant the
+     * company-wide candidate set, which post-backfill is ordered `cash_register`
+     * first — i.e. Main's till, the exact commingling this lane removes.)
      */
     private function resolveRepositoryForTender(
         FiscalEvent $event,

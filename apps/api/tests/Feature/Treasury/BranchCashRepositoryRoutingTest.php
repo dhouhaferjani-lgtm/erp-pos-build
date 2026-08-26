@@ -36,6 +36,7 @@ use RuntimeException;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\BuildsPosSaleReceiptEvents;
 
 /**
  * Campaign lane N-12 — a branch's POS cash must land in the BRANCH's drawer.
@@ -65,6 +66,12 @@ use Tests\TestCase;
  */
 final class BranchCashRepositoryRoutingTest extends TestCase
 {
+    // Gate r2 minor — the canonical encoder is a fiscal-sealing concern and this
+    // file used to carry a second implementation of it. Borrowed from the shared
+    // test trait instead; only the encoder is used, not its event builders,
+    // because this file needs a REFUND leg the trait's sale builder does not
+    // shape.
+    use BuildsPosSaleReceiptEvents;
     use RefreshDatabase;
 
     private string $tenantId;
@@ -842,7 +849,7 @@ final class BranchCashRepositoryRoutingTest extends TestCase
             'shift_id' => '22222222-2222-4222-8222-222222222222',
             'subtotal' => $total,
             'table_id' => null,
-            'terminal_id' => '33333333-3333-4333-8333-333333333333',
+            'terminal_id' => $this->branchTerminalId,
             'total' => $total,
             'training_flag' => false,
             'transaction_discount_amount' => '0.000',
@@ -875,7 +882,7 @@ final class BranchCashRepositoryRoutingTest extends TestCase
             'terminal_id' => $this->branchTerminalId,
         ];
 
-        $canonicalBytes = $this->canonicalEncode($canonicalArray);
+        $canonicalBytes = $this->canonicalEncodePosEvent($canonicalArray);
 
         return FiscalEvent::query()->create([
             'id' => Str::uuid()->toString(),
@@ -903,26 +910,4 @@ final class BranchCashRepositoryRoutingTest extends TestCase
     /**
      * @param  array<string, mixed>  $value
      */
-    private function canonicalEncode(array $value): string
-    {
-        $json = json_encode($this->sortRecursive($value), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        if ($json === false) {
-            throw new RuntimeException('canonical encode failed');
-        }
-
-        return $json;
-    }
-
-    private function sortRecursive(mixed $value): mixed
-    {
-        if (! is_array($value)) {
-            return $value;
-        }
-        if (array_is_list($value)) {
-            return array_map(fn (mixed $item): mixed => $this->sortRecursive($item), $value);
-        }
-        ksort($value);
-
-        return array_map(fn (mixed $item): mixed => $this->sortRecursive($item), $value);
-    }
 }

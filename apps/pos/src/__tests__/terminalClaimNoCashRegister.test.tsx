@@ -8,14 +8,53 @@
  * string, which told the operator to "add a cash repository for the location in
  * Treasury settings" — a screen with no create form that never sends
  * `location_id`. The operator had no way out of a stopped POS.
+ *
+ * Gate r2 minor — this file used to assert on `readFileSync` of the page's
+ * source, which pins a string rather than the behaviour (renaming the local
+ * `err` broke the test while the behaviour was fine). It renders the page and
+ * clicks Claim now.
  */
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { ApiRequestError } from '@/lib/api';
 import en from '@/locales/en/pos.json';
 import fr from '@/locales/fr/pos.json';
 
-const KEY = 'locationHasNoCashRegister';
+const claimTerminal = vi.fn();
+const fetchAvailable = vi.fn();
+
+vi.mock('@/lib/device', () => ({ getDeviceId: () => 'device-under-test' }));
+
+vi.mock('@/stores/terminalStore', () => ({
+  useTerminalStore: Object.assign(
+    (selector?: (s: unknown) => unknown) => {
+      const state = { pendingTerminalId: null, fetchAvailable, claimTerminal, isLoading: false };
+      return selector ? selector(state) : state;
+    },
+    { getState: () => ({ pendingTerminalId: null, fetchAvailable, claimTerminal, isLoading: false }) },
+  ),
+}));
+
+vi.mock('@/hooks/useTerminalActivation', () => ({
+  useTerminalActivation: () => ({ checkTerminalStatus: vi.fn() }),
+}));
+
+vi.mock('@/stores/authStore', () => ({
+  useAuthStore: Object.assign(
+    (selector?: (s: unknown) => unknown) => {
+      const state = { logout: vi.fn(), user: null, serverUrl: 'http://localhost' };
+      return selector ? selector(state) : state;
+    },
+    { getState: () => ({ logout: vi.fn(), user: null, serverUrl: 'http://localhost' }) },
+  ),
+}));
+
+const TERMINAL = {
+  id: 'terminal-1',
+  code: 'POS02',
+  name: 'Boutique Ariana',
+  location: { id: 'loc-1', name: 'Boutique Ariana' },
+};
 
 /** [locale, message] — indexed directly so TS strict never sees an index signature. */
 const LOCALES: Array<[string, string]> = [
@@ -23,7 +62,26 @@ const LOCALES: Array<[string, string]> = [
   ['fr', fr.terminal.locationHasNoCashRegister],
 ];
 
+async function renderAndClaim(rejection: unknown): Promise<void> {
+  const { TerminalSetupPage } = await import('@/pages/TerminalSetupPage');
+  fetchAvailable.mockResolvedValue([TERMINAL]);
+  claimTerminal.mockRejectedValue(rejection);
+
+  render(<TerminalSetupPage />);
+
+  const button = await screen.findByRole('button', { name: en.terminal.claim });
+  // The rejection resolves a promise inside the handler, so the state update it
+  // causes lands outside React's own batching without this.
+  await act(async () => {
+    fireEvent.click(button);
+  });
+}
+
 describe('N-12 — LOCATION_HAS_NO_CASH_REGISTER is a translated, actionable refusal', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it.each(LOCALES)('every POS locale carries the key (%s)', (_locale, message) => {
     expect(typeof message).toBe('string');
     expect(message.length).toBeGreaterThan(20);
@@ -36,15 +94,26 @@ describe('N-12 — LOCATION_HAS_NO_CASH_REGISTER is a translated, actionable ref
     expect(fr.terminal.locationHasNoCashRegister).toMatch(/point de vente activé/i);
   });
 
-  it('the claim handler maps the code to the key instead of echoing the server string', () => {
-    const src = readFileSync(
-      resolve(process.cwd(), 'src/pages/TerminalSetupPage.tsx'),
-      'utf8',
+  it('renders the translated message when the claim is refused for a drawer-less location', async () => {
+    await renderAndClaim(
+      new ApiRequestError(
+        422,
+        'This location has no cash register. Open Settings → Locations, and save this location with POS enabled — that creates its cash register. Until then its cash would be booked against another location.',
+        'LOCATION_HAS_NO_CASH_REGISTER',
+      ),
     );
 
-    expect(src).toContain("err.code === 'LOCATION_HAS_NO_CASH_REGISTER'");
-    expect(src).toContain(`t('terminal.${KEY}')`);
-    // …and the generic path is still there for every other refusal.
-    expect(src).toContain('onError(getErrorMessage(err))');
+    await waitFor(() => {
+      expect(screen.getByText(en.terminal.locationHasNoCashRegister)).toBeTruthy();
+    });
+  });
+
+  it('still surfaces the server message for every other refusal', async () => {
+    await renderAndClaim(new ApiRequestError(409, 'This terminal is already claimed.', 'TERMINAL_ALREADY_CLAIMED'));
+
+    await waitFor(() => {
+      expect(screen.getByText('This terminal is already claimed.')).toBeTruthy();
+    });
+    expect(screen.queryByText(en.terminal.locationHasNoCashRegister)).toBeNull();
   });
 });
