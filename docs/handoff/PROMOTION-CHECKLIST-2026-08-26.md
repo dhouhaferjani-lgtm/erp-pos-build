@@ -1,10 +1,11 @@
 # Promotion checklist — local `dev` → `origin/dev` (staging auto-deploy) — prepared 2026-08-25 for the 2026-08-26 ceremony
 
-Scope: ~571 local commits on top of `origin/dev` (Sessions A/B/C, 2026-08-21 → 08-25), ALL CI-UNVERIFIED (S-17: Actions quota out).
+Scope: 831 local commits on top of `origin/dev` (`git rev-list --count origin/dev..dev`, re-derived 2026-08-26; Sessions A/B/C/D, 2026-08-21 → 08-26), ALL CI-UNVERIFIED (S-17: Actions quota out).
 Owner owns the promotion. Promoting to `origin/dev` = staging auto-deploy incl. `tenants:migrate` — everything below is ordered for that.
 
 ## 0. Preconditions (tick before promoting)
 - [x] Every Session A lane merged (2026-08-25 end): N-1, N-2, N-3/4/7, N-5, N-6 Ph1 (+DPA rollback), W2-3, W2-6, W2-7+W4-5, W4-9, W4-6, W4-2 (+fixture), W4-3, D-1, P-1, W2-1, W4R-2, CI-hygiene, test-infra r1+r2. Hold-list (NOT blocking promotion): W4R2-2 dashboard tile, W4-1, N-12, W4R-1, W4R-3 (Menu tenants).
+- [x] **Session D lanes merged: B2-6, C-F0w, W4R2-2, N-12, B-19, B-13 (O-30, W4-1, T9 pending)** — merge SHAs `9d0d08ae5` (B2-6), `8664d180c` (C-F0w), `4ae7c68a8` (W4R2-2), `4807f0045` (N-12), `c94d23043` (B-19), `e56321a76` (B-13). LEDGER rows filed: D-N12-1, D-W4R2-1 (closes C-45(i)), D-B26-1 (closes C-14(ii)/(iii)/(iv)), D-CF0W-1, D-B13-1..4, D-B19-1..4 (already filed by the B-19 lane itself).
 - [ ] Session B / C lanes: per their session logs — each with a register row in OWNER-SHEET §E.
 - [x] Consolidation r3 (`docs/sessions/session-A-2026-08-24/CONSOLIDATION-2026-08-25-r3.md`, tip `ddf2e45d9`): SAFE TO PROMOTE — PG 1655/0 fail, sqlite 1618/0, all static gates green, DPA zero delta; web lint +4 (non-CI, discipline). Inherited non-CI red I-5 `PosCoreReceiptProjectionLoyaltyEarnTest` ×3 (PG 25P02) — micro-lane owed. Original spec: CI-shaped filtered suites on a throwaway PG (backend-test-pgsql allowlist + the parked-lane classes touched this week), deptrac 183/183, manifest EXIT=0, web lint ≤ baseline, pos lint 84, i18n audit, DPA scanner, tanstack-keys audit. Non-inherited reds fixed or reverted.
 - [x] Wave-4 re-run (`PLAYWRIGHT-first-tenant-campaign-wave4-RERUN-2026-08-25.md`) + targeted re-check (`PLAYWRIGHT-w4r2-w43-recheck-2026-08-25.md`): balances tie on every entity; lots + AP arm verified on fresh tenants.
@@ -18,8 +19,45 @@ Owner owns the promotion. Promoting to `origin/dev` = staging auto-deploy incl. 
 Never rewrite shared history. If the hook blocks, reconcile exactly as it prints, re-run the consolidation, promote again.
 
 ## 2. Migrations that will auto-run on staging (`tenants:migrate`) — all self-guarding by gate
-Tenant (since 08-23): `2026_08_23_*` ×11 (Session B: coupon/promo unique, membership revocation, source_document index, B-3 pos_enabled backfill, counting-apply unique, loyalty redemption_key, terminal identity, voucher unique, receipt trigger whitelist, held-orders), `2026_08_24_100000_add_advance_markers_to_payment_allocations`, `2026_08_24_100000_backfill_products_tax_rate_from_tax_configuration_n1` (writes products only; prints a WORKLIST), `2026_08_24_100100_add_status_check_constraint_to_documents`, `2026_08_24_140000_add_fiscal_period_transition_audit_columns`, `2026_08_25_120000_add_count_movement_markers_to_counting_items`, `2026_08_25_120000_retype_sales_discount_accounts_as_contra_revenue`, + D-1 ×3 (`pos_receipts_totals` disjunction, `discount_allocated`, forward-gate index) + P-1 (`country_inventory_settings` + company column) once merged.
-ORDER RULE: `tenants:migrate` BEFORE any manual `accounting:backfill-chart-purposes` (W4-9: the backfill refuses accounts whose type disagrees with the definition until the retype migration ran).
+Full `git diff origin/dev..dev --name-only -- apps/api/database/migrations` (re-derived 2026-08-26), in repo order:
+- `2026_01_05_150000_create_product_batches_table.php.bak`, `2026_01_05_150001_create_inventory_batch_stock_table.php.bak`, `2026_01_05_150002_create_inventory_batch_movements_table.php.bak`, `2026_01_05_150004_add_batch_id_to_document_lines_table.php.bak`, `2026_01_05_150005_add_batch_id_to_stock_reservations_table.php.bak` — **`.bak`, inert**: Laravel's migration loader ignores non-`.php` files, so none of these five run.
+- `2026_08_08_160000_create_supplier_goods_return_notes_tables.php`
+- `2026_08_21_140000_backfill_chart_required_purposes_o27.php`
+- `2026_08_23_000100_unique_journal_entries_source_opening_balance_batch.php`
+- `2026_08_23_000500_unique_coupon_and_promotion_usage_per_receipt.php`
+- `2026_08_23_100000_add_revocation_tracking_to_user_company_memberships.php`
+- `2026_08_23_100000_add_source_document_id_index_to_documents.php`
+- `2026_08_23_120000_backfill_location_pos_enabled_b3.php`
+- `2026_08_23_120000_unique_stock_movements_counting_apply.php`
+- `2026_08_23_140000_add_redemption_key_to_loyalty_transactions.php`
+- `2026_08_23_140000_harden_pos_terminals_identity_and_lifecycle.php`
+- `2026_08_23_150000_unique_voucher_ledger_voided_per_voucher.php`
+- `2026_08_23_160000_harden_pos_receipt_immutability_trigger_whitelist.php`
+- `2026_08_23_163000_harden_pos_held_orders_status_and_discard.php`
+- `2026_08_24_100000_add_advance_markers_to_payment_allocations.php`
+- `2026_08_24_100000_backfill_products_tax_rate_from_tax_configuration_n1.php` (writes products only; prints a WORKLIST)
+- `2026_08_24_100100_add_status_check_constraint_to_documents.php`
+- `2026_08_24_140000_add_fiscal_period_transition_audit_columns.php`
+- `2026_08_25_000100_add_fiscal_authority_columns_unactivated.php`
+- `2026_08_25_090000_add_discount_allocated_to_pos_receipt_vat_details_d1.php`
+- `2026_08_25_090100_widen_pos_receipts_totals_check_for_post_remise_base_d1.php`
+- `2026_08_25_090200_index_sale_receipt_v5_watermark_d1.php`
+- `2026_08_25_120000_add_count_movement_markers_to_counting_items.php`
+- `2026_08_25_120000_retype_sales_discount_accounts_as_contra_revenue.php`
+- `2026_08_25_130100_add_enum_check_constraints_to_vouchers.php`
+- `2026_08_25_130200_add_enum_check_constraints_to_journal_entries.php`
+- `2026_08_25_130300_add_enum_check_constraints_to_payments.php`
+- `2026_08_25_130400_add_enum_check_constraints_to_documents.php`
+- `2026_08_25_130500_add_enum_check_constraints_to_instrument_events.php`
+- `2026_08_25_140000_seed_count_correction_gl_posting_default.php`
+- `2026_08_25_150000_widen_payments_payment_type_check_for_pos_refund.php` **(W4R2-2)**
+- `2026_08_25_150100_retype_supplier_and_pos_refund_payments.php` **(W4R2-2)**
+- `2026_08_26_100000_backfill_payment_repository_location_n12.php` **(N-12)**
+
+ORDER RULES:
+1. `tenants:migrate` BEFORE any manual `accounting:backfill-chart-purposes` (W4-9: the backfill refuses accounts whose type disagrees with the definition until the retype migration ran).
+2. **W4R2-2 — migrate BEFORE rolling the API image.** `2026_08_25_150000` (widen `chk_payments_payment_type_enum`) MUST run, then `2026_08_25_150100` (retype), before the new API image serves traffic (see LEDGER D-W4R2-1).
+3. **N-12 — provisioning, then a manual step.** `2026_08_26_100000` provisions a branch drawer for every already-claimed/`pos_enabled` branch location; AFTER it runs, the operator must execute a `RepositoryTransfer` per branch named by its `drawer-provisioned-transfer-owed` census log line (see LEDGER D-N12-1, S-13).
 - [ ] After deploy: grep the migration log per tenant for `status=FAILED` and for the N-1 `worklist` lines; hand worklists to the operator (confirmed invoices need `vat:backfill-tax-details --apply`).
 
 ## 3. Seeders / one-shot steps that do NOT self-run
