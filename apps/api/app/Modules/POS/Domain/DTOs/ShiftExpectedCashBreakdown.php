@@ -26,19 +26,31 @@ final readonly class ShiftExpectedCashBreakdown
      *                                     subtracted, change-due removed); always '0' for a v2
      *                                     shift, whose sales term rides inside $movementsNet
      * @param  numeric-string  $movementsNet  signed sum of the shift's drawer movements
-     * @param  numeric-string  $expectedCash  openingFloat + cashSales + movementsNet, at $scale
+     * @param  numeric-string  $accountCollections  cash collected against customer credit accounts
+     *                                              during the shift; '0' for a v2 shift, which has
+     *                                              no ACCOUNT_PAYMENT authoring path
+     * @param  numeric-string  $expectedCash  the sum of the four terms above, at $scale
      * @param  int  $movementCount  how many movement rows the sum is built from — 0 means
      *                              "none found", which is a fact worth printing
+     * @param  string  $windowEnd  the upper bound the receipt/collection window was closed at.
+     *                             Load-bearing, not decoration: for an orphaned shift this is the
+     *                             authorising release's `occurred_at`, and an operator must be able
+     *                             to see that the figure stops there rather than at `now()` —
+     *                             otherwise a replacement till's takings would be invisible inside
+     *                             the total
      */
     public function __construct(
         public string $openingFloat,
         public string $cashSales,
         public string $movementsNet,
+        public string $accountCollections,
         public string $expectedCash,
         public ShiftCashMovementSource $movementSource,
         public int $movementCount,
+        public int $accountCollectionCount,
         public string $currencyCode,
         public int $scale,
+        public string $windowEnd,
     ) {}
 
     /**
@@ -57,14 +69,18 @@ final readonly class ShiftExpectedCashBreakdown
     public function describe(): string
     {
         return sprintf(
-            'opening float %s + cash sales %s + movements %s (%d row(s) from %s) = %s %s',
+            'opening float %s + cash sales %s + movements %s (%d row(s) from %s) + account collections %s '
+            .'(%d row(s)) = %s %s, window ending %s',
             $this->openingFloat,
             $this->cashSales,
             $this->movementsNet,
             $this->movementCount,
             $this->movementSource->tableName(),
+            $this->accountCollections,
+            $this->accountCollectionCount,
             $this->expectedCash,
             $this->currencyCode,
+            $this->windowEnd,
         );
     }
 }

@@ -25,6 +25,7 @@ use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -69,6 +70,14 @@ final class CloseOrphanedShiftCommandTest extends TestCase
     private User $user;
 
     private ?PaymentMethod $cashPaymentMethod = null;
+
+    /**
+     * `fiscal_events` is uniquely indexed on
+     * (tenant, company, terminal, chain_context, sequence_number), so a clock- or
+     * random-derived number collides as soon as two fixtures land in the same
+     * millisecond. A plain counter is the only reliable source here.
+     */
+    private int $accountCollectionSequence = 900;
 
     protected function setUp(): void
     {
@@ -312,6 +321,127 @@ final class CloseOrphanedShiftCommandTest extends TestCase
             bccomp((string) $row->expected_cash, '100', 4),
             'The drawer-operations derivation would have written the bare float — that is the defect.',
         );
+    }
+
+    /**
+     * THE GATE-r2 CRITICAL, pinned.
+     *
+     * The receipt window used to run to `now()`. Nothing stops a REPLACEMENT
+     * device claiming the terminal and selling for weeks while the orphan sits
+     * OPEN — `pos_receipts` carries no shift id and `PosCoreReceiptProjection`
+     * never consults `pos_shifts`, so the replacement's receipts project
+     * normally even while its `SESSION_OPEN` is being dropped. That is this
+     * lane's own incident narrative. With an unbounded window the operator
+     * running the command at month-end (the cadence the runbook prescribes)
+     * would sweep another till's whole week of takings into the orphan's
+     * `expected_cash`, which the JET exports as `EspecesAttendues` with
+     * `Ecart = 0` against the ORIGINAL cashier — r1 understated the figure,
+     * this overstated it.
+     *
+     * The window now ends at the authorising release's `occurred_at`.
+     */
+    public function test_a_receipt_posted_after_the_release_is_not_swept_into_the_orphans_expected_cash(): void
+    {
+        [$terminal, $shiftId] = $this->orphanedShift(openingCash: '100.000');
+
+        // The orphan's own till, before the release.
+        $this->cashSaleOn($terminal, sequence: 1, tendered: '50.000');
+        // The REPLACEMENT till, after it. Same terminal — that is the point.
+        $this->cashSaleOn($terminal, sequence: 2, tendered: '400.000', postedAt: now()->addHours(6));
+
+        $this->artisan(self::COMMAND, [
+            'shift' => $shiftId,
+            '--reason' => 'device stolen mid-shift',
+            '--closed-by' => $this->user->id,
+            '--apply' => true,
+        ])->assertExitCode(CloseOrphanedShiftCommand::SUCCESS);
+
+        $row = DB::table('pos_shifts')->where('id', $shiftId)->first();
+        $this->assertNotNull($row);
+        $this->assertSame(0, bccomp((string) $row->expected_cash, '150', 4), 'expected = 100 + 50; the 400 belongs to the replacement till.');
+        $this->assertSame(
+            -1,
+            bccomp((string) $row->expected_cash, '550', 4),
+            'An unbounded window would have written 550 — another till\'s takings.',
+        );
+    }
+
+    /**
+     * GATE r2 IMPORTANT — cash collected against a customer credit account
+     * physically enters this drawer, and the device folds it into its own
+     * expected cash (`zReportService.ts:272-275`). Omitting it makes the server
+     * figure short by exactly that amount and exports the shortfall as a
+     * balanced count.
+     *
+     * The term is derivable: `AccountPaymentReceiptProjection` stores the whole
+     * payload, and `AccountPaymentPayload::toArray()` emits `shift_id` and
+     * `payment.method_code` / `payment.amount`.
+     */
+    public function test_a_cash_account_collection_raises_expected_cash(): void
+    {
+        [$terminal, $shiftId] = $this->orphanedShift(openingCash: '100.000');
+
+        $this->accountCollection($terminal, $shiftId, methodCode: 'CASH', amount: '75.000');
+
+        $this->artisan(self::COMMAND, [
+            'shift' => $shiftId,
+            '--reason' => 'device stolen mid-shift',
+            '--closed-by' => $this->user->id,
+            '--apply' => true,
+        ])->assertExitCode(CloseOrphanedShiftCommand::SUCCESS);
+
+        $this->assertSame(
+            0,
+            bccomp((string) DB::table('pos_shifts')->where('id', $shiftId)->value('expected_cash'), '175', 4),
+        );
+    }
+
+    /**
+     * A collection settled any other way never entered the drawer, and a
+     * collection belonging to ANOTHER shift on the same terminal is not this
+     * shift's money. Both must leave the figure alone.
+     */
+    public function test_a_non_cash_or_foreign_shift_account_collection_does_not_move_expected_cash(): void
+    {
+        [$terminal, $shiftId] = $this->orphanedShift(openingCash: '100.000');
+
+        $this->accountCollection($terminal, $shiftId, methodCode: 'CARD', amount: '75.000');
+        $this->accountCollection($terminal, Str::uuid()->toString(), methodCode: 'CASH', amount: '60.000');
+
+        $this->artisan(self::COMMAND, [
+            'shift' => $shiftId,
+            '--reason' => 'device stolen mid-shift',
+            '--closed-by' => $this->user->id,
+            '--apply' => true,
+        ])->assertExitCode(CloseOrphanedShiftCommand::SUCCESS);
+
+        $this->assertSame(
+            0,
+            bccomp((string) DB::table('pos_shifts')->where('id', $shiftId)->value('expected_cash'), '100', 4),
+        );
+    }
+
+    /**
+     * A grandfathered collection with no `shift_id` cannot be attributed, and
+     * the two alternatives — guessing it belongs to this shift, or dropping cash
+     * that is sitting in the drawer — both write a wrong number into a certified
+     * export. Same fail-closed standard `CASH_CORRECTION` gets.
+     */
+    public function test_an_account_collection_with_no_shift_id_refuses_the_close(): void
+    {
+        [$terminal, $shiftId] = $this->orphanedShift(openingCash: '100.000');
+
+        $this->accountCollection($terminal, shiftId: null, methodCode: 'CASH', amount: '75.000');
+
+        $this->artisan(self::COMMAND, [
+            'shift' => $shiftId,
+            '--reason' => 'device stolen mid-shift',
+            '--closed-by' => $this->user->id,
+            '--apply' => true,
+        ])->assertExitCode(CloseOrphanedShiftCommand::EXIT_COLLECTION_UNATTRIBUTABLE);
+
+        $this->assertSame('OPEN', $this->shiftStatus($shiftId));
+        $this->assertSame(0, $this->orphanCloseAuditCount($shiftId));
     }
 
     /**
@@ -666,6 +796,10 @@ final class CloseOrphanedShiftCommandTest extends TestCase
     {
         $shiftId = Str::uuid()->toString();
 
+        // Opened four hours ago so the fixtures have room either side of the
+        // forced release, which happens at `now()`. The window this command
+        // derives over is [opened_at, release occurred_at], and several cases
+        // below turn on which side of that bound a row falls.
         DB::table('pos_shifts')->insert([
             'id' => $shiftId,
             'terminal_id' => $terminal->id,
@@ -673,9 +807,9 @@ final class CloseOrphanedShiftCommandTest extends TestCase
             'shift_number' => $shiftNumber,
             'status' => 'OPEN',
             'opening_cash' => $openingCash,
-            'opened_at' => now(),
-            'created_at' => now(),
-            'updated_at' => now(),
+            'opened_at' => now()->subHours(4),
+            'created_at' => now()->subHours(4),
+            'updated_at' => now()->subHours(4),
         ]);
 
         return $shiftId;
@@ -728,9 +862,14 @@ final class CloseOrphanedShiftCommandTest extends TestCase
      * takings actually live; there is no `SALE` cash-drawer operation in
      * production at all (`CashDrawerService::recordSale()` has no callers).
      */
-    private function cashSaleOn(Terminal $terminal, int $sequence, string $tendered, string $changeDue = '0.000'): void
-    {
-        $receipt = $this->receiptOn($terminal, $sequence, $changeDue);
+    private function cashSaleOn(
+        Terminal $terminal,
+        int $sequence,
+        string $tendered,
+        string $changeDue = '0.000',
+        ?CarbonInterface $postedAt = null,
+    ): void {
+        $receipt = $this->receiptOn($terminal, $sequence, $changeDue, $postedAt);
 
         DB::table('pos_receipt_payments')->insert([
             'id' => (string) Str::uuid(),
@@ -770,11 +909,11 @@ final class CloseOrphanedShiftCommandTest extends TestCase
         $payload = [
             'amount' => $amount,
             'approval' => null,
-            'business_date' => '2026-06-14',
+            'business_date' => now()->toDateString(),
             'cash_drawer_operation_id' => null,
             'currency_code' => 'TND',
             'currency_scale' => 3,
-            'event_time_device' => '2026-06-14T12:00:00.000Z',
+            'event_time_device' => now()->subHours(2)->toIso8601String(),
             'movement_id' => (string) Str::uuid(),
             'movement_type' => $movementType,
             'operator_id' => $this->user->id,
@@ -797,10 +936,10 @@ final class CloseOrphanedShiftCommandTest extends TestCase
             'event_version' => 1,
             'signature_version' => 'hash-chain-integrity-v1',
             'sequence_number' => $sequenceNumber,
-            'event_time_device' => '2026-06-14 12:00:00',
-            'business_date' => '2026-06-14',
+            'event_time_device' => now()->subHours(2),
+            'business_date' => now()->toDateString(),
             'chain_context' => 'z_session',
-            'server_received_at' => '2026-06-14 12:00:01',
+            'server_received_at' => now()->subHours(2),
             'source_event_class' => 'pos_cash_movement',
             'source_event_id' => $payload['movement_id'],
             'canonical_bytes' => $canonicalBytes,
@@ -828,6 +967,84 @@ final class CloseOrphanedShiftCommandTest extends TestCase
         return [$terminal, $shiftId, $releaseAuditId];
     }
 
+    /**
+     * A device-authored ACCOUNT_PAYMENT, in the shape
+     * `AccountPaymentReceiptProjection` leaves behind: the `payload_snapshot`
+     * IS `AccountPaymentPayload::toArray()`, carrying `shift_id` and the
+     * `payment` leg.
+     *
+     * `$shiftId = null` models a grandfathered row from before the device
+     * required the field.
+     */
+    private function accountCollection(Terminal $terminal, ?string $shiftId, string $methodCode, string $amount): void
+    {
+        $paymentUuid = (string) Str::uuid();
+
+        $snapshot = [
+            'account_payment_uuid' => $paymentUuid,
+            'business_date' => now()->toDateString(),
+            'currency_code' => 'TND',
+            'currency_scale' => 3,
+            'payment' => [
+                'amount' => $amount,
+                'foreign_currency_amount' => null,
+                'foreign_currency_code' => null,
+                'instrument_serial' => null,
+                'instrument_type' => null,
+                'method_code' => $methodCode,
+                'repository_id' => null,
+            ],
+            'receipt_type_code' => 'ACCOUNT_PAYMENT',
+            'terminal_id' => $terminal->id,
+            'training_flag' => false,
+        ];
+        if ($shiftId !== null) {
+            $snapshot['shift_id'] = $shiftId;
+        }
+
+        $canonicalBytes = json_encode(['payload' => $snapshot], JSON_THROW_ON_ERROR);
+
+        $event = FiscalEvent::query()->create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'terminal_id' => $terminal->id,
+            'operator_id' => $this->user->id,
+            'event_type' => FiscalEventType::ACCOUNT_PAYMENT,
+            'event_version' => 1,
+            'signature_version' => 'hash-chain-integrity-v1',
+            'sequence_number' => ++$this->accountCollectionSequence,
+            'event_time_device' => now()->subHours(2),
+            'business_date' => now()->toDateString(),
+            'chain_context' => 'operational',
+            'server_received_at' => now()->subHours(2),
+            'source_event_class' => 'pos_account_payment',
+            'source_event_id' => $paymentUuid,
+            'canonical_bytes' => $canonicalBytes,
+            'previous_hash' => str_repeat('b', 64),
+            'current_hash' => hash('sha256', $canonicalBytes),
+            'signature_status' => SignatureStatus::NotRequired,
+            'integrity_status' => IntegrityStatus::Verified,
+            'payload' => $snapshot,
+            'payload_parse_status' => PayloadParseStatus::Parsed,
+        ]);
+
+        DB::table('pos_account_payment_receipts')->insert([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'fiscal_event_id' => $event->id,
+            'account_payment_uuid' => $paymentUuid,
+            'customer_id' => (string) Str::uuid(),
+            'customer_name' => 'Fixture Customer',
+            'amount' => $amount,
+            'currency_code' => 'TND',
+            'payload_snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR),
+            'created_at' => now()->subHours(2),
+            'updated_at' => now()->subHours(2),
+        ]);
+    }
+
     private function cashOperation(string $shiftId, string $type, string $amount, ?string $receiptId = null): void
     {
         CashDrawerOperation::create([
@@ -845,8 +1062,12 @@ final class CloseOrphanedShiftCommandTest extends TestCase
     /**
      * Minimal posted receipt — the CHECK above only needs the FK to resolve.
      */
-    private function receiptOn(Terminal $terminal, int $sequence, string $changeDue = '0.000'): Receipt
-    {
+    private function receiptOn(
+        Terminal $terminal,
+        int $sequence,
+        string $changeDue = '0.000',
+        ?CarbonInterface $postedAt = null,
+    ): Receipt {
         return Receipt::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -858,7 +1079,7 @@ final class CloseOrphanedShiftCommandTest extends TestCase
             'fiscal_hash' => hash('sha256', "o30-orphan-{$sequence}"),
             'vat_breakdown_hash' => hash('sha256', 'vat'),
             'payment_methods_hash' => hash('sha256', 'payment'),
-            'posted_at' => now(),
+            'posted_at' => $postedAt ?? now()->subHours(2),
             'cashier_id' => $this->user->id,
             'cashier_name' => 'Fixture Cashier',
             'subtotal' => '100.000',

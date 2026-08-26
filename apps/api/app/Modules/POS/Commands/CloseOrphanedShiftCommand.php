@@ -11,6 +11,7 @@ use App\Modules\POS\Domain\DTOs\ShiftExpectedCashBreakdown;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Events\OrphanedShiftClosedByOperator;
 use App\Modules\POS\Domain\Exceptions\OrphanCloseProvenanceLostException;
+use App\Modules\POS\Domain\Exceptions\UnattributableAccountCollectionException;
 use App\Modules\POS\Domain\Exceptions\UnsignableCashMovementException;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
@@ -119,7 +120,8 @@ use Illuminate\Support\Str;
  * {@see self::EXIT_CLOSED_BY_UNKNOWN} (5) ·
  * {@see self::EXIT_EXPECTED_CASH_NEGATIVE} (6) ·
  * {@see self::EXIT_AUDIT_WRITE_FAILED} (7) ·
- * {@see self::EXIT_MOVEMENTS_UNUSABLE} (8). Note that `tenants:run` DISCARDS the
+ * {@see self::EXIT_MOVEMENTS_UNUSABLE} (8) ·
+ * {@see self::EXIT_COLLECTION_UNATTRIBUTABLE} (9). Note that `tenants:run` DISCARDS the
  * child exit code, so the codes are for a direct invocation under an
  * already-bound tenant; under `tenants:run` read the printed verdict line.
  *
@@ -171,6 +173,13 @@ final class CloseOrphanedShiftCommand extends Command
      * cash cannot be derived at all. See {@see UnsignableCashMovementException}.
      */
     public const EXIT_MOVEMENTS_UNUSABLE = 8;
+
+    /**
+     * A customer account collection on this terminal, inside the shift's window,
+     * carries no `shift_id` — so its cash cannot be attributed and the figure
+     * cannot be derived. See {@see UnattributableAccountCollectionException}.
+     */
+    public const EXIT_COLLECTION_UNATTRIBUTABLE = 9;
 
     /**
      * @var string
@@ -297,8 +306,28 @@ final class CloseOrphanedShiftCommand extends Command
         // the movement table the terminal's fiscal schema version actually
         // populates — `pos_z_session_events` for a v3 device shift,
         // `pos_cash_drawer_operations` for a v2 one.
+        // THE WINDOW ENDS AT THE RELEASE, not at now() (gate r2). Nothing stops a
+        // REPLACEMENT device claiming this terminal and selling for weeks while
+        // the orphan sits OPEN — `pos_receipts` carries no shift id and
+        // `PosCoreReceiptProjection` never consults `pos_shifts`, so the
+        // replacement's receipts project normally even while its SESSION_OPEN is
+        // dropped. An unbounded window would sweep that till's takings into this
+        // orphan's expected cash, and the JET would export the total as
+        // `EspecesAttendues` with `Ecart = 0` against the ORIGINAL cashier.
+        //
+        // The release's own `occurred_at` is the right bound and is already in
+        // hand: after a forced release the orphan's device no longer holds the
+        // terminal, and `pos_receipts.posted_at` is DEVICE time, so the dead
+        // device's late-synced receipts still fall inside while the
+        // replacement's never do.
+        $window = Carbon::parse($release['occurred_at']);
+
         try {
-            $breakdown = $this->expectedCashService->breakdown($shift, $terminal, $currency);
+            $breakdown = $this->expectedCashService->breakdown($shift, $terminal, $currency, $window);
+        } catch (UnattributableAccountCollectionException $e) {
+            $this->error($e->getMessage());
+
+            return self::EXIT_COLLECTION_UNATTRIBUTABLE;
         } catch (UnsignableCashMovementException $e) {
             // A typed refusal, not a stack trace: the operator reading this is
             // mid-incident with a till out of service, and "which movement, and
@@ -557,6 +586,8 @@ final class CloseOrphanedShiftCommand extends Command
             ['cash sales (net of returns/change)', $breakdown->cashSales],
             ['drawer movements', sprintf('%s (%d row(s))', $breakdown->movementsNet, $breakdown->movementCount)],
             ['movement source', $breakdown->movementSource->tableName()],
+            ['cash account collections', sprintf('%s (%d row(s))', $breakdown->accountCollections, $breakdown->accountCollectionCount)],
+            ['window ends at (release time)', $breakdown->windowEnd],
             ['expected_cash (to write)', $breakdown->expectedCash],
             ['actual_cash (to write)', $countedCash],
             ['variance (to write)', $variance],

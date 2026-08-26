@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Application\Services;
 
+use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\POS\Application\Projections\ZSessionLifecycleProjection;
 use App\Modules\POS\Domain\DTOs\ShiftExpectedCashBreakdown;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ShiftCashMovementSource;
+use App\Modules\POS\Domain\Exceptions\UnattributableAccountCollectionException;
 use App\Modules\POS\Domain\Exceptions\UnsignableCashMovementException;
 use App\Modules\POS\Domain\Services\CashDrawerService;
 use App\Modules\POS\Domain\Shift;
@@ -37,8 +40,15 @@ use Illuminate\Support\Facades\DB;
  * to the NF525 JET as `EspecesAttendues` with `Ecart = 0` against the ORIGINAL
  * cashier. A wrong number in a certified export is not a labelling problem.
  *
- * One derivation, one place, so the orphan-close figure and the Z figure cannot
- * drift apart again.
+ * WHAT IS AND IS NOT SHARED, precisely — the earlier "one derivation, one place"
+ * claim overstated it. Genuinely shared: {@see self::expectedPerPaymentMethod()},
+ * which `ReportGenerationService` now calls for its cash-count validation, so the
+ * per-tender figures cannot drift. NOT shared: `ReportGenerationService` still
+ * takes its `expected_cash` from {@see CashDrawerService::calculateExpectedCash()},
+ * and that is harmless ONLY because `generateZReport()` refuses a v3 terminal
+ * outright (`assertServerReportAuthoringAllowed`) — so the v3 arm below has no
+ * second consumer to agree with. If that refusal is ever lifted, the two MUST be
+ * unified first; do not read this file as evidence that they already are.
  *
  * # The two movement sources are decided by the terminal, never by preference
  *
@@ -47,40 +57,68 @@ use Illuminate\Support\Facades\DB;
  * Reading the wrong table returns a plausible number from an empty set, which
  * is precisely how the defect above stayed invisible.
  *
- * # The shift window
+ * # The shift window, and why `$until` is not optional in practice (gate r2)
  *
  * `pos_receipts` carries no `shift_id`, so the receipt window is
  * `terminal_id` + `posted_at BETWEEN shift.opened_at AND $until` — the same
  * window `buildExpectedPerMethod()` has always used (REALIGNMENT-LOG
- * 2026-04-26). Movements are keyed by `shift_id` directly and need no window.
+ * 2026-04-26). Z-session movements are keyed by `shift_id` and need no window.
+ *
+ * For a LIVE shift `$until = now()` is right, which is why it is the default and
+ * why `ReportGenerationService` passes nothing. For an ORPHANED shift it is
+ * badly wrong: nothing stops a REPLACEMENT device claiming the terminal and
+ * selling for weeks while the orphan sits OPEN — `pos_receipts` has no shift
+ * column and `PosCoreReceiptProjection` never looks at `pos_shifts`, so the
+ * replacement's `SALE_RECEIPT` events project normally even while its
+ * `SESSION_OPEN` is being dropped. An unbounded window sweeps another till's
+ * takings into the orphan's `expected_cash`, which the JET then exports as
+ * `EspecesAttendues` with `Ecart = 0` against the ORIGINAL cashier. So
+ * `pos:shift:close-orphaned` passes the authorising release's `occurred_at`:
+ * after a forced release the orphan's device no longer holds the terminal, and
+ * `posted_at` is DEVICE time, so the dead device's late-synced receipts still
+ * fall inside while the replacement's never do.
  */
 final class ShiftExpectedCashService
 {
     /**
-     * `pos_z_session_events` rows that MOVE cash, and the direction each moves
-     * it — mirroring the device, which is authoritative for a v3 drawer.
+     * The `z_session` fiscal event types that MOVE cash. Enum cases, not string
+     * literals (rule 9) — `event_type` is a `FiscalEventType` column and the
+     * four names below drift silently as bare strings.
      *
-     * `CASH_IN` is the device's `deposit` and `CASH_OUT` its `payout`
-     * (`apps/pos/src/api/cashDrawerApi.ts:177`), summed by the device's own Z as
-     * `deposit = +, payout = −` (`apps/pos/src/lib/offline/zReportService.ts:264-276`).
-     * `SAFE_DROP` takes cash OUT of the drawer to the safe, matching the sign
-     * `CashDrawerService` gives its `DEPOSIT` (a safe deposit) on the v2 side.
+     * `CASH_CORRECTION` is included in the READ so the derivation SEES it and
+     * can refuse; it is deliberately absent from {@see self::movementDirection()},
+     * which is what turns seeing it into a refusal rather than a silent zero.
      *
-     * `OPENING_FLOAT` is deliberately ABSENT: the float is read from
-     * `pos_shifts.opening_cash`, and adding both would double it.
-     *
-     * `CASH_CORRECTION` is deliberately ABSENT TOO — it is the only movement
-     * whose direction lives in the amount's sign rather than in its type, it has
-     * no device authoring path today, and guessing a direction for a correction
-     * would be the same class of silent error this service exists to end. It is
-     * handled by {@see self::signedMovementAmount()} as an explicit refusal.
-     *
-     * @var array<string, string> movement type => '+' | '-'
+     * @var list<FiscalEventType>
      */
-    private const MOVEMENT_DIRECTIONS = [
-        'CASH_IN' => '+',
-        'CASH_OUT' => '-',
-        'SAFE_DROP' => '-',
+    private const CASH_MOVEMENT_EVENT_TYPES = [
+        FiscalEventType::CASH_IN,
+        FiscalEventType::CASH_OUT,
+        FiscalEventType::SAFE_DROP,
+        FiscalEventType::CASH_CORRECTION,
+    ];
+
+    /**
+     * The live (non-training) z-session chain.
+     *
+     * A bare string because `chain_context` has NO enum anywhere in this
+     * codebase — `ZSessionLifecycleProjection::apply()` and
+     * `FiscalPayloadConstraintValidator` both compare it as a literal. Named
+     * here so this file has one definition rather than three, and so the day an
+     * enum arrives there is one line to change.
+     */
+    private const LIVE_Z_SESSION_CHAIN = 'z_session';
+
+    /**
+     * The subset of {@see self::CASH_MOVEMENT_EVENT_TYPES} this server can sign.
+     * Named for the refusal message, so an operator is told what IS known.
+     *
+     * @var list<FiscalEventType>
+     */
+    private const SIGNABLE_MOVEMENT_TYPES = [
+        FiscalEventType::CASH_IN,
+        FiscalEventType::CASH_OUT,
+        FiscalEventType::SAFE_DROP,
     ];
 
     /**
@@ -174,7 +212,12 @@ final class ShiftExpectedCashService
      * Expected cash in the drawer, with every term it was built from.
      *
      * v3: opening float + net cash tendered on the shift's receipts + the signed
-     * sum of its `pos_z_session_events` movements.
+     * sum of its `pos_z_session_events` movements + cash collected against
+     * customer accounts — the device's own four terms
+     * (`apps/pos/src/lib/offline/zReportService.ts:277-289`), minus the fifth
+     * (`cashRefundImpact`), which reads a device-LOCAL table written only by the
+     * legacy refund path and has no server mirror; a v4 return is already netted
+     * out of the receipts term.
      * v2: opening float + the signed sum of its `pos_cash_drawer_operations`
      * (whose `SALE` rows ARE the v2 sales term), i.e. the figure
      * `CashDrawerService::calculateExpectedCash()` produces for the v2 Z report.
@@ -185,6 +228,7 @@ final class ShiftExpectedCashService
      *                                bare `getScale()` throws (rule 19).
      *
      * @throws UnsignableCashMovementException when a movement row carries a type this service cannot sign
+     * @throws UnattributableAccountCollectionException when an account collection cannot be attributed to a shift
      */
     public function breakdown(
         Shift $shift,
@@ -206,24 +250,37 @@ final class ShiftExpectedCashService
         if ($deviceAuthoritative) {
             $cashSales = $this->cashTenderedNetOfChange($shift, $until, $working);
             [$movementsNet, $movementCount] = $this->zSessionMovements($shift, $working);
+            [$accountCollections, $collectionCount] = $this->cashAccountCollections($shift, $terminal, $until, $working);
             $source = ShiftCashMovementSource::ZSessionEvents;
         } else {
+            // A v2 terminal has no ACCOUNT_PAYMENT authoring path — that is a v3
+            // device fiscal event — so there is no collection term to add, and
+            // its SALE drawer rows already carry its sales.
             $cashSales = CurrencyScale::bcformatStrict('0', $working);
             [$movementsNet, $movementCount] = $this->legacyDrawerMovements($shift, $working);
+            $accountCollections = CurrencyScale::bcformatStrict('0', $working);
+            $collectionCount = 0;
             $source = ShiftCashMovementSource::CashDrawerOperations;
         }
 
-        $expected = bcadd(bcadd($openingFloat, $cashSales, $working), $movementsNet, $working);
+        $expected = bcadd(
+            bcadd(bcadd($openingFloat, $cashSales, $working), $movementsNet, $working),
+            $accountCollections,
+            $working,
+        );
 
         return new ShiftExpectedCashBreakdown(
             openingFloat: CurrencyScale::bcformatStrict($openingFloat, $scale),
             cashSales: CurrencyScale::bcformatStrict($cashSales, $scale),
             movementsNet: CurrencyScale::bcformatStrict($movementsNet, $scale),
+            accountCollections: CurrencyScale::bcformatStrict($accountCollections, $scale),
             expectedCash: CurrencyScale::bcformatStrict($expected, $scale),
             movementSource: $source,
             movementCount: $movementCount,
+            accountCollectionCount: $collectionCount,
             currencyCode: $currencyCode,
             scale: $scale,
+            windowEnd: $until->toIso8601String(),
         );
     }
 
@@ -304,9 +361,12 @@ final class ShiftExpectedCashService
         $rows = DB::table('pos_z_session_events')
             ->join('fiscal_events', 'pos_z_session_events.fiscal_event_id', '=', 'fiscal_events.id')
             ->where('pos_z_session_events.shift_id', $shift->id)
-            ->where('pos_z_session_events.chain_context', 'z_session')
-            ->where('fiscal_events.integrity_status', 'verified')
-            ->whereIn('pos_z_session_events.event_type', ['CASH_IN', 'CASH_OUT', 'SAFE_DROP', 'CASH_CORRECTION'])
+            ->where('pos_z_session_events.chain_context', self::LIVE_Z_SESSION_CHAIN)
+            ->where('fiscal_events.integrity_status', IntegrityStatus::Verified->value)
+            ->whereIn('pos_z_session_events.event_type', array_map(
+                static fn (FiscalEventType $type): string => $type->value,
+                self::CASH_MOVEMENT_EVENT_TYPES,
+            ))
             ->orderBy('pos_z_session_events.event_time_device')
             ->get(['pos_z_session_events.event_type as event_type', 'pos_z_session_events.payload as payload']);
 
@@ -329,6 +389,101 @@ final class ShiftExpectedCashService
             }
 
             $net = bcadd($net, $this->signedMovementAmount($shift->id, $movementType, $amount, $scale), $scale);
+            $count++;
+        }
+
+        return [$net, $count];
+    }
+
+    /**
+     * Cash collected against customer credit accounts during the shift.
+     *
+     * # Why this term exists (gate r2)
+     *
+     * A customer paying down their account in cash physically fills this drawer,
+     * and the device folds it into its own expected cash
+     * (`apps/pos/src/lib/offline/zReportService.ts:272-275`). Omitting it makes
+     * the server figure short by exactly that amount on every shift that took
+     * one — and short money is exported to the NF525 JET as a BALANCED count.
+     *
+     * The first version of this service left the term out on the stated grounds
+     * that `pos_account_payment_receipts` "carries no shift_id and no tender
+     * breakdown". The COLUMN has none; the ROW does.
+     * `AccountPaymentReceiptProjection` stores `payload_snapshot =>
+     * $payload->toArray()`, and `AccountPaymentPayload::toArray()` emits
+     * `shift_id` and `payment` (with `method_code` and `amount`) — written by the
+     * device, which REQUIRES `shift_id` on every ACCOUNT_PAYMENT it authors.
+     *
+     * # Attribution, and the refusal
+     *
+     * Rows are found by TERMINAL + window (through `fiscal_events`, which also
+     * carries the integrity status), then attributed by
+     * `payload_snapshot->shift_id`:
+     *
+     *   - belongs to this shift + tendered in CASH → added;
+     *   - belongs to this shift + tendered any other way → ignored (it never
+     *     entered the drawer);
+     *   - belongs to ANOTHER shift → ignored;
+     *   - carries NO shift_id → {@see UnattributableAccountCollectionException}.
+     *
+     * That last branch is the same fail-closed standard `CASH_CORRECTION` gets.
+     * The alternatives are guessing that a grandfathered row belongs to this
+     * shift, or silently dropping cash that is sitting in the drawer; both write
+     * a wrong number into a certified export.
+     *
+     * Training collections are skipped — training money is not real.
+     *
+     * @return array{0: numeric-string, 1: int}
+     */
+    private function cashAccountCollections(Shift $shift, Terminal $terminal, CarbonInterface $until, int $scale): array
+    {
+        $rows = DB::table('pos_account_payment_receipts')
+            ->join('fiscal_events', 'pos_account_payment_receipts.fiscal_event_id', '=', 'fiscal_events.id')
+            ->where('fiscal_events.terminal_id', $terminal->id)
+            ->where('fiscal_events.integrity_status', IntegrityStatus::Verified->value)
+            ->whereBetween('fiscal_events.event_time_device', [$shift->opened_at, $until])
+            ->orderBy('fiscal_events.event_time_device')
+            ->get([
+                'pos_account_payment_receipts.id as id',
+                'pos_account_payment_receipts.payload_snapshot as payload_snapshot',
+            ]);
+
+        $net = CurrencyScale::bcformatStrict('0', $scale);
+        $count = 0;
+
+        foreach ($rows as $row) {
+            $snapshot = $this->decodePayload($row->payload_snapshot);
+
+            if (($snapshot['training_flag'] ?? null) === true) {
+                continue;
+            }
+
+            $rowShiftId = $snapshot['shift_id'] ?? null;
+            if (! is_string($rowShiftId) || $rowShiftId === '') {
+                throw UnattributableAccountCollectionException::forShift($shift->id, (string) $row->id);
+            }
+
+            if ($rowShiftId !== $shift->id) {
+                continue;
+            }
+
+            $payment = $snapshot['payment'] ?? null;
+            if (! is_array($payment)) {
+                throw UnattributableAccountCollectionException::forShift($shift->id, (string) $row->id);
+            }
+
+            $methodCode = $payment['method_code'] ?? null;
+            $amount = $payment['amount'] ?? null;
+
+            if (! is_string($methodCode) || ! is_string($amount) || ! is_numeric($amount)) {
+                throw UnattributableAccountCollectionException::forShift($shift->id, (string) $row->id);
+            }
+
+            if (strtoupper($methodCode) !== 'CASH') {
+                continue;
+            }
+
+            $net = bcadd($net, CurrencyScale::bcformatStrict($amount, $scale), $scale);
             $count++;
         }
 
@@ -365,29 +520,61 @@ final class ShiftExpectedCashService
     /**
      * Sign one v3 movement, or REFUSE.
      *
-     * Fails closed on an unknown type deliberately. The alternative — treating
-     * an unrecognised movement as zero — is exactly the failure mode this
-     * service was written to end: a number that looks reasonable, is silently
-     * short by whatever the unknown movement was worth, and is exported to a
-     * certified JET as a balanced count.
+     * `CASH_IN` is the device's `deposit` and `CASH_OUT` its `payout`
+     * (`apps/pos/src/api/cashDrawerApi.ts:177`), summed by the device's own Z as
+     * `deposit = +, payout = −` (`apps/pos/src/lib/offline/zReportService.ts:264-276`).
+     *
+     * `SAFE_DROP` is signed `-` because cash physically leaves the drawer for
+     * the safe — but be honest about the basis: that matches the sign
+     * `CashDrawerService` gives its v2 `DEPOSIT`, NOT an observed device
+     * behaviour, because the device has no `SAFE_DROP` authoring path at all
+     * (its only Z cash-movement writer emits `CASH_IN`/`CASH_OUT`). The day one
+     * is authored, this sign and the device's own expected cash must be
+     * reconciled before they are trusted to agree.
+     *
+     * `OPENING_FLOAT` never reaches here — the float is read from
+     * `pos_shifts.opening_cash` and adding both would double it.
+     *
+     * `CASH_CORRECTION` is refused: it is the only movement whose direction
+     * lives in the amount's SIGN rather than in its type, and it has no device
+     * authoring path, so there is no observed convention to encode. Fails closed
+     * deliberately — treating an unrecognised movement as zero would return a
+     * figure that looks reasonable, is short by whatever the movement was worth,
+     * and is exported to a certified JET as a balanced count.
      *
      * @return numeric-string
      */
     private function signedMovementAmount(string $shiftId, string $movementType, string $amount, int $scale): string
     {
         $magnitude = CurrencyScale::bcformatStrict($amount, $scale);
+        $direction = $this->movementDirection($movementType);
 
-        if (! array_key_exists($movementType, self::MOVEMENT_DIRECTIONS)) {
+        if ($direction === null) {
             throw UnsignableCashMovementException::forShift(
                 $shiftId,
                 $movementType,
-                implode(', ', array_keys(self::MOVEMENT_DIRECTIONS)),
+                implode(', ', array_map(
+                    static fn (FiscalEventType $type): string => $type->value,
+                    self::SIGNABLE_MOVEMENT_TYPES,
+                )),
             );
         }
 
-        return self::MOVEMENT_DIRECTIONS[$movementType] === '+'
+        return $direction === '+'
             ? $magnitude
             : bcsub(CurrencyScale::bcformatStrict('0', $scale), $magnitude, $scale);
+    }
+
+    /**
+     * @return '+'|'-'|null null = no agreed direction on the server
+     */
+    private function movementDirection(string $movementType): ?string
+    {
+        return match (FiscalEventType::tryFrom($movementType)) {
+            FiscalEventType::CASH_IN => '+',
+            FiscalEventType::CASH_OUT, FiscalEventType::SAFE_DROP => '-',
+            default => null,
+        };
     }
 
     /**
