@@ -1637,6 +1637,78 @@ final class BackfillTaxDetailsCommandTest extends TestCase
     }
 
     /**
+     * N3 (treasury r2). `ArApOpeningService` mints `supplier_invoice` /
+     * `supplier_credit_note` documents that are Posted, `is_historical = true`
+     * and carry NO lines. They satisfied the leg's scope, hit two divergence
+     * reasons at once, and printed one "needs manual review" line each — on a
+     * tenant that ran an AP opening batch (a first-tenant launch flow) that IS
+     * the census the owner is told to review before --apply.
+     *
+     * A historical opening's VAT was declared under the previous system and is by
+     * definition not declarable here, so `is_historical` is an unambiguous
+     * discriminator: own bucket, out of scope, no warning.
+     */
+    public function test_supplier_leg_excludes_historical_ar_ap_opening_documents(): void
+    {
+        $opening = $this->createUnsnapshottedSupplierDocument(
+            DocumentStatus::Posted,
+            withLine: false,
+            withJournalEntry: true,
+            isHistorical: true,
+        );
+
+        $output = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(0, DocumentTaxDetail::where('document_id', $opening->id)->count());
+        $this->assertStringContainsString('1 historical AR/AP opening (excluded: declared under the previous system)', $output);
+        $this->assertStringNotContainsString('needs manual review', $output);
+        $this->assertStringContainsString('Scanned 0 in-scope document(s)', $output);
+    }
+
+    /**
+     * N5 (treasury r2). `getScaleSafe(null, 3)` returns its fallback only on an
+     * UnboundCompanyContextException, so an empty-currency document resolved
+     * scale 3 in the console backfill and the company's own scale in the HTTP
+     * writer — the shared implementation returning two different answers, which
+     * is the exact property this builder exists to make impossible. RULED: an
+     * empty/NULL document currency is a CHECK FAILURE, never a default-3 guess.
+     */
+    public function test_supplier_leg_refuses_a_document_whose_currency_cannot_resolve_a_scale(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierDocument(DocumentStatus::Posted, currency: '');
+
+        $output = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(0, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+        $this->assertStringContainsString('Unresolvable currency', $output);
+        $this->assertStringContainsString('the monetary scale cannot be resolved', $output);
+    }
+
+    /**
+     * N8 (treasury r2). F8 exists to stop a single fixed-scale total being
+     * printed across currencies; nothing exercised two currencies producing two
+     * TOTAL lines until now.
+     */
+    public function test_supplier_leg_census_totals_each_currency_separately(): void
+    {
+        $this->createUnsnapshottedSupplierDocument(DocumentStatus::Posted);
+        $this->createUnsnapshottedSupplierDocument(
+            DocumentStatus::Posted,
+            subtotal: '100.00',
+            lineTaxAmount: '20.00',
+            taxRate: '20.00',
+            currency: 'EUR',
+        );
+
+        $output = $this->runBackfillAndCaptureOutput([]);
+
+        $this->assertStringContainsString('TOTAL deductible VAT delta (TND): 38.000', $output);
+        $this->assertStringContainsString('TOTAL deductible VAT delta (EUR): 20.00', $output);
+        $this->assertStringContainsString('TND rate 19.00%', $output);
+        $this->assertStringContainsString('EUR rate 20.00%', $output);
+    }
+
+    /**
      * A supplier invoice / credit note as the pre-B-19 posting services left it:
      * real lines carrying an explicit tax_rate and the recoverable amount the GL
      * posted, a coherent header, and ZERO document_tax_details rows.
@@ -1651,6 +1723,8 @@ final class BackfillTaxDetailsCommandTest extends TestCase
         ?string $taxRate = '19.00',
         bool $withLine = true,
         bool $withJournalEntry = false,
+        bool $isHistorical = false,
+        string $currency = 'TND',
     ): Document {
         $recoverable = $recoverableTaxAmount ?? $lineTaxAmount;
 
@@ -1671,7 +1745,8 @@ final class BackfillTaxDetailsCommandTest extends TestCase
             'status' => $status,
             'document_number' => 'SD-LEGACY-'.strtoupper(substr(uniqid(), -6)),
             'document_date' => '2026-01-10',
-            'currency' => 'TND',
+            'currency' => $currency,
+            'is_historical' => $isHistorical,
             'subtotal' => $withLine ? $subtotal : '0.000',
             'line_tax_amount' => $withLine ? $lineTaxAmount : '0.000',
             'stamp_duty_amount' => '0.000',

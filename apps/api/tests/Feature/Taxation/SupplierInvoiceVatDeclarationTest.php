@@ -368,6 +368,45 @@ final class SupplierInvoiceVatDeclarationTest extends TestCase
         app(SupplierCreditNotePostingService::class)->post($creditNote);
     }
 
+    /**
+     * N1 (fix round 2, both r2 gates). The idempotency no-op must win over the
+     * period guard: a re-post writes nothing, so refusing it for a declaration
+     * reason refuses a declaration-neutral call. `SupplierCreditNotePostingService`
+     * already ordered it this way; the invoice arm did not.
+     */
+    public function test_reposting_after_the_period_closed_is_still_a_no_op(): void
+    {
+        $invoice = $this->postableSupplierInvoice();
+        app(SupplierInvoicePostingService::class)->post($invoice);
+
+        $this->createVatPeriod(VatPeriodStatus::Closed);
+
+        // Must NOT throw.
+        app(SupplierInvoicePostingService::class)->post(Document::findOrFail($invoice->id));
+
+        $this->assertSame(1, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+    }
+
+    /**
+     * The population most exposed to N1: AR/AP opening documents are created
+     * already-Posted with their own journal entry and are back-dated BY
+     * CONSTRUCTION (`ArApOpeningService`), so they sit inside closed periods
+     * almost by definition. Posting one must be the documented no-op.
+     */
+    public function test_posting_a_back_dated_ap_opening_document_is_a_no_op_not_a_refusal(): void
+    {
+        $opening = $this->historicalApOpeningDocument();
+        $this->createVatPeriod(VatPeriodStatus::Filed);
+
+        app(SupplierInvoicePostingService::class)->post($opening);
+
+        $this->assertSame(
+            0,
+            DocumentTaxDetail::where('document_id', $opening->id)->count(),
+            'A historical opening declares nothing — it was declared under the previous system.',
+        );
+    }
+
     // ---------------------------------------------------------------------
     // Fix round 1 — A / F3: supplier credit notes must REDUCE the deduction
     // ---------------------------------------------------------------------
@@ -606,6 +645,49 @@ final class SupplierInvoiceVatDeclarationTest extends TestCase
         ]);
 
         return $creditNote->load('lines');
+    }
+
+    /**
+     * An AR/AP opening document exactly as `ArApOpeningService` mints one:
+     * type `supplier_invoice`, already Posted, `is_historical = true`,
+     * `subtotal == total`, zero tax, NO lines, and its own opening journal entry.
+     */
+    private function historicalApOpeningDocument(): Document
+    {
+        $document = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'type' => DocumentType::SupplierInvoice,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Posted,
+            'document_number' => 'HIST-SINV-'.Str::upper(Str::random(6)),
+            'document_date' => now()->startOfMonth()->toDateString(),
+            'currency' => 'TND',
+            'subtotal' => '1200.000',
+            'discount_amount' => '0.000',
+            'tax_amount' => '0.000',
+            'total' => '1200.000',
+            'balance_due' => '1200.000',
+            'is_historical' => true,
+        ]);
+
+        DB::table('journal_entries')->insert([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'entry_number' => 'OB-'.Str::upper(Str::random(8)),
+            'entry_date' => $document->document_date->toDateString(),
+            'description' => 'AP opening',
+            'source_type' => 'supplier_invoice',
+            'source_id' => $document->id,
+            'is_historical' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $document->load('lines');
     }
 
     private function createVatPeriod(VatPeriodStatus $status): VatPeriod
