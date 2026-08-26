@@ -66,7 +66,6 @@ export function AppShell() {
   const lock = useOperatorStore((s) => s.lock);
   const operator = useOperatorStore((s) => s.operator);
   const companyId = useAuthStore((s) => s.companyId);
-  const userRoles = useAuthStore((s) => s.user?.roles);
 
   // Nav rail (P2): destinations + theme toggle, placed OPPOSITE the cart.
   const navigate = useNavigate();
@@ -76,8 +75,10 @@ export function AppShell() {
   const setTheme = useSettingsStore((s) => s.setTheme);
   const cartPosition = useSettingsStore((s) => s.cartPosition);
   const railOnLeft = cartPosition === 'end'; // cart right ⇒ rail left
-  // Manager-gating: owner user access outranks the active PIN operator role.
-  const isManager = hasManagerAccess(operator?.roles, userRoles);
+  // B-13 (iv): manager gating follows the ACTIVE PIN OPERATOR only. The
+  // account the terminal is signed in with (usually the owner's) is a
+  // provisioning identity and grants nothing to whoever holds the till.
+  const isManager = hasManagerAccess(operator?.roles);
   const navItems: { id: NavDest; label: string; icon: React.ReactNode }[] = [
     { id: 'caisse', label: t('nav.caisse'), icon: <ShoppingCart className="h-5 w-5" /> },
     { id: 'clients', label: t('nav.clients'), icon: <Users className="h-5 w-5" /> },

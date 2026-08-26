@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FileText, Clock, Wallet, Receipt, FileArchive } from 'lucide-react';
 import { useOperatorStore } from '@/stores/operatorStore';
-import { useAuthStore } from '@/stores/authStore';
 import { hasManagerAccess } from '@/lib/auth/roles';
 
 interface ReportsMenuProps {
@@ -29,9 +28,9 @@ export function ReportsMenu({
   // Owner access constraint (2026-06-28, point 1): the fiscal/cash reports
   // (X-report, cash-drawer ops, Z-report history) are manager-only; the
   // transaction history + today's sales views stay open to every operator.
+  // B-13 (iv): the gate reads the PIN operator, never the login account.
   const operator = useOperatorStore((s) => s.operator);
-  const userRoles = useAuthStore((s) => s.user?.roles);
-  const isManager = hasManagerAccess(operator?.roles, userRoles);
+  const isManager = hasManagerAccess(operator?.roles);
 
   useEffect(() => {
     if (!isOpen) return;
