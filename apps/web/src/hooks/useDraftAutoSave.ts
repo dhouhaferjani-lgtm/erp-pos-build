@@ -155,7 +155,12 @@ export function useDraftAutoSave(
       // `response.data` directly; `apiPost` (which unwraps `response.data.data`)
       // yields `undefined` here and crashes on `.draft_id` (every auto-save,
       // even server-side successful ones).
-      const { data: body } = await api.post<{ draft_id: string; saved_at: string }>(
+      // N-14: `draft_id` is NULLABLE. A payload with no line authors no
+      // document — the server refuses to spend a number on a form nobody has
+      // put a line in — and answers 200 with `draft_id: null`. The debounced
+      // effect below never produces that payload, but `saveNow()` is callable
+      // directly and has no line guard of its own, so the type has to be honest.
+      const { data: body } = await api.post<{ draft_id: string | null; saved_at: string }>(
         '/documents/auto-save',
         {
           draft_id: existingDraftId || draftId,
@@ -171,7 +176,9 @@ export function useDraftAutoSave(
         setAutosaveFailed(false)
         setLastError(null)
 
-        onSuccess?.(body.draft_id)
+        if (body.draft_id !== null) {
+          onSuccess?.(body.draft_id)
+        }
       }
     } catch (error) {
       if (!isUnmountedRef.current) {

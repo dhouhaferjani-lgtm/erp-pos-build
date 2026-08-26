@@ -178,6 +178,19 @@ class DraftController extends Controller
                 data: $data
             );
 
+            if ($document === null) {
+                // N-14: nothing was authored, so there is no draft id and no
+                // number was spent. Answering 200 keeps auto-save silent the way
+                // the rest of this method does — the editor has nothing to
+                // remember, and its next save (the one that carries a line) is
+                // the one that creates the document.
+                return response()->json([
+                    'draft_id' => null,
+                    'saved_at' => now()->toIso8601String(),
+                    'line_count' => 0,
+                ]);
+            }
+
             return response()->json([
                 'draft_id' => $document->id,
                 'saved_at' => now()->toIso8601String(),

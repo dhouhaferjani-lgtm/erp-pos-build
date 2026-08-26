@@ -42,4 +42,25 @@ describe('useDraftAutoSave failure/pending state', () => {
     expect(result.current.lastError).toBeNull()
     expect(result.current.draftId).toBe('d1')
   })
+
+  /**
+   * N-14. A save that carries no line authors no document — the server will not
+   * spend a document number on a form nobody has put a line in — and answers
+   * `draft_id: null`. The hook must carry that through instead of treating it as
+   * an id, and must not report a draft to `onSuccess` that does not exist.
+   */
+  it('carries a null draft_id through and does not report it as a saved draft', async () => {
+    const onSuccess = vi.fn()
+    apiPost.mockResolvedValueOnce({ data: { draft_id: null, saved_at: new Date(0).toISOString() } })
+
+    const lineless = { type: 'invoice' as const, lines: [] }
+    const { result } = renderHook(() => useDraftAutoSave(lineless, { debounceMs: 10, onSuccess }))
+
+    await act(async () => { await result.current.saveNow() })
+    await act(() => Promise.resolve())
+
+    expect(result.current.draftId).toBeNull()
+    expect(result.current.autosaveFailed).toBe(false)
+    expect(onSuccess).not.toHaveBeenCalled()
+  })
 })
