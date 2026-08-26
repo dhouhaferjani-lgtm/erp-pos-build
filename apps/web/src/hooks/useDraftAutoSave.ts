@@ -170,13 +170,18 @@ export function useDraftAutoSave(
 
       if (!isUnmountedRef.current) {
         setDraftId(body.draft_id)
-        setLastSavedAt(new Date(body.saved_at))
         setIsSaving(false)
         setAutosavePending(false)
         setAutosaveFailed(false)
         setLastError(null)
 
+        // Gate r1 F-5: a lineless call authored NOTHING, so there is nothing to
+        // have saved. Stamping `lastSavedAt` would put a "Saved at 14:03" under
+        // an editor whose content the server never took — the indicator has to
+        // stay honest about that, and the next save (the one carrying a line) is
+        // the first one entitled to a timestamp.
         if (body.draft_id !== null) {
+          setLastSavedAt(new Date(body.saved_at))
           onSuccess?.(body.draft_id)
         }
       }

@@ -62,5 +62,27 @@ describe('useDraftAutoSave failure/pending state', () => {
     expect(result.current.draftId).toBeNull()
     expect(result.current.autosaveFailed).toBe(false)
     expect(onSuccess).not.toHaveBeenCalled()
+    // Gate r1 F-5: nothing was authored, so nothing was "saved at" a time.
+    expect(result.current.lastSavedAt).toBeNull()
+  })
+
+  it('stamps lastSavedAt again once a save actually authors a draft', async () => {
+    const lineless = { type: 'invoice' as const, lines: [] }
+    apiPost.mockResolvedValueOnce({ data: { draft_id: null, saved_at: new Date(0).toISOString() } })
+    const { result, rerender } = renderHook(
+      ({ data }) => useDraftAutoSave(data, { debounceMs: 10 }),
+      { initialProps: { data: lineless as typeof draft } }
+    )
+    await act(async () => { await result.current.saveNow() })
+    await act(() => Promise.resolve())
+    expect(result.current.lastSavedAt).toBeNull()
+
+    apiPost.mockResolvedValueOnce({ data: { draft_id: 'd9', saved_at: new Date(0).toISOString() } })
+    rerender({ data: draft })
+    await act(async () => { await result.current.saveNow() })
+    await act(() => Promise.resolve())
+
+    expect(result.current.draftId).toBe('d9')
+    expect(result.current.lastSavedAt).toEqual(new Date(0))
   })
 })
