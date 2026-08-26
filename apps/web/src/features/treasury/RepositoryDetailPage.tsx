@@ -61,7 +61,9 @@ interface Transaction {
   currency: string
   payment_date: string
   status: string
-  payment_type: string | null
+  // W4R2-2 (gate r1): the generated enum, not a bare `string`. Keeps this page's
+  // three payment_type comparisons honest against the backend SoT (rule 7).
+  payment_type: App.Modules.Treasury.Domain.Enums.PaymentType | null
   reference: string | null
   notes: string | null
   allocations: Allocation[]
@@ -117,6 +119,8 @@ function allocationDocumentType(
   if (allocationType) return allocationType
   if (paymentType === 'supplier_payment') return 'supplier_invoice'
   if (paymentType === 'advance') return 'sales_order'
+  // W4R2-2 (gate r1): 'pos' / 'pos_refund' fall through to 'invoice' on purpose —
+  // a POS leg carries no allocations, so this branch is unreachable for them.
   return 'invoice'
 }
 
@@ -546,7 +550,11 @@ export function RepositoryDetailPage() {
                           </div>
                         ) : (
                           <span className={cn(textColors.disabled, 'italic')}>
-                            {transaction.payment_type === 'advance' ? t('treasury:payments.types.advance') : '-'}
+                            {/* W4R2-2 (gate r1): every payment type now has a label
+                                (treasury.json payments.types), so an allocation-less
+                                row names itself — "POS Refund", "Supplier Payment" —
+                                instead of collapsing every non-advance shape to '-'. */}
+                            {transaction.payment_type ? t(`treasury:payments.types.${transaction.payment_type}`) : '-'}
                           </span>
                         )}
                       </td>

@@ -94,7 +94,10 @@
       "advance": "دفعة مقدمة/زائدة",
       "refund": "استرداد",
       "credit_application": "تطبيق رصيد دائن",
-      "supplier_payment": "دفعة مورد"
+      "supplier_payment": "دفعة مورد",
+      "pos": "دفعة نقطة بيع",
+      "pos_refund": "استرداد نقطة بيع",
+      "reversal": "عكس الدفعة"
     },
     "creditBalance": "رصيد دائن",
     "creditBalanceExplanation": "المبلغ الزائد محتفظ به كرصيد للفواتير المستقبلية",

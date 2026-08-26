@@ -72,7 +72,10 @@
       "advance": "Avance/Surpaiement",
       "refund": "Remboursement",
       "credit_application": "Application de crédit",
-      "supplier_payment": "Paiement fournisseur"
+      "supplier_payment": "Paiement fournisseur",
+      "pos": "Paiement caisse",
+      "pos_refund": "Remboursement caisse",
+      "reversal": "Annulation de paiement"
     },
     "recordPayment": "Enregistrer le paiement",
     "paymentRecorded": "Paiement enregistré avec succès",
