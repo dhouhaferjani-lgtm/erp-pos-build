@@ -78,13 +78,71 @@ class TenantReferenceDataSeedingTest extends TestCase
     }
 
     /**
+     * N-9. A tenant provisioned through registration came up with ZERO `units`
+     * (re-check 2026-08-25, day-one provisioning census: `units 0`). Units are
+     * tenant-scoped reference data — `products.unit_id` points at them and
+     * `units.decimal_places` drives every quantity the operator sees or types
+     * (QuantityScale::formatForUnit) — so an empty table means no product can be
+     * given a unit on day one.
+     */
+    public function test_initialize_seeds_the_base_unit_set_in_a_fresh_tenant_database(): void
+    {
+        $this->assertSame(0, DB::table('units')->count(), 'Precondition: a fresh tenant database has no units.');
+
+        [$tenant, $company, $user] = $this->makeTenantCompanyUser('TN');
+
+        app(TenantInitializationService::class)->initializeForNewRegistration($tenant, $company, $user);
+
+        $this->assertGreaterThan(0, DB::table('unit_categories')->count(), 'Unit categories must be self-seeded.');
+
+        $codes = DB::table('units')->pluck('code')->map(
+            static fn (mixed $code): string => strtolower((string) $code)
+        )->all();
+
+        // The piece/unit the POS and every uncounted product falls back to, plus
+        // the weight/volume/length/time bases the demo seeders assume exist.
+        foreach (['pc', 'g', 'kg', 'ml', 'l', 'mm', 'cm', 'm', 'min', 'hr'] as $expected) {
+            $this->assertContains($expected, $codes, "The base unit set must include '{$expected}'.");
+        }
+
+        // Every category must have its base unit resolved, or unit conversion has
+        // nothing to convert through.
+        $this->assertSame(
+            0,
+            DB::table('unit_categories')->whereNull('base_unit_id')->count(),
+            'Every seeded unit category must point at its base unit.',
+        );
+    }
+
+    /**
+     * The guard is what makes this safe to add to a path that also runs in the
+     * shared-DB compat mode, where units may already exist: UomSeeder uses bare
+     * `create()` and would collide on `units.code` / `unit_categories.code`.
+     */
+    public function test_initialize_does_not_duplicate_units_when_they_already_exist(): void
+    {
+        [$tenantA, $companyA, $userA] = $this->makeTenantCompanyUser('TN');
+        app(TenantInitializationService::class)->initializeForNewRegistration($tenantA, $companyA, $userA);
+
+        $unitsAfterFirst = DB::table('units')->count();
+        $categoriesAfterFirst = DB::table('unit_categories')->count();
+        $this->assertGreaterThan(0, $unitsAfterFirst);
+
+        [$tenantB, $companyB, $userB] = $this->makeTenantCompanyUser('FR');
+        app(TenantInitializationService::class)->initializeForNewRegistration($tenantB, $companyB, $userB);
+
+        $this->assertSame($unitsAfterFirst, DB::table('units')->count(), 'A second init must not re-seed units.');
+        $this->assertSame($categoriesAfterFirst, DB::table('unit_categories')->count());
+    }
+
+    /**
      * @return array{0: Tenant, 1: Company, 2: User}
      */
     private function makeTenantCompanyUser(string $countryCode): array
     {
         $tenant = Tenant::create([
             'name' => "Ref Tenant {$countryCode}",
-            'slug' => 'ref-tenant-'.strtolower($countryCode),
+            'slug' => 'ref-tenant-'.strtolower($countryCode).'-'.uniqid(),
             'status' => TenantStatus::Active,
             'country_code' => strtoupper($countryCode),
             'currency_code' => 'TND',
