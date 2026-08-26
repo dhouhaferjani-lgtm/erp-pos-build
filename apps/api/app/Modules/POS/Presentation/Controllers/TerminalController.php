@@ -538,17 +538,29 @@ final class TerminalController extends Controller
         // fired TerminalReleased, and a release that lost a race to a second
         // release could clear a binding the first had already replaced.
         //
-        // WHAT THIS DOES NOT BUY (be honest, it matters for the orphan story):
-        // the row lock serialises release-against-release, not
-        // release-against-shift-open. Neither shift-open path locks the terminal
-        // row — `ShiftManagementService::openShift()` opens a transaction but
-        // touches only `pos_shifts`, and the device-authoritative path
-        // (`ZSessionLifecycleProjection::projectPosShiftOpen()`) is a projection
-        // of a synced fiscal event. A shift that opens between this probe and
-        // the commit is still orphaned silently. Closing THAT needs the arbiter
-        // to be the database: a conditional
-        // `UPDATE … WHERE NOT EXISTS (open shift)` in the non-forced arm, the
-        // same idiom `claim()` uses. Filed as a residual, not taken here.
+        // RELEASE-AGAINST-SHIFT-OPEN IS NOW CLOSED TOO (LEDGER O-30 lane).
+        // A lock only serialises writers who take THE SAME lock, and until that
+        // lane neither shift-open path took one — so a shift opening between
+        // this probe and the commit slipped past a probe that had just decided
+        // there was none. Both paths now take this same `pos_terminals` row
+        // FOR UPDATE before they decide whether the terminal already has an OPEN
+        // shift: `ShiftManagementService::openShift()` (the v2/web path) and
+        // `ZSessionLifecycleProjection::projectPosShiftOpen()` (the
+        // device-authoritative v3 path). Lock ORDER is `pos_terminals` then
+        // `pos_shifts` at all three sites, so none can deadlock against another.
+        // DO NOT remove either of those locks as redundant — this probe's
+        // correctness depends on them.
+        //
+        // That mattered beyond tidiness: on the FORCED arm a shift opening in
+        // the window was orphaned WITHOUT being named in the `terminal.released`
+        // audit row, and that row is the evidence `pos:shift:close-orphaned`
+        // requires before it will close anything — the race produced orphans
+        // unresolvable by the command built to resolve them.
+        //
+        // RESIDUAL, still open: a SESSION_OPEN authored by the dead device but
+        // SYNCED after this release commits still projects onto a released
+        // terminal, and no audit row can have named it. See
+        // `docs/handoff/RUNBOOK-orphaned-shift.md` §1c.
         /** @var array{0: Terminal, 1: string|null, 2: string|null}|JsonResponse $result */
         $result = DB::transaction(function () use ($id, $companyId, $forced) {
             /** @var Terminal $terminal */

@@ -66,13 +66,19 @@ SELECT s.id            AS shift_id,
        a.occurred_at   AS released_at,
        a.payload->>'reason' AS release_reason
 FROM audit_events a
-JOIN pos_shifts s     ON s.id = (a.payload->>'open_shift_id')::uuid
+JOIN pos_shifts s     ON s.id::text = a.payload->>'open_shift_id'
 JOIN pos_terminals t  ON t.id = s.terminal_id
 WHERE a.event_type = 'terminal.released'
   AND (a.payload->>'forced')::boolean IS TRUE
   AND s.status = 'OPEN'
 ORDER BY a.occurred_at DESC;
 ```
+
+> The join is `s.id::text = a.payload->>'open_shift_id'`, deliberately, and NOT
+> `(a.payload->>'open_shift_id')::uuid`. A cast on the payload side aborts the WHOLE result
+> set with `22P02` the moment any `terminal.released` row carries a malformed or legacy
+> `open_shift_id` — so one bad row would hide every genuine orphan. Casting the column side
+> cannot fail: `pos_shifts.id` is already a uuid.
 
 Empty result = nothing owed.
 
@@ -89,6 +95,10 @@ JOIN pos_terminals t ON t.id = s.terminal_id
 WHERE s.status = 'OPEN'
   AND t.hardware_identifier IS NULL;
 ```
+
+> This query also lists every OPEN shift on a terminal that was simply **never claimed** — a
+> `hardware_identifier` of NULL means "no device bound", not "device released". Cross-check each hit
+> against §1a before treating it as an orphan.
 
 `pos:shift:close-orphaned` **will refuse** these (exit 4) — by design: without the audit row there
 is no evidence the shift was orphaned rather than merely open. Escalate one of these rather than
@@ -131,6 +141,9 @@ php artisan tenants:run pos:shift:close-orphaned \
 | `3` | No `pos_shifts` row with that id **in this tenant** | Wrong tenant bound, or wrong id |
 | `4` | The shift is OPEN but **nothing in the audit register says a forced release orphaned it** | See below |
 | `5` | `--closed-by` is not a user in this tenant | Use a real user id |
+| `6` | The derived expected cash is **negative** | The movement set is incomplete or mis-signed. A drawer cannot hold less than nothing and `pos_shifts_positive_amounts` refuses to store it. Read the movements the message names and resolve them with an accountant — do **not** look for a way to force a zero |
+| `7` | The close was **rolled back** because its `shift.orphan_closed` audit row could not be confirmed | Nothing was written; the orphan is still OPEN and still closable. Check `audit_events` is writable and the log for the subscriber's error, then re-run |
+| `8` | The shift carries a cash movement the server **cannot sign** (today: `CASH_CORRECTION`) | Resolve the movement with an accountant. The command refuses rather than dropping it silently — a dropped movement would be exported to the JET as a balanced count that is short by its value |
 
 **Exit 4 is the whole point of the command and must not be worked around.** This is the only
 operator-reachable writer of `ShiftStatus::Closed`; if it closed any shift on request it would be a
@@ -144,15 +157,38 @@ the shift from the device.
 - `pos_shifts`: `status = CLOSED`, `closed_at = now`, `closed_by = --closed-by`, and a
   `notes` line recording that the close was administrative, the reason, and the id of the release
   audit row that authorised it. Existing notes are preserved.
-- The money pair (owner ruling): `expected_cash` = the shift's **opening float plus the cash
-  movements booked to it**; `actual_cash` = **the same number**; `variance` = **0**. Nobody counted
-  this drawer — it left the building with the device — so no shortage or overage is asserted against
-  a cashier who was never asked to count one. The pair satisfies the `pos_shifts_variance_calc` CHECK
-  by construction, and `closed_at`/`closed_by` satisfy `pos_shifts_closed_logic`.
+- The money pair (owner ruling; derivation corrected at fiscal gate r1): `expected_cash` comes from
+  `ShiftExpectedCashService` — the **same derivation the Z path uses** — never from a formula local
+  to this command. `actual_cash` = **the same number**; `variance` = **0**. Nobody counted this
+  drawer — it left the building with the device — so no shortage or overage is asserted against a
+  cashier who was never asked to count one. The pair satisfies `pos_shifts_variance_calc` by
+  construction, and `closed_at`/`closed_by` satisfy `pos_shifts_closed_logic`.
+- **Which table the movements come from depends on the terminal, and the command prints it.** A v3
+  (device-authoritative) terminal books every drawer movement as a fiscal event in
+  `pos_z_session_events` and writes no `pos_cash_drawer_operations` row at all, so its expected cash
+  is `opening float + net cash tendered on the shift's receipts + its z-session movements`. A v2
+  terminal's movements are `pos_cash_drawer_operations`, and its figure is the one
+  `CashDrawerService::calculateExpectedCash()` produces for the v2 Z report. **Read the
+  `movement source` and `drawer movements` rows in the preview table.** A movement count of `0` is
+  printed with a warning: it is normal for a shift that never had one, and a red flag for a till that
+  did.
 - An audit event `shift.orphan_closed` (`aggregate_type = 'Shift'`) carrying the shift, terminal,
   cashier, reason, `closed_by`, the money pair, and `release_audit_event_id`. This is a **new** event
   class (`OrphanedShiftClosedByOperator`) — the device's own `shift.closed` is deliberately **not**
   forged, because that would tell an auditor a cashier counted a drawer that no longer exists.
+
+### If the device comes back
+
+A close written here is provisional in one specific sense. The command is used on the **belief** that
+a device is gone, and a till that was merely offline — dead battery, a week in a drawer, a shop that
+reopened — can sync weeks later. When its own `SESSION_CLOSE` arrives, the projection **replaces**
+the derived pair with the device's counted figures (including a real variance) and records the swap
+as `shift.orphan_device_close_applied`, with both sides of the swap in the payload and a second
+marker line appended to `pos_shifts.notes`. The device is authoritative for the shift lifecycle; the
+operator's figures were only ever a stand-in for a count nobody could take.
+
+Nothing needs doing when that happens — but if the shift fed a period that has already been reported,
+the reported cash position for that day has changed, and an accountant should be told.
 
 ### Verify
 
@@ -202,6 +238,11 @@ Whether the JET itself needs a marker is owner ruling O-30(c) — see §5.
   month-end close — an unresolved orphan blocks that terminal's Z reports, so it will surface as
   missing Z numbers if it is not caught here first.
 
+> **`audit_events.user_id` is NULL on an orphan close, and that is not anonymity.** There is no
+> authenticated user in a console run, so the register's `user_id` column is empty; the accountable
+> human is in `payload.closed_by`. An auditor querying the register **by `user_id`** will find these
+> rows unattributed — query `payload->>'closed_by'` instead.
+
 ---
 
 ## 5. What the owner still owes (O-30(b) and O-30(c))
@@ -222,11 +263,17 @@ Both remain **OPEN** on the LEDGER. This runbook does not pre-empt either.
   above is the reason this matters: without such an event the JET shows a closure with no trace of
   the device change behind it.
 
-### Known residual (code, not an owner ruling)
+### Known residuals (code, not owner rulings)
 
-The concurrent race between `release()` and a shift opening is closed — all three sites
-(`TerminalController::release()`, `ZSessionLifecycleProjection::projectPosShiftOpen()`,
-`ShiftManagementService::openShift()`) now take the `pos_terminals` row `FOR UPDATE` in the same
-order. What is **not** closed: a `SESSION_OPEN` authored by the dead device but **synced after** the
-release commits. That shift is orphaned and no audit row names it — query §1c finds it, and the
-command refuses it. See §1c.
+- The concurrent race between `release()` and a shift opening is closed — all three sites
+  (`TerminalController::release()`, `ZSessionLifecycleProjection::projectPosShiftOpen()`,
+  `ShiftManagementService::openShift()`) now take the `pos_terminals` row `FOR UPDATE` in the same
+  order. What is **not** closed: a `SESSION_OPEN` authored by the dead device but **synced after**
+  the release commits. That shift is orphaned and no audit row names it — query §1c finds it, and the
+  command refuses it (exit 4).
+- **Customer account collections are not in the v3 expected-cash derivation.** The device folds cash
+  collected against customer credit accounts into its own expected cash
+  (`zReportService.ts:272-277`), but server-side `pos_account_payment_receipts` carries no `shift_id`
+  and no tender breakdown, so there is no reliable per-shift cash term to add. On a shift that took
+  account collections in cash the derived figure is short by that amount. Check the shift's
+  `pos_account_payment_receipts` before closing if the till takes account payments.
