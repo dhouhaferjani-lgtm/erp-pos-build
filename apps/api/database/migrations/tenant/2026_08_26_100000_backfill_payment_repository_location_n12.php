@@ -175,17 +175,41 @@ return new class extends Migration
                 }
             }
 
-            if ($ambiguous === []) {
-                foreach (array_keys($unattributed) as $type) {
-                    $attributed += $connection->table('payment_repositories')
-                        ->where('company_id', $companyId)
-                        ->whereNull('location_id')
-                        ->where('type', $type)
-                        ->update([
-                            'location_id' => $defaultLocationId,
-                            'updated_at' => now(),
-                        ]);
-                }
+            // Gate r2 finding 1 — this `continue` is load-bearing for BOTH
+            // steps, and its absence was the whole defect: step 1 was correctly
+            // gated while step 2 ran on ambiguous companies anyway, minting an
+            // empty drawer at every POS-capable location. Each one arms
+            // `locationOwnsDrawer()`, which drops the `location_id IS NULL` arm
+            // from the resolver's candidate set — so the money-bearing legacy
+            // tills become unreachable, Main's new drawer reads 0.000 while its
+            // physical cash sits in CASH-01, and the next count books the whole
+            // stranded balance as a variance. Exactly the harm this file's own
+            // docblock promises not to cause.
+            //
+            // Gate r2 finding 2 — and the skip has to be VISIBLE. Under
+            // `tenants:migrate` the fleet shares one log, so this per-company
+            // line carrying the offending codes is the only way an operator can
+            // find the companies that need attributing by hand.
+            if ($ambiguous !== []) {
+                $ambiguousCompanies++;
+                $this->log($tenantKey, 'ambiguous-skipped', [
+                    'company_id' => $companyId,
+                    'locations' => $locationCount,
+                    'codes' => $ambiguous,
+                ]);
+
+                continue;
+            }
+
+            foreach (array_keys($unattributed) as $type) {
+                $attributed += $connection->table('payment_repositories')
+                    ->where('company_id', $companyId)
+                    ->whereNull('location_id')
+                    ->where('type', $type)
+                    ->update([
+                        'location_id' => $defaultLocationId,
+                        'updated_at' => now(),
+                    ]);
             }
 
             // ---- Step 2: no POS-capable location left without a drawer ------

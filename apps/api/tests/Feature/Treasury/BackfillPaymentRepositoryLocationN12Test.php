@@ -17,6 +17,7 @@ use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -163,7 +164,10 @@ final class BackfillPaymentRepositoryLocationN12Test extends TestCase
      */
     public function test_it_leaves_two_unattributed_tills_alone_on_a_multi_location_company(): void
     {
-        $company = $this->company();
+        // Chart-seeded on purpose (gate r2 finding 1): with no `cash` purpose
+        // account the provisioner logs and returns null, so step 2 no-ops and
+        // this case would pass for entirely the wrong reason.
+        $company = $this->companyWithChart();
         $this->location($company, 'Main Location', isDefault: true);
         $this->location($company, 'Boutique Ariana');
 
@@ -179,6 +183,47 @@ final class BackfillPaymentRepositoryLocationN12Test extends TestCase
             $this->freshLocationId($safe),
             'An ambiguous company is skipped whole — a half-armed tier is harder to reason about than the status quo.',
         );
+
+        // …and NOTHING is minted for it either. Provisioning an empty drawer at
+        // every POS-capable location would arm tier 1 for each of them, which
+        // drops the `location_id IS NULL` arm from the resolver's candidate set
+        // and strands the money-bearing legacy tills: Main's physical cash still
+        // sits in CASH-01 while its new drawer reads 0.000, so the next cash
+        // count is off by exactly that amount and books as a variance.
+        $this->assertSame(
+            3,
+            PaymentRepository::query()->where('company_id', $company->id)->count(),
+            'An ambiguous company must leave the migration with exactly the repositories it arrived with.',
+        );
+    }
+
+    /**
+     * The census is the ONLY operator-facing signal that a company was
+     * deliberately skipped — under `tenants:migrate` the whole fleet shares one
+     * log, so a line that always reads zero is worse than no line at all.
+     */
+    public function test_it_censuses_the_companies_it_skipped_and_the_codes_that_made_them_ambiguous(): void
+    {
+        Log::spy();
+
+        $company = $this->companyWithChart();
+        $this->location($company, 'Main Location', isDefault: true);
+        $this->location($company, 'Boutique Ariana');
+        $this->repository($company, 'CASH-01', RepositoryType::CashRegister);
+        $this->repository($company, 'CASH-OPERATOR', RepositoryType::CashRegister);
+
+        $this->runBackfill();
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(static fn (string $message): bool => str_contains($message, 'status=ambiguous-skipped')
+                && str_contains($message, 'CASH-01')
+                && str_contains($message, 'CASH-OPERATOR'))
+            ->once();
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(static fn (string $message): bool => str_contains($message, 'status=ok')
+                && str_contains($message, '"ambiguous_companies":1'))
+            ->once();
     }
 
     /**
