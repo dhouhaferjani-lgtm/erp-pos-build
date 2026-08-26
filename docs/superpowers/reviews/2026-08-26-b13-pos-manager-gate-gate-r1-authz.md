@@ -388,3 +388,147 @@ fiscal X_REPORT (B-13-R1-1), add the missing `isManager` guard on `onCashDrawerO
 empty (`Header.tsx:132-139`, B-13-R1-5), correct the stale `hasManagerAccess` docblock
 (`cashDisclosurePolicy.ts:10-14`, B-13-R1-6), and either TTL the cached operator roles or file
 B-13-R1-3 + B-13-R1-4 as explicit LEDGER rows alongside the B-13-S1 structural row above.
+
+---
+
+# r2 scoped re-review
+
+- **Range reviewed:** `58a14ac25..0c84fc7c8` (5 commits, 20 files, +1078/−159 — **all `apps/pos`, zero `apps/api`**)
+- **Lens:** authz/tenancy only (fiscal lens reviewed separately)
+- **Date:** 2026-08-26 · read-only
+
+## VERDICT
+
+**spec ✅ / quality CHANGES-REQUESTED (one Important)**
+
+All seven r1 findings are ADDRESSED with real code, and the three rulings in force are implemented
+as ruled. One new Important lands squarely on the R1-3 fix: the TTL is computed from a column that
+two *other* writers stamp, so it dates "the last write to this row", not "the last authority
+refresh" — which weakens the TTL in precisely the scenario it exists for.
+
+## R1-1..R1-7 disposition
+
+| # | Status | Evidence |
+|---|---|---|
+| R1-1 (403 laundered into a local fiscal X) | **ADDRESSED** | `apps/pos/src/api/reportApi.ts:205-216` rethrows via `isAuthorizationRefusal` (`:223-226`, `error instanceof ApiRequestError && (status===401||403)`; class at `apps/pos/src/lib/api.ts:43-53` carries `status`). 404/5xx/transport still fall back. `Header.tsx:447-448` surfaces it as `reportError` — no `generateLocalXReport`, so no `X_REPORT` append. §4 point 1 of the report is corrected at `task-7-report.md:386-388`. |
+| R1-2 (no execution-time gate on cash-drawer ops) | **ADDRESSED** | `apps/pos/src/components/Header.tsx:386-393` `handleCashDrawerOps` refuses with `toast.error(t('reports.managerOnly'))` before `setShowCashDrawerModal(true)`. Verified it is the **only** entry point: `setShowCashDrawerModal(true)` occurs exactly once in the tree (`Header.tsx:392`). |
+| R1-3 (no TTL on cached operator authority) | **ADDRESSED, with R2-1 open** | `apps/pos/src/lib/auth/operatorAuthorityFreshness.ts:52-68`, 7 days via `OPERATOR_AUTHORITY_MAX_AGE_MS = APPROVAL_CACHE_MAX_AGE_MS` (`:29`); consumed at `apps/pos/src/stores/operatorStore.ts:206` on the offline verify branch; gate closes at `apps/pos/src/lib/auth/roles.ts:119`. Rule-20 read is correct (`sqliteUtcToDate`, `sqliteTime.ts:44-49`). See R2-1. |
+| R1-4 (role-name allowlist vs permission gates) | **ADDRESSED** | `apps/pos/src/lib/auth/roles.ts:57-60` `MANAGER_SURFACE_PERMISSION` + `:114-127` permission-first with a name fallback. Deny-path tests at `apps/pos/src/lib/auth/roles.test.ts:66-105` (custom `supervisor` admitted; manager-named-but-stripped refused; per-surface cross-refusal). |
+| R1-5 (tender mask failed open on an empty store) | **ADDRESSED** | `is_physical` now travels on the row (`reportApi.ts:52-71` doc, `:723-728` populated from `physicalByCode`); `XReportModal.tsx:73-75` `isConcealed = concealPhysicalTenders && row.is_physical !== false` (UNKNOWN conceals). The store read is gone from `Header.tsx` (the `useEffect` and `physicalTenderCodes` are deleted). Bonus fail-closed: `getAllPaymentMethods` filters `is_active = 1` (`paymentRepository.ts:76`), so a deactivated tender resolves `undefined` ⇒ concealed. |
+| R1-6 (falsified docblock) | **ADDRESSED** | `apps/pos/src/lib/offline/cashDisclosurePolicy.ts:10-28` — premise marked falsified, conclusion re-argued from two surviving reasons. |
+| R1-7 (`payment_type` namespace — "cannot verify") | **ADDRESSED / resolved against me** | Verified independently: `apps/api/app/Modules/POS/Application/Services/ReceiptPaymentService.php:358` writes `'payment_type' => $paymentMethod->name` and `:359` stores the code separately in `payment_method_code`. The device builder emits the **code**. The two namespaces are genuinely different — the old code-join would have no-op'd on every server-built row. Removing the join is the right fix; over-concealing on v2 is the correct direction. |
+
+## Scrutiny items requested
+
+**Which permission gates each surface, and does pin-data ship it.**
+`apps/pos/src/lib/auth/roles.ts:57-60`: `reports → pos.view_reports` (routes `/reports`, `/shift`,
+`/reports/z`, the nav destination, the X report, the Z-history menu entry, device unbind, and the
+`/sales` conceal predicate) and `cash_drawer → pos.approve_cash_drawer_control` (drawer ops only).
+`GET /pos/auth/pin-data` ships, per operator (`apps/api/app/Modules/POS/Presentation/Controllers/PosAuthController.php:218-233`):
+`id`, `tenant_id`, `name`, `email`, `pin_hash`, `roles` (`:224`), **`permissions` (`:225` —
+`$user->getAllPermissions()->pluck('name')`, i.e. role-derived + direct)**, `can_discount`,
+`max_discount_percent`, `company_ids`, `terminal_ids`, `approval_scopes`,
+`approval_scope_permissions_fetched_at`, `server_time`. Both gate keys therefore ship whenever
+granted. The online paths ship them too: `verifyPin` (`:98`) and `setupPin` (`:153`) both return
+`permissions`. Persisted at `operatorPinRepository.ts:130-135` (`permissions = excluded.permissions`)
+from `pullOperatorPins` (`syncService.ts:1307-1311`), read back at `:65`/`rowToOperator`.
+(Note: r1 cited `PosAuthController.php:226` for `permissions`; the exact line is **:225**.)
+
+**Seeder key match — exact.** `pos.view_reports` defined `RolesAndPermissionsSeeder.php:368`,
+granted to `manager` at `:619`, **absent** from the `cashier` block (`:667-699`, POS grants at `:685`).
+`pos.approve_cash_drawer_control` defined `:379`, granted to `manager` at `:624`, **absent** from the
+cashier block. Both strings match the device constants character-for-character. No new permission,
+no new `can:` guard, no new route — **zero `apps/api` files in the range**, so there is nothing to
+re-seed and no rule-12 / module-gating obligation from this diff.
+
+**TTL source of truth / absent = stale.** `isOperatorAuthorityStale` (`operatorAuthorityFreshness.ts:57`)
+returns `true` on `!syncedAt`; `:60` returns `true` on `NaN`; `:65` returns `true` on gross forward
+dating. `CachedOperator.synced_at` is optional (`operatorPinRepository.ts:36`) but `rowToOperator`
+always populates it (`:91`, `row.synced_at ?? null`) and the table is read with `SELECT *` (`:96`,
+`:103`), so the column is never dropped by a projection list. Grep confirms **exactly one consumer**
+(`operatorStore.ts:206`) — no surface treats an absent stamp as fresh.
+
+**No cashier lockout on a failed roster pull.** `hasManagerAccess` has five call sites, all manager
+surfaces: `AppShell.tsx:81` (nav + the three routes), `Header.tsx:121` and `:123`, `ReportsMenu.tsx:33`,
+`SettingsPage.tsx:99`, `TodaySalesPanel.tsx:97` (conceal only). `authority_stale` is read in exactly
+one place (`roles.ts:119`). Nothing on the sell / refund / shift-open / shift-close path consults
+either. A stale-authority operator keeps trading; only manager surfaces close, and `/sales` conceals
+money while still listing receipts and the count. **Confirmed: manager surfaces only, no cashier lockout.**
+
+## NEW FINDINGS (fix diff only)
+
+### [IMPORTANT] B-13-R2-1 — `apps/pos/src/lib/db/repositories/operatorPinRepository.ts:264` and `:295` — `synced_at` is not an authority-freshness stamp: two non-roster writers bump it, so the R1-3 TTL can be reset without any roster pull
+
+`isOperatorAuthorityStale` treats `operator_pins.synced_at` as "when this operator's roles and
+permissions were last confirmed by the server" (`operatorAuthorityFreshness.ts:5-29`,
+`operatorPinRepository.ts:27-35`). It is not. Three writers stamp it:
+
+1. `upsertOperators` (`:131`, `:222`) — the roster pull. This is the intended one.
+2. `updateOperatorDiscountPermissions` (`:254-265`, `synced_at = datetime('now')` at `:264`) — called
+   from `operatorStore.ts:156` inside `resolveOnlineDiscountPermissions`, which fires **on every
+   offline-accepted PIN verify** (`operatorStore.ts:259`). It refreshes discount fields from
+   `/pos/discount-permissions`; it does **not** touch `roles` or `permissions`.
+3. `invalidateTerminalDiscountPermissions` (`:287-298`, stamp at `:295`) — `terminalStore.ts:201`,
+   on a terminal-record discount-settings change.
+
+Consequence: a device that is **online but whose roster pull is broken** (pin-data 403 after the
+device account loses `pos.operate_terminal`, a persistently failing sync, a pruned/erroring pull —
+`pullOperatorPins` swallows its own failure and returns `0`, `syncService.ts:1325-1332`) has its
+authority clock reset at every PIN verify by an endpoint that carries no authority. The cached
+`roles`/`permissions` of a demoted manager then stay "fresh" indefinitely — the exact hazard R1-3
+was ruled to close. The pure-offline case still works (both extra writers need the network), so this
+is Important, not Critical.
+
+Fix (either is a small change): (a) stop stamping `synced_at` in the two discount writers — they
+already have `discount_permissions_fetched_at` for their own bookkeeping; or (b) date the authority
+from a stamp only the roster pull writes — `sync_metadata.operators_last_sync`
+(`syncService.ts:1322`) already exists and is written only after a successful `upsertOperators`.
+Add a test that a discount-permission refresh does **not** un-stale an operator.
+
+### [MINOR] B-13-R2-2 — `apps/pos/src/components/pos/ReportsMenu.tsx:61` + `:64` vs `apps/pos/src/components/Header.tsx:388` — the cash-drawer surface is filtered on one permission and enforced on another
+
+`ReportsMenu` filters every `managerOnly` entry on `isManager` = `hasManagerAccess(operator)` =
+`pos.view_reports` (`ReportsMenu.tsx:33`, `:64`), including the cash-drawer entry (`:61`), while the
+handler enforces `pos.approve_cash_drawer_control` (`Header.tsx:123`, `:388`). Harmless on seeded
+roles (manager holds both — `RolesAndPermissionsSeeder.php:619`, `:624`; admin holds all), but R1-4's
+own rationale was that tenants create custom roles: one holding only
+`pos.approve_cash_drawer_control` never sees the entry it is entitled to, and one holding only
+`pos.view_reports` sees it and gets a toast. Fix: `hasManagerAccess(operator, 'cash_drawer')` for
+that one entry — pass a per-item surface into the filter.
+
+### [MINOR] B-13-R2-3 — `apps/pos/src/lib/auth/roles.ts:122` — an empty `permissions` array falls back to role names, so a manager-*named* role with no permissions is admitted where the server refuses
+
+The fallback condition is `permissions !== undefined && permissions.length > 0`; an operator whose
+roster row carries `permissions: []` drops to `isManagerRole(roles)` (`:126`), and
+`roles.test.ts:100` pins that as intended (`{ roles: ['manager'], permissions: [] }` ⇒ `true`). That
+is the opposite of the R1-4 case the same test file proves at `:83-87` (manager-named, stripped ⇒
+refused). The legacy-cache motivation only justifies `permissions === undefined`; an explicitly
+empty list is a positive server answer meaning "this principal holds nothing". Fix: fall back on
+`permissions === undefined` only.
+
+### [MINOR] B-13-R2-4 — `apps/pos/src/api/reportApi.ts:225` — 401 is treated as a refusal, so an expired/rotated device token now blocks the X report outright instead of degrading to the local builder
+
+`isAuthorizationRefusal` covers 401 as well as 403. 403 is genuinely "you may not"; 401 is "your
+credential is not currently valid", which on an offline-first device is closer to an outage than to
+a denial, and is the most likely transient credential state on a long-lived terminal. The direction
+is fail-closed and the choice is documented (`:206-215`), so this is a flag-for-consciousness, not a
+defect: confirm the owner wants a token-rotation event to withhold a legitimate manager's X report
+rather than serve the device-built one. If not, narrow the rethrow to 403.
+
+## Test quality (fix round)
+
+Real deny-path coverage, no self-mocking. `roles.test.ts:66-140` exercises permission-based admit
+**and** refuse per surface, the cross-surface refusals, and all three stale-authority closures;
+`operatorAuthorityFreshness.test.ts` covers the missing/unparseable/future-dated stamps and the
+rule-20 space-separator parse; `generateXReport.authz.test.ts` pins that 401/403 do **not** fall
+back while 404/5xx/transport do. The report's disclosure that the `/sales` cases were written after
+the implementation and proved to bite by forcing `concealTakings = false` (6 failed / 17 passed) is
+the honest way to record that. Gap left by this round: no test asserts that a discount-permission
+refresh must not un-stale an operator (R2-1).
+
+## What to fix before merge
+
+Date the operator-authority TTL from a stamp only the roster pull writes (R2-1) — otherwise the
+R1-3 fix silently no-ops on an online device with a broken roster pull; the three Minors (R2-2 menu
+filter surface, R2-3 empty-permissions fallback, R2-4 401 posture) can land in the same commit or be
+LEDGER'd explicitly.

@@ -216,3 +216,139 @@ and an unlisted bypass route is weaker than the ruling assumed.
 Make the X-report mask fail CLOSED when the physical-tender set is unresolvable (`Header.tsx:139-165`,
 + empty-store test), and disclose the `/sales` blind-count bypass in the report and the LEDGER B-13
 row so the owner rules on all three surfaces together.
+
+---
+
+## r2 scoped re-review
+
+**Range** `58a14ac25..0c84fc7c8` (5 commits) · worktree HEAD `0c84fc7c8`, tree clean · read-only
+**Scope** the r1 fiscal/POS findings only, plus new Critical/Important introduced by the fix diff.
+
+### VERDICT (r2)
+
+**spec ✅ · quality CHANGES-REQUESTED** — 4 of 5 r1 items fully addressed, F-6 partially; one NEW
+Important authorization widening introduced by the fix round.
+
+### r1 item disposition
+
+| r1 | Status | Evidence |
+|---|---|---|
+| **F-1** mask fails OPEN | **ADDRESSED** | `apps/pos/src/api/reportApi.ts:33-72` adds `is_physical?: boolean` to `PaymentMethodItem`; `:558-566` builds `physicalByCode` from `getAllPaymentMethods` (real booleans — `paymentRepository.ts:42` maps `row.is_physical === 1`); `:723-728` emits it per row, left `undefined` for an unresolved code. `XReportModal.tsx:74-76` `isConcealed(row, conceal) = conceal && row.is_physical !== false` — UNKNOWN conceals, explicit `false` is the only disclosure. `Header.tsx:148` is now a plain boolean and reads no store; the `usePaymentStore` snapshot effect and `NO_CONCEALED_TENDERS` are gone (no `physicalTenderCodes` reference survives anywhere in `apps/pos/src`). Empty-store regression pin: `Header.test.tsx:673-681`; unknown/missing-flag pins: `XReportModal.test.tsx:111,121`. |
+| **F-2** `/sales` bypass | **ADDRESSED (fixed, per ruling)** | `TodaySalesPanel.tsx:93-98` `concealTakings = cashDisclosure === 'conceal' && !hasManagerAccess(operator) && shiftId !== null`; conceals net-sales tile `:190`, avg-ticket `:200`, returns amount `:207`, per-receipt total `:279`, tender label `:289`, withdraws `SaleDetailModal` `:300-309`, note `:329-331`. Matches the ruling (conceal tender + amounts for non-managers under blind count) and fails closed pre-answer via `useCashDisclosure`. Pins `TodaySalesPanel.test.tsx:372-447` incl. manager-sees-all, blind-off, no-operator, stale-authority. |
+| **F-3** falsified docblock | **ADDRESSED** | `cashDisclosurePolicy.ts:10-28` — premise marked falsified, conclusion re-argued from two surviving facts. |
+| **F-5** Z/X asymmetry | **ADDRESSED** | stated as explicit policy at `Header.tsx:378-411` (handleXReport) and `:546-552` (handlePrintZReport). |
+| **F-6** mis-named test | **PARTIAL** | see r2-3. |
+
+### Scrutiny items requested
+
+**`is_physical` on the SERVER-built rows — verified absent, and the fail-closed consequence is real.**
+`XReportResource.php:23-54` emits `payment_methods => $this->getPaymentMethods()`, which is
+`XReport.php:165-168` `snapshot_data['payment_methods']`, built at
+`ReportGenerationService.php:1288-1300` / `:1327-1339` with exactly three keys
+(`payment_type` / `total_amount` / `transaction_count`). So on the v2/server path every row has
+`is_physical === undefined` ⇒ **every tender row masks** under blind count. The namespace claim
+behind R1-7 is also confirmed: `ReceiptPaymentService.php:358` writes `$paymentMethod->name` and
+`PosCoreReceiptProjection.php:1539-1542` documents `payment_type` as the display NAME with the code
+in `payment_method_code` — the old code-join was a guaranteed no-op server-side. **Acceptable as
+fail-closed, not a fiscal regression** (over-conceal, display-only), but see r2-2.
+
+**403 handling.** `reportApi.ts:198-231` — `isAuthorizationRefusal` rethrows only
+`ApiRequestError` 401/403 (`lib/api.ts:43-53`, `:137-168` construct it with the real status);
+404/5xx/transport still fall back. Offline still authors locally: a transport rejection reaches
+`generateLocalXReport`, and the v3 path never touches the server at all (`:202-204` early return).
+No `X_REPORT` on a refusal — structurally as well as by the rethrow: `appendXReport` is guarded by
+the five fiscal opts (`reportApi.ts:732-740`), which the server-fallback path never carries. Pinned
+`generateXReport.authz.test.ts:83-127` (asserts `appendXReport` and even `queryAll` uncalled).
+
+**Fiscal payload unchanged — confirmed.** `paymentMethodTotals` at `reportApi.ts:771-775` is still
+the three-field allow-list, so `is_physical` never reaches the event; `lib/fiscal/*` is not in the
+diffstat; `XReportResponse` is in-memory only (no persistence, no push — only `Header.tsx:94` and
+`XReportModal`). No X-report print path exists that could bypass the modal mask.
+
+**Rule 20.** The one new SQLite-time read is correct: `operatorAuthorityFreshness.ts:59` uses
+`sqliteUtcToDate` on `operator_pins.synced_at`, which is `datetime('now')`-stamped on both insert
+and `ON CONFLICT DO UPDATE` (`operatorPinRepository.ts:129-130,:220`), and `SELECT *` (`:96,:103`)
+carries the column. No `toISOString()` is bound into any SQL comparison in the diff. No new
+`onQueue`, no projection/queue-reachable code, no `apps/api` change. No float touches money.
+
+**No manager lockout from the permission switch** (checked because it would have been Critical):
+`admin` gets `Permission::all()` (`RolesAndPermissionsSeeder.php:545`); pin-data and verify-pin both
+ship `getAllPermissions()->pluck('name')` (`PosAuthController.php:226`, `:99`); `AuthUserData:43`
+does the same for the login user that seeds `setupPin`; empty `permissions` falls back to role names
+(`roles.ts:121-126`); `pullOperatorPins` runs in the periodic sync loop (`syncService.ts:2322`), so
+an online terminal refreshes `synced_at` well inside the 7-day TTL.
+
+### New findings (fix diff only)
+
+**[IMPORTANT] r2-1 — `roles.ts:57-60` + `SettingsPage.tsx:99,107` — the permission gate silently
+promotes `accountant` on the device, including DEVICE UNBIND**
+
+`MANAGER_SURFACE_PERMISSION.reports = 'pos.view_reports'` now gates not only the report surfaces but
+also `/shift`, `/reports/z`, the opening-float tooltip and the **device-unbind** action — the
+docblock at `roles.ts:47-49` says so ("which have no server permission of their own"). But
+`pos.view_reports` is seeded to **two** roles, not one: `manager` (`RolesAndPermissionsSeeder.php:619`)
+and **`accountant`** (`:837`, granted 2026-08-12 for POS receipt reporting). `pinHolders`
+(`PosAuthController.php:46-57`) applies no role filter — any active company member with a `pos_pin`
+is a PIN operator — so an accountant with a till PIN now clears every "reports" surface. At r1 head
+they scored 0 on the role ladder and were refused everywhere.
+
+Reports parity with the server is defensible. **Unbind is not**: `SettingsPage.handleConfirmUnbind`
+(`:106-111`) tears down the POS session stores and calls `authStore.unbindDevice` (`:481-508`), which
+clears `LOGIN_TENANT_ID` + token + `StorageKeys.TERMINAL` and resets the terminal store — the
+terminal must be re-provisioned, mid-shift if that is when it happens. Binding a destructive device
+action to a *reporting* permission granted to a back-office role is an authorization widening
+introduced by commit `4c680daa1`, and neither the report's R1-4 section nor the LEDGER rows mention
+it.
+
+*Fix:* either add a third surface (e.g. `device` → a permission `accountant` does not hold — the
+seeder has no natural one, so `pos.approve_cash_drawer_control` or an explicit
+`isManagerRole(operator.roles) && permission` conjunction for unbind), or keep the role-name ladder
+for unbind only and say so at `SettingsPage.tsx:99`. If the intent is that accountant *should* reach
+POS reports, that is fine — but it must be a disclosed, deliberate line in the report, and unbind
+must not ride on it.
+
+**[MINOR] r2-2 — v2/server X reports now mask EVERY tender, diverging from `/reports` on the same
+terminal**
+
+`ReportsPage.tsx:180` conceals `concealCash && m.is_physical` off a row flag the preview *does*
+carry, so on a v2 terminal `/reports` shows the card split while the X report shows em dashes for
+every row. r1 F-1's ask was that the two surfaces agree; the fail-closed fix satisfies safety but
+re-opens the divergence in the opposite direction. Disclosed in `XReportModal.tsx:65-72` and report
+§"Fix-round concerns 3", so this is a note, not a block — but the durable fix is one field on
+`ReportGenerationService`'s payment aggregation (`:1290`, `:1329`), which is out of this lane.
+
+**[MINOR] r2-3 — `Header.test.tsx:715-730` — F-6 only half closed; the new case still does not test
+what its name says**
+
+The old case was correctly renamed to "makes the X report unreachable when there is no open shift"
+(`:705`). The replacement, `'conceals nothing with no open shift — nothing is being counted'`
+(`:715`), renders with `mockShift = null`, then **re-renders with a shift** and asserts
+`x-concealed === 'true'` (`:729`). It never asserts the `shift === null` ⇒ `false` branch of
+`concealPhysicalTenders` (`Header.tsx:148`), which stays unpinned, and the title is again the
+opposite of the assertion — the exact defect F-6 raised.
+
+**[MINOR] r2-4 — `operatorStore.ts:204` — `authority_stale` is evaluated once, at PIN verify**
+
+The TTL is a snapshot taken on the offline verify branch and stored on the in-memory operator; a
+session that is never locked/re-verified keeps its verdict past the 7-day boundary. Bounded in
+practice by the inactivity lock, and the direction on the other side is conservative (a stale flag
+is not cleared by a later successful pull either). Worth one line in the docblock at
+`operatorAuthorityFreshness.ts:39-51`.
+
+**[MINOR] r2-5 — `operatorAuthorityFreshness.test.ts:57-62` — the rule-20 guard is timezone-dependent**
+
+`isOperatorAuthorityStale(justWritten, NOW, 1000)` only goes red for a naive `new Date()` parse when
+the runner sits EAST of UTC (age becomes `+offset` > 1000ms). Under `TZ=UTC` — and `apps/pos` pins no
+TZ in vitest config — the naive parse yields age 0 and the test passes anyway, so the guard against
+exactly the rule-20 class of bug does not bite in CI. Set `TZ` (or assert
+`sqliteUtcToDate(stamp).getTime() === NOW` directly). Same family: the `synced_at` fixture at
+`operatorStore.test.ts` uses `new Date().toISOString()`, a format production never writes to that
+column (`upsertOperators` writes `datetime('now')`), and the comment at
+`operatorAuthorityFreshness.test.ts:65` ("the online verify path writes one") is not accurate — no
+producer writes ISO into `operator_pins.synced_at`.
+
+### What to fix before merge (r2)
+
+Decide and disclose r2-1 — unbind must not be reachable via `pos.view_reports` (which `accountant`
+holds) unless the owner rules that it should; then close r2-3 with a real `shift === null`
+assertion. r2-2/r2-4/r2-5 are notes.
