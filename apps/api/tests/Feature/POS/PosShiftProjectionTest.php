@@ -22,8 +22,10 @@ use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Presentation\Resources\ShiftResource;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -309,6 +311,65 @@ final class PosShiftProjectionTest extends TestCase
         $this->assertSame(ShiftStatus::Open, $replacement->status);
         $this->assertSame($this->terminal->id, $replacement->terminal_id);
         $this->assertSame(2, $replacement->shift_number);
+    }
+
+    /**
+     * LEDGER C-17(viii), the half the row lock in `release()` could NOT buy on
+     * its own.
+     *
+     * `TerminalController::release()` probes `pos_shifts` for an OPEN row under
+     * `lockForUpdate()` on the terminal — but a lock only serialises writers who
+     * take THE SAME LOCK, and this projection (the v3 shift-open path) took
+     * none. So a `SESSION_OPEN` landing between the probe and the release's
+     * commit opened a shift the release had just decided did not exist: on the
+     * non-forced arm the release succeeded against an open shift it should have
+     * refused, and on the FORCED arm the shift was orphaned WITHOUT being named
+     * in the `terminal.released` audit row — which is precisely the evidence
+     * `pos:shift:close-orphaned` demands before it will close anything. The
+     * orphan would have been unresolvable by the very command that exists to
+     * resolve it.
+     *
+     * The projection now takes the same terminal row lock before it decides
+     * whether the terminal already has an OPEN shift, so the two paths
+     * serialise and `release()`'s probe is still true when it commits.
+     *
+     * PostgreSQL only: `SQLiteGrammar::compileLock()` returns '', so `FOR UPDATE`
+     * is compiled away and the ordering could never be observed on the SQLite leg.
+     */
+    public function test_session_open_takes_the_terminal_row_lock_before_inserting_the_shift(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('FOR UPDATE is compiled away by SQLiteGrammar::compileLock().');
+        }
+
+        $shiftId = Str::uuid()->toString();
+        $event = $this->makeSessionOpenEvent($shiftId, shiftNumber: 1);
+
+        /** @var list<string> $statements */
+        $statements = [];
+        DB::listen(function (QueryExecuted $query) use (&$statements): void {
+            $statements[] = strtolower($query->sql);
+        });
+
+        $this->app->make(CompanyContext::class)->clear();
+        $this->app->make(ZSessionLifecycleProjection::class)->apply($event);
+
+        $lockAt = null;
+        $insertAt = null;
+        foreach ($statements as $i => $sql) {
+            if ($lockAt === null && str_contains($sql, 'from "pos_terminals"') && str_contains($sql, 'for update')) {
+                $lockAt = $i;
+            }
+            if ($insertAt === null && str_contains($sql, 'insert into "pos_shifts"')) {
+                $insertAt = $i;
+            }
+        }
+
+        $this->assertNotNull($lockAt, 'projectPosShiftOpen() must take the terminal row FOR UPDATE.');
+        $this->assertNotNull($insertAt, 'The shift was never inserted — the trace point moved.');
+        $this->assertLessThan($insertAt, $lockAt, 'The terminal row lock must be taken BEFORE the shift insert.');
+
+        $this->assertNotNull(Shift::query()->find($shiftId));
     }
 
     /**

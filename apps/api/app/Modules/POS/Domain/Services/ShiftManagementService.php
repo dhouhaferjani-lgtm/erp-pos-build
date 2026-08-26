@@ -64,6 +64,33 @@ final class ShiftManagementService
         }
 
         return DB::transaction(function () use ($terminal, $cashier, $openingCash) {
+            // LEDGER C-17(viii). The terminal row is taken FOR UPDATE first —
+            // not for this method's own sake (the partial unique index
+            // `pos_shifts_one_open_per_terminal` already backstops two
+            // concurrent opens) but because it is the lock
+            // `TerminalController::release()` holds while it probes for an OPEN
+            // shift. A lock only serialises writers who take THE SAME LOCK, so
+            // without this an open landing inside the release's window slipped
+            // past a probe that had just decided there was none: the non-forced
+            // arm released a terminal with a live shift, and the forced arm
+            // orphaned a shift WITHOUT naming it in the `terminal.released`
+            // audit row that `pos:shift:close-orphaned` (LEDGER O-30) requires
+            // as its authorisation.
+            //
+            // Lock ORDER is `pos_terminals` then `pos_shifts`, matching
+            // `release()` and `ZSessionLifecycleProjection::projectPosShiftOpen()`,
+            // so none of the three can deadlock against another.
+            Terminal::query()->whereKey($terminal->id)->lockForUpdate()->first();
+
+            // Re-checked UNDER the lock: the pre-check above ran outside any
+            // transaction and is only a fast path.
+            if (Shift::where('terminal_id', $terminal->id)
+                ->where('status', ShiftStatus::Open)
+                ->exists()
+            ) {
+                throw ShiftAlreadyOpenException::forTerminal($terminal->id);
+            }
+
             // Get next shift number
             $lastShift = Shift::where('terminal_id', $terminal->id)
                 ->orderByDesc('shift_number')
