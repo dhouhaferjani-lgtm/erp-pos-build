@@ -145,7 +145,7 @@ final class CloseOrphanedShiftCommand extends Command
         $shiftId = $this->stringArgument('shift');
         $reason = $this->stringOption('reason');
         $closedBy = $this->stringOption('closed-by');
-        $apply = (bool) $this->option('apply');
+        $apply = $this->applyRequested();
 
         if ($shiftId === null || ! Str::isUuid($shiftId)) {
             $this->error('The `shift` argument must be a UUID (the pos_shifts.id of the orphaned row).');
@@ -470,6 +470,29 @@ final class CloseOrphanedShiftCommand extends Command
             ['closed_by (to write)', $closedBy],
             ['reason (to record)', $reason],
         ]);
+    }
+
+    /**
+     * `--apply` is a VALUE_NONE flag, but under `tenants:run` it arrives as the
+     * STRING the wrapper built from `--option=apply=1`
+     * (`Stancl\Tenancy\Commands\Run` turns `apply=1` into `['--apply' => '1']`
+     * and Symfony's `ArrayInput` stores it verbatim). A bare `(bool)` cast would
+     * therefore read `apply=false` and `apply=no` as TRUE and write the close —
+     * the one direction this flag must never fail in.
+     */
+    private function applyRequested(): bool
+    {
+        // Read through the raw input, not `$this->option()`: larastan types the
+        // latter from the SIGNATURE (VALUE_NONE ⇒ `bool`) and then narrows the
+        // string branch below away as dead code — which is precisely the branch
+        // that runs under `tenants:run`.
+        $value = $this->input->getOption('apply');
+
+        if (is_string($value)) {
+            return filter_var($value, FILTER_VALIDATE_BOOLEAN);
+        }
+
+        return $value === true;
     }
 
     private function stringArgument(string $name): ?string

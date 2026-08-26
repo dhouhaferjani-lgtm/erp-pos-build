@@ -363,6 +363,42 @@ final class CloseOrphanedShiftCommandTest extends TestCase
         );
     }
 
+    /**
+     * `--apply` is a VALUE_NONE flag, but `tenants:run` (the documented
+     * invocation) turns `--option=apply=1` into the STRING `'1'`. A bare
+     * `(bool)` cast would also read `apply=false` as TRUE and write the close.
+     * Both directions are pinned.
+     */
+    public function test_apply_is_honoured_in_the_string_form_tenants_run_passes(): void
+    {
+        [, $shiftId] = $this->orphanedShift();
+
+        $this->artisan(self::COMMAND, [
+            'shift' => $shiftId,
+            '--reason' => 'device stolen mid-shift',
+            '--closed-by' => $this->user->id,
+            '--apply' => '1',
+        ])->assertExitCode(CloseOrphanedShiftCommand::SUCCESS);
+
+        $this->assertSame('CLOSED', $this->shiftStatus($shiftId));
+    }
+
+    public function test_a_falsey_apply_string_stays_a_dry_run(): void
+    {
+        [, $shiftId] = $this->orphanedShift();
+
+        foreach (['0', 'false', 'no'] as $falsey) {
+            $this->artisan(self::COMMAND, [
+                'shift' => $shiftId,
+                '--reason' => 'device stolen mid-shift',
+                '--closed-by' => $this->user->id,
+                '--apply' => $falsey,
+            ])->assertExitCode(CloseOrphanedShiftCommand::SUCCESS);
+
+            $this->assertSame('OPEN', $this->shiftStatus($shiftId), "--apply={$falsey} must not write.");
+        }
+    }
+
     public function test_re_running_after_a_successful_close_is_an_idempotent_no_op(): void
     {
         [, $shiftId] = $this->orphanedShift();
