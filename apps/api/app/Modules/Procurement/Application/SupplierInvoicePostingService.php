@@ -13,8 +13,10 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
+use App\Modules\Taxation\Domain\Services\PostedLineTaxSnapshotBuilder;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\Taxation\PeriodBackdatingGuardInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -51,6 +53,8 @@ final class SupplierInvoicePostingService
         private readonly ReceiptLineConsumptionPlanner $receiptPlanner,
         private readonly DocumentStatusService $documentStatus,
         private readonly TaxCalculationService $taxCalculationService,
+        private readonly PostedLineTaxSnapshotBuilder $postedLineTaxSnapshotBuilder,
+        private readonly PeriodBackdatingGuardInterface $periodBackdatingGuard,
     ) {}
 
     /**
@@ -74,6 +78,31 @@ final class SupplierInvoicePostingService
                 throw new \DomainException('PENDING_RECEIPT_UNLINKED');
             }
             $this->assertInvoiceFirstApproval($supplierInvoice, $actorId);
+
+            // B-19 fix round 1 (fiscal gate B-1 / treasury gate F2). Posting is
+            // now a DECLARATION mutation, not merely a ledger one: step 9 writes
+            // the deductible row the TN VAT declaration reads. `document_date`
+            // comes straight from the operator's `issue_date`
+            // (`CreateSupplierInvoiceService`, validated as a bare
+            // `['required','date']`), so before this guard a supplier invoice
+            // dated into a CLOSED or FILED month could be posted with no refusal
+            // at all — silently changing a figure already sent to the DGI.
+            //
+            // The asymmetry was the tell: this lane's own backfill, a deliberate
+            // admin action, REFUSES exactly this without `--include-filed`, while
+            // the ordinary product action did it unguarded.
+            //
+            // Same guard, same contract, same refusal codes as the return-note
+            // path (`ReturnNoteService::confirmWithin()`) — its only other caller.
+            // Both period tables are ABSENT-PERMITS, so no tenant that has never
+            // closed a period is affected. Runs BEFORE the PO/receipt-line
+            // `lockForUpdate()` below so a refusal never holds those rows for the
+            // rest of the transaction.
+            $this->periodBackdatingGuard->assertBackdatingPeriodIsOpen(
+                $supplierInvoice->company_id,
+                $supplierInvoice->document_date,
+                (string) $supplierInvoice->document_number,
+            );
 
             // 2. Lock the matched PO lines (serializes concurrent posts sharing a PO line).
             $poLineIds = $supplierInvoice->lines
@@ -327,22 +356,42 @@ final class SupplierInvoicePostingService
             // `document_date`, which is the exact date the declaration keys on
             // (`EloquentVatDataRepository::aggregateByRateAndDirection()`).
             //
-            // The row values come from the canonical engine
-            // (`TaxCalculationService::calculateDocumentTaxes()`), reusing the same
-            // producer/writer pair as every sales arm rather than duplicating tax
-            // maths here. A supplier invoice's `fiscal_category` is `NonFiscal`, so
-            // the seeded TN rate rows (which list the SALES fiscal categories only)
-            // match nothing and the engine takes its documented UNCONFIGURED
-            // branch: the line's own explicitly-supplied rate is honoured, at zero
-            // stamp duty. `snapshotTaxDetails()` deletes this document's rows
-            // before rewriting them, so a re-post can never double-count — and the
+            // `snapshotTaxDetails()` deletes this document's rows before
+            // rewriting them, so a re-post can never double-count — and the
             // idempotency no-op at step 3 means a genuine re-post does not even
             // reach here.
+            //
+            // FIX ROUND 1 — ORCHESTRATOR RULING: the snapshot is DERIVED FROM THE
+            // PERSISTED LINE AMOUNTS (`PostedLineTaxSnapshotBuilder`), never
+            // recomputed through `TaxCalculationService::calculateDocumentTaxes()`.
+            // The GL clearing entry above debits Σ `recoverable_tax_amount`
+            // (`:266-273`), which `CreateSupplierInvoiceService` rounded HALF-UP
+            // per line; the engine truncates once per rate bucket, so the two
+            // disagree whenever the true line VAT has a non-zero 4th decimal
+            // (live: `10 × 12.601 × 19% = 23.9419` → ledger 23.942, engine
+            // 23.941). A declared figure that cannot be tied to the 4456 movement
+            // is an unexplainable reconciliation break at audit, so the ledger
+            // wins. The WRITER is still the shared
+            // `TaxCalculationService::snapshotTaxDetails()`.
+            //
+            // `divergences()` is the SAME check the backfill leg applies, so the
+            // live writer and the admin backfill can never take opposite
+            // positions on the same document. It throws rather than logging: a
+            // document whose lines do not reconstruct its own header, or whose
+            // deductible share differs from its gross line VAT, must not enter
+            // the declaration silently.
             $supplierInvoice->load(['company', 'partner', 'lines']);
-            $this->taxCalculationService->snapshotTaxDetails(
-                $supplierInvoice,
-                $this->taxCalculationService->calculateDocumentTaxes($supplierInvoice),
-            );
+            $derived = $this->postedLineTaxSnapshotBuilder->build($supplierInvoice);
+            $divergences = $this->postedLineTaxSnapshotBuilder->divergences($supplierInvoice, $derived);
+            if ($divergences !== []) {
+                throw new \DomainException(sprintf(
+                    'Supplier invoice [%s] cannot be posted: its deductible VAT is not declarable — %s.',
+                    $supplierInvoice->document_number ?? $supplierInvoice->id,
+                    implode('; ', $divergences),
+                ));
+            }
+
+            $this->taxCalculationService->snapshotTaxDetails($supplierInvoice, $derived);
         });
     }
 

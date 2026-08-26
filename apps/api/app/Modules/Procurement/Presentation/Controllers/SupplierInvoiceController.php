@@ -24,6 +24,7 @@ use App\Modules\Procurement\Application\SupplierInvoicePostingService;
 use App\Modules\Procurement\Application\SupplierInvoiceReceiptLinkingService;
 use App\Modules\Procurement\Presentation\Requests\CreateSupplierInvoiceRequest;
 use App\Shared\Domain\CurrencyScale;
+use App\Shared\Exceptions\ReturnPeriodLockedException;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -353,6 +354,19 @@ final class SupplierInvoiceController extends Controller
             }
 
             $this->postingService->post($doc, $user->id);
+        } catch (ReturnPeriodLockedException $e) {
+            // B-19 fix round 1. `ReturnPeriodLockedException` extends
+            // `DomainException`, so WITHOUT this arm the generic catch below
+            // would flatten a typed period refusal into `POSTING_BLOCKED` —
+            // erasing the CLOSED / FILED / LOCKED distinction the front end needs
+            // to decide between "ask your accountant to reopen it" and "pick
+            // another date", and losing the period label. Re-throwing hands it to
+            // the dedicated renderer in `bootstrap/app.php`, which emits the same
+            // 422 envelope (`code`, `message`, `document_number`, `return_date`,
+            // `period_label`, `recoverable`) the return-note path already returns.
+            // Same pattern, same reason, as
+            // `ReturnNoteController::confirm()`'s arm.
+            throw $e;
         } catch (\DomainException $e) {
             return $this->validationErrorResponse('POSTING_BLOCKED', $e->getMessage());
         }

@@ -285,6 +285,10 @@ final class SupplierCreditNoteGlTest extends TestCase
             'allocated_costs' => '0.0000',
             'tax_amount' => $lineTax,
             'tax_recoverable' => true,
+            // B-19: a supplier-invoice/credit-note line always carries an explicit
+            // vat_rate through CreateSupplierInvoiceRequest; the deductible-VAT
+            // snapshot groups the posted amounts by it.
+            'tax_rate' => '19.00',
             'recoverable_tax_amount' => $lineTax,
             'non_recoverable_tax_amount' => '0.000',
             'source_line_id' => $poLine->id,
@@ -369,6 +373,10 @@ final class SupplierCreditNoteGlTest extends TestCase
             'allocated_costs' => '0.0000',
             'tax_amount' => '0.000',
             'tax_recoverable' => true,
+            // B-19: a supplier-invoice/credit-note line always carries an explicit
+            // vat_rate through CreateSupplierInvoiceRequest; the deductible-VAT
+            // snapshot groups the posted amounts by it.
+            'tax_rate' => '0.00',
             'recoverable_tax_amount' => '0.000',
             'non_recoverable_tax_amount' => '0.000',
             'source_line_id' => $poLine->id,
@@ -684,6 +692,10 @@ final class SupplierCreditNoteGlTest extends TestCase
             'line_total' => '0.000',
             'allocated_costs' => '0.0000',
             'tax_amount' => '0.000',
+            // B-19: a supplier-invoice/credit-note line always carries an explicit
+            // vat_rate through CreateSupplierInvoiceRequest; the deductible-VAT
+            // snapshot groups the posted amounts by it.
+            'tax_rate' => '0.00',
             'recoverable_tax_amount' => '0.000',
             'non_recoverable_tax_amount' => '0.000',
             'source_line_id' => $poLine->id,
@@ -1293,6 +1305,10 @@ final class SupplierCreditNoteGlTest extends TestCase
             'line_total' => '0.000',
             'allocated_costs' => '0.0000',
             'tax_amount' => '0.000',
+            // B-19: a supplier-invoice/credit-note line always carries an explicit
+            // vat_rate through CreateSupplierInvoiceRequest; the deductible-VAT
+            // snapshot groups the posted amounts by it.
+            'tax_rate' => '0.00',
             'recoverable_tax_amount' => '0.000',
             'non_recoverable_tax_amount' => '0.000',
             'source_line_id' => $poLine->id,
@@ -1405,6 +1421,10 @@ final class SupplierCreditNoteGlTest extends TestCase
             'line_total' => '0.000',
             'allocated_costs' => '0.0000',
             'tax_amount' => '0.000',
+            // B-19: a supplier-invoice/credit-note line always carries an explicit
+            // vat_rate through CreateSupplierInvoiceRequest; the deductible-VAT
+            // snapshot groups the posted amounts by it.
+            'tax_rate' => '0.00',
             'recoverable_tax_amount' => '0.000',
             'non_recoverable_tax_amount' => '0.000',
             'source_line_id' => $poLine->id,
@@ -1558,6 +1578,10 @@ final class SupplierCreditNoteGlTest extends TestCase
             'allocated_costs' => '0.0000',
             'tax_amount' => '1.900',
             'tax_recoverable' => true,
+            // B-19: a supplier-invoice/credit-note line always carries an explicit
+            // vat_rate through CreateSupplierInvoiceRequest; the deductible-VAT
+            // snapshot groups the posted amounts by it.
+            'tax_rate' => '19.00',
             'recoverable_tax_amount' => '1.900',
             'non_recoverable_tax_amount' => '0.000',
             'source_line_id' => null,
@@ -1732,6 +1756,10 @@ final class SupplierCreditNoteGlTest extends TestCase
                 'allocated_costs' => '0.0000',
                 'tax_amount' => $l['v'],
                 'tax_recoverable' => true,
+                // B-19: a supplier-invoice/credit-note line always carries an explicit
+                // vat_rate through CreateSupplierInvoiceRequest; the deductible-VAT
+                // snapshot groups the posted amounts by it.
+                'tax_rate' => '19.00',
                 'recoverable_tax_amount' => $l['v'],
                 'non_recoverable_tax_amount' => '0.000',
                 'source_line_id' => $poLine->id,

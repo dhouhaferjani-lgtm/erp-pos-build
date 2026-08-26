@@ -43,15 +43,30 @@ class EloquentVatDataRepository implements VatDataRepositoryInterface
      * because a credit note is stored on the OUTPUT side while economically
      * reducing it; nothing analogous applies to a purchase invoice.
      *
-     * NOT YET COVERED — `supplier_credit_note`: the symmetric deduction-reducing
-     * type. It has a live posting path
-     * (`SupplierInvoicePostingService`'s sibling `SupplierCreditNotePostingService`)
-     * but, like supplier invoices before B-19, no tax-detail writer, so it
-     * contributes no rows and adding it to this list today would change nothing.
-     * When its writer is built, it must be added HERE as an INPUT row that
-     * SUBTRACTS (the `-dtd.tax_base` / `-dtd.tax_amount` shape used for
-     * credit_note above), or a tenant that returns goods to a supplier will
-     * over-claim deductible VAT. Zero rows exist on any local tenant today.
+     * `supplier_credit_note` ships in the SAME change, on the INPUT side and
+     * NEGATED (fix round 1, treasury gate F3). It is the symmetric
+     * deduction-reducing type: `SupplierCreditNotePostingService::post()` credits
+     * Σ `recoverable_tax_amount` back out of 4456, so the declaration must give
+     * the deduction back too. Before B-19 both purchase arms declared zero — a
+     * symmetric UNDER-claim, the DGI-safe direction. Whitelisting the invoice arm
+     * alone would have converted that into a NET OVER-CLAIM for any tenant that
+     * returns goods to a supplier, so the two halves are not separable and are
+     * not separated. Zero such documents exist on any local tenant today; the
+     * behaviour is pinned by test, not by data.
+     *
+     * The negation lives at AGGREGATION, never at storage — identical to the
+     * credit-note convention documented above, and for the same reason: a
+     * `document_tax_details` row must always read as "this much base/tax on this
+     * document" and never be sign-overloaded.
+     *
+     * NOT filtered by status, deliberately and consistently with every other arm:
+     * a CANCELLED document keeps its rows and stays declared. That is a real
+     * defect (a posted-then-cancelled supplier invoice keeps claiming a deduction
+     * whose GL was never reversed — `DocumentPostingService::cancel()` reverses
+     * only Invoice/CreditNote), but it is a PRE-EXISTING, cross-type one that the
+     * sales side shares, and fixing it here for the purchase side alone would put
+     * two document families on two different rules. Ledgered as its own row; the
+     * backfill leg deliberately mirrors this behaviour rather than contradicting it.
      */
     public function aggregateByRateAndDirection(string $companyId, string $dateFrom, string $dateTo): array
     {
@@ -68,17 +83,17 @@ class EloquentVatDataRepository implements VatDataRepositoryInterface
             })
             ->where('d.company_id', $companyId)
             ->whereBetween('d.document_date', [$dateFrom, $dateTo])
-            ->whereIn('d.type', ['invoice', 'credit_note', 'expense', 'supplier_invoice'])
+            ->whereIn('d.type', ['invoice', 'credit_note', 'expense', 'supplier_invoice', 'supplier_credit_note'])
             ->where('dtd.is_stamp_duty', false)
             ->whereNull('d.deleted_at')
             ->selectRaw("
                 CASE
                     WHEN d.type IN ('invoice', 'credit_note') THEN 'OUTPUT'
-                    WHEN d.type IN ('expense', 'supplier_invoice') THEN 'INPUT'
+                    WHEN d.type IN ('expense', 'supplier_invoice', 'supplier_credit_note') THEN 'INPUT'
                 END as direction,
                 dtd.tax_rate,
-                SUM(CASE WHEN d.type = 'credit_note' THEN -dtd.tax_base ELSE dtd.tax_base END) as base_amount,
-                SUM(CASE WHEN d.type = 'credit_note' THEN -dtd.tax_amount ELSE dtd.tax_amount END) as vat_amount,
+                SUM(CASE WHEN d.type IN ('credit_note', 'supplier_credit_note') THEN -dtd.tax_base ELSE dtd.tax_base END) as base_amount,
+                SUM(CASE WHEN d.type IN ('credit_note', 'supplier_credit_note') THEN -dtd.tax_amount ELSE dtd.tax_amount END) as vat_amount,
                 COUNT(DISTINCT d.id) as document_count,
                 COALESCE(tc.is_recoverable, true) as is_recoverable,
                 tc.id as tax_configuration_id
@@ -86,7 +101,7 @@ class EloquentVatDataRepository implements VatDataRepositoryInterface
             ->groupByRaw("
                 CASE
                     WHEN d.type IN ('invoice', 'credit_note') THEN 'OUTPUT'
-                    WHEN d.type IN ('expense', 'supplier_invoice') THEN 'INPUT'
+                    WHEN d.type IN ('expense', 'supplier_invoice', 'supplier_credit_note') THEN 'INPUT'
                 END,
                 dtd.tax_rate,
                 tc.is_recoverable,

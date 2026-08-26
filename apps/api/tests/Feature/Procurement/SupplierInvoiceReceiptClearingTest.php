@@ -274,6 +274,10 @@ final class SupplierInvoiceReceiptClearingTest extends TestCase
             'line_total' => '0.000',
             'tax_amount' => '0.000',
             'tax_recoverable' => true,
+            // B-19: a supplier-invoice/credit-note line always carries an explicit
+            // vat_rate through CreateSupplierInvoiceRequest; the deductible-VAT
+            // snapshot groups the posted amounts by it.
+            'tax_rate' => '0.00',
             'recoverable_tax_amount' => '0.000',
             'non_recoverable_tax_amount' => '0.000',
             'allocated_costs' => '0.0000',
@@ -490,6 +494,10 @@ final class SupplierInvoiceReceiptClearingTest extends TestCase
             'line_total' => '105.000',
             'tax_amount' => '0.000',
             'tax_recoverable' => true,
+            // B-19: a supplier-invoice/credit-note line always carries an explicit
+            // vat_rate through CreateSupplierInvoiceRequest; the deductible-VAT
+            // snapshot groups the posted amounts by it.
+            'tax_rate' => '0.00',
             'recoverable_tax_amount' => '0.000',
             'non_recoverable_tax_amount' => '0.000',
             'allocated_costs' => '0.0000',
@@ -757,6 +765,10 @@ final class SupplierInvoiceReceiptClearingTest extends TestCase
             'line_total' => $subtotal,
             'tax_amount' => $recoverableVat,
             'tax_recoverable' => true,
+            // B-19: a supplier-invoice/credit-note line always carries an explicit
+            // vat_rate through CreateSupplierInvoiceRequest; the deductible-VAT
+            // snapshot groups the posted amounts by it.
+            'tax_rate' => '19.00',
             'recoverable_tax_amount' => $recoverableVat,
             'non_recoverable_tax_amount' => '0.000',
             'allocated_costs' => '0.0000',
