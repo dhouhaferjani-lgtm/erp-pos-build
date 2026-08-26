@@ -52,8 +52,7 @@ import { useRefundFlowStore } from '@/stores/refundFlowStore';
 import { useRefundDraftStore } from '@/stores/refundDraftStore';
 import { getTerminalState, setManagerPinThrottle, setManagerPinFailedAttempts } from '@/lib/db/repositories/terminalStateRepository';
 import { hasManagerAccess } from '@/lib/auth/roles';
-import { resolveCashDisclosure } from '@/lib/offline/cashDisclosurePolicy';
-import type { CashDisclosure } from '@/lib/offline/cashDisclosurePolicy';
+import { useCashDisclosure } from '@/hooks/useCashDisclosure';
 
 /** Stable empty set so the disclose case never re-renders XReportModal. */
 const NO_CONCEALED_TENDERS: ReadonlySet<string> = new Set<string>();
@@ -99,17 +98,6 @@ export function Header() {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
   const [showCashDrawerModal, setShowCashDrawerModal] = useState(false);
-  /**
-   * B-13 (ii)/(iii): the blind-cash-count policy resolved AT MOUNT rather than
-   * when the End-of-Day modal opens. Both surfaces this Header owns disclose a
-   * term of the drawer expectation on every route — the shift-badge tooltip
-   * (opening float) and the X report (cash takings) — so the answer has to be
-   * available before either is touched, not at close time.
-   *
-   * Fails CLOSED: 'conceal' until `resolveCashDisclosure` positively reads
-   * `require_blind_cash_count === false`, matching `/shift` and `/reports`.
-   */
-  const [cashDisclosure, setCashDisclosure] = useState<CashDisclosure>('conceal');
   const [physicalTenderCodes, setPhysicalTenderCodes] =
     useState<ReadonlySet<string>>(NO_CONCEALED_TENDERS);
   // Refs for passing EOD data to handlePrintZReport after confirmation
@@ -137,31 +125,14 @@ export function Header() {
    */
   const isManager = hasManagerAccess(operator?.roles);
 
-  // Policy-at-mount (B-13 (iii)). Keyed on companyId so a company switch
-  // re-resolves; re-armed to 'conceal' first so the stale answer never leaks
-  // across the boundary.
-  useEffect(() => {
-    if (!companyId) return;
-    let cancelled = false;
-    setCashDisclosure('conceal');
-
-    void (async () => {
-      try {
-        const { getDatabase } = await import('@/lib/db');
-        const db = await getDatabase(companyId);
-        const policy = await resolveCashDisclosure(db, companyId);
-        if (!cancelled) setCashDisclosure(policy);
-      } catch {
-        // resolveCashDisclosure already fails closed; a DB-open failure lands
-        // in the same place.
-        if (!cancelled) setCashDisclosure('conceal');
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [companyId]);
+  /**
+   * B-13 (ii)/(iii): the blind-cash-count policy, resolved AT MOUNT rather
+   * than when the End-of-Day modal opens. Both surfaces this Header owns
+   * disclose a term of the drawer expectation — the shift-badge tooltip
+   * (opening float, on every route) and the X report (cash takings) — so the
+   * answer has to be in hand before either is touched.
+   */
+  const cashDisclosure = useCashDisclosure(companyId);
 
   // Snapshot which tenders are PHYSICAL when the X report is opened. Payment
   // methods are a synced reference table, so reading them at open time is both
