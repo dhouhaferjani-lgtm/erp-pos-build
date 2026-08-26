@@ -163,6 +163,13 @@ const TARGET_COLUMNS: Record<LiveImportType, { name: string; required: boolean; 
     { name: 'purchase_price', required: false, description: 'Cost price' },
     { name: 'quantity', required: false },
     { name: 'location_code', required: false },
+    // W4-1: without this entry `expiry_date` is neither auto-mapped nor
+    // selectable, ColumnMapper drops it into `skippedColumns`, and
+    // ImportService::applyColumnMapping() — which keeps ONLY mapped targets —
+    // strips it from every row. The operator fills the column in the official
+    // template and every opening lot still opens undated, with no error and no
+    // mention in the result workbook.
+    { name: 'expiry_date', required: false, description: 'YYYY-MM-DD lot expiry for the opening stock' },
     { name: 'placement_path', required: false, description: 'A1 > R2 > B7' },
     { name: 'barcode', required: false },
     { name: 'brand', required: false },

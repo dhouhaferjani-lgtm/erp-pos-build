@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -8,13 +8,37 @@ import { ProductLineSelect } from '@/components/molecules/line-items'
 import type { Batch } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
+/**
+ * W4-1 — `expiry_date` is required when MINTING a lot by hand (the server's
+ * `CreateBatchRequest` requires it), but a lot that already exists may legitimately
+ * record NO expiry: the opening path mints one undated whenever nobody supplied a
+ * date. Forcing a date on every edit made the batch screen — the only route to
+ * attach a real expiry to such a lot — impossible to use for anything else
+ * (renaming, notes, deactivating) without first inventing the very date this lane
+ * removed.
+ *
+ * So: blank is allowed only while editing a lot that is ALREADY undated, and a
+ * blank field then submits as `undefined` (field omitted) rather than `''`, which
+ * the server's `sometimes|date` rule would reject.
+ */
 const batchFormSchema = z.object({
   product_id: z.string().min(1, 'Product is required'),
   batch_number: z.string().min(1, 'Batch number is required').max(100),
-  expiry_date: z.string().min(1, 'Expiry date is required'),
+  expiry_date: z.string().optional(),
   manufacturing_date: z.string().optional(),
   notes: z.string().optional(),
 })
+
+function makeBatchFormSchema(allowBlankExpiry: boolean) {
+  if (allowBlankExpiry) {
+    return batchFormSchema
+  }
+
+  return batchFormSchema.refine(
+    (data) => (data.expiry_date ?? '').trim() !== '',
+    { path: ['expiry_date'], message: 'Expiry date is required' },
+  )
+}
 
 export type BatchFormData = z.infer<typeof batchFormSchema>
 
@@ -28,6 +52,11 @@ interface BatchFormProps {
 export function BatchForm({ batch, onSave, isSubmitting = false, submitLabel }: BatchFormProps) {
   const { t } = useTranslation(['batches', 'common'])
 
+  // An EXISTING lot that records no expiry may stay that way. Everything else —
+  // creating a lot, or editing one that already has a date — still demands one.
+  const allowBlankExpiry = batch !== undefined && batch.expiry_date === null
+  const resolverSchema = useMemo(() => makeBatchFormSchema(allowBlankExpiry), [allowBlankExpiry])
+
   const {
     register,
     handleSubmit,
@@ -35,7 +64,7 @@ export function BatchForm({ batch, onSave, isSubmitting = false, submitLabel }: 
     watch,
     formState: { errors },
   } = useForm<BatchFormData>({
-    resolver: zodResolver(batchFormSchema),
+    resolver: zodResolver(resolverSchema),
     defaultValues: {
       product_id: batch?.product_id || '',
       batch_number: batch?.batch_number || '',
@@ -52,9 +81,9 @@ export function BatchForm({ batch, onSave, isSubmitting = false, submitLabel }: 
     if (batch) {
       setValue('product_id', batch.product_id)
       setValue('batch_number', batch.batch_number)
-      // W4-1: a lot may record NO expiry. Editing it leaves the field blank, and
-      // the form's own `min(1)` rule then makes the operator supply a real date
-      // rather than letting a hand-edit silently re-invent one.
+      // W4-1: a lot may record NO expiry. The field stays blank and the form
+      // accepts it (see makeBatchFormSchema) — an edit must never be the thing
+      // that forces the operator to re-invent a date.
       setValue('expiry_date', batch.expiry_date === null ? '' : (batch.expiry_date.split('T')[0] ?? ''))
       setValue('manufacturing_date', batch.manufacturing_date ? batch.manufacturing_date.split('T')[0] : '')
       setValue('notes', batch.notes || '')
@@ -62,7 +91,12 @@ export function BatchForm({ batch, onSave, isSubmitting = false, submitLabel }: 
   }, [batch, setValue])
 
   const handleFormSubmit = handleSubmit((data) => {
-    onSave(data)
+    // A blank expiry is OMITTED, never sent as ''. `UpdateBatchRequest`'s rule is
+    // `sometimes|date`, so an empty string is a 422 while an absent key correctly
+    // means "leave this lot's expiry as it is".
+    const expiry = (data.expiry_date ?? '').trim()
+
+    onSave(expiry === '' ? { ...data, expiry_date: undefined } : { ...data, expiry_date: expiry })
   })
 
   // Get today's date for min date validation
@@ -120,7 +154,11 @@ export function BatchForm({ batch, onSave, isSubmitting = false, submitLabel }: 
           <label htmlFor="expiry_date" className={`mb-2 flex items-center gap-2 text-sm font-medium ${colorTokens.text.secondary}`}>
             <Calendar className="h-4 w-4" />
             {t('batches:fields.expiryDate')}
-            <span className={`${colorTokens.intent.danger.textSubtle}`}>*</span>
+            {allowBlankExpiry ? (
+              <span className={`${colorTokens.text.disabled}`}>({t('common:optional')})</span>
+            ) : (
+              <span className={`${colorTokens.intent.danger.textSubtle}`}>*</span>
+            )}
           </label>
           <input
             id="expiry_date"

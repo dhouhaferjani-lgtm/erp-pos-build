@@ -85,19 +85,36 @@ function isBatchTransferableAtSource(batch: Batch, sourceLocationId: string): bo
 
 /**
  * FEFO order, matching the SERVER's ranking exactly (W4-1): earliest expiry
- * first, and a lot that records NO expiry LAST. This is not cosmetic — the
- * transfer endpoint REFUSES an allocation that does not follow its own FEFO
+ * first, a lot that records NO expiry LAST, then `id`. This is not cosmetic —
+ * the transfer endpoint REFUSES an allocation that does not follow its own FEFO
  * order ("Batch allocations must follow FEFO"), so a client that sorted undated
  * lots first would build a draft the server rejects.
+ *
+ * The `id` tie-break is the half that gate r1 caught (inventory finding D). The
+ * server's canonical split breaks ties on `id`
+ * (`StockTransferService::computeFefoSplit`), and `assertAllocationsFollowFefo`
+ * compares per-batch QUANTITIES — so on a PARTIAL draw across two equal-rank
+ * lots a client relying on JS sort stability can build a split the server
+ * refuses, with no way for the operator to satisfy it. Equal DATES were already
+ * reachable; undated ties are new, and on the launch tenant they are the common
+ * shape.
  */
 function compareByFefo(a: Batch, b: Batch): number {
-  if (a.expiry_date === null || b.expiry_date === null) {
-    if (a.expiry_date === b.expiry_date) {
-      return 0
+  if (a.expiry_date !== b.expiry_date) {
+    if (a.expiry_date === null) {
+      return 1
     }
-    return a.expiry_date === null ? 1 : -1
+    if (b.expiry_date === null) {
+      return -1
+    }
+
+    const byExpiry = a.expiry_date.localeCompare(b.expiry_date)
+    if (byExpiry !== 0) {
+      return byExpiry
+    }
   }
-  return a.expiry_date.localeCompare(b.expiry_date)
+
+  return a.id - b.id
 }
 
 function buildFefoAllocations(
