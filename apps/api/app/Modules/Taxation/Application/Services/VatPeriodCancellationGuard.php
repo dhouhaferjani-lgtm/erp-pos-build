@@ -81,7 +81,9 @@ final class VatPeriodCancellationGuard implements DocumentPeriodLockInterface
      * entry (`GeneralLedgerService::createFromIncome()`, declared `:4056`, stamped
      * `:4106`, called synchronously in-transaction by `IncomeService::post():161`)
      * but is excluded from the VAT declaration
-     * (`EloquentVatDataRepository:42` reads invoice/credit_note/expense only).
+     * (`EloquentVatDataRepository`'s document arm reads
+     * invoice/credit_note/expense/supplier_invoice only — `supplier_invoice`
+     * added by B-19, 2026-08-26; `Income` is still absent).
      * The first narrowing pass dropped `Income` on the declaration half alone —
      * GL re-gate I-5. A ledger-bearing type left unlocked would, once an
      * Income-cancel lane exists, withdraw from a FILED period with no refusal AND
@@ -102,9 +104,12 @@ final class VatPeriodCancellationGuard implements DocumentPeriodLockInterface
      * PurchaseOrder and PurchaseQuoteRequest are deliberately ABSENT: they post
      * no journal entry and write no `document_tax_details` row, so locking them
      * would refuse a cancellation with zero fiscal justification (taxation gate
-     * I-4). Expense IS present — it is the only purchase-side type the VAT
-     * declaration actually reads (`EloquentVatDataRepository:42` restricts to
-     * invoice/credit_note/expense).
+     * I-4). Expense IS present — and, since B-19 (2026-08-26), SupplierInvoice
+     * is read by the declaration too: the repository's document arm now
+     * restricts to invoice/credit_note/expense/supplier_invoice, so both
+     * purchase-side entries in this list carry declaration weight as well as
+     * ledger weight. SupplierCreditNote is retained on ledger grounds alone
+     * (it writes no `document_tax_details` row yet).
      *
      * @var list<DocumentType>
      */

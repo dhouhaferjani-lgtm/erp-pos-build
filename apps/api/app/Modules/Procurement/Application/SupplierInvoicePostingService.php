@@ -13,6 +13,7 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
+use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\Collection;
@@ -49,6 +50,7 @@ final class SupplierInvoicePostingService
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly ReceiptLineConsumptionPlanner $receiptPlanner,
         private readonly DocumentStatusService $documentStatus,
+        private readonly TaxCalculationService $taxCalculationService,
     ) {}
 
     /**
@@ -296,6 +298,51 @@ final class SupplierInvoicePostingService
                 'balance_due' => $supplierInvoice->total,
                 'match_status' => $matchStatus,
             ]);
+
+            // 9. Snapshot the deductible (input) VAT to `document_tax_details`.
+            //
+            // B-19 (P0, owner sheet OWNER-SHEET-2026-08-21-first-client-session.md):
+            // this call did not exist, so a posted supplier invoice carried ZERO
+            // tax-detail rows and its input VAT was silently absent from the
+            // Tunisian VAT declaration (local demo tenant, 2026-08-26: 43 supplier
+            // invoices, 704.401 TND of VAT, 0 rows). The other half of the same
+            // defect — `EloquentVatDataRepository` not listing `supplier_invoice`
+            // among the declared document types — is fixed in the same change; one
+            // half alone still declares nothing.
+            //
+            // WHY HERE AND NOT AT CREATION. `document_tax_details` is the
+            // declaration's ONLY population filter: the repository applies no
+            // status predicate, so "a row exists" IS the system's proxy for "this
+            // document is fiscally recognised". Every other arm therefore writes on
+            // the transition that makes the document real, never on draft creation
+            // — `InvoiceController::confirm()`, `CreditNoteController::confirm()`,
+            // `QuoteController::confirm()`, `SalesOrderService::confirm()`,
+            // `PurchaseOrderService::confirm()`, `DeliveryNoteService::confirm()`,
+            // `ReturnNoteService::confirmWithFiscalChain()` and, on the purchase
+            // side, `ExpenseService::post()`. Snapshotting a supplier invoice at
+            // creation would declare a deduction for every UNPOSTED draft (31
+            // drafts / 390.517 TND on the demo tenant alone) against invoices that
+            // carry no journal entry at all — a worse defect than the one closed
+            // here. `post()` is also where the GR/IR clearing entry is stamped with
+            // `document_date`, which is the exact date the declaration keys on
+            // (`EloquentVatDataRepository::aggregateByRateAndDirection()`).
+            //
+            // The row values come from the canonical engine
+            // (`TaxCalculationService::calculateDocumentTaxes()`), reusing the same
+            // producer/writer pair as every sales arm rather than duplicating tax
+            // maths here. A supplier invoice's `fiscal_category` is `NonFiscal`, so
+            // the seeded TN rate rows (which list the SALES fiscal categories only)
+            // match nothing and the engine takes its documented UNCONFIGURED
+            // branch: the line's own explicitly-supplied rate is honoured, at zero
+            // stamp duty. `snapshotTaxDetails()` deletes this document's rows
+            // before rewriting them, so a re-post can never double-count — and the
+            // idempotency no-op at step 3 means a genuine re-post does not even
+            // reach here.
+            $supplierInvoice->load(['company', 'partner', 'lines']);
+            $this->taxCalculationService->snapshotTaxDetails(
+                $supplierInvoice,
+                $this->taxCalculationService->calculateDocumentTaxes($supplierInvoice),
+            );
         });
     }
 

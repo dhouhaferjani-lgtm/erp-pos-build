@@ -23,6 +23,35 @@ class EloquentVatDataRepository implements VatDataRepositoryInterface
      * automatically the next time this query runs -- no backfill needed for
      * this specific defect (unlike V4/tax_base and V5/is_stamp_duty, which
      * ARE baked into the stored row and DO need V6's backfill).
+     *
+     * B-19 (P0, 2026-08-26, owner sheet
+     * OWNER-SHEET-2026-08-21-first-client-session.md): `supplier_invoice` joined
+     * `expense` on the INPUT (deductible) side. Before this, the type was absent
+     * from the whereIn above, so a supplier invoice's input VAT could never be
+     * declared — and the omission was invisible because the OTHER half of the
+     * same defect (`SupplierInvoicePostingService::post()` writing no
+     * `document_tax_details` row at all) meant there was nothing to include
+     * either way. Both halves land together; either alone still declares zero.
+     * Live proof on the local demo tenant: 43 supplier invoices, 704.401 TND of
+     * VAT, 0 tax-detail rows.
+     *
+     * NO SIGN FLIP. Supplier-invoice rows are stored POSITIVE, exactly like
+     * expense rows, and `TunisiaVatStrategy::mapToDeclaration()` sums the
+     * recoverable INPUT breakdowns into `total_deductible_vat`, which
+     * `VatCreditService` then subtracts from output VAT. A negation here would
+     * INCREASE the amount payable. The credit-note negation above exists only
+     * because a credit note is stored on the OUTPUT side while economically
+     * reducing it; nothing analogous applies to a purchase invoice.
+     *
+     * NOT YET COVERED — `supplier_credit_note`: the symmetric deduction-reducing
+     * type. It has a live posting path
+     * (`SupplierInvoicePostingService`'s sibling `SupplierCreditNotePostingService`)
+     * but, like supplier invoices before B-19, no tax-detail writer, so it
+     * contributes no rows and adding it to this list today would change nothing.
+     * When its writer is built, it must be added HERE as an INPUT row that
+     * SUBTRACTS (the `-dtd.tax_base` / `-dtd.tax_amount` shape used for
+     * credit_note above), or a tenant that returns goods to a supplier will
+     * over-claim deductible VAT. Zero rows exist on any local tenant today.
      */
     public function aggregateByRateAndDirection(string $companyId, string $dateFrom, string $dateTo): array
     {
@@ -39,13 +68,13 @@ class EloquentVatDataRepository implements VatDataRepositoryInterface
             })
             ->where('d.company_id', $companyId)
             ->whereBetween('d.document_date', [$dateFrom, $dateTo])
-            ->whereIn('d.type', ['invoice', 'credit_note', 'expense'])
+            ->whereIn('d.type', ['invoice', 'credit_note', 'expense', 'supplier_invoice'])
             ->where('dtd.is_stamp_duty', false)
             ->whereNull('d.deleted_at')
             ->selectRaw("
                 CASE
                     WHEN d.type IN ('invoice', 'credit_note') THEN 'OUTPUT'
-                    WHEN d.type = 'expense' THEN 'INPUT'
+                    WHEN d.type IN ('expense', 'supplier_invoice') THEN 'INPUT'
                 END as direction,
                 dtd.tax_rate,
                 SUM(CASE WHEN d.type = 'credit_note' THEN -dtd.tax_base ELSE dtd.tax_base END) as base_amount,
@@ -57,7 +86,7 @@ class EloquentVatDataRepository implements VatDataRepositoryInterface
             ->groupByRaw("
                 CASE
                     WHEN d.type IN ('invoice', 'credit_note') THEN 'OUTPUT'
-                    WHEN d.type = 'expense' THEN 'INPUT'
+                    WHEN d.type IN ('expense', 'supplier_invoice') THEN 'INPUT'
                 END,
                 dtd.tax_rate,
                 tc.is_recoverable,

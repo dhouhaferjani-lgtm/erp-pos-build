@@ -47,8 +47,9 @@ use Carbon\CarbonInterface;
  * `ReturnNoteService::confirmWithFiscalChain()` calls `snapshotTaxDetails()`). The
  * correct premise is that the VAT declaration never READS return-note rows —
  * `EloquentVatDataRepository::aggregateByRateAndDirection()` restricts to
- * invoice / credit_note / expense — which is why this is document and ledger
- * integrity rather than declaration integrity.
+ * invoice / credit_note / expense / supplier_invoice (the last added by B-19,
+ * 2026-08-26) — which is why this is document and ledger integrity rather than
+ * declaration integrity.
  */
 final class VatPeriodBackdatingGuard implements PeriodBackdatingGuardInterface
 {

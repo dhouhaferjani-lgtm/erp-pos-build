@@ -6,6 +6,7 @@ namespace Tests\Feature\Taxation;
 
 use App\Enums\Vertical;
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Document\Domain\Document;
@@ -345,7 +346,7 @@ final class SupplierInvoiceVatDeclarationTest extends TestCase
             'accrual_unit_cost' => '5.000000',
         ]);
 
-        app(\App\Modules\Accounting\Domain\Services\GeneralLedgerService::class)->createGoodsReceiptGrIrEntry(
+        app(GeneralLedgerService::class)->createGoodsReceiptGrIrEntry(
             $this->company->id,
             Str::uuid()->toString(),
             '100.0000',
