@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Import\Services;
 
+use PhpOffice\PhpSpreadsheet\Cell\Cell;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Reader\Exception as ReaderException;
+use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 
 /**
  * Service for parsing spreadsheet files (CSV, XLSX, XLS)
@@ -169,6 +171,8 @@ final class SpreadsheetParserService
                 $value = $cell->getValue();
                 if ($value === null) {
                     $rowData[] = '';
+                } elseif ($this->isDateCell($cell)) {
+                    $rowData[] = $this->readDateCell($value);
                 } elseif (is_scalar($value) || $value instanceof \Stringable) {
                     $rowData[] = (string) $value;
                 } else {
@@ -205,6 +209,55 @@ final class SpreadsheetParserService
             'headers' => $headers,
             'rows' => $rows,
         ];
+    }
+
+    /**
+     * Is this cell one Excel itself typed as a date/time?
+     *
+     * 🚨 W4-1 gate r1 — a Date-formatted XLSX cell holds an Excel SERIAL
+     * (`46387`), not `2027-01-31`. Read raw, that serial reaches validation and
+     * `expiry_date`'s `date_format:Y-m-d` rejects it, which marks the WHOLE ROW
+     * invalid — the product is not imported at all, not merely its expiry. Excel
+     * auto-formats a typed `2027-09-30` as a date, so this was the default
+     * outcome for any operator who opened the official template in Excel.
+     *
+     * Deliberately NARROW: only cells whose number format is a date/time are
+     * converted. A blanket `getFormattedValue()` would push money and quantity
+     * cells through Excel's DISPLAY format — a `#,##0.0` column would hand back
+     * `7.1` for a stored `7.140` — and silently break the precision contract
+     * (rule 19) on every numeric import.
+     */
+    private function isDateCell(Cell $cell): bool
+    {
+        $value = $cell->getValue();
+
+        // Only a numeric cell can be a serial. A text cell that merely sits in a
+        // date-formatted column is already the literal the operator typed.
+        if (! is_int($value) && ! is_float($value)) {
+            return false;
+        }
+
+        return ExcelDate::isDateTime($cell);
+    }
+
+    /**
+     * An Excel date serial as a plain string.
+     *
+     * Midnight collapses to `Y-m-d` (what every date rule in `ImportType` wants);
+     * a real time survives as `Y-m-d H:i:s` rather than being truncated, since
+     * dropping it would be a second invented value.
+     */
+    private function readDateCell(mixed $value): string
+    {
+        if (! is_int($value) && ! is_float($value)) {
+            return '';
+        }
+
+        $date = ExcelDate::excelToDateTimeObject($value);
+
+        return $date->format('H:i:s') === '00:00:00'
+            ? $date->format('Y-m-d')
+            : $date->format('Y-m-d H:i:s');
     }
 
     /**
