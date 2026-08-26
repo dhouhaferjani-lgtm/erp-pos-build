@@ -125,7 +125,7 @@ final class SliceDBatch1EnumFreezeTest extends TestCase
                 // (2026_08_25_150000_widen_payments_payment_type_check_for_pos_refund).
                 // This test going red on an enum change with no migration is the
                 // whole point — see the …130300 docblock.
-                ['document_payment', 'advance', 'refund', 'credit_application', 'supplier_payment', 'pos', 'reversal', 'pos_refund'],
+                ['document_payment', 'advance', 'refund', 'credit_application', 'supplier_payment', 'pos', 'pos_refund', 'reversal'],
             ],
             'chk_payments_origin_enum' => [
                 'chk_payments_origin_enum',

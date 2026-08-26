@@ -84,6 +84,9 @@ final class PaymentTypeReversalTest extends TestCase
         self::assertSame(ReversalSupport::Unsupported, PaymentType::POS->reversalSupport());
         self::assertSame(ReversalSupport::Unsupported, PaymentType::Refund->reversalSupport());
         self::assertSame(ReversalSupport::Unsupported, PaymentType::Reversal->reversalSupport());
+        // W4R2-2: `POSRefund` answers as `POS` does, and for the same reason —
+        // direct to revenue, no AR leg; the POS void/refund lane owns it.
+        self::assertSame(ReversalSupport::Unsupported, PaymentType::POSRefund->reversalSupport());
     }
 
     /**
@@ -92,7 +95,8 @@ final class PaymentTypeReversalTest extends TestCase
      */
     public function test_every_payment_type_answers_every_branch_block(): void
     {
-        self::assertCount(7, PaymentType::cases());
+        // W4R2-2 added `POSRefund` (7 -> 8).
+        self::assertCount(8, PaymentType::cases());
 
         foreach (PaymentType::cases() as $case) {
             self::assertNotSame('', $case->label(), $case->value.' must have a label');
