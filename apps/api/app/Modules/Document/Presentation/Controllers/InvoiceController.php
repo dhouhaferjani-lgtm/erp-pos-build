@@ -8,7 +8,9 @@ use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
 use App\Modules\Document\Application\DTOs\DocumentData;
+use App\Modules\Document\Application\DTOs\ProformaPresentationData;
 use App\Modules\Document\Application\Services\DocumentLineTaxResolver;
+use App\Modules\Document\Application\Services\ProformaPresenter;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DeliveryComplianceCode;
@@ -88,11 +90,21 @@ class InvoiceController extends Controller
         private readonly DeliveryNoteFromDocumentFactory $deliveryNoteFactory,
         private readonly InventoryGlPostingBuffer $glBuffer,
         private readonly DeliveryNoteBillingClaimService $billingClaimService,
+        private readonly ProformaPresenter $proformaPresenter,
     ) {}
 
     private function scale(): int
     {
         return $this->scaleResolver->getScale();
+    }
+
+    /**
+     * C-F0w — an invoice detail view renders the proforma box for a confirmed
+     * (or paid, or posted) invoice the fiscal chain has never sealed.
+     */
+    protected function proformaPresentation(Document $document): ?ProformaPresentationData
+    {
+        return $this->proformaPresenter->present($document);
     }
 
     /**

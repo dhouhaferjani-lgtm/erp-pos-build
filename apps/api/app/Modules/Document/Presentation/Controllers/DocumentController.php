@@ -7,6 +7,7 @@ namespace App\Modules\Document\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Application\DTOs\DocumentData;
+use App\Modules\Document\Application\Services\ProformaPresenter;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -44,6 +45,7 @@ class DocumentController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly TaxCalculationService $taxCalculationService,
         private readonly DocumentPostingService $documentPostingService,
+        private readonly ProformaPresenter $proformaPresenter,
     ) {}
 
     /**
@@ -182,8 +184,15 @@ class DocumentController extends Controller
             ], 404);
         }
 
+        // C-F0w — `/documents/{id}` is the CREDIT NOTE detail page's endpoint, so
+        // it carries the proforma projection an unsealed credit note renders.
         return response()->json([
-            'data' => DocumentData::fromModel($documentModel),
+            'data' => DocumentData::fromModel(
+                $documentModel,
+                true,
+                3,
+                $this->proformaPresenter->present($documentModel),
+            ),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
             ],

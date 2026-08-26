@@ -280,6 +280,17 @@
     "draftSavedAt": "Brouillon enregistré {{time}}",
     "errors": {
       "unitPriceRequired": "Saisissez un prix unitaire sur chaque ligne avant d'enregistrer."
+    },
+    "proforma": {
+      "title": "Proforma — document non fiscal",
+      "detail": "Il s'agit d'une estimation établie avant l'enregistrement de la vente dans les comptes. Ce n'est pas un document fiscal définitif, il ne porte aucun scellement et n'ouvre aucun droit à déduction. Un document définitif sera émis une fois la vente enregistrée.",
+      "estimatedTotal": "Total estimé",
+      "stampDuty": "Droit de timbre",
+      "discount": "Remise",
+      "adjustment": "Ajustement"
+    },
+    "creditNote": {
+      "balanceNote": "Cet avoir réduit votre solde du montant indiqué ci-dessus."
     }
   },
   "lineItems": {
@@ -870,8 +881,6 @@
     "postTitle": "Comptabiliser l'avoir",
     "postMessage": "Êtes-vous sûr de vouloir comptabiliser cet avoir ? Cela créera des écritures comptables. Cette action est irréversible.",
     "postingMarker": {
-      "title": "Non comptabilisée — aucun scellement fiscal",
-      "detail": "Ce document n'a pas été comptabilisé. Il ne porte aucun scellement fiscal ni entrée dans la chaîne de hachage, et ne constitue pas un avoir fiscal définitif.",
       "cancelledTitle": "Annulée — ce document a été annulé",
       "cancelledDetail": "Cet avoir a été annulé et ne peut être utilisé comme justificatif."
     }

@@ -16,6 +16,7 @@ import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { Modal } from '../../../components/organisms/Modal/Modal'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
 import { DocumentTotals } from '../components/DocumentTotals'
+import { ProformaBanner } from '../components/ProformaBanner'
 import { useSendDocumentEmail } from '../hooks/useDocumentEmail'
 import { useDownloadPdf, usePreviewPdf, usePrintPdf } from '../hooks/useDocumentPdf'
 import { DocumentActionBar } from '../components/DocumentActionBar'
@@ -129,6 +130,44 @@ export function CreditNoteDetailPage() {
 
   const isPosted = creditNote.status === 'posted'
 
+  /**
+   * C-F0w / SPEC §2.4 — the SERVER's proforma predicate (`ProformaOutputPolicy`,
+   * keyed on the fiscal seal), the same one the PDF uses. Never re-derived from
+   * `status`: `isPosted` above is true for a `posted` credit note the chain never
+   * sealed, and that document is an estimate, not a claim.
+   *
+   * Fiscal gate r1 F-3: `!== false`, not `=== true`. Every real API response sets
+   * this field explicitly (`DocumentData::$is_proforma` is a non-nullable `bool`),
+   * so behaviour on a genuine payload is unchanged; but the field stays optional on
+   * this hand-maintained type (dozens of fixtures construct it without proforma in
+   * mind), and an omitted field must degrade toward "print less" (treated as a
+   * proforma) rather than toward "claim a seal" on a document nothing has sealed.
+   */
+  const isProforma = creditNote.is_proforma !== false
+  const proformaLineAmounts = new Map(
+    (creditNote.proforma?.lines ?? []).map((line) => [line.line_id, line] as const)
+  )
+
+  /**
+   * The figure the items table prints for one line: the NET one on a definitive
+   * credit note, the server's TAX-INCLUSIVE one on a proforma, and NOTHING when
+   * the projection does not cover the line — never a net figure under a gross
+   * total, which is a VAT breakdown written as a subtraction.
+   */
+  const displayLineAmount = (
+    lineId: string,
+    net: string,
+    field: 'unit_price' | 'line_total'
+  ): string | null => {
+    const currency = currentCompany?.currency ?? 'EUR'
+    if (!isProforma) {
+      return formatCurrency(net, { currency })
+    }
+    const gross = proformaLineAmounts.get(lineId)
+
+    return gross === undefined ? null : formatCurrency(gross[field], { currency })
+  }
+
   return (
     <div className="py-6">
       {/* Header */}
@@ -169,20 +208,29 @@ export function CreditNoteDetailPage() {
         <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${colorClasses.bgRed100} ${colorClasses.textRed800}`}>
           {t('documents.types.credit_note')}
         </span>
-        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-          creditNote.status === 'posted' ? `${colorClasses.bgGreen100} ${colorClasses.textGreen800}` :
-          creditNote.status === 'confirmed' ? `${colorClasses.bgBlue100} ${colorClasses.textBlue800}` :
-          `${colorClasses.bgGray100} ${colorClasses.textGray800}`
-        }`}>
-          {t(`documents.status.${creditNote.status}`)}
-        </span>
-        {isPosted && (
+        {/*
+          * No status chip and no SEALED chip on a proforma (C-F0w): a `posted`
+          * credit note the chain never sealed wearing either one contradicts the
+          * banner below it, which is the only claim this page makes about it.
+          */}
+        {!isProforma && (
+          <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+            creditNote.status === 'posted' ? `${colorClasses.bgGreen100} ${colorClasses.textGreen800}` :
+            creditNote.status === 'confirmed' ? `${colorClasses.bgBlue100} ${colorClasses.textBlue800}` :
+            `${colorClasses.bgGray100} ${colorClasses.textGray800}`
+          }`}>
+            {t(`documents.status.${creditNote.status}`)}
+          </span>
+        )}
+        {isPosted && !isProforma && (
           <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${colorClasses.bgPurple100} ${colorClasses.textPurple800}`}>
             <Lock className="w-3 h-3" />
             {t('documents.sealed')}
           </span>
         )}
       </div>
+
+      {isProforma && <ProformaBanner className="mb-6" />}
 
       {/* Source Invoice Link */}
       {creditNote.source_document_id && (
@@ -292,10 +340,10 @@ export function CreditNoteDetailPage() {
                     {formatQuantity(line.quantity, getQuantityDecimals(line))}
                   </td>
                   <td className={`px-6 py-4 text-sm ${colorClasses.textGray900} text-right`}>
-                    {formatCurrency(line.unit_price, { currency: currentCompany?.currency ?? 'EUR' })}
+                    {displayLineAmount(line.id, line.unit_price, 'unit_price')}
                   </td>
                   <td className={`px-6 py-4 text-sm ${colorClasses.textGray900} text-right font-medium`}>
-                    {formatCurrency(line.line_total, { currency: currentCompany?.currency ?? 'EUR' })}
+                    {displayLineAmount(line.id, line.line_total, 'line_total')}
                   </td>
                 </tr>
               ))}
@@ -311,6 +359,8 @@ export function CreditNoteDetailPage() {
                 documentId={creditNote.id}
                 documentType="credit_note"
                 currency={currentCompany?.currency ?? 'EUR'}
+                isProforma={isProforma}
+                proformaTotals={creditNote.proforma ?? null}
               />
             </div>
           </div>

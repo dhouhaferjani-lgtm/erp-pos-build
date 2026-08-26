@@ -440,6 +440,11 @@ class CreditNoteController extends Controller
             'reason_label' => $creditNote->credit_note_reason?->label(),
             'notes' => $creditNote->notes,
             'status' => $creditNote->status->value,
+            // C-F0w / SPEC §2.4 — the PREDICATE, not its symptoms. `CreditNoteDetail`
+            // guessed from `status` and said so in a comment; a `Posted` credit note
+            // the chain never sealed is a proforma and a status heuristic calls it
+            // definitive. Same answer the PDF gets.
+            'is_proforma' => $creditNote->isProformaOutput(),
             'created_at' => $creditNote->created_at?->toIso8601String(),
         ];
 

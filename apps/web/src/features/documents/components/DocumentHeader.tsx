@@ -57,6 +57,18 @@ export interface DocumentHeaderProps {
   actions?: React.ReactNode
   /** Optional full-width strip below the identity row (e.g. outstanding balance) */
   financialCallout?: React.ReactNode
+  /**
+   * Drop the lifecycle status chip from the identity row. Default `false` — every
+   * existing caller is unaffected.
+   *
+   * C-F0w gate r1 (W-1). A PROFORMA rendering carries no status badge: a `posted`
+   * document the fiscal chain never sealed wearing a green `Posted` chip beside a
+   * banner that says the sale has not been entered in the accounts contradicts
+   * itself in front of the customer, and `status` is not the predicate — the seal
+   * is. The header stays ignorant of that reasoning on purpose: the caller owns the
+   * `is_proforma` decision and passes the consequence.
+   */
+  suppressStatusBadge?: boolean
 }
 
 /**
@@ -80,6 +92,7 @@ export function DocumentHeader({
   children,
   actions,
   financialCallout,
+  suppressStatusBadge = false,
 }: DocumentHeaderProps) {
   const { t } = useTranslation(['sales', 'common'])
 
@@ -121,10 +134,12 @@ export function DocumentHeader({
               {getTypeLabel(document.type)}
             </span>
 
-            {/* Lifecycle Status */}
-            <StatusBadge tone={statusTones[document.status]}>
-              {getStatusLabel(document.status)}
-            </StatusBadge>
+            {/* Lifecycle Status — absent on a proforma (see `suppressStatusBadge`) */}
+            {!suppressStatusBadge && (
+              <StatusBadge tone={statusTones[document.status]}>
+                {getStatusLabel(document.status)}
+              </StatusBadge>
+            )}
 
             {/* Converted to Order Link */}
             {isAlreadyConverted && document.converted_to_order_id != null && (

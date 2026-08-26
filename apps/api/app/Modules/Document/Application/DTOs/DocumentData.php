@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Application\DTOs;
 
+use App\Modules\Document\Application\Services\ProformaOutputPolicy;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Shared\Domain\CurrencyScale;
@@ -33,6 +34,19 @@ final class DocumentData extends Data
         public string $status,
         public bool $is_sealed,
         public bool $is_fiscal,
+        /**
+         * C-F0w / SPEC §2.4 — whether a RENDERING of this document is a proforma
+         * (no VAT, no rate rows, no seal wording, an ESTIMATED total).
+         *
+         * THE PREDICATE, NEVER ITS SYMPTOMS. This is the same answer the PDF
+         * gets — {@see Document::isProformaOutput()},
+         * which {@see ProformaOutputPolicy}
+         * delegates to. The web used to guess from `status`
+         * (`CreditNoteDetail.tsx:74-78` conceded it "cannot tell"), which is wrong
+         * in both directions: a `Paid`-but-never-sealed invoice is a proforma and a
+         * sealed-then-cancelled one is not. Never re-derive this on the client.
+         */
+        public bool $is_proforma,
         public ?string $document_number,
         public string $document_date,
         public ?string $due_date,
@@ -72,12 +86,26 @@ final class DocumentData extends Data
         public int $return_decision_count,
         public array $lines,
         public array $payments,
+        /**
+         * The VAT-free figures a proforma renders — gross line amounts, the two
+         * rows that make the box close, and the estimated total. Non-null exactly
+         * when `is_proforma` is true AND the endpoint asked for it; a detail
+         * endpoint always does. A page must gate its VAT rendering on
+         * `is_proforma`, never on this field being present, so that an endpoint
+         * which does not build the projection can only ever cost the reader some
+         * rows — never leak a tax figure.
+         */
+        public ?ProformaPresentationData $proforma,
         public string $created_at,
         public string $updated_at,
     ) {}
 
-    public static function fromModel(Document $document, bool $includeLines = true, int $scale = 3): self
-    {
+    public static function fromModel(
+        Document $document,
+        bool $includeLines = true,
+        int $scale = 3,
+        ?ProformaPresentationData $proforma = null,
+    ): self {
         $lines = [];
         if ($includeLines) {
             // Ensure the product unit chain is loaded so each line's
@@ -248,6 +276,7 @@ final class DocumentData extends Data
             status: $document->status->value,
             is_sealed: $document->isSealed(),
             is_fiscal: $document->isFiscal(),
+            is_proforma: $document->isProformaOutput(),
             document_number: $document->document_number,
             document_date: $document->document_date->toDateString(),
             due_date: $document->due_date?->toDateString(),
@@ -287,6 +316,7 @@ final class DocumentData extends Data
             return_decision_count: count($returnDecisions),
             lines: $lines,
             payments: $payments,
+            proforma: $document->isProformaOutput() ? $proforma : null,
             created_at: $document->created_at?->toIso8601String() ?? '',
             updated_at: $document->updated_at?->toIso8601String() ?? '',
         );

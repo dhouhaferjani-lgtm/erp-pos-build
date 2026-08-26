@@ -77,6 +77,17 @@ export interface CreditNote {
   reason_label: string;
   notes: string | null;
   status: DocumentStatus;
+  /**
+   * C-F0w / SPEC §2.4 — the SERVER's proforma predicate
+   * (`ProformaOutputPolicy`, keyed on the fiscal seal), emitted by
+   * `CreditNoteController::formatCreditNote()`.
+   *
+   * This view used to guess from `status` and its own comment conceded it "cannot
+   * tell" whether a `posted` credit note was ever sealed. It is told now. Never
+   * re-derive it. Optional only because existing fixtures predate the field;
+   * compare with `=== true`.
+   */
+  is_proforma?: boolean;
   created_at: string; // ISO 8601
 }
 

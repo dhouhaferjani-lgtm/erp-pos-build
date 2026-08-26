@@ -5,10 +5,11 @@
 
 import { useTranslation } from 'react-i18next'
 import { Printer, FileText, X } from 'lucide-react'
-import { useCurrency } from '@/hooks/useCurrency'
+import { formatCurrency } from '@/lib/format'
 import type { CreditNote } from '@/types/creditNote'
 import { DocumentStatus } from '@/types/creditNote'
-import { colorClasses } from '@/lib/designTokens'
+import { colorClasses, semanticColorTokens } from '@/lib/designTokens'
+import { ProformaBanner } from './ProformaBanner'
 
 interface CreditNoteDetailProps {
   creditNote: CreditNote
@@ -32,12 +33,16 @@ export function CreditNoteDetail({
   onViewInvoice,
 }: CreditNoteDetailProps) {
   const { t } = useTranslation(['sales', 'common'])
-  const { decimals } = useCurrency()
 
-  // Format amount to currency-aware decimals
-  const formatAmount = (amount: string): string => {
-    return parseFloat(amount).toFixed(decimals)
-  }
+  /**
+   * The DOCUMENT's currency, formatted from the string (rule 19).
+   *
+   * This was `parseFloat(amount).toFixed(decimals)` against the COMPANY's scale:
+   * a float on money, and — on a TND credit note viewed from a 2-decimal company —
+   * a silently truncated millime on the one figure the customer is owed.
+   */
+  const formatAmount = (amount: string): string =>
+    formatCurrency(amount, { currency: creditNote.currency })
 
   // Format date
   const formatDate = (date: string): string => {
@@ -61,60 +66,57 @@ export function CreditNoteDetail({
     }
   }
 
-  // N-6 (fiscal gate r1 F-5) — this component owns the only in-browser document
-  // PRINT surface (`window.print()` above), so the owner-ruled marker that the
-  // server-side PDF carries has to exist here too: an unposted credit note
-  // printed from this view showed VAT with nothing saying it was never booked.
+  // C-F0w / SPEC §2.4 — this component carries an in-browser PRINT surface
+  // (`window.print()` above), so it renders what the PDF renders.
   //
-  // The FE decides from `status` because that is the only signal the API gives
-  // it — `CreditNote` carries no `fiscal_hash` / `fiscal_status`. That is safe
-  // for the case the blade got wrong: `CANCELLED` gets its OWN message, so a
-  // sealed-then-cancelled document is never described as unsealed. Residual: if
-  // a credit note is ever `POSTED` without a seal, this view cannot tell.
+  // CAVEAT (gate r1 W-7): the component is currently UNMOUNTED — it is exported
+  // from `components/index.ts` and rendered by no route; the live credit-note
+  // screen is `CreditNoteDetailPage`. It is fixed here because the brief named it
+  // and because a surface that gets mounted later must not arrive carrying the
+  // defect. Mount-or-delete is a separate ticket, not this lane's call.
+  //
+  // N-6 decided from `status` because that was the only signal the API gave it,
+  // and said so: "if a credit note is ever POSTED without a seal, this view cannot
+  // tell". `is_proforma` closes that hole — it is `ProformaOutputPolicy`'s own
+  // answer, keyed on the FISCAL SEAL, computed server-side. Never re-derive it.
   const isCancelled = creditNote.status === DocumentStatus.CANCELLED
-  // NOTE: the FE `DocumentStatus` union has no `PAID` member — a credit note is
-  // money owed BY us and is never settled by a customer receipt (the N-6
-  // classifier refuses allocating to one), so `POSTED` is the booked state here.
-  const isBooked = creditNote.status === DocumentStatus.POSTED
+  const isProforma = creditNote.is_proforma === true && !isCancelled
 
   return (
     <div className={`rounded-lg border ${colorClasses.borderGray200} bg-white shadow-sm`}>
-      {(isCancelled || !isBooked) && (
+      {isCancelled && (
         <div
-          className={`border-b px-6 py-3 text-sm ${
-            isCancelled
-              ? `${colorClasses.borderRed200} ${colorClasses.bgRed50} ${colorClasses.textRed700}`
-              : `${colorClasses.borderAmber200} ${colorClasses.bgAmber50} ${colorClasses.textAmber700}`
-          }`}
+          className={`border-b px-6 py-3 text-sm ${colorClasses.borderRed200} ${colorClasses.bgRed50} ${colorClasses.textRed700}`}
         >
           <strong className="block font-semibold uppercase tracking-wide">
-            {isCancelled
-              ? t('sales:creditNotes.postingMarker.cancelledTitle')
-              : t('sales:creditNotes.postingMarker.title')}
+            {t('sales:creditNotes.postingMarker.cancelledTitle')}
           </strong>
-          <span>
-            {isCancelled
-              ? t('sales:creditNotes.postingMarker.cancelledDetail')
-              : t('sales:creditNotes.postingMarker.detail')}
-          </span>
+          <span>{t('sales:creditNotes.postingMarker.cancelledDetail')}</span>
         </div>
       )}
+      {isProforma && <ProformaBanner className="rounded-b-none border-x-0 border-t-0" />}
       {/* Header */}
       <div className={`flex items-center justify-between border-b ${colorClasses.borderGray200} ${colorClasses.bgGray50} px-6 py-4`}>
         <h2 className={`text-lg font-semibold ${colorClasses.textGray900}`}>
           {t('sales:creditNotes.detail.title')}
         </h2>
+        {/*
+          * No status badge on a proforma. A `posted`-but-never-sealed credit note
+          * wearing a green POSTED chip directly under a banner that says the sale
+          * has not been entered in the accounts contradicts itself in front of the
+          * customer — the banner is the only claim this page makes about it.
+          */}
         <div className="flex items-center gap-2">
-          {/* Status Badge */}
-          {creditNote.status === 'posted' ? (
-            <span className={`inline-flex rounded-full ${colorClasses.bgGreen100} px-3 py-1 text-sm font-medium ${colorClasses.textGreen800}`}>
-              {t('common:status.posted')}
-            </span>
-          ) : (
-            <span className={`inline-flex rounded-full ${colorClasses.bgGray100} px-3 py-1 text-sm font-medium ${colorClasses.textGray800}`}>
-              {t('common:status.draft')}
-            </span>
-          )}
+          {!isProforma &&
+            (creditNote.status === 'posted' ? (
+              <span className={`inline-flex rounded-full ${colorClasses.bgGreen100} px-3 py-1 text-sm font-medium ${colorClasses.textGreen800}`}>
+                {t('common:status.posted')}
+              </span>
+            ) : (
+              <span className={`inline-flex rounded-full ${colorClasses.bgGray100} px-3 py-1 text-sm font-medium ${colorClasses.textGray800}`}>
+                {t('common:status.draft')}
+              </span>
+            ))}
         </div>
       </div>
 
@@ -172,17 +174,19 @@ export function CreditNoteDetail({
             </p>
           </div>
 
-          {/* Status */}
-          <div>
-            <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
-              {t('sales:creditNotes.statusLabel')}
-            </label>
-            <p className={`mt-1 text-base ${colorClasses.textGray900}`}>
-              {creditNote.status === 'posted'
-                ? t('common:status.posted')
-                : t('common:status.draft')}
-            </p>
-          </div>
+          {/* Status — absent on a proforma, for the reason the badge is. */}
+          {!isProforma && (
+            <div>
+              <label className={`block text-sm font-medium ${colorClasses.textGray700}`}>
+                {t('sales:creditNotes.statusLabel')}
+              </label>
+              <p className={`mt-1 text-base ${colorClasses.textGray900}`}>
+                {creditNote.status === 'posted'
+                  ? t('common:status.posted')
+                  : t('common:status.draft')}
+              </p>
+            </div>
+          )}
 
           {/* Created At */}
           <div>
@@ -194,6 +198,17 @@ export function CreditNoteDetail({
             </p>
           </div>
         </div>
+
+        {/*
+          * The closing sentence of `templates/credit_note.blade.php`, and gated the
+          * same way (fix round r3, conventions F-C3): a PROFORMA credit note reduces
+          * no balance, so promising that it does would contradict the banner above.
+          */}
+        {!isProforma && !isCancelled && (
+          <p className={`text-sm ${semanticColorTokens.text.muted}`}>
+            {t('sales:documents.creditNote.balanceNote')}
+          </p>
+        )}
 
         {/* Notes Section - Only show if notes exist */}
         {creditNote.notes && (
