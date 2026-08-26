@@ -28,6 +28,7 @@ use App\Modules\Inventory\Domain\Events\ReservationExpired;
 use App\Modules\Inventory\Domain\Events\ReservationReleased;
 use App\Modules\POS\Domain\Events\CashDrawerOperationRecorded;
 use App\Modules\POS\Domain\Events\ManagerOverrideAuthorized;
+use App\Modules\POS\Domain\Events\OrphanedShiftClosedByOperator;
 use App\Modules\POS\Domain\Events\ReceiptCreated;
 use App\Modules\POS\Domain\Events\ReceiptDrafted;
 use App\Modules\POS\Domain\Events\ReceiptPrinted;
@@ -778,6 +779,43 @@ final class DomainEventSubscriber
     }
 
     /**
+     * Handle OrphanedShiftClosedByOperator events (LEDGER O-30 / Q7-OWES-1).
+     *
+     * The operator-authored counterpart to {@see ShiftClosed}, and deliberately
+     * a DIFFERENT event type: `shift.closed` means the device closed its own
+     * drawer after a count, while this means a human closed a shift whose
+     * device is gone and whose cash nobody counted. Collapsing the two would
+     * make the audit register unable to tell an auditor which of the two
+     * happened.
+     *
+     * `release_audit_event_id` links back to the `terminal.released` row that
+     * authorised the close, so the register carries the whole chain:
+     * forced release → orphan → operator close.
+     */
+    public function handleOrphanedShiftClosedByOperator(OrphanedShiftClosedByOperator $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Shift',
+            aggregateId: $event->shiftId,
+            eventType: $event->getEventName(),
+            payload: [
+                'terminal_id' => $event->terminalId,
+                'terminal_code' => $event->terminalCode,
+                'cashier_id' => $event->cashierId,
+                'reason' => $event->reason,
+                'closed_by' => $event->closedBy,
+                'release_audit_event_id' => $event->releaseAuditEventId,
+                'expected_cash' => $event->expectedCash,
+                'counted_cash' => $event->countedCash,
+                'variance' => $event->variance,
+                'closed_at' => $event->closedAt,
+            ]
+        );
+    }
+
+    /**
      * Handle ZReportGenerated events.
      *
      * NF525 RAPPORT_Z event - Z reports with hash chain for compliance.
@@ -1192,6 +1230,7 @@ final class DomainEventSubscriber
             ReceiptPrinted::class => 'handleReceiptPrinted',
             ShiftOpened::class => 'handleShiftOpened',
             ShiftClosed::class => 'handleShiftClosed',
+            OrphanedShiftClosedByOperator::class => 'handleOrphanedShiftClosedByOperator',
             ZReportGenerated::class => 'handleZReportGenerated',
             CashDrawerOperationRecorded::class => 'handleCashDrawerOperationRecorded',
             ManagerOverrideAuthorized::class => 'handleManagerOverrideAuthorized',
