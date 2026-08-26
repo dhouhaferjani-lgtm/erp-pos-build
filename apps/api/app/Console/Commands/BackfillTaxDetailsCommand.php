@@ -161,66 +161,81 @@ use Illuminate\Support\Facades\Schema;
  *   supplier-invoice legs; the main invoice/credit-note leg does not delete
  *   rows and is unaffected).
  *
- * Supplier-invoice leg (B-19, 2026-08-26, owner sheet
- * OWNER-SHEET-2026-08-21-first-client-session.md): until B-19,
- * `SupplierInvoicePostingService::post()` wrote no `document_tax_details`
- * row at all, so every supplier invoice posted before the fix carries ZERO
- * rows and its deductible VAT is absent from the declaration for good (on
- * the local demo tenant: 43 supplier invoices, 704.401 TND of VAT, 0 rows).
- * The main leg above cannot reach them — its `whereIn(DocumentTaxDetail
- * ::select('document_id'))` scope deliberately requires an EXISTING row as
- * proof the document once went through a real confirm(). This leg is the
- * mirror image: supplier invoices with NO row at all.
- * - Scope: `supplier_invoice` documents whose status is POSTED or PAID and
- *   which carry NO `document_tax_details` row. DRAFT is excluded on the same
- *   ground the writer snapshots at post() rather than at create(): an
- *   unposted supplier invoice carries no journal entry, so declaring a
- *   deduction for it would be a new over-claim, not a remediation. CANCELLED
- *   is excluded because a withdrawn document has no deduction to claim.
- * - Evidence-based, never invented: the row values come from
- *   `TaxCalculationService::calculateDocumentTaxes()` over the document's OWN
- *   PERSISTED LINES (grouped by each line's stored `tax_rate`, resolved
- *   against the rate table in force on the document's own `document_date`),
- *   written through the same `snapshotTaxDetails()` writer `post()` now uses.
- *   A backfilled row and a natively-written row are therefore byte-identical
- *   for the same document — the backfill can never introduce a second shape.
+ * Supplier-document leg (B-19, 2026-08-26, owner sheet
+ * OWNER-SHEET-2026-08-21-first-client-session.md; scope widened in fix round 1):
+ * until B-19 neither `SupplierInvoicePostingService::post()` nor
+ * `SupplierCreditNotePostingService::post()` wrote a `document_tax_details` row,
+ * so every supplier invoice and supplier credit note posted before the fix
+ * carries ZERO rows and its deductible VAT is absent from the declaration for
+ * good (on the local demo tenant: 43 supplier invoices, 704.401 TND of VAT, 0
+ * rows). It cannot self-heal — `post()` is idempotent and a re-post returns at
+ * its step-3 no-op without ever rewriting. The main leg above cannot reach them
+ * either: its `whereIn(DocumentTaxDetail::select('document_id'))` scope
+ * deliberately requires an EXISTING row as proof the document once went through
+ * a real confirm(). This leg is the mirror image — purchase documents with NO
+ * row at all.
+ * - Scope: `supplier_invoice` and `supplier_credit_note` carrying NO
+ *   `document_tax_details` row, whose status is POSTED or PAID, or CANCELLED
+ *   WITH a surviving journal entry. DRAFT is excluded on the same ground the
+ *   writers snapshot at post() rather than at create(): an unposted purchase
+ *   document carries no journal entry, so declaring it would be a new
+ *   over-claim, not a remediation. CANCELLED-without-a-journal-entry is
+ *   excluded because it never posted. See `postedJournalEntryExists()` for why
+ *   cancelled-after-post is IN scope (short version: cancelling a non-fiscal
+ *   document reverses no GL and deletes no row, the repository has no status
+ *   predicate, and the SALES side behaves identically — so the leg matches live
+ *   behaviour instead of contradicting it).
+ * - Evidence-based, never invented, and never RECOMPUTED: the values come from
+ *   `PostedLineTaxSnapshotBuilder`, which aggregates the document's OWN
+ *   PERSISTED line amounts (base = Σ `line_total`, VAT = Σ
+ *   `recoverable_tax_amount` — the exact figure the GL posted to 4456), grouped
+ *   by each line's stored `tax_rate`. It is written through the same
+ *   `snapshotTaxDetails()` writer the two posting services use, so a backfilled
+ *   row and a natively-written row are byte-identical for the same document.
+ *   ORCHESTRATOR RULING (fix round 1): the declaration follows the LEDGER, not a
+ *   recomputation — `CreateSupplierInvoiceService` rounds per-line VAT half-up
+ *   while `TaxCalculationService` truncates once per rate bucket, and a declared
+ *   figure that cannot be tied to the 4456 movement is an unexplainable
+ *   reconciliation break at audit.
  * - Idempotent by construction: the scope requires ZERO existing rows, so a
- *   document drops out of the scan on the next run once written; and
- *   `snapshotTaxDetails()` deletes-then-creates within a document anyway.
- * - Three invariant guards, ALL of which must pass, or the document is
- *   SKIPPED and reported rather than written:
- *     1) the STORED header is self-consistent (subtotal + tax_amount ==
- *        total) — same check as the main leg;
- *     2) the RECOMPUTED subtotal equals the STORED subtotal;
- *     3) the RECOMPUTED line-items tax total equals the STORED
- *        `line_tax_amount`. Guard 3 is the supplier-invoice-specific one and
- *        it is load-bearing: `CreateSupplierInvoiceService` computes per-line
- *        VAT with `bcround` (half-up, per line) while
- *        `TaxCalculationService` accumulates at scale+1 and truncates ONCE
- *        per rate bucket, so the two can legitimately differ by a millime on
- *        sub-scale-heavy documents. What the GL posted as recoverable input
- *        VAT and what the declaration would claim MUST agree; when they do
- *        not, that is a value question for a human, not something to write
- *        silently.
- * - Period safety: identical to the expense leg. A document whose
- *   `document_date` falls inside an ALREADY-FILED VAT period is SKIPPED in
- *   BOTH dry-run and --apply unless `--include-filed` is passed (writing a
- *   NEW deductible row into a filed declaration changes a figure already sent
- *   to the DGI); CLOSED periods are reported with the reopen + re-close
- *   instruction, exactly as the expense leg reports them.
- * - Census: prints the full supplier-invoice population (already-snapshotted,
- *   draft/cancelled-excluded, in-scope) and the per-rate base/VAT that would
- *   be ADDED to the declaration's deductible side, so the delta is reviewable
- *   before --apply.
+ *   document drops out of the scan once written; and `snapshotTaxDetails()`
+ *   deletes-then-creates within a document anyway.
+ * - Guards: the SAME `PostedLineTaxSnapshotBuilder::divergences()` the live
+ *   writers apply, so this command and the posting services can never take
+ *   opposite positions on the same document. A document that fails is SKIPPED
+ *   and reported, never written. A document that is declarable but carries no
+ *   VAT at all (a purchase from a non-registered supplier) is counted in its own
+ *   "nothing to declare" bucket rather than as snapshotted — writing zero rows
+ *   would otherwise leave it re-entering scope on every future run.
+ * - Period safety, in three tiers:
+ *     * ALREADY-FILED period → SKIPPED in dry-run and `--apply` alike unless
+ *       `--include-filed` is passed (a new deductible row changes a figure
+ *       already sent to the DGI);
+ *     * CLOSED period that CANNOT be reopened (a successor period of the same
+ *       company is already closed or filed, so
+ *       `VatPeriodManagementService::reopenPeriod()` throws) → REFUSED
+ *       UNCONDITIONALLY, with an escalate-to-the-accountant message. There is no
+ *       flag, because there is no remedy: writing would leave that period's
+ *       materialised `total_input_vat` / `net_vat` / `credit_carried_forward`
+ *       permanently stale against a live report that regenerates from the new
+ *       row, silently corrupting the carry-forward chain into every successor;
+ *     * CLOSED and reopenable → written, with the reopen + re-close instruction
+ *       printed, exactly as the expense leg reports it.
+ * - Census: prints a TRUE PARTITION of the population (in scope / already
+ *   snapshotted / draft / cancelled-without-a-journal-entry / other status) and
+ *   the per-CURRENCY, per-rate base and VAT delta to the deductible side, so the
+ *   figure is reviewable before `--apply`. A supplier credit note's contribution
+ *   is reported NEGATIVE — it reduces the deduction — even though its stored row
+ *   is positive.
  */
 final class BackfillTaxDetailsCommand extends Command
 {
     protected $signature = 'vat:backfill-tax-details
                             {--apply : Actually rewrite/delete document_tax_details rows. Without this flag the command is a DRY-RUN (default) and writes nothing.}
                             {--company= : Optional company id to scope to a single company within the current tenant}
-                            {--include-filed : IMP-2 (2026-08-07 gate) + B-19. Without this flag, expense-leg and supplier-invoice-leg documents whose document_date falls inside an ALREADY-FILED VAT period are SKIPPED (never rewritten/deleted/backfilled) even under --apply -- FILED is the highest-consequence case (see the FILED-PERIOD IMPACT section). Pass this flag to allow the mutation anyway.}';
+                            {--include-filed : IMP-2 (2026-08-07 gate) + B-19. Without this flag, expense-leg and supplier-document-leg documents whose document_date falls inside an ALREADY-FILED VAT period are SKIPPED (never rewritten/deleted/backfilled) even under --apply -- FILED is the highest-consequence case (see the FILED-PERIOD IMPACT section). Pass this flag to allow the mutation anyway. It does NOT unlock an unreopenable CLOSED period on the supplier-document leg: that refusal is unconditional.}';
 
-    protected $description = 'Recompute document_tax_details (tax_base, is_stamp_duty) for existing invoice/credit-note documents via the CURRENT TaxCalculationService pipeline, plus a separate expense leg that rewrites the declared VAT base to the full facial subtotal for partially-deductible expenses AND DELETES the row entirely for 0%-deductible expenses (I-3 expert-comptable ruling), plus a supplier-invoice leg (B-19) that writes the MISSING input-VAT snapshot for posted/paid supplier invoices that carry no document_tax_details row at all. DRY-RUN by default; documents inside an ALREADY-FILED VAT period are skipped unless --include-filed is also passed. Owner-executed only -- never wire into an automated deploy step. See docs/superpowers/reviews/2026-08-03-vat-declaration-gate.md V6, docs/superpowers/tickets/2026-08-06-expert-comptable-rulings-q2-q3.md, and docs/superpowers/reviews/2026-08-07-r2g-backend-gate.md.';
+    protected $description = 'Recompute document_tax_details (tax_base, is_stamp_duty) for existing invoice/credit-note documents via the CURRENT TaxCalculationService pipeline, plus a separate expense leg that rewrites the declared VAT base to the full facial subtotal for partially-deductible expenses AND DELETES the row entirely for 0%-deductible expenses (I-3 expert-comptable ruling), plus a supplier-document leg (B-19) that writes the MISSING input-VAT snapshot for posted supplier invoices and supplier credit notes that carry no document_tax_details row at all, deriving every value from the persisted line amounts the GL posted. DRY-RUN by default; documents inside an ALREADY-FILED VAT period are skipped unless --include-filed is also passed. Owner-executed only -- never wire into an automated deploy step. See docs/superpowers/reviews/2026-08-03-vat-declaration-gate.md V6, docs/superpowers/tickets/2026-08-06-expert-comptable-rulings-q2-q3.md, and docs/superpowers/reviews/2026-08-07-r2g-backend-gate.md.';
 
     public function __construct(
         private readonly TaxCalculationService $taxCalculationService,
