@@ -1471,8 +1471,8 @@ class PaymentRefundService
         return match ($type) {
             PaymentType::SupplierPayment => 'a supplier payment cannot be reversed here — both the direction '
                 .'and the accounts differ; use the supplier refund lane (VendorRefundService).',
-            PaymentType::POS => 'a POS payment cannot be reversed here — POS posts direct to revenue with no '
-                .'accounts-receivable leg; use the POS void/return lane.',
+            PaymentType::POS, PaymentType::POSRefund => 'a POS payment cannot be reversed here — POS posts direct '
+                .'to revenue with no accounts-receivable leg; use the POS void/return lane.',
             PaymentType::Refund, PaymentType::Reversal => 'a refund or reversal row cannot itself be reversed; '
                 .'reverse or refund the original payment instead.',
             // EXHAUSTIVE — no `default` arm, deliberately (gate Minor). The two

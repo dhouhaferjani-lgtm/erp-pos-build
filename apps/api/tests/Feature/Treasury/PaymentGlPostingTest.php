@@ -29,7 +29,9 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
+use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
@@ -277,6 +279,71 @@ class PaymentGlPostingTest extends TestCase
         $this->assertNotNull($entry, 'Supplier payment must create a journal entry.');
         $this->assertSame(JournalEntryStatus::Posted, $entry->status);
 
+        // W4R2-2 — the row must be TYPED as the supplier payment it is.
+        //
+        // `store()` used to choose the type from allocation-emptiness alone
+        // (`empty($adjustedAllocations) ? Advance : DocumentPayment`), and a
+        // supplier payment always carries allocations (`:803` refuses one that
+        // exceeds `$totalAllocated`), so it always landed on `DocumentPayment`
+        // — whose `isIncoming()` is `true`. The GL above was already right
+        // (Dr 401 / Cr bank); it was the TYPE that told the dashboard the money
+        // had come in.
+        $payment = Payment::query()->whereKey($paymentId)->sole();
+        $this->assertSame(PaymentType::SupplierPayment, $payment->payment_type);
+        $this->assertFalse(
+            $payment->payment_type->isIncoming(),
+            'A supplier payment moves money OUT; it must never satisfy the "payments received" predicate.',
+        );
+        $this->assertTrue($payment->payment_type->isOutgoing());
+
+        // W4R2-2 backfill — the same row, re-tainted to its legacy shape, must be
+        // recovered by the data migration FROM THE LEDGER, not from a heuristic.
+        // Using the real posted GL this test just produced is the point: the
+        // migration's predicate is "has a POSTED `supplier_payment` entry naming
+        // this payment, with a debit on the 401 account", and that is exactly what
+        // sits in the DB right now.
+        //
+        // W4R2-2 gate r1 [Important] — NEGATIVE CONTROL. Without a second,
+        // genuinely-incoming row in the same database, "the predicate does not
+        // over-match" is asserted nowhere: an arm (a1) that matched every
+        // `document_payment` would pass this test unchanged. So a real customer
+        // payment is posted through the same HTTP route first — it carries its own
+        // POSTED `customer_payment` entry (Dr bank / Cr 411), which is exactly the
+        // shape arm (a1) must decline — and it is asserted UNCHANGED after `up()`.
+        $customerPaymentId = $this->postCustomerPayment($repository);
+        $this->assertSame(
+            PaymentType::DocumentPayment,
+            Payment::query()->whereKey($customerPaymentId)->sole()->payment_type,
+        );
+
+        DB::table('payments')->where('id', $paymentId)->update(['payment_type' => 'document_payment']);
+
+        $backfill = require base_path(
+            'database/migrations/tenant/2026_08_25_150100_retype_supplier_and_pos_refund_payments.php'
+        );
+        $backfill->up();
+
+        $this->assertSame(
+            PaymentType::SupplierPayment,
+            Payment::query()->whereKey($paymentId)->sole()->payment_type,
+        );
+        $this->assertSame(
+            PaymentType::DocumentPayment,
+            Payment::query()->whereKey($customerPaymentId)->sole()->payment_type,
+            'A genuine customer payment is incoming and must survive the backfill untouched.',
+        );
+
+        // Idempotent: a second run matches zero rows and changes nothing.
+        $backfill->up();
+        $this->assertSame(
+            PaymentType::SupplierPayment,
+            Payment::query()->whereKey($paymentId)->sole()->payment_type,
+        );
+        $this->assertSame(
+            PaymentType::DocumentPayment,
+            Payment::query()->whereKey($customerPaymentId)->sole()->payment_type,
+        );
+
         $supplier->refresh();
         $this->assertSame('0.000', $supplier->payable_balance);
     }
@@ -332,6 +399,63 @@ class PaymentGlPostingTest extends TestCase
         ]);
 
         $response->assertStatus(422);
+    }
+
+    /**
+     * W4R2-2 gate r1 — the arm-(a1) negative control's row: a genuine customer
+     * payment posted through the real route, so it carries a real POSTED
+     * `customer_payment` journal entry (never `supplier_payment`) and a real
+     * allocation against a customer invoice.
+     */
+    private function postCustomerPayment(PaymentRepository $repository): string
+    {
+        $customer = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Negative Control Customer',
+            'type' => PartnerType::Customer,
+        ]);
+        $this->postOpeningReceivable($customer, '60.000');
+
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $customer->id,
+            'type' => DocumentType::Invoice,
+            'document_number' => 'INV-NEGCTRL-001',
+            'document_date' => now()->toDateString(),
+            'status' => DocumentStatus::Posted,
+            'subtotal' => '60.000',
+            'tax_amount' => '0.000',
+            'total' => '60.000',
+            'balance_due' => '60.000',
+            'currency' => 'TND',
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $customer->id,
+            'payment_method_id' => $this->paymentMethod->id,
+            'repository_id' => $repository->id,
+            'amount' => '60.000',
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'reference' => 'PAY-NEGCTRL-001',
+            'allocations' => [
+                ['document_id' => $invoice->id, 'amount' => '60.000'],
+            ],
+        ])->assertCreated();
+
+        $paymentId = (string) $response->json('data.id');
+
+        $this->assertNotNull(
+            JournalEntry::query()
+                ->where('source_type', 'customer_payment')
+                ->where('source_id', $paymentId)
+                ->first(),
+            'The negative control must carry a real customer_payment entry.',
+        );
+
+        return $paymentId;
     }
 
     private function makeLedgeredRepository(): PaymentRepository

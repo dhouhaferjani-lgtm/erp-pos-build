@@ -41,7 +41,12 @@ interface PaymentAllocation {
   amount: string
 }
 
-type PaymentType = 'document_payment' | 'advance' | 'refund' | 'credit_application' | 'supplier_payment'
+// W4R2-2 (gate r1): ALIASED to the generated type instead of hand-listed. The
+// local union had drifted three values behind the enum ('pos', 'pos_refund',
+// 'reversal' were all missing), and rule 7 makes packages/shared/types the
+// source of truth for domain enums — regenerate with `php artisan
+// typescript:transform`, never re-hand-list here.
+type PaymentType = App.Modules.Treasury.Domain.Enums.PaymentType
 
 interface Payment {
   id: string
@@ -114,6 +119,9 @@ function allocationDocumentType(
   if (allocationType) return allocationType
   if (paymentType === 'supplier_payment') return 'supplier_invoice'
   if (paymentType === 'advance') return 'sales_order'
+  // W4R2-2 (gate r1): 'pos' / 'pos_refund' fall through to 'invoice' on purpose —
+  // a POS leg carries no allocations at all, so this branch is unreachable for
+  // them; the fallback is what an allocation-less row would render either way.
   return 'invoice'
 }
 

@@ -25,6 +25,42 @@ enum PaymentType: string
     case POS = 'pos';
 
     /**
+     * W4R2-2 — the payment leg of a POS **refund/void** receipt, written by
+     * `TreasuryReceiptBridge` with a POSITIVE amount (the sealed refund receipt
+     * states the money handed back as a positive total; the direction lives in
+     * the type and in the reversal journal entry, not in the sign).
+     *
+     * Why a distinct case rather than reusing `Refund`:
+     *  - a `Refund` row is, everywhere in `PaymentRefundService`, a NEGATIVE
+     *    AR-shaped child linked to its original by `original_payment_id`
+     *    (:574, :1106, :1756, :2432, :2539, :2563 all read it that way). A
+     *    positive, parentless POS row typed `Refund` would sit inside those
+     *    predicates as a shape they were never written for;
+     *  - the D-11 rule that reversal-typed rows stay invisible to the
+     *    refund-total readers has the same motive, and this case keeps the POS
+     *    channel equally invisible to them;
+     *  - POS posts direct to revenue with no AR at all, so every AR-flavoured
+     *    ruling below (`increasesReceivable`, `reversalSupport`) must answer for
+     *    a POS refund the way it answers for `POS`, not the way it answers for
+     *    `Refund`.
+     *
+     * Before W4R2-2 this leg was written as `PaymentType::POS`, whose
+     * `isIncoming()` is `true` — so every POS refund was counted by the
+     * dashboard's "Payments Received" tile as money that had come IN.
+     *
+     * DDL IS REQUIRED for this value — and this is where the `Reversal` note
+     * above went stale. `2026_08_25_130300_add_enum_check_constraints_to_payments`
+     * put a `chk_payments_payment_type_enum` CHECK on the column, MATERIALISED
+     * from `PaymentType::cases()` at migrate time and frozen there. A tenant
+     * already migrated keeps the seven-value list and would raise SQLSTATE 23514
+     * on the first `pos_refund` row. This case therefore ships with a widening
+     * migration (`2026_08_25_150000_widen_payments_payment_type_check_for_pos_refund`)
+     * and a matching update to the batch-1 freeze test, exactly as that
+     * migration's docblock instructs.
+     */
+    case POSRefund = 'pos_refund';
+
+    /**
      * DPA V4 (D-1): the reversing document written by
      * `PaymentRefundService::reversePayment()` — a negative child Payment row
      * linked to the original by `original_payment_id`, carrying the NET
@@ -46,6 +82,7 @@ enum PaymentType: string
             self::CreditApplication => 'Credit Application',
             self::SupplierPayment => 'Supplier Payment',
             self::POS => 'POS Payment',
+            self::POSRefund => 'POS Refund',
             self::Reversal => 'Payment Reversal',
         };
     }
@@ -62,6 +99,9 @@ enum PaymentType: string
             // refund. This arm is NOT optional: the `default => false` below
             // would answer "no" silently, with no compiler help.
             self::Reversal => true,
+            // W4R2-2: `POSRefund` is DELIBERATELY left in the `default => false`
+            // arm. A POS refund reverses revenue and cash directly; there is no
+            // receivable to re-create. Recorded no-op, not an omission.
             default => false,
         };
     }
@@ -106,6 +146,9 @@ enum PaymentType: string
             self::CreditApplication => false, // No money moves, just accounting
             self::Refund => false,
             self::SupplierPayment => false,
+            // W4R2-2: a POS refund hands cash BACK across the counter. This arm
+            // is the whole point of the case existing — see the case docblock.
+            self::POSRefund => false,
             // DPA V4 (D-2 block 5): this block is EXHAUSTIVE — omitting the
             // case would throw UnhandledMatchError. `false` keeps reversals out
             // of DashboardController's "payments received" whitelist.
@@ -121,6 +164,8 @@ enum PaymentType: string
         return match ($this) {
             self::Refund => true,
             self::SupplierPayment => true,
+            // W4R2-2: money leaves the drawer on a POS refund.
+            self::POSRefund => true,
             // DPA V4 (D-2 block 6): the cash branch of a reversal physically
             // moves money out. Silent-wrong if forgotten (see block 2).
             self::Reversal => true,
@@ -185,6 +230,9 @@ enum PaymentType: string
             self::CreditApplication => ReversalSupport::NoCashLeg,
             self::SupplierPayment => ReversalSupport::Unsupported,
             self::POS => ReversalSupport::Unsupported,
+            // W4R2-2: same ruling as `POS` and for the same reason — direct to
+            // revenue, no AR — reached through the POS void/refund lane only.
+            self::POSRefund => ReversalSupport::Unsupported,
             self::Refund => ReversalSupport::Unsupported,
             self::Reversal => ReversalSupport::Unsupported,
         };

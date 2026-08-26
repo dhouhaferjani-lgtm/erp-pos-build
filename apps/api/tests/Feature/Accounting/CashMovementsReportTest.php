@@ -670,12 +670,19 @@ final class CashMovementsReportTest extends TestCase
 
     public function test_cash_movements_report_counts_pos_refund_once_as_a_single_outflow(): void
     {
-        // Reproduces exactly what TreasuryReceiptBridge writes for a POS refund
-        // (SALE_RECEIPT with invoice_type_code=REFUND): a POS Payment leg
-        // (payment_type=POS, origin=Pos, fiscal_event_id set) whose
-        // journal_entry_id points at a `pos_receipt_refund` GL entry whose cash
-        // line CREDITS the drawer (money out). The at-rest money is correct; the
-        // report must surface EXACTLY ONE cash-movement row, direction Out.
+        // The LEGACY refund leg shape — `payment_type = POS`, which is what
+        // `TreasuryReceiptBridge` wrote BEFORE W4R2-2. Production no longer
+        // produces this row (the bridge now stamps `PaymentType::POSRefund`), but
+        // it is still what sits in every un-backfilled tenant's history, so the
+        // `pos_receipt_refund` journal-entry arm that rescues it must keep
+        // working. The post-W4R2-2 shape is pinned by
+        // `test_cash_movements_report_counts_a_pos_refund_typed_leg_once_as_a_single_outflow`
+        // below; the two tests together are why BOTH `CASE` arms exist.
+        //
+        // Either way the leg is a POS Payment (origin=Pos, fiscal_event_id set)
+        // whose journal_entry_id points at a `pos_receipt_refund` GL entry whose
+        // cash line CREDITS the drawer (money out). The at-rest money is correct;
+        // the report must surface EXACTLY ONE cash-movement row, direction Out.
         $location = Location::create([
             'company_id' => $this->company->id,
             'name' => 'Refund Shop',
@@ -760,6 +767,156 @@ final class CashMovementsReportTest extends TestCase
         $response->assertJsonPath('data.0.source_id', $payment->id);
         $response->assertJsonPath('data.0.direction', 'out');
         $response->assertJsonPath('data.0.amount', '30.00');
+    }
+
+    /**
+     * W4R2-2 gate r1 [Important] — the shape production writes NOW.
+     *
+     * The lane added `PaymentType::POSRefund` to `OUTGOING_PAYMENT_TYPES`
+     * (`CashMovementsReportService.php:97`). Had it not, `movingPaymentTypes()`
+     * would have stopped admitting POS refund legs the moment the bridge started
+     * typing them, and every POS refund would have vanished from the cash-movements
+     * report entirely — the GL twin would be emitted in its place. The
+     * `source_type = 'payment'` + count-of-1 pair below is precisely what catches
+     * that: an omission from the whitelist changes the surviving row's
+     * `source_type` to `journal_line`, not just its direction.
+     */
+    public function test_cash_movements_report_counts_a_pos_refund_typed_leg_once_as_a_single_outflow(): void
+    {
+        [$receipt, $fiscalEventId] = $this->posRefundReceipt('2026-07-09', 'POS-2026-0004', 'POS-2026-0005', 'POS04');
+
+        $refundEntry = $this->journalEntry('2026-07-09', 'pos_receipt_refund', $receipt->id);
+        $this->journalLine($refundEntry, $this->cashAccount, '0.000', '30.000', 'POS refund cash out');
+        $this->journalLine($refundEntry, $this->revenueAccount, '30.000', '0.000', 'POS refund revenue reversal');
+
+        $payment = $this->payment(
+            repository: $this->cashRepository,
+            amount: '30.000',
+            paymentDate: '2026-07-09',
+            paymentType: PaymentType::POSRefund,
+            origin: PaymentOrigin::Pos,
+            fiscalEventId: $fiscalEventId,
+        );
+        $payment->update(['journal_entry_id' => $refundEntry->id]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/reports/cash-movements?from=2026-07-09&to=2026-07-09');
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.source_type', 'payment');
+        $response->assertJsonPath('data.0.source_id', $payment->id);
+        $response->assertJsonPath('data.0.direction', 'out');
+        $response->assertJsonPath('data.0.amount', '30.00');
+    }
+
+    /**
+     * W4R2-2 gate r1 [Important] — the `payment_type IN (?, ?, ?)` binding itself.
+     *
+     * `CashMovementsReportService.php:309` carries a ⚠️ HAND-COUNTED POSITIONAL
+     * LIST warning: an off-by-one in those bindings "silently mislabels the
+     * direction of EVERY row in the report". The lane widened that arm from two
+     * placeholders to three (`:333-338`). This test isolates the new binding by
+     * removing the arm that would otherwise mask it — the `pos_receipt_refund`
+     * arm requires the linked entry to be POSTED, so a DRAFT one falls through to
+     * the type arm. If `POSRefund` were missing from the bindings (or misaligned),
+     * the row falls to `ELSE = In` and the report shows a phantom INFLOW for money
+     * that left the drawer. Direction `out` here is that binding, and nothing else.
+     */
+    public function test_pos_refund_leg_with_an_unposted_reversal_entry_still_reports_as_an_outflow(): void
+    {
+        [$receipt, $fiscalEventId] = $this->posRefundReceipt('2026-07-10', 'POS-2026-0006', 'POS-2026-0007', 'POS05');
+
+        $draftEntry = $this->journalEntry('2026-07-10', 'pos_receipt_refund', $receipt->id, JournalEntryStatus::Draft);
+        $this->journalLine($draftEntry, $this->cashAccount, '0.000', '30.000', 'POS refund cash out (draft)');
+        $this->journalLine($draftEntry, $this->revenueAccount, '30.000', '0.000', 'POS refund revenue reversal (draft)');
+
+        $payment = $this->payment(
+            repository: $this->cashRepository,
+            amount: '30.000',
+            paymentDate: '2026-07-10',
+            paymentType: PaymentType::POSRefund,
+            origin: PaymentOrigin::Pos,
+            fiscalEventId: $fiscalEventId,
+        );
+        $payment->update(['journal_entry_id' => $draftEntry->id]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/reports/cash-movements?from=2026-07-10&to=2026-07-10');
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.source_type', 'payment');
+        $response->assertJsonPath('data.0.source_id', $payment->id);
+        $response->assertJsonPath('data.0.direction', 'out');
+    }
+
+    /**
+     * Build a fiscalised POS RETURN receipt (with the original Sale it references,
+     * as `pos_receipts_return_logic` requires) on its own location + terminal.
+     *
+     * @return array{0: Receipt, 1: string} the return receipt and its fiscal event id
+     */
+    private function posRefundReceipt(
+        string $date,
+        string $originalNumber,
+        string $returnNumber,
+        string $terminalCode,
+    ): array {
+        $location = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'Refund Shop '.$terminalCode,
+            'code' => 'RS'.$terminalCode,
+            'type' => 'shop',
+            'pos_enabled' => true,
+        ]);
+
+        $terminal = Terminal::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $location->id,
+            'code' => $terminalCode,
+        ]);
+
+        $originalReceipt = Receipt::factory()
+            ->for($this->tenant, 'tenant')
+            ->for($this->company, 'company')
+            ->for($location, 'location')
+            ->for($terminal, 'terminal')
+            ->for($this->user, 'cashier')
+            ->withTotal('30.000', '0.000')
+            ->create([
+                'receipt_number' => $originalNumber,
+                'receipt_type' => ReceiptType::Sale,
+                'fiscal_status' => FiscalStatus::Fiscalized,
+                'fiscal_event_id' => $this->fiscalEvent($terminal, $date),
+                'posted_at' => $date.' 09:00:00',
+                'partner_id' => $this->partner->id,
+                'currency' => 'EUR',
+            ]);
+
+        $fiscalEventId = $this->fiscalEvent($terminal, $date);
+
+        $receipt = Receipt::factory()
+            ->for($this->tenant, 'tenant')
+            ->for($this->company, 'company')
+            ->for($location, 'location')
+            ->for($terminal, 'terminal')
+            ->for($this->user, 'cashier')
+            ->withTotal('30.000', '0.000')
+            ->create([
+                'receipt_number' => $returnNumber,
+                'receipt_type' => ReceiptType::Return,
+                'original_receipt_id' => $originalReceipt->id,
+                'return_reason' => ReturnReason::CustomerChangedMind,
+                'fiscal_status' => FiscalStatus::Fiscalized,
+                'fiscal_event_id' => $fiscalEventId,
+                'posted_at' => $date.' 10:00:00',
+                'partner_id' => $this->partner->id,
+                'currency' => 'EUR',
+            ]);
+
+        return [$receipt, $fiscalEventId];
     }
 
     public function test_cash_movements_report_validates_date_filters(): void

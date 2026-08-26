@@ -706,4 +706,106 @@ final class DashboardStatsTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('data.payments.received', '1350.000');
     }
+
+    /**
+     * W4R2-2 — the campaign tenant's exact tile, reproduced.
+     *
+     * `GET /dashboard/stats` returned `payments.received = "1580.400"` for a
+     * tenant whose only inbound money was one 452.000 POS sale:
+     *
+     *     452.000  POS sale                  (genuinely received)
+     *   +  42.800  POS refund                money OUT of the drawer
+     *   +  85.600  POS refund                money OUT of the drawer
+     *   + 500.000  supplier payment          money OUT of the bank
+     *   + 200.000  supplier payment          money OUT of the bank
+     *   + 300.000  supplier payment          money OUT of the bank
+     *   =1580.400
+     *
+     * The READER was never wrong: it filters on `PaymentType::isIncoming()`,
+     * which answers `false` for both `SupplierPayment` and `POSRefund`. The
+     * WRITERS were — supplier payments were stamped `DocumentPayment` and POS
+     * refund legs `POS`, both of which are incoming. This test pins the reader
+     * against correctly-typed rows so a future writer regression is caught here
+     * as well as at the writer.
+     *
+     * GROSS, not net, is the assertion: the tile is labelled "Payments Received"
+     * (`common.json → dashboard.paymentsReceived`, `Paiements reçus`,
+     * `المدفوعات المستلمة`) — money that came in during the period, which is what
+     * 452.000 is. Outgoing rows are EXCLUDED, not subtracted. The separate
+     * partial-refund NETTING arm (the 2026-08-03 N1 ruling, pinned by
+     * `test_payments_received_nets_completed_partial_refund_whose_original_stays_completed`)
+     * is untouched: it nets an AR `Refund` row against a still-Completed original
+     * via `original_payment_id`, and a POS refund leg has no original to net
+     * against.
+     */
+    public function test_payments_received_excludes_supplier_payments_and_pos_refunds(): void
+    {
+        [$tenant, $company, $user, $partner] = $this->bootstrapTenantCompanyUserPartner();
+
+        $method = PaymentMethod::create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'code' => 'CASH',
+            'name' => 'Cash',
+            'is_physical' => true,
+            'is_active' => true,
+        ]);
+
+        // The one genuine inflow.
+        $this->createPayment($tenant, $company, $partner, $method, [
+            'amount' => '452.000',
+            'payment_type' => PaymentType::POS,
+        ]);
+
+        // Two POS refunds — POSITIVE amounts, exactly as the bridge writes them.
+        // Under the old `PaymentType::POS` stamping these were counted as inflow.
+        $this->createPayment($tenant, $company, $partner, $method, [
+            'amount' => '42.800',
+            'payment_type' => PaymentType::POSRefund,
+        ]);
+        $this->createPayment($tenant, $company, $partner, $method, [
+            'amount' => '85.600',
+            'payment_type' => PaymentType::POSRefund,
+        ]);
+
+        // Three supplier payments. Under the old `DocumentPayment` stamping
+        // these were counted as inflow too.
+        foreach (['500.000', '200.000', '300.000'] as $supplierAmount) {
+            $this->createPayment($tenant, $company, $partner, $method, [
+                'amount' => $supplierAmount,
+                'payment_type' => PaymentType::SupplierPayment,
+            ]);
+        }
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/dashboard/stats');
+
+        $response->assertOk()
+            ->assertJsonPath('data.payments.received', '452.000');
+    }
+
+    /**
+     * W4R2-2 companion — the enum contract the tile depends on, stated directly.
+     *
+     * `DashboardController` builds its whitelist by filtering `PaymentType::cases()`
+     * on `isIncoming()`. Pinning the whitelist itself means a future case added
+     * without an explicit incoming/outgoing ruling cannot silently join it.
+     */
+    public function test_only_genuinely_incoming_payment_types_are_whitelisted_by_the_tile(): void
+    {
+        $incoming = array_values(array_map(
+            static fn (PaymentType $type): string => $type->value,
+            array_filter(
+                PaymentType::cases(),
+                static fn (PaymentType $type): bool => $type->isIncoming(),
+            ),
+        ));
+
+        $this->assertSame(['document_payment', 'advance', 'pos'], $incoming);
+
+        $this->assertFalse(PaymentType::SupplierPayment->isIncoming());
+        $this->assertFalse(PaymentType::POSRefund->isIncoming());
+        $this->assertTrue(PaymentType::SupplierPayment->isOutgoing());
+        $this->assertTrue(PaymentType::POSRefund->isOutgoing());
+    }
 }

@@ -94,7 +94,10 @@
       "advance": "Advance/Overpayment",
       "refund": "Refund",
       "credit_application": "Credit Application",
-      "supplier_payment": "Supplier Payment"
+      "supplier_payment": "Supplier Payment",
+      "pos": "POS Payment",
+      "pos_refund": "POS Refund",
+      "reversal": "Payment Reversal"
     },
     "creditBalance": "Credit Balance",
     "creditBalanceExplanation": "Excess amount kept as credit for future invoices",

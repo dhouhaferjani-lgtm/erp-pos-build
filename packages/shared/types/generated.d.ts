@@ -2549,7 +2549,7 @@ writeoffCount: number;
 }
 declare namespace App.Modules.Treasury.Domain.Enums {
 export type AllocationMethod = 'fifo' | 'due_date' | 'manual';
-export type AllocationRefusalReason = 'document_not_live' | 'historical_opening_provenance' | 'pos_derived_provenance' | 'status_not_allocatable_for_type' | 'outward_document_type' | 'purchase_order_wrong_direction' | 'type_never_allocatable' | 'payable_not_settleable_here';
+export type AllocationRefusalReason = 'document_not_live' | 'historical_opening_provenance' | 'pos_derived_provenance' | 'status_not_allocatable_for_type' | 'outward_document_type' | 'purchase_order_wrong_direction' | 'type_never_allocatable' | 'payable_not_settleable_here' | 'partner_role_mismatch';
 export type AllocationTreatment = 'receivable_clearing' | 'prepayment' | 'payable_settlement';
 export type AllocationType = 'invoice_payment' | 'credit_application' | 'credit_note_application' | 'tolerance_writeoff';
 export type BankStatementStatus = 'imported' | 'reconciling' | 'reconciled' | 'voided';
@@ -2569,7 +2569,7 @@ export type MovementReasonCode = 'count_variance' | 'correction' | 'theft_loss' 
 export type MovementSourceType = 'payment' | 'expense' | 'income' | 'refund' | 'fiscal_event' | 'transfer' | 'adjustment' | 'opening_balance' | 'instrument';
 export type PaymentOrigin = 'pos' | 'web_admin' | 'mobile' | 'api' | 'unknown_legacy' | 'back_office';
 export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'reversed';
-export type PaymentType = 'document_payment' | 'advance' | 'refund' | 'credit_application' | 'supplier_payment' | 'pos' | 'reversal';
+export type PaymentType = 'document_payment' | 'advance' | 'refund' | 'credit_application' | 'supplier_payment' | 'pos' | 'pos_refund' | 'reversal';
 export type ProrationStrategy = 'proportional' | 'largest_first' | 'cashier_choice';
 export type ReconciliationStatus = 'draft' | 'completed' | 'cancelled';
 export type RemittanceLineStatus = 'pending' | 'cleared' | 'bounced';

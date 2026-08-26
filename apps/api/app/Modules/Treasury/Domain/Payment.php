@@ -284,35 +284,56 @@ class Payment extends Model
     /**
      * Scope for incoming payments only.
      *
+     * W4R2-2 (gate r1 Minor): DERIVED from `PaymentType::isIncoming()` rather
+     * than hand-listed. The hand-list had already drifted — it carried
+     * `DocumentPayment` + `Advance` and omitted `POS`, which `isIncoming()`
+     * answers `true` for — so a caller of this scope would have disagreed with
+     * `DashboardController`'s "Payments Received" whitelist, which filters
+     * `PaymentType::cases()` on the very same predicate. Deriving both scopes
+     * from the enum removes that whole class of drift: the enum's `isIncoming()`
+     * / `isOutgoing()` matches are exhaustive, so a future case must rule on
+     * itself and both scopes follow for free.
+     *
      * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeIncoming(Builder $query): Builder
     {
-        return $query->whereIn('payment_type', [
-            PaymentType::DocumentPayment->value,
-            PaymentType::Advance->value,
-        ]);
+        return $query->whereIn('payment_type', self::paymentTypeValues(
+            static fn (PaymentType $type): bool => $type->isIncoming(),
+        ));
     }
 
     /**
      * Scope for outgoing payments only.
      *
-     * DPA V4 (T2/M4): `Reversal` joins the whitelist because a reversal's cash
-     * branch physically moves money out (`PaymentType::isOutgoing()`). This
-     * scope has no callers today, so the edit is forward hygiene rather than a
-     * behaviour change — but it must stay consistent with the enum.
+     * DPA V4 (T2/M4): `Reversal` belongs here because a reversal's cash branch
+     * physically moves money out. W4R2-2 added `POSRefund` for the same reason.
+     * Both now arrive through `isOutgoing()` rather than a hand-list — see
+     * `scopeIncoming()` for why. Neither scope has a caller today, so this is
+     * forward hygiene, not a behaviour change; the derived set is identical to
+     * the list it replaces.
      *
      * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeOutgoing(Builder $query): Builder
     {
-        return $query->whereIn('payment_type', [
-            PaymentType::Refund->value,
-            PaymentType::SupplierPayment->value,
-            PaymentType::Reversal->value,
-        ]);
+        return $query->whereIn('payment_type', self::paymentTypeValues(
+            static fn (PaymentType $type): bool => $type->isOutgoing(),
+        ));
+    }
+
+    /**
+     * @param  callable(PaymentType): bool  $predicate
+     * @return list<string>
+     */
+    private static function paymentTypeValues(callable $predicate): array
+    {
+        return array_values(array_map(
+            static fn (PaymentType $type): string => $type->value,
+            array_filter(PaymentType::cases(), $predicate),
+        ));
     }
 
     /**

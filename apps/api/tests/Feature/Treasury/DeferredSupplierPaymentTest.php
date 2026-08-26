@@ -24,6 +24,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
+use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\InstrumentEvent;
 use App\Modules\Treasury\Domain\Payment;
@@ -224,6 +225,92 @@ final class DeferredSupplierPaymentTest extends TestCase
         self::assertDatabaseCount('payment_instruments', 1);
         self::assertSame(1, JournalEntry::query()->where('source_type', 'instrument')->count());
         self::assertSame(1, InstrumentEvent::query()->whereNotNull('action_key')->count());
+    }
+
+    /**
+     * W4R2-2 gate r1 [Critical] — the backfill must reach DEFERRED supplier
+     * payments, and must not touch a customer payment standing next to one.
+     *
+     * `PaymentController::store()` routes a supplier paid by cheque/traite through
+     * the `$isDeferredSupplier` branch (`:1163-1174`), which posts through
+     * `OutboundInstrumentIssuer::issueExisting()` and therefore writes a journal
+     * entry stamped `source_type = 'instrument'` / `source_id = <INSTRUMENT id>`
+     * — NOT `('supplier_payment', payment.id)`. Backfill arm (a1) keys on that
+     * pair, so it can never see one of these rows: before arm (a2) existed, every
+     * historical cheque/traite AP payment kept `document_payment`
+     * (`isIncoming() === true`) and stayed in the "Payments Received" tile even
+     * after the migration ran. On a Tunisian tenant that is most of AP.
+     *
+     * The arrangement builds BOTH rows through the real HTTP flow so the evidence
+     * arm (a2) reads — `payments.journal_entry_id` -> a POSTED
+     * `source_type='instrument'` entry with a debit on 401 — is genuine GL, not a
+     * fixture. The deferred CUSTOMER cheque is the negative control: it is a real
+     * `document_payment` whose money genuinely came IN, it also carries an
+     * instrument, and it must survive `up()` untouched (its entry is
+     * `source_type='customer_payment'` and debits 5312, not 401).
+     */
+    public function test_backfill_retypes_a_deferred_supplier_payment_and_spares_a_deferred_customer_payment(): void
+    {
+        $invoice = $this->supplierInvoice('100.000');
+        $supplierResponse = $this->postPayment(
+            $this->supplierPayload($invoice, $this->method(InstrumentKind::Cheque), 'CH-BACKFILL-100')
+        )->assertCreated();
+        $supplierPayment = Payment::query()->findOrFail((string) $supplierResponse->json('data.id'));
+
+        // The FIXED writer already types it correctly going forward.
+        self::assertSame(PaymentType::SupplierPayment, $supplierPayment->payment_type);
+        self::assertFalse($supplierPayment->payment_type->isIncoming());
+
+        // Negative control — a genuine incoming customer payment, also deferred.
+        $customerInvoice = Document::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::Invoice,
+            'status' => DocumentStatus::Posted,
+            'currency' => 'TND',
+            'total' => '30.000',
+            'balance_due' => '30.000',
+        ]);
+        $customerResponse = $this->postPayment([
+            'partner_id' => $this->customer->id,
+            'payment_method_id' => $this->method(InstrumentKind::Cheque)->id,
+            'repository_id' => $this->bank->id,
+            'amount' => '30.000',
+            'currency' => 'TND',
+            'payment_date' => '2026-07-18',
+            'allocations' => [['document_id' => $customerInvoice->id, 'amount' => '30.000']],
+            'instrument' => ['reference' => 'CH-CUST-BACKFILL-30'],
+        ])->assertCreated();
+        $customerPayment = Payment::query()->findOrFail((string) $customerResponse->json('data.id'));
+        self::assertSame(PaymentType::DocumentPayment, $customerPayment->payment_type);
+        self::assertTrue($customerPayment->payment_type->isIncoming());
+
+        // Re-taint the supplier row to the legacy shape the old writer produced.
+        DB::table('payments')
+            ->where('id', $supplierPayment->id)
+            ->update(['payment_type' => PaymentType::DocumentPayment->value]);
+
+        $backfill = require base_path(
+            'database/migrations/tenant/2026_08_25_150100_retype_supplier_and_pos_refund_payments.php'
+        );
+        $backfill->up();
+
+        self::assertSame(
+            PaymentType::SupplierPayment,
+            $supplierPayment->refresh()->payment_type,
+            'Arm (a2) must recover a deferred supplier payment from its instrument-issue entry.',
+        );
+        self::assertSame(
+            PaymentType::DocumentPayment,
+            $customerPayment->refresh()->payment_type,
+            'A deferred CUSTOMER payment is genuinely incoming and must never be re-typed.',
+        );
+
+        // Idempotent: a second run matches zero rows and moves nothing.
+        $backfill->up();
+        self::assertSame(PaymentType::SupplierPayment, $supplierPayment->refresh()->payment_type);
+        self::assertSame(PaymentType::DocumentPayment, $customerPayment->refresh()->payment_type);
     }
 
     private function supplierInvoice(string $amount): Document
