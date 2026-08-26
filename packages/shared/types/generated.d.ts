@@ -308,7 +308,7 @@ export type JournalEntryStatus = 'draft' | 'posted' | 'reversed';
 export type OpeningBatchStatus = 'DRAFT' | 'VALIDATED' | 'LOCKED';
 export type OpeningBatchType = 'ACCOUNTING' | 'INVENTORY' | 'AR_OPEN_ITEMS' | 'AP_OPEN_ITEMS';
 export type OpeningImportRowStatus = 'PENDING' | 'VALID' | 'INVALID' | 'SKIPPED' | 'POSTED';
-export type PosVatRefusalReason = 'missing_sealed_vat_details' | 'vat_exceeds_tender' | 'split_does_not_reconcile' | 'sealed_vat_disagrees_with_receipt' | 'chart_purpose_missing' | 'non_numeric_amount';
+export type PosVatRefusalReason = 'missing_sealed_vat_details' | 'vat_exceeds_tender' | 'split_does_not_reconcile' | 'sealed_vat_disagrees_with_receipt' | 'chart_purpose_missing' | 'non_numeric_amount' | 'sealed_base_era_ambiguous';
 export type PostingMode = 'after_commit' | 'synchronous_in_transaction';
 export type SystemAccountPurpose = 'bank' | 'cash' | 'customer_receivable' | 'supplier_advance' | 'inventory' | 'uninvoiced_revenue' | 'supplier_payable' | 'customer_advance' | 'vat_collected' | 'vat_deductible' | 'product_revenue' | 'service_revenue' | 'cost_of_goods_sold' | 'inventory_shrinkage_expense' | 'inventory_gain_income' | 'purchase_expenses' | 'office_expense' | 'travel_expense' | 'meals_expense' | 'utilities_expense' | 'general_expense' | 'retained_earnings' | 'opening_balance_equity' | 'payment_tolerance_expense' | 'payment_tolerance_income' | 'purchase_price_variance_expense' | 'purchase_price_variance_income' | 'sales_return' | 'refund_write_off' | 'realized_fx_gain' | 'realized_fx_loss' | 'sales_discount' | 'sales_returns_clearing' | 'voucher_liability' | 'marketing_goodwill_expense' | 'voucher_breakage_income' | 'rounding_loss_expense' | 'pos_tender_clearing' | 'goods_received_not_invoiced' | 'purchase_stamp_duty' | 'sales_stamp_duty_payable' | 'sales_rounding_difference_income' | 'sales_rounding_difference_expense';
 }
@@ -563,6 +563,7 @@ declare namespace App.Modules.Company.Domain.Enums {
 export type CompanyStatus = 'active' | 'suspended' | 'closed';
 export type DiscountFloorMode = 'Advisory' | 'WarnRequiresPermission' | 'Block';
 export type DocumentReviewStatus = 'pending' | 'in_review' | 'approved' | 'rejected' | 'expired';
+export type FiscalPeriodCloseRefusalCode = 'FISCAL_PERIOD_CLOSE_LOCKED' | 'FISCAL_PERIOD_CLOSE_NOT_OPEN' | 'FISCAL_PERIOD_CLOSE_FISCAL_YEAR_CLOSED' | 'FISCAL_PERIOD_CLOSE_PREDECESSOR_OPEN' | 'FISCAL_PERIOD_CLOSE_NOT_ENDED';
 export type FiscalPeriodReopenRefusalCode = 'FISCAL_PERIOD_REOPEN_LOCKED' | 'FISCAL_PERIOD_REOPEN_NOT_CLOSED' | 'FISCAL_PERIOD_REOPEN_FISCAL_YEAR_CLOSED' | 'FISCAL_PERIOD_REOPEN_SUCCESSOR_SETTLED';
 export type HashChainType = 'invoice' | 'credit_note' | 'delivery_note' | 'return_note' | 'receipt' | 'payment' | 'journal_entry' | 'z_report';
 export type LocationType = 'shop' | 'warehouse' | 'office' | 'mobile';
@@ -1167,7 +1168,7 @@ has_lots_at_location: boolean;
 declare namespace App.Modules.Inventory.Domain.Enums {
 export type AssignmentStatus = 'pending' | 'in_progress' | 'completed' | 'overdue';
 export type CountingExecutionMode = 'parallel' | 'sequential';
-export type CountingItemFlagReason = 'basket_window' | 'negative_at_apply' | 'clock_skew' | 'pending_opening_cost' | 'normalized_agreement';
+export type CountingItemFlagReason = 'basket_window' | 'negative_at_apply' | 'clock_skew' | 'pending_opening_cost' | 'normalized_agreement' | 'missing_boundary_marker';
 export type CountingScopeType = 'product_location' | 'product' | 'location' | 'category' | 'full_inventory' | 'zone';
 export type CountingStatus = 'draft' | 'scheduled' | 'count_1_in_progress' | 'count_1_completed' | 'count_2_in_progress' | 'count_2_completed' | 'count_3_in_progress' | 'count_3_completed' | 'pending_review' | 'finalized' | 'cancelled';
 export type GoodsReceiptStatus = 'draft' | 'posted';
@@ -2533,7 +2534,7 @@ writeoffCount: number;
 }
 declare namespace App.Modules.Treasury.Domain.Enums {
 export type AllocationMethod = 'fifo' | 'due_date' | 'manual';
-export type AllocationRefusalReason = 'document_not_live' | 'historical_opening_provenance' | 'pos_derived_provenance' | 'status_not_allocatable_for_type' | 'outward_document_type' | 'purchase_order_wrong_direction' | 'type_never_allocatable' | 'payable_not_settleable_here';
+export type AllocationRefusalReason = 'document_not_live' | 'historical_opening_provenance' | 'pos_derived_provenance' | 'status_not_allocatable_for_type' | 'outward_document_type' | 'purchase_order_wrong_direction' | 'type_never_allocatable' | 'payable_not_settleable_here' | 'partner_role_mismatch';
 export type AllocationTreatment = 'receivable_clearing' | 'prepayment' | 'payable_settlement';
 export type AllocationType = 'invoice_payment' | 'credit_application' | 'credit_note_application' | 'tolerance_writeoff';
 export type BankStatementStatus = 'imported' | 'reconciling' | 'reconciled' | 'voided';
@@ -2553,7 +2554,7 @@ export type MovementReasonCode = 'count_variance' | 'correction' | 'theft_loss' 
 export type MovementSourceType = 'payment' | 'expense' | 'income' | 'refund' | 'fiscal_event' | 'transfer' | 'adjustment' | 'opening_balance' | 'instrument';
 export type PaymentOrigin = 'pos' | 'web_admin' | 'mobile' | 'api' | 'unknown_legacy' | 'back_office';
 export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'reversed';
-export type PaymentType = 'document_payment' | 'advance' | 'refund' | 'credit_application' | 'supplier_payment' | 'pos' | 'reversal';
+export type PaymentType = 'document_payment' | 'advance' | 'refund' | 'credit_application' | 'supplier_payment' | 'pos' | 'pos_refund' | 'reversal';
 export type ProrationStrategy = 'proportional' | 'largest_first' | 'cashier_choice';
 export type ReconciliationStatus = 'draft' | 'completed' | 'cancelled';
 export type RemittanceLineStatus = 'pending' | 'cleared' | 'bounced';
