@@ -57,6 +57,7 @@ export function isManagerRole(roles: string[] | undefined): boolean {
 export const MANAGER_SURFACE_PERMISSION = {
   reports: 'pos.view_reports',
   cash_drawer: 'pos.approve_cash_drawer_control',
+  terminal: 'pos.manage_terminals',
 } as const;
 
 export type ManagerSurface = keyof typeof MANAGER_SURFACE_PERMISSION;
@@ -105,11 +106,14 @@ export interface ManagerGateAuthority {
  *    gate, and offline PIN verification reads them from SQLite. Past the TTL
  *    the manager surfaces close; selling, refunds and the operator's own shift
  *    close are untouched, so a multi-day outage still trades.
- * 3. **Permission first, name only as a fallback** (gate r1 R1-4). The gate
- *    keys on the same permission the server authorizes. Role names are
- *    consulted only when the operator carries no permissions at all — a cache
- *    row written before pin-data shipped them — so a device upgrade cannot
- *    lock every manager out until the next roster pull.
+ * 3. **Permission first, name only for a row that has NO permission data**
+ *    (gate r1 R1-4, narrowed by gate r2 R2-3). The gate keys on the same
+ *    permission the server authorizes. Role names are consulted only when
+ *    `permissions` is UNDEFINED — a cache row written before pin-data shipped
+ *    the field — so a device upgrade cannot lock every manager out until the
+ *    next roster pull. An explicitly EMPTY array is not missing data: it is a
+ *    positive server answer meaning "this principal holds nothing", and it
+ *    refuses.
  */
 export function hasManagerAccess(
   operator: ManagerGateAuthority | null | undefined,
@@ -119,7 +123,7 @@ export function hasManagerAccess(
   if (operator.authority_stale === true) return false;
 
   const permissions = operator.permissions;
-  if (permissions !== undefined && permissions.length > 0) {
+  if (permissions !== undefined) {
     return permissions.includes(MANAGER_SURFACE_PERMISSION[surface]);
   }
 

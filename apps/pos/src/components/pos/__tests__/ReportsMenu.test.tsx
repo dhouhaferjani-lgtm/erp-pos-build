@@ -6,11 +6,12 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-let mockOperator: { name: string; roles: string[]; id: string } | null = {
-  name: 'Mgr',
-  roles: ['manager'],
-  id: 'op-1',
-};
+let mockOperator: {
+  name: string;
+  roles: string[];
+  id: string;
+  permissions?: string[];
+} | null = { name: 'Mgr', roles: ['manager'], id: 'op-1' };
 
 let mockUserRoles: string[] | undefined;
 
@@ -98,5 +99,43 @@ describe('ReportsMenu manager gating', () => {
     mockUserRoles = ['owner'];
     renderMenu();
     expect(screen.getByText('reports.xReport')).toBeInTheDocument();
+  });
+
+  /**
+   * Gate r2 (R2-2) — each entry is filtered on the SAME surface key its
+   * handler enforces. Filtering the cash-drawer entry on `pos.view_reports`
+   * while `Header.handleCashDrawerOps` enforced
+   * `pos.approve_cash_drawer_control` was invisible on seeded roles but wrong
+   * on the tenant-created roles R1-4 exists for.
+   */
+  describe('per-surface filtering (R2-2)', () => {
+    it('shows the cash drawer to a role holding ONLY the drawer permission', () => {
+      mockOperator = {
+        name: 'Drawer',
+        roles: ['custodian'],
+        id: 'op-4',
+        permissions: ['pos.approve_cash_drawer_control'],
+      };
+      renderMenu();
+      expect(screen.getByText('reports.cashDrawer')).toBeInTheDocument();
+      // ...and still withholds the report surfaces it has no permission for.
+      expect(screen.queryByText('reports.xReport')).toBeNull();
+      expect(screen.queryByText('reports.zList.title')).toBeNull();
+    });
+
+    it('HIDES the cash drawer from a role holding only pos.view_reports', () => {
+      // Previously this entry was shown and the handler answered with a toast.
+      mockOperator = {
+        name: 'Accountant',
+        roles: ['accountant'],
+        id: 'op-5',
+        permissions: ['pos.view_receipts', 'pos.view_reports'],
+      };
+      renderMenu();
+      expect(screen.queryByText('reports.cashDrawer')).toBeNull();
+      // Read surfaces stay — accountant parity with the server is deliberate.
+      expect(screen.getByText('reports.xReport')).toBeInTheDocument();
+      expect(screen.getByText('reports.zList.title')).toBeInTheDocument();
+    });
   });
 });

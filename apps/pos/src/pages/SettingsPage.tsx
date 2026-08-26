@@ -94,9 +94,19 @@ export function SettingsPage() {
   const unbindDevice = useAuthStore((s) => s.unbindDevice);
 
   const operator = useOperatorStore((s) => s.operator);
-  // B-13 (iv): PIN operator only — device unbind is a manager action and the
-  // terminal's login account must not confer it on a cashier.
-  const isManager = hasManagerAccess(operator);
+  /**
+   * B-13 (iv): PIN operator only — the terminal's login account must not
+   * confer this on whoever holds the till.
+   *
+   * Gate r2 (fiscal r2-1): the `terminal` surface, NOT `reports`. Everything
+   * this flag gates is terminal LIFECYCLE — the Device & Security section,
+   * "change terminal", and device unbind, which tears down the POS session
+   * stores, clears the token and the stored terminal, and forces
+   * re-provisioning. `pos.view_reports` is also held by `accountant`, so
+   * keying a destructive device action on it would let a back-office role with
+   * a till PIN unbind the terminal mid-shift.
+   */
+  const canManageTerminal = hasManagerAccess(operator, 'terminal');
 
   const [showUnbindConfirm, setShowUnbindConfirm] = useState(false);
 
@@ -104,7 +114,7 @@ export function SettingsPage() {
   // changed between opening the modal and clicking confirm (e.g. role change
   // race), the destructive action must not proceed.
   const handleConfirmUnbind = async () => {
-    if (!isManager) { setShowUnbindConfirm(false); return; }
+    if (!canManageTerminal) { setShowUnbindConfirm(false); return; }
     setShowUnbindConfirm(false);
     teardownPosSessionStores();
     await unbindDevice();
@@ -188,7 +198,7 @@ export function SettingsPage() {
     { id: 'printer', labelKey: 'settings.printer' },
     { id: 'kitchen', labelKey: 'settings.kitchenPrinter' },
     { id: 'terminal', labelKey: 'settings.terminal' },
-    ...(isManager ? [{ id: 'device-security', labelKey: 'settings.deviceSecurity' }] : []),
+    ...(canManageTerminal ? [{ id: 'device-security', labelKey: 'settings.deviceSecurity' }] : []),
     { id: 'about', labelKey: 'settings.about' },
   ];
   const scrollToSection = (id: string) => {
@@ -817,7 +827,7 @@ export function SettingsPage() {
           </section>
 
           {/* Device & Security — manager only */}
-          {isManager && (
+          {canManageTerminal && (
             <section id="settings-device-security" data-testid="device-security-section" className="rounded-card bg-surface-raised p-4 shadow-sm">
               <h2 className="mb-4 text-base font-bold text-ink">{t('settings.deviceSecurity')}</h2>
               {terminal && (
@@ -890,7 +900,7 @@ export function SettingsPage() {
       </div>
 
       {/* Device Unbind Confirmation Modal — FIX 2: only rendered for managers */}
-      {isManager && showUnbindConfirm && (
+      {canManageTerminal && showUnbindConfirm && (
         <Modal
           isOpen={showUnbindConfirm}
           onClose={() => setShowUnbindConfirm(false)}

@@ -68,6 +68,7 @@ describe('hasManagerAccess — permission-based, per surface (R1-4)', () => {
   it('names the same permissions the server authorizes', () => {
     expect(MANAGER_SURFACE_PERMISSION.reports).toBe('pos.view_reports');
     expect(MANAGER_SURFACE_PERMISSION.cash_drawer).toBe('pos.approve_cash_drawer_control');
+    expect(MANAGER_SURFACE_PERMISSION.terminal).toBe('pos.manage_terminals');
   });
 
   it('admits a TENANT-CREATED role that carries the permission', () => {
@@ -94,14 +95,66 @@ describe('hasManagerAccess — permission-based, per surface (R1-4)', () => {
     expect(hasManagerAccess(drawerOnly, 'reports')).toBe(false);
   });
 
-  it('falls back to role names ONLY for a cache row with no permissions', () => {
+  it('falls back to role names ONLY for a row with NO permission data at all', () => {
     // Pre-R1-4 `operator_pins` rows, and any payload that predates the
     // pin-data `permissions` field. Without this a device upgrade would lock
     // every manager out until the next roster pull.
     expect(hasManagerAccess({ roles: ['manager'] })).toBe(true);
-    expect(hasManagerAccess({ roles: ['manager'], permissions: [] })).toBe(true);
-    expect(hasManagerAccess({ roles: ['cashier'], permissions: [] })).toBe(false);
-    expect(hasManagerAccess({ roles: ['supervisor'], permissions: [] })).toBe(false);
+    expect(hasManagerAccess({ roles: ['cashier'] })).toBe(false);
+  });
+
+  it('treats an EMPTY permission list as a positive "holds nothing" (R2-3)', () => {
+    // Gate r2 R2-3: `[]` is not missing data — it is the server saying this
+    // principal holds no permissions. Falling back to the role NAME there
+    // admitted a manager-named role the server refuses, which is the exact
+    // inverse of the stripped-manager case pinned above.
+    expect(hasManagerAccess({ roles: ['manager'], permissions: [] })).toBe(false);
+    expect(hasManagerAccess({ roles: ['admin'], permissions: [] })).toBe(false);
+    expect(hasManagerAccess({ roles: ['owner'], permissions: [] })).toBe(false);
+  });
+});
+
+/**
+ * Gate r2 addendum (fiscal r2-1) — `pos.view_reports` is seeded to `manager`
+ * AND `accountant` (`RolesAndPermissionsSeeder.php:619`, `:837`), and
+ * `pinHolders` applies no role filter, so an accountant with a till PIN is a
+ * PIN operator. Read parity with the server is deliberate; a destructive
+ * terminal-lifecycle action must not ride on a reporting permission.
+ */
+describe('hasManagerAccess — accountant read parity, no destructive widening', () => {
+  const ACCOUNTANT = { roles: ['accountant'], permissions: ['pos.view_receipts', 'pos.view_reports'] };
+
+  it('lets an accountant PIN READ the report surfaces', () => {
+    expect(hasManagerAccess(ACCOUNTANT, 'reports')).toBe(true);
+  });
+
+  it('REFUSES an accountant PIN the terminal-lifecycle surface (device unbind)', () => {
+    expect(hasManagerAccess(ACCOUNTANT, 'terminal')).toBe(false);
+  });
+
+  it('REFUSES an accountant PIN the cash drawer', () => {
+    expect(hasManagerAccess(ACCOUNTANT, 'cash_drawer')).toBe(false);
+  });
+
+  it('admits a manager, who holds all three', () => {
+    const manager = {
+      roles: ['manager'],
+      permissions: [
+        'pos.view_reports',
+        'pos.approve_cash_drawer_control',
+        'pos.manage_terminals',
+      ],
+    };
+    expect(hasManagerAccess(manager, 'reports')).toBe(true);
+    expect(hasManagerAccess(manager, 'cash_drawer')).toBe(true);
+    expect(hasManagerAccess(manager, 'terminal')).toBe(true);
+  });
+
+  it('REFUSES a cashier every surface', () => {
+    const cashier = { roles: ['cashier'], permissions: ['pos.operate_terminal'] };
+    expect(hasManagerAccess(cashier, 'reports')).toBe(false);
+    expect(hasManagerAccess(cashier, 'cash_drawer')).toBe(false);
+    expect(hasManagerAccess(cashier, 'terminal')).toBe(false);
   });
 });
 

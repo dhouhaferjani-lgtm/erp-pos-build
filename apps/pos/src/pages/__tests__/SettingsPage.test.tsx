@@ -94,16 +94,29 @@ vi.mock('@/stores/authStore', () => ({
 
 // Operator store — operator roles are controlled per test
 let mockOperatorRoles: string[] | null = ['manager'];
+let mockOperatorPermissions: string[] | undefined;
 
 function setOperatorRoles(roles: string[] | null) {
   mockOperatorRoles = roles;
+  mockOperatorPermissions = undefined;
+}
+
+/** Gate r2: an operator carrying explicit server permissions. */
+function setOperator(roles: string[], permissions: string[]) {
+  mockOperatorRoles = roles;
+  mockOperatorPermissions = permissions;
 }
 
 vi.mock('@/stores/operatorStore', () => ({
   useOperatorStore: <T,>(selector: (s: unknown) => T): T => {
     return selector({
       operator: mockOperatorRoles !== null
-        ? { id: 'op-1', name: 'Test Op', roles: mockOperatorRoles }
+        ? {
+            id: 'op-1',
+            name: 'Test Op',
+            roles: mockOperatorRoles,
+            permissions: mockOperatorPermissions,
+          }
         : null,
     });
   },
@@ -201,6 +214,37 @@ describe('SettingsPage – Device & Security (Sub-Spec B)', () => {
     render(<SettingsPage />);
     expect(screen.queryByTestId('device-security-section')).toBeNull();
     expect(screen.queryByTestId('device-unbind-button')).toBeNull();
+  });
+
+  /**
+   * Gate r2 addendum (fiscal r2-1) — device unbind must NOT ride on a
+   * reporting permission.
+   *
+   * `pos.view_reports` is seeded to `manager` AND `accountant`
+   * (`RolesAndPermissionsSeeder.php:619`, `:837`), and `pinHolders` applies no
+   * role filter, so an accountant with a till PIN is a PIN operator. Read
+   * parity is deliberate; unbinding the terminal — which tears down the POS
+   * session, clears the token and the stored terminal, and forces
+   * re-provisioning mid-shift — is not. It keys on `pos.manage_terminals`.
+   */
+  it('hides Device & Security from an ACCOUNTANT operator who can read reports', () => {
+    setOperator(['accountant'], ['pos.view_receipts', 'pos.view_reports']);
+    render(<SettingsPage />);
+    expect(screen.queryByTestId('device-security-section')).toBeNull();
+    expect(screen.queryByTestId('device-unbind-button')).toBeNull();
+  });
+
+  it('shows Device & Security to an operator holding pos.manage_terminals', () => {
+    setOperator(['manager'], ['pos.view_reports', 'pos.manage_terminals']);
+    render(<SettingsPage />);
+    expect(screen.getByTestId('device-security-section')).toBeInTheDocument();
+    expect(screen.getByTestId('device-unbind-button')).toBeInTheDocument();
+  });
+
+  it('hides Device & Security from a manager-NAMED role without pos.manage_terminals', () => {
+    setOperator(['manager'], ['pos.view_reports']);
+    render(<SettingsPage />);
+    expect(screen.queryByTestId('device-security-section')).toBeNull();
   });
 
   // --- FIX 3: change-terminal hidden for cashier ---
