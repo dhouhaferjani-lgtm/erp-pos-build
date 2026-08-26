@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Treasury;
 
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
@@ -17,6 +20,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -67,6 +71,94 @@ final class PaymentRepositoryLocationTest extends TestCase
         $foreignLocation = Location::create(['company_id' => $sibling->id, 'code' => 'SIB-A', 'name' => 'Sibling Store', 'type' => 'warehouse', 'is_active' => true]);
 
         $this->actingAs($this->user)->postJson('/api/v1/payment-repositories', ['code' => 'CR-C', 'name' => 'Register C', 'type' => 'cash_register', 'location_id' => $foreignLocation->id])->assertUnprocessable();
+    }
+
+    /**
+     * N-12 gate r2 (treasury R2-3) — the partial unique index
+     * `payment_repositories_one_drawer_per_location_type` is an invariant an
+     * ordinary operator action can hit. Unhandled it surfaced as a raw 500
+     * carrying a PostgreSQL constraint string.
+     *
+     * PostgreSQL-only: partial indexes are, and every tenant database is
+     * PostgreSQL. Exercised under `phpunit-pgsql.xml`.
+     */
+    public function test_store_refuses_a_second_active_drawer_at_the_same_location(): void
+    {
+        $this->skipUnlessPostgres();
+
+        $location = $this->location('D');
+        $glAccountId = $this->cashAccountId();
+
+        $this->actingAs($this->user)
+            ->postJson('/api/v1/payment-repositories', [
+                'code' => 'CR-FIRST', 'name' => 'First till', 'type' => 'cash_register',
+                'location_id' => $location->id, 'gl_account_id' => $glAccountId,
+            ])
+            ->assertCreated();
+
+        $this->actingAs($this->user)
+            ->postJson('/api/v1/payment-repositories', [
+                'code' => 'CR-SECOND', 'name' => 'Second till', 'type' => 'cash_register',
+                'location_id' => $location->id, 'gl_account_id' => $glAccountId,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'LOCATION_DRAWER_ALREADY_EXISTS');
+
+        $this->assertDatabaseMissing('payment_repositories', ['code' => 'CR-SECOND']);
+    }
+
+    /**
+     * The likelier path in practice: `RepositoryDetailPage` issues
+     * `apiPatch({ gl_account_id })`, and GL-linking a drawer moves it INTO the
+     * index's predicate beside an already-linked sibling at the same location.
+     */
+    public function test_update_refuses_gl_linking_a_second_drawer_at_the_same_location(): void
+    {
+        $this->skipUnlessPostgres();
+
+        $location = $this->location('E');
+        $glAccountId = $this->cashAccountId();
+
+        $this->actingAs($this->user)
+            ->postJson('/api/v1/payment-repositories', [
+                'code' => 'CR-LINKED', 'name' => 'Linked till', 'type' => 'cash_register',
+                'location_id' => $location->id, 'gl_account_id' => $glAccountId,
+            ])
+            ->assertCreated();
+
+        // Created WITHOUT a GL account, so it starts outside the index predicate.
+        $unlinked = $this->actingAs($this->user)
+            ->postJson('/api/v1/payment-repositories', [
+                'code' => 'CR-UNLINKED', 'name' => 'Unlinked till', 'type' => 'cash_register',
+                'location_id' => $location->id,
+            ])
+            ->assertCreated()
+            ->json('data.id');
+
+        $this->actingAs($this->user)
+            ->patchJson('/api/v1/payment-repositories/'.$unlinked, ['gl_account_id' => $glAccountId])
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'LOCATION_DRAWER_ALREADY_EXISTS');
+
+        $this->assertDatabaseHas('payment_repositories', ['code' => 'CR-UNLINKED', 'gl_account_id' => null]);
+    }
+
+    private function skipUnlessPostgres(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('Partial unique indexes are PostgreSQL-only; exercised under phpunit-pgsql.xml.');
+        }
+    }
+
+    private function cashAccountId(): string
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        return Account::query()
+            ->where('company_id', $this->company->id)
+            ->where('system_purpose', SystemAccountPurpose::Cash->value)
+            ->firstOrFail()
+            ->id;
     }
 
     private function location(string $suffix): Location

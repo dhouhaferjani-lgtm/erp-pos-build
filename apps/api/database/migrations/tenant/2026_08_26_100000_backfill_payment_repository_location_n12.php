@@ -65,6 +65,34 @@ use Illuminate\Support\Facades\Schema;
  * unattributed rows while new sales went to empty ones. Status quo is the safe
  * answer until a human decides.
  *
+ * ## ⚠ DEPLOY NOTE — A PER-DRAWER BALANCE DISCONTINUITY, AND ITS REMEDIATION
+ *
+ * This migration moves no money, deliberately: a `payment_repositories.balance`
+ * is port-managed and every change to one needs its own justifying document
+ * (document-per-action). But attribution + provisioning DO change what each
+ * balance means, and an operator has to be told.
+ *
+ * On the campaign's own tenant, `CASH-01` holds 452.000 of which 200.000 was
+ * physically taken at Boutique Ariana. After this migration `CASH-01` is Main's
+ * and Ariana's new drawer reads 0.000 — so Main's drawer over-states its till by
+ * roughly the branch's takings and Ariana's under-states its own by the same.
+ *
+ * This is NOT a wrong journal entry and it does not produce a phantom GL
+ * variance: `PostShiftCashVarianceAdjustment` books the device's counted-vs-
+ * expected figure, never a repository-balance delta, and every drawer links the
+ * same `cash` purpose account, so the trial balance is untouched. What is wrong
+ * is the per-drawer treasury balance, and therefore the cash-position screen,
+ * the per-branch count, and any `allow_negative = false` refusal computed from
+ * a drawer that now reads 0.
+ *
+ * REMEDIATION, once, by a human, after this migration: for each branch that was
+ * provisioned a drawer, post ONE `RepositoryTransfer` from the default
+ * location's drawer to the branch's for the physical float actually sitting in
+ * that branch's till. That is a real document with a real journal entry, which
+ * is exactly why this migration does not attempt it. The per-company census
+ * line below carries each drawer's pre-migration balance so the operator has
+ * the numbers without reconstructing them.
+ *
  * ## STEP 3 — ONE DRAWER PER LOCATION PER TYPE, ENFORCED
  *
  * `provision()` is read-then-insert, so two concurrent `PATCH /locations/{id}
@@ -130,8 +158,12 @@ return new class extends Migration
         $provisioner = new LocationCashRegisterProvisioner;
 
         foreach ($companyIds as $companyId) {
-            $tenantId = $connection->table('payment_repositories')
-                ->where('company_id', $companyId)
+            // From `companies`, not `payment_repositories` (gate r2 minor): a
+            // company that owns locations but not one repository yet would
+            // otherwise be skipped silently, and that is precisely a company
+            // whose POS locations need provisioning.
+            $tenantId = $connection->table('companies')
+                ->where('id', $companyId)
                 ->value('tenant_id');
 
             $defaultLocationId = $this->defaultLocationId($connection, $companyId);
@@ -227,6 +259,19 @@ return new class extends Migration
 
                 if (is_string($repositoryId)) {
                     $provisioned++;
+                    // R2-4 — the operator needs the numbers to size the one-time
+                    // RepositoryTransfer, and after this line the pre-migration
+                    // balances are no longer obvious from the data.
+                    $this->log($tenantKey, 'drawer-provisioned-transfer-owed', [
+                        'company_id' => $companyId,
+                        'location_id' => $location->id,
+                        'new_repository_id' => $repositoryId,
+                        'default_location_drawer_balances' => $this->drawerBalances(
+                            $connection,
+                            $companyId,
+                            $defaultLocationId,
+                        ),
+                    ]);
 
                     continue;
                 }
@@ -275,6 +320,32 @@ return new class extends Migration
     }
 
     /**
+     * Each drawer at a location, `code => balance`, as it stands right now.
+     *
+     * Emitted beside every provisioning so the census line carries the figures
+     * the one-time `RepositoryTransfer` has to be sized against — see the DEPLOY
+     * NOTE in the class docblock.
+     *
+     * @return array<string, string>
+     */
+    private function drawerBalances(
+        Connection $connection,
+        string $companyId,
+        string $locationId,
+    ): array {
+        /** @var array<string, string> $balances */
+        $balances = $connection->table('payment_repositories')
+            ->where('company_id', $companyId)
+            ->where('location_id', $locationId)
+            ->whereIn('type', self::DRAWER_TYPES)
+            ->pluck('balance', 'code')
+            ->map(static fn (mixed $balance): string => (string) $balance)
+            ->all();
+
+        return $balances;
+    }
+
+    /**
      * `is_default`, then an active one, then a POS-enabled one, then the oldest
      * — byte-for-byte `PaymentRepositorySeeder::defaultLocationId()`, so a
      * tenant migrated today and a tenant registered today land identically.
@@ -303,6 +374,9 @@ return new class extends Migration
     {
         $query = $connection->table('locations')
             ->where('company_id', $companyId)
+            // A closed branch that still carries an old terminal row does not
+            // need a drawer minted for it (gate r2 minor).
+            ->where('is_active', true)
             ->select(['id', 'code']);
 
         if (Schema::hasTable('pos_terminals')) {
