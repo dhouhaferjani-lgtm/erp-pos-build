@@ -16,8 +16,9 @@ use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -204,7 +205,14 @@ final class BackfillPaymentRepositoryLocationN12Test extends TestCase
      */
     public function test_it_censuses_the_companies_it_skipped_and_the_codes_that_made_them_ambiguous(): void
     {
-        Log::spy();
+        // Captured off the real logger's own `MessageLogged` event rather than by
+        // mocking the facade: the census IS the deliverable here, a facade mock
+        // makes every unrelated `Log::` call in the fixture blow up, and this
+        // reads the lines the migration actually emitted.
+        $lines = [];
+        Event::listen(static function (MessageLogged $logged) use (&$lines): void {
+            $lines[] = $logged->message;
+        });
 
         $company = $this->companyWithChart();
         $this->location($company, 'Main Location', isDefault: true);
@@ -214,16 +222,23 @@ final class BackfillPaymentRepositoryLocationN12Test extends TestCase
 
         $this->runBackfill();
 
-        Log::shouldHaveReceived('warning')
-            ->withArgs(static fn (string $message): bool => str_contains($message, 'status=ambiguous-skipped')
-                && str_contains($message, 'CASH-01')
-                && str_contains($message, 'CASH-OPERATOR'))
-            ->once();
+        $skipped = array_values(array_filter(
+            $lines,
+            static fn (string $line): bool => str_contains($line, 'status=ambiguous-skipped'),
+        ));
 
-        Log::shouldHaveReceived('warning')
-            ->withArgs(static fn (string $message): bool => str_contains($message, 'status=ok')
-                && str_contains($message, '"ambiguous_companies":1'))
-            ->once();
+        $this->assertCount(1, $skipped, 'The skipped company must be named exactly once.');
+        $this->assertStringContainsString('CASH-01', $skipped[0]);
+        $this->assertStringContainsString('CASH-OPERATOR', $skipped[0]);
+        $this->assertStringContainsString($company->id, $skipped[0]);
+
+        $summary = array_values(array_filter(
+            $lines,
+            static fn (string $line): bool => str_contains($line, 'status=ok'),
+        ));
+
+        $this->assertCount(1, $summary);
+        $this->assertStringContainsString('"ambiguous_companies":1', $summary[0]);
     }
 
     /**

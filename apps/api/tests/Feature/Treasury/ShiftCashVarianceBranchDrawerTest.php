@@ -144,8 +144,8 @@ final class ShiftCashVarianceBranchDrawerTest extends TestCase
         $this->assertSame($branchTill->id, $adjustment->payment_repository_id);
 
         // A 5.000 shortfall out of the branch till, and Main untouched.
-        $this->assertSame(0, bccomp((string) $branchTill->fresh()?->balance, '195.000', 3));
-        $this->assertSame(0, bccomp((string) $this->mainTill->fresh()?->balance, '400.000', 3));
+        $this->assertSame(0, bccomp($this->balanceOf($branchTill), '195.000', 3));
+        $this->assertSame(0, bccomp($this->balanceOf($this->mainTill), '400.000', 3));
     }
 
     public function test_a_branch_with_no_drawer_refuses_and_names_the_location(): void
@@ -164,7 +164,7 @@ final class ShiftCashVarianceBranchDrawerTest extends TestCase
 
         // A refusal is a record, not a fallback: Main's drawer is untouched.
         $this->assertSame(0, RepositoryAdjustment::query()->count());
-        $this->assertSame(0, bccomp((string) $this->mainTill->fresh()?->balance, '400.000', 3));
+        $this->assertSame(0, bccomp($this->balanceOf($this->mainTill), '400.000', 3));
     }
 
     /**
@@ -206,7 +206,7 @@ final class ShiftCashVarianceBranchDrawerTest extends TestCase
         $this->assertSame(1, DB::table('repository_movements')->count());
         $this->assertSame(
             0,
-            bccomp((string) $replacement->fresh()?->balance, '50.000', 3),
+            bccomp($this->balanceOf($replacement), '50.000', 3),
             'The replay must not touch the drawer it would resolve today.',
         );
     }
@@ -230,12 +230,27 @@ final class ShiftCashVarianceBranchDrawerTest extends TestCase
         $this->runOnWorker($this->cashCountEvent($shiftId, (string) Str::uuid()));
 
         $this->assertSame($this->mainTill->id, RepositoryAdjustment::query()->sole()->payment_repository_id);
-        $this->assertSame(0, bccomp((string) $branchTill->fresh()?->balance, '200.000', 3));
+        $this->assertSame(0, bccomp($this->balanceOf($branchTill), '200.000', 3));
     }
 
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Re-read the balance from the database as a numeric string.
+     *
+     * `(string) $model->fresh()?->balance` widens to `''` under PHPStan when the
+     * row could have vanished, which is not a `numeric-string` — and an empty
+     * string silently compares as zero, so the cast would have hidden a deleted
+     * repository as a balanced one.
+     *
+     * @return numeric-string
+     */
+    private function balanceOf(PaymentRepository $repository): string
+    {
+        return PaymentRepository::query()->findOrFail($repository->id)->balance;
+    }
 
     private function drawer(string $code, ?string $locationId, string $balance): PaymentRepository
     {
