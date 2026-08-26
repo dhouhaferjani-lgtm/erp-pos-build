@@ -187,8 +187,16 @@ final class ShiftCashVarianceBranchDrawerTest extends TestCase
 
         $this->assertSame($branchTill->id, RepositoryAdjustment::query()->sole()->payment_repository_id);
 
-        // The branch is given a different drawer between the two attempts.
-        $branchTill->forceFill(['location_id' => $this->mainLocation->id])->save();
+        // The branch is given a different drawer between the two attempts. The
+        // original moves to a third location — not to Main, because the partial
+        // unique index this lane adds (one usable drawer per location per type)
+        // correctly refuses a second till there.
+        $thirdLocation = Location::factory()->create([
+            'company_id' => $this->company->id,
+            'name' => 'Entrepôt',
+            'pos_enabled' => false,
+        ]);
+        $branchTill->forceFill(['location_id' => $thirdLocation->id])->save();
         $replacement = $this->drawer('CASH-03', $this->branchLocation->id, '50.000');
 
         $this->runOnWorker($event);
