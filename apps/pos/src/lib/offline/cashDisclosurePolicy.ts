@@ -7,11 +7,25 @@
  * concealment to the surrounding money cards. A separate screen that renders
  * `expected_cash` for the same open shift would defeat both.
  *
- * The `/shift` route is nominally manager-only, but `hasManagerAccess` takes the
- * MAX of the PIN operator's roles and the logged-in device user's roles — on a
- * terminal signed in with an owner account (the ordinary single-account POS
- * deployment) a cashier PIN operator clears that gate. So the route gate alone
- * is not a sufficient blind-count boundary; the policy has to be honoured.
+ * The route gate alone is not a sufficient blind-count boundary, and the reason
+ * survives B-13 even though its original premise did not.
+ *
+ * ORIGINALLY (falsified, B-13 2026-08-26): `hasManagerAccess` took the MAX of
+ * the PIN operator's roles and the logged-in device user's roles, so on a
+ * terminal signed in with an owner account a cashier PIN cleared the
+ * manager-only `/shift` route outright. That leg is now REMOVED — the gate
+ * composes from the PIN operator alone (`lib/auth/roles.ts`).
+ *
+ * STILL TRUE, for two independent reasons:
+ *  1. Blind counting is not about ROLE. It conceals the expectation from
+ *     whoever is COUNTING, and on most shifts that is the manager who cleared
+ *     the gate. `/shift` and `/reports` therefore conceal regardless of role
+ *     while a shift is open; only the Header opening-float tooltip and
+ *     `/sales` are role-conditioned, because there the manager is not the one
+ *     at the drawer.
+ *  2. A route gate is a UI control on a terminal holding the login account's
+ *     bearer token (LEDGER B-13-S1). The policy is the invariant; the gate is
+ *     one of several places that honour it.
  *
  * Fails CLOSED: only a positively-read `require_blind_cash_count === false`
  * discloses. An unknown policy conceals, mirroring `handleOpenEndOfDay`'s

@@ -392,6 +392,24 @@ export function Header() {
     setShowCashDrawerModal(true);
   };
 
+  /**
+   * POLICY NOTE (gate r1 F-5) — why a cashier is refused the read-only X report
+   * yet may still close the shift (End-of-Day → `handleEndOfDayConfirm` →
+   * `handlePrintZReport`), which authors the far more consequential
+   * once-per-shift `SESSION_CLOSE` / `Z_REPORT` events.
+   *
+   * This is DELIBERATE, not an inconsistency the gate missed. The cashier
+   * closes their OWN drawer: counting it and signing the close is the job, and
+   * the seeder agrees — `cashier` holds `pos.generate_z_report` but NOT
+   * `pos.view_reports` (`RolesAndPermissionsSeeder.php:685`). The two surfaces
+   * answer different questions. The Z is "here is what I counted", authored
+   * under the blind-count regime with the expectation concealed. The X is
+   * "here is what the drawer should hold right now" — the expectation itself,
+   * mid-shift, which is exactly what the counter must not see.
+   *
+   * So the asymmetry runs the right way: authority to CLOSE is broad, authority
+   * to READ THE EXPECTATION is narrow.
+   */
   const handleXReport = async () => {
     if (!terminal) return;
     // B-13 (ii), defense in depth behind ReportsMenu's own filter: generating
@@ -524,6 +542,13 @@ export function Header() {
    * Only invoked in Tauri (thermal printer) environment.
    * Sets is_reprint=true when wasReused so a DUPLICATA banner is printed.
    * Includes per-tender cash-count block when cash counts were captured.
+   */
+  /**
+   * Reachable by ANY PIN operator, including a cashier — see the F-5 policy
+   * note on `handleXReport`. The cashier closing their own drawer is the
+   * intended flow; the blind-count regime is enforced INSIDE the close
+   * (`CashReconciliationSection` / `EndOfDayPreviewModal`), not by withholding
+   * the close.
    */
   const handlePrintZReport = (result: EndOfDayConfirmResult) => {
     if (!isTauriEnvironment()) return;
