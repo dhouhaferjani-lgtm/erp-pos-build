@@ -49,8 +49,8 @@ final class BackfillPaymentRepositoryLocationN12Test extends TestCase
 
         $this->runBackfill();
 
-        $this->assertSame($main->id, $till->fresh()?->location_id);
-        $this->assertSame($main->id, $safe->fresh()?->location_id);
+        $this->assertSame($main->id, $this->freshLocationId($till));
+        $this->assertSame($main->id, $this->freshLocationId($safe));
     }
 
     public function test_it_never_moves_a_repository_that_already_has_a_location(): void
@@ -65,14 +65,14 @@ final class BackfillPaymentRepositoryLocationN12Test extends TestCase
 
         $this->assertSame(
             $branch->id,
-            $branchTill->fresh()?->location_id,
+            $this->freshLocationId($branchTill),
             'An already-attributed drawer must survive the backfill untouched.',
         );
     }
 
     /**
      * A `bank_account` / `virtual` repository is the COMPANY's instrument, not a
-     * branch's — {@see \App\Modules\Treasury\Application\Services\TenderRepositoryResolver}
+     * branch's — `TenderRepositoryResolver`
      * keeps unattributed ones reachable from every location. Binding one to Main
      * here would refuse a CARD tender at every other branch.
      */
@@ -86,8 +86,8 @@ final class BackfillPaymentRepositoryLocationN12Test extends TestCase
 
         $this->runBackfill();
 
-        $this->assertNull($bank->fresh()?->location_id);
-        $this->assertNull($virtual->fresh()?->location_id);
+        $this->assertNull($this->freshLocationId($bank));
+        $this->assertNull($this->freshLocationId($virtual));
     }
 
     public function test_it_leaves_a_company_with_no_locations_alone(): void
@@ -98,7 +98,7 @@ final class BackfillPaymentRepositoryLocationN12Test extends TestCase
         $this->runBackfill();
 
         $this->assertNull(
-            $till->fresh()?->location_id,
+            $this->freshLocationId($till),
             'No location to attribute to is the pre-N-12 shape, which the resolver still serves.',
         );
     }
@@ -115,8 +115,8 @@ final class BackfillPaymentRepositoryLocationN12Test extends TestCase
 
         $this->runBackfill();
 
-        $this->assertSame($firstMain->id, $firstTill->fresh()?->location_id);
-        $this->assertSame($secondMain->id, $secondTill->fresh()?->location_id);
+        $this->assertSame($firstMain->id, $this->freshLocationId($firstTill));
+        $this->assertSame($secondMain->id, $this->freshLocationId($secondTill));
     }
 
     /**
@@ -130,17 +130,19 @@ final class BackfillPaymentRepositoryLocationN12Test extends TestCase
         $till = $this->repository($company, 'CASH-01', RepositoryType::CashRegister);
 
         $this->runBackfill();
-        $afterFirst = $till->fresh()?->location_id;
+        $afterFirst = $this->freshLocationId($till);
 
         // A later, deliberate re-attribution by an operator must not be undone
         // by a re-run either.
         $branch = $this->location($company, 'Boutique Ariana');
-        $till->fresh()?->forceFill(['location_id' => $branch->id])->save();
+        PaymentRepository::query()->findOrFail($till->id)
+            ->forceFill(['location_id' => $branch->id])
+            ->save();
 
         $this->runBackfill();
 
         $this->assertSame($main->id, $afterFirst);
-        $this->assertSame($branch->id, $till->fresh()?->location_id);
+        $this->assertSame($branch->id, $this->freshLocationId($till));
     }
 
     /**
@@ -158,12 +160,22 @@ final class BackfillPaymentRepositoryLocationN12Test extends TestCase
 
         $this->runBackfill();
 
-        $this->assertSame($shop->id, $till->fresh()?->location_id);
+        $this->assertSame($shop->id, $this->freshLocationId($till));
     }
 
     // =================================================================
     // Helpers
     // =================================================================
+
+    /**
+     * Re-read from the database rather than from the hydrated model — the
+     * migration writes with the query builder, so an in-memory attribute would
+     * prove nothing.
+     */
+    private function freshLocationId(PaymentRepository $repository): ?string
+    {
+        return PaymentRepository::query()->findOrFail($repository->id)->location_id;
+    }
 
     private function runBackfill(): void
     {

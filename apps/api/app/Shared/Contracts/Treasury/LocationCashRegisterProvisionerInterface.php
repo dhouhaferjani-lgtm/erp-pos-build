@@ -11,7 +11,7 @@ namespace App\Shared\Contracts\Treasury;
  * NULL` and every branch's POS cash resolved to whichever cash register sorted
  * first (in practice the MAIN location's till). Two branches' takings
  * commingled in one balance, so a per-branch cash count could not reconcile
- * against anything. {@see \App\Modules\Treasury\Application\Services\TenderRepositoryResolver}
+ * against anything. The Treasury tender resolver
  * now resolves per location; this contract is the other half — making sure the
  * drawer a POS-enabled location needs actually exists.
  *

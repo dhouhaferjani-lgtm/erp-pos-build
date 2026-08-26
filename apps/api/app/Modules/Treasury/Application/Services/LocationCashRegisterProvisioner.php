@@ -11,6 +11,7 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\Treasury\LocationCashRegisterProvisionerInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -123,9 +124,9 @@ final readonly class LocationCashRegisterProvisioner implements LocationCashRegi
     }
 
     /**
-     * @return \Illuminate\Database\Eloquent\Builder<PaymentRepository>
+     * @return Builder<PaymentRepository>
      */
-    private function ownCashRegisterQuery(string $tenantId, string $companyId, string $locationId): \Illuminate\Database\Eloquent\Builder
+    private function ownCashRegisterQuery(string $tenantId, string $companyId, string $locationId): Builder
     {
         return PaymentRepository::query()
             ->where('tenant_id', $tenantId)

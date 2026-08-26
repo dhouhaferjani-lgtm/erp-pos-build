@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\Schema;
  *
  * The seeder now attributes the pair, but a seeder only runs for a NEW tenant.
  * Without this migration every tenant already in the fleet keeps the NULL pair
- * forever — and {@see \App\Modules\Treasury\Application\Services\TenderRepositoryResolver}
+ * forever — and `TenderRepositoryResolver`
  * deliberately keeps serving those (tier 2) so the code change alone is
  * behaviour-preserving. Attribution is what actually arms tier 1 for an
  * existing tenant, which is what stops a second branch drawing on the first
