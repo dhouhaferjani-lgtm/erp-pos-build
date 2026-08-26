@@ -6,7 +6,6 @@ namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Domain\Location;
-use App\Shared\Contracts\Treasury\LocationCashRegisterProvisionerInterface;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Enums\TerminalType;
@@ -25,6 +24,7 @@ use App\Modules\POS\Presentation\Requests\ReleaseTerminalRequest;
 use App\Modules\POS\Presentation\Requests\RequestTerminalRequest;
 use App\Modules\POS\Presentation\Requests\UpdateTerminalRequest;
 use App\Modules\POS\Presentation\Resources\TerminalResource;
+use App\Shared\Contracts\Treasury\LocationCashRegisterProvisionerInterface;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
@@ -982,12 +982,6 @@ final class TerminalController extends Controller
     }
 
     /**
-     * The single refusal envelope for every B-3 acquisition path, shaped like
-     * the sibling refusals in this controller (`TERMINAL_INACTIVE`,
-     * `TERMINAL_HAS_OPEN_SHIFT`) so the device's existing error handling reads
-     * it without a new branch.
-     */
-    /**
      * N-12 — typed, actionable, and never a silent reroute.
      *
      * The message names the fix an operator can actually perform (add a cash
@@ -1005,6 +999,12 @@ final class TerminalController extends Controller
         ], 422);
     }
 
+    /**
+     * The single refusal envelope for every B-3 acquisition path, shaped like
+     * the sibling refusals in this controller (`TERMINAL_INACTIVE`,
+     * `TERMINAL_HAS_OPEN_SHIFT`) so the device's existing error handling reads
+     * it without a new branch.
+     */
     private function posDisabledResponse(): JsonResponse
     {
         return response()->json([

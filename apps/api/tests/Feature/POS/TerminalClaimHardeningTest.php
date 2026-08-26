@@ -105,7 +105,6 @@ final class TerminalClaimHardeningTest extends TestCase
         $this->user->givePermissionTo('pos.manage_terminals');
         $this->user->givePermissionTo('pos.operate_terminal');
 
-
         // Campaign lane N-12 — a terminal may only be acquired at a location
         // whose cash has somewhere of its own to go. This fixture keeps the
         // company on the pre-N-12 shape (an unattributed, GL-linked till that
