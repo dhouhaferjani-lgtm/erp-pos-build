@@ -213,3 +213,180 @@ Make the tax-configuration coherence check run on EVERY product write (F-1) — 
 configuration that disagrees with the rate being written — and add the three missing import tests
 (F-3: mismatch → NULL, re-import must not clobber, re-import rate change). F-2 can follow in the
 same lane or be ticketed. Items (a), (c), (d), (f) are approved as-is.
+
+---
+
+## r2 scoped re-review
+
+**Scope:** fix round 1 only — `6a7adfa81..c596977ab` (2 commits), package
+`.superpowers/sdd/PLAN/review-6a7adfa81..c596977ab.diff`. Fixers' report section
+"Fix round 1 — imports gate r1" (`.superpowers/sdd/PLAN/task-9-report.md:169-249`).
+Read-only. Items (a), (c), (d), (f) were untouched this round and stay approved.
+
+### VERDICT
+
+**F-1 … F-6: ALL SIX ADDRESSED.** One NEW [IMPORTANT] introduced by the fix diff (NEW-1).
+**quality CHANGES-REQUESTED — one line.**
+
+### What I actually ran
+
+| Command | Result |
+|---|---|
+| `phpunit tests/Feature/Import/ProductsImportPipelineTest.php` | OK **14 tests / 174 assertions** |
+| `phpunit tests/Unit/Import/ProductPriceResolverTest.php` | OK 8 tests / 17 assertions |
+| `vitest run src/hooks/__tests__/useDraftAutoSave.state.test.tsx` | OK 4 tests |
+| `pint --test` (8 touched files) | pass |
+| `phpstan` level 8 (6 touched app files) | No errors |
+| Regex/`is_numeric` equivalence probe (25 hand cases + 5 000 generated) | **0 counterexamples** |
+| `phpunit tests/Unit/Product/ProductServiceUpsertTest.php` | 1 failure — **confirmed pre-existing**, `git blame -s c94d23043` puts the W2-3 create-on-miss block at `38ee1cd8f0`, i.e. before this batch's base |
+| `php -r 'bcadd("1e2","0",4)'` on 8.4.15 | `ValueError: not well-formed` (F-6 premise confirmed) |
+
+### F-1 [CRITICAL] — ADDRESSED
+
+`ProductService.php:129-135` — the call is now unconditional and its result is
+**assigned** unconditionally, so a null clears a stale id. The helper
+`resolveCoherentTaxConfigurationId()` (`:196-256`) tries the product's own
+configuration first (`:227-229`), then category (`:231-240`), then company
+(`:242-244`), and returns null when none matches at `bccomp(…, 2)` (`:246-255`).
+That is exactly the ruling: keep an agreeing config, else re-resolve
+category→company, else NULL — never a mismatched pair.
+
+**The re-import non-clobber property does now follow from coherence, and the tests prove
+each leg** (all six run through the real `POST /imports` + `/execute` endpoints, no fakes):
+
+- SAME rate keeps the config — `ProductsImportPipelineTest.php:415-460`, asserts
+  `$tva7->id` survives a second identical run and that it is the same product row.
+- CHANGED rate re-resolves — `:461-505`, asserts the 7 % id is gone AND the 19 % id
+  is there (not merely "not stale").
+- CHANGED rate matching nothing NULLs — `:506-546`.
+- Rate matching no configuration at all → NULL, never the company's — `:381-414`.
+
+The file's rate is never rewritten to match a configuration (option (ii) declined,
+report `:192`) — correct per the ruling that the file's rate is operator intent.
+
+### F-2 [IMPORTANT] — ADDRESSED
+
+`TaxResolutionService.php:108-143`: category `default_tax_configuration_id` →
+category `default_tax_rate` → company rate → `'0.00'`, matching the ruling's rank
+order. The new rate source is safely scoped — `resolveRateFromTaxConfiguration()`
+(`:181-200`) filters `country_code` + `LINE_ITEMS` + `isPercentage()` and returns
+null rather than inventing, so a fixed-amount or foreign-country configuration
+falls through to the rate column. Pinned by `ProductsImportPipelineTest.php:547-579`.
+
+### F-3 [IMPORTANT] — ADDRESSED
+
+All three required tests exist plus three more (`:381`, `:415`, `:461`, `:506`,
+`:547`, `:580`). Helpers `seedTunisianVatConfigurations()` (`:792`) and
+`runProductImport()` (`:829`) drive the real endpoints and assert
+`successful_rows`/`failed_rows`. No `assertTrue(true)`, nothing mocked.
+
+### F-4 [MINOR] — ADDRESSED
+
+`ImportService.php:536-545` writes `$tax->source->value`; the pre-existing
+assertion was corrected to `company_default`
+(`ProductsImportPipelineTest.php:196-201`) and the three-row breadcrumb is pinned
+at `:580-606`.
+
+**Boundary (rule 6) verified.** `ProductTaxDefaultDTO` and `ProductTaxDefaultSource`
+live in `App\Shared\DTOs` / `App\Shared\Enums`, reached only through
+`App\Shared\Contracts\TaxDefaultResolverInterface:16-25`; `ImportService.php:40`
+constructor-injects the interface, never the Taxation model. Enum-typed per rule 9.
+
+**One ladder confirmed.** `TaxResolutionService.php:99-102` — `getDefaultTaxForNewProduct()`
+is now a one-line delegation `return $this->resolveDefaultTaxForNewProduct(...)->taxRate;`.
+`TaxResolutionService` is the only implementer (`TaxationServiceProvider.php:59`);
+the sole other implementation is the anonymous fake in
+`tests/Unit/Import/ProductPriceResolverTest.php:18-33`, which was updated and
+delegates the same way — so no consumer can fall onto a second ladder.
+
+### F-5 [MINOR] — ADDRESSED
+
+`useDraftAutoSave.ts:172-185` — `setLastSavedAt` moved inside `if (body.draft_id !== null)`.
+Two assertions: null on the lineless answer and stamped on the next real save
+(`useDraftAutoSave.state.test.tsx:66,71-87`). `setDraftId(body.draft_id)` staying
+outside is safe: `DraftPersistenceService::saveDraft()` returns null only on the
+CREATE branch, so a call carrying an existing `draft_id` never answers null.
+
+### F-6 [MINOR] — ADDRESSED (claim verified, premise partly overstated)
+
+`ProductService.php:166` `PERCENT_DECIMAL_STRING = '/^-?\d+(\.\d{1,2})?$/'`, applied
+before `is_numeric` at `:207-210`.
+
+**The pairing claim is TRUE.** I probed 25 hand-picked cases plus 5 000 generated
+strings: there is no string the regex accepts that `is_numeric` rejects, so the
+pair rejects exactly what the regex rejects and `is_numeric` is pure PHPStan
+narrowing, as the comment says. `1e2`, `1E2`, `' 19.00'`, `'+19.00'`, `'.5'`,
+`'19.'` are all now rejected — each of which `bccomp` would have thrown on.
+
+Two honest corrections to the rationale, neither blocking: the ValueError was never
+a *dead job* — `ImportService.php:349-364` catches `\Throwable` per row and records
+`import_error`, so it was a failed row; and the same exponent value still reaches
+bcmath one line earlier at `ImportService.php:530` →
+`ProductPriceResolver::taxFactor()` → `CurrencyScale::bcformatStrict()` (`:130-145`,
+`is_numeric`-gated only) → `bcadd(): not well-formed`. That path is pre-existing and
+outside this diff; ticket it.
+
+---
+
+### NEW-1 [IMPORTANT] — the percent regex CLEARS an agreeing configuration when the file states the rate with 3 decimals
+
+`apps/api/app/Modules/Product/Application/Services/ProductService.php:166,207-212`
+
+The docblock at `:162-164` says the regex "mirrors the ceiling the products
+FormRequests apply to the same column". It does — for the **API** path
+(`CreateProductRequest.php:195`, `UpdateProductRequest.php:181`). It does **not** on
+the import path, which is the path this method sits on:
+
+- `Import/Domain/Enums/ImportType.php:178` — `'tax_rate' => ['nullable','numeric','min:0','max:100']`.
+  No percent regex ceiling, unlike `'margin'` two lines up at `:169`
+  (`regex:/^-?\d+(\.\d{1,2})?$/`). So `19.000` passes row validation.
+- `NumericFieldNormalizer.php:59` decides "percent field" by that exact regex being
+  present in the rules → false here; `:85` passes `19.000` through untouched.
+- `ImportService.php:536` keeps the file value (not empty), `ProductService.php:72`
+  puts it in `$attributes`, `:133` hands it over, `:208` fails the regex, `:211`
+  returns **null** — before the existing-configuration candidate at `:227` is ever
+  reached.
+
+Two consequences:
+
+1. A products file whose numeric block is formatted to 3 decimals — the natural
+   shape in a TND sheet, where every price column already is `10.000` — imports
+   with a blank tax selector. That is precisely the outcome W2-5 exists to remove.
+2. Worse for an import lane: **re-import idempotency is broken on that column.**
+   Run 1 with `19.00` sets the configuration; run 2 of the same file re-exported with
+   `19.000` CLEARS it. The rate did not move — both land as `19.00` in `decimal(5,2)`
+   and `bccomp('19.00','19.000',2) === 0` — only the cell formatting did. The ruling
+   says "keep existing config if it agrees with the incoming rate"; here an agreeing
+   config is discarded on a textual-scale technicality, without a warning anywhere
+   (the result workbook carries no reason for a silently nulled configuration).
+
+Not Critical: the resulting pair `(19.00, NULL)` is coherent, so no N-1 and no wrong
+money. Important because it is a silent, re-run-dependent loss of the exact column
+this lane was written to populate, introduced by this diff.
+
+**Fix (one line):** compare at scale 2 instead of gating on textual scale — widen to
+`/^-?\d+(\.\d+)?$/` (still exponent-free, still bcmath-safe, which is all F-6 asked
+for) and let `bccomp(…, 2)` decide agreement. Optionally also add the missing percent
+ceiling `regex:/^-?\d+(\.\d{1,2})?$/` to `ImportType::Products` `tax_rate` (CLAUDE.md
+rule 19 requires it for percent columns; `margin` already has it), which would make
+the docblock's "mirrors the FormRequest ceiling" true on the import path too — but do
+not rely on that alone, since it turns a today-accepted file into a row error.
+
+### Scope note (not a finding in this diff) — the manual API update does NOT go through this guard
+
+The ruling is "coherence guard on every product write". It now holds on the import
+path only. `ProductController.php` is untouched by the **entire** batch
+(`git log c94d23043..c596977ab -- …/ProductController.php` is empty), and its
+`applyTaxRateFromConfiguration()` returns early when the caller omits
+`default_tax_configuration_id` (`:1141-1143`), while `UpdateProductRequest.php:181`
+allows `tax_rate` as `sometimes`. So `PATCH /products/{id} {"tax_rate":"19.00"}` on a
+product carrying a 7 % configuration still stores the mismatched pair — the F-1 shape,
+reached through the API instead of the import. Pre-existing, out of this fix diff,
+and correctly out of scope for this round; **ticket it** so the ruling is not recorded
+as satisfied globally.
+
+### What to fix before merge
+
+Widen `PERCENT_DECIMAL_STRING` to `/^-?\d+(\.\d+)?$/` so an agreeing configuration is
+not cleared by a 3-decimal cell (NEW-1); everything else in the round is verified and
+green.
