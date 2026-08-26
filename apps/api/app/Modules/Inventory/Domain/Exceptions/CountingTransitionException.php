@@ -38,6 +38,18 @@ class CountingTransitionException extends DomainException
      */
     public const CODE = 'COUNTING_TRANSITION_REFUSED';
 
+    /**
+     * Translation key for the OPERATOR-facing message (LEDGER C-14(iv)).
+     *
+     * `getMessage()` below is the DEVELOPER/log string and stays English by
+     * design — it is what lands in logs and in `expectExceptionMessage` pins.
+     * The operator text is built by the render handler in `bootstrap/app.php`
+     * from this key + `translationReplacements()`, so the 422 body is rendered
+     * in the requesting tenant's locale (house rule 11). Same shape as
+     * `InsufficientStockForFulfilmentException::TRANSLATION_KEY`.
+     */
+    public const string TRANSLATION_KEY = 'inventory.counting.transition_refused';
+
     public function __construct(
         public readonly string $countingId,
         public readonly CountingStatus $currentStatus,
@@ -46,5 +58,35 @@ class CountingTransitionException extends DomainException
         parent::__construct(
             "This counting is {$currentStatus->value} and cannot move to {$attemptedStatus->value}."
         );
+    }
+
+    /**
+     * Placeholders for `__(self::TRANSLATION_KEY, …)`, resolved at RENDER time
+     * (i.e. after `SetLocale` has applied the request's Accept-Language), never
+     * at construction time.
+     *
+     * Both statuses are rendered from the `inventory.counting.status.*` labels —
+     * the same values `apps/web/src/locales/<locale>/inventory.json` uses — and
+     * fall back to the raw enum value if a locale has no catalogue entry, so a
+     * missing translation degrades to today's behaviour instead of printing a
+     * key.
+     *
+     * @return array<string, string>
+     */
+    public function translationReplacements(): array
+    {
+        return [
+            'current' => self::statusLabel($this->currentStatus),
+            'attempted' => self::statusLabel($this->attemptedStatus),
+        ];
+    }
+
+    private static function statusLabel(CountingStatus $status): string
+    {
+        $translated = trans('inventory.counting.status.'.$status->value);
+
+        return is_string($translated) && $translated !== 'inventory.counting.status.'.$status->value
+            ? $translated
+            : $status->value;
     }
 }

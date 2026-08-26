@@ -285,6 +285,15 @@ class CountingItemController extends Controller
 
     /**
      * Manual override.
+     *
+     * LEDGER C-14(ii): the terminal-state refusal lives in
+     * `InventoryCountingService::manualOverride()`, under the counting-header
+     * `lockForUpdate()`, and surfaces as the typed 422
+     * `COUNTING_TRANSITION_REFUSED` (`CountingTransitionException`). It is
+     * deliberately NOT duplicated here: a status read before the transaction is
+     * check-then-act — the sibling `setOpeningCost()` above still has that
+     * shape, and its refusal is a best-effort UX guard rather than the
+     * authoritative one.
      */
     public function override(ManualOverrideRequest $request, string $itemId): JsonResponse
     {

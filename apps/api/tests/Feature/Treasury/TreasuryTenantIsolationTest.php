@@ -885,18 +885,19 @@ final class TreasuryTenantIsolationTest extends TestCase
      * Inventory: api.treasury.060 + 061 — PaymentMethodController::store + ::update
      * (default_journal_id, journals).
      *
-     * Important context: there is NO `journals` table in the schema. The
-     * `default_journal_id` column on `payment_methods` is a legacy storage-only
-     * field — no Eloquent model, no migration, no read path. The bare
-     * `exists:journals,id` validator was therefore broken (any value triggers a
-     * 500 SQL error: relation "journals" does not exist).
+     * LEDGER C-30(i) — HONEST PIN REWRITE. The previous two tests here pinned
+     * "the validator no longer 500s AND the column still accepts any well-formed
+     * UUID". That second half pinned the DEFECT: there is NO `journals` table
+     * anywhere in the schema (no migration, no model, no read path), so every
+     * accepted UUID was a live write to a phantom target — exactly what the Q-12
+     * treasury orphan census reported as `target_table_missing`.
      *
-     * The fix REMOVES the broken validator. There's nothing to scope against.
-     * Test asserts: the validator no longer 500s on a bare UUID, AND the column
-     * still accepts any well-formed UUID payload (no validation error). Because
-     * the rule is gone, cross-tenant data binding is moot for this column.
+     * The rule is now `prohibited` on BOTH store and update: a present
+     * `default_journal_id` is refused with the standard typed 422
+     * (`{error:{errors:{default_journal_id:[…]}}}`) and NOTHING is persisted.
+     * The column itself stays (dropping it is a migration).
      */
-    public function test_payment_method_store_default_journal_id_validator_no_longer_500s(): void
+    public function test_payment_method_store_refuses_default_journal_id(): void
     {
         $response = $this->actingAsForTenant($this->userA, $this->companyA)
             ->postJson('/api/v1/payment-methods', [
@@ -904,17 +905,32 @@ final class TreasuryTenantIsolationTest extends TestCase
                 'name' => 'Test',
                 'default_journal_id' => Str::uuid()->toString(),
             ]);
-        // Pre-fix: 500 (SQLSTATE[42P01] relation "journals" does not exist).
-        // Post-fix: 200/201 — validator no longer hits the missing table.
-        $this->assertNotSame(
-            500,
-            $response->status(),
-            'default_journal_id validator must not 500 on missing journals table. Body: '.$response->getContent(),
-        );
-        $this->assertNoValidationErrorFor($response, 'default_journal_id');
+
+        $this->assertApiValidationErrors($response, ['default_journal_id']);
+
+        $this->assertDatabaseMissing('payment_methods', [
+            'tenant_id' => $this->tenantA->id,
+            'code' => 'JNL1',
+        ]);
     }
 
-    public function test_payment_method_update_default_journal_id_validator_no_longer_500s(): void
+    public function test_payment_method_store_still_accepts_a_payload_without_default_journal_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/payment-methods', [
+                'code' => 'JNL3',
+                'name' => 'No journal',
+            ]);
+
+        $response->assertCreated();
+        $this->assertDatabaseHas('payment_methods', [
+            'tenant_id' => $this->tenantA->id,
+            'code' => 'JNL3',
+            'default_journal_id' => null,
+        ]);
+    }
+
+    public function test_payment_method_update_refuses_default_journal_id(): void
     {
         $method = PaymentMethod::create([
             'id' => Str::uuid()->toString(),
@@ -933,14 +949,18 @@ final class TreasuryTenantIsolationTest extends TestCase
 
         $response = $this->actingAsForTenant($this->userA, $this->companyA)
             ->patchJson("/api/v1/payment-methods/{$method->id}", [
+                'name' => 'Renamed',
                 'default_journal_id' => Str::uuid()->toString(),
             ]);
-        $this->assertNotSame(
-            500,
-            $response->status(),
-            'default_journal_id update validator must not 500. Body: '.$response->getContent(),
-        );
-        $this->assertNoValidationErrorFor($response, 'default_journal_id');
+
+        $this->assertApiValidationErrors($response, ['default_journal_id']);
+
+        // The whole request is refused — the sibling `name` change must not land.
+        $this->assertDatabaseHas('payment_methods', [
+            'id' => $method->id,
+            'name' => 'Update target',
+            'default_journal_id' => null,
+        ]);
     }
 
     // =========================================================================

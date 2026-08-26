@@ -307,23 +307,23 @@ final class TerminalClaimHardeningTest extends TestCase
      * A unique violation on a DIFFERENT constraint must NOT be reported as
      * `DEVICE_ALREADY_BOUND`.
      *
-     * `generateTerminalCode()` derives the next code from a `count()`, so a
-     * `pos_terminals_unique_code` collision is genuinely reachable — the
-     * 2026-08-23 sweep records that TOCTOU separately and this lane does not fix
-     * it. What this lane must not do is MIS-ATTRIBUTE it: telling an operator
-     * "release your other terminal" when the real cause is a duplicate code
-     * sends them to fix something unrelated. The assertion of value is that it
-     * is not a 409.
+     * HONEST PIN REWRITE — LEDGER C-17(vii). This case used to assert
+     * `>= 500`, because `generateTerminalCode()` derived the next code from a
+     * `count()` and therefore collided with this fixture's POS02 on
+     * `pos_terminals_unique_code`; the point being made was only that the 500 is
+     * not MIS-REPORTED as a 409 "release your other terminal". C-17(vii) makes
+     * the allocator max+1, so that collision is no longer reachable from this
+     * path at all and the old assertion pinned a defect. What survives is the
+     * behaviour that mattered: an unbound device provisioning at a location
+     * whose code sequence has a hole is not a device-binding conflict — it is a
+     * successful provision on the next FREE code.
      *
-     * The exact 5xx is deliberately NOT pinned (tenancy gate r1 finding 8):
-     * `generateTerminalCode()`'s count()-derived TOCTOU is an open follow-up
-     * from the 2026-08-23 sweep, and whoever finally fixes it must not be handed
-     * a red test in a file about device binding.
+     * `isUniqueViolation()`'s discrimination itself is still exercised by
+     * {@see test_request_terminal_refuses_a_hardware_identifier_that_is_already_bound}
+     * above, which is the arm that must answer 409.
      */
     public function test_a_code_collision_is_not_mis_reported_as_a_device_binding_collision(): void
     {
-        // One terminal exists, so `generateTerminalCode()` will produce POS02 —
-        // which this fixture has already taken at the same location.
         $this->claimableTerminal(['code' => 'POS02']);
 
         $response = $this->postJson('/api/v1/pos/terminals/request', [
@@ -333,7 +333,12 @@ final class TerminalClaimHardeningTest extends TestCase
         ]);
 
         $this->assertNotSame(409, $response->getStatusCode());
-        $this->assertGreaterThanOrEqual(500, $response->getStatusCode());
+        $this->assertLessThan(
+            500,
+            $response->getStatusCode(),
+            'A hole in the code sequence must no longer 500 the provisioning path. Body: '.$response->getContent(),
+        );
+        $response->assertJsonPath('data.code', 'POS03');
     }
 
     public function test_request_terminal_still_provisions_for_an_unbound_device(): void
@@ -677,6 +682,296 @@ final class TerminalClaimHardeningTest extends TestCase
      * Projects the shape a device's SESSION_OPEN leaves behind: an OPEN
      * `pos_shifts` row on the terminal.
      */
+    // ----------------------------------------- code allocation + release lock
+
+    /**
+     * LEDGER C-17(vii) — `generateTerminalCode()` derived the next code from
+     * `Terminal::withTrashed()->forCompany($id)->count()`. A count is not a
+     * maximum: as soon as the code sequence has a HOLE (an admin-supplied code,
+     * a renamed till), `count + 1` lands on a code that already exists and the
+     * INSERT dies on `pos_terminals_unique_code` — a 500 on a perfectly ordinary
+     * "add a terminal" click, with no concurrency involved at all.
+     *
+     * Fixture: POS01 and POS03 exist at the fixture location. count() = 2 =>
+     * "POS03" (collision). max + 1 => "POS04".
+     */
+    public function test_auto_generated_terminal_code_is_max_plus_one_not_count_plus_one(): void
+    {
+        $this->claimableTerminal(['code' => 'POS01']);
+        $this->claimableTerminal(['code' => 'POS03']);
+
+        $response = $this->postJson('/api/v1/pos/terminals', [
+            'location_id' => $this->location->id,
+            'name' => 'Fourth till',
+        ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('data.code', 'POS04');
+    }
+
+    /**
+     * A non-numeric or foreign code must not derail the allocator — it is
+     * skipped, not parsed as zero.
+     */
+    public function test_auto_generated_terminal_code_ignores_codes_outside_the_pos_sequence(): void
+    {
+        $this->claimableTerminal(['code' => 'POS07']);
+        $this->claimableTerminal(['code' => 'CAISSE-A']);
+
+        $this->postJson('/api/v1/pos/terminals', [
+            'location_id' => $this->location->id,
+            'name' => 'Next till',
+        ])->assertStatus(201)->assertJsonPath('data.code', 'POS08');
+    }
+
+    /**
+     * LEDGER C-17(vii), the TOCTOU half. max+1 alone is still read-then-write:
+     * two concurrent creates read the same maximum and race to the same code.
+     * The read is now serialised by a transaction-scoped advisory lock keyed on
+     * the company — the shape `ExpenseService::generateExpenseNumber()` and
+     * `GeneralLedgerService::takeTenantNumberingLock()` already use — and the
+     * allocation now happens INSIDE the create transaction, so the lock is held
+     * until the INSERT commits.
+     *
+     * PostgreSQL only: `pg_advisory_xact_lock` does not exist on SQLite (the
+     * helper is a no-op there, like its two siblings).
+     */
+    public function test_terminal_code_allocation_takes_the_company_advisory_lock_before_the_insert(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('pg_advisory_xact_lock is PostgreSQL-only; the helper no-ops on SQLite.');
+        }
+
+        /** @var list<string> $statements */
+        $statements = [];
+        DB::listen(function (QueryExecuted $query) use (&$statements): void {
+            $statements[] = strtolower($query->sql);
+        });
+
+        $this->postJson('/api/v1/pos/terminals', [
+            'location_id' => $this->location->id,
+            'name' => 'Locked till',
+        ])->assertStatus(201);
+
+        $lockAt = null;
+        $insertAt = null;
+        foreach ($statements as $i => $sql) {
+            if ($lockAt === null && str_contains($sql, 'pg_advisory_xact_lock')) {
+                $lockAt = $i;
+            }
+            if ($insertAt === null && str_contains($sql, 'insert into "pos_terminals"')) {
+                $insertAt = $i;
+            }
+        }
+
+        $this->assertNotNull($lockAt, 'Terminal-code allocation must take the per-company advisory lock.');
+        $this->assertNotNull($insertAt, 'The create never inserted — the trace point moved.');
+        $this->assertLessThan(
+            $insertAt,
+            $lockAt,
+            'The advisory lock must be taken BEFORE the INSERT, inside the same transaction.',
+        );
+    }
+
+    /**
+     * LEDGER C-17(viii) — `release()`'s open-shift probe was check-then-act with
+     * no lock at all: it read `pos_shifts` for an OPEN row, then wrote
+     * `hardware_identifier = NULL` outside any transaction. The probe now runs
+     * INSIDE a transaction, after `lockForUpdate()` on the terminal row, and the
+     * clearing write happens on that same locked instance.
+     *
+     * PostgreSQL only for the SQL-text half: `SQLiteGrammar::compileLock()`
+     * returns '', so `FOR UPDATE` is compiled away and the ordering could never
+     * be observed on the SQLite leg.
+     */
+    public function test_release_probes_for_an_open_shift_under_the_terminal_row_lock(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('FOR UPDATE is compiled away by SQLiteGrammar::compileLock().');
+        }
+
+        $terminal = $this->claimableTerminal(['hardware_identifier' => 'HW-RELEASE-LOCK']);
+
+        /** @var list<string> $statements */
+        $statements = [];
+        DB::listen(function (QueryExecuted $query) use (&$statements): void {
+            $statements[] = strtolower($query->sql);
+        });
+
+        $this->postJson("/api/v1/pos/terminals/{$terminal->id}/release", [
+            'reason' => 'device replaced',
+        ])->assertStatus(200);
+
+        $lockAt = null;
+        $probeAt = null;
+        $updateAt = null;
+        foreach ($statements as $i => $sql) {
+            if ($lockAt === null && str_contains($sql, 'from "pos_terminals"') && str_contains($sql, 'for update')) {
+                $lockAt = $i;
+            }
+            if ($probeAt === null && str_contains($sql, 'from "pos_shifts"') && str_contains($sql, 'status')) {
+                $probeAt = $i;
+            }
+            if ($updateAt === null && str_contains($sql, 'update "pos_terminals"')) {
+                $updateAt = $i;
+            }
+        }
+
+        $this->assertNotNull($lockAt, 'release() must re-read the terminal row FOR UPDATE.');
+        $this->assertNotNull($probeAt, 'The open-shift probe never ran — the trace point moved.');
+        $this->assertNotNull($updateAt, 'release() never cleared the binding.');
+        $this->assertLessThan($probeAt, $lockAt, 'The open-shift probe must run AFTER the row lock.');
+        $this->assertLessThan($updateAt, $lockAt, 'The clearing write must happen under the row lock.');
+
+        $this->assertNull($terminal->fresh()?->hardware_identifier);
+    }
+
+    // ------------------------------------------------------ zChainState()
+
+    /**
+     * LEDGER C-17(ii) — `zChainState()` derived `z_hash_sequence` from
+     * `ZReport::forTerminal(...)->count()` while `z_number` came from the LATEST
+     * row. The device keeps the two counters in lockstep
+     * (`zReportService.ts:440-442`: `newZNumber = z_number + 1`,
+     * `newHashSequence = z_hash_sequence + 1`), so the recovery endpoint must
+     * hand back a matching pair. `count()` under-reports the moment any Z row is
+     * absent server-side — exactly the O-30 population — and the value is sealed
+     * into the next Z payload as `legacyReportReference.hash_sequence`
+     * (`zReportService.ts:722-724`), so a recovered device would author a Z whose
+     * hash sequence silently rewinds.
+     *
+     * Fixture: Z 1 and Z 3 exist, Z 2 does not. `count()` = 2, latest z_number = 3.
+     */
+    public function test_z_chain_state_hash_sequence_tracks_the_latest_z_number_not_the_row_count(): void
+    {
+        $terminal = $this->claimableTerminal(['hardware_identifier' => 'HW-ZCHAIN']);
+
+        $this->insertZReport($terminal, zNumber: 1, shiftNumber: 1, fiscalHash: str_repeat('1', 64));
+        // Z 2 never reached the server (the O-30 shape).
+        $this->insertZReport($terminal, zNumber: 3, shiftNumber: 3, fiscalHash: str_repeat('3', 64));
+
+        $this->assertSame(
+            2,
+            DB::table('pos_z_reports')->where('terminal_id', $terminal->id)->count(),
+            'The fixture must actually have a hole in it, or this proves nothing.',
+        );
+
+        $response = $this->getJson("/api/v1/pos/terminals/{$terminal->id}/z-chain-state");
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('data.z_number', 3);
+        $response->assertJsonPath('data.z_last_hash', str_repeat('3', 64));
+        $response->assertJsonPath(
+            'data.z_hash_sequence',
+            3,
+        );
+    }
+
+    /**
+     * The no-Z case must still answer the genesis pair — the fix must not turn
+     * an empty chain into a null or a 500.
+     */
+    public function test_z_chain_state_is_genesis_when_the_terminal_has_no_z_reports(): void
+    {
+        $terminal = $this->claimableTerminal(['hardware_identifier' => 'HW-ZCHAIN-EMPTY']);
+
+        $this->getJson("/api/v1/pos/terminals/{$terminal->id}/z-chain-state")
+            ->assertStatus(200)
+            ->assertJsonPath('data.z_last_hash', 'GENESIS')
+            ->assertJsonPath('data.z_hash_sequence', 0)
+            ->assertJsonPath('data.z_number', 0);
+    }
+
+    // ------------------------------------------------- route id constraints
+
+    /**
+     * LEDGER C-17(iv) — a non-UUID `{id}` 500s across the whole terminal route
+     * group. Every one of these handlers takes `string $id` and puts it straight
+     * into a `where('id', …)` against a `uuid` column, so PostgreSQL answers
+     * `SQLSTATE[22P02] invalid input syntax for type uuid` — a 500 with a SQL
+     * fragment in the log for what is simply a bad URL. Fixed group-wide with
+     * `whereUuid`, so an unparseable id is a 404 before the controller runs.
+     *
+     * PostgreSQL only, and not for convenience: SQLite is untyped, so
+     * `where id = 'not-a-uuid'` there just matches no rows and every one of
+     * these already answers 404. The defect is invisible on the SQLite leg.
+     */
+    public function test_a_non_uuid_terminal_id_is_a_404_not_a_500(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('SQLite is untyped: a non-UUID id matches no rows instead of raising 22P02.');
+        }
+
+        $calls = [
+            ['get', '/api/v1/pos/terminals/not-a-uuid'],
+            ['patch', '/api/v1/pos/terminals/not-a-uuid'],
+            ['delete', '/api/v1/pos/terminals/not-a-uuid'],
+            ['patch', '/api/v1/pos/terminals/not-a-uuid/activate'],
+            ['patch', '/api/v1/pos/terminals/not-a-uuid/deactivate'],
+            ['post', '/api/v1/pos/terminals/not-a-uuid/release'],
+            ['patch', '/api/v1/pos/terminals/not-a-uuid/archive'],
+            ['post', '/api/v1/pos/terminals/not-a-uuid/toggle-training'],
+            ['get', '/api/v1/pos/terminals/not-a-uuid/z-chain-state'],
+            ['post', '/api/v1/pos/terminals/not-a-uuid/fiscal-schema-cutover'],
+            ['post', '/api/v1/pos/terminals/not-a-uuid/acknowledge-v4-refund-authoring'],
+        ];
+
+        foreach ($calls as [$verb, $url]) {
+            $response = match ($verb) {
+                'get' => $this->getJson($url),
+                'patch' => $this->patchJson($url, []),
+                'delete' => $this->deleteJson($url),
+                default => $this->postJson($url, []),
+            };
+
+            $this->assertSame(
+                404,
+                $response->status(),
+                strtoupper($verb)." {$url} must 404 on an unparseable id, not 500. Body: ".$response->getContent(),
+            );
+        }
+    }
+
+    /**
+     * Insert a Z report straight through the query builder (with its own shift,
+     * since `pos_z_reports.shift_id` is unique) so the fixture can contain a
+     * HOLE — a z_number the server never received.
+     */
+    private function insertZReport(Terminal $terminal, int $zNumber, int $shiftNumber, string $fiscalHash): void
+    {
+        $shiftId = (string) Str::uuid();
+
+        DB::table('pos_shifts')->insert([
+            'id' => $shiftId,
+            'terminal_id' => $terminal->id,
+            'cashier_id' => $this->user->id,
+            'shift_number' => $shiftNumber,
+            // `pos_shifts_closed_logic` (PG CHECK): CLOSED requires both
+            // closed_at and closed_by.
+            'status' => 'CLOSED',
+            'opening_cash' => '0.00',
+            'opened_at' => now(),
+            'closed_at' => now(),
+            'closed_by' => $this->user->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('pos_z_reports')->insert([
+            'id' => (string) Str::uuid(),
+            'terminal_id' => $terminal->id,
+            'shift_id' => $shiftId,
+            'z_number' => $zNumber,
+            'fiscal_hash' => $fiscalHash,
+            'previous_z_hash' => null,
+            'report_data' => json_encode(['z_number' => $zNumber]),
+            'receipt_snapshots' => json_encode([]),
+            'grand_totals' => json_encode([]),
+            'generated_by' => $this->user->id,
+            'generated_at' => now(),
+        ]);
+    }
+
     private function openShiftOn(Terminal $terminal): string
     {
         $shiftId = (string) Str::uuid();

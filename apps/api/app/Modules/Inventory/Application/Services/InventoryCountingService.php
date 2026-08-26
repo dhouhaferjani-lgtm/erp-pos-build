@@ -12,6 +12,7 @@ use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
 use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
 use App\Modules\Inventory\Domain\Exceptions\CountingTransitionException;
+use App\Modules\Inventory\Domain\Exceptions\CountingUnresolvedItemsException;
 use App\Modules\Inventory\Domain\Exceptions\OpeningCostRequiredException;
 use App\Modules\Inventory\Domain\Exceptions\OverlappingCountingException;
 use App\Modules\Inventory\Domain\Exceptions\TerminalSyncAcknowledgementRequiredException;
@@ -612,6 +613,23 @@ class InventoryCountingService
         }
 
         return DB::transaction(function () use ($counting, $companyId, $user, $activateImmediately): InventoryCounting {
+            // Gate r1 IMPORTANT-2. The status test above ran on the caller's
+            // snapshot, OUTSIDE any transaction — classic check-then-act. A
+            // `cancel()` (which does take this lock) committing in that window
+            // used to lose the race silently: this method then transitioned the
+            // cancelled counting into `count_1_in_progress`, resurrecting a
+            // document that asserts nothing was posted.
+            //
+            // TERMINAL-ONLY, like every sibling. Draft -> Active is a LEGAL edge
+            // (it is the whole point of this method), so the guard must not
+            // re-assert the phase — only Finalized and Cancelled, the two
+            // statuses with no outgoing edge, are refused.
+            $lockedCounting = $this->lockCounting($counting->id);
+            $this->assertNotTerminal(
+                $lockedCounting,
+                $activateImmediately ? CountingStatus::Count1InProgress : CountingStatus::Scheduled,
+            );
+
             // Generate counting number if not already set
             if ($counting->counting_number === null) {
                 $counting->counting_number = $this->generateCountingNumber($companyId);
@@ -669,6 +687,13 @@ class InventoryCountingService
         }
 
         DB::transaction(function () use ($counting, $user): void {
+            // Gate r1 IMPORTANT-2 — same shape as activateDraft() above: the
+            // draft/scheduled test ran on the caller's snapshot outside the
+            // transaction, so a concurrent cancel() could be overwritten.
+            // Terminal-only: Draft/Scheduled -> Active is a legal edge.
+            $lockedCounting = $this->lockCounting($counting->id);
+            $this->assertNotTerminal($lockedCounting, CountingStatus::Count1InProgress);
+
             $this->assertNoOverlappingActiveCounting($counting);
 
             $counting->transitionTo(CountingStatus::Count1InProgress);
@@ -803,13 +828,29 @@ class InventoryCountingService
     /**
      * Re-read a counting header FOR UPDATE inside the caller's transaction.
      *
-     * Gate r1: the lifecycle-mutating paths (submitCount, triggerThirdCount,
-     * finalize, cancel) take this before they write, so the status they decide
-     * on is the committed truth rather than the snapshot the request loaded —
-     * the lock WAIT is long enough for another request to finalize or cancel
-     * the same counting. NOT yet covered (gate r2 NEW-2, pre-existing, out of
-     * lane Q-2 scope — LEDGER): manualOverride() writes item quantities with
-     * neither this lock nor a terminal-state guard.
+     * Every lifecycle-mutating path takes this before it writes, so the status
+     * it decides on is the committed truth rather than the snapshot the request
+     * loaded — the lock WAIT is long enough for another request to finalize or
+     * cancel the same counting.
+     *
+     * The covered set is exactly SEVEN, and it is ENUMERATED rather than
+     * described, because a previous revision of this docblock claimed "every
+     * mutating path" while `activate()` / `activateDraft()` were still unlocked
+     * (gate r1 IMPORTANT-2 — the overclaim told the next reviewer the surface
+     * was closed):
+     *
+     *   activateDraft(), activate(), submitCount(), triggerThirdCount(),
+     *   manualOverride(), finalize(), cancel()
+     *
+     * Five are pinned by
+     * `CountingTerminalStateGuardTest::test_every_mutating_counting_path_emits_the_header_row_lock`
+     * and the two activation paths by its sibling
+     * `::test_the_activation_paths_emit_the_header_row_lock_before_they_write`
+     * (both PostgreSQL-only — SQLite compiles `FOR UPDATE` away).
+     *
+     * NOT covered, deliberately: `CountingItemController::setOpeningCost()`
+     * still does a pre-transaction status read with an untyped `abort(422)`
+     * (LEDGER residual, outside this lane's brief).
      */
     private function lockCounting(string $countingId): InventoryCounting
     {
@@ -1084,7 +1125,26 @@ class InventoryCountingService
     /**
      * Manual override for an item.
      *
+     * LEDGER C-14(ii): this path used to write `final_qty` / `resolution_method`
+     * / `resolved_at` with NEITHER the header lock nor a terminal-state guard —
+     * the only mutating counting path left out of the Q-2 gate r1 sweep. A
+     * reviewer holding a stale item handle could therefore rewrite the resolved
+     * quantity of a FINALIZED counting whose variance had already been posted to
+     * stock, and since lane Q-2's unique counting-apply movement index that
+     * corrected quantity can never be re-posted — the correction is silently
+     * lost. It now takes `lockCounting()` FIRST (so the status it decides on is
+     * committed truth, not the caller's snapshot) and refuses terminal statuses
+     * with the same typed 422 `COUNTING_TRANSITION_REFUSED` as submitCount /
+     * triggerThirdCount / cancel. `attemptedStatus` is `PendingReview` — the
+     * review phase an override belongs to.
+     *
+     * The controller (`CountingItemController::override()`) deliberately carries
+     * NO duplicate pre-transaction status check: a check outside the lock is
+     * check-then-act, and this refusal is the authoritative one.
+     *
      * @param  numeric-string  $quantity  Canonical numeric string (quantity scale 4, e.g. '1.2345')
+     *
+     * @throws CountingTransitionException when the counting is finalized or cancelled
      */
     public function manualOverride(
         InventoryCountingItem $item,
@@ -1095,6 +1155,9 @@ class InventoryCountingService
         $userId = (string) $user->id;
 
         DB::transaction(function () use ($item, $quantity, $notes, $userId): void {
+            $lockedCounting = $this->lockCounting($item->counting_id);
+            $this->assertNotTerminal($lockedCounting, CountingStatus::PendingReview);
+
             $now = now();
             $item->final_qty = $quantity;
             $item->resolution_method = ItemResolutionMethod::ManualOverride;
@@ -1136,9 +1199,11 @@ class InventoryCountingService
             ->count();
 
         if ($unresolvedCount > 0) {
-            throw new \InvalidArgumentException(
-                "Cannot finalize: {$unresolvedCount} items still pending resolution"
-            );
+            // LEDGER C-14(iii): typed, like the two sibling pre-finalize
+            // refusals below. The bare `\InvalidArgumentException` this replaces
+            // had no render handler, so the most ordinary reviewer mistake
+            // surfaced as a 500 (pinned as such by ReconciliationTest until now).
+            throw new CountingUnresolvedItemsException($unresolvedCount);
         }
 
         // Re-validate the overlap guard at finalize time: the counting was

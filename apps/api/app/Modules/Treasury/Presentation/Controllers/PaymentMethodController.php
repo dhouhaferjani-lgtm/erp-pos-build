@@ -87,12 +87,18 @@ class PaymentMethodController extends Controller
             'fee_fixed' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'fee_percent' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             'restriction_type' => ['nullable', 'string', 'max:50'],
-            // default_journal_id: legacy storage-only field — no `journals` table exists
-            // in the current schema (no migration, no model, no read path). The bare
-            // `exists:journals,id` validator was broken (any value triggers a 500
-            // SQL error: relation "journals" does not exist). Removed pending a
-            // proper Accounting-module journals table + scoped validation.
-            'default_journal_id' => ['nullable', 'uuid'],
+            // default_journal_id — LEDGER C-30(i) (Q-12 treasury orphan-census gate).
+            // There is NO `journals` table anywhere in the schema: no migration, no
+            // Eloquent model, no read path. The original `exists:journals,id` rule was
+            // removed because it 500'd (SQLSTATE[42P01] relation "journals" does not
+            // exist), which left a `nullable|uuid` rule that happily PERSISTED an
+            // arbitrary UUID into a column whose target table does not exist — the
+            // census reported this slot as `target_table_missing` while the API was
+            // still writing to it. `prohibited` closes the writer with the standard
+            // typed 422 envelope; the column stays (dropping it needs a migration) and
+            // is never written from $validated. Re-open this only together with a real
+            // Accounting journals table + a tenant/company-scoped exists rule.
+            'default_journal_id' => ['prohibited'],
             'default_account_id' => [
                 'nullable',
                 'uuid',
@@ -144,7 +150,8 @@ class PaymentMethodController extends Controller
             'fee_fixed' => $validated['fee_fixed'] ?? '0.00',
             'fee_percent' => $validated['fee_percent'] ?? '0.00',
             'restriction_type' => $validated['restriction_type'] ?? null,
-            'default_journal_id' => $validated['default_journal_id'] ?? null,
+            // default_journal_id deliberately NOT written — see the `prohibited`
+            // rule above (LEDGER C-30(i)). The column exists but has no target table.
             'default_account_id' => $validated['default_account_id'] ?? null,
             'fee_account_id' => $validated['fee_account_id'] ?? null,
             'default_repository_id' => $validated['default_repository_id'] ?? null,
@@ -198,12 +205,18 @@ class PaymentMethodController extends Controller
             'fee_fixed' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'fee_percent' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             'restriction_type' => ['nullable', 'string', 'max:50'],
-            // default_journal_id: legacy storage-only field — no `journals` table exists
-            // in the current schema (no migration, no model, no read path). The bare
-            // `exists:journals,id` validator was broken (any value triggers a 500
-            // SQL error: relation "journals" does not exist). Removed pending a
-            // proper Accounting-module journals table + scoped validation.
-            'default_journal_id' => ['nullable', 'uuid'],
+            // default_journal_id — LEDGER C-30(i) (Q-12 treasury orphan-census gate).
+            // There is NO `journals` table anywhere in the schema: no migration, no
+            // Eloquent model, no read path. The original `exists:journals,id` rule was
+            // removed because it 500'd (SQLSTATE[42P01] relation "journals" does not
+            // exist), which left a `nullable|uuid` rule that happily PERSISTED an
+            // arbitrary UUID into a column whose target table does not exist — the
+            // census reported this slot as `target_table_missing` while the API was
+            // still writing to it. `prohibited` closes the writer with the standard
+            // typed 422 envelope; the column stays (dropping it needs a migration) and
+            // is never written from $validated. Re-open this only together with a real
+            // Accounting journals table + a tenant/company-scoped exists rule.
+            'default_journal_id' => ['prohibited'],
             'default_account_id' => [
                 'nullable',
                 'uuid',
@@ -247,6 +260,10 @@ class PaymentMethodController extends Controller
             ? (bool) $validated['is_cash_tender']
             : $method->is_cash_tender;
         $this->assertCashTenderInvariant($finalCode, $finalIsCashTender);
+
+        // `prohibited` guarantees the key is absent from $validated; unset defensively
+        // so no future rule change can silently reopen the phantom-target write.
+        unset($validated['default_journal_id']);
 
         $method->update($validated);
 

@@ -330,6 +330,165 @@ class ReconciliationTest extends TestCase
         $this->assertEquals(ItemResolutionMethod::ManualOverride, $item->resolution_method);
     }
 
+    /**
+     * LEDGER C-14(iv) — the typed 422 `COUNTING_TRANSITION_REFUSED` message was
+     * hardcoded English inside `CountingTransitionException::__construct()` and
+     * rendered verbatim into the response body, so an operator on a French (or
+     * Arabic) tenant got an English refusal inside a translated toast wrapper
+     * (`counting.messages.overrideFailed` = "Failed to apply override: {{error}}").
+     *
+     * The operator-facing text now comes from the backend catalogue
+     * (`inventory.counting.transition_refused`) with both statuses rendered from
+     * `inventory.counting.status.*`, exactly like the house pattern used by
+     * `InsufficientStockForFulfilmentException::TRANSLATION_KEY`. `getMessage()`
+     * stays English — it is the developer/log string.
+     */
+    public function test_counting_transition_refusal_message_is_localised(): void
+    {
+        $counting = $this->createCountingSession(false, false);
+        $item = $this->createCountingItem($counting, '100.0000');
+        $counting->update(['status' => CountingStatus::Finalized]);
+
+        $response = $this->actingAs($this->adminUser)
+            ->withHeaders(['Accept-Language' => 'fr'])
+            ->postJson("/api/v1/inventory/countings/items/{$item->id}/override", [
+                'quantity' => 97,
+                'notes' => 'Verified with physical recount and checked against delivery note',
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'COUNTING_TRANSITION_REFUSED');
+        $response->assertJsonPath('error.current_status', 'finalized');
+        $response->assertJsonPath('error.attempted_status', 'pending_review');
+
+        $message = (string) $response->json('error.message');
+        $this->assertStringNotContainsString(
+            'This counting is',
+            $message,
+            'The operator message must come from the fr catalogue, not the hardcoded English exception text. Body: '.$response->getContent(),
+        );
+        $this->assertStringContainsString(
+            (string) trans('inventory.counting.status.finalized', [], 'fr'),
+            $message,
+            'The refusal must name the current status in the request locale. Body: '.$response->getContent(),
+        );
+    }
+
+    /**
+     * LEDGER C-14(ii) follow-up — gate r1 IMPORTANT-4 (house rule 19).
+     *
+     * `ManualOverrideRequest` validated `quantity` as `numeric` with no scale
+     * ceiling, and `quantity()` hands the raw input to `bcadd($raw, '0', 4)`.
+     * Two live defects on the entry gate of the very method C-14(ii) locked:
+     *
+     *  - `'1e3'` passes `numeric` and then blows up inside bcadd
+     *    ("Argument #1 ($num1) is not well-formed") -> catch-all renderer -> 500.
+     *    That is exactly the failure mode C-14(iii) removed on the sibling
+     *    endpoint one commit earlier.
+     *  - `'12.99999'` is accepted and silently TRUNCATED to `12.9999` at rest
+     *    (bcadd truncates, it does not round), and that altered number is what
+     *    finalize() posts to stock as the counted quantity.
+     */
+    public function test_manual_override_refuses_exponent_notation_instead_of_500ing(): void
+    {
+        $counting = $this->createCountingSession(false, false);
+        $item = $this->createCountingItem($counting, '100.0000');
+        $item->update(['count_1_qty' => '95.0000', 'is_flagged' => true]);
+
+        $response = $this->actingAs($this->adminUser)
+            ->postJson("/api/v1/inventory/countings/items/{$item->id}/override", [
+                'quantity' => '1e3',
+                'notes' => 'Verified with physical recount and checked against delivery note',
+            ]);
+
+        $this->assertApiValidationErrors($response, ['quantity']);
+
+        $this->assertNull(
+            $item->fresh()?->final_qty,
+            'A refused override must not have written a quantity.',
+        );
+    }
+
+    public function test_manual_override_refuses_a_quantity_beyond_scale_4_instead_of_truncating(): void
+    {
+        $counting = $this->createCountingSession(false, false);
+        $item = $this->createCountingItem($counting, '100.0000');
+        $item->update(['count_1_qty' => '95.0000', 'is_flagged' => true]);
+
+        $response = $this->actingAs($this->adminUser)
+            ->postJson("/api/v1/inventory/countings/items/{$item->id}/override", [
+                'quantity' => '12.99999',
+                'notes' => 'Verified with physical recount and checked against delivery note',
+            ]);
+
+        $this->assertApiValidationErrors($response, ['quantity']);
+
+        $this->assertNull(
+            $item->fresh()?->final_qty,
+            'The operator number must be refused, never silently truncated to 12.9999.',
+        );
+    }
+
+    /**
+     * The ceiling must not narrow the legitimate range: a 4-dp quantity, an
+     * integer, and a JSON numeric literal all still pass.
+     */
+    public function test_manual_override_still_accepts_quantities_at_or_below_scale_4(): void
+    {
+        foreach (['12.3456', '7', 7.5] as $index => $quantity) {
+            $counting = $this->createCountingSession(false, false);
+            $item = $this->createCountingItem($counting, '100.0000');
+            $item->update(['count_1_qty' => '95.0000', 'is_flagged' => true]);
+
+            $response = $this->actingAs($this->adminUser)
+                ->postJson("/api/v1/inventory/countings/items/{$item->id}/override", [
+                    'quantity' => $quantity,
+                    'notes' => 'Verified with physical recount and checked against delivery note',
+                ]);
+
+            $response->assertStatus(200);
+            $this->assertSame(
+                bcadd((string) $quantity, '0', 4),
+                $item->fresh()?->final_qty,
+                "Case {$index}: a within-scale quantity must still be stored verbatim at 4 d.p.",
+            );
+        }
+    }
+
+    /**
+     * LEDGER C-14(ii) follow-up — gate r1 IMPORTANT-3.
+     *
+     * Every existing override control runs at `count_1_in_progress`, but the
+     * reconciliation screen that OFFERS "manual override" is reached at
+     * `pending_review`. Without this control, a future widening of
+     * `assertNotTerminal()` (e.g. "a counting under review is frozen") would
+     * break the real product flow with every other test still green.
+     */
+    public function test_manual_override_is_allowed_while_the_counting_is_pending_review(): void
+    {
+        $counting = $this->createCountingSession(false, false);
+        $item = $this->createCountingItem($counting, '100.0000');
+        $item->update(['count_1_qty' => '95.0000', 'is_flagged' => true]);
+        $counting->update(['status' => CountingStatus::PendingReview]);
+
+        $response = $this->actingAs($this->adminUser)
+            ->postJson("/api/v1/inventory/countings/items/{$item->id}/override", [
+                'quantity' => '97.5000',
+                'notes' => 'Verified with physical recount and checked against delivery note',
+            ]);
+
+        $response->assertStatus(200);
+
+        $fresh = $item->fresh();
+        $this->assertSame('97.5000', $fresh?->final_qty);
+        $this->assertSame(ItemResolutionMethod::ManualOverride, $fresh?->resolution_method);
+        $this->assertSame(
+            CountingStatus::PendingReview,
+            ($counting->fresh() ?? $counting)->status,
+            'The override must not have moved the counting off pending_review.',
+        );
+    }
+
     public function test_reconciliation_view_shows_all_data(): void
     {
         $counting = $this->createCountingSession(true, false);
@@ -490,8 +649,93 @@ class ReconciliationTest extends TestCase
         $response = $this->actingAs($this->adminUser)
             ->postJson("/api/v1/inventory/countings/{$counting->id}/finalize");
 
-        // Should fail due to unresolved items
-        $response->assertStatus(500); // Service throws InvalidArgumentException
+        // LEDGER C-14(iii) — HONEST PIN REWRITE. This assertion used to pin a
+        // 500: `finalize()` threw a bare `\InvalidArgumentException`, which has
+        // no render handler, while its two sibling pre-finalize refusals
+        // (`assertNoOverlappingActiveCounting`, `assertOpeningCostsResolved`)
+        // both raise a `DomainException` and surface as a typed 422. "You still
+        // have lines to resolve" is a business-rule refusal the reviewer must be
+        // able to read and act on, not a server error.
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'BUSINESS_ERROR');
+
+        // Gate r1 MINOR-1: the previous pin was `assertStringContainsString('1 item', …)`,
+        // which ALSO passes against the old buggy "1 items" — so the
+        // pluralisation the commit message highlighted was never pinned. Exact
+        // sentence, plus an explicit negative on the ungrammatical form.
+        $this->assertSame(
+            'Cannot finalize: 1 item still pending resolution.',
+            (string) $response->json('error.message'),
+            'The refusal must name how many lines are still pending. Body: '.$response->getContent(),
+        );
+        $this->assertStringNotContainsString('1 items', (string) $response->json('error.message'));
+
+        $counting->refresh();
+        $this->assertSame(
+            CountingStatus::PendingReview,
+            $counting->status,
+            'A refused finalize must leave the counting in pending_review.',
+        );
+    }
+
+    /**
+     * Gate r1 IMPORTANT-5 — the unresolved-items refusal was hardcoded English,
+     * i.e. the exact defect C-14(iv) fixed for its sibling one commit later in
+     * the same lane. It now comes from the backend catalogue through the same
+     * TRANSLATION_KEY + translationReplacements() pattern, pluralised with
+     * `trans_choice` so FR gets its own singular/plural too.
+     */
+    public function test_unresolved_items_refusal_is_localised_and_pluralised(): void
+    {
+        $counting = InventoryCounting::create([
+            'company_id' => $this->company->id,
+            'status' => CountingStatus::PendingReview,
+            'scope_type' => CountingScopeType::Location,
+            'scope_filters' => ['location_ids' => [$this->warehouse->id]],
+            'execution_mode' => CountingExecutionMode::Sequential,
+            'requires_count_2' => false,
+            'requires_count_3' => false,
+            'allow_unexpected_items' => false,
+            'created_by_user_id' => $this->adminUser->id,
+        ]);
+
+        // TWO pending lines, so the plural arm is the one under test. They need
+        // DISTINCT products: `idx_counting_item_unique` (PostgreSQL) is on
+        // (counting, product, location, variant), so two lines for the same
+        // product are a 23505 — a SQLite-only green would hide that.
+        $this->createCountingItem($counting, '100.0000');
+        InventoryCountingItem::create([
+            'counting_id' => $counting->id,
+            'product_id' => Product::create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'sku' => 'PROD-UNRESOLVED-2',
+                'name' => 'Second unresolved product',
+                'type' => ProductType::Part,
+                'is_active' => true,
+            ])->id,
+            'location_id' => $this->warehouse->id,
+            'theoretical_qty' => '50.0000',
+        ]);
+
+        $response = $this->actingAs($this->adminUser)
+            ->withHeaders(['Accept-Language' => 'fr'])
+            ->postJson("/api/v1/inventory/countings/{$counting->id}/finalize");
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'BUSINESS_ERROR');
+
+        $message = (string) $response->json('error.message');
+        $this->assertStringNotContainsString(
+            'Cannot finalize',
+            $message,
+            'The operator message must come from the fr catalogue. Body: '.$response->getContent(),
+        );
+        $this->assertStringContainsString('2', $message, 'The count must be interpolated. Body: '.$message);
+        $this->assertSame(
+            trans_choice('inventory.counting.unresolved_items', 2, ['count' => 2], 'fr'),
+            $message,
+        );
     }
 
     private function createCountingSession(bool $requiresCount2, bool $requiresCount3): InventoryCounting

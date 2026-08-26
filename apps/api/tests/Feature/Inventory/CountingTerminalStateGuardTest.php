@@ -341,6 +341,269 @@ final class CountingTerminalStateGuardTest extends TestCase
     }
 
     /**
+     * PROBE D (LEDGER C-14(ii)) — `manualOverride()` had NEITHER the header lock
+     * NOR a terminal guard: it wrote `final_qty` / `resolution_method` /
+     * `resolved_at` straight onto the item inside its own transaction. A
+     * reviewer holding a stale item handle could therefore rewrite the resolved
+     * quantity of a FINALIZED counting whose variance had already been posted to
+     * stock — and, since lane Q-2's unique counting-apply index, that corrected
+     * quantity can never be re-posted. Same refusal shape as probes A-C.
+     */
+    public function test_probe_d_manual_override_into_a_finalized_counting_is_refused(): void
+    {
+        $counting = $this->activeCounting();
+        $item = $this->item($counting);
+
+        // The reviewer's handle, captured while the counting was still live.
+        $staleItem = InventoryCountingItem::findOrFail($item->id);
+
+        $this->service->submitCount(
+            InventoryCountingItem::findOrFail($item->id),
+            1,
+            '12.0000',
+            null,
+            $this->user,
+        );
+        $this->service->finalize(InventoryCounting::findOrFail($counting->id), $this->user);
+        $this->assertSame(CountingStatus::Finalized, $this->freshStatus($counting));
+
+        $resolutionBefore = InventoryCountingItem::findOrFail($item->id)->resolution_method;
+
+        try {
+            $this->service->manualOverride($staleItem, '99.0000', 'late override', $this->user);
+            $this->fail('Expected a manual override into a FINALIZED counting to be refused.');
+        } catch (CountingTransitionException $exception) {
+            $this->assertSame(CountingStatus::Finalized, $exception->currentStatus);
+            $this->assertSame(CountingStatus::PendingReview, $exception->attemptedStatus);
+        }
+
+        $fresh = InventoryCountingItem::findOrFail($item->id);
+        $this->assertNotSame(
+            '99.0000',
+            $fresh->final_qty,
+            'A finalized counting must not accept an overridden final quantity.'
+        );
+        $this->assertSame(
+            $resolutionBefore,
+            $fresh->resolution_method,
+            'The refused override must not have rewritten the resolution method.'
+        );
+        $this->assertSame(
+            0,
+            $this->countEvents($counting, InventoryCountingEvent::ITEM_MANUALLY_OVERRIDDEN),
+            'The refused override must not have written an audit row.'
+        );
+    }
+
+    /**
+     * A live counting is still overridable — the terminal guard must not have
+     * turned manualOverride() into a blanket refusal for the states it serves.
+     */
+    public function test_a_live_counting_item_is_still_manually_overridable(): void
+    {
+        $counting = $this->activeCounting();
+        $item = $this->item($counting);
+
+        $this->service->manualOverride(
+            InventoryCountingItem::findOrFail($item->id),
+            '7.0000',
+            'recount by hand',
+            $this->user,
+        );
+
+        $fresh = InventoryCountingItem::findOrFail($item->id);
+        $this->assertSame('7.0000', $fresh->final_qty);
+        $this->assertSame(ItemResolutionMethod::ManualOverride, $fresh->resolution_method);
+        $this->assertSame(1, $this->countEvents($counting, InventoryCountingEvent::ITEM_MANUALLY_OVERRIDDEN));
+    }
+
+    /**
+     * PROBE E (gate r1 IMPORTANT-2) — `activateDraft()` tested `status !== Draft`
+     * on the caller's snapshot, OUTSIDE any transaction, then transitioned the
+     * header inside one with no row lock. A `cancel()` (which does lock)
+     * committing in that window was silently overwritten: the cancelled
+     * counting came back as `count_1_in_progress`, i.e. a document asserting
+     * nothing was posted was resurrected into a live count.
+     */
+    public function test_probe_e_activating_a_draft_that_was_cancelled_underneath_is_refused(): void
+    {
+        $counting = $this->draftCounting();
+
+        // The activator's handle, captured while the counting was still Draft.
+        $staleHandle = InventoryCounting::findOrFail($counting->id);
+        $this->assertSame(CountingStatus::Draft, $staleHandle->status);
+
+        $this->service->cancel(InventoryCounting::findOrFail($counting->id), 'no longer needed', $this->user);
+        $this->assertSame(CountingStatus::Cancelled, $this->freshStatus($counting));
+
+        try {
+            $this->service->activateDraft($staleHandle, $this->company->id, $this->user);
+            $this->fail('Expected activating a CANCELLED counting to be refused.');
+        } catch (CountingTransitionException $exception) {
+            $this->assertSame(CountingStatus::Cancelled, $exception->currentStatus);
+            $this->assertSame(CountingStatus::Count1InProgress, $exception->attemptedStatus);
+        }
+
+        $this->assertSame(
+            CountingStatus::Cancelled,
+            $this->freshStatus($counting),
+            'A cancelled counting must not be resurrected into a live count.',
+        );
+        $this->assertSame(
+            0,
+            InventoryCountingItem::query()->where('counting_id', $counting->id)->count(),
+            'The refused activation must not have generated counting items.',
+        );
+    }
+
+    /**
+     * PROBE F — the same hole on `activate()` (the draft/scheduled -> active
+     * path used once a counting has already been scheduled).
+     */
+    public function test_probe_f_activating_a_scheduled_counting_that_was_cancelled_underneath_is_refused(): void
+    {
+        $counting = $this->draftCounting();
+        $this->service->activateDraft(
+            InventoryCounting::findOrFail($counting->id),
+            $this->company->id,
+            $this->user,
+            activateImmediately: false,
+        );
+        $this->assertSame(CountingStatus::Scheduled, $this->freshStatus($counting));
+
+        $staleHandle = InventoryCounting::findOrFail($counting->id);
+
+        $this->service->cancel(InventoryCounting::findOrFail($counting->id), 'no longer needed', $this->user);
+        $this->assertSame(CountingStatus::Cancelled, $this->freshStatus($counting));
+
+        try {
+            $this->service->activate($staleHandle, $this->user);
+            $this->fail('Expected activating a CANCELLED counting to be refused.');
+        } catch (CountingTransitionException $exception) {
+            $this->assertSame(CountingStatus::Cancelled, $exception->currentStatus);
+        }
+
+        $this->assertSame(CountingStatus::Cancelled, $this->freshStatus($counting));
+    }
+
+    /**
+     * The legal edges must still work — the guard is TERMINAL-only, and
+     * Draft -> Scheduled -> Active is the whole point of these two methods.
+     */
+    public function test_the_activation_edges_still_work(): void
+    {
+        $counting = $this->draftCounting();
+
+        $this->service->activateDraft(
+            InventoryCounting::findOrFail($counting->id),
+            $this->company->id,
+            $this->user,
+            activateImmediately: false,
+        );
+        $this->assertSame(CountingStatus::Scheduled, $this->freshStatus($counting));
+
+        $this->service->activate(InventoryCounting::findOrFail($counting->id), $this->user);
+        $this->assertSame(CountingStatus::Count1InProgress, $this->freshStatus($counting));
+    }
+
+    /**
+     * Row-lock sentinel for the two ACTIVATION paths (gate r1 IMPORTANT-2).
+     *
+     * Separate from the five-path sentinel below because an activation generates
+     * items from the whole scope, which would collide with that loop's
+     * per-path countings under `assertNoOverlappingActiveCounting`. One counting
+     * walks Draft -> Scheduled -> Active here, so nothing else is ever active.
+     *
+     * Stronger than its sibling in one respect (gate r1 MINOR-2): it asserts the
+     * lock precedes the first WRITE, not merely that a lock was emitted.
+     *
+     * PostgreSQL only — `SQLiteGrammar::compileLock()` returns `''`.
+     */
+    public function test_the_activation_paths_emit_the_header_row_lock_before_they_write(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped(
+                'FOR UPDATE is compiled away by SQLiteGrammar::compileLock(); this sentinel needs the PostgreSQL grammar.'
+            );
+        }
+
+        $counting = $this->draftCounting();
+
+        $this->assertLockPrecedesTheFirstWrite(
+            'activateDraft',
+            function () use ($counting): void {
+                $this->service->activateDraft(
+                    InventoryCounting::findOrFail($counting->id),
+                    $this->company->id,
+                    $this->user,
+                    activateImmediately: false,
+                );
+            },
+        );
+
+        $this->assertLockPrecedesTheFirstWrite(
+            'activate',
+            function () use ($counting): void {
+                $this->service->activate(InventoryCounting::findOrFail($counting->id), $this->user);
+            },
+        );
+
+        $this->assertSame(CountingStatus::Count1InProgress, $this->freshStatus($counting));
+    }
+
+    /**
+     * Trace one act and assert the counting-HEADER `FOR UPDATE` precedes every
+     * write this path makes to `inventory_countings` / `inventory_counting_items`
+     * (gate r1 MINOR-2: presence alone would let a refactor take the lock AFTER
+     * the write and still pass a message that says "before it writes").
+     *
+     * The header lock is matched on `"inventory_countings"."id" = ?`, NOT on
+     * `for update` alone, and this is load-bearing: `generateCountingNumber()`
+     * (`InventoryCountingService.php:1460-1464`) emits its OWN
+     * `select … from "inventory_countings" … for update` — a numbering lock
+     * scoped by `company_id` + `counting_number like`. A presence-only matcher
+     * is therefore VACUOUS on `activateDraft()`: measured against the pre-fix
+     * service it reported the numbering lock and passed. Discriminating on the
+     * `whereKey()` predicate is what makes this pin falsifiable.
+     *
+     * @param  \Closure(): void  $act
+     */
+    private function assertLockPrecedesTheFirstWrite(string $name, \Closure $act): void
+    {
+        /** @var list<string> $statements */
+        $statements = [];
+        DB::listen(function (QueryExecuted $query) use (&$statements): void {
+            $statements[] = strtolower($query->sql);
+        });
+
+        $act();
+
+        $lockAt = null;
+        $writeAt = null;
+        foreach ($statements as $i => $sql) {
+            $isHeaderLock = str_contains($sql, 'from "inventory_countings"')
+                && str_contains($sql, 'for update')
+                && str_contains($sql, '"inventory_countings"."id" = ?')
+                && ! str_contains($sql, 'counting_number');
+            if ($lockAt === null && $isHeaderLock) {
+                $lockAt = $i;
+            }
+
+            $isWrite = str_starts_with($sql, 'update "inventory_countings"')
+                || str_starts_with($sql, 'insert into "inventory_countings"')
+                || str_starts_with($sql, 'update "inventory_counting_items"')
+                || str_starts_with($sql, 'insert into "inventory_counting_items"');
+            if ($writeAt === null && $isWrite) {
+                $writeAt = $i;
+            }
+        }
+
+        $this->assertNotNull($lockAt, "{$name}() must re-read the counting header FOR UPDATE.");
+        $this->assertNotNull($writeAt, "{$name}() never wrote — the trace point moved.");
+        $this->assertLessThan($writeAt, $lockAt, "{$name}() must take the header lock BEFORE it writes.");
+    }
+
+    /**
      * Structural sentinel (gate r1, item 6). A full two-connection proof that
      * PostgreSQL actually BLOCKS a second session is not available here:
      * RefreshDatabase wraps each test in a transaction, so the fixture rows are
@@ -350,10 +613,21 @@ final class CountingTerminalStateGuardTest extends TestCase
      * report — serialization itself still rests on PostgreSQL's `FOR UPDATE`
      * semantics.
      *
-     * What IS worth pinning, and what this does pin, is that all four mutating
-     * paths still EMIT the row lock against `inventory_countings` inside their
+     * What IS worth pinning, and what this does pin, is that the mutating paths
+     * still EMIT the row lock against `inventory_countings` inside their
      * transaction. That is the part a future refactor can silently drop, and
      * dropping it is exactly how this lane's defects were introduced.
+     *
+     * SCOPE, stated exactly (gate r1 IMPORTANT-2 — this docblock used to say
+     * "all four" after a fifth path was added, and the service-side twin
+     * claimed "every mutating path" while the two ACTIVATION paths were still
+     * unlocked): the five paths below are `submitCount`, `finalize`,
+     * `triggerThirdCount`, `manualOverride`, `cancel`. `activateDraft()` and
+     * `activate()` are pinned by
+     * {@see test_the_activation_paths_emit_the_header_row_lock_before_they_write},
+     * which needs its own fixture — an activation generates items from the whole
+     * scope, which would collide with this loop's per-path countings under
+     * `assertNoOverlappingActiveCounting`.
      *
      * PostgreSQL only, and not as a convenience: `SQLiteGrammar::compileLock()`
      * returns `''` (vendor `Query/Grammars/SQLiteGrammar.php:31`), so on the
@@ -436,6 +710,25 @@ final class CountingTerminalStateGuardTest extends TestCase
                     );
                 },
             ],
+            'manualOverride' => [
+                function (): InventoryCounting {
+                    $counting = $this->activeCounting();
+                    $this->item($counting, $this->secondProduct());
+                    $counting->setRelation('items', $counting->items()->get());
+
+                    return $counting;
+                },
+                function (InventoryCounting $counting): void {
+                    /** @var string $itemId */
+                    $itemId = $counting->items->first()?->id;
+                    $this->service->manualOverride(
+                        InventoryCountingItem::findOrFail($itemId),
+                        '3.0000',
+                        'lock sentinel',
+                        $this->user,
+                    );
+                },
+            ],
             'cancel' => [
                 function (): InventoryCounting {
                     $counting = $this->activeCounting();
@@ -504,6 +797,25 @@ final class CountingTerminalStateGuardTest extends TestCase
             'type' => ProductType::Part,
             'is_active' => true,
             'cost_price' => '1.000000',
+        ]);
+    }
+
+    /**
+     * A DRAFT counting with no counting_number — `activateDraft()` mints it.
+     */
+    private function draftCounting(): InventoryCounting
+    {
+        return InventoryCounting::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'created_by_user_id' => $this->user->id,
+            'scope_type' => CountingScopeType::FullInventory,
+            'scope_filters' => [],
+            'status' => CountingStatus::Draft,
+            'requires_count_2' => false,
+            'requires_count_3' => false,
+            'allow_unexpected_items' => true,
+            'count_1_user_id' => $this->user->id,
         ]);
     }
 

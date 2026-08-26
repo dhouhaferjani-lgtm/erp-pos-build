@@ -443,6 +443,76 @@ final class HeldOrderTest extends TestCase
         ], $overrides));
     }
 
+    /**
+     * LEDGER C-16(iii) — `routes_held_orders.php` carried NO permission
+     * middleware at all, although `pos_held_orders.view/create/delete` are
+     * seeded (`RolesAndPermissionsSeeder.php:396-398`) and granted to
+     * admin/manager/cashier. Discarding a parked cart is an audited,
+     * actor-attributed action; before this it was authorised to ANY
+     * authenticated company member — a technician or an accountant could delete
+     * a cashier's held order.
+     */
+    public function test_a_company_member_without_held_order_permissions_cannot_discard(): void
+    {
+        $heldOrder = HeldOrder::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'terminal_id' => $this->terminal->id,
+            'shift_id' => $this->shift->id,
+            'cashier_id' => $this->user->id,
+            'cart_snapshot' => $this->makeCartSnapshot(),
+            'status' => HeldOrderStatus::Held,
+            'held_at' => now(),
+        ]);
+
+        Sanctum::actingAs($this->memberWithoutHeldOrderPermissions());
+
+        $this->deleteJson("/api/v1/pos/held-orders/{$heldOrder->id}")
+            ->assertStatus(403);
+
+        $this->assertDatabaseHas('pos_held_orders', [
+            'id' => $heldOrder->id,
+            'deleted_at' => null,
+        ]);
+    }
+
+    public function test_a_company_member_without_held_order_permissions_cannot_list_or_hold(): void
+    {
+        Sanctum::actingAs($this->memberWithoutHeldOrderPermissions());
+
+        $this->getJson('/api/v1/pos/held-orders?terminal_id='.$this->terminal->id)
+            ->assertStatus(403);
+
+        $this->postJson('/api/v1/pos/held-orders', [
+            'terminal_id' => $this->terminal->id,
+            'shift_id' => $this->shift->id,
+            'cart_snapshot' => $this->makeCartSnapshot(),
+        ])->assertStatus(403);
+
+        $this->assertDatabaseCount('pos_held_orders', 0);
+    }
+
+    /**
+     * A member of the same tenant+company holding only `pos.operate_terminal` —
+     * exactly the shape the seeded `technician` and `accountant` roles have
+     * (neither is granted any `pos_held_orders.*`).
+     */
+    private function memberWithoutHeldOrderPermissions(): User
+    {
+        $other = User::factory()->create(['tenant_id' => $this->tenant->id]);
+
+        UserCompanyMembership::create([
+            'user_id' => $other->id,
+            'company_id' => $this->company->id,
+            'role' => 'admin',
+        ]);
+
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
+        $other->givePermissionTo('pos.operate_terminal');
+
+        return $other;
+    }
+
     private function setupTestData(): void
     {
         $this->tenant = Tenant::factory()->create();
@@ -461,8 +531,20 @@ final class HeldOrderTest extends TestCase
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
-        Permission::findOrCreate('pos.operate_terminal', 'sanctum');
-        $this->user->givePermissionTo('pos.operate_terminal');
+        // LEDGER C-16(iii): the held-order routes are now `can:`-gated per verb,
+        // so the acting cashier needs the three seeded permissions
+        // (`RolesAndPermissionsSeeder.php:396-398`) that admin/manager/cashier
+        // all hold. This file builds its user by hand rather than by role, so
+        // they are granted explicitly.
+        foreach ([
+            'pos.operate_terminal',
+            'pos_held_orders.view',
+            'pos_held_orders.create',
+            'pos_held_orders.delete',
+        ] as $permission) {
+            Permission::findOrCreate($permission, 'sanctum');
+            $this->user->givePermissionTo($permission);
+        }
 
         $this->location = Location::factory()->create([
             'company_id' => $this->company->id,

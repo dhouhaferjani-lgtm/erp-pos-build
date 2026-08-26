@@ -225,6 +225,15 @@ export function SupplierInvoiceDetailPage() {
       onSuccess: () => {
         toast.success(t('purchases:supplierInvoices.toast.rematched'))
       },
+      // LEDGER C-28(i): the API refusal (e.g. MATCH_NOT_ALLOWED) must reach the
+      // user, like handlePost/handleLinkReceipts. Without this the mutation
+      // failed silently.
+      onError: (err: unknown) => {
+        const message =
+          (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
+            ?.message ?? t('common:errors.unexpected')
+        toast.error(message)
+      },
     })
   }
 
@@ -351,14 +360,22 @@ export function SupplierInvoiceDetailPage() {
               </Button>
             )}
 
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={rematchMutation.isPending}
-              onClick={handleRematch}
-            >
-              {t('purchases:supplierInvoices.actions.rematch')}
-            </Button>
+            {/* LEDGER C-28(i): Draft-only, like its sibling Post above. Q-11 made
+                re-matching a Draft-only operation on the server (MATCH_NOT_ALLOWED:
+                a posted invoice's match_status is the authoritative post-time value
+                the GL was booked against), so on a posted invoice this button was a
+                live control whose only possible outcome was an error toast. */}
+            {!isPosted && (
+              <Button
+                type="button"
+                data-testid="btn-rematch"
+                variant="secondary"
+                disabled={rematchMutation.isPending}
+                onClick={handleRematch}
+              >
+                {t('purchases:supplierInvoices.actions.rematch')}
+              </Button>
+            )}
 
             {isPosted && canCreatePayments && (
               <>

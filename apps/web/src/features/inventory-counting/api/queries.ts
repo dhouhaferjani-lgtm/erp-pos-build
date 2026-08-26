@@ -6,7 +6,7 @@ import { countingApi } from './countingApi'
 import type { CountingFilters, CreateCountingFormData } from '../types'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
-import { isApiError } from '@/lib/api'
+import { getErrorMessage, isApiError } from '@/lib/api'
 
 // Query Keys
 export const countingKeys = {
@@ -190,7 +190,13 @@ export function useFinalizeCounting() {
         return
       }
 
-      toast.error(t('counting.messages.finalizeFailed', { error: error.message }))
+      // LEDGER C-14(iv) / gate r1 IMPORTANT-1: `error` here is the RAW
+      // AxiosError — `apiPost` unwraps only the SUCCESS body and the response
+      // interceptor re-rejects unchanged (`lib/api.ts:361`), so `.message` is
+      // always "Request failed with status code 422". `getErrorMessage()`
+      // (`lib/api.ts:83-98`) reads the envelope, which is where the
+      // backend-localised refusal actually lives.
+      toast.error(t('counting.messages.finalizeFailed', { error: getErrorMessage(error) }))
     },
   })
 }
@@ -242,7 +248,10 @@ export function useManualOverride(countingId: string) {
       toast.success(t('counting.messages.overrideApplied'))
     },
     onError: (error: Error) => {
-      toast.error(t('counting.messages.overrideFailed', { error: error.message }))
+      // LEDGER C-14(iv) / gate r1 IMPORTANT-1 — see useFinalizeCounting above.
+      // This is the handler that renders COUNTING_TRANSITION_REFUSED, the very
+      // message C-14(iv) localised.
+      toast.error(t('counting.messages.overrideFailed', { error: getErrorMessage(error) }))
     },
   })
 }
