@@ -253,6 +253,7 @@
     "stillPending": "Terminal is still pending activation by an administrator.",
     "loadingTerminals": "Loading terminals...",
     "noUnclaimed": "No unclaimed terminals available. Ask your admin to create a Physical terminal, or use the \"Request New\" tab.",
+    "locationHasNoCashRegister": "This location has no cash register, so its takings would be booked against another location. Open Settings → Locations on the back office, and save this location with POS enabled — that creates its cash register. Then claim the terminal again.",
     "claiming": "Claiming...",
     "claim": "Claim",
     "location": "Location",

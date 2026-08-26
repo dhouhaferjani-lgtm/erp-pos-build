@@ -277,6 +277,49 @@ final class BranchCashRepositoryRoutingTest extends TestCase
         $this->assertSame(0, bccomp($this->numeric($legacy->fresh()?->balance), '200.000', 3));
     }
 
+    /**
+     * Gate r1 finding 1 / fiscal A — the fleet migration, end to end, on the
+     * campaign's exact tenant shape.
+     *
+     * A pre-N-12 tenant: one unattributed `CASH-01`, a second POS branch, and a
+     * branch terminal a device bound BEFORE this lane — so
+     * `TerminalController::claim()` will never run for it again and cannot gate
+     * anything. Attribution alone would have left that branch with no candidate
+     * and every cash leg would have thrown in the projection and dead-lettered
+     * after the customer paid. This is the case that says it does not.
+     */
+    public function test_a_claimed_branch_terminal_sells_cleanly_after_the_fleet_backfill(): void
+    {
+        $legacy = $this->drawer('CASH-01', null);
+        Terminal::query()->whereKey($this->branchTerminalId)->update([
+            'hardware_identifier' => 'device-bound-before-n12',
+        ]);
+
+        $this->runN12Backfill();
+
+        // Main keeps the legacy drawer; the branch leaves the migration with one
+        // of its own.
+        $this->assertSame($this->mainLocationId, PaymentRepository::query()->findOrFail($legacy->id)->location_id);
+        $branchDrawer = PaymentRepository::query()
+            ->where('company_id', $this->companyId)
+            ->where('location_id', $this->branchLocationId)
+            ->whereIn('type', [RepositoryType::CashRegister, RepositoryType::Safe])
+            ->firstOrFail();
+
+        $event = $this->storeCashReceiptFiscalEvent('200.000');
+        $this->seedPosReceiptRowFor($event);
+        $this->app->make(TreasuryReceiptBridge::class)->apply($event);
+
+        $payment = Payment::query()->where('fiscal_event_id', $event->id)->firstOrFail();
+        $this->assertSame($branchDrawer->id, $payment->repository_id);
+        $this->assertSame(0, bccomp($this->numeric($branchDrawer->fresh()?->balance), '200.000', 3));
+        $this->assertSame(
+            0,
+            bccomp($this->numeric($legacy->fresh()?->balance), '0.000', 3),
+            "Main's drawer must not receive a single millime of the branch's takings.",
+        );
+    }
+
     // =================================================================
     // The resolver itself
     // =================================================================
@@ -641,6 +684,14 @@ final class BranchCashRepositoryRoutingTest extends TestCase
             'instrument_kind' => null,
             'default_repository_id' => $repositoryId,
         ]);
+    }
+
+    private function runN12Backfill(): void
+    {
+        $migration = require database_path(
+            'migrations/tenant/2026_08_26_100000_backfill_payment_repository_location_n12.php'
+        );
+        $migration->up();
     }
 
     private function actAsOperator(): void

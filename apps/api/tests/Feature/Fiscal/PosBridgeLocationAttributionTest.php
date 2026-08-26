@@ -49,6 +49,8 @@ final class PosBridgeLocationAttributionTest extends TestCase
 
     private string $repositoryId;
 
+    private string $otherLocationBankId;
+
     private string $actorId;
 
     private string $partnerId;
@@ -112,23 +114,34 @@ final class PosBridgeLocationAttributionTest extends TestCase
         ]);
         $this->repositoryId = $repository->id;
 
-        // Campaign lane N-12 — the tender resolver no longer routes a terminal's
-        // cash into a drawer that belongs to ANOTHER location, so the receipt
-        // bridge would refuse this fixture outright. The legacy, never-attributed
-        // drawer below is the resolver's tier 2 and is what the terminal's own
-        // (drawer-less) location resolves to. It keeps this file testing what it
-        // is named for: `payments.location_id` comes from the TERMINAL, not from
-        // whichever repository the money landed in — here the resolved drawer has
-        // no location at all, and the payment still carries the terminal's.
-        PaymentRepository::factory()->create([
+        // Campaign lane N-12, gate r1 finding 9 — this file's subject is that
+        // `payments.location_id` comes from the TERMINAL, not from the
+        // repository the money landed in. Post-N-12 a DRAWER at another location
+        // is refused outright, so the only shape that still exercises the
+        // scenario is a company-wide settlement instrument: `location_id` on a
+        // bank account is metadata an operator filed, never a restriction, so it
+        // is a candidate from every branch. Mapping the CASH method to this one
+        // makes the receipt below resolve a repository that genuinely sits at
+        // ANOTHER location — which is what the test's name claims.
+        //
+        // (The first cut of this fix used an unattributed drawer instead, which
+        // downgraded the assertion to "terminal location over NULL".)
+        $otherLocationBank = PaymentRepository::factory()->create([
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,
-            'location_id' => null,
-            'type' => RepositoryType::CashRegister,
+            'location_id' => $repositoryLocation->id,
+            'type' => RepositoryType::BankAccount,
+            'code' => 'BANK-OTHER-LOCATION',
             'account_id' => $cashAccount->id,
             'gl_account_id' => $cashAccount->id,
             'currency' => 'TND',
         ]);
+        $this->otherLocationBankId = $otherLocationBank->id;
+
+        PaymentMethod::query()
+            ->where('company_id', $company->id)
+            ->where('code', 'CASH')
+            ->update(['default_repository_id' => $otherLocationBank->id]);
 
         app(CompanyContext::class)->clear();
     }
@@ -140,8 +153,17 @@ final class PosBridgeLocationAttributionTest extends TestCase
         $this->app->make(TreasuryReceiptBridge::class)->apply($event);
 
         $payment = Payment::query()->where('fiscal_event_id', $event->id)->sole();
+
+        // The money landed in a repository that sits at `$repositoryLocation`…
+        self::assertSame($this->otherLocationBankId, $payment->repository_id);
+        $resolvedRepositoryLocation = PaymentRepository::query()
+            ->findOrFail($this->otherLocationBankId)
+            ->location_id;
+        self::assertNotSame($this->locationId, $resolvedRepositoryLocation);
+
+        // …and the payment is still attributed to the TERMINAL's location.
         self::assertSame($this->locationId, $payment->location_id);
-        self::assertNotSame(PaymentRepository::query()->findOrFail($this->repositoryId)->location_id, $payment->location_id);
+        self::assertNotSame($resolvedRepositoryLocation, $payment->location_id);
     }
 
     public function test_deposit_apply_uses_repository_location_fallback_when_terminal_is_absent(): void
