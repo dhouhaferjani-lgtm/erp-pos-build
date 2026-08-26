@@ -116,21 +116,23 @@ final class ProductService implements ProductServiceInterface
         // `default_tax_configuration_id`, so every imported product landed on the
         // product screen with a BLANK tax selector even though the company has had
         // a default configuration since provisioning
-        // (CompanyTaxProvisioningService.php:63). Inherit it — category first, then
-        // company — but only for a product that does not already carry one, so a
-        // re-import never clobbers an operator's explicit choice.
-        if ($existing === null || $existing->default_tax_configuration_id === null) {
-            $inherited = $this->resolveDefaultTaxConfigurationId(
-                $tenantId,
-                $companyId,
-                $attributes['category_id'] ?? null,
-                $this->emptyToNull($attributes['tax_rate']),
-            );
-
-            if ($inherited !== null) {
-                $attributes['default_tax_configuration_id'] = $inherited;
-            }
-        }
+        // (CompanyTaxProvisioningService.php:63).
+        //
+        // Gate r1 F-1: this runs on EVERY write, not only when the column is
+        // still null. `tax_rate` above is rewritten unconditionally, so a guard
+        // that fired only on the first write let a re-import move the rate and
+        // leave the previously inherited configuration standing beside it —
+        // 7 % configuration, 19 % rate. That pair is executable N-1:
+        // DocumentLineTaxResolver prefers the configuration while the POS seals
+        // `products.tax_rate` into the receipt hash chain, so one product taxes
+        // at two different rates depending on which surface sells it.
+        $attributes['default_tax_configuration_id'] = $this->resolveCoherentTaxConfigurationId(
+            $tenantId,
+            $companyId,
+            $attributes['category_id'] ?? null,
+            $this->emptyToNull($attributes['tax_rate']),
+            $existing?->default_tax_configuration_id,
+        );
 
         if ($existing !== null) {
             $existing->fill($attributes);
@@ -151,27 +153,61 @@ final class ProductService implements ProductServiceInterface
     }
 
     /**
-     * The tax configuration an imported product should inherit — category first,
-     * then company — subject to ONE hard condition: the configuration's own
-     * percentage must equal the rate the product is being written with.
+     * Percentage columns are `decimal(5,2)` everywhere, so a rate that reaches
+     * bcmath must be a plain decimal string. `is_numeric` is NOT that test (gate
+     * r1 F-6): it admits exponent forms like `1e2`, on which `bccomp` throws a
+     * ValueError — and this path takes its value from a spreadsheet cell on the
+     * queued import worker, where a ValueError is a dead job, not a 422.
      *
-     * That condition is the whole point. `products.tax_rate` is the number
+     * Mirrors the ceiling the products FormRequests apply to the same column
+     * (`CreateProductRequest`: `regex:/^\d+(\.\d{1,2})?$/`), widened only to
+     * accept a leading sign, which the DB column allows.
+     */
+    private const PERCENT_DECIMAL_STRING = '/^-?\d+(\.\d{1,2})?$/';
+
+    /**
+     * The tax configuration this product may carry ALONGSIDE the rate it is being
+     * written with — evaluated on every write, never assumed from the last one.
+     *
+     * ONE hard condition governs the whole method: the stored configuration's own
+     * percentage must equal `$taxRate`. `products.tax_rate` is the number
      * ReceiptCreationService seals into the POS hash chain, and
      * `default_tax_configuration_id` is what the product screen shows and what
-     * DocumentLineTaxResolver prefers. Storing a configuration next to a rate it
-     * disagrees with is exactly defect N-1 — a product priced at one VAT rate and
-     * sold at another. When the two levels disagree, leaving the id null is the
-     * honest answer; a blank selector is a question, a wrong one is a wrong tax.
+     * `DocumentLineTaxResolver` PREFERS over the rate. A pair that disagrees is
+     * defect N-1 in storage: the same product taxes at one rate on a document
+     * line and another at the till.
      *
+     * Order of preference:
+     *  1. the configuration the product ALREADY carries, if it still agrees —
+     *     so a re-import at an unchanged rate never clobbers an operator's
+     *     explicit choice;
+     *  2. otherwise re-resolve for the NEW rate: category configuration, then
+     *     company configuration;
+     *  3. otherwise NULL.
+     *
+     * Returning null is a real answer, not a failure to decide: it CLEARS a
+     * configuration that has gone stale. A blank selector is a question; a wrong
+     * one is a wrong tax, and leaving the old pair in place is the one option
+     * that is not available.
+     *
+     * @param  string|null  $existingConfigurationId  what the product carries today, if anything
      * @return string|null A `tax_configurations.id`, or null when none agrees.
      */
-    private function resolveDefaultTaxConfigurationId(
+    private function resolveCoherentTaxConfigurationId(
         string $tenantId,
         string $companyId,
         int|string|null $categoryId,
         ?string $taxRate,
+        ?string $existingConfigurationId,
     ): ?string {
-        if ($taxRate === null || ! is_numeric($taxRate)) {
+        // The regex is the real ceiling (gate r1 F-6); `is_numeric` is kept AFTER
+        // it purely as the narrowing PHPStan needs to see a `numeric-string`
+        // reach `bccomp` below. Both must hold — the regex is strictly the
+        // narrower of the two, so the pair rejects exactly what the regex does.
+        if ($taxRate === null
+            || preg_match(self::PERCENT_DECIMAL_STRING, $taxRate) !== 1
+            || ! is_numeric($taxRate)
+        ) {
             return null;
         }
 
@@ -185,6 +221,12 @@ final class ProductService implements ProductServiceInterface
 
         /** @var list<string> $candidates */
         $candidates = [];
+
+        // The product's own configuration is tried FIRST so an operator's choice
+        // survives every re-import that does not move the rate out from under it.
+        if ($existingConfigurationId !== null && $existingConfigurationId !== '') {
+            $candidates[] = $existingConfigurationId;
+        }
 
         if ($categoryId !== null) {
             $categoryConfigurationId = Category::query()

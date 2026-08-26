@@ -10,6 +10,8 @@ use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Taxation\Domain\Enums\TaxApplicationLevel;
 use App\Shared\Contracts\TaxDefaultResolverInterface;
 use App\Shared\Domain\CurrencyScale;
+use App\Shared\DTOs\ProductTaxDefaultDTO;
+use App\Shared\Enums\ProductTaxDefaultSource;
 use Illuminate\Support\Facades\DB;
 
 class TaxResolutionService implements TaxDefaultResolverInterface
@@ -68,9 +70,26 @@ class TaxResolutionService implements TaxDefaultResolverInterface
      * Get default tax rate for a new product.
      *
      * When creating a new product, inherit from category or company:
-     * 1. Category default_tax_rate (if category id given and rate is set)
-     * 2. Company default_tax_rate
-     * 3. '0.00' (hard fallback when neither is configured)
+     * 1. Category `default_tax_configuration_id` — its percentage IS the rate
+     * 2. Category `default_tax_rate`
+     * 3. Company `default_tax_rate`
+     * 4. '0.00' (hard fallback when none is configured)
+     *
+     * STEP 1 IS NOT DECORATION (W2-5 gate r1 F-2). `CategoryController` stores a
+     * category's `default_tax_configuration_id` and `default_tax_rate`
+     * independently and syncs neither — unlike products, which got a sync for
+     * N-1 — so a category is legitimately stored as "TVA 7 %" with
+     * `default_tax_rate` NULL. Reading only the rate column skipped such a
+     * category entirely and fell through to the COMPANY rate; the product then
+     * took the company configuration too (it agrees with the company rate) and
+     * landed with a confident 19 % selector in a category the operator had
+     * marked 7 %. A wrong answer where the old blank selector was merely a
+     * question.
+     *
+     * When a category states BOTH, the configuration wins: it is the structured
+     * statement, it is what `DocumentLineTaxResolver` would prefer downstream,
+     * and a category whose two columns disagree is a data fault the operator
+     * owns — this method must not average it.
      *
      * @param  int|string|null  $categoryId  Category primary-key value. The product `categories`
      *                                       table uses an integer auto-increment PK, but callers
@@ -79,18 +98,49 @@ class TaxResolutionService implements TaxDefaultResolverInterface
      */
     public function getDefaultTaxForNewProduct(Company $company, int|string|null $categoryId = null): string
     {
+        return $this->resolveDefaultTaxForNewProduct($company, $categoryId)->taxRate;
+    }
+
+    /**
+     * The same ladder as {@see self::getDefaultTaxForNewProduct()}, carrying the level
+     * that answered. See that method's docblock for the ordering and why step 1 exists.
+     */
+    public function resolveDefaultTaxForNewProduct(Company $company, int|string|null $categoryId = null): ProductTaxDefaultDTO
+    {
         if ($categoryId !== null) {
-            $rate = DB::table('categories')
+            $category = DB::table('categories')
                 ->where('id', $categoryId)
                 ->where('company_id', $company->id)
-                ->value('default_tax_rate');
+                ->first(['default_tax_rate', 'default_tax_configuration_id']);
 
-            if ($rate !== null) {
-                return (string) $rate;
+            if ($category !== null) {
+                $configurationId = $category->default_tax_configuration_id ?? null;
+
+                if (is_string($configurationId) && $configurationId !== '') {
+                    // Null when the configuration cannot state a line-item
+                    // percentage (a fixed-amount stamp duty, a DOCUMENT_TOTAL
+                    // config, a row deleted since). Fall through rather than
+                    // invent — see resolveRateFromTaxConfiguration().
+                    $configuredRate = $this->resolveRateFromTaxConfiguration($company, $configurationId);
+
+                    if ($configuredRate !== null) {
+                        return new ProductTaxDefaultDTO($configuredRate, ProductTaxDefaultSource::CategoryDefault);
+                    }
+                }
+
+                if (($category->default_tax_rate ?? null) !== null) {
+                    /** @var numeric-string $categoryRate */
+                    $categoryRate = CurrencyScale::bcformatStrict((string) $category->default_tax_rate, 2);
+
+                    return new ProductTaxDefaultDTO($categoryRate, ProductTaxDefaultSource::CategoryDefault);
+                }
             }
         }
 
-        return (string) ($company->default_tax_rate ?? '0.00');
+        /** @var numeric-string $companyRate */
+        $companyRate = CurrencyScale::bcformatStrict((string) ($company->default_tax_rate ?? '0.00'), 2);
+
+        return new ProductTaxDefaultDTO($companyRate, ProductTaxDefaultSource::CompanyDefault);
     }
 
     /**

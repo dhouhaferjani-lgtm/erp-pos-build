@@ -16,7 +16,9 @@ use App\Shared\Contracts\PartnerServiceInterface;
 use App\Shared\Contracts\ProductServiceInterface;
 use App\Shared\Contracts\TaxDefaultResolverInterface;
 use App\Shared\DTOs\CategoryResolutionDTO;
+use App\Shared\DTOs\ProductTaxDefaultDTO;
 use App\Shared\Enums\CategoryResolutionOutcome;
+use App\Shared\Enums\ProductTaxDefaultSource;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -523,17 +525,23 @@ final class ImportService
             $data['_results'] = array_merge($data['_results'] ?? [], ['category' => $category->outcome->value]);
         }
 
-        $taxRate = $this->resolveProductTaxRate($company, $data, $category?->categoryId);
+        $tax = $this->resolveProductTax($company, $data, $category?->categoryId);
         $authority = $this->resolvePriceAuthority($job);
-        $price = $this->productPriceResolver->resolve($data, $authority, $taxRate);
+        $price = $this->productPriceResolver->resolve($data, $authority, $tax->taxRate);
 
         if ($price['sale_price'] !== null) {
             $data['sale_price'] = $price['sale_price'];
         }
 
         if ($this->emptyString($data['tax_rate'] ?? null)) {
-            $data['tax_rate'] = $taxRate;
-            $data['_results'] = array_merge($data['_results'] ?? [], ['tax_source' => 'default']);
+            $data['tax_rate'] = $tax->taxRate;
+
+            // Gate r1 F-4: name the LEVEL, not just "not from the file". This is
+            // the only breadcrumb the row keeps about where its rate came from,
+            // and a flat `default` stopped being true the moment the category
+            // became a real source (W2-5) — which is the case this lane exists
+            // to fix, so it is the case the breadcrumb must get right.
+            $data['_results'] = array_merge($data['_results'] ?? [], ['tax_source' => $tax->source->value]);
         }
 
         $row->update(['data' => $data]);
@@ -603,19 +611,25 @@ final class ImportService
     }
 
     /**
+     * The rate this product row imports at, WITH the level that supplied it.
+     *
      * @param  array<string, mixed>  $data
      * @param  int|null  $categoryId  The category the row resolved to (W2-5) — the
-     *                                default ladder is category rate, then company
-     *                                rate, so omitting it silently flattened every
-     *                                category-specific rate to the company default.
+     *                                default ladder is the category's configuration,
+     *                                then its rate, then the company rate, so omitting
+     *                                it silently flattened every category-specific rate
+     *                                to the company default.
      */
-    private function resolveProductTaxRate(Company $company, array $data, ?int $categoryId = null): string
+    private function resolveProductTax(Company $company, array $data, ?int $categoryId = null): ProductTaxDefaultDTO
     {
         if (! $this->emptyString($data['tax_rate'] ?? null)) {
-            return (string) $data['tax_rate'];
+            /** @var numeric-string $fileRate */
+            $fileRate = (string) $data['tax_rate'];
+
+            return new ProductTaxDefaultDTO($fileRate, ProductTaxDefaultSource::File);
         }
 
-        return $this->taxDefaultResolver->getDefaultTaxForNewProduct($company, $categoryId);
+        return $this->taxDefaultResolver->resolveDefaultTaxForNewProduct($company, $categoryId);
     }
 
     /**
