@@ -1,5 +1,5 @@
 import Big from 'big.js';
-import { apiGet, apiGetRaw, apiPost } from '@/lib/api';
+import { apiGet, apiGetRaw, apiPost, ApiRequestError } from '@/lib/api';
 import { getDatabase } from '@/lib/db';
 import { queryAll } from '@/lib/db';
 import { toSqliteUtc } from '@/lib/db/sqliteTime';
@@ -30,9 +30,45 @@ export interface VatBreakdownItem {
 }
 
 export interface PaymentMethodItem {
+  /**
+   * TWO DIFFERENT NAMESPACES, proven (gate r1 R1-7):
+   *  - DEVICE builder → the payment method's `code` (mapped from
+   *    `payment_methods.id` in `generateLocalXReport` below);
+   *  - SERVER builder → `receipt_payments.payment_type`, which is the method's
+   *    human-readable **display NAME**, not its code
+   *    (`ReceiptPaymentService.php:358` writes `$paymentMethod->name`;
+   *    `PosCoreReceiptProjection.php:1540-1542` calls it "the human-readable
+   *    display name of the method" and stores the code separately in
+   *    `payment_method_code`).
+   *
+   * So this field must NEVER be joined against `payment_methods.code` to decide
+   * anything — on the server path the join silently misses every row. Anything
+   * a consumer needs about the tender travels on the row itself; see
+   * `is_physical`.
+   */
   payment_type: string;
   total_amount: string;
   transaction_count: number;
+  /**
+   * B-13 gate r1 (F-1 / R1-5): whether this tender is PHYSICAL — i.e. lands in
+   * the drawer and is therefore a term of the blind-count expectation.
+   *
+   * Carried on the ROW, the way `/reports` does it (`endOfDayPreview.ts` →
+   * `ReportsPage.tsx`), rather than joined at render time against the payment
+   * method store: an empty/incomplete store would otherwise yield an empty
+   * conceal set and render cash in full under a `conceal` policy.
+   *
+   * OPTIONAL, and absent means UNKNOWN, never "not physical". The server X
+   * builder (`XReportResource`) does not emit it, and a tender whose method row
+   * has been deactivated or renamed will not resolve. Consumers concealing
+   * under blind count MUST treat `undefined` as physical (`is_physical !== false`).
+   *
+   * NOT part of the signed `X_REPORT` payload: `appendXReport`'s
+   * `paymentMethodTotals` mapping below is an explicit three-field allow-list
+   * (`payment_type` / `total_amount` / `transaction_count`), so adding this
+   * field leaves the fiscal event byte-identical.
+   */
+  is_physical?: boolean;
 }
 
 export interface XReportResponse {
@@ -166,9 +202,71 @@ export async function generateXReport(
 
   try {
     return await apiPost<XReportResponse>('/pos/reports/x', { terminal_id: terminalId });
-  } catch {
+  } catch (error) {
+    // B-13 gate r1 (R1-1). This used to be a bare `catch` that fell back on
+    // ANY failure — which cannot tell "the server refused you" from "the
+    // network dropped". A terminal whose account lacks `pos.view_reports`
+    // (`ReportController.php:59`) was therefore refused by the server and then
+    // SILENTLY SUCCEEDED locally, appending an immutable `X_REPORT` fiscal
+    // event on the way (rule 8: never correctable, only superseded). An authz
+    // denial must never produce a fiscal write.
+    //
+    // Gate r2 (R2-4) splits the two credential answers, because they mean
+    // different things to the operator even though NEITHER may author locally:
+    //
+    //  - 403 = "you may not". A permission refusal; surface it as such.
+    //  - 401 = "your credential is not currently valid" — on a long-lived
+    //    terminal, most often a rotated or expired token. That is not a
+    //    statement about this operator's rights, so telling a legitimate
+    //    manager they lack permission would be wrong. It must still NOT fall
+    //    through to the local builder: authoring an immutable `X_REPORT`
+    //    (rule 8) off the back of an unauthenticated request is exactly the
+    //    laundering R1-1 closed. Re-authenticate, then retry.
+    //
+    // A 404 (an older API build without the route), a 5xx (a broken server)
+    // and a transport error are all OUTAGES, and the offline-first fallback is
+    // the correct answer to an outage.
+    if (isAuthenticationFailure(error)) {
+      throw new ReauthenticationRequiredError();
+    }
+    if (isAuthorizationRefusal(error)) {
+      throw error;
+    }
     // Offline fallback: generate X report from local SQLite data
     return await generateLocalXReport(terminalId, opts);
+  }
+}
+
+/**
+ * The device's credential is not currently valid — typically a rotated or
+ * expired token on a long-lived terminal. Distinct from a refusal: it says
+ * nothing about what this operator is allowed to do.
+ */
+function isAuthenticationFailure(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.status === 401;
+}
+
+/**
+ * A server answer that means "you may not", as opposed to "I could not reach
+ * the server". Everything else the POS treats as an outage it is designed to
+ * keep trading through.
+ */
+function isAuthorizationRefusal(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.status === 403;
+}
+
+/**
+ * Raised instead of falling back when the server answers 401. Carries a
+ * translation key so `Header.handleXReport` can tell the operator to sign in
+ * again rather than showing a raw "Unauthorized", and so the distinction from
+ * a permission refusal survives to the screen.
+ */
+export class ReauthenticationRequiredError extends Error {
+  readonly i18nKey = 'reports.reauthenticateRequired';
+
+  constructor() {
+    super('Re-authentication required before generating an X report.');
+    this.name = 'ReauthenticationRequiredError';
   }
 }
 
@@ -499,8 +597,12 @@ async function generateLocalXReport(
   // Build payment method lookup
   const methods = await getAllPaymentMethods(db);
   const methodMap = new Map<string, string>();
+  // B-13: code → is_physical, so the blind-count mask travels ON the report row
+  // instead of being re-joined against a store that may not have loaded.
+  const physicalByCode = new Map<string, boolean>();
   for (const m of methods) {
     methodMap.set(m.id, m.code);
+    physicalByCode.set(m.code, m.is_physical);
   }
 
   // Aggregate
@@ -660,6 +762,9 @@ async function generateLocalXReport(
       payment_type: type,
       total_amount: bcformat(data.amount, decimals),
       transaction_count: data.count,
+      // Left UNDEFINED when the code is not in the synced method table — an
+      // unknown tender must read as "unknown", so the mask conceals it.
+      is_physical: physicalByCode.get(type),
     })),
   };
 

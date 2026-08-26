@@ -7,6 +7,10 @@ import { Button } from '@/components/ui';
 import { toast } from 'sonner';
 import { fetchShiftReceipts, type ShiftReceipt } from '@/api/reportApi';
 import { useTerminalStore } from '@/stores/terminalStore';
+import { useOperatorStore } from '@/stores/operatorStore';
+import { useAuthStore } from '@/stores/authStore';
+import { useCashDisclosure } from '@/hooks/useCashDisclosure';
+import { hasManagerAccess } from '@/lib/auth/roles';
 import { useCurrency } from '@/lib/currency';
 import { bcsum, bcsub, bcdiv, bccomp, bcabs, bcformat } from '@/lib/decimal';
 import { formatQuantity } from '@/lib/quantity';
@@ -41,9 +45,12 @@ function isCounted(receipt: ShiftReceipt): boolean {
 }
 
 function getPaymentLabel(receipt: ShiftReceipt): string {
-  if (!receipt.payments || receipt.payments.length === 0) return '—';
+  if (!receipt.payments || receipt.payments.length === 0) return CONCEALED;
   return receipt.payments.map((p) => p.payment_type).join(' + ');
 }
+
+/** Concealed figures read as an em dash, matching `/shift`, `/reports` and the X report. */
+const CONCEALED = '—';
 
 function getReceiptStatus(receipt: ShiftReceipt, t: (key: string) => string): { label: string; className: string } {
   if (receipt.is_voided) {
@@ -61,6 +68,33 @@ export function TodaySalesPage() {
   const { format, decimals } = useCurrency();
   const shift = useTerminalStore((s) => s.shift);
   const shiftId = shift?.id ?? null;
+
+  /**
+   * B-13 gate r1 (F-2) — `/sales` is the most direct blind-count bypass on the
+   * device, and until this round it was ungated.
+   *
+   * The page lists, per receipt of the CURRENTLY OPEN shift, the total next to
+   * the tender label. A cashier counting the drawer only had to add up the
+   * CASH-labelled rows to obtain the exact takings that `/shift`, `/reports`
+   * and the X report all conceal — no arithmetic derivation needed, just the
+   * raw data for the shift being counted. It is server-reachable too: cashier
+   * holds `pos.view_receipts` and `pos.manage_shifts`, so the bypass survived
+   * even on a correctly cashier-provisioned terminal.
+   *
+   * Orchestrator ruling (2026-08-26): conceal the MONEY for non-managers while
+   * a shift is open under blind counting; keep the receipt list, times, item
+   * summaries and receipt count, so the panel still answers "did my sale
+   * land?" — the reason a cashier opens it.
+   *
+   * Fails closed like every other leg: `useCashDisclosure` starts at 'conceal'
+   * and only a positive `require_blind_cash_count === false` discloses, online
+   * or from the offline cache.
+   */
+  const operator = useOperatorStore((s) => s.operator);
+  const companyId = useAuthStore((s) => s.companyId);
+  const cashDisclosure = useCashDisclosure(companyId);
+  const concealTakings =
+    cashDisclosure === 'conceal' && !hasManagerAccess(operator) && shiftId !== null;
 
   const [receipts, setReceipts] = useState<ShiftReceipt[]>([]);
   const [loading, setLoading] = useState(false);
@@ -153,7 +187,9 @@ export function TodaySalesPage() {
           <div className="grid grid-cols-4 gap-4 px-6 py-4">
             <div className="rounded-card bg-action-subtle p-4">
               <p className="text-xs font-medium text-action">{t('reports.netSalesExclRefunds')}</p>
-              <p className="mt-1 text-2xl font-bold text-ink">{format(netSales)}</p>
+              <p className="mt-1 text-2xl font-bold text-ink">
+                {concealTakings ? CONCEALED : format(netSales)}
+              </p>
             </div>
             <div className="rounded-card bg-surface-raised p-4 shadow-sm ring-1 ring-border-subtle">
               <p className="text-xs font-medium text-ink-muted">{t('reports.receiptCount')}</p>
@@ -161,13 +197,15 @@ export function TodaySalesPage() {
             </div>
             <div className="rounded-card bg-surface-raised p-4 shadow-sm ring-1 ring-border-subtle">
               <p className="text-xs font-medium text-ink-muted">{t('reports.avgSaleTicket')}</p>
-              <p className="mt-1 text-2xl font-bold text-ink">{format(avgTicket)}</p>
+              <p className="mt-1 text-2xl font-bold text-ink">
+                {concealTakings ? CONCEALED : format(avgTicket)}
+              </p>
             </div>
             <div className="rounded-card bg-danger-surface p-4">
               <p className="text-xs font-medium text-danger-strong">{t('reports.returns')}</p>
               <p className="mt-1 text-2xl font-bold text-ink">
                 {returnReceipts.length}
-                {bccomp(totalReturns, '0') > 0 && (
+                {!concealTakings && bccomp(totalReturns, '0') > 0 && (
                   <span className="ml-2 text-sm font-normal text-danger">
                     −{format(totalReturns)}
                   </span>
@@ -238,24 +276,38 @@ export function TodaySalesPage() {
                         )}
                       </td>
                       <td className="px-5 py-3 text-right text-sm font-semibold text-ink">
-                        {receipt.receipt_type === 'return' && '−'}
-                        {format(receipt.total)}
+                        {concealTakings ? CONCEALED : (
+                          <>
+                            {receipt.receipt_type === 'return' && '−'}
+                            {format(receipt.total)}
+                          </>
+                        )}
                       </td>
                       <td className="px-5 py-3">
                         <span className="rounded-sm bg-surface-sunken px-2 py-0.5 text-xs font-medium text-ink-muted">
-                          {getPaymentLabel(receipt)}
+                          {concealTakings ? CONCEALED : getPaymentLabel(receipt)}
                         </span>
                       </td>
                       <td className="px-5 py-3 text-right">
                         <div className="inline-flex items-center gap-2">
-                          <Button
-                            variant="secondary"
-                            size="md"
-                            onClick={() => setDetailReceipt(receipt)}
-                            leftIcon={<Eye className="h-4 w-4" />}
-                          >
-                            {t('reports.view')}
-                          </Button>
+                          {/* `SaleDetailModal` is unit prices, line totals,
+                              subtotal, tax, total and per-tender amounts — a
+                              pure money surface with nothing left once masked,
+                              so it is withdrawn rather than emptied. Reprint
+                              stays: handing a customer a duplicate of their own
+                              receipt is a core till function, and it is named
+                              in the report as the acknowledged limit of this
+                              control. */}
+                          {!concealTakings && (
+                            <Button
+                              variant="secondary"
+                              size="md"
+                              onClick={() => setDetailReceipt(receipt)}
+                              leftIcon={<Eye className="h-4 w-4" />}
+                            >
+                              {t('reports.view')}
+                            </Button>
+                          )}
                           <Button
                             variant="secondary"
                             size="md"
@@ -274,6 +326,9 @@ export function TodaySalesPage() {
             </table>
           )}
         </div>
+        {concealTakings && (
+          <p className="mt-2 text-xs text-ink-muted">{t('reports.dashboard.cashConcealed')}</p>
+        )}
       </div>
         </>
       )}

@@ -61,6 +61,23 @@ vi.mock('@/stores/terminalStore', () => ({
     mockUseTerminalStore(selector),
 }));
 
+const mockUseCashDisclosure = vi.fn();
+vi.mock('@/hooks/useCashDisclosure', () => ({
+  useCashDisclosure: (...args: unknown[]) => mockUseCashDisclosure(...args),
+}));
+
+let mockOperator: { id: string; name: string; roles: string[]; permissions?: string[] } | null =
+  null;
+vi.mock('@/stores/operatorStore', () => ({
+  useOperatorStore: (selector: (s: Record<string, unknown>) => unknown) =>
+    selector({ operator: mockOperator }),
+}));
+
+vi.mock('@/stores/authStore', () => ({
+  useAuthStore: (selector: (s: Record<string, unknown>) => unknown) =>
+    selector({ companyId: 'co-1' }),
+}));
+
 const mockFetchShiftReceipts = vi.fn();
 vi.mock('@/api/reportApi', () => ({
   fetchShiftReceipts: (...args: unknown[]) => mockFetchShiftReceipts(...args),
@@ -144,6 +161,16 @@ describe('TodaySalesPage', () => {
   beforeEach(() => {
     withShift();
     mockFetchShiftReceipts.mockResolvedValue(sampleReceipts);
+    // Default for the pre-existing cases: a manager reading the panel, so the
+    // money assertions below are about the arithmetic, not the B-13 mask.
+    mockOperator = {
+      id: 'op-1',
+      name: 'Manager',
+      roles: ['manager'],
+      permissions: ['pos.view_reports'],
+    };
+    mockUseCashDisclosure.mockReset();
+    mockUseCashDisclosure.mockReturnValue('conceal');
   });
 
   it('renders the "no shift" empty state when shift is null', () => {
@@ -326,5 +353,96 @@ describe('TodaySalesPage', () => {
 
     const reprintButtons = await findAllByText('Reprint');
     expect(reprintButtons).toHaveLength(3);
+  });
+
+  /**
+   * B-13 gate r1 (F-2) — `/sales` was the most direct blind-count bypass on the
+   * device: per-receipt total next to the tender label, for the shift being
+   * counted. Summing the CASH-labelled rows reproduced exactly what `/shift`,
+   * `/reports` and the X report conceal.
+   */
+  describe('blind-count concealment (B-13 F-2)', () => {
+    const CASHIER = {
+      id: 'op-2',
+      name: 'Cashier',
+      roles: ['cashier'],
+      permissions: ['pos.operate_terminal'],
+    };
+
+    it('conceals per-receipt totals and tender labels from a cashier', async () => {
+      mockOperator = CASHIER;
+      renderPage();
+      await screen.findByText('REC-001');
+
+      // The row is still there — receipt number, time and items stay visible.
+      expect(screen.getByText('REC-001')).toBeInTheDocument();
+      expect(screen.getByText('2× Widget A, 1× Widget B')).toBeInTheDocument();
+      // The money and the tender are not.
+      expect(screen.queryByText('50.00')).toBeNull();
+      expect(screen.queryByText('75.00')).toBeNull();
+      expect(screen.queryByText('CASH')).toBeNull();
+      expect(screen.queryByText('CARD')).toBeNull();
+    });
+
+    it('conceals the aggregate money tiles from a cashier but keeps the receipt COUNT', async () => {
+      mockOperator = CASHIER;
+      renderPage();
+      await screen.findByText('REC-001');
+
+      // net = 50 + 75 − 20 = 105.00 — must not be on screen.
+      expect(screen.queryByText('105.00')).toBeNull();
+      // Receipt count is not money.
+      expect(screen.getByText('Receipts')).toBeInTheDocument();
+      expect(screen.getByText('3')).toBeInTheDocument();
+    });
+
+    it('explains the concealment rather than silently showing dashes', async () => {
+      mockOperator = CASHIER;
+      renderPage();
+      await screen.findByText('REC-001');
+      expect(screen.getByText('reports.dashboard.cashConcealed')).toBeInTheDocument();
+    });
+
+    it('withdraws the per-receipt detail drill-down, which is a pure money surface', async () => {
+      mockOperator = CASHIER;
+      renderPage();
+      await screen.findByText('REC-001');
+      expect(screen.queryByText('reports.view')).toBeNull();
+      // Reprint stays — a customer duplicate is a core till function.
+      expect(screen.getAllByText('Reprint').length).toBeGreaterThan(0);
+    });
+
+    it('shows everything to a MANAGER on the same blind-count shift', async () => {
+      renderPage();
+      await screen.findByText('REC-001');
+      expect(screen.getByText('105.00')).toBeInTheDocument();
+      expect(screen.getAllByText('CASH').length).toBe(2);
+      expect(screen.queryByText('reports.dashboard.cashConcealed')).toBeNull();
+    });
+
+    it('shows everything to a cashier when blind counting is OFF', async () => {
+      mockOperator = CASHIER;
+      mockUseCashDisclosure.mockReturnValue('disclose');
+      renderPage();
+      await screen.findByText('REC-001');
+      expect(screen.getByText('105.00')).toBeInTheDocument();
+      expect(screen.getAllByText('CASH').length).toBe(2);
+    });
+
+    it('fails CLOSED for a cashier with NO operator resolved', async () => {
+      mockOperator = null;
+      renderPage();
+      await screen.findByText('REC-001');
+      expect(screen.queryByText('105.00')).toBeNull();
+      expect(screen.queryByText('CASH')).toBeNull();
+    });
+
+    it('closes for an operator whose cached authority went stale', async () => {
+      mockOperator = { ...CASHIER, roles: ['manager'], permissions: ['pos.view_reports'] };
+      Object.assign(mockOperator, { authority_stale: true });
+      renderPage();
+      await screen.findByText('REC-001');
+      expect(screen.queryByText('105.00')).toBeNull();
+    });
   });
 });

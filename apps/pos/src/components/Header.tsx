@@ -16,7 +16,7 @@ import { StockFreshness } from '@/components/atoms/StockFreshness/StockFreshness
 import { EndOfDayPreviewModal } from '@/components/pos/EndOfDayPreviewModal';
 import { ReportsMenu } from '@/components/pos/ReportsMenu';
 import { XReportModal } from '@/components/pos/XReportModal';
-import { generateXReport, generateZReport } from '@/api/reportApi';
+import { generateXReport, generateZReport, ReauthenticationRequiredError } from '@/api/reportApi';
 import type { GenerateXReportOpts, GenerateZReportOpts, XReportResponse } from '@/api/reportApi';
 import { getErrorMessage } from '@/lib/api';
 import { Avatar, Badge, Divider, IconButton, StatusPill } from '@/components/ui';
@@ -51,6 +51,9 @@ import { ApiRequestError } from '@/lib/api';
 import { useRefundFlowStore } from '@/stores/refundFlowStore';
 import { useRefundDraftStore } from '@/stores/refundDraftStore';
 import { getTerminalState, setManagerPinThrottle, setManagerPinFailedAttempts } from '@/lib/db/repositories/terminalStateRepository';
+import { hasManagerAccess } from '@/lib/auth/roles';
+import { useCashDisclosure } from '@/hooks/useCashDisclosure';
+import { shouldConcealTakings } from '@/lib/offline/cashDisclosurePolicy';
 
 export function Header() {
   const { t } = useTranslation('pos');
@@ -112,6 +115,46 @@ export function Header() {
       isTraining: terminal.is_training_mode === true,
     };
   }, [tenantId, companyId, terminal, operator?.id, userId]);
+  /**
+   * B-13 (iv): every manager gate in the POS reads the ACTIVE PIN OPERATOR,
+   * never the back-office account the terminal is signed in with.
+   */
+  const isManager = hasManagerAccess(operator);
+  // R1-2: the cash drawer has its own seeded manager permission.
+  const canOperateCashDrawer = hasManagerAccess(operator, 'cash_drawer');
+
+  /**
+   * B-13 (ii)/(iii): the blind-cash-count policy, resolved AT MOUNT rather
+   * than when the End-of-Day modal opens. Both surfaces this Header owns
+   * disclose a term of the drawer expectation — the shift-badge tooltip
+   * (opening float, on every route) and the X report (cash takings) — so the
+   * answer has to be in hand before either is touched.
+   */
+  const cashDisclosure = useCashDisclosure(companyId);
+
+  /**
+   * B-13 (ii): while a shift is OPEN under blind counting, this shift's
+   * physical-tender takings are the raw material for the drawer expectation
+   * the counter must not see — the same predicate `/reports` applies
+   * (`ReportsPage.tsx:164`, `concealCash`). With no open shift nothing is
+   * being counted, so nothing is concealed.
+   *
+   * Gate r1 (F-1 / R1-5): this is a plain BOOLEAN, and WHICH rows it covers is
+   * decided inside `XReportModal` from each row's own `is_physical`. The
+   * earlier shape joined the report against `usePaymentStore.paymentMethods`,
+   * which is `[]` until the payment config loads — a cold or offline boot then
+   * produced an empty conceal set and disclosed cash under `conceal`. There is
+   * no store to be empty any more.
+   */
+  const concealPhysicalTenders = shouldConcealTakings(cashDisclosure, shift !== null);
+
+  /**
+   * B-13 (iii): the opening float is the OTHER term of the drawer
+   * expectation, and this tooltip rendered it on every route to every
+   * operator. Concealed from non-managers while blind counting is on.
+   */
+  const concealOpeningFloat = cashDisclosure === 'conceal' && !isManager;
+
   const cashCountPolicyResolved =
     terminal !== null && cashCountPolicyTerminal === terminal;
   const fraudSettings = fraudSettingsTerminal === terminal ? fraudSettingsValue : null;
@@ -332,8 +375,53 @@ export function Header() {
     [terminal, companyId],
   );
 
+  /**
+   * Gate r1 (R1-2). `ReportsMenu` FILTERS manager-only entries, but a filtered
+   * menu is not a boundary — the same argument the X report already acts on.
+   * Cash-drawer ops needed it MORE, not less: the server authorizes
+   * deposit/payout on `pos.operate_terminal` (`CashDrawerController.php:42`,
+   * `:111`), which CASHIERS HOLD (`RolesAndPermissionsSeeder.php:685`), so for
+   * real cash movement the device gate is the ONLY gate. That server-side
+   * permission gap is recorded in the LEDGER; it is out of this lane.
+   */
+  const handleCashDrawerOps = () => {
+    setShowReportsMenu(false);
+    if (!canOperateCashDrawer) {
+      toast.error(t('reports.managerOnly'));
+      return;
+    }
+    setShowCashDrawerModal(true);
+  };
+
+  /**
+   * POLICY NOTE (gate r1 F-5) — why a cashier is refused the read-only X report
+   * yet may still close the shift (End-of-Day → `handleEndOfDayConfirm` →
+   * `handlePrintZReport`), which authors the far more consequential
+   * once-per-shift `SESSION_CLOSE` / `Z_REPORT` events.
+   *
+   * This is DELIBERATE, not an inconsistency the gate missed. The cashier
+   * closes their OWN drawer: counting it and signing the close is the job, and
+   * the seeder agrees — `cashier` holds `pos.generate_z_report` but NOT
+   * `pos.view_reports` (`RolesAndPermissionsSeeder.php:685`). The two surfaces
+   * answer different questions. The Z is "here is what I counted", authored
+   * under the blind-count regime with the expectation concealed. The X is
+   * "here is what the drawer should hold right now" — the expectation itself,
+   * mid-shift, which is exactly what the counter must not see.
+   *
+   * So the asymmetry runs the right way: authority to CLOSE is broad, authority
+   * to READ THE EXPECTATION is narrow.
+   */
   const handleXReport = async () => {
     if (!terminal) return;
+    // B-13 (ii), defense in depth behind ReportsMenu's own filter: generating
+    // an X report APPENDS an immutable `X_REPORT` fiscal event (rule 8 — never
+    // correctable, only superseded) and discloses per-tender takings. Refuse
+    // BEFORE the generator runs; hiding the rendered result would still have
+    // authored the event.
+    if (!isManager) {
+      toast.error(t('reports.managerOnly'));
+      return;
+    }
     setShowXReportModal(true);
     setReportLoading(true);
     setReportError(null);
@@ -358,7 +446,13 @@ export function Header() {
       const report = await generateXReport(terminal.id, xOpts);
       setXReport(report);
     } catch (err) {
-      setReportError(getErrorMessage(err));
+      // R2-4: a rotated/expired device token is not a permission problem —
+      // say "sign in again", not "you may not".
+      setReportError(
+        err instanceof ReauthenticationRequiredError
+          ? t(err.i18nKey)
+          : getErrorMessage(err),
+      );
     } finally {
       setReportLoading(false);
     }
@@ -455,6 +549,13 @@ export function Header() {
    * Only invoked in Tauri (thermal printer) environment.
    * Sets is_reprint=true when wasReused so a DUPLICATA banner is printed.
    * Includes per-tender cash-count block when cash counts were captured.
+   */
+  /**
+   * Reachable by ANY PIN operator, including a cashier — see the F-5 policy
+   * note on `handleXReport`. The cashier closing their own drawer is the
+   * intended flow; the blind-count regime is enforced INSIDE the close
+   * (`CashReconciliationSection` / `EndOfDayPreviewModal`), not by withholding
+   * the close.
    */
   const handlePrintZReport = (result: EndOfDayConfirmResult) => {
     if (!isTauriEnvironment()) return;
@@ -652,7 +753,9 @@ export function Header() {
               type="button"
               onClick={handleOpenEndOfDay}
               className="flex min-h-12 items-center rounded-pill px-1 transition-colors hover:bg-surface-sunken"
-              title={t('shift.opening', { amount: shift.opening_cash })}
+              title={concealOpeningFloat
+                ? t('shift.number', { number: shift.shift_number })
+                : t('shift.opening', { amount: shift.opening_cash })}
             >
               <Badge tone="success">{t('shift.number', { number: shift.shift_number })}</Badge>
             </button>
@@ -763,7 +866,7 @@ export function Header() {
         onClose={() => setShowReportsMenu(false)}
         onXReport={() => void handleXReport()}
         onTransactionHistory={() => { setShowReportsMenu(false); navigate('/sales'); }}
-        onCashDrawerOps={() => { setShowReportsMenu(false); setShowCashDrawerModal(true); }}
+        onCashDrawerOps={handleCashDrawerOps}
         onTodaySales={() => { setShowReportsMenu(false); navigate('/sales'); }}
         onZReportHistory={() => { setShowReportsMenu(false); navigate('/reports/z'); }}
       />
@@ -775,6 +878,7 @@ export function Header() {
         report={xReport}
         isLoading={reportLoading}
         error={reportError}
+        concealPhysicalTenders={concealPhysicalTenders}
       />
 
       {/* Cash Drawer Modal */}

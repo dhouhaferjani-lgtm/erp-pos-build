@@ -5,7 +5,7 @@ import { Modal } from './Modal';
 import { VatDisclosureSummary } from './VatDisclosureSummary';
 import { deriveVatDisclosure } from '@/lib/reports/vatDisclosure';
 import { Loader2 } from 'lucide-react';
-import type { XReportResponse } from '@/api/reportApi';
+import type { PaymentMethodItem, XReportResponse } from '@/api/reportApi';
 
 interface XReportModalProps {
   isOpen: boolean;
@@ -13,11 +13,80 @@ interface XReportModalProps {
   report: XReportResponse | null;
   isLoading: boolean;
   error: string | null;
+  /**
+   * B-13 (ii): true while a shift is open under blind cash counting — the
+   * regime in which physical-tender takings are a term of the drawer
+   * expectation the counter must not see. The caller owns that decision (it
+   * holds the policy and the open shift); this component owns WHICH rows the
+   * regime covers, read off each row's own `is_physical`.
+   *
+   * Display-only: the SIGNED `X_REPORT` payload is authored in
+   * `api/reportApi.ts` (an explicit three-field allow-list that does not carry
+   * `is_physical`) and is byte-identical either way.
+   */
+  concealPhysicalTenders: boolean;
 }
 
-export function XReportModal({ isOpen, onClose, report, isLoading, error }: XReportModalProps) {
+/** Concealed figures read as an em dash, matching `/shift` and `/reports`. */
+const CONCEALED = '—';
+
+/**
+ * RESIDUAL B-13 (i), inherited here on purpose — NOT closed by this component.
+ *
+ * The summary cards above still show `gross_sales` / `net_sales` /
+ * `refunds_amount`, and Σ(all tender rows) === gross_sales − refunds_amount by
+ * construction (`api/reportApi.ts` builds both from the same receipt loop). So
+ * with a single physical tender in play, its concealed amount is exactly
+ * re-derivable as `gross_sales − refunds_amount − Σ(visible tenders)` — the
+ * same arithmetic the `/reports` dashboard leaves open.
+ *
+ * Closing it means concealing the headline during trading hours, which makes
+ * the report useless for the thing it is for. That is a PRODUCT call the owner
+ * has not made (LEDGER B-13 residual (i)); until they do, `/reports` and this
+ * modal stay deliberately consistent with each other rather than one of them
+ * quietly going further.
+ */
+
+/**
+ * Gate r1 (F-1 / R1-5) — fail CLOSED on an unresolvable tender.
+ *
+ * `is_physical` is OPTIONAL on the wire: the server X builder
+ * (`XReportResource`) never emits it, and the device builder leaves it
+ * undefined for a tender whose payment-method row is missing from the synced
+ * table (deactivated or renamed). Reading `undefined` as "not physical" would
+ * disclose cash in full in the one regime whose entire purpose is concealment,
+ * so UNKNOWN conceals. An explicit `false` is the only disclosure.
+ *
+ * This also disposes of R1-7: the two builders do NOT share a `payment_type`
+ * namespace (device = method CODE, server = method display NAME —
+ * `ReceiptPaymentService.php:358`, `PosCoreReceiptProjection.php:1540-1542`),
+ * so the earlier code-join mask would have silently no-op'd on every
+ * server-built X report. Keying on a flag carried by the row removes the join
+ * entirely.
+ *
+ * Consequence, accepted: on a v2/server-built X report every tender row is
+ * masked while blind counting is on. That over-conceals rather than
+ * under-conceals, and v3 — the tenant-#1 path — always uses the device builder
+ * (`Header.handleXReport` supplies fiscal opts only for
+ * `fiscal_schema_version === 3`, and `reportApi.generateXReport` then builds
+ * locally), so the accurate flag is present where it matters.
+ */
+function isConcealed(row: PaymentMethodItem, concealPhysicalTenders: boolean): boolean {
+  return concealPhysicalTenders && row.is_physical !== false;
+}
+
+export function XReportModal({
+  isOpen,
+  onClose,
+  report,
+  isLoading,
+  error,
+  concealPhysicalTenders,
+}: XReportModalProps) {
   const { t } = useTranslation('pos');
   const { format, decimals } = useCurrency();
+  const anyTenderConcealed = report !== null
+    && report.payment_methods.some((row) => isConcealed(row, concealPhysicalTenders));
 
   // B-6(ii): derived from the report's own signed/stored fields. The X payload
   // is byte-identical to before — nothing here reaches `appendXReport`.
@@ -127,15 +196,29 @@ export function XReportModal({ isOpen, onClose, report, isLoading, error }: XRep
                   </tr>
                 </thead>
                 <tbody>
-                  {report.payment_methods.map((row) => (
-                    <tr key={row.payment_type} className="border-b border-border-subtle">
-                      <td className="py-2">{row.payment_type}</td>
-                      <td className="py-2 text-right">{row.transaction_count}</td>
-                      <td className="py-2 text-right">{format(row.total_amount)}</td>
-                    </tr>
-                  ))}
+                  {report.payment_methods.map((row) => {
+                    const concealed = isConcealed(row, concealPhysicalTenders);
+                    return (
+                      <tr key={row.payment_type} className="border-b border-border-subtle">
+                        <td className="py-2">{row.payment_type}</td>
+                        {/* The transaction COUNT stays visible: it is not a
+                            term of the drawer expectation, and hiding it would
+                            cost the operator the "did my sale land?" check the
+                            X report exists for. */}
+                        <td className="py-2 text-right">{row.transaction_count}</td>
+                        <td className="py-2 text-right">
+                          {concealed ? CONCEALED : format(row.total_amount)}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
+              {anyTenderConcealed && (
+                <p className="mt-2 text-xs text-ink-muted">
+                  {t('reports.dashboard.cashConcealed')}
+                </p>
+              )}
             </div>
           )}
         </div>

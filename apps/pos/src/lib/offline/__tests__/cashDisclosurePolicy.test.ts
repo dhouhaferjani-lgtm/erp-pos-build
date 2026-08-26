@@ -8,7 +8,7 @@ vi.mock('@/lib/db/repositories/companyFraudSettingsCacheRepository', () => ({
   getCompanyFraudSettings: vi.fn(),
 }));
 
-import { resolveCashDisclosure } from '../cashDisclosurePolicy';
+import { resolveCashDisclosure, shouldConcealTakings } from '../cashDisclosurePolicy';
 import { fetchFraudSettings } from '@/api/fraudSettingsApi';
 import { getCompanyFraudSettings } from '@/lib/db/repositories/companyFraudSettingsCacheRepository';
 
@@ -99,5 +99,25 @@ describe('resolveCashDisclosure', () => {
     vi.mocked(getCompanyFraudSettings).mockRejectedValue(new Error('db gone'));
 
     await expect(resolveCashDisclosure(mockDb, 'company-1')).resolves.toBe('conceal');
+  });
+});
+
+/**
+ * Gate r2 (fiscal r2-3) — the two-term predicate, all four combinations.
+ * `hasOpenShift === false` is the branch F-6 reported as untested; it is
+ * unreachable through the Header's UI, so this is where it gets pinned.
+ */
+describe('shouldConcealTakings', () => {
+  it('conceals only when the policy conceals AND a shift is open', () => {
+    expect(shouldConcealTakings('conceal', true)).toBe(true);
+  });
+
+  it('conceals NOTHING with no open shift — nothing is being counted', () => {
+    expect(shouldConcealTakings('conceal', false)).toBe(false);
+  });
+
+  it('conceals nothing when the policy positively discloses', () => {
+    expect(shouldConcealTakings('disclose', true)).toBe(false);
+    expect(shouldConcealTakings('disclose', false)).toBe(false);
   });
 });

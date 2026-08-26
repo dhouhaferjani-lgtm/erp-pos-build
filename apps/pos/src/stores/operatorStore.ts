@@ -15,6 +15,10 @@ import { useTerminalStore } from '@/stores/terminalStore';
 import { recordAuditEvent } from '@/lib/audit/recordAuditEvent';
 import { getDeviceId } from '@/lib/device';
 import type { DiscountPermissionStatus } from '@/lib/discountPermissions';
+import {
+  isOperatorAuthorityStale,
+  readOperatorAuthoritySyncedAt,
+} from '@/lib/auth/operatorAuthorityFreshness';
 
 export interface Operator {
   id: string;
@@ -28,6 +32,17 @@ export interface Operator {
   max_discount_percent: number | null;
   discount_permissions_status?: DiscountPermissionStatus;
   discount_permissions_refresh_error?: 'transient';
+  /**
+   * Gate r1 (R1-3): true when this operator's roles/permissions were lifted
+   * from a device cache older than the offline TTL. Read by
+   * `hasManagerAccess`, which then CLOSES every manager surface — selling and
+   * the operator's own shift close are unaffected.
+   *
+   * Set only on the OFFLINE PIN-verify path, which is the only one with a
+   * cache to age. The online path and `setupPin` leave it undefined, meaning
+   * live.
+   */
+  authority_stale?: boolean;
 }
 
 interface OperatorState {
@@ -176,6 +191,13 @@ export const useOperatorStore = create<OperatorStore>()((set, get) => ({
       const db = await getDb();
       const operators = await getAllOperators(db);
       const terminalCode = useTerminalStore.getState().terminal?.code ?? null;
+      // R2-1: dated from the ROSTER pull, the only event that re-reads roles
+      // and permissions from the server — never from `operator_pins.synced_at`,
+      // which non-authority writers also bump.
+      const authorityStale = isOperatorAuthorityStale(
+        await readOperatorAuthoritySyncedAt(db),
+        Date.now(),
+      );
 
       for (const op of operators) {
         if (bcrypt.compareSync(pin, op.pin_hash)) {
@@ -189,6 +211,9 @@ export const useOperatorStore = create<OperatorStore>()((set, get) => ({
             email: op.email,
             roles: op.roles,
             permissions: op.permissions,
+            // R1-3: the authority is only as good as the last roster pull.
+            // Past the TTL the manager gates close; the till keeps trading.
+            authority_stale: authorityStale,
             can_discount: discountPermissionStatus === 'fresh' ? op.can_discount : false,
             can_apply_line_discounts: discountPermissionStatus === 'fresh'
               ? op.can_apply_line_discounts
