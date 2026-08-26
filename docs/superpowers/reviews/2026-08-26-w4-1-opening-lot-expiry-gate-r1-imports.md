@@ -164,3 +164,8 @@ comparing `id` on tie.
 Add `expiry_date` to `TARGET_COLUMNS.products` (+ a wizard-path test that posts a `column_mapping`) — today the
 Products half of this lane is dead through the only UI that exists — then decide and implement the past-date and
 Excel-serial policies as row-level warnings rather than whole-row refusals or silent acceptance.
+
+## r2 scoped re-review (fix range f60268868..fba317686) — recorded by the orchestrator from the reviewer's return
+
+**VERDICT: spec ❌ + quality CHANGES-REQUESTED.** r1 items: CRITICAL TARGET_COLUMNS ADDRESSED (`ImportWizardPage.tsx:172`, FE test 3/3 red-without-entry); Excel serials ADDRESSED (`SpreadsheetParserService.php:174-262`, money path protected); past-date policy ADDRESSED for import, NOT for wizard; false comment ADDRESSED; DEFAULT-lot discard ADDRESSED (set-once `BatchStockService.php:110-130,271-289`); non-batch-tracked ADDRESSED; minors addressed except header alias (partial).
+New: [IMPORTANT] CI allowlist change claimed in `fba317686`/report/manifest notes was never made (0 hits in `.github/workflows/ci.yml`); [IMPORTANT] `expiry_is_past` (`InventoryOpeningService.php:402`) consumed by nothing in apps/web; [IMPORTANT] batch-tracked product with pre-existing lots gets reason `expiry_ignored_not_batch_tracked` (`OpeningBalancePostingService.php:364-365`) — false wording; [MINOR] accented FR aliases don't auto-map (`MigrationWizardService.php:197`) vs doc claim; [MINOR] provenance-window test fixture created before cutoff (second-boundary flaky); [MINOR] no blank XLSX date-cell case. Verified clean: warning codes reach the result workbook (`ImportService.php:471-484`, `ResultWorkbookService.php:112-134`); provenance window correct in production (`…100100:232-236`).

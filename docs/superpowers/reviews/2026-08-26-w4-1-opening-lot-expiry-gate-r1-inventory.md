@@ -184,3 +184,142 @@ SQLite's NULLS-FIRST default would fail it, and `:267-285` pins the `created_at`
 422 refusal naming the offending column. `EnsureDefaultBatchTest.php:201-210` now asserts the constant
 ABSENT on both classes — a real anti-regression guard.
 Gaps: the atomic-consume path (finding 1) and the PG branch of the backfill predicate.
+
+---
+
+## r2 scoped re-review
+
+Fix range `f60268868..fba317686` (5 commits). READ-ONLY, re-verified against the tree at
+`fba317686` in `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/w4-1-opening-lot-expiry/`.
+
+### VERDICT: CHANGES-REQUESTED — 2 open (1 of them a false verification claim)
+
+### r1 findings → disposition
+
+| r1 finding | disposition | evidence |
+|---|---|---|
+| **A** — no NULL-expiry coverage of `consumeBatchesAtomically()` **(tests half)** | **ADDRESSED** | `apps/api/tests/Feature/BatchExpiry/AtomicFEFOConsumptionTest.php:289-400` — 4 real cases through the real `$this->service->consumeBatchesAtomically(...)`; helper `:256,270` now mints `expiry_date => null`. Class is PG-only (`:57-58` `markTestSkipped`) and IS in the CI `--filter` allowlist, so these 4 DO run in CI. |
+| **A** — CI allowlist **(gating half)** | ❌ **NOT ADDRESSED** — and falsely reported as done | see OPEN-1 |
+| **B** — supplied expiry silently dropped on an existing DEFAULT lot | **ADDRESSED (import path); PARTIAL (wizard path)** | `BatchStockService.php:110-131` set-once fill; `:271-289` remainder-zero fill via new `findDefaultBatch()` `:305-322`; `OpeningLotExpiryOutcome` enum; `ProductOpeningStockPhase.php:122-127,152-198` row warnings under their own `opening_lot_expiry` key. Wizard half still silent → OPEN-2. |
+| **C** — backfill keys on the product's CURRENT shelf life | **ADDRESSED** | `2026_08_26_100100…:145-183` `reportResidual()` — non-mutating, lists SKU + shelf-life, shares `expiryMatchesFallbackSql()` `:217-224` with the mutating census so the two cannot drift. Pinned `NullInventedDefaultLotExpiryMigrationTest.php:174-194`. |
+| **D** — silent skip / silent zero census | **ADDRESSED** | `…100100…:86-93` skip now `emit()`s as well as `Log::warning`; `:100-103` census echoes at 0. Zero-census pinned `…MigrationTest.php:202-214`. (Skip branch itself is not pinned — see MINOR-2.) |
+| **E** — client/server FEFO tie-break diverge | **ADDRESSED** | `BatchRepository.php:81` and `:118` `->orderBy('id')`; `StockTransferService.php:860` already had it; `CreateStockTransferPage.tsx:103-118` `compareByFefo` ends `return a.id - b.id`. All three now rank `(expiry nulls-last, then id)`. |
+| MINOR — `information_schema` unscoped | **ADDRESSED** | `…100100…:274-279` `table_schema = current_schema()`. |
+| MINOR — schema `down()` unguarded | **ADDRESSED** | `2026_08_26_100000…:51-56` `Schema::hasTable` on both tables. |
+| MINOR — stale `DeliveryNoteService` comment | **ADDRESSED** | `DeliveryNoteService.php:343-352` now states `expiry_date IS NULL OR expiry_date >= today`. (Comment-only change; the file's deptrac violations are pre-existing, at `:56`.) |
+| MINOR — `is_expired` reset | **ADDRESSED (documented)**; ruling below | `…100100…:109-116`. |
+| MINOR — editing an undated lot forces a date | **ADDRESSED** | `BatchForm.tsx:11-42,55-58,94-99` blank allowed only when `batch.expiry_date === null`, submitted as an OMITTED key (never `''`); `CreateBatchPage.tsx:16-25` keeps hand-mint required. `common:optional` exists in en/fr/ar. |
+
+### Answers to the four gate questions
+
+1. **Do the 4 PG cases really exercise `consumeBatchesAtomically()` with NULL lots?** **Yes.** All four call the
+   real service method (no mock), on the real PG-only `FOR UPDATE … SKIP LOCKED` query, with
+   `expiry_date = null` rows. `test_dated_lots_are_drawn_before_the_undated_one` (`:305-341`) creates the undated
+   lot FIRST and asserts the exact draw order `[early, late, undated]` plus a `5.0000` remainder in the undated
+   lot — falsifiable, not insertion-order-lucky. `test_an_expired_lot_stays_invisible_while_the_undated_one_does_not`
+   (`:343-364`) is the one that matters most: it proves admitting NULL did not also admit a passed expiry.
+
+2. **Manifest ceiling bump — precedent + checker?** **Precedent: yes. Checker: passes. Note text: FALSE.**
+   `feature-lane-manifest.json` Import 17→18, Inventory 116→118, `gated_ceiling` 1187→1190 — arithmetic consistent
+   (+1/+2 = +3), and the `DELIBERATE RAISE X -> Y (date, lane, reason)` shape matches the W2-7/Q-2/W4-6/P-1
+   precedents in the same note. `php tools/feature-lane-manifest-check.php` → **OK**, exit 0. But the Inventory
+   note asserts the two classes are *"Named in the backend-test-pgsql `--filter` allowlist"* — they are not
+   (OPEN-1). The checker cannot catch this: it validates that declared lanes exist in `ci.yml` and that existing
+   `--filter` entries are anchored, not that a free-text note is truthful.
+
+3. **`is_expired` reset (concern 2/4) — acceptable, or must the backfill preserve it?** **Reset is correct and
+   must NOT be changed to preserve.** Two code facts decide it:
+   - `BatchExpiryDailyCheckCommand.php:128,134` only ever flips `false → true` and never back. An `is_expired = true`
+     left on a lot whose `expiry_date` is now NULL is **permanently stuck** — no scheduled job, and no UI path,
+     can clear it.
+   - The flag is read as an independent gate in at least one place — `StockAdjustmentDocumentService.php:636`
+     (`$batch->is_expired || is_recalled || ! is_active`) — while every FEFO SQL predicate
+     (`FEFOInventoryService.php:270`, `:106-110`) and `Batch::isExpired()` (`Batch.php:80-83`) key on
+     `expiry_date`. Preserving the flag therefore creates a split brain: FEFO happily consumes a lot the
+     adjustment/write-off path still treats as expired.
+   Semantically the quarantine was itself *derived from the fiction this migration deletes* — preserving it would
+   keep the fiction's effect after removing its cause. The lot's expiry is UNKNOWN, not passed, and an unknown
+   expiry is sellable by design everywhere else in this lane. **No change required** — see MINOR-3 for the one
+   cheap improvement.
+
+4. **deptrac 182 vs 183 — what changed?** **Verified 182 at `fba317686`** (`php vendor/bin/deptrac analyse` →
+   Violations 182, Skipped 0, Errors 0). The −1 is **not** from the fix round: it is
+   `apps/api/app/Modules/Inventory/Domain/Services/StockAdjustmentService.php` losing the line
+   `$shelfLifeDays = $product->default_shelf_life_days ?? BatchStockService::DEFAULT_SHELF_LIFE_DAYS;`
+   in the r1 range — an `Inventory\Domain → BatchExpiry\Application` (ModuleDomain-on-ModuleApplication)
+   occurrence that deptrac counted per line. The class-level dependency survives via
+   `ensureDefaultBatchForUntrackedRemainder`, so the drop is exactly one. Cross-checked the JSON report: of the
+   28 files this lane touches, only `DeliveryNoteService.php` carries any violation at all, and its two edges are
+   at `:56` (`StockReservationService`, `WeightedAverageCostService`) — untouched lines, pre-existing, and this
+   round's change to that file is comment-only. **No new violations; the −1 is accounted for.**
+
+### OPEN
+
+#### [IMPORTANT] OPEN-1 — the CI allowlist change does not exist in the tree, and both the report and a committed manifest note assert that it does
+`git diff 9d0d08ae5..fba317686 -- .github/` is **empty** across the whole lane; `grep -rn` for
+`OpeningLotExpiryW41Test|NullInventedDefaultLotExpiryMigrationTest|SpreadsheetParserDateCellTest` over every
+`*.yml`/`*.yaml` in the repo returns **nothing**. `.github/workflows/ci.yml:1048` is byte-identical to `dev`.
+So the r1 gating half stands unfixed: the backfill's **PostgreSQL** predicate branch
+(`…2026_08_26_100100…:222`, `expiry_date = manufacturing_date + INTERVAL '365 days'`) — the one that executes on
+every real tenant `tenants:migrate` — runs in **no CI job at all**, while SQLite runs the different string at
+`:223`. `NullInventedDefaultLotExpiryMigrationTest` has no driver skip, but its group is PARKED, so nothing selects it.
+What makes this Important rather than Minor is the second half: the report §"inventory [IMPORTANT] A" states the
+allowlist "now names" all three classes, and `apps/api/tests/feature-lane-manifest.json:830` ships that claim as a
+permanent repo artifact ("Named in the backend-test-pgsql --filter allowlist for the same reason as the W2-7 lot-provenance pins").
+A future reader will trust the note and not re-check. **Fix:** either add the three class names to the
+`backend-test-pgsql --filter` at `.github/workflows/ci.yml:1048`, or correct the report AND the manifest note to
+say plainly that they run nowhere until the parked gate is flipped. Do not merge with the note as written.
+(The 4 new atomic-consume cases are unaffected — `AtomicFEFOConsumptionTest` is already in the allowlist.)
+
+#### [IMPORTANT] OPEN-2 — on the opening **wizard** path the conflict outcome is computed and then thrown away, so the preview still asserts something the post will not do
+`OpeningBalancePostingService` now returns `expiryOutcomesInInputOrder`
+(`OpeningBalancePostingResult.php:19-22`), and `ProductOpeningStockPhase.php:122-127` consumes it. The wizard does
+not: `InventoryOpeningService.php:313-330` zips `movementIdsInInputOrder` into `$rowEntityMap` and then
+`return $result->entry;` — the outcomes are discarded. Meanwhile `getPostPreview()` (`:398`) still shows the
+operator the date they supplied. Set-once closed the common case (row 1 undated + row 2 dated now fills), but the
+disagreeing case is exactly the multi-location shape r1 named: two wizard rows for the same SKU at `MAIN` and
+`WAREHOUSE` with different dates → the lot keeps row 1's date, row 2's date is dropped, the preview promised it,
+and nothing anywhere says otherwise. The report's concern 4 acknowledges only `expiry_in_past` as import-only; it
+does not acknowledge that `ConflictExistingLot` / `IgnoredNotBatchTracked` are import-only too. **Fix:** the zip
+loop at `:315-319` already walks `$lineRows` by the same index — stash the non-`NotSupplied`/`Applied` outcome on
+the row (or return it alongside the entry) so the post response can name it. A full row-warnings channel is a
+separate lane; surfacing the two codes that already exist is not.
+
+#### [MINOR] MINOR-1 — the residual line under-reports its own count
+`…2026_08_26_100100…:171-179` formats `%d DEFAULT lot(s) …` with `$listed->count()`, which is capped at
+`RESIDUAL_LIST_LIMIT` (25). With 300 residual lots the operator reads "25 DEFAULT lot(s)" plus a trailing `…`.
+Report the true count (a `count()` query, or `RESIDUAL_LIST_LIMIT + 1` → "25+") and keep the truncated name list.
+
+#### [MINOR] MINOR-2 — the loud-skip branch is not pinned
+`…2026_08_26_100100…:86-93` is the branch whose silence r1 flagged, and the report says "Both pinned".
+`NullInventedDefaultLotExpiryMigrationTest` pins only the zero census (`:202-214`) and the residual (`:188`); there is no
+case asserting `[W4-1] SKIPPED:` reaches stdout. It is awkward under `RefreshDatabase` (the column is already
+nullable), but a driver-guarded case that re-tightens the column, runs `up()`, and asserts the string is cheap.
+Either add it or soften the report's claim.
+
+#### [MINOR] MINOR-3 — the `is_expired` resurrection is not censused
+`…2026_08_26_100100…:116` flips `is_expired => false` for the whole matched set with no separate count. Per Q3
+above the reset is right, but on a later-provisioned tenant the resurrected subset is precisely the stock an
+operator should physically verify before it goes back on the shelf. Count the matched ids that had
+`is_expired = true` before the update and emit `[W4-1] … previously flagged expired: N`. One extra `count()`.
+
+#### [MINOR] MINOR-4 — `IgnoredNotBatchTracked` is emitted for a product that IS batch-tracked
+`OpeningBalancePostingService.php:364-366` — inside the `requires_batch_tracking` branch, `$lotAfter === null`
+(real lots already covered the whole remainder, so nothing was minted) returns
+`OpeningLotExpiryOutcome::IgnoredNotBatchTracked`, and `ProductOpeningStockPhase.php:183-189` renders it as
+*"this product is not batch-tracked"*. That statement is false for that row. Reachable when a goods receipt with
+real lots precedes the opening post for the same tuple — rare, but the lane's whole thesis is that operator-facing
+facts must be true. Add a distinct `IgnoredNoLot` case with its own wording.
+
+### Precision (rule 19) — clean
+No float touches money or quantity anywhere in the fix diff. `BatchStockService.php:277` uses
+`bccomp($remainder,'0',4)` with the `precision-ok` marker. The XLSX date read
+(`SpreadsheetParserService.php:214-262`) is deliberately narrow — `isDateCell()` requires BOTH a numeric stored
+value AND `ExcelDate::isDateTime($cell)` — so money/quantity cells never go through Excel's display format; that
+negative is the correct call and is pinned in `SpreadsheetParserDateCellTest`. `compareByFefo`'s `a.id - b.id`
+(`CreateStockTransferPage.tsx:117`) is an integer lot id, not a decimal.
+
+### What to fix before merge
+Land (or truthfully retract) the `ci.yml --filter` entry that the report and `feature-lane-manifest.json:830`
+already claim, and surface the wizard-path expiry conflict instead of discarding
+`expiryOutcomesInInputOrder` at `InventoryOpeningService.php:330`.
