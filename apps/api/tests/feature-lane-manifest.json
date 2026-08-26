@@ -6,7 +6,7 @@
     "deferred": "CAN run, but no lane runs it yet. Requires `reason`. Counted loudly on every CI run. After O-29 exactly one group is left here — `(root files)`, which no whole-directory selector can address."
   },
   "debt_ceiling": 1,
-  "gated_ceiling": 1193,
+  "gated_ceiling": 1194,
   "lanes": {
     "security-regression": {
       "job": "security-regression",
@@ -1016,8 +1016,8 @@
     },
     "Uom": {
       "lane": "feature-lane-inventory/Uom",
-      "classes": 5,
-      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
+      "classes": 6,
+      "note": "DELIBERATE RAISE 5 -> 6 (2026-08-26 at merge into dev by Session D, T9 batch item N-9): the units-of-measure seeding pin — a fresh tenant must own the base unit set at provisioning and the self-guarding backfill migration must seed unit-less existing tenants (companies-row guarded). Runs BY PATH on sqlite AND PostgreSQL 16; NOT named in any live --filter allowlist, so it executes nowhere until this parked lane's gate is flipped. Gate records docs/superpowers/reviews/2026-08-26-session-d-t9-batch-gate-r1-{imports,authz}.md. === prior note === Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Vehicle": {
       "lane": "feature-lane-catalog/Vehicle",
