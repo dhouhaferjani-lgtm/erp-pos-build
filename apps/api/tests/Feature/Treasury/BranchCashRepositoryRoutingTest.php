@@ -81,6 +81,8 @@ final class BranchCashRepositoryRoutingTest extends TestCase
 
     private string $cashAccountId;
 
+    private string $bankAccountId;
+
     private User $user;
 
     protected function setUp(): void
@@ -147,6 +149,11 @@ final class BranchCashRepositoryRoutingTest extends TestCase
         $this->cashAccountId = Account::query()
             ->where('company_id', $this->companyId)
             ->where('code', '53')
+            ->firstOrFail()
+            ->id;
+        $this->bankAccountId = Account::query()
+            ->where('company_id', $this->companyId)
+            ->where('code', '512')
             ->firstOrFail()
             ->id;
 
@@ -292,6 +299,79 @@ final class BranchCashRepositoryRoutingTest extends TestCase
         $this->assertSame(
             $main->id,
             $resolver->resolve($this->tenantId, $this->companyId, null, null)?->id,
+        );
+    }
+
+    /**
+     * A branch drawer is a BRANCH thing; a bank account is not.
+     *
+     * The tier rule exists to stop one branch's CASH landing in another
+     * branch's till. A `bank_account` (or a `virtual` wallet) carries no branch
+     * identity at all — `PaymentRepositorySeeder` never mints one, and the
+     * repositories UI leaves `location_id` null on the ones an operator adds —
+     * so it is the company's instrument, reachable from every location. If the
+     * tier excluded it, a CARD tender at a branch that owns a till would drop
+     * its mapped bank account and fall through to that till: card money booked
+     * into the cash drawer, on every tenant, the moment day-one attribution
+     * arms tier 1.
+     */
+    public function test_a_company_wide_bank_instrument_still_serves_a_branch_with_its_own_drawer(): void
+    {
+        $till = $this->drawer('CASH-02', $this->branchLocationId);
+        $bank = $this->companyWideBank('BANK-01');
+
+        $card = PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'code' => 'CARD',
+            'name' => 'Carte bancaire',
+            'is_cash_tender' => false,
+            'has_maturity' => false,
+            'instrument_kind' => null,
+            'default_repository_id' => $bank->id,
+        ]);
+
+        $resolver = $this->app->make(TenderRepositoryResolver::class);
+
+        $this->assertSame(
+            $bank->id,
+            $resolver->resolve($this->tenantId, $this->companyId, $card, $this->branchLocationId)?->id,
+            'A card tender at the branch belongs in the company bank account, not the branch till.',
+        );
+        // …and the cash tender at the same location is still the branch till:
+        // widening the tier for company-wide instruments must not re-open the
+        // commingling this lane closed.
+        $this->assertSame(
+            $till->id,
+            $resolver->resolve($this->tenantId, $this->companyId, null, $this->branchLocationId)?->id,
+        );
+    }
+
+    /**
+     * The widening is for repositories with NO location, never for another
+     * branch's. An operator who binds a bank account to Main has said it is
+     * Main's; the branch may not draw on it.
+     */
+    public function test_a_bank_account_bound_to_another_location_is_still_refused(): void
+    {
+        $this->drawer('CASH-02', $this->branchLocationId);
+        $mainBank = $this->companyWideBank('BANK-MAIN', $this->mainLocationId);
+
+        $card = PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'code' => 'CARD',
+            'name' => 'Carte bancaire',
+            'is_cash_tender' => false,
+            'has_maturity' => false,
+            'instrument_kind' => null,
+            'default_repository_id' => $mainBank->id,
+        ]);
+
+        $this->assertNotSame(
+            $mainBank->id,
+            $this->app->make(TenderRepositoryResolver::class)
+                ->resolve($this->tenantId, $this->companyId, $card, $this->branchLocationId)?->id,
         );
     }
 
@@ -468,6 +548,24 @@ final class BranchCashRepositoryRoutingTest extends TestCase
         ]);
     }
 
+    /**
+     * A `bank_account` repository — the company-wide instrument shape the
+     * repositories UI produces (`location_id` null unless an operator binds it).
+     */
+    private function companyWideBank(string $code, ?string $locationId = null): PaymentRepository
+    {
+        return PaymentRepository::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'code' => $code,
+            'type' => RepositoryType::BankAccount,
+            'location_id' => $locationId,
+            'gl_account_id' => $this->bankAccountId,
+            'currency' => 'TND',
+            'balance' => '0.000',
+        ]);
+    }
+
     private function actAsOperator(): void
     {
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenantId);
@@ -516,12 +614,14 @@ final class BranchCashRepositoryRoutingTest extends TestCase
             ]);
     }
 
+    /**
+     * @param  array<string, string>|null  $originalReceiptReference
+     */
     private function storeCashReceiptFiscalEvent(
         string $total,
         int $sequenceNumber = 1,
         FiscalEventType $eventType = FiscalEventType::SALE_RECEIPT,
         string $invoiceTypeCode = 'SALE',
-        /** @var array<string, string>|null */
         ?array $originalReceiptReference = null,
     ): FiscalEvent {
         $eventTime = now()->utc();
