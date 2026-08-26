@@ -1309,15 +1309,36 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                 ->where('company_id', $event->company_id)
                 ->find($existing->repository_id);
         } else {
-            $repository = $this->resolveRepositoryForTender($event, $paymentMethod);
+            // N-12 gate r1 finding D — ATTRIBUTION and RESOLUTION ask different
+            // questions of the same terminal. `$terminalLocationId` (null-able)
+            // is what the payment BELONGS to; the repository is resolved against
+            // the company's default location when the terminal cannot be read,
+            // so an unreadable terminal can never route a branch's money to
+            // whichever till sorts first company-wide.
+            $repositoryLocationId = $this->resolveRepositoryLocationId($event);
+            $repository = $this->resolveRepositoryForTender($event, $paymentMethod, $repositoryLocationId);
         }
 
         if ($repository === null) {
+            // N-12: the pre-fix message could not distinguish "this company has
+            // no till at all" from "this BRANCH has no till" — and the pre-fix
+            // resolver never produced the second case, because it quietly
+            // answered with Main's drawer. Naming the location is what makes the
+            // dead-lettered job actionable ("give Boutique Ariana a cash
+            // register"), and refusing is the point: a branch receipt booked
+            // into another branch's balance is unreconcilable forever, while a
+            // refused projection is replayable the moment the drawer exists.
             throw new RuntimeException(sprintf(
-                'TreasuryReceiptBridge: no GL-linked payment_repository found for tenant %s / company %s — '.
+                'TreasuryReceiptBridge: no GL-linked payment_repository found for tenant %s / company %s / location %s — '.
                 'cannot create POS-payment GL post for fiscal_event %s',
                 $event->tenant_id,
                 $event->company_id,
+                // Gate r2 minor — the location resolution actually RAN against,
+                // not the attribution location. They differ whenever the terminal
+                // row could not be read: attribution stays null while resolution
+                // falls to the company default, and a dead-lettered job that says
+                // `(none)` sends an operator looking at the wrong location.
+                $repositoryLocationId ?? '(none)',
                 $event->id,
             ));
         }
@@ -1583,16 +1604,30 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
      * {@see TenderRepositoryResolver} so the shift-close cash-variance listener
      * resolves the SAME repository this projection does — by sharing the code,
      * not by duplicating it. This method stays as the bridge's named seam (and
-     * the anti-drift test's second entry point); its behaviour is unchanged.
+     * the anti-drift test's second entry point).
+     *
+     * Campaign lane N-12: the terminal's LOCATION is now part of the question.
+     * A receipt authored at Boutique Ariana resolves against Ariana's own
+     * drawers; Main's till is not a candidate, and neither is any other
+     * branch's.
+     *
+     * `$locationId` comes from {@see ResolvesTerminalLocation::resolveRepositoryLocationId},
+     * which falls back to the company's DEFAULT location when the terminal row
+     * cannot be read — so it is null only for a company with no locations at
+     * all. (Gate r1 finding D: degrading to "no location known" meant the
+     * company-wide candidate set, which post-backfill is ordered `cash_register`
+     * first — i.e. Main's till, the exact commingling this lane removes.)
      */
     private function resolveRepositoryForTender(
         FiscalEvent $event,
         ?PaymentMethod $method,
+        ?string $locationId,
     ): ?PaymentRepository {
         return $this->tenderRepositoryResolver->resolve(
             (string) $event->tenant_id,
             (string) $event->company_id,
             $method,
+            $locationId,
         );
     }
 

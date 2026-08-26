@@ -7,6 +7,7 @@ namespace App\Modules\Treasury\Presentation\Controllers;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\Enums\RepositoryWriteRefusal;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentRepository;
@@ -15,6 +16,7 @@ use App\Shared\Banking\Contracts\BankAccountValidatorInterface;
 use App\Shared\Banking\Domain\ValueObjects\IbanValidationResult;
 use App\Shared\Banking\Domain\ValueObjects\RibValidationResult;
 use App\Shared\Presentation\Validation\ScopedExists;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -96,28 +98,49 @@ class PaymentRepositoryController extends Controller
         ]);
         $validated = $this->defaultAccountIdToGlAccountId($validated);
 
-        $repository = PaymentRepository::create([
-            'tenant_id' => $tenantId,
-            'company_id' => $companyId,
-            'code' => $validated['code'],
-            'name' => $validated['name'],
-            'type' => $validated['type'],
-            // Omit the key entirely when absent from the payload (rather than
-            // passing an explicit null) — the model's creating hook only
-            // derives from `type` when the attribute is genuinely unset.
-            ...(array_key_exists('allow_negative', $validated) ? ['allow_negative' => $validated['allow_negative']] : []),
-            'bank_id' => $validated['bank_id'] ?? null,
-            'bank_name' => $validated['bank_name'] ?? null,
-            'account_number' => $validated['account_number'] ?? null,
-            'iban' => $validated['iban'] ?? null,
-            'bic' => $validated['bic'] ?? null,
-            'balance' => '0.00',
-            'location_id' => $validated['location_id'] ?? null,
-            'responsible_user_id' => $validated['responsible_user_id'] ?? null,
-            'account_id' => $validated['account_id'] ?? null,
-            'gl_account_id' => $validated['gl_account_id'] ?? null,
-            'is_active' => true,
-        ]);
+        // N-12 gate r2 (treasury R2-3) — the partial unique index added by
+        // 2026_08_26_100000_backfill_payment_repository_location_n12 owns the
+        // "one active GL-linked drawer per location per type" invariant, and a
+        // second till for a location that already has one is an ordinary,
+        // reachable operator action. Unhandled it surfaced as a raw 500 with a
+        // PostgreSQL constraint string.
+        //
+        // The INSERT runs inside its own transaction so the violation rolls back
+        // to a SAVEPOINT: on PostgreSQL an unhandled 23505 aborts whatever
+        // transaction is open ("commands ignored until end of transaction
+        // block"), which poisons every later statement — including the ones this
+        // catch block and the caller still need. Same lesson as
+        // `LocationCashRegisterProvisioner::provision()`.
+        try {
+            $repository = DB::transaction(fn (): PaymentRepository => PaymentRepository::create([
+                'tenant_id' => $tenantId,
+                'company_id' => $companyId,
+                'code' => $validated['code'],
+                'name' => $validated['name'],
+                'type' => $validated['type'],
+                // Omit the key entirely when absent from the payload (rather than
+                // passing an explicit null) — the model's creating hook only
+                // derives from `type` when the attribute is genuinely unset.
+                ...(array_key_exists('allow_negative', $validated) ? ['allow_negative' => $validated['allow_negative']] : []),
+                'bank_id' => $validated['bank_id'] ?? null,
+                'bank_name' => $validated['bank_name'] ?? null,
+                'account_number' => $validated['account_number'] ?? null,
+                'iban' => $validated['iban'] ?? null,
+                'bic' => $validated['bic'] ?? null,
+                'balance' => '0.00',
+                'location_id' => $validated['location_id'] ?? null,
+                'responsible_user_id' => $validated['responsible_user_id'] ?? null,
+                'account_id' => $validated['account_id'] ?? null,
+                'gl_account_id' => $validated['gl_account_id'] ?? null,
+                'is_active' => true,
+            ]));
+        } catch (QueryException $exception) {
+            if ($refusal = $this->duplicateDrawerRefusal($exception)) {
+                return $this->refuse($refusal);
+            }
+
+            throw $exception;
+        }
 
         $repository->load(['glAccount:id,code,name', 'location:id,name']);
 
@@ -183,68 +206,111 @@ class PaymentRepositoryController extends Controller
             );
         }
 
-        if (array_key_exists('gl_account_id', $validated)) {
-            $freshRepository = DB::transaction(function () use (
-                $companyId,
-                $id,
-                $tenantId,
-                $validated,
-            ): PaymentRepository {
-                $lockedRepository = PaymentRepository::query()
-                    ->where('tenant_id', $tenantId)
-                    ->where('company_id', $companyId)
-                    ->lockForUpdate()
-                    ->findOrFail($id);
-                $lockedAttributes = $this->defaultAccountIdToGlAccountId(
+        // Same invariant on the way in from the other side (R2-3): GL-linking a
+        // previously unlinked drawer moves it INTO the index's predicate beside
+        // an already-linked sibling, and reactivating one does the same. The
+        // repositories screen issues exactly that PATCH today
+        // (`RepositoryDetailPage`: `apiPatch({ gl_account_id })`), so this is the
+        // likelier of the two paths to be hit in practice.
+        try {
+            if (array_key_exists('gl_account_id', $validated)) {
+                $freshRepository = DB::transaction(function () use (
+                    $companyId,
+                    $id,
+                    $tenantId,
                     $validated,
-                    $lockedRepository->gl_account_id,
-                    $lockedRepository->account_id,
-                );
-
-                if ($lockedAttributes['gl_account_id'] !== $lockedRepository->gl_account_id) {
-                    $affectedLegCount = RepositoryMovement::query()
+                ): PaymentRepository {
+                    $lockedRepository = PaymentRepository::query()
                         ->where('tenant_id', $tenantId)
                         ->where('company_id', $companyId)
-                        ->where('payment_repository_id', $lockedRepository->id)
-                        ->where('source_type', MovementSourceType::Transfer->value)
-                        ->whereNull('journal_entry_id')
-                        ->count();
+                        ->lockForUpdate()
+                        ->findOrFail($id);
+                    $lockedAttributes = $this->defaultAccountIdToGlAccountId(
+                        $validated,
+                        $lockedRepository->gl_account_id,
+                        $lockedRepository->account_id,
+                    );
 
-                    if ($affectedLegCount > 0) {
-                        $legClause = $affectedLegCount === 1
-                            ? 'leg has'
-                            : 'legs have';
+                    if ($lockedAttributes['gl_account_id'] !== $lockedRepository->gl_account_id) {
+                        $affectedLegCount = RepositoryMovement::query()
+                            ->where('tenant_id', $tenantId)
+                            ->where('company_id', $companyId)
+                            ->where('payment_repository_id', $lockedRepository->id)
+                            ->where('source_type', MovementSourceType::Transfer->value)
+                            ->whereNull('journal_entry_id')
+                            ->count();
 
-                        throw new \DomainException(sprintf(
-                            'Cannot reassign the repository GL account while %d transfer movement %s no journal entry.',
-                            $affectedLegCount,
-                            $legClause,
-                        ));
+                        if ($affectedLegCount > 0) {
+                            $legClause = $affectedLegCount === 1
+                                ? 'leg has'
+                                : 'legs have';
+
+                            throw new \DomainException(sprintf(
+                                'Cannot reassign the repository GL account while %d transfer movement %s no journal entry.',
+                                $affectedLegCount,
+                                $legClause,
+                            ));
+                        }
                     }
-                }
 
-                $lockedRepository->update($lockedAttributes);
+                    $lockedRepository->update($lockedAttributes);
+
+                    /** @var PaymentRepository $freshRepository */
+                    $freshRepository = $lockedRepository->fresh(['glAccount:id,code,name', 'location:id,name']);
+
+                    return $freshRepository;
+                });
+            } else {
+                $validated = $this->defaultAccountIdToGlAccountId(
+                    $validated,
+                    $repository->gl_account_id,
+                    $repository->account_id,
+                );
+                $repository->update($validated);
 
                 /** @var PaymentRepository $freshRepository */
-                $freshRepository = $lockedRepository->fresh(['glAccount:id,code,name', 'location:id,name']);
+                $freshRepository = $repository->fresh(['glAccount:id,code,name', 'location:id,name']);
+            }
+        } catch (QueryException $exception) {
+            if ($refusal = $this->duplicateDrawerRefusal($exception)) {
+                return $this->refuse($refusal);
+            }
 
-                return $freshRepository;
-            });
-        } else {
-            $validated = $this->defaultAccountIdToGlAccountId(
-                $validated,
-                $repository->gl_account_id,
-                $repository->account_id,
-            );
-            $repository->update($validated);
-
-            /** @var PaymentRepository $freshRepository */
-            $freshRepository = $repository->fresh(['glAccount:id,code,name', 'location:id,name']);
+            throw $exception;
         }
 
         return response()->json([
             'data' => $this->formatRepository($freshRepository, $company->country_code),
         ]);
+    }
+
+    /**
+     * The refusal a `23505` maps to, or null when it is some other unique
+     * violation this controller has no better answer for than a 500.
+     */
+    private function duplicateDrawerRefusal(QueryException $exception): ?RepositoryWriteRefusal
+    {
+        if (($exception->errorInfo[0] ?? null) !== '23505') {
+            return null;
+        }
+
+        foreach (RepositoryWriteRefusal::cases() as $refusal) {
+            if (str_contains($exception->getMessage(), $refusal->constraintName())) {
+                return $refusal;
+            }
+        }
+
+        return null;
+    }
+
+    private function refuse(RepositoryWriteRefusal $refusal): JsonResponse
+    {
+        return response()->json([
+            'error' => [
+                'code' => $refusal->value,
+                'message' => $refusal->message(),
+            ],
+        ], 422);
     }
 
     public function balance(Request $request, string $id): JsonResponse

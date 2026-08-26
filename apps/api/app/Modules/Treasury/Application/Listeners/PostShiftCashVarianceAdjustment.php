@@ -22,8 +22,10 @@ use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Treasury\RepositoryAdjustmentServiceInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\QueryException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Jobs\SyncJob;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Ramsey\Uuid\Uuid;
 use Throwable;
@@ -763,6 +765,41 @@ final class PostShiftCashVarianceAdjustment implements ShouldQueue
         /** @var array<string, PaymentRepository> $resolved */
         $resolved = [];
 
+        // Campaign lane N-12 — the shift's variance belongs to the till at the
+        // TERMINAL'S location, not to whichever company till sorts first. The
+        // shift-close leg has to agree with the sale legs the fiscal bridge
+        // already booked (sharing `TenderRepositoryResolver` rather than
+        // reimplementing it is this listener's stated reason for existing in
+        // this shape), and the bridge now resolves per location — so the same
+        // location has to reach the resolver from here, or a branch's variance
+        // would be adjusted against Main's drawer while its sales sit in its
+        // own.
+        //
+        // Gate r1 finding B — REPLAY DETERMINISM. `terminalLocationId()` is a
+        // fresh read on every attempt, so a redelivery after a location change,
+        // a drawer provisioning or the N-12 backfill could resolve a DIFFERENT
+        // repository than the first attempt. `RepositoryAdjustment::firstOrCreate`
+        // would then hand back the ORIGINAL document (still carrying the first
+        // repository) while the movement was recorded against the new one, and
+        // `TreasuryMovementService` throws `IdempotencyConflictException` on the
+        // mismatch — turning what should be a clean replay into a permanent
+        // dead-letter. Existing history wins over mutable routing, the same rule
+        // `TreasuryReceiptBridge` already applies to an already-written leg.
+        $alreadyPosted = $this->repositoryFromExistingAdjustment($event);
+        if ($alreadyPosted instanceof PaymentRepository) {
+            return $alreadyPosted;
+        }
+
+        // Gate r1 finding D — a terminal whose location cannot be read does NOT
+        // degrade to the company-wide set. Post-backfill that set is ordered
+        // `cash_register` first, i.e. MAIN's till, so the one degradation path
+        // the lane left open produced exactly the commingling the lane exists to
+        // prevent. It now falls to the company's DEFAULT location — the same
+        // location day-one attribution uses — and if that location has no drawer
+        // the resolver returns null and this listener refuses loudly and
+        // replayably rather than inventing a destination.
+        $locationId = $this->terminalOrDefaultLocationId($event);
+
         foreach ($moved as $breakdown) {
             // Gate finding I3 — the OFFLINE sync endpoint validates only
             // `uuid|distinct` on `payment_method_id`, so unlike the live path
@@ -789,11 +826,13 @@ final class PostShiftCashVarianceAdjustment implements ShouldQueue
                 $event->tenantId,
                 $event->companyId,
                 $breakdown->paymentMethodId,
+                $locationId,
             );
 
             if (! $repository instanceof PaymentRepository) {
                 $this->refuse($event, 'no_repository_resolved', [
                     'payment_method_id' => $breakdown->paymentMethodId,
+                    'location_id' => $locationId,
                 ]);
 
                 return null;
@@ -952,5 +991,92 @@ final class PostShiftCashVarianceAdjustment implements ShouldQueue
             self::DOCUMENT_ID_NAMESPACE,
             'urn:autoerp:pos-shift-cash-variance:'.$shiftId,
         )->toString();
+    }
+
+    /**
+     * Campaign lane N-12 — the location this shift's cash physically sat in.
+     *
+     * `CashCountRecorded` carries the terminal, and `pos_terminals.location_id`
+     * is the same column the sale legs resolve through
+     * (`ResolvesTerminalLocation`). Same source, same answer — which is the only
+     * way a shift's variance adjustment can land in the same drawer as the
+     * shift's own sales.
+     *
+     * Gate r1 finding D — when the terminal row cannot be read, this falls to
+     * the company's DEFAULT location rather than to null. Null reaches the
+     * resolver as "no location known", which is the company-wide set, which
+     * post-backfill is Main's till: the silent commingling this lane removes,
+     * reintroduced by its own degradation path. A genuine `QueryException` still
+     * returns null, because at that point the database itself is the problem.
+     */
+    private function terminalOrDefaultLocationId(CashCountRecorded $event): ?string
+    {
+        try {
+            $locationId = DB::table('pos_terminals')
+                ->where('tenant_id', $event->tenantId)
+                ->where('company_id', $event->companyId)
+                ->where('id', $event->terminalId)
+                ->value('location_id');
+
+            if (is_string($locationId) && $locationId !== '') {
+                return $locationId;
+            }
+
+            return $this->companyDefaultLocationId($event->companyId);
+        } catch (QueryException) {
+            return null;
+        }
+    }
+
+    /**
+     * The company's default location — `is_default`, then an active one, then a
+     * POS-enabled one, then the oldest. Byte-for-byte the order
+     * `PaymentRepositorySeeder::defaultLocationId()` and the N-12 backfill use,
+     * so "the default location's drawer" means one thing across the codebase.
+     *
+     * Null only when the company has no locations at all, which is the pre-N-12
+     * shape and the only input for which the company-wide rule is still the
+     * honest answer.
+     */
+    private function companyDefaultLocationId(string $companyId): ?string
+    {
+        $locationId = DB::table('locations')
+            ->where('company_id', $companyId)
+            ->orderByDesc('is_default')
+            ->orderByDesc('is_active')
+            ->orderByDesc('pos_enabled')
+            ->orderBy('created_at')
+            ->value('id');
+
+        return is_string($locationId) ? $locationId : null;
+    }
+
+    /**
+     * The repository this shift's variance was ALREADY posted against, if any.
+     *
+     * Keyed on the same deterministic document id the adjustment is posted with
+     * ({@see documentIdFor}), so a replay reuses the first attempt's drawer
+     * rather than re-deriving one from state that may have moved underneath it.
+     */
+    private function repositoryFromExistingAdjustment(CashCountRecorded $event): ?PaymentRepository
+    {
+        try {
+            $repositoryId = DB::table('repository_adjustments')
+                ->where('tenant_id', $event->tenantId)
+                ->where('company_id', $event->companyId)
+                ->where('id', $this->documentIdFor($event->shiftId))
+                ->value('payment_repository_id');
+        } catch (QueryException) {
+            return null;
+        }
+
+        if (! is_string($repositoryId) || $repositoryId === '') {
+            return null;
+        }
+
+        return PaymentRepository::query()
+            ->where('tenant_id', $event->tenantId)
+            ->where('company_id', $event->companyId)
+            ->find($repositoryId);
     }
 }

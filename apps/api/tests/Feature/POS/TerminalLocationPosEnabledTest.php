@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -11,6 +12,8 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Permission;
@@ -86,6 +89,19 @@ final class TerminalLocationPosEnabledTest extends TestCase
         Permission::findOrCreate('pos.operate_terminal', 'sanctum');
         $this->user->givePermissionTo('pos.manage_terminals');
         $this->user->givePermissionTo('pos.operate_terminal');
+
+        // Campaign lane N-12 — a terminal may only be acquired at a location
+        // whose cash has somewhere of its own to go. This fixture keeps the
+        // company on the pre-N-12 shape (an unattributed, GL-linked till that
+        // still serves every location, the resolver's tier 2), so the claim
+        // paths under test here stay exactly as hardening left them.
+        PaymentRepository::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => RepositoryType::CashRegister,
+            'location_id' => null,
+            'gl_account_id' => Account::factory()->create(['tenant_id' => $this->tenant->id, 'company_id' => $this->company->id])->id,
+        ]);
 
         Sanctum::actingAs($this->user);
     }

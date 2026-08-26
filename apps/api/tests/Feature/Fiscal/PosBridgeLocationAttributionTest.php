@@ -49,6 +49,8 @@ final class PosBridgeLocationAttributionTest extends TestCase
 
     private string $repositoryId;
 
+    private string $otherLocationBankId;
+
     private string $actorId;
 
     private string $partnerId;
@@ -92,6 +94,17 @@ final class PosBridgeLocationAttributionTest extends TestCase
             'company_id' => $company->id,
             'code' => 'CASH',
             'name' => 'Cash',
+            // Gate r2 finding 3 — `is_cash_tender` is NOT NULL DEFAULT false, so
+            // omitting it declared a method called CASH to be a non-cash tender.
+            // It matters now: a cash tender resolves only to a drawer.
+            'is_cash_tender' => true,
+        ]);
+        PaymentMethod::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'code' => 'CARD',
+            'name' => 'Card',
+            'is_cash_tender' => false,
         ]);
         PaymentMethod::factory()->create([
             'tenant_id' => $tenant->id,
@@ -111,6 +124,38 @@ final class PosBridgeLocationAttributionTest extends TestCase
             'currency' => 'TND',
         ]);
         $this->repositoryId = $repository->id;
+
+        // Campaign lane N-12, gate r1 finding 9 — this file's subject is that
+        // `payments.location_id` comes from the TERMINAL, not from the
+        // repository the money landed in. Post-N-12 a DRAWER at another location
+        // is refused outright, so the only shape that still exercises the
+        // scenario is a company-wide settlement instrument: `location_id` on a
+        // bank account is metadata an operator filed, never a restriction, so it
+        // is a candidate from every branch. Mapping the CARD method to this one
+        // makes the receipt below resolve a repository that genuinely sits at
+        // ANOTHER location — which is what the test's name claims. It has to be
+        // a NON-cash tender: gate r2 finding 3 confines physical cash to a
+        // drawer, so a cash leg could never legitimately land here.
+        //
+        // (The first cut of this fix used an unattributed drawer instead, which
+        // downgraded the assertion to "terminal location over NULL".)
+        $otherLocationBank = PaymentRepository::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'location_id' => $repositoryLocation->id,
+            'type' => RepositoryType::BankAccount,
+            'code' => 'BANK-OTHER-LOCATION',
+            'account_id' => $cashAccount->id,
+            'gl_account_id' => $cashAccount->id,
+            'currency' => 'TND',
+        ]);
+        $this->otherLocationBankId = $otherLocationBank->id;
+
+        PaymentMethod::query()
+            ->where('company_id', $company->id)
+            ->where('code', 'CARD')
+            ->update(['default_repository_id' => $otherLocationBank->id]);
+
         app(CompanyContext::class)->clear();
     }
 
@@ -121,8 +166,17 @@ final class PosBridgeLocationAttributionTest extends TestCase
         $this->app->make(TreasuryReceiptBridge::class)->apply($event);
 
         $payment = Payment::query()->where('fiscal_event_id', $event->id)->sole();
+
+        // The money landed in a repository that sits at `$repositoryLocation`…
+        self::assertSame($this->otherLocationBankId, $payment->repository_id);
+        $resolvedRepositoryLocation = PaymentRepository::query()
+            ->findOrFail($this->otherLocationBankId)
+            ->location_id;
+        self::assertNotSame($this->locationId, $resolvedRepositoryLocation);
+
+        // …and the payment is still attributed to the TERMINAL's location.
         self::assertSame($this->locationId, $payment->location_id);
-        self::assertNotSame(PaymentRepository::query()->findOrFail($this->repositoryId)->location_id, $payment->location_id);
+        self::assertNotSame($resolvedRepositoryLocation, $payment->location_id);
     }
 
     public function test_deposit_apply_uses_repository_location_fallback_when_terminal_is_absent(): void
@@ -195,7 +249,7 @@ final class PosBridgeLocationAttributionTest extends TestCase
                 'foreign_currency_code' => null,
                 'instrument_serial' => null,
                 'instrument_type' => null,
-                'method_code' => 'CASH',
+                'method_code' => 'CARD',
             ]],
             'receipt_uuid' => (string) Str::uuid(),
             'seller' => [

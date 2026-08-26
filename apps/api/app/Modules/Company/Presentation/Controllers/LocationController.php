@@ -12,6 +12,7 @@ use App\Modules\Company\Presentation\Resources\LocationResource;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationScopeResolver;
 use App\Modules\Identity\Domain\User;
+use App\Shared\Contracts\Treasury\LocationCashRegisterProvisionerInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -23,6 +24,10 @@ class LocationController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly LocationScopeResolver $scopeResolver,
+        // Campaign lane N-12 — a POS-enabled location owns its own cash drawer.
+        // Injected through the Shared contract so this module never touches a
+        // Treasury model (rule 6); constructor injection only (rule 13).
+        private readonly LocationCashRegisterProvisionerInterface $cashRegisterProvisioner,
     ) {}
 
     /**
@@ -207,6 +212,8 @@ class LocationController extends Controller
             'pos_stock_policy_override' => $validated['pos_stock_policy_override'] ?? null,
         ]);
 
+        $this->provisionCashRegisterIfPosEnabled($location);
+
         return response()->json([
             'data' => new LocationResource($location),
             'meta' => [
@@ -214,6 +221,33 @@ class LocationController extends Controller
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
             ],
         ], 201);
+    }
+
+    /**
+     * Campaign lane N-12 — give a POS-enabled location its own cash drawer.
+     *
+     * Without this, a second branch's POS cash had nowhere of its own to go and
+     * the tender resolver silently booked it into whichever till sorted first,
+     * i.e. Main's. The resolver now refuses that; this is what stops the refusal
+     * from ever being reached in the ordinary flow.
+     *
+     * Deliberately best-effort and never fatal to the location write: a chart
+     * that has no `cash` purpose account yet (the provisioner logs and returns
+     * null) must not turn "create my branch" into a 500. The terminal-claim
+     * refusal is the backstop that keeps money from moving in that state.
+     */
+    private function provisionCashRegisterIfPosEnabled(Location $location): void
+    {
+        if ($location->pos_enabled !== true) {
+            return;
+        }
+
+        $this->cashRegisterProvisioner->provision(
+            $this->companyContext->requireTenantId(),
+            $this->companyContext->requireCompanyId(),
+            $location->id,
+            $location->code,
+        );
     }
 
     /**
@@ -252,6 +286,11 @@ class LocationController extends Controller
 
         /** @var Location $freshLocation */
         $freshLocation = $locationModel->fresh();
+
+        // N-12: enabling POS on an existing location is the same event as
+        // creating one with POS on — the branch now takes cash and needs a
+        // drawer of its own. Idempotent, so a no-op PATCH never mints a second.
+        $this->provisionCashRegisterIfPosEnabled($freshLocation);
 
         return response()->json([
             'data' => new LocationResource($freshLocation),

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { apiGet, getErrorMessage } from '@/lib/api';
+import { apiGet, ApiRequestError, getErrorMessage } from '@/lib/api';
 import { getDeviceId } from '@/lib/device';
 import { useAuthStore } from '@/stores/authStore';
 import { useTerminalActivation } from '@/hooks/useTerminalActivation';
@@ -167,6 +167,17 @@ function ClaimTab({ onError }: { onError: (msg: string | null) => void }) {
     try {
       await claimTerminal(terminalId, getDeviceId());
     } catch (err) {
+      // N-12: the server refuses a terminal at a location whose cash has
+      // nowhere of its own to go, because the alternative is booking this
+      // branch's takings into another branch's drawer. Translated here rather
+      // than echoing the server's English `message`, and pointing at the one
+      // recovery an operator can actually perform — the repositories screen has
+      // no create form and never sends `location_id`, so "add a repository" was
+      // an instruction to nowhere.
+      if (err instanceof ApiRequestError && err.code === 'LOCATION_HAS_NO_CASH_REGISTER') {
+        onError(t('terminal.locationHasNoCashRegister'));
+        return;
+      }
       onError(getErrorMessage(err));
     }
   }
