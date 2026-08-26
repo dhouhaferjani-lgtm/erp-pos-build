@@ -190,6 +190,20 @@ final class ProductOpeningStockPhase
             );
         }
 
+        // Deliberately NOT folded into the branch above (gate r1 MINOR-4): the
+        // product here IS batch-tracked, and telling the operator otherwise would
+        // be a false statement about their own catalogue.
+        if ($outcome === OpeningLotExpiryOutcome::IgnoredNoDefaultLot) {
+            $warnings[] = $this->expiryNote(
+                $rowId,
+                OpeningLotExpiryOutcome::IgnoredNoDefaultLot->value,
+                "expiry_date {$expiryDate} was ignored: this product's existing lots already account for the whole "
+                .'opening quantity, so no default lot was created for the date to apply to. Set the expiry on the '
+                .'relevant lot directly.',
+                'expiry ignored (no default lot)',
+            );
+        }
+
         return $warnings;
     }
 

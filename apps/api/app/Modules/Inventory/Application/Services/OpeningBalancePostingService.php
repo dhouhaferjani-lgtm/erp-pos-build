@@ -359,10 +359,13 @@ final class OpeningBalancePostingService
             $line->variantId,
         );
 
-        // No lot at all: the remainder was already covered by real lots, so
-        // nothing was minted and there is nothing the date could attach to.
+        // No lot at all: real lots already covered the whole quantity, so nothing
+        // was minted and there is nothing the date could attach to. This is NOT
+        // the not-batch-tracked case — we only reach here from inside the
+        // `requires_batch_tracking` branch, so saying so would be a false
+        // statement about the operator's own catalogue (gate r1 MINOR-4).
         if ($lotAfter === null) {
-            return OpeningLotExpiryOutcome::IgnoredNotBatchTracked;
+            return OpeningLotExpiryOutcome::IgnoredNoDefaultLot;
         }
 
         if ($lotAfter->expiry_date?->toDateString() !== $line->expiryDate) {

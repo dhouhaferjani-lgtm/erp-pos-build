@@ -26,6 +26,7 @@ use App\Modules\Inventory\Application\DTOs\OpeningBalanceLine;
 use App\Modules\Inventory\Application\DTOs\OpeningBalancePosting;
 use App\Modules\Inventory\Application\Services\InventoryOpeningService;
 use App\Modules\Inventory\Application\Services\OpeningBalancePostingService;
+use App\Modules\Inventory\Domain\Enums\OpeningLotExpiryOutcome;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -349,6 +350,102 @@ final class OpeningLotExpiryW41Test extends TestCase
         $this->assertNull(
             $preview['lines'][0]['expiry_date'],
             'the operator must be able to SEE, before posting, that this lot will carry no expiry',
+        );
+    }
+
+    // -----------------------------------------------------------------
+    // Gate r1 OPEN-2 / MINOR-4 — the wizard must not discard the outcome, and
+    // the outcome must not lie about the product.
+    // -----------------------------------------------------------------
+
+    public function test_the_wizard_names_a_conflicting_expiry_instead_of_discarding_it(): void
+    {
+        $product = $this->product(requiresBatchTracking: true, shelfLifeDays: null);
+
+        // First opening establishes the lot with one date...
+        $this->postOpening($product, quantity: '5', expiryDate: '2027-05-31');
+
+        // ...then a wizard row for the SAME product at another location disagrees.
+        // Set-once refuses to overwrite, which is right — but the operator watched
+        // the preview promise 2028-01-31 and must be told it was not applied.
+        $second = Location::create([
+            'company_id' => $this->company->id,
+            'code' => 'WH-W41-B',
+            'name' => 'W41 Annex',
+            'type' => 'warehouse',
+            'is_active' => true,
+        ]);
+
+        $batch = $this->inventoryBatch();
+        $this->wizardRow($batch, $product, ['expiry_date' => '2028-01-31', 'location_code' => (string) $second->code]);
+
+        $service = app(InventoryOpeningService::class);
+        $service->validateBatch($batch);
+        $service->postBatch($batch->refresh(), (string) $this->user->id);
+
+        $this->assertSame(
+            '2027-05-31',
+            $this->defaultLot($product)->expiry_date?->toDateString(),
+            'the existing date stands — rewriting a lot that already holds stock would be a silent ledger correction',
+        );
+
+        $notices = $service->expiryNoticesFor($batch->refresh());
+        $this->assertSame(
+            [OpeningLotExpiryOutcome::ConflictExistingLot->value],
+            array_column($notices, 'code'),
+            'W4-1 gate r1 OPEN-2: the wizard used to compute this outcome and throw it away, leaving the preview '
+            .'asserting something the post did not do',
+        );
+        $this->assertSame('2028-01-31', $notices[0]['expiry_date']);
+    }
+
+    public function test_the_preview_flags_a_date_that_the_post_will_refuse_to_apply(): void
+    {
+        $product = $this->product(requiresBatchTracking: true, shelfLifeDays: null);
+        $this->postOpening($product, quantity: '5', expiryDate: '2027-05-31');
+
+        $batch = $this->inventoryBatch();
+        $this->wizardRow($batch, $product, ['expiry_date' => '2028-01-31']);
+
+        $service = app(InventoryOpeningService::class);
+        $service->validateBatch($batch);
+        $preview = $service->getPostPreview($batch->refresh());
+
+        $this->assertTrue(
+            $preview['lines'][0]['expiry_conflicts_with_existing_lot'],
+            'the conflict is knowable BEFORE posting, so showing the date without the flag is the preview promising '
+            .'something the post will not do',
+        );
+    }
+
+    public function test_a_batch_tracked_product_is_never_told_it_is_not_batch_tracked(): void
+    {
+        // Real lots already cover the whole quantity, so no DEFAULT lot is minted
+        // and the supplied date has nothing to attach to. That is NOT the
+        // not-batch-tracked case, and saying so would be false about this catalogue.
+        $product = $this->product(requiresBatchTracking: true, shelfLifeDays: null);
+        $this->lot($product, 'LOT-REAL-2026A', '2027-03-31', '10.0000');
+
+        $result = app(OpeningBalancePostingService::class)->post(new OpeningBalancePosting(
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            userId: (string) $this->user->id,
+            entryDate: Carbon::now(),
+            isHistorical: true,
+            sourceType: 'opening_balance',
+            sourceId: $product->id,
+            reference: 'W4-1 covered opening',
+            notes: null,
+            lines: [OpeningBalanceLine::make(
+                $product->id, null, $this->location->id, '10', '5.000', 3, '2027-12-31',
+            )],
+        ));
+
+        $this->assertSame(
+            OpeningLotExpiryOutcome::IgnoredNoDefaultLot,
+            $result->expiryOutcomesInInputOrder[0],
+            'gate r1 MINOR-4: a distinct outcome, because "this product is not batch-tracked" is a false statement '
+            .'about a product whose requires_batch_tracking is true',
         );
     }
 

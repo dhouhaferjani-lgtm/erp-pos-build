@@ -620,6 +620,17 @@ class OpeningBalanceBatchController extends Controller
                 'batch' => $this->formatBatch($batch),
             ];
 
+            // W4-1 gate r1 OPEN-2 — an INVENTORY batch names any row whose supplied
+            // expiry did not end up on the lot. The preview showed the operator that
+            // date; if the post could not honour it, the post has to say so.
+            if ($batch->type === OpeningBatchType::Inventory) {
+                $expiryNotices = $this->inventoryOpeningService->expiryNoticesFor($batch);
+
+                if ($expiryNotices !== []) {
+                    $responseData['expiry_notices'] = $expiryNotices;
+                }
+            }
+
             if ($result instanceof JournalEntry) {
                 // Accounting/Inventory: include journal entry info
                 $responseData['journal_entry'] = [

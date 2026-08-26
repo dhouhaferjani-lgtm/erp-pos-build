@@ -41,4 +41,31 @@ enum OpeningLotExpiryOutcome: string
      * — which the operator has to be told rather than left to discover.
      */
     case IgnoredNotBatchTracked = 'expiry_ignored_not_batch_tracked';
+
+    /**
+     * The product IS batch-tracked, but no DEFAULT lot was minted for this opening:
+     * real, operator-supplied lots already account for the whole quantity, so there
+     * is no untracked remainder to back and nothing for the date to attach to.
+     *
+     * Distinct from {@see self::IgnoredNotBatchTracked} on purpose (gate r1
+     * MINOR-4): telling a parapharmacy that its batch-tracked product "is not
+     * batch-tracked" is a false statement about their catalogue, and this lane's
+     * whole thesis is that operator-facing facts must be true.
+     */
+    case IgnoredNoDefaultLot = 'expiry_ignored_no_default_lot';
+
+    /**
+     * Does this outcome need to be said out loud?
+     *
+     * True for every case where the date the operator supplied is NOT what the lot
+     * ended up carrying. `NotSupplied` and `Applied` are the silent ones: nothing
+     * was lost, so there is nothing to report.
+     */
+    public function isNoteworthy(): bool
+    {
+        return match ($this) {
+            self::NotSupplied, self::Applied, self::FilledExistingLot => false,
+            self::ConflictExistingLot, self::IgnoredNotBatchTracked, self::IgnoredNoDefaultLot => true,
+        };
+    }
 }
