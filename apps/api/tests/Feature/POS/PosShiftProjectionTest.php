@@ -419,29 +419,61 @@ final class PosShiftProjectionTest extends TestCase
     }
 
     /**
-     * Replay-safe on its own guard, not merely on the projector's: a second
-     * application must not swap the figures again or emit a second correction.
+     * Replay-safe on the RECONCILER's own guard, not merely on the projector's.
+     *
+     * The distinction is the whole point of this test, and the first version of
+     * it did not establish the claim: applying the SAME event twice
+     * short-circuits in `apply()` on the `z_session_events` idempotency probe,
+     * so `OrphanedShiftDeviceCloseReconciler::deviceCloseAlreadyApplied()` was
+     * never reached on the second call.
+     *
+     * Two DISTINCT fiscal events for the same shift is also the realistic shape
+     * — a close re-authored after a device restore — and it is the only one that
+     * gets past the projector's guard and into the reconciler's.
      */
-    public function test_a_late_device_session_close_is_replay_safe(): void
+    public function test_a_late_device_session_close_is_replay_safe_on_the_reconcilers_own_guard(): void
     {
         $orphanId = $this->orphanShiftLeftByForcedRelease();
         $this->closeOrphanViaCommand($orphanId);
 
         $projector = $this->app->make(ZSessionLifecycleProjection::class);
-        $closeEvent = $this->makeSessionCloseEvent($orphanId, sequenceNumber: 3);
-
         $this->app->make(CompanyContext::class)->clear();
-        $projector->apply($closeEvent);
-        $projector->apply($closeEvent);
 
+        $first = $this->makeSessionCloseEvent($orphanId, sequenceNumber: 3, payloadOverrides: [
+            'counted_cash' => '140.000',
+            'expected_cash' => '150.000',
+        ]);
+        // A SECOND, DISTINCT fiscal event id — makeSessionCloseEvent() mints a
+        // fresh one — so `apply()`'s per-event short-circuit does not fire and
+        // the reconciler's own guard is the thing under test.
+        $second = $this->makeSessionCloseEvent($orphanId, sequenceNumber: 4, payloadOverrides: [
+            'counted_cash' => '999.000',
+            'expected_cash' => '999.000',
+        ]);
+        $this->assertNotSame($first->id, $second->id, 'The two closes must be distinct fiscal events.');
+
+        $projector->apply($first);
+        $projector->apply($second);
+
+        $shift = Shift::query()->findOrFail($orphanId);
         $this->assertSame(
-            1,
-            DB::table('audit_events')
-                ->where('aggregate_type', 'Shift')
-                ->where('aggregate_id', $orphanId)
-                ->where('event_type', 'shift.orphan_device_close_applied')
-                ->count(),
+            0,
+            bccomp((string) $shift->actual_cash, '140', 4),
+            'The FIRST device close stands; a second must not overwrite it.',
         );
+
+        $rows = DB::table('audit_events')
+            ->where('aggregate_type', 'Shift')
+            ->where('aggregate_id', $orphanId)
+            ->where('event_type', 'shift.orphan_device_close_applied')
+            ->get();
+
+        $this->assertCount(1, $rows, 'Exactly one correction, from the first close through.');
+
+        /** @var array<string, mixed> $payload */
+        $payload = json_decode((string) $rows->first()->payload, true);
+        $this->assertSame($first->id, $payload['fiscal_event_id']);
+        $this->assertSame(0, bccomp((string) $payload['device_counted_cash'], '140', 4));
     }
 
     /**
