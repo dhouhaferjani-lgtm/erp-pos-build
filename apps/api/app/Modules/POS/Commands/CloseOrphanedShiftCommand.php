@@ -5,15 +5,18 @@ declare(strict_types=1);
 namespace App\Modules\POS\Commands;
 
 use App\Modules\Identity\Domain\User;
-use App\Modules\POS\Domain\CashDrawerOperation;
+use App\Modules\POS\Application\Services\OrphanedShiftDeviceCloseReconciler;
+use App\Modules\POS\Application\Services\ShiftExpectedCashService;
+use App\Modules\POS\Domain\DTOs\ShiftExpectedCashBreakdown;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Events\OrphanedShiftClosedByOperator;
+use App\Modules\POS\Domain\Exceptions\OrphanCloseProvenanceLostException;
+use App\Modules\POS\Domain\Exceptions\UnsignableCashMovementException;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Console\Command;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -45,17 +48,35 @@ use Illuminate\Support\Str;
  * `payload.open_shift_id` by a `terminal.released` audit row with
  * `payload.forced = true` on that same terminal. No such row, no close.
  *
- * THE MONEY (owner ruling, O-30). `expected_cash` = the shift's opening float
- * plus the cash movements booked to it; `actual_cash` = the same number;
- * `variance` = zero, with the operator's written reason recorded in
- * `pos_shifts.notes` and in the audit event. Nobody counted this drawer —
- * the drawer left the building with the device — so inventing a count would
- * fabricate a shortage or an overage against a cashier who was never asked for
- * one, and leaving the pair NULL is not available either: `pos_shifts_closed_logic`
- * demands `closed_at`/`closed_by`, and a NULL/NULL money pair would make the
- * shift's own row claim it closed with no cash position at all. Zero variance
- * with a written reason is the honest shape: it says "the books were left where
- * the drawer left them".
+ * THE MONEY (owner ruling, O-30; derivation corrected at gate r1).
+ * `expected_cash` comes from {@see ShiftExpectedCashService}, the SAME
+ * derivation the Z path uses — never computed here. `actual_cash` = the same
+ * number; `variance` = zero, with the operator's written reason recorded in
+ * `pos_shifts.notes` and in the audit event.
+ *
+ * Why the shared service and not a local sum: the movement table depends on the
+ * terminal's `fiscal_schema_version`, and getting that wrong does not fail — it
+ * returns a plausible figure from an EMPTY set. A v3 device shift books every
+ * drawer movement as a fiscal event in `pos_z_session_events` and writes no
+ * `pos_cash_drawer_operations` row at all (LEDGER ES-05), so the first version
+ * of this command — which summed the drawer table — produced a number that
+ * could never include the day's cash takings or the device's own drops. That
+ * number is not private to the row: `Nf525DataProvider::mapShift()` exports it
+ * to the NF525 JET as `EspecesAttendues` with `Ecart = 0`, attributed to the
+ * ORIGINAL cashier. A wrong figure there is not a labelling problem.
+ *
+ * Nobody counted this drawer — it left the building with the device — so
+ * inventing a count would fabricate a shortage or an overage against a cashier
+ * who was never asked for one, and leaving the pair NULL is not available
+ * either: `pos_shifts_closed_logic` demands `closed_at`/`closed_by`, and a
+ * NULL/NULL money pair would make the row claim it closed with no cash position
+ * at all. Zero variance against the derived position is the honest shape.
+ *
+ * A NEGATIVE derived position is refused outright
+ * ({@see self::EXIT_EXPECTED_CASH_NEGATIVE}): `pos_shifts_positive_amounts`
+ * would reject it as a raw 23514, and a drawer holding less than nothing means
+ * the movement set is incomplete or mis-signed — a question for a human, not a
+ * number to round up to zero.
  *
  * THE FISCAL CONSEQUENCE, stated plainly. Once `closed_at` is set, the NF525
  * JET export gains a `FERMETURE_CAISSE` for this shift
@@ -72,6 +93,14 @@ use Illuminate\Support\Str;
  * `shift.closed`; forging one here would tell an auditor a cashier counted a
  * drawer that no longer exists.
  *
+ * THE DEVICE STILL WINS IF IT COMES BACK. A close written here is provisional
+ * in one specific sense: if the "lost" device later syncs its own
+ * `SESSION_CLOSE`, `OrphanedShiftDeviceCloseReconciler` replaces the derived
+ * pair with the device's counted figures and records the replacement as
+ * `shift.orphan_device_close_applied`. Before gate r1 that was asserted here and
+ * was FALSE — the projection no-oped on an already-CLOSED shift and the device's
+ * real count was silently discarded.
+ *
  * INVOCATION — DRY RUN BY DEFAULT. `--apply` is what writes.
  *
  *   php artisan tenants:run pos:shift:close-orphaned \
@@ -87,7 +116,10 @@ use Illuminate\Support\Str;
  * EXIT CODES are typed so a runbook reader (and a deploy script) can branch:
  * 0 success or idempotent no-op · {@see self::INVALID} (2) usage error ·
  * {@see self::EXIT_SHIFT_NOT_FOUND} (3) · {@see self::EXIT_NOT_ORPHANED} (4) ·
- * {@see self::EXIT_CLOSED_BY_UNKNOWN} (5). Note that `tenants:run` DISCARDS the
+ * {@see self::EXIT_CLOSED_BY_UNKNOWN} (5) ·
+ * {@see self::EXIT_EXPECTED_CASH_NEGATIVE} (6) ·
+ * {@see self::EXIT_AUDIT_WRITE_FAILED} (7) ·
+ * {@see self::EXIT_MOVEMENTS_UNUSABLE} (8). Note that `tenants:run` DISCARDS the
  * child exit code, so the codes are for a direct invocation under an
  * already-bound tenant; under `tenants:run` read the printed verdict line.
  *
@@ -121,6 +153,26 @@ final class CloseOrphanedShiftCommand extends Command
     public const EXIT_CLOSED_BY_UNKNOWN = 5;
 
     /**
+     * The derived expected cash is NEGATIVE. `pos_shifts_positive_amounts`
+     * refuses to store it, and a drawer cannot hold less than nothing — so the
+     * movement set is telling us something is missing or mis-signed, and
+     * guessing a substitute would put a fabricated figure into the JET.
+     */
+    public const EXIT_EXPECTED_CASH_NEGATIVE = 6;
+
+    /**
+     * The close was rolled back because its audit provenance could not be
+     * confirmed. See {@see OrphanCloseProvenanceLostException}.
+     */
+    public const EXIT_AUDIT_WRITE_FAILED = 7;
+
+    /**
+     * The shift carries a cash movement the server cannot sign, so its expected
+     * cash cannot be derived at all. See {@see UnsignableCashMovementException}.
+     */
+    public const EXIT_MOVEMENTS_UNUSABLE = 8;
+
+    /**
      * @var string
      */
     protected $signature = 'pos:shift:close-orphaned
@@ -136,6 +188,7 @@ final class CloseOrphanedShiftCommand extends Command
 
     public function __construct(
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly ShiftExpectedCashService $expectedCashService,
     ) {
         parent::__construct();
     }
@@ -163,8 +216,7 @@ final class CloseOrphanedShiftCommand extends Command
             return self::INVALID;
         }
 
-        /** @var Shift|null $shift */
-        $shift = Shift::query()->with('terminal.company')->whereKey($shiftId)->first();
+        $shift = Shift::query()->whereKey($shiftId)->first();
         if ($shift === null) {
             $this->error(sprintf('No pos_shifts row %s in this tenant database. Is the right tenant bound?', $shiftId));
 
@@ -187,8 +239,26 @@ final class CloseOrphanedShiftCommand extends Command
             return self::SUCCESS;
         }
 
-        /** @var Terminal $terminal */
-        $terminal = $shift->terminal;
+        // `withTrashed()` (gate r1). `Terminal` uses SoftDeletes and
+        // `archive()` only refuses while an OPEN shift exists, so the late-sync
+        // population — a SESSION_OPEN synced after the release, projecting a
+        // shift onto a terminal that has since been archived — reaches here with
+        // `$shift->terminal` resolving to NULL through the default relation. The
+        // command's own job is to make that terminal usable again, so an
+        // archived row must still be READABLE; what must not happen is a
+        // TypeError where a typed refusal belongs.
+        /** @var Terminal|null $terminal */
+        $terminal = $shift->terminal()->withTrashed()->first();
+        if ($terminal === null) {
+            $this->error(sprintf(
+                'Shift %s points at terminal %s, which does not exist in this tenant even including archived '
+                .'rows. Nothing can authorise closing it.',
+                $shift->id,
+                $shift->terminal_id,
+            ));
+
+            return self::EXIT_NOT_ORPHANED;
+        }
 
         $release = $this->authorisingRelease($shift, $terminal);
         if ($release === null) {
@@ -222,11 +292,42 @@ final class CloseOrphanedShiftCommand extends Command
         $currency = (string) $terminal->company->currency;
         $scale = $this->scaleResolver->getScale($currency);
 
-        $expectedCash = $this->expectedCash($shift, $scale);
+        // NOT computed here (gate r1, CRITICAL 1). The one number this command
+        // invents comes from the SHARED derivation the Z path uses, which reads
+        // the movement table the terminal's fiscal schema version actually
+        // populates — `pos_z_session_events` for a v3 device shift,
+        // `pos_cash_drawer_operations` for a v2 one.
+        try {
+            $breakdown = $this->expectedCashService->breakdown($shift, $terminal, $currency);
+        } catch (UnsignableCashMovementException $e) {
+            // A typed refusal, not a stack trace: the operator reading this is
+            // mid-incident with a till out of service, and "which movement, and
+            // what do I do about it" is the only useful answer.
+            $this->error($e->getMessage());
+
+            return self::EXIT_MOVEMENTS_UNUSABLE;
+        }
+
+        if ($breakdown->isNegative()) {
+            $this->error(sprintf(
+                'Expected cash for shift %s derives NEGATIVE (%s) — %s. A drawer cannot hold less than nothing, '
+                .'and `pos_shifts_positive_amounts` refuses to store it, so the movement set is incomplete or '
+                .'mis-signed rather than merely surprising. Inspect the movements in %s for this shift before '
+                .'closing it; nothing was written.',
+                $shift->id,
+                $breakdown->expectedCash,
+                $breakdown->describe(),
+                $breakdown->movementSource->tableName(),
+            ));
+
+            return self::EXIT_EXPECTED_CASH_NEGATIVE;
+        }
+
+        $expectedCash = $breakdown->expectedCash;
         $countedCash = $expectedCash;
         $variance = CurrencyScale::bcformatStrict('0', $scale);
 
-        $this->renderPlan($shift, $terminal, $release, $currency, $expectedCash, $countedCash, $variance, $reason, $closedBy);
+        $this->renderPlan($shift, $terminal, $release, $breakdown, $countedCash, $variance, $reason, $closedBy);
 
         if (! $apply) {
             $this->newLine();
@@ -235,28 +336,19 @@ final class CloseOrphanedShiftCommand extends Command
             return self::SUCCESS;
         }
 
-        $closedAt = $this->write($shift, $reason, $closedBy, $expectedCash, $countedCash, $variance, $release);
+        try {
+            $closedAt = $this->write($shift, $terminal, $reason, $closedBy, $expectedCash, $countedCash, $variance, $release);
+        } catch (OrphanCloseProvenanceLostException $e) {
+            $this->error($e->getMessage());
+
+            return self::EXIT_AUDIT_WRITE_FAILED;
+        }
 
         if ($closedAt === null) {
             $this->info(sprintf('Shift %s was closed by another writer while this run was working. Nothing to do.', $shift->id));
 
             return self::SUCCESS;
         }
-
-        event(new OrphanedShiftClosedByOperator(
-            shiftId: $shift->id,
-            terminalId: $terminal->id,
-            terminalCode: $terminal->code,
-            companyId: $terminal->company_id,
-            cashierId: $shift->cashier_id,
-            reason: $reason,
-            closedBy: $closedBy,
-            releaseAuditEventId: $release['id'],
-            expectedCash: $expectedCash,
-            countedCash: $countedCash,
-            variance: $variance,
-            closedAt: $closedAt->toIso8601String(),
-        ));
 
         $this->newLine();
         $this->info(sprintf(
@@ -326,68 +418,40 @@ final class CloseOrphanedShiftCommand extends Command
     }
 
     /**
-     * Opening float + the cash movements booked to the shift.
-     *
-     * NOT `CashDrawerService::calculateExpectedCash()`,
-     * for two independent reasons. First, that method resolves its scale via a
-     * bare `getScale()` and would throw under `tenants:run`, where no
-     * CompanyContext is bound (rule 19). Second, it derives the float from an
-     * `OPENING` cash-drawer OPERATION, and a device-authored (v3) shift is
-     * projected straight into `pos_shifts` from `SESSION_OPEN` — the float
-     * lands in `pos_shifts.opening_cash` and there may be no `OPENING` row at
-     * all, so that formula would silently drop the float for exactly the
-     * population this command exists for.
-     *
-     * So: `opening_cash` is the float, and `OPENING` is EXCLUDED from the
-     * movement sum (counting both would double it on a legacy shift that has
-     * one). `CLOSING` is excluded because it is the closing count, not a
-     * movement — and an orphan has none by definition.
-     *
-     * @return numeric-string
-     */
-    private function expectedCash(Shift $shift, int $scale): string
-    {
-        // Intermediates run one digit wider than the column (rule 19) and are
-        // rounded once, at the end.
-        $working = CurrencyScale::bcformatStrict((string) $shift->opening_cash, $scale + 1);
-
-        /** @var Collection<int, CashDrawerOperation> $operations */
-        $operations = CashDrawerOperation::query()
-            ->where('shift_id', $shift->id)
-            ->whereNotIn('operation_type', ['OPENING', 'CLOSING'])
-            ->get();
-
-        foreach ($operations as $operation) {
-            $amount = CurrencyScale::bcformatStrict((string) $operation->amount, $scale + 1);
-
-            $working = match ($operation->operation_type) {
-                'SALE' => bcadd($working, $amount, $scale + 1),
-                'REFUND', 'DEPOSIT', 'PAYOUT' => bcsub($working, $amount, $scale + 1),
-                default => $working,
-            };
-        }
-
-        return CurrencyScale::bcformatStrict($working, $scale);
-    }
-
-    /**
      * The write, under a row lock, re-checking the status inside the
-     * transaction.
+     * transaction — and the audit row written in that SAME transaction.
      *
-     * The re-check is not ceremony: a device that was merely OFFLINE (not
-     * destroyed) can reconnect at any moment and its `SESSION_CLOSE` will close
-     * this very row through the projection. That close is the AUTHORITATIVE one
-     * — it carries a real counted drawer — so if it wins the race this run must
-     * stand down rather than overwrite it with a synthetic zero-variance pair.
+     * TWO guarantees, both learned from the r1 gate:
+     *
+     * 1. The status re-check is not ceremony. A device that was merely OFFLINE
+     *    (not destroyed) can reconnect at any moment, and its `SESSION_CLOSE`
+     *    carries a REAL counted drawer. If it wins the race this run stands down
+     *    rather than overwriting it with a synthetic zero-variance pair. If it
+     *    arrives AFTER this close, {@see OrphanedShiftDeviceCloseReconciler}
+     *    upgrades the row to the device's figures — the device is authoritative
+     *    either way.
+     *
+     * 2. The provenance is written HERE, not after the commit.
+     *    `DomainEventSubscriber::persistEvent()` catches every `Throwable` and
+     *    only logs, so a post-commit dispatch cannot report its own failure and
+     *    the command would print success over a closed fiscal shift with no
+     *    record of who closed it or why. The event is dispatched inside the
+     *    transaction (the subscriber is synchronous), the row is READ BACK, and
+     *    an absent row rolls the whole close back. An orphan that is still OPEN
+     *    is recoverable; an unexplained closed shift in a certified export is
+     *    not.
      *
      * @param  numeric-string  $expectedCash
      * @param  numeric-string  $countedCash
      * @param  numeric-string  $variance
      * @param  array{id: string, reason: string|null, occurred_at: string}  $release
      * @return Carbon|null the timestamp written, or null if another writer closed it first
+     *
+     * @throws OrphanCloseProvenanceLostException when the audit row cannot be confirmed
      */
     private function write(
         Shift $shift,
+        Terminal $terminal,
         string $reason,
         string $closedBy,
         string $expectedCash,
@@ -395,7 +459,7 @@ final class CloseOrphanedShiftCommand extends Command
         string $variance,
         array $release,
     ): ?Carbon {
-        return DB::transaction(function () use ($shift, $reason, $closedBy, $expectedCash, $countedCash, $variance, $release): ?Carbon {
+        return DB::transaction(function () use ($shift, $terminal, $reason, $closedBy, $expectedCash, $countedCash, $variance, $release): ?Carbon {
             /** @var Shift|null $locked */
             $locked = Shift::query()->whereKey($shift->id)->lockForUpdate()->first();
 
@@ -407,8 +471,8 @@ final class CloseOrphanedShiftCommand extends Command
 
             $marker = sprintf(
                 '[O-30 orphan close %s] Closed without the authoring device after a forced terminal release '
-                .'(audit_events.id %s). Cash was NOT counted: expected/counted are the opening float plus booked '
-                .'movements, variance 0. Reason: %s',
+                .'(audit_events.id %s). Cash was NOT counted: expected/counted are the shift\'s derived cash '
+                .'position, variance 0. Reason: %s',
                 $closedAt->toIso8601String(),
                 $release['id'],
                 $reason,
@@ -429,12 +493,37 @@ final class CloseOrphanedShiftCommand extends Command
                 'notes' => $notes,
             ]);
 
+            event(new OrphanedShiftClosedByOperator(
+                shiftId: $shift->id,
+                terminalId: $terminal->id,
+                terminalCode: $terminal->code,
+                companyId: $terminal->company_id,
+                cashierId: $shift->cashier_id,
+                reason: $reason,
+                closedBy: $closedBy,
+                releaseAuditEventId: $release['id'],
+                expectedCash: $expectedCash,
+                countedCash: $countedCash,
+                variance: $variance,
+                closedAt: $closedAt->toIso8601String(),
+            ));
+
+            $provenanceLanded = DB::table('audit_events')
+                ->where('company_id', $terminal->company_id)
+                ->where('event_type', 'shift.orphan_closed')
+                ->where('aggregate_type', 'Shift')
+                ->where('aggregate_id', $shift->id)
+                ->exists();
+
+            if (! $provenanceLanded) {
+                throw OrphanCloseProvenanceLostException::forShift($shift->id);
+            }
+
             return $closedAt;
         });
     }
 
     /**
-     * @param  numeric-string  $expectedCash
      * @param  array{id: string, reason: string|null, occurred_at: string}  $release
      * @param  numeric-string  $countedCash
      * @param  numeric-string  $variance
@@ -443,8 +532,7 @@ final class CloseOrphanedShiftCommand extends Command
         Shift $shift,
         Terminal $terminal,
         array $release,
-        string $currency,
-        string $expectedCash,
+        ShiftExpectedCashBreakdown $breakdown,
         string $countedCash,
         string $variance,
         string $reason,
@@ -457,19 +545,33 @@ final class CloseOrphanedShiftCommand extends Command
             ['shift_id', $shift->id],
             ['shift_number', (string) $shift->shift_number],
             ['terminal', sprintf('%s (%s)', $terminal->code, $terminal->id)],
+            ['terminal fiscal_schema_version', (string) $terminal->fiscal_schema_version],
             ['company_id', $terminal->company_id],
             ['cashier_id', $shift->cashier_id],
             ['opened_at', $shift->opened_at->toIso8601String()],
             ['authorising release', $release['id']],
             ['release occurred_at', $release['occurred_at']],
             ['release reason', $releaseReason ?? '(none recorded)'],
-            ['currency', $currency],
-            ['expected_cash (to write)', $expectedCash],
+            ['currency', $breakdown->currencyCode],
+            ['opening float', $breakdown->openingFloat],
+            ['cash sales (net of returns/change)', $breakdown->cashSales],
+            ['drawer movements', sprintf('%s (%d row(s))', $breakdown->movementsNet, $breakdown->movementCount)],
+            ['movement source', $breakdown->movementSource->tableName()],
+            ['expected_cash (to write)', $breakdown->expectedCash],
             ['actual_cash (to write)', $countedCash],
             ['variance (to write)', $variance],
             ['closed_by (to write)', $closedBy],
             ['reason (to record)', $reason],
         ]);
+
+        if ($breakdown->movementCount === 0) {
+            $this->warn(sprintf(
+                'No cash movements found for this shift in %s. That is normal for a shift that never had one — '
+                .'but if the till DID take drops or payouts, the figure above is short by whatever is missing. '
+                .'Check before applying.',
+                $breakdown->movementSource->tableName(),
+            ));
+        }
     }
 
     /**
