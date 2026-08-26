@@ -5,14 +5,18 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Taxation\Domain\Entities\DocumentTaxDetail;
 use App\Modules\Taxation\Domain\Entities\VatPeriod;
 use App\Modules\Taxation\Domain\Enums\VatPeriodStatus;
+use App\Modules\Taxation\Domain\Repositories\VatPeriodRepositoryInterface;
+use App\Modules\Taxation\Domain\Services\PostedLineTaxSnapshotBuilder;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -153,24 +157,103 @@ use Illuminate\Support\Facades\Schema;
  *   tax_base, tax_amount, tax_rate — captured before the delete, in BOTH
  *   dry-run and --apply, not merely a document reference list.
  * - DRY-RUN BY DEFAULT / --apply / --company / --include-filed, same
- *   contract as the main leg (--include-filed is expense-leg-only; the
- *   main invoice/credit-note leg does not delete rows and is unaffected).
+ *   contract as the main leg (--include-filed applies to the expense and
+ *   supplier-invoice legs; the main invoice/credit-note leg does not delete
+ *   rows and is unaffected).
+ *
+ * Supplier-document leg (B-19, 2026-08-26, owner sheet
+ * OWNER-SHEET-2026-08-21-first-client-session.md; scope widened in fix round 1):
+ * until B-19 neither `SupplierInvoicePostingService::post()` nor
+ * `SupplierCreditNotePostingService::post()` wrote a `document_tax_details` row,
+ * so every supplier invoice and supplier credit note posted before the fix
+ * carries ZERO rows and its deductible VAT is absent from the declaration for
+ * good (on the local demo tenant: 43 supplier invoices, 704.401 TND of VAT, 0
+ * rows). It cannot self-heal — `post()` is idempotent and a re-post returns at
+ * its step-3 no-op without ever rewriting. The main leg above cannot reach them
+ * either: its `whereIn(DocumentTaxDetail::select('document_id'))` scope
+ * deliberately requires an EXISTING row as proof the document once went through
+ * a real confirm(). This leg is the mirror image — purchase documents with NO
+ * row at all.
+ * - Scope: `supplier_invoice` and `supplier_credit_note` carrying NO
+ *   `document_tax_details` row, whose status is POSTED or PAID, or CANCELLED
+ *   WITH a surviving journal entry. DRAFT is excluded on the same ground the
+ *   writers snapshot at post() rather than at create(): an unposted purchase
+ *   document carries no journal entry, so declaring it would be a new
+ *   over-claim, not a remediation. CANCELLED-without-a-journal-entry is
+ *   excluded because it never posted. See `postedJournalEntryExists()` for why
+ *   cancelled-after-post is IN scope (short version: cancelling a non-fiscal
+ *   document reverses no GL and deletes no row, the repository has no status
+ *   predicate, and the SALES side behaves identically — so the leg matches live
+ *   behaviour instead of contradicting it).
+ * - Evidence-based, never invented, and never RECOMPUTED: the values come from
+ *   `PostedLineTaxSnapshotBuilder`, which aggregates the document's OWN
+ *   PERSISTED line amounts (base = Σ `line_total`, VAT = Σ
+ *   `recoverable_tax_amount` — the exact figure the GL posted to 4456), grouped
+ *   by each line's stored `tax_rate`. It is written through the same
+ *   `snapshotTaxDetails()` writer the two posting services use, so a backfilled
+ *   row and a natively-written row are byte-identical for the same document.
+ *   ORCHESTRATOR RULING (fix round 1): the declaration follows the LEDGER, not a
+ *   recomputation — `CreateSupplierInvoiceService` rounds per-line VAT half-up
+ *   while `TaxCalculationService` truncates once per rate bucket, and a declared
+ *   figure that cannot be tied to the 4456 movement is an unexplainable
+ *   reconciliation break at audit.
+ * - Idempotent by construction: the scope requires ZERO existing rows, so a
+ *   document drops out of the scan once written; and `snapshotTaxDetails()`
+ *   deletes-then-creates within a document anyway.
+ * - Guards: the SAME `PostedLineTaxSnapshotBuilder::divergences()` the live
+ *   writers apply, so this command and the posting services can never take
+ *   opposite positions on the same document. A document that fails is SKIPPED
+ *   and reported, never written. A document that is declarable but carries no
+ *   VAT at all (a purchase from a non-registered supplier) is counted in its own
+ *   "nothing to declare" bucket rather than as snapshotted — writing zero rows
+ *   would otherwise leave it re-entering scope on every future run.
+ * - Period safety, in three tiers:
+ *     * ALREADY-FILED period → SKIPPED in dry-run and `--apply` alike unless
+ *       `--include-filed` is passed (a new deductible row changes a figure
+ *       already sent to the DGI);
+ *     * CLOSED period that CANNOT be reopened (a successor period of the same
+ *       company is already closed or filed, so
+ *       `VatPeriodManagementService::reopenPeriod()` throws) → REFUSED
+ *       UNCONDITIONALLY, with an escalate-to-the-accountant message. There is no
+ *       flag, because there is no remedy: writing would leave that period's
+ *       materialised `total_input_vat` / `net_vat` / `credit_carried_forward`
+ *       permanently stale against a live report that regenerates from the new
+ *       row, silently corrupting the carry-forward chain into every successor;
+ *     * CLOSED and reopenable → written, with the reopen + re-close instruction
+ *       printed, exactly as the expense leg reports it.
+ * - Census: prints a TRUE PARTITION of the population (in scope / already
+ *   snapshotted / draft / cancelled-without-a-journal-entry / other status) and
+ *   the per-CURRENCY, per-rate base and VAT delta to the deductible side, so the
+ *   figure is reviewable before `--apply`. A supplier credit note's contribution
+ *   is reported NEGATIVE — it reduces the deduction — even though its stored row
+ *   is positive.
  */
 final class BackfillTaxDetailsCommand extends Command
 {
     protected $signature = 'vat:backfill-tax-details
                             {--apply : Actually rewrite/delete document_tax_details rows. Without this flag the command is a DRY-RUN (default) and writes nothing.}
                             {--company= : Optional company id to scope to a single company within the current tenant}
-                            {--include-filed : IMP-2 (2026-08-07 gate). Without this flag, expense-leg documents whose document_date falls inside an ALREADY-FILED VAT period are SKIPPED (never rewritten/deleted) even under --apply -- FILED is the highest-consequence case (see the FILED-PERIOD IMPACT section). Pass this flag to allow the mutation anyway.}';
+                            {--include-filed : IMP-2 (2026-08-07 gate) + B-19. Without this flag, expense-leg and supplier-document-leg documents whose document_date falls inside an ALREADY-FILED VAT period are SKIPPED (never rewritten/deleted/backfilled) even under --apply -- FILED is the highest-consequence case (see the FILED-PERIOD IMPACT section). Pass this flag to allow the mutation anyway. It does NOT unlock an unreopenable CLOSED period on the supplier-document leg: that refusal is unconditional.}';
 
-    protected $description = 'Recompute document_tax_details (tax_base, is_stamp_duty) for existing invoice/credit-note documents via the CURRENT TaxCalculationService pipeline, plus a separate expense leg that rewrites the declared VAT base to the full facial subtotal for partially-deductible expenses AND DELETES the row entirely for 0%-deductible expenses (I-3 expert-comptable ruling). DRY-RUN by default; documents inside an ALREADY-FILED VAT period are skipped unless --include-filed is also passed. Owner-executed only -- never wire into an automated deploy step. See docs/superpowers/reviews/2026-08-03-vat-declaration-gate.md V6, docs/superpowers/tickets/2026-08-06-expert-comptable-rulings-q2-q3.md, and docs/superpowers/reviews/2026-08-07-r2g-backend-gate.md.';
+    protected $description = 'Recompute document_tax_details (tax_base, is_stamp_duty) for existing invoice/credit-note documents via the CURRENT TaxCalculationService pipeline, plus a separate expense leg that rewrites the declared VAT base to the full facial subtotal for partially-deductible expenses AND DELETES the row entirely for 0%-deductible expenses (I-3 expert-comptable ruling), plus a supplier-document leg (B-19) that writes the MISSING input-VAT snapshot for posted supplier invoices and supplier credit notes that carry no document_tax_details row at all, deriving every value from the persisted line amounts the GL posted. DRY-RUN by default; documents inside an ALREADY-FILED VAT period are skipped unless --include-filed is also passed. Owner-executed only -- never wire into an automated deploy step. See docs/superpowers/reviews/2026-08-03-vat-declaration-gate.md V6, docs/superpowers/tickets/2026-08-06-expert-comptable-rulings-q2-q3.md, and docs/superpowers/reviews/2026-08-07-r2g-backend-gate.md.';
 
     public function __construct(
         private readonly TaxCalculationService $taxCalculationService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly PostedLineTaxSnapshotBuilder $postedLineTaxSnapshotBuilder,
+        private readonly VatPeriodRepositoryInterface $vatPeriodRepository,
     ) {
         parent::__construct();
     }
+
+    /**
+     * Memoises `hasClosedOrFiledSuccessor()` per VatPeriod id for the lifetime of
+     * one command run (fiscal r2 N-5). Period statuses cannot change mid-run:
+     * this command never reopens or closes a period.
+     *
+     * @var array<string, bool>
+     */
+    private array $successorProbeCache = [];
 
     public function handle(): int
     {
@@ -316,6 +399,7 @@ final class BackfillTaxDetailsCommand extends Command
         }
 
         $this->handleExpenseLeg($apply, $companyId, $includeFiled);
+        $this->handleSupplierInvoiceLeg($apply, $companyId, $includeFiled);
 
         return self::SUCCESS;
     }
@@ -646,6 +730,446 @@ final class BackfillTaxDetailsCommand extends Command
     }
 
     /**
+     * Supplier-document leg (B-19) — see the class docblock. Writes the MISSING
+     * input-VAT snapshot for supplier invoices AND supplier credit notes that
+     * carry no `document_tax_details` row at all, deriving every value from the
+     * document's own persisted line amounts through the same
+     * builder/writer pair the two posting services now use.
+     */
+    private function handleSupplierInvoiceLeg(bool $apply, ?string $companyId, bool $includeFiled): void
+    {
+        $this->line('');
+        $this->line('Supplier-document leg (B-19, missing deductible-VAT snapshot on posted supplier invoices and credit notes):');
+
+        // Full-population census FIRST, so the operator can see what the scope
+        // below deliberately leaves alone rather than inferring it. The buckets
+        // are a TRUE PARTITION of `total` (treasury gate F7: an earlier revision
+        // omitted Confirmed/Received entirely, so the printed numbers did not
+        // add up to the printed total).
+        $population = $this->supplierDocumentPopulation($companyId);
+        $this->line(sprintf(
+            '  Population: %d supplier invoice(s) + credit note(s) total = %d in scope + %d already snapshotted '
+            .'+ %d historical AR/AP opening (excluded: declared under the previous system) '
+            .'+ %d draft (excluded: no journal entry) + %d cancelled without a journal entry (excluded: never posted) '
+            .'+ %d in another status (excluded: not a posting state).',
+            $population['total'],
+            $population['in_scope'],
+            $population['already'],
+            $population['historical'],
+            $population['draft'],
+            $population['cancelled_no_je'],
+            $population['other'],
+        ));
+
+        $query = $this->supplierDocumentQuery($companyId)
+            ->whereNotIn('id', DocumentTaxDetail::query()->select('document_id')->distinct())
+            // N3 (treasury r2): AR/AP OPENING documents are Posted, carry no
+            // lines, and declare nothing — their VAT was declared under the
+            // PREVIOUS system. Before this they satisfied the scope, hit two
+            // divergence reasons at once and printed one "needs manual review"
+            // line each; on any tenant that ran an AP opening batch (a
+            // first-tenant launch flow) that noise IS the census S-23 and
+            // checklist §3 tell the owner to review before --apply.
+            ->where('is_historical', false)
+            ->where(function (Builder $scope): void {
+                $scope->whereIn('status', [DocumentStatus::Posted, DocumentStatus::Paid])
+                    ->orWhere(function (Builder $cancelled): void {
+                        $cancelled->where('status', DocumentStatus::Cancelled)
+                            ->whereExists($this->postedJournalEntryExists(...));
+                    });
+            })
+            ->with('lines');
+
+        $scanned = 0;
+        $touched = 0;
+        $nothingToDeclare = 0;
+        /** @var list<array{id: string, number: string, reason: string}> $skipped */
+        $skipped = [];
+        /** @var list<array{id: string, number: string, reason: string}> $unresolvableCurrency */
+        $unresolvableCurrency = [];
+        /** @var array<string, array{currency: string, rate: string, base: numeric-string, tax: numeric-string, count: int}> $wouldAdd */
+        $wouldAdd = [];
+        /** @var array<string, VatPeriod> $affectedClosedPeriods */
+        $affectedClosedPeriods = [];
+        /** @var array<string, VatPeriod> $affectedFiledPeriods */
+        $affectedFiledPeriods = [];
+        /** @var array<string, VatPeriod> $unreopenableClosedPeriods */
+        $unreopenableClosedPeriods = [];
+        /** @var array<string, array{closed: list<VatPeriod>, filed: list<VatPeriod>}> $periodLookupCache */
+        $periodLookupCache = [];
+
+        foreach ($query->cursor() as $document) {
+            $scanned++;
+
+            // SAME derivation and SAME guards the live writers apply
+            // (`PostedLineTaxSnapshotBuilder`), so this command and
+            // `SupplierInvoicePostingService` / `SupplierCreditNotePostingService`
+            // can never take opposite positions on the same document — the
+            // asymmetry both r1 gates flagged. Values come from the persisted
+            // line amounts the GL posted, never from a recomputation.
+            // N5 (treasury r2): resolve the scale from the document's own
+            // currency or refuse — never guess a default. Its own bucket, because
+            // it is a data defect of a different kind from a divergence.
+            $currencyRefusal = $this->postedLineTaxSnapshotBuilder->currencyRefusal($document);
+            if ($currencyRefusal !== null) {
+                $unresolvableCurrency[] = [
+                    'id' => (string) $document->id,
+                    'number' => (string) ($document->document_number ?? $document->id),
+                    'reason' => $currencyRefusal,
+                ];
+
+                continue;
+            }
+
+            $derived = $this->postedLineTaxSnapshotBuilder->build($document);
+            $divergences = $this->postedLineTaxSnapshotBuilder->divergences($document, $derived);
+
+            if ($divergences !== []) {
+                $skipped[] = [
+                    'id' => (string) $document->id,
+                    'number' => (string) ($document->document_number ?? $document->id),
+                    'reason' => implode('; ', $divergences),
+                ];
+
+                continue;
+            }
+
+            // A legitimately zero-VAT purchase (non-registered supplier, or a
+            // rate-less legacy document whose VAT header is also zero) has
+            // nothing to snapshot. Counted in its OWN bucket, never as
+            // "snapshotted": writing zero rows leaves it with no
+            // `document_tax_details` row, so it re-enters this scope on every
+            // subsequent run and would otherwise be reported as freshly written
+            // forever (treasury gate F6).
+            if ($this->postedLineTaxSnapshotBuilder->hasNothingToDeclare($derived)) {
+                $nothingToDeclare++;
+
+                continue;
+            }
+
+            // Period safety, checked BEFORE the write decision (IMP-2 shape).
+            $impact = $this->periodImpact(
+                $document,
+                $affectedClosedPeriods,
+                $affectedFiledPeriods,
+                $periodLookupCache,
+            );
+
+            if ($impact['filed'] && ! $includeFiled) {
+                $skipped[] = [
+                    'id' => (string) $document->id,
+                    'number' => (string) ($document->document_number ?? $document->id),
+                    'reason' => 'document_date falls inside an ALREADY-FILED VAT period -- backfill refused; pass --include-filed to override',
+                ];
+
+                continue;
+            }
+
+            // B-3: a CLOSED period that cannot be reopened is refused
+            // UNCONDITIONALLY — there is no flag for it, because there is no
+            // remedy the product can offer. Writing would leave that period's
+            // materialised totals permanently stale against a live report that
+            // now regenerates from the new row.
+            if ($impact['unreopenableClosed'] !== []) {
+                foreach ($impact['unreopenableClosed'] as $period) {
+                    $unreopenableClosedPeriods[$period->id] = $period;
+                }
+                $skipped[] = [
+                    'id' => (string) $document->id,
+                    'number' => (string) ($document->document_number ?? $document->id),
+                    'reason' => sprintf(
+                        'document_date falls inside CLOSED period [%s], which CANNOT be reopened (a successor period is already closed or filed) '
+                        .'-- backfill refused: the period totals could never be refreshed',
+                        implode(', ', array_map(static fn (VatPeriod $p): string => (string) $p->label, $impact['unreopenableClosed'])),
+                    ),
+                ];
+
+                continue;
+            }
+
+            if ($apply) {
+                DB::transaction(function () use ($document, $derived): void {
+                    $this->taxCalculationService->snapshotTaxDetails($document, $derived);
+                });
+            }
+            $touched++;
+
+            $currency = (string) ($document->currency ?? '');
+            $currencyScale = $this->postedLineTaxSnapshotBuilder->scaleFor($document);
+            foreach ($derived->taxes as $tax) {
+                /** @var numeric-string $taxBase */
+                $taxBase = $tax->base;
+                /** @var numeric-string $taxAmount */
+                $taxAmount = $tax->amount;
+                // A supplier CREDIT NOTE row is stored positive but REDUCES the
+                // declaration, so the census reports its contribution negative —
+                // otherwise the printed delta would not be the delta.
+                if ($document->type === DocumentType::SupplierCreditNote) {
+                    $taxBase = bcsub('0', $taxBase, $currencyScale);
+                    $taxAmount = bcsub('0', $taxAmount, $currencyScale);
+                }
+                $this->accumulateByCurrency(
+                    $wouldAdd,
+                    $currency,
+                    $currencyScale,
+                    CurrencyScale::bcformat($tax->rate ?? '0', 2),
+                    $taxBase,
+                    $taxAmount,
+                );
+            }
+        }
+
+        $this->line(sprintf(
+            '  Scanned %d in-scope document(s). %s %d. Nothing to declare (zero VAT) %d. Unresolvable currency %d. Skipped %d.',
+            $scanned,
+            $apply ? 'Snapshotted' : 'Would snapshot',
+            $touched,
+            $nothingToDeclare,
+            count($unresolvableCurrency),
+            count($skipped),
+        ));
+
+        if ($unresolvableCurrency !== []) {
+            $this->warn('  Unresolvable currency -- these documents carry no currency, so no figure on them can be compared or declared:');
+            foreach ($unresolvableCurrency as $row) {
+                $this->warn(sprintf('    - %s (%s): %s', $row['number'], $row['id'], $row['reason']));
+            }
+        }
+
+        $this->line(sprintf('  %s to the declaration DEDUCTIBLE (input) side:', $apply ? 'ADDED' : 'WOULD ADD'));
+        if ($wouldAdd === []) {
+            $this->line('    (nothing)');
+        } else {
+            // Grouped by CURRENCY, and totalled at that currency's own scale
+            // (treasury gate F8): a single `bcadd(..., 3)` across TND (scale 3)
+            // and EUR (scale 2) prints a number that means nothing, and this is
+            // exactly the figure the owner eyeballs before `--apply`.
+            ksort($wouldAdd);
+            /** @var array<string, numeric-string> $totalsByCurrency */
+            $totalsByCurrency = [];
+            /** @var array<string, int> $scaleByCurrency */
+            $scaleByCurrency = [];
+            foreach ($wouldAdd as $bucket) {
+                $this->line(sprintf(
+                    '    %s rate %s%%: base %s, VAT %s, %d row(s)',
+                    $bucket['currency'] === '' ? '(no currency)' : $bucket['currency'],
+                    $bucket['rate'],
+                    $bucket['base'],
+                    $bucket['tax'],
+                    $bucket['count'],
+                ));
+                $scale = $scaleByCurrency[$bucket['currency']] ?? $this->scaleResolver->getScaleSafe(
+                    $bucket['currency'] === '' ? null : $bucket['currency'],
+                    3,
+                );
+                $scaleByCurrency[$bucket['currency']] = $scale;
+                $totalsByCurrency[$bucket['currency']] = bcadd(
+                    $totalsByCurrency[$bucket['currency']] ?? '0',
+                    $bucket['tax'],
+                    $scale,
+                );
+            }
+            foreach ($totalsByCurrency as $currency => $total) {
+                $this->line(sprintf(
+                    '    TOTAL deductible VAT delta (%s): %s',
+                    $currency === '' ? 'no currency' : $currency,
+                    $total,
+                ));
+            }
+        }
+
+        foreach ($skipped as $row) {
+            $this->warn(sprintf(
+                '  SKIPPED %s (%s): %s -- needs manual review, NOT backfilled',
+                $row['number'],
+                $row['id'],
+                $row['reason'],
+            ));
+        }
+
+        if ($unreopenableClosedPeriods !== []) {
+            $this->line('');
+            $this->error('  UNREOPENABLE CLOSED-PERIOD IMPACT (supplier-document leg) -- these periods are CLOSED and a later period of the same company is already closed or filed, so reopenPeriod() WILL REFUSE them. Affected documents are SKIPPED in every mode; there is no flag to override, because the period totals could never be refreshed afterwards:');
+            foreach ($unreopenableClosedPeriods as $period) {
+                $this->error(sprintf(
+                    '    - %s (%s, %s to %s): remedy is a manual correction with the accountant (reopen the LATEST closed/filed period first, or amend). ESCALATE before taking any action.',
+                    $period->label,
+                    $period->id,
+                    $period->period_start->toDateString(),
+                    $period->period_end->toDateString(),
+                ));
+            }
+        }
+
+        $reopenableClosed = array_filter(
+            $affectedClosedPeriods,
+            static fn (VatPeriod $p): bool => ! isset($unreopenableClosedPeriods[$p->id]),
+        );
+
+        if ($reopenableClosed !== []) {
+            $this->line('');
+            $this->warn('  CLOSED-PERIOD IMPACT (supplier-document leg) -- vat_period_breakdowns is a snapshot taken at period close and is now STALE for:');
+            foreach ($reopenableClosed as $period) {
+                $this->warn(sprintf(
+                    '    - %s (%s, %s to %s): reopen this period then re-close it to refresh its breakdowns. This command does NOT do so automatically.',
+                    $period->label,
+                    $period->id,
+                    $period->period_start->toDateString(),
+                    $period->period_end->toDateString(),
+                ));
+            }
+        }
+
+        if ($affectedFiledPeriods !== []) {
+            $this->line('');
+            $this->error(sprintf(
+                '  FILED-PERIOD IMPACT (supplier-document leg) -- these periods are ALREADY FILED; a backfilled deductible row CHANGES a figure already sent to the DGI. Affected documents are SKIPPED unless --include-filed is passed%s:',
+                $includeFiled ? ' -- THIS RUN PASSED --include-filed, so affected documents WERE written' : '',
+            ));
+            foreach ($affectedFiledPeriods as $period) {
+                $this->error(sprintf(
+                    '    - %s (%s, %s to %s): remedy is a filed-declaration correction (amended filing) -- ESCALATE TO THE ACCOUNTANT before taking any action.',
+                    $period->label,
+                    $period->id,
+                    $period->period_start->toDateString(),
+                    $period->period_end->toDateString(),
+                ));
+            }
+        }
+
+        if (! $apply && $touched > 0) {
+            $this->info('Dry-run only for the supplier-document leg -- re-run with --apply to write it for real.');
+        }
+    }
+
+    /**
+     * Whole supplier-invoice + supplier-credit-note population, split into
+     * buckets that PARTITION the total: every document lands in exactly one.
+     *
+     * @return array{total: int, in_scope: int, already: int, historical: int, draft: int, cancelled_no_je: int, other: int}
+     */
+    private function supplierDocumentPopulation(?string $companyId): array
+    {
+        $snapshotted = DocumentTaxDetail::query()->select('document_id')->distinct();
+
+        $withoutSnapshot = fn (): Builder => $this->supplierDocumentQuery($companyId)
+            ->whereNotIn('id', DocumentTaxDetail::query()->select('document_id')->distinct());
+
+        return [
+            'total' => $this->supplierDocumentQuery($companyId)->count(),
+            'already' => $this->supplierDocumentQuery($companyId)->whereIn('id', $snapshotted)->count(),
+            'historical' => $withoutSnapshot()->where('is_historical', true)->count(),
+            'in_scope' => $withoutSnapshot()
+                ->where('is_historical', false)
+                ->where(function (Builder $scope): void {
+                    $scope->whereIn('status', [DocumentStatus::Posted, DocumentStatus::Paid])
+                        ->orWhere(function (Builder $cancelled): void {
+                            $cancelled->where('status', DocumentStatus::Cancelled)
+                                ->whereExists($this->postedJournalEntryExists(...));
+                        });
+                })
+                ->count(),
+            'draft' => $withoutSnapshot()->where('is_historical', false)->where('status', DocumentStatus::Draft)->count(),
+            'cancelled_no_je' => $withoutSnapshot()
+                ->where('is_historical', false)
+                ->where('status', DocumentStatus::Cancelled)
+                ->whereNotExists($this->postedJournalEntryExists(...))
+                ->count(),
+            'other' => $withoutSnapshot()
+                ->where('is_historical', false)
+                ->whereNotIn('status', [
+                    DocumentStatus::Posted,
+                    DocumentStatus::Paid,
+                    DocumentStatus::Draft,
+                    DocumentStatus::Cancelled,
+                ])
+                ->count(),
+        ];
+    }
+
+    /**
+     * @return Builder<Document>
+     */
+    private function supplierDocumentQuery(?string $companyId): Builder
+    {
+        $query = Document::query()->whereIn('type', [
+            DocumentType::SupplierInvoice,
+            DocumentType::SupplierCreditNote,
+        ]);
+        if ($companyId !== null) {
+            $query->where('company_id', $companyId);
+        }
+
+        return $query;
+    }
+
+    /**
+     * "This document actually reached the ledger" — a journal entry whose
+     * `source_type` is the document's own type and whose `source_id` is its id.
+     *
+     * B-19 fix round 1 (treasury gate F4 / addendum B). A supplier invoice
+     * cancelled AFTER posting keeps its GL entry:
+     * `DocumentPostingService::cancel()` flips the status but reverses nothing
+     * for a non-fiscal document (`AccountingService::reverseDocumentGl()` returns
+     * null for anything that is not an Invoice / CreditNote), and it deletes no
+     * `document_tax_details` row. The repository applies no status predicate, so
+     * a document cancelled after this merge KEEPS DECLARING its deduction.
+     *
+     * Verified: the SALES side behaves identically (a cancelled invoice on the
+     * demo tenant still carries its tax-detail row and is still declared), so
+     * this is a pre-existing, cross-type policy — not something to diverge on for
+     * the purchase side alone. An earlier revision of this leg excluded ALL
+     * cancelled documents, which meant the same economic state got two opposite
+     * answers depending only on whether the document was posted before or after
+     * this merge. The leg now MATCHES the live behaviour: cancelled-with-a-ledger-
+     * entry is in scope (its 4456 debit is still in the books, so declaring it
+     * ties to the ledger), cancelled-without-one is not (it never posted).
+     *
+     * The underlying gap — that cancelling a posted supplier invoice should
+     * reverse the GL and drop the snapshot — is filed as its own ledger row; it
+     * is a cancel-path fix, not a backfill fix, and fixing it here would leave
+     * the writer and the backfill disagreeing again.
+     */
+    private function postedJournalEntryExists(\Illuminate\Database\Query\Builder $query): void
+    {
+        $query->select(DB::raw('1'))
+            ->from('journal_entries')
+            ->whereColumn('journal_entries.source_id', 'documents.id')
+            ->whereColumn('journal_entries.source_type', 'documents.type');
+    }
+
+    /**
+     * Census accumulator that keeps CURRENCY in the bucket key and sums at that
+     * currency's own scale (treasury gate F8).
+     *
+     * @param  array<string, array{currency: string, rate: string, base: numeric-string, tax: numeric-string, count: int}>  $accumulator
+     * @param  numeric-string  $base
+     * @param  numeric-string  $amount
+     */
+    private function accumulateByCurrency(
+        array &$accumulator,
+        string $currency,
+        int $scale,
+        string $rate,
+        string $base,
+        string $amount,
+    ): void {
+        $key = $currency.'|'.$rate;
+        if (! isset($accumulator[$key])) {
+            $accumulator[$key] = [
+                'currency' => $currency,
+                'rate' => $rate,
+                'base' => '0',
+                'tax' => '0',
+                'count' => 0,
+            ];
+        }
+        $accumulator[$key]['base'] = bcadd($accumulator[$key]['base'], $base, $scale);
+        $accumulator[$key]['tax'] = bcadd($accumulator[$key]['tax'], $amount, $scale);
+        $accumulator[$key]['count']++;
+    }
+
+    /**
      * I-2 (2026-08-06 gate) + m-7/m-8 (2026-08-06 re-gate): look up every
      * VatPeriod overlapping a candidate expense's document_date whose
      * status is CLOSED or FILED, and merge every match into the
@@ -676,6 +1200,40 @@ final class BackfillTaxDetailsCommand extends Command
         array &$affectedFiledPeriods,
         array &$periodLookupCache,
     ): bool {
+        return $this->periodImpact($document, $affectedClosedPeriods, $affectedFiledPeriods, $periodLookupCache)['filed'];
+    }
+
+    /**
+     * The richer form the supplier-document leg needs: which covering CLOSED
+     * periods can actually be REOPENED, and which cannot.
+     *
+     * B-19 fix round 1 (fiscal gate B-3). The expense leg prints "reopen this
+     * period then re-close it" for every CLOSED period, but
+     * `VatPeriodManagementService::reopenPeriod()` THROWS
+     * ('Cannot reopen: a successor period is already closed or filed') whenever
+     * `hasClosedOrFiledSuccessor()` is true — and that check matches ANY later
+     * period of the company. A tenant that has closed February cannot reopen
+     * January, so on that tenant the printed remedy is unexecutable: the CLOSED
+     * period's materialised `total_input_vat` / `net_vat` /
+     * `credit_carried_forward` would stay stale while the live report regenerates
+     * from the new rows, silently corrupting the carry-forward chain into every
+     * successor period.
+     *
+     * This leg therefore REFUSES to write into an unreopenable CLOSED period, the
+     * same way it refuses a FILED one, rather than writing and printing an
+     * impossible instruction.
+     *
+     * @param  array<string, VatPeriod>  $affectedClosedPeriods
+     * @param  array<string, VatPeriod>  $affectedFiledPeriods
+     * @param  array<string, array{closed: list<VatPeriod>, filed: list<VatPeriod>}>  $periodLookupCache
+     * @return array{filed: bool, unreopenableClosed: list<VatPeriod>}
+     */
+    private function periodImpact(
+        Document $document,
+        array &$affectedClosedPeriods,
+        array &$affectedFiledPeriods,
+        array &$periodLookupCache,
+    ): array {
         $documentDate = $document->document_date->toDateString();
         $cacheKey = $document->company_id.'|'.$documentDate;
 
@@ -701,14 +1259,28 @@ final class BackfillTaxDetailsCommand extends Command
             $periodLookupCache[$cacheKey] = ['closed' => $closed, 'filed' => $filed];
         }
 
+        /** @var list<VatPeriod> $unreopenableClosed */
+        $unreopenableClosed = [];
         foreach ($periodLookupCache[$cacheKey]['closed'] as $period) {
             $affectedClosedPeriods[$period->id] = $period;
+            // Memoised per period id (fiscal r2 N-5): the period lookup above was
+            // already cached per (company|date), but this probe still ran once per
+            // closed period PER DOCUMENT — N queries on a large backfill.
+            if (! isset($this->successorProbeCache[$period->id])) {
+                $this->successorProbeCache[$period->id] = $this->vatPeriodRepository->hasClosedOrFiledSuccessor($period);
+            }
+            if ($this->successorProbeCache[$period->id]) {
+                $unreopenableClosed[] = $period;
+            }
         }
         foreach ($periodLookupCache[$cacheKey]['filed'] as $period) {
             $affectedFiledPeriods[$period->id] = $period;
         }
 
-        return $periodLookupCache[$cacheKey]['filed'] !== [];
+        return [
+            'filed' => $periodLookupCache[$cacheKey]['filed'] !== [],
+            'unreopenableClosed' => $unreopenableClosed,
+        ];
     }
 
     /**

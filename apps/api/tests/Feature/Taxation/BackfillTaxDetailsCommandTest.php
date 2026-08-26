@@ -26,7 +26,9 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\CountriesSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\Testing\PendingCommand;
 use Tests\TestCase;
 
@@ -1328,6 +1330,488 @@ final class BackfillTaxDetailsCommandTest extends TestCase
         ]);
 
         return $document;
+    }
+
+    // ---------------------------------------------------------------------
+    // ---------------------------------------------------------------------
+    // Supplier-document leg (B-19) — the MISSING-row mirror of the main leg.
+    //
+    // The main leg only reaches documents that ALREADY carry a
+    // document_tax_details row (proof of a real confirm()). Supplier invoices
+    // and supplier credit notes posted before B-19 carry NONE, so they need
+    // their own scope.
+    // ---------------------------------------------------------------------
+
+    public function test_supplier_leg_dry_run_reports_the_missing_snapshot_without_writing(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierDocument(DocumentStatus::Posted);
+
+        $output = $this->runBackfillAndCaptureOutput([]);
+
+        $this->assertStringContainsString('Supplier-document leg', $output);
+        $this->assertStringContainsString('Would snapshot 1', $output);
+        $this->assertStringContainsString('WOULD ADD', $output);
+        $this->assertStringContainsString('TOTAL deductible VAT delta (TND): 38.000', $output);
+        $this->assertSame(
+            0,
+            DocumentTaxDetail::where('document_id', $invoice->id)->count(),
+            'Dry-run must write nothing.',
+        );
+    }
+
+    public function test_supplier_leg_apply_writes_the_snapshot_from_the_posted_line_amounts(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierDocument(DocumentStatus::Posted);
+
+        $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $details = DocumentTaxDetail::where('document_id', $invoice->id)->get();
+        $this->assertCount(1, $details);
+        $this->assertSame('19.00', (string) $details[0]->tax_rate);
+        $this->assertSame('200.000', (string) $details[0]->tax_base);
+        $this->assertSame('38.000', (string) $details[0]->tax_amount);
+        $this->assertFalse((bool) $details[0]->is_stamp_duty);
+    }
+
+    /**
+     * Fix round 1, ORCHESTRATOR RULING: the two live invoices the previous
+     * revision REFUSED (SI-2026-0008 / SI-2026-0020, `10 x 12.601 x 19% =
+     * 23.9419`) must now backfill, because the declaration follows the LEDGER.
+     * The old guard compared the engine's bucket truncation (23.941) against the
+     * stored half-up figure (23.942) and refused; the derivation now simply
+     * declares the stored figure.
+     */
+    public function test_supplier_leg_backfills_the_sub_millime_case_the_engine_would_have_refused(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierDocument(
+            DocumentStatus::Posted,
+            subtotal: '126.010',
+            lineTaxAmount: '23.942',
+        );
+
+        $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $details = DocumentTaxDetail::where('document_id', $invoice->id)->get();
+        $this->assertCount(1, $details, 'The half-up ledger figure is declarable — it is what 4456 carries.');
+        $this->assertSame('23.942', (string) $details[0]->tax_amount);
+        $this->assertSame('126.010', (string) $details[0]->tax_base);
+    }
+
+    public function test_supplier_leg_also_reaches_a_paid_supplier_invoice(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierDocument(DocumentStatus::Paid);
+
+        $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(1, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+    }
+
+    public function test_supplier_leg_reaches_a_posted_supplier_credit_note(): void
+    {
+        $creditNote = $this->createUnsnapshottedSupplierDocument(
+            DocumentStatus::Posted,
+            type: DocumentType::SupplierCreditNote,
+        );
+
+        $output = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $details = DocumentTaxDetail::where('document_id', $creditNote->id)->get();
+        $this->assertCount(1, $details);
+        // Stored POSITIVE (the repository negates at aggregation) ...
+        $this->assertSame('38.000', (string) $details[0]->tax_amount);
+        // ... but the census reports its true effect on the declaration.
+        $this->assertStringContainsString('TOTAL deductible VAT delta (TND): -38.000', $output);
+    }
+
+    public function test_supplier_leg_apply_is_idempotent_on_a_second_run(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierDocument(DocumentStatus::Posted);
+
+        $this->runBackfillAndCaptureOutput(['--apply' => true]);
+        $second = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(1, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+        $this->assertStringContainsString('Scanned 0 in-scope document(s)', $second);
+    }
+
+    public function test_supplier_leg_excludes_a_draft_supplier_invoice(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierDocument(DocumentStatus::Draft);
+
+        $output = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(
+            0,
+            DocumentTaxDetail::where('document_id', $invoice->id)->count(),
+            'A draft supplier invoice carries no journal entry — backfilling it would be a new over-claim.',
+        );
+        $this->assertStringContainsString('1 draft (excluded: no journal entry)', $output);
+    }
+
+    /**
+     * Treasury gate F4 / addendum B. `DocumentPostingService::cancel()` neither
+     * reverses the GL nor deletes the snapshot for a non-fiscal document, and the
+     * repository has no status predicate — so a supplier invoice cancelled AFTER
+     * posting keeps declaring its deduction, and the SALES side behaves the same
+     * way. An earlier revision of this leg excluded all cancelled documents,
+     * which gave the same economic state two opposite answers depending only on
+     * whether it was posted before or after the merge. The leg now MATCHES the
+     * live behaviour.
+     */
+    public function test_supplier_leg_includes_a_cancelled_document_that_still_carries_its_journal_entry(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierDocument(DocumentStatus::Cancelled, withJournalEntry: true);
+
+        $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(
+            1,
+            DocumentTaxDetail::where('document_id', $invoice->id)->count(),
+            'Its 4456 debit is still in the books, so declaring it ties to the ledger.',
+        );
+    }
+
+    public function test_supplier_leg_excludes_a_cancelled_document_that_never_posted(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierDocument(DocumentStatus::Cancelled);
+
+        $output = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(0, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+        $this->assertStringContainsString('1 cancelled without a journal entry (excluded: never posted)', $output);
+    }
+
+    /**
+     * Treasury gate F5 / addendum C: the declared figure is Σ
+     * `recoverable_tax_amount` (the 4456 leg), so a line carrying a
+     * NON-recoverable share must be refused rather than have the full line VAT
+     * claimed against a ledger that capitalised part of it.
+     */
+    public function test_supplier_leg_refuses_a_line_with_a_non_recoverable_share(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierDocument(
+            DocumentStatus::Posted,
+            recoverableTaxAmount: '30.000',
+            nonRecoverableTaxAmount: '8.000',
+        );
+
+        $output = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(0, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+        $this->assertStringContainsString(
+            'deductible line VAT (Σ recoverable_tax_amount) 30.000 != stored line_tax_amount 38.000',
+            $output,
+        );
+        $this->assertStringContainsString('NOT backfilled', $output);
+    }
+
+    public function test_supplier_leg_skips_a_lineless_document(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierDocument(DocumentStatus::Posted, withLine: false);
+
+        $output = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(0, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+        $this->assertStringContainsString('no document lines', $output);
+    }
+
+    /**
+     * Treasury gate F6: VAT on the header with no rate on any line has no bucket
+     * to be declared in — refuse, rather than write zero rows and re-report the
+     * same document as "snapshotted" on every future run.
+     */
+    public function test_supplier_leg_refuses_a_document_whose_vat_has_no_rate_bucket(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierDocument(DocumentStatus::Posted, taxRate: null);
+
+        $output = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(0, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+        $this->assertStringContainsString('no line carries a tax_rate', $output);
+    }
+
+    /**
+     * The counterpart: a genuinely zero-VAT purchase (non-registered supplier) is
+     * NOT a defect. It is reported in its own bucket and never counted as
+     * snapshotted, so the census converges instead of churning forever.
+     */
+    public function test_supplier_leg_reports_a_zero_vat_document_as_nothing_to_declare(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierDocument(
+            DocumentStatus::Posted,
+            lineTaxAmount: '0.000',
+            recoverableTaxAmount: '0.000',
+            taxRate: null,
+        );
+
+        $output = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(0, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+        $this->assertStringContainsString('Nothing to declare (zero VAT) 1', $output);
+        $this->assertStringContainsString('Would snapshot 0', $this->runBackfillAndCaptureOutput([]));
+    }
+
+    public function test_supplier_leg_refuses_a_filed_period_document_without_include_filed(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierDocument(DocumentStatus::Posted);
+        $this->createVatPeriod(VatPeriodStatus::Filed);
+
+        $output = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(0, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+        $this->assertStringContainsString('ALREADY-FILED VAT period -- backfill refused', $output);
+        $this->assertStringContainsString('FILED-PERIOD IMPACT (supplier-document leg)', $output);
+    }
+
+    public function test_supplier_leg_apply_with_include_filed_writes_into_a_filed_period(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierDocument(DocumentStatus::Posted);
+        $this->createVatPeriod(VatPeriodStatus::Filed);
+
+        $this->runBackfillAndCaptureOutput(['--apply' => true, '--include-filed' => true]);
+
+        $this->assertSame(1, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+    }
+
+    public function test_supplier_leg_writes_into_a_reopenable_closed_period_with_the_reopen_instruction(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierDocument(DocumentStatus::Posted);
+        $this->createVatPeriod(VatPeriodStatus::Closed);
+
+        $output = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(1, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+        $this->assertStringContainsString('CLOSED-PERIOD IMPACT (supplier-document leg)', $output);
+        $this->assertStringContainsString('reopen this period then re-close it', $output);
+    }
+
+    /**
+     * Fiscal gate B-3. `VatPeriodManagementService::reopenPeriod()` THROWS when
+     * `hasClosedOrFiledSuccessor()` is true, so on a tenant that has already
+     * closed February the printed "reopen January" remedy is unexecutable. The
+     * leg must refuse rather than write and print an impossible instruction —
+     * unconditionally: there is no flag, because there is no remedy.
+     */
+    public function test_supplier_leg_refuses_a_closed_period_that_cannot_be_reopened(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierDocument(DocumentStatus::Posted);
+        $this->createVatPeriod(VatPeriodStatus::Closed);
+        // A LATER period that is already closed — reopenPeriod() will refuse.
+        $this->createVatPeriod(VatPeriodStatus::Closed, '2026-02-01', '2026-02-28', 'February 2026');
+
+        $output = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(0, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+        $this->assertStringContainsString('CANNOT be reopened', $output);
+        $this->assertStringContainsString('UNREOPENABLE CLOSED-PERIOD IMPACT (supplier-document leg)', $output);
+        $this->assertStringNotContainsString('reopen this period then re-close it', $output);
+    }
+
+    public function test_supplier_leg_refuses_an_unreopenable_closed_period_even_with_include_filed(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierDocument(DocumentStatus::Posted);
+        $this->createVatPeriod(VatPeriodStatus::Closed);
+        $this->createVatPeriod(VatPeriodStatus::Filed, '2026-02-01', '2026-02-28', 'February 2026');
+
+        $this->runBackfillAndCaptureOutput(['--apply' => true, '--include-filed' => true]);
+
+        $this->assertSame(0, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+    }
+
+    public function test_supplier_leg_census_buckets_partition_the_population(): void
+    {
+        $this->createUnsnapshottedSupplierDocument(DocumentStatus::Posted);
+        $this->createUnsnapshottedSupplierDocument(DocumentStatus::Draft);
+        $this->createUnsnapshottedSupplierDocument(DocumentStatus::Cancelled);
+        $this->createUnsnapshottedSupplierDocument(DocumentStatus::Confirmed);
+        $this->createUnsnapshottedSupplierDocument(
+            DocumentStatus::Posted,
+            withLine: false,
+            withJournalEntry: true,
+            isHistorical: true,
+        );
+
+        $output = $this->runBackfillAndCaptureOutput([]);
+
+        // 5 total = 1 in scope + 0 already + 1 historical + 1 draft
+        //           + 1 cancelled-no-JE + 1 other.
+        $this->assertStringContainsString(
+            'Population: 5 supplier invoice(s) + credit note(s) total = 1 in scope + 0 already snapshotted '
+            .'+ 1 historical AR/AP opening (excluded: declared under the previous system) '
+            .'+ 1 draft (excluded: no journal entry) + 1 cancelled without a journal entry (excluded: never posted) '
+            .'+ 1 in another status (excluded: not a posting state).',
+            $output,
+        );
+    }
+
+    /**
+     * N3 (treasury r2). `ArApOpeningService` mints `supplier_invoice` /
+     * `supplier_credit_note` documents that are Posted, `is_historical = true`
+     * and carry NO lines. They satisfied the leg's scope, hit two divergence
+     * reasons at once, and printed one "needs manual review" line each — on a
+     * tenant that ran an AP opening batch (a first-tenant launch flow) that IS
+     * the census the owner is told to review before --apply.
+     *
+     * A historical opening's VAT was declared under the previous system and is by
+     * definition not declarable here, so `is_historical` is an unambiguous
+     * discriminator: own bucket, out of scope, no warning.
+     */
+    public function test_supplier_leg_excludes_historical_ar_ap_opening_documents(): void
+    {
+        $opening = $this->createUnsnapshottedSupplierDocument(
+            DocumentStatus::Posted,
+            withLine: false,
+            withJournalEntry: true,
+            isHistorical: true,
+        );
+
+        $output = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(0, DocumentTaxDetail::where('document_id', $opening->id)->count());
+        $this->assertStringContainsString('1 historical AR/AP opening (excluded: declared under the previous system)', $output);
+        $this->assertStringNotContainsString('needs manual review', $output);
+        $this->assertStringContainsString('Scanned 0 in-scope document(s)', $output);
+    }
+
+    /**
+     * N5 (treasury r2). `getScaleSafe(null, 3)` returns its fallback only on an
+     * UnboundCompanyContextException, so an empty-currency document resolved
+     * scale 3 in the console backfill and the company's own scale in the HTTP
+     * writer — the shared implementation returning two different answers, which
+     * is the exact property this builder exists to make impossible. RULED: an
+     * empty/NULL document currency is a CHECK FAILURE, never a default-3 guess.
+     */
+    public function test_supplier_leg_refuses_a_document_whose_currency_cannot_resolve_a_scale(): void
+    {
+        $invoice = $this->createUnsnapshottedSupplierDocument(DocumentStatus::Posted, currency: '');
+
+        $output = $this->runBackfillAndCaptureOutput(['--apply' => true]);
+
+        $this->assertSame(0, DocumentTaxDetail::where('document_id', $invoice->id)->count());
+        $this->assertStringContainsString('Unresolvable currency', $output);
+        $this->assertStringContainsString('the monetary scale cannot be resolved', $output);
+    }
+
+    /**
+     * N8 (treasury r2). F8 exists to stop a single fixed-scale total being
+     * printed across currencies; nothing exercised two currencies producing two
+     * TOTAL lines until now.
+     */
+    public function test_supplier_leg_census_totals_each_currency_separately(): void
+    {
+        $this->createUnsnapshottedSupplierDocument(DocumentStatus::Posted);
+        $this->createUnsnapshottedSupplierDocument(
+            DocumentStatus::Posted,
+            subtotal: '100.00',
+            lineTaxAmount: '20.00',
+            taxRate: '20.00',
+            currency: 'EUR',
+        );
+
+        $output = $this->runBackfillAndCaptureOutput([]);
+
+        $this->assertStringContainsString('TOTAL deductible VAT delta (TND): 38.000', $output);
+        $this->assertStringContainsString('TOTAL deductible VAT delta (EUR): 20.00', $output);
+        $this->assertStringContainsString('TND rate 19.00%', $output);
+        $this->assertStringContainsString('EUR rate 20.00%', $output);
+    }
+
+    /**
+     * A supplier invoice / credit note as the pre-B-19 posting services left it:
+     * real lines carrying an explicit tax_rate and the recoverable amount the GL
+     * posted, a coherent header, and ZERO document_tax_details rows.
+     */
+    private function createUnsnapshottedSupplierDocument(
+        DocumentStatus $status,
+        DocumentType $type = DocumentType::SupplierInvoice,
+        string $subtotal = '200.000',
+        string $lineTaxAmount = '38.000',
+        ?string $recoverableTaxAmount = null,
+        string $nonRecoverableTaxAmount = '0.000',
+        ?string $taxRate = '19.00',
+        bool $withLine = true,
+        bool $withJournalEntry = false,
+        bool $isHistorical = false,
+        string $currency = 'TND',
+    ): Document {
+        $recoverable = $recoverableTaxAmount ?? $lineTaxAmount;
+
+        $supplier = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Backfill Test Supplier '.uniqid(),
+            'type' => PartnerType::Supplier,
+        ]);
+
+        $document = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $supplier->id,
+            'type' => $type,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => $status,
+            'document_number' => 'SD-LEGACY-'.strtoupper(substr(uniqid(), -6)),
+            'document_date' => '2026-01-10',
+            'currency' => $currency,
+            'is_historical' => $isHistorical,
+            'subtotal' => $withLine ? $subtotal : '0.000',
+            'line_tax_amount' => $withLine ? $lineTaxAmount : '0.000',
+            'stamp_duty_amount' => '0.000',
+            'tax_amount' => $withLine ? $lineTaxAmount : '0.000',
+            'total' => $withLine ? bcadd($subtotal, $lineTaxAmount, 3) : '0.000',
+        ]);
+
+        if ($withLine) {
+            DocumentLine::create([
+                'document_id' => $document->id,
+                'line_number' => 1,
+                'description' => 'Purchased item',
+                'quantity' => '1',
+                'unit_price' => $subtotal,
+                'tax_rate' => $taxRate,
+                'tax_amount' => $lineTaxAmount,
+                'tax_recoverable' => bccomp($recoverable, '0', 3) !== 0,
+                'recoverable_tax_amount' => $recoverable,
+                'non_recoverable_tax_amount' => $nonRecoverableTaxAmount,
+                'line_total' => $subtotal,
+            ]);
+        }
+
+        if ($withJournalEntry) {
+            DB::table('journal_entries')->insert([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'entry_number' => 'JE-'.strtoupper(substr(uniqid(), -8)),
+                'entry_date' => '2026-01-10',
+                'description' => 'B-19 backfill fixture',
+                'source_type' => $type->value,
+                'source_id' => $document->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        return $document;
+    }
+
+    private function createVatPeriod(
+        VatPeriodStatus $status,
+        string $start = '2026-01-01',
+        string $end = '2026-01-31',
+        string $label = 'January 2026',
+    ): VatPeriod {
+        return VatPeriod::create([
+            'company_id' => $this->company->id,
+            'country_code' => 'TN',
+            'period_type' => 'MONTHLY',
+            'label' => $label,
+            'period_start' => $start,
+            'period_end' => $end,
+            'status' => $status,
+            'closed_at' => now(),
+        ]);
     }
 
     private function createLegacyInvoice(): Document

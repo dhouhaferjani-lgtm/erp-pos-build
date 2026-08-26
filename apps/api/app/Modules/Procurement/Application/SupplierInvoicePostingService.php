@@ -13,7 +13,10 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
+use App\Modules\Taxation\Domain\Services\PostedLineTaxSnapshotBuilder;
+use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\Taxation\PeriodBackdatingGuardInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -49,6 +52,9 @@ final class SupplierInvoicePostingService
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly ReceiptLineConsumptionPlanner $receiptPlanner,
         private readonly DocumentStatusService $documentStatus,
+        private readonly TaxCalculationService $taxCalculationService,
+        private readonly PostedLineTaxSnapshotBuilder $postedLineTaxSnapshotBuilder,
+        private readonly PeriodBackdatingGuardInterface $periodBackdatingGuard,
     ) {}
 
     /**
@@ -72,6 +78,49 @@ final class SupplierInvoicePostingService
                 throw new \DomainException('PENDING_RECEIPT_UNLINKED');
             }
             $this->assertInvoiceFirstApproval($supplierInvoice, $actorId);
+
+            // B-19 fix round 1 (fiscal gate B-1 / treasury gate F2). Posting is
+            // now a DECLARATION mutation, not merely a ledger one: step 9 writes
+            // the deductible row the TN VAT declaration reads. `document_date`
+            // comes straight from the operator's `issue_date`
+            // (`CreateSupplierInvoiceService`, validated as a bare
+            // `['required','date']`), so before this guard a supplier invoice
+            // dated into a CLOSED or FILED month could be posted with no refusal
+            // at all — silently changing a figure already sent to the DGI.
+            //
+            // The asymmetry was the tell: this lane's own backfill, a deliberate
+            // admin action, REFUSES exactly this without `--include-filed`, while
+            // the ordinary product action did it unguarded.
+            //
+            // Same guard, same contract, same refusal codes as the return-note
+            // path (`ReturnNoteService::confirmWithin()`) — its only other caller.
+            // Both period tables are ABSENT-PERMITS, so no tenant that has never
+            // closed a period is affected. Runs BEFORE the PO/receipt-line
+            // `lockForUpdate()` below so a refusal never holds those rows for the
+            // rest of the transaction.
+            //
+            // ...but AFTER the idempotency pre-probe immediately above. FIX ROUND 2
+            // (N1, both r2 gates): the guard used to sit ahead of it, so a retried
+            // `POST /supplier-invoices/{id}/post` on an ALREADY-POSTED invoice
+            // started returning a typed 422 once its month closed — refusing a call
+            // that writes nothing, for a declaration reason. The controller
+            // deliberately performs no status pre-check precisely so retries reach
+            // the no-op (`SupplierInvoiceController::post()`), and the AP-opening
+            // population (`ArApOpeningService` mints Posted `HIST-SINV`
+            // `supplier_invoice` documents whose journal entry carries
+            // `source_type = 'supplier_invoice'`) is back-dated BY CONSTRUCTION —
+            // exactly the documents most likely to sit inside a closed period.
+            // The sibling arm already ordered it this way
+            // (`SupplierCreditNotePostingService` step 0b, before its guard).
+            if ($this->hasClearingEntry($supplierInvoice)) {
+                return;
+            }
+
+            $this->periodBackdatingGuard->assertBackdatingPeriodIsOpen(
+                $supplierInvoice->company_id,
+                $supplierInvoice->document_date,
+                (string) $supplierInvoice->document_number,
+            );
 
             // 2. Lock the matched PO lines (serializes concurrent posts sharing a PO line).
             $poLineIds = $supplierInvoice->lines
@@ -115,13 +164,12 @@ final class SupplierInvoicePostingService
                 ->get()
                 ->keyBy('id');
 
-            // 3. Idempotency no-op: a clearing entry already exists for this invoice.
-            $alreadyPosted = JournalEntry::query()
-                ->where('source_type', 'supplier_invoice')
-                ->where('source_id', $supplierInvoice->id)
-                ->where('company_id', $supplierInvoice->company_id)
-                ->exists();
-            if ($alreadyPosted) {
+            // 3. Idempotency no-op, re-checked UNDER THE LOCK. The pre-probe above
+            //    is a plain unlocked `exists()` that keeps a retry cheap and keeps
+            //    the period guard off a call that writes nothing; THIS one is the
+            //    authoritative check — it runs after the PO/receipt-line locks, so
+            //    a concurrent post that committed in between is seen here.
+            if ($this->hasClearingEntry($supplierInvoice)) {
                 return;
             }
 
@@ -296,7 +344,111 @@ final class SupplierInvoicePostingService
                 'balance_due' => $supplierInvoice->total,
                 'match_status' => $matchStatus,
             ]);
+
+            // 9. Snapshot the deductible (input) VAT to `document_tax_details`.
+            //
+            // B-19 (P0, owner sheet OWNER-SHEET-2026-08-21-first-client-session.md):
+            // this call did not exist, so a posted supplier invoice carried ZERO
+            // tax-detail rows and its input VAT was silently absent from the
+            // Tunisian VAT declaration (local demo tenant, 2026-08-26: 43 supplier
+            // invoices, 704.401 TND of VAT, 0 rows). The other half of the same
+            // defect — `EloquentVatDataRepository` not listing `supplier_invoice`
+            // among the declared document types — is fixed in the same change; one
+            // half alone still declares nothing.
+            //
+            // WHY HERE AND NOT AT CREATION. `document_tax_details` is the
+            // declaration's ONLY population filter: the repository applies no
+            // status predicate, so "a row exists" IS the system's proxy for "this
+            // document is fiscally recognised". Every other arm therefore writes on
+            // the transition that makes the document real, never on draft creation
+            // — `InvoiceController::confirm()`, `CreditNoteController::confirm()`,
+            // `QuoteController::confirm()`, `SalesOrderService::confirm()`,
+            // `PurchaseOrderService::confirm()`, `DeliveryNoteService::confirm()`,
+            // `ReturnNoteService::confirmWithFiscalChain()` and, on the purchase
+            // side, `ExpenseService::post()`. Snapshotting a supplier invoice at
+            // creation would declare a deduction for every UNPOSTED draft (31
+            // drafts / 390.517 TND on the demo tenant alone) against invoices that
+            // carry no journal entry at all — a worse defect than the one closed
+            // here. `post()` is also where the GR/IR clearing entry is stamped with
+            // `document_date`, which is the exact date the declaration keys on
+            // (`EloquentVatDataRepository::aggregateByRateAndDirection()`).
+            //
+            // `snapshotTaxDetails()` deletes this document's rows before
+            // rewriting them, so a re-post can never double-count — and the
+            // idempotency no-op at step 3 means a genuine re-post does not even
+            // reach here.
+            //
+            // FIX ROUND 1 — ORCHESTRATOR RULING: the snapshot is DERIVED FROM THE
+            // PERSISTED LINE AMOUNTS (`PostedLineTaxSnapshotBuilder`), never
+            // recomputed through `TaxCalculationService::calculateDocumentTaxes()`.
+            // The GL clearing entry above debits Σ `recoverable_tax_amount`
+            // (`:266-273`), which `CreateSupplierInvoiceService` rounded HALF-UP
+            // per line; the engine truncates once per rate bucket, so the two
+            // disagree whenever the true line VAT has a non-zero 4th decimal
+            // (live: `10 × 12.601 × 19% = 23.9419` → ledger 23.942, engine
+            // 23.941). A declared figure that cannot be tied to the 4456 movement
+            // is an unexplainable reconciliation break at audit, so the ledger
+            // wins. The WRITER is still the shared
+            // `TaxCalculationService::snapshotTaxDetails()`.
+            //
+            // `divergences()` is the SAME check the backfill leg applies, so the
+            // live writer and the admin backfill can never take opposite
+            // positions on the same document. It throws rather than logging: a
+            // document whose lines do not reconstruct its own header, or whose
+            // deductible share differs from its gross line VAT, must not enter
+            // the declaration silently.
+            $supplierInvoice->load(['company', 'partner', 'lines']);
+            // FIX ROUND 2 (N5): the scale must come from the document's OWN
+            // currency. An empty one is a check failure, never a default-3
+            // guess — otherwise this shared implementation could resolve a
+            // different scale here than in the console backfill, and every
+            // comparison in divergences() is taken at that scale.
+            $currencyRefusal = $this->postedLineTaxSnapshotBuilder->currencyRefusal($supplierInvoice);
+            if ($currencyRefusal !== null) {
+                throw new \DomainException(sprintf(
+                    'Supplier invoice [%s] cannot be posted: %s.',
+                    $supplierInvoice->document_number ?? $supplierInvoice->id,
+                    $currencyRefusal,
+                ));
+            }
+
+            $derived = $this->postedLineTaxSnapshotBuilder->build($supplierInvoice);
+            $divergences = $this->postedLineTaxSnapshotBuilder->divergences($supplierInvoice, $derived);
+            if ($divergences !== []) {
+                throw new \DomainException(sprintf(
+                    'Supplier invoice [%s] cannot be posted: its deductible VAT is not declarable — %s.',
+                    $supplierInvoice->document_number ?? $supplierInvoice->id,
+                    implode('; ', $divergences),
+                ));
+            }
+
+            $this->taxCalculationService->snapshotTaxDetails($supplierInvoice, $derived);
         });
+    }
+
+    /**
+     * Does this supplier invoice already carry its GR/IR clearing entry?
+     *
+     * Called twice on purpose: once unlocked as a cheap pre-probe before the
+     * period guard (fix round 2 / N1 — a retry must stay a no-op instead of
+     * 422-ing on a closed period), and once under the PO/receipt-line locks as
+     * the authoritative idempotency check.
+     *
+     * `@phpstan-impure` is load-bearing, not a silencer: the second call is NOT
+     * redundant. A concurrent post can commit between the two, and the locks
+     * taken in between are precisely what makes the second read authoritative.
+     * Without the tag PHPStan remembers the first result and reports the second
+     * `if` as always false.
+     *
+     * @phpstan-impure
+     */
+    private function hasClearingEntry(Document $supplierInvoice): bool
+    {
+        return JournalEntry::query()
+            ->where('source_type', 'supplier_invoice')
+            ->where('source_id', $supplierInvoice->id)
+            ->where('company_id', $supplierInvoice->company_id)
+            ->exists();
     }
 
     /**

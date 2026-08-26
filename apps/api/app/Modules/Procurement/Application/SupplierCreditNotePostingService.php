@@ -18,7 +18,10 @@ use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Procurement\Domain\Enums\SupplierCreditNoteReason;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Taxation\Domain\Services\PostedLineTaxSnapshotBuilder;
+use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\Taxation\PeriodBackdatingGuardInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Collection as SupportCollection;
@@ -116,6 +119,9 @@ final class SupplierCreditNotePostingService
         private readonly SupplierGoodsReturnNoteService $goodsReturnNoteService,
         private readonly ProductCostLock $costLock,
         private readonly DocumentStatusService $documentStatus,
+        private readonly TaxCalculationService $taxCalculationService,
+        private readonly PostedLineTaxSnapshotBuilder $postedLineTaxSnapshotBuilder,
+        private readonly PeriodBackdatingGuardInterface $periodBackdatingGuard,
     ) {}
 
     /**
@@ -183,6 +189,28 @@ final class SupplierCreditNotePostingService
                     $creditNote->status->value,
                 ));
             }
+
+            // 0c. VAT-period guard (B-19 fix round 1, fiscal gate B-1 / treasury
+            //     gate F2). Step 8 below now writes a `document_tax_details` row
+            //     that REDUCES declared deductible VAT, so posting a back-dated
+            //     credit note into a CLOSED or FILED month changes a declaration
+            //     figure — the same hazard the supplier-invoice arm is guarded
+            //     against, in the opposite direction. Same shared contract, same
+            //     refusal codes, same absent-permits semantics.
+            //
+            //     Placement: AFTER the step-0b Posted-with-entry early return (a
+            //     re-post writes nothing, so it must never be refused for a
+            //     declaration reason — the invoice arm had this backwards until
+            //     fix round 2), and before the ADVISORY/ROW locks taken from step 1
+            //     onward. Note the credit note's OWN row lock is already held from
+            //     `:144-147`; the transaction rolls back immediately on a refusal,
+            //     so nothing is held meaningfully — an earlier revision of this
+            //     comment claimed no lock was held at all, which was wrong.
+            $this->periodBackdatingGuard->assertBackdatingPeriodIsOpen(
+                $creditNote->company_id,
+                $creditNote->document_date,
+                (string) $creditNote->document_number,
+            );
 
             // 1. Lock ORDER (stock-GL gate P2-4). The product advisory locks come
             //    FIRST, in one sorted acquire, BEFORE any document_lines /
@@ -373,6 +401,53 @@ final class SupplierCreditNotePostingService
         // 7. Draft → Posted, through the single write path (N-6 fix round r1,
         // fiscal gate F-6).
         $this->documentStatus->transition($creditNote, DocumentStatus::Posted);
+
+        // 8. Snapshot the credit note's input VAT to `document_tax_details`.
+        //
+        // B-19 fix round 1 (treasury gate F3 / addendum A). Before B-19 both
+        // purchase arms declared zero — a symmetric UNDER-claim, which is the
+        // DGI-safe direction. B-19 made the invoice arm declare its full
+        // deduction; leaving this arm silent would have turned that into a NET
+        // OVER-CLAIM for any tenant that returns goods to a supplier, because
+        // step 6 above CREDITS Σ `recoverable_tax_amount` back out of 4456
+        // while the declaration went on claiming it. Both halves ship together.
+        //
+        // Rows are stored POSITIVE, exactly as a sales credit note's are: a
+        // `document_tax_details` row always reads "this much base/tax on this
+        // document" and is never sign-overloaded. `EloquentVatDataRepository`
+        // negates `supplier_credit_note` at AGGREGATION on the INPUT side, the
+        // same shape it already applies to `credit_note` on the OUTPUT side.
+        //
+        // Derived from the PERSISTED line amounts, never recomputed — the same
+        // orchestrator ruling and the same shared builder the supplier-invoice
+        // arm uses (`SupplierInvoicePostingService` step 9): the figure declared
+        // is the figure credited to 4456 at `:344-350`.
+        $creditNote->load(['company', 'partner', 'lines']);
+        // FIX ROUND 2 (N5): the scale must come from the document's OWN
+        // currency. An empty one is a check failure, never a default-3
+        // guess — otherwise this shared implementation could resolve a
+        // different scale here than in the console backfill, and every
+        // comparison in divergences() is taken at that scale.
+        $currencyRefusal = $this->postedLineTaxSnapshotBuilder->currencyRefusal($creditNote);
+        if ($currencyRefusal !== null) {
+            throw new \DomainException(sprintf(
+                'Supplier credit note [%s] cannot be posted: %s.',
+                $creditNote->document_number ?? $creditNote->id,
+                $currencyRefusal,
+            ));
+        }
+
+        $derived = $this->postedLineTaxSnapshotBuilder->build($creditNote);
+        $divergences = $this->postedLineTaxSnapshotBuilder->divergences($creditNote, $derived);
+        if ($divergences !== []) {
+            throw new \DomainException(sprintf(
+                'Supplier credit note [%s] cannot be posted: its input VAT reversal is not declarable — %s.',
+                $creditNote->document_number ?? $creditNote->id,
+                implode('; ', $divergences),
+            ));
+        }
+
+        $this->taxCalculationService->snapshotTaxDetails($creditNote, $derived);
     }
 
     /**

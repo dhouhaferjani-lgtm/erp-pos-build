@@ -43,8 +43,10 @@ use App\Modules\Procurement\Domain\ProcurementPolicy;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
+use App\Modules\Taxation\Domain\Entities\VatPeriod;
 use App\Modules\Taxation\Domain\Enums\TaxApplicationLevel;
 use App\Modules\Taxation\Domain\Enums\TaxType;
+use App\Modules\Taxation\Domain\Enums\VatPeriodStatus;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -55,6 +57,7 @@ use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Spatie\Permission\Models\Permission;
@@ -1406,6 +1409,183 @@ final class SupplierInvoiceApiTest extends TestCase
         /** @var Document $si */
         $si = Document::find($siId);
         $this->assertSame(DocumentStatus::Posted, $si->status);
+    }
+
+    // -------------------------------------------------------------------------
+    // B-19 fix round 2 — the VAT-period guard on post()
+    // -------------------------------------------------------------------------
+
+    /**
+     * N1 (both r2 gates). The controller performs NO status pre-check, precisely
+     * so a retried POST reaches the service's idempotency no-op. The period guard
+     * must not break that: a re-post writes nothing, so refusing it for a
+     * declaration reason refuses a declaration-neutral call.
+     */
+    public function test_reposting_an_already_posted_invoice_is_still_a_no_op_after_the_period_closes(): void
+    {
+        $siId = $this->storeAndPostSupplierInvoice();
+
+        $this->createVatPeriod(VatPeriodStatus::Closed);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$siId}/post")
+            ->assertOk();
+
+        $this->assertSame(
+            1,
+            JournalEntry::query()->where('source_type', 'supplier_invoice')->where('source_id', $siId)->count(),
+            'The re-post must remain a no-op, not create a second entry.',
+        );
+    }
+
+    /**
+     * N2 (both r2 gates). RULED: keep the refusal — never write into a closed or
+     * filed declaration — but make it ACTIONABLE. There is no update/PATCH/delete
+     * route for a supplier invoice (`Procurement/Presentation/routes.php`), so a
+     * bare refusal strands the document with no visible way forward.
+     */
+    public function test_posting_into_a_closed_period_returns_an_actionable_422(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '100.000');
+        app(GeneralLedgerService::class)->createGoodsReceiptGrIrEntry(
+            $this->company->id, Str::uuid()->toString(), '10.0000', '100.000', 'TND',
+        );
+
+        $siId = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '10.0000', '100.000', '19.00'))
+            ->json('data.id');
+
+        $period = $this->createVatPeriod(VatPeriodStatus::Closed);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$siId}/post");
+
+        $response->assertStatus(422);
+
+        // The typed refusal survives (it must NOT flatten into POSTING_BLOCKED).
+        // The shared vocabulary is `ReturnPeriodRefusalCode` — the RETURN_ prefix
+        // is the return-note path's naming, kept verbatim rather than forked so
+        // both surfaces stay on one code set.
+        $this->assertSame('RETURN_PERIOD_CLOSED', $response->json('error.code'));
+        $this->assertSame($period->label, $response->json('error.period_label'));
+
+        // ... and it now names the period and both remedies.
+        $this->assertSame($period->id, $response->json('error.period.id'));
+        $this->assertSame($period->period_start->toDateString(), $response->json('error.period.period_start'));
+        $this->assertSame($period->period_end->toDateString(), $response->json('error.period.period_end'));
+        $this->assertTrue(
+            $response->json('error.period.reopenable'),
+            'No successor period is closed or filed, so reopenPeriod() would succeed.',
+        );
+
+        $remedies = $response->json('error.remedies');
+        $this->assertIsArray($remedies);
+        $this->assertContains('reopen_period', array_column($remedies, 'action'));
+        $this->assertContains('recreate_with_open_issue_date', array_column($remedies, 'action'));
+    }
+
+    public function test_a_filed_period_refusal_reports_the_period_as_not_reopenable(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '100.000');
+        app(GeneralLedgerService::class)->createGoodsReceiptGrIrEntry(
+            $this->company->id, Str::uuid()->toString(), '10.0000', '100.000', 'TND',
+        );
+        $siId = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '10.0000', '100.000', '19.00'))
+            ->json('data.id');
+
+        $this->createVatPeriod(VatPeriodStatus::Filed);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$siId}/post");
+
+        $response->assertStatus(422);
+        $this->assertSame('RETURN_PERIOD_FILED', $response->json('error.code'));
+        $this->assertFalse($response->json('error.period.reopenable'), 'reopenPeriod() refuses a FILED period.');
+        $this->assertNotContains('reopen_period', array_column($response->json('error.remedies'), 'action'));
+    }
+
+    /**
+     * A CLOSED period whose successor is already closed cannot be reopened
+     * (`VatPeriodManagementService::reopenPeriod()` throws), so the refusal must
+     * not offer a remedy the system would reject.
+     */
+    public function test_a_closed_period_with_a_closed_successor_is_reported_as_not_reopenable(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '100.000');
+        app(GeneralLedgerService::class)->createGoodsReceiptGrIrEntry(
+            $this->company->id, Str::uuid()->toString(), '10.0000', '100.000', 'TND',
+        );
+        $siId = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '10.0000', '100.000', '19.00'))
+            ->json('data.id');
+
+        $this->createVatPeriod(VatPeriodStatus::Closed);
+        $this->createVatPeriod(
+            VatPeriodStatus::Closed,
+            now()->addMonth()->startOfMonth()->toDateString(),
+            now()->addMonth()->endOfMonth()->toDateString(),
+            'Successor',
+        );
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$siId}/post");
+
+        $response->assertStatus(422);
+        $this->assertFalse($response->json('error.period.reopenable'));
+        $this->assertNotContains('reopen_period', array_column($response->json('error.remedies'), 'action'));
+    }
+
+    private function storeAndPostSupplierInvoice(): string
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '100.000');
+        app(GeneralLedgerService::class)->createGoodsReceiptGrIrEntry(
+            $this->company->id, Str::uuid()->toString(), '10.0000', '100.000', 'TND',
+        );
+
+        $siId = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '10.0000', '100.000', '19.00'))
+            ->json('data.id');
+        $this->assertIsString($siId);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$siId}/post")
+            ->assertOk();
+
+        return $siId;
+    }
+
+    private function createVatPeriod(
+        VatPeriodStatus $status,
+        ?string $start = null,
+        ?string $end = null,
+        string $label = 'Current period',
+    ): VatPeriod {
+        // This suite's setUp does not seed `countries`, and `vat_periods`
+        // carries a FK on `country_code`.
+        if (DB::table('countries')->where('code', 'TN')->doesntExist()) {
+            DB::table('countries')->insert([
+                'code' => 'TN',
+                'name' => 'Tunisia',
+                'currency_code' => 'TND',
+                'is_active' => true,
+            ]);
+        }
+
+        return VatPeriod::create([
+            'company_id' => $this->company->id,
+            'country_code' => 'TN',
+            'period_type' => 'MONTHLY',
+            'label' => $label,
+            'period_start' => $start ?? now()->startOfMonth()->toDateString(),
+            'period_end' => $end ?? now()->endOfMonth()->toDateString(),
+            'status' => $status,
+            'closed_at' => now(),
+        ]);
     }
 
     // -------------------------------------------------------------------------

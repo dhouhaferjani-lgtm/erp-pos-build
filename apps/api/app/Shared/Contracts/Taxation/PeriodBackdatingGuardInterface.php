@@ -64,4 +64,42 @@ interface PeriodBackdatingGuardInterface
      * @return string|null The refusal code, or NULL when the date is permitted.
      */
     public function backdatingRefusalCode(string $companyId, CarbonInterface $date): ?string;
+
+    /**
+     * The refusal WITH the period it names and whether that period can actually
+     * be reopened — everything a caller needs to render an ACTIONABLE refusal.
+     *
+     * B-19 fix round 2 (N2, both r2 gates). The return-note path can afford a
+     * bare refusal because its own docblock's premise holds there: the remedy is
+     * a single `PATCH` of the draft's `document_date`. That premise does NOT
+     * transfer to a supplier invoice — `Procurement/Presentation/routes.php`
+     * exposes no update, no PATCH and no delete — so a bare refusal strands the
+     * document with no visible way forward, and the refusal blocks the whole
+     * `Dr 408 / Dr 4456 / Cr 401` recognition, a bookkeeping obligation that
+     * exists independently of the declaration. The refusal is still correct (a
+     * closed or filed declaration must never be rewritten); it just has to say
+     * what the operator can do about it.
+     *
+     * `reopenable` is the honest answer, not an optimistic one:
+     * `VatPeriodManagementService::reopenPeriod()` refuses a FILED period
+     * outright AND refuses a CLOSED period that has any closed/filed successor,
+     * so offering "ask your accountant to reopen it" in either case would be
+     * offering a remedy the system will reject.
+     *
+     * Keyed on primitives and returning primitives, like the rest of this
+     * contract, so no caller gains a dependency on a module tier.
+     *
+     * @return array{
+     *     code: string,
+     *     period_id: string|null,
+     *     period_label: string|null,
+     *     period_start: string|null,
+     *     period_end: string|null,
+     *     reopenable: bool
+     * }|null NULL when the date is permitted. `period_*` are NULL when the
+     *        refusal came from `fiscal_periods` rather than `vat_periods` —
+     *        that table is not reopenable through this route at all, so
+     *        `reopenable` is false.
+     */
+    public function backdatingRefusalDetail(string $companyId, CarbonInterface $date): ?array;
 }

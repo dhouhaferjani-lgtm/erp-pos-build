@@ -23,7 +23,9 @@ use App\Modules\Procurement\Application\SupplierInvoiceMatcher;
 use App\Modules\Procurement\Application\SupplierInvoicePostingService;
 use App\Modules\Procurement\Application\SupplierInvoiceReceiptLinkingService;
 use App\Modules\Procurement\Presentation\Requests\CreateSupplierInvoiceRequest;
+use App\Shared\Contracts\Taxation\PeriodBackdatingGuardInterface;
 use App\Shared\Domain\CurrencyScale;
+use App\Shared\Exceptions\ReturnPeriodLockedException;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -58,6 +60,7 @@ final class SupplierInvoiceController extends Controller
         private readonly SupplierInvoicePostingService $postingService,
         private readonly SupplierInvoiceReceiptLinkingService $receiptLinkingService,
         private readonly ProcurementPolicyResolver $policyResolver,
+        private readonly PeriodBackdatingGuardInterface $periodBackdatingGuard,
     ) {}
 
     protected function getCompanyContext(): CompanyContext
@@ -353,6 +356,38 @@ final class SupplierInvoiceController extends Controller
             }
 
             $this->postingService->post($doc, $user->id);
+        } catch (ReturnPeriodLockedException $e) {
+            // B-19 fix round 1. `ReturnPeriodLockedException` extends
+            // `DomainException`, so WITHOUT this arm the generic catch below
+            // would flatten a typed period refusal into `POSTING_BLOCKED` —
+            // erasing the CLOSED / FILED / LOCKED distinction the front end needs
+            // to decide between "ask your accountant to reopen it" and "pick
+            // another date", and losing the period label.
+            //
+            // FIX ROUND 2 (N2, both r2 gates) — RULED: keep the refusal (a closed
+            // or filed declaration must never be rewritten) but make it
+            // ACTIONABLE. Round 1 rethrew to the shared renderer in
+            // `bootstrap/app.php`, whose envelope is shaped for the RETURN-NOTE
+            // path, where the guard's own docblock premise holds: "its refusal is
+            // recoverable by a single PATCH of the draft's document_date". That
+            // premise does NOT transfer here — `Procurement/Presentation/routes.php`
+            // exposes no update, no PATCH and no delete for a supplier invoice —
+            // so a bare refusal strands the document, and it blocks the whole
+            // `Dr 408 / Dr 4456 / Cr 401` recognition, which is a bookkeeping
+            // obligation independent of the declaration.
+            //
+            // This arm therefore reproduces that envelope EXACTLY (same
+            // `error.code`, `message`, `document_number`, `return_date`,
+            // `period_label`, `recoverable` — nothing keying on those regresses)
+            // and ADDS `period` (id + bounds + an honest `reopenable`) and
+            // `remedies`. `reopenable` is false for a FILED period and for a
+            // CLOSED period with a closed/filed successor, because
+            // `VatPeriodManagementService::reopenPeriod()` rejects both — the
+            // refusal must never offer a remedy the system would refuse.
+            //
+            // The stranded-draft gap itself (no correction path pre-post) is
+            // LEDGER `D-B19-4`, for the owner.
+            return $this->periodLockedResponse($e, $doc);
         } catch (\DomainException $e) {
             return $this->validationErrorResponse('POSTING_BLOCKED', $e->getMessage());
         }
@@ -377,6 +412,59 @@ final class SupplierInvoiceController extends Controller
     // -------------------------------------------------------------------------
     // Private formatting helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * The actionable 422 for a period-locked post — see the catch arm in
+     * `post()` for why this is not the shared renderer's envelope.
+     */
+    private function periodLockedResponse(ReturnPeriodLockedException $e, Document $doc): JsonResponse
+    {
+        $detail = $this->periodBackdatingGuard->backdatingRefusalDetail(
+            $doc->company_id,
+            $doc->document_date,
+        );
+
+        $reopenable = $detail['reopenable'] ?? false;
+
+        $remedies = [];
+        if ($reopenable) {
+            $remedies[] = [
+                'action' => 'reopen_period',
+                'description' => 'Ask your accountant to reopen this VAT period, then post again. '
+                    .'The period must be re-closed afterwards so its declaration totals are refreshed.',
+            ];
+        }
+        // Always offered: it is the only remedy that needs nobody else, and it is
+        // the ONLY one available on a filed or unreopenable period. Stated as
+        // "re-create", not "edit", because there is no edit route.
+        $remedies[] = [
+            'action' => 'recreate_with_open_issue_date',
+            'description' => 'Re-create this supplier invoice with an issue date inside an open VAT period. '
+                .'A supplier invoice has no edit path once created.',
+        ];
+
+        return response()->json([
+            'error' => [
+                // Identical to the shared renderer's envelope so nothing keying
+                // on these regresses.
+                'code' => $e->refusalCode->value,
+                'message' => $e->getMessage(),
+                'document_number' => $e->documentNumber,
+                'return_date' => $e->returnDate,
+                'period_label' => $e->periodLabel,
+                'recoverable' => $e->refusalCode->isRecoverable(),
+                // Added by B-19 fix round 2.
+                'period' => [
+                    'id' => $detail['period_id'] ?? null,
+                    'label' => $detail['period_label'] ?? $e->periodLabel,
+                    'period_start' => $detail['period_start'] ?? null,
+                    'period_end' => $detail['period_end'] ?? null,
+                    'reopenable' => $reopenable,
+                ],
+                'remedies' => $remedies,
+            ],
+        ], 422);
+    }
 
     /**
      * Format a supplier invoice as a list item (index response).
