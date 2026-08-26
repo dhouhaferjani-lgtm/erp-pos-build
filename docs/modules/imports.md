@@ -221,8 +221,13 @@ Only meaningful for **batch-tracked** products, whose opening stock is backed by
   lot is born EXPIRED and cannot be sold or transferred until it is written off.
 - **XLSX date cells work.** A cell Excel typed as a Date is read as `YYYY-MM-DD`,
   not as the raw serial.
-- Map the column in the wizard. Common French/Tunisian headers auto-map:
-  `péremption`, `date_péremption`, `DLC`, `DLUO`, `expiration`.
+- Map the column in the wizard. It is offered as an optional target for every
+  source column, and these headers auto-map without being pointed at it:
+  `expiry_date`, `expiry`, `expiration`, `expiration_date`, `best_before`,
+  `péremption` (and `peremption`), `date_péremption`, `DLC`, `DLUO`. Matching is
+  case-insensitive and substring-based, so `Date de péremption` is caught by the
+  `péremption` entry — but accents are **not** normalised, so an unaccented header
+  needs the unaccented alias, which is why both forms are listed.
 
 Row warnings you may see in the result workbook:
 

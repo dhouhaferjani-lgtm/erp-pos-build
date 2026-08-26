@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -103,6 +104,19 @@ return new class extends Migration
         $this->emit(sprintf('[W4-1] invented DEFAULT-lot expiries found: %d', $census));
 
         if ($census > 0) {
+            // MINOR-3 — count the subset the reset RESURRECTS before touching it.
+            // Nulling the expiry clears `is_expired`, which is correct (the daily
+            // check only ever flips false -> true, so a stuck `true` on a lot with
+            // no expiry could never be cleared again, and `is_expired` is read as an
+            // independent gate by the write-off path while every FEFO predicate
+            // keys on `expiry_date` — preserving it would split the two brains).
+            // But those units are exactly the stock an operator should physically
+            // verify before it goes back on the shelf, so they are named.
+            $resurrected = (int) DB::table('product_batches')
+                ->whereIn('id', $ids)
+                ->where('is_expired', true)
+                ->count();
+
             foreach (array_chunk($ids, 500) as $chunk) {
                 DB::table('product_batches')
                     ->whereIn('id', $chunk)
@@ -123,6 +137,16 @@ return new class extends Migration
                 'remaining' => $remaining,
             ]);
             $this->emit(sprintf('[W4-1] invented DEFAULT-lot expiries nulled: %d (remaining: %d)', $census, $remaining));
+
+            if ($resurrected > 0) {
+                Log::warning('[W4-1] previously-expired DEFAULT lots resurrected', ['lots' => $resurrected]);
+                $this->emit(sprintf(
+                    '[W4-1] of those, %d were previously flagged expired and are now sellable again — '
+                    .'their expiry was the fiction, not a real date, but VERIFY THE PHYSICAL STOCK before it goes '
+                    .'back on the shelf.',
+                    $resurrected,
+                ));
+            }
         }
 
         $this->reportResidual();
@@ -144,15 +168,7 @@ return new class extends Migration
      */
     private function reportResidual(): void
     {
-        $rows = DB::table('product_batches')
-            ->join('products', 'products.id', '=', 'product_batches.product_id')
-            ->where('product_batches.batch_number', 'DEFAULT')
-            ->whereNotNull('products.default_shelf_life_days')
-            ->where('products.default_shelf_life_days', '!=', self::INVENTED_SHELF_LIFE_DAYS)
-            ->whereNotNull('product_batches.expiry_date')
-            ->whereNotNull('product_batches.manufacturing_date')
-            ->whereRaw($this->expiryMatchesFallbackSql())
-            ->where('product_batches.created_at', '<', $this->cutoff())
+        $rows = $this->residualQuery()
             ->orderBy('products.sku')
             ->limit(self::RESIDUAL_LIST_LIMIT + 1)
             ->get(['products.sku as sku', 'products.default_shelf_life_days as shelf_life']);
@@ -161,25 +177,49 @@ return new class extends Migration
             return;
         }
 
+        // MINOR-1 — the NAME LIST is capped, the COUNT is not. Formatting the
+        // message with the capped count told an operator with 300 residual lots
+        // that there were 25.
+        $total = $this->residualQuery()->count();
+
         $listed = $rows->take(self::RESIDUAL_LIST_LIMIT);
         $codes = $listed
             ->map(static fn (object $row): string => sprintf('%s(shelf_life=%s)', (string) $row->sku, (string) $row->shelf_life))
             ->implode(', ');
 
-        $suffix = $rows->count() > self::RESIDUAL_LIST_LIMIT ? ', …' : '';
+        $shown = $total > $listed->count()
+            ? sprintf(' (showing %d of %d)', $listed->count(), $total)
+            : '';
 
         $message = sprintf(
             '[W4-1] RESIDUAL (not modified): %d DEFAULT lot(s) still carry manufacturing_date + %d but their product '
             .'now configures a DIFFERENT shelf life, so this migration cannot tell an invented date from a rule-derived '
-            .'one. Review by hand: %s%s',
-            $listed->count(),
+            .'one. Review by hand%s: %s',
+            $total,
             self::INVENTED_SHELF_LIFE_DAYS,
+            $shown,
             $codes,
-            $suffix,
         );
 
-        Log::warning('[W4-1] invented-expiry residual', ['lots' => $listed->count()]);
+        Log::warning('[W4-1] invented-expiry residual', ['lots' => $total, 'listed' => $listed->count()]);
         $this->emit($message);
+    }
+
+    /**
+     * The residual predicate, in one place so the COUNT and the NAME LIST cannot
+     * disagree with each other.
+     */
+    private function residualQuery(): Builder
+    {
+        return DB::table('product_batches')
+            ->join('products', 'products.id', '=', 'product_batches.product_id')
+            ->where('product_batches.batch_number', 'DEFAULT')
+            ->whereNotNull('products.default_shelf_life_days')
+            ->where('products.default_shelf_life_days', '!=', self::INVENTED_SHELF_LIFE_DAYS)
+            ->whereNotNull('product_batches.expiry_date')
+            ->whereNotNull('product_batches.manufacturing_date')
+            ->whereRaw($this->expiryMatchesFallbackSql())
+            ->where('product_batches.created_at', '<', $this->cutoff());
     }
 
     /**

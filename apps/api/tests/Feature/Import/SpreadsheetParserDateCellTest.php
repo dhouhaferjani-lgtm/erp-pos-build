@@ -108,6 +108,30 @@ final class SpreadsheetParserDateCellTest extends TestCase
         $this->assertSame('6', $result['rows'][1]['quantity']);
     }
 
+    public function test_a_blank_cell_in_a_date_formatted_column_stays_blank(): void
+    {
+        $path = $this->xlsx(function (Spreadsheet $spreadsheet): void {
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->fromArray([['name', 'sku', 'expiry_date']]);
+            $sheet->setCellValue('A2', 'Sirop');
+            $sheet->setCellValue('B2', 'SIRO-2');
+            // The column carries a date format but THIS cell is empty — the shape
+            // an operator leaves behind when they fill the expiry for some rows and
+            // not others. Excel stores no value, and the date-aware read must not
+            // turn that into serial 0 (1899-12-30) or today. Blank means "not
+            // supplied", which is the whole W4-1 contract for this column.
+            $sheet->getStyle('C2')->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_DATE_YYYYMMDD);
+        });
+
+        $result = $this->parser->parse($path);
+
+        $this->assertSame(
+            '',
+            $result['rows'][1]['expiry_date'],
+            'a blank date-formatted cell must stay blank; any date here would be an invented one',
+        );
+    }
+
     public function test_a_plain_text_date_string_is_untouched(): void
     {
         $path = $this->xlsx(function (Spreadsheet $spreadsheet): void {

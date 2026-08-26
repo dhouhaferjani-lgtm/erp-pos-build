@@ -194,7 +194,17 @@ final class MigrationWizardService
             // optimale) are the printed-on-the-box terms; without them `findBestMatch()`
             // falls back to a `str_contains` test against the bare target name and
             // returns null, so the expiry column is silently left unmapped.
-            'expiry_date' => ['expiry_date', 'expiry', 'expiration', 'expiration_date', 'peremption', 'date_peremption', 'dlc', 'dluo', 'best_before'],
+            // ACCENTED forms are listed explicitly, following the `téléphone`
+            // precedent above: `findBestMatch()` normalises only `_` and `-`, never
+            // accents, so a bare `peremption` alias would NOT match a sheet whose
+            // header reads `péremption` — which is how it is actually spelled.
+            // Spaces are not stripped either, but the match is `str_contains`, so
+            // `Date de péremption` is caught by the `péremption` entry.
+            'expiry_date' => [
+                'expiry_date', 'expiry', 'expiration', 'expiration_date', 'best_before',
+                'péremption', 'peremption', 'date_péremption', 'date_peremption',
+                'dlc', 'dluo',
+            ],
             'account_code' => ['account_code', 'account', 'code', 'gl_code'],
             'debit' => ['debit', 'dr', 'debit_amount'],
             'credit' => ['credit', 'cr', 'credit_amount'],

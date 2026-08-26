@@ -148,7 +148,12 @@ final class NullInventedDefaultLotExpiryMigrationTest extends TestCase
             'DEFAULT',
             CarbonImmutable::today()->toDateString(),
             CarbonImmutable::today()->addDays(365)->toDateString(),
-            createdAt: CarbonImmutable::now(),
+            // STRICTLY after the cutoff the migration captures when it runs.
+            // `now()` alone is ambiguous — the migration's own cutoff() is also
+            // `now()`, and the predicate is `created_at < cutoff`, so an equal
+            // timestamp excludes the row for the wrong reason and the case would
+            // pass without testing anything.
+            createdAt: CarbonImmutable::now()->addMinute(),
         );
 
         $this->runMigration();
@@ -206,6 +211,69 @@ final class NullInventedDefaultLotExpiryMigrationTest extends TestCase
         $output = (string) ob_get_clean();
 
         $this->assertStringContainsString('[W4-1] invented DEFAULT-lot expiries found: 0', $output);
+    }
+
+    /**
+     * Gate r1 MINOR-2 — the branch whose SILENCE r1 flagged is the one branch that
+     * was not pinned. On a fleet auto-migrate a skip means "this tenant's FEFO
+     * keeps ranking on fiction, forever", so the line has to reach stdout.
+     *
+     * Re-tightens the column so the guard actually fires. SQLite rebuilds the table
+     * for a column change and would lose the FK/index shape the rest of the suite
+     * shares, so this runs on PostgreSQL only.
+     */
+    public function test_the_out_of_order_skip_announces_itself_on_stdout(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('Re-tightening expiry_date to NOT NULL is a PostgreSQL-only ALTER here.');
+        }
+
+        // A lot the migration WOULD have fixed, so a silent skip is not merely
+        // quiet — it leaves a real invented date in place.
+        $invented = $this->lot($this->product(shelfLifeDays: null), 'DEFAULT', '2026-08-25', '2027-08-25');
+
+        DB::statement('ALTER TABLE product_batches ALTER COLUMN expiry_date SET NOT NULL');
+
+        try {
+            ob_start();
+            $this->runMigration();
+            $output = (string) ob_get_clean();
+        } finally {
+            DB::statement('ALTER TABLE product_batches ALTER COLUMN expiry_date DROP NOT NULL');
+        }
+
+        $this->assertStringContainsString('[W4-1] SKIPPED:', $output);
+        $this->assertStringContainsString('2026_08_26_100000', $output, 'the line must name the migration that has not run');
+        $this->assertSame(
+            '2027-08-25',
+            $this->storedExpiry($invented),
+            'and it must genuinely have changed nothing',
+        );
+    }
+
+    /**
+     * Gate r1 MINOR-3 — the reset clears `is_expired`, which is correct (the daily
+     * check only flips false -> true, so a stuck flag on an expiry-less lot could
+     * never be cleared, and the write-off path reads the flag while every FEFO
+     * predicate reads `expiry_date`). But the resurrected subset is exactly the
+     * stock a human should physically check, so it is counted out loud.
+     */
+    public function test_it_counts_the_previously_expired_lots_it_resurrects(): void
+    {
+        $invented = $this->lot($this->product(shelfLifeDays: null), 'DEFAULT', '2026-08-25', '2027-08-25');
+        $invented->forceFill(['is_expired' => true])->save();
+
+        ob_start();
+        $this->runMigration();
+        $output = (string) ob_get_clean();
+
+        $this->assertStringContainsString('previously flagged expired', $output);
+        $this->assertStringContainsString('VERIFY THE PHYSICAL STOCK', $output);
+        $this->assertNull($this->storedExpiry($invented));
+        $this->assertFalse(
+            (bool) $invented->refresh()->is_expired,
+            'the flag must be cleared, not preserved: nothing could ever clear it afterwards',
+        );
     }
 
     private function runMigration(): void
