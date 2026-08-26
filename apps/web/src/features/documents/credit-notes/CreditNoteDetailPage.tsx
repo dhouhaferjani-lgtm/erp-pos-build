@@ -135,8 +135,15 @@ export function CreditNoteDetailPage() {
    * keyed on the fiscal seal), the same one the PDF uses. Never re-derived from
    * `status`: `isPosted` above is true for a `posted` credit note the chain never
    * sealed, and that document is an estimate, not a claim.
+   *
+   * Fiscal gate r1 F-3: `!== false`, not `=== true`. Every real API response sets
+   * this field explicitly (`DocumentData::$is_proforma` is a non-nullable `bool`),
+   * so behaviour on a genuine payload is unchanged; but the field stays optional on
+   * this hand-maintained type (dozens of fixtures construct it without proforma in
+   * mind), and an omitted field must degrade toward "print less" (treated as a
+   * proforma) rather than toward "claim a seal" on a document nothing has sealed.
    */
-  const isProforma = creditNote.is_proforma === true
+  const isProforma = creditNote.is_proforma !== false
   const proformaLineAmounts = new Map(
     (creditNote.proforma?.lines ?? []).map((line) => [line.line_id, line] as const)
   )

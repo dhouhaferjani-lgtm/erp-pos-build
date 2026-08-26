@@ -59,9 +59,13 @@ export function DocumentTotals({
   const { data: taxBreakdown, isLoading, error } = useQuery<TaxBreakdown>({
     queryKey: tenantScopedKey(['tax-breakdown', documentId]),
     queryFn: () => fetchTaxBreakdown(documentId),
-    // A proforma never asks for a tax breakdown. Not merely "does not render it":
-    // the VAT figures never enter the browser at all, so no later refactor can
-    // surface them from cache.
+    // A proforma never fetches the per-rate tax breakdown. This does NOT keep
+    // VAT figures out of the browser — the document payload itself carries
+    // `subtotal`/`tax_amount` unconditionally (`DocumentData`), so those stay
+    // on the wire either way. What this buys: the per-rate breakdown endpoint
+    // is never called, and everything below this branch — the only code path
+    // that would RENDER a rate, a net subtotal or a tax amount — is skipped
+    // by the `isProforma` branch above, on the server's own predicate alone.
     enabled: tenantId !== null && companyId !== null && !!documentId && !isProforma,
   })
 

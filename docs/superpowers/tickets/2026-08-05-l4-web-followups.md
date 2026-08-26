@@ -128,6 +128,32 @@ location buckets from report DTOs"`, plus a `CompanyConfigProvider` wrapper brea
 by the gate: base `7d8e6c861` = 22 failed files / 48 failed tests; this branch = 20 / 46, identical failing-file set
 modulo three parallelism flakes that pass in isolation on both. Worth its own ticket.
 
+## N7 (P3) — the proforma box's closure risk under the pre-existing company-scale formatting (C-F0w fiscal gate r1 F-6)
+
+The page-wide currency issue this ticket already tracks (N6 above / the `DocumentTotals.tsx:78-88` docblock:
+company currency formats a document that may carry a different one) has a new wrinkle since C-F0w. `ProformaPresenter`
+and `ProformaGrossAmountResolver` scale every proforma figure at the **document's** currency
+(`ProformaPresenter.php:40-41`, `ProformaGrossAmountResolver.php:159`), while `InvoiceDetailPage.tsx:437,706` and
+`CreditNoteDetailPage.tsx:155,354` format them at the **company's** (`currentCompany?.currency ?? 'EUR'` inside
+`displayLineAmount`, and the `currency` prop handed to `DocumentTotals`).
+
+The proforma box's rows are supposed to **close** (Σ gross lines + stamp duty − discount = estimated total). Two
+independent `Big.js` half-up roundings — one at the document's scale server-side, one at the (possibly coarser)
+company scale client-side — can leave a residual the page never explains, on a box whose entire point is to be a
+trustworthy PDF mirror. Not a defect today (no case observed), but worth watching once mixed-currency documents are
+common.
+
+Also note the codebase now holds BOTH conventions: this lane fixed the same class of bug one level down —
+`CreditNoteDetail.tsx:41-42` now formats at `creditNote.currency` (was `parseFloat(amount).toFixed(companyDecimals)`,
+a truncated millime on TND) — while the two live proforma pages still format at the company's currency. A future
+page-wide fix should reconcile both call sites, not just one.
+
+**No code change requested here** — fixing only the proforma path would put two currencies in one viewport
+(company-currency definitive figures beside document-currency proforma figures on the same page), the exact failure
+mode N6/D6 already describe. Fix page-wide or not at all.
+
+Gate record: `docs/superpowers/reviews/2026-08-26-sc-f0w-gate-r1-fiscal.md` F-6.
+
 ## References
 
 - Gate record: `docs/superpowers/reviews/2026-08-05-l4-web-gate.md` (findings I1–I5, N1–N6; Q1/Q2/Q3 rulings).
