@@ -53,6 +53,16 @@ use Illuminate\Support\Facades\Schema;
  * which writes `'pos_refund'` rows the pre-widening constraint would reject. The
  * filename timestamps encode that order.
  *
+ * ## DEPLOY WINDOW — run `tenants:migrate` BEFORE rolling the new API image
+ *
+ * Gate r1. `TreasuryReceiptBridge::projectPaymentLineFromCanonical()` writes
+ * `'pos_refund'` the moment the new image is live, so on any environment where
+ * `…130300` has already run, a POS refund receipt synced in the gap between the
+ * roll and this migration raises SQLSTATE 23514 inside `apply()` and fails the
+ * fiscal-projection job (it retries and succeeds post-migrate, but noisily).
+ * Migrate first, then roll. This belongs on the deploy checklist next to the
+ * per-tenant censuses in this file and in `…150100`.
+ *
  * ## Lock profile — unchanged from `…130300`, read its warning
  *
  * `Migration::$withinTransaction` defaults to TRUE and is not overridden here, so

@@ -35,6 +35,7 @@ use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
@@ -412,7 +413,16 @@ final class PosBridgeInstrumentRefundTest extends TestCase
 
         // The amount stays POSITIVE — the direction lives in the type, not the
         // sign. Pinned so a later "fix" does not flip it and double-count.
-        $this->assertSame(1, bccomp((string) $refund->amount, '0', 3));
+        //
+        // Gate r1 [Minor]: scale comes from the resolver keyed on the payment's
+        // OWN currency, never a hardcoded 3 (rule 19). The surrounding legacy
+        // assertions in this file still hardcode it; only the line this lane owns
+        // is corrected, per the no-scope-creep rule.
+        $this->assertSame(1, bccomp(
+            (string) $refund->amount,
+            '0',
+            $this->app->make(CurrencyScaleResolverInterface::class)->getScale((string) $refund->currency),
+        ));
 
         // W4R2-2 backfill — re-taint both legs to the legacy shape and let the
         // data migration separate them USING THE JOURNAL ENTRY the bridge linked.
