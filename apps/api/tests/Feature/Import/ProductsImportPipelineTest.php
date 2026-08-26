@@ -23,9 +23,11 @@ use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Category;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Seeders\CountriesSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -313,6 +315,94 @@ final class ProductsImportPipelineTest extends TestCase
         $this->assertIsString($cells);
         $this->assertStringContainsString('category_created', $cells);
         $this->assertStringContainsString('Soins Bebe', $cells);
+    }
+
+    /**
+     * W2-5 / C-23(iii). Two defects on the same line of the products import:
+     *
+     *  1. `ImportService::importProduct()` pre-sets `tax_rate` from
+     *     `getDefaultTaxForNewProduct($company)` with NO category, so the
+     *     category-aware branch further down in `ProductService::upsert()` is
+     *     already satisfied by the time the row reaches it. A category that
+     *     carries its own `default_tax_rate` never applied to imported products.
+     *  2. Nothing on the import path ever set `default_tax_configuration_id`, so
+     *     every imported product reached the product screen with a BLANK tax
+     *     selector even though the company has a default configuration from
+     *     provisioning.
+     */
+    public function test_imported_products_inherit_the_category_rate_and_a_default_tax_configuration(): void
+    {
+        $this->seed(CountriesSeeder::class);
+
+        $tva19 = TaxConfiguration::create([
+            'country_code' => 'TN',
+            'tax_type' => 'PERCENTAGE',
+            'name' => 'TVA 19%',
+            'code' => 'TVA_19',
+            'percentage_rate' => '19.00',
+            'applies_to' => 'LINE_ITEMS',
+            'is_default' => true,
+            'is_active' => true,
+        ]);
+
+        $tva7 = TaxConfiguration::create([
+            'country_code' => 'TN',
+            'tax_type' => 'PERCENTAGE',
+            'name' => 'TVA 7%',
+            'code' => 'TVA_7',
+            'percentage_rate' => '7.00',
+            'applies_to' => 'LINE_ITEMS',
+            'is_default' => false,
+            'is_active' => true,
+        ]);
+
+        $this->company->update(['default_tax_configuration_id' => $tva19->id]);
+
+        Category::create([
+            'company_id' => $this->company->id,
+            'name' => 'Medicaments',
+            'slug' => 'medicaments',
+            'default_tax_rate' => '7.00',
+            'default_tax_configuration_id' => $tva7->id,
+            'is_active' => true,
+        ]);
+
+        $file = UploadedFile::fake()->createWithContent('products-tax.csv', implode("\n", [
+            'name,sku,type,category_name,sale_price_incl_tax',
+            'Paracetamol 500mg,PARA-500,part,Medicaments,10.000',
+            'Brosse a dents,BROS-01,part,,10.000',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', ['file' => $file, 'type' => 'products']);
+        $createResponse->assertCreated();
+        $jobId = $createResponse->json('data.id');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.successful_rows', 2)
+            ->assertJsonPath('data.failed_rows', 0);
+
+        $categorised = Product::where('sku', 'PARA-500')->firstOrFail();
+        $this->assertSame(
+            0,
+            bccomp((string) $categorised->tax_rate, '7.00', 2),
+            'A product whose category carries its own default rate must import at that rate, not the company default.'
+        );
+        $this->assertSame(
+            $tva7->id,
+            $categorised->default_tax_configuration_id,
+            'and it must carry the category tax configuration so the product screen selector is not blank.'
+        );
+
+        $uncategorised = Product::where('sku', 'BROS-01')->firstOrFail();
+        $this->assertSame(0, bccomp((string) $uncategorised->tax_rate, '19.00', 2));
+        $this->assertSame(
+            $tva19->id,
+            $uncategorised->default_tax_configuration_id,
+            'A product with no category falls back to the COMPANY default configuration, still not null.'
+        );
     }
 
     public function test_re_importing_the_same_categories_reuses_them_without_duplicates_or_warnings(): void

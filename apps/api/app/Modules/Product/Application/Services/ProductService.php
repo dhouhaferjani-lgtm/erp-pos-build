@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Product\Application\Services;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Product\Domain\Category;
 use App\Modules\Product\Domain\Enums\BrandSource;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
@@ -111,6 +112,26 @@ final class ProductService implements ProductServiceInterface
             }
         }
 
+        // W2-5 / C-23(iii): nothing on the import path ever wrote
+        // `default_tax_configuration_id`, so every imported product landed on the
+        // product screen with a BLANK tax selector even though the company has had
+        // a default configuration since provisioning
+        // (CompanyTaxProvisioningService.php:63). Inherit it — category first, then
+        // company — but only for a product that does not already carry one, so a
+        // re-import never clobbers an operator's explicit choice.
+        if ($existing === null || $existing->default_tax_configuration_id === null) {
+            $inherited = $this->resolveDefaultTaxConfigurationId(
+                $tenantId,
+                $companyId,
+                $attributes['category_id'] ?? null,
+                $this->emptyToNull($attributes['tax_rate']),
+            );
+
+            if ($inherited !== null) {
+                $attributes['default_tax_configuration_id'] = $inherited;
+            }
+        }
+
         if ($existing !== null) {
             $existing->fill($attributes);
             $existing->save();
@@ -127,6 +148,69 @@ final class ProductService implements ProductServiceInterface
         );
 
         return $product->id;
+    }
+
+    /**
+     * The tax configuration an imported product should inherit — category first,
+     * then company — subject to ONE hard condition: the configuration's own
+     * percentage must equal the rate the product is being written with.
+     *
+     * That condition is the whole point. `products.tax_rate` is the number
+     * ReceiptCreationService seals into the POS hash chain, and
+     * `default_tax_configuration_id` is what the product screen shows and what
+     * DocumentLineTaxResolver prefers. Storing a configuration next to a rate it
+     * disagrees with is exactly defect N-1 — a product priced at one VAT rate and
+     * sold at another. When the two levels disagree, leaving the id null is the
+     * honest answer; a blank selector is a question, a wrong one is a wrong tax.
+     *
+     * @return string|null A `tax_configurations.id`, or null when none agrees.
+     */
+    private function resolveDefaultTaxConfigurationId(
+        string $tenantId,
+        string $companyId,
+        int|string|null $categoryId,
+        ?string $taxRate,
+    ): ?string {
+        if ($taxRate === null || ! is_numeric($taxRate)) {
+            return null;
+        }
+
+        $company = Company::where('tenant_id', $tenantId)
+            ->where('id', $companyId)
+            ->first();
+
+        if (! $company instanceof Company) {
+            return null;
+        }
+
+        /** @var list<string> $candidates */
+        $candidates = [];
+
+        if ($categoryId !== null) {
+            $categoryConfigurationId = Category::query()
+                ->where('id', $categoryId)
+                ->where('company_id', $companyId)
+                ->value('default_tax_configuration_id');
+
+            if (is_string($categoryConfigurationId) && $categoryConfigurationId !== '') {
+                $candidates[] = $categoryConfigurationId;
+            }
+        }
+
+        if (is_string($company->default_tax_configuration_id) && $company->default_tax_configuration_id !== '') {
+            $candidates[] = $company->default_tax_configuration_id;
+        }
+
+        foreach ($candidates as $candidate) {
+            $configuredRate = $this->taxResolution->resolveRateFromTaxConfiguration($company, $candidate);
+
+            // precision-ok: tax percentage columns are decimal(5,2) throughout.
+            if ($configuredRate !== null && bccomp($configuredRate, $taxRate, 2) === 0) {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 
     public function resolveCategoryByName(string $companyId, string $name): CategoryResolutionDTO
