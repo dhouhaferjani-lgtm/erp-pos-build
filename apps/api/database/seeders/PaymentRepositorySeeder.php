@@ -152,18 +152,23 @@ class PaymentRepositorySeeder extends Seeder
     /**
      * N-12 — the location these day-one repositories belong to.
      *
-     * The default location first (`is_default`), then any POS-enabled one, then
-     * nothing. `TenantProvisioningService` creates a `type=shop`, POS-enabled
-     * Main Location, so the ordinary registration path resolves it; a seeder run
-     * against a company that has no locations yet returns null and the
-     * repositories stay unattributed, which is the pre-N-12 shape and still
-     * fully served by the resolver's tier 2.
+     * The default location first (`is_default`), then an active one, then any
+     * POS-enabled one, then the oldest. `TenantProvisioningService` creates a
+     * `type=shop`, POS-enabled Main Location, so the ordinary registration path
+     * resolves it; a seeder run against a company that has no locations yet
+     * returns null and the repositories stay unattributed, which is the pre-N-12
+     * shape and still fully served by the resolver's tier 2.
+     *
+     * Kept byte-for-byte in step with the fleet backfill
+     * (`2026_08_26_100000_backfill_payment_repository_location_n12`) so a tenant
+     * migrated today and a tenant registered today land in the same shape.
      */
     private function defaultLocationId(Company $company): ?string
     {
         $locationId = Location::query()
             ->where('company_id', $company->id)
             ->orderByDesc('is_default')
+            ->orderByDesc('is_active')
             ->orderByDesc('pos_enabled')
             ->orderBy('created_at')
             ->value('id');
