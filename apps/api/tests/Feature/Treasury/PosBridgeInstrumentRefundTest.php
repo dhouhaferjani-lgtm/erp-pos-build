@@ -426,13 +426,13 @@ final class PosBridgeInstrumentRefundTest extends TestCase
         );
         $backfill->up();
 
-        $this->assertSame(PaymentType::POSRefund, $refund->fresh()->payment_type);
-        $this->assertSame(PaymentType::POS, $sale->fresh()->payment_type);
+        $this->assertSame(PaymentType::POSRefund, $refund->refresh()->payment_type);
+        $this->assertSame(PaymentType::POS, $sale->refresh()->payment_type);
 
         // Idempotent.
         $backfill->up();
-        $this->assertSame(PaymentType::POSRefund, $refund->fresh()->payment_type);
-        $this->assertSame(PaymentType::POS, $sale->fresh()->payment_type);
+        $this->assertSame(PaymentType::POSRefund, $refund->refresh()->payment_type);
+        $this->assertSame(PaymentType::POS, $sale->refresh()->payment_type);
     }
 
     public function test_ambiguous_received_candidates_are_not_cancelled_and_take_the_alert_cash_path(): void

@@ -288,7 +288,7 @@ class PaymentGlPostingTest extends TestCase
         // — whose `isIncoming()` is `true`. The GL above was already right
         // (Dr 401 / Cr bank); it was the TYPE that told the dashboard the money
         // had come in.
-        $payment = Payment::query()->findOrFail($paymentId);
+        $payment = Payment::query()->whereKey($paymentId)->sole();
         $this->assertSame(PaymentType::SupplierPayment, $payment->payment_type);
         $this->assertFalse(
             $payment->payment_type->isIncoming(),
@@ -311,14 +311,14 @@ class PaymentGlPostingTest extends TestCase
 
         $this->assertSame(
             PaymentType::SupplierPayment,
-            Payment::query()->findOrFail($paymentId)->payment_type,
+            Payment::query()->whereKey($paymentId)->sole()->payment_type,
         );
 
         // Idempotent: a second run matches zero rows and changes nothing.
         $backfill->up();
         $this->assertSame(
             PaymentType::SupplierPayment,
-            Payment::query()->findOrFail($paymentId)->payment_type,
+            Payment::query()->whereKey($paymentId)->sole()->payment_type,
         );
 
         $supplier->refresh();
