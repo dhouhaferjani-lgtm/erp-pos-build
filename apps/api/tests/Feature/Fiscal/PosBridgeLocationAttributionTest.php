@@ -94,6 +94,17 @@ final class PosBridgeLocationAttributionTest extends TestCase
             'company_id' => $company->id,
             'code' => 'CASH',
             'name' => 'Cash',
+            // Gate r2 finding 3 — `is_cash_tender` is NOT NULL DEFAULT false, so
+            // omitting it declared a method called CASH to be a non-cash tender.
+            // It matters now: a cash tender resolves only to a drawer.
+            'is_cash_tender' => true,
+        ]);
+        PaymentMethod::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'code' => 'CARD',
+            'name' => 'Card',
+            'is_cash_tender' => false,
         ]);
         PaymentMethod::factory()->create([
             'tenant_id' => $tenant->id,
@@ -120,9 +131,11 @@ final class PosBridgeLocationAttributionTest extends TestCase
         // is refused outright, so the only shape that still exercises the
         // scenario is a company-wide settlement instrument: `location_id` on a
         // bank account is metadata an operator filed, never a restriction, so it
-        // is a candidate from every branch. Mapping the CASH method to this one
+        // is a candidate from every branch. Mapping the CARD method to this one
         // makes the receipt below resolve a repository that genuinely sits at
-        // ANOTHER location — which is what the test's name claims.
+        // ANOTHER location — which is what the test's name claims. It has to be
+        // a NON-cash tender: gate r2 finding 3 confines physical cash to a
+        // drawer, so a cash leg could never legitimately land here.
         //
         // (The first cut of this fix used an unattributed drawer instead, which
         // downgraded the assertion to "terminal location over NULL".)
@@ -140,7 +153,7 @@ final class PosBridgeLocationAttributionTest extends TestCase
 
         PaymentMethod::query()
             ->where('company_id', $company->id)
-            ->where('code', 'CASH')
+            ->where('code', 'CARD')
             ->update(['default_repository_id' => $otherLocationBank->id]);
 
         app(CompanyContext::class)->clear();
@@ -236,7 +249,7 @@ final class PosBridgeLocationAttributionTest extends TestCase
                 'foreign_currency_code' => null,
                 'instrument_serial' => null,
                 'instrument_type' => null,
-                'method_code' => 'CASH',
+                'method_code' => 'CARD',
             ]],
             'receipt_uuid' => (string) Str::uuid(),
             'seller' => [

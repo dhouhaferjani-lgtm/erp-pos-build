@@ -462,6 +462,45 @@ final class BranchCashRepositoryRoutingTest extends TestCase
     }
 
     /**
+     * Gate r2 finding 3 — the mirror of the rule above: physical cash resolves
+     * to a drawer or to nothing.
+     *
+     * Widening the tier so company-wide instruments are candidates everywhere
+     * also made a bank account reachable for a CASH tender at a drawer-less
+     * branch. That books physical cash against the bank GL with no drawer
+     * movement — worse than the refusal this lane exists to produce, because
+     * nothing about it looks wrong until someone counts the till.
+     */
+    public function test_a_cash_tender_refuses_rather_than_settling_into_a_bank_account(): void
+    {
+        // The branch has no drawer; the company has a perfectly good bank.
+        $this->drawer('CASH-01', $this->mainLocationId);
+        $bank = $this->companyWideBank('BANK-01');
+
+        $cash = PaymentMethod::query()
+            ->where('company_id', $this->companyId)
+            ->where('code', 'CASH')
+            ->firstOrFail();
+
+        $resolver = $this->app->make(TenderRepositoryResolver::class);
+
+        $this->assertNull(
+            $resolver->resolve($this->tenantId, $this->companyId, $cash, $this->branchLocationId),
+            'A cash tender with no drawer at its location must refuse, not settle into the bank.',
+        );
+
+        // …and the same holds when an operator has MAPPED the cash method at the
+        // bank: the mapping is simply not a usable candidate, and resolution
+        // falls through to the location's own drawer.
+        $cash->forceFill(['default_repository_id' => $bank->id])->save();
+
+        $this->assertSame(
+            $this->drawer('CASH-02', $this->branchLocationId)->id,
+            $resolver->resolve($this->tenantId, $this->companyId, $cash->fresh(), $this->branchLocationId)?->id,
+        );
+    }
+
+    /**
      * Gate r1 finding 7 — a deactivated branch till must not stay sticky.
      *
      * Without `is_active` in the arming predicate, switching a branch drawer off

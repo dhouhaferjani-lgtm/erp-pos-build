@@ -71,7 +71,11 @@ use Illuminate\Database\QueryException;
  * drawer. Company-wide instruments are therefore candidates from every
  * location, whatever `location_id` an operator happens to have set on them,
  * and a tender the tenant has declared NOT cash never falls back to a drawer
- * at all.
+ * while any settlement repository exists. The mirror holds too (gate r2
+ * finding 3): a tender the tenant has declared cash resolves ONLY to a drawer,
+ * never to a bank or a wallet — otherwise widening the tier would have let a
+ * cash receipt at a drawer-less branch book against the bank GL instead of
+ * refusing.
  *
  * A `null` `$locationId` (server-authored flows with no terminal, and every
  * pre-existing caller) keeps the historical company-wide rule verbatim.
@@ -127,12 +131,40 @@ final readonly class TenderRepositoryResolver
             // — without turning day one into an outage.
             $nonCashTender = $method !== null && $method->is_cash_tender !== true;
 
+            // Gate r2 finding 3 — THE MIRROR OF THE ABOVE, and the one the
+            // location tier made urgent. Widening the tier so that every
+            // `bank_account` / `virtual` row is a candidate from every location
+            // also made one reachable for a CASH tender at a location with no
+            // drawer: physical cash booked against the bank GL, with no drawer
+            // movement and nothing to reconcile, instead of the loud refusal
+            // this lane exists to produce.
+            //
+            // `PostShiftCashVarianceAdjustment::resolveSingleRepository()` has
+            // carried exactly this assertion since gate finding I7
+            // (`resolved_repository_is_not_a_cash_till`); the bridge had none.
+            // It belongs HERE rather than at each caller, because this class's
+            // whole reason for existing is that the shift-close leg and the
+            // fiscal projection resolve by the same code and not by two
+            // implementations that happen to agree.
+            //
+            // Expressed as a filter on the candidate set, not a post-hoc
+            // rejection: a cash method mapped to a bank simply has no usable
+            // mapping and falls through to the location's drawer, exactly as an
+            // out-of-tier mapping already does. When no drawer qualifies the
+            // answer is null, and every caller treats null as a refusal.
+            $cashTender = $method !== null && $method->is_cash_tender === true;
+
             $mappedRepositoryId = $method?->default_repository_id;
             if (is_string($mappedRepositoryId)) {
-                $mapped = $this->scoped($tenantId, $companyId, $locationId, $locationOwnsDrawer)
+                $mappedQuery = $this->scoped($tenantId, $companyId, $locationId, $locationOwnsDrawer)
                     ->where('is_active', true)
-                    ->whereNotNull('gl_account_id')
-                    ->find($mappedRepositoryId);
+                    ->whereNotNull('gl_account_id');
+
+                if ($cashTender) {
+                    $mappedQuery->whereIn('type', self::DRAWER_TYPES);
+                }
+
+                $mapped = $mappedQuery->find($mappedRepositoryId);
 
                 if ($mapped instanceof PaymentRepository) {
                     return $mapped;
@@ -158,6 +190,10 @@ final readonly class TenderRepositoryResolver
             $fallback = $this->scoped($tenantId, $companyId, $locationId, $locationOwnsDrawer)
                 ->where('is_active', true)
                 ->whereNotNull('gl_account_id');
+
+            if ($cashTender) {
+                $fallback->whereIn('type', self::DRAWER_TYPES);
+            }
 
             if ($nonCashTender) {
                 // Every non-drawer ahead of every drawer. A drawer is reachable
