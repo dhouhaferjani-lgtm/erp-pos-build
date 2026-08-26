@@ -253,7 +253,7 @@ class AtomicFEFOConsumptionTest extends TestCase
 
     private function createBatchWithStock(
         ?string $variantId,
-        int $expiryDays,
+        ?int $expiryDays,
         float $quantity,
         bool $isRecalled = false,
     ): Batch {
@@ -267,7 +267,9 @@ class AtomicFEFOConsumptionTest extends TestCase
             'product_id' => $this->product->id,
             'variant_id' => $variantId,
             'batch_number' => 'ATOMIC-'.$counter,
-            'expiry_date' => now()->addDays($expiryDays),
+            // W4-1: null means the lot records NO expiry — a real shape on the
+            // launch tenant, where the whole opening catalogue is undated.
+            'expiry_date' => $expiryDays === null ? null : now()->addDays($expiryDays),
             'is_active' => true,
             'is_expired' => false,
             'is_recalled' => $isRecalled,
@@ -282,6 +284,119 @@ class AtomicFEFOConsumptionTest extends TestCase
         ]);
 
         return $batch;
+    }
+
+    // -----------------------------------------------------------------
+    // W4-1 — undated lots. This method is the SERVER-AUTHORITATIVE lot draw for
+    // BOTH the POS sale (PosCoreReceiptProjection) and the delivery note, and the
+    // lane rewrote both its WHERE predicate and its ORDER BY. On day one of the
+    // launch tenant EVERY lot is undated, so if either were wrong the result is
+    // not a mis-sort — it is a strict-fulfilment REFUSAL on every batch-tracked
+    // sale and delivery. Nothing in the suite exercised a NULL expiry here.
+    // -----------------------------------------------------------------
+
+    public function test_a_lot_with_no_expiry_is_consumable_not_invisible(): void
+    {
+        $undated = $this->createBatchWithStock(variantId: null, expiryDays: null, quantity: 5);
+        $movementId = $this->createMovement();
+
+        $result = $this->service->consumeBatchesAtomically(
+            tenantId: $this->tenant->id,
+            productId: $this->product->id,
+            locationId: $this->location->id,
+            quantity: '5',
+            movementId: $movementId,
+        );
+
+        $this->assertSame('0.0000', $result->shortfall, 'an undated lot is NOT an expired lot — excluding it would '
+            .'refuse every batch-tracked sale on a tenant whose whole opening catalogue is undated');
+        $this->assertCount(1, $result->consumed);
+        $this->assertSame((int) $undated->id, $result->consumed[0]->batchId);
+        $this->assertNull($result->consumed[0]->expiryDate, 'the consumed DTO carries the absence of an expiry');
+
+        $this->assertSame('0.0000', (string) BatchStock::where('batch_id', $undated->id)->first()?->quantity);
+    }
+
+    public function test_dated_lots_are_drawn_before_the_undated_one(): void
+    {
+        // Created undated FIRST so insertion order — and PostgreSQL's own default,
+        // which happens to agree here — cannot be what makes this pass.
+        $undated = $this->createBatchWithStock(variantId: null, expiryDays: null, quantity: 10);
+        $late = $this->createBatchWithStock(variantId: null, expiryDays: 90, quantity: 10);
+        $early = $this->createBatchWithStock(variantId: null, expiryDays: 10, quantity: 10);
+
+        $movementId = $this->createMovement();
+
+        // 25 of 30: the draw must stop INSIDE the undated lot, which is only true
+        // if it is ranked last.
+        $result = $this->service->consumeBatchesAtomically(
+            tenantId: $this->tenant->id,
+            productId: $this->product->id,
+            locationId: $this->location->id,
+            quantity: '25',
+            movementId: $movementId,
+        );
+
+        $this->assertSame('0.0000', $result->shortfall);
+        $this->assertSame(
+            [(int) $early->id, (int) $late->id, (int) $undated->id],
+            array_map(static fn ($row): int => $row->batchId, $result->consumed),
+            'FEFO: earliest expiry first, undated LAST. Before W4-1 the undated lot carried a fabricated '
+            .'cutover+365 date that sorted it FIRST and forced it out of the door ahead of short-dated stock.',
+        );
+
+        $this->assertSame('0.0000', (string) BatchStock::where('batch_id', $early->id)->first()?->quantity);
+        $this->assertSame('0.0000', (string) BatchStock::where('batch_id', $late->id)->first()?->quantity);
+        $this->assertSame('5.0000', (string) BatchStock::where('batch_id', $undated->id)->first()?->quantity,
+            'the undated lot absorbs only the remainder');
+    }
+
+    public function test_an_expired_lot_stays_invisible_while_the_undated_one_does_not(): void
+    {
+        $expired = $this->createBatchWithStock(variantId: null, expiryDays: -5, quantity: 50);
+        $undated = $this->createBatchWithStock(variantId: null, expiryDays: null, quantity: 4);
+
+        $movementId = $this->createMovement();
+
+        $result = $this->service->consumeBatchesAtomically(
+            tenantId: $this->tenant->id,
+            productId: $this->product->id,
+            locationId: $this->location->id,
+            quantity: '4',
+            movementId: $movementId,
+        );
+
+        $this->assertSame(
+            [(int) $undated->id],
+            array_map(static fn ($row): int => $row->batchId, $result->consumed),
+            'admitting NULL must not also admit a PASSED expiry — a parapharmacy must never ship expired goods',
+        );
+        $this->assertSame('50.0000', (string) BatchStock::where('batch_id', $expired->id)->first()?->quantity);
+    }
+
+    public function test_several_undated_lots_are_all_fully_consumable(): void
+    {
+        $first = $this->createBatchWithStock(variantId: null, expiryDays: null, quantity: 3);
+        $second = $this->createBatchWithStock(variantId: null, expiryDays: null, quantity: 4);
+
+        $movementId = $this->createMovement();
+
+        $result = $this->service->consumeBatchesAtomically(
+            tenantId: $this->tenant->id,
+            productId: $this->product->id,
+            locationId: $this->location->id,
+            quantity: '7',
+            movementId: $movementId,
+        );
+
+        $this->assertSame('0.0000', $result->shortfall);
+        $this->assertSame(
+            [(int) $first->id, (int) $second->id],
+            array_map(static fn ($row): int => $row->batchId, $result->consumed),
+            'with no expiry to rank on the tie falls to created_at — the oldest stock goes first, deterministically',
+        );
+        $this->assertSame('0.0000', (string) BatchStock::where('batch_id', $first->id)->first()?->quantity);
+        $this->assertSame('0.0000', (string) BatchStock::where('batch_id', $second->id)->first()?->quantity);
     }
 
     /**
