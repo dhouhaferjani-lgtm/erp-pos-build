@@ -69,8 +69,13 @@ vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
   setManagerPinThrottle: vi.fn(),
   setManagerPinFailedAttempts: vi.fn(),
 }));
+const reportApiMocks = vi.hoisted(() => ({
+  generateXReport: vi.fn(),
+  generateZReport: vi.fn(),
+}));
 vi.mock('@/api/reportApi', () => ({
-  generateXReport: vi.fn(), generateZReport: vi.fn(),
+  generateXReport: reportApiMocks.generateXReport,
+  generateZReport: reportApiMocks.generateZReport,
 }));
 vi.mock('@/api/fraudSettingsApi', () => ({
   fetchFraudSettings: fraudApiMocks.fetchFraudSettings,
@@ -167,8 +172,17 @@ vi.mock('@/stores/cartStore', () => ({
   useCartStore: { getState: () => ({ clearCart: vi.fn() }) },
 }));
 
+let mockPaymentMethods: { code: string; is_physical: boolean }[] = [];
+
 vi.mock('@/stores/paymentStore', () => ({
-  usePaymentStore: { getState: () => ({ clearVoucherTenders: vi.fn(), reset: vi.fn(), discardPendingSubmission: vi.fn() }) },
+  usePaymentStore: {
+    getState: () => ({
+      clearVoucherTenders: vi.fn(),
+      reset: vi.fn(),
+      discardPendingSubmission: vi.fn(),
+      paymentMethods: mockPaymentMethods,
+    }),
+  },
 }));
 
 vi.mock('@/stores/productStore', () => ({
@@ -208,11 +222,21 @@ vi.mock('@/components/pos/EndOfDayPreviewModal', () => ({
 }));
 
 vi.mock('@/components/pos/ReportsMenu', () => ({
-  ReportsMenu: () => null,
+  ReportsMenu: (props: { isOpen: boolean; onXReport: () => void }) =>
+    props.isOpen ? (
+      <button type="button" onClick={props.onXReport}>menu-x-report</button>
+    ) : null,
 }));
 
 vi.mock('@/components/pos/XReportModal', () => ({
-  XReportModal: () => null,
+  XReportModal: (props: { isOpen: boolean; concealedTenderCodes: ReadonlySet<string> }) =>
+    props.isOpen ? (
+      <div data-testid="x-report-modal">
+        <span data-testid="x-concealed">
+          {[...props.concealedTenderCodes].sort().join(',')}
+        </span>
+      </div>
+    ) : null,
 }));
 
 vi.mock('@/components/organisms/CashDrawerModal', () => ({
@@ -220,6 +244,7 @@ vi.mock('@/components/organisms/CashDrawerModal', () => ({
 }));
 
 import { Header } from '../Header';
+import { toast } from 'sonner';
 import { useShiftActionsStore } from '@/stores/shiftActionsStore';
 
 describe('Header (Sub-Spec B)', () => {
@@ -243,6 +268,15 @@ describe('Header (Sub-Spec B)', () => {
     fraudCacheMocks.upsertCompanyFraudSettings.mockResolvedValue(undefined);
     fraudCacheMocks.getCompanyFraudSettings.mockReset();
     fraudCacheMocks.getCompanyFraudSettings.mockResolvedValue(null);
+    mockPaymentMethods = [
+      { code: 'CASH', is_physical: true },
+      { code: 'CHEQUE', is_physical: true },
+      { code: 'CARD', is_physical: false },
+    ];
+    vi.mocked(reportApiMocks.generateXReport).mockReset();
+    vi.mocked(reportApiMocks.generateXReport).mockResolvedValue({
+      id: 'x-1', payment_methods: [],
+    } as never);
   });
 
   it('renders no device-logout button for a manager operator', () => {
@@ -529,5 +563,165 @@ describe('Header (Sub-Spec B)', () => {
 
       await waitFor(() => expect(screen.getByTestId('eod-policy-state')).toBeInTheDocument());
     });
+  });
+});
+
+/**
+ * B-13 (ii) + (iii) — the two disclosure surfaces the manager-screens lane
+ * left open, ruled "fix properly" by the owner on 2026-08-21.
+ *
+ * The blind cash count regime exists so the person counting the drawer cannot
+ * see what it is supposed to hold. Expected cash = opening float + cash
+ * takings, so BOTH terms have to be governed:
+ *   - the X report carries the cash takings (and authors a SIGNED `X_REPORT`
+ *     fiscal event on the way);
+ *   - the Header shift badge tooltip carries the opening float, on every route.
+ */
+describe('Header — X report gate + blind-count disclosure (B-13)', () => {
+  const SHIFT = {
+    id: 'shift-1',
+    shift_number: 7,
+    opening_cash: '200.000',
+    opened_at: '2026-08-26T08:00:00.000Z',
+    user: { id: 'u-1', name: 'Owner' },
+  };
+  const TERMINAL = {
+    id: 'term-1',
+    code: 'T1',
+    fiscal_schema_version: 3,
+    is_training_mode: false,
+  };
+
+  beforeEach(() => {
+    mockTerminal = { ...TERMINAL };
+    mockShift = { ...SHIFT };
+    mockPaymentMethods = [
+      { code: 'CASH', is_physical: true },
+      { code: 'CHEQUE', is_physical: true },
+      { code: 'CARD', is_physical: false },
+    ];
+    fraudApiMocks.fetchFraudSettings.mockReset();
+    fraudApiMocks.fetchFraudSettings.mockResolvedValue({
+      cashVarianceOverSoft: '5.00',
+      cashVarianceOverHard: '20.00',
+      cashVarianceUnderSoft: '5.00',
+      cashVarianceUnderHard: '20.00',
+      requireBlindCashCount: true,
+      requireManagerPinAboveHard: true,
+      cashVarianceEmailSeverity: 'critical',
+    });
+    fraudApiMocks.fetchAuthorizedManagers.mockReset();
+    fraudApiMocks.fetchAuthorizedManagers.mockResolvedValue([]);
+    reportApiMocks.generateXReport.mockReset();
+    reportApiMocks.generateXReport.mockResolvedValue({
+      id: 'x-1', payment_methods: [],
+    } as never);
+  });
+
+  async function openReportsMenu() {
+    fireEvent.click(screen.getByTitle('quickActions.reports'));
+    return screen.findByText('menu-x-report');
+  }
+
+  it('REFUSES the X report to a cashier PIN operator — no fiscal event authored', async () => {
+    mockOperator = { name: 'Cashier', roles: ['cashier'], id: 'op-2' };
+    render(<Header />);
+    fireEvent.click(await openReportsMenu());
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('reports.managerOnly');
+    });
+    // The X report APPENDS an immutable X_REPORT event (rule 8): refusing has
+    // to happen BEFORE the generator runs, not by hiding the result.
+    expect(reportApiMocks.generateXReport).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('x-report-modal')).toBeNull();
+  });
+
+  it('allows the X report to a manager PIN operator', async () => {
+    mockOperator = { name: 'Manager', roles: ['manager'], id: 'op-1' };
+    render(<Header />);
+    fireEvent.click(await openReportsMenu());
+
+    expect(await screen.findByTestId('x-report-modal')).toBeInTheDocument();
+    await waitFor(() => expect(reportApiMocks.generateXReport).toHaveBeenCalledTimes(1));
+  });
+
+  it('conceals the X report PHYSICAL tenders while a shift is open under blind count', async () => {
+    mockOperator = { name: 'Manager', roles: ['manager'], id: 'op-1' };
+    render(<Header />);
+    fireEvent.click(await openReportsMenu());
+
+    const concealed = await screen.findByTestId('x-concealed');
+    await waitFor(() => expect(concealed.textContent).toBe('CASH,CHEQUE'));
+  });
+
+  it('discloses the X report tenders when the policy positively reads NOT blind', async () => {
+    fraudApiMocks.fetchFraudSettings.mockResolvedValue({
+      cashVarianceOverSoft: '5.00',
+      cashVarianceOverHard: '20.00',
+      cashVarianceUnderSoft: '5.00',
+      cashVarianceUnderHard: '20.00',
+      requireBlindCashCount: false,
+      requireManagerPinAboveHard: true,
+      cashVarianceEmailSeverity: 'critical',
+    });
+    mockOperator = { name: 'Manager', roles: ['manager'], id: 'op-1' };
+    render(<Header />);
+    // Let the mount-time policy resolution settle before opening the report.
+    await waitFor(() => expect(fraudApiMocks.fetchFraudSettings).toHaveBeenCalled());
+    fireEvent.click(await openReportsMenu());
+
+    const concealed = await screen.findByTestId('x-concealed');
+    await waitFor(() => expect(concealed.textContent).toBe(''));
+  });
+
+  it('conceals nothing when there is no open shift (nothing is being counted)', async () => {
+    mockShift = null;
+    mockOperator = { name: 'Manager', roles: ['manager'], id: 'op-1' };
+    render(<Header />);
+    // No shift ⇒ no Reports button in the Header; the X report is unreachable.
+    expect(screen.queryByTitle('quickActions.reports')).toBeNull();
+  });
+
+  it('hides the opening-float tooltip from a NON-manager under blind count', async () => {
+    mockOperator = { name: 'Cashier', roles: ['cashier'], id: 'op-2' };
+    render(<Header />);
+
+    // Policy is read at MOUNT, not when the EOD modal opens.
+    await waitFor(() => expect(fraudApiMocks.fetchFraudSettings).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByTitle('shift.opening')).toBeNull());
+    // The badge itself stays — this conceals one term, it does not remove the
+    // End-of-Day entry point.
+    expect(screen.getByTitle('shift.number')).toBeInTheDocument();
+  });
+
+  it('keeps the opening-float tooltip for a manager under blind count', async () => {
+    mockOperator = { name: 'Manager', roles: ['manager'], id: 'op-1' };
+    render(<Header />);
+    await waitFor(() => expect(fraudApiMocks.fetchFraudSettings).toHaveBeenCalled());
+    expect(screen.getByTitle('shift.opening')).toBeInTheDocument();
+  });
+
+  it('keeps the opening-float tooltip for a cashier when blind count is OFF', async () => {
+    fraudApiMocks.fetchFraudSettings.mockResolvedValue({
+      cashVarianceOverSoft: '5.00',
+      cashVarianceOverHard: '20.00',
+      cashVarianceUnderSoft: '5.00',
+      cashVarianceUnderHard: '20.00',
+      requireBlindCashCount: false,
+      requireManagerPinAboveHard: true,
+      cashVarianceEmailSeverity: 'critical',
+    });
+    mockOperator = { name: 'Cashier', roles: ['cashier'], id: 'op-2' };
+    render(<Header />);
+    await waitFor(() => expect(screen.getByTitle('shift.opening')).toBeInTheDocument());
+  });
+
+  it('fails CLOSED for a cashier while the policy is still unresolved', () => {
+    // Never resolves — the pre-answer state must conceal, not disclose.
+    fraudApiMocks.fetchFraudSettings.mockReturnValue(new Promise(() => {}));
+    mockOperator = { name: 'Cashier', roles: ['cashier'], id: 'op-2' };
+    render(<Header />);
+    expect(screen.queryByTitle('shift.opening')).toBeNull();
   });
 });

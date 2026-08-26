@@ -13,11 +13,50 @@ interface XReportModalProps {
   report: XReportResponse | null;
   isLoading: boolean;
   error: string | null;
+  /**
+   * B-13 (ii): payment-method CODES whose takings must not be shown — the
+   * physical tenders, while a shift is open under blind cash counting. The
+   * caller owns the decision (it holds the policy and the open shift); this
+   * component only renders it. Empty set ⇒ nothing concealed.
+   *
+   * Display-only: the SIGNED `X_REPORT` payload is authored in
+   * `api/reportApi.ts` and is byte-identical either way.
+   */
+  concealedTenderCodes: ReadonlySet<string>;
 }
 
-export function XReportModal({ isOpen, onClose, report, isLoading, error }: XReportModalProps) {
+/** Concealed figures read as an em dash, matching `/shift` and `/reports`. */
+const CONCEALED = '—';
+
+/**
+ * RESIDUAL B-13 (i), inherited here on purpose — NOT closed by this component.
+ *
+ * The summary cards above still show `gross_sales` / `net_sales` /
+ * `refunds_amount`, and Σ(all tender rows) === gross_sales − refunds_amount by
+ * construction (`api/reportApi.ts` builds both from the same receipt loop). So
+ * with a single physical tender in play, its concealed amount is exactly
+ * re-derivable as `gross_sales − refunds_amount − Σ(visible tenders)` — the
+ * same arithmetic the `/reports` dashboard leaves open.
+ *
+ * Closing it means concealing the headline during trading hours, which makes
+ * the report useless for the thing it is for. That is a PRODUCT call the owner
+ * has not made (LEDGER B-13 residual (i)); until they do, `/reports` and this
+ * modal stay deliberately consistent with each other rather than one of them
+ * quietly going further.
+ */
+
+export function XReportModal({
+  isOpen,
+  onClose,
+  report,
+  isLoading,
+  error,
+  concealedTenderCodes,
+}: XReportModalProps) {
   const { t } = useTranslation('pos');
   const { format, decimals } = useCurrency();
+  const anyTenderConcealed = report !== null
+    && report.payment_methods.some((row) => concealedTenderCodes.has(row.payment_type));
 
   // B-6(ii): derived from the report's own signed/stored fields. The X payload
   // is byte-identical to before — nothing here reaches `appendXReport`.
@@ -127,15 +166,29 @@ export function XReportModal({ isOpen, onClose, report, isLoading, error }: XRep
                   </tr>
                 </thead>
                 <tbody>
-                  {report.payment_methods.map((row) => (
-                    <tr key={row.payment_type} className="border-b border-border-subtle">
-                      <td className="py-2">{row.payment_type}</td>
-                      <td className="py-2 text-right">{row.transaction_count}</td>
-                      <td className="py-2 text-right">{format(row.total_amount)}</td>
-                    </tr>
-                  ))}
+                  {report.payment_methods.map((row) => {
+                    const concealed = concealedTenderCodes.has(row.payment_type);
+                    return (
+                      <tr key={row.payment_type} className="border-b border-border-subtle">
+                        <td className="py-2">{row.payment_type}</td>
+                        {/* The transaction COUNT stays visible: it is not a
+                            term of the drawer expectation, and hiding it would
+                            cost the operator the "did my sale land?" check the
+                            X report exists for. */}
+                        <td className="py-2 text-right">{row.transaction_count}</td>
+                        <td className="py-2 text-right">
+                          {concealed ? CONCEALED : format(row.total_amount)}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
+              {anyTenderConcealed && (
+                <p className="mt-2 text-xs text-ink-muted">
+                  {t('reports.dashboard.cashConcealed')}
+                </p>
+              )}
             </div>
           )}
         </div>

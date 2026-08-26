@@ -427,6 +427,7 @@
     "typeSale": "Vente",
     "typeReturn": "Retour",
     "xReportTitle": "Rapport X — Résumé de service",
+    "managerOnly": "Un accès responsable est requis pour ce rapport.",
     "zReportTitle": "Clôture de caisse",
     "zReportWarningTitle": "Générer le rapport Z",
     "zReportWarningDesc": "Le rapport Z est le document fiscal officiel de clôture de ce service. Il ne peut être généré qu'une seule fois par service et est enregistré définitivement dans la chaîne fiscale.",

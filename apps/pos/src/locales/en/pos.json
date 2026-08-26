@@ -427,6 +427,7 @@
     "typeSale": "Sale",
     "typeReturn": "Return",
     "xReportTitle": "X Report — Shift Summary",
+    "managerOnly": "Manager access is required for this report.",
     "zReportTitle": "End of Day Report",
     "zReportWarningTitle": "Generate Z-Report",
     "zReportWarningDesc": "The Z-Report is the official fiscal closing report for this shift. It can only be generated once per shift and is permanently recorded in the fiscal chain.",

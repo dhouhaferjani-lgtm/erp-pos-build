@@ -107,6 +107,9 @@ const zReport: ZReportResponse = {
   },
 };
 
+/** These cases assert VAT display, not B-13 concealment. */
+const NO_CONCEAL: ReadonlySet<string> = new Set<string>();
+
 describe('fiscal report modal VAT rate display', () => {
   it('formats X-report VAT rates without changing the report payload type', () => {
     render(
@@ -116,6 +119,7 @@ describe('fiscal report modal VAT rate display', () => {
         report={xReport}
         isLoading={false}
         error={null}
+        concealedTenderCodes={NO_CONCEAL}
       />,
     );
 
@@ -175,7 +179,7 @@ describe('fiscal report modal refund-VAT disclosure (B-6(ii))', () => {
 
   it('X report: shows the three-line bridge and puts the NET figure in the headline card', () => {
     render(
-      <XReportModal isOpen onClose={vi.fn()} report={refundBearingX} isLoading={false} error={null} />,
+      <XReportModal isOpen onClose={vi.fn()} report={refundBearingX} isLoading={false} error={null} concealedTenderCodes={NO_CONCEAL} />,
     );
 
     expect(screen.getByText('VAT on sales')).toBeInTheDocument();
@@ -209,7 +213,7 @@ describe('fiscal report modal refund-VAT disclosure (B-6(ii))', () => {
 
   it('renders NO disclosure on a refund-free shift, where the two figures already agree', () => {
     render(
-      <XReportModal isOpen onClose={vi.fn()} report={xReport} isLoading={false} error={null} />,
+      <XReportModal isOpen onClose={vi.fn()} report={xReport} isLoading={false} error={null} concealedTenderCodes={NO_CONCEAL} />,
     );
 
     expect(screen.queryByText('VAT on refunds')).not.toBeInTheDocument();
@@ -243,7 +247,7 @@ describe('fiscal report modal unreconciled disclosure (gate r1 F-1)', () => {
 
   it('X report: renders the unreconciled warning on a negative wedge', () => {
     render(
-      <XReportModal isOpen onClose={vi.fn()} report={anomalousX} isLoading={false} error={null} />,
+      <XReportModal isOpen onClose={vi.fn()} report={anomalousX} isLoading={false} error={null} concealedTenderCodes={NO_CONCEAL} />,
     );
 
     expect(screen.getByText('VAT could not be reconciled')).toBeInTheDocument();
@@ -251,7 +255,7 @@ describe('fiscal report modal unreconciled disclosure (gate r1 F-1)', () => {
 
   it('X report: shows both real figures and NO fabricated refund line', () => {
     render(
-      <XReportModal isOpen onClose={vi.fn()} report={anomalousX} isLoading={false} error={null} />,
+      <XReportModal isOpen onClose={vi.fn()} report={anomalousX} isLoading={false} error={null} concealedTenderCodes={NO_CONCEAL} />,
     );
 
     // Both figures are real data and both are shown, so the reader can see the
@@ -289,7 +293,7 @@ describe('fiscal report modal unreconciled disclosure (gate r1 F-1)', () => {
 
   it('stays silent on a clean refund-free shift (the warning is not always-on)', () => {
     render(
-      <XReportModal isOpen onClose={vi.fn()} report={xReport} isLoading={false} error={null} />,
+      <XReportModal isOpen onClose={vi.fn()} report={xReport} isLoading={false} error={null} concealedTenderCodes={NO_CONCEAL} />,
     );
 
     expect(screen.queryByText('VAT could not be reconciled')).not.toBeInTheDocument();

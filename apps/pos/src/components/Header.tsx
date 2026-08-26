@@ -51,6 +51,12 @@ import { ApiRequestError } from '@/lib/api';
 import { useRefundFlowStore } from '@/stores/refundFlowStore';
 import { useRefundDraftStore } from '@/stores/refundDraftStore';
 import { getTerminalState, setManagerPinThrottle, setManagerPinFailedAttempts } from '@/lib/db/repositories/terminalStateRepository';
+import { hasManagerAccess } from '@/lib/auth/roles';
+import { resolveCashDisclosure } from '@/lib/offline/cashDisclosurePolicy';
+import type { CashDisclosure } from '@/lib/offline/cashDisclosurePolicy';
+
+/** Stable empty set so the disclose case never re-renders XReportModal. */
+const NO_CONCEALED_TENDERS: ReadonlySet<string> = new Set<string>();
 
 export function Header() {
   const { t } = useTranslation('pos');
@@ -93,6 +99,19 @@ export function Header() {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
   const [showCashDrawerModal, setShowCashDrawerModal] = useState(false);
+  /**
+   * B-13 (ii)/(iii): the blind-cash-count policy resolved AT MOUNT rather than
+   * when the End-of-Day modal opens. Both surfaces this Header owns disclose a
+   * term of the drawer expectation on every route — the shift-badge tooltip
+   * (opening float) and the X report (cash takings) — so the answer has to be
+   * available before either is touched, not at close time.
+   *
+   * Fails CLOSED: 'conceal' until `resolveCashDisclosure` positively reads
+   * `require_blind_cash_count === false`, matching `/shift` and `/reports`.
+   */
+  const [cashDisclosure, setCashDisclosure] = useState<CashDisclosure>('conceal');
+  const [physicalTenderCodes, setPhysicalTenderCodes] =
+    useState<ReadonlySet<string>>(NO_CONCEALED_TENDERS);
   // Refs for passing EOD data to handlePrintZReport after confirmation
   const lastCashCountPayloadRef = useRef<CashCountCommitPayload | null>(null);
   const lastZReportCashCountsRef = useRef<ZReportCountEntry[] | null>(null);
@@ -112,6 +131,71 @@ export function Header() {
       isTraining: terminal.is_training_mode === true,
     };
   }, [tenantId, companyId, terminal, operator?.id, userId]);
+  /**
+   * B-13 (iv): every manager gate in the POS reads the ACTIVE PIN OPERATOR,
+   * never the back-office account the terminal is signed in with.
+   */
+  const isManager = hasManagerAccess(operator?.roles);
+
+  // Policy-at-mount (B-13 (iii)). Keyed on companyId so a company switch
+  // re-resolves; re-armed to 'conceal' first so the stale answer never leaks
+  // across the boundary.
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    setCashDisclosure('conceal');
+
+    void (async () => {
+      try {
+        const { getDatabase } = await import('@/lib/db');
+        const db = await getDatabase(companyId);
+        const policy = await resolveCashDisclosure(db, companyId);
+        if (!cancelled) setCashDisclosure(policy);
+      } catch {
+        // resolveCashDisclosure already fails closed; a DB-open failure lands
+        // in the same place.
+        if (!cancelled) setCashDisclosure('conceal');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
+
+  // Snapshot which tenders are PHYSICAL when the X report is opened. Payment
+  // methods are a synced reference table, so reading them at open time is both
+  // current and cheap.
+  useEffect(() => {
+    if (!showXReportModal) return;
+    const physical = new Set<string>();
+    for (const method of usePaymentStore.getState().paymentMethods ?? []) {
+      if (method.is_physical) physical.add(method.code);
+    }
+    setPhysicalTenderCodes(physical);
+  }, [showXReportModal]);
+
+  /**
+   * B-13 (ii): while a shift is OPEN under blind counting, this shift's
+   * physical-tender takings are the raw material for the drawer expectation
+   * the counter must not see — the same predicate `/reports` applies
+   * (`ReportsPage.tsx`, `concealCash`). With no open shift nothing is being
+   * counted, so nothing is concealed.
+   */
+  const concealedTenderCodes = useMemo(
+    () => (cashDisclosure === 'conceal' && shift !== null
+      ? physicalTenderCodes
+      : NO_CONCEALED_TENDERS),
+    [cashDisclosure, shift, physicalTenderCodes],
+  );
+
+  /**
+   * B-13 (iii): the opening float is the OTHER term of the drawer
+   * expectation, and this tooltip rendered it on every route to every
+   * operator. Concealed from non-managers while blind counting is on.
+   */
+  const concealOpeningFloat = cashDisclosure === 'conceal' && !isManager;
+
   const cashCountPolicyResolved =
     terminal !== null && cashCountPolicyTerminal === terminal;
   const fraudSettings = fraudSettingsTerminal === terminal ? fraudSettingsValue : null;
@@ -334,6 +418,15 @@ export function Header() {
 
   const handleXReport = async () => {
     if (!terminal) return;
+    // B-13 (ii), defense in depth behind ReportsMenu's own filter: generating
+    // an X report APPENDS an immutable `X_REPORT` fiscal event (rule 8 — never
+    // correctable, only superseded) and discloses per-tender takings. Refuse
+    // BEFORE the generator runs; hiding the rendered result would still have
+    // authored the event.
+    if (!isManager) {
+      toast.error(t('reports.managerOnly'));
+      return;
+    }
     setShowXReportModal(true);
     setReportLoading(true);
     setReportError(null);
@@ -652,7 +745,9 @@ export function Header() {
               type="button"
               onClick={handleOpenEndOfDay}
               className="flex min-h-12 items-center rounded-pill px-1 transition-colors hover:bg-surface-sunken"
-              title={t('shift.opening', { amount: shift.opening_cash })}
+              title={concealOpeningFloat
+                ? t('shift.number', { number: shift.shift_number })
+                : t('shift.opening', { amount: shift.opening_cash })}
             >
               <Badge tone="success">{t('shift.number', { number: shift.shift_number })}</Badge>
             </button>
@@ -775,6 +870,7 @@ export function Header() {
         report={xReport}
         isLoading={reportLoading}
         error={reportError}
+        concealedTenderCodes={concealedTenderCodes}
       />
 
       {/* Cash Drawer Modal */}
