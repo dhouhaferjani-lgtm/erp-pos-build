@@ -79,6 +79,13 @@ final class PaymentMethodRepositoryRoutingTest extends TestCase
             'company_id' => $company->id,
             'code' => 'CASH',
             'name' => 'Cash',
+            // N-12 gate r1 finding 4 — `payment_methods.is_cash_tender` is NOT
+            // NULL DEFAULT false, so a fixture that omits it declares a method
+            // called CASH to be a non-cash tender. Every country's
+            // `PaymentMethodSeeder` sets this true for CASH; the fixture now
+            // matches production, which is what makes the cash-desk assertions
+            // below mean what they say.
+            'is_cash_tender' => true,
         ]);
         $this->cardMethod = PaymentMethod::factory()->create([
             'tenant_id' => $tenant->id,
@@ -133,6 +140,31 @@ final class PaymentMethodRepositoryRoutingTest extends TestCase
 
     public function test_unmapped_method_uses_first_gl_linked_repository_ordered_by_id(): void
     {
+        // Driven with the CASH tender: this case pins the type-preference +
+        // stable-UUID ordering of the fallback, and after N-12 gate r1 finding 4
+        // a CARD tender no longer exercises that ordering at all (it prefers the
+        // settlement repository — see the case below).
+        $event = $this->projectedSaleReceipt([
+            ['amount' => '10.00', 'method_code' => 'CASH'],
+        ]);
+
+        $this->app->make(TreasuryReceiptBridge::class)->apply($event);
+
+        $payment = Payment::query()->where('fiscal_event_id', $event->id)->sole();
+        $this->assertSame($this->fallbackRepository->id, $payment->repository_id);
+    }
+
+    /**
+     * N-12 gate r1 finding 4 — an UNMAPPED non-cash tender settles in the bank.
+     *
+     * This is the behaviour change the finding asked for, at the layer that
+     * ships it: before, an unmapped CARD leg took the type-preferred fallback
+     * and landed in `CASH-DESK`, so card money was counted at the drawer and the
+     * shift could not reconcile. `CARD-SETTLEMENT` sorts AFTER `CASH-DESK` by
+     * UUID, so this cannot pass on the old ordering by accident.
+     */
+    public function test_unmapped_non_cash_method_settles_in_the_bank_not_the_cash_desk(): void
+    {
         $event = $this->projectedSaleReceipt([
             ['amount' => '10.00', 'method_code' => 'CARD'],
         ]);
@@ -140,7 +172,8 @@ final class PaymentMethodRepositoryRoutingTest extends TestCase
         $this->app->make(TreasuryReceiptBridge::class)->apply($event);
 
         $payment = Payment::query()->where('fiscal_event_id', $event->id)->sole();
-        $this->assertSame($this->fallbackRepository->id, $payment->repository_id);
+        $this->assertSame($this->cardRepository->id, $payment->repository_id);
+        $this->assertNotSame($this->fallbackRepository->id, $payment->repository_id);
     }
 
     public function test_inactive_or_non_gl_mapped_repository_falls_back_safely(): void

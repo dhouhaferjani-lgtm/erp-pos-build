@@ -60,17 +60,18 @@ use Illuminate\Database\QueryException;
  *
  * ### A DRAWER is what the tier is about — not every repository
  *
- * "Tier 1 is armed" therefore means *this location owns a till or a safe*, and
- * what tier 1 excludes is the unattributed **drawers**. An unattributed
- * `bank_account` / `virtual` repository is not a branch thing at all: the
- * seeder never mints one, the repositories UI leaves `location_id` null on the
- * ones an operator adds, and a card tender at any branch settles into the same
- * company account. Excluding those alongside the drawers would drop a CARD
- * method's mapped bank account at every branch that owns a till and fall the
- * leg through to that till — card money booked into the cash drawer, on every
- * tenant, the moment day-one attribution arms tier 1. A company-wide instrument
- * stays reachable from every location; one an operator has BOUND to a location
- * is that location's, and stays refused elsewhere like any other.
+ * "Tier 1 is armed" therefore means *this location owns an active till or
+ * safe*, and the whole tier applies to **drawers only**. A `bank_account` /
+ * `virtual` repository is the company's settlement instrument, not a branch
+ * thing: the seeder never mints one, the repositories UI leaves `location_id`
+ * null on the ones an operator adds, and every branch's card takings settle
+ * into the same account. Gate r1 finding 4 measured what tiering them costs —
+ * a CARD method's mapped bank account was dropped at every branch that owned a
+ * till and the leg fell through to that till, i.e. card money in the cash
+ * drawer. Company-wide instruments are therefore candidates from every
+ * location, whatever `location_id` an operator happens to have set on them,
+ * and a tender the tenant has declared NOT cash never falls back to a drawer
+ * at all.
  *
  * A `null` `$locationId` (server-authored flows with no terminal, and every
  * pre-existing caller) keeps the historical company-wide rule verbatim.
@@ -96,19 +97,39 @@ final readonly class TenderRepositoryResolver
         ?string $locationId = null,
     ): ?PaymentRepository {
         try {
-            // N-12: with a known location, resolution runs against tier 1
-            // (that location's own repositories) and falls to tier 2 (the
-            // never-attributed legacy rows) only when tier 1 is empty. The
-            // MAPPED branch is inside the tier too, deliberately: a
-            // company-wide `default_repository_id` is operator routing policy,
-            // and letting it point a branch's cash at Main's till would
-            // reinstate the exact commingling this lane removes.
-            $excludeUnattributedDrawers = $locationId !== null
+            // N-12 — LOCATION IS A DIMENSION OF DRAWERS. A location that owns a
+            // drawer of its own is served by that drawer and never by the legacy
+            // unattributed one; a location that owns none keeps tier 2. Neither
+            // rule touches the company-wide instruments (see `scoped()`).
+            $locationOwnsDrawer = $locationId !== null
                 && $this->locationOwnsDrawer($tenantId, $companyId, $locationId);
+
+            // Gate r1 finding 4 — a tender the tenant has declared NOT cash
+            // (`payment_methods.is_cash_tender`) must not come to rest in a
+            // physical drawer while the company owns anywhere else to put it.
+            // Before this, a CARD leg whose mapped bank account was for any
+            // reason unusable fell through the type-preferred fallback straight
+            // into the till: card money counted as cash at close, an
+            // unreconcilable drawer, and no trace of why.
+            //
+            // WHY A PREFERENCE AND NOT A REFUSAL — the gate asked for "never
+            // falls back to a drawer", and a hard refusal is not shippable: a
+            // freshly registered tenant owns CASH-01 and SAFE-01 and NOTHING
+            // else (`PaymentRepositorySeeder::defaultRepositories()`), so every
+            // card sale on day one would dead-letter. That is pinned, against
+            // the real registration path, by
+            // `CleanRegistrationDownstreamAssumptionsTest::
+            // test_tender_repository_resolver_resolves_from_a_seeded_payment_method`,
+            // which takes the alphabetically first seeded method (a NON-cash
+            // one) and requires it to resolve to `CASH-01`. Ordering delivers
+            // the whole of the gate's intent — while the company has any usable
+            // settlement repository, a non-cash tender can never reach a drawer
+            // — without turning day one into an outage.
+            $nonCashTender = $method !== null && $method->is_cash_tender !== true;
 
             $mappedRepositoryId = $method?->default_repository_id;
             if (is_string($mappedRepositoryId)) {
-                $mapped = $this->scoped($tenantId, $companyId, $locationId, $excludeUnattributedDrawers)
+                $mapped = $this->scoped($tenantId, $companyId, $locationId, $locationOwnsDrawer)
                     ->where('is_active', true)
                     ->whereNotNull('gl_account_id')
                     ->find($mappedRepositoryId);
@@ -128,15 +149,29 @@ final readonly class TenderRepositoryResolver
             // uuid4, or a reordered seeder array would silently invert, rerouting
             // every new tenant's POS cash to the safe.
             //
-            // Tie-preserving by construction: the CASE only separates rows of
-            // DIFFERENT types, so any fixture whose repositories share a type (all
-            // of PaymentRepositoryFactory's, whose default is `cash_register`)
-            // falls straight through to `orderBy('id')` — the previous behaviour,
-            // unchanged. The `is_active` filter deliberately stays on the mapped
-            // branch only; widening it here would change fiscal projection
-            // behaviour (see the class docblock).
-            return $this->scoped($tenantId, $companyId, $locationId, $excludeUnattributedDrawers)
-                ->whereNotNull('gl_account_id')
+            // Gate r1 finding 7 — `is_active` now filters here too, not only on
+            // the mapped branch. Pre-N-12 the omission was benign because the
+            // candidate set was company-wide; the tier makes a deactivated branch
+            // till STICKY (it arms tier 1, excludes the legacy pool, and then is
+            // the only candidate), so POS cash would keep booking into a drawer
+            // the operator believes is switched off.
+            $fallback = $this->scoped($tenantId, $companyId, $locationId, $locationOwnsDrawer)
+                ->where('is_active', true)
+                ->whereNotNull('gl_account_id');
+
+            if ($nonCashTender) {
+                // Every non-drawer ahead of every drawer. A drawer is reachable
+                // only when the company has no settlement repository at all.
+                return $fallback
+                    ->orderByRaw(
+                        'CASE WHEN type IN (?, ?) THEN 1 ELSE 0 END',
+                        self::DRAWER_TYPES,
+                    )
+                    ->orderBy('id')
+                    ->first();
+            }
+
+            return $fallback
                 ->orderByRaw(
                     'CASE WHEN type = ? THEN 0 WHEN type = ? THEN 1 ELSE 2 END',
                     [RepositoryType::CashRegister->value, RepositoryType::Safe->value],
@@ -199,10 +234,21 @@ final readonly class TenderRepositoryResolver
      * Tenant+company base query, narrowed to the resolved N-12 tier.
      *
      * A `null` `$locationId` is "no location known" — the historical
-     * company-wide set, verbatim. Otherwise the candidates are this location's
-     * own repositories plus the unattributed ones, minus the unattributed
-     * DRAWERS once this location owns a drawer of its own. A repository
-     * attributed to a different location is never a candidate.
+     * company-wide set, verbatim.
+     *
+     * With a location, the split is by what a repository IS, not by where it
+     * sits:
+     *
+     *   - a DRAWER (`cash_register` / `safe`) is a physical thing that lives at
+     *     one branch and is counted there. Candidates are this location's own,
+     *     plus the never-attributed legacy ones and only while this location
+     *     owns none. Another location's drawer is never a candidate.
+     *   - anything else (`bank_account`, `virtual`) is the COMPANY's settlement
+     *     instrument. Every branch's card takings settle into the same account;
+     *     `location_id` on such a row is descriptive metadata an operator may
+     *     have set, never a restriction. Gate r1 finding 4: tiering these
+     *     alongside the drawers silently rerouted a branch's CARD leg into the
+     *     branch till.
      *
      * @return Builder<PaymentRepository>
      */
@@ -210,7 +256,7 @@ final readonly class TenderRepositoryResolver
         string $tenantId,
         string $companyId,
         ?string $locationId,
-        bool $excludeUnattributedDrawers,
+        bool $locationOwnsDrawer,
     ): Builder {
         $query = PaymentRepository::query()
             ->where('tenant_id', $tenantId)
@@ -220,14 +266,17 @@ final readonly class TenderRepositoryResolver
             return $query;
         }
 
-        return $query->where(function (Builder $scope) use ($locationId, $excludeUnattributedDrawers): void {
-            $scope->where('location_id', $locationId)
-                ->orWhere(function (Builder $unattributed) use ($excludeUnattributedDrawers): void {
-                    $unattributed->whereNull('location_id');
+        return $query->where(function (Builder $scope) use ($locationId, $locationOwnsDrawer): void {
+            $scope->whereNotIn('type', self::DRAWER_TYPES)
+                ->orWhere(function (Builder $drawers) use ($locationId, $locationOwnsDrawer): void {
+                    $drawers->whereIn('type', self::DRAWER_TYPES)
+                        ->where(function (Builder $tier) use ($locationId, $locationOwnsDrawer): void {
+                            $tier->where('location_id', $locationId);
 
-                    if ($excludeUnattributedDrawers) {
-                        $unattributed->whereNotIn('type', self::DRAWER_TYPES);
-                    }
+                            if (! $locationOwnsDrawer) {
+                                $tier->orWhereNull('location_id');
+                            }
+                        });
                 });
         });
     }
@@ -238,6 +287,11 @@ final readonly class TenderRepositoryResolver
      * The question the tier turns on — see the class docblock. A location that
      * owns only, say, a bound bank account has no drawer, so the unattributed
      * legacy drawers remain its candidates exactly as before N-12.
+     *
+     * Gate r1 finding 7: a DEACTIVATED drawer does not arm the tier. Otherwise
+     * switching a branch till off would leave the branch pinned to it — armed,
+     * cut off from the legacy pool, and with that same switched-off row as the
+     * only candidate.
      */
     private function locationOwnsDrawer(string $tenantId, string $companyId, string $locationId): bool
     {
@@ -246,6 +300,7 @@ final readonly class TenderRepositoryResolver
             ->where('company_id', $companyId)
             ->where('location_id', $locationId)
             ->whereIn('type', self::DRAWER_TYPES)
+            ->where('is_active', true)
             ->whereNotNull('gl_account_id')
             ->exists();
     }

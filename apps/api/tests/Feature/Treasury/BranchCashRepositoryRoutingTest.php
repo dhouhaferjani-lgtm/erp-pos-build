@@ -348,30 +348,93 @@ final class BranchCashRepositoryRoutingTest extends TestCase
     }
 
     /**
-     * The widening is for repositories with NO location, never for another
-     * branch's. An operator who binds a bank account to Main has said it is
-     * Main's; the branch may not draw on it.
+     * Gate r1 finding 4 — `location_id` on a BANK account is metadata, not a
+     * restriction.
+     *
+     * The first cut of this test asserted `assertNotSame($mainBank->id, …)`,
+     * which passed while the resolver was in fact returning the branch CASH
+     * DRAWER for a card tender — the exact defect the lane exists to remove,
+     * greenlit by a non-falsifying assertion. It now names the id it expects.
+     *
+     * A bank account is the company's settlement instrument wherever an
+     * operator happened to file it; the branch's card takings settle into it
+     * like every other branch's.
      */
-    public function test_a_bank_account_bound_to_another_location_is_still_refused(): void
+    public function test_a_bank_account_bound_to_another_location_still_serves_the_branch(): void
     {
-        $this->drawer('CASH-02', $this->branchLocationId);
+        $till = $this->drawer('CASH-02', $this->branchLocationId);
         $mainBank = $this->companyWideBank('BANK-MAIN', $this->mainLocationId);
+        $card = $this->cardMethodMappedTo($mainBank->id);
 
-        $card = PaymentMethod::factory()->create([
-            'tenant_id' => $this->tenantId,
-            'company_id' => $this->companyId,
-            'code' => 'CARD',
-            'name' => 'Carte bancaire',
-            'is_cash_tender' => false,
-            'has_maturity' => false,
-            'instrument_kind' => null,
-            'default_repository_id' => $mainBank->id,
-        ]);
+        $resolved = $this->app->make(TenderRepositoryResolver::class)
+            ->resolve($this->tenantId, $this->companyId, $card, $this->branchLocationId);
 
-        $this->assertNotSame(
-            $mainBank->id,
+        $this->assertSame($mainBank->id, $resolved?->id);
+        $this->assertNotSame($till->id, $resolved->id, 'Card money must never come to rest in the till.');
+    }
+
+    /**
+     * Gate r1 finding 4 — card money goes to the bank, not the till.
+     *
+     * When a non-cash tender's mapped instrument is unusable (here: deactivated)
+     * the type-preferred fallback used to hand back the branch till. The leg
+     * then counted as cash at shift close and the drawer could not reconcile,
+     * with nothing on the receipt saying why. Every settlement repository now
+     * outranks every drawer for such a tender.
+     */
+    public function test_a_non_cash_tender_prefers_a_settlement_repository_over_any_drawer(): void
+    {
+        $till = $this->drawer('CASH-02', $this->branchLocationId);
+        $deadBank = $this->companyWideBank('BANK-DEAD');
+        $deadBank->forceFill(['is_active' => false])->save();
+        $liveBank = $this->companyWideBank('BANK-01');
+
+        $card = $this->cardMethodMappedTo($deadBank->id);
+
+        $resolved = $this->app->make(TenderRepositoryResolver::class)
+            ->resolve($this->tenantId, $this->companyId, $card, $this->branchLocationId);
+
+        $this->assertSame($liveBank->id, $resolved?->id);
+        $this->assertNotSame($till->id, $resolved->id, 'Card money must never come to rest in the till.');
+    }
+
+    /**
+     * The other half of the same rule, and the reason it is a PREFERENCE rather
+     * than a refusal: a tenant on day one owns `CASH-01` and `SAFE-01` and
+     * nothing else, so refusing here would dead-letter every card sale of every
+     * new tenant. The drawer stays reachable when there is genuinely nowhere
+     * else — pinned so a later tightening cannot ship that outage by accident.
+     */
+    public function test_a_non_cash_tender_still_books_when_the_company_owns_no_settlement_repository(): void
+    {
+        $till = $this->drawer('CASH-02', $this->branchLocationId);
+        $card = $this->cardMethodMappedTo($till->id);
+        $card->forceFill(['default_repository_id' => null])->save();
+
+        $this->assertSame(
+            $till->id,
             $this->app->make(TenderRepositoryResolver::class)
-                ->resolve($this->tenantId, $this->companyId, $card, $this->branchLocationId)?->id,
+                ->resolve($this->tenantId, $this->companyId, $card->fresh(), $this->branchLocationId)?->id,
+        );
+    }
+
+    /**
+     * Gate r1 finding 7 — a deactivated branch till must not stay sticky.
+     *
+     * Without `is_active` in the arming predicate, switching a branch drawer off
+     * left the branch armed, cut off from the legacy pool, and pointed at that
+     * same switched-off row.
+     */
+    public function test_a_deactivated_branch_drawer_releases_the_branch_to_the_legacy_pool(): void
+    {
+        $legacy = $this->drawer('CASH-01', null);
+        $branchTill = $this->drawer('CASH-02', $this->branchLocationId);
+        $branchTill->forceFill(['is_active' => false])->save();
+
+        $this->assertSame(
+            $legacy->id,
+            $this->app->make(TenderRepositoryResolver::class)
+                ->resolve($this->tenantId, $this->companyId, null, $this->branchLocationId)?->id,
         );
     }
 
@@ -563,6 +626,20 @@ final class BranchCashRepositoryRoutingTest extends TestCase
             'gl_account_id' => $this->bankAccountId,
             'currency' => 'TND',
             'balance' => '0.000',
+        ]);
+    }
+
+    private function cardMethodMappedTo(string $repositoryId): PaymentMethod
+    {
+        return PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'code' => 'CARD',
+            'name' => 'Carte bancaire',
+            'is_cash_tender' => false,
+            'has_maturity' => false,
+            'instrument_kind' => null,
+            'default_repository_id' => $repositoryId,
         ]);
     }
 
