@@ -1,4 +1,6 @@
+import type Database from '@tauri-apps/plugin-sql';
 import { sqliteUtcToDate } from '@/lib/db/sqliteTime';
+import { getSyncMetadata } from '@/lib/db/repositories/syncLogRepository';
 import { APPROVAL_CACHE_MAX_AGE_MS } from '@/lib/operatorApproval/approvalVerifier';
 
 /**
@@ -37,17 +39,61 @@ export const OPERATOR_AUTHORITY_MAX_AGE_MS = APPROVAL_CACHE_MAX_AGE_MS;
 export const OPERATOR_AUTHORITY_MAX_FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
 
 /**
- * True when a cached operator row's authority is older than the TTL (or its
- * stamp is missing, unparseable, or grossly future-dated).
+ * `sync_metadata` key holding the last SUCCESSFUL operator-roster pull.
+ *
+ * Gate r2 (R2-1): this — not `operator_pins.synced_at` — is the authority
+ * clock. `synced_at` is a row-level "last write" marker that two
+ * discount-permission writers also bump, and one of them
+ * (`updateOperatorDiscountPermissions`, via `resolveOnlineDiscountPermissions`)
+ * fires on EVERY offline-accepted PIN verify. Dating a security TTL from it
+ * meant a device that is online but whose roster pull is broken — pin-data 403
+ * after the device account loses `pos.operate_terminal`, or a persistently
+ * failing sync, both of which `pullOperatorPins` swallows and returns 0 for —
+ * reset its authority clock from an endpoint that carries no authority, and a
+ * demoted manager's cached roles stayed "fresh" forever.
+ *
+ * `pullOperatorPins` writes this key only AFTER `upsertOperators` succeeds, so
+ * it moves if and only if roles and permissions were actually re-read from the
+ * server. Written as an ISO 8601 instant (`new Date().toISOString()`).
+ */
+export const OPERATOR_ROSTER_SYNC_KEY = 'operators_last_sync';
+
+/**
+ * The instant the operator roster was last confirmed by the server, or `null`
+ * if it never was (or cannot be read).
+ *
+ * Fails CLOSED by returning `null`, which `isOperatorAuthorityStale` reads as
+ * stale: a device whose metadata table will not answer is precisely one whose
+ * cached authority should not be trusted.
+ */
+export async function readOperatorAuthoritySyncedAt(db: Database): Promise<string | null> {
+  try {
+    return await getSyncMetadata(db, OPERATOR_ROSTER_SYNC_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True when the cached operator authority is older than the TTL (or its stamp
+ * is missing, unparseable, or grossly future-dated).
  *
  * Fails CLOSED — an unreadable stamp is treated as stale, because the whole
  * point is to stop trusting authority we cannot date.
  *
- * Rule 20: `synced_at` is written `datetime('now')`, i.e.
- * `YYYY-MM-DD HH:MM:SS` UTC with a SPACE separator. `new Date()` on that
- * string is interpreted in the DEVICE timezone by every JS engine, which would
- * shift the age by the local UTC offset (and, west of Greenwich, make a stamp
- * look future-dated). `sqliteUtcToDate` is the required reader.
+ * Rule 20: the roster stamp is written ISO, but this reader must survive both
+ * shapes — a SQLite `datetime('now')` value is `YYYY-MM-DD HH:MM:SS` UTC with
+ * a SPACE separator, and `new Date()` on that string is interpreted in the
+ * DEVICE timezone by every JS engine, which would shift the age by the local
+ * UTC offset (and, west of Greenwich, make a stamp look future-dated).
+ * `sqliteUtcToDate` handles both and is the required reader.
+ *
+ * Gate r2 (r2-4), accepted: the verdict is a SNAPSHOT taken when the PIN is
+ * verified and then carried on the in-memory operator, so a session that is
+ * never locked and re-verified keeps its verdict past the 7-day boundary. It
+ * is bounded in practice by the inactivity lock, and the other direction is
+ * conservative in the same way — a stale verdict is not cleared by a later
+ * successful pull either, until the next verify.
  */
 export function isOperatorAuthorityStale(
   syncedAt: string | null | undefined,

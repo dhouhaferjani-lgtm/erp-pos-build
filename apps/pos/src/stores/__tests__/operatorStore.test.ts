@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useOperatorStore } from '../operatorStore';
+import { getSyncMetadata, setSyncMetadata } from '@/lib/db/repositories/syncLogRepository';
 import type { Operator } from '../operatorStore';
 
 vi.mock('@/lib/api', () => ({
@@ -20,6 +21,11 @@ vi.mock('@/lib/db/repositories/operatorPinRepository', () => ({
 
 vi.mock('@/api/discountApi', () => ({
   fetchDiscountPermissions: vi.fn(),
+}));
+
+vi.mock('@/lib/db/repositories/syncLogRepository', () => ({
+  getSyncMetadata: vi.fn().mockResolvedValue(null),
+  setSyncMetadata: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/lib/db/repositories/queuedPinUpdateRepository', () => ({
@@ -95,14 +101,6 @@ const mockOperator: Operator = {
 // Pre-compute a real bcrypt hash of '1234' for offline tests
 const PIN_1234_HASH = bcrypt.hashSync('1234', 10);
 
-/**
- * Gate r1 (R1-3): cached operator rows now carry the roster-pull stamp that the
- * offline authority TTL reads. These fixtures are deliberately FRESH — the TTL
- * itself is covered in `lib/auth/__tests__/operatorAuthorityFreshness.test.ts`
- * and `lib/auth/roles.test.ts`.
- */
-const FRESH_SYNCED_AT = new Date().toISOString();
-
 describe('operatorStore', () => {
   beforeEach(() => {
     _authState = { companyId: 'company-1', user: defaultUser };
@@ -144,7 +142,6 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
-      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -172,7 +169,6 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
-      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -197,7 +193,6 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
-      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -227,7 +222,6 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
-      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -250,7 +244,6 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
-      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -277,7 +270,6 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
-      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -302,7 +294,6 @@ describe('operatorStore', () => {
         name: 'Jane',
         email: 'jane@example.com',
         pin_hash: PIN_1234_HASH,
-        synced_at: FRESH_SYNCED_AT,
         roles: ['cashier'],
         permissions: ['pos.sell'],
         can_discount: false,
@@ -316,7 +307,6 @@ describe('operatorStore', () => {
         name: 'Bob',
         email: 'bob@example.com',
         pin_hash: secondHash,
-        synced_at: FRESH_SYNCED_AT,
         roles: ['manager'],
         permissions: ['pos.manage'],
         can_discount: true,
@@ -467,7 +457,6 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
-      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -492,7 +481,6 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
-      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -523,7 +511,6 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
-      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -552,7 +539,6 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
-      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -700,7 +686,6 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
-      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -735,7 +720,6 @@ describe('operatorStore', () => {
       name: 'Jane Cashier',
       email: 'jane@example.com',
       pin_hash: PIN_1234_HASH,
-      synced_at: FRESH_SYNCED_AT,
       roles: ['cashier'],
       permissions: ['pos.sell'],
       can_discount: true,
@@ -799,5 +783,81 @@ describe('operatorStore', () => {
     useOperatorStore.getState().resetActivityTimer();
 
     expect(useOperatorStore.getState().lastActivity).toBeGreaterThanOrEqual(before);
+  });
+
+  /**
+   * Gate r2 (R2-1) — the operator-authority TTL is dated from the ROSTER pull
+   * (`sync_metadata.operators_last_sync`), never from `operator_pins.synced_at`.
+   *
+   * `synced_at` looked like an authority stamp but two discount-permission
+   * writers also bump it, and one of them fires on every offline-accepted PIN
+   * verify. A device that is online with a BROKEN roster pull therefore reset
+   * its own authority clock from an endpoint that carries no authority, and a
+   * demoted manager's cached roles stayed "fresh" forever.
+   */
+  describe('operator authority freshness source (R2-1)', () => {
+    const DAY = 24 * 60 * 60 * 1000;
+
+    function cachedManager() {
+      return [{
+        id: 'op-1',
+        name: 'Jane Manager',
+        email: 'jane@example.com',
+        pin_hash: PIN_1234_HASH,
+        roles: ['manager'],
+        permissions: ['pos.view_reports'],
+        can_discount: true,
+        max_discount_percent: 10,
+        discount_permissions_fetched_at: new Date().toISOString(),
+        discount_permissions_terminal_code: 'POS01',
+        discount_permissions_status: 'fresh' as const,
+      }];
+    }
+
+    beforeEach(() => {
+      vi.mocked(apiPost).mockRejectedValue(new Error('Network error'));
+      vi.mocked(getAllOperators).mockResolvedValue(cachedManager());
+    });
+
+    it('is FRESH when the roster was pulled inside the TTL', async () => {
+      vi.mocked(getSyncMetadata).mockResolvedValue(new Date(Date.now() - DAY).toISOString());
+      await useOperatorStore.getState().verifyPin('1234');
+      expect(useOperatorStore.getState().operator?.authority_stale).toBe(false);
+      expect(vi.mocked(getSyncMetadata)).toHaveBeenCalledWith(mockDb, 'operators_last_sync');
+    });
+
+    it('is STALE when the last roster pull is older than the TTL', async () => {
+      vi.mocked(getSyncMetadata).mockResolvedValue(new Date(Date.now() - 8 * DAY).toISOString());
+      await useOperatorStore.getState().verifyPin('1234');
+      expect(useOperatorStore.getState().operator?.authority_stale).toBe(true);
+    });
+
+    it('is STALE when the roster has NEVER been pulled', async () => {
+      vi.mocked(getSyncMetadata).mockResolvedValue(null);
+      await useOperatorStore.getState().verifyPin('1234');
+      expect(useOperatorStore.getState().operator?.authority_stale).toBe(true);
+    });
+
+    it('does NOT consult the per-operator row stamp', async () => {
+      // A row written moments ago by a discount-permission refresh must not
+      // rescue an operator whose ROSTER pull is eight days old.
+      const rows = cachedManager();
+      Object.assign(rows[0]!, { synced_at: new Date().toISOString() });
+      vi.mocked(getAllOperators).mockResolvedValue(rows);
+      vi.mocked(getSyncMetadata).mockResolvedValue(new Date(Date.now() - 8 * DAY).toISOString());
+
+      await useOperatorStore.getState().verifyPin('1234');
+      expect(useOperatorStore.getState().operator?.authority_stale).toBe(true);
+    });
+
+    it('an offline-accepted PIN verify does not extend freshness', async () => {
+      // The verify path calls `updateOperatorDiscountPermissions` in the
+      // background; whatever it writes, the authority clock is untouched
+      // because only `pullOperatorPins` writes the roster key.
+      vi.mocked(getSyncMetadata).mockResolvedValue(new Date(Date.now() - 8 * DAY).toISOString());
+      await useOperatorStore.getState().verifyPin('1234');
+      expect(useOperatorStore.getState().operator?.authority_stale).toBe(true);
+      expect(vi.mocked(setSyncMetadata)).not.toHaveBeenCalled();
+    });
   });
 });

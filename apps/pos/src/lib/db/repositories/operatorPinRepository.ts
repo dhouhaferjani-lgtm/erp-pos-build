@@ -23,17 +23,6 @@ export interface CachedOperator {
   discount_permissions_fetched_at: string | null;
   discount_permissions_terminal_code: string | null;
   discount_permissions_status: DiscountPermissionStatus;
-  /**
-   * `operator_pins.synced_at`, stamped `datetime('now')` by `upsertOperators`
-   * — so `YYYY-MM-DD HH:MM:SS` UTC with a SPACE separator (rule 20). NEVER
-   * `new Date()` this directly; use `sqliteUtcToDate`.
-   *
-   * OPTIONAL only for hand-built fixtures: `rowToOperator` always populates it
-   * from the row. Absent reads as STALE in
-   * `isOperatorAuthorityStale`, which closes the manager gates — the safe
-   * answer for an authority we cannot date (gate r1 R1-3).
-   */
-  synced_at?: string | null;
 }
 
 interface OperatorPinRow {
@@ -44,7 +33,6 @@ interface OperatorPinRow {
   pin_hash: string;
   roles: string;
   permissions: string;
-  synced_at?: string | null;
   company_ids?: string | null;
   terminal_ids?: string | null;
   approval_scopes?: string | null;
@@ -88,7 +76,6 @@ function rowToOperator(row: OperatorPinRow): CachedOperator {
     discount_permissions_fetched_at: row.discount_permissions_fetched_at ?? null,
     discount_permissions_terminal_code: row.discount_permissions_terminal_code ?? null,
     discount_permissions_status: permissionStatus,
-    synced_at: row.synced_at ?? null,
   };
 }
 
@@ -106,6 +93,19 @@ export async function getOperatorById(db: Database, id: string): Promise<CachedO
   return row ? rowToOperator(row) : null;
 }
 
+/**
+ * The roster pull. This is the ONLY writer that re-reads `roles` and
+ * `permissions` from the server, so it is the only one whose `synced_at` stamp
+ * would mean anything about authority.
+ *
+ * Gate r2 (R2-1): even so, authority freshness is NOT dated from this column.
+ * `synced_at` is a row-level "last write" marker, and dating a security TTL
+ * from it made the TTL resettable by writers that carry no authority — the two
+ * discount-permission updaters below, one of which fires on every
+ * offline-accepted PIN verify. The authority clock is
+ * `sync_metadata.operators_last_sync` (`lib/auth/operatorAuthorityFreshness.ts`),
+ * written by `pullOperatorPins` only after THIS function succeeds.
+ */
 export async function upsertOperators(
   db: Database,
   operators: Array<{
@@ -260,8 +260,7 @@ export async function updateOperatorDiscountPermissions(
          discount_permissions_user_can_discount = $6,
          discount_permissions_user_max_discount_percent = $7,
          discount_permissions_can_apply_line_discounts = $8,
-         discount_permissions_can_apply_transaction_discounts = $9,
-         synced_at = datetime('now')
+         discount_permissions_can_apply_transaction_discounts = $9
      WHERE id = $10`,
     [
       permissions.can_discount ? 1 : 0,
@@ -291,8 +290,7 @@ export async function invalidateTerminalDiscountPermissions(
          discount_permissions_terminal_code = NULL,
          discount_permissions_status = 'unavailable',
          discount_permissions_can_apply_line_discounts = NULL,
-         discount_permissions_can_apply_transaction_discounts = NULL,
-         synced_at = datetime('now')
+         discount_permissions_can_apply_transaction_discounts = NULL
      WHERE discount_permissions_terminal_code = $1`,
     [terminalCode],
   );

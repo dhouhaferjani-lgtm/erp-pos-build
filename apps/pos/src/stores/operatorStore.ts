@@ -15,7 +15,10 @@ import { useTerminalStore } from '@/stores/terminalStore';
 import { recordAuditEvent } from '@/lib/audit/recordAuditEvent';
 import { getDeviceId } from '@/lib/device';
 import type { DiscountPermissionStatus } from '@/lib/discountPermissions';
-import { isOperatorAuthorityStale } from '@/lib/auth/operatorAuthorityFreshness';
+import {
+  isOperatorAuthorityStale,
+  readOperatorAuthoritySyncedAt,
+} from '@/lib/auth/operatorAuthorityFreshness';
 
 export interface Operator {
   id: string;
@@ -188,6 +191,13 @@ export const useOperatorStore = create<OperatorStore>()((set, get) => ({
       const db = await getDb();
       const operators = await getAllOperators(db);
       const terminalCode = useTerminalStore.getState().terminal?.code ?? null;
+      // R2-1: dated from the ROSTER pull, the only event that re-reads roles
+      // and permissions from the server — never from `operator_pins.synced_at`,
+      // which non-authority writers also bump.
+      const authorityStale = isOperatorAuthorityStale(
+        await readOperatorAuthoritySyncedAt(db),
+        Date.now(),
+      );
 
       for (const op of operators) {
         if (bcrypt.compareSync(pin, op.pin_hash)) {
@@ -203,7 +213,7 @@ export const useOperatorStore = create<OperatorStore>()((set, get) => ({
             permissions: op.permissions,
             // R1-3: the authority is only as good as the last roster pull.
             // Past the TTL the manager gates close; the till keeps trading.
-            authority_stale: isOperatorAuthorityStale(op.synced_at, Date.now()),
+            authority_stale: authorityStale,
             can_discount: discountPermissionStatus === 'fresh' ? op.can_discount : false,
             can_apply_line_discounts: discountPermissionStatus === 'fresh'
               ? op.can_apply_line_discounts

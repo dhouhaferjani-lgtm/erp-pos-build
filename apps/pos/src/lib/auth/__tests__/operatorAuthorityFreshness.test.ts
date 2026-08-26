@@ -7,6 +7,7 @@ import {
   isOperatorAuthorityStale,
 } from '../operatorAuthorityFreshness';
 import { APPROVAL_CACHE_MAX_AGE_MS } from '@/lib/operatorApproval/approvalVerifier';
+import { sqliteUtcToDate } from '@/lib/db/sqliteTime';
 
 const NOW = Date.UTC(2026, 7, 26, 12, 0, 0);
 const DAY = 24 * 60 * 60 * 1000;
@@ -46,20 +47,37 @@ describe('isOperatorAuthorityStale', () => {
   });
 
   /**
-   * Rule 20. `datetime('now')` writes UTC with a SPACE separator, and
-   * `new Date('2026-08-26 12:00:00')` is parsed in the DEVICE timezone. Reading
-   * it without `sqliteUtcToDate` shifts every age by the local UTC offset —
-   * which, west of Greenwich, makes a just-written stamp look FUTURE-dated.
+   * Rule 20, pinned TIMEZONE-INDEPENDENTLY (gate r2, r2-5).
+   *
+   * `datetime('now')` writes UTC with a SPACE separator, and
+   * `new Date('2026-08-26 12:00:00')` is parsed in the DEVICE timezone by
+   * every JS engine. The earlier version of this case only went red for a
+   * naive parse when the runner sat EAST of UTC — under `TZ=UTC`, which is
+   * what CI uses and what `apps/pos` pins nowhere, a naive parse yields age 0
+   * and the case passed anyway. So it did not guard the bug it named.
+   *
+   * Asserting the parse itself is offset-free bites in every timezone.
    */
-  it('reads the SQLite space-separated UTC stamp as UTC, not as local time', () => {
+  it('reads a SQLite space-separated UTC stamp as UTC, not as local time', () => {
     const justWritten = sqliteStamp(0);
     expect(justWritten).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
-    // A naive parse would be off by the device offset; the helper must land
-    // exactly on `now` and therefore read as fresh at the very edge.
-    expect(isOperatorAuthorityStale(justWritten, NOW, 1000)).toBe(false);
+    expect(sqliteUtcToDate(justWritten).getTime()).toBe(NOW);
+    // And a naive `new Date()` on the same string is NOT the same instant
+    // unless the runner happens to sit at UTC — which is exactly why the
+    // helper is mandatory rather than incidental.
+    const naive = new Date(justWritten).getTime();
+    const offsetMs = new Date(NOW).getTimezoneOffset() * 60 * 1000;
+    expect(naive).toBe(NOW + offsetMs);
   });
 
-  it('still accepts an ISO stamp (the online verify path writes one)', () => {
+  /**
+   * The authority stamp is `sync_metadata.operators_last_sync`, which
+   * `pullOperatorPins` writes as `new Date().toISOString()` — so ISO is the
+   * SHAPE PRODUCTION ACTUALLY WRITES here, and the SQLite shape above is the
+   * defensive path.
+   */
+  it('accepts the ISO stamp the roster pull writes', () => {
     expect(isOperatorAuthorityStale(new Date(NOW).toISOString(), NOW)).toBe(false);
+    expect(isOperatorAuthorityStale(new Date(NOW - 8 * DAY).toISOString(), NOW)).toBe(true);
   });
 });
