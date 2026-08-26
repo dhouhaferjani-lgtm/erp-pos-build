@@ -771,6 +771,15 @@ final class BackfillTaxDetailsCommand extends Command
 
             $scale = $this->scaleResolver->getScaleSafe((string) $document->currency, 3);
 
+            // Same local-narrowing shape the main leg uses at :221-224:
+            // TaxCalculationResult declares these as plain `string`, and
+            // widening the DTO to `numeric-string` is a cross-cutting change
+            // this lane does not own.
+            /** @var numeric-string $recomputedSubtotal */
+            $recomputedSubtotal = $result->subtotal;
+            /** @var numeric-string $recomputedLineTax */
+            $recomputedLineTax = $result->lineItemsTaxTotal;
+
             // Guards 1-3 -- see the class docblock. Guard 3 (recomputed
             // line-items tax vs the stored line_tax_amount) is the
             // supplier-invoice-specific one: what the GL posted as
@@ -785,13 +794,13 @@ final class BackfillTaxDetailsCommand extends Command
                     $storedTotal,
                 );
             }
-            if (bccomp($result->subtotal, $storedSubtotal, $scale) !== 0) {
-                $reasons[] = sprintf('recomputed subtotal %s != stored subtotal %s', $result->subtotal, $storedSubtotal);
+            if (bccomp($recomputedSubtotal, $storedSubtotal, $scale) !== 0) {
+                $reasons[] = sprintf('recomputed subtotal %s != stored subtotal %s', $recomputedSubtotal, $storedSubtotal);
             }
-            if (bccomp($result->lineItemsTaxTotal, $storedLineTax, $scale) !== 0) {
+            if (bccomp($recomputedLineTax, $storedLineTax, $scale) !== 0) {
                 $reasons[] = sprintf(
                     'recomputed line VAT %s != stored line_tax_amount %s (the GL posted the stored figure as recoverable input VAT)',
-                    $result->lineItemsTaxTotal,
+                    $recomputedLineTax,
                     $storedLineTax,
                 );
             }
