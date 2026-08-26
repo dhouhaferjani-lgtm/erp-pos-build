@@ -230,6 +230,89 @@ class UserActionsTest extends TestCase
         ]);
     }
 
+    /**
+     * C-13(i). `pos_pin` was NEVER cleared on offboarding — only the explicit
+     * `PATCH /users/{id}/pos-pin` with a null pin cleared it. A fired employee's
+     * PIN hash therefore stayed on their row forever, and `setupPin`'s
+     * tenant-wide, unscoped uniqueness scan (PosAuthController) walks EVERY user
+     * holding a `pos_pin`, so a ghost PIN goes on refusing that value to a real
+     * new operator.
+     */
+    public function test_deactivating_a_user_clears_their_pos_pin(): void
+    {
+        $this->targetUser->update(['pos_pin' => '1234']);
+        $this->assertNotNull($this->targetUser->refresh()->pos_pin, 'Pre-condition: the target holds a PIN.');
+
+        $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson("/api/v1/users/{$this->targetUser->id}/deactivate")
+            ->assertOk();
+
+        $this->assertNull(
+            $this->targetUser->refresh()->pos_pin,
+            'Offboarding must take the POS PIN with it.'
+        );
+
+        $this->assertDatabaseHas('audit_events', [
+            'event_type' => 'user.pos_pin_cleared',
+            'aggregate_id' => $this->targetUser->id,
+            'user_id' => $this->adminUser->id,
+        ]);
+    }
+
+    public function test_deleting_a_user_clears_their_pos_pin(): void
+    {
+        $this->targetUser->update(['pos_pin' => '4321']);
+
+        $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->deleteJson("/api/v1/users/{$this->targetUser->id}")
+            ->assertOk();
+
+        $this->assertNull($this->targetUser->refresh()->pos_pin);
+    }
+
+    /**
+     * The PIN a cleared user held is a bcrypt hash — it cannot be restored, and
+     * must not be. Reactivation restores the memberships the cascade revoked;
+     * the operator is issued a NEW pin.
+     */
+    public function test_reactivating_a_user_does_not_restore_their_pos_pin(): void
+    {
+        $this->targetUser->update(['pos_pin' => '5678']);
+
+        $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson("/api/v1/users/{$this->targetUser->id}/deactivate")
+            ->assertOk();
+
+        $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson("/api/v1/users/{$this->targetUser->id}/activate")
+            ->assertOk();
+
+        $this->assertNull(
+            $this->targetUser->refresh()->pos_pin,
+            'A bcrypt PIN hash cannot be restored, and reactivation must not pretend otherwise.'
+        );
+    }
+
+    /**
+     * Idempotence: a user with no PIN must not emit a spurious clear event.
+     */
+    public function test_deactivating_a_user_without_a_pin_logs_no_pin_cleared_event(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson("/api/v1/users/{$this->targetUser->id}/deactivate")
+            ->assertOk();
+
+        $this->assertDatabaseMissing('audit_events', [
+            'event_type' => 'user.pos_pin_cleared',
+            'aggregate_id' => $this->targetUser->id,
+        ]);
+    }
+
     // ========== RESET PASSWORD ==========
 
     public function test_can_trigger_password_reset(): void
