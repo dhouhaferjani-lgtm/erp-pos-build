@@ -224,12 +224,10 @@ export async function generateZReport(
   const drawerOps = await getCashDrawerOpsForShift(db, shiftId);
   const accountPayments = await getAccountPaymentRecordsForShift(db, shiftId);
 
-  // Build payment method lookup for names
-  const paymentMethodMap = await buildPaymentMethodMap(db);
-
-  // I-1 — and the cash-ness predicate, read from the SAME cached rows rather
-  // than re-derived from the code string. See buildCashTenderContext().
-  const cashTender = await buildCashTenderContext(db);
+  // Payment method lookup for names AND the cash-ness predicate, from ONE read.
+  // See buildPaymentMethodDirectory().
+  const cashTender = await buildPaymentMethodDirectory(db);
+  const paymentMethodMap = cashTender.codeById;
 
   // 4. Compute report data — refundRecords (LEGACY) seeds refunds_count/
   // refunds_amount; the receipt_kind branch inside (v4) continues
@@ -806,53 +804,32 @@ function summarizeCashCountLines(
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-async function buildPaymentMethodMap(db: Database): Promise<Map<string, string>> {
-  const methods = await queryAll<{ id: string; code: string }>(
-    db,
-    'SELECT id, code FROM payment_methods'
-  );
-  const map = new Map<string, string>();
-  for (const m of methods) {
-    map.set(m.id, m.code);
-  }
-  return map;
-}
-
 /**
- * Cash-ness over the cached payment methods, for the Z aggregation.
+ * The cached payment methods, in the two shapes the Z needs: id -> code (for
+ * naming a legacy receipt's primary method) and the cash-ness predicate.
  *
- * # Why this exists (Session D final review, finding I-1)
- *
- * `cashMethods.ts` has been the device's ONE cash-ness predicate since the
- * cash-rounding lane — `is_cash_tender`, matching the server's repository rule
- * and the fiscal bridge. The Z aggregation never used it: it matched
- * `method_code === 'CASH'` literally, so a canonical `CASH` method the tenant
- * had explicitly NOT flagged as cash (a shape the server's one-way write guard
- * used to allow) was non-cash at checkout and cash in the Z — the device's own
- * two ends disagreeing about the same tender, in the SIGNED Z_REPORT bytes.
- *
- * FAILS CLOSED, in both senses:
- *  - a method the device has not cached at all is NOT cash (it cannot be: there
- *    is no flag to read), and the caller warns so the missing resync is visible
- *    rather than silently reshaping the drawer figure;
- *  - `is_cash_tender` itself defaults to 0 on a device that has migrated but
- *    never pulled `/payment-methods`, so an un-synced device resolves nothing as
- *    cash rather than guessing (the same property `makeIsCashMethodCode`
- *    documents).
+ * ONE read on purpose (I-1). Two separate queries could straddle a payment-method
+ * sync and hand the aggregation a code map and a flag set that describe different
+ * states of the table — precisely the class of split this finding is about.
  */
-async function buildCashTenderContext(db: Database): Promise<{
+async function buildPaymentMethodDirectory(db: Database): Promise<{
+  codeById: Map<string, string>;
   isCashMethodCode: (code: string) => boolean;
   knownMethodCodes: Set<string>;
 }> {
-  const methods = await queryAll<{ code: string; is_cash_tender: number; is_active: number }>(
-    db,
-    'SELECT code, is_cash_tender, is_active FROM payment_methods'
-  );
+  const methods = await queryAll<{
+    id: string;
+    code: string;
+    is_cash_tender: number;
+    is_active: number;
+  }>(db, 'SELECT id, code, is_cash_tender, is_active FROM payment_methods');
 
+  const codeById = new Map<string, string>();
   const knownMethodCodes = new Set<string>();
   const cashCodes = new Set<string>();
 
   for (const m of methods) {
+    codeById.set(m.id, m.code);
     knownMethodCodes.add(m.code);
     // `is_active` is deliberately NOT required here, unlike the checkout
     // resolver in `cashMethods.ts`. That one is choosing a tender to OFFER; this
@@ -866,6 +843,7 @@ async function buildCashTenderContext(db: Database): Promise<{
   }
 
   return {
+    codeById,
     isCashMethodCode: (code: string) => cashCodes.has(code),
     knownMethodCodes,
   };
