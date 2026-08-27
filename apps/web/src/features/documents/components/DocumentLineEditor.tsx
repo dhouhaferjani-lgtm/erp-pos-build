@@ -242,7 +242,9 @@ interface PricingContextItem {
   last_sale_to_partner: {
     unit_price: string
     at: string | null
-    document_no: string
+    // R-2 / LEDGER D-T9-1: the last sale line may sit on a DRAFT, which carries no
+    // document number until it is confirmed. The price hint is what this is for.
+    document_no: string | null
   } | null
   suggested_price: string
   target_margin_pct: string

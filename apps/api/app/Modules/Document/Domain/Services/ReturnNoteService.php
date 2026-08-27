@@ -80,6 +80,7 @@ final class ReturnNoteService
         private readonly ReturnCostBasisResolver $returnCostBasisResolver,
         private readonly InventoryGlPostingBuffer $glBuffer,
         private readonly FEFOInventoryService $fefoService,
+        private readonly DocumentStatusService $documentStatusService,
     ) {}
 
     /**
@@ -628,6 +629,15 @@ final class ReturnNoteService
         $chainSequence = ($previousDoc !== null ? $previousDoc->chain_sequence : 0) + 1;
         $confirmedAt = now();
 
+        // R-2 / LEDGER D-T9-1 — FISCAL INVARIANT. A return note authored in the
+        // editor (auto-save accepts `return_note`) is a draft with NO
+        // `document_number`, and this method hashes that column into the chain
+        // input below. Allocate BEFORE the hash is serialized: a NULL in a sealed
+        // hash input is unrecoverable, because the immutability trigger refuses
+        // to rewrite the number afterwards. Same allocator as every other
+        // confirm, inside the caller's transaction.
+        $this->documentStatusService->assignNumberIfMissing($returnNote);
+
         // Receive stock back for each line
         $this->receiveStockBack($returnNote, $actorId, $buffer);
 
@@ -645,7 +655,11 @@ final class ReturnNoteService
 
         // Calculate fiscal hash over the finalized total using the compliance service
         $input = $this->hashService->serializeForHashing([
-            'document_number' => $returnNote->document_number,
+            // R-2 FISCAL INVARIANT: `assignNumberIfMissing()` ran above, so the number
+            // exists by the time the hash input is serialized. `requireDocumentNumber()`
+            // is the check that keeps a NULL out of a SEALED hash — which no later write
+            // could repair, the immutability trigger refusing to rewrite the number.
+            'document_number' => $returnNote->requireDocumentNumber(),
             'posted_at' => $confirmedAt->toDateString(), // Use 'posted_at' for consistency with serializer
             'total' => $returnNote->total ?? '0.00',
             'currency' => $returnNote->currency,
@@ -811,7 +825,11 @@ final class ReturnNoteService
             returnNoteId: $returnNote->id,
             tenantId: $returnNote->tenant_id,
             companyId: $returnNote->company_id,
-            documentNumber: $returnNote->document_number,
+            // R-2 / LEDGER D-T9-1: this event describes a CONFIRMED document, and the
+            // number is allocated on that very transition — so it exists, and
+            // `requireDocumentNumber()` says so instead of letting a NULL into an
+            // immutable event payload.
+            documentNumber: $returnNote->requireDocumentNumber(),
             partnerId: $returnNote->partner_id,
             total: $returnNote->total ?? '0.00',
             currency: $returnNote->currency,

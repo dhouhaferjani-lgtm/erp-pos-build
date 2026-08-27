@@ -248,7 +248,11 @@ final class BackfillFiscalHashesCommand extends TenantScopedCommand
                 $chainSequence++;
 
                 $input = $this->hashService->serializeForHashing([
-                    'document_number' => $document->document_number,
+                    // R-2 / LEDGER D-T9-1: the chain is built from documents that were SEALED,
+                    // and a seal is only reachable past `Draft` — where the number is allocated.
+                    // Recomputing a chain input from a NULL number would silently produce a
+                    // different hash than the one on the row, so it fails loudly instead.
+                    'document_number' => $document->requireDocumentNumber(),
                     'posted_at' => $document->document_date->toDateString(),
                     'total' => $document->total ?? '0.00',
                     'currency' => $document->currency,

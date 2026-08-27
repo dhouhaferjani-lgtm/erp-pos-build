@@ -119,7 +119,16 @@ final class DocumentPdfService
     public function getFilename(Document $document): string
     {
         $prefix = $document->type->getPrefix();
-        $number = str_replace(['/', '\\', ' '], '-', $document->document_number);
+
+        // R-2 / LEDGER D-T9-1 — a DRAFT has no number and printing one is legitimate
+        // (the operator previews a quote before confirming it), so this is a DISPLAY
+        // fallback, not a `requireDocumentNumber()` site: the file is named by the
+        // draft's id rather than by a number that does not exist yet.
+        $number = str_replace(
+            ['/', '\\', ' '],
+            '-',
+            $document->document_number ?? 'DRAFT-'.substr($document->id, 0, 8),
+        );
 
         return "{$prefix}-{$number}.pdf";
     }

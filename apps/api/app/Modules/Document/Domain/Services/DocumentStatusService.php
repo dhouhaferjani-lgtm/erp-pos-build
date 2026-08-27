@@ -78,11 +78,18 @@ use Illuminate\Support\Facades\Log;
  * `$extraAttributes` may NOT carry `status`; a caller that tries is refused
  * with an `InvalidArgumentException` rather than silently overriding the edge
  * this service just validated.
+ *
+ * IT DOES OWN ONE COLUMN BESIDES `status`: `document_number` (R-2 / LEDGER
+ * D-T9-1). Drafts are now born unnumbered and the number is allocated on the
+ * first transition out of `Draft` — see {@see self::numberAllocationFor()} for
+ * the rule and {@see self::assignNumberIfMissing()} for the two confirm shapes
+ * that must allocate before their own status write.
  */
 final readonly class DocumentStatusService
 {
     public function __construct(
         private DocumentStatusMachine $machine,
+        private DocumentNumberingService $numbering,
     ) {}
 
     /**
@@ -106,6 +113,19 @@ final readonly class DocumentStatusService
             );
         }
 
+        // R-2 / LEDGER D-T9-1 — the same refusal, for the same reason, on the other
+        // column this service owns. `$extraAttributes` is spread BEFORE the allocation
+        // below, so a caller-supplied number would be silently overwritten on an
+        // unnumbered draft and silently WIN on a numbered one — two different outcomes
+        // from one key. Numbering is this service's decision or it is nobody's.
+        if (array_key_exists('document_number', $extraAttributes)) {
+            throw new \InvalidArgumentException(
+                'DocumentStatusService::transition() refuses a `document_number` key in '
+                .'$extraAttributes — allocation is this service\'s, and only on the first '
+                .'transition out of Draft.'
+            );
+        }
+
         $from = $document->status;
 
         if (! $this->machine->isAllowed($from, $to, $document->type)) {
@@ -117,7 +137,102 @@ final readonly class DocumentStatusService
             );
         }
 
-        $document->update([...$extraAttributes, 'status' => $to]);
+        $document->update([
+            ...$extraAttributes,
+            ...$this->numberAllocationFor($document, $to),
+            'status' => $to,
+        ]);
+
+        return $document;
+    }
+
+    /**
+     * R-2 / LEDGER D-T9-1 — THE SINGLE DOCUMENT-NUMBER ALLOCATION POINT.
+     *
+     * A `Draft` carries NO `document_number`. It is spent HERE, on the first
+     * transition that turns the draft into a document somebody else can be
+     * shown — and nowhere else. Before this lane, a number was spent the moment
+     * a row was created, so a form that reached one line and was then abandoned
+     * held that number forever: the campaign found `PO-2026-0001 … PO-2026-0009`
+     * sitting as orphan drafts ahead of the operator's real `PO-2026-0010`
+     * (N-14, and this is its remaining half).
+     *
+     * NOT ON THE WAY TO `Cancelled`. A draft that dies never became a document,
+     * and numbering it would re-create the very defect this method exists to
+     * remove — an abandoned form holding a number out of the fiscal sequence.
+     * A cancelled draft therefore stays unnumbered, and that is the only state
+     * pair in which a `documents` row legitimately has no number.
+     *
+     * NEVER RENUMBERS. Every document born numbered — every conversion, every
+     * credit note off an invoice, every opening-balance row, and every draft
+     * that predates this lane — takes the `!== null` early return. The number a
+     * row already holds is never taken back and never replaced, which is what
+     * makes this change safe to deploy over live data (the migration census
+     * lists the legacy numbered drafts rather than stripping them).
+     *
+     * WHAT GUARANTEES A ROLLBACK RETURNS THE NUMBER.
+     * `DocumentNumberingService::generateForKeyOnce()` takes `lockForUpdate()`
+     * on the `document_sequences` counter row and increments it in the same
+     * transaction, so two concurrent confirms serialise on that row rather than
+     * racing. It opens a NESTED `DB::transaction()`, which Laravel implements as
+     * a SAVEPOINT when a transaction is already open — so when the caller's
+     * confirm transaction rolls back, the counter increment rolls back with it
+     * and the number is handed to the next confirm instead of leaving a gap.
+     * The guarantee therefore holds ONLY while allocation runs inside the
+     * caller's transaction; every call site in this module confirms inside
+     * `DB::transaction()`, and a caller that does not would trade the guarantee
+     * for a gap (auditable, not corrupting).
+     *
+     * @return array{document_number?: string} folded into the caller's single UPDATE
+     */
+    private function numberAllocationFor(Document $document, DocumentStatus $to): array
+    {
+        if ($document->document_number !== null) {
+            return [];
+        }
+
+        if ($to === DocumentStatus::Draft || $to === DocumentStatus::Cancelled) {
+            return [];
+        }
+
+        return ['document_number' => $this->numbering->generateNumber(
+            tenantId: $document->tenant_id,
+            companyId: $document->company_id,
+            type: $document->type,
+        )];
+    }
+
+    /**
+     * Allocate the number a `Draft` does not yet hold, for the confirm paths
+     * that need it BEFORE their own status write.
+     *
+     * Two shapes of caller need this rather than {@see self::transition()}:
+     *
+     *  - the FISCAL sealers ({@see DeliveryNoteService}, {@see ReturnNoteService})
+     *    hash `document_number` into the chain input and write the seal columns
+     *    together with the status. The number must exist before the hash is
+     *    computed, not in the same statement as it — a NULL in a sealed hash
+     *    input is unrecoverable.
+     *  - confirm flows that USE the number before flipping the status
+     *    ({@see SalesOrderService} stamps it into each stock reservation's
+     *    notes).
+     *
+     * It is the same allocation, from the same place, under the same rollback
+     * guarantee described on {@see self::numberAllocationFor()} — callers must
+     * be inside their confirm transaction. A document that already has a number
+     * is returned untouched, so this is safe to call unconditionally.
+     */
+    public function assignNumberIfMissing(Document $document): Document
+    {
+        if ($document->document_number !== null) {
+            return $document;
+        }
+
+        $document->update(['document_number' => $this->numbering->generateNumber(
+            tenantId: $document->tenant_id,
+            companyId: $document->company_id,
+            type: $document->type,
+        )]);
 
         return $document;
     }

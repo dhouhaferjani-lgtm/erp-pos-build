@@ -12,6 +12,7 @@ use App\Modules\Document\Domain\Enums\CreditNoteReason;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
+use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
@@ -26,6 +27,7 @@ class CreditNoteController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly CreditNoteService $creditNoteService,
         private readonly DocumentPostingService $postingService,
+        private readonly DocumentStatusService $documentStatusService,
         private readonly TaxCalculationService $taxCalculationService,
     ) {}
 
@@ -274,9 +276,15 @@ class CreditNoteController extends Controller
                     throw new \DomainException('Only draft credit notes can be confirmed. Current status: '.$lockedDocument->status->value);
                 }
 
-                // For credit notes, simple status change (posting creates GL entries)
-                $lockedDocument->update([
-                    'status' => DocumentStatus::Confirmed,
+                // For credit notes, simple status change (posting creates GL entries).
+                //
+                // R-2 / LEDGER D-T9-1 — routed through `DocumentStatusService`,
+                // the ONE place a `documents` row is numbered. A credit note
+                // authored in the editor (auto-save accepts `credit_note`) is a
+                // draft with no `document_number` until this moment; the
+                // allocation is folded into the same UPDATE, inside this
+                // transaction, and lands before the seal that hashes it.
+                $this->documentStatusService->transition($lockedDocument, DocumentStatus::Confirmed, [
                     'confirmed_at' => now(),
                     'confirmed_by' => auth()->id(),
                 ]);

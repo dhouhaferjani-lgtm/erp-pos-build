@@ -187,7 +187,7 @@ export function ReturnNoteListPage() {
                       to={`/sales/return-notes/${returnNote.id}`}
                       className={`font-medium ${colorClasses.textBlue600} ${colorClasses.hoverTextBlue800}`}
                     >
-                      {returnNote.document_number}
+                      {returnNote.document_number ?? t('sales:documents.draftNumberPlaceholder')}
                     </Link>
                   </td>
                   <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorClasses.textGray900}`}>

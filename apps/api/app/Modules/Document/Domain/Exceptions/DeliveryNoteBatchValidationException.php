@@ -9,9 +9,15 @@ use DomainException;
 final class DeliveryNoteBatchValidationException extends DomainException
 {
     /**
+     * R-2 / LEDGER D-T9-1 — `document_number` is NULLABLE here, and deliberately.
+     * The `not_confirmed` arm exists precisely to refuse a DRAFT delivery note,
+     * and a draft carries no number until it is confirmed. Naming it by a
+     * fabricated string would be worse than naming it by nothing: the caller
+     * has the `id`, and the presentation layer renders the draft placeholder.
+     *
      * @param list<array{
      *     id: string,
-     *     document_number: string,
+     *     document_number: string|null,
      *     reason: 'already_invoiced'|'wrong_partner'|'wrong_currency'|'not_confirmed'|'cancelled'|'no_lines'|'partial_selection_incomplete'
      * }> $documents
      */

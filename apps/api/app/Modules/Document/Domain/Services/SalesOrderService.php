@@ -41,6 +41,7 @@ final class SalesOrderService
         private readonly StockReservationService $stockReservationService,
         private readonly TaxCalculationService $taxCalculationService,
         private readonly DocumentPostingService $documentPostingService,
+        private readonly DocumentStatusService $documentStatusService,
     ) {}
 
     /**
@@ -83,6 +84,17 @@ final class SalesOrderService
     {
         $confirmedAt = now();
         $confirmedBy = auth()->id();
+
+        // R-2 / LEDGER D-T9-1 — the sales order is a draft with no
+        // `document_number` until this moment, and it is allocated HERE, at the
+        // top of the confirm, rather than folded into the status write below:
+        // the reservation notes further down stamp `$salesOrder->document_number`
+        // into every `stock_reservations` row, so a later allocation would write
+        // "Sales Order " with an empty number into the reservation audit trail.
+        // Same allocator, same place (`DocumentStatusService`), same transaction
+        // — `confirm()` wraps this method in `DB::transaction()`, so a failure
+        // anywhere below returns the number to the sequence.
+        $this->documentStatusService->assignNumberIfMissing($salesOrder);
 
         // Get company for reservation settings
         /** @var Company $company */
@@ -237,7 +249,11 @@ final class SalesOrderService
             salesOrderId: $salesOrder->id,
             tenantId: $salesOrder->tenant_id,
             companyId: $salesOrder->company_id,
-            documentNumber: $salesOrder->document_number,
+            // R-2 / LEDGER D-T9-1: this event describes a CONFIRMED document, and the
+            // number is allocated on that very transition — so it exists, and
+            // `requireDocumentNumber()` says so instead of letting a NULL into an
+            // immutable event payload.
+            documentNumber: $salesOrder->requireDocumentNumber(),
             partnerId: $salesOrder->partner_id,
             total: $salesOrder->total ?? '0.00',
             currency: $salesOrder->currency,
@@ -251,7 +267,7 @@ final class SalesOrderService
             salesOrderId: $salesOrder->id,
             tenantId: $salesOrder->tenant_id,
             companyId: $salesOrder->company_id,
-            documentNumber: $salesOrder->document_number,
+            documentNumber: $salesOrder->requireDocumentNumber(),
             partnerId: $salesOrder->partner_id,
             total: $salesOrder->total ?? '0.00',
             currency: $salesOrder->currency,

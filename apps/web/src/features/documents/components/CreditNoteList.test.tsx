@@ -137,6 +137,24 @@ describe('CreditNoteList', () => {
     expect(screen.getByText('CN-00003')).toBeInTheDocument()
   })
 
+  it('renders the draft placeholder for a credit note that has no number yet', () => {
+    // R-2 / LEDGER D-T9-1: a DRAFT is born unnumbered — the number is allocated
+    // at confirm — so the list must name it, not render an empty cell. Sorting
+    // by number must survive it too (an unnumbered draft sorts last).
+    const unnumbered: CreditNote = {
+      ...mockCreditNotes[0]!,
+      id: 'draft-cn',
+      document_number: null,
+    }
+
+    render(
+      <CreditNoteList creditNotes={[unnumbered, mockCreditNotes[1]!]} onSelect={mockOnSelect} />,
+      { wrapper }
+    )
+
+    expect(screen.getByText('sales:documents.draftNumberPlaceholder')).toBeInTheDocument()
+  })
+
   it('displays all table columns', () => {
     render(
       <CreditNoteList creditNotes={mockCreditNotes} onSelect={mockOnSelect} />,

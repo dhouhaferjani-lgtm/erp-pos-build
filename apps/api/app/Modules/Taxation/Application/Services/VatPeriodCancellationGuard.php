@@ -132,7 +132,9 @@ final class VatPeriodCancellationGuard implements DocumentPeriodLockInterface
         }
 
         throw DocumentPeriodLockedException::forDocument(
-            $document->document_number,
+            // R-2: a VAT period lock is only consulted for a document that reached a
+            // declared period — it is posted, and therefore numbered.
+            $document->requireDocumentNumber(),
             $lockedPeriod->label,
             $lockedPeriod->status,
         );

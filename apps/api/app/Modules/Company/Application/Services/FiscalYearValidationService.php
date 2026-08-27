@@ -99,7 +99,10 @@ final class FiscalYearValidationService
             $companyId = $company->id;
             $tenantId = $company->tenant_id;
             $documentId = $document->id;
-            $documentNumber = $document->document_number;
+            // R-2 / LEDGER D-T9-1: this records the company's FIRST POSTED transaction,
+            // so the document is past `Draft` and numbered; the value goes into an
+            // immutable event, which is where a NULL would be unrecoverable.
+            $documentNumber = $document->requireDocumentNumber();
             $documentType = $document->type->value;
             DB::afterCommit(function () use ($companyId, $tenantId, $documentId, $documentNumber, $documentType): void {
                 event(new FirstTransactionPosted(

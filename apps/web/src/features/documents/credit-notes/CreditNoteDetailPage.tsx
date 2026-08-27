@@ -173,7 +173,7 @@ export function CreditNoteDetailPage() {
       {/* Header */}
       <PageHeader
         className="mb-2"
-        title={creditNote.document_number ?? ''}
+        title={creditNote.document_number ?? t('sales:documents.draftNumberPlaceholder')}
         breadcrumb={
           <Link to="/sales/credit-notes" className={`${colorClasses.textBlue600} ${colorClasses.hoverTextBlue700} inline-flex items-center gap-2`}>
             <ArrowLeft className="w-4 h-4" />

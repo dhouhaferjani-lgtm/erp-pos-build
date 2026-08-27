@@ -123,7 +123,10 @@ final class ExpenseExportController extends Controller
         $isPaid = $expense->getAttribute('export_is_paid');
 
         return [
-            $expense->document_number,
+            // R-2 / LEDGER D-T9-1: the export includes DRAFT expenses (the `status`
+            // column below carries 'draft'), and a draft has no number — an empty CSV
+            // cell is the honest rendering, not a fabricated identifier.
+            $expense->document_number ?? '',
             $expense->document_date->toDateString(),
             (string) ($partner ?? $vendor ?? ''),
             (string) ($expense->getAttribute('export_category_name') ?? ''),

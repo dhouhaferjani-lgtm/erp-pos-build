@@ -348,7 +348,10 @@ class PaymentAllocationService
                         'documentId' => $document->id,
                         'tenantId' => $payment->tenant_id,
                         'companyId' => $payment->company_id,
-                        'documentNumber' => $document->document_number,
+                        // R-2 / LEDGER D-T9-1: `markPaid()` above only accepts a POSTED
+                        // document, and posting is only reachable past `Draft` — where the
+                        // number is allocated. The value goes into an immutable event.
+                        'documentNumber' => $document->requireDocumentNumber(),
                         'documentType' => $document->type->value,
                         'partnerId' => $document->partner_id,
                         'totalPaid' => $document->total ?? '0.00',
@@ -760,7 +763,8 @@ class PaymentAllocationService
 
                 $allocations[] = [
                     'document_id' => $invoice->id,
-                    'document_number' => $invoice->document_number,
+                    // R-2: allocation candidates are POSTED invoices, therefore numbered.
+                    'document_number' => $invoice->requireDocumentNumber(),
                     'amount' => $this->formatMoney($allocationAmount, (string) $invoice->currency),
                     'original_balance' => $this->formatMoney($invoiceBalance, (string) $invoice->currency),
                     'tolerance_writeoff' => $toleranceCheck->difference,
@@ -781,7 +785,8 @@ class PaymentAllocationService
 
             $allocations[] = [
                 'document_id' => $invoice->id,
-                'document_number' => $invoice->document_number,
+                // R-2: allocation candidates are POSTED invoices, therefore numbered.
+                'document_number' => $invoice->requireDocumentNumber(),
                 'amount' => $this->formatMoney($allocationAmount, (string) $invoice->currency),
                 'original_balance' => $this->formatMoney($invoiceBalance, (string) $invoice->currency),
                 'tolerance_writeoff' => null,
@@ -880,7 +885,8 @@ class PaymentAllocationService
 
             $allocations[] = [
                 'document_id' => $invoice->id,
-                'document_number' => $invoice->document_number,
+                // R-2: allocation candidates are POSTED invoices, therefore numbered.
+                'document_number' => $invoice->requireDocumentNumber(),
                 'amount' => $this->formatMoney($manual['amount'], (string) $invoice->currency),
                 'original_balance' => $this->formatMoney($invoiceBalance, (string) $invoice->currency),
                 'tolerance_writeoff' => null,

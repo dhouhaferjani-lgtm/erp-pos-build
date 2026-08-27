@@ -535,7 +535,11 @@ class ArApOpeningService
             ->first();
 
         if ($lastDocument !== null) {
-            $lastNumber = (int) substr($lastDocument->document_number, -5);
+            // R-2: the query above filters `document_number LIKE '<prefix>-<year>-%'`,
+            // so a matched row necessarily HAS a number — `requireDocumentNumber()` says
+            // so rather than leaving `substr()` to coerce a NULL into ''+0 = 1 and hand
+            // out a duplicate opening number.
+            $lastNumber = (int) substr($lastDocument->requireDocumentNumber(), -5);
             $nextNumber = $lastNumber + 1;
         } else {
             $nextNumber = 1;

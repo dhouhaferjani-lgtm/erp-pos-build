@@ -44,7 +44,6 @@ use Illuminate\Support\Facades\DB;
 final class DraftPersistenceService
 {
     public function __construct(
-        private readonly DocumentNumberingService $numberingService,
         private readonly DocumentTotalsCalculator $totalsCalculator,
         private readonly ProductVariantLookup $variantLookup,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
@@ -59,28 +58,24 @@ final class DraftPersistenceService
      * - An EXISTING draft can be saved with 0 lines (the operator clearing the
      *   grid mid-session); a NEW one cannot — see below.
      *
-     * RETURNS NULL when there is nothing to author yet (N-14). A document number
-     * is spent the moment a row is created — `createNewDraft()` allocates out of
-     * the `document_sequences` row that later feeds the fiscal hash chain — so
-     * authoring a header for a form nobody has put a line in burns a number for
-     * a document that does not exist. The campaign found
-     * `PO-2026-0001 … PO-2026-0009` sitting as orphan drafts ahead of the
+     * RETURNS NULL when there is nothing to author yet (N-14): a payload with no
+     * line authors no row at all. This mirrors what the only real caller already
+     * does — `useDraftAutoSave.ts` refuses to fire until `data.lines.length > 0`
+     * — and makes it a property of the ENDPOINT rather than of one bundle: the
+     * guard has to hold for a stale bundle, a retry, and anything hand-driving
+     * the API.
+     *
+     * AND THE ROW IT DOES AUTHOR CARRIES NO NUMBER (R-2 / LEDGER D-T9-1). N-14
+     * closed only the lineless class; a draft that reached ONE line and was then
+     * abandoned still held a `document_sequences` number forever, which is the
+     * wave-4 `PO-2026-0001 … PO-2026-0009` orphan shape sitting ahead of the
      * operator's real `PO-2026-0010`
      * (PLAYWRIGHT-first-tenant-campaign-wave2-imports-2026-08-24 §N-14).
-     *
-     * The first LINE is the trigger. This mirrors what the only real caller
-     * already does — `useDraftAutoSave.ts` refuses to fire until
-     * `data.lines.length > 0` — and makes it a property of the ENDPOINT rather
-     * than of one bundle: the guard has to hold for a stale bundle, a retry, and
-     * anything hand-driving the API.
-     *
-     * Deliberately NOT the full deferred-numbering design (allocate at confirm)
-     * that residual R-2 describes
-     * (docs/superpowers/tickets/2026-08-23-autosave-residuals.md). That one owns
-     * the sequence-gap audit story, the "what does the UI show before a number
-     * exists" question, and every consumer that assumes a draft's
-     * `document_number` is non-null; two merge gates called it its own lane. A
-     * draft that reached one line and was then abandoned still holds its number.
+     * `document_number` is now allocated at CONFIRM and only there — see
+     * `DocumentStatusService::numberAllocationFor()`. Nothing this service
+     * writes touches a sequence, so an abandoned draft costs nothing but a row,
+     * and the editor shows `sales:documents.draftNumberPlaceholder` until the
+     * document is confirmed.
      *
      * @param  array<string, mixed>  $data
      */
@@ -236,13 +231,6 @@ final class DraftPersistenceService
     ): Document {
         $documentType = DocumentType::from($data['type']);
 
-        // Generate document number
-        $documentNumber = $this->numberingService->generateNumber(
-            tenantId: $tenantId,
-            companyId: $companyId,
-            type: $documentType,
-        );
-
         // Gate F1: the row must carry the COMPANY currency. It used to be
         // omitted entirely, so every auto-saved draft silently took the
         // `documents` table default `'EUR'`
@@ -264,7 +252,11 @@ final class DraftPersistenceService
             'company_id' => $companyId,
             'type' => $documentType,
             'status' => DocumentStatus::Draft,
-            'document_number' => $documentNumber,
+            // R-2: NO NUMBER. A draft is not a document yet — see the
+            // `saveDraft()` docblock and
+            // `DocumentStatusService::numberAllocationFor()`, which is the one
+            // place a `documents` row is numbered.
+            'document_number' => null,
             'partner_id' => $data['partner_id'] ?? null,
             'document_date' => $data['document_date'] ?? now()->format('Y-m-d'),
             'due_date' => $data['due_date'] ?? null,

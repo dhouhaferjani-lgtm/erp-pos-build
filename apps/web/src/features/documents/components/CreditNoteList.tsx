@@ -71,7 +71,11 @@ export function CreditNoteList({
           // Largest first
           return parseFloat(b.total) - parseFloat(a.total)
         case 'number':
-          // Alphabetical
+          // Alphabetical. R-2 / LEDGER D-T9-1: a DRAFT credit note has no number
+          // yet, and an unnumbered draft sorts LAST rather than crashing the
+          // comparator — it is the newest thing in the list, not an empty name.
+          if (a.document_number === null) return b.document_number === null ? 0 : 1
+          if (b.document_number === null) return -1
           return a.document_number.localeCompare(b.document_number)
         default:
           return 0
@@ -203,7 +207,7 @@ export function CreditNoteList({
                 className={`cursor-pointer transition-colors ${colorClasses.hoverBgGray50}`}
               >
                 <td className={`whitespace-nowrap px-4 py-3 text-sm font-medium ${colorClasses.textGray900}`}>
-                  {creditNote.document_number}
+                  {creditNote.document_number ?? t('sales:documents.draftNumberPlaceholder')}
                 </td>
                 <td className={`whitespace-nowrap px-4 py-3 text-sm ${colorClasses.textGray700}`}>
                   {formatDate(creditNote.document_date)}
