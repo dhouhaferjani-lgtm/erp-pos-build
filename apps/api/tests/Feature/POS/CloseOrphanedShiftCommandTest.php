@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -24,7 +27,10 @@ use App\Modules\POS\Domain\Events\OrphanedShiftClosedByOperator;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\Services\TenderRepositoryResolver;
+use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Modules\Treasury\Domain\PaymentRepository;
 use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -70,6 +76,8 @@ final class CloseOrphanedShiftCommandTest extends TestCase
     private User $user;
 
     private ?PaymentMethod $cashPaymentMethod = null;
+
+    private bool $tenderRepositoriesSeeded = false;
 
     /**
      * `fiscal_events` is uniquely indexed on
@@ -771,6 +779,277 @@ final class CloseOrphanedShiftCommandTest extends TestCase
         $this->assertSame(1, $this->orphanCloseAuditCount($shiftId), 'A re-run must not write a second audit row.');
     }
 
+    // ------------------------------- I-1 cross-layer cash-tender classification
+
+    /**
+     * Session D final review, I-1 — THE regression the finding asks for.
+     *
+     * A mixed-case collision loser: `code = 'Cash'`, `is_cash_tender = false`.
+     * `2026_07_28_100000_add_is_cash_tender_to_payment_methods` leaves exactly
+     * this row behind when a company already holds the canonical `CASH`
+     * (normalizing it would violate `unique(company_id, code)` and abort an
+     * unattended `tenants:migrate`), so it is not hypothetical.
+     *
+     * Before this lane the two layers disagreed about it: `TenderRepositoryResolver`
+     * read the FLAG and called it non-cash; `ShiftExpectedCashService` matched
+     * `UPPER(code) = 'CASH'` and called it cash — so the money went to a
+     * settlement repository while the shift's certified expected cash counted it
+     * as sitting in the drawer.
+     *
+     * Both layers are asserted here in ONE test on purpose: agreement is the
+     * property, and two tests that each pin one side would both stay green
+     * through a re-divergence.
+     */
+    public function test_a_mixed_case_collision_loser_is_non_cash_to_both_layers(): void
+    {
+        [$terminal, $shiftId] = $this->orphanedShift(openingCash: '100.000');
+
+        // The canonical row exists and owns the code — which is WHY the variant
+        // could never be normalized.
+        $this->cashPaymentMethod();
+        $variant = $this->brownfieldCashVariant('Cash');
+
+        $this->saleTenderedWith($terminal, sequence: 8100, method: $variant, tendered: '60.000');
+
+        $this->assertCrossLayerAgreement($variant, expectedCash: false);
+
+        $this->artisan(self::COMMAND, [
+            'shift' => $shiftId,
+            '--reason' => 'device stolen mid-shift',
+            '--closed-by' => $this->user->id,
+            '--apply' => true,
+        ])->assertExitCode(CloseOrphanedShiftCommand::SUCCESS);
+
+        // Opening float only: the 60.000 tendered on `Cash` never entered the
+        // drawer as far as any layer is concerned.
+        $this->assertSame(
+            0,
+            bccomp((string) DB::table('pos_shifts')->where('id', $shiftId)->value('expected_cash'), '100', 4),
+            'A tender the tenant has not flagged as cash must not raise expected cash.',
+        );
+    }
+
+    /**
+     * The OTHER brownfield shape: the canonical `CASH` code with the flag false.
+     *
+     * The write guard now refuses to create this (see
+     * `PaymentMethodCashTenderTest`), so it can only exist as brownfield — which
+     * is exactly why it is created here with a raw DB write, past the
+     * controller and past the model's own defaults.
+     *
+     * The direction of the disagreement is the mirror of the test above: the
+     * old code-matching service called it CASH while every flag reader called it
+     * non-cash. It must now read non-cash on both sides. Fail-closed is the
+     * right end state: a tenant that explicitly unflagged its cash method has
+     * said the tender does not sit in the till, and the remedy (flag it) is one
+     * PATCH away and is what the census prints.
+     */
+    public function test_a_canonical_cash_row_with_the_flag_false_is_non_cash_to_both_layers(): void
+    {
+        [$terminal, $shiftId] = $this->orphanedShift(openingCash: '100.000');
+
+        $cash = $this->cashPaymentMethod();
+        DB::table('payment_methods')->where('id', $cash->id)->update(['is_cash_tender' => false]);
+        $cash->refresh();
+
+        $this->saleTenderedWith($terminal, sequence: 8200, method: $cash, tendered: '60.000');
+
+        $this->assertCrossLayerAgreement($cash, expectedCash: false);
+
+        $this->artisan(self::COMMAND, [
+            'shift' => $shiftId,
+            '--reason' => 'device stolen mid-shift',
+            '--closed-by' => $this->user->id,
+            '--apply' => true,
+        ])->assertExitCode(CloseOrphanedShiftCommand::SUCCESS);
+
+        $this->assertSame(
+            0,
+            bccomp((string) DB::table('pos_shifts')->where('id', $shiftId)->value('expected_cash'), '100', 4),
+        );
+    }
+
+    /**
+     * And the coherent row, so the assertions above cannot pass by classifying
+     * EVERYTHING as non-cash.
+     */
+    public function test_a_flagged_cash_row_is_cash_to_both_layers(): void
+    {
+        [$terminal, $shiftId] = $this->orphanedShift(openingCash: '100.000');
+
+        $cash = $this->cashPaymentMethod();
+        $this->saleTenderedWith($terminal, sequence: 8300, method: $cash, tendered: '60.000');
+
+        $this->assertCrossLayerAgreement($cash, expectedCash: true);
+
+        $this->artisan(self::COMMAND, [
+            'shift' => $shiftId,
+            '--reason' => 'device stolen mid-shift',
+            '--closed-by' => $this->user->id,
+            '--apply' => true,
+        ])->assertExitCode(CloseOrphanedShiftCommand::SUCCESS);
+
+        $this->assertSame(
+            0,
+            bccomp((string) DB::table('pos_shifts')->where('id', $shiftId)->value('expected_cash'), '160', 4),
+        );
+    }
+
+    /**
+     * Reading cash-ness from `payment_methods` means a tender code with no
+     * matching row has NO answer, and neither default is safe: counting the leg
+     * overstates the drawer, dropping it understates it, and both are exported
+     * to the NF525 JET as a balanced count. Fails closed, like every other
+     * unanswerable term in this derivation.
+     *
+     * The row is not DELETED here — it cannot be: `pos_receipt_payments`
+     * FK-references `payment_methods`, which is why a live delete raises 23503
+     * rather than orphaning the snapshot. The reachable shape is a RENAME: the
+     * `payment_method_code` on the receipt payment is an immutable snapshot
+     * (`ReceiptPaymentService.php:342-359`), so renaming the method leaves every
+     * historical payment naming a code no row carries.
+     *
+     * THIS IS THE SHARP EDGE OF THE LANE, and it is pinned rather than hidden:
+     * the A1 backfill itself rewrites `cash` to `CASH`, and its own log line
+     * already tells the operator to re-drive projections still carrying the old
+     * code. Under the exact-match read that instruction becomes load-bearing —
+     * an un-re-driven receipt makes this command refuse instead of quietly
+     * mis-classifying, which is the trade the fail-closed rule buys.
+     */
+    public function test_a_tender_whose_payment_method_code_no_longer_exists_refuses_the_close(): void
+    {
+        [$terminal, $shiftId] = $this->orphanedShift(openingCash: '100.000');
+
+        $cash = $this->cashPaymentMethod();
+        $this->saleTenderedWith($terminal, sequence: 8400, method: $cash, tendered: '60.000');
+
+        // The method is renamed after the receipt was written; the payment keeps
+        // its 'CASH' snapshot and now names nothing.
+        DB::table('payment_methods')->where('id', $cash->id)->update(['code' => 'ESPECES']);
+
+        $this->artisan(self::COMMAND, [
+            'shift' => $shiftId,
+            '--reason' => 'device stolen mid-shift',
+            '--closed-by' => $this->user->id,
+            '--apply' => true,
+        ])->assertExitCode(CloseOrphanedShiftCommand::EXIT_TENDER_UNCLASSIFIABLE);
+
+        $this->assertSame('OPEN', $this->shiftStatus($shiftId));
+        $this->assertSame(0, $this->orphanCloseAuditCount($shiftId));
+    }
+
+    /**
+     * The two layers, asked the same question about the same row.
+     *
+     * `TenderRepositoryResolver` does not expose a boolean, so its answer is
+     * read the way production reads it: a cash tender may only come to rest in a
+     * DRAWER, a non-cash one is steered away from every drawer while the company
+     * owns anywhere else to put it. Comparing the two answers directly is the
+     * whole point of the test — it is the seam I-1 found open.
+     */
+    private function assertCrossLayerAgreement(PaymentMethod $method, bool $expectedCash): void
+    {
+        $this->assertSame(
+            $expectedCash,
+            $method->is_cash_tender,
+            'the fixture itself must carry the flag the test claims it does',
+        );
+
+        $this->seedTenderRepositories();
+
+        $resolver = app(TenderRepositoryResolver::class);
+        $repository = $resolver->resolve($this->tenant->id, $this->company->id, $method);
+
+        $this->assertNotNull($repository, 'the resolver must place the tender somewhere');
+        $this->assertSame(
+            $expectedCash,
+            in_array($repository->type->value, ['cash_register', 'safe'], true),
+            $expectedCash
+                ? 'a cash tender must come to rest in a drawer'
+                : 'a NON-cash tender must not come to rest in a drawer while the company owns a settlement repository',
+        );
+    }
+
+    /**
+     * A drawer AND a settlement repository, so the resolver has a real choice to
+     * make. With only one candidate every tender resolves to it and the
+     * assertion above would be vacuous.
+     */
+    private function seedTenderRepositories(): void
+    {
+        if ($this->tenderRepositoriesSeeded) {
+            return;
+        }
+
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        $cashAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::Cash);
+
+        PaymentRepository::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH-DESK',
+            'name' => 'Cash desk',
+            'type' => RepositoryType::CashRegister,
+            'gl_account_id' => $cashAccount->id,
+        ]);
+        PaymentRepository::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CARD-SETTLEMENT',
+            'name' => 'Card settlement',
+            'type' => RepositoryType::BankAccount,
+            'gl_account_id' => $cashAccount->id,
+        ]);
+
+        $this->tenderRepositoriesSeeded = true;
+    }
+
+    /**
+     * A fiscalized sale inside the shift's window, tendered with a NAMED method
+     * — the general form of {@see self::cashSaleOn()}.
+     */
+    private function saleTenderedWith(
+        Terminal $terminal,
+        int $sequence,
+        PaymentMethod $method,
+        string $tendered,
+    ): void {
+        $receipt = $this->receiptOn($terminal, $sequence, '0.000');
+
+        DB::table('pos_receipt_payments')->insert([
+            'id' => (string) Str::uuid(),
+            'receipt_id' => $receipt->id,
+            'payment_method_id' => $method->id,
+            'payment_type' => $method->code,
+            // The IMMUTABLE snapshot `ReceiptPaymentService` and
+            // `PosCoreReceiptProjection` both write: the method's code exactly
+            // as it stood, mixed case and all.
+            'payment_method_code' => $method->code,
+            'amount' => $tendered,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    /**
+     * The collision loser: a cash-family code the A1 backfill had to skip,
+     * written past the controller (which now refuses it) and past the model.
+     */
+    private function brownfieldCashVariant(string $variantCode): PaymentMethod
+    {
+        $method = PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH_VARIANT_PLACEHOLDER',
+            'is_physical' => true,
+            'is_cash_tender' => false,
+        ]);
+
+        DB::table('payment_methods')->where('id', $method->id)->update(['code' => $variantCode]);
+
+        return $method->refresh();
+    }
+
     // ------------------------------------------------------------- helpers
 
     /**
@@ -890,6 +1169,12 @@ final class CloseOrphanedShiftCommandTest extends TestCase
             'company_id' => $this->company->id,
             'code' => 'CASH',
             'is_physical' => true,
+            // Session D I-1 — cash-ness is READ from this flag now, not derived
+            // from `UPPER(code) = 'CASH'`. The factory leaves it at the column
+            // default (false), which is exactly the brownfield shape the finding
+            // is about; a fixture that relied on the code alone was asserting
+            // the defect.
+            'is_cash_tender' => true,
         ]);
     }
 
