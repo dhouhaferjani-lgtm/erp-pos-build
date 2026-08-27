@@ -352,3 +352,10 @@ producer writes ISO into `operator_pins.synced_at`.
 Decide and disclose r2-1 — unbind must not be reachable via `pos.view_reports` (which `accountant`
 holds) unless the owner rules that it should; then close r2-3 with a real `shift === null`
 assertion. r2-2/r2-4/r2-5 are notes.
+
+## r3 scoped re-review (range 0c84fc7c8..947e3b655) — VERDICT: ALL ADDRESSED — mergeable
+> Provenance: verdict returned by the scoped fiscal/POS re-reviewer; its file append was lost with the lane worktree — restored by the orchestrator (final review I-2). Key evidence from the verdict:
+- r2-1 ADDRESSED: third surface `terminal: 'pos.manage_terminals'` (`roles.ts:57-61`), `SettingsPage.tsx:99` gates Device & Security + unbind modal + `handleConfirmUnbind`; `ReportsMenu.tsx` split so each entry filters on the permission its handler enforces (closes R2-2); pinned by new accountant-parity tests (reads reports, refused terminal/cash_drawer) and `SettingsPage.test.tsx` 14→17.
+- r2-3 ADDRESSED honestly: extracted `shouldConcealTakings(disclosure, hasOpenShift)` in `cashDisclosurePolicy.ts` with all four combinations pinned at the seam; the Header-level `shift === null` branch is genuinely unreachable from the UI.
+- r2-5 ADDRESSED: TZ-independent assertions via `sqliteUtcToDate` + explicit offset computation.
+- No `apps/api`, no `lib/fiscal/*`, no Event class in the diffstat; both credential-failure branches refuse before any local X_REPORT authoring; the accountant read-parity amendment is present for both LEDGER rows in the task-7 report (single shared amendment).

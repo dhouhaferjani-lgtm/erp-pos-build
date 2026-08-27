@@ -532,3 +532,11 @@ Date the operator-authority TTL from a stamp only the roster pull writes (R2-1) 
 R1-3 fix silently no-ops on an online device with a broken roster pull; the three Minors (R2-2 menu
 filter surface, R2-3 empty-permissions fallback, R2-4 401 posture) can land in the same commit or be
 LEDGER'd explicitly.
+
+## r3 scoped re-review (range 0c84fc7c8..947e3b655) — VERDICT: R2-1..R2-4 ALL ADDRESSED — mergeable
+> Provenance: verdict returned by the scoped authz re-reviewer; its file append was lost with the lane worktree — restored by the orchestrator (final review I-2). Key evidence from the verdict:
+- R2-1 ADDRESSED: `operator_pins.synced_at` removed from the read/write authority surface (dropped from `CachedOperator`/`OperatorPinRow`; the two non-authority writers at `operatorPinRepository.ts:264/:290` no longer stamp it); TTL dated exclusively from `sync_metadata['operators_last_sync']` (written only after `upsertOperators` succeeds, `syncService.ts:1290-1327`), read via `readOperatorAuthoritySyncedAt` (fails closed); sole consumer `operatorStore.ts:197-200`; repo-wide grep found no remaining production read of `operator_pins.synced_at` for authority.
+- `permissions: []` → closed: `roles.ts:126` narrowed to `permissions !== undefined`; pinned by `roles.test.ts` (`{roles:['manager'],permissions:[]}` ⇒ false).
+- Unbind on `pos.manage_terminals`: surface added at `roles.ts:60`; all four `SettingsPage.tsx` sites converted; seeder check — manager grants at `RolesAndPermissionsSeeder.php:618`, absent from cashier and accountant blocks.
+- 401 → `ReauthenticationRequiredError` before the 403 refusal check in `reportApi.ts`; both stop before `generateLocalXReport`; `Header.tsx` renders `t(err.i18nKey)`; en/fr keys present (`pos.json:430-431`).
+- No new Critical/Important in the fix diff.
