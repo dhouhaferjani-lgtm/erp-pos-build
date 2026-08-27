@@ -224,13 +224,21 @@ export async function generateZReport(
   const drawerOps = await getCashDrawerOpsForShift(db, shiftId);
   const accountPayments = await getAccountPaymentRecordsForShift(db, shiftId);
 
-  // Build payment method lookup for names
-  const paymentMethodMap = await buildPaymentMethodMap(db);
+  // Payment method lookup for names AND the cash-ness predicate, from ONE read.
+  // See buildPaymentMethodDirectory().
+  const cashTender = await buildPaymentMethodDirectory(db);
+  const paymentMethodMap = cashTender.codeById;
 
   // 4. Compute report data — refundRecords (LEGACY) seeds refunds_count/
   // refunds_amount; the receipt_kind branch inside (v4) continues
   // accumulating on top of that seed (disjoint sources, see above).
-  const reportData = aggregateReportData(receipts, paymentMethodMap, decimals, refundRecords);
+  const reportData = aggregateReportData(
+    receipts,
+    paymentMethodMap,
+    decimals,
+    refundRecords,
+    cashTender,
+  );
 
   // 5. Compute expected cash BEFORE hashing — must be embedded in report_data
   // to match the server's ReportGenerationService which adds opening_cash/expected_cash
@@ -242,7 +250,13 @@ export async function generateZReport(
   // branch at all (local_refund_records carries no per-line/per-method
   // detail, only a shift-level `cash_impact` magnitude) — restored below
   // as the standalone `cashRefundImpact` term, subtracted independently.
-  const cashPayments = reportData.payment_methods.find((p) => p.payment_type === 'CASH');
+  // I-1 — find the cash bucket by the SAME predicate that built it. Under the
+  // server's bidirectional write invariant the flagged code is always `CASH`, so
+  // this resolves identically today; keying on the literal here while the bucket
+  // upstream is keyed on the flag is exactly the drift this finding is about.
+  const cashPayments = reportData.payment_methods.find((p) =>
+    cashTender.isCashMethodCode(p.payment_type)
+  );
   const cashSales = cashPayments ? cashPayments.total_amount : '0';
 
   // Wave-2 review fix (TREASURY CRITICAL) — the LEGACY refund path's cash
@@ -377,10 +391,11 @@ export async function generateZReport(
 
       // For CASH: expected = opening_float + cash_receipts_amount
       // For others: expected = sales_amount for that method
-      const expectedAmount =
-        methodCode === 'CASH'
-          ? bcformat(expectedCash, decimals)
-          : bcformat(methodSales, decimals);
+      // I-1 — the cash count's expected figure is the DRAWER figure, so it must
+      // be handed to exactly the methods the drawer figure was built from.
+      const expectedAmount = cashTender.isCashMethodCode(methodCode)
+        ? bcformat(expectedCash, decimals)
+        : bcformat(methodSales, decimals);
 
       // variance = actual - expected (positive = over, negative = under)
       const variance = bcsub(input.actual_amount, expectedAmount, decimals);
@@ -789,16 +804,49 @@ function summarizeCashCountLines(
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-async function buildPaymentMethodMap(db: Database): Promise<Map<string, string>> {
-  const methods = await queryAll<{ id: string; code: string }>(
-    db,
-    'SELECT id, code FROM payment_methods'
-  );
-  const map = new Map<string, string>();
+/**
+ * The cached payment methods, in the two shapes the Z needs: id -> code (for
+ * naming a legacy receipt's primary method) and the cash-ness predicate.
+ *
+ * ONE read on purpose (I-1). Two separate queries could straddle a payment-method
+ * sync and hand the aggregation a code map and a flag set that describe different
+ * states of the table — precisely the class of split this finding is about.
+ */
+async function buildPaymentMethodDirectory(db: Database): Promise<{
+  codeById: Map<string, string>;
+  isCashMethodCode: (code: string) => boolean;
+  knownMethodCodes: Set<string>;
+}> {
+  const methods = await queryAll<{
+    id: string;
+    code: string;
+    is_cash_tender: number;
+    is_active: number;
+  }>(db, 'SELECT id, code, is_cash_tender, is_active FROM payment_methods');
+
+  const codeById = new Map<string, string>();
+  const knownMethodCodes = new Set<string>();
+  const cashCodes = new Set<string>();
+
   for (const m of methods) {
-    map.set(m.id, m.code);
+    codeById.set(m.id, m.code);
+    knownMethodCodes.add(m.code);
+    // `is_active` is deliberately NOT required here, unlike the checkout
+    // resolver in `cashMethods.ts`. That one is choosing a tender to OFFER; this
+    // one is classifying receipts that are already written, and a method
+    // deactivated mid-shift does not retroactively take its takings out of the
+    // drawer. Mirrors the same decision on the server's
+    // `ShiftExpectedCashService.cashTenderCodes()`.
+    if (m.is_cash_tender === 1) {
+      cashCodes.add(m.code);
+    }
   }
-  return map;
+
+  return {
+    codeById,
+    isCashMethodCode: (code: string) => cashCodes.has(code),
+    knownMethodCodes,
+  };
 }
 
 function aggregateReportData(
@@ -806,6 +854,10 @@ function aggregateReportData(
   paymentMethodMap: Map<string, string>,
   decimals: number,
   refundRecords: LocalRefundRecord[],
+  cashTender: {
+    isCashMethodCode: (code: string) => boolean;
+    knownMethodCodes: Set<string>;
+  },
 ): ZReportData {
   let grossSales = '0';
   let netSales = '0';
@@ -1047,11 +1099,28 @@ function aggregateReportData(
 
     if (payments.length > 0) {
       let cashTendered = '0';
-      let receiptHasCash = false;
+      // The code the netted cash lands under. NOT the literal 'CASH': cash-ness
+      // is now decided by `is_cash_tender` (I-1), so the bucket takes the name of
+      // the method that actually carried the flag. Under the server's
+      // bidirectional write invariant that code IS 'CASH', which is why this is
+      // behaviour-identical on a coherent tenant — but bucketing under a literal
+      // while classifying by a flag is precisely how the two drift apart again.
+      let cashBucketCode: string | null = null;
       for (const p of payments) {
-        if (p.method_code === 'CASH') {
+        // I-1 — fail CLOSED on a method the device has never cached: it is not
+        // cash for the tender sum (there is no flag to read), and the gap is
+        // announced rather than absorbed into the drawer figure. A missing
+        // method here means the device has not pulled `/payment-methods` since
+        // the method was created, which is a resync problem, not a Z problem.
+        if (!cashTender.knownMethodCodes.has(p.method_code)) {
+          console.warn(
+            `[zReport] tender "${p.method_code}" on receipt ${receipt.id} is not in the cached ` +
+              'payment methods; treating it as NON-cash. Re-sync payment methods.'
+          );
+        }
+        if (cashTender.isCashMethodCode(p.method_code)) {
           cashTendered = bcadd(cashTendered, p.amount);
-          receiptHasCash = true;
+          cashBucketCode ??= p.method_code;
           continue;
         }
         const ex = paymentByType.get(p.method_code) ?? { amount: '0', count: 0 };
@@ -1059,12 +1128,12 @@ function aggregateReportData(
         ex.count += 1;
         paymentByType.set(p.method_code, ex);
       }
-      if (receiptHasCash) {
+      if (cashBucketCode !== null) {
         const netCash = bcsub(cashTendered, receipt.change_due ?? '0');
-        const ex = paymentByType.get('CASH') ?? { amount: '0', count: 0 };
+        const ex = paymentByType.get(cashBucketCode) ?? { amount: '0', count: 0 };
         ex.amount = bcadd(ex.amount, netCash);
         ex.count += 1;
-        paymentByType.set('CASH', ex);
+        paymentByType.set(cashBucketCode, ex);
       }
     } else {
       // Legacy receipt without payments_json: attribute the whole sale to the

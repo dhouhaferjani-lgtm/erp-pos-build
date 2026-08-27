@@ -7,6 +7,7 @@ namespace App\Modules\Treasury\Presentation\Controllers;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Domain\Enums\PaymentInstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
+use App\Modules\Treasury\Domain\Exceptions\CashTenderInvariantViolationException;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
@@ -17,6 +18,12 @@ use Illuminate\Validation\ValidationException;
 
 class PaymentMethodController extends Controller
 {
+    /**
+     * The one code a cash tender may carry (spec §4.1). Named here so the two
+     * halves of {@see self::assertCashTenderInvariant()} cannot drift apart.
+     */
+    private const CANONICAL_CASH_CODE = 'CASH';
+
     public function __construct(
         private readonly CompanyContext $companyContext,
     ) {}
@@ -131,7 +138,12 @@ class PaymentMethodController extends Controller
 
         $code = (string) $validated['code'];
         $isCashTender = (bool) ($validated['is_cash_tender'] ?? false);
-        $this->assertCashTenderInvariant($code, $isCashTender);
+
+        try {
+            $this->assertCashTenderInvariant($code, $isCashTender);
+        } catch (CashTenderInvariantViolationException $e) {
+            return $this->refuseCashTenderInvariant($e);
+        }
 
         $method = PaymentMethod::create([
             'tenant_id' => $tenantId,
@@ -254,12 +266,21 @@ class PaymentMethodController extends Controller
 
         // $finalCode is already normalized: an incoming `code` was uppercased
         // before validation, and a stored one is uppercase by the migration's
-        // backfill. Compared EXACTLY — a brownfield row the backfill had to
-        // skip (see migration A1) must not be flaggable as a cash tender.
+        // backfill — EXCEPT a mixed-case brownfield row the A1 backfill had to
+        // skip, which is exactly what the case-insensitive half of the guard is
+        // for. The invariant is checked on the FINAL state, so a PATCH that
+        // touches neither `code` nor `is_cash_tender` still cannot leave an
+        // incoherent row untouched: it is refused until the row is reconciled
+        // (see the census migration `2026_08_27_100000_census_cash_tender_...`).
         $finalIsCashTender = array_key_exists('is_cash_tender', $validated)
             ? (bool) $validated['is_cash_tender']
             : $method->is_cash_tender;
-        $this->assertCashTenderInvariant($finalCode, $finalIsCashTender);
+
+        try {
+            $this->assertCashTenderInvariant($finalCode, $finalIsCashTender);
+        } catch (CashTenderInvariantViolationException $e) {
+            return $this->refuseCashTenderInvariant($e);
+        }
 
         // `prohibited` guarantees the key is absent from $validated; unset defensively
         // so no future rule change can silently reopen the phantom-target write.
@@ -356,18 +377,75 @@ class PaymentMethodController extends Controller
     }
 
     /**
-     * Spec §4.1 invariant: `is_cash_tender = true` implies `code = 'CASH'`
-     * EXACT (case-sensitive). The device Z aggregation matches
-     * `method_code === 'CASH'` case-sensitively while the server matches
-     * `UPPER(code)`; only an exact-code invariant makes all three predicates
-     * provably coincide. Custom cash methods are a separate ticket.
+     * Spec §4.1 invariant, made BIDIRECTIONAL by Session D finding I-1.
+     *
+     * `payment_methods.is_cash_tender` is THE single cash-ness predicate: the
+     * repository resolver, the fiscal bridge, the device checkout resolver and —
+     * since I-1 — `ShiftExpectedCashService` all read that one column. This
+     * write path is what keeps the column trustworthy, and it now closes BOTH
+     * directions:
+     *
+     *  1. `is_cash_tender = true` on a code that is not EXACTLY `CASH` is
+     *     refused. Unchanged from the original one-way guard, case-sensitivity
+     *     included: a mixed-case brownfield row the A1 backfill deliberately
+     *     left unflagged (`2026_07_28_100000_add_is_cash_tender_to_payment_methods`
+     *     :43-104) must not become flaggable by the back door, because the
+     *     canonical row already owns the code and only one row per company can.
+     *  2. A code that IS cash case-INsensitively (`CASH`, `cash`, `Cash`) with
+     *     `is_cash_tender = false` is refused. This is the half I-1 found
+     *     missing: both `store()` and `update()` used to persist a canonical
+     *     `CASH` row with the flag false, and such a row was read as NON-cash by
+     *     every flag-reader and as cash by every `UPPER(code) = 'CASH'` reader —
+     *     opposite classifications of the same tender, one of which lands in a
+     *     certified expected-cash figure.
+     *
+     * The asymmetry (set only on the exact code; may not be left unset on any
+     * case-variant) is what makes the two directions converge on ONE reading of
+     * a row rather than fighting: the flag can only ever be true on `CASH`, and
+     * nothing that looks like cash to any historical predicate is allowed to sit
+     * unflagged.
+     *
+     * BROWNFIELD ROWS ARE THEREFORE UNEDITABLE UNTIL RECONCILED, deliberately.
+     * The two remedies, both reachable through this same endpoint:
+     *  - canonical `CASH` with the flag false → PATCH `is_cash_tender: true`;
+     *  - a mixed-case collision loser (`Cash`) → PATCH `code` to something that
+     *    is not a cash code (it cannot be flagged: the canonical row owns
+     *    `CASH`).
+     * The census migration lists every violating row with the suggested
+     * statement per row; it mutates nothing.
+     *
+     * @throws CashTenderInvariantViolationException
      */
     private function assertCashTenderInvariant(string $code, bool $isCashTender): void
     {
-        if ($isCashTender && $code !== 'CASH') {
-            throw ValidationException::withMessages([
-                'is_cash_tender' => 'Only the payment method with code CASH may be flagged as a cash tender.',
-            ]);
+        if ($isCashTender) {
+            if ($code !== self::CANONICAL_CASH_CODE) {
+                throw CashTenderInvariantViolationException::flagOnNonCanonicalCode($code);
+            }
+
+            return;
         }
+
+        if (strtoupper($code) === self::CANONICAL_CASH_CODE) {
+            throw CashTenderInvariantViolationException::canonicalCodeNotFlagged($code);
+        }
+    }
+
+    /**
+     * The house `{error: {code, message, ...}}` envelope with the TYPED code.
+     *
+     * A 422, not a `ValidationException`: the two remedies differ in kind (flag
+     * it vs rename it) and a front end must branch on `error.code`, never on the
+     * prose. Mirrors `FiscalPeriodController::close()`.
+     */
+    private function refuseCashTenderInvariant(CashTenderInvariantViolationException $e): JsonResponse
+    {
+        return response()->json([
+            'error' => [
+                'code' => $e->refusalCode->value,
+                'message' => $e->getMessage(),
+                'payment_method_code' => $e->paymentMethodCode,
+            ],
+        ], 422);
     }
 }

@@ -201,9 +201,11 @@ function mockShift(receipts: Array<Record<string, unknown>>): Database {
     const s = sql as string;
     if (s.includes('offline_receipts')) return receipts as unknown as never[];
     if (s.includes('payment_methods')) {
+      // I-1 — see zReportService.test.ts: the Z aggregation classifies cash by
+      // `is_cash_tender`, so the cached rows must carry it.
       return [
-        { id: 'pm-cash', code: 'CASH' },
-        { id: 'pm-card', code: 'CARD' },
+        { id: 'pm-cash', code: 'CASH', is_cash_tender: 1, is_active: 1 },
+        { id: 'pm-card', code: 'CARD', is_cash_tender: 0, is_active: 1 },
       ] as unknown as never[];
     }
     return [] as unknown as never[];

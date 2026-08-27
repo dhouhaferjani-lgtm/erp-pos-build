@@ -615,6 +615,397 @@ final class PaymentMethodCashTenderTest extends TestCase
         return $id;
     }
 
+    // ------------------------------------------------- I-1 bidirectional guard
+
+    /**
+     * Session D final review, I-1 — the MISSING half of the invariant.
+     *
+     * `store()` used to persist a canonical `CASH` method with the flag false.
+     * Such a row is read as NON-cash by `TenderRepositoryResolver`, the bridge
+     * and the device checkout resolver, and as CASH by every historical
+     * `UPPER(code) = 'CASH'` consumer — the same tender classified in opposite
+     * directions, one of which lands in a certified expected-cash figure.
+     */
+    public function test_store_refuses_a_canonical_cash_code_that_is_not_flagged(): void
+    {
+        $response = $this->actingAs($this->admin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/payment-methods', [
+                'code' => 'CASH',
+                'name' => 'Espèces',
+                'is_physical' => true,
+                'is_cash_tender' => false,
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'PAYMENT_METHOD_CANONICAL_CASH_CODE_NOT_FLAGGED');
+        $response->assertJsonPath('error.payment_method_code', 'CASH');
+        $this->assertSame(0, PaymentMethod::query()->where('tenant_id', $this->tenant->id)->count());
+    }
+
+    /**
+     * The flag is OPTIONAL in the request; omitting it defaults to false, which
+     * is exactly how the brownfield rows I-1 found were created. Absence must
+     * refuse for the same reason an explicit `false` does.
+     */
+    public function test_store_refuses_a_canonical_cash_code_with_the_flag_omitted_entirely(): void
+    {
+        $response = $this->actingAs($this->admin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/payment-methods', [
+                'code' => 'cash',
+                'name' => 'Espèces',
+                'is_physical' => true,
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'PAYMENT_METHOD_CANONICAL_CASH_CODE_NOT_FLAGGED');
+        $this->assertSame(0, PaymentMethod::query()->where('tenant_id', $this->tenant->id)->count());
+    }
+
+    /**
+     * The other direction, unchanged in semantics but now typed: the code is
+     * part of the contract, and the two remedies differ in kind.
+     */
+    public function test_store_refusal_of_a_flag_on_a_non_cash_code_carries_its_own_typed_code(): void
+    {
+        $response = $this->actingAs($this->admin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/payment-methods', [
+                'code' => 'meal_voucher',
+                'name' => 'Ticket Restaurant',
+                'is_physical' => true,
+                'is_cash_tender' => true,
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'PAYMENT_METHOD_CASH_TENDER_FLAG_ON_NON_CANONICAL_CODE');
+        $response->assertJsonPath('error.payment_method_code', 'MEAL_VOUCHER');
+    }
+
+    /**
+     * A PATCH that would UNSET the flag on the canonical row is the same defect
+     * arriving by the update door — the door I-1 found open at
+     * `PaymentMethodController.php:255-268,358-371`.
+     */
+    public function test_update_refuses_clearing_the_flag_on_the_canonical_cash_row(): void
+    {
+        $cash = PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH',
+            'name' => 'Espèces',
+            'is_physical' => true,
+            'has_maturity' => false,
+            'is_cash_tender' => true,
+            'is_active' => true,
+            'position' => 1,
+        ]);
+
+        $response = $this->actingAs($this->admin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/payment-methods/'.$cash->id, [
+                'is_cash_tender' => false,
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'PAYMENT_METHOD_CANONICAL_CASH_CODE_NOT_FLAGGED');
+        $this->assertTrue($cash->refresh()->is_cash_tender);
+    }
+
+    /**
+     * RENAMING a flagged method away from `CASH` breaks the invariant from the
+     * other side: the final state would be a flag on a non-canonical code.
+     */
+    public function test_update_refuses_renaming_the_flagged_cash_method_off_the_canonical_code(): void
+    {
+        $cash = PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH',
+            'name' => 'Espèces',
+            'is_physical' => true,
+            'has_maturity' => false,
+            'is_cash_tender' => true,
+            'is_active' => true,
+            'position' => 1,
+        ]);
+
+        $response = $this->actingAs($this->admin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/payment-methods/'.$cash->id, [
+                'code' => 'ESPECES',
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'PAYMENT_METHOD_CASH_TENDER_FLAG_ON_NON_CANONICAL_CODE');
+        $this->assertSame('CASH', $cash->refresh()->code);
+    }
+
+    /**
+     * THE ESCAPE HATCH for shape (A) — a brownfield canonical row with the flag
+     * false. The guard would be a trap without it: the row cannot be edited at
+     * all until it is coherent, so the coherent edit itself has to be reachable.
+     */
+    public function test_update_lets_an_operator_flag_a_brownfield_canonical_cash_row(): void
+    {
+        $id = $this->brownfieldCanonicalCashRow();
+
+        $response = $this->actingAs($this->admin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/payment-methods/'.$id, [
+                'is_cash_tender' => true,
+            ]);
+
+        $response->assertStatus(200);
+        $this->assertTrue($response->json('data.is_cash_tender'));
+    }
+
+    /**
+     * And the trap itself, pinned deliberately: while the row stays incoherent,
+     * an UNRELATED edit is refused rather than silently perpetuating it. This is
+     * the behaviour change with the widest blast radius in this lane, so it is
+     * asserted rather than left to be discovered in production.
+     */
+    public function test_update_refuses_an_unrelated_edit_to_an_incoherent_brownfield_row(): void
+    {
+        $id = $this->brownfieldCanonicalCashRow();
+
+        $response = $this->actingAs($this->admin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/payment-methods/'.$id, [
+                'name' => 'Espèces (renommé)',
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'PAYMENT_METHOD_CANONICAL_CASH_CODE_NOT_FLAGGED');
+    }
+
+    /**
+     * THE ESCAPE HATCH for shape (B) — a mixed-case collision loser. It cannot
+     * be flagged (the canonical row owns `CASH`, and the flag is only legal on
+     * the exact code), so the only coherent end state is a code that is not in
+     * the cash family at all. That edit must go through.
+     */
+    public function test_update_lets_an_operator_rename_a_mixed_case_collision_loser(): void
+    {
+        PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH',
+            'name' => 'Espèces',
+            'is_physical' => true,
+            'has_maturity' => false,
+            'is_cash_tender' => true,
+            'is_active' => true,
+            'position' => 1,
+        ]);
+
+        $loserId = $this->brownfieldCaseVariantCashRow('Cash');
+
+        $response = $this->actingAs($this->admin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/payment-methods/'.$loserId, [
+                'code' => 'cash_legacy',
+            ]);
+
+        $response->assertStatus(200);
+        $this->assertSame('CASH_LEGACY', $response->json('data.code'));
+        $this->assertFalse($response->json('data.is_cash_tender'));
+    }
+
+    /**
+     * And it must NOT be flaggable: only one method per company may hold `CASH`,
+     * so allowing the variant to carry the flag would give the company two cash
+     * tenders with different codes and reopen the split from the other side.
+     */
+    public function test_update_refuses_flagging_a_mixed_case_collision_loser(): void
+    {
+        PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH',
+            'name' => 'Espèces',
+            'is_physical' => true,
+            'has_maturity' => false,
+            'is_cash_tender' => true,
+            'is_active' => true,
+            'position' => 1,
+        ]);
+
+        $loserId = $this->brownfieldCaseVariantCashRow('Cash');
+
+        $response = $this->actingAs($this->admin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/payment-methods/'.$loserId, [
+                'is_cash_tender' => true,
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'PAYMENT_METHOD_CASH_TENDER_FLAG_ON_NON_CANONICAL_CODE');
+        $this->assertFalse((bool) DB::table('payment_methods')->where('id', $loserId)->value('is_cash_tender'));
+    }
+
+    // ------------------------------------------------------- I-1 census (A3)
+
+    /**
+     * The census is REPORTING infrastructure — its whole value is that an
+     * operator can act on it, so what it prints is the contract.
+     */
+    public function test_the_census_names_every_violating_shape_and_changes_nothing(): void
+    {
+        // (A) canonical CASH, unflagged.
+        $canonicalUnflagged = $this->brownfieldCanonicalCashRow();
+
+        // (B) a mixed-case variant, unflagged. Coexists with (A) legally: the
+        // unique index is case-sensitive in PostgreSQL.
+        $variant = $this->brownfieldCaseVariantCashRow('Cash');
+
+        // (C) the flag on a non-canonical code — unreachable through the
+        // controller, reachable through a seeder or a hand-run UPDATE.
+        $flaggedVoucher = PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'MEAL_VOUCHER',
+            'name' => 'Ticket Restaurant',
+            'is_physical' => true,
+            'has_maturity' => false,
+            'is_active' => true,
+            'position' => 5,
+        ])->id;
+        DB::table('payment_methods')->where('id', $flaggedVoucher)->update(['is_cash_tender' => true]);
+
+        // A coherent row that must NOT be censused.
+        $card = PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CARD',
+            'name' => 'Carte',
+            'is_physical' => false,
+            'has_maturity' => false,
+            'is_active' => true,
+            'position' => 2,
+        ])->id;
+
+        ob_start();
+        $this->runCashTenderCensusMigration();
+        $output = (string) ob_get_clean();
+
+        $this->assertStringContainsString('[I-1] cash-tender invariant violations found: 3', $output);
+        $this->assertStringContainsString($this->company->id, $output, 'the census must group by company');
+        $this->assertStringContainsString($canonicalUnflagged, $output);
+        $this->assertStringContainsString($variant, $output);
+        $this->assertStringContainsString($flaggedVoucher, $output);
+        $this->assertStringNotContainsString($card, $output, 'a coherent row must not be reported');
+
+        // The suggested remedies, one per shape.
+        $this->assertStringContainsString(
+            "UPDATE payment_methods SET is_cash_tender = true WHERE id = '".$canonicalUnflagged."'",
+            $output,
+        );
+        $this->assertStringContainsString(
+            "UPDATE payment_methods SET code = 'CASH_LEGACY' WHERE id = '".$variant."'",
+            $output,
+        );
+        $this->assertStringContainsString(
+            "UPDATE payment_methods SET is_cash_tender = false WHERE id = '".$flaggedVoucher."'",
+            $output,
+        );
+
+        // NON-MUTATING is the point: remediation is an operator decision.
+        $this->assertFalse((bool) DB::table('payment_methods')->where('id', $canonicalUnflagged)->value('is_cash_tender'));
+        $this->assertSame('Cash', DB::table('payment_methods')->where('id', $variant)->value('code'));
+        $this->assertTrue((bool) DB::table('payment_methods')->where('id', $flaggedVoucher)->value('is_cash_tender'));
+    }
+
+    /**
+     * A census of ZERO must still print, so silence in the migrate log can only
+     * ever mean "the migration did not run" — the same standard the W4-1 lot
+     * census is held to.
+     */
+    public function test_a_zero_census_still_prints_so_silence_is_unambiguous(): void
+    {
+        PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH',
+            'name' => 'Espèces',
+            'is_physical' => true,
+            'has_maturity' => false,
+            'is_cash_tender' => true,
+            'is_active' => true,
+            'position' => 1,
+        ]);
+
+        ob_start();
+        $this->runCashTenderCensusMigration();
+        $output = (string) ob_get_clean();
+
+        $this->assertStringContainsString('[I-1] cash-tender invariant violations found: 0', $output);
+        $this->assertStringNotContainsString('NOTHING WAS CHANGED', $output);
+    }
+
+    /**
+     * Shape (A): a canonical `CASH` row with the flag false — created past the
+     * controller, because the controller now refuses exactly this.
+     */
+    private function brownfieldCanonicalCashRow(): string
+    {
+        $id = PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH',
+            'name' => 'Espèces',
+            'is_physical' => true,
+            'has_maturity' => false,
+            'is_cash_tender' => true,
+            'is_active' => true,
+            'position' => 1,
+        ])->id;
+
+        DB::table('payment_methods')->where('id', $id)->update(['is_cash_tender' => false]);
+
+        return $id;
+    }
+
+    /**
+     * Shape (B): a mixed-case cash-family code left unflagged — the collision
+     * loser `2026_07_28_100000_add_is_cash_tender_to_payment_methods` skips.
+     */
+    private function brownfieldCaseVariantCashRow(string $variantCode): string
+    {
+        $id = PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH_VARIANT_PLACEHOLDER',
+            'name' => 'Espèces (variante)',
+            'is_physical' => true,
+            'has_maturity' => false,
+            'is_active' => true,
+            'position' => 8,
+        ])->id;
+
+        DB::table('payment_methods')->where('id', $id)->update([
+            'code' => $variantCode,
+            'is_cash_tender' => false,
+        ]);
+
+        return $id;
+    }
+
+    /**
+     * Execute the REAL census migration file, so this suite fails if it is
+     * deleted or its predicate changes.
+     */
+    private function runCashTenderCensusMigration(): void
+    {
+        $migration = require base_path(
+            'database/migrations/tenant/2026_08_27_100000_census_cash_tender_invariant_violations.php'
+        );
+
+        $migration->up();
+    }
+
     /**
      * Execute the REAL migration file rather than a pasted copy of its SQL, so
      * this suite fails if the migration is deleted or its backfill changes.

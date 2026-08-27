@@ -12,6 +12,7 @@ use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ShiftCashMovementSource;
 use App\Modules\POS\Domain\Exceptions\UnattributableAccountCollectionException;
+use App\Modules\POS\Domain\Exceptions\UnknownTenderClassificationException;
 use App\Modules\POS\Domain\Exceptions\UnsignableCashMovementException;
 use App\Modules\POS\Domain\Services\CashDrawerService;
 use App\Modules\POS\Domain\Shift;
@@ -139,6 +140,17 @@ final class ShiftExpectedCashService
         'PAYOUT' => '-',
     ];
 
+    /**
+     * Memoized {@see self::cashTenderCodes()} results, keyed by shift id +
+     * window end. One derivation reads the set up to three times (per-tender
+     * totals, cash total, change due) and all three must see the SAME set — a
+     * concurrent edit to `payment_methods` mid-derivation would otherwise be
+     * able to move one term and not the others.
+     *
+     * @var array<string, list<string>>
+     */
+    private array $cashTenderCodes = [];
+
     public function __construct(
         private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
@@ -151,6 +163,8 @@ final class ShiftExpectedCashService
      * count; it is here so the orphan-close path cannot use a different one.
      *
      * @return array<string, numeric-string> payment_method_id => total
+     *
+     * @throws UnknownTenderClassificationException when a tendered code has no payment method row
      */
     public function expectedPerPaymentMethod(Shift $shift, ?CarbonInterface $until = null): array
     {
@@ -188,14 +202,18 @@ final class ShiftExpectedCashService
      *
      * Identified by `payment_method_code`, not by id: the code is what every
      * other cash-aware query in this module keys on (the id is per-company
-     * data).
+     * data). WHICH codes are cash is no longer decided here — see
+     * {@see self::cashTenderCodes()}.
+     *
      *
      * @return numeric-string
+     *
+     * @throws UnknownTenderClassificationException when a tendered code has no payment method row
      */
     public function cashTenderedNetOfChange(Shift $shift, CarbonInterface $until, int $scale): string
     {
         $tendered = $this->shiftReceiptPaymentsQuery($shift, $until)
-            ->whereRaw('UPPER(pos_receipt_payments.payment_method_code) = ?', ['CASH'])
+            ->whereIn('pos_receipt_payments.payment_method_code', $this->cashTenderCodes($shift, $until))
             ->selectRaw("SUM(CASE WHEN pos_receipts.receipt_type = 'return' THEN -ABS(pos_receipt_payments.amount) ELSE pos_receipt_payments.amount END) as total")
             ->value('total');
 
@@ -229,6 +247,7 @@ final class ShiftExpectedCashService
      *
      * @throws UnsignableCashMovementException when a movement row carries a type this service cannot sign
      * @throws UnattributableAccountCollectionException when an account collection cannot be attributed to a shift
+     * @throws UnknownTenderClassificationException when a tendered code has no payment method row
      */
     public function breakdown(
         Shift $shift,
@@ -303,6 +322,112 @@ final class ShiftExpectedCashService
     }
 
     /**
+     * WHICH tender codes on this shift's receipts are CASH — decided by
+     * `payment_methods.is_cash_tender`, the same column every other consumer
+     * reads.
+     *
+     * # Why this replaced `UPPER(payment_method_code) = 'CASH'` (Session D, I-1)
+     *
+     * Two families of predicate used to answer the same question and could
+     * answer it in OPPOSITE directions on the same row:
+     *
+     *  - `is_cash_tender` — the shared repository rule
+     *    (`Treasury\Application\Services\TenderRepositoryResolver`),
+     *    `TreasuryReceiptBridge`, and the device checkout resolver
+     *    (`apps/pos/src/lib/payment/cashMethods.ts`);
+     *  - `UPPER(code) = 'CASH'` — this service, and only this service.
+     *
+     * On a mixed-case brownfield row (`Cash`, left deliberately unflagged by
+     * `2026_07_28_100000_add_is_cash_tender_to_payment_methods` because the
+     * canonical row already owned the code) the flag-readers said NOT cash while
+     * this service said cash. On a canonical `CASH` row created through the API
+     * with the flag false — which the one-way write guard used to allow — the
+     * same split ran the other way. Either split can put the repository movement
+     * and the shift's certified `EspecesAttendues` on different tenders.
+     *
+     * So cash-ness is now READ, never derived: exactly the codes whose
+     * `payment_methods` row carries `is_cash_tender = true`. The write guard on
+     * `PaymentMethodController` is what keeps that column coherent with the code
+     * in both directions; this service simply trusts it, like everyone else.
+     *
+     * `is_active` is deliberately NOT filtered (unlike the device resolver,
+     * which is choosing a tender to OFFER): these receipts are already written,
+     * and a method deactivated after the fact does not retroactively stop its
+     * takings from being in the drawer.
+     *
+     * FAILS CLOSED on a code with no `payment_methods` row at all — see
+     * {@see UnknownTenderClassificationException}. Memoized per
+     * (shift, window end) so the per-tender read, the cash read and the
+     * change-due read cannot disagree within one derivation.
+     *
+     * @return list<string>
+     *
+     * @throws UnknownTenderClassificationException
+     */
+    private function cashTenderCodes(Shift $shift, CarbonInterface $until): array
+    {
+        $cacheKey = $shift->id.'|'.$until->toIso8601String();
+
+        if (array_key_exists($cacheKey, $this->cashTenderCodes)) {
+            return $this->cashTenderCodes[$cacheKey];
+        }
+
+        /** @var list<string> $tenderedCodes */
+        $tenderedCodes = $this->shiftReceiptPaymentsQuery($shift, $until)
+            ->distinct()
+            ->pluck('pos_receipt_payments.payment_method_code')
+            ->map(static fn (mixed $code): string => (string) $code)
+            ->values()
+            ->all();
+
+        if ($tenderedCodes === []) {
+            return $this->cashTenderCodes[$cacheKey] = [];
+        }
+
+        // Queried rather than read off the relation: `find()` is honestly
+        // nullable, and the (tenant, company) scope below is not derivable
+        // without it. `breakdown()` already holds a Terminal, but the two other
+        // public reads do not and must resolve the SAME set.
+        $terminal = Terminal::query()->find($shift->terminal_id);
+
+        if ($terminal === null) {
+            throw UnknownTenderClassificationException::forOrphanedTerminal($shift->id);
+        }
+
+        // Scoped exactly the way `PosCoreReceiptProjection::writePayment()`
+        // resolved the code when it WROTE these rows — (tenant, company, code) —
+        // so the read and the write agree on which row a snapshot names. Sibling
+        // companies in one tenant may legitimately reuse a code
+        // (`unique(company_id, code)`), which is why company scope is not
+        // optional here.
+        $flagByCode = [];
+        foreach (
+            DB::table('payment_methods')
+                ->where('tenant_id', $terminal->tenant_id)
+                ->where('company_id', $terminal->company_id)
+                ->whereIn('code', $tenderedCodes)
+                ->get(['code', 'is_cash_tender']) as $row
+        ) {
+            $flagByCode[(string) $row->code] = (bool) $row->is_cash_tender;
+        }
+
+        /** @var list<string> $cashCodes */
+        $cashCodes = [];
+
+        foreach ($tenderedCodes as $code) {
+            if (! array_key_exists($code, $flagByCode)) {
+                throw UnknownTenderClassificationException::forShift($shift->id, $code);
+            }
+
+            if ($flagByCode[$code]) {
+                $cashCodes[] = $code;
+            }
+        }
+
+        return $this->cashTenderCodes[$cacheKey] = $cashCodes;
+    }
+
+    /**
      * Cash change handed back, per payment method.
      *
      * Aggregated per RECEIPT first (`MAX(change_due)` in the sub-select) because
@@ -322,7 +447,7 @@ final class ShiftExpectedCashService
             ->fromSub(
                 $this->shiftReceiptPaymentsQuery($shift, $until)
                     ->where('pos_receipts.receipt_type', '!=', ReceiptType::Return->value)
-                    ->whereRaw('UPPER(pos_receipt_payments.payment_method_code) = ?', ['CASH'])
+                    ->whereIn('pos_receipt_payments.payment_method_code', $this->cashTenderCodes($shift, $until))
                     ->selectRaw('pos_receipt_payments.payment_method_id as payment_method_id, pos_receipts.id as receipt_id, MAX(COALESCE(pos_receipts.change_due, 0)) as change_due')
                     ->groupBy('pos_receipt_payments.payment_method_id', 'pos_receipts.id'),
                 'cash_receipt_changes',
@@ -479,6 +604,18 @@ final class ShiftExpectedCashService
                 throw UnattributableAccountCollectionException::forShift($shift->id, (string) $row->id);
             }
 
+            // DELIBERATELY still a case-insensitive literal, and NOT the
+            // `is_cash_tender` set (Session D I-1 scope boundary). This
+            // `method_code` is a DEVICE-AUTHORED payload string, not the
+            // `payment_methods.code` snapshot `PosCoreReceiptProjection` writes
+            // onto a receipt payment: nothing guarantees the company still holds
+            // — or ever held — a row with that code, so resolving it through the
+            // flag would turn a legitimate non-cash collection (`CARD` on a
+            // company with no CARD method row) into a refusal to close. The
+            // residual is recorded: a mixed-case cash method would be counted
+            // here and not in the receipts term. Closing it means resolving the
+            // payload code against `payment_methods` at ACCOUNT_PAYMENT
+            // projection time, which is a different lane.
             if (strtoupper($methodCode) !== 'CASH') {
                 continue;
             }

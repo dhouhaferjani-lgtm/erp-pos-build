@@ -12,6 +12,7 @@ use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Events\OrphanedShiftClosedByOperator;
 use App\Modules\POS\Domain\Exceptions\OrphanCloseProvenanceLostException;
 use App\Modules\POS\Domain\Exceptions\UnattributableAccountCollectionException;
+use App\Modules\POS\Domain\Exceptions\UnknownTenderClassificationException;
 use App\Modules\POS\Domain\Exceptions\UnsignableCashMovementException;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
@@ -121,7 +122,8 @@ use Illuminate\Support\Str;
  * {@see self::EXIT_EXPECTED_CASH_NEGATIVE} (6) ·
  * {@see self::EXIT_AUDIT_WRITE_FAILED} (7) ·
  * {@see self::EXIT_MOVEMENTS_UNUSABLE} (8) ·
- * {@see self::EXIT_COLLECTION_UNATTRIBUTABLE} (9). Note that `tenants:run` DISCARDS the
+ * {@see self::EXIT_COLLECTION_UNATTRIBUTABLE} (9) ·
+ * {@see self::EXIT_TENDER_UNCLASSIFIABLE} (10). Note that `tenants:run` DISCARDS the
  * child exit code, so the codes are for a direct invocation under an
  * already-bound tenant; under `tenants:run` read the printed verdict line.
  *
@@ -180,6 +182,14 @@ final class CloseOrphanedShiftCommand extends Command
      * cannot be derived. See {@see UnattributableAccountCollectionException}.
      */
     public const EXIT_COLLECTION_UNATTRIBUTABLE = 9;
+
+    /**
+     * A receipt payment inside the shift's window names a payment method code
+     * that no `payment_methods` row carries, so the leg cannot be classified as
+     * cash or non-cash and the figure cannot be derived. See
+     * {@see UnknownTenderClassificationException} (Session D finding I-1).
+     */
+    public const EXIT_TENDER_UNCLASSIFIABLE = 10;
 
     /**
      * @var string
@@ -335,6 +345,15 @@ final class CloseOrphanedShiftCommand extends Command
             $this->error($e->getMessage());
 
             return self::EXIT_MOVEMENTS_UNUSABLE;
+        } catch (UnknownTenderClassificationException $e) {
+            // I-1 — cash-ness is now READ from `payment_methods.is_cash_tender`
+            // rather than derived from the code string, so a tender whose method
+            // row is gone has no answer at all. Same typed-refusal treatment as
+            // the two above: guessing either way lands in the JET as a balanced
+            // count.
+            $this->error($e->getMessage());
+
+            return self::EXIT_TENDER_UNCLASSIFIABLE;
         }
 
         if ($breakdown->isNegative()) {
