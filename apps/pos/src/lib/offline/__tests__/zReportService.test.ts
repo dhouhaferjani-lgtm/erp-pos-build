@@ -283,6 +283,13 @@ function mockQueryAll(
   accountPayments: AccountPaymentRow[] = [],
   anchor: { shift_id: string; opening_hash_sequence: number } | null = null,
   legacyRefundRecords: LegacyRefundRecordRow[] = [],
+  // I-1 — the cached `payment_methods` rows, overridable so a test can express
+  // a brownfield tenant (a canonical CASH code the tenant has NOT flagged, a
+  // tender the device has never cached) instead of only the coherent one.
+  paymentMethods: Array<{ id: string; code: string; is_cash_tender: number; is_active: number }> = [
+    { id: 'pm-cash', code: 'CASH', is_cash_tender: 1, is_active: 1 },
+    { id: 'pm-card', code: 'CARD', is_cash_tender: 0, is_active: 1 },
+  ],
 ) {
   vi.mocked(queryAll).mockImplementation(async (_db, sql, params) => {
     const s = sql as string;
@@ -306,10 +313,11 @@ function mockQueryAll(
       return receipts;
     }
     if (s.includes('FROM payment_methods') || s.includes('payment_methods')) {
-      return [
-        { id: 'pm-cash', code: 'CASH' },
-        { id: 'pm-card', code: 'CARD' },
-      ];
+      // I-1 — `is_cash_tender` is the device's ONE cash-ness predicate, in the Z
+      // aggregation as well as at checkout. Both `buildPaymentMethodMap` (id ->
+      // code) and `buildCashTenderContext` (code -> flag) read this table, so
+      // the fixture carries every column either of them selects.
+      return paymentMethods as unknown as never[];
     }
     return [];
   });
@@ -484,6 +492,57 @@ describe('generateZReport', () => {
       expect(card.total_amount).toBe('40.00');
       // expected_cash = opening 100 + net cash 60 = 160 (no refunds).
       expect(report.report_data.expected_cash).toBe('160.00');
+    });
+
+    /**
+     * Session D final review, I-1 — the device's Z aggregation used to key on
+     * `method_code === 'CASH'` while its checkout resolver
+     * (`lib/payment/cashMethods.ts`) keys on `is_cash_tender`. A canonical
+     * `CASH` method the tenant has explicitly NOT flagged was therefore
+     * non-cash at the till and cash in the SIGNED Z_REPORT bytes — the device
+     * disagreeing with itself about the same tender.
+     */
+    it('does not treat a canonical CASH code as cash when it is not flagged is_cash_tender', async () => {
+      mockQueryAll(db, makeSplitTenderReceipt(), [], [], null, [], [
+        { id: 'pm-cash', code: 'CASH', is_cash_tender: 0, is_active: 1 },
+        { id: 'pm-card', code: 'CARD', is_cash_tender: 0, is_active: 1 },
+      ]);
+
+      const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      const cash = report.report_data.payment_methods.find((m) => m.payment_type === 'CASH')!;
+      // The GROSS tender, not the change-netted drawer figure: nothing on this
+      // receipt is cash, so there is no change to net out of a cash line.
+      expect(cash.total_amount).toBe('65.00');
+      // And the drawer holds only the opening float.
+      expect(report.report_data.expected_cash).toBe('100.00');
+    });
+
+    /**
+     * Fail CLOSED on a tender the device has never cached: there is no flag to
+     * read, so it cannot be cash — and the gap is announced rather than
+     * absorbed into a signed drawer figure.
+     */
+    it('warns and treats an uncached tender as non-cash', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      try {
+        mockQueryAll(db, makeSplitTenderReceipt(), [], [], null, [], [
+          { id: 'pm-cash', code: 'CASH', is_cash_tender: 1, is_active: 1 },
+          // CARD is missing from the cache entirely.
+        ]);
+
+        const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+        const card = report.report_data.payment_methods.find((m) => m.payment_type === 'CARD')!;
+        expect(card.total_amount).toBe('40.00');
+        // CASH is still flagged, so the drawer figure is unchanged: 100 + 60.
+        expect(report.report_data.expected_cash).toBe('160.00');
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('CARD'));
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('Re-sync payment methods'));
+      } finally {
+        warn.mockRestore();
+      }
     });
 
     it('legacy fallback: receipt.total is already net cash — does NOT subtract change again', async () => {
