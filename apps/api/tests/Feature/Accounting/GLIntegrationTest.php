@@ -852,7 +852,7 @@ class GLIntegrationTest extends TestCase
             'partner_id' => $this->partner->id,
             'type' => DocumentType::Expense,
             'status' => DocumentStatus::Draft,
-            'document_number' => 'EXP-DRAFT',
+            'document_number' => null,
             'document_date' => now(),
             'currency' => 'TND',
             'subtotal' => '100.000',

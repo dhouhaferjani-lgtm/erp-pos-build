@@ -878,7 +878,6 @@ class RefundService
     public function createFullCreditNote(
         Document $invoice,
         string $reason,
-        DocumentNumberingService $numberingService
     ): Document {
         if ($invoice->type !== DocumentType::Invoice) {
             throw new \InvalidArgumentException('Source document must be an invoice');
@@ -909,7 +908,7 @@ class RefundService
             );
         }
 
-        return DB::transaction(function () use ($invoice, $reason, $numberingService): Document {
+        return DB::transaction(function () use ($invoice, $reason): Document {
             $creditNote = Document::create([
                 'tenant_id' => $invoice->tenant_id,
                 'company_id' => $invoice->company_id,
@@ -917,11 +916,7 @@ class RefundService
                 'partner_id' => $invoice->partner_id,
                 'type' => DocumentType::CreditNote,
                 'status' => DocumentStatus::Draft,
-                'document_number' => $numberingService->generateNumber(
-                    tenantId: $invoice->tenant_id,
-                    companyId: $invoice->company_id,
-                    type: DocumentType::CreditNote
-                ),
+                'document_number' => null,
                 'document_date' => now(),
                 'currency' => $invoice->currency,
                 'subtotal' => $invoice->subtotal,
@@ -987,7 +982,6 @@ class RefundService
         Document $invoice,
         array $lineItems,
         string $reason,
-        DocumentNumberingService $numberingService
     ): Document {
         if ($invoice->type !== DocumentType::Invoice) {
             throw new \InvalidArgumentException('Source document must be an invoice');
@@ -1001,7 +995,7 @@ class RefundService
             throw new \InvalidArgumentException('Line items are required for partial credit note');
         }
 
-        return DB::transaction(function () use ($invoice, $lineItems, $reason, $numberingService): Document {
+        return DB::transaction(function () use ($invoice, $lineItems, $reason): Document {
             $creditNote = Document::create([
                 'tenant_id' => $invoice->tenant_id,
                 'company_id' => $invoice->company_id,
@@ -1009,11 +1003,7 @@ class RefundService
                 'partner_id' => $invoice->partner_id,
                 'type' => DocumentType::CreditNote,
                 'status' => DocumentStatus::Draft,
-                'document_number' => $numberingService->generateNumber(
-                    tenantId: $invoice->tenant_id,
-                    companyId: $invoice->company_id,
-                    type: DocumentType::CreditNote
-                ),
+                'document_number' => null,
                 'document_date' => now(),
                 'currency' => $invoice->currency,
                 'notes' => "Partial credit note for invoice {$invoice->document_number}: {$reason}",

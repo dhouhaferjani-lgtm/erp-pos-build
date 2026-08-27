@@ -17,8 +17,13 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Document\Domain\Events\SalesOrderCancelled;
+use App\Modules\Document\Domain\Events\SalesOrderCancelledV2;
+use App\Modules\Document\Domain\Exceptions\DocumentRenumberingException;
 use App\Modules\Document\Domain\Services\DeliveryNoteService;
+use App\Modules\Document\Domain\Services\DocumentPostingService;
 use App\Modules\Document\Domain\Services\DocumentStatusService;
+use App\Modules\Document\Domain\Services\SalesOrderService;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
@@ -29,6 +34,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -326,6 +332,38 @@ final class DeferredDocumentNumberingTest extends TestCase
         );
     }
 
+    public function test_cancelling_an_unnumbered_sales_order_uses_a_nullable_versioned_audit_event(): void
+    {
+        Event::fake([SalesOrderCancelled::class, SalesOrderCancelledV2::class]);
+        $actor = $this->authorizedUser();
+
+        $salesOrder = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::SalesOrder,
+            'status' => DocumentStatus::Draft,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'document_number' => null,
+            'document_date' => now()->format('Y-m-d'),
+            'currency' => 'EUR',
+            'subtotal' => '0.000',
+            'tax_amount' => '0.000',
+            'total' => '0.000',
+        ]);
+
+        app(DocumentPostingService::class)->cancel($salesOrder, 'Abandoned', $actor->id);
+
+        Event::assertNotDispatched(SalesOrderCancelled::class);
+        Event::assertDispatched(
+            SalesOrderCancelledV2::class,
+            static fn (SalesOrderCancelledV2 $event): bool => $event->documentNumber === null
+                && $event->draftReference === 'DRAFT-'.$salesOrder->id,
+        );
+        self::assertNull($salesOrder->refresh()->document_number);
+    }
+
     // ──────────────────────────────────────────────────────────────────
     // 6b. A caller may NAME an unnumbered document; it may never RENUMBER one
     // ──────────────────────────────────────────────────────────────────
@@ -372,26 +410,37 @@ final class DeferredDocumentNumberingTest extends TestCase
         );
     }
 
-    /**
-     * And it wins even over a number the row already carries. That is NOT a
-     * hypothetical: expense fixtures across the suite create a draft holding a
-     * fabricated `EXP-DRAFT-<uniqid>` placeholder and rely on `post()` replacing
-     * it. This service does not adjudicate that — the real backstop for a SEALED
-     * row is PostgreSQL's `trg_document_immutability`.
-     */
-    public function test_a_caller_supplied_number_replaces_a_placeholder_the_draft_was_carrying(): void
+    public function test_a_null_caller_value_does_not_suppress_allocation_for_an_unnumbered_draft(): void
+    {
+        /** @var DocumentStatusService $statusService */
+        $statusService = app(DocumentStatusService::class);
+        $quote = $this->draftQuoteWithOneLine();
+
+        $statusService->transition($quote, DocumentStatus::Confirmed, [
+            'document_number' => null,
+        ]);
+
+        self::assertSame(
+            sprintf('QT-%d-0001', (int) date('Y')),
+            $quote->refresh()->document_number,
+            'A null value does not name the document; the single allocator must still run.',
+        );
+    }
+
+    public function test_a_confirmed_document_cannot_be_renumbered_through_the_status_service(): void
     {
         /** @var DocumentStatusService $statusService */
         $statusService = app(DocumentStatusService::class);
 
-        $expense = Document::create([
+        $salesOrder = Document::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
-            'type' => DocumentType::Expense,
-            'status' => DocumentStatus::Draft,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::SalesOrder,
+            'status' => DocumentStatus::Confirmed,
             'fiscal_category' => FiscalCategory::NonFiscal,
             'fiscal_status' => FiscalStatus::Draft,
-            'document_number' => 'EXP-DRAFT-placeholder',
+            'document_number' => 'SO-2026-0042',
             'document_date' => now()->format('Y-m-d'),
             'currency' => 'EUR',
             'subtotal' => '10.000',
@@ -399,11 +448,52 @@ final class DeferredDocumentNumberingTest extends TestCase
             'total' => '10.000',
         ]);
 
-        $statusService->transition($expense, DocumentStatus::Posted, [
-            'document_number' => 'EXP-2026-0043',
-        ]);
+        try {
+            $statusService->transition($salesOrder, DocumentStatus::Cancelled, [
+                'document_number' => 'SO-2026-9999',
+            ]);
+            self::fail('Expected a typed refusal before a Confirmed document could be renumbered.');
+        } catch (DocumentRenumberingException $exception) {
+            self::assertSame($salesOrder->id, $exception->documentId);
+            self::assertSame('SO-2026-0042', $exception->existingNumber);
+            self::assertSame('SO-2026-9999', $exception->attemptedNumber);
+        }
 
-        $this->assertSame('EXP-2026-0043', (string) $expense->refresh()->document_number);
+        self::assertSame('SO-2026-0042', $salesOrder->refresh()->document_number);
+        self::assertSame(DocumentStatus::Confirmed, $salesOrder->status);
+    }
+
+    public function test_a_dirty_confirmed_model_cannot_bypass_the_typed_renumber_refusal(): void
+    {
+        /** @var DocumentStatusService $statusService */
+        $statusService = app(DocumentStatusService::class);
+
+        $salesOrder = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::SalesOrder,
+            'status' => DocumentStatus::Confirmed,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'document_number' => 'SO-2026-0042',
+            'document_date' => now()->format('Y-m-d'),
+            'currency' => 'EUR',
+            'subtotal' => '10.000',
+            'tax_amount' => '0.000',
+            'total' => '10.000',
+        ]);
+        $salesOrder->setAttribute('document_number', 'SO-2026-9999');
+
+        $this->expectException(DocumentRenumberingException::class);
+
+        try {
+            $statusService->transition($salesOrder, DocumentStatus::Cancelled);
+        } finally {
+            $salesOrder->refresh();
+            self::assertSame('SO-2026-0042', $salesOrder->document_number);
+            self::assertSame(DocumentStatus::Confirmed, $salesOrder->status);
+        }
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -441,6 +531,13 @@ final class DeferredDocumentNumberingTest extends TestCase
             'line_total' => '100.000',
         ]);
 
+        $targetUpdates = [];
+        Document::updated(static function (Document $document) use (&$targetUpdates, $deliveryNote): void {
+            if ($document->id === $deliveryNote->id) {
+                $targetUpdates[] = $document->getChanges();
+            }
+        });
+
         $confirmed = app(DeliveryNoteService::class)->confirm($deliveryNote->refresh());
 
         $this->assertNotNull($confirmed->fiscal_hash, 'Sanity: the delivery note was sealed.');
@@ -448,6 +545,49 @@ final class DeferredDocumentNumberingTest extends TestCase
             sprintf('DN-%d-0001', (int) date('Y')),
             (string) $confirmed->document_number,
             'The number must exist BEFORE the hash input is serialized — a NULL number in a fiscal hash is unrecoverable.'
+        );
+        $this->assertTrue(
+            collect($targetUpdates)->contains(
+                static fn (array $changes): bool => array_key_exists('document_number', $changes)
+                    && array_key_exists('status', $changes),
+            ),
+            'Delivery-note allocation and Draft → Confirmed must share one document UPDATE.',
+        );
+    }
+
+    public function test_a_sales_order_number_and_status_are_persisted_in_the_same_update(): void
+    {
+        $salesOrder = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::SalesOrder,
+            'status' => DocumentStatus::Draft,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'document_number' => null,
+            'document_date' => now()->format('Y-m-d'),
+            'currency' => 'EUR',
+            'subtotal' => '0.000',
+            'tax_amount' => '0.000',
+            'total' => '0.000',
+        ]);
+
+        $targetUpdates = [];
+        Document::updated(static function (Document $document) use (&$targetUpdates, $salesOrder): void {
+            if ($document->id === $salesOrder->id) {
+                $targetUpdates[] = $document->getChanges();
+            }
+        });
+
+        app(SalesOrderService::class)->confirm($salesOrder);
+
+        $this->assertTrue(
+            collect($targetUpdates)->contains(
+                static fn (array $changes): bool => array_key_exists('document_number', $changes)
+                    && array_key_exists('status', $changes),
+            ),
+            'Sales-order allocation and Draft → Confirmed must share one document UPDATE.',
         );
     }
 

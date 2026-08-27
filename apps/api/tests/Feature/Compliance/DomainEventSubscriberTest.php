@@ -14,6 +14,7 @@ use App\Modules\Document\Domain\Events\DeliveryNoteConfirmed;
 use App\Modules\Document\Domain\Events\InvoiceCancelled;
 use App\Modules\Document\Domain\Events\InvoicePaid;
 use App\Modules\Document\Domain\Events\InvoicePosted;
+use App\Modules\Document\Domain\Events\SalesOrderCancelledV2;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
@@ -170,6 +171,32 @@ class DomainEventSubscriberTest extends TestCase
         $this->assertEquals('invoice.cancelled', $auditEvent->event_type);
         $this->assertArrayHasKey('original_fiscal_hash', $auditEvent->payload);
         $this->assertEquals('original-hash-123', $auditEvent->payload['original_fiscal_hash']);
+    }
+
+    public function test_unnumbered_sales_order_cancellation_keeps_null_and_a_draft_reference_in_audit(): void
+    {
+        $salesOrderId = Str::uuid()->toString();
+
+        event(new SalesOrderCancelledV2(
+            salesOrderId: $salesOrderId,
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            documentNumber: null,
+            draftReference: 'DRAFT-'.$salesOrderId,
+            partnerId: $this->partner->id,
+            cancellationReason: 'Abandoned',
+            cancelledBy: $this->user->id,
+            cancelledAt: now()->toIso8601String(),
+        ));
+
+        $auditEvent = AuditEvent::query()
+            ->where('aggregate_id', $salesOrderId)
+            ->where('event_type', 'sales_order.cancelled')
+            ->sole();
+
+        self::assertArrayHasKey('document_number', $auditEvent->payload);
+        self::assertNull($auditEvent->payload['document_number']);
+        self::assertSame('DRAFT-'.$salesOrderId, $auditEvent->payload['draft_reference']);
     }
 
     public function test_invoice_paid_event_creates_audit_entry(): void

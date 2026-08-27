@@ -18,6 +18,7 @@ use App\Modules\Document\Domain\Events\DocumentFullyPaid;
 use App\Modules\Document\Domain\Events\InvoiceCancelled;
 use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Document\Domain\Events\SalesOrderCancelled;
+use App\Modules\Document\Domain\Events\SalesOrderCancelledV2;
 use App\Modules\Document\Domain\Exceptions\DeliveryRequiredBeforeInvoiceException;
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
@@ -766,11 +767,27 @@ final class DocumentPostingService
 
     private function dispatchSalesOrderCancelledEvent(Document $salesOrder, string $reason, string $cancelledBy, string $cancelledAt): void
     {
+        if ($salesOrder->document_number === null) {
+            event(new SalesOrderCancelledV2(
+                salesOrderId: $salesOrder->id,
+                tenantId: $salesOrder->tenant_id,
+                companyId: $salesOrder->company_id,
+                documentNumber: null,
+                draftReference: 'DRAFT-'.$salesOrder->id,
+                partnerId: $salesOrder->partner_id,
+                cancellationReason: $reason,
+                cancelledBy: $cancelledBy,
+                cancelledAt: $cancelledAt,
+            ));
+
+            return;
+        }
+
         event(new SalesOrderCancelled(
             salesOrderId: $salesOrder->id,
             tenantId: $salesOrder->tenant_id,
             companyId: $salesOrder->company_id,
-            documentNumber: $salesOrder->document_number ?? '',
+            documentNumber: $salesOrder->document_number,
             partnerId: $salesOrder->partner_id,
             cancellationReason: $reason,
             cancelledBy: $cancelledBy,

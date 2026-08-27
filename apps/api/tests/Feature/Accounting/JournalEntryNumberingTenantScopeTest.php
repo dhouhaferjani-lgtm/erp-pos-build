@@ -281,9 +281,12 @@ final class JournalEntryNumberingTenantScopeTest extends TestCase
 
         ExpenseMetadata::create([
             'document_id' => $expense->id,
-            'is_paid' => true,
+            // This test exercises journal-entry numbering, not the paid-expense
+            // treasury path. A paid expense must name a repository; keep this
+            // fixture unpaid so posting reaches the GL path under test.
+            'is_paid' => false,
             'payment_repository_id' => null,
-            'payment_date' => now()->toDateString(),
+            'payment_date' => null,
         ]);
 
         $this->actingAs($user, 'sanctum')
@@ -341,7 +344,7 @@ final class JournalEntryNumberingTenantScopeTest extends TestCase
             'partner_id' => $partner->id,
             'type' => DocumentType::Expense,
             'status' => DocumentStatus::Draft,
-            'document_number' => 'EXP-DRAFT-'.uniqid(),
+            'document_number' => null,
             'document_date' => now()->toDateString(),
             'currency' => 'TND',
             'subtotal' => '100.000',

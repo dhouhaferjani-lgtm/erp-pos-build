@@ -11,6 +11,7 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentSequence;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\Enums\UserStatus;
@@ -117,6 +118,8 @@ class DeliveryNoteDocumentTest extends TestCase
 
         $response->assertStatus(201);
         $this->assertEquals('delivery_note', $response->json('data.type'));
+        $response->assertJsonPath('data.document_number', null);
+        $this->assertSame(0, DocumentSequence::query()->where('type', DocumentType::DeliveryNote->value)->count());
     }
 
     public function test_delivery_note_can_reference_sales_order(): void

@@ -68,6 +68,13 @@ final class ReturnNoteConfirmSealAndPeriodTest extends TestCase
     {
         $returnNote = $this->draftReturnNote(Carbon::today());
 
+        $targetUpdates = [];
+        Document::updated(static function (Document $document) use (&$targetUpdates, $returnNote): void {
+            if ($document->id === $returnNote->id) {
+                $targetUpdates[] = $document->getChanges();
+            }
+        });
+
         $confirmed = $this->service->confirm($returnNote, $this->cfUser->id);
 
         self::assertSame(DocumentStatus::Confirmed, $confirmed->status);
@@ -75,6 +82,37 @@ final class ReturnNoteConfirmSealAndPeriodTest extends TestCase
         self::assertNotNull($confirmed->confirmed_at);
         self::assertSame($this->cfUser->id, $confirmed->confirmed_by);
         self::assertNotNull($confirmed->fiscal_hash);
+        self::assertTrue(
+            collect($targetUpdates)->contains(
+                static fn (array $changes): bool => array_key_exists('document_number', $changes)
+                    && array_key_exists('status', $changes),
+            ),
+            'Return-note allocation and Draft → Confirmed must share one document UPDATE.',
+        );
+    }
+
+    public function test_confirmation_locks_the_target_return_note_row(): void
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            self::markTestSkipped('PostgreSQL exposes SELECT ... FOR UPDATE in the query log.');
+        }
+
+        $returnNote = $this->draftReturnNote(Carbon::today());
+        $queries = [];
+        DB::listen(static function ($query) use (&$queries): void {
+            $queries[] = ['sql' => strtolower($query->sql), 'bindings' => $query->bindings];
+        });
+
+        $this->service->confirm($returnNote, $this->cfUser->id);
+
+        self::assertTrue(
+            collect($queries)->contains(
+                static fn (array $query): bool => str_contains($query['sql'], 'from "documents"')
+                    && str_contains($query['sql'], 'for update')
+                    && in_array($returnNote->id, $query['bindings'], true),
+            ),
+            'Return-note confirmation must lock the target document row before sealing it.',
+        );
     }
 
     /**

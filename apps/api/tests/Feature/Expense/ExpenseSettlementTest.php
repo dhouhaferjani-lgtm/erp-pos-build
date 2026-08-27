@@ -459,7 +459,7 @@ final class ExpenseSettlementTest extends TestCase
             'partner_id' => $partner->id,
             'type' => DocumentType::Expense,
             'status' => DocumentStatus::Draft,
-            'document_number' => 'EXP-DRAFT-'.uniqid(),
+            'document_number' => null,
             'document_date' => now()->toDateString(),
             'currency' => 'TND',
             'subtotal' => '100.000',

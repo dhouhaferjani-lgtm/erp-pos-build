@@ -14,7 +14,6 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\PriceEntryMode;
-use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
@@ -25,7 +24,6 @@ use Illuminate\Validation\ValidationException;
 final class DraftPurchaseOrderService
 {
     public function __construct(
-        private readonly DocumentNumberingService $numberingService,
         private readonly DocumentLineTaxResolver $lineTaxResolver,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
@@ -50,11 +48,7 @@ final class DraftPurchaseOrderService
                 'fiscal_category' => FiscalCategory::fromDocumentType(DocumentType::PurchaseOrder),
                 'partner_id' => $data->supplierId,
                 'location_id' => $data->destinationLocationId,
-                'document_number' => $this->numberingService->generateNumber(
-                    $data->tenantId,
-                    $data->companyId,
-                    DocumentType::PurchaseOrder,
-                ),
+                'document_number' => null,
                 'document_date' => now()->toDateString(),
                 'currency' => $company->currency,
                 'subtotal' => $totals['subtotal'],

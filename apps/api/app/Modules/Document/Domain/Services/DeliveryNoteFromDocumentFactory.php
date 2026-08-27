@@ -44,7 +44,6 @@ use Illuminate\Support\Str;
 final class DeliveryNoteFromDocumentFactory
 {
     public function __construct(
-        private readonly DocumentNumberingService $numberingService,
         private readonly FEFOInventoryService $fefoService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
@@ -81,11 +80,7 @@ final class DeliveryNoteFromDocumentFactory
             'location_id' => $location->id,
             'type' => DocumentType::DeliveryNote,
             'status' => DocumentStatus::Draft,
-            'document_number' => $this->numberingService->generateNumber(
-                $source->tenant_id,
-                $source->company_id,
-                DocumentType::DeliveryNote,
-            ),
+            'document_number' => null,
             'document_date' => now(),
             'partner_id' => $source->partner_id,
             'partner_name' => $partner->name,

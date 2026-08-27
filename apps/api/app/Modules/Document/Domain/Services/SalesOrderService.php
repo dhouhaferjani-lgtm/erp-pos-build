@@ -86,14 +86,14 @@ final class SalesOrderService
         $confirmedBy = auth()->id();
 
         // R-2 / LEDGER D-T9-1 — the sales order is a draft with no
-        // `document_number` until this moment, and it is allocated HERE, at the
-        // top of the confirm, rather than folded into the status write below:
+        // `document_number` until this moment, and it is staged HERE, at the
+        // top of the confirm:
         // the reservation notes further down stamp `$salesOrder->document_number`
         // into every `stock_reservations` row, so a later allocation would write
         // "Sales Order " with an empty number into the reservation audit trail.
         // Same allocator, same place (`DocumentStatusService`), same transaction
-        // — `confirm()` wraps this method in `DB::transaction()`, so a failure
-        // anywhere below returns the number to the sequence.
+        // — and `transition()` below persists the staged number in the SAME UPDATE
+        // as the status flip. A failure anywhere returns the number to the sequence.
         $this->documentStatusService->assignNumberIfMissing($salesOrder);
 
         // Get company for reservation settings
@@ -104,8 +104,7 @@ final class SalesOrderService
         $settings = $company->getReservationSettings();
         if (! $settings->autoReserveOnSalesOrder) {
             // Just update status without creating reservations
-            $salesOrder->update([
-                'status' => DocumentStatus::Confirmed,
+            $this->documentStatusService->transition($salesOrder, DocumentStatus::Confirmed, [
                 'confirmed_at' => $confirmedAt,
                 'confirmed_by' => $confirmedBy,
             ]);
@@ -185,8 +184,7 @@ final class SalesOrderService
         }
 
         // Update sales order status
-        $salesOrder->update([
-            'status' => DocumentStatus::Confirmed,
+        $this->documentStatusService->transition($salesOrder, DocumentStatus::Confirmed, [
             'confirmed_at' => $confirmedAt,
             'confirmed_by' => $confirmedBy,
         ]);

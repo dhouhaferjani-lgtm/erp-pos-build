@@ -18,7 +18,6 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Services\DeliveryNoteService;
-use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Identity\Domain\User;
@@ -67,7 +66,6 @@ class DeliveryNoteController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly LocationContext $locationContext,
         private readonly UninvoicedDeliveryNoteService $uninvoicedDeliveryNoteService,
-        private readonly DocumentNumberingService $numberingService,
         private readonly DeliveryNoteService $deliveryNoteService,
         private readonly VehicleContextBuilder $vehicleContextBuilder,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
@@ -422,9 +420,6 @@ class DeliveryNoteController extends Controller
         $tenantId = $company->tenant_id;
 
         return DB::transaction(function () use ($tenantId, $companyId, $company, $validated, $lines, $vehicleContext): JsonResponse {
-            // Generate document number
-            $documentNumber = $this->numberingService->generateNumber($tenantId, $companyId, DocumentType::DeliveryNote);
-
             // Calculate totals from lines
             $subtotal = '0.00';
             $taxAmount = '0.00';
@@ -462,7 +457,7 @@ class DeliveryNoteController extends Controller
                 'fiscal_status' => FiscalStatus::Draft,
                 'status' => DocumentStatus::Draft,
                 'location_id' => $locationId,
-                'document_number' => $documentNumber,
+                'document_number' => null,
                 'currency' => $validated['currency'] ?? $company->currency,
                 'subtotal' => $subtotal,
                 'tax_amount' => $taxAmount,

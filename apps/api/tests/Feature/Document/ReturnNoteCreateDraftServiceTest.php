@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Tests\Feature\Document;
 
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentSequence;
 use App\Modules\Document\Domain\DTOs\CreateReturnNoteData;
 use App\Modules\Document\Domain\DTOs\CreateReturnNoteLineData;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Exceptions\ReturnQuantityExceededException;
 use App\Modules\Document\Domain\Services\ReturnNoteService;
@@ -76,7 +78,8 @@ final class ReturnNoteCreateDraftServiceTest extends TestCase
         self::assertSame('238.000', $returnNote->total);
         self::assertSame('defective', $returnNote->payload['return_reason'] ?? null);
         self::assertSame('damaged', $returnNote->payload['return_condition'] ?? null);
-        self::assertStringStartsWith('RN-', (string) $returnNote->document_number);
+        self::assertNull($returnNote->document_number);
+        self::assertSame(0, DocumentSequence::query()->where('type', DocumentType::ReturnNote->value)->count());
     }
 
     /**

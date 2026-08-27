@@ -196,6 +196,7 @@ final class ReplenishmentActionsTest extends TestCase
         $this->assertSame(ReplenishmentStatus::InProgress, $request->status);
         $this->assertSame($response->json('data.document_id'), $request->sourcing_document_id);
         $this->assertNull($request->fulfillment_id);
+        $this->assertNull(Document::query()->findOrFail($request->sourcing_document_id)->document_number);
     }
 
     public function test_create_po_direct_to_shop_marks_fulfilled(): void

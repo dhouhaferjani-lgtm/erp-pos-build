@@ -6,6 +6,7 @@ namespace App\Modules\Document\Domain\Services;
 
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Exceptions\DocumentRenumberingException;
 use App\Modules\Document\Domain\Exceptions\DocumentTransitionException;
 use Illuminate\Support\Facades\Log;
 
@@ -26,6 +27,8 @@ use Illuminate\Support\Facades\Log;
  *     (`PaymentRefundService`, `OutboundInstrumentService`).
  *   - the four `Draft -> Posted` posting services: supplier invoice, supplier
  *     credit note, expense, income.
+ *   - all standard document confirms: quote, invoice, credit note, purchase
+ *     order, sales order, delivery note, return note, and correcting entry.
  *
  * NOT ROUTED — real, live, non-birth transitions that still write `status`
  * directly. Phase 2 owns them; naming them is the point, so the next reader
@@ -36,22 +39,14 @@ use Illuminate\Support\Facades\Log;
  *     cancelled-but-never-sealed document the print marker has to describe
  *     honestly (R2-F1); its `Posted` arm delegates to
  *     `DocumentPostingService::cancel()`, so only the unsealed edge is loose.
- *   - `DeliveryNoteService:180` and `ReturnNoteService:674` — `-> Confirmed`
- *     written together with the SEAL columns (`fiscal_hash`, `previous_hash`,
- *     `chain_sequence`). Called out explicitly because this lane edited both
- *     methods (their chain predecessor is now keyed on the seal, F-1) without
- *     routing the writes: these are hash-chain seals in their own right, and
- *     moving them belongs with a DN/RN posting-service lane, not here.
- *   - `SalesOrderService:96`, `:177`, `PurchaseOrderService:80`,
- *     `InvoiceController:614`, `QuoteController:536`,
- *     `CreditNoteController:279` — five `-> Confirmed` confirm sites.
  *   - every `create([... 'status' => ...])` BIRTH state, which is not a
  *     transition and is legitimately exempt (`ArApOpeningService` is the
  *     load-bearing example — its rows are exactly what `wasNeverSealed()`
  *     exempts).
- *   - `CorrectingEntryService:115`, `:173` — `Draft -> Confirmed` and
- *     `Confirmed -> Posted`; both edges ARE legal in the map, the service
- *     simply writes them itself.
+ *   - `CorrectingEntryService` — `Confirmed -> Posted`; the preceding
+ *     `Draft -> Confirmed` edge is routed here so it receives its number.
+ *   - `repairNeverPostedToConfirmed()` below — a deliberately exceptional
+ *     repair edge that is not legal in the normal adjacency map.
  *
  * NEITHER GUARD COVERS THAT REMAINDER, and the r1 claim that they did was
  * wrong: the PHPStan rule scopes to `Paid` anywhere and `Posted` under
@@ -83,10 +78,10 @@ use Illuminate\Support\Facades\Log;
  * D-T9-1). Drafts are now born unnumbered and the number is allocated on the
  * first transition out of `Draft` — see {@see self::numberAllocationFor()} for
  * the rule and {@see self::assignNumberIfMissing()} for the two confirm shapes
- * that must allocate before their own status write. A caller MAY still supply
- * `document_number` in `$extraAttributes` — the expense and income posters do,
- * from their own `EXP-`/`INC-` sequences — and when it does, its number wins and
- * this service allocates nothing behind it.
+ * that must allocate before their own status write. A caller MAY still name an
+ * unnumbered document itself (the expense and income posters do, from their own
+ * `EXP-`/`INC-` sequences). Once non-null, the number is immutable at this
+ * service boundary regardless of lifecycle or fiscal-seal state.
  */
 final readonly class DocumentStatusService
 {
@@ -105,6 +100,7 @@ final readonly class DocumentStatusService
      *
      * @param  array<string, mixed>  $extraAttributes  written in the SAME update statement
      *
+     * @throws DocumentRenumberingException
      * @throws DocumentTransitionException
      */
     public function transition(Document $document, DocumentStatus $to, array $extraAttributes = []): Document
@@ -122,20 +118,31 @@ final readonly class DocumentStatusService
         // (`EXP-` via `generateExpenseNumber()`) and `IncomeService::post()` (`INC-`).
         // Both are `draft → posted` writers for types the machine lets post directly
         // (`DocumentStatusMachine::postsDirectlyFromDraft()`), and both predate this
-        // lane. A caller-supplied number therefore WINS and this service allocates
-        // nothing — which is also the honest reading of those two flows: their drafts
-        // are created with NO `document_number` at all
-        // (`ExpenseService::create()` omits the column), so at post they are NAMING an
-        // unnumbered document exactly as R-2 describes, just from their own sequence.
-        //
-        // No refusal is imposed on the key. An earlier cut of this guard refused a
-        // number for a document that already had one, on the reasoning that a RENUMBER
-        // rewrites fiscal identity — and 16 tests proved the codebase does not hold
-        // that rule: their fixtures create an expense draft carrying a fabricated
-        // `EXP-DRAFT-<uniqid>` placeholder and rely on post replacing it. Inventing an
-        // invariant the codebase does not keep is not this lane's business; the real
-        // backstop for a sealed row is PostgreSQL's `trg_document_immutability`, which
-        // refuses the write at the boundary where it actually matters.
+        // lane. A caller-supplied number therefore WINS only while the row is still
+        // unnumbered. Once a number exists, changing it would rewrite fiscal identity;
+        // refuse that at the service boundary even when the row is not sealed yet.
+        $hasCallerNumberAttribute = array_key_exists('document_number', $extraAttributes);
+        $persistedNumber = $document->getRawOriginal('document_number');
+        $attemptedNumber = $hasCallerNumberAttribute
+            ? $extraAttributes['document_number']
+            : $document->document_number;
+
+        if ($persistedNumber !== null && $attemptedNumber !== $persistedNumber) {
+            throw new DocumentRenumberingException(
+                documentId: $document->id,
+                existingNumber: (string) $persistedNumber,
+                attemptedNumber: is_scalar($attemptedNumber) || $attemptedNumber === null
+                    ? $attemptedNumber
+                    : get_debug_type($attemptedNumber),
+            );
+        }
+
+        // NULL does not name an unnumbered draft. Remove it so the allocator
+        // below can supply the identity on the first real Draft exit.
+        if ($hasCallerNumberAttribute && $extraAttributes['document_number'] === null) {
+            unset($extraAttributes['document_number']);
+        }
+
         $callerSuppliedNumber = array_key_exists('document_number', $extraAttributes);
 
         $from = $document->status;
@@ -221,8 +228,8 @@ final readonly class DocumentStatusService
     }
 
     /**
-     * Allocate the number a `Draft` does not yet hold, for the confirm paths
-     * that need it BEFORE their own status write.
+     * Stage the number a `Draft` does not yet hold, for confirm paths that need
+     * it BEFORE the status write persists it.
      *
      * Two shapes of caller need this rather than {@see self::transition()}:
      *
@@ -237,8 +244,10 @@ final readonly class DocumentStatusService
      *
      * It is the same allocation, from the same place, under the same rollback
      * guarantee described on {@see self::numberAllocationFor()} — callers must
-     * be inside their confirm transaction. A document that already has a number
-     * is returned untouched, so this is safe to call unconditionally.
+     * be inside their confirm transaction. The number is assigned to the model
+     * in memory only; the caller MUST then use {@see self::transition()}, whose
+     * Eloquent save persists this dirty attribute in the SAME UPDATE as the
+     * status flip. A document that already has a number is returned untouched.
      */
     public function assignNumberIfMissing(Document $document): Document
     {
@@ -246,11 +255,11 @@ final readonly class DocumentStatusService
             return $document;
         }
 
-        $document->update(['document_number' => $this->numbering->generateNumber(
+        $document->setAttribute('document_number', $this->numbering->generateNumber(
             tenantId: $document->tenant_id,
             companyId: $document->company_id,
             type: $document->type,
-        )]);
+        ));
 
         return $document;
     }

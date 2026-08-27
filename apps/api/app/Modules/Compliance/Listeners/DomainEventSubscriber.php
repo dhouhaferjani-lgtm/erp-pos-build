@@ -20,6 +20,7 @@ use App\Modules\Document\Domain\Events\InvoiceCancelled;
 use App\Modules\Document\Domain\Events\InvoicePaid;
 use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Document\Domain\Events\SalesOrderCancelled;
+use App\Modules\Document\Domain\Events\SalesOrderCancelledV2;
 use App\Modules\Document\Domain\Events\SalesOrderConfirmed;
 use App\Modules\Identity\Domain\Events\RoleAssigned;
 use App\Modules\Identity\Domain\Events\RoleRemoved;
@@ -526,6 +527,29 @@ final class DomainEventSubscriber
                 'cancelled_by' => $event->cancelledBy,
                 'cancelled_at' => $event->cancelledAt,
             ]
+        );
+    }
+
+    /**
+     * Persist an unnumbered draft cancellation without fabricating an empty
+     * document number. The stable draft reference is the audit-facing label.
+     */
+    public function handleSalesOrderCancelledV2(SalesOrderCancelledV2 $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Document',
+            aggregateId: $event->salesOrderId,
+            eventType: $event->getEventName(),
+            payload: [
+                'document_number' => $event->documentNumber,
+                'draft_reference' => $event->draftReference,
+                'partner_id' => $event->partnerId,
+                'cancellation_reason' => $event->cancellationReason,
+                'cancelled_by' => $event->cancelledBy,
+                'cancelled_at' => $event->cancelledAt,
+            ],
         );
     }
 
@@ -1226,6 +1250,7 @@ final class DomainEventSubscriber
             // Sales order events (fraud detection)
             SalesOrderConfirmed::class => 'handleSalesOrderConfirmed',
             SalesOrderCancelled::class => 'handleSalesOrderCancelled',
+            SalesOrderCancelledV2::class => 'handleSalesOrderCancelledV2',
 
             // Treasury events (audit trail for B2B close-with-writeoff)
             InvoiceClosedWithTolerance::class => 'handleInvoiceClosedWithTolerance',

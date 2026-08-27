@@ -143,16 +143,6 @@ final class DeliveryNoteService
         $chainSequence = ($previousDoc !== null ? $previousDoc->chain_sequence : 0) + 1;
         $confirmedAt = now();
 
-        // R-2 / LEDGER D-T9-1 — FISCAL INVARIANT. A delivery note authored in the
-        // editor (auto-save accepts `delivery_note`) is a draft with NO
-        // `document_number`, and this method hashes that column into the chain
-        // input below. Allocate BEFORE the hash is serialized: a NULL in a sealed
-        // hash input is unrecoverable — the immutability trigger refuses to
-        // rewrite the number afterwards, so the seal could never be recomputed.
-        // Same allocator as every other confirm (`DocumentStatusService`), inside
-        // the `confirm()` transaction, so a failure below returns the number.
-        $this->documentStatusService->assignNumberIfMissing($deliveryNote);
-
         // Release stock reservations if this DN is linked to a sales order
         $this->releaseSourceReservations($deliveryNote);
 
@@ -178,6 +168,12 @@ final class DeliveryNoteService
         ]);
         $this->taxCalculationService->snapshotTaxDetails($deliveryNote, $taxResult);
 
+        // R-2 / LEDGER D-T9-1 — stage the number only after every earlier
+        // document save. The hash needs it below, and `transition()` persists it
+        // together with the status and seal; staging it before the tax update
+        // would let Eloquent flush it in a separate UPDATE.
+        $this->documentStatusService->assignNumberIfMissing($deliveryNote);
+
         // Calculate fiscal hash over the finalized total using the compliance service
         $input = $this->hashService->serializeForHashing([
             // R-2 FISCAL INVARIANT: `assignNumberIfMissing()` ran above, so the number
@@ -192,9 +188,8 @@ final class DeliveryNoteService
 
         $fiscalHash = $this->hashService->calculateHash($input, $previousHash, $genesisSeed);
 
-        // Update delivery note with fiscal chain data and seal it
-        $deliveryNote->update([
-            'status' => DocumentStatus::Confirmed,
+        // Persist the staged number, status and fiscal seal in one UPDATE.
+        $this->documentStatusService->transition($deliveryNote, DocumentStatus::Confirmed, [
             'fiscal_category' => FiscalCategory::DeliveryNote,
             'fiscal_status' => FiscalStatus::Sealed,
             'fiscal_hash' => $fiscalHash,
