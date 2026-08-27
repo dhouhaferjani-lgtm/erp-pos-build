@@ -160,11 +160,16 @@ class PaymentMethodTest extends TestCase
             'is_push' => true,
             'has_deducted_fees' => false,
             'is_restricted' => false,
+            // Session D I-1 — the canonical CASH code may no longer be created
+            // WITHOUT the flag: an unflagged `CASH` row is read as cash by the
+            // code-matching consumers and as non-cash by the flag-matching ones.
+            'is_cash_tender' => true,
         ]);
 
         $response->assertStatus(201);
         $response->assertJsonPath('data.code', 'CASH');
         $response->assertJsonPath('data.is_physical', true);
+        $response->assertJsonPath('data.is_cash_tender', true);
 
         $this->assertDatabaseHas('payment_methods', [
             'tenant_id' => $this->tenant->id,
@@ -312,6 +317,12 @@ class PaymentMethodTest extends TestCase
             'is_push' => true,
             'has_deducted_fees' => false,
             'is_restricted' => false,
+            // Session D I-1 — the write guard checks the FINAL state, so an
+            // incoherent row cannot be edited at all until it is reconciled.
+            // A fixture that is coherent to begin with is the honest one here:
+            // the refusal on an incoherent row has its own test in
+            // PaymentMethodCashTenderTest.
+            'is_cash_tender' => true,
             'is_active' => true,
         ]);
 
