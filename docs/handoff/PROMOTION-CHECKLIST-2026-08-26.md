@@ -1,11 +1,11 @@
 # Promotion checklist — local `dev` → `origin/dev` (staging auto-deploy) — prepared 2026-08-25 for the 2026-08-26 ceremony
 
-Scope: 862 local commits on top of `origin/dev` (`git rev-list --count origin/dev..dev`, re-derived 2026-08-26 after O-30/W4-1 merged; Sessions A/B/C/D, 2026-08-21 → 08-26), ALL CI-UNVERIFIED (S-17: Actions quota out).
+Scope: 876 local commits on top of `origin/dev` (`git rev-list --count origin/dev..dev`, re-derived 2026-08-26 after the T9 batch merged; re-derive again at ceremony time).
 Owner owns the promotion. Promoting to `origin/dev` = staging auto-deploy incl. `tenants:migrate` — everything below is ordered for that.
 
 ## 0. Preconditions (tick before promoting)
 - [x] Every Session A lane merged (2026-08-25 end): N-1, N-2, N-3/4/7, N-5, N-6 Ph1 (+DPA rollback), W2-3, W2-6, W2-7+W4-5, W4-9, W4-6, W4-2 (+fixture), W4-3, D-1, P-1, W2-1, W4R-2, CI-hygiene, test-infra r1+r2. Hold-list (NOT blocking promotion): W4R2-2 dashboard tile, N-12, W4R-1, W4R-3 (Menu tenants). W4-1 moved off the hold-list — FIXED-MERGED `98a449d14` (Session D; see below).
-- [x] **Session D lanes merged: B2-6, C-F0w, W4R2-2, N-12, B-19, B-13, O-30, W4-1 (T9 pending)** — merge SHAs `9d0d08ae5` (B2-6), `8664d180c` (C-F0w), `4ae7c68a8` (W4R2-2), `4807f0045` (N-12), `c94d23043` (B-19), `e56321a76` (B-13), `8c8316ab7` (O-30), `98a449d14` (W4-1). LEDGER rows filed: D-N12-1, D-W4R2-1 (closes C-45(i)), D-B26-1 (closes C-14(ii)/(iii)/(iv)), D-CF0W-1, D-B13-1..4, D-B19-1..4 (already filed by the B-19 lane itself), D-O30-1..5 (O-30(a) delivered; O-30(b)/(c) + C-17(ii)/(viii) status updated), D-W41-1..4 + D-MANIFEST-1 (W4-1).
+- [x] **All ten Session D lanes merged: B2-6, C-F0w, W4R2-2, N-12, B-19, B-13, O-30, W4-1, T9** — merge SHAs `9d0d08ae5` (B2-6), `8664d180c` (C-F0w), `4ae7c68a8` (W4R2-2), `4807f0045` (N-12), `c94d23043` (B-19), `e56321a76` (B-13), `8c8316ab7` (O-30), `98a449d14` (W4-1), `16088fdb7` (T9). LEDGER rows filed: D-N12-1, D-W4R2-1 (closes C-45(i)), D-B26-1 (closes C-14(ii)/(iii)/(iv)), D-CF0W-1, D-B13-1..4, D-B19-1..4 (already filed by the B-19 lane itself), D-O30-1..5 (O-30(a) delivered; O-30(b)/(c) + C-17(ii)/(viii) status updated), D-W41-1..4 + D-MANIFEST-1 (W4-1), D-T9-1..9 + N-9/N-14 (T9 — closes C-45(iv), C-23(iii) import-path-only, C-13(i); N-9 FIXED-MERGED, N-14 PARTIAL/R-2 open).
 - [ ] Session B / C lanes: per their session logs — each with a register row in OWNER-SHEET §E.
 - [x] Consolidation r3 (`docs/sessions/session-A-2026-08-24/CONSOLIDATION-2026-08-25-r3.md`, tip `ddf2e45d9`): SAFE TO PROMOTE — PG 1655/0 fail, sqlite 1618/0, all static gates green, DPA zero delta; web lint +4 (non-CI, discipline). Inherited non-CI red I-5 `PosCoreReceiptProjectionLoyaltyEarnTest` ×3 (PG 25P02) — micro-lane owed. Original spec: CI-shaped filtered suites on a throwaway PG (backend-test-pgsql allowlist + the parked-lane classes touched this week), deptrac 183/183, manifest EXIT=0, web lint ≤ baseline, pos lint 84, i18n audit, DPA scanner, tanstack-keys audit. Non-inherited reds fixed or reverted.
 - [x] Wave-4 re-run (`PLAYWRIGHT-first-tenant-campaign-wave4-RERUN-2026-08-25.md`) + targeted re-check (`PLAYWRIGHT-w4r2-w43-recheck-2026-08-25.md`): balances tie on every entity; lots + AP arm verified on fresh tenants.
@@ -53,6 +53,7 @@ Full `git diff origin/dev..dev --name-only -- apps/api/database/migrations` (re-
 - `2026_08_25_150000_widen_payments_payment_type_check_for_pos_refund.php` **(W4R2-2)**
 - `2026_08_25_150100_retype_supplier_and_pos_refund_payments.php` **(W4R2-2)**
 - `2026_08_26_100000_backfill_payment_repository_location_n12.php` **(N-12)**
+- `2026_08_26_100000_seed_base_units_for_unit_less_tenants.php` **(N-9, T9 batch)** — self-guarding; skips when either units table has rows. ⚠️ D-T9-3: a tenant that hand-created a single unit is skipped — run the docblock census per tenant BEFORE promotion and seed manually where the census says so.
 - `2026_08_26_100000_make_batch_expiry_date_nullable.php` **(W4-1)**
 - `2026_08_26_100100_null_invented_default_lot_expiries.php` **(W4-1)**
 
