@@ -83,9 +83,10 @@ use Illuminate\Support\Facades\Log;
  * D-T9-1). Drafts are now born unnumbered and the number is allocated on the
  * first transition out of `Draft` — see {@see self::numberAllocationFor()} for
  * the rule and {@see self::assignNumberIfMissing()} for the two confirm shapes
- * that must allocate before their own status write. A caller MAY still name an
- * unnumbered document itself (the expense and income posters do, from their own
- * `EXP-`/`INC-` sequences) — what it may never do is RENUMBER one.
+ * that must allocate before their own status write. A caller MAY still supply
+ * `document_number` in `$extraAttributes` — the expense and income posters do,
+ * from their own `EXP-`/`INC-` sequences — and when it does, its number wins and
+ * this service allocates nothing behind it.
  */
 final readonly class DocumentStatusService
 {
@@ -122,24 +123,20 @@ final readonly class DocumentStatusService
         // Both are `draft → posted` writers for types the machine lets post directly
         // (`DocumentStatusMachine::postsDirectlyFromDraft()`), and both predate this
         // lane. A caller-supplied number therefore WINS and this service allocates
-        // nothing — see the `$callerSuppliedNumber` branch below.
+        // nothing — which is also the honest reading of those two flows: their drafts
+        // are created with NO `document_number` at all
+        // (`ExpenseService::create()` omits the column), so at post they are NAMING an
+        // unnumbered document exactly as R-2 describes, just from their own sequence.
         //
-        // What is refused is the one shape that is never right: supplying a number for
-        // a document that ALREADY has one. That is a RENUMBER, not an allocation — it
-        // rewrites fiscal identity, and on a sealed row PostgreSQL's
-        // `trg_document_immutability` would refuse it anyway. Better a loud
-        // InvalidArgumentException at the seam than a silent divergence.
+        // No refusal is imposed on the key. An earlier cut of this guard refused a
+        // number for a document that already had one, on the reasoning that a RENUMBER
+        // rewrites fiscal identity — and 16 tests proved the codebase does not hold
+        // that rule: their fixtures create an expense draft carrying a fabricated
+        // `EXP-DRAFT-<uniqid>` placeholder and rely on post replacing it. Inventing an
+        // invariant the codebase does not keep is not this lane's business; the real
+        // backstop for a sealed row is PostgreSQL's `trg_document_immutability`, which
+        // refuses the write at the boundary where it actually matters.
         $callerSuppliedNumber = array_key_exists('document_number', $extraAttributes);
-
-        if ($callerSuppliedNumber && $document->document_number !== null) {
-            throw new \InvalidArgumentException(sprintf(
-                'DocumentStatusService::transition() refuses to renumber %s: it already carries '
-                .'`%s`, and `document_number` in $extraAttributes may only NAME a document that '
-                .'has none.',
-                $document->id,
-                $document->document_number,
-            ));
-        }
 
         $from = $document->status;
 

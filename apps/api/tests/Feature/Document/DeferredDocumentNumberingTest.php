@@ -372,20 +372,38 @@ final class DeferredDocumentNumberingTest extends TestCase
         );
     }
 
-    public function test_transition_refuses_to_renumber_a_document_that_already_has_one(): void
+    /**
+     * And it wins even over a number the row already carries. That is NOT a
+     * hypothetical: expense fixtures across the suite create a draft holding a
+     * fabricated `EXP-DRAFT-<uniqid>` placeholder and rely on `post()` replacing
+     * it. This service does not adjudicate that — the real backstop for a SEALED
+     * row is PostgreSQL's `trg_document_immutability`.
+     */
+    public function test_a_caller_supplied_number_replaces_a_placeholder_the_draft_was_carrying(): void
     {
         /** @var DocumentStatusService $statusService */
         $statusService = app(DocumentStatusService::class);
 
-        $quote = $this->draftQuoteWithOneLine();
-        $quote->update(['document_number' => 'QT-2026-0003']);
-
-        $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('refuses to renumber');
-
-        $statusService->transition($quote, DocumentStatus::Confirmed, [
-            'document_number' => 'QT-2026-9999',
+        $expense = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => DocumentType::Expense,
+            'status' => DocumentStatus::Draft,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'document_number' => 'EXP-DRAFT-placeholder',
+            'document_date' => now()->format('Y-m-d'),
+            'currency' => 'EUR',
+            'subtotal' => '10.000',
+            'tax_amount' => '0.000',
+            'total' => '10.000',
         ]);
+
+        $statusService->transition($expense, DocumentStatus::Posted, [
+            'document_number' => 'EXP-2026-0043',
+        ]);
+
+        $this->assertSame('EXP-2026-0043', (string) $expense->refresh()->document_number);
     }
 
     // ──────────────────────────────────────────────────────────────────
