@@ -83,7 +83,9 @@ use Illuminate\Support\Facades\Log;
  * D-T9-1). Drafts are now born unnumbered and the number is allocated on the
  * first transition out of `Draft` — see {@see self::numberAllocationFor()} for
  * the rule and {@see self::assignNumberIfMissing()} for the two confirm shapes
- * that must allocate before their own status write.
+ * that must allocate before their own status write. A caller MAY still name an
+ * unnumbered document itself (the expense and income posters do, from their own
+ * `EXP-`/`INC-` sequences) — what it may never do is RENUMBER one.
  */
 final readonly class DocumentStatusService
 {
@@ -113,17 +115,30 @@ final readonly class DocumentStatusService
             );
         }
 
-        // R-2 / LEDGER D-T9-1 — the same refusal, for the same reason, on the other
-        // column this service owns. `$extraAttributes` is spread BEFORE the allocation
-        // below, so a caller-supplied number would be silently overwritten on an
-        // unnumbered draft and silently WIN on a numbered one — two different outcomes
-        // from one key. Numbering is this service's decision or it is nobody's.
-        if (array_key_exists('document_number', $extraAttributes)) {
-            throw new \InvalidArgumentException(
-                'DocumentStatusService::transition() refuses a `document_number` key in '
-                .'$extraAttributes — allocation is this service\'s, and only on the first '
-                .'transition out of Draft.'
-            );
+        // R-2 / LEDGER D-T9-1 — `document_number` in `$extraAttributes` is LEGAL, and
+        // deliberately so. Two live writers number their document from a sequence this
+        // service knows nothing about and hand the result in: `ExpenseService::post()`
+        // (`EXP-` via `generateExpenseNumber()`) and `IncomeService::post()` (`INC-`).
+        // Both are `draft → posted` writers for types the machine lets post directly
+        // (`DocumentStatusMachine::postsDirectlyFromDraft()`), and both predate this
+        // lane. A caller-supplied number therefore WINS and this service allocates
+        // nothing — see the `$callerSuppliedNumber` branch below.
+        //
+        // What is refused is the one shape that is never right: supplying a number for
+        // a document that ALREADY has one. That is a RENUMBER, not an allocation — it
+        // rewrites fiscal identity, and on a sealed row PostgreSQL's
+        // `trg_document_immutability` would refuse it anyway. Better a loud
+        // InvalidArgumentException at the seam than a silent divergence.
+        $callerSuppliedNumber = array_key_exists('document_number', $extraAttributes);
+
+        if ($callerSuppliedNumber && $document->document_number !== null) {
+            throw new \InvalidArgumentException(sprintf(
+                'DocumentStatusService::transition() refuses to renumber %s: it already carries '
+                .'`%s`, and `document_number` in $extraAttributes may only NAME a document that '
+                .'has none.',
+                $document->id,
+                $document->document_number,
+            ));
         }
 
         $from = $document->status;
@@ -139,7 +154,9 @@ final readonly class DocumentStatusService
 
         $document->update([
             ...$extraAttributes,
-            ...$this->numberAllocationFor($document, $to),
+            // A caller that named the document owns its number; this service only
+            // allocates the one nobody else supplied.
+            ...($callerSuppliedNumber ? [] : $this->numberAllocationFor($document, $to)),
             'status' => $to,
         ]);
 
@@ -156,6 +173,10 @@ final readonly class DocumentStatusService
      * held that number forever: the campaign found `PO-2026-0001 … PO-2026-0009`
      * sitting as orphan drafts ahead of the operator's real `PO-2026-0010`
      * (N-14, and this is its remaining half).
+     *
+     * NOT CALLED AT ALL when the caller supplied its own `document_number` — the
+     * expense and income posters number from `EXP-`/`INC-` sequences this service
+     * does not own, and that number wins.
      *
      * NOT ON THE WAY TO `Cancelled`. A draft that dies never became a document,
      * and numbering it would re-create the very defect this method exists to

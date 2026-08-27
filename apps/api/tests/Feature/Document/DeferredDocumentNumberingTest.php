@@ -327,6 +327,68 @@ final class DeferredDocumentNumberingTest extends TestCase
     }
 
     // ──────────────────────────────────────────────────────────────────
+    // 6b. A caller may NAME an unnumbered document; it may never RENUMBER one
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * `ExpenseService::post()` and `IncomeService::post()` number their document
+     * from `EXP-`/`INC-` sequences this service does not own, and hand the result
+     * to `transition()` in `$extraAttributes`. That predates R-2 and stays legal:
+     * the caller's number wins and nothing is allocated behind it.
+     */
+    public function test_a_caller_supplied_number_wins_and_nothing_is_allocated_behind_it(): void
+    {
+        /** @var DocumentStatusService $statusService */
+        $statusService = app(DocumentStatusService::class);
+
+        $expense = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::Expense,
+            'status' => DocumentStatus::Draft,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'document_number' => null,
+            'document_date' => now()->format('Y-m-d'),
+            'currency' => 'EUR',
+            'subtotal' => '10.000',
+            'tax_amount' => '0.000',
+            'total' => '10.000',
+        ]);
+
+        // `Draft -> Posted` is legal for this type (postsDirectlyFromDraft).
+        $statusService->transition($expense, DocumentStatus::Posted, [
+            'document_number' => 'EXP-2026-0042',
+        ]);
+
+        $this->assertSame('EXP-2026-0042', (string) $expense->refresh()->document_number);
+        $this->assertNull(
+            DocumentSequence::query()
+                ->where('company_id', $this->company->id)
+                ->where('type', DocumentType::Expense->value)
+                ->value('last_number'),
+            'The caller owns this sequence — DocumentStatusService must not touch its own.'
+        );
+    }
+
+    public function test_transition_refuses_to_renumber_a_document_that_already_has_one(): void
+    {
+        /** @var DocumentStatusService $statusService */
+        $statusService = app(DocumentStatusService::class);
+
+        $quote = $this->draftQuoteWithOneLine();
+        $quote->update(['document_number' => 'QT-2026-0003']);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('refuses to renumber');
+
+        $statusService->transition($quote, DocumentStatus::Confirmed, [
+            'document_number' => 'QT-2026-9999',
+        ]);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
     // 7. FISCAL INVARIANT — no seal ever hashes a NULL number
     // ──────────────────────────────────────────────────────────────────
 
