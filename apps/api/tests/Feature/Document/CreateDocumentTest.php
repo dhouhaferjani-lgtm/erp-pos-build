@@ -9,7 +9,9 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Domain\DocumentSequence;
 use App\Modules\Document\Domain\DocumentVehicleContext;
+use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
@@ -349,7 +351,15 @@ class CreateDocumentTest extends TestCase
             ->assertJsonPath('data.lines.0.line_total', '75.00');
     }
 
-    public function test_document_number_is_auto_generated(): void
+    /**
+     * R-2 / LEDGER D-T9-1 — INVERTED. `POST /quotes` creates a DRAFT, and a
+     * draft is not numbered: the number is allocated at confirm, by
+     * `DocumentStatusService`, so a quote the operator abandons costs nothing
+     * out of the fiscal sequence. The auto-generation this test named still
+     * happens — one transition later, and pinned by
+     * `DeferredDocumentNumberingTest`.
+     */
+    public function test_document_number_is_not_minted_until_the_draft_is_confirmed(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/quotes', [
@@ -365,10 +375,18 @@ class CreateDocumentTest extends TestCase
             ]);
 
         $response->assertCreated();
-        $documentNumber = $response->json('data.document_number');
 
-        $this->assertNotNull($documentNumber);
-        $this->assertStringStartsWith('QT-', $documentNumber);
+        $this->assertNull(
+            $response->json('data.document_number'),
+            'A draft quote must carry no number — the editor renders a placeholder instead.'
+        );
+        $this->assertNull(
+            DocumentSequence::query()
+                ->where('company_id', $this->company->id)
+                ->where('type', DocumentType::Quote->value)
+                ->value('last_number'),
+            'and the quote sequence must not have been advanced.'
+        );
     }
 
     public function test_partner_must_belong_to_same_tenant(): void

@@ -12,7 +12,6 @@ use App\Modules\Document\Domain\Events\DraftLineAdded;
 use App\Modules\Document\Domain\Events\DraftLineAddedV2;
 use App\Modules\Document\Domain\Events\DraftLineModified;
 use App\Modules\Document\Domain\Events\DraftLineModifiedV2;
-use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\DocumentTotalsCalculator;
 use App\Modules\Document\Domain\Services\DraftPersistenceService;
 use App\Modules\Partner\Domain\Partner;
@@ -83,7 +82,6 @@ class DraftLineEventV2Test extends TestCase
         ]);
 
         $this->service = new DraftPersistenceService(
-            new DocumentNumberingService,
             new DocumentTotalsCalculator(app(TaxCalculationService::class)),
             app(ProductVariantLookup::class),
             // Inherited red repaired in the P1 auto-save lane: the precision

@@ -249,7 +249,17 @@ final class DiscountPolicyDocumentValidationTest extends TestCase
             ]);
         $orderResponse->assertCreated();
         $orderId = $orderResponse->json('data.id');
-        Document::query()->where('id', $orderId)->update(['status' => DocumentStatus::Confirmed]);
+        // R-2 / LEDGER D-T9-1 — the fixture confirms by hand, so it must mint the
+        // number by hand too. A DRAFT is now born unnumbered and the number is
+        // allocated by `DocumentStatusService` on the transition out of `Draft`;
+        // a raw `update(['status' => Confirmed])` skips that, and a CONFIRMED
+        // order with a NULL number is a state the application can no longer
+        // produce (every converter refuses a draft source, and
+        // `DocumentConverted` types `sourceDocumentNumber` as a non-null string).
+        Document::query()->where('id', $orderId)->update([
+            'status' => DocumentStatus::Confirmed,
+            'document_number' => 'SO-'.date('Y').'-9001',
+        ]);
 
         $invoiceResponse = $this->actingAs($this->manager, 'sanctum')
             ->withHeader('X-Company-Id', $this->company->id)

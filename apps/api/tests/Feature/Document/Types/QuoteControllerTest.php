@@ -202,7 +202,10 @@ class QuoteControllerTest extends TestCase
         $this->assertEquals('200.00', $response->json('data.subtotal'));
         $this->assertEquals('40.00', $response->json('data.tax_amount'));
         $this->assertEquals('240.00', $response->json('data.total'));
-        $this->assertNotNull($response->json('data.document_number'));
+        // R-2 / LEDGER D-T9-1: a DRAFT carries no number. It is allocated at
+        // confirm (`DocumentStatusService`), so an abandoned quote spends
+        // nothing out of the QT sequence.
+        $this->assertNull($response->json('data.document_number'));
     }
 
     public function test_can_show_quote(): void
