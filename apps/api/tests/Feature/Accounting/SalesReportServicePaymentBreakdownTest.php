@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Accounting;
 
 use App\Modules\Accounting\Application\DTOs\Reports\DateRangeData;
+use App\Modules\Accounting\Application\DTOs\Reports\PaymentMethodBreakdownData;
 use App\Modules\Accounting\Application\Services\Reports\SalesReportService;
 use App\Modules\Company\Domain\Location;
 use App\Modules\POS\Domain\Enums\ReceiptType;
@@ -56,6 +57,47 @@ final class SalesReportServicePaymentBreakdownTest extends TestCase
     private function range(): DateRangeData
     {
         return new DateRangeData(CarbonImmutable::parse('2026-06-09'), CarbonImmutable::parse('2026-06-16'));
+    }
+
+    public function test_mixed_case_unflagged_method_does_not_have_change_subtracted_as_cash(): void
+    {
+        $unflaggedMethod = PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Legacy Cash Label',
+            'code' => 'Cash',
+            'is_cash_tender' => false,
+        ]);
+        $receipt = Receipt::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $this->locationA->id,
+            'terminal_id' => $this->terminalA->id,
+            'cashier_id' => $this->owner->id,
+            'cashier_name' => 'Owner Cashier',
+            'receipt_type' => ReceiptType::Sale,
+            'posted_at' => '2026-06-10 10:00:00',
+            'subtotal' => '10.000',
+            'tax_amount' => '0.000',
+            'total' => '10.000',
+            'change_due' => '5.000',
+            'training_flag' => false,
+        ]);
+        ReceiptPayment::create([
+            'receipt_id' => $receipt->id,
+            'payment_method_id' => $unflaggedMethod->id,
+            'payment_type' => 'Cash',
+            'amount' => '15.000',
+        ]);
+
+        $rows = $this->app->make(SalesReportService::class)->paymentMethodBreakdown(
+            $this->range(), [$this->company->id], [$this->locationA->id],
+        );
+        $row = collect($rows)->first(fn ($candidate) => $candidate->payment_type === 'Cash');
+
+        $this->assertNotNull($row);
+        $this->assertTrue(is_numeric($row->amount));
+        $this->assertSame(0, bccomp($row->amount, '15.000', 3));
     }
 
     public function test_payment_method_breakdown_nets_change_correctly_across_groups_and_companies(): void
@@ -138,6 +180,9 @@ final class SalesReportServicePaymentBreakdownTest extends TestCase
             'total' => '100.000',
             'change_due' => '90.000',
             'is_voided' => true,
+            'voided_at' => '2026-06-10 13:01:00',
+            'voided_by' => $this->owner->id,
+            'void_reason' => 'Test void',
             'training_flag' => false,
         ]);
         ReceiptPayment::create(['receipt_id' => $voidedCashReceipt->id, 'payment_method_id' => $this->cashMethod->id, 'payment_type' => 'CASH', 'amount' => '100.000']);
@@ -182,6 +227,7 @@ final class SalesReportServicePaymentBreakdownTest extends TestCase
             'company_id' => $this->childCompany->id,
             'name' => 'Espèces',
             'code' => 'CASH',
+            'is_cash_tender' => true,
         ]);
         $childCashReceipt = Receipt::factory()->create([
             'tenant_id' => $this->tenant->id,
@@ -233,6 +279,11 @@ final class SalesReportServicePaymentBreakdownTest extends TestCase
         // (4) Result order reflects NET amounts, not SQL-level gross order:
         // card (42.0) must sort ABOVE the cash group (38.0), even though the
         // cash group's GROSS (55.0) was higher before netting.
-        $this->assertSame(['CARD', 'CASH'], [$rowsList[0]->payment_type, $rowsList[1]->payment_type], 'Rows must be re-sorted by net amount after PHP-side change netting.');
+        $sortedPaymentTypes = $rowsList
+            ->map(static fn (PaymentMethodBreakdownData $row): string => $row->payment_type)
+            ->take(2)
+            ->values()
+            ->all();
+        $this->assertSame(['CARD', 'CASH'], $sortedPaymentTypes, 'Rows must be re-sorted by net amount after PHP-side change netting.');
     }
 }

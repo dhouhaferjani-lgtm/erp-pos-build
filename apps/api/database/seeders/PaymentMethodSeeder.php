@@ -47,6 +47,13 @@ class PaymentMethodSeeder extends Seeder
      */
     private function seedPaymentMethodsForCompany(Company $company, Tenant $tenant): void
     {
+        if (PaymentMethod::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('company_id', $company->id)
+            ->exists()) {
+            return;
+        }
+
         $methods = $this->getCountryPaymentMethods($company->country_code);
 
         foreach ($methods as $method) {

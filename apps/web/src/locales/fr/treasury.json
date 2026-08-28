@@ -593,6 +593,7 @@
     "capabilities": "Capacités",
     "flags": {
       "is_physical": "Physique",
+      "is_cash_tender": "Encaissement en espèces",
       "has_maturity": "À échéance",
       "requires_third_party": "Tiers requis",
       "is_push": "Paiement push",
@@ -618,11 +619,16 @@
     },
     "flagDescriptions": {
       "is_physical": "Moyens de paiement physiques (espèces, chèques, billets à ordre)",
+      "is_cash_tender": "Comptabilisé comme espèces dans les caisses, rapports et totaux fiscaux",
       "has_maturity": "Paiements différés (chèques, billets à ordre)",
       "requires_third_party": "Nécessite un prestataire tiers (PayPal, Stripe)",
       "is_push": "Paiement push (initié par le client)",
       "has_deducted_fees": "Frais déduits du montant reçu",
       "is_restricted": "Usage restreint (tickets restaurant, conditions spécifiques)"
+    },
+    "errors": {
+      "cashTenderFlagOnNonCanonicalCode": "Seul le mode canonique CASH peut être marqué comme encaissement en espèces. Décochez cette option ou utilisez le code CASH.",
+      "canonicalCashCodeNotFlagged": "Le mode CASH doit être marqué comme encaissement en espèces. Cochez cette option ou utilisez un autre code."
     },
     "table": {
       "name": "Nom",

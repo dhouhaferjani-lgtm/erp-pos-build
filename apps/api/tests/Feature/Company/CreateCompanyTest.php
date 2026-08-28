@@ -18,6 +18,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\PaymentMethod;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
@@ -93,6 +94,27 @@ class CreateCompanyTest extends TestCase
         $utilities = $categories->firstWhere('name', 'Eau & Électricité');
         $this->assertNotNull($utilities);
         $this->assertSame('6061', Account::query()->whereKey($utilities->account_id)->value('code'));
+    }
+
+    public function test_created_company_receives_default_payment_methods_with_flagged_cash(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/companies', [
+                'name' => 'Second Treasury Company',
+                'country_code' => 'FR',
+                'currency' => 'EUR',
+                'locale' => 'fr_FR',
+                'timezone' => 'Europe/Paris',
+            ])->assertCreated();
+
+        $companyId = (string) $response->json('data.id');
+        $methods = PaymentMethod::query()->where('company_id', $companyId)->get();
+        $cash = $methods->firstWhere('code', 'CASH');
+
+        $this->assertNotEmpty($methods);
+        $this->assertNotNull($cash);
+        $this->assertTrue($cash->is_cash_tender);
+        $this->assertSame(1, $methods->where('is_cash_tender', true)->count());
     }
 
     public function test_authenticated_user_can_create_company(): void

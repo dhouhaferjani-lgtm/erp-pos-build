@@ -55,6 +55,7 @@ trait InteractsWithOwnerReporting
         UserCompanyMembership::create(['user_id' => $this->owner->id, 'company_id' => $this->company->id, 'role' => 'owner']);
         UserCompanyMembership::create(['user_id' => $this->userWithoutPermission->id, 'company_id' => $this->company->id, 'role' => 'manager']);
 
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
         Permission::findOrCreate('dashboard.owner', 'sanctum');
         $this->owner->givePermissionTo('dashboard.owner');
@@ -63,9 +64,18 @@ trait InteractsWithOwnerReporting
         $this->locationB = Location::factory()->create(['company_id' => $this->company->id, 'name' => 'Airport']);
         $this->terminalA = Terminal::factory()->create(['tenant_id' => $this->tenant->id, 'company_id' => $this->company->id, 'location_id' => $this->locationA->id]);
         $this->terminalB = Terminal::factory()->create(['tenant_id' => $this->tenant->id, 'company_id' => $this->company->id, 'location_id' => $this->locationB->id]);
-        $this->cashMethod = PaymentMethod::factory()->create(['tenant_id' => $this->tenant->id, 'company_id' => $this->company->id, 'name' => 'Cash', 'code' => 'CASH']);
+        $this->cashMethod = PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Cash',
+            'code' => 'CASH',
+            'is_cash_tender' => true,
+        ]);
     }
 
+    /**
+     * @return array<string, string>
+     */
     protected function companyHeaders(): array
     {
         return ['X-Company-Id' => $this->company->id];

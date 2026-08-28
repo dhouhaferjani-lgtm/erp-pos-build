@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api } from '../lib/api'
+import { api, getErrorMessage } from '../lib/api'
 
 /**
  * Configuration for draft auto-save behavior
@@ -186,14 +186,15 @@ export function useDraftAutoSave(
         }
       }
     } catch (error) {
+      const surfacedError = new Error(getErrorMessage(error))
+
       if (!isUnmountedRef.current) {
         setIsSaving(false)
         setAutosaveFailed(true)
-        setLastError(error as Error)
+        setLastError(surfacedError)
         setAutosavePending(false)
-        onError?.(error as Error)
+        onError?.(surfacedError)
       }
-      // Silent failure - don't disrupt user experience
       console.error('Auto-save failed:', error)
     }
   }, [data, draftId, enabled, existingDraftId, onSuccess, onError])

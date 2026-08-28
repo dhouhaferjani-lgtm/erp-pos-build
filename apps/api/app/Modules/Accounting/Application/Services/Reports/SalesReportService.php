@@ -308,10 +308,9 @@ final class SalesReportService
         // receipt avoids that fan-out entirely. (Lane A defect 1, first-tenant
         // launch audit.)
         //
-        // "Cash" is identified the same way as ReportGenerationService: the
-        // immutable `payment_method_code` snapshot on the payment row, not
-        // the display name — a tenant may rename a payment method without
-        // changing what report group its historical rows land in.
+        // Cash classification follows the linked payment method's canonical
+        // flag. The join is already required for the report group name, so the
+        // classification adds no query and cannot drift from lane I-1.
         //
         // CRITICAL (treasury-reviewer round 1): the outer query above groups
         // on the PAIR (payment_type, payment_methods.name) — `payment_type`
@@ -339,7 +338,7 @@ final class SalesReportService
                     ->where('pos_receipts.training_flag', false)
                     ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
                     ->whereBetween('pos_receipts.posted_at', [$range->from->startOfDay(), $range->to->endOfDay()])
-                    ->whereRaw('UPPER(pos_receipt_payments.payment_method_code) = ?', ['CASH'])
+                    ->where('payment_methods.is_cash_tender', true)
                     ->selectRaw('pos_receipt_payments.payment_type as payment_type, payment_methods.name as raw_method_name, pos_receipts.id as receipt_id, MAX(COALESCE(pos_receipts.change_due, 0)) as change_due')
                     ->groupBy('pos_receipt_payments.payment_type', 'payment_methods.name', 'pos_receipts.id'),
                 'cash_receipt_changes',

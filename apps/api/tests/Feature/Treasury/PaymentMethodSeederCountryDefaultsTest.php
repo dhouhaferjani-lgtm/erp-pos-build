@@ -9,6 +9,7 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use Database\Seeders\PaymentMethodSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -101,5 +102,67 @@ final class PaymentMethodSeederCountryDefaultsTest extends TestCase
         (new PaymentMethodSeeder)->run($company);
 
         $this->assertSame($first, PaymentMethod::query()->where('company_id', $company->id)->count());
+    }
+
+    public function test_seeder_leaves_an_existing_company_payment_method_set_untouched(): void
+    {
+        $company = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Configured Methods Co',
+            'country_code' => 'FR',
+            'currency' => 'EUR',
+            'locale' => 'fr_FR',
+            'timezone' => 'Europe/Paris',
+        ]);
+        PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $company->id,
+            'code' => 'CUSTOM',
+            'name' => 'Configured Method',
+        ]);
+
+        (new PaymentMethodSeeder)->run($company);
+
+        $this->assertSame(
+            ['CUSTOM'],
+            PaymentMethod::query()->where('company_id', $company->id)->pluck('code')->all(),
+        );
+    }
+
+    public function test_pos_resolver_selects_each_companys_seeded_cash_when_default_codes_repeat(): void
+    {
+        $companyA = Company::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'country_code' => 'TN',
+        ]);
+        $companyB = Company::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'country_code' => 'FR',
+        ]);
+
+        $seeder = new PaymentMethodSeeder;
+        $seeder->run($companyA);
+        $seeder->run($companyB);
+
+        $cashA = PaymentMethod::query()
+            ->where('company_id', $companyA->id)
+            ->where('code', 'CASH')
+            ->firstOrFail();
+        $cashB = PaymentMethod::query()
+            ->where('company_id', $companyB->id)
+            ->where('code', 'CASH')
+            ->firstOrFail();
+
+        $resolver = $this->app->make(PaymentMethodResolver::class);
+
+        $this->assertNotSame($cashA->id, $cashB->id);
+        $this->assertSame(
+            $cashA->id,
+            $resolver->resolveByCode($this->tenant->id, $companyA->id, 'CASH'),
+        );
+        $this->assertSame(
+            $cashB->id,
+            $resolver->resolveByCode($this->tenant->id, $companyB->id, 'CASH'),
+        );
     }
 }

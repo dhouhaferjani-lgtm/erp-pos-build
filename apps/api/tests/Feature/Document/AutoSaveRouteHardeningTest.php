@@ -880,7 +880,7 @@ final class AutoSaveRouteHardeningTest extends TestCase
         $response->assertJsonMissingPath('error');
 
         $document = Document::query()->firstOrFail();
-        $this->assertNull($document->partner_id);
+        $this->assertNull($document->getAttribute('partner_id'));
         $this->assertSame(DocumentStatus::Draft, $document->status);
         $this->assertSame(
             1,
@@ -1283,6 +1283,39 @@ final class AutoSaveRouteHardeningTest extends TestCase
             Document::query()->where('company_id', $this->company->id)->count(),
             'Characterisation: an unresolvable draft_id authors a NEW document instead of 404ing.'
         );
+    }
+
+    /**
+     * LEDGER D-T9-4. A persistence failure is not a successful save and must
+     * never mint a client-visible UUID for a document that does not exist.
+     */
+    public function test_auto_save_persistence_failure_returns_a_typed_error_without_a_fake_draft_id(): void
+    {
+        $failNextCreate = true;
+
+        Document::creating(static function () use (&$failNextCreate): void {
+            if ($failNextCreate) {
+                $failNextCreate = false;
+
+                throw new \RuntimeException('Forced draft persistence failure.');
+            }
+        });
+
+        $response = $this->actingAsUser($this->authorizedUser())
+            ->postJson('/api/v1/documents/auto-save', [
+                'type' => DocumentType::Invoice->value,
+                'partner_id' => $this->customer->id,
+                'lines' => [
+                    ['product_id' => $this->product->id, 'quantity' => 1, 'unit_price' => 100],
+                ],
+            ]);
+
+        $response
+            ->assertStatus(500)
+            ->assertJsonPath('error.code', 'DRAFT_AUTO_SAVE_FAILED')
+            ->assertJsonPath('error.message', 'Draft auto-save failed. Please try again.')
+            ->assertJsonMissingPath('draft_id')
+            ->assertJsonMissingPath('saved_at');
     }
 
     // ──────────────────────────────────────────────────────────────────

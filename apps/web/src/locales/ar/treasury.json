@@ -846,6 +846,7 @@
     "capabilities": "الإمكانات",
     "flags": {
       "is_physical": "مادية",
+      "is_cash_tender": "تحصيل نقدي",
       "has_maturity": "لها استحقاق",
       "requires_third_party": "طرف ثالث",
       "is_push": "دفع مبادر",
@@ -871,11 +872,16 @@
     },
     "flagDescriptions": {
       "is_physical": "طرق الدفع المادية (النقد، الشيكات، السندات الإذنية)",
+      "is_cash_tender": "يُحتسب كنقد في الصناديق والتقارير والإجماليات الجبائية",
       "has_maturity": "مدفوعات مؤجلة (الشيكات، السندات الإذنية)",
       "requires_third_party": "تتطلب معالجًا من طرف ثالث (PayPal، Stripe)",
       "is_push": "دفع مبادر (يبدأه العميل)",
       "has_deducted_fees": "عمولات مخصومة من المبلغ المستلم",
       "is_restricted": "استخدام مقيّد (قسائم الطعام، شروط محددة)"
+    },
+    "errors": {
+      "cashTenderFlagOnNonCanonicalCode": "لا يمكن اعتبار طريقة الدفع تحصيلاً نقديًا إلا إذا كان رمزها القياسي CASH. ألغِ هذا الخيار أو استخدم الرمز CASH.",
+      "canonicalCashCodeNotFlagged": "يجب اعتبار طريقة الدفع CASH تحصيلاً نقديًا. فعّل هذا الخيار أو استخدم رمزًا آخر."
     },
     "table": {
       "name": "الاسم",

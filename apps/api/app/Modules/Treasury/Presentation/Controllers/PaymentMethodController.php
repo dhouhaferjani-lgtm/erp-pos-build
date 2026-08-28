@@ -36,6 +36,7 @@ class PaymentMethodController extends Controller
 
         $methods = PaymentMethod::query()
             ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->orderBy('position')
             ->orderBy('name')
             ->get();
@@ -75,7 +76,9 @@ class PaymentMethodController extends Controller
                 'required',
                 'string',
                 'max:30',
-                Rule::unique('payment_methods', 'code')->where('tenant_id', $tenantId),
+                Rule::unique('payment_methods', 'code')
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId),
             ],
             'name' => ['required', 'string', 'max:100'],
             'is_physical' => ['nullable', 'boolean'],
@@ -202,6 +205,7 @@ class PaymentMethodController extends Controller
                 'max:30',
                 Rule::unique('payment_methods', 'code')
                     ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
                     ->ignore($method->id),
             ],
             'name' => ['sometimes', 'string', 'max:100'],
