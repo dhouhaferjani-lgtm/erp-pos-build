@@ -140,6 +140,58 @@ final class BackfillRefundCompensationAccountsCommandTest extends TestCase
         self::assertDatabaseCount('accounts', 0);
     }
 
+    public function test_drifted_purpose_holder_is_printed_in_the_census_and_left_untouched(): void
+    {
+        $salesReturnId = Str::uuid()->toString();
+        $now = now();
+        DB::table('accounts')->insert([
+            [
+                'id' => $salesReturnId,
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'parent_id' => null,
+                'code' => '709-LOCAL',
+                'name' => 'Accountant-selected returns',
+                'type' => 'expense',
+                'system_purpose' => SystemAccountPurpose::SalesReturn->value,
+                'is_active' => true,
+                'is_system' => false,
+                'balance' => 0,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'parent_id' => null,
+                'code' => '6590',
+                'name' => 'Perte sur remboursement (write-off)',
+                'type' => 'expense',
+                'system_purpose' => SystemAccountPurpose::RefundWriteOff->value,
+                'is_active' => true,
+                'is_system' => true,
+                'balance' => 0,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+        ]);
+
+        $this->artisanCommand('accounting:backfill-refund-compensation-accounts', ['--tenant' => $this->tenant->id])
+            ->expectsOutput(sprintf(
+                'Refund account drift: company=%s purpose=sales_return expected={code=709,name="Rabais, remises et ristournes accordés"} actual={code=709-LOCAL,name="Accountant-selected returns"}',
+                $this->company->id,
+            ))
+            ->expectsOutput('Refund compensation account backfill: 0 purpose(s) patched; 0 account(s) created; 0 skipped; 1 drift(s).')
+            ->assertSuccessful();
+
+        $salesReturn = DB::table('accounts')->where('id', $salesReturnId)->first();
+        self::assertNotNull($salesReturn);
+        self::assertSame('709-LOCAL', $salesReturn->code);
+        self::assertSame('Accountant-selected returns', $salesReturn->name);
+        self::assertSame(0, (int) $salesReturn->is_system);
+    }
+
     /**
      * @param  array<string, mixed>  $parameters
      */

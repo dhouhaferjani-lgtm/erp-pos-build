@@ -69,6 +69,7 @@ final class BackfillRefundCompensationAccountsCommand extends TenantScopedComman
         $purposePatched = 0;
         $created = 0;
         $skipped = 0;
+        $drifted = 0;
 
         $exit = $this->forEachTenant(function (Tenant $tenant) use (
             $tenantFilter,
@@ -76,6 +77,7 @@ final class BackfillRefundCompensationAccountsCommand extends TenantScopedComman
             &$purposePatched,
             &$created,
             &$skipped,
+            &$drifted,
         ): int {
             if ($tenantFilter !== null && $tenant->id !== $tenantFilter) {
                 return self::SUCCESS;
@@ -92,6 +94,21 @@ final class BackfillRefundCompensationAccountsCommand extends TenantScopedComman
                 }
 
                 $definitions = $this->refundCompensationAccounts->definitions((string) $company->country_code);
+                foreach ($this->refundCompensationAccounts->driftsForCompany(
+                    (string) $company->id,
+                    (string) $company->country_code,
+                ) as $drift) {
+                    $this->warn(sprintf(
+                        'Refund account drift: company=%s purpose=%s expected={code=%s,name="%s"} actual={code=%s,name="%s"}',
+                        $drift['company_id'],
+                        $drift['purpose'],
+                        $drift['expected']['code'],
+                        $drift['expected']['name'],
+                        $drift['actual']['code'],
+                        $drift['actual']['name'],
+                    ));
+                    $drifted++;
+                }
 
                 [$patched, $skip] = $this->backfillSalesReturnPurpose($company, $definitions['sales_return'], $dryRun);
                 $purposePatched += $patched;
@@ -116,13 +133,14 @@ final class BackfillRefundCompensationAccountsCommand extends TenantScopedComman
 
         $prefix = $dryRun ? '[DRY-RUN] ' : '';
         $this->info(sprintf(
-            '%sRefund compensation account backfill: %d purpose(s) %s; %d account(s) %s; %d skipped.',
+            '%sRefund compensation account backfill: %d purpose(s) %s; %d account(s) %s; %d skipped; %d drift(s).',
             $prefix,
             $purposePatched,
             $dryRun ? 'would be patched' : 'patched',
             $created,
             $dryRun ? 'would be created' : 'created',
             $skipped,
+            $drifted,
         ));
 
         return $exit;

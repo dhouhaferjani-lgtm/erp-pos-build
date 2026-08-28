@@ -75,7 +75,8 @@ final class EnableV4RefundAuthoringByDefaultMigrationTest extends TestCase
         Account::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $missingCompany->id,
-            'code' => '7090',
+            'code' => '709',
+            'name' => 'Rabais, remises et ristournes accordés',
             'type' => AccountType::Expense,
             'system_purpose' => SystemAccountPurpose::SalesReturn,
         ]);
@@ -96,6 +97,8 @@ final class EnableV4RefundAuthoringByDefaultMigrationTest extends TestCase
                 && $context['status'] === 'ok'
                 && $context['enabled'] === 2
                 && $context['skipped'] === 2
+                && $context['drift'] === 0
+                && $context['drifts'] === []
                 && $context['reasons'] === [
                     'legacy-history' => 1,
                     'missing-accounts' => 1,
@@ -121,6 +124,55 @@ final class EnableV4RefundAuthoringByDefaultMigrationTest extends TestCase
             ->withArgs(static fn (string $message, array $context): bool => $message === self::GATE_TOKEN
                 && $context['enabled'] === 0
                 && $context['skipped'] === 0)
+            ->once();
+    }
+
+    public function test_drifted_purpose_holder_is_authoritative_and_reported_in_a_distinct_census_bucket(): void
+    {
+        $salesReturn = Account::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '709-LOCAL',
+            'name' => 'Accountant-selected returns',
+            'type' => AccountType::Expense,
+            'system_purpose' => SystemAccountPurpose::SalesReturn,
+            'is_system' => false,
+        ]);
+        Account::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '6590',
+            'name' => 'Perte sur remboursement (write-off)',
+            'type' => AccountType::Expense,
+            'system_purpose' => SystemAccountPurpose::RefundWriteOff,
+            'is_system' => true,
+        ]);
+        $terminal = $this->terminal($this->company, $this->location);
+
+        Log::spy();
+        $this->runMigration();
+
+        self::assertTrue($this->enabled($terminal), 'A purpose-bearing company account remains authoritative despite code/name drift.');
+        self::assertSame('709-LOCAL', $salesReturn->refresh()->code);
+        self::assertSame('Accountant-selected returns', $salesReturn->name);
+        self::assertFalse($salesReturn->is_system);
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message, array $context): bool => $message === self::GATE_TOKEN
+                && $context['enabled'] === 1
+                && $context['skipped'] === 0
+                && $context['drift'] === 1
+                && $context['drifts'] === [[
+                    'company_id' => $this->company->id,
+                    'purpose' => SystemAccountPurpose::SalesReturn->value,
+                    'expected' => [
+                        'code' => '709',
+                        'name' => 'Rabais, remises et ristournes accordés',
+                    ],
+                    'actual' => [
+                        'code' => '709-LOCAL',
+                        'name' => 'Accountant-selected returns',
+                    ],
+                ]])
             ->once();
     }
 
@@ -158,13 +210,22 @@ final class EnableV4RefundAuthoringByDefaultMigrationTest extends TestCase
     private function seedRefundPurposes(Company $company): void
     {
         foreach ([
-            ['code' => '7090', 'purpose' => SystemAccountPurpose::SalesReturn],
-            ['code' => '6590', 'purpose' => SystemAccountPurpose::RefundWriteOff],
+            [
+                'code' => '709',
+                'name' => 'Rabais, remises et ristournes accordés',
+                'purpose' => SystemAccountPurpose::SalesReturn,
+            ],
+            [
+                'code' => '6590',
+                'name' => 'Perte sur remboursement (write-off)',
+                'purpose' => SystemAccountPurpose::RefundWriteOff,
+            ],
         ] as $definition) {
             Account::factory()->create([
                 'tenant_id' => $company->tenant_id,
                 'company_id' => $company->id,
                 'code' => $definition['code'],
+                'name' => $definition['name'],
                 'type' => AccountType::Expense,
                 'system_purpose' => $definition['purpose'],
             ]);

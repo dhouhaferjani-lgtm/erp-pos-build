@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Accounting\Application\Services\RefundCompensationAccountProvider;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\TerminalType;
@@ -26,10 +27,13 @@ use Illuminate\Support\Facades\Schema;
  * is enabled. Web and virtual-admin terminals are never candidates.
  *
  * The census partitions every disabled physical candidate into enabled,
- * legacy-history, or missing-accounts (legacy wins if both apply). Already
- * enabled terminals are outside the candidate population, making repeated runs
- * a true no-write no-op. The structured warning survives production's warning
- * log level and attributes one result to every tenant database.
+ * legacy-history, or missing-accounts (legacy wins if both apply). Code/name
+ * drift is an orthogonal informational bucket: an existing purpose holder is
+ * authoritative and remains eligible, but its expected and actual definition
+ * is reported explicitly. Already enabled terminals are outside the candidate
+ * population, making repeated runs a true no-write no-op. The structured
+ * warning survives production's warning log level and attributes one result to
+ * every tenant database.
  */
 return new class extends Migration
 {
@@ -50,6 +54,8 @@ return new class extends Migration
                     'legacy-history' => 0,
                     'missing-accounts' => 0,
                 ],
+                'drift' => 0,
+                'drifts' => [],
             ]);
 
             return;
@@ -61,6 +67,10 @@ return new class extends Migration
                 'legacy-history' => 0,
                 'missing-accounts' => 0,
             ];
+            /** @var array<string, true> $censusedCompanies */
+            $censusedCompanies = [];
+            /** @var list<array{company_id: string, purpose: string, expected: array{code: string, name: string}, actual: array{code: string, name: string}}> $drifts */
+            $drifts = [];
 
             $candidates = DB::table('pos_terminals')
                 ->select(['id', 'company_id'])
@@ -97,6 +107,35 @@ return new class extends Migration
                     continue;
                 }
 
+                $companyId = (string) $terminal->company_id;
+                if (! isset($censusedCompanies[$companyId])) {
+                    $countryCode = (string) DB::table('companies')
+                        ->where('id', $companyId)
+                        ->value('country_code');
+
+                    foreach (RefundCompensationAccountProvider::canonicalDefinitions($countryCode) as $definition) {
+                        $purposeHolder = DB::table('accounts')
+                            ->where('company_id', $companyId)
+                            ->where('system_purpose', $definition['purpose'])
+                            ->first(['code', 'name']);
+                        if ($purposeHolder === null) {
+                            continue;
+                        }
+
+                        $drift = RefundCompensationAccountProvider::driftRecord(
+                            $companyId,
+                            $definition,
+                            (string) $purposeHolder->code,
+                            (string) $purposeHolder->name,
+                        );
+                        if ($drift !== null) {
+                            $drifts[] = $drift;
+                        }
+                    }
+
+                    $censusedCompanies[$companyId] = true;
+                }
+
                 $enabledIds[] = (string) $terminal->id;
             }
 
@@ -118,6 +157,8 @@ return new class extends Migration
                 'enabled' => $enabled,
                 'skipped' => array_sum($reasons),
                 'reasons' => $reasons,
+                'drift' => count($drifts),
+                'drifts' => $drifts,
             ]);
         } catch (Throwable $exception) {
             Log::error(self::GATE_TOKEN, [
@@ -137,7 +178,7 @@ return new class extends Migration
 
     private function requiredSchemaExists(): bool
     {
-        foreach (['pos_terminals', 'pos_receipts', 'accounts'] as $table) {
+        foreach (['pos_terminals', 'pos_receipts', 'accounts', 'companies'] as $table) {
             if (! Schema::hasTable($table)) {
                 return false;
             }
@@ -147,6 +188,7 @@ return new class extends Migration
             'pos_terminals' => ['id', 'company_id', 'type', 'v4_refund_authoring_enabled', 'updated_at'],
             'pos_receipts' => ['terminal_id', 'fiscal_event_id', 'fiscal_status'],
             'accounts' => ['company_id', 'system_purpose'],
+            'companies' => ['id', 'country_code'],
         ] as $table => $columns) {
             foreach ($columns as $column) {
                 if (! Schema::hasColumn($table, $column)) {

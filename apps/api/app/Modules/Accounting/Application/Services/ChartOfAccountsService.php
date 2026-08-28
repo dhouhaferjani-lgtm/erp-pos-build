@@ -38,34 +38,41 @@ class ChartOfAccountsService
      * Seed chart of accounts for a newly created company.
      * Automatically selects the appropriate seeder based on country.
      * Falls back to generic international chart for countries without a dedicated seeder.
+     *
+     * @return list<array{
+     *     company_id: string,
+     *     purpose: string,
+     *     expected: array{code: string, name: string},
+     *     actual: array{code: string, name: string}
+     * }>
      */
-    public function seedForCompany(Company $company): void
+    public function seedForCompany(Company $company): array
     {
         if ((bool) config('country_defaults.provisioning_enabled', false)) {
             $template = $this->templateResolver->resolve(
                 TemplateDomain::ChartOfAccounts,
                 $company->country_code,
             );
-            DB::transaction(function () use ($company, $template): void {
+
+            return DB::transaction(function () use ($company, $template): array {
                 $this->templateSeeder->seed($template, $company);
                 $this->inventoryVarianceAccounts->provisionTemplateCompany(
                     $company->id,
                     $company->tenant_id,
                     $company->country_code,
                 );
-                $this->refundCompensationAccounts->provisionNewCompany(
+
+                return $this->refundCompensationAccounts->provisionNewCompany(
                     $company->id,
                     $company->tenant_id,
                     $company->country_code,
                 );
             });
-
-            return;
         }
 
         $seeder = $this->getSeederForCountry($company->country_code);
 
-        DB::transaction(function () use ($company, $seeder): void {
+        return DB::transaction(function () use ($company, $seeder): array {
             /** @var TunisiaChartOfAccountsSeeder|FranceChartOfAccountsSeeder|GenericChartOfAccountsSeeder $seeder */
             $seeder->run($company->id, $company->tenant_id);
             $this->inventoryVarianceAccounts->provisionCompany(
@@ -73,7 +80,8 @@ class ChartOfAccountsService
                 $company->tenant_id,
                 $company->country_code,
             );
-            $this->refundCompensationAccounts->provisionNewCompany(
+
+            return $this->refundCompensationAccounts->provisionNewCompany(
                 $company->id,
                 $company->tenant_id,
                 $company->country_code,

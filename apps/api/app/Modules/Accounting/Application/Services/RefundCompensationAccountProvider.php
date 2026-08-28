@@ -53,6 +53,17 @@ final class RefundCompensationAccountProvider
      */
     public function definitions(string $countryCode): array
     {
+        return self::canonicalDefinitions($countryCode);
+    }
+
+    /**
+     * @return array{
+     *     sales_return: array{code: string, name: string, type: string, parent_code: string, purpose: string},
+     *     refund_write_off: array{code: string, name: string, type: string, parent_code: string, purpose: string}
+     * }
+     */
+    public static function canonicalDefinitions(string $countryCode): array
+    {
         $frenchPlan = in_array(strtoupper($countryCode), ['FR', 'TN'], true);
         $salesReturn = $frenchPlan ? self::FR_TN_SALES_RETURN : self::GENERIC_SALES_RETURN;
         $writeOff = $frenchPlan ? self::FR_TN_REFUND_WRITE_OFF : self::GENERIC_REFUND_WRITE_OFF;
@@ -76,19 +87,80 @@ final class RefundCompensationAccountProvider
     }
 
     /**
-     * Complete a freshly provisioned chart inside its surrounding transaction.
+     * Report country-definition drift without changing company-owned accounts.
+     *
+     * @return list<array{
+     *     company_id: string,
+     *     purpose: string,
+     *     expected: array{code: string, name: string},
+     *     actual: array{code: string, name: string}
+     * }>
      */
-    public function provisionNewCompany(string $companyId, string $tenantId, string $countryCode): void
+    public function driftsForCompany(string $companyId, string $countryCode): array
     {
+        $drifts = [];
+
         foreach ($this->definitions($countryCode) as $definition) {
-            $this->provisionDefinition($companyId, $tenantId, $definition);
+            $purposeHolder = $this->database->table('accounts')
+                ->where('company_id', $companyId)
+                ->where('system_purpose', $definition['purpose'])
+                ->first(['code', 'name']);
+            if ($purposeHolder === null) {
+                continue;
+            }
+
+            $drift = self::driftRecord(
+                $companyId,
+                $definition,
+                (string) $purposeHolder->code,
+                (string) $purposeHolder->name,
+            );
+            if ($drift !== null) {
+                $drifts[] = $drift;
+            }
         }
+
+        return $drifts;
+    }
+
+    /**
+     * Complete a freshly provisioned chart inside its surrounding transaction.
+     *
+     * Purpose-bearing accounts are company-owned once assigned. They are never
+     * renamed or recoded here; any divergence from the country definition is
+     * returned to the caller as an explicit census record.
+     *
+     * @return list<array{
+     *     company_id: string,
+     *     purpose: string,
+     *     expected: array{code: string, name: string},
+     *     actual: array{code: string, name: string}
+     * }>
+     */
+    public function provisionNewCompany(string $companyId, string $tenantId, string $countryCode): array
+    {
+        $drifts = [];
+
+        foreach ($this->definitions($countryCode) as $definition) {
+            $drift = $this->provisionDefinition($companyId, $tenantId, $definition);
+            if ($drift !== null) {
+                $drifts[] = $drift;
+            }
+        }
+
+        return $drifts;
     }
 
     /**
      * @param  array{code: string, name: string, type: string, parent_code: string, purpose: string}  $definition
+     * @return array{
+     *     company_id: string,
+     *     purpose: string,
+     *     expected: array{code: string, name: string},
+     *     actual: array{code: string, name: string}
+     * }|null
      */
-    private function provisionDefinition(string $companyId, string $tenantId, array $definition): void
+    private function provisionDefinition(string $companyId, string $tenantId, array $definition): ?array
     {
         $accounts = $this->database->table('accounts')->where('company_id', $companyId);
         $purposeHolder = (clone $accounts)
@@ -98,7 +170,12 @@ final class RefundCompensationAccountProvider
         if ($purposeHolder !== null) {
             $this->assertUsable($companyId, $purposeHolder, $definition);
 
-            return;
+            return self::driftRecord(
+                $companyId,
+                $definition,
+                (string) $purposeHolder->code,
+                (string) $purposeHolder->name,
+            );
         }
 
         $existing = (clone $accounts)->where('code', $definition['code'])->first();
@@ -121,7 +198,7 @@ final class RefundCompensationAccountProvider
                 'updated_at' => now(),
             ]);
 
-            return;
+            return null;
         }
 
         $parentId = (clone $accounts)
@@ -152,6 +229,41 @@ final class RefundCompensationAccountProvider
             'created_at' => $now,
             'updated_at' => $now,
         ]);
+
+        return null;
+    }
+
+    /**
+     * @param  array{code: string, name: string, purpose: string}  $definition
+     * @return array{
+     *     company_id: string,
+     *     purpose: string,
+     *     expected: array{code: string, name: string},
+     *     actual: array{code: string, name: string}
+     * }|null
+     */
+    public static function driftRecord(
+        string $companyId,
+        array $definition,
+        string $actualCode,
+        string $actualName,
+    ): ?array {
+        if ($actualCode === $definition['code'] && $actualName === $definition['name']) {
+            return null;
+        }
+
+        return [
+            'company_id' => $companyId,
+            'purpose' => $definition['purpose'],
+            'expected' => [
+                'code' => $definition['code'],
+                'name' => $definition['name'],
+            ],
+            'actual' => [
+                'code' => $actualCode,
+                'name' => $actualName,
+            ],
+        ];
     }
 
     /** @param array{type: string, purpose: string} $definition */

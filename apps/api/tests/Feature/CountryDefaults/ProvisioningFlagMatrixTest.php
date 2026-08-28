@@ -118,7 +118,7 @@ final class ProvisioningFlagMatrixTest extends TestCase
         config(['country_defaults.provisioning_enabled' => true]);
         [, $company] = $this->tenantCompanyUser($countryCode, 'refund-default-'.strtolower($countryCode));
 
-        app(ChartOfAccountsService::class)->seedForCompany($company);
+        $drifts = app(ChartOfAccountsService::class)->seedForCompany($company);
 
         $salesReturn = Account::findByPurpose($company->id, SystemAccountPurpose::SalesReturn);
         $writeOff = Account::findByPurpose($company->id, SystemAccountPurpose::RefundWriteOff);
@@ -129,6 +129,7 @@ final class ProvisioningFlagMatrixTest extends TestCase
         self::assertSame($salesReturnName, $salesReturn->name);
         self::assertSame('6590', $writeOff->code);
         self::assertSame($writeOffName, $writeOff->name);
+        self::assertSame([], $drifts, 'A newly provisioned chart must use the canonical refund definitions without drift.');
     }
 
     public function test_template_provisioning_rolls_back_the_chart_when_variance_installation_fails(): void
