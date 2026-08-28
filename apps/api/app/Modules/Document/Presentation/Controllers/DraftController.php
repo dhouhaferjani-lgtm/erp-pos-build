@@ -17,7 +17,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Controller for draft document auto-save operations.
@@ -165,9 +165,9 @@ class DraftController extends Controller
             // INSIDE the try, deliberately (r3 finding 6). This method issues
             // two queries plus one per line, on an endpoint the editor calls
             // every three seconds; a QueryException from any of them must reach
-            // the silent-failure arm below, not a 500. Before the tier
+            // the typed-failure arm below. Before the tier
             // relocation the resolution ran inside saveDraft(), i.e. inside
-            // this same try — moving it up must not widen the 500 window.
+            // this same try — moving it up must not escape typed error handling.
             $data = $this->resolveLineTaxRates($data);
 
             $document = $this->draftService->saveDraft(
@@ -197,26 +197,24 @@ class DraftController extends Controller
                 'line_count' => $document->lines->count(),
             ]);
         } catch (DraftNotEditableException $e) {
-            // P1: this refusal must NOT reach the silent-failure arm below. The
+            // P1: this refusal must NOT reach the blanket failure arm below. The
             // caller aimed auto-save at a document that has left the draft
             // stage, and answering 200 would tell the editor its (discarded)
             // line set had been saved.
             return $this->validationErrorResponse($e->errorCode, $e->getMessage());
         } catch (\Throwable $e) {
-            // Log error but return success to avoid interrupting user flow
-            // Auto-save failures should be silent from user perspective
             Log::error('Draft auto-save failed', [
                 'draft_id' => $draftId,
                 'user_id' => $userId,
                 'error' => $e->getMessage(),
             ]);
 
-            // Return existing draft_id or generate new one
             return response()->json([
-                'draft_id' => $draftId ?? Str::uuid()->toString(),
-                'saved_at' => now()->toIso8601String(),
-                'error' => 'silent_failure',
-            ], 200); // Still 200 to avoid frontend errors
+                'error' => [
+                    'code' => 'DRAFT_AUTO_SAVE_FAILED',
+                    'message' => 'Draft auto-save failed. Please try again.',
+                ],
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 }

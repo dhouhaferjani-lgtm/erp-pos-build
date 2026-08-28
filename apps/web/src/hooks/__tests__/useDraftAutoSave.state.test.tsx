@@ -1,11 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
+import { AxiosError, AxiosHeaders } from 'axios'
 import { useDraftAutoSave } from '../useDraftAutoSave'
 import * as api from '../../lib/api'
 
 // The hook calls `api.post` directly (the /documents/auto-save endpoint returns
 // an UNWRAPPED body, so it cannot use apiPost's data.data unwrap).
-vi.mock('../../lib/api', () => ({ api: { post: vi.fn() } }))
+vi.mock('../../lib/api', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../lib/api')>(),
+  api: { post: vi.fn() },
+}))
 const apiPost = vi.mocked(api.api.post)
 
 const draft = { type: 'invoice' as const, lines: [{ product_id: 'p1', quantity: 1, unit_price: 1 }] }
@@ -22,6 +26,48 @@ describe('useDraftAutoSave failure/pending state', () => {
     await act(() => Promise.resolve())
     expect(result.current.autosaveFailed).toBe(true)
     expect(result.current.lastError?.message).toBe('boom')
+  })
+
+  it('surfaces a typed server failure without entering a fake saved state', async () => {
+    const onSuccess = vi.fn()
+    const onError = vi.fn()
+    const serverMessage = 'Draft auto-save failed. Please try again.'
+    const response = {
+      data: {
+        error: {
+          code: 'DRAFT_AUTO_SAVE_FAILED',
+          message: serverMessage,
+        },
+      },
+      status: 500,
+      statusText: 'Internal Server Error',
+      headers: {},
+      config: { headers: new AxiosHeaders() },
+    }
+
+    apiPost.mockRejectedValueOnce(new AxiosError(
+      'Request failed with status code 500',
+      'ERR_BAD_RESPONSE',
+      undefined,
+      undefined,
+      response,
+    ))
+
+    const { result } = renderHook(() => useDraftAutoSave(draft, {
+      debounceMs: 10,
+      onError,
+      onSuccess,
+    }))
+
+    await act(async () => { await result.current.saveNow() })
+    await act(() => Promise.resolve())
+
+    expect(result.current.autosaveFailed).toBe(true)
+    expect(result.current.lastError?.message).toBe(serverMessage)
+    expect(result.current.draftId).toBeNull()
+    expect(result.current.lastSavedAt).toBeNull()
+    expect(onSuccess).not.toHaveBeenCalled()
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: serverMessage }))
   })
 
   it('clears autosaveFailed and lastError after a subsequent success', async () => {

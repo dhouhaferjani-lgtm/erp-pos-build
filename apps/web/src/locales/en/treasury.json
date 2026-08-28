@@ -593,6 +593,7 @@
     "capabilities": "Capabilities",
     "flags": {
       "is_physical": "Physical",
+      "is_cash_tender": "Cash tender",
       "has_maturity": "Has Maturity",
       "requires_third_party": "Third Party",
       "is_push": "Push Payment",
@@ -618,11 +619,16 @@
     },
     "flagDescriptions": {
       "is_physical": "Physical payment methods (cash, checks, promissory notes)",
+      "is_cash_tender": "Counts as cash in drawers, reports, and fiscal totals",
       "has_maturity": "Deferred payments (checks, promissory notes)",
       "requires_third_party": "Requires third-party processor (PayPal, Stripe)",
       "is_push": "Push payment (customer initiates)",
       "has_deducted_fees": "Fees deducted from received amount",
       "is_restricted": "Restricted usage (meal vouchers, specific conditions)"
+    },
+    "errors": {
+      "cashTenderFlagOnNonCanonicalCode": "Only the canonical CASH method can be marked as a cash tender. Clear this option or use the CASH code.",
+      "canonicalCashCodeNotFlagged": "The CASH method must be marked as a cash tender. Select Cash tender or use a different code."
     },
     "table": {
       "name": "Name",

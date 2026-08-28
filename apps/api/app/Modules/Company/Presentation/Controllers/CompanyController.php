@@ -29,6 +29,7 @@ use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
+use Database\Seeders\PaymentMethodSeeder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -51,6 +52,7 @@ class CompanyController extends Controller
         private readonly ExpenseCategoryProvisioningService $expenseCategoryProvisioning,
         private readonly CompanyFiscalIdentityService $companyFiscalIdentityService,
         private readonly AuditService $auditService,
+        private readonly PaymentMethodSeeder $paymentMethodSeeder,
     ) {}
 
     /**
@@ -163,6 +165,11 @@ class CompanyController extends Controller
 
             // 5. Seed chart of accounts based on country
             $this->chartOfAccountsService->seedForCompany($company);
+
+            // 5.25. Give additional companies the same country defaults as the
+            // tenant's first company. The seeder is self-guarding when a
+            // company already owns any configured payment methods.
+            $this->paymentMethodSeeder->run($company);
 
             // 5.5. Seed the country's default expense categories.
             // Gate finding I-2 (register G-3): this second-company path seeded

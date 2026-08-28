@@ -10,7 +10,7 @@ import { Select } from '../../../components/atoms/Select'
 import { Button } from '../../../components/atoms/Button'
 import { Checkbox } from '../../../components/atoms'
 import { Textarea } from '../../../components/atoms/Textarea'
-import { apiPost } from '../../../lib/api'
+import { apiPost, getErrorMessage, isApiError } from '../../../lib/api'
 import { cn } from '../../../lib/utils'
 import { tokens, textColors } from '../../../lib/designTokens'
 
@@ -20,6 +20,7 @@ interface PaymentMethod {
   name: string
   description?: string
   is_physical: boolean
+  is_cash_tender: boolean
   has_maturity: boolean
   requires_third_party: boolean
   is_push: boolean
@@ -36,6 +37,7 @@ interface PaymentMethodFormData {
   name: string
   description: string
   is_physical: boolean
+  is_cash_tender: boolean
   has_maturity: boolean
   requires_third_party: boolean
   is_push: boolean
@@ -54,6 +56,7 @@ export interface AddPaymentMethodModalProps {
 
 type CapabilityFlag =
   | 'is_physical'
+  | 'is_cash_tender'
   | 'has_maturity'
   | 'requires_third_party'
   | 'is_push'
@@ -62,12 +65,26 @@ type CapabilityFlag =
 
 const CAPABILITY_FLAGS: readonly CapabilityFlag[] = [
   'is_physical',
+  'is_cash_tender',
   'has_maturity',
   'requires_third_party',
   'is_push',
   'has_deducted_fees',
   'is_restricted',
 ]
+
+const CASH_TENDER_REFUSAL_MESSAGE_KEYS = {
+  PAYMENT_METHOD_CASH_TENDER_FLAG_ON_NON_CANONICAL_CODE:
+    'treasury:paymentMethods.errors.cashTenderFlagOnNonCanonicalCode',
+  PAYMENT_METHOD_CANONICAL_CASH_CODE_NOT_FLAGGED:
+    'treasury:paymentMethods.errors.canonicalCashCodeNotFlagged',
+} as const
+
+function isCashTenderRefusalCode(
+  code: string,
+): code is keyof typeof CASH_TENDER_REFUSAL_MESSAGE_KEYS {
+  return Object.hasOwn(CASH_TENDER_REFUSAL_MESSAGE_KEYS, code)
+}
 
 export function AddPaymentMethodModal({
   isOpen,
@@ -89,6 +106,7 @@ export function AddPaymentMethodModal({
       name: '',
       description: '',
       is_physical: false,
+      is_cash_tender: false,
       has_maturity: false,
       requires_third_party: false,
       is_push: true,
@@ -107,6 +125,7 @@ export function AddPaymentMethodModal({
         name: '',
         description: '',
         is_physical: false,
+        is_cash_tender: false,
         has_maturity: false,
         requires_third_party: false,
         is_push: true,
@@ -130,6 +149,7 @@ export function AddPaymentMethodModal({
         name: data.name,
         description: data.description || null,
         is_physical: data.is_physical,
+        is_cash_tender: data.is_cash_tender,
         has_maturity: data.has_maturity,
         requires_third_party: data.requires_third_party,
         is_push: data.is_push,
@@ -139,11 +159,11 @@ export function AddPaymentMethodModal({
         fee_fixed: showFixedFee ? data.fee_fixed : '0.00',
         fee_percent: showPercentFee ? data.fee_percent : '0.00',
       }
-      return apiPost<{ data: PaymentMethod }>('/payment-methods', payload)
+      return apiPost<PaymentMethod>('/payment-methods', payload)
     },
     onSuccess: async (response) => {
       await queryClient.invalidateQueries({ queryKey: ['payment-methods'] })
-      onSuccess?.(response.data)
+      onSuccess?.(response)
       onClose()
     },
   })
@@ -287,9 +307,20 @@ export function AddPaymentMethodModal({
 
           {mutation.isError && (
             <div className={cn('mt-4', tokens.alert.base, tokens.alert.error)}>
-              {mutation.error instanceof Error
-                ? mutation.error.message
-                : t('common:errors.generic')}
+              {(() => {
+                if (isApiError(mutation.error)) {
+                  const code = mutation.error.response?.data.error.code
+                  const messageKey = code !== undefined && isCashTenderRefusalCode(code)
+                    ? CASH_TENDER_REFUSAL_MESSAGE_KEYS[code]
+                    : null
+
+                  if (messageKey !== null) {
+                    return t(messageKey)
+                  }
+                }
+
+                return getErrorMessage(mutation.error)
+              })()}
             </div>
           )}
         </ModalContent>

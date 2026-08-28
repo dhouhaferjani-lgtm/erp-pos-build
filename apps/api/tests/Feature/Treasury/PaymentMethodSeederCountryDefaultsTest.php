@@ -102,4 +102,29 @@ final class PaymentMethodSeederCountryDefaultsTest extends TestCase
 
         $this->assertSame($first, PaymentMethod::query()->where('company_id', $company->id)->count());
     }
+
+    public function test_seeder_leaves_an_existing_company_payment_method_set_untouched(): void
+    {
+        $company = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Configured Methods Co',
+            'country_code' => 'FR',
+            'currency' => 'EUR',
+            'locale' => 'fr_FR',
+            'timezone' => 'Europe/Paris',
+        ]);
+        PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $company->id,
+            'code' => 'CUSTOM',
+            'name' => 'Configured Method',
+        ]);
+
+        (new PaymentMethodSeeder)->run($company);
+
+        $this->assertSame(
+            ['CUSTOM'],
+            PaymentMethod::query()->where('company_id', $company->id)->pluck('code')->all(),
+        );
+    }
 }
