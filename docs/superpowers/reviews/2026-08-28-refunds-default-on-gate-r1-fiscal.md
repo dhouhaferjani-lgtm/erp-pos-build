@@ -172,3 +172,26 @@ The added tests cover only a holder that already has its purpose before the back
 - Disposable DB/code cleanup: **complete; zero matching databases remain**.
 
 RECHECK: OPEN NEW-R2-1
+
+## r3 scoped re-check
+
+**Lane/range:** `feat/refunds-default-on`, `5eb6c9baf8..ed34292dde` (latest commit only)
+**Posture:** source read-only except this required review append. Execution used only disposable PostgreSQL database `autoerp_gate_refunds_r3_probe` on `127.0.0.1:5433`; it was dropped and the final matching `pg_database` census returned zero rows. The recovered reviewer probe lived only in `/tmp` and was removed.
+
+### NEW-R2-1 closure
+
+- **Backfill first-run census is now complete.** The command applies the `sales_return`/`refund_write_off` work before calling `driftsForCompany()` (`BackfillRefundCompensationAccountsCommand.php:96-120`). I reran the r2 PostgreSQL probe with its same renamed conventional `709`, null purpose, canonical `6590` holder, and first command invocation: it passed. The committed regression pins both outputs from that same invocation: the full `Refund account drift: ... actual={code=709,name="Accountant-selected returns"}` line and `1 purpose(s) patched; 0 account(s) created; 0 skipped; 1 drift(s).` (`BackfillRefundCompensationAccountsCommandTest.php:195-228`). The renamed account keeps its selected name while gaining `sales_return`.
+- **Migration census has the same orthogonal semantics.** Each candidate company is censused once before legacy-history or missing-account classification (`2026_08_28_110000_enable_v4_refund_authoring_by_default.php:82-140`). The recovered r2 PostgreSQL missing-purpose probe now records `missing-accounts=1` and `drift=1`. The committed regression also pins the precedence case at `legacy-history=1`, `missing-accounts=0`, and `drift=1`, including the exact structured drift record (`EnableV4RefundAuthoringByDefaultMigrationTest.php:179-223`).
+- **No new findings in `HEAD~1..HEAD`.** The two production changes are ordering-only, preserve the existing write/skip rules, and the added regressions exercise the formerly undercounted paths.
+
+### Verification
+
+- Recovered PostgreSQL reviewer probes: **OK — 2 tests, 8 assertions**.
+- PostgreSQL four-class r2 focused bundle: **OK — 35 tests, 131 assertions**.
+- Scoped PHPStan on both changed production/migration files: **No errors**.
+- Pint `--test` on all four changed PHP source/test files: **pass**.
+- PHP syntax on all four changed PHP files: **No syntax errors**.
+- `git diff --check HEAD~1..HEAD`: **pass**.
+- Disposable cleanup: **complete; zero matching databases remain**.
+
+RECHECK: MERGEABLE
