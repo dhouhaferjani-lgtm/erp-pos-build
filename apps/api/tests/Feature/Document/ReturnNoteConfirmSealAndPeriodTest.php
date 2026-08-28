@@ -68,25 +68,24 @@ final class ReturnNoteConfirmSealAndPeriodTest extends TestCase
     {
         $returnNote = $this->draftReturnNote(Carbon::today());
 
-        $targetUpdates = [];
-        Document::updated(static function (Document $document) use (&$targetUpdates, $returnNote): void {
-            if ($document->id === $returnNote->id) {
-                $targetUpdates[] = $document->getChanges();
-            }
-        });
+        DB::flushQueryLog();
+        DB::enableQueryLog();
 
-        $confirmed = $this->service->confirm($returnNote, $this->cfUser->id);
+        try {
+            $confirmed = $this->service->confirm($returnNote, $this->cfUser->id);
+        } finally {
+            $queries = DB::getQueryLog();
+            DB::disableQueryLog();
+        }
 
         self::assertSame(DocumentStatus::Confirmed, $confirmed->status);
         self::assertSame(FiscalStatus::Sealed, $confirmed->fiscal_status);
         self::assertNotNull($confirmed->confirmed_at);
         self::assertSame($this->cfUser->id, $confirmed->confirmed_by);
         self::assertNotNull($confirmed->fiscal_hash);
-        self::assertTrue(
-            collect($targetUpdates)->contains(
-                static fn (array $changes): bool => array_key_exists('document_number', $changes)
-                    && array_key_exists('status', $changes),
-            ),
+        $this->assertConditionalNumberAndStatusUpdate(
+            $queries,
+            $returnNote->id,
             'Return-note allocation and Draft → Confirmed must share one document UPDATE.',
         );
     }
@@ -351,5 +350,27 @@ final class ReturnNoteConfirmSealAndPeriodTest extends TestCase
             'period_end' => $date->copy()->endOfMonth()->toDateString(),
             'status' => VatPeriodStatus::Closed,
         ]);
+    }
+
+    /**
+     * @param  array<array-key, array{query: string, bindings: array<array-key, mixed>, time: float|null}>  $queries
+     */
+    private function assertConditionalNumberAndStatusUpdate(array $queries, string $documentId, string $message): void
+    {
+        $update = collect($queries)->first(static function (array $query) use ($documentId): bool {
+            $sql = strtolower($query['query']);
+
+            return str_starts_with($sql, 'update "documents"')
+                && str_contains($sql, '"document_number"')
+                && str_contains($sql, '"status"')
+                && in_array($documentId, $query['bindings'], true);
+        });
+
+        self::assertIsArray($update, $message);
+        self::assertMatchesRegularExpression(
+            '/where "id" = \? and "status" = \? and "document_number" is null$/',
+            strtolower($update['query']),
+            $message.' The write must be guarded by id, expected status, and a NULL number.',
+        );
     }
 }

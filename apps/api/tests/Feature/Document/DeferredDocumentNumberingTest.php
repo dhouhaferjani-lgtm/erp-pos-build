@@ -20,6 +20,7 @@ use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Events\SalesOrderCancelled;
 use App\Modules\Document\Domain\Events\SalesOrderCancelledV2;
 use App\Modules\Document\Domain\Exceptions\DocumentRenumberingException;
+use App\Modules\Document\Domain\Exceptions\DocumentTransitionException;
 use App\Modules\Document\Domain\Services\DeliveryNoteService;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
 use App\Modules\Document\Domain\Services\DocumentStatusService;
@@ -37,6 +38,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Throwable;
 
 /**
  * R-2 / LEDGER D-T9-1 — DEFERRED DOCUMENT NUMBERING.
@@ -96,7 +98,9 @@ final class DeferredDocumentNumberingTest extends TestCase
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
-        $this->seed(RolesAndPermissionsSeeder::class);
+        if ($this->name() !== 'test_two_postgresql_sessions_confirming_the_same_stale_draft_keep_the_first_number') {
+            $this->seed(RolesAndPermissionsSeeder::class);
+        }
 
         $this->customer = Partner::create([
             'tenant_id' => $this->tenant->id,
@@ -496,6 +500,243 @@ final class DeferredDocumentNumberingTest extends TestCase
         }
     }
 
+    public function test_a_stale_draft_model_cannot_overwrite_the_number_allocated_by_the_first_confirm(): void
+    {
+        /** @var DocumentStatusService $statusService */
+        $statusService = app(DocumentStatusService::class);
+
+        $firstInstance = $this->draftQuoteWithOneLine();
+        $staleInstance = Document::query()->findOrFail($firstInstance->id);
+
+        $statusService->transition($firstInstance, DocumentStatus::Confirmed);
+        $firstNumber = (string) $firstInstance->document_number;
+
+        self::assertNull($staleInstance->document_number, 'Sanity: the second instance is still Draft/null in memory.');
+        $statusService->transition($staleInstance, DocumentStatus::Confirmed);
+
+        self::assertSame($firstNumber, $staleInstance->document_number);
+        self::assertSame(
+            $firstNumber,
+            Document::query()->findOrFail($firstInstance->id)->document_number,
+            'A stale Draft/null model must never overwrite the number already established in the database.',
+        );
+        self::assertSame(
+            1,
+            (int) DocumentSequence::query()
+                ->where('company_id', $this->company->id)
+                ->where('type', DocumentType::Quote->value)
+                ->value('last_number'),
+            'The losing stale confirm must return its unused allocation to the sequence.',
+        );
+
+        $nextQuote = $this->draftQuoteWithOneLine();
+        $statusService->transition($nextQuote, DocumentStatus::Confirmed);
+        self::assertSame(sprintf('QT-%d-0002', (int) date('Y')), $nextQuote->document_number);
+    }
+
+    public function test_an_inconsistent_zero_row_claim_refreshes_the_model_before_refusing(): void
+    {
+        /** @var DocumentStatusService $statusService */
+        $statusService = app(DocumentStatusService::class);
+        $staleDraft = $this->draftQuoteWithOneLine();
+
+        Document::query()->whereKey($staleDraft->id)->update([
+            'status' => DocumentStatus::Cancelled->value,
+        ]);
+
+        try {
+            $statusService->transition($staleDraft, DocumentStatus::Confirmed);
+            self::fail('Expected an inconsistent concurrent state to refuse the transition.');
+        } catch (DocumentTransitionException) {
+            self::assertSame(DocumentStatus::Cancelled, $staleDraft->status);
+            self::assertNull($staleDraft->document_number);
+            self::assertFalse($staleDraft->isDirty());
+        }
+
+        self::assertNull(
+            DocumentSequence::query()
+                ->where('company_id', $this->company->id)
+                ->where('type', DocumentType::Quote->value)
+                ->value('last_number'),
+            'A refused conditional claim must roll its sequence allocation back.',
+        );
+    }
+
+    public function test_a_losing_staged_number_is_returned_to_the_sequence(): void
+    {
+        /** @var DocumentStatusService $statusService */
+        $statusService = app(DocumentStatusService::class);
+        $firstInstance = $this->draftQuoteWithOneLine();
+        $staleInstance = Document::query()->findOrFail($firstInstance->id);
+
+        DB::transaction(function () use ($statusService, $firstInstance): void {
+            $statusService->assignNumberIfMissing($firstInstance);
+            $statusService->transition($firstInstance, DocumentStatus::Confirmed);
+        });
+        $firstNumber = (string) $firstInstance->document_number;
+
+        DB::transaction(function () use ($statusService, $staleInstance): void {
+            $statusService->assignNumberIfMissing($staleInstance);
+            $staleInstance->lines()->update([
+                'description' => 'Loser side effect '.$staleInstance->document_number,
+            ]);
+            $statusService->transition($staleInstance, DocumentStatus::Confirmed);
+        });
+
+        self::assertSame($firstNumber, $staleInstance->document_number);
+        self::assertSame(
+            1,
+            (int) DocumentSequence::query()
+                ->where('company_id', $this->company->id)
+                ->where('type', DocumentType::Quote->value)
+                ->value('last_number'),
+            'A staged allocation that loses the conditional claim must be returned while its sequence lock is held.',
+        );
+        self::assertSame(
+            'Deferred Product',
+            $firstInstance->lines()->firstOrFail()->description,
+            'Losing the staged claim must roll back side effects written after the number was staged.',
+        );
+    }
+
+    public function test_two_postgresql_sessions_confirming_the_same_stale_draft_keep_the_first_number(): void
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('The two-session row-lock race proof requires PostgreSQL.');
+        }
+        if (! function_exists('pcntl_fork')) {
+            $this->markTestSkipped('pcntl is required for the two-session row-lock race proof.');
+        }
+
+        /** @var DocumentStatusService $statusService */
+        $statusService = app(DocumentStatusService::class);
+        $firstInstance = $this->draftQuoteWithOneLine();
+        $staleInstance = Document::query()->findOrFail($firstInstance->id);
+
+        DocumentSequence::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => DocumentType::Quote->value,
+            'year' => (int) date('Y'),
+            'last_number' => 0,
+        ]);
+
+        $sockets = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+        self::assertNotFalse($sockets);
+        [$parentSocket, $childSocket] = $sockets;
+        $resultFile = tempnam(sys_get_temp_dir(), 'deferred-number-race-');
+        self::assertIsString($resultFile);
+
+        // RefreshDatabase normally hides fixtures in the test transaction. Commit
+        // this test's setup so the independent child session can see the same draft;
+        // the finally block removes it and restores the transaction expected by the
+        // trait's teardown callback.
+        DB::commit();
+
+        $childPid = pcntl_fork();
+        self::assertGreaterThanOrEqual(0, $childPid);
+
+        if ($childPid === 0) {
+            fclose($parentSocket);
+            DB::disconnect();
+
+            try {
+                DB::reconnect();
+                DB::statement("SET lock_timeout = '8s'");
+                DB::statement("SET statement_timeout = '20s'");
+                $backendPid = (int) DB::selectOne('SELECT pg_backend_pid() AS pid')->pid;
+                fwrite($childSocket, $backendPid."\n");
+                stream_set_timeout($childSocket, 8);
+
+                if (fread($childSocket, 1) !== '1') {
+                    throw new \RuntimeException('The child did not receive the race start signal.');
+                }
+
+                /** @var DocumentStatusService $childStatusService */
+                $childStatusService = app(DocumentStatusService::class);
+                $confirmed = $childStatusService->transition($staleInstance, DocumentStatus::Confirmed);
+                $payload = [
+                    'outcome' => 'success',
+                    'returned_number' => $confirmed->document_number,
+                    'database_number' => Document::query()->findOrFail($confirmed->id)->document_number,
+                    'status' => $confirmed->status->value,
+                ];
+            } catch (Throwable $exception) {
+                $payload = [
+                    'outcome' => 'error',
+                    'exception' => $exception::class,
+                    'message' => $exception->getMessage(),
+                ];
+            }
+
+            file_put_contents($resultFile, json_encode($payload, JSON_THROW_ON_ERROR));
+            fclose($childSocket);
+            DB::disconnect();
+            exit(0);
+        }
+
+        fclose($childSocket);
+        $childReaped = false;
+        $payload = [];
+        $firstNumber = '';
+        $databaseNumber = '';
+        $sequenceNumber = 0;
+
+        try {
+            stream_set_timeout($parentSocket, 8);
+            $backendPid = (int) trim((string) fgets($parentSocket));
+            self::assertGreaterThan(0, $backendPid);
+
+            DB::beginTransaction();
+            $statusService->transition($firstInstance, DocumentStatus::Confirmed);
+            $firstNumber = (string) $firstInstance->document_number;
+
+            fwrite($parentSocket, '1');
+            self::assertTrue(
+                $this->waitUntilPostgresBackendWaitsForLock($backendPid),
+                'Session B must reach a real PostgreSQL lock wait before session A commits.',
+            );
+            DB::commit();
+
+            pcntl_waitpid($childPid, $childStatus);
+            $childReaped = true;
+            self::assertTrue(pcntl_wifexited($childStatus));
+            self::assertSame(0, pcntl_wexitstatus($childStatus));
+
+            $payload = json_decode((string) file_get_contents($resultFile), true, 512, JSON_THROW_ON_ERROR);
+            self::assertIsArray($payload);
+            $databaseNumber = (string) Document::query()->findOrFail($firstInstance->id)->document_number;
+            $sequenceNumber = (int) DocumentSequence::query()
+                ->where('company_id', $this->company->id)
+                ->where('type', DocumentType::Quote->value)
+                ->value('last_number');
+        } finally {
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
+            if (! $childReaped) {
+                posix_kill($childPid, SIGTERM);
+                pcntl_waitpid($childPid, $childStatus);
+            }
+            if (is_resource($parentSocket)) {
+                fclose($parentSocket);
+            }
+            if (is_file($resultFile)) {
+                unlink($resultFile);
+            }
+
+            $this->deleteCommittedRaceFixtures();
+            DB::beginTransaction();
+        }
+
+        self::assertSame('success', $payload['outcome'] ?? null, json_encode($payload, JSON_THROW_ON_ERROR));
+        self::assertSame(DocumentStatus::Confirmed->value, $payload['status'] ?? null);
+        self::assertSame($firstNumber, $payload['returned_number'] ?? null);
+        self::assertSame($firstNumber, $payload['database_number'] ?? null);
+        self::assertSame($firstNumber, $databaseNumber);
+        self::assertSame(1, $sequenceNumber, 'The losing PostgreSQL session must not burn a second number.');
+    }
+
     // ──────────────────────────────────────────────────────────────────
     // 7. FISCAL INVARIANT — no seal ever hashes a NULL number
     // ──────────────────────────────────────────────────────────────────
@@ -531,14 +772,15 @@ final class DeferredDocumentNumberingTest extends TestCase
             'line_total' => '100.000',
         ]);
 
-        $targetUpdates = [];
-        Document::updated(static function (Document $document) use (&$targetUpdates, $deliveryNote): void {
-            if ($document->id === $deliveryNote->id) {
-                $targetUpdates[] = $document->getChanges();
-            }
-        });
+        DB::flushQueryLog();
+        DB::enableQueryLog();
 
-        $confirmed = app(DeliveryNoteService::class)->confirm($deliveryNote->refresh());
+        try {
+            $confirmed = app(DeliveryNoteService::class)->confirm($deliveryNote->refresh());
+        } finally {
+            $queries = DB::getQueryLog();
+            DB::disableQueryLog();
+        }
 
         $this->assertNotNull($confirmed->fiscal_hash, 'Sanity: the delivery note was sealed.');
         $this->assertSame(
@@ -546,11 +788,9 @@ final class DeferredDocumentNumberingTest extends TestCase
             (string) $confirmed->document_number,
             'The number must exist BEFORE the hash input is serialized — a NULL number in a fiscal hash is unrecoverable.'
         );
-        $this->assertTrue(
-            collect($targetUpdates)->contains(
-                static fn (array $changes): bool => array_key_exists('document_number', $changes)
-                    && array_key_exists('status', $changes),
-            ),
+        $this->assertConditionalNumberAndStatusUpdate(
+            $queries,
+            $deliveryNote->id,
             'Delivery-note allocation and Draft → Confirmed must share one document UPDATE.',
         );
     }
@@ -573,20 +813,19 @@ final class DeferredDocumentNumberingTest extends TestCase
             'total' => '0.000',
         ]);
 
-        $targetUpdates = [];
-        Document::updated(static function (Document $document) use (&$targetUpdates, $salesOrder): void {
-            if ($document->id === $salesOrder->id) {
-                $targetUpdates[] = $document->getChanges();
-            }
-        });
+        DB::flushQueryLog();
+        DB::enableQueryLog();
 
-        app(SalesOrderService::class)->confirm($salesOrder);
+        try {
+            app(SalesOrderService::class)->confirm($salesOrder);
+        } finally {
+            $queries = DB::getQueryLog();
+            DB::disableQueryLog();
+        }
 
-        $this->assertTrue(
-            collect($targetUpdates)->contains(
-                static fn (array $changes): bool => array_key_exists('document_number', $changes)
-                    && array_key_exists('status', $changes),
-            ),
+        $this->assertConditionalNumberAndStatusUpdate(
+            $queries,
+            $salesOrder->id,
             'Sales-order allocation and Draft → Confirmed must share one document UPDATE.',
         );
     }
@@ -657,6 +896,63 @@ final class DeferredDocumentNumberingTest extends TestCase
         ]);
 
         return $user;
+    }
+
+    private function waitUntilPostgresBackendWaitsForLock(int $backendPid): bool
+    {
+        $deadline = microtime(true) + 8.0;
+
+        do {
+            $activity = DB::selectOne(
+                'SELECT wait_event_type FROM pg_stat_activity WHERE pid = ?',
+                [$backendPid],
+            );
+
+            if ($activity?->wait_event_type === 'Lock') {
+                return true;
+            }
+
+            usleep(20_000);
+        } while (microtime(true) < $deadline);
+
+        return false;
+    }
+
+    private function deleteCommittedRaceFixtures(): void
+    {
+        $documentIds = DB::table('documents')->where('company_id', $this->company->id)->pluck('id');
+
+        DB::table('document_lines')->whereIn('document_id', $documentIds)->delete();
+        DB::table('documents')->whereIn('id', $documentIds)->delete();
+        DB::table('document_sequences')->where('company_id', $this->company->id)->delete();
+        DB::table('locations')->where('company_id', $this->company->id)->delete();
+        DB::table('products')->where('company_id', $this->company->id)->delete();
+        DB::table('partners')->where('company_id', $this->company->id)->delete();
+        DB::table('companies')->where('id', $this->company->id)->delete();
+        DB::table('tenants')->where('id', $this->tenant->id)->delete();
+        app(CompanyContext::class)->clear();
+    }
+
+    /**
+     * @param  array<array-key, array{query: string, bindings: array<array-key, mixed>, time: float|null}>  $queries
+     */
+    private function assertConditionalNumberAndStatusUpdate(array $queries, string $documentId, string $message): void
+    {
+        $update = collect($queries)->first(static function (array $query) use ($documentId): bool {
+            $sql = strtolower($query['query']);
+
+            return str_starts_with($sql, 'update "documents"')
+                && str_contains($sql, '"document_number"')
+                && str_contains($sql, '"status"')
+                && in_array($documentId, $query['bindings'], true);
+        });
+
+        self::assertIsArray($update, $message);
+        self::assertMatchesRegularExpression(
+            '/where "id" = \? and "status" = \? and "document_number" is null$/',
+            strtolower($update['query']),
+            $message.' The write must be guarded by id, expected status, and a NULL number.',
+        );
     }
 
     private function actingAsUser(User $user): self
