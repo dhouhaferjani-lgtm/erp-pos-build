@@ -14,7 +14,6 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
-use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\DTOs\TaxCalculationResult;
@@ -46,7 +45,6 @@ class CreditNoteService
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
-        private readonly DocumentNumberingService $numberingService,
         private readonly TaxCalculationService $taxCalculationService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly DocumentAllocationStateGuard $allocationStateGuard,
@@ -851,8 +849,6 @@ class CreditNoteService
                 throw new \InvalidArgumentException('Total credit notes would exceed invoice total');
             }
 
-            $creditNoteNumber = $this->numberingService->generateNumber($tenantId, $invoice->company_id, DocumentType::CreditNote);
-
             // ORCHESTRATOR RULING, amended by RULING A: reconstruct $amount
             // across the invoice's real lines where reachable; otherwise
             // quantize DOWN to the nearest reachable amount (never above,
@@ -872,7 +868,7 @@ class CreditNoteService
                 'fiscal_category' => FiscalCategory::fromDocumentType(DocumentType::CreditNote),
                 'fiscal_status' => FiscalStatus::Draft,
                 'status' => DocumentStatus::Draft,
-                'document_number' => $creditNoteNumber,
+                'document_number' => null,
                 'document_date' => now(),
                 'currency' => $invoice->currency,
                 'subtotal' => $allocation['subtotal'],
@@ -957,8 +953,6 @@ class CreditNoteService
                 throw new \InvalidArgumentException('Credit notes can only be created for posted invoices');
             }
 
-            $creditNoteNumber = $this->numberingService->generateNumber($tenantId, $invoice->company_id, DocumentType::CreditNote);
-
             $scale = $this->scaleFor($invoice);
 
             /** @var array<string, array{invoiceLine: DocumentLine, quantity: numeric-string}> $lineMap */
@@ -1006,7 +1000,7 @@ class CreditNoteService
                 'fiscal_category' => FiscalCategory::fromDocumentType(DocumentType::CreditNote),
                 'fiscal_status' => FiscalStatus::Draft,
                 'status' => DocumentStatus::Draft,
-                'document_number' => $creditNoteNumber,
+                'document_number' => null,
                 'document_date' => now(),
                 'currency' => $invoice->currency,
                 'subtotal' => '0',
@@ -1149,9 +1143,6 @@ class CreditNoteService
             $companyId = $partner->company_id;
             $tenantId = $partner->tenant_id;
 
-            // Generate credit note number
-            $creditNoteNumber = $this->numberingService->generateNumber($tenantId, $companyId, DocumentType::CreditNote);
-
             $currency = (string) ($partner->currency ?? 'TND');
             $scale = $currency !== ''
                 ? $this->scaleResolver->getScale($currency)
@@ -1187,7 +1178,7 @@ class CreditNoteService
                 'fiscal_category' => FiscalCategory::fromDocumentType(DocumentType::CreditNote),
                 'fiscal_status' => FiscalStatus::Draft,
                 'status' => DocumentStatus::Draft,
-                'document_number' => $creditNoteNumber,
+                'document_number' => null,
                 'document_date' => now(),
                 'currency' => $currency,
                 'subtotal' => '0',

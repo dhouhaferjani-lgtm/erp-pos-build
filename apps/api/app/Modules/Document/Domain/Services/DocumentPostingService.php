@@ -18,6 +18,7 @@ use App\Modules\Document\Domain\Events\DocumentFullyPaid;
 use App\Modules\Document\Domain\Events\InvoiceCancelled;
 use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Document\Domain\Events\SalesOrderCancelled;
+use App\Modules\Document\Domain\Events\SalesOrderCancelledV2;
 use App\Modules\Document\Domain\Exceptions\DeliveryRequiredBeforeInvoiceException;
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
@@ -303,7 +304,10 @@ final class DocumentPostingService
         $invoiceId = $invoice->id;
         $tenantId = $invoice->tenant_id;
         $companyId = $invoice->company_id;
-        $documentNumber = $invoice->document_number;
+        // R-2: a fully-paid invoice has long left `Draft`, so it carries a number;
+        // `requireDocumentNumber()` states that rather than assuming it, because the
+        // value goes into an immutable event.
+        $documentNumber = $invoice->requireDocumentNumber();
         $documentType = $invoice->type->value;
         $partnerId = $invoice->partner_id;
         $total = $invoice->total ?? '0.00';
@@ -682,8 +686,11 @@ final class DocumentPostingService
         $postedAt = now();
 
         // Calculate fiscal hash using the compliance service
+        // R-2 FISCAL INVARIANT: the seal hashes the number, and `post()` accepts only a
+        // CONFIRMED document — which is where the number is allocated. A NULL reaching a
+        // sealed hash input is unrecoverable, so it fails loudly here instead.
         $input = $this->hashService->serializeForHashing([
-            'document_number' => $document->document_number,
+            'document_number' => $document->requireDocumentNumber(),
             'posted_at' => $postedAt->toDateString(),
             'total' => $document->total ?? '0.00',
             'currency' => $document->currency,
@@ -729,7 +736,8 @@ final class DocumentPostingService
             invoiceId: $document->id,
             tenantId: $document->tenant_id,
             companyId: $document->company_id,
-            documentNumber: $document->document_number,
+            // R-2: posted, therefore numbered (see requireDocumentNumber()).
+            documentNumber: $document->requireDocumentNumber(),
             documentType: $document->type->value,
             partnerId: $document->partner_id,
             total: $document->total ?? '0.00',
@@ -749,7 +757,8 @@ final class DocumentPostingService
             invoiceId: $document->id,
             tenantId: $document->tenant_id,
             companyId: $document->company_id,
-            documentNumber: $document->document_number,
+            // R-2: a cancellation event describes a document that was posted (and so numbered).
+            documentNumber: $document->requireDocumentNumber(),
             documentType: $document->type->value,
             originalFiscalHash: $document->fiscal_hash ?? '',
             cancelledAt: now()->toIso8601String(),
@@ -758,11 +767,27 @@ final class DocumentPostingService
 
     private function dispatchSalesOrderCancelledEvent(Document $salesOrder, string $reason, string $cancelledBy, string $cancelledAt): void
     {
+        if ($salesOrder->document_number === null) {
+            event(new SalesOrderCancelledV2(
+                salesOrderId: $salesOrder->id,
+                tenantId: $salesOrder->tenant_id,
+                companyId: $salesOrder->company_id,
+                documentNumber: null,
+                draftReference: 'DRAFT-'.$salesOrder->id,
+                partnerId: $salesOrder->partner_id,
+                cancellationReason: $reason,
+                cancelledBy: $cancelledBy,
+                cancelledAt: $cancelledAt,
+            ));
+
+            return;
+        }
+
         event(new SalesOrderCancelled(
             salesOrderId: $salesOrder->id,
             tenantId: $salesOrder->tenant_id,
             companyId: $salesOrder->company_id,
-            documentNumber: $salesOrder->document_number ?? '',
+            documentNumber: $salesOrder->document_number,
             partnerId: $salesOrder->partner_id,
             cancellationReason: $reason,
             cancelledBy: $cancelledBy,

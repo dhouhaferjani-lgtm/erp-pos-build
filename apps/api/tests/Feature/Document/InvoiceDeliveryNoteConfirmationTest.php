@@ -169,6 +169,7 @@ class InvoiceDeliveryNoteConfirmationTest extends TestCase
 
         $this->assertNotNull($deliveryNote, 'Delivery note should be auto-created');
         $this->assertEquals(DocumentStatus::Draft, $deliveryNote->status, 'Auto-created DN must be Draft');
+        $this->assertNull($deliveryNote->document_number, 'An abandonable generated DN must remain unnumbered until confirm.');
         $this->assertTrue($deliveryNote->payload['auto_created'] ?? false, 'DN should have auto_created flag');
         $this->assertNull($deliveryNote->confirmed_at, 'Draft DN should not have confirmed_at');
         $this->assertNull($deliveryNote->confirmed_by, 'Draft DN should not have confirmed_by');

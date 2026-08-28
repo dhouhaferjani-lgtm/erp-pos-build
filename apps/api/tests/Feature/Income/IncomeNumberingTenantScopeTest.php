@@ -163,7 +163,7 @@ final class IncomeNumberingTenantScopeTest extends TestCase
             'company_id' => $company->id,
             'type' => DocumentType::Income,
             'status' => DocumentStatus::Draft,
-            'document_number' => 'INC-DRAFT-'.uniqid(),
+            'document_number' => null,
             'document_date' => now()->toDateString(),
             'currency' => 'TND',
             'subtotal' => '100.000',

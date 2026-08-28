@@ -73,13 +73,13 @@ final class ReturnNoteService
         private readonly FiscalHashService $hashService,
         private readonly TaxCalculationService $taxCalculationService,
         private readonly ProductCostLock $costLock,
-        private readonly DocumentNumberingService $numberingService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly PeriodBackdatingGuardInterface $periodBackdatingGuard,
         private readonly DeliveredQuantityResolver $deliveredQuantityResolver,
         private readonly ReturnCostBasisResolver $returnCostBasisResolver,
         private readonly InventoryGlPostingBuffer $glBuffer,
         private readonly FEFOInventoryService $fefoService,
+        private readonly DocumentStatusService $documentStatusService,
     ) {}
 
     /**
@@ -94,10 +94,7 @@ final class ReturnNoteService
      *
      * ASSUMES AN OPEN TRANSACTION. The caller owns the transaction boundary
      * because the composite needs the create, the confirm, the stock movement and
-     * the invoice void to be ONE atomic act (CF-D4). Number generation runs in a
-     * nested transaction (savepoint) via `generateForKeyOnce()`, so the
-     * `document_sequences` row lock is held to the OUTER commit — deliberate: a
-     * gap in the fiscal numbering sequence is worse than the contention.
+     * the invoice void to be ONE atomic act (CF-D4).
      *
      * SCALE comes from the entity currency, never from a bare `getScale()`
      * (rule 19 context-safety): the composite runs from a controller today but the
@@ -123,12 +120,6 @@ final class ReturnNoteService
             );
         }
 
-        $documentNumber = $this->numberingService->generateNumber(
-            $company->tenant_id,
-            $company->id,
-            DocumentType::ReturnNote,
-        );
-
         $payload = [];
         if ($data->returnReason !== null) {
             $payload['return_reason'] = $data->returnReason;
@@ -144,7 +135,7 @@ final class ReturnNoteService
             'fiscal_category' => FiscalCategory::ReturnNote,
             'fiscal_status' => FiscalStatus::Draft,
             'status' => DocumentStatus::Draft,
-            'document_number' => $documentNumber,
+            'document_number' => null,
             'document_date' => $data->documentDate,
             'partner_id' => $data->partnerId,
             'source_document_id' => $data->sourceDocumentId,
@@ -541,6 +532,17 @@ final class ReturnNoteService
         ?string $actorId = null,
         ?InventoryGlPostingBuffer $rootBuffer = null,
     ): Document {
+        // R-2 gate G4: lock the TARGET return-note row, not only the chain-head
+        // predecessor below. The lifecycle checks and eventual seal now operate
+        // on one serialization point, matching the other document writers.
+        /** @var Document $returnNote */
+        $returnNote = Document::query()
+            ->where('tenant_id', $returnNote->tenant_id)
+            ->where('company_id', $returnNote->company_id)
+            ->whereKey($returnNote->id)
+            ->lockForUpdate()
+            ->firstOrFail();
+
         if ($returnNote->type !== DocumentType::ReturnNote) {
             throw new \DomainException(
                 'Only return notes can be confirmed with this service.'
@@ -553,8 +555,9 @@ final class ReturnNoteService
             );
         }
 
-        // Plan CF T4(c) / CF-D3. The period guard runs FIRST — before
-        // receiveStockBack() and before the chain-head lockForUpdate() below —
+        // Plan CF T4(c) / CF-D3. After the target-row serialization lock above,
+        // the period guard still runs before receiveStockBack() and before the
+        // chain-head lockForUpdate() below —
         // because a refusal raised after the chain read would hold the return-note
         // chain head for the rest of the caller's transaction, serialising every
         // other confirm behind a request that was always going to fail.
@@ -643,9 +646,19 @@ final class ReturnNoteService
         ]);
         $this->taxCalculationService->snapshotTaxDetails($returnNote, $taxResult);
 
+        // R-2 / LEDGER D-T9-1 — stage the number only after every earlier
+        // document save. The hash needs it below, and `transition()` persists it
+        // together with the status and seal; staging it before the tax update
+        // would let Eloquent flush it in a separate UPDATE.
+        $this->documentStatusService->assignNumberIfMissing($returnNote);
+
         // Calculate fiscal hash over the finalized total using the compliance service
         $input = $this->hashService->serializeForHashing([
-            'document_number' => $returnNote->document_number,
+            // R-2 FISCAL INVARIANT: `assignNumberIfMissing()` ran above, so the number
+            // exists by the time the hash input is serialized. `requireDocumentNumber()`
+            // is the check that keeps a NULL out of a SEALED hash — which no later write
+            // could repair, the immutability trigger refusing to rewrite the number.
+            'document_number' => $returnNote->requireDocumentNumber(),
             'posted_at' => $confirmedAt->toDateString(), // Use 'posted_at' for consistency with serializer
             'total' => $returnNote->total ?? '0.00',
             'currency' => $returnNote->currency,
@@ -673,8 +686,7 @@ final class ReturnNoteService
         // the composite cancel flow and from console/queued contexts where no guard
         // is bound. `auth()->id()` is the fallback so the standalone route keeps its
         // behaviour.
-        $returnNote->update([
-            'status' => DocumentStatus::Confirmed,
+        $this->documentStatusService->transition($returnNote, DocumentStatus::Confirmed, [
             'fiscal_category' => FiscalCategory::ReturnNote,
             'fiscal_status' => FiscalStatus::Sealed,
             'fiscal_hash' => $fiscalHash,
@@ -811,7 +823,11 @@ final class ReturnNoteService
             returnNoteId: $returnNote->id,
             tenantId: $returnNote->tenant_id,
             companyId: $returnNote->company_id,
-            documentNumber: $returnNote->document_number,
+            // R-2 / LEDGER D-T9-1: this event describes a CONFIRMED document, and the
+            // number is allocated on that very transition — so it exists, and
+            // `requireDocumentNumber()` says so instead of letting a NULL into an
+            // immutable event payload.
+            documentNumber: $returnNote->requireDocumentNumber(),
             partnerId: $returnNote->partner_id,
             total: $returnNote->total ?? '0.00',
             currency: $returnNote->currency,

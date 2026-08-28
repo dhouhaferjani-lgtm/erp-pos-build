@@ -15,7 +15,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
-use App\Modules\Document\Domain\Services\DocumentNumberingService;
+use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
@@ -51,7 +51,7 @@ class QuoteController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly LocationContext $locationContext,
-        private readonly DocumentNumberingService $numberingService,
+        private readonly DocumentStatusService $documentStatusService,
         private readonly TaxCalculationService $taxCalculationService,
         private readonly VehicleContextBuilder $vehicleContextBuilder,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
@@ -193,8 +193,12 @@ class QuoteController extends Controller
         $tenantId = $company->tenant_id;
 
         return DB::transaction(function () use ($tenantId, $companyId, $company, $validated, $lines, $vehicleContext): JsonResponse {
-            // Generate document number
-            $documentNumber = $this->numberingService->generateNumber($tenantId, $companyId, DocumentType::Quote);
+            // R-2 / LEDGER D-T9-1 — a DRAFT is born unnumbered. This route
+            // creates the quote `Draft` (see the `create()` call below), and a
+            // number spent here is spent forever if the operator never confirms
+            // it. `DocumentStatusService` allocates it at confirm instead; the
+            // editor renders `sales:documents.draftNumberPlaceholder` until then.
+            $documentNumber = null;
 
             // Batch-fetch products and services for tax defaults + snapshot capture (1 query each)
             $productIds = collect($lines)->pluck('product_id')->filter()->unique()->values()->toArray();
@@ -531,9 +535,18 @@ class QuoteController extends Controller
                     throw new \DomainException('Only draft quotes can be confirmed');
                 }
 
-                // For quotes, we use the default confirmation (simple status change)
-                $lockedDocument->update([
-                    'status' => DocumentStatus::Confirmed,
+                // For quotes, we use the default confirmation (simple status change).
+                //
+                // R-2 / LEDGER D-T9-1 — routed through `DocumentStatusService`
+                // rather than writing `status` here, because that service is the
+                // ONE place a `documents` row is numbered: the quote is a draft
+                // with no `document_number` until this moment, and the allocation
+                // is folded into the same UPDATE as the status flip, inside this
+                // transaction, so a failure below returns the number to the
+                // sequence instead of leaving a gap. Routing it also puts the
+                // edge through the N-6 adjacency map (the `isDraft()` check above
+                // stays as the idempotency short-circuit the service requires).
+                $this->documentStatusService->transition($lockedDocument, DocumentStatus::Confirmed, [
                     'confirmed_at' => now(),
                     'confirmed_by' => auth()->id(),
                 ]);

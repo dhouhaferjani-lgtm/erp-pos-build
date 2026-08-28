@@ -59,6 +59,7 @@ final class DeliveryNoteService
         private readonly BatchStockService $batchStockService,
         private readonly FEFOInventoryService $fefoService,
         private readonly InventoryGlPostingBuffer $glBuffer,
+        private readonly DocumentStatusService $documentStatusService,
     ) {}
 
     /**
@@ -167,9 +168,19 @@ final class DeliveryNoteService
         ]);
         $this->taxCalculationService->snapshotTaxDetails($deliveryNote, $taxResult);
 
+        // R-2 / LEDGER D-T9-1 — stage the number only after every earlier
+        // document save. The hash needs it below, and `transition()` persists it
+        // together with the status and seal; staging it before the tax update
+        // would let Eloquent flush it in a separate UPDATE.
+        $this->documentStatusService->assignNumberIfMissing($deliveryNote);
+
         // Calculate fiscal hash over the finalized total using the compliance service
         $input = $this->hashService->serializeForHashing([
-            'document_number' => $deliveryNote->document_number,
+            // R-2 FISCAL INVARIANT: `assignNumberIfMissing()` ran above, so the number
+            // exists by the time the hash input is serialized. `requireDocumentNumber()`
+            // is the check that keeps a NULL out of a SEALED hash — which no later write
+            // could repair, the immutability trigger refusing to rewrite the number.
+            'document_number' => $deliveryNote->requireDocumentNumber(),
             'posted_at' => $confirmedAt->toDateString(), // Use 'posted_at' for consistency with serializer
             'total' => $deliveryNote->total ?? '0.00',
             'currency' => $deliveryNote->currency,
@@ -177,9 +188,8 @@ final class DeliveryNoteService
 
         $fiscalHash = $this->hashService->calculateHash($input, $previousHash, $genesisSeed);
 
-        // Update delivery note with fiscal chain data and seal it
-        $deliveryNote->update([
-            'status' => DocumentStatus::Confirmed,
+        // Persist the staged number, status and fiscal seal in one UPDATE.
+        $this->documentStatusService->transition($deliveryNote, DocumentStatus::Confirmed, [
             'fiscal_category' => FiscalCategory::DeliveryNote,
             'fiscal_status' => FiscalStatus::Sealed,
             'fiscal_hash' => $fiscalHash,
@@ -245,7 +255,11 @@ final class DeliveryNoteService
             deliveryNoteId: $deliveryNote->id,
             tenantId: $deliveryNote->tenant_id,
             companyId: $deliveryNote->company_id,
-            documentNumber: $deliveryNote->document_number,
+            // R-2 / LEDGER D-T9-1: this event describes a CONFIRMED document, and the
+            // number is allocated on that very transition — so it exists, and
+            // `requireDocumentNumber()` says so instead of letting a NULL into an
+            // immutable event payload.
+            documentNumber: $deliveryNote->requireDocumentNumber(),
             partnerId: $deliveryNote->partner_id,
             total: $deliveryNote->total ?? '0.00',
             currency: $deliveryNote->currency,

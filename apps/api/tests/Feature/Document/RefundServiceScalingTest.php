@@ -7,9 +7,9 @@ namespace Tests\Feature\Document;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentSequence;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
-use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\RefundService;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
@@ -29,8 +29,6 @@ class RefundServiceScalingTest extends TestCase
 
     private RefundService $service;
 
-    private DocumentNumberingService $numberingService;
-
     private Tenant $tenant;
 
     private Company $company;
@@ -42,8 +40,6 @@ class RefundServiceScalingTest extends TestCase
         parent::setUp();
 
         $this->service = app(RefundService::class);
-        $this->numberingService = app(DocumentNumberingService::class);
-
         $this->tenant = Tenant::factory()->create();
 
         // TND company — resolver must return scale 3
@@ -125,7 +121,6 @@ class RefundServiceScalingTest extends TestCase
             $invoice,
             $lineItems,
             'Scale precision test',
-            $this->numberingService
         );
 
         // 12.347 + 5.123 + 8.999 = 26.469 at scale 3 — NOT 26.46 (scale-2 truncation)
@@ -134,5 +129,41 @@ class RefundServiceScalingTest extends TestCase
             $creditNote->total,
             'RefundService must accumulate line totals at scale 3 for TND; got truncated value'
         );
+        $this->assertNull($creditNote->document_number);
+        $this->assertSame(0, DocumentSequence::query()->where('type', DocumentType::CreditNote->value)->count());
+    }
+
+    /** @test */
+    public function full_credit_note_is_an_unnumbered_draft(): void
+    {
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::Invoice,
+            'status' => DocumentStatus::Posted,
+            'document_number' => 'INV-FULL-001',
+            'document_date' => now(),
+            'currency' => 'TND',
+            'subtotal' => '10.000',
+            'tax_amount' => '0.000',
+            'total' => '10.000',
+        ]);
+        $invoice->lines()->create([
+            'line_number' => 1,
+            'description' => 'Full credit line',
+            'quantity' => '1.0000',
+            'unit_price' => '10.000',
+            'tax_rate' => '0',
+            'line_total' => '10.000',
+        ]);
+
+        $creditNote = $this->service->createFullCreditNote(
+            $invoice->fresh('lines'),
+            'Full credit',
+        );
+
+        $this->assertNull($creditNote->document_number);
+        $this->assertSame(0, DocumentSequence::query()->where('type', DocumentType::CreditNote->value)->count());
     }
 }

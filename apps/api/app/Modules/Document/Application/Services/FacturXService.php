@@ -100,7 +100,9 @@ final class FacturXService
     private function setDocumentHeader(ZugferdDocumentBuilder $builder, Document $document): void
     {
         $builder->setDocumentInformation(
-            $document->document_number,
+            // R-2: a Factur-X e-invoice describes a POSTED invoice, which is numbered.
+            // A NULL here would emit a legally-filed e-invoice with no invoice number.
+            $document->requireDocumentNumber(),
             '380', // UN/CEFACT code for Commercial Invoice
             $document->document_date,
             $document->currency ?? 'EUR',

@@ -223,7 +223,8 @@ class AgedReceivablesService
             $transactions[] = [
                 'date' => $invoice->document_date->toDateString(),
                 'type' => 'Invoice',
-                'document_number' => $invoice->document_number,
+                // R-2: the query above is `status = Posted`, so the invoice is numbered.
+                'document_number' => $invoice->requireDocumentNumber(),
                 'description' => 'Invoice',
                 'debit' => CurrencyScale::bcformat($amount, $scale),
                 'credit' => '0.00',
@@ -272,7 +273,8 @@ class AgedReceivablesService
             $transactions[] = [
                 'date' => $creditNote->document_date->toDateString(),
                 'type' => 'Credit Note',
-                'document_number' => $creditNote->document_number,
+                // R-2: `status = Posted` above — a posted credit note is numbered.
+                'document_number' => $creditNote->requireDocumentNumber(),
                 'description' => 'Credit note',
                 'debit' => '0.00',
                 'credit' => CurrencyScale::bcformat($amount, $scale),

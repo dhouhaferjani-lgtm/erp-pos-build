@@ -10,6 +10,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Application\Services\CreditNoteService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\DocumentSequence;
 use App\Modules\Document\Domain\Enums\CreditNoteReason;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -96,6 +97,51 @@ class CreditNoteServiceTest extends TestCase
         $this->assertEquals('1200.000', $creditNote->total);
         $this->assertEquals(CreditNoteReason::RETURN, $creditNote->credit_note_reason);
         $this->assertEquals('Full refund - product return', $creditNote->notes);
+        $this->assertNull($creditNote->document_number);
+        $this->assertSame(0, DocumentSequence::query()->where('type', DocumentType::CreditNote->value)->count());
+    }
+
+    /** @test */
+    public function it_creates_an_unnumbered_line_based_credit_note_draft(): void
+    {
+        $invoice = $this->createPostedInvoice('INV-LINE-CN', '100.00', '20.00', '120.00');
+        $line = DocumentLine::create([
+            'document_id' => $invoice->id,
+            'line_number' => 1,
+            'description' => 'Line credit',
+            'quantity' => '2.0000',
+            'unit_price' => '50.000',
+            'tax_rate' => '20.00',
+            'line_total' => '100.000',
+        ]);
+
+        $creditNote = $this->service->createLineBasedCreditNote(
+            sourceInvoiceId: $invoice->id,
+            lines: [['line_id' => $line->id, 'quantity' => '1.0000']],
+            reason: CreditNoteReason::RETURN,
+        );
+
+        $this->assertNull($creditNote->document_number);
+        $this->assertSame(0, DocumentSequence::query()->where('type', DocumentType::CreditNote->value)->count());
+    }
+
+    /** @test */
+    public function it_creates_an_unnumbered_standalone_credit_note_draft(): void
+    {
+        $creditNote = $this->service->createStandaloneCreditNote(
+            partnerId: $this->partner->id,
+            lines: [[
+                'description' => 'Goodwill credit',
+                'quantity' => '1.0000',
+                'unit_price' => '10.000',
+                'tax_rate' => '0',
+            ]],
+            reason: CreditNoteReason::OTHER,
+            notes: 'Goodwill adjustment',
+        );
+
+        $this->assertNull($creditNote->document_number);
+        $this->assertSame(0, DocumentSequence::query()->where('type', DocumentType::CreditNote->value)->count());
     }
 
     /** @test */
@@ -169,7 +215,7 @@ class CreditNoteServiceTest extends TestCase
     }
 
     /** @test */
-    public function it_generates_sequential_credit_note_numbers(): void
+    public function it_does_not_generate_numbers_for_successive_credit_note_drafts(): void
     {
         $invoice = $this->createPostedInvoice('INV-001', '1000.00', '200.00', '1200.00');
 
@@ -185,11 +231,9 @@ class CreditNoteServiceTest extends TestCase
             reason: CreditNoteReason::PRICE_ADJUSTMENT,
         );
 
-        $this->assertNotEmpty($cn1->document_number);
-        $this->assertNotEmpty($cn2->document_number);
-        $this->assertNotEquals($cn1->document_number, $cn2->document_number);
-        $this->assertStringStartsWith('CN-', $cn1->document_number);
-        $this->assertStringStartsWith('CN-', $cn2->document_number);
+        $this->assertNull($cn1->document_number);
+        $this->assertNull($cn2->document_number);
+        $this->assertSame(0, DocumentSequence::query()->where('type', DocumentType::CreditNote->value)->count());
     }
 
     /** @test */
@@ -232,7 +276,7 @@ class CreditNoteServiceTest extends TestCase
     }
 
     /** @test */
-    public function it_generates_collision_free_numbers_when_a_legacy_format_row_exists(): void
+    public function it_leaves_new_drafts_unnumbered_when_legacy_numbered_rows_exist(): void
     {
         // Simulate a prior session's legacy-format credit note (CN-{seq}, no year segment)
         // sitting alongside a current-format one (CN-{year}-{seq}, produced by
@@ -272,14 +316,12 @@ class CreditNoteServiceTest extends TestCase
             reason: CreditNoteReason::PRICE_ADJUSTMENT,
         );
 
-        $this->assertNotEquals($legacy->document_number, $creditNote->document_number);
-        $this->assertNotEquals($current->document_number, $creditNote->document_number);
-        $this->assertNotSame('CN-02027', $creditNote->document_number, 'must not misparse the year segment as a sequence');
+        $this->assertNull($creditNote->document_number);
 
         // Persisted without a unique-constraint violation.
         $this->assertDatabaseHas('documents', [
             'id' => $creditNote->id,
-            'document_number' => $creditNote->document_number,
+            'document_number' => null,
         ]);
 
         // A second credit note in the same transaction batch must also be collision-free
@@ -290,7 +332,8 @@ class CreditNoteServiceTest extends TestCase
             reason: CreditNoteReason::PRICE_ADJUSTMENT,
         );
 
-        $this->assertNotEquals($creditNote->document_number, $creditNote2->document_number);
+        $this->assertNull($creditNote2->document_number);
+        $this->assertSame(0, DocumentSequence::query()->where('type', DocumentType::CreditNote->value)->count());
     }
 
     private function createPostedInvoice(

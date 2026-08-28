@@ -28,8 +28,8 @@ use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimSet;
 use App\Modules\Document\Domain\Services\DeliveryComplianceGate;
 use App\Modules\Document\Domain\Services\DeliveryNoteFromDocumentFactory;
 use App\Modules\Document\Domain\Services\DeliveryNoteService;
-use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
+use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
@@ -78,7 +78,7 @@ class InvoiceController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly LocationContext $locationContext,
-        private readonly DocumentNumberingService $numberingService,
+        private readonly DocumentStatusService $documentStatusService,
         private readonly DocumentPostingService $postingService,
         private readonly DeliveryNoteService $deliveryNoteService,
         private readonly TaxCalculationService $taxCalculationService,
@@ -275,8 +275,12 @@ class InvoiceController extends Controller
         $tenantId = $company->tenant_id;
 
         return DB::transaction(function () use ($request, $tenantId, $companyId, $company, $validated, $lines, $vehicleContext): JsonResponse {
-            // Generate document number
-            $documentNumber = $this->numberingService->generateNumber($tenantId, $companyId, DocumentType::Invoice);
+            // R-2 / LEDGER D-T9-1 — a DRAFT is born unnumbered. The invoice is
+            // created `Draft` below, and a number spent here is spent forever if
+            // the operator never confirms it (the wave-4 orphan shape).
+            // `DocumentStatusService` allocates it at confirm — before the seal,
+            // which hashes `document_number`.
+            $documentNumber = null;
 
             // Batch-fetch products and services for tax defaults + snapshot capture (1 query each)
             $productIds = collect($lines)->pluck('product_id')->filter()->unique()->values()->toArray();
@@ -621,9 +625,16 @@ class InvoiceController extends Controller
                     throw new \DomainException('Only draft invoices can be confirmed');
                 }
 
-                // For invoices, simple status change (posting creates GL entries)
-                $lockedDocument->update([
-                    'status' => DocumentStatus::Confirmed,
+                // For invoices, simple status change (posting creates GL entries).
+                //
+                // R-2 / LEDGER D-T9-1 — routed through `DocumentStatusService`,
+                // the ONE place a `documents` row is numbered. The invoice is a
+                // draft with no `document_number` until this moment; the
+                // allocation is folded into the same UPDATE as the status flip,
+                // inside this transaction, so a failure below returns the number
+                // to the sequence instead of leaving a gap. It also lands BEFORE
+                // any posting/seal, which hashes `document_number`.
+                $this->documentStatusService->transition($lockedDocument, DocumentStatus::Confirmed, [
                     'confirmed_at' => now(),
                     'confirmed_by' => auth()->id(),
                 ]);

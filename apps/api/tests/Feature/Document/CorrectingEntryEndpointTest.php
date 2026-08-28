@@ -140,7 +140,7 @@ final class CorrectingEntryEndpointTest extends TestCase
         self::assertIsString($correctionId);
 
         $correction = Document::findOrFail($correctionId);
-        self::assertStringStartsWith('CE-', (string) $correction->document_number);
+        self::assertNull($correction->document_number);
         self::assertSame($invoice->id, $correction->source_document_id);
 
         $payload = CorrectingEntryPayload::fromDocumentPayload($correction->payload);

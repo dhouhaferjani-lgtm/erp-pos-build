@@ -74,7 +74,11 @@ export interface PartnerInfo {
  */
 export interface ReturnNote {
   id: string
-  document_number: string
+  /**
+   * NULL while the return note is a DRAFT (R-2 / LEDGER D-T9-1): the number is
+   * allocated at confirm. Render `sales:documents.draftNumberPlaceholder`.
+   */
+  document_number: string | null
   document_date: string // ISO 8601
   partner: PartnerInfo | null
   currency: string
@@ -248,7 +252,7 @@ export function isReturnNote(value: unknown): value is ReturnNote {
   const obj = value as Record<string, unknown>
   return (
     typeof obj['id'] === 'string' &&
-    typeof obj['document_number'] === 'string' &&
+    (typeof obj['document_number'] === 'string' || obj['document_number'] === null) &&
     typeof obj['total'] === 'string' &&
     typeof obj['metadata'] === 'object' &&
     obj['metadata'] !== null

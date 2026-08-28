@@ -36,7 +36,9 @@ function validQuantity(value: string): boolean {
 }
 
 export function AddToPoDialog({ selected, isOpen, onClose }: AddToPoDialogProps) {
-  const { t } = useTranslation('replenishment')
+  // 'sales' joins the list for `documents.draftNumberPlaceholder` — the label an
+  // unnumbered DRAFT purchase order shows (R-2 / LEDGER D-T9-1).
+  const { t } = useTranslation(['replenishment', 'sales'])
   const locations = (useLocations().data ?? []).filter((location) => location.isActive)
   const defaultDestinationId = locations.find((location) => location.type === 'warehouse')?.id ?? ''
   const [supplierId, setSupplierId] = useState('')
@@ -124,7 +126,7 @@ export function AddToPoDialog({ selected, isOpen, onClose }: AddToPoDialogProps)
             >
               <option value="">{t('dialog.existing_po')}</option>
               {(drafts.data ?? []).map((document) => (
-                <option key={document.id} value={document.id}>{document.document_number ?? document.id}</option>
+                <option key={document.id} value={document.id}>{document.document_number ?? t('sales:documents.draftNumberPlaceholder')}</option>
               ))}
             </select>
           </div>

@@ -17,7 +17,6 @@ use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\PriceEntryMode;
 use App\Modules\Document\Domain\Exceptions\UnpricedPurchaseOrderLineException;
-use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\PurchaseOrderService;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
@@ -68,7 +67,6 @@ class PurchaseOrderController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly LocationContext $locationContext,
-        private readonly DocumentNumberingService $numberingService,
         private readonly PurchaseOrderService $purchaseOrderService,
         private readonly GoodsReceiptService $goodsReceiptService,
         private readonly VehicleContextBuilder $vehicleContextBuilder,
@@ -380,8 +378,11 @@ class PurchaseOrderController extends Controller
         $tenantId = $company->tenant_id;
 
         return DB::transaction(function () use ($tenantId, $companyId, $company, $validated, $lines, $vehicleContext): JsonResponse {
-            // Generate document number
-            $documentNumber = $this->numberingService->generateNumber($tenantId, $companyId, DocumentType::PurchaseOrder);
+            // R-2 / LEDGER D-T9-1 — a DRAFT is born unnumbered. This route creates
+            // the purchase order `Draft` below; a number spent here is spent forever if the
+            // operator never confirms it — the wave-4 `PO-2026-0001 … PO-2026-0009`
+            // orphan shape. `DocumentStatusService` allocates it at confirm.
+            $documentNumber = null;
 
             // Batch-fetch products and services for tax defaults + snapshot capture (1 query each)
             $productIds = collect($lines)->pluck('product_id')->filter()->unique()->values()->toArray();

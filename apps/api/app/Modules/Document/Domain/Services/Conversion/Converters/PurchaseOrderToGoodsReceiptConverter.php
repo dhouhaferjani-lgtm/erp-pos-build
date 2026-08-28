@@ -149,8 +149,12 @@ final class PurchaseOrderToGoodsReceiptConverter implements DocumentConverterInt
             targetDocumentId: $updatedDocument->id,
             companyId: $source->company_id,
             tenantId: $source->tenant_id,
-            sourceDocumentNumber: $source->document_number,
-            targetDocumentNumber: $updatedDocument->document_number,
+            // R-2 / LEDGER D-T9-1: every converter refuses a DRAFT source (see this
+            // class's validation), and the target is created numbered — so both
+            // numbers exist. `requireDocumentNumber()` states that instead of
+            // letting a NULL into an immutable conversion event.
+            sourceDocumentNumber: $source->requireDocumentNumber(),
+            targetDocumentNumber: $updatedDocument->requireDocumentNumber(),
             sourceType: $source->type->value,
             targetType: $updatedDocument->type->value,
             userId: $actorUserId,

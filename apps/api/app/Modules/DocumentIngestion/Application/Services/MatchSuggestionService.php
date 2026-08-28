@@ -143,7 +143,13 @@ final readonly class MatchSuggestionService
     }
 
     /**
-     * @return list<array{id: string, document_number: string, supplier_id: string, total: numeric-string|null}>
+     * R-2 / LEDGER D-T9-1 — `document_number` is NULLABLE here because this query
+     * deliberately includes `DocumentStatus::Draft`: matching an incoming supplier
+     * document against a purchase order the buyer has not confirmed yet is the
+     * point. A draft carries no number, and the client renders the draft
+     * placeholder for it rather than a fabricated one.
+     *
+     * @return list<array{id: string, document_number: string|null, supplier_id: string, total: numeric-string|null}>
      */
     private function purchaseOrderCandidates(DocumentIngestion $ingestion, string $supplierId): array
     {

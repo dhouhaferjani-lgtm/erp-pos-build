@@ -36,7 +36,11 @@ final class CollectStatementExpenseSuggestions
 
         foreach ($expenses as $expense) {
             $vendor = $expense->getAttribute('suggestion_vendor_name');
-            $label = is_string($vendor) && trim($vendor) !== '' ? trim($vendor) : $expense->document_number;
+            // R-2 / LEDGER D-T9-1: the label is DISPLAY, and a draft expense carries no
+            // number — fall through to the id rather than an empty suggestion label.
+            $label = is_string($vendor) && trim($vendor) !== ''
+                ? trim($vendor)
+                : ($expense->document_number ?? $expense->id);
             $normalizedVendor = mb_strtolower(preg_replace('/\s+/u', ' ', $label) ?? $label);
             $paymentDate = $expense->getAttribute('suggestion_payment_date');
             $candidateDate = is_string($paymentDate) && $paymentDate !== ''

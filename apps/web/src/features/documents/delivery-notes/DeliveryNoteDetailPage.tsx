@@ -133,7 +133,7 @@ export function DeliveryNoteDetailPage() {
 
         <div className="flex items-start justify-between">
           <div>
-            <h1 className={`text-[1.875rem] leading-9 font-bold ${colorClasses.textGray900}`}>{deliveryNote.document_number}</h1>
+            <h1 className={`text-[1.875rem] leading-9 font-bold ${colorClasses.textGray900}`}>{deliveryNote.document_number ?? t('sales:documents.draftNumberPlaceholder')}</h1>
             <div className="mt-2 flex items-center gap-3">
               <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${colorClasses.bgPurple100} ${colorClasses.textPurple800}`}>
                 {t('documents.types.delivery_note')}

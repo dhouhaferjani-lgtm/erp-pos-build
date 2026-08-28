@@ -50,7 +50,7 @@ use Illuminate\Support\Carbon;
  * @property FiscalCategory $fiscal_category
  * @property FiscalStatus $fiscal_status
  * @property DocumentStatus $status
- * @property string $document_number
+ * @property string|null $document_number NULL while DRAFT — see requireDocumentNumber()
  * @property Carbon $document_date
  * @property Carbon|null $due_date
  * @property Carbon|null $valid_until
@@ -520,6 +520,43 @@ class Document extends Model
     public function isDraft(): bool
     {
         return $this->status === DocumentStatus::Draft;
+    }
+
+    /**
+     * The number this document is known by — required to exist.
+     *
+     * R-2 / LEDGER D-T9-1. `document_number` is NULL for a `Draft` (the number
+     * is allocated on the first transition out of `Draft`, by
+     * `App\Modules\Document\Domain\Services\DocumentStatusService`),
+     * so every consumer that genuinely needs a number is consuming a document
+     * that has already left `Draft`: a seal, a fiscal event, a conversion
+     * source, a payment allocation, a chain verification.
+     *
+     * This method is where that expectation is CHECKED rather than assumed. A
+     * null here is not a display problem to paper over with `?? ''` — it means
+     * a code path reached a numbered-document operation with an unnumbered
+     * draft, and the honest outcome is a loud failure before the value is
+     * sealed, hashed, or emitted into an immutable event. Consumers that only
+     * DISPLAY the number (a PDF filename, a report row, a picker label) must
+     * NOT call this: they fall back to the draft placeholder instead.
+     *
+     * @throws \DomainException when the document has not been numbered yet
+     */
+    public function requireDocumentNumber(): string
+    {
+        $number = $this->document_number;
+
+        if ($number === null) {
+            throw new \DomainException(sprintf(
+                'Document %s (%s, %s) has no document_number: a number is allocated on the first '
+                .'transition out of Draft, and this operation requires a numbered document.',
+                $this->id,
+                $this->type->value,
+                $this->status->value,
+            ));
+        }
+
+        return $number;
     }
 
     /**

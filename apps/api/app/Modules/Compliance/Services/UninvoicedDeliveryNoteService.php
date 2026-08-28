@@ -83,7 +83,10 @@ class UninvoicedDeliveryNoteService
 
                 return [
                     'id' => $dn->id,
-                    'document_number' => $dn->document_number,
+                    // R-2 / LEDGER D-T9-1: the base query is
+                    // `status = Confirmed` (see baseQuery()), and confirming is
+                    // where a delivery note is numbered.
+                    'document_number' => $dn->requireDocumentNumber(),
                     'document_date' => $dn->document_date->toDateString(),
                     'partner_id' => $dn->partner_id,
                     'partner_name' => $dn->partner->name ?? '',
@@ -268,7 +271,8 @@ class UninvoicedDeliveryNoteService
 
             return [
                 'id' => $dn->id,
-                'document_number' => $dn->document_number,
+                // R-2: `status = Confirmed` — see the note above.
+                'document_number' => $dn->requireDocumentNumber(),
                 'document_date' => $dn->document_date->toDateString(),
                 'partner_id' => $dn->partner_id,
                 'partner_name' => $dn->partner->name ?? '',

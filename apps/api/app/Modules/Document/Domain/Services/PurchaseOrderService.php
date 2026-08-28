@@ -33,6 +33,7 @@ final class PurchaseOrderService
         private readonly LandedCostService $landedCostService,
         private readonly TaxCalculationService $taxCalculationService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly DocumentStatusService $documentStatusService,
     ) {}
 
     /**
@@ -115,9 +116,15 @@ final class PurchaseOrderService
         $confirmedAt = now();
         $confirmedBy = $actorId ?? auth()->id();
 
-        // Update status first
-        $purchaseOrder->update([
-            'status' => DocumentStatus::Confirmed,
+        // Update status first.
+        //
+        // R-2 / LEDGER D-T9-1 — routed through `DocumentStatusService`, the ONE
+        // place a `documents` row is numbered: the PO is a draft with no
+        // `document_number` until this moment (this is the exact defect the
+        // wave-4 campaign found as `PO-2026-0001 … PO-2026-0009`), and the
+        // allocation is folded into this same UPDATE, inside the caller's
+        // `DB::transaction()`, so a failure below returns the number.
+        $this->documentStatusService->transition($purchaseOrder, DocumentStatus::Confirmed, [
             'confirmed_at' => $confirmedAt,
             'confirmed_by' => $confirmedBy,
         ]);
@@ -150,7 +157,11 @@ final class PurchaseOrderService
             purchaseOrderId: $purchaseOrder->id,
             tenantId: $purchaseOrder->tenant_id,
             companyId: $purchaseOrder->company_id,
-            documentNumber: $purchaseOrder->document_number,
+            // R-2 / LEDGER D-T9-1: this event describes a CONFIRMED document, and the
+            // number is allocated on that very transition — so it exists, and
+            // `requireDocumentNumber()` says so instead of letting a NULL into an
+            // immutable event payload.
+            documentNumber: $purchaseOrder->requireDocumentNumber(),
             partnerId: $purchaseOrder->partner_id,
             total: $purchaseOrder->total ?? '0.00',
             currency: $purchaseOrder->currency,

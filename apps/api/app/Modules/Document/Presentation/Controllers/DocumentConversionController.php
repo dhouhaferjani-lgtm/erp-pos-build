@@ -497,15 +497,21 @@ class DocumentConversionController extends Controller
      * rolled back. A claim loser must never build its 422 from transaction-local
      * marker state that no longer exists.
      *
+     * R-2 / LEDGER D-T9-1 — `document_number` is nullable on both sides: the
+     * `not_confirmed` arm refuses a DRAFT delivery note, and a draft is not
+     * numbered until it is confirmed. The row is still emitted (the client has
+     * the `id` and renders the draft placeholder); dropping it would hide a
+     * refusal reason from the operator.
+     *
      * @param list<array{
      *     id: string,
-     *     document_number: string,
+     *     document_number: string|null,
      *     reason: 'already_invoiced'|'wrong_partner'|'wrong_currency'|'not_confirmed'|'cancelled'|'no_lines'|'claim_lost'|'partial_selection_incomplete'
      * }> $failures
      * @return array{
      *     documents: list<array{
      *         id: string,
-     *         document_number: string,
+     *         document_number: string|null,
      *         reason: string,
      *         invoice_id: string|null,
      *         invoice_number: string|null,

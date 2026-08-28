@@ -160,9 +160,9 @@ class CreditNoteIntegrationTest extends TestCase
             'notes' => 'Full refund - product return',
         ]);
 
-        // Verify document number format
+        // Drafts are abandonable and therefore unnumbered until confirm.
         $creditNote = Document::find($creditNoteId);
-        $this->assertStringStartsWith('CN-', $creditNote->document_number);
+        $this->assertNull($creditNote->document_number);
     }
 
     /** @test */
@@ -357,7 +357,7 @@ class CreditNoteIntegrationTest extends TestCase
     }
 
     /** @test */
-    public function it_generates_sequential_credit_note_numbers(): void
+    public function it_generates_sequential_credit_note_numbers_at_confirm(): void
     {
         $invoice = $this->createPostedInvoice('INV-001', '1000.00', '190.00', '1190.00');
 
@@ -375,9 +375,21 @@ class CreditNoteIntegrationTest extends TestCase
                 'reason' => 'return',
             ]);
 
-        $cn1Number = $response1->json('data.document_number');
-        $cn2Number = $response2->json('data.document_number');
+        $this->assertNull($response1->json('data.document_number'));
+        $this->assertNull($response2->json('data.document_number'));
 
+        $this->actingAs($this->user)
+            ->postJson('/api/v1/credit-notes/'.$response1->json('data.id').'/confirm')
+            ->assertOk();
+        $this->actingAs($this->user)
+            ->postJson('/api/v1/credit-notes/'.$response2->json('data.id').'/confirm')
+            ->assertOk();
+
+        $cn1Number = Document::query()->findOrFail($response1->json('data.id'))->document_number;
+        $cn2Number = Document::query()->findOrFail($response2->json('data.id'))->document_number;
+
+        $this->assertIsString($cn1Number);
+        $this->assertIsString($cn2Number);
         $this->assertStringStartsWith('CN-', $cn1Number);
         $this->assertStringStartsWith('CN-', $cn2Number);
         $this->assertNotEquals($cn1Number, $cn2Number);

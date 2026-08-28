@@ -15,7 +15,6 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
-use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\SalesOrderService;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
@@ -52,7 +51,6 @@ class SalesOrderController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly LocationContext $locationContext,
-        private readonly DocumentNumberingService $numberingService,
         private readonly SalesOrderService $salesOrderService,
         private readonly VehicleContextBuilder $vehicleContextBuilder,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
@@ -186,8 +184,11 @@ class SalesOrderController extends Controller
         $tenantId = $company->tenant_id;
 
         return DB::transaction(function () use ($request, $tenantId, $companyId, $company, $validated, $lines, $vehicleContext): JsonResponse {
-            // Generate document number
-            $documentNumber = $this->numberingService->generateNumber($tenantId, $companyId, DocumentType::SalesOrder);
+            // R-2 / LEDGER D-T9-1 — a DRAFT is born unnumbered. This route creates
+            // the sales order `Draft` below; a number spent here is spent forever if the
+            // operator never confirms it — the wave-4 `PO-2026-0001 … PO-2026-0009`
+            // orphan shape. `DocumentStatusService` allocates it at confirm.
+            $documentNumber = null;
 
             // Batch-fetch products and services for tax defaults + snapshot capture (1 query each)
             $productIds = collect($lines)->pluck('product_id')->filter()->unique()->values()->toArray();

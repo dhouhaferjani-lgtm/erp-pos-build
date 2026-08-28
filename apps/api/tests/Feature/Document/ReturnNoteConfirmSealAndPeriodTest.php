@@ -68,13 +68,50 @@ final class ReturnNoteConfirmSealAndPeriodTest extends TestCase
     {
         $returnNote = $this->draftReturnNote(Carbon::today());
 
-        $confirmed = $this->service->confirm($returnNote, $this->cfUser->id);
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        try {
+            $confirmed = $this->service->confirm($returnNote, $this->cfUser->id);
+        } finally {
+            $queries = DB::getQueryLog();
+            DB::disableQueryLog();
+        }
 
         self::assertSame(DocumentStatus::Confirmed, $confirmed->status);
         self::assertSame(FiscalStatus::Sealed, $confirmed->fiscal_status);
         self::assertNotNull($confirmed->confirmed_at);
         self::assertSame($this->cfUser->id, $confirmed->confirmed_by);
         self::assertNotNull($confirmed->fiscal_hash);
+        $this->assertConditionalNumberAndStatusUpdate(
+            $queries,
+            $returnNote->id,
+            'Return-note allocation and Draft → Confirmed must share one document UPDATE.',
+        );
+    }
+
+    public function test_confirmation_locks_the_target_return_note_row(): void
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            self::markTestSkipped('PostgreSQL exposes SELECT ... FOR UPDATE in the query log.');
+        }
+
+        $returnNote = $this->draftReturnNote(Carbon::today());
+        $queries = [];
+        DB::listen(static function ($query) use (&$queries): void {
+            $queries[] = ['sql' => strtolower($query->sql), 'bindings' => $query->bindings];
+        });
+
+        $this->service->confirm($returnNote, $this->cfUser->id);
+
+        self::assertTrue(
+            collect($queries)->contains(
+                static fn (array $query): bool => str_contains($query['sql'], 'from "documents"')
+                    && str_contains($query['sql'], 'for update')
+                    && in_array($returnNote->id, $query['bindings'], true),
+            ),
+            'Return-note confirmation must lock the target document row before sealing it.',
+        );
     }
 
     /**
@@ -313,5 +350,27 @@ final class ReturnNoteConfirmSealAndPeriodTest extends TestCase
             'period_end' => $date->copy()->endOfMonth()->toDateString(),
             'status' => VatPeriodStatus::Closed,
         ]);
+    }
+
+    /**
+     * @param  array<array-key, array{query: string, bindings: array<array-key, mixed>, time: float|null}>  $queries
+     */
+    private function assertConditionalNumberAndStatusUpdate(array $queries, string $documentId, string $message): void
+    {
+        $update = collect($queries)->first(static function (array $query) use ($documentId): bool {
+            $sql = strtolower($query['query']);
+
+            return str_starts_with($sql, 'update "documents"')
+                && str_contains($sql, '"document_number"')
+                && str_contains($sql, '"status"')
+                && in_array($documentId, $query['bindings'], true);
+        });
+
+        self::assertIsArray($update, $message);
+        self::assertMatchesRegularExpression(
+            '/where "id" = \? and "status" = \? and "document_number" is null$/',
+            strtolower($update['query']),
+            $message.' The write must be guarded by id, expected status, and a NULL number.',
+        );
     }
 }

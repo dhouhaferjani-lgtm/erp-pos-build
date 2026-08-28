@@ -252,7 +252,12 @@ final class LineEntryController extends Controller
     }
 
     /**
-     * @return array{unit_price: string, at: string|null, document_no: string}|null
+     * R-2 / LEDGER D-T9-1 — `document_no` is NULLABLE: this query is not filtered by
+     * status, so the most recent line for the partner may well sit on a DRAFT, and a
+     * draft carries no number. The client renders the draft placeholder for it; the
+     * PRICE, which is what this hint is for, is just as usable either way.
+     *
+     * @return array{unit_price: string, at: string|null, document_no: string|null}|null
      */
     private function lastSaleToPartner(?string $partnerId, string $productId, ?string $variantId): ?array
     {

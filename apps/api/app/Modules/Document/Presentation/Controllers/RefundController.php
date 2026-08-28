@@ -17,7 +17,6 @@ use App\Modules\Document\Domain\Exceptions\ReturnLocationAmbiguousException;
 use App\Modules\Document\Domain\Exceptions\ReturnLocationUnresolvedException;
 use App\Modules\Document\Domain\Exceptions\ReturnNothingDeliveredException;
 use App\Modules\Document\Domain\Exceptions\ReturnQuantityExceededException;
-use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\RefundService;
 use App\Modules\Taxation\Domain\Exceptions\DocumentPeriodLockedException;
 use App\Shared\Exceptions\ReturnPeriodLockedException;
@@ -32,7 +31,6 @@ class RefundController extends Controller
 {
     public function __construct(
         private readonly RefundService $refundService,
-        private readonly DocumentNumberingService $numberingService,
         private readonly CompanyContext $companyContext,
     ) {}
 
@@ -274,7 +272,6 @@ class RefundController extends Controller
             $creditNote = $this->refundService->createFullCreditNote(
                 $invoice,
                 (string) $request->input('reason'),
-                $this->numberingService
             );
 
             return response()->json([
@@ -318,7 +315,6 @@ class RefundController extends Controller
                 $invoice,
                 $request->input('line_items'),
                 (string) $request->input('reason'),
-                $this->numberingService
             );
 
             return response()->json([

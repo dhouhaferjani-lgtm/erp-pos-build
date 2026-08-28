@@ -11,7 +11,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
-use App\Modules\Document\Domain\Services\DocumentNumberingService;
+use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Shared\Contracts\Accounting\DocumentGlCorrectionInterface;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -39,7 +39,7 @@ use Illuminate\Support\Facades\DB;
 final class CorrectingEntryService
 {
     public function __construct(
-        private readonly DocumentNumberingService $numberingService,
+        private readonly DocumentStatusService $documentStatusService,
         private readonly DocumentGlCorrectionInterface $corrections,
     ) {}
 
@@ -71,11 +71,7 @@ final class CorrectingEntryService
                 'fiscal_category' => FiscalCategory::NonFiscal,
                 'fiscal_status' => FiscalStatus::Draft,
                 'status' => DocumentStatus::Draft,
-                'document_number' => $this->numberingService->generateNumber(
-                    $company->tenant_id,
-                    $company->id,
-                    DocumentType::CorrectingEntry,
-                ),
+                'document_number' => null,
                 'document_date' => now(),
                 'source_document_id' => $target->id,
                 'location_id' => $target->location_id,
@@ -111,8 +107,7 @@ final class CorrectingEntryService
             );
         }
 
-        $correction->update([
-            'status' => DocumentStatus::Confirmed,
+        $this->documentStatusService->transition($correction, DocumentStatus::Confirmed, [
             'confirmed_at' => now(),
         ]);
 

@@ -1106,7 +1106,10 @@ class PaymentController extends Controller
                     // Dispatch DocumentFullyPaid event when document is fully paid
                     if ($document->status === DocumentStatus::Paid) {
                         $paidDocumentId = $document->id;
-                        $paidDocumentNumber = $document->document_number;
+                        // R-2 / LEDGER D-T9-1: `markPaid()` accepts only a POSTED document,
+                        // and posting is only reachable past `Draft` — where the number is
+                        // allocated. The value is emitted in an immutable event.
+                        $paidDocumentNumber = $document->requireDocumentNumber();
                         $paidDocumentType = $document->type->value;
                         $paidPartnerId = $document->partner_id;
                         $paidTotal = $document->total ?? '0.00';
@@ -1764,7 +1767,8 @@ class PaymentController extends Controller
 
                     // Dispatch DocumentFullyPaid event
                     $primaryDocId = $primaryDocument->id;
-                    $primaryDocNumber = $primaryDocument->document_number;
+                    // R-2: `markPaid()` above accepts only a POSTED document, so it is numbered.
+                    $primaryDocNumber = $primaryDocument->requireDocumentNumber();
                     $primaryDocType = $primaryDocument->type->value;
                     $primaryDocPartnerId = $primaryDocument->partner_id;
                     $primaryDocTotal = $primaryDocument->total ?? '0.00';
@@ -1880,7 +1884,8 @@ class PaymentController extends Controller
                                 $this->documentStatus->markPaid($targetDoc);
 
                                 $paidDocId = $targetDoc->id;
-                                $paidDocNumber = $targetDoc->document_number;
+                                // R-2: `markPaid()` above accepts only a POSTED document.
+                                $paidDocNumber = $targetDoc->requireDocumentNumber();
                                 $paidDocType = $targetDoc->type->value;
                                 $paidDocPartnerId = $targetDoc->partner_id;
                                 $paidDocTotal = $targetDoc->total ?? '0.00';
@@ -1962,7 +1967,8 @@ class PaymentController extends Controller
                                 $this->documentStatus->markPaid($targetDoc);
 
                                 $paidDocId = $targetDoc->id;
-                                $paidDocNumber = $targetDoc->document_number;
+                                // R-2: `markPaid()` above accepts only a POSTED document.
+                                $paidDocNumber = $targetDoc->requireDocumentNumber();
                                 $paidDocType = $targetDoc->type->value;
                                 $paidDocPartnerId = $targetDoc->partner_id;
                                 $paidDocTotal = $targetDoc->total ?? '0.00';

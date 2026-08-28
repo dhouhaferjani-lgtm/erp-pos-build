@@ -13,6 +13,7 @@ use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\PurchaseOrderConfirmed;
+use App\Modules\Document\Domain\Services\DocumentStatusService;
 use App\Modules\Document\Domain\Services\PurchaseOrderService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\LandedCostService;
@@ -54,7 +55,15 @@ class PurchaseOrderServiceTest extends TestCase
         // W2-6 r2 C2: confirm() now refuses unpriced lines, which needs the money
         // scale of the document's currency (rule 19 — resolver, never a literal).
         $scaleResolver = $this->app->make(CurrencyScaleResolverInterface::class);
-        $this->service = new PurchaseOrderService($landedCostService, $taxCalculationService, $scaleResolver);
+        // R-2: confirm() is where a purchase order is numbered, and the allocation
+        // lives in DocumentStatusService — the one place a `documents` row is numbered.
+        $documentStatusService = $this->app->make(DocumentStatusService::class);
+        $this->service = new PurchaseOrderService(
+            $landedCostService,
+            $taxCalculationService,
+            $scaleResolver,
+            $documentStatusService,
+        );
 
         $this->partner = Partner::factory()->create([
             'tenant_id' => $this->tenant->id,

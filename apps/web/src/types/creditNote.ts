@@ -64,7 +64,11 @@ export interface PartnerInfo {
  */
 export interface CreditNote {
   id: string;
-  document_number: string;
+  /**
+   * NULL while the credit note is a DRAFT (R-2 / LEDGER D-T9-1): the number is
+   * allocated at confirm. Render `sales:documents.draftNumberPlaceholder`.
+   */
+  document_number: string | null;
   document_date: string; // ISO 8601
   source_invoice_id: string;
   source_invoice_number: string;
@@ -186,7 +190,7 @@ export function isCreditNote(value: unknown): value is CreditNote {
   const obj = value as Record<string, unknown>;
   return (
     typeof obj['id'] === 'string' &&
-    typeof obj['document_number'] === 'string' &&
+    (typeof obj['document_number'] === 'string' || obj['document_number'] === null) &&
     typeof obj['source_invoice_id'] === 'string' &&
     typeof obj['total'] === 'string' &&
     isCreditNoteReason(obj['reason'])

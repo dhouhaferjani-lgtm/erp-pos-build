@@ -9,7 +9,6 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Enums\DocumentType;
-use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\DocumentTotalsCalculator;
 use App\Modules\Document\Domain\Services\DraftPersistenceService;
 use App\Modules\Partner\Domain\Partner;
@@ -81,7 +80,6 @@ class DraftPersistenceServiceTest extends TestCase
         ]);
 
         $this->service = new DraftPersistenceService(
-            new DocumentNumberingService,
             new DocumentTotalsCalculator(app(TaxCalculationService::class)),
             new EloquentProductVariantLookup,
             app(CurrencyScaleResolverInterface::class),

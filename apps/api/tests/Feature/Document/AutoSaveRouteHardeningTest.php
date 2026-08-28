@@ -702,10 +702,19 @@ final class AutoSaveRouteHardeningTest extends TestCase
     }
 
     /**
-     * The other half of the same rule: the FIRST line is what allocates, and it
-     * allocates the number the abandoned form would otherwise have spent.
+     * INVERTED BY R-2 (LEDGER D-T9-1), as the residuals ticket requires of a
+     * contract a later lane changes.
+     *
+     * N-14's answer was "the FIRST LINE allocates" — which closed the lineless
+     * class and left the one-line-then-abandoned class wide open: this very
+     * payload used to spend `QT-<year>-0001` on a draft nobody ever confirms.
+     * The number is now allocated at CONFIRM and only there
+     * (`DocumentStatusService::numberAllocationFor()`), so the first line
+     * authors a row and spends NOTHING.
+     *
+     * The confirm half is pinned by `DeferredDocumentNumberingTest`.
      */
-    public function test_the_first_line_allocates_the_number_the_empty_form_did_not_spend(): void
+    public function test_the_first_line_authors_a_draft_without_spending_a_number(): void
     {
         $author = $this->authorizedUser();
 
@@ -731,10 +740,16 @@ final class AutoSaveRouteHardeningTest extends TestCase
         $this->assertIsString($draftId);
 
         $document = Document::query()->findOrFail($draftId);
-        $this->assertStringEndsWith(
-            '0001',
-            (string) $document->document_number,
-            'The abandoned empty form must not have consumed the first number.'
+        $this->assertNull(
+            $document->document_number,
+            'A draft is not a document yet — the number belongs to the confirm.'
+        );
+        $this->assertNull(
+            DocumentSequence::query()
+                ->where('company_id', $this->company->id)
+                ->where('type', DocumentType::Quote->value)
+                ->value('last_number'),
+            'and the quote sequence must not exist at all yet.'
         );
     }
 
@@ -1077,13 +1092,14 @@ final class AutoSaveRouteHardeningTest extends TestCase
      *
      * POST #1 authors the draft and burns a number; POST #2 replays the same
      * client-minted ids the editor still holds, and the document ends LINELESS
-     * with the number spent. This is the faithful two-save pin the first round's
+     * (R-2 has since taken the number out of it — see the inverted assertion at
+     * the tail). This is the faithful two-save pin the first round's
      * "editor's exact payload" test could not give, because a null `draft_id`
      * takes the create branch where `id` is ignored.
      *
      * Fails-to-red when Residual 1 is fixed — invert, do not delete.
      */
-    public function test_characterisation_two_editor_saves_end_lineless_with_a_burnt_number(): void
+    public function test_characterisation_two_editor_saves_end_lineless_without_burning_a_number(): void
     {
         $author = $this->authorizedUser();
 
@@ -1126,13 +1142,21 @@ final class AutoSaveRouteHardeningTest extends TestCase
             'Characterisation: a document authored entirely through auto-save ends lineless.'
         );
 
-        $this->assertSame(
-            1,
-            (int) DocumentSequence::query()
+        // INVERTED IN PART by R-2 (LEDGER D-T9-1): the lineless END STATE is
+        // still characterised above (residual R-5 owns it), but it no longer
+        // costs a number. The row reaches `Draft` unnumbered and the sequence is
+        // never touched, so the abandoned result is a stray row, not a hole in
+        // the fiscal sequence.
+        $this->assertNull(
+            DocumentSequence::query()
                 ->where('company_id', $this->company->id)
                 ->where('type', DocumentType::Invoice->value)
                 ->value('last_number'),
-            'Characterisation: and the invoice number it burned is spent on a lineless row.'
+            'R-2: an editor session that ends lineless must burn no invoice number.'
+        );
+        $this->assertNull(
+            Document::query()->findOrFail($draftId)->document_number,
+            'R-2: and the row it leaves behind holds no number to strand.'
         );
     }
 

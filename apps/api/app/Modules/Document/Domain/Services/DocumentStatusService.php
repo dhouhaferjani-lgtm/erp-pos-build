@@ -6,7 +6,9 @@ namespace App\Modules\Document\Domain\Services;
 
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Exceptions\DocumentRenumberingException;
 use App\Modules\Document\Domain\Exceptions\DocumentTransitionException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -26,6 +28,8 @@ use Illuminate\Support\Facades\Log;
  *     (`PaymentRefundService`, `OutboundInstrumentService`).
  *   - the four `Draft -> Posted` posting services: supplier invoice, supplier
  *     credit note, expense, income.
+ *   - all standard document confirms: quote, invoice, credit note, purchase
+ *     order, sales order, delivery note, return note, and correcting entry.
  *
  * NOT ROUTED — real, live, non-birth transitions that still write `status`
  * directly. Phase 2 owns them; naming them is the point, so the next reader
@@ -36,22 +40,14 @@ use Illuminate\Support\Facades\Log;
  *     cancelled-but-never-sealed document the print marker has to describe
  *     honestly (R2-F1); its `Posted` arm delegates to
  *     `DocumentPostingService::cancel()`, so only the unsealed edge is loose.
- *   - `DeliveryNoteService:180` and `ReturnNoteService:674` — `-> Confirmed`
- *     written together with the SEAL columns (`fiscal_hash`, `previous_hash`,
- *     `chain_sequence`). Called out explicitly because this lane edited both
- *     methods (their chain predecessor is now keyed on the seal, F-1) without
- *     routing the writes: these are hash-chain seals in their own right, and
- *     moving them belongs with a DN/RN posting-service lane, not here.
- *   - `SalesOrderService:96`, `:177`, `PurchaseOrderService:80`,
- *     `InvoiceController:614`, `QuoteController:536`,
- *     `CreditNoteController:279` — five `-> Confirmed` confirm sites.
  *   - every `create([... 'status' => ...])` BIRTH state, which is not a
  *     transition and is legitimately exempt (`ArApOpeningService` is the
  *     load-bearing example — its rows are exactly what `wasNeverSealed()`
  *     exempts).
- *   - `CorrectingEntryService:115`, `:173` — `Draft -> Confirmed` and
- *     `Confirmed -> Posted`; both edges ARE legal in the map, the service
- *     simply writes them itself.
+ *   - `CorrectingEntryService` — `Confirmed -> Posted`; the preceding
+ *     `Draft -> Confirmed` edge is routed here so it receives its number.
+ *   - `repairNeverPostedToConfirmed()` below — a deliberately exceptional
+ *     repair edge that is not legal in the normal adjacency map.
  *
  * NEITHER GUARD COVERS THAT REMAINDER, and the r1 claim that they did was
  * wrong: the PHPStan rule scopes to `Paid` anywhere and `Posted` under
@@ -78,11 +74,29 @@ use Illuminate\Support\Facades\Log;
  * `$extraAttributes` may NOT carry `status`; a caller that tries is refused
  * with an `InvalidArgumentException` rather than silently overriding the edge
  * this service just validated.
+ *
+ * IT DOES OWN ONE COLUMN BESIDES `status`: `document_number` (R-2 / LEDGER
+ * D-T9-1). Drafts are now born unnumbered and the number is allocated on the
+ * first transition out of `Draft` — see {@see self::allocateNumberAndTransition()} for
+ * the rule and {@see self::assignNumberIfMissing()} for the two confirm shapes
+ * that must allocate before their own status write. A caller MAY still name an
+ * unnumbered document itself (the expense and income posters do, from their own
+ * `EXP-`/`INC-` sequences). Once non-null, the number is immutable at this
+ * service boundary regardless of lifecycle or fiscal-seal state.
+ *
+ * Caller-side `lockForUpdate()` remains useful for serialising the rest of a
+ * confirm flow, but it is NOT load-bearing for number immutability. The first
+ * numbered Draft exit is claimed here by one conditional UPDATE over the id,
+ * expected status, and NULL number; a stale unlocked model therefore cannot
+ * replace the identity already established by another request.
  */
 final readonly class DocumentStatusService
 {
+    private const STAGED_ALLOCATION_RELATION = '__document_status_staged_allocation';
+
     public function __construct(
         private DocumentStatusMachine $machine,
+        private DocumentNumberingService $numbering,
     ) {}
 
     /**
@@ -95,6 +109,7 @@ final readonly class DocumentStatusService
      *
      * @param  array<string, mixed>  $extraAttributes  written in the SAME update statement
      *
+     * @throws DocumentRenumberingException
      * @throws DocumentTransitionException
      */
     public function transition(Document $document, DocumentStatus $to, array $extraAttributes = []): Document
@@ -105,6 +120,39 @@ final readonly class DocumentStatusService
                 .'it would override the very edge this service validated.'
             );
         }
+
+        // R-2 / LEDGER D-T9-1 — `document_number` in `$extraAttributes` is LEGAL, and
+        // deliberately so. Two live writers number their document from a sequence this
+        // service knows nothing about and hand the result in: `ExpenseService::post()`
+        // (`EXP-` via `generateExpenseNumber()`) and `IncomeService::post()` (`INC-`).
+        // Both are `draft → posted` writers for types the machine lets post directly
+        // (`DocumentStatusMachine::postsDirectlyFromDraft()`), and both predate this
+        // lane. A caller-supplied number therefore WINS only while the row is still
+        // unnumbered. Once a number exists, changing it would rewrite fiscal identity;
+        // refuse that at the service boundary even when the row is not sealed yet.
+        $hasCallerNumberAttribute = array_key_exists('document_number', $extraAttributes);
+        $persistedNumber = $document->getRawOriginal('document_number');
+        $attemptedNumber = $hasCallerNumberAttribute
+            ? $extraAttributes['document_number']
+            : $document->document_number;
+
+        if ($persistedNumber !== null && $attemptedNumber !== $persistedNumber) {
+            throw new DocumentRenumberingException(
+                documentId: $document->id,
+                existingNumber: (string) $persistedNumber,
+                attemptedNumber: is_scalar($attemptedNumber) || $attemptedNumber === null
+                    ? $attemptedNumber
+                    : get_debug_type($attemptedNumber),
+            );
+        }
+
+        // NULL does not name an unnumbered draft. Remove it so the allocator
+        // below can supply the identity on the first real Draft exit.
+        if ($hasCallerNumberAttribute && $extraAttributes['document_number'] === null) {
+            unset($extraAttributes['document_number']);
+        }
+
+        $callerSuppliedNumber = array_key_exists('document_number', $extraAttributes);
 
         $from = $document->status;
 
@@ -117,7 +165,258 @@ final readonly class DocumentStatusService
             );
         }
 
+        if ($from === DocumentStatus::Draft
+            && $persistedNumber === null
+            && $to !== DocumentStatus::Draft
+            && $to !== DocumentStatus::Cancelled) {
+            return $this->allocateNumberAndTransition(
+                document: $document,
+                to: $to,
+                extraAttributes: $extraAttributes,
+                callerSuppliedNumber: $callerSuppliedNumber,
+            );
+        }
+
         $document->update([...$extraAttributes, 'status' => $to]);
+
+        return $document;
+    }
+
+    /**
+     * R-2 / LEDGER D-T9-1 — THE SINGLE DOCUMENT-NUMBER ALLOCATION POINT.
+     *
+     * A `Draft` carries NO `document_number`. It is spent HERE, on the first
+     * transition that turns the draft into a document somebody else can be
+     * shown — and nowhere else. The allocation and lifecycle flip are persisted
+     * by ONE conditional UPDATE carrying `id = ?`, the expected `Draft` status,
+     * and `document_number IS NULL`. Before this lane, a number was spent when a
+     * row was created, so an abandoned one-line form held that number forever:
+     * the campaign found `PO-2026-0001 … PO-2026-0009` sitting as orphan drafts
+     * ahead of the operator's real `PO-2026-0010` (N-14's remaining half).
+     *
+     * DOES NOT GENERATE when the caller supplied its own `document_number` — the
+     * expense and income posters number from `EXP-`/`INC-` sequences this service
+     * does not own, and that number wins the same conditional update.
+     *
+     * NOT ON THE WAY TO `Cancelled`. A draft that dies never became a document,
+     * and numbering it would re-create the very defect this method exists to
+     * remove — an abandoned form holding a number out of the fiscal sequence.
+     * A cancelled draft therefore stays unnumbered, and that is the only state
+     * pair in which a `documents` row legitimately has no number.
+     *
+     * NEVER RENUMBERS. Every document born numbered — every conversion, every
+     * credit note off an invoice, every opening-balance row, and every draft
+     * that predates this lane — bypasses allocation. A stale model whose row was
+     * numbered after it loaded loses the conditional update and reloads the
+     * winner. The number a row already holds is never taken back or replaced.
+     *
+     * WHAT GUARANTEES A ROLLBACK RETURNS THE NUMBER.
+     * `DocumentNumberingService::generateForKeyOnce()` takes `lockForUpdate()`
+     * on the `document_sequences` counter row and increments it in the same
+     * transaction, so two concurrent confirms serialise on that row rather than
+     * racing. It opens a NESTED `DB::transaction()`, which Laravel implements as
+     * a SAVEPOINT when a transaction is already open — so when the caller's
+     * confirm transaction rolls back, the counter increment rolls back with it
+     * and the number is handed to the next confirm instead of leaving a gap.
+     * This allocator also opens its own transaction, so direct callers receive
+     * the same allocation/status atomicity. When a larger confirm transaction
+     * exists, the nested transaction is a savepoint and an outer rollback still
+     * returns the number.
+     *
+     * A zero-row result means the passed model lost a race or the database state
+     * is otherwise inconsistent. A number generated inside this transaction is
+     * rolled back with it. {@see self::assignNumberIfMissing()} opens an earlier
+     * savepoint, so staged allocation and every intervening confirm side effect
+     * roll back together when this claim loses. The row is then reloaded: the
+     * already-completed same transition wins with its established number; every
+     * other state is refused.
+     *
+     * @param  array<string, mixed>  $extraAttributes
+     */
+    private function allocateNumberAndTransition(
+        Document $document,
+        DocumentStatus $to,
+        array $extraAttributes,
+        bool $callerSuppliedNumber,
+    ): Document {
+        $lostClaim = new \RuntimeException('The conditional document-number claim affected no rows.');
+        $stagedSavepointLevel = $document->relationLoaded(self::STAGED_ALLOCATION_RELATION)
+            ? $document->getRelation(self::STAGED_ALLOCATION_RELATION)
+            : null;
+        $stagedSavepointLevel = is_int($stagedSavepointLevel) ? $stagedSavepointLevel : null;
+
+        try {
+            $transitioned = DB::transaction(function () use (
+                $document,
+                $to,
+                $extraAttributes,
+                $callerSuppliedNumber,
+                $lostClaim,
+            ): Document {
+                $number = $callerSuppliedNumber
+                    ? (string) $extraAttributes['document_number']
+                    : $this->numberFor($document);
+
+                $candidate = clone $document;
+                $candidate->fill([
+                    ...$extraAttributes,
+                    'document_number' => $number,
+                    'status' => $to,
+                ]);
+
+                $affectedRows = $document->newModelQuery()
+                    ->where($document->getKeyName(), $document->getKey())
+                    ->where('status', DocumentStatus::Draft->value)
+                    ->whereNull('document_number')
+                    ->update($candidate->getDirty());
+
+                if ($affectedRows === 0) {
+                    // Throw through the transaction boundary so this request's
+                    // sequence increment is rolled back before the winner is read.
+                    throw $lostClaim;
+                }
+
+                $document->unsetRelation(self::STAGED_ALLOCATION_RELATION);
+
+                return $document->refresh();
+            });
+        } catch (\Throwable $exception) {
+            if ($exception !== $lostClaim) {
+                $this->closeStagedAllocationSavepoint($document, $stagedSavepointLevel, false);
+
+                throw $exception;
+            }
+
+            $this->closeStagedAllocationSavepoint($document, $stagedSavepointLevel, false);
+
+            $transitioned = null;
+        }
+
+        if ($transitioned !== null) {
+            $this->closeStagedAllocationSavepoint($document, $stagedSavepointLevel, true);
+
+            return $transitioned;
+        }
+
+        /** @var Document|null $current */
+        $current = $document->newModelQuery()->find($document->getKey());
+
+        if ($current !== null
+            && $current->document_number !== null
+            && $current->status === $to) {
+            $document->setRawAttributes($current->getAttributes(), true);
+
+            return $document;
+        }
+
+        $currentStatus = $current === null ? DocumentStatus::Draft : $current->status;
+
+        if ($current !== null) {
+            $document->setRawAttributes($current->getAttributes(), true);
+        }
+
+        throw new DocumentTransitionException(
+            message: sprintf(
+                'Document %s changed while its number was being allocated; refusing an inconsistent %s → %s transition.',
+                $document->id,
+                $currentStatus->value,
+                $to->value,
+            ),
+            documentId: $document->id,
+            documentNumber: $current?->document_number,
+            from: $currentStatus,
+            to: $to,
+        );
+    }
+
+    private function closeStagedAllocationSavepoint(
+        Document $document,
+        ?int $expectedLevel,
+        bool $commit,
+    ): void {
+        if ($expectedLevel === null) {
+            return;
+        }
+
+        if (DB::transactionLevel() !== $expectedLevel) {
+            throw new \LogicException(
+                'The staged document-number savepoint is no longer the active transaction boundary.',
+            );
+        }
+
+        $document->unsetRelation(self::STAGED_ALLOCATION_RELATION);
+
+        if ($commit) {
+            DB::commit();
+
+            return;
+        }
+
+        DB::rollBack();
+    }
+
+    private function numberFor(Document $document): string
+    {
+        if ($document->document_number !== null) {
+            return $document->document_number;
+        }
+
+        return $this->numbering->generateNumber(
+            tenantId: $document->tenant_id,
+            companyId: $document->company_id,
+            type: $document->type,
+        );
+    }
+
+    /**
+     * Stage the number a `Draft` does not yet hold, for confirm paths that need
+     * it BEFORE the status write persists it.
+     *
+     * Two shapes of caller need this rather than {@see self::transition()}:
+     *
+     *  - the FISCAL sealers ({@see DeliveryNoteService}, {@see ReturnNoteService})
+     *    hash `document_number` into the chain input and write the seal columns
+     *    together with the status. The number must exist before the hash is
+     *    computed, not in the same statement as it — a NULL in a sealed hash
+     *    input is unrecoverable.
+     *  - confirm flows that USE the number before flipping the status
+     *    ({@see SalesOrderService} stamps it into each stock reservation's
+     *    notes).
+     *
+     * It is the same allocation, from the same place, under the same rollback
+     * guarantee described on {@see self::allocateNumberAndTransition()} — callers must
+     * be inside their confirm transaction because they use the staged number
+     * before transition. The number is assigned to the model in memory only;
+     * the caller MUST then use {@see self::transition()}, whose conditional
+     * UPDATE persists this dirty attribute with the status flip. A document
+     * that already has a number is returned untouched. This method opens a nested
+     * savepoint and tags its level in memory; transition commits that savepoint
+     * after a successful claim or rolls it back after a lost claim, undoing both
+     * the sequence increment and every side effect written with the staged number.
+     */
+    public function assignNumberIfMissing(Document $document): Document
+    {
+        if ($document->document_number !== null) {
+            return $document;
+        }
+
+        if (DB::transactionLevel() === 0) {
+            throw new \LogicException(
+                'assignNumberIfMissing() must run inside the caller\'s confirm transaction.',
+            );
+        }
+
+        DB::beginTransaction();
+
+        try {
+            $number = $this->numberFor($document);
+            $document->setAttribute('document_number', $number);
+            $document->setRelation(self::STAGED_ALLOCATION_RELATION, DB::transactionLevel());
+        } catch (\Throwable $exception) {
+            DB::rollBack();
+
+            throw $exception;
+        }
 
         return $document;
     }
