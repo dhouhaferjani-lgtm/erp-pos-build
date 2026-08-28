@@ -1216,7 +1216,7 @@ class CoffeeShopSeeder extends Seeder
      */
     private function seedTerminal(): void
     {
-        Terminal::create([
+        $terminal = new Terminal([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'location_id' => $this->location->id,
@@ -1235,6 +1235,8 @@ class CoffeeShopSeeder extends Seeder
             // is the binding limit that drives the manager-PIN override path.
             'max_discount_percent' => '100.00',
         ]);
+        $terminal->v4_refund_authoring_enabled = true;
+        $terminal->save();
 
         $this->command->info('POS terminal: POS01 - Front Counter (active, unclaimed)');
     }

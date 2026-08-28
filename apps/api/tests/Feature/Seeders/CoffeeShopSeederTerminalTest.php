@@ -38,6 +38,7 @@ final class CoffeeShopSeederTerminalTest extends TestCase
         $this->assertSame(TerminalType::Physical, $terminal->type, 'Seeded terminal must be physical (claimable from the device)');
         $this->assertTrue($terminal->is_active, 'Seeded terminal must be active so it appears in /pos/terminals/available');
         $this->assertNull($terminal->hardware_identifier, 'Seeded terminal must be unclaimed so a device can claim it');
+        $this->assertTrue($terminal->v4_refund_authoring_enabled, 'Every newly seeded physical v3 terminal must default v4 refund authoring on');
     }
 
     public function test_seeded_terminal_has_a_valid_fiscal_genesis_seed(): void
