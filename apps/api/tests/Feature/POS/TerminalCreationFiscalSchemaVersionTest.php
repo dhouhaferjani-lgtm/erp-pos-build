@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -11,6 +12,8 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -102,6 +105,17 @@ final class TerminalCreationFiscalSchemaVersionTest extends TestCase
         $this->user->givePermissionTo('pos.operate_terminal');
         $this->user->givePermissionTo('pos.manage_shifts');
 
+        PaymentRepository::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => RepositoryType::CashRegister,
+            'location_id' => $this->location->id,
+            'gl_account_id' => Account::factory()->create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+            ])->id,
+        ]);
+
         Sanctum::actingAs($this->user);
     }
 
@@ -150,6 +164,24 @@ final class TerminalCreationFiscalSchemaVersionTest extends TestCase
 
         $terminal = Terminal::forCompany($this->company->id)->where('name', 'Front Counter')->firstOrFail();
         $this->assertSame(3, $terminal->fiscal_schema_version);
+        $this->assertTrue((bool) $terminal->v4_refund_authoring_enabled);
+    }
+
+    public function test_a_freshly_created_and_claimed_physical_terminal_has_v4_refund_authoring_enabled(): void
+    {
+        $terminalId = $this->postJson('/api/v1/pos/terminals', [
+            'name' => 'Claimed Counter',
+            'location_id' => $this->location->id,
+        ])->assertStatus(201)->json('data.id');
+
+        $this->postJson('/api/v1/pos/terminals/claim', [
+            'terminal_id' => $terminalId,
+            'hardware_identifier' => 'HW-REFUNDS-DEFAULT-ON',
+        ])->assertOk();
+
+        $terminal = Terminal::forCompany($this->company->id)->findOrFail($terminalId);
+        $this->assertSame('HW-REFUNDS-DEFAULT-ON', $terminal->hardware_identifier);
+        $this->assertTrue((bool) $terminal->v4_refund_authoring_enabled);
     }
 
     /**
@@ -169,6 +201,7 @@ final class TerminalCreationFiscalSchemaVersionTest extends TestCase
             ->where('hardware_identifier', 'HW-REQ-001')
             ->firstOrFail();
         $this->assertSame(3, $terminal->fiscal_schema_version);
+        $this->assertTrue((bool) $terminal->v4_refund_authoring_enabled);
     }
 
     /**
@@ -190,6 +223,7 @@ final class TerminalCreationFiscalSchemaVersionTest extends TestCase
             ->where('type', TerminalType::Web)
             ->firstOrFail();
         $this->assertSame(2, $terminal->fiscal_schema_version, 'Web terminals are server-authoritative and must stay at schema 2 despite the column default now being 3.');
+        $this->assertFalse((bool) $terminal->v4_refund_authoring_enabled, 'Web terminals remain outside device-authored v4 refunds.');
     }
 
     /**

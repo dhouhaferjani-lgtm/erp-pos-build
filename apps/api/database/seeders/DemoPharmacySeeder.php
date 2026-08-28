@@ -752,7 +752,7 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
     protected function seedTunisiaTerminals(array $shops): void
     {
         foreach ($shops as $shop) {
-            Terminal::firstOrCreate(
+            $terminal = Terminal::firstOrCreate(
                 [
                     'company_id' => $this->company->id,
                     'location_id' => $shop->id,
@@ -778,6 +778,13 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
                     // hardware_identifier intentionally NULL — device claims on first launch
                 ],
             );
+
+            // Stamp only the row inserted by this run. An existing terminal may
+            // carry legacy v2 history and must remain migration/override-owned.
+            if ($terminal->wasRecentlyCreated) {
+                $terminal->v4_refund_authoring_enabled = true;
+                $terminal->save();
+            }
         }
     }
 

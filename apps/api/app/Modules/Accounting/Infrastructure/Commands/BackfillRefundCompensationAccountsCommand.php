@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Accounting\Infrastructure\Commands;
 
 use App\Console\TenantScopedCommand;
+use App\Modules\Accounting\Application\Services\RefundCompensationAccountProvider;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
@@ -43,14 +44,6 @@ use Illuminate\Support\Str;
  */
 final class BackfillRefundCompensationAccountsCommand extends TenantScopedCommand
 {
-    private const FR_TN_SALES_RETURN_CODE = '709';
-
-    private const FR_TN_REFUND_WRITE_OFF = ['code' => '6590', 'name' => 'Perte sur remboursement (write-off)', 'parent_code' => '65'];
-
-    private const GENERIC_SALES_RETURN_CODE = '7090';
-
-    private const GENERIC_REFUND_WRITE_OFF = ['code' => '6590', 'name' => 'Refund Write-Off', 'parent_code' => '6000'];
-
     /** @var string */
     protected $signature = 'accounting:backfill-refund-compensation-accounts
         {--tenant= : restrict tenant iteration to one tenant id}
@@ -63,6 +56,7 @@ final class BackfillRefundCompensationAccountsCommand extends TenantScopedComman
         CompanyContext $companyContext,
         private readonly DatabaseManager $database,
         private readonly GeneralLedgerService $generalLedgerService,
+        private readonly RefundCompensationAccountProvider $refundCompensationAccounts,
     ) {
         parent::__construct($companyContext);
     }
@@ -97,15 +91,13 @@ final class BackfillRefundCompensationAccountsCommand extends TenantScopedComman
                     continue;
                 }
 
-                $isFrTn = in_array(strtoupper((string) $company->country_code), ['FR', 'TN'], true);
-                $salesReturnCode = $isFrTn ? self::FR_TN_SALES_RETURN_CODE : self::GENERIC_SALES_RETURN_CODE;
-                $writeOffDefinition = $isFrTn ? self::FR_TN_REFUND_WRITE_OFF : self::GENERIC_REFUND_WRITE_OFF;
+                $definitions = $this->refundCompensationAccounts->definitions((string) $company->country_code);
 
-                [$patched, $skip] = $this->backfillSalesReturnPurpose($company, $salesReturnCode, $dryRun);
+                [$patched, $skip] = $this->backfillSalesReturnPurpose($company, $definitions['sales_return'], $dryRun);
                 $purposePatched += $patched;
                 $skipped += $skip;
 
-                [$createdCount, $patchedCount, $skip] = $this->backfillRefundWriteOffAccount($company, $writeOffDefinition, $dryRun);
+                [$createdCount, $patchedCount, $skip] = $this->backfillRefundWriteOffAccount($company, $definitions['refund_write_off'], $dryRun);
                 $created += $createdCount;
                 $purposePatched += $patchedCount;
                 $skipped += $skip;
@@ -137,9 +129,10 @@ final class BackfillRefundCompensationAccountsCommand extends TenantScopedComman
     }
 
     /**
+     * @param  array{code: string, name: string, type: string, parent_code: string, purpose: string}  $definition
      * @return array{0: int, 1: int} [purposePatchedCount, skippedCount]
      */
-    private function backfillSalesReturnPurpose(Company $company, string $code, bool $dryRun): array
+    private function backfillSalesReturnPurpose(Company $company, array $definition, bool $dryRun): array
     {
         if ($this->generalLedgerService->hasAccountForPurpose((string) $company->id, SystemAccountPurpose::SalesReturn)) {
             return [0, 0];
@@ -147,14 +140,14 @@ final class BackfillRefundCompensationAccountsCommand extends TenantScopedComman
 
         $account = $this->database->table('accounts')
             ->where('company_id', $company->id)
-            ->where('code', $code)
+            ->where('code', $definition['code'])
             ->first();
 
         if ($account === null) {
             $this->warn(sprintf(
                 'Company %s has no account %s to attach SalesReturn purpose to; skipped.',
                 $company->id,
-                $code,
+                $definition['code'],
             ));
 
             return [0, 1];
@@ -165,7 +158,7 @@ final class BackfillRefundCompensationAccountsCommand extends TenantScopedComman
             $this->warn(sprintf(
                 'Company %s account %s already has system_purpose=%s; SalesReturn was NOT applied.',
                 $company->id,
-                $code,
+                $definition['code'],
                 (string) $account->system_purpose,
             ));
 
@@ -173,7 +166,7 @@ final class BackfillRefundCompensationAccountsCommand extends TenantScopedComman
         }
 
         if ($dryRun) {
-            $this->line(sprintf('[DRY-RUN] Company %s: would set account %s system_purpose=sales_return (type untouched).', $company->id, $code));
+            $this->line(sprintf('[DRY-RUN] Company %s: would set account %s system_purpose=sales_return (type untouched).', $company->id, $definition['code']));
 
             return [1, 0];
         }
@@ -182,13 +175,13 @@ final class BackfillRefundCompensationAccountsCommand extends TenantScopedComman
         // touched, regardless of what it currently is.
         $this->database->table('accounts')
             ->where('id', $account->id)
-            ->update(['system_purpose' => SystemAccountPurpose::SalesReturn->value, 'updated_at' => now()]);
+            ->update(['system_purpose' => $definition['purpose'], 'updated_at' => now()]);
 
         return [1, 0];
     }
 
     /**
-     * @param  array{code: string, name: string, parent_code: string}  $definition
+     * @param  array{code: string, name: string, type: string, parent_code: string, purpose: string}  $definition
      * @return array{0: int, 1: int, 2: int} [createdCount, purposePatchedCount, skippedCount]
      */
     private function backfillRefundWriteOffAccount(Company $company, array $definition, bool $dryRun): array
@@ -246,8 +239,8 @@ final class BackfillRefundCompensationAccountsCommand extends TenantScopedComman
             'parent_id' => $parentId,
             'code' => $definition['code'],
             'name' => $definition['name'],
-            'type' => 'expense',
-            'system_purpose' => SystemAccountPurpose::RefundWriteOff->value,
+            'type' => $definition['type'],
+            'system_purpose' => $definition['purpose'],
             'is_active' => true,
             'is_system' => true,
             'balance' => 0,

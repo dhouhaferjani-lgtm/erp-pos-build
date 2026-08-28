@@ -13,10 +13,19 @@ use App\Modules\POS\Domain\Terminal;
 use Illuminate\Support\Facades\DB;
 
 /**
- * v3-refund-chain-integration spec §9.4/§9.5/§5.3, §9.6/X3 — Phase 1
- * ("server offers") of the two-phase enable/acknowledge protocol (§9.3).
- * Single-shot, one tenant + one company per invocation
- * (`TenantScopedCommand`'s (a-singleshot) sub-shape).
+ * v3-refund-chain-integration spec §9.4/§9.5/§5.3, §9.6/X3 — manual
+ * Phase 1 ("server offers") override for the two-phase
+ * enable/acknowledge protocol (§9.3).
+ *
+ * OWNER RULING 2026-08-28: v4 refund authoring is default-on for every
+ * newly created PHYSICAL terminal, and the guarded tenant migration enables
+ * qualifying brownfield physical terminals automatically. This command
+ * remains the explicit operator recovery/override after a guarded migration
+ * skip is remediated or after an emergency disable. It deliberately retains
+ * every original preflight, including the single-active-physical-terminal
+ * refusal; the automatic migration's approved multi-till behavior does not
+ * broaden this manual lever. Single-shot, one tenant + one company per
+ * invocation (`TenantScopedCommand`'s (a-singleshot) sub-shape).
  *
  * Three preflight refusals, checked in order, none of which mutate
  * anything on failure:
@@ -51,7 +60,7 @@ final class EnableV4RefundAuthoringCommand extends TenantScopedCommand
         {--dry-run : run every preflight check without writing anything}';
 
     /** @var string */
-    protected $description = 'Phase 1 (server offers) of the v4 refund-authoring two-phase enable/acknowledge protocol — single-device-terminal preflight, v3-from-birth verification, account-provisioning precheck.';
+    protected $description = 'Manual Phase 1 v4 refund-authoring override/recovery — retains single-device-terminal, v3-from-birth, and account-provisioning preflights.';
 
     public function __construct(
         CompanyContext $companyContext,

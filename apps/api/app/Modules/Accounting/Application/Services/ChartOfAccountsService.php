@@ -31,6 +31,7 @@ class ChartOfAccountsService
         private readonly CountryTemplateResolver $templateResolver,
         private readonly TemplateChartOfAccountsSeeder $templateSeeder,
         private readonly InventoryVarianceAccountProvisioner $inventoryVarianceAccounts,
+        private readonly RefundCompensationAccountProvider $refundCompensationAccounts,
     ) {}
 
     /**
@@ -52,6 +53,11 @@ class ChartOfAccountsService
                     $company->tenant_id,
                     $company->country_code,
                 );
+                $this->refundCompensationAccounts->provisionNewCompany(
+                    $company->id,
+                    $company->tenant_id,
+                    $company->country_code,
+                );
             });
 
             return;
@@ -63,6 +69,11 @@ class ChartOfAccountsService
             /** @var TunisiaChartOfAccountsSeeder|FranceChartOfAccountsSeeder|GenericChartOfAccountsSeeder $seeder */
             $seeder->run($company->id, $company->tenant_id);
             $this->inventoryVarianceAccounts->provisionCompany(
+                $company->id,
+                $company->tenant_id,
+                $company->country_code,
+            );
+            $this->refundCompensationAccounts->provisionNewCompany(
                 $company->id,
                 $company->tenant_id,
                 $company->country_code,

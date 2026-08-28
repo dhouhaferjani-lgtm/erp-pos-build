@@ -128,7 +128,7 @@ final class TerminalController extends Controller
                 ? $this->generateTerminalCode()
                 : (string) $data['code'];
 
-            return Terminal::create([
+            $terminal = new Terminal([
                 'tenant_id' => $company->tenant_id,
                 'company_id' => $company->id,
                 'location_id' => $data['location_id'],
@@ -147,6 +147,14 @@ final class TerminalController extends Controller
                 'is_active' => true,
                 'activated_at' => now(),
             ]);
+            // Owner ruling 2026-08-28: device-authored v4 refunds are a
+            // default-on capability for every new physical v3 terminal. The
+            // flag remains outside $fillable so ordinary terminal PATCHes
+            // cannot operate this rollout lever.
+            $terminal->v4_refund_authoring_enabled = true;
+            $terminal->save();
+
+            return $terminal;
         });
 
         return response()->json([
@@ -701,21 +709,27 @@ final class TerminalController extends Controller
         // SAVEPOINT-contained for the same reason as `claim()` above: on
         // PostgreSQL a caught QueryException poisons the enclosing transaction.
         try {
-            $terminal = DB::transaction(fn (): Terminal => Terminal::create([
-                'tenant_id' => $company->tenant_id,
-                'company_id' => $company->id,
-                'location_id' => $data['location_id'],
-                'type' => TerminalType::Physical,
-                'code' => $this->generateTerminalCode(),
-                'name' => $data['suggested_name'],
-                'genesis_seed' => bin2hex(random_bytes(32)),
-                'current_sequence' => 1,
-                'current_year' => (int) now()->format('Y'),
-                // Provision-at-v3 (first-tenant launch, Lane D1): see store() above.
-                'fiscal_schema_version' => 3,
-                'is_active' => false,
-                'hardware_identifier' => $hardwareIdentifier,
-            ]));
+            $terminal = DB::transaction(function () use ($company, $data, $hardwareIdentifier): Terminal {
+                $terminal = new Terminal([
+                    'tenant_id' => $company->tenant_id,
+                    'company_id' => $company->id,
+                    'location_id' => $data['location_id'],
+                    'type' => TerminalType::Physical,
+                    'code' => $this->generateTerminalCode(),
+                    'name' => $data['suggested_name'],
+                    'genesis_seed' => bin2hex(random_bytes(32)),
+                    'current_sequence' => 1,
+                    'current_year' => (int) now()->format('Y'),
+                    // Provision-at-v3 (first-tenant launch, Lane D1): see store() above.
+                    'fiscal_schema_version' => 3,
+                    'is_active' => false,
+                    'hardware_identifier' => $hardwareIdentifier,
+                ]);
+                $terminal->v4_refund_authoring_enabled = true;
+                $terminal->save();
+
+                return $terminal;
+            });
         } catch (QueryException $e) {
             if ($this->isUniqueViolation($e)) {
                 return $this->deviceAlreadyBoundResponse();

@@ -219,6 +219,7 @@ final class DemoPharmacySeederTest extends TestCase
                 $this->assertNull($t->hardware_identifier); // unclaimed → POS-claimable
                 $this->assertNotNull($t->genesis_seed);
                 $this->assertSame('POS01', $t->code);
+                $this->assertTrue($t->v4_refund_authoring_enabled);
             }
 
             // Finding 1: verify ALL 4 cashiers are scoped to EXACTLY their own shop

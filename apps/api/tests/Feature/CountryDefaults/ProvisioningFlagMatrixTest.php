@@ -87,6 +87,50 @@ final class ProvisioningFlagMatrixTest extends TestCase
         $this->assertInventoryVariancePurposes($company);
     }
 
+    /** @return iterable<string, array{string, string, string, string, string}> */
+    public static function refundCompensationCountries(): iterable
+    {
+        yield 'Tunisia' => ['tn', 'TN', '709', 'Rabais, remises et ristournes accordés', 'Perte sur remboursement (write-off)'];
+        yield 'generic fallback' => ['generic', 'ZZ', '7090', 'Sales Returns', 'Refund Write-Off'];
+    }
+
+    #[DataProvider('refundCompensationCountries')]
+    public function test_pre_policy_templates_still_provision_both_refund_compensation_purposes(
+        string $templatePlan,
+        string $countryCode,
+        string $salesReturnCode,
+        string $salesReturnName,
+        string $writeOffName,
+    ): void {
+        $actor = $this->m4Actor();
+        $template = $this->m4Published($templatePlan, $countryCode, $actor);
+        $this->m4Assign($countryCode, $template, $actor);
+
+        // Simulate a published chart certified before refund compensation
+        // accounts became mandatory for every newly provisioned company.
+        $template->accounts()
+            ->whereIn('system_purpose', [
+                SystemAccountPurpose::SalesReturn->value,
+                SystemAccountPurpose::RefundWriteOff->value,
+            ])
+            ->delete();
+
+        config(['country_defaults.provisioning_enabled' => true]);
+        [, $company] = $this->tenantCompanyUser($countryCode, 'refund-default-'.strtolower($countryCode));
+
+        app(ChartOfAccountsService::class)->seedForCompany($company);
+
+        $salesReturn = Account::findByPurpose($company->id, SystemAccountPurpose::SalesReturn);
+        $writeOff = Account::findByPurpose($company->id, SystemAccountPurpose::RefundWriteOff);
+
+        self::assertNotNull($salesReturn, 'Every fresh chart must resolve sales_return.');
+        self::assertNotNull($writeOff, 'Every fresh chart must resolve refund_write_off.');
+        self::assertSame($salesReturnCode, $salesReturn->code);
+        self::assertSame($salesReturnName, $salesReturn->name);
+        self::assertSame('6590', $writeOff->code);
+        self::assertSame($writeOffName, $writeOff->name);
+    }
+
     public function test_template_provisioning_rolls_back_the_chart_when_variance_installation_fails(): void
     {
         $actor = $this->m4Actor();
