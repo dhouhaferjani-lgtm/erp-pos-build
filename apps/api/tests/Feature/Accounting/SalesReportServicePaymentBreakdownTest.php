@@ -96,7 +96,8 @@ final class SalesReportServicePaymentBreakdownTest extends TestCase
         $row = collect($rows)->first(fn ($candidate) => $candidate->payment_type === 'Cash');
 
         $this->assertNotNull($row);
-        $this->assertSame(15.0, (float) $row->amount);
+        $this->assertTrue(is_numeric($row->amount));
+        $this->assertSame(0, bccomp($row->amount, '15.000', 3));
     }
 
     public function test_payment_method_breakdown_nets_change_correctly_across_groups_and_companies(): void

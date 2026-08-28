@@ -85,12 +85,6 @@ final class TreasuryCompanyIsolationTest extends TestCase
 
     private Payment $paymentB;
 
-    private Partner $partnerA;
-
-    private Partner $partnerB;
-
-    private Document $purchaseOrderA;
-
     private Document $purchaseOrderB;
 
     protected function setUp(): void
@@ -139,9 +133,9 @@ final class TreasuryCompanyIsolationTest extends TestCase
             'role' => 'admin',
         ]);
 
-        [$this->partnerA, $this->methodA, $this->repositoryA, $this->purchaseOrderA, $this->paymentA]
+        [, $this->methodA, $this->repositoryA, , $this->paymentA]
             = $this->seedCompanyResources($this->companyA);
-        [$this->partnerB, $this->methodB, $this->repositoryB, $this->purchaseOrderB, $this->paymentB]
+        [, $this->methodB, $this->repositoryB, $this->purchaseOrderB, $this->paymentB]
             = $this->seedCompanyResources($this->companyB);
     }
 
@@ -169,7 +163,8 @@ final class TreasuryCompanyIsolationTest extends TestCase
             ->assertNotFound();
 
         // Sanity: company B's repository name is unchanged.
-        $this->assertSame('Repo B', $this->repositoryB->fresh()->name);
+        $this->repositoryB->refresh();
+        $this->assertSame('Repo B', $this->repositoryB->name);
     }
 
     public function test_payment_repository_balance_refuses_cross_company_id(): void
@@ -190,6 +185,59 @@ final class TreasuryCompanyIsolationTest extends TestCase
     // PaymentMethod — 073 / 074
     // ---------------------------------------------------------------------
 
+    public function test_index_payment_methods_returns_only_the_active_company_rows(): void
+    {
+        $response = $this->actingAsForCompany($this->companyA)
+            ->getJson('/api/v1/payment-methods')
+            ->assertOk();
+
+        $ids = array_column($response->json('data'), 'id');
+
+        $this->assertSame([$this->methodA->id], $ids);
+        $this->assertNotContains($this->methodB->id, $ids);
+    }
+
+    public function test_store_payment_method_allows_a_code_used_only_by_a_sibling_company(): void
+    {
+        PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->companyB->id,
+            'code' => 'SIBLING-CARD',
+        ]);
+
+        $response = $this->actingAsForCompany($this->companyA)
+            ->postJson('/api/v1/payment-methods', [
+                'code' => 'SIBLING-CARD',
+                'name' => 'Company A Card',
+            ])
+            ->assertCreated();
+
+        $this->assertDatabaseHas('payment_methods', [
+            'id' => $response->json('data.id'),
+            'company_id' => $this->companyA->id,
+            'code' => 'SIBLING-CARD',
+        ]);
+    }
+
+    public function test_update_payment_method_allows_a_code_used_only_by_a_sibling_company(): void
+    {
+        PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->companyB->id,
+            'code' => 'SIBLING-WIRE',
+        ]);
+
+        $this->actingAsForCompany($this->companyA)
+            ->patchJson('/api/v1/payment-methods/'.$this->methodA->id, [
+                'code' => 'SIBLING-WIRE',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.code', 'SIBLING-WIRE');
+
+        $this->methodA->refresh();
+        $this->assertSame('SIBLING-WIRE', $this->methodA->code);
+    }
+
     public function test_show_payment_method_refuses_cross_company_id(): void
     {
         $this->actingAsForCompany($this->companyA)
@@ -208,7 +256,8 @@ final class TreasuryCompanyIsolationTest extends TestCase
             ->patchJson('/api/v1/payment-methods/'.$this->methodB->id, ['name' => 'Renamed By A'])
             ->assertNotFound();
 
-        $this->assertSame('Cash B', $this->methodB->fresh()->name);
+        $this->methodB->refresh();
+        $this->assertSame('Cash B', $this->methodB->name);
     }
 
     // ---------------------------------------------------------------------
@@ -236,7 +285,8 @@ final class TreasuryCompanyIsolationTest extends TestCase
             ->assertNotFound();
 
         // Sanity: company B's payment is not in a refund state.
-        $this->assertSame(PaymentStatus::Completed, $this->paymentB->fresh()->status);
+        $this->paymentB->refresh();
+        $this->assertSame(PaymentStatus::Completed, $this->paymentB->status);
     }
 
     // ---------------------------------------------------------------------
