@@ -80,33 +80,6 @@ return new class extends Migration
                 ->get();
 
             foreach ($candidates as $terminal) {
-                $hasLegacyHistory = DB::table('pos_receipts')
-                    ->where('terminal_id', $terminal->id)
-                    ->whereNull('fiscal_event_id')
-                    ->where('fiscal_status', FiscalStatus::Fiscalized->value)
-                    ->exists();
-
-                if ($hasLegacyHistory) {
-                    $reasons['legacy-history']++;
-
-                    continue;
-                }
-
-                $purposeCount = DB::table('accounts')
-                    ->where('company_id', $terminal->company_id)
-                    ->whereIn('system_purpose', [
-                        SystemAccountPurpose::SalesReturn->value,
-                        SystemAccountPurpose::RefundWriteOff->value,
-                    ])
-                    ->distinct()
-                    ->count('system_purpose');
-
-                if ($purposeCount !== 2) {
-                    $reasons['missing-accounts']++;
-
-                    continue;
-                }
-
                 $companyId = (string) $terminal->company_id;
                 if (! isset($censusedCompanies[$companyId])) {
                     $countryCode = (string) DB::table('companies')
@@ -134,6 +107,33 @@ return new class extends Migration
                     }
 
                     $censusedCompanies[$companyId] = true;
+                }
+
+                $hasLegacyHistory = DB::table('pos_receipts')
+                    ->where('terminal_id', $terminal->id)
+                    ->whereNull('fiscal_event_id')
+                    ->where('fiscal_status', FiscalStatus::Fiscalized->value)
+                    ->exists();
+
+                if ($hasLegacyHistory) {
+                    $reasons['legacy-history']++;
+
+                    continue;
+                }
+
+                $purposeCount = DB::table('accounts')
+                    ->where('company_id', $terminal->company_id)
+                    ->whereIn('system_purpose', [
+                        SystemAccountPurpose::SalesReturn->value,
+                        SystemAccountPurpose::RefundWriteOff->value,
+                    ])
+                    ->distinct()
+                    ->count('system_purpose');
+
+                if ($purposeCount !== 2) {
+                    $reasons['missing-accounts']++;
+
+                    continue;
                 }
 
                 $enabledIds[] = (string) $terminal->id;

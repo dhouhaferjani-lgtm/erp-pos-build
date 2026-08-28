@@ -94,6 +94,15 @@ final class BackfillRefundCompensationAccountsCommand extends TenantScopedComman
                 }
 
                 $definitions = $this->refundCompensationAccounts->definitions((string) $company->country_code);
+                [$patched, $skip] = $this->backfillSalesReturnPurpose($company, $definitions['sales_return'], $dryRun);
+                $purposePatched += $patched;
+                $skipped += $skip;
+
+                [$createdCount, $patchedCount, $skip] = $this->backfillRefundWriteOffAccount($company, $definitions['refund_write_off'], $dryRun);
+                $created += $createdCount;
+                $purposePatched += $patchedCount;
+                $skipped += $skip;
+
                 foreach ($this->refundCompensationAccounts->driftsForCompany(
                     (string) $company->id,
                     (string) $company->country_code,
@@ -109,15 +118,6 @@ final class BackfillRefundCompensationAccountsCommand extends TenantScopedComman
                     ));
                     $drifted++;
                 }
-
-                [$patched, $skip] = $this->backfillSalesReturnPurpose($company, $definitions['sales_return'], $dryRun);
-                $purposePatched += $patched;
-                $skipped += $skip;
-
-                [$createdCount, $patchedCount, $skip] = $this->backfillRefundWriteOffAccount($company, $definitions['refund_write_off'], $dryRun);
-                $created += $createdCount;
-                $purposePatched += $patchedCount;
-                $skipped += $skip;
             }
 
             return self::SUCCESS;

@@ -176,6 +176,53 @@ final class EnableV4RefundAuthoringByDefaultMigrationTest extends TestCase
             ->once();
     }
 
+    public function test_drift_is_reported_before_legacy_and_missing_account_skip_classification(): void
+    {
+        Account::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '709-LOCAL',
+            'name' => 'Accountant-selected returns',
+            'type' => AccountType::Expense,
+            'system_purpose' => SystemAccountPurpose::SalesReturn,
+            'is_system' => false,
+        ]);
+        $terminal = $this->terminal($this->company, $this->location);
+        $this->seedLegacyReceipt($terminal);
+
+        $warningContext = null;
+        Log::shouldReceive('warning')->andReturnUsing(
+            static function (string $message, array $context) use (&$warningContext): void {
+                if ($message === self::GATE_TOKEN) {
+                    $warningContext = $context;
+                }
+            },
+        );
+        $this->runMigration();
+
+        self::assertFalse($this->enabled($terminal));
+        self::assertIsArray($warningContext);
+        self::assertSame(0, $warningContext['enabled']);
+        self::assertSame(1, $warningContext['skipped']);
+        self::assertSame([
+            'legacy-history' => 1,
+            'missing-accounts' => 0,
+        ], $warningContext['reasons']);
+        self::assertSame(1, $warningContext['drift']);
+        self::assertSame([[
+            'company_id' => $this->company->id,
+            'purpose' => SystemAccountPurpose::SalesReturn->value,
+            'expected' => [
+                'code' => '709',
+                'name' => 'Rabais, remises et ristournes accordés',
+            ],
+            'actual' => [
+                'code' => '709-LOCAL',
+                'name' => 'Accountant-selected returns',
+            ],
+        ]], $warningContext['drifts']);
+    }
+
     public function test_missing_required_tables_are_reported_and_skipped(): void
     {
         Schema::rename('accounts', 'accounts_refund_default_on_guard_probe');

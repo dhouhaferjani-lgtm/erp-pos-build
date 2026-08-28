@@ -192,6 +192,42 @@ final class BackfillRefundCompensationAccountsCommandTest extends TestCase
         self::assertSame(0, (int) $salesReturn->is_system);
     }
 
+    public function test_first_run_reports_drift_created_by_patching_a_renamed_709_account(): void
+    {
+        $salesReturnId = $this->seedPreFix709Account();
+        DB::table('accounts')->where('id', $salesReturnId)->update([
+            'name' => 'Accountant-selected returns',
+        ]);
+        DB::table('accounts')->insert([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'parent_id' => null,
+            'code' => '6590',
+            'name' => 'Perte sur remboursement (write-off)',
+            'type' => 'expense',
+            'system_purpose' => SystemAccountPurpose::RefundWriteOff->value,
+            'is_active' => true,
+            'is_system' => true,
+            'balance' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->artisanCommand('accounting:backfill-refund-compensation-accounts', ['--tenant' => $this->tenant->id])
+            ->expectsOutput(sprintf(
+                'Refund account drift: company=%s purpose=sales_return expected={code=709,name="Rabais, remises et ristournes accordés"} actual={code=709,name="Accountant-selected returns"}',
+                $this->company->id,
+            ))
+            ->expectsOutput('Refund compensation account backfill: 1 purpose(s) patched; 0 account(s) created; 0 skipped; 1 drift(s).')
+            ->assertSuccessful();
+
+        $salesReturn = DB::table('accounts')->where('id', $salesReturnId)->first();
+        self::assertNotNull($salesReturn);
+        self::assertSame(SystemAccountPurpose::SalesReturn->value, $salesReturn->system_purpose);
+        self::assertSame('Accountant-selected returns', $salesReturn->name);
+    }
+
     /**
      * @param  array<string, mixed>  $parameters
      */

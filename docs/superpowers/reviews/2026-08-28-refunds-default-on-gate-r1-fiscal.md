@@ -139,3 +139,36 @@ The numerical change is legitimate:
 
 GATEVERDICT: CHANGES
 BLOCKING-1: `RefundCompensationAccountProvider` silently accepts purpose-bearing accounts with drifted country code/name, so chart provisioning is not the required drift-proof single source.
+
+## r2 scoped re-check
+
+**Lane/range:** `feat/refunds-default-on`, `ddccb6119..5eb6c9baf`
+**Posture:** source read-only except this required review append. Execution used only three disposable PostgreSQL 16 databases on `127.0.0.1:5433`; all three were dropped and the final `pg_database` census returned zero rows. The retrospective RED replay used a disposable code copy at `ddccb6119`, also removed.
+
+### Prior blocker evidence
+
+- **Structured drift record is now produced:** `RefundCompensationAccountProvider::driftRecord()` returns `company_id`, `purpose`, `expected {code,name}`, and `actual {code,name}` at `apps/api/app/Modules/Accounting/Application/Services/RefundCompensationAccountProvider.php:245-266`. The focused regression asserts the exact record at `apps/api/tests/Feature/Accounting/RefundCompensationAccountProviderTest.php:46-65`.
+- **A purpose-bearing existing account is not mutated:** the holder path performs usability checks and returns the drift at `RefundCompensationAccountProvider.php:165-179`; it has no write. The regression re-reads and pins the drifted code, name, and `is_system=false` at `RefundCompensationAccountProviderTest.php:66-68`. The backfill and migration integration cases independently pin the same non-mutation contract at `apps/api/tests/Feature/Accounting/BackfillRefundCompensationAccountsCommandTest.php:143-190` and `apps/api/tests/Feature/Fiscal/Migrations/EnableV4RefundAuthoringByDefaultMigrationTest.php:130-175`.
+- **Both operational surfaces emit drift fields in their covered happy path:** the backfill prints the per-record company/purpose/expected/actual warning and total at `apps/api/app/Modules/Accounting/Infrastructure/Commands/BackfillRefundCompensationAccountsCommand.php:97-110,134-143`; the migration logs `drift` plus `drifts` at `apps/api/database/migrations/tenant/2026_08_28_110000_enable_v4_refund_authoring_by_default.php:154-161`.
+- **Fresh provisioning is pinned canonical-only:** the TN and generic cases assert canonical codes/names and an empty drift result at `apps/api/tests/Feature/CountryDefaults/ProvisioningFlagMatrixTest.php:90-132`; `ChartOfAccountsService` propagates the provider result from both provisioning arms at `apps/api/app/Modules/Accounting/Application/Services/ChartOfAccountsService.php:49-89`.
+- **The RED test is real:** on HEAD, the four focused PostgreSQL classes passed `33 tests, 116 assertions`. In a disposable `ddccb6119` code copy with the new provider regression overlaid unchanged, that test failed at `RefundCompensationAccountProviderTest.php:52`: old production returned `null` instead of the expected structured drift array (`1 test, 1 assertion, 1 failure`).
+
+### NEW-R2-1 — BLOCKING — the advertised drift censuses are incomplete
+
+The backfill collects drift before applying either purpose patch (`BackfillRefundCompensationAccountsCommand.php:97-120`). If conventional account `709` has an accountant-selected name and no purpose, the same run patches `sales_return` while preserving that name, but its final census says zero drift. A PostgreSQL probe reproduced the exact first-run output: `1 purpose(s) patched; 0 account(s) created; 0 skipped; 0 drift(s).` The command has left a purpose-bearing noncanonical name behind, so an operator does not get the promised census until a later rerun.
+
+The migration likewise performs both early `continue`s before drift collection: legacy history at `apps/api/database/migrations/tenant/2026_08_28_110000_enable_v4_refund_authoring_by_default.php:82-93` and missing purposes at `:95-108`, while drift collection starts only at `:110`. This contradicts its own description of drift as an orthogonal bucket. A PostgreSQL probe with a drifted `sales_return` holder and the other purpose missing logged `missing-accounts=1` but `drift=0`.
+
+The added tests cover only a holder that already has its purpose before the backfill (`BackfillRefundCompensationAccountsCommandTest.php:143-185`) and an otherwise eligible terminal (`EnableV4RefundAuthoringByDefaultMigrationTest.php:130-175`), so neither exposes these reachable undercounts. Move/re-run the census after backfill writes and collect migration drift once per candidate company before terminal skip classification; add first-run/missing-or-legacy pins.
+
+### Verification
+
+- PostgreSQL focused bundle: **OK — 33 tests, 116 assertions**.
+- Retrospective provider RED replay at `ddccb6119`: **expected failure — 1 test, 1 assertion, 1 failure**.
+- Reviewer census probes: **2/2 exposed the undercount** (backfill first-run `0 drift(s)`; migration `missing-accounts=1, drift=0`).
+- Scoped PHPStan on four changed production/migration files: **No errors**.
+- Pint `--test` on all eight changed PHP files: **pass**.
+- Feature-lane manifest checker: **pass — 1,197 parked classes**.
+- Disposable DB/code cleanup: **complete; zero matching databases remain**.
+
+RECHECK: OPEN NEW-R2-1
