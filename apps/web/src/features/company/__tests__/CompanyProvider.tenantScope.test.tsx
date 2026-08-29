@@ -112,12 +112,14 @@ const companiesResponse = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  localStorage.clear()
   mockApiGet.mockResolvedValue(companiesResponse)
   setTenant('tenant-A')
 })
 
 afterEach(() => {
   resetTenant()
+  localStorage.clear()
 })
 
 describe('CompanyProvider tenant scope', () => {
@@ -144,8 +146,54 @@ describe('CompanyProvider tenant scope', () => {
     })
   })
 
-  it('removes all scoped user company caches on logout (.106)', async () => {
-    resetTenant()
+  it('preserves a persisted company selection while authentication bootstraps', async () => {
+    mockApiGet.mockResolvedValue({
+      data: {
+        data: [
+          {
+            id: 'company-A',
+            name: 'Primary Company',
+            legal_name: 'Primary Company LLC',
+            tax_id: null,
+            country_code: 'TN',
+            currency: 'TND',
+            locale: 'en_US',
+            timezone: 'Africa/Tunis',
+            is_primary: true,
+          },
+          {
+            id: 'company-B',
+            name: 'Selected Company',
+            legal_name: 'Selected Company LLC',
+            tax_id: null,
+            country_code: 'TN',
+            currency: 'TND',
+            locale: 'en_US',
+            timezone: 'Africa/Tunis',
+            is_primary: false,
+          },
+        ],
+      },
+    })
+    useAuthStore.setState({ isAuthenticated: false, isLoading: true })
+    useCompanyStore.setState({ currentCompanyId: null, companies: [], isLoading: true })
+    localStorage.setItem('autoerp-company-selection', 'company-B')
+
+    render(<CompanyProvider><div>ready</div></CompanyProvider>, { wrapper: wrapper(createClient()) })
+
+    act(() => {
+      useAuthStore.setState({ isAuthenticated: true, isLoading: false })
+    })
+
+    await waitFor(() => {
+      expect(useCompanyStore.getState().currentCompanyId).toBe('company-B')
+    })
+    expect(localStorage.getItem('autoerp-company-selection')).toBe('company-B')
+  })
+
+  it('removes company state and all scoped user company caches on a real logout (.106)', async () => {
+    setTenant('tenant-A', 'company-1')
+    localStorage.setItem('autoerp-company-selection', 'company-1')
     const queryClient = createClient()
     queryClient.setQueryData(['user', 'companies', 'tenant-A', 'company-1'], ['tenant-A-marker'])
     queryClient.setQueryData(['user', 'companies', 'tenant-B', 'company-2'], ['tenant-B-marker'])
@@ -153,9 +201,19 @@ describe('CompanyProvider tenant scope', () => {
     render(<CompanyProvider><div>ready</div></CompanyProvider>, { wrapper: wrapper(queryClient) })
 
     await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalledWith('/user/companies')
+    })
+
+    act(() => {
+      useAuthStore.setState({ user: null, token: null, isAuthenticated: false, isLoading: false })
+    })
+
+    await waitFor(() => {
       expect(queryClient.getQueryData(['user', 'companies', 'tenant-A', 'company-1'])).toBeUndefined()
       expect(queryClient.getQueryData(['user', 'companies', 'tenant-B', 'company-2'])).toBeUndefined()
+      expect(useCompanyStore.getState().currentCompanyId).toBeNull()
     })
+    expect(localStorage.getItem('autoerp-company-selection')).toBeNull()
   })
 
   it('invalidates only the active tenant company cache (.107)', async () => {

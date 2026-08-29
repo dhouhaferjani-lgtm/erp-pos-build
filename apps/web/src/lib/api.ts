@@ -316,6 +316,10 @@ function createApiClient(): AxiosInstance {
         if (!response) {
           return Promise.reject(new Error('Network error'))
         }
+        const sentCompanyIdHeader: unknown = error.config?.headers['X-Company-Id']
+        const sentCompanyId = typeof sentCompanyIdHeader === 'string' ? sentCompanyIdHeader : null
+        const isStaleCompanyResponse =
+          sentCompanyId !== null && sentCompanyId !== useCompanyStore.getState().currentCompanyId
 
         // Handle 401 Unauthorized
         // Don't call queryClient.clear() here — it destroys the auth query
@@ -338,15 +342,14 @@ function createApiClient(): AxiosInstance {
         if (response.status === 403 || response.status === 400) {
           const responseData: unknown = response.data
           const envelope = isRecord(responseData) ? responseData['error'] : null
-          const sentCompanyId: unknown = error.config?.headers['X-Company-Id']
           handleCompanyScopeRejection(
             readString(envelope, 'code'),
-            typeof sentCompanyId === 'string' ? sentCompanyId : null,
+            sentCompanyId,
           )
         }
 
         // Handle 403 Forbidden
-        if (response.status === 403) {
+        if (response.status === 403 && !isStaleCompanyResponse) {
           console.error('Access denied:', getErrorMessage(error))
         }
 

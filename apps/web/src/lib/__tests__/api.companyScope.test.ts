@@ -233,6 +233,7 @@ describe('the response interceptor feeds the SENT company id through', () => {
 
     expect(useCompanyStore.getState().currentCompanyId).toBeNull()
     expect(localStorage.getItem(COMPANY_SELECTION_KEY)).toBeNull()
+    expect(console.error).toHaveBeenCalledWith('Access denied:', 'denied')
   })
 
   it('leaves a selection made WHILE the request was in flight alone', async () => {
@@ -252,5 +253,6 @@ describe('the response interceptor feeds the SENT company id through', () => {
 
     expect(useCompanyStore.getState().currentCompanyId).toBe(OTHER_COMPANY_ID)
     expect(localStorage.getItem(COMPANY_SELECTION_KEY)).toBe(OTHER_COMPANY_ID)
+    expect(console.error).not.toHaveBeenCalled()
   })
 })

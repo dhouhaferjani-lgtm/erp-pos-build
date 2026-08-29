@@ -1,4 +1,5 @@
 import { apiPost } from '../../lib/api'
+import type { Company } from '../../stores/companyStore'
 
 /**
  * Input for creating a new company
@@ -26,17 +27,31 @@ interface CreateCompanyResponse {
   tenant_id: string
   name: string
   legal_name: string | null
+  code: string | null
   country_code: string
   tax_id: string | null
+  registration_number: string | null
+  vat_number: string | null
   email: string | null
   phone: string | null
+  website: string | null
   currency: string
   locale: string
   timezone: string
   status: string
   address_street: string | null
+  address_street_2: string | null
   address_city: string | null
+  address_state: string | null
   address_postal_code: string | null
+  default_tax_rate: string | null
+  default_tax_configuration_id: string | null
+  tax_status: string
+  default_target_margin: string
+  default_minimum_margin: string
+  default_max_discount_percent: string | null
+  discount_floor_mode: string
+  price_entry_mode: string
   created_at: string
   updated_at: string
 }
@@ -67,7 +82,7 @@ interface CreateCompanyPayload {
  * - Create owner membership for the current user
  * - Initialize hash chains for fiscal compliance
  */
-export async function createCompany(input: CreateCompanyInput): Promise<CreateCompanyResponse> {
+export async function createCompany(input: CreateCompanyInput): Promise<Company> {
   const payload: CreateCompanyPayload = {
     name: input.name,
     legal_name: input.legalName,
@@ -83,5 +98,16 @@ export async function createCompany(input: CreateCompanyInput): Promise<CreateCo
     address_postal_code: input.addressPostalCode,
   }
 
-  return apiPost<CreateCompanyResponse>('/companies', payload)
+  const company = await apiPost<CreateCompanyResponse>('/companies', payload)
+
+  return {
+    id: company.id,
+    name: company.name,
+    legalName: company.legal_name ?? company.name,
+    taxId: company.tax_id,
+    countryCode: company.country_code,
+    currency: company.currency,
+    locale: company.locale,
+    timezone: company.timezone,
+  }
 }

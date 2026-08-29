@@ -42,7 +42,7 @@ export function CompanyOnboardingPage() {
   const { t } = useTranslation(['common', 'settings'])
   const navigate = useNavigate()
   const invalidateCompanies = useInvalidateCompanies()
-  const setCurrentCompany = useCompanyStore((state) => state.setCurrentCompany)
+  const adoptCreatedCompany = useCompanyStore((state) => state.adoptCreatedCompany)
 
   const [currentStep, setCurrentStep] = useState<Step>('country')
   const [formData, setFormData] = useState({
@@ -67,7 +67,7 @@ export function CompanyOnboardingPage() {
     },
     onSuccess: (data) => {
       void invalidateCompanies()
-      setCurrentCompany(data.id)
+      adoptCreatedCompany(data)
       navigate('/dashboard')
     },
     onError: (err: unknown) => {

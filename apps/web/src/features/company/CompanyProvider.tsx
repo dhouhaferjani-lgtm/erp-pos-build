@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
@@ -69,6 +69,7 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
   const reset = useCompanyStore((state) => state.reset)
   const companies = useCompanyStore((state) => state.companies)
   const queryClient = useQueryClient()
+  const wasAuthenticated = useRef(false)
 
   // Skip fetching on admin routes - they use separate authentication
   const isAdminRoute = routerLocation.pathname === '/admin' || routerLocation.pathname.startsWith('/admin/')
@@ -104,11 +105,15 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
     }
   }, [data, isLoading, isError, error, setCompanies, setLoading])
 
-  // Reset company store on logout
+  // Reset company state only after a real authenticated -> unauthenticated transition.
+  // Authentication is intentionally false while a persisted session bootstraps.
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (isAuthenticated) {
+      wasAuthenticated.current = true
+    } else if (wasAuthenticated.current) {
       reset()
       queryClient.removeQueries({ predicate: userCompaniesPredicate })
+      wasAuthenticated.current = false
     }
   }, [isAuthenticated, reset, queryClient])
 

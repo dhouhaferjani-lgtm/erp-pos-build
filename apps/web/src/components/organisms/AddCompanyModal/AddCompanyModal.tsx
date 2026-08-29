@@ -42,7 +42,7 @@ const COUNTRIES: CountryConfig[] = [
 export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
   const { t } = useTranslation(['settings', 'common', 'countries'])
   const invalidateCompanies = useInvalidateCompanies()
-  const setCurrentCompany = useCompanyStore((state) => state.setCurrentCompany)
+  const adoptCreatedCompany = useCompanyStore((state) => state.adoptCreatedCompany)
   const { currentCompany } = useCompany()
   // Current company's country first, then alphabetical — no hardcoded bias.
   const orderedCountries = orderCountries(COUNTRIES, currentCompany?.countryCode)
@@ -71,7 +71,7 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
       // Invalidate companies query to refetch the list
       void invalidateCompanies()
       // Switch to the new company
-      setCurrentCompany(data.id)
+      adoptCreatedCompany(data)
       // Close the modal
       onClose()
       // Reset form
