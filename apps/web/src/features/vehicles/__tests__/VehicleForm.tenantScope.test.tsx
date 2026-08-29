@@ -21,7 +21,9 @@ const mockTranslate = vi.hoisted(() =>
       'vehicles:licensePlate': 'License Plate',
       'vehicles:brand': 'Brand',
       'vehicles:model': 'Model',
+      'vehicles:owner': 'Owner',
       'common:actions.save': 'actions.save',
+      'partner.searchPlaceholder': 'Search partners',
     }
     return translations[key] ?? key
   }),
@@ -107,7 +109,20 @@ function vehicleFixture() {
 
 function mockVehicleResponses() {
   mockApiGet.mockImplementation(async (url: string) => {
-    if (url === '/partners') return { data: { data: [{ id: 'partner-1', name: 'Partner A' }] } }
+    if (url.startsWith('/partners?')) {
+      return {
+        data: {
+          data: [{ id: 'partner-1', name: 'Partner A', type: 'customer', email: null, city: null }],
+        },
+      }
+    }
+    if (url === '/partners/partner-1') {
+      return {
+        data: {
+          data: { id: 'partner-1', name: 'Partner A', type: 'customer', email: null, city: null },
+        },
+      }
+    }
     if (url === '/vehicles/vehicle-1') return { data: { data: vehicleFixture() } }
     return { data: { data: [] } }
   })
@@ -130,30 +145,60 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  resetTenant()
+  act(() => { resetTenant() })
 })
 
 describe('VehicleForm tenant scope', () => {
-  it('wraps partner and vehicle read keys and gates missing tenant/company (.756-.757)', async () => {
-    const createQueryClient = createClient()
-    render(<VehicleForm />, { wrapper: wrapper(createQueryClient) })
-
-    await waitFor(() => {
-      expect(createQueryClient.getQueryData(['partners', 'tenant-A', 'company-1'])).toBeDefined()
-    })
-
+  it('wraps the vehicle read key and gates missing tenant/company (.756-.757)', async () => {
     mockRouteId.current = 'vehicle-1'
     const editQueryClient = createClient()
-    render(<VehicleForm />, { wrapper: wrapper(editQueryClient) })
+    const edit = render(<VehicleForm />, { wrapper: wrapper(editQueryClient) })
 
     await waitFor(() => {
       expect(editQueryClient.getQueryData(['vehicle', 'vehicle-1', 'tenant-A', 'company-1'])).toBeDefined()
+      expect(editQueryClient.getQueryData(['partner', 'partner-1', 'tenant-A', 'company-1'])).toBeDefined()
     })
+    edit.unmount()
 
-    resetTenant()
+    act(() => { resetTenant() })
     const calls = mockApiGet.mock.calls.length
     render(<VehicleForm />, { wrapper: wrapper(createClient()) })
     expect(mockApiGet).toHaveBeenCalledTimes(calls)
+  })
+
+  it('uses the searchable customer PartnerPicker without an unfiltered partners request', async () => {
+    render(<VehicleForm />, { wrapper: wrapper(createClient()) })
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Owner' }))
+
+    await waitFor(() => {
+      expect(mockApiGet.mock.calls.some(([url]) => String(url).startsWith('/partners?'))).toBe(true)
+    })
+    const listUrls = mockApiGet.mock.calls
+      .map(([url]) => String(url))
+      .filter((url) => url === '/partners' || url.startsWith('/partners?'))
+    expect(listUrls).not.toContain('/partners')
+    expect(listUrls).not.toHaveLength(0)
+    for (const url of listUrls) {
+      expect(new URL(url, 'http://autoerp.test').searchParams.get('type')).toBe('customer')
+    }
+  })
+
+  it('submits the selected customer partner_id unchanged', async () => {
+    render(<VehicleForm />, { wrapper: wrapper(createClient()) })
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Owner' }))
+    await userEvent.click(await screen.findByRole('option', { name: /Partner A/ }))
+    await userEvent.type(screen.getByLabelText(/License Plate/), '123-TUN-456')
+    await userEvent.type(screen.getByLabelText(/Brand/), 'Renault')
+    await userEvent.type(screen.getByLabelText(/Model/), 'Clio')
+    await userEvent.click(screen.getByRole('button', { name: 'actions.save' }))
+
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith('/vehicles', expect.objectContaining({
+        partner_id: 'partner-1',
+      }))
+    })
   })
 
   it('invalidates create vehicles list for only active tenant (.758)', async () => {
