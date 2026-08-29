@@ -242,6 +242,28 @@ with a role you build in the spec, or use `cashier@` and assert the 403/redirect
 (iii) `/purchases/suppliers` blocked for that same user, open for owner; (iv) `/sales/customers/new`
 Type select offers only Customer/Both; `/purchases/suppliers/new` only Supplier/Both.
 
+**M3 addendum — Journey hardening (CLAUDE.md rule 22, added 2026-08-29 while this lane was in flight;
+`docs/conventions/09-SECOND-OF-EVERYTHING.md`, `11-ONE-SURFACE-PER-CONCEPT.md`).** `partners` is a
+catalogue entity (code-keyed, unique `(company_id, code)` —
+`apps/api/database/migrations/tenant/2025_12_30_195300_fix_multi_company_unique_constraints.php:22-34`),
+so both merge-gate reviewers now grade a missing second-of-everything test as MAJOR. Add, in this lane:
+- **Second company:** a Vitest/PHPUnit (or the M2/M3 Playwright spec) case where company B of the same
+  tenant creates a partner with the SAME `code` as company A's and a different nature — both persist,
+  `/sales/customers` is company-scoped (B's row invisible under A), the Nature-required rule and the B2B
+  NULL heuristic behave identically for B. Demo tenant has one company — create company B through the
+  API in the spec (or use a PHPUnit feature test with two companies) and say which.
+- **Second location:** state explicitly "not in scope: no location-keyed table touched by this lane"
+  (verify `partners` has no location column; the vehicle picker change is FE-only).
+- **Re-run / idempotency:** a7's Parties import re-run is covered by the existing
+  `ImportReExecutionGuardTest` (cite file:line) — reference it; the nature/B2B heuristic must be a pure
+  function of the row (re-render idempotent) — one assertion.
+- **`Concepts:`** Party (glossary ✅ — row updated `df921cccf`), Contact (glossary ✅), Nature (label only in
+  Phase 1 over `customer_category`; the glossary row lands with Phase 2's `party_kind`). No hand-rolled FE
+  type beside a generated DTO — that is a3 (M1), cite it in the register.
+- **Industry baseline:** Phase 1 is shape-neutral cleanup of surfaces already benchmarked in the spec
+  (`docs/superpowers/specs/2026-08-23-party-contact-target-model-research.md` §2.1–2.5) — cite that section
+  in the M3 register instead of re-tabulating; the full convention-10 table lives in the Phase 2 brief.
+
 **M3 review lenses:** `tenancy-authz`, `frontend-conventions`.
 
 **H1-cleanup done when:** M1–M3 ACCEPT, `pnpm typecheck && pnpm lint` clean in `apps/web`, touched
