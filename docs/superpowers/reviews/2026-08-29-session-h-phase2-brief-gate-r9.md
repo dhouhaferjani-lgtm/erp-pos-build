@@ -35,3 +35,6 @@
 | N-39 | MAJOR | `brief:137` cites `PosCustomerSyncController.php:59` as proof that the POS mirror is company-scoped, but that line only maps the result resource. Repin this check-6 evidence to `apps/api/app/Modules/POS/Presentation/Controllers/PosCustomerSyncController.php:42-45`—specifically the `company_id` predicate at `:44`. |
 
 VERDICT: CHANGES-REQUIRED
+
+## Orchestrator disposition (2026-08-29)
+N-39 applied directly (one anchor repin at brief lines 137 and 640 → `PosCustomerSyncController.php:42-45`, predicate `:44`, verified by reading the file). No further pre-merge round: r7 accepted the technical content, r8–r9 closed check 6 with this single residual. **The ACCEPT gate for dispatch is the post-Phase-1-merge final round** (r7 conditions 1–6), which re-runs check 6 against the re-pinned brief.

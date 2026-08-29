@@ -134,7 +134,7 @@ code-keyed — so this lane is in scope and adds all three tests. Fold them into
   each company's list returns only its own (`PartnerController::index` is company-scoped at
   `app/Modules/Partner/Presentation/Controllers/PartnerController.php:117-119`), the derived
   `customer_category` differs per row, and the **POS mirror is company-scoped** — company B's sync never
-  returns company A's party (`PosCustomerSyncController.php:59`). Assert on **data meaning**, not status codes.
+  returns company A's party (`PosCustomerSyncController.php:42-45` (company predicate `:44`)). Assert on **data meaning**, not status codes.
 - **(b) Second location — not in scope, verified.** `partners` has **no location column**: `grep -n
   'location_id\|location_code'` over the partners migrations and `app/Modules/Partner/Domain/Partner.php`
   returns **zero hits**, and nothing this lane adds is location-keyed. State that in the M2 register rather
@@ -637,7 +637,7 @@ paths: HTTP create, HTTP update, POS, import create, import update.
 `PosCustomerMirrorResource.php:41`; verified, there is a second and it is *directly* a sealed-payload input.
 (a) `app/Modules/POS/Presentation/Resources/PosCustomerMirrorResource.php:42` —
 `'customer_category' => $this->customer_category?->value` (device mirror, served via
-`PosCustomerSyncController.php:59`); (b)
+`PosCustomerSyncController.php:42-45` (company predicate `:44`)); (b)
 `app/Modules/POS/Application/Services/VirtualAdminFiscalEventService.php:242` — the same read inside the
 DEPOSIT_RECEIPT `customer` block this service seals **server-side**. Both read
 `$partner->party_kind->toCustomerCategory()->value`. The stored column stays coherent via M2.3(b) and the
