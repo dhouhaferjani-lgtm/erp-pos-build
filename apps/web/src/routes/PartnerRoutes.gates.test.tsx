@@ -152,12 +152,13 @@ describe('partner and contact route gates', () => {
     expect(screen.queryByText('contact edit form')).not.toBeInTheDocument()
   })
 
-  it('does not resolve the retired Companies route', async () => {
+  it('redirects the retired Companies route to the customer list', async () => {
     setActor(['admin'], [])
 
     renderRoute('/crm/companies')
 
-    expect(await screen.findByText('dashboard fallback')).toBeInTheDocument()
+    expect(await screen.findByText('partner list')).toBeInTheDocument()
+    expect(screen.queryByText('dashboard fallback')).not.toBeInTheDocument()
   })
 
   it.each(['/partners', '/partners/legacy-id'])('keeps %s redirecting to customers', async (path) => {

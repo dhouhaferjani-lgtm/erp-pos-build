@@ -2781,6 +2781,9 @@ export function AppRoutes() {
         {/* CRM Module */}
         <Route path="crm">
           <Route index element={<Navigate to="/crm/contacts" replace />} />
+          {/* Retired page. Customers are the surviving surface for the
+              company/partner concept, so old bookmarks keep working. */}
+          <Route path="companies" element={<Navigate to="/sales/customers" replace />} />
           <Route
             path="contacts"
             element={
