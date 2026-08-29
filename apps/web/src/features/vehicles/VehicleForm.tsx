@@ -223,7 +223,7 @@ export function VehicleForm() {
                 name="partner_id"
                 render={({ field }) => (
                   <PartnerPicker
-                    value={field.value}
+                    value={field.value ?? null}
                     onChange={(partner) => { field.onChange(partner?.id ?? '') }}
                     label={t('vehicles:owner')}
                     partnerType="customer"
