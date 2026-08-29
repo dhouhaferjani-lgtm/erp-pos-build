@@ -16,7 +16,7 @@ use Illuminate\Support\Carbon;
  * @property array<string, mixed> $data
  * @property bool $is_valid
  * @property array<string, array<string>>|null $errors
- * @property list<array{code?: string, detail?: string}>|null $warnings
+ * @property list<array{code: string, detail: string}>|null $warnings
  * @property bool $is_imported
  * @property string|null $imported_entity_id
  * @property string|null $import_error

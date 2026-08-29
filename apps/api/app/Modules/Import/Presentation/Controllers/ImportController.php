@@ -669,7 +669,9 @@ class ImportController extends Controller
             'successful_rows' => $job->successful_rows,
             'failed_rows' => $job->failed_rows,
             'warning_rows' => $this->countWarningRows($job),
-            'warning_summary' => $withWarningSummary ? $this->warningSummary($job) : null,
+            'warning_summary' => $withWarningSummary && $job->status->isTerminal()
+                ? $this->warningSummary($job)
+                : null,
             'options' => $job->options,
             'progress_percentage' => $job->getProgressPercentage(),
             'error_message' => $job->error_message,
@@ -702,14 +704,19 @@ class ImportController extends Controller
         $summary = [];
 
         foreach ($job->rows()->whereNotNull('warnings')->get(['warnings']) as $row) {
-            if (! is_array($row->warnings) || $row->warnings === []) {
+            $warnings = $row->getAttribute('warnings');
+            if (! is_array($warnings) || $warnings === []) {
                 continue;
             }
 
             $rowCodes = [];
-            foreach ($row->warnings as $warning) {
-                $code = $warning['code'] ?? '';
-                if ($code === '') {
+            foreach ($warnings as $warning) {
+                if (! is_array($warning)) {
+                    continue;
+                }
+
+                $code = $warning['code'] ?? null;
+                if (! is_string($code) || $code === '') {
                     continue;
                 }
 

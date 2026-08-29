@@ -479,16 +479,16 @@ export function ImportWizardPage() {
         markStepCompleted('execute')
         setCurrentStep('complete')
       }
-      if (realtimeProgress?.status === 'completed') {
+      if (realtimeProgress?.status === 'completed' || realtimeProgress?.status === 'failed') {
         void refetchJob().then((result) => {
           if (result.isError) {
-            terminalTransitionJobsRef.current.delete(jobId)
-            return
+            console.error('Import wizard: final job refetch failed', result.error)
           }
 
           enterCompleteStep()
-        }, () => {
-          terminalTransitionJobsRef.current.delete(jobId)
+        }, (error: unknown) => {
+          console.error('Import wizard: final job refetch failed', error)
+          enterCompleteStep()
         })
       } else {
         enterCompleteStep()

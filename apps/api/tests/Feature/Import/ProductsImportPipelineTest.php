@@ -15,6 +15,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Domain\ImportRow;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
@@ -234,7 +235,7 @@ final class ProductsImportPipelineTest extends TestCase
             ->assertJsonPath('data.warning_summary.location_unresolved', 2);
     }
 
-    public function test_import_list_omits_warning_summary_while_show_counts_rows_per_code(): void
+    public function test_import_list_and_processing_show_omit_warning_summary_while_terminal_show_counts_valid_codes_per_row(): void
     {
         $file = UploadedFile::fake()->createWithContent('products-warning-summary.csv', implode("\n", [
             'name,sku,type',
@@ -252,8 +253,13 @@ final class ProductsImportPipelineTest extends TestCase
                 ['code' => 'price_conflict', 'detail' => 'TTC conflicts with HT'],
                 ['code' => 'price_conflict', 'detail' => 'Margin conflicts with HT'],
                 ['detail' => 'Legacy warning without a code'],
+                'Legacy scalar warning',
+                ['code' => '', 'detail' => 'Legacy warning with an empty code'],
+                ['code' => 42, 'detail' => 'Legacy warning with a non-string code'],
             ],
         ]);
+
+        ImportJob::query()->findOrFail($jobId)->update(['status' => ImportStatus::Importing]);
 
         $this->actingAs($this->user, 'sanctum')
             ->getJson('/api/v1/imports')
@@ -265,7 +271,15 @@ final class ProductsImportPipelineTest extends TestCase
             ->getJson("/api/v1/imports/{$jobId}")
             ->assertOk()
             ->assertJsonPath('data.warning_rows', 1)
-            ->assertJsonPath('data.warning_summary.price_conflict', 1);
+            ->assertJsonPath('data.warning_summary', null);
+
+        ImportJob::query()->findOrFail($jobId)->update(['status' => ImportStatus::Completed]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/imports/{$jobId}")
+            ->assertOk()
+            ->assertJsonPath('data.warning_rows', 1)
+            ->assertJsonPath('data.warning_summary', ['price_conflict' => 1]);
     }
 
     public function test_products_import_uses_job_location_option_when_rows_have_no_location_code(): void

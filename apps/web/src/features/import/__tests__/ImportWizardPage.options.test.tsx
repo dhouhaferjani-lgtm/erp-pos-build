@@ -3,7 +3,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ImportWizardPage } from '../pages/ImportWizardPage'
 import type { ImportJob } from '../types'
@@ -143,6 +143,10 @@ async function uploadAndMap() {
 }
 
 describe('ImportWizardPage product options step', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     nextMapping = {}
@@ -354,7 +358,7 @@ describe('ImportWizardPage product options step', () => {
     expect(screen.getByText('warnings.location_unresolved')).toBeInTheDocument()
   })
 
-  it('keeps the execute step after a failed final refetch and retries before completion', async () => {
+  it('reaches complete when the final refetch rejects after API data is already completed', async () => {
     nextMapping = { name: 'name' }
     const staleJob: ImportJob = {
       id: 'job-1',
@@ -374,7 +378,7 @@ describe('ImportWizardPage product options step', () => {
       completed_at: null,
       created_at: '2026-08-29T09:59:59Z',
     }
-    const finalizedJob: ImportJob = {
+    const completedJob: ImportJob = {
       ...staleJob,
       status: 'completed',
       processed_rows: 100,
@@ -387,18 +391,16 @@ describe('ImportWizardPage product options step', () => {
     mockExecuteMutate.mockImplementation((_jobId: string, options?: { onSuccess?: (data: ImportJob) => void }) => {
       options?.onSuccess?.({ ...staleJob, status: 'pending' })
     })
-    mockRefetchJob
-      .mockResolvedValueOnce({ data: staleJob, isError: true })
-      .mockImplementationOnce(() => {
-        nextJobData = finalizedJob
-        return Promise.resolve({ data: finalizedJob, isError: false })
-      })
+    const refetchError = new Error('final refetch failed')
+    mockRefetchJob.mockRejectedValueOnce(refetchError)
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
     await uploadAndMap()
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'wizard.validation.proceed' }))
     await user.click(screen.getByRole('button', { name: 'wizard.execute.start' }))
 
+    nextJobData = completedJob
     act(() => {
       useImportProgressStore.getState().updateProgress({
         import_job_id: 'job-1',
@@ -414,25 +416,81 @@ describe('ImportWizardPage product options step', () => {
     })
 
     await waitFor(() => { expect(mockRefetchJob).toHaveBeenCalledOnce() })
-    expect(screen.queryByRole('heading', { name: 'wizard.complete.warnings' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'wizard.complete.title' })).toBeInTheDocument()
+    expect(consoleErrorSpy).toHaveBeenCalledOnce()
+    expect(consoleErrorSpy).toHaveBeenCalledWith('Import wizard: final job refetch failed', refetchError)
+  })
 
-    nextJobData = finalizedJob
+  it('refetches a failed job before transitioning to complete', async () => {
+    nextMapping = { name: 'name' }
+    const staleJob: ImportJob = {
+      id: 'job-1',
+      type: 'products',
+      status: 'validated',
+      original_filename: 'products.csv',
+      total_rows: 100,
+      processed_rows: 0,
+      successful_rows: 0,
+      failed_rows: 0,
+      warning_rows: 0,
+      warning_summary: {},
+      progress_percentage: 0,
+      options: null,
+      error_message: null,
+      started_at: null,
+      completed_at: null,
+      created_at: '2026-08-29T09:59:59Z',
+    }
+    const failedJob: ImportJob = {
+      ...staleJob,
+      status: 'failed',
+      processed_rows: 100,
+      failed_rows: 100,
+      progress_percentage: 100,
+      error_message: 'Import failed',
+      completed_at: '2026-08-29T10:00:01Z',
+    }
+    nextJobData = staleJob
+    mockExecuteMutate.mockImplementation((_jobId: string, options?: { onSuccess?: (data: ImportJob) => void }) => {
+      options?.onSuccess?.({ ...staleJob, status: 'pending' })
+    })
+
+    let finishRefetch: (() => void) | undefined
+    mockRefetchJob.mockImplementation(() => new Promise((resolve) => {
+      finishRefetch = () => {
+        nextJobData = failedJob
+        resolve({ data: failedJob, isError: false })
+      }
+    }))
+
+    await uploadAndMap()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'wizard.validation.proceed' }))
+    await user.click(screen.getByRole('button', { name: 'wizard.execute.start' }))
+
     act(() => {
       useImportProgressStore.getState().updateProgress({
         import_job_id: 'job-1',
-        status: 'completed',
+        status: 'failed',
         total_rows: 100,
         processed_rows: 100,
-        successful_rows: 100,
-        failed_rows: 0,
+        successful_rows: 0,
+        failed_rows: 100,
         progress_percentage: 100,
         import_type: 'products',
         original_filename: 'products.csv',
       })
     })
 
-    await waitFor(() => { expect(mockRefetchJob).toHaveBeenCalledTimes(2) })
-    expect(await screen.findByRole('heading', { name: 'wizard.complete.warnings' })).toBeInTheDocument()
+    await waitFor(() => { expect(mockRefetchJob).toHaveBeenCalledOnce() })
+    expect(screen.queryByRole('heading', { name: 'wizard.complete.title' })).not.toBeInTheDocument()
+
+    await act(async () => {
+      finishRefetch?.()
+      await Promise.resolve()
+    })
+
+    expect(await screen.findByRole('heading', { name: 'wizard.complete.title' })).toBeInTheDocument()
   })
 
   it('shows warning counts on the completion step', async () => {
