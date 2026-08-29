@@ -84,7 +84,7 @@ export interface PartnerFormData {
   country: string
   country_code: string
   vat_number: string
-  tax_status: 'REGISTERED' | 'NON_REGISTERED' | 'EXEMPT'
+  tax_status: PartnerData['tax_status']
   exemption_reason: string
   exemption_valid_until: string
   notes: string
@@ -203,7 +203,9 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
     country: z.string(),
     country_code: z.string(),
     vat_number: z.string(),
-    tax_status: z.enum(['REGISTERED', 'NON_REGISTERED', 'EXEMPT']),
+    tax_status: z.enum(
+      ['REGISTERED', 'NON_REGISTERED', 'EXEMPT'] as const satisfies readonly PartnerData['tax_status'][],
+    ),
     exemption_reason: z.string(),
     exemption_valid_until: z.string(),
     notes: z.string(),
