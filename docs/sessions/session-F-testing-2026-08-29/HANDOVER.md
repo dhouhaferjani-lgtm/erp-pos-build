@@ -1,0 +1,41 @@
+# Session F — test-companion orchestrator (2026-08-29)
+
+## Mandate
+Owner's team is manually testing tenant-#1 onboarding on STAGING (`erp.otospex.dev`). You are the orchestrator + companion: triage reported bugs, reproduce (local AND staging — inconsistency between them is itself a finding), dispatch fix lanes, gate adversarially, merge to local dev, promote (push = auto-deploy + auto-migrate, webhook works). You do NOT implement in your own context — dispatch.
+
+## Operating constraints (read first)
+- **Anthropic weekly limit until Aug 30 15:00 (Africa/Tunis)**: Claude subagents may be unavailable — run implementers AND gates via `codex exec --sandbox workspace-write -C /Users/houssamr/Projects/syneriva/apps/erp "<prompt>" < /dev/null` in background (nohup + Monitor on the pid). Codex CANNOT `git commit` in worktrees (sandbox) — it leaves the tree dirty; you verify (run its touched tests yourself by path) then commit on its behalf, crediting it. Codex may stop to ask design approval — bake "DESIGN PRE-APPROVED, do not ask" into prompts. Streams drop on the flaky link — relaunch with a "RESUME, reload state via git diff" prompt; state survives on disk.
+- **Laptop**: avoid USB tethering (two kernel panics — reference_laptop_kernel_panic_2026_08_24); `caffeinate -i` while lanes run; ≤1-2 concurrent agents on hotspot; kill vitest pools.
+- **Worktrees** under `.worktrees/<lane>` off dev; never stash (repo-global hook blocks drop but not save — don't create them); never combine `--force`-anything with `git push` in one Bash call (dev-push-guard false-positives).
+- **Merges**: run `php tools/feature-lane-manifest-check.php` (apps/api) at EVERY merge — new Feature test classes need manifest ceiling raises (precedent notes in the file). Review records → `docs/superpowers/reviews/`, committed.
+- **Staging access**: PG direct 157.180.71.252:5434 user autoerp pass 69786a4a66fcc527fc853935e7766a1b563052250654da41 (central DB `iziposcentral`; tenants `tenant<uuid>`); external port churns closed on redeploys → re-open via Dokploy MCP postgres-saveExternalPort (postgresId 1CRiRxlMFCMynVj1CMhMs). API health: https://api.erp.otospex.dev/api/v1/health. Dokploy MCP project a_quW5mtmNArxuyZO6adQ / Staging env; app IDs in session-D/E logs. No SSH to the box.
+- **Local stack**: PG 127.0.0.1:5433 (autoerp/autoerp_secret, compose `POSTGRES_PORT=5433 docker compose up -d postgres redis`); Docker Desktop needs manual start after reboots.
+
+## State (all shipped, staging = origin/dev = `a4ceeb0f5`)
+- Sessions D+E: 13 gated lanes merged+promoted (see docs/sessions/session-D-2026-08-26/ + session-E-2026-08-27/ SESSION-LOGs, LEDGER `D-*` rows, PROMOTION-CHECKLIST-2026-08-26.md).
+- **Refunds DEFAULT-ON fleet-wide** (owner ruling; 5/5 staging tills). Team's refund pass = E-7 evidence → owner ticks O-9.
+- **Deferred draft numbering live** (R-2): drafts unnumbered until confirm — testers will see placeholders; that's correct.
+- Owner owes (nag when relevant): Actions budget → then run S-14 CI dispatch leg on the candidate; O-9 tick after refund pass; staging operator steps (B-19 `vat:backfill-tax-details --apply` per tenant, RepositoryTransfer per provisioned branch drawer, ambiguous-drawer attribution tenant 019ee4d7); AX42 arrived? → prod build per docs/superpowers/plans/2026-08-05-production-environment-design.md.
+
+## BUG QUEUE (from the team, 2026-08-29)
+1. **F-BUG-1 (P1, blocks import testing): location resets to default on page refresh; suspected cause of "weird behavior" during import.** Reproduce on LOCAL and STAGING (inconsistency = finding). Suspects: location/branch selection persistence (Zustand store not persisted? tenantScopedKey cache? `localStorage` shared-auth conflicts — CLAUDE.md warns localhost localStorage is shared between apps), the N-12 location attribution work (Session D) touched location resolution, and W2-* import lanes touched the import wizard. Check `apps/web/src` location context/store (grep `currentLocation`, `defaultLocation`, `location_id` in the import wizard payload) — does the import POST carry the SELECTED location or the default after refresh? Fix lane + gate per protocol above.
+2. (append further team reports here)
+
+## Session E residuals (non-blocking, pick up when idle)
+- LEDGER rows for Session E lanes (R-2, I-1 follow-ups, refunds-default-on) not yet written — do a bookkeeping pass (follow the D-* row style).
+- R-2 G4 residual parked (race test at service seam); stash@{0} from R-2 still in the repo-global stash (owner to drop); `.superpowers/sdd/SESSION-E/progress.md` = ledger.
+- Codex sandbox can't write `.superpowers/` or worktree git metadata — collect its evidence from the scratchpad logs.
+
+### F-BUG-1 status (2026-08-29, Session F)
+- TRIAGED → `F-BUG-1-TRIAGE.md`. Refresh-reset NOT reproduced (same bundle local/staging). Real root causes confirmed on staging data: in-tenant new companies get a code-less default location (1a); products import is location-blind and silently skips opening stock (`location_unresolved` warnings hidden by the wizard) (1b); tenant-wide SKU uniqueness makes a 2nd-company import fail every row (1d → owner ruling / Session G); post-create company switch is a silent no-op (1e → Lane F2).
+- Lane F1 dispatched: `fix/f-bug-1-import-location` @ `.worktrees/f-bug-1`, brief `LANE-F1-import-location-BRIEF.md`.
+- 12:10 owner clarified: the complaint is COMPANY switching. REPRODUCED + ROOT-CAUSED (triage § "Company switching"): `CompanyProvider` logout-reset effect fires on every boot (`isAuthenticated` not persisted) → deletes `autoerp-company-selection` → primary company wins after refresh. Lane F2 dispatched: `fix/f-bug-2-company-switch` @ `.worktrees/f-bug-2`, brief `LANE-F2-company-switch-BRIEF.md` (P1 boot reset, P2 post-create switch no-op, P3 stale-403 noise). Both lanes run via Codex exec (pids in scratchpad `lane-f*-pid`).
+- Still owed by the team: a staging tester login (to replay on staging after deploy).
+- KNOWN + OWNED ELSEWHERE (from Session G orchestrator erp-4f, 13:10): `partners.vat_number` tenant-wide unique (migration 2025_11_30_052119:34) → 2nd-company customers/suppliers import 23505s like the products SKU case; Session G lane G-3a owns it (log as "known, G-3a"). Products SKU tenant-wide (F-BUG-1 1d) = Session G RUL-2.
+- 13:10 gates r1 done for both lanes (records in docs/superpowers/reviews/2026-08-29-f{1,2}-*-gate-r1-*.md); fix rounds dispatched to Codex (LANE-F1-FIX-ROUND-1.md, LANE-F2-FIX-ROUND-1.md). Session G holds off ImportController::formatJob / ImportWizardPage / import types+locales until F1 merges (notify erp-4f + erp-ba with SHA).
+- KNOWN + OWNED by Session G (lane R11, per erp-4f 13:40): products import stores `unit` as free text and never writes `unit_id` (ProductService.php:73) → imported products carry NULL unit_id; quantity-precision/display oddities on imported products = "known, R11", don't fix here.
+
+## Machine rules addendum (2026-08-29, applies to ALL sessions incl. H)
+- NO parallel full `pnpm lint` runs across sessions (tools test flakes at the 5s edge under contention): full lint only inside merge gates; wait if another session is mid-lint.
+- Codex slot budget: 4 machine-wide; F holds 1 priority slot during fix rounds; G 2 (3 when F idle); H 1.
+- 14:05 F2: r2 tenancy MERGEABLE, r2 frontend CHANGES (P2-A no-op invalidation) → fix round 2 committed `797a565de`; r3 frontend gate running. F1: r2 imports+tenancy CHANGES (P1 PHPStan red via ImportRow docblock; P2 poll-time hydration; P2 refetch stall) → fix round 2 dispatched to Codex (LANE-F1-FIX-ROUND-2.md). Lane commits so far: F1 `afd2aaf71`,`6f36f777f`; F2 `4da24fddb`,`7ab135511`,`797a565de`.
