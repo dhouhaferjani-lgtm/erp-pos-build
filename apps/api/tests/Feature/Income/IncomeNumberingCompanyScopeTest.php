@@ -25,47 +25,35 @@ use Illuminate\Support\Facades\DB;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
-/**
- * LEDGER C-27 (Session B2 lane B2-1) — the Income twin of the journal-entry defect.
- *
- * `IncomeService::generateIncomeNumber()` allocated with a COMPANY-scoped max+1
- * scan while the only unique index on the column is
- * `documents_tenant_id_type_document_number_unique` on
- * `(tenant_id, type, document_number)` — and it took NO lock at all. In a tenant
- * with two companies, the second company's first income post minted
- * `INC-YYYY-000001`, which the first company already held.
- */
-final class IncomeNumberingTenantScopeTest extends TestCase
+/** Income numbers are continuous within one company and independent across sibling companies. */
+final class IncomeNumberingCompanyScopeTest extends TestCase
 {
     use RefreshDatabase;
 
-    /**
-     * T4 — the reproduction. Two companies of one tenant, two income posts, two
-     * distinct tenant-wide numbers.
-     */
-    public function test_income_numbers_do_not_collide_across_two_companies_in_the_same_tenant(): void
+    public function test_income_numbers_restart_for_a_sibling_company_and_remain_sequential_per_company(): void
     {
         [$user, $companyA] = $this->makeUserWithPermissions(['income.post', 'income.view', 'income.create']);
         $companyB = $this->makeSiblingCompany($user, 'Second Company');
 
         $numberA = $this->postIncomeForCompany($user, $companyA, '120.000');
-        $numberB = $this->postIncomeForCompany($user, $companyB, '140.000');
+        $firstNumberB = $this->postIncomeForCompany($user, $companyB, '140.000');
+        $secondNumberB = $this->postIncomeForCompany($user, $companyB, '160.000');
 
         $year = date('Y');
         self::assertSame(sprintf('INC-%s-%06d', $year, 1), $numberA);
         self::assertSame(
-            sprintf('INC-%s-%06d', $year, 2),
-            $numberB,
-            'Income numbers must be unique tenant-wide — the unique index is (tenant_id, type, document_number).'
+            sprintf('INC-%s-%06d', $year, 1),
+            $firstNumberB,
+            'Each company must start its own income sequence at 000001.'
         );
+        self::assertSame(sprintf('INC-%s-%06d', $year, 2), $secondNumberB);
     }
 
     /**
-     * T4b — the max+1 read must be serialised by a transaction-scoped advisory
-     * lock keyed on the SAME scope the scan uses (the tenant). Before the fix
-     * there was no lock at all.
+     * The max+1 read must be serialised by a transaction-scoped advisory lock
+     * keyed on the same company scope as the scan.
      */
-    public function test_income_number_allocation_takes_the_tenant_advisory_lock(): void
+    public function test_income_number_allocation_takes_the_company_advisory_lock(): void
     {
         if (DB::connection()->getDriverName() !== 'pgsql') {
             self::markTestSkipped('pg_advisory_xact_lock is observable on PostgreSQL only.');
@@ -82,7 +70,7 @@ final class IncomeNumberingTenantScopeTest extends TestCase
             $log,
             static fn (array $entry): bool => str_contains((string) $entry['query'], 'pg_advisory_xact_lock(hashtextextended')
                 && in_array(
-                    "income_number:{$user->tenant_id}",
+                    "income_number:{$company->id}",
                     array_map(static fn (mixed $value): string => (string) $value, $entry['bindings']),
                     true
                 )
@@ -91,7 +79,7 @@ final class IncomeNumberingTenantScopeTest extends TestCase
         self::assertNotSame(
             [],
             $locks,
-            'Expected a pg_advisory_xact_lock keyed income_number:{tenantId} during income-number allocation.'
+            'Expected a pg_advisory_xact_lock keyed income_number:{companyId} during income-number allocation.'
         );
     }
 
