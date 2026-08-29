@@ -56,6 +56,7 @@ use App\Modules\Voucher\Application\Services\VoucherRedemptionService;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use App\Shared\Contracts\Loyalty\LoyaltyEarningContract;
 use App\Shared\Contracts\Loyalty\SaleEarnContext;
+use App\Shared\Contracts\PartnerServiceInterface;
 use App\Shared\Domain\ByteaBinding;
 use App\Shared\Domain\CashRoundingCutover;
 use App\Shared\Domain\ConcurrencyFault;
@@ -88,11 +89,12 @@ use RuntimeException;
  * (same security stance as Task 21 R2 Opus F3, now expressed via the
  * Shared/Contracts seam instead of a direct Treasury Eloquent traversal).
  *
- * **D16 sale-time snapshot invariant.** The projector reads buyer data
- * EXCLUSIVELY from `fiscal_events.payload.buyer` (sale-time snapshot).
- * NEVER traverses runtime customer / contact / B2B tables; the
- * `PosCoreReceiptProjectionD16Test` grep guard pins this invariant by
- * forbidding both module imports AND Eloquent static-call surfaces.
+ * **D16 sale-time snapshot invariant.** Buyer display and tax data come
+ * exclusively from `fiscal_events.payload.buyer`. The payload customer ID is
+ * used only as a candidate FK: a shared-contract resolver confirms that it is
+ * a customer-capable partner in the event's tenant + company. Missing, legacy,
+ * malformed, or out-of-scope candidates land with a null partner FK while the
+ * sealed snapshot still projects. No request-bound company context is used.
  *
  * **Idempotency anchor.** The durable guard is the `pos_receipts.fiscal_event_id
  * UNIQUE` column added in Task 11 — `apply()` checks for an existing
@@ -195,6 +197,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         private readonly ReceiptHashService $receiptHashService,
         private readonly CanonicalPayloadReader $canonicalReader,
         private readonly PaymentMethodResolver $paymentMethodResolver,
+        private readonly PartnerServiceInterface $partnerService,
         private readonly LoyaltyEarningContract $loyaltyEarning,
         private readonly CountingBlockService $countingBlockService,
         private readonly AuditService $auditService,
@@ -366,11 +369,12 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 $this->assertApprovalEvidenceResolved($event, $payload);
             }
 
-            // Buyer block snapshot — D16 invariant: read ONLY from the
-            // parsed payload. NO live customer/contact/B2B lookup.
+            // Buyer block snapshot — display/tax fields are sealed payload
+            // values. customer_id is only a candidate FK and is written when
+            // it is a scoped, existing customer-capable partner.
             $buyer = $view->buyer;
             $customerName = $buyer?->name;
-            $partnerId = $buyer?->customerId;
+            $partnerId = $this->resolveBuyerPartnerId($event, $buyer?->customerId);
             $contactId = $buyer?->contactId;
             $customerIdentifier = $buyer?->taxNumber;
 
@@ -482,7 +486,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 ? bcsub($totalNorm, $roundingAdjustmentNorm, self::SCALE)
                 : $totalNorm;
 
-            $this->earnLoyaltyPoints($receiptId, $event, $view, $payload, $receiptTypeEnum, $earnBase);
+            $this->earnLoyaltyPoints($receiptId, $event, $view, $payload, $receiptTypeEnum, $partnerId, $earnBase);
             $this->applyStockMovementForLines(
                 $receiptId,
                 $event,
@@ -1657,6 +1661,26 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
     }
 
     /**
+     * Convert a sealed buyer ID into a safe local FK.
+     *
+     * Historical receipts may carry opaque device identifiers. New receipts
+     * carry UUID-or-null, but projection remains defensive at every event
+     * version because it is the final FK boundary.
+     */
+    private function resolveBuyerPartnerId(FiscalEvent $event, ?string $candidateId): ?string
+    {
+        if ($candidateId === null || ! Str::isUuid($candidateId)) {
+            return null;
+        }
+
+        return $this->partnerService->resolveScopedCustomerId(
+            $event->tenant_id,
+            $event->company_id,
+            $candidateId,
+        );
+    }
+
+    /**
      * Credit loyalty points for an earning SALE. Mirrors redeemVouchers() —
      * synchronous, try/catch, must never break the sale projection.
      * Earns only on a real SALE (not REFUND/VOID → Return, not training).
@@ -1672,6 +1696,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         SaleReceiptCanonicalView $view,
         SaleReceiptPayload $payload,
         ReceiptType $receiptType,
+        ?string $partnerId,
         string $earnBase,
     ): void {
         // Earn-eligibility guard (Codex BLOCKER-2): refunds/voids/training earn nothing.
@@ -1683,7 +1708,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             $this->loyaltyEarning->earnForSale(new SaleEarnContext(
                 tenantId: $event->tenant_id,
                 contactId: $view->buyer?->contactId,
-                partnerId: $view->buyer?->customerId,
+                partnerId: $partnerId,
                 currency: $payload->currencyCode,
                 sourceType: 'pos_receipt',
                 sourceId: $receiptId,

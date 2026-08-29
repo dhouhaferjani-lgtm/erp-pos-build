@@ -15,6 +15,21 @@ use App\Shared\Contracts\PartnerServiceInterface;
  */
 final class PartnerService implements PartnerServiceInterface
 {
+    public function resolveScopedCustomerId(
+        string $tenantId,
+        string $companyId,
+        string $customerId,
+    ): ?string {
+        $id = Partner::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->whereKey($customerId)
+            ->whereIn('type', [PartnerType::Customer->value, PartnerType::Both->value])
+            ->value('id');
+
+        return is_string($id) ? $id : null;
+    }
+
     /**
      * Find a partner by VAT number or name.
      *

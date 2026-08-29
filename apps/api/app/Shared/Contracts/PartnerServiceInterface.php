@@ -12,6 +12,18 @@ namespace App\Shared\Contracts;
 interface PartnerServiceInterface
 {
     /**
+     * Resolve a customer-capable partner within the event's explicit scope.
+     *
+     * Queue consumers must supply tenant and company directly; this method
+     * never relies on request-bound company context.
+     */
+    public function resolveScopedCustomerId(
+        string $tenantId,
+        string $companyId,
+        string $customerId,
+    ): ?string;
+
+    /**
      * Find a partner by VAT number or name.
      *
      * @return array{id: string, type: string}|null Partner info or null if not found

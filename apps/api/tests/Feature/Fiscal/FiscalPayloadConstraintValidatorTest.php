@@ -1277,6 +1277,111 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
     }
 
+    public function test_v5_buyer_accepts_uuid_customer_id(): void
+    {
+        $payload = $this->canonicalV5Payload();
+        $payload['buyer'] = [
+            'address' => null,
+            'codice_fiscale' => null,
+            'contact_id' => null,
+            'customer_id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            'name' => 'Acme SARL',
+            'tax_number' => '1234567AM000',
+        ];
+
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 5,
+        );
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_v5_buyer_accepts_null_customer_id(): void
+    {
+        $payload = $this->canonicalV5Payload();
+        $payload['buyer'] = [
+            'address' => null,
+            'codice_fiscale' => null,
+            'contact_id' => null,
+            'customer_id' => null,
+            'name' => 'Pending Acme SARL',
+            'tax_number' => null,
+        ];
+
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 5,
+        );
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_v5_buyer_rejects_pending_non_uuid_customer_id(): void
+    {
+        $payload = $this->canonicalV5Payload();
+        $payload['buyer'] = [
+            'address' => null,
+            'codice_fiscale' => null,
+            'contact_id' => null,
+            'customer_id' => 'pending-customer-7',
+            'name' => 'Pending Acme SARL',
+            'tax_number' => null,
+        ];
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/^payload_buyer_invalid:customer_id must be UUID or null/');
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 5,
+        );
+    }
+
+    public function test_v5_buyer_requires_non_empty_name(): void
+    {
+        $payload = $this->canonicalV5Payload();
+        $payload['buyer'] = [
+            'address' => null,
+            'codice_fiscale' => null,
+            'contact_id' => null,
+            'customer_id' => null,
+            'name' => null,
+            'tax_number' => null,
+        ];
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/^payload_buyer_name_invalid:/');
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 5,
+        );
+    }
+
+    public function test_legacy_f07_non_uuid_buyer_remains_accepted_with_pinned_bytes(): void
+    {
+        $path = __DIR__.'/../../Fixtures/Fiscal/sale-receipt-golden/v4/F-07-b2b-buyer-eur/payload.json';
+        $bytes = file_get_contents($path);
+
+        self::assertIsString($bytes);
+        self::assertSame('96e325eedc1b5466e3cd0a0c7b74b203b0110617b46459a47ed4236579e46142', hash('sha256', $bytes));
+
+        // The committed v4-directory vector predates the later
+        // approval_references key and remains byte-pinned above. The current
+        // F-07 builder carries that additive key while preserving the legacy
+        // non-UUID buyer identifier whose v1 acceptance is ruled here.
+        $payload = GoldenFixtureBuilder::all()['F-07-b2b-buyer-eur'];
+        self::assertSame('cust-007', $payload['buyer']['customer_id']);
+
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 1,
+        );
+        $this->addToAssertionCount(1);
+    }
+
     public function test_malformed_line_item_missing_sku_is_rejected(): void
     {
         $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
@@ -2101,6 +2206,24 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         ];
 
         return array_replace_recursive($payload, $overrides);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function canonicalV5Payload(): array
+    {
+        $path = __DIR__.'/../../Fixtures/Fiscal/sale-receipt-v5-golden.json';
+        $fixtureBytes = file_get_contents($path);
+        self::assertIsString($fixtureBytes);
+
+        /** @var array{expected_canonical_string: string} $fixture */
+        $fixture = json_decode($fixtureBytes, true, 512, JSON_THROW_ON_ERROR);
+
+        /** @var array<string, mixed> $payload */
+        $payload = json_decode($fixture['expected_canonical_string'], true, 512, JSON_THROW_ON_ERROR);
+
+        return $payload;
     }
 
     /**

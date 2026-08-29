@@ -1299,6 +1299,61 @@ final class PosCoreReceiptProjectionTest extends TestCase
     // (synthesis v5 §5 invariant #4)
     // =================================================================
 
+    public function test_legacy_non_uuid_buyer_id_lands_snapshot_with_null_partner_fk(): void
+    {
+        $event = $this->storeSaleReceiptFiscalEvent(
+            buyer: [
+                'address' => null,
+                'codice_fiscale' => null,
+                'contact_id' => null,
+                'customer_id' => 'cust-007',
+                'name' => 'Legacy Sealed Buyer',
+                'tax_number' => 'FR12345678901',
+            ],
+            eventVersion: 1,
+        );
+
+        // Projection workers run without request-bound company context.
+        app(CompanyContext::class)->clear();
+        $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+
+        $receipt = $this->myReceipts()->orderBy('id')->first();
+        $this->assertNotNull($receipt);
+        $this->assertNull($receipt->partner_id);
+        $this->assertSame('Legacy Sealed Buyer', $receipt->customer_name);
+        $this->assertSame('FR12345678901', $receipt->customer_identifier);
+    }
+
+    public function test_uuid_buyer_outside_event_company_lands_snapshot_with_null_partner_fk(): void
+    {
+        $otherCompany = Company::factory()->create(['tenant_id' => $this->tenantId]);
+        $otherCompanyPartner = Partner::factory()->customer()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $otherCompany->id,
+        ]);
+
+        $event = $this->storeSaleReceiptFiscalEvent(
+            buyer: [
+                'address' => null,
+                'codice_fiscale' => null,
+                'contact_id' => null,
+                'customer_id' => $otherCompanyPartner->id,
+                'name' => 'Cross-company Sealed Buyer',
+                'tax_number' => 'FR10987654321',
+            ],
+            eventVersion: 5,
+        );
+
+        app(CompanyContext::class)->clear();
+        $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+
+        $receipt = $this->myReceipts()->orderBy('id')->first();
+        $this->assertNotNull($receipt);
+        $this->assertNull($receipt->partner_id);
+        $this->assertSame('Cross-company Sealed Buyer', $receipt->customer_name);
+        $this->assertSame('FR10987654321', $receipt->customer_identifier);
+    }
+
     public function test_buyer_block_is_sale_time_snapshot_survives_customer_deletion(): void
     {
         // Pass 2A.PHP.2 R2 — Codex P1-1 closure (R3-tightened per R2-P2).
@@ -1372,8 +1427,10 @@ final class PosCoreReceiptProjectionTest extends TestCase
                 'name' => 'Sealed Customer Name',
                 'tax_number' => 'FR12345678901',
             ],
+            eventVersion: 5,
         );
 
+        app(CompanyContext::class)->clear();
         $projector = $this->app->make(PosCoreReceiptProjection::class);
         $projector->apply($event);
 
@@ -1578,6 +1635,7 @@ final class PosCoreReceiptProjectionTest extends TestCase
         string $invoiceTypeCode = 'SALE',
         ?array $originalReceiptReference = null,
         ?string $terminalId = null,
+        int $eventVersion = 1,
     ): FiscalEvent {
         $eventTime = now()->utc();
         $businessDate = $eventTime->copy()->startOfDay();
@@ -1696,7 +1754,7 @@ final class PosCoreReceiptProjectionTest extends TestCase
             'company_id' => $this->companyId,
             'event_time_device' => $eventTime->format('Y-m-d\TH:i:s\Z'),
             'event_type' => FiscalEventType::SALE_RECEIPT->value,
-            'event_version' => 1,
+            'event_version' => $eventVersion,
             'operator_id' => $this->operatorId,
             'payload' => $payload,
             'previous_hash' => $previousHash,
@@ -1719,7 +1777,7 @@ final class PosCoreReceiptProjectionTest extends TestCase
             'terminal_id' => $terminalId ?? $this->terminalId,
             'operator_id' => $this->operatorId,
             'event_type' => FiscalEventType::SALE_RECEIPT,
-            'event_version' => 1,
+            'event_version' => $eventVersion,
             'signature_version' => 'hash-chain-integrity-v1',
             'sequence_number' => $sequenceNumber,
             'event_time_device' => $eventTime,
