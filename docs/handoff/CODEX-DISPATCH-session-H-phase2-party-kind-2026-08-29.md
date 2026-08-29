@@ -1,9 +1,9 @@
 # Codex dispatch — Session H (B-18 party/contact program), **Phase 2: `party_kind`** (2026-08-29) — DRAFT
 
-> **DRAFT — not dispatched.** Revision **r6**, after gates r1 (F-1..F-18), r2 (N-1..N-10), r3 (N-11..N-17),
-> r4 (N-18..N-29) and r5
-> (`docs/superpowers/reviews/2026-08-29-session-h-phase2-brief-gate-r5.md`: N-19/N-20/N-22/N-25/N-26 partial,
-> new **N-30..N-32**). All dispositions applied and re-verified against code at `a33b01354`. **The r6 re-gate
+> **DRAFT — not dispatched.** Revision **r7**, after gates r1 (F-1..F-18), r2 (N-1..N-10), r3 (N-11..N-17),
+> r4 (N-18..N-29), r5 (N-30..N-32) and r6
+> (`docs/superpowers/reviews/2026-08-29-session-h-phase2-brief-gate-r6.md`: two residuals — **N-33** plus the
+> N-22 partial). All dispositions applied and re-verified against code at `a33b01354`. **The r7 re-gate
 > runs against the post-Phase-1-merge `dev` tip; `base_sha` and both migration timestamps are pinned then.**
 > Do not dispatch from a HEAD lacking the Phase-1 merge.
 > **Path warning:** r1 cited module paths that do not exist here (`app/Modules/CRM/…`,
@@ -269,7 +269,9 @@ choose the timestamp at dispatch and collision-check with `ls apps/api/database/
    (`2026_01_02_100001_add_tax_exemption_to_partners.php:19`), so legacy persons would otherwise sit at
    `REGISTERED` and violate the policy the moment M2 lands. **Do NOT make `tax_status` nullable** — the
    enum already models the correct value (`PartnerTaxStatus::NON_REGISTERED`,
-   `app/Modules/Taxation/Domain/Enums/PartnerTaxStatus.php:10`), and widening a NOT NULL fiscal column to
+   `app/Modules/Taxation/Domain/Enums/PartnerTaxStatus.php:10` — cited here as *schema evidence*; the
+   migration writes the frozen SQL literal `'NON_REGISTERED'` and runtime Partner code uses
+   `PartnerTaxStatusValues::NON_REGISTERED`, N-33), and widening a NOT NULL fiscal column to
    accept NULL would be a larger, riskier change than the one it fixes.
 - `down()` reverses in mirror order.
 - Tests (red first, **on PostgreSQL**, F-17): each ladder arm lands where OQ10/§8.1 says, over
@@ -377,7 +379,7 @@ on create AND update**, operating on the **merged final state**, not the incomin
 
   | Column (verified) | Person target | Evidence |
   |---|---|---|
-  | `tax_status` | **`'NON_REGISTERED'`** — NOT NULL | `2026_01_02_100001_add_tax_exemption_to_partners.php:19` is `string(50)->default('REGISTERED')` with **no `->nullable()`**; `PartnerTaxStatus` (`app/Modules/Taxation/Domain/Enums/PartnerTaxStatus.php:9-11`) = `REGISTERED\|NON_REGISTERED\|EXEMPT`, so `NON_REGISTERED` is the exact, already-modelled "person" value |
+  | `tax_status` | **`PartnerTaxStatusValues::NON_REGISTERED`** — NOT NULL | `2026_01_02_100001_add_tax_exemption_to_partners.php:19` is `string(50)->default('REGISTERED')` with **no `->nullable()`**; the Taxation-owned `PartnerTaxStatus` (`app/Modules/Taxation/Domain/Enums/PartnerTaxStatus.php:9-11`) = `REGISTERED\|NON_REGISTERED\|EXEMPT`, so `NON_REGISTERED` is the exact, already-modelled "person" value — but **runtime Partner code names the shared constant, never that enum** (N-33) |
   | `tax_regime` | **`PartnerTaxRegime::Individual`** — NOT NULL | `2026_01_09_111429_add_tax_fields_to_partners_table.php:15-17`: `$table->enum('tax_regime', ['corporate','individual','forfait','exempt','non_resident'])->default('individual')`; r3's register missed this column, and **no PHP enum exists — add one (N-26, rule 9)** |
   | `vat_number` | NULL | `create_partners_table.php:25` |
   | `tax_id` | NULL | `2026_01_09_111429_…:14` — **and `tax_id` is NOT in `Partner::$fillable`** (`Partner.php:100-141`), so add it (and `tax_regime`) to the write seam or the clear silently no-ops (N-13) |
@@ -413,7 +415,10 @@ on create AND update**, operating on the **merged final state**, not the incomin
   M3).** **An EXPLICIT kind transition — `kindProvided === true` and `requestedKind !== existingKind` —
   AUTHORIZES the service to clear the incompatible persisted fields, atomically, in the same transaction.**
   org→person applies **`PERSON_CLEARED_FIELDS` above, verbatim** — writing
-  `PartnerTaxStatus::NON_REGISTERED`, **`PartnerTaxRegime::Individual` (the enum CASE, never the literal
+  **`PartnerTaxStatusValues::NON_REGISTERED`** (the shared constant, **never `PartnerTaxStatus::NON_REGISTERED`**
+  — that enum is Taxation-owned and `PartyIdentityPolicy` lives in the Partner module, so naming it here is
+  the same rule-6 violation N-32 refuses in the FormRequests; N-33),
+  **`PartnerTaxRegime::Individual` (the enum CASE, never the literal
   `'individual'` — N-26; only migration SQL keeps frozen literals)**, `withholding_exempt=false` and NULL
   for the rest, **never NULL into a NOT NULL column** (N-11); person→org applies
   **`ORGANIZATION_CLEARED_FIELDS` above, verbatim — all four members, `mobile` included** (N-19). Reference
@@ -437,10 +442,15 @@ on create AND update**, operating on the **merged final state**, not the incomin
    `grep -rl "PartnerTaxStatus" apps/api` returns 45 files** (≈42 excluding the enum itself, the deptrac
    cache and the parity register) — **well over the 15-file threshold, so take the SECOND branch**: do NOT
    move the enum in this wave. Instead add a constants class
-   `apps/api/app/Shared/Contracts/PartnerTaxStatusValues.php` exposing
-   `public const VALUES = ['REGISTERED','NON_REGISTERED','EXEMPT'];`, validate with
-   `Rule::in(PartnerTaxStatusValues::VALUES)` in both Partner FormRequests, and add a **parity test**
-   asserting `PartnerTaxStatusValues::VALUES === array_column(PartnerTaxStatus::cases(), 'value')`.
+   `apps/api/app/Shared/Contracts/PartnerTaxStatusValues.php` exposing **named constants**
+   `public const REGISTERED = 'REGISTERED';`, `public const NON_REGISTERED = 'NON_REGISTERED';`,
+   `public const EXEMPT = 'EXEMPT';` **with `VALUES` built from them**
+   (`public const VALUES = [self::REGISTERED, self::NON_REGISTERED, self::EXEMPT];`) — the named constants
+   are what `PartyIdentityPolicy` and every other runtime Partner path use (N-33), and `VALUES` is what the
+   FormRequests validate against via `Rule::in(PartnerTaxStatusValues::VALUES)`. Add a **parity test**
+   asserting `PartnerTaxStatusValues::VALUES === array_column(PartnerTaxStatus::cases(), 'value')` — the
+   test file is the ONE place in Partner-adjacent code allowed to name the Taxation enum, precisely because
+   that is what it exists to pin.
    **Record the enum move (and the Partner model's pre-existing Partner→Taxation import at
    `Partner.php:15,158`) under `owes_parent` as architectural debt** — a 42-file mechanical namespace move
    is its own lane, not a Phase-2 side effect.
@@ -698,9 +708,10 @@ gate. Split it:
   `api.patch` and return `response.data` (the full `{data, meta}`), exactly as the paginated endpoints do —
   do **not** change `apiPatch` itself, and do **not** double-unwrap. Type the envelope explicitly
   (`PartnerMutationResponse = { data: PartnerData; meta: { cleared_fields: string[] } }`).
-- **The dialog is a "may be cleared" list and the assertion is a SUBSET (N-22).** The form cannot compute an
-  exact delta — it does not hold every persisted value. Build the dialog from the clearable fields **the UI
-  can actually see**, and assert **`meta.cleared_fields` ⊆ dialog list, and non-empty** — never equality.
+- **The dialog is a "may be cleared" list (N-22).** The form cannot compute an exact delta — it does not
+  hold every persisted value. Build the dialog from the clearable fields **the UI can actually see** that
+  currently hold a value. **The assertion is stated once, in the transition bullet below — do not restate or
+  invert it here.**
   **Every clearable field in `PERSON_CLEARED_FIELDS` and `ORGANIZATION_CLEARED_FIELDS` needs an EN/FR/AR
   label** (`sales:partners.clearedFields.*`): the server returns column names, and a dialog that shows
   `tax_exemption_certificate_media_id` to a merchant is not a dialog.
