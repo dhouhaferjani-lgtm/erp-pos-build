@@ -175,7 +175,12 @@ The audit's a4 ("treat NULL as show-it") is REJECTED (spec §9). Implement inste
   Walk-ins (NULL + none of those) keep the block hidden. This is the Phase-2 backfill heuristic run
   early, in the view.
 - Wire `CreditLimitWarning.tsx` (built, zero importers — grep it) wherever the credit limit renders
-  in the B2B section. Small, in scope.
+  in the B2B section. Small, in scope. **Amendment 2026-08-29 (Phase-2 gate finding F-14):** the
+  component compares money with `parseFloat` / JS numbers
+  (`apps/web/src/features/partners/components/CreditLimitWarning.tsx:22,61`) — rule 19 forbids that.
+  BEFORE wiring it, convert it to the shared decimal-safe helpers (`apps/web/src/lib/decimal` —
+  grep `bccomp`/`compare` + `formatCurrency`) and add boundary tests (equal-to-limit, one millime
+  over, 3-decimal TND). If that conversion is not small, wire nothing and record it in `owes_parent`.
 - Tests: Vitest — create form refuses submit without nature; suppliers route defaults to Company;
   B2B block visible for NULL+vat_number, hidden for NULL+nothing; warning renders over limit.
 
