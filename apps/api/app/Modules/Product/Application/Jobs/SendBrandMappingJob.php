@@ -43,6 +43,11 @@ final class SendBrandMappingJob implements ShouldQueue
         try {
             $result = $submissionService->pushBrandMapping($this->canonicalBrandId, $this->externalBrandId);
 
+            if ($result === BrandMappingPushResult::Failed
+                && config('services.platform.push_enabled', true) === false) {
+                return;
+            }
+
             match ($result) {
                 BrandMappingPushResult::Mapped => null,
                 BrandMappingPushResult::Conflict,
