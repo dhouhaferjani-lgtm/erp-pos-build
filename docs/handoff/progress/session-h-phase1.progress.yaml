@@ -4,6 +4,8 @@ harness: docs/handoff/SELF-REVIEW-HARNESS.md
 review_register: docs/handoff/reviews/session-h-phase1/
 reviewer_model: opus          # per-milestone override to codex-fallback allowed (brief EXECUTION MODE)
 max_fix_rounds: 4
+browser_verification: apps/web/e2e/session-h/<milestone>-*.spec.ts against :5174 (worktree web) + :8011 (worktree API); screenshots .playwright-mcp/session-h/<milestone>/ — brief §0.1; every milestone register must cite them
+crm_seam_assessment: docs/handoff/ASSESSMENT-crm-seam-party-model-2026-08-29.md   # verdict CRM-safe; no marketing surface in this wave
 
 # Pinned 2026-08-29 by the Session H orchestrator at worktree creation (= local dev tip).
 base_sha: 23b1b8a65

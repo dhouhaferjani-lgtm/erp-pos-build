@@ -47,6 +47,41 @@ Do **H1-cleanup first** (M1–M3), then **H1-a1** (M4–M5). They are independen
    (Phases 2–5). **Nothing in this brief needs an owner answer**; if you find you need one, that is a STOP.
 4. `apps/erp/CLAUDE.md` rules 2, 3, 6, 7, 9, 11, 12, 13, 14, 18, 19 and `docs/conventions/01`, `03`, `04`, `06`.
 5. `docs/handoff/SELF-REVIEW-HARNESS.md`.
+6. `docs/handoff/ASSESSMENT-crm-seam-party-model-2026-08-29.md` — why the model is safe for a future
+   marketing CRM and what is deliberately NOT built. Do not add consent/tag/channel columns or any
+   marketing surface in this wave.
+
+---
+
+## §0.1 — Browser-level verification is a GATE for every milestone (owner requirement)
+
+Unit tests are necessary, not sufficient. Every milestone ships **committed Playwright specs** that
+drive the real UI, plus screenshots, and the milestone's self-review must read them.
+
+**Local stack (already running, owned by the main checkout — do NOT stop or restart it):**
+- API `http://127.0.0.1:8010` (`php artisan serve` from `apps/api` of the MAIN checkout, db-per-tenant,
+  health `GET /api/v1/health`), web vite `http://localhost:5173` (main checkout), PG `127.0.0.1:5433`,
+  demo tenant **PharmaBio Tunisie** — login `owner@pharmabio.tn` / `password` (also `manager@` /
+  `cashier@`). Queue worker may be needed for projections:
+  `php artisan queue:work redis --queue=default,fiscal-projections,enrichment,images,imports`.
+- **Your FE changes are NOT on :5173.** Run the worktree's web on its own port:
+  `cd .worktrees/<lane>/apps/web && pnpm dev --port 5174 --strictPort` (vite proxies `/api` → :8010,
+  i.e. the MAIN checkout's API — fine for FE-only milestones).
+- **Your API changes are NOT on :8010.** For API-side assertions run the worktree's API on its own port:
+  `cd .worktrees/<lane>/apps/api && php artisan serve --host=127.0.0.1 --port=8011` and hit
+  `http://127.0.0.1:8011/api/v1/...` with Playwright's `request` fixture (Bearer token from
+  `POST /auth/login`). Pattern to copy: `apps/web/e2e/smoke/treasury-phase5a-outbound.smoke.ts:17-27,113-118`
+  (`test.use({ baseURL })`, env-overridable `API_BASE`, login via the API).
+- Playwright config: `apps/web/playwright.config.ts` (`testDir ./e2e`, `reuseExistingServer` locally —
+  it will NOT start a server for you and its default `baseURL` is :5173, so **always** `test.use({
+  baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:5174' })` in your specs).
+- Put specs in **`apps/web/e2e/session-h/<milestone>-*.spec.ts`**; run with
+  `cd apps/web && pnpm exec playwright test e2e/session-h/<file> --reporter=line`. Screenshots →
+  `.playwright-mcp/session-h/<milestone>/` (git-excluded) and referenced by path in the register.
+- The POS (`apps/pos`) is Tauri + SQLite and **cannot be driven in a browser**. For H1-a1 the browser
+  gate is the SERVER side (validator + projection via :8011) and the device side is Vitest; the parent
+  runs the on-device smoke (`pnpm tauri dev`) at the merge gate. Say so in the M4/M5 report.
+- Never enter credentials other than the demo tenant's; never point a spec at staging.
 
 **Locked (do not relitigate):** R1–R5 of the spec §0; the P0 regex convergence is DONE (`929de7b34`);
 `a2` (retire `ImportType::Partners`) belongs to **Session G** — you do NOT touch the `Partners` enum
@@ -114,6 +149,12 @@ case, its rules, or the import wizard cards; `a4` as written in the audit is REP
   inside a sealed payload; it is flagged to the owner (OQ sheet §C-4) and out of scope here.
 - Test: the existing pos test for pendingCustomerCreateService / CustomerAttachPanel asserts `null`.
 
+**M1 browser gate** (`e2e/session-h/m1-*.spec.ts`, :5174 + :8011): (i) log in, open `/sales/customers`,
+assert a VAT-bearing demo partner shows its `vat_number` in the Tax ID column (pick one via the API
+first); (ii) open the inline Add-partner modal from a document/quote screen, submit name + VAT + city +
+country, then `GET /partners/{id}` on :8011 and assert `vat_number` and the address fields persisted;
+(iii) `POST` a Parties import validation on :8011 with a 51-char `code` → 422 naming `code`.
+
 **M1 review lenses:** `frontend-conventions`, `imports`.
 
 ### M2 — a4′: nature required on create + NULL heuristic for the B2B block
@@ -137,6 +178,12 @@ The audit's a4 ("treat NULL as show-it") is REJECTED (spec §9). Implement inste
   in the B2B section. Small, in scope.
 - Tests: Vitest — create form refuses submit without nature; suppliers route defaults to Company;
   B2B block visible for NULL+vat_number, hidden for NULL+nothing; warning renders over limit.
+
+**M2 browser gate** (`e2e/session-h/m2-*.spec.ts`, :5174): (i) `/sales/customers/new` — submit without
+Nature → inline error, no request sent; choose *Individual*, fill name + phone → created, B2B block
+was hidden; (ii) `/purchases/suppliers/new` — Nature preselected *Company*, B2B block visible;
+(iii) open an existing demo partner that has `vat_number` but `customer_category = NULL` (find one via
+the API) → B2B block visible; open a NULL walk-in with no B2B data → hidden. Screenshots of both.
 
 **M2 review lenses:** `frontend-conventions`.
 
@@ -168,6 +215,13 @@ The audit's a4 ("treat NULL as show-it") is REJECTED (spec §9). Implement inste
   (audit §5.5). On `/sales/customers/new` offer `customer`/`both`, on `/purchases/suppliers/new` offer
   `supplier`/`both`; the generic edit form keeps all three.
 - Tests: Vitest on both routes.
+
+**M3 browser gate** (`e2e/session-h/m3-*.spec.ts`, :5174): (i) `/crm/companies` → 404/redirect page, no
+"Companies" entry in the sidebar; (ii) as `owner@` open `/sales/customers/<id>/edit` → renders; then
+log in as a user holding `contacts.update` but NOT `partners.update` (create one via the API on :8011
+with a role you build in the spec, or use `cashier@` and assert the 403/redirect) → blocked;
+(iii) `/purchases/suppliers` blocked for that same user, open for owner; (iv) `/sales/customers/new`
+Type select offers only Customer/Both; `/purchases/suppliers/new` only Supplier/Both.
 
 **M3 review lenses:** `tenancy-authz`, `frontend-conventions`.
 
@@ -220,6 +274,15 @@ Implement spec §8.2 Flow 1 **exactly**:
   null); PHPUnit for `validateBuyer` (uuid ok, pending-style non-uuid string → `payload_buyer_invalid`,
   null ok); projection test with `app(CompanyContext::class)->clear()` before `apply()` (rule 20).
 
+**M4 browser/API gate** (`e2e/session-h/m4-*.spec.ts`, :8011 via Playwright `request`): using the
+existing POS receipt ingestion endpoint (find how `apps/web/e2e/pos/` or the money-campaign specs post a
+sealed receipt — reuse their fixture builder), post (i) a SALE_RECEIPT with `buyer: null` → accepted,
+projects with `partner_id = null`; (ii) one with a populated buyer whose `customer_id` is a real demo
+partner uuid → accepted, and `GET` the projected receipt / the customer's history shows `partner_id`,
+`customer_name`; (iii) one whose `customer_id` is a non-uuid pending-style string →
+`payload_buyer_invalid`. If no e2e helper can seal a receipt from outside the device, say so and
+substitute a PHPUnit feature test at the HTTP layer — do not skip the assertion.
+
 **M4 review lenses:** `fiscal-pos`. The reviewer must confirm: no new key, null case byte-identical,
 customer_id never a device UUID.
 
@@ -232,6 +295,9 @@ customer_id never a device UUID.
 - Extend the key-set drift gate test to note (in a comment) that buyer is value-checked by this fixture.
 - Update the fiscal fixture registry if one exists (grep `golden` under `apps/api/tests` and
   `apps/pos/src/lib/fiscal/__tests__`).
+
+**M5 gate:** the golden fixture IS the evidence — the register must quote the pinned hash from the
+device test and the server test and show they are identical; no browser spec required.
 
 **M5 review lenses:** `fiscal-pos`.
 
