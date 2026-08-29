@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Shared\Database\MigrationOutput;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Query\Builder;
@@ -87,7 +88,6 @@ return new class extends Migration
         if (! $this->expiryDateIsNullable()) {
             $message = '[W4-1] SKIPPED: product_batches.expiry_date is still NOT NULL — the companion schema '
                 .'migration (2026_08_26_100000) has not run on this tenant. Invented expiries are UNFIXED here.';
-            Log::warning($message);
             $this->emit($message);
 
             return;
@@ -95,8 +95,6 @@ return new class extends Migration
 
         $ids = $this->inventedLotIds();
         $census = count($ids);
-
-        Log::info('[W4-1] invented DEFAULT-lot expiry census', ['lots' => $census]);
 
         // Echoed even at zero, so ABSENCE of a [W4-1] line means the migration did
         // not run at all — rather than being indistinguishable from "ran and found
@@ -132,14 +130,9 @@ return new class extends Migration
 
             $remaining = count($this->inventedLotIds());
 
-            Log::info('[W4-1] invented DEFAULT-lot expiries nulled', [
-                'nulled' => $census,
-                'remaining' => $remaining,
-            ]);
             $this->emit(sprintf('[W4-1] invented DEFAULT-lot expiries nulled: %d (remaining: %d)', $census, $remaining));
 
             if ($resurrected > 0) {
-                Log::warning('[W4-1] previously-expired DEFAULT lots resurrected', ['lots' => $resurrected]);
                 $this->emit(sprintf(
                     '[W4-1] of those, %d were previously flagged expired and are now sellable again — '
                     .'their expiry was the fiction, not a real date, but VERIFY THE PHYSICAL STOCK before it goes '
@@ -201,7 +194,6 @@ return new class extends Migration
             $codes,
         );
 
-        Log::warning('[W4-1] invented-expiry residual', ['lots' => $total, 'listed' => $listed->count()]);
         $this->emit($message);
     }
 
@@ -225,12 +217,12 @@ return new class extends Migration
     /**
      * Write to the migrate output.
      *
-     * `echo` rather than a logger call alone: `tenants:migrate` streams stdout per
-     * tenant, and that stream is what the deploy note asks the operator to read.
+     * `tenants:migrate` streams stdout per tenant, and that stream is what the
+     * deploy note asks the operator to read.
      */
     private function emit(string $message): void
     {
-        echo $message.PHP_EOL;
+        MigrationOutput::info($message);
     }
 
     /**
