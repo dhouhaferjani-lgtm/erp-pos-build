@@ -244,6 +244,7 @@ unmodified code and pass.
 
 ## §1 — Standing constraints for every milestone
 
+- **PG test legs — per-session database (machine rule 2026-08-29 evening, from the orchestrator/broker):** the shared default test DB was `migrate:fresh`-ed mid-run by concurrent sessions. Every PG leg in this lane (and in the parent's reviewer agents) MUST run as `DB_DATABASE=autoerp_test_h DB_CENTRAL_DATABASE=autoerp_test_h php artisan test -c phpunit-pgsql.xml <paths>` (DB already exists on 127.0.0.1:5433). ONE PG leg at a time within this session. Never run a PG leg against the default DB name.
 - **No sealed-payload KEY changes anywhere.** The one deliberate *value* consequence is
   `customer.customer_category` becoming a derived non-NULL value on **future** events (M2.3) — the
   spec's design (§1.5), to be proven byte-safe, never assumed. Anything else touching canonical bytes

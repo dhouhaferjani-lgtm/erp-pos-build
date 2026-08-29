@@ -100,6 +100,7 @@ case, its rules, or the import wizard cards; `a4` as written in the audit is REP
   already has an `ar/*.json`); design tokens for any colour class you touch; `tenantScopedKey` on every
   tenant-data query key; zod + RHF for forms you touch.
 - **Backend:** constructor injection only; PHPStan level 8 clean on touched files; Pint clean.
+- **PG test legs — per-session database (machine rule 2026-08-29 evening, from the orchestrator/broker):** the shared default test DB was `migrate:fresh`-ed mid-run by concurrent sessions. Every PG leg in this lane (and in the parent's reviewer agents) MUST run as `DB_DATABASE=autoerp_test_h DB_CENTRAL_DATABASE=autoerp_test_h php artisan test -c phpunit-pgsql.xml <paths>` (DB already exists on 127.0.0.1:5433). ONE PG leg at a time within this session. Never run a PG leg against the default DB name.
 - **Tests:** TDD red-first. Backend tests by PATH only (`./vendor/bin/phpunit <file>`); **never the full
   suite**. Web: `pnpm vitest run <dir>`; kill stray workers after (`pkill -f 'node (vitest'`).
 - **At every commit:** `cd apps/api && php tools/feature-lane-manifest-check.php` — a new Feature test
