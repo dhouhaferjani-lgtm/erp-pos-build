@@ -9,6 +9,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Import\Application\Jobs\ProcessImportJob;
 use App\Modules\Import\Application\Jobs\ProcessProductImageImport;
+use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
@@ -18,6 +19,7 @@ use App\Modules\Import\Services\ResultWorkbookService;
 use App\Modules\Import\Services\SpreadsheetParserService;
 use App\Modules\Import\Services\ValidationEngine;
 use App\Modules\Inventory\Domain\Enums\LocationNodeType;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -46,6 +48,7 @@ class ImportController extends Controller
         private readonly SpreadsheetParserService $spreadsheetParser,
         private readonly FailedRowsExportService $failedRowsExportService,
         private readonly ResultWorkbookService $resultWorkbookService,
+        private readonly UnitsProvisioningService $unitsProvisioning,
     ) {}
 
     /**
@@ -115,6 +118,19 @@ class ImportController extends Controller
         $deprecation = $type->deprecationMessage();
         if ($deprecation !== null) {
             throw ValidationException::withMessages(['type' => [$deprecation]]);
+        }
+
+        if (in_array('unit', $type->getOptionalColumns(), true)
+            && ! $this->unitsProvisioning->hasVisibleUnits($company)) {
+            return response()->json([
+                'error' => [
+                    'code' => ImportErrorCode::UnitsNotSeeded->value,
+                    'message' => 'No units of measure are configured for this company; seed them in Settings → Units before importing',
+                    'details' => [
+                        'company_id' => $company->id,
+                    ],
+                ],
+            ], 422);
         }
 
         $columnMapping = $request->has('column_mapping')

@@ -14,6 +14,7 @@ use App\Modules\Inventory\Domain\Enums\LocationNodeType;
 use App\Modules\Inventory\Domain\LocationNode;
 use App\Modules\Inventory\Domain\ProductPlacement;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -41,6 +42,7 @@ final class ProductPlacementImportTest extends TestCase
         $this->user = $this->seedPermissionedUser(['imports.manage']);
         $this->location = $this->seedLocationForCompany('MAIN', 'Main warehouse');
         $this->nodes = app(LocationNodeService::class);
+        app(UnitsProvisioningService::class)->provisionForCompany($this->company);
         Storage::fake('local');
     }
 
@@ -184,7 +186,10 @@ final class ProductPlacementImportTest extends TestCase
 
         $job = ImportJob::query()->findOrFail((string) $upload->json('data.id'));
         (new ProcessImportJob($job->id, $this->company->id, $this->tenant->id))
-            ->handle(app(ImportService::class));
+            ->handle(
+                app(ImportService::class),
+                app(UnitsProvisioningService::class),
+            );
 
         $product = Product::query()->where('sku', 'IMP-PLC-8')->firstOrFail();
         $this->assertDatabaseHas('product_placements', [

@@ -16,6 +16,7 @@ use App\Modules\Product\Application\Services\ProductImageImportService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -134,7 +135,10 @@ final class ScheduledJobTenantIsolationTest extends TestCase
             // is (importJobId, companyId) — instantiation will fail with a
             // TypeError until the cat-(a) fix lands. That IS the red signal.
             $instance = new ProcessImportJob($jobA->id, $this->companyA->id, $this->tenantA->id);
-            $instance->handle($this->app->make(ImportService::class));
+            $instance->handle(
+                $this->app->make(ImportService::class),
+                $this->app->make(UnitsProvisioningService::class),
+            );
         } catch (\Throwable) {
             // Swallow — handle() may throw for unrelated reasons (no valid
             // rows etc.). We assert on SQL shape, not on terminal status.
