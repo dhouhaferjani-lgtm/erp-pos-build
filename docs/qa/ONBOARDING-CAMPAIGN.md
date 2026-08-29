@@ -19,7 +19,7 @@ scripts/campaign-onboarding.sh \
   --country TN
 ```
 
-The expiry leg requires the public BatchExpiry contract and default batch tracking, so a target without the Parapharmacy registration vertical fails L0 with an explicit product finding. The target must also have a worker consuming `fiscal-projections`; L6 and L7 time out with `projection timeout — worker running?` when it does not. `CAMPAIGN_KEEP_TENANT=1 scripts/campaign-onboarding.sh` retains and prints the generated credentials for a manual tester.
+The campaign registers the **Parapharmacy** vertical (batch tracking on by default, which the expiry leg needs) with **Tunisia** fixtures, tax number, VAT rate and GL pins; other verticals and countries are unsupported until the fixtures are parameterised (`--country` is reserved). The target must also have a worker consuming `imports` and `fiscal-projections`; L1/L6/L7 time out with `projection timeout — worker running?` otherwise.
 
 ## Legs
 
@@ -48,6 +48,7 @@ To add a leg, place its `test()` in serial order, add the matching ledger defini
 - **Queue worker.** Imports and fiscal projections are queued (`imports`, `fiscal-projections`). A target without a running worker fails L1/L6/L7 with `projection timeout — worker running?` — that is the campaign telling you the worker is down, not a product bug.
 - **Registration budget.** The target's `POST /auth/register` is throttled (5 per window per IP) and provisions ~576 tenant migrations synchronously in-request (20–60 s; staging caps requests at 60 s until the P0-2 hotfix raises it). One run = one registration; iterate with reuse mode (below) rather than burning the window.
 - **Country.** The fixtures, tax number, VAT rate (19.00), timezone (`Africa/Tunis`) and GL pins are **Tunisia-only tonight**; `--country` is reserved and any other value is unsupported until the fixtures are parameterised.
+- **Push trigger stays INERT.** Do not set the repository variable `ONBOARDING_CAMPAIGN_ON_PUSH=true` until three items close: fixtures parameterised per country, reuse mode hardened for post-L4 tenants, and a tenant teardown for the target. Until then the campaign is run on demand (local or `workflow_dispatch`).
 - **Tenant retention.** There is **no teardown**: every run leaves its `tenant_<uuid>` database behind (db-per-tenant). `CAMPAIGN_KEEP_TENANT=1` only *prints* the credentials for manual follow-up; cleanup of accumulated campaign tenants is an operator task (`tenants:list` → delete the `campaign+…@test.otospex.dev` tenants). Do not arm the push→dev trigger on a target you cannot clean.
 - **Artifacts.** Traces are retained on failure only; the fixed campaign password appears in the ledger only with `CAMPAIGN_KEEP_TENANT=1`. Treat uploaded artifacts as internal.
 
@@ -62,7 +63,7 @@ The findings gate (L10) is red while any product finding is recorded. Findings t
 | Finding | Leg | Owner |
 |---|---|---|
 | Registration body prefixed by migration echo (P0) | L0 | Session J lane `migration-echo-p0` — fixed on dev `5656c9899` |
-| Registration exceeds the request time limit under load (P0-2) | L0 | Session J lane `registration-timeout-p0` |
+| Registration exceeds the request time limit under load (P0-2) — recorded when the server answers the time-limit 500; the client waits up to 300 s to match the hotfix seam | L0 | Session J lane `registration-timeout-p0` |
 | `GET /payment-repositories` is tenant-scoped (company B sees company A's drawers) | L0 | Treasury — owner routing owed |
 | Products import never writes `unit_id` (I2-F2) | L2 | Session G (unit resolver, G-13/G-4) |
 | Second parties-with-balances import silently skips balances (G-14) | L1 (reuse mode / second file) | Session G |

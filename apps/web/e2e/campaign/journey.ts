@@ -314,7 +314,7 @@ export async function registerFreshTenant(page: Page): Promise<CampaignCredentia
   // Step 4 (ReviewStep) carries the single terms checkbox and the Create Account button.
   await selectors.register.terms.check()
   const [registerResponse] = await Promise.all([
-    page.waitForResponse((response) => response.url().includes('/api/v1/auth/register'), { timeout: 120_000 }),
+    page.waitForResponse((response) => response.url().includes('/api/v1/auth/register'), { timeout: 300_000 }), // registration provisions 576 migrations; the P0-2 seam allows 300 s
     selectors.register.createAccount.click(),
   ])
   const registerBody = await registerResponse.text()
@@ -322,6 +322,16 @@ export async function registerFreshTenant(page: Page): Promise<CampaignCredentia
   if (registerResponse.status() === 429) {
     const retryAfter = registerResponse.headers()['retry-after'] ?? 'unknown'
     throw new Error(`register throttled (HTTP 429, Retry-After: ${retryAfter}s) — the target rate-limits registrations per IP; re-run later or from another client`)
+  }
+  if (registerResponse.status() === 500 && /Maximum execution time/i.test(registerBody)) {
+    // P0-2: synchronous in-request provisioning crossed the PHP/fpm time limit — the tenant is
+    // left half-provisioned (orphan). Recorded as a finding, then the leg fails (nothing to log into).
+    await recordProductFinding({
+      evidence: { request: { method: 'POST', path: '/api/v1/auth/register' }, response: { status: 500, body_head: registerBody.slice(0, 300) } },
+      leg: 'L0',
+      what: 'Registration exceeds the request time limit (synchronous tenant provisioning) — 500 + orphan tenant',
+      where: 'POST /api/v1/auth/register (TenantProvisioningService → MigrateDatabase in-request)',
+    })
   }
   if (registerResponse.status() !== 201) {
     throw new Error(`register failed: HTTP ${registerResponse.status()} — ${registerBody.slice(0, 300)}`)

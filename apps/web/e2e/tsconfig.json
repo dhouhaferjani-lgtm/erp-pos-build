@@ -9,5 +9,5 @@
     "types": ["@playwright/test", "node"],
     "verbatimModuleSyntax": false
   },
-  "include": ["**/*.ts"]
+  "include": ["campaign/**/*.ts", "../playwright.campaign.config.ts"]
 }

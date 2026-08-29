@@ -140,7 +140,7 @@ test.describe('automated onboarding campaign', () => {
   test('L0 — health + register', async ({ page }) => {
     // Registration provisions the tenant DB synchronously (576 migrations, 20–60 s; staging caps the
     // request at 60 s, the P0-2 hotfix raises it to 300 s) — give this leg more than the 90 s default.
-    test.setTimeout(180_000)
+    test.setTimeout(360_000)
     await registerFreshTenant(page)
     const country = campaignCountry()
     const companiesResult = await apiRequest(page, 'GET', apiRoutes.companies)
@@ -406,6 +406,7 @@ test.describe('automated onboarding campaign', () => {
       bank_name: 'Campaign Bank',
       code: bankCode,
       gl_account_id: stringField(bankAccount, 'id'),
+      location_id: requiredState('locationId'), // attributed like the seeded repositories (census scopes by location)
       name: `Campaign Bank ${runId}`,
       type: 'bank_account',
     }, companyId)
@@ -723,7 +724,7 @@ function assertDayOneCensus(value: Census): void {
   'one location-owned cash register').toHaveLength(1)
   // Seeded safes CARRY the company's location (PaymentRepositorySeeder attributes both rows).
   expect(value.repositories.filter((repository) => repository['type'] === 'safe'), 'one safe').toHaveLength(1)
-  expect(value.repositories, 'only the company\'s cash register and safe are provisioned').toHaveLength(2)
+  if (!reuseMode) expect(value.repositories, 'only the company\'s cash register and safe are provisioned').toHaveLength(2)
   expect(value.units.length, 'country units seeded').toBeGreaterThanOrEqual(19)
 }
 

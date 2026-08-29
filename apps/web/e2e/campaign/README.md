@@ -8,9 +8,9 @@ Override targets with `--web URL`, `--api URL`, and `--country TN`.
 
 The equivalent environment variables are `CAMPAIGN_WEB_URL`, `CAMPAIGN_API_URL`, and `CAMPAIGN_COUNTRY`.
 
-Set `CAMPAIGN_KEEP_TENANT=1` to retain and print the generated login for manual follow-up.
+Set `CAMPAIGN_KEEP_TENANT=1` to print the generated login for manual follow-up (every run's tenant is retained regardless — there is no teardown).
 
-Every run creates a unique tenant and never reads or mutates an existing one.
+Every run creates a unique tenant and never mutates another run's tenant (reuse mode, below, is the deliberate exception).
 
 The ledger is `apps/web/test-results/campaign-<runId>/ledger.json`.
 
