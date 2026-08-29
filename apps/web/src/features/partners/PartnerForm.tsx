@@ -1,10 +1,12 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm, Controller } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { z } from 'zod'
 import { api, apiPost, apiPatch, getErrorMessage, isApiError } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { tokens } from '../../lib/designTokens'
@@ -21,7 +23,10 @@ import { B2BFieldsSection } from './components/B2BFieldsSection'
 import { getCountries } from '../settings/api/country'
 import type { Country } from '../settings/types/country'
 import type { PartnerType } from './PartnerListPage'
-import { partnersInvalidationPredicate } from './_invalidation'
+import {
+  partnerDetailInvalidationPredicate,
+  partnersInvalidationPredicate,
+} from './_invalidation'
 import { readPartnerPrefill } from './partnerPrefill'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
@@ -44,7 +49,7 @@ export interface PartnerBankAccountFormData {
 export interface PartnerFormData {
   name: string
   type: 'customer' | 'supplier' | 'both' | ''
-  customer_category: 'individual' | 'business' | ''
+  customer_category: 'individual' | 'business' | '' | null
   company_legal_name: string
   business_registration_number: string
   payment_terms: string
@@ -151,6 +156,53 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
       ? 'supplier'
       : ''
 
+  const partnerFormSchema = useMemo(() => z.object({
+    name: z.string().min(1, t('sales:partners.validation.nameRequired')),
+    type: z.enum(['customer', 'supplier', 'both', '']).refine(
+      (value) => value !== '',
+      t('sales:partners.validation.typeRequired'),
+    ),
+    customer_category: z.enum(['individual', 'business', '']).nullable().refine(
+      (value) => isEditing || (value !== null && value !== ''),
+      t('sales:partners.validation.natureRequired'),
+    ),
+    company_legal_name: z.string(),
+    business_registration_number: z.string(),
+    payment_terms: z.string(),
+    payment_terms_days: z.string(),
+    credit_limit: z.string(),
+    discount_percentage: z.string(),
+    invoice_consolidation: z.boolean(),
+    email: z.string().refine(
+      (value) => value === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
+      t('common:validation.invalidEmail'),
+    ),
+    phone: z.string(),
+    street_address: z.string(),
+    city: z.string(),
+    state: z.string(),
+    postal_code: z.string(),
+    country: z.string(),
+    country_code: z.string(),
+    vat_number: z.string(),
+    tax_status: z.enum(['REGISTERED', 'NON_REGISTERED', 'EXEMPT']),
+    exemption_reason: z.string(),
+    exemption_valid_until: z.string(),
+    notes: z.string(),
+    is_active: z.boolean(),
+    bank_accounts: z.array(z.object({
+      id: z.string().optional(),
+      label: z.string(),
+      bank_id: z.string(),
+      bank_name: z.string(),
+      rib: z.string(),
+      iban: z.string(),
+      bic: z.string(),
+      currency: z.string(),
+      is_primary: z.boolean(),
+    })),
+  }), [isEditing, t])
+
   const {
     register,
     handleSubmit,
@@ -161,10 +213,11 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
     setError,
     formState: { errors },
   } = useForm<PartnerFormData>({
+    resolver: zodResolver(partnerFormSchema),
     defaultValues: {
       name: '',
       type: defaultType,
-      customer_category: '',
+      customer_category: isSupplierContext ? 'business' : null,
       company_legal_name: '',
       business_registration_number: '',
       payment_terms: '',
@@ -194,9 +247,21 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
 
   const taxStatus = watch('tax_status')
   const customerCategory = watch('customer_category')
+  const vatNumber = watch('vat_number')
+  const companyLegalName = watch('company_legal_name')
+  const businessRegistrationNumber = watch('business_registration_number')
+  const creditLimit = watch('credit_limit')
   const addressCountry = watch('country')
   const taxCountry = watch('country_code')
   const usesTunisiaLabels = addressCountry === 'TN' || taxCountry === 'TN' || defaultCountryCode === 'TN'
+  const hasLegacyB2BSignal = [
+    vatNumber,
+    companyLegalName,
+    businessRegistrationNumber,
+    creditLimit,
+  ].some((value) => value.trim() !== '')
+  const showB2BFields = customerCategory === 'business'
+    || (customerCategory === null && hasLegacyB2BSignal)
 
   // Fetch countries for dropdown
   const { data: countries = [] } = useQuery({
@@ -274,7 +339,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
       reset({
         name: partner.name,
         type: partner.type,
-        customer_category: partner.customer_category ?? '',
+        customer_category: partner.customer_category,
         company_legal_name: partner.company_legal_name ?? '',
         business_registration_number: partner.business_registration_number ?? '',
         payment_terms: partner.payment_terms ?? '',
@@ -348,7 +413,9 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
         queryClient.invalidateQueries({
           predicate: partnersInvalidationPredicate(tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: ['partner', id] }),
+        queryClient.invalidateQueries({
+          predicate: partnerDetailInvalidationPredicate(id, tenantId, companyId),
+        }),
       ])
       void navigate(`${basePath}/${id}`)
     },
@@ -441,7 +508,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
             >
               <Input
                 id="name"
-                {...register('name', { required: t('sales:partners.validation.nameRequired') })}
+                {...register('name')}
                 error={!!errors.name}
               />
             </FormField>
@@ -455,7 +522,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
             >
               <Select
                 id="type"
-                {...register('type', { required: t('sales:partners.validation.typeRequired') })}
+                {...register('type')}
                 error={!!errors.type}
               >
                 <option value="">{t('sales:partners.selectType')}</option>
@@ -465,18 +532,21 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
               </Select>
             </FormField>
 
-            {/* Customer Category */}
+            {/* Nature */}
             <FormField
-              label={t('sales:partners.b2b.customerCategory')}
+              label={t('sales:partners.nature.label')}
               htmlFor="customer_category"
+              required={!isEditing}
+              error={errors.customer_category?.message}
             >
               <Select
                 id="customer_category"
                 {...register('customer_category')}
+                error={!!errors.customer_category}
               >
                 <option value="">{t('sales:partners.b2b.selectCategory')}</option>
-                <option value="individual">{t('sales:partners.b2b.individual')}</option>
-                <option value="business">{t('sales:partners.b2b.business')}</option>
+                <option value="individual">{t('sales:partners.nature.individual')}</option>
+                <option value="business">{t('sales:partners.nature.company')}</option>
               </Select>
             </FormField>
 
@@ -489,12 +559,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
               <Input
                 type="email"
                 id="email"
-                {...register('email', {
-                  pattern: {
-                    value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-                    message: t('common:validation.invalidEmail'),
-                  },
-                })}
+                {...register('email')}
                 error={!!errors.email}
               />
             </FormField>
@@ -625,14 +690,15 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
           </div>
         </div>
 
-        {/* B2B Fields Section — shown only when customer_category is 'business' */}
-        {customerCategory === 'business' && (
+        {/* Legacy null-category partners retain B2B fields only when B2B data exists. */}
+        {showB2BFields && (
           <B2BFieldsSection
             control={control}
             register={register}
             watch={watch}
             setValue={setValue}
             partnerId={isEditing ? id : undefined}
+            outstandingBalance={partner?.receivable_balance ?? null}
           />
         )}
 

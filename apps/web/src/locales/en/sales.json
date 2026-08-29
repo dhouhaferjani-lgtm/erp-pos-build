@@ -55,9 +55,15 @@
       "supplier": "Supplier",
       "both": "Both"
     },
+    "nature": {
+      "label": "Nature",
+      "individual": "Individual",
+      "company": "Company"
+    },
     "validation": {
       "nameRequired": "Name is required",
-      "typeRequired": "Type is required"
+      "typeRequired": "Type is required",
+      "natureRequired": "Nature is required"
     },
     "messages": {
       "created": "Partner created successfully",

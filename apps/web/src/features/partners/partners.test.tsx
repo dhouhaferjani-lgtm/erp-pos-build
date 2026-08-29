@@ -714,6 +714,7 @@ describe('Partner Management', () => {
 
       await user.type(screen.getByLabelText(/name/i), 'Test Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
+      await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
       await user.type(screen.getByLabelText(/street address/i), '123 Main St')
 
       await user.click(screen.getByRole('button', { name: /save/i }))
@@ -736,6 +737,7 @@ describe('Partner Management', () => {
 
       await user.type(screen.getByLabelText(/name/i), 'Test Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
+      await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
       // Tunisia (TN) default country → the field is labeled "Matricule fiscal", but
       // it still submits as vat_number.
       await user.type(screen.getByLabelText(/matricule fiscal/i), 'FR12345678901')
@@ -760,6 +762,7 @@ describe('Partner Management', () => {
 
       await user.type(screen.getByLabelText(/name/i), 'Test Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
+      await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
 
       // Wait for countries to load
       await waitFor(() => {
@@ -786,6 +789,7 @@ describe('Partner Management', () => {
 
       await user.type(screen.getByLabelText(/name/i), 'Test Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
+      await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
       // Tunisia (TN) default country → the field is labeled "Gouvernorat", but it
       // still submits as state.
       await user.type(screen.getByLabelText(/gouvernorat/i), 'Île-de-France')
@@ -811,6 +815,7 @@ describe('Partner Management', () => {
       // Fill only required fields
       await user.type(screen.getByLabelText(/name/i), 'Minimal Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'supplier')
+      await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
 
       await user.click(screen.getByRole('button', { name: /save/i }))
 
@@ -844,6 +849,7 @@ describe('Partner Management', () => {
 
       await user.type(screen.getByLabelText(/name/i), 'New Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
+      await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
 
       await user.click(screen.getByRole('button', { name: /save/i }))
 
@@ -898,6 +904,7 @@ describe('Partner Management', () => {
 
       await user.type(screen.getByLabelText(/name/i), 'Test')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
+      await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
 
       await user.click(screen.getByRole('button', { name: /save/i }))
 
@@ -930,6 +937,7 @@ describe('Partner Management', () => {
 
       await user.type(screen.getByLabelText(/name/i), 'Test')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
+      await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
 
       await user.click(screen.getByRole('button', { name: /save/i }))
 
@@ -962,6 +970,7 @@ describe('Partner Management', () => {
 
       await user.type(screen.getByLabelText(/name/i), 'Test')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
+      await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
       // Tunisia (TN) default country → the field is labeled "Matricule fiscal".
       await user.type(screen.getByLabelText(/matricule fiscal/i), 'INVALID')
 
@@ -1086,6 +1095,7 @@ describe('Partner Management', () => {
 
       await user.type(screen.getByLabelText(/name/i), 'New Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
+      await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
       await user.type(screen.getByLabelText(/email/i), 'new@partner.com')
 
       const submitButton = screen.getByRole('button', { name: /save/i })

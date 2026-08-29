@@ -95,9 +95,15 @@
       "supplier": "مورّد",
       "both": "كلاهما"
     },
+    "nature": {
+      "label": "النوع",
+      "individual": "فرد",
+      "company": "شركة"
+    },
     "validation": {
       "nameRequired": "الاسم مطلوب",
-      "typeRequired": "النوع مطلوب"
+      "typeRequired": "النوع مطلوب",
+      "natureRequired": "النوع مطلوب"
     },
     "messages": {
       "created": "تم إنشاء الشريك بنجاح",

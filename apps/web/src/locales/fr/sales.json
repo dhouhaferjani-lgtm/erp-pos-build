@@ -55,9 +55,15 @@
       "supplier": "Fournisseur",
       "both": "Les deux"
     },
+    "nature": {
+      "label": "Nature",
+      "individual": "Particulier",
+      "company": "Société"
+    },
     "validation": {
       "nameRequired": "Le nom est obligatoire",
-      "typeRequired": "Le type est obligatoire"
+      "typeRequired": "Le type est obligatoire",
+      "natureRequired": "La nature est obligatoire"
     },
     "messages": {
       "created": "Partenaire créé avec succès",

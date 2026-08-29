@@ -129,6 +129,7 @@ describe('PartnerForm is_active toggle (BUG-007 / FE gate M1)', () => {
 
     await user.type(screen.getByLabelText(/^name\s*\*?$/i), 'New Partner')
     await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
+    await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
     await user.click(screen.getByRole('button', { name: /save/i }))
 
     await waitFor(() => {
