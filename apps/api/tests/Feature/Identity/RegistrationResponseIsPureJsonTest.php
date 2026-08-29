@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Identity;
 
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Tenant\Infrastructure\Runtime\ExecutionTimeLimit;
+use Closure;
 use Database\Seeders\CountriesSeeder;
 use Database\Seeders\PlansSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -104,6 +106,8 @@ final class RegistrationResponseIsPureJsonTest extends TestCase
         }
 
         config(['tenancy_resolver.db_per_tenant' => true]);
+        $executionTimeLimit = new RegistrationExecutionTimeLimitSpy;
+        $this->app->instance(ExecutionTimeLimit::class, $executionTimeLimit);
 
         ob_start();
         try {
@@ -132,6 +136,7 @@ final class RegistrationResponseIsPureJsonTest extends TestCase
         self::assertIsArray($decoded);
         self::assertIsArray($decoded['data'] ?? null);
         self::assertArrayHasKey('user', $decoded['data']);
+        self::assertSame([240], $executionTimeLimit->limits);
     }
 
     public function test_dispatching_tenant_migrations_during_tests_emits_no_stdout(): void
@@ -177,5 +182,27 @@ final class RegistrationResponseIsPureJsonTest extends TestCase
             'country_code' => 'FR',
             'vertical' => 'retail',
         ]);
+    }
+}
+
+final class RegistrationExecutionTimeLimitSpy implements ExecutionTimeLimit
+{
+    /** @var list<int> */
+    public array $limits = [];
+
+    public function setTimeLimit(int $seconds): void
+    {
+        $this->limits[] = $seconds;
+    }
+
+    public function registerShutdownHandler(Closure $handler): void
+    {
+        // Unit coverage invokes this handler; the feature test only proves the
+        // HTTP registration path resolves and calls the container-bound seam.
+    }
+
+    public function clear(): void
+    {
+        // Unit coverage proves pending shutdown compensation is cleared.
     }
 }
