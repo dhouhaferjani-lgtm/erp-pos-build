@@ -1,9 +1,8 @@
 # Codex dispatch — Session H (B-18 party/contact program), **Phase 2: `party_kind`** (2026-08-29) — DRAFT
 
-> **DRAFT — not dispatched.** Revision **r4**, after gates r1 (F-1..F-18), r2 (N-1..N-10) and r3
-> (`docs/superpowers/reviews/2026-08-29-session-h-phase2-brief-gate-r3.md`: F-2/N-4/N-6..N-10 resolved,
-> N-1/N-2/N-3/N-5 partial, new **N-11..N-17**). All dispositions applied and re-verified against code at
-> `a33b01354`. **The r3 re-gate runs
+> **DRAFT — not dispatched.** Revision **r5**, after gates r1 (F-1..F-18), r2 (N-1..N-10), r3 (N-11..N-17)
+> and r4 (`docs/superpowers/reviews/2026-08-29-session-h-phase2-brief-gate-r4.md`: N-11..N-16 resolved,
+> N-17 partial, new **N-18..N-29**). All dispositions applied and re-verified against code at `a33b01354`. **The r3 re-gate runs
 > against the post-Phase-1-merge `dev` tip; `base_sha` and both migration timestamps are pinned then.**
 > Do not dispatch from a HEAD lacking the Phase-1 merge.
 > **Path warning:** r1 cited module paths that do not exist here (`app/Modules/CRM/…`,
@@ -40,10 +39,15 @@ when you start — **STOP** (F-15).
 Line anchors were verified against **`a33b01354`** (local `dev` tip, 2026-08-29, *before* the Phase-1
 merge). Phase 1 moves anchors in `PartnerForm.tsx`, `PartnerListPage.tsx`, `AddPartnerModal.tsx`,
 `routes/index.tsx`, `ImportType.php`, `VehicleForm.tsx` **and — added in r3 (N-9) —
-`apps/web/src/features/partners/components/B2BFieldsSection.tsx` and `.../CreditLimitWarning.tsx`**
-(Phase-1 brief §2 M2). M3.2 depends on `B2BFieldsSection`'s internal layout, so **re-verify its split
-tax/credit anchors after the merge before you touch it**. **Re-verify every anchor with `grep -n` —
-do not trust a line number blindly.**
+`apps/web/src/features/partners/components/B2BFieldsSection.tsx` and `.../CreditLimitWarning.tsx`**,
+**and — added in r5 (N-28) — `apps/api/app/Modules/Partner/Application/DTOs/PartnerData.php`,
+`packages/shared/types/generated.d.ts` (verified filename), the three locale files
+`apps/web/src/locales/{en,fr,ar}/sales.json`, and
+`apps/api/app/Modules/Import/Presentation/Controllers/ImportController.php`** — Phase 1 converts consumers
+to `PartnerData` and may widen the DTO/generated type, authors the same `sales:partners.nature.*` blocks
+this phase repoints, and `ImportController.php` has moved since `a33b01354`. M3.2 also depends on
+`B2BFieldsSection`'s internal layout, so **re-verify its split tax/credit anchors after the merge before
+you touch it**. **Re-verify every anchor in this census with `grep -n` — never trust a line number blindly.**
 
 | Lane | Worktree | Branch | Milestones |
 |---|---|---|---|
@@ -148,6 +152,12 @@ unmodified code and pass.
   (`Person → Individual`, `Organization → Business`) — **the one and only kind→category mapping** (F-4).
 - `Domain/Enums/LegalForm.php` — a **closed** enum (F-12): `personne_physique`, `sarl`, `suarl`, `sa`,
   `association`, `other`. A closed UI list over a free `varchar` is what rule 9 forbids; `other` is the valve.
+- **`Domain/Enums/PartnerTaxRegime.php` — NEW (N-26, rule 9).** Cases exactly the five existing DB values:
+  `Corporate='corporate'`, `Individual='individual'`, `Forfait='forfait'`, `Exempt='exempt'`,
+  `NonResident='non_resident'` (`2026_01_09_111429_add_tax_fields_to_partners_table.php:16`). `tax_regime`
+  is a Laravel `enum()` column, so PostgreSQL already carries a CHECK for it — **do not touch that
+  migration's literals**; add a parity test comparing `PartnerTaxRegime::cases()` against the live CHECK.
+  Cast it on the model (M1.4) and use the **case**, never the literal `'individual'`, in policy code.
 - `Domain/Enums/PartyGender.php` — `male|female|other`, matching
   `app/Modules/Contact/Domain/Enums/Gender.php:9-11`. **Contact's `Gender` has no `values()` method**
   (verified — bare cases at `:7-12`), so the parity test compares `array_column(Gender::cases(), 'value')`
@@ -157,8 +167,8 @@ unmodified code and pass.
 - **Typed derivation (F-10, N-1, N-7, N-16).** `PartyKindDerivationInput` — a readonly DTO carrying
   **`requestedKind: ?PartyKind`** and **`kindProvided: bool`**, `existingKind: ?PartyKind`, and the evidence
   fields **split into persisted vs incoming**: `type`, `customer_category`, `vat_number`,
-  `company_legal_name`, `business_registration_number`, `credit_limit`, `payment_terms`,
-  **`legal_form`** (N-7).
+  **`tax_id`** (N-18), `company_legal_name`, `business_registration_number`, `credit_limit`,
+  `payment_terms`, **`legal_form`** (N-7).
   **N-16 — the `(true, null)` hole is closed by rule, not by a null branch:** `kindProvided === true`
   **REQUIRES a non-null `requestedKind`**; enforce it in the DTO constructor (throw
   `InvalidArgumentException` — this state is a programming error, never user input). An **explicit `null`
@@ -179,8 +189,12 @@ unmodified code and pass.
      `existing_kind_preserved`. "New" = evidence in the **incoming** payload not already true of the
      persisted row. **A role merge alone NEVER reclassifies** — customer→both on a person stays person.
   3. Evidence ladder over the **merged** state: `customer_category === 'business'` → org
-     (`category_business`); any of `vat_number` / `company_legal_name` / `business_registration_number` /
-     `credit_limit` / `payment_terms` non-null → org (`has_b2b_datum`); **non-null `legal_form` → org**
+     (`category_business`); any of `vat_number` / **`tax_id`** / `company_legal_name` /
+     `business_registration_number` / `credit_limit` / `payment_terms` non-null → org (`has_b2b_datum`).
+     **`tax_id` in this arm is P0 (N-18):** it is in `PERSON_CLEARED_FIELDS`, so without it a legacy row
+     whose only fiscal datum is `tax_id` classifies as *person* and Migration A step 8 then **destroys that
+     tax identity** — the exact opposite of OQ7, under which a party carrying a tax id is an organization.
+     Then **non-null `legal_form` → org**
      (`has_legal_form`, N-7 — else a bare customer row with `legal_form=sarl` derives person and is then
      rejected by the identity policy); **`type IN ('supplier','both')` → org ONLY on CREATE** (no existing
      row), `role_supplier_or_both_on_create`; else person (`default_person`).
@@ -244,7 +258,11 @@ choose the timestamp at dispatch and collision-check with `ls apps/api/database/
 7. **Backfill `email_normalized` in SQL** (`lower(trim(email))`) — pure SQL, safe. **Do NOT backfill
    `phone_normalized` here**; it needs the normalizer. Ship an idempotent chunked console command
    `partners:backfill-normalized-contact-points` and record it in `owes_parent` (§4, F-18).
-8. **Repair the person tax identity, in SQL (N-11).** Every row the backfill classified `person` gets
+8. **Repair the person tax identity, in SQL (N-11) — AFTER step 2's classification, which must already
+   have counted `tax_id` as organization evidence (N-18).** Order matters: classify first (with `tax_id` in
+   the `has_b2b_datum` arm), repair second, never the reverse. PG regression: a legacy row whose only fiscal
+   datum is `tax_id` classifies **organization** and **retains the value**.
+   Every row the backfill classified `person` gets
    `tax_status = 'NON_REGISTERED'`, `tax_regime = 'individual'`, `withholding_exempt = false`, and NULL for
    the nullable members of `PERSON_CLEARED_FIELDS` (M2.1). **`tax_status` is NOT NULL DEFAULT `'REGISTERED'`**
    (`2026_01_02_100001_add_tax_exemption_to_partners.php:19`), so legacy persons would otherwise sit at
@@ -299,7 +317,8 @@ you strand offline customers. Phase 4 lands the versioned-UUID path with alias/i
 
 **M1.4 Model + DTO.** `apps/api/app/Modules/Partner/Domain/Partner.php` — add the new columns to
 `$fillable` (the block runs `:100-141`); cast `party_kind` → `PartyKind`, `legal_form` → `LegalForm`,
-`gender` → `PartyGender`, `date_of_birth` → `date`, **`credit_account_enabled` → `boolean`** in `casts()`
+`gender` → `PartyGender`, `date_of_birth` → `date`, **`credit_account_enabled` → `boolean`,
+`tax_regime` → `PartnerTaxRegime`** (N-26) in `casts()`
 (`:147-151`). **Also add the two pre-existing columns missing from `$fillable`: `tax_id` and `tax_regime`**
 (N-13 — verified absent from `:100-141` though both exist since `2026_01_09_111429_…:14-17`; without them
 `PERSON_CLEARED_FIELDS` silently no-ops on a mass-assign path).
@@ -309,8 +328,10 @@ you strand offline customers. Phase 4 lands the versioned-UUID path with alias/i
 field the DTO does not expose). Then `php artisan typescript:transform` and commit the generated output.
 
 **M1 browser gate** (`e2e/session-h/m1-*.spec.ts`, :5174 with `VITE_API_PROXY_TARGET` → :8011, and :8011
-direct): (i) `GET /partners?per_page=5` and assert every **pre-existing** row carries a non-null
-`party_kind` in the documented value set — **this is also the :8011 marker** (F-16); (ii) `POST /partners`
+direct): (i) **census the FULL partner population** — walk `GET /partners` to the last page (or assert
+against a `COUNT` taken directly) and assert **every** pre-existing row carries a non-null `party_kind` in
+the documented value set; `per_page=5` cannot prove a claim about every row (N-29). This is also the
+:8011 marker (F-16); (ii) `POST /partners`
 **omitting** `party_kind` **succeeds and the new row's `party_kind` is legitimately NULL** — say this
 plainly: at M1 the column is nullable with no default and **no writer sets it yet**
 (`CreatePartnerRequest.php:66-80` has no `party_kind`; `PartnerController.php:207-219` spreads only
@@ -356,7 +377,7 @@ on create AND update**, operating on the **merged final state**, not the incomin
   | Column (verified) | Person target | Evidence |
   |---|---|---|
   | `tax_status` | **`'NON_REGISTERED'`** — NOT NULL | `2026_01_02_100001_add_tax_exemption_to_partners.php:19` is `string(50)->default('REGISTERED')` with **no `->nullable()`**; `PartnerTaxStatus` (`app/Modules/Taxation/Domain/Enums/PartnerTaxStatus.php:9-11`) = `REGISTERED\|NON_REGISTERED\|EXEMPT`, so `NON_REGISTERED` is the exact, already-modelled "person" value |
-  | `tax_regime` | **`'individual'`** — NOT NULL | `2026_01_09_111429_add_tax_fields_to_partners_table.php:15-17`, enum `corporate\|individual\|forfait\|exempt\|non_resident` default `individual`; r3's register missed this column entirely |
+  | `tax_regime` | **`PartnerTaxRegime::Individual`** — NOT NULL | `2026_01_09_111429_add_tax_fields_to_partners_table.php:15-17`: `$table->enum('tax_regime', ['corporate','individual','forfait','exempt','non_resident'])->default('individual')`; r3's register missed this column, and **no PHP enum exists — add one (N-26, rule 9)** |
   | `vat_number` | NULL | `create_partners_table.php:25` |
   | `tax_id` | NULL | `2026_01_09_111429_…:14` — **and `tax_id` is NOT in `Partner::$fillable`** (`Partner.php:100-141`), so add it (and `tax_regime`) to the write seam or the clear silently no-ops (N-13) |
   | `tax_exemption_reason`, `tax_exemption_certificate_media_id`, `tax_exemption_valid_until` | NULL | `2026_01_02_100001_…:22,27,32`; `Partner.php:121-123` |
@@ -364,10 +385,19 @@ on create AND update**, operating on the **merged final state**, not the incomin
   | `withholding_exemption_reason`, `withholding_exemption_certificate_id` | NULL | `2026_01_08_172040_…:16-17`; `Partner.php:124-126` |
   | `legal_form`, `company_legal_name`, `business_registration_number` | NULL | new in M1.2; `Partner.php:103-104` |
 
-  **Withholding is organization-only — reviewer, challenge this.** A *retenue à la source* exemption is a
-  certificate issued to a registered taxpayer, and OQ7 says a `person` never carries a tax id, so a person
-  cannot hold one. If the reviewer judges a person supplier can legitimately be withholding-exempt, drop
-  the three `withholding_*` rows from the set and say so — it is the one judgement call in this table.
+  **Withholding is organization-only — RULED, not a reviewer decision (N-24).** A *retenue à la source*
+  exemption is a certificate issued to a registered taxpayer; under **OQ7 a `person` is never fiscally
+  registered**, and a sole trader holding a matricule is an **organization** with
+  `legal_form='personne_physique'` — so a `person` cannot hold one. This is a **consequence of OQ7, not a
+  new legal posture** — recorded by the orchestrator against `LEDGER.md` D-H0-1 OQ7 and OQ-sheet row
+  **D-4**. Person targets: `withholding_exempt=false`, `withholding_exemption_reason=NULL`,
+  `withholding_exemption_certificate_id=NULL`. **Not a STOP; do not re-open it at a milestone review.**
+
+- **The reverse set is canonical too — `PartyIdentityPolicy::ORGANIZATION_CLEARED_FIELDS` (N-19):**
+  **`date_of_birth`, `gender`, `national_id`, `mobile`** — all four OQ1 person-only columns. r4 listed only
+  the first three and dropped `mobile`. It is used by the policy, the M3 confirm dialog and
+  `meta.cleared_fields` exactly as the person set is, and **each of the four is asserted individually** in
+  the API and browser transition tests.
 
   **`tax_status` has NO wire consequence — verified, so this is not a STOP.** `grep -n tax_status` returns
   **zero** hits in `PosCustomerMirrorResource.php`, `VirtualAdminFiscalEventService.php`,
@@ -384,11 +414,11 @@ on create AND update**, operating on the **merged final state**, not the incomin
   org→person applies **`PERSON_CLEARED_FIELDS` above, verbatim** — writing `tax_status='NON_REGISTERED'`,
   `tax_regime='individual'`, `withholding_exempt=false` and NULL for the rest, **never NULL into a NOT NULL
   column** (N-11); person→org clears `date_of_birth`, `gender`, `national_id`. The response carries the
-  **cleared field list in `meta.cleared_fields`**, and the UI shows a confirm dialog **before** submitting
-  ("Switching to Individual clears: …"). **A PATCH that keeps the same kind but sends an incompatible field
-  still 422s** — clearing is authorized by the transition, never by a field's presence. M2 API tests and M3
-  form/browser tests assert **both directions**, and **every column in the set is asserted individually**
-  (N-13) — a test that checks only `vat_number` is not sufficient.
+  **cleared field list in `meta.cleared_fields`** — see the N-22 envelope contract in M3.2. **A PATCH that
+  keeps the same kind but sends an incompatible field still 422s** — clearing is authorized by the
+  transition, never by a field's presence. M2 API tests and M3 form/browser tests assert **both
+  directions**, and **every column in BOTH sets is asserted individually** (N-13, N-19) — a test that checks
+  only `vat_number` is not sufficient.
 - **Every write path goes through it**: HTTP (`PartnerController`), POS pending-customer, the import
   upsert, seeders/factories, Marketplace and Cart.
 - Tests: one per path, plus both transition directions, plus a raw-SQL-style negative proving the policy
@@ -406,6 +436,19 @@ on create AND update**, operating on the **merged final state**, not the incomin
    must 422, not read as absent); `name` `sometimes|required` (`:84` — today `'sometimes','string'` lets a
    caller blank it); the same accepted-field widening **including `credit_account_enabled`
    `['sometimes','boolean']`**; drop `customer_category` (`:138`).
+   **Rules for EVERY policy field are mandatory (N-21).** Today neither FormRequest declares the tax /
+   exemption / withholding columns at all, and the controllers persist only `$request->validated()`
+   (`PartnerController.php:207,280-295`) — so a same-kind request carrying an incompatible field is
+   **silently stripped before `PartyIdentityPolicy` ever sees it**, and the promised field-specific 422
+   never fires. Add rules under the **canonical persisted names** to both requests: `tax_id`, `tax_regime`
+   (`Enum(PartnerTaxRegime::class)`), `tax_status` (`Enum(PartnerTaxStatus::class)`),
+   `tax_exemption_reason`, `tax_exemption_certificate_media_id`, `tax_exemption_valid_until`,
+   `withholding_exempt`, `withholding_exemption_reason`, `withholding_exemption_certificate_id`.
+   **Test same-kind rejection for EVERY member of `PERSON_CLEARED_FIELDS`**, not only `vat_number`.
+   **Latent dead-field bug, fixed in the same wave (N-21):** the web form declares and submits
+   `exemption_reason` / `exemption_valid_until` (`PartnerForm.tsx:104-105` and `:414-415`), but the
+   persisted columns are `tax_exemption_reason` / `tax_exemption_valid_until` — **those two fields have
+   never reached the database**. Rename the transport names to the persisted names as part of M3.
    **`credit_account_enabled` end-to-end checklist (N-14):** model fillable + `boolean` cast →
    `PartnerData::fromModel` → `typescript:transform` → the typed `PartnerService` create/update input →
    both FormRequests → M3 form schema + defaults → create, update **and authorization** tests (a caller
@@ -474,9 +517,16 @@ event-sourcing". **Wrong:** `apps/api/app/Shared/Domain/Events/DomainEvent.php:7
 dispatched through Laravel is **also persisted to `stored_events`** by Spatie's wildcard subscriber. So:
 - Rule 8 is stricter than assumed: `PartnerCreated` / `PartnerUpdated` / `PartnerDeleted`
   (`apps/api/app/Modules/Partner/Domain/Events/`) are frozen **and their stored payloads are history**.
+- **Dual-dispatch, V1 unchanged (N-23).** `PartnerService` dispatches **both** the frozen V1 events with
+  **byte-identical payloads** *and* the new V2 events. V1 cannot simply be replaced: existing tests assert
+  it (`tests/Feature/Partner/PartnerEventsTest.php:81-105` created, `:106-134` updated, `:136-158` deleted)
+  and its rows are already in `stored_events`. **The controllers dispatch nothing** — no duplicate emission.
 - Add `PartnerCreatedV2` / `PartnerUpdatedV2` — V1 fields **plus** `partyKind`, `legalForm`,
   `preferredLocale`; names `partner.created.v2` / `partner.updated.v2`; same `DomainEvent` base;
-  `getAuditPayload()` as `PartnerCreated.php:38-50` does.
+  `getAuditPayload()` as `PartnerCreated.php:38-50` does. **`PartnerUpdatedV2` must NOT inherit V1's
+  `array<string, mixed> $changes`** (`PartnerUpdated.php:17-25`) — that violates rule 3. Carry
+  `list<PartnerChange>` instead, `PartnerChange` being an immutable readonly DTO (`field: string`,
+  `from: string|int|bool|null`, `to: string|int|bool|null`). V1 keeps its array; only V2 is typed.
 - Dispatch from `PartnerService` via **typed create/update/delete APIs**, not the controller
   (`PartnerController.php:230,310,382`) — R-A's point: import-, POS-, marketplace- and cart-created parties
   emit nothing today. `PartnerDeleted` needs no V2 but its dispatch moves too, and its listener registration
@@ -507,15 +557,24 @@ then exempted seeders; R-A explicitly requires seeder-created parties to emit
 - **Expanded grep guard, with TWO tiers (N-5, corrected by N-17).** r3 forbade `Partner::factory(` outside
   the service seams and then declared its factory uses legal — a literal guard would have failed on the
   first run. Split it:
-  - **Tier 1 — terminal model writes, forbidden outside `PartnerService`, `PartnerSeedingService` and
-    `PartnerFactory`:** `Partner::create(`, `Partner::query()->create(`, `Partner::firstOrCreate(`,
-    `Partner::query()->firstOrCreate(`, `Partner::updateOrCreate(`, `Partner::query()->updateOrCreate(`,
-    `new Partner(`.
-  - **Tier 2 — `Partner::factory(`, allowed for factory-mediated consumers on an EXPLICIT allowlist**
-    pinned path-by-path in the guard test (a new consumer must be added deliberately): `database/factories/*`,
-    `database/seeders/DatabaseSeeder.php`, and `tests/**`. Verified r3/r4 census of the paths this covers:
+  - **Tier 1 — terminal model writes** (`Partner::create(`, `Partner::query()->create(`,
+    `Partner::firstOrCreate(`, `Partner::query()->firstOrCreate(`, `Partner::updateOrCreate(`,
+    `Partner::query()->updateOrCreate(`, `new Partner(`) — **scanned over `app/**` and
+    `database/seeders/**` ONLY**, forbidden outside `PartnerService`, `PartnerSeedingService` and
+    `PartnerFactory`. **`tests/**` is EXPLICITLY EXEMPT from Tier 1** (N-17): 222 test files use these forms
+    at r5, they are fixtures rather than production writes, and converting them is not Phase-2 work —
+    **Phase 4 may ratchet them**; say so in the guard's docblock so the exemption is deliberate, not an
+    oversight.
+  - **Tier 2 — `Partner::factory(`, allowed only for the EXACT pinned census below**, path by path, so a new
+    consumer must be added deliberately. Verified by `grep -rln "Partner::factory(" apps/api/{app,database,tests}`
+    at r5 — **zero hits in `app/**`**; in `database/`: `database/seeders/DatabaseSeeder.php`,
+    `database/seeders/ParapharmacySeeder.php`, `database/seeders/TunisianParapharmacySeeder.php`
+    (r4 named only `DatabaseSeeder` — the other two are real and would have failed a literal guard), plus
   `factories/VehicleOwnershipFactory.php`, `factories/PaymentFactory.php`, `factories/DocumentFactory.php`,
-  `factories/Scheduling/AppointmentFactory.php`, `factories/Workshop/WorkOrderFactory.php`;
+  `factories/Scheduling/AppointmentFactory.php`, `factories/Workshop/WorkOrderFactory.php`
+    (`database/seeders/README.md` also matches — it is documentation, exclude non-`.php` files); and
+    **`tests/**` as a directory allowance, 135 files at r5** — enumerating them file-by-file would make the
+    guard a merge-conflict generator, so pin the *directory* plus the count and let the count drift freely.
   `seeders/ParapharmacySeeder.php:1229,1241,1256` and `seeders/DatabaseSeeder.php:375-405` are
   factory-mediated — confirm the factory default covers them rather than converting them.
 - Give the demo tenants a realistic mix (walk-in persons + organizations) for M3's badge and filter.
@@ -527,12 +586,23 @@ chosen at dispatch). Only now that every writer supplies `party_kind` is it safe
   wrote between the two migrations — `PartnerController.php:215-219` can still insert with neither field
   after Migration A. Rerunning only the kind arms would set `party_kind='person'` while leaving
   `customer_category` NULL, and the composite CHECK would then fail on deploy.
-- **Repeat the person tax-identity repair of Migration A step 8 (N-11)** for rows written between the two
-  migrations, then **assert zero NULL `party_kind`, zero incoherent `(party_kind, customer_category)` pairs,
-  and zero persons holding a non-person tax identity** — immediately before `SET NOT NULL` and before
-  creating any CHECK.
+- **Scope EVERY compatibility backfill to `WHERE party_kind IS NULL` (N-20).** That predicate is exactly
+  the inter-migration legacy-write candidate set — a row an old worker wrote after Migration A. Applying the
+  kind classification, the `customer_category` recomputation, the `credit_account_enabled` legacy backfill
+  and the person tax repair **unconditionally** would overwrite deliberate M2 edits; most sharply, a partner
+  an operator explicitly set to `credit_account_enabled=false` between the migrations would be silently
+  flipped back to `true` by the "active accounts" rule.
+- **Prove both halves:** a row with an explicit `credit_account_enabled=false` and a non-null `party_kind`
+  **survives Migration B untouched**, while an old-worker row with NULL `party_kind` **does** receive the
+  legacy-compatible values.
+- Then **assert zero NULL `party_kind`, zero incoherent `(party_kind, customer_category)` pairs, and zero
+  persons holding a non-person tax identity** — immediately before `SET NOT NULL` and before any CHECK.
 - Exact CHECKs, guarded by `pg_constraint` probes (F-12, F-17): `party_kind IN ('person','organization')`;
-  `gender IN ('male','female','other') OR gender IS NULL`; `legal_form` against `LegalForm::values()`;
+  `gender IN ('male','female','other') OR gender IS NULL`; `legal_form` against the **six literals frozen
+  inline in the migration** — `'personne_physique','sarl','suarl','sa','association','other'` — **never
+  `LegalForm::values()`** (N-27: Migration A already forbids booting domain classes, and coupling a
+  historical migration to future app code is that same defect). A separate PG **parity test compares the
+  live `LegalForm` enum against the CHECK** the migration produced;
   and the **composite pair CHECK** (F-4):
   `(party_kind='person' AND customer_category='individual') OR (party_kind='organization' AND customer_category='business')`.
   Plus `COMMENT ON COLUMN` for each new column.
@@ -596,6 +666,17 @@ gate. Split it:
   **never required**. New i18n block `sales:partners.person.*`, EN/FR/AR.
 - **`preferred_locale` select** — both kinds, nullable, options = the M2.1 country-seeded BCP-47 list
   (N-4), labelled in the user's language, with an explicit "inherit company default" empty option.
+- **The mutation envelope (N-22) — `apiPatch` cannot carry `meta`.** `apps/web/src/lib/api.ts:397-399`
+  returns `response.data.data` and **discards `meta`**. Per `docs/conventions/01`, for **this one call** use
+  `api.patch` and return `response.data` (the full `{data, meta}`), exactly as the paginated endpoints do —
+  do **not** change `apiPatch` itself, and do **not** double-unwrap. Type the envelope explicitly
+  (`PartnerMutationResponse = { data: PartnerData; meta: { cleared_fields: string[] } }`).
+- **The dialog is a "may be cleared" list and the assertion is a SUBSET (N-22).** The form cannot compute an
+  exact delta — it does not hold every persisted value. Build the dialog from the clearable fields **the UI
+  can actually see**, and assert **`meta.cleared_fields` ⊆ dialog list, and non-empty** — never equality.
+  **Every clearable field in `PERSON_CLEARED_FIELDS` and `ORGANIZATION_CLEARED_FIELDS` needs an EN/FR/AR
+  label** (`sales:partners.clearedFields.*`): the server returns column names, and a dialog that shows
+  `tax_exemption_certificate_media_id` to a merchant is not a dialog.
 - **Kind transitions — the M2.1/N-2 contract, UI half.** RHF retains values for unmounted fields and
   `onSubmit` spreads the whole `data` object into the payload (`PartnerForm.tsx:397-420` — the `cleaned`
   spread), so switching Nature must `unregister`/reset the now-incompatible fields. But the *authority* to
@@ -661,9 +742,17 @@ text. Screenshots for all six. Marker: `party_kind` present on the intercepted `
   `'party_kind' => ['nullable','in:person,organization']`, `'legal_form' => ['nullable', Rule::in(LegalForm::values())]`.
   **Touch only the `Parties` arm.** `Parties` and `Partners` are distinct schemas (`:91` / `:110`, `:169` /
   `:182`) and `Partners` is Session G's retirement lane — leave it, and note anything you find for Session G.
-- `apps/api/app/Modules/Import/Services/PartiesRowMapper.php:15-29` — `toPartnerData()` maps `party_kind` and
-  `legal_form` through; when `party_kind` is absent or blank the row is derived by `PartyKindDeriver`
-  (M1.1), which returns `{kind, reason}`. **The mapper never re-derives a reason** (F-10).
+- `apps/api/app/Modules/Import/Services/PartiesRowMapper.php:15-29` — `toPartnerData()` maps `party_kind`
+  and `legal_form` through **as strings**; derivation happens inside `PartnerService`.
+  **Rule-6 boundary (N-25) — the Import module must NOT import Partner domain classes.** r4 told it to call
+  `LegalForm::values()` and `PartyKindDeriver` directly; that is the same violation this brief refuses for
+  Contact's `Gender` (M1.1). Instead widen the public seam
+  `apps/api/app/Shared/Contracts/PartnerServiceInterface.php:12-38`:
+  - the typed upsert returns **`{id, kind, reason, cleared_fields}`** (a readonly result DTO), so the
+    importer reads `reason` for its warning without owning any derivation logic;
+  - add `legalFormValues(): list<string>` so `ImportType::Parties` validates `legal_form` through the
+    contract (`Rule::in($partnerService->legalFormValues())`) rather than by importing the enum.
+  **The mapper never re-derives a reason** (F-10).
 - **OQ7 on the import path is clear-with-warning, not reject** (M2.1): a person row carrying `tax_id` has it
   cleared and warned, so a bulk migration does not fail.
 - **N-7 regression case:** a bare `name` + `type=customer` row carrying `legal_form=sarl` and no
@@ -694,13 +783,28 @@ import endpoints — `party_kind=organization`; blank kind + `tax_id` (→ organ
 carrying a `tax_id` (imports with the id cleared + warned) — then `GET` the five partners and assert their
 `party_kind`, and **download the result workbook** asserting `warnings` carries `party_kind_derived` on
 exactly the three derived rows and `party_person_tax_id_cleared` on the last. If no e2e helper can drive the
-upload, substitute a PHPUnit Feature test at the HTTP layer and say so — never skip the assertion.
+upload, **do not substitute PHPUnit (N-29)** — §0.1 makes the browser gate an owner requirement and a
+PHPUnit swap silently voids it. Drive the whole flow with the Playwright `request` fixture against :8011:
+`POST` the multipart upload → `POST` execute → `GET` the workbook download endpoint
+(`ImportController.php:609-627`) → parse the returned XLSX inside the spec and assert the `warnings` column.
+If that genuinely cannot be made to work, **STOP** and obtain an owner-recorded non-browser exception.
 
 **M4 review lenses:** `imports`.
 
 ---
 
-**Lane done when:** M1–M4 ACCEPT; `pnpm typecheck && pnpm lint` clean in `apps/web`; `pnpm typecheck` +
+### M5 — accumulated-branch review (N-29)
+
+The harness requires a final whole-branch gate; M1–M4 each review only their own diff under one or two
+lenses. **After M4 ACCEPTs, run one more adversarial round over the ENTIRE branch diff
+(`git diff <base_sha>..HEAD`) under ALL four Phase-2 lenses — `fiscal-pos`, `tenancy-authz`, `imports`,
+`frontend-conventions` — before setting `status: complete`.** It exists to catch what per-milestone reviews
+structurally cannot: a Migration-A decision invalidated by an M3 UI choice, a policy field added in M2 and
+never surfaced in M3, an event emitted in M2 with no consumer contract in M4. Register:
+`docs/handoff/reviews/session-h-phase2/M5-r<n>.md`. No new code unless a finding requires it; fix rounds
+apply as usual. **`status: complete` before an M5 ACCEPT is a protocol violation.**
+
+**Lane done when:** M1–M5 ACCEPT; `pnpm typecheck && pnpm lint` clean in `apps/web`; `pnpm typecheck` +
 `pnpm vitest run src/lib/customer src/lib/fiscal src/lib/accountCharge src/lib/offline` clean in `apps/pos`;
 PHPUnit by path green **on PostgreSQL** (incl. `tests/Architecture/EnumCheckParityTest.php`); PHPStan 8 +
 Pint clean on touched PHP; `php tools/feature-lane-manifest-check.php` and
