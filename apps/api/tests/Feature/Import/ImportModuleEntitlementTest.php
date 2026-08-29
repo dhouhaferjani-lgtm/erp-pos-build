@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Tests\Feature\Import;
 
 use App\Enums\Vertical;
+use App\Models\SuperAdmin;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Application\Services\ModuleEntitlementCheck;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
@@ -104,6 +106,42 @@ final class ImportModuleEntitlementTest extends TestCase
         }
     }
 
+    public function test_wizard_order_and_status_hide_composite_items_without_entitlement(): void
+    {
+        $this->getJson('/api/v1/migration-wizard/order')
+            ->assertOk()
+            ->assertJsonMissing(['type' => ImportType::CompositeItems->value]);
+        $this->getJson('/api/v1/migration-wizard/status')
+            ->assertOk()
+            ->assertJsonMissingPath('data.composite_items');
+
+        $this->setCompositeItemsEnabled(true);
+
+        $this->getJson('/api/v1/migration-wizard/order')
+            ->assertOk()
+            ->assertJsonFragment(['type' => ImportType::CompositeItems->value]);
+        $this->getJson('/api/v1/migration-wizard/status')
+            ->assertOk()
+            ->assertJsonPath('data.composite_items.count', 0)
+            ->assertJsonPath('data.composite_items.has_data', false);
+    }
+
+    public function test_entitlement_check_reports_a_missing_authenticated_user(): void
+    {
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('User must be authenticated to check module access');
+
+        app(ModuleEntitlementCheck::class)->ensure(ImportType::CompositeItems, null);
+    }
+
+    public function test_entitlement_check_reports_a_non_tenant_principal(): void
+    {
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Module access requires a tenant user, not a super admin');
+
+        app(ModuleEntitlementCheck::class)->ensure(ImportType::CompositeItems, new SuperAdmin);
+    }
+
     /** @return array<string, TestResponse<Response>> */
     private function allCompositeSurfaces(): array
     {
@@ -149,5 +187,6 @@ final class ImportModuleEntitlementTest extends TestCase
         ]);
         app(CompanyConfigService::class)->invalidateForTenant($this->tenant->id);
         $this->tenant->refresh();
+        $this->user->unsetRelation('tenant');
     }
 }

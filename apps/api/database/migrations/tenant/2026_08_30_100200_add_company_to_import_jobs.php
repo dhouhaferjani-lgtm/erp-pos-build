@@ -128,7 +128,10 @@ return new class extends Migration
         }
 
         $this->info('import-job-company-attributed', ['jobs' => $attributed]);
-        $this->warning('import-job-company-ambiguous', ['jobs' => count($ambiguous), 'per_job' => $ambiguous]);
+        $this->warning('import-job-company-ambiguous', [
+            'jobs' => count($ambiguous),
+            'per_job' => (object) $ambiguous,
+        ]);
         $this->info('import-job-company-none', ['jobs' => $none]);
     }
 
@@ -175,7 +178,7 @@ return new class extends Migration
         Log::info($message, $context);
     }
 
-    /** @param array{jobs: int, per_job: array<string, array<string, int>>} $context */
+    /** @param array{jobs: int, per_job: object} $context */
     private function warning(string $message, array $context): void
     {
         echo $message.' '.json_encode($context, JSON_THROW_ON_ERROR).PHP_EOL;

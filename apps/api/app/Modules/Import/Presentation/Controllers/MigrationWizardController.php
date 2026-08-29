@@ -66,9 +66,14 @@ class MigrationWizardController extends Controller
     /**
      * Get recommended import order
      */
-    public function order(): JsonResponse
+    public function order(Request $request): JsonResponse
     {
-        $importOrder = $this->wizardService->getRecommendedImportOrder();
+        /** @var User $user */
+        $user = $request->user();
+        $importOrder = array_values(array_filter(
+            $this->wizardService->getRecommendedImportOrder(),
+            fn (ImportType $type): bool => $this->moduleEntitlement->allows($type, $user),
+        ));
 
         $data = array_map(
             fn (ImportType $type) => $this->wizardService->getImportTypeMetadata($type),
@@ -83,9 +88,6 @@ class MigrationWizardController extends Controller
      */
     public function dependencies(Request $request, string $type): JsonResponse
     {
-        /** @var User $user */
-        $user = $request->user();
-        $companyId = $this->companyContext->requireCompanyId();
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
@@ -171,11 +173,19 @@ class MigrationWizardController extends Controller
      */
     public function status(Request $request): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
         $status = $this->wizardService->getMigrationStatus($tenantId);
+
+        /** @var User $user */
+        $user = $request->user();
+        foreach (array_keys($status) as $typeValue) {
+            $type = ImportType::tryFrom($typeValue);
+            if ($type !== null && ! $this->moduleEntitlement->allows($type, $user)) {
+                unset($status[$typeValue]);
+            }
+        }
 
         return response()->json(['data' => $status]);
     }

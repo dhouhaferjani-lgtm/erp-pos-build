@@ -18,6 +18,7 @@ use App\Modules\Product\Domain\Enums\PlatformLinkStatus;
 use App\Modules\Product\Domain\Enums\PricingMode;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Enums\VehicleTypeRef;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Product\Presentation\Requests\Concerns\ValidatesMarginBand;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
@@ -165,7 +166,7 @@ class UpdateProductRequest extends FormRequest
                 'max:100',
                 Rule::unique('products', 'sku')
                     ->where('tenant_id', $tenantId)
-                    ->whereNull('deleted_at')
+                    ->where('company_id', $company->id)
                     ->ignore($productId),
             ],
             'type' => ['sometimes', 'nullable', new Enum(ProductType::class)],
@@ -283,7 +284,7 @@ class UpdateProductRequest extends FormRequest
      */
     public function messages(): array
     {
-        return [
+        $messages = [
             'sale_price.regex' => 'Sale price must have at most 3 decimal places.',
             'purchase_price.regex' => 'Purchase price must have at most 3 decimal places.',
             'tax_rate.regex' => 'Tax rate must have at most 2 decimal places.',
@@ -292,5 +293,19 @@ class UpdateProductRequest extends FormRequest
             'target_margin_override.regex' => 'Target margin override must have at most 2 decimal places.',
             'minimum_margin_override.regex' => 'Minimum margin override must have at most 2 decimal places.',
         ];
+
+        $sku = $this->input('sku');
+        $company = $this->companyContext->requireCompany();
+        if (is_string($sku) && Product::onlyTrashed()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->where('sku', $sku)
+            ->exists()
+        ) {
+            $messages['sku.unique'] = "sku_held_by_deleted_product: SKU {$sku} is held by a soft-deleted product; "
+                .'purge the deleted record or choose a different SKU.';
+        }
+
+        return $messages;
     }
 }

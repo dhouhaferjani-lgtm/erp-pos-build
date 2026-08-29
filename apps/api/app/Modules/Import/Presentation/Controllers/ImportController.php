@@ -58,14 +58,27 @@ class ImportController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
+        $filters = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'status' => ['sometimes', new Enum(ImportStatus::class)],
+            'type' => ['sometimes', new Enum(ImportType::class)],
+            'q' => ['sometimes', 'string', 'max:255'],
+        ]);
         $companyId = $this->companyContext->requireCompanyId();
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
+        $perPage = (int) ($filters['per_page'] ?? 20);
+        $page = (int) ($filters['page'] ?? 1);
+
         $jobs = ImportJob::where('tenant_id', $tenantId)
             ->where(fn ($query) => $query->where('company_id', $companyId)->orWhereNull('company_id'))
+            ->when(isset($filters['status']), fn ($query) => $query->where('status', $filters['status']))
+            ->when(isset($filters['type']), fn ($query) => $query->where('type', $filters['type']))
+            ->when(isset($filters['q']), fn ($query) => $query->where('original_filename', 'like', '%'.$filters['q'].'%'))
             ->orderByDesc('created_at')
-            ->paginate(20);
+            ->paginate($perPage, ['*'], 'page', $page);
 
         return response()->json([
             'data' => $jobs->map(fn (ImportJob $job) => array_merge(
@@ -117,9 +130,24 @@ class ImportController extends Controller
         $file = $request->file('file');
         $type = ImportType::from($request->input('type'));
         $this->moduleEntitlement->ensure($type, $user);
-        $sourceHash = hash_file('sha256', $file->getRealPath());
+        $realPath = $file->getRealPath();
+        if ($realPath === false) {
+            return response()->json([
+                'error' => [
+                    'code' => 'IMPORT_SOURCE_HASH_FAILED',
+                    'message' => 'The uploaded source file could not be read for integrity verification.',
+                ],
+            ], 500);
+        }
+
+        $sourceHash = hash_file('sha256', $realPath);
         if (! is_string($sourceHash)) {
-            return response()->json(['error' => 'Failed to hash uploaded file'], 500);
+            return response()->json([
+                'error' => [
+                    'code' => 'IMPORT_SOURCE_HASH_FAILED',
+                    'message' => 'The uploaded source file could not be read for integrity verification.',
+                ],
+            ], 500);
         }
 
         // Deprecated types stay in the enum so historical `import_jobs` rows
@@ -590,6 +618,22 @@ class ImportController extends Controller
             ], 422);
         }
 
+        if ($job->company_id === null) {
+            ImportJob::query()
+                ->whereKey($job->id)
+                ->whereNull('company_id')
+                ->whereIn('status', [ImportStatus::Validated->value, ImportStatus::Pending->value])
+                ->update([
+                    'company_id' => $companyId,
+                    'status' => ImportStatus::Pending->value,
+                ]);
+
+            $job->refresh();
+            if ($mismatch = $this->companyMismatch($job, $companyId)) {
+                return $mismatch;
+            }
+        }
+
         // Use actual valid rows count for threshold check (more reliable than total_rows)
         // This prevents issues where total_rows might be 0 or stale
         $validRowsCount = $job->rows()->where('is_valid', true)->count();
@@ -896,9 +940,6 @@ class ImportController extends Controller
             return response()->json(['error' => 'Failed to store ZIP file'], 500);
         }
 
-        // Get the full file path for queue job
-        $fullPath = Storage::disk('local')->path($path);
-
         // Create import job
         $job = $this->importService->createJob(
             tenantId: $tenantId,
@@ -918,10 +959,9 @@ class ImportController extends Controller
         $job->update(['status' => ImportStatus::Pending]);
 
         // Dispatch queue job for async ZIP processing.
-        // tenantId is passed so the worker can rebind tenant context via
-        // BindsTenantContext::withTenantContext() before any DB access
-        // (api.scheduled-jobs.002).
-        ProcessProductImageImport::dispatch($job->id, $fullPath, $tenantId);
+        // Tenant and company are serialized because queue workers run without
+        // CompanyContext; tenantId also drives BindsTenantContext rebinding.
+        ProcessProductImageImport::dispatch($job->id, $path, $tenantId, $companyId);
 
         /** @var ImportJob $freshJob */
         $freshJob = $job->fresh();

@@ -224,10 +224,6 @@ final class CompositeItemsRoundTripTest extends TestCase
 
     public function test_upload_requires_composite_items_module_entitlement(): void
     {
-        if (! (new \ReflectionClass(ImportType::class))->hasMethod('requiredModule')) {
-            $this->markTestSkipped('RED-BY-DESIGN: the per-type CompositeItems entitlement check (spec §5.4, G-R20) is not in ImportController yet — it lands in G-3b.');
-        }
-
         $this->setCompositeItemsModuleEnabled(false);
         $this->assertCompositeItemsModuleEnabled(false);
         $this->postUpload([
@@ -245,10 +241,6 @@ final class CompositeItemsRoundTripTest extends TestCase
 
     public function test_template_requires_composite_items_module_entitlement(): void
     {
-        if (! (new \ReflectionClass(ImportType::class))->hasMethod('requiredModule')) {
-            $this->markTestSkipped('RED-BY-DESIGN: the per-type CompositeItems entitlement check (spec §5.4, G-R20) is not in ImportController yet — it lands in G-3b.');
-        }
-
         $url = '/api/v1/migration-wizard/template/'.ImportType::CompositeItems->value;
         $this->setCompositeItemsModuleEnabled(false);
         $this->assertCompositeItemsModuleEnabled(false);
@@ -261,10 +253,6 @@ final class CompositeItemsRoundTripTest extends TestCase
 
     public function test_execute_requires_composite_items_module_entitlement(): void
     {
-        if (! (new \ReflectionClass(ImportType::class))->hasMethod('requiredModule')) {
-            $this->markTestSkipped('RED-BY-DESIGN: the per-type CompositeItems entitlement check (spec §5.4, G-R20) is not in ImportController yet — it lands in G-3b.');
-        }
-
         $this->setCompositeItemsModuleEnabled(true);
         $jobId = $this->uploadImport([
             'code,name,base_price',
@@ -285,22 +273,17 @@ final class CompositeItemsRoundTripTest extends TestCase
             ->assertJsonPath('data.failed_rows', 0);
     }
 
-    public function test_today_disabled_tenant_can_upload_and_execute_composite_items(): void
+    public function test_disabled_tenant_cannot_upload_composite_items(): void
     {
-        // The ONE pin G-3b flips: with the module DISABLED the import still goes through.
         $this->setCompositeItemsModuleEnabled(false);
         $this->assertCompositeItemsModuleEnabled(false);
 
-        $this->runImport([
+        $this->postUpload([
             'code,name,base_price',
-            'ENTITLEMENT-BYPASS,Entitlement Bypass,10.000',
-        ], ImportType::CompositeItems->value);
+            'ENTITLEMENT-REFUSED,Entitlement Refused,10.000',
+        ])->assertForbidden();
 
-        $this->assertDatabaseHas('composite_items', [
-            'company_id' => $this->company->id,
-            'code' => 'ENTITLEMENT-BYPASS',
-            'name' => 'Entitlement Bypass',
-        ]);
+        $this->assertDatabaseMissing('composite_items', ['code' => 'ENTITLEMENT-REFUSED']);
     }
 
     /**

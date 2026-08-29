@@ -118,6 +118,20 @@ final class ImportCompanyPinTest extends TestCase
         $this->getJson('/api/v1/imports/'.$unattributed->id)->assertOk();
     }
 
+    #[DataProvider('pinnedEndpoints')]
+    public function test_every_job_surface_allows_an_unattributed_job_from_a_sibling_company(
+        string $method,
+        string $suffix,
+    ): void {
+        $status = $suffix === '/options' ? ImportStatus::Pending : ImportStatus::Completed;
+        $job = $this->createJob(null, $status);
+        $this->switchCompany($this->companyB);
+
+        $response = $this->callEndpoint($method, '/api/v1/imports/'.$job->id.$suffix);
+
+        $this->assertNotSame(409, $response->getStatusCode());
+    }
+
     public function test_index_lists_current_company_and_unattributed_jobs_only(): void
     {
         $jobA = $this->createJob($this->companyA->id);
@@ -144,6 +158,75 @@ final class ImportCompanyPinTest extends TestCase
         $this->assertSame($expectedB, $this->jobsByAttribution($responseB->json('data')));
     }
 
+    public function test_index_filters_by_status(): void
+    {
+        $completed = $this->createJob($this->companyA->id, ImportStatus::Completed);
+        $this->createJob($this->companyA->id, ImportStatus::Pending);
+
+        $response = $this->getJson('/api/v1/imports?status=completed')->assertOk();
+
+        $response->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $completed->id)
+            ->assertJsonPath('data.0.status', ImportStatus::Completed->value);
+    }
+
+    public function test_index_filters_by_type(): void
+    {
+        $products = $this->createJob($this->companyA->id, type: ImportType::Products);
+        $this->createJob($this->companyA->id, type: ImportType::Parties);
+
+        $response = $this->getJson('/api/v1/imports?type=products')->assertOk();
+
+        $response->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $products->id)
+            ->assertJsonPath('data.0.type', ImportType::Products->value);
+    }
+
+    public function test_index_filters_by_filename_fragment(): void
+    {
+        $needle = $this->createJob($this->companyA->id, filename: 'august-supplier-import.csv');
+        $this->createJob($this->companyA->id, filename: 'july-products.csv');
+
+        $response = $this->getJson('/api/v1/imports?q=supplier')->assertOk();
+
+        $response->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $needle->id)
+            ->assertJsonPath('data.0.original_filename', 'august-supplier-import.csv');
+    }
+
+    public function test_index_paginates_twenty_five_jobs_across_two_pages_newest_first(): void
+    {
+        $jobIds = [];
+        for ($index = 0; $index < 25; $index++) {
+            $job = $this->createJob($this->companyA->id, filename: sprintf('job-%02d.csv', $index));
+            DB::table('import_jobs')->where('id', $job->id)->update([
+                'created_at' => now()->subMinutes(25 - $index),
+            ]);
+            $jobIds[] = $job->id;
+        }
+
+        $firstPage = $this->getJson('/api/v1/imports?page=1&per_page=15')->assertOk();
+        $firstPage->assertJsonCount(15, 'data')
+            ->assertJsonPath('data.0.id', $jobIds[24])
+            ->assertJsonPath('meta.current_page', 1)
+            ->assertJsonPath('meta.last_page', 2)
+            ->assertJsonPath('meta.per_page', 15)
+            ->assertJsonPath('meta.total', 25);
+
+        $secondPage = $this->getJson('/api/v1/imports?page=2&per_page=15')->assertOk();
+        $secondPage->assertJsonCount(10, 'data')
+            ->assertJsonPath('data.0.id', $jobIds[9])
+            ->assertJsonPath('meta.current_page', 2);
+    }
+
+    public function test_index_refuses_per_page_above_one_hundred(): void
+    {
+        $this->getJson('/api/v1/imports?per_page=101')
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonStructure(['error' => ['errors' => ['per_page']]]);
+    }
+
     public function test_upload_stamps_company_and_hash_of_uploaded_bytes(): void
     {
         $contents = "name,type\nAcme,customer\n";
@@ -158,6 +241,34 @@ final class ImportCompanyPinTest extends TestCase
         $job = ImportJob::query()->latest('created_at')->firstOrFail();
         $this->assertSame($this->companyA->id, $job->company_id);
         $this->assertSame(hash('sha256', $contents), $job->source_hash);
+    }
+
+    public function test_upload_returns_a_coded_error_when_the_source_path_cannot_be_resolved(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'import-hash-');
+        $this->assertIsString($path);
+        file_put_contents($path, "name,type\nAcme,customer\n");
+
+        $file = new class($path, 'parties.csv', 'text/csv', null, true) extends UploadedFile
+        {
+            public function getRealPath(): string|false
+            {
+                return false;
+            }
+        };
+
+        try {
+            $this->post('/api/v1/imports', [
+                'file' => $file,
+                'type' => ImportType::Parties->value,
+            ], ['Accept' => 'application/json'])
+                ->assertInternalServerError()
+                ->assertJsonPath('error.code', 'IMPORT_SOURCE_HASH_FAILED');
+        } finally {
+            if (is_file($path)) {
+                unlink($path);
+            }
+        }
     }
 
     public function test_async_dispatch_keeps_job_company_and_tenant_arguments(): void
@@ -187,6 +298,38 @@ final class ImportCompanyPinTest extends TestCase
                 && $queued->companyId === $this->companyA->id
                 && $queued->tenantId === $this->tenant->id;
         });
+    }
+
+    public function test_execute_atomically_adopts_an_unattributed_job_for_the_current_company(): void
+    {
+        Queue::fake();
+        $job = $this->createJob(null, ImportStatus::Validated, 100);
+        $now = now();
+        $rows = [];
+        for ($row = 1; $row <= 100; $row++) {
+            $rows[] = [
+                'id' => fake()->uuid(),
+                'import_job_id' => $job->id,
+                'row_number' => $row,
+                'data' => '{}',
+                'is_valid' => true,
+                'is_imported' => false,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+        DB::table('import_rows')->insert($rows);
+
+        $this->postJson('/api/v1/imports/'.$job->id.'/execute')->assertAccepted();
+
+        $job->refresh();
+        $this->assertSame($this->companyA->id, $job->company_id);
+        $this->assertSame(ImportStatus::Pending, $job->status);
+
+        $this->switchCompany($this->companyB);
+        $this->postJson('/api/v1/imports/'.$job->id.'/execute')
+            ->assertConflict()
+            ->assertJsonPath('error.code', 'IMPORT_COMPANY_MISMATCH');
     }
 
     public function test_worker_rejects_a_company_id_from_a_different_tenant(): void
@@ -230,15 +373,20 @@ final class ImportCompanyPinTest extends TestCase
         ]);
     }
 
-    private function createJob(?string $companyId, ImportStatus $status = ImportStatus::Completed, int $totalRows = 0): ImportJob
-    {
+    private function createJob(
+        ?string $companyId,
+        ImportStatus $status = ImportStatus::Completed,
+        int $totalRows = 0,
+        ImportType $type = ImportType::Parties,
+        ?string $filename = null,
+    ): ImportJob {
         return ImportJob::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $companyId,
             'user_id' => $this->user->id,
-            'type' => ImportType::Parties,
+            'type' => $type,
             'status' => $status,
-            'original_filename' => fake()->unique()->word().'.csv',
+            'original_filename' => $filename ?? fake()->unique()->word().'.csv',
             'file_path' => 'imports/fixture.csv',
             'total_rows' => $totalRows,
             'successful_rows' => $status === ImportStatus::Validated ? $totalRows : 0,
