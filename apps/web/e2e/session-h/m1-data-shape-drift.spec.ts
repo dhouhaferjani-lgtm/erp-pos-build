@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type APIRequestContext } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { API_BASE, apiHeaders, loginApi, loginPage, type ApiSession } from './helpers'
