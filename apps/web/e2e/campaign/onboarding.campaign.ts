@@ -199,10 +199,9 @@ test.describe('automated onboarding campaign', () => {
     if (ownedCash.length === 1 && ownedSafes.length === 1) {
       await addLedgerEvidence('L0', `company 2 repositories: 1 cash register on ${secondLocationId} + 1 safe`)
     } else {
-      // KNOWN GAP I2-F1 (Session G micro-lane G-3c owns the fix): CompanyController::store()
-      // never calls PaymentRepositorySeeder, so a second company cannot take cash. Recorded as a
-      // finding (marks L0 FAIL in the ledger, L10 keeps the run red) without throwing, so the
-      // journey continues on company 1 and L1–L8 are still exercised.
+      // Company 2 lacks its own CASH+SAFE on its default location. Since G-3c (dev 9badbe294) the
+      // provisioning exists, so on a current tree this branch means a regression; recorded as a
+      // finding (marks L0 FAIL, L10 keeps the run red) without throwing, so L1–L8 still run.
     await recordProductFinding({
         evidence: {
           request: {
