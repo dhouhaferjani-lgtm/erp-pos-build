@@ -171,3 +171,45 @@ Schedule::command('imports:purge-expired')          // routes/console.php:186
 | `git diff --check` / held-surface audit | **PASS** — no whitespace errors, no `apps/web` files, no hunk in `index` or `formatJob` |
 
 Full suite intentionally not run.
+
+## Gate r3 (Codex, post-rebase)
+
+- **Reviewer:** Codex standing in for both `imports-reviewer` and `tenancy-authz-reviewer`.
+- **Reviewed state:** `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/g6a-claim-reaper`, branch `feat/g6a-import-claim-reaper`, HEAD `5e601ecaeac05d888b7758595930f9b0cc80252d`; clean tree before and after generation. Reviewed `git diff dev...HEAD`; source was not edited.
+- **PostgreSQL isolation:** every PostgreSQL invocation was prefixed `DB_DATABASE=autoerp_test_g4 DB_CENTRAL_DATABASE=autoerp_test_g4`. No full suite was run.
+
+### VERDICT: CHANGES
+
+The functional lane contract is green, including the G-3b merge, R2-1 relative-key repair, company/entitlement gates, real PostgreSQL claim race, two-clock reaper, purge and DELETE rules. Final approval is blocked by two lane-local gate failures and one live-`dev` merge-order carry-over: touched PHPStan is red with four errors in the new production-dispatch purge test; M6c does not use the explicitly mandated `MigrationOutput::info|error`; and `dev` advanced after this rebase, so its manifest union must be retaken before merge.
+
+### Required changes
+
+| ID | severity | path:line | finding | required change |
+|---|---|---|---|---|
+| **R3-1** | Important / gate red | `apps/api/tests/Feature/Import/PurgeExpiredImportArtifactsTest.php:109-142` (reported at `:116,124,141,142`) | `./vendor/bin/phpstan analyse` on the touched Import surface exits 1 with four `property.notFound`/`method.notFound` errors. `findOrFail($response->json('data.id'))` is inferred as `ImportJob|Collection`, so `$job->file_path` and `$job->refresh()` are not statically safe. | Narrow the response id to a string and use a model-returning lookup such as `whereKey($jobId)->firstOrFail()`, then rerun touched PHPStan to zero errors. |
+| **R3-2** | Important / mandate missed | `apps/api/database/migrations/tenant/2026_08_30_100400_add_lifecycle_columns_to_import_jobs.php:7,65-69` | M6c imports `Log` and its forward-only `down()` calls `Log::warning`; it does **not** use `MigrationOutput::info|error` as the rebase prompt and this gate explicitly require. The two echo guards are green because there is no bare stdout, but they do not prove the mandated helper was used. | Route the byte-identical rollback notice through the appropriate `MigrationOutput::info|error` helper and rerun both guard paths. |
+| **R3-3** | Merge-order carry-over | `apps/api/tests/feature-lane-manifest.json:9,817-864`; `.github/workflows/ci.yml:1113-1114` | The frozen gate baseline was ceiling **1217 / Import 27 / Migrations 12**; the correct G-6a union is **1220 / 30 / 12**, which this branch carries and the checker accepts. Live `dev` has since advanced to `585186daf` with **1219 / 27 / 13**, and `dev` is no longer an ancestor of HEAD. | At final integration, retake the union on live `dev` as **1222 / Import 30 / Migrations 13**, retaining the single anchored filter. |
+
+### Code-grounded closure verification
+
+1. **One atomic claim path / G-3b intact.** `ImportJobClaimService::claim()` owns the sole start transition and atomically writes `status`, `claimed_at`, `started_at`, and `company_id = COALESCE(company_id, ?)` under the pending/validated predicate (`ImportJobClaimService.php:25-66`). `ImportController::execute()` calls it once with the current company (`ImportController.php:627-637`); both workers claim legacy unclaimed deliveries before the worker-start CAS (`ProcessImportJob.php:86-120`; `ProcessProductImageImport.php:115-146`). G-3b's `ModuleEntitlementCheck`, M4 migration/test, and held files have zero diff from `dev`; `index()` remains company+unattributed scoped with filters and pagination (`ImportController.php:64-100`), with no `index`/`formatJob` diff hunk. `ImportCompanyPinTest` and `ImportModuleEntitlementTest` are green.
+2. **R2-1 closed.** ProductImages persists and dispatches the same disk-relative `$path` (`ImportController.php:1055-1081`); the worker takes authoritative `$job->file_path`, resolves an absolute path only for ZIP processing, and deletes by the relative key (`ProcessProductImageImport.php:84-86,152-158,225-246`). It stamps only after confirmed absence or a successful delete (`:227-238`). The regression runs HTTP upload through the production dispatch, asserts the queued relative key, uses fresh adapters before/after, and then checks the stamp (`PurgeExpiredImportArtifactsTest.php:85-147`).
+3. **DELETE/source authz closed.** Both new routes reject malformed UUIDs, load only inside the tenant, apply company-pin 409 before `ModuleEntitlementCheck`, then continue (`ImportController.php:743-785,791-843`). The company data provider includes `source-file` and DELETE (`ImportCompanyPinTest.php:82-108,123-135`); the entitlement matrix covers disabled and enabled CompositeItems outcomes for both (`ImportModuleEntitlementTest.php:68-97,147-171`).
+4. **M6c shape/order safe, helper not closed.** M6c has a table guard and six independent column guards, including `skipped_rows` (`2026_08_30_100400_add_lifecycle_columns_to_import_jobs.php:22-62`). G-4's `2026_08_31_100000_add_outcome_to_import_rows.php:28-32` independently guards the same column, so either migration order is additive. R3-2 remains.
+5. **r1/r2 lifecycle closures remain.** Claim, release, worker-start, terminal publication and loser logging remain CAS-based (`ImportJobClaimService.php:25-191`); terminal counters/error payload publish in one update (`:167-181`). Both sweeps reassert tenant and use `lazyById(500)` (`ReapStuckImportsCommand.php:47-75`; `PurgeExpiredImportArtifactsCommand.php:40-78`). The two-clock predicate is exact (`ReapStuckImportsCommand.php:48-59`); no ownership token exists. DELETE requires non-importing plus `successful_rows=0`, otherwise 409 `IMPORT_HAS_EFFECTS` (`ImportController.php:818-849`). Failed jobs remain one-shot; malformed UUIDs return 404. Scheduling is `*/5` and `0 0` (`routes/console.php:179-190`), confirmed by `schedule:list`.
+
+### Fresh command evidence
+
+| command | result |
+|---|---|
+| Requested SQLite lifecycle/compatibility paths | **PASS** — 311 passed, 3 declared/environment skips, 2,157 assertions across four path-scoped invocations. This includes claim/reaper/purge, OpeningBalances, Units, placement, re-execution, status, Products pipeline, RoundTrip, company pin, entitlement, infrastructure, Horizon, scheduled tenant isolation, permission gate, `tests/Feature/Security`, and both echo-guard paths. |
+| Requested PostgreSQL paths | **PASS** — 86 passed, 388 assertions; the real two-connection claim test had exactly one winner. |
+| `./vendor/bin/phpstan analyse ...` on touched Import surface | **FAIL** — 4 errors, all in `PurgeExpiredImportArtifactsTest.php:116,124,141,142` (R3-1). |
+| `./vendor/bin/pint --test ...` | **PASS** — `{"result":"pass"}`. |
+| `php tools/feature-lane-manifest-check.php` | **PASS** — 1,480 Feature classes / 74 groups; branch ceiling 1,220; all filter entries anchored and uniquely matched. Frozen baseline union: **1217/27/12 -> 1220/30/12**. Live-`dev` integration union now: **1219/27/13 -> 1222/30/13**. |
+| CI parse/filter audit | **PASS** — YAML parses; the five G-3b/G-6a classes each occur exactly once in the one anchored PostgreSQL filter. |
+| `php vendor/bin/deptrac analyse --no-progress` | Existing baseline only: 183 violations, 0 errors, 13,542 uncovered; filtered output contains no touched `App\\Modules\\Import` edge. |
+| `CACHE_STORE=array php artisan typescript:transform` | **PASS** — 540 types transformed; working-tree diff hash stayed empty (`e3b0c442...`), no further diff. |
+| `git diff --check`; final `git status --short --branch` | **PASS** — no whitespace errors; branch clean. |
+
+Full suite intentionally not run.
