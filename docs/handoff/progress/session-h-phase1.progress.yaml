@@ -36,11 +36,12 @@ milestones:
     lane: h1-cleanup
     title: a4' nature required on create + NULL heuristic for B2B block + wire CreditLimitWarning
     review_lenses: [frontend-conventions]
-    status: review
-    commit: db3739c6593a89746dbfa3462683154fca8cfb94
-    verdict: docs/handoff/reviews/session-h-phase1/M2-round2.md
-    last_verdict: CHANGES-REQUIRED
+    status: passed
+    commit: d9d36679d
+    verdict: docs/handoff/reviews/session-h-phase1/M2-round3.md
+    last_verdict: ACCEPT
     fix_rounds: 2
+    updated: d9d36679d
   - id: M3
     lane: h1-cleanup
     title: a5 delete Companies + contacts.update->partners.update on partner edit routes + gate suppliers; a6 constrain Type select per route
@@ -72,4 +73,6 @@ owes_parent:
   - M1 browser contract mismatch: public row-level import validation returns 201 with failed_rows and exposes field errors through GET /imports/{id}/errors; no dedicated 422 preview endpoint exists. The focused validator Feature test still proves the 51-character code raises a 422 ValidationException.
   - M2 Arabic label collision: the owner-prescribed Nature label `النوع` is byte-identical to the adjacent role Type label. Nature now has a distinct placeholder and validation error, but changing the prescribed label requires parent/owner copy approval.
   - M2 create-surface gap: create-only Nature validation is scoped to full `PartnerForm`; the inline `AddPartnerModal` remains shape-neutral and can create `customer_category = NULL`. Phase 2 must make nature canonical across every write surface.
+  - M2 supplier credit warning: the new warning intentionally uses customer exposure (`receivable - credit`) and therefore does not warn on supplier payable exposure. Phase 2 should either hide/rename the customer credit-limit control on supplier-only routes or define a separate supplier exposure policy.
+  - M2 accepted P3 UI edges: a legacy-null B2B section can unmount when its last internal signal is cleared; retained hidden values still submit after switching to Individual; scan-prefilled VAT can reveal B2B fields before Nature is chosen. No data loss; re-evaluate when Phase 2 makes nature canonical.
 blockers: []
