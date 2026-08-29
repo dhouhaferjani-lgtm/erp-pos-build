@@ -6,6 +6,7 @@ namespace Tests\Feature\Catalog;
 
 use App\Modules\Catalog\Application\Services\ProductVariantService;
 use App\Modules\Catalog\Domain\Entities\ProductVariant;
+use App\Modules\Catalog\Domain\VariantIndexNames;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
@@ -46,7 +47,7 @@ class VariantBarcodeRaceTest extends TestCase
 
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->for($this->tenant)->create();
-        $this->product = ProductFactory::new()->create([
+        $this->product = ProductFactory::new()->createOne([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
         ]);
@@ -95,15 +96,15 @@ class VariantBarcodeRaceTest extends TestCase
         $variantB = $this->makeVariant('SKU-OTHER');
 
         try {
-            // Force a SKU collision through the service: it must NOT be mapped
-            // to a barcode error. It surfaces as the raw QueryException.
+            // Force a SKU collision through the service: it must become a SKU
+            // validation error, never be mislabelled as a barcode conflict.
             $this->service->updateVariant($variantB, ['sku' => 'SKU-DUP']);
-            $this->fail('Expected the SKU unique violation to surface (not a barcode validation error).');
+            $this->fail('Expected the SKU unique violation to map to validation.');
         } catch (ValidationException $e) {
             $this->assertArrayNotHasKey('barcode', $e->errors());
+            $this->assertArrayHasKey('sku', $e->errors());
         } catch (QueryException $e) {
-            // Expected: SKU violation surfaces raw, not as a barcode 422.
-            $this->assertStringContainsString('product_variants_tenant_sku_unique', $e->getMessage());
+            $this->assertStringContainsString(VariantIndexNames::COMPANY_SKU_UNIQUE, $e->getMessage());
         }
     }
 }

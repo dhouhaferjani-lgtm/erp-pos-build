@@ -13,7 +13,9 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use RuntimeException;
 use Tests\TestCase;
 
 final class ProductUpsertKeyPrecedenceTest extends TestCase
@@ -118,6 +120,160 @@ final class ProductUpsertKeyPrecedenceTest extends TestCase
 
         $product = Product::findOrFail($id);
         $this->assertSame(ProductType::Part, $product->type);
+    }
+
+    public function test_upsert_refuses_a_sku_held_by_a_soft_deleted_product(): void
+    {
+        $holder = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Deleted Holder',
+            'sku' => 'DELETED-HOLDER',
+            'type' => ProductType::Part,
+            'tax_rate' => '19.00',
+        ]);
+        $holder->delete();
+
+        try {
+            $this->service->upsert($this->tenant->id, $this->company->id, [
+                'name' => 'Replacement Product',
+                'sku' => 'DELETED-HOLDER',
+            ]);
+            $this->fail('A soft-deleted product must retain its SKU until explicitly restored or purged.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringStartsWith('sku_held_by_deleted_product:', $exception->getMessage());
+            $this->assertStringContainsString('DELETED-HOLDER', $exception->getMessage());
+            $this->assertStringContainsString('soft-deleted product', $exception->getMessage());
+            $this->assertStringContainsString('purge the deleted record or choose a different SKU', $exception->getMessage());
+            $this->assertStringNotContainsString('restore', $exception->getMessage());
+        }
+
+        $this->assertTrue($holder->fresh()?->trashed() ?? false);
+        $this->assertSame(1, Product::withTrashed()->where('sku', 'DELETED-HOLDER')->count());
+    }
+
+    /**
+     * Gate r2 G3A-R2-1(a). `products.barcode` carries no unique index at ANY
+     * scope, so a trashed row that merely shares a BARCODE forbids nothing. The
+     * guard must key on the SKU that will be written (`XYZ-BARCODE`), which no
+     * row holds — the trashed twin holds `TRASHED-ABC`, a SKU the operator never
+     * supplied and must never see in a row error.
+     */
+    public function test_a_trashed_barcode_twin_holding_a_different_sku_does_not_block_the_row(): void
+    {
+        $twin = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Trashed Barcode Twin',
+            'sku' => 'TRASHED-ABC',
+            'barcode' => 'XYZ-BARCODE',
+            'type' => ProductType::Part,
+            'tax_rate' => '19.00',
+        ]);
+        $twin->delete();
+
+        $id = $this->service->upsert($this->tenant->id, $this->company->id, [
+            'name' => 'Live Replacement',
+            'sku' => '',
+            'barcode' => 'XYZ-BARCODE',
+        ]);
+
+        $product = Product::findOrFail($id);
+        $this->assertNotSame($twin->id, $product->id);
+        $this->assertSame('XYZ-BARCODE', $product->sku);
+        $this->assertSame('XYZ-BARCODE', $product->barcode);
+        $this->assertTrue($twin->fresh()?->trashed() ?? false);
+    }
+
+    /**
+     * Gate r2 G3A-R2-1(b). The barcode match finds nothing, but the SKU derived
+     * FROM that barcode is held by a trashed row and the lifetime
+     * `unique(company_id, sku)` will reject the INSERT. The operator must get the
+     * coded token, never a raw 23505 in `import_rows.import_error`.
+     */
+    public function test_a_barcode_derived_sku_held_by_a_trashed_product_is_refused_with_the_coded_token(): void
+    {
+        $holder = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Deleted Barcode-as-SKU Holder',
+            'sku' => 'XYZ-BARCODE',
+            'type' => ProductType::Part,
+            'tax_rate' => '19.00',
+        ]);
+        $holder->delete();
+
+        try {
+            $this->service->upsert($this->tenant->id, $this->company->id, [
+                'name' => 'Barcode Replacement',
+                'sku' => '',
+                'barcode' => 'XYZ-BARCODE',
+            ]);
+            $this->fail('A SKU derived from the barcode and held by a trashed product must be refused.');
+        } catch (RuntimeException $exception) {
+            $this->assertNotInstanceOf(QueryException::class, $exception);
+            $this->assertStringStartsWith('sku_held_by_deleted_product:', $exception->getMessage());
+            $this->assertStringContainsString('XYZ-BARCODE', $exception->getMessage());
+            $this->assertStringContainsString('purge the deleted record or choose a different SKU', $exception->getMessage());
+            $this->assertStringNotContainsString('restore', $exception->getMessage());
+        }
+
+        $this->assertSame(0, Product::query()->where('company_id', $this->company->id)->count());
+    }
+
+    /**
+     * Gate r2 G3A-R2-1(b), name-derived leg: no SKU and no barcode, so the
+     * written value is the name slug. Same lifetime check, same coded token.
+     */
+    public function test_a_name_derived_sku_held_by_a_trashed_product_is_refused_with_the_coded_token(): void
+    {
+        $holder = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Crème Solaire 50',
+            'sku' => 'CREME-SOLAIRE-50',
+            'type' => ProductType::Part,
+            'tax_rate' => '19.00',
+        ]);
+        $holder->delete();
+
+        try {
+            $this->service->upsert($this->tenant->id, $this->company->id, [
+                'name' => 'Crème Solaire 50',
+                'sku' => '',
+            ]);
+            $this->fail('A name-derived SKU held by a trashed product must be refused.');
+        } catch (RuntimeException $exception) {
+            $this->assertNotInstanceOf(QueryException::class, $exception);
+            $this->assertStringStartsWith('sku_held_by_deleted_product:', $exception->getMessage());
+            $this->assertStringContainsString('CREME-SOLAIRE-50', $exception->getMessage());
+            $this->assertStringNotContainsString('restore', $exception->getMessage());
+        }
+
+        $this->assertSame(0, Product::query()->where('company_id', $this->company->id)->count());
+    }
+
+    public function test_find_id_by_sku_refuses_a_soft_deleted_holder(): void
+    {
+        $holder = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Deleted Lookup Holder',
+            'sku' => 'DELETED-LOOKUP',
+            'type' => ProductType::Part,
+            'tax_rate' => '19.00',
+        ]);
+        $holder->delete();
+
+        try {
+            $this->service->findIdBySku($this->tenant->id, $this->company->id, 'DELETED-LOOKUP');
+            $this->fail('findIdBySku must expose a soft-deleted holder as a refusal.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringStartsWith('sku_held_by_deleted_product:', $exception->getMessage());
+            $this->assertStringContainsString('DELETED-LOOKUP', $exception->getMessage());
+            $this->assertStringContainsString('soft-deleted product', $exception->getMessage());
+            $this->assertStringNotContainsString('restore', $exception->getMessage());
+        }
     }
 
     public function test_brand_name_is_reused_and_linked_to_products(): void

@@ -181,9 +181,8 @@ final class ScheduledJobTenantIsolationTest extends TestCase
     // =========================================================================
 
     /**
-     * Same constructor-shape assertion as ProcessImportJob: the job must
-     * carry a tenantId anchor. Today the constructor is `(string $importJobId,
-     * string $zipPath)` — RED.
+     * The image job must carry both tenantId and companyId anchors because
+     * queue workers have no CompanyContext.
      *
      * Inventory: api.scheduled-jobs.002
      */
@@ -193,10 +192,9 @@ final class ScheduledJobTenantIsolationTest extends TestCase
         $params = $constructor->getParameters();
 
         $this->assertGreaterThanOrEqual(
-            3,
+            4,
             count($params),
-            'ProcessProductImageImport::__construct must accept at least 3 params (importJobId, zipPath, tenantId). '.
-            'Today the queue worker has no way to rebind CompanyContext because the job payload carries no tenant anchor.',
+            'ProcessProductImageImport::__construct must accept importJobId, zipPath, tenantId, and companyId.',
         );
 
         $paramNames = array_map(static fn ($p) => strtolower($p->getName()), $params);
@@ -207,6 +205,15 @@ final class ScheduledJobTenantIsolationTest extends TestCase
         $this->assertNotEmpty(
             $tenantParams,
             'ProcessProductImageImport::__construct must declare a tenantId-named parameter. '.
+            'Got params: '.implode(', ', $paramNames),
+        );
+        $companyParams = array_filter(
+            $paramNames,
+            static fn (string $n): bool => str_contains($n, 'company'),
+        );
+        $this->assertNotEmpty(
+            $companyParams,
+            'ProcessProductImageImport::__construct must declare a companyId-named parameter. '.
             'Got params: '.implode(', ', $paramNames),
         );
     }
@@ -237,6 +244,7 @@ final class ScheduledJobTenantIsolationTest extends TestCase
                 $jobA->id,
                 'imports/non-existent-test.zip',
                 $this->tenantA->id,
+                $this->companyA->id,
             );
             $instance->handle(
                 $this->app->make(ProductImageImportService::class),

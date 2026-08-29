@@ -13,6 +13,7 @@ use App\Modules\Taxation\Domain\Services\TaxResolutionService;
 use App\Shared\Contracts\ProductServiceInterface;
 use App\Shared\DTOs\CategoryResolutionDTO;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 /**
  * Application service for product operations.
@@ -37,10 +38,18 @@ final class ProductService implements ProductServiceInterface
         string $companyId,
         string $sku
     ): ?string {
-        $product = Product::where('tenant_id', $tenantId)
+        $product = Product::withTrashed()
+            ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->where('sku', $sku)
             ->first();
+
+        // The lookup key IS the SKU here, so the matched row and the SKU in
+        // question are the same value — refusing on the matched row is correct
+        // on this path (unlike the upsert key ladder, gate r2 G3A-R2-1).
+        if ($product !== null && $product->trashed()) {
+            $this->refuseSkuHeldByDeletedProduct($sku);
+        }
 
         return $product?->id;
     }
@@ -61,6 +70,22 @@ final class ProductService implements ProductServiceInterface
         $nameSku = $this->skuFromName((string) $data['name']);
         $existing = $this->findExistingProduct($tenantId, $companyId, $fileSku, $barcode, $nameSku);
         $createSku = $fileSku ?? ($barcode ?? $nameSku);
+
+        // Gate r2 G3A-R2-1: the deleted-holder guard keys on the SKU that will be
+        // WRITTEN, never on whichever row the key ladder happened to match.
+        // `products.barcode` has no unique index at any scope, so a trashed
+        // barcode twin forbids nothing and must not produce a row error naming a
+        // SKU the operator never supplied; conversely a trashed row holding
+        // exactly `$createSku` WILL break the lifetime `unique(company_id, sku)`
+        // on INSERT, and must surface as this coded token rather than a raw
+        // 23505 in `import_rows.import_error`.
+        //
+        // Only the create branch needs it: `$attributes` never carries `sku`, so
+        // an update cannot move a product onto a held SKU from here (the API
+        // update path is fenced by UpdateProductRequest's lifetime unique rule).
+        if ($existing === null) {
+            $this->refuseIfSkuHeldByDeletedProduct($tenantId, $companyId, (string) $createSku);
+        }
 
         $attributes = [
             'name' => $data['name'],
@@ -286,6 +311,15 @@ final class ProductService implements ProductServiceInterface
         return $sku !== '' ? $sku : 'PRODUCT';
     }
 
+    /**
+     * The key ladder matches LIVE products only (gate r2 G3A-R2-1).
+     *
+     * A soft-deleted row is not an updatable target — filling and saving it
+     * would silently mutate a deleted product — and it is not a refusal reason
+     * on its own either. The one thing a trashed row can do is hold the SKU the
+     * caller is about to write, which `refuseIfSkuHeldByDeletedProduct()` checks
+     * against `$createSku` in `upsert()`, independently of which column matched.
+     */
     private function findExistingProduct(
         string $tenantId,
         string $companyId,
@@ -293,7 +327,8 @@ final class ProductService implements ProductServiceInterface
         ?string $barcode,
         string $nameSku
     ): ?Product {
-        $query = Product::where('tenant_id', $tenantId)
+        $query = Product::query()
+            ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId);
 
         if ($fileSku !== null) {
@@ -305,6 +340,32 @@ final class ProductService implements ProductServiceInterface
         }
 
         return $query->where('sku', $nameSku)->first();
+    }
+
+    /**
+     * Refuse when a soft-deleted product in the same company already holds
+     * `$sku`. The lifetime `unique(company_id, sku)` counts trashed rows, so the
+     * INSERT would otherwise fail as a raw driver error.
+     */
+    private function refuseIfSkuHeldByDeletedProduct(string $tenantId, string $companyId, string $sku): void
+    {
+        $held = Product::onlyTrashed()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('sku', $sku)
+            ->exists();
+
+        if ($held) {
+            $this->refuseSkuHeldByDeletedProduct($sku);
+        }
+    }
+
+    private function refuseSkuHeldByDeletedProduct(string $sku): never
+    {
+        throw new RuntimeException(
+            "sku_held_by_deleted_product: SKU {$sku} is held by a soft-deleted product; "
+            .'purge the deleted record or choose a different SKU.'
+        );
     }
 
     /**

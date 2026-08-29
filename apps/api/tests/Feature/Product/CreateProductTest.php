@@ -11,6 +11,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -111,6 +112,103 @@ class CreateProductTest extends TestCase
             ]);
 
         $this->assertApiValidationErrors($response, ['sku']);
+    }
+
+    public function test_sku_used_by_a_sibling_company_passes_validation(): void
+    {
+        $sibling = Company::factory()->for($this->tenant)->create();
+        Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $sibling->id,
+            'sku' => 'SIBLING-SKU',
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/products', [
+                'name' => 'Company-local Product',
+                'sku' => 'SIBLING-SKU',
+            ])
+            ->assertCreated();
+
+        $this->assertDatabaseHas('products', [
+            'company_id' => $this->company->id,
+            'sku' => 'SIBLING-SKU',
+        ]);
+    }
+
+    public function test_sku_held_by_a_soft_deleted_product_fails_validation(): void
+    {
+        $holder = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'DELETED-FORM-SKU',
+        ]);
+        $holder->delete();
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/products', [
+                'name' => 'Invalid Replacement',
+                'sku' => 'DELETED-FORM-SKU',
+            ]);
+
+        $this->assertApiValidationErrors($response, ['sku']);
+        $this->assertStringContainsString(
+            'sku_held_by_deleted_product:',
+            (string) json_encode($response->json('error.errors.sku')),
+        );
+    }
+
+    public function test_sku_used_by_a_sibling_company_passes_update_validation(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'ORIGINAL-UPDATE-SKU',
+        ]);
+        $sibling = Company::factory()->for($this->tenant)->create();
+        Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $sibling->id,
+            'sku' => 'SIBLING-UPDATE-SKU',
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/products/{$product->id}", [
+                'sku' => 'SIBLING-UPDATE-SKU',
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('products', [
+            'id' => $product->id,
+            'company_id' => $this->company->id,
+            'sku' => 'SIBLING-UPDATE-SKU',
+        ]);
+    }
+
+    public function test_sku_held_by_a_soft_deleted_product_fails_update_validation(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'ORIGINAL-DELETED-UPDATE-SKU',
+        ]);
+        $holder = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'DELETED-UPDATE-SKU',
+        ]);
+        $holder->delete();
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/products/{$product->id}", [
+                'sku' => 'DELETED-UPDATE-SKU',
+            ]);
+
+        $this->assertApiValidationErrors($response, ['sku']);
+        $this->assertStringContainsString(
+            'sku_held_by_deleted_product:',
+            (string) json_encode($response->json('error.errors.sku')),
+        );
     }
 
     public function test_type_is_nullable(): void
