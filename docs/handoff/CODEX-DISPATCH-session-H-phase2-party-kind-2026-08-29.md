@@ -1,9 +1,10 @@
 # Codex dispatch — Session H (B-18 party/contact program), **Phase 2: `party_kind`** (2026-08-29) — DRAFT
 
-> **DRAFT — not dispatched.** Revision **r5**, after gates r1 (F-1..F-18), r2 (N-1..N-10), r3 (N-11..N-17)
-> and r4 (`docs/superpowers/reviews/2026-08-29-session-h-phase2-brief-gate-r4.md`: N-11..N-16 resolved,
-> N-17 partial, new **N-18..N-29**). All dispositions applied and re-verified against code at `a33b01354`. **The r3 re-gate runs
-> against the post-Phase-1-merge `dev` tip; `base_sha` and both migration timestamps are pinned then.**
+> **DRAFT — not dispatched.** Revision **r6**, after gates r1 (F-1..F-18), r2 (N-1..N-10), r3 (N-11..N-17),
+> r4 (N-18..N-29) and r5
+> (`docs/superpowers/reviews/2026-08-29-session-h-phase2-brief-gate-r5.md`: N-19/N-20/N-22/N-25/N-26 partial,
+> new **N-30..N-32**). All dispositions applied and re-verified against code at `a33b01354`. **The r6 re-gate
+> runs against the post-Phase-1-merge `dev` tip; `base_sha` and both migration timestamps are pinned then.**
 > Do not dispatch from a HEAD lacking the Phase-1 merge.
 > **Path warning:** r1 cited module paths that do not exist here (`app/Modules/CRM/…`,
 > `apps/web/src/lib/pos/offline/…`). The real paths — used throughout — are `app/Modules/Partner/…`,
@@ -411,9 +412,13 @@ on create AND update**, operating on the **merged final state**, not the incomin
 - **Kind transitions — ONE atomic contract, chosen (N-2; the r2 brief contradicted itself between M2 and
   M3).** **An EXPLICIT kind transition — `kindProvided === true` and `requestedKind !== existingKind` —
   AUTHORIZES the service to clear the incompatible persisted fields, atomically, in the same transaction.**
-  org→person applies **`PERSON_CLEARED_FIELDS` above, verbatim** — writing `tax_status='NON_REGISTERED'`,
-  `tax_regime='individual'`, `withholding_exempt=false` and NULL for the rest, **never NULL into a NOT NULL
-  column** (N-11); person→org clears `date_of_birth`, `gender`, `national_id`. The response carries the
+  org→person applies **`PERSON_CLEARED_FIELDS` above, verbatim** — writing
+  `PartnerTaxStatus::NON_REGISTERED`, **`PartnerTaxRegime::Individual` (the enum CASE, never the literal
+  `'individual'` — N-26; only migration SQL keeps frozen literals)**, `withholding_exempt=false` and NULL
+  for the rest, **never NULL into a NOT NULL column** (N-11); person→org applies
+  **`ORGANIZATION_CLEARED_FIELDS` above, verbatim — all four members, `mobile` included** (N-19). Reference
+  both sets **by name**; never re-list their members anywhere else in the code or this brief, or they drift.
+  The response carries the
   **cleared field list in `meta.cleared_fields`** — see the N-22 envelope contract in M3.2. **A PATCH that
   keeps the same kind but sends an incompatible field still 422s** — clearing is authorized by the
   transition, never by a field's presence. M2 API tests and M3 form/browser tests assert **both
@@ -426,6 +431,19 @@ on create AND update**, operating on the **merged final state**, not the incomin
 
 **M2.2 The five spec §8.3 enforcement points.**
 1. **`CreatePartnerRequest`** (`apps/api/app/Modules/Partner/Presentation/Requests/CreatePartnerRequest.php`):
+   **N-32 — `tax_status` must NOT be validated with `Enum(PartnerTaxStatus::class)` here.** That enum lives
+   in `App\Modules\Taxation\Domain\Enums` (`PartnerTaxStatus.php:5`), so importing it into Partner
+   presentation is a fresh rule-6 violation on a boundary this wave is already touching. **Counted at r6:
+   `grep -rl "PartnerTaxStatus" apps/api` returns 45 files** (≈42 excluding the enum itself, the deptrac
+   cache and the parity register) — **well over the 15-file threshold, so take the SECOND branch**: do NOT
+   move the enum in this wave. Instead add a constants class
+   `apps/api/app/Shared/Contracts/PartnerTaxStatusValues.php` exposing
+   `public const VALUES = ['REGISTERED','NON_REGISTERED','EXEMPT'];`, validate with
+   `Rule::in(PartnerTaxStatusValues::VALUES)` in both Partner FormRequests, and add a **parity test**
+   asserting `PartnerTaxStatusValues::VALUES === array_column(PartnerTaxStatus::cases(), 'value')`.
+   **Record the enum move (and the Partner model's pre-existing Partner→Taxation import at
+   `Partner.php:15,158`) under `owes_parent` as architectural debt** — a 42-file mechanical namespace move
+   is its own lane, not a Phase-2 side effect.
    `party_kind` **required** `new Enum(PartyKind::class)` beside `'type'` at `:68`; the `required_without`
    phone/email pair on `:78-79` (spec §5.3; `PosPendingCustomerController.php:166-169` is the reference);
    accept `preferred_locale`, `legal_form`, the four person fields **and `credit_account_enabled`
@@ -441,7 +459,8 @@ on create AND update**, operating on the **merged final state**, not the incomin
    (`PartnerController.php:207,280-295`) — so a same-kind request carrying an incompatible field is
    **silently stripped before `PartyIdentityPolicy` ever sees it**, and the promised field-specific 422
    never fires. Add rules under the **canonical persisted names** to both requests: `tax_id`, `tax_regime`
-   (`Enum(PartnerTaxRegime::class)`), `tax_status` (`Enum(PartnerTaxStatus::class)`),
+   (`Enum(PartnerTaxRegime::class)` — Partner-owned, so a direct enum rule is fine), `tax_status`
+   (`Rule::in(PartnerTaxStatusValues::VALUES)` per N-32 above, **not** `Enum(PartnerTaxStatus::class)`),
    `tax_exemption_reason`, `tax_exemption_certificate_media_id`, `tax_exemption_valid_until`,
    `withholding_exempt`, `withholding_exemption_reason`, `withholding_exemption_certificate_id`.
    **Test same-kind rejection for EVERY member of `PERSON_CLEARED_FIELDS`**, not only `vat_number`.
@@ -586,12 +605,20 @@ chosen at dispatch). Only now that every writer supplies `party_kind` is it safe
   wrote between the two migrations — `PartnerController.php:215-219` can still insert with neither field
   after Migration A. Rerunning only the kind arms would set `party_kind='person'` while leaving
   `customer_category` NULL, and the composite CHECK would then fail on deploy.
-- **Scope EVERY compatibility backfill to `WHERE party_kind IS NULL` (N-20).** That predicate is exactly
-  the inter-migration legacy-write candidate set — a row an old worker wrote after Migration A. Applying the
-  kind classification, the `customer_category` recomputation, the `credit_account_enabled` legacy backfill
-  and the person tax repair **unconditionally** would overwrite deliberate M2 edits; most sharply, a partner
-  an operator explicitly set to `credit_account_enabled=false` between the migrations would be silently
-  flipped back to `true` by the "active accounts" rule.
+- **MATERIALIZE the candidate set FIRST, then join it (N-20 + N-30).** `WHERE party_kind IS NULL` is the
+  right *selector* for inter-migration legacy writes — a row an old worker wrote after Migration A — but it
+  is **self-destroying**: the classification UPDATE makes every matched row non-NULL, so a sequential
+  category / credit / tax-repair step re-testing the same predicate matches **zero rows** and leaves exactly
+  the incoherent state the CHECK then rejects. Do one of:
+  - `CREATE TEMP TABLE h2_candidates AS SELECT id, <derived kind> FROM partners WHERE party_kind IS NULL;`
+    then every later step **joins `h2_candidates`**, never re-tests `party_kind IS NULL`; or
+  - a **single atomic UPDATE** whose `SET` list computes kind, `customer_category`, `credit_account_enabled`
+    and the person tax repair together via `CASE` expressions.
+  Scoping matters as much as ordering: applying these **unconditionally** would overwrite deliberate M2
+  edits — most sharply, a partner an operator explicitly set to `credit_account_enabled=false` between the
+  migrations would be silently flipped back to `true` by the "active accounts" rule.
+- **PG regression (N-30):** a NULL-kind old-worker row receives **kind + category + credit compatibility +
+  person-tax repair in ONE run** of Migration B, all four asserted together.
 - **Prove both halves:** a row with an explicit `credit_account_enabled=false` and a non-null `party_kind`
   **survives Migration B untouched**, while an old-worker row with NULL `party_kind` **does** receive the
   legacy-compatible values.
@@ -681,11 +708,14 @@ gate. Split it:
   `onSubmit` spreads the whole `data` object into the payload (`PartnerForm.tsx:397-420` — the `cleaned`
   spread), so switching Nature must `unregister`/reset the now-incompatible fields. But the *authority* to
   drop **persisted** values is the explicit kind change, not the omission: before submitting a transition
-  the form shows a **confirm dialog listing the fields that will be cleared** ("Switching to Individual
-  clears: VAT number, Tax status, Legal form…"), and after the response it reports the server's
-  `meta.cleared_fields`. **Add both transition tests** (organization→person, person→organization), each
-  asserting the dialog content, that the submitted payload carries no incompatible field, and that
-  `meta.cleared_fields` matches what the dialog promised.
+  the form shows the **"may be cleared" dialog defined once above** — the clearable fields the UI can see
+  that currently hold a value ("Switching to Individual may clear: VAT number, Tax status, Legal form…").
+  **The assertion is the one stated above and nowhere else (N-22):** `meta.cleared_fields` is **non-empty**,
+  and **every dialog-listed field that had a value appears in `meta.cleared_fields`** (dialog ⊆ server).
+  Server-cleared fields the dialog could not see are **expected and allowed** — surface them in a post-save
+  toast. There is no "matches what the dialog promised" equality anywhere. **Add both transition tests**
+  (organization→person, person→organization), each asserting the dialog content, that the submitted payload
+  carries no incompatible field, and the subset relation above.
 - **`CreditLimitWarning` (F-14):** Phase 1 converts it to the decimal-safe helpers (`parseFloat` at
   `apps/web/src/features/partners/components/CreditLimitWarning.tsx:22,23,61,65` today, rule 19). **Phase 2
   only consumes it** — if you find it still on `parseFloat` when you arrive, that is a Phase-1 gap: report
@@ -724,7 +754,11 @@ Nature = *Individual* — person panel appears; tax-identity block absent; submi
 asserting `party_kind=person`, `customer_category=individual`, `vat_number` null; (ii) Nature = *Company* —
 tax identity, `legal_form` and the credit sub-block appear, person panel does not; (iii) **transition test in
 the browser:** open an organization with a `vat_number`, switch Nature to Individual, submit → the request
-body carries no `vat_number` (assert on the intercepted request, not just the response); (iv)
+body carries no `vat_number` (assert on the intercepted request, not just the response), and `GET` the
+partner asserting **every `PERSON_CLEARED_FIELDS` member** is at its person target; (iii-b) **the REVERSE
+transition (N-19):** open a person carrying all four person attributes, switch Nature to Company, submit →
+`GET` and assert **all four `ORGANIZATION_CLEARED_FIELDS` members are cleared — `date_of_birth`, `gender`,
+`national_id` AND `mobile`**; (iv)
 `/sales/customers` — the Nature badge renders for a seeded person and organization and the nature filter
 narrows the list (assert the request carries the filter and the row count changes); (v) the inline
 Add-partner modal submits with Nature = Individual → 201, not 422; (vi) switch the UI to Arabic and
@@ -739,19 +773,28 @@ text. Screenshots for all six. Marker: `party_kind` present on the intercepted `
 
 - `apps/api/app/Modules/Import/Domain/Enums/ImportType.php`: add `'party_kind'` and `'legal_form'` to the
   `self::Parties` optional-column list (`:109-122`) and its validation rules (`:169-180`) —
-  `'party_kind' => ['nullable','in:person,organization']`, `'legal_form' => ['nullable', Rule::in(LegalForm::values())]`.
+  `'party_kind' => ['nullable','in:person,organization']` and `'legal_form' => ['nullable','string','max:50']`.
+  **`ImportType` must NOT reference `LegalForm` (N-31)** — the r5 instruction to use
+  `Rule::in(LegalForm::values())` here is **deleted**: it is a Partner-domain import inside the Import
+  module (rule 6), and `ImportType::getValidationRules()` is a **parameterless enum method**
+  (`ImportType.php:166`) into which nothing can be injected.
   **Touch only the `Parties` arm.** `Parties` and `Partners` are distinct schemas (`:91` / `:110`, `:169` /
   `:182`) and `Partners` is Session G's retirement lane — leave it, and note anything you find for Session G.
 - `apps/api/app/Modules/Import/Services/PartiesRowMapper.php:15-29` — `toPartnerData()` maps `party_kind`
   and `legal_form` through **as strings**; derivation happens inside `PartnerService`.
-  **Rule-6 boundary (N-25) — the Import module must NOT import Partner domain classes.** r4 told it to call
-  `LegalForm::values()` and `PartyKindDeriver` directly; that is the same violation this brief refuses for
-  Contact's `Gender` (M1.1). Instead widen the public seam
-  `apps/api/app/Shared/Contracts/PartnerServiceInterface.php:12-38`:
-  - the typed upsert returns **`{id, kind, reason, cleared_fields}`** (a readonly result DTO), so the
-    importer reads `reason` for its warning without owning any derivation logic;
-  - add `legalFormValues(): list<string>` so `ImportType::Parties` validates `legal_form` through the
-    contract (`Rule::in($partnerService->legalFormValues())`) rather than by importing the enum.
+  **Rule-6 boundary (N-25) — the Import module must NOT import Partner domain classes.** Widen the public
+  seam `apps/api/app/Shared/Contracts/PartnerServiceInterface.php:12-38`: the typed upsert returns
+  **`{id, kind, reason, cleared_fields}`** (a readonly result DTO), so the importer reads `reason` for its
+  warning without owning any derivation logic; and add **`legalFormValues(): list<string>`**.
+- **New `PartiesValidationRulesFactory` — where the contract call actually lives (N-31).** Put it in
+  `apps/api/app/Modules/Import/Application/Services/`, constructor-injecting `PartnerServiceInterface`, with
+  one method that takes an `ImportType` and returns `$type->getValidationRules()` **merged with**
+  `['legal_form' => ['nullable', Rule::in($this->partnerService->legalFormValues())]]` for the `Parties`
+  case (a pass-through for every other type). **Injection is real here — verified:** `ImportService` already
+  constructor-injects `PartnerServiceInterface` (`ImportService.php:28-42`) and is bound as a singleton in
+  `app/Modules/Import/Providers/ImportServiceProvider.php:37-38`, so add the factory to both. Route **all
+  three** existing rule call sites through it — `ImportService.php:84` (normalization), `:112` and `:143`
+  (validation) — plus the tests; leaving any one on the bare enum reintroduces the gap.
   **The mapper never re-derives a reason** (F-10).
 - **OQ7 on the import path is clear-with-warning, not reject** (M2.1): a person row carrying `tax_id` has it
   cleared and warned, so a bulk migration does not fail.
@@ -787,7 +830,21 @@ upload, **do not substitute PHPUnit (N-29)** — §0.1 makes the browser gate an
 PHPUnit swap silently voids it. Drive the whole flow with the Playwright `request` fixture against :8011:
 `POST` the multipart upload → `POST` execute → `GET` the workbook download endpoint
 (`ImportController.php:609-627`) → parse the returned XLSX inside the spec and assert the `warnings` column.
-If that genuinely cannot be made to work, **STOP** and obtain an owner-recorded non-browser exception.
+**Feasibility evidence, gathered at r6 so you do not have to discover it mid-milestone:** multipart upload
+through the Playwright `request` fixture is already done twice in this repo —
+`apps/web/e2e/smoke/treasury-phase5b-reconciliation.smoke.ts:211` (`multipart:`) and `:811`
+(`setInputFiles`), and `apps/web/e2e/money-campaign/statement-support.ts:311,616`, whose comment at `:610`
+records the Content-Type/boundary pitfall to avoid. So the upload half is proven.
+**The download half has one real obstacle:** there is **no `waitForEvent('download')` precedent** in
+`apps/web/e2e`, and **`apps/web` has no XLSX parser dependency** — the workbook is written server-side with
+`phpoffice/phpspreadsheet ^5.3` (`composer.json:22`, used at `ResultWorkbookService.php:9-11`). Two
+acceptable resolutions, in order: **(a)** fetch the workbook with the `request` fixture (a plain `GET`
+returning a body buffer — no browser download event needed) and parse it with a dev-only parser added to
+`apps/web` (`exceljs` or `node-xlsx`); or **(b)** assert in Playwright that the download returns 200 with an
+XLSX content-type and non-zero length, and assert the **warning cell contents** in a PHPUnit test over
+`ResultWorkbookService` — a split that keeps a real browser gate without a new dependency. Take (a) if the
+milestone reviewer accepts the devDependency, else (b), and record which in the register.
+If neither can be made to work, **STOP** and obtain an owner-recorded non-browser exception.
 
 **M4 review lenses:** `imports`.
 
