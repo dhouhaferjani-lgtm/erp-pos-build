@@ -1,26 +1,16 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { API_BASE, apiHeaders, loginApi, loginPage, type ApiSession } from './helpers'
 
 test.use({ baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:5174' })
 test.describe.configure({ mode: 'serial' })
 test.setTimeout(120_000)
 
-const API_BASE = process.env.API_BASE ?? 'http://127.0.0.1:8011/api/v1'
-const DEMO_CREDENTIALS = {
-  email: 'owner@pharmabio.tn',
-  password: 'password',
-} as const
-const API_ORIGIN = new URL(API_BASE).origin
 const SCREENSHOT_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../../../.playwright-mcp/session-h/m1',
 )
-
-interface ApiSession {
-  token: string
-  companyId: string
-}
 
 interface PartnerRow {
   id: string
@@ -37,65 +27,6 @@ interface PartnerPage {
     current_page: number
     last_page: number
   }
-}
-
-function apiHeaders(session: ApiSession): Record<string, string> {
-  return {
-    Accept: 'application/json',
-    Authorization: `Bearer ${session.token}`,
-    'X-Company-Id': session.companyId,
-  }
-}
-
-async function loginApi(request: APIRequestContext): Promise<ApiSession> {
-  const login = await request.post(`${API_BASE}/auth/login`, {
-    headers: { Accept: 'application/json' },
-    data: DEMO_CREDENTIALS,
-  })
-  expect(login.ok(), `API login failed: ${login.status()} ${await login.text()}`).toBeTruthy()
-  const loginBody = await login.json() as { data: { token: string } }
-
-  const companies = await request.get(`${API_BASE}/user/companies`, {
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${loginBody.data.token}`,
-    },
-  })
-  expect(companies.ok(), `company lookup failed: ${companies.status()} ${await companies.text()}`).toBeTruthy()
-  const companyBody = await companies.json() as { data: Array<{ id: string; is_primary?: boolean }> }
-  const company = companyBody.data.find((row) => row.is_primary === true) ?? companyBody.data[0]
-  expect(company, 'demo tenant must expose a company').toBeDefined()
-
-  return { token: loginBody.data.token, companyId: company!.id }
-}
-
-async function loginPage(page: Page): Promise<void> {
-  await page.route('**/api/v1/**', async (route) => {
-    const sourceUrl = new URL(route.request().url())
-    const apiPath = sourceUrl.pathname.replace(/^\/api\/v1/, '')
-    const response = await route.fetch({
-      url: `${API_BASE}${apiPath}${sourceUrl.search}`,
-    })
-    expect(new URL(response.url()).origin).toBe(API_ORIGIN)
-    await route.fulfill({ response })
-  })
-  await page.route('**/sanctum/**', async (route) => {
-    const sourceUrl = new URL(route.request().url())
-    const response = await route.fetch({
-      url: `${API_ORIGIN}${sourceUrl.pathname}${sourceUrl.search}`,
-    })
-    expect(new URL(response.url()).origin).toBe(API_ORIGIN)
-    await route.fulfill({ response })
-  })
-  await page.addInitScript(() => {
-    window.localStorage.setItem('autoerp-cookie-consent', 'accepted')
-  })
-  await page.goto('/login')
-  await page.getByLabel(/email address/i).fill(DEMO_CREDENTIALS.email)
-  await page.getByLabel(/^password$/i).fill(DEMO_CREDENTIALS.password)
-  await page.getByRole('button', { name: /sign in/i }).click()
-  await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 })
-  await expect(page.getByRole('button', { name: /profile/i })).toBeVisible({ timeout: 15_000 })
 }
 
 async function listAllCustomerPartners(
