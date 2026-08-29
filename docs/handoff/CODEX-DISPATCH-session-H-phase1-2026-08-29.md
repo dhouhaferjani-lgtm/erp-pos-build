@@ -168,7 +168,7 @@ The audit's a4 ("treat NULL as show-it") is REJECTED (spec §9). Implement inste
   `individual` / `business` (server enum untouched). Default `business` when the route is
   `/purchases/suppliers/new`, no default on `/sales/customers/new`. Edit form: not required (legacy
   NULL rows must stay editable).
-- The B2B block gate (`apps/web/src/features/partners/B2BFieldsSection.tsx:40-224`, plus
+- The B2B block gate (`apps/web/src/features/partners/components/B2BFieldsSection.tsx` (228 lines; signature `:19`), plus
   `PartnerForm.tsx` where the section is conditionally rendered — grep `customer_category ===`) becomes:
   show when `customer_category === 'business'` **OR** (`customer_category === null` AND any of
   `vat_number`, `company_legal_name`, `business_registration_number`, `credit_limit` is non-empty).
