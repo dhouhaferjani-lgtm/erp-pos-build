@@ -6,6 +6,11 @@ export const DEMO_CREDENTIALS = {
   password: 'password',
 } as const
 
+export interface LoginCredentials {
+  email: string
+  password: string
+}
+
 const API_ORIGIN = new URL(API_BASE).origin
 const MAX_LOGIN_ATTEMPTS = 3
 
@@ -57,7 +62,10 @@ export async function loginApi(request: APIRequestContext): Promise<ApiSession> 
   return { token: loginBody.data.token, companyId: company!.id }
 }
 
-export async function loginPage(page: Page): Promise<void> {
+export async function loginPage(
+  page: Page,
+  credentials: LoginCredentials = DEMO_CREDENTIALS,
+): Promise<void> {
   await page.route('**/api/v1/**', async (route) => {
     const sourceUrl = new URL(route.request().url())
     const apiPath = sourceUrl.pathname.replace(/^\/api\/v1/, '')
@@ -79,10 +87,10 @@ export async function loginPage(page: Page): Promise<void> {
     window.localStorage.setItem('autoerp-cookie-consent', 'accepted')
   })
   await page.goto('/login')
-  await page.getByLabel(/email address/i).fill(DEMO_CREDENTIALS.email)
-  await page.getByLabel(/^password$/i).fill(DEMO_CREDENTIALS.password)
-  await expect(page.getByLabel(/email address/i)).toHaveValue(DEMO_CREDENTIALS.email)
-  await expect(page.getByLabel(/^password$/i)).toHaveValue(DEMO_CREDENTIALS.password)
+  await page.getByLabel(/email address/i).fill(credentials.email)
+  await page.getByLabel(/^password$/i).fill(credentials.password)
+  await expect(page.getByLabel(/email address/i)).toHaveValue(credentials.email)
+  await expect(page.getByLabel(/^password$/i)).toHaveValue(credentials.password)
   const submitLogin = async () => {
     const loginResponsePromise = page.waitForResponse((response) =>
       response.request().method() === 'POST' && response.url().includes('/api/v1/auth/login'),
