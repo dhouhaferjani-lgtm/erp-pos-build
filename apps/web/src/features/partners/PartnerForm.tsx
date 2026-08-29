@@ -29,6 +29,7 @@ import {
 } from './_invalidation'
 import { readPartnerPrefill } from './partnerPrefill'
 import { getCustomerCreditExposure } from './partnerNetBalance'
+import { shouldShowPartnerB2BFields } from './partnerNature'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import type { PartnerData } from './types'
@@ -255,14 +256,13 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
   const addressCountry = watch('country')
   const taxCountry = watch('country_code')
   const usesTunisiaLabels = addressCountry === 'TN' || taxCountry === 'TN' || defaultCountryCode === 'TN'
-  const hasLegacyB2BSignal = [
-    vatNumber,
-    companyLegalName,
-    businessRegistrationNumber,
-    creditLimit,
-  ].some((value) => value.trim() !== '')
-  const showB2BFields = customerCategory === 'business'
-    || ((customerCategory === null || customerCategory === '') && hasLegacyB2BSignal)
+  const showB2BFields = shouldShowPartnerB2BFields({
+    business_registration_number: businessRegistrationNumber,
+    company_legal_name: companyLegalName,
+    credit_limit: creditLimit,
+    customer_category: customerCategory === '' ? null : customerCategory,
+    vat_number: vatNumber,
+  })
 
   // Fetch countries for dropdown
   const { data: countries = [] } = useQuery({

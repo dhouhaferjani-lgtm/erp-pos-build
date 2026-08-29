@@ -62,6 +62,7 @@ class CreatePartnerRequest extends FormRequest
         /** @var User|null $user */
         $user = $this->user();
         $tenantId = $user?->tenant_id;
+        $companyId = $this->companyContext->requireCompanyId();
 
         return [
             'name' => ['required', 'string', 'max:255'],
@@ -72,7 +73,7 @@ class CreatePartnerRequest extends FormRequest
                 'string',
                 'max:50',
                 Rule::unique('partners', 'code')
-                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
                     ->whereNull('deleted_at'),
             ],
             'email' => ['nullable', 'email', 'max:255'],

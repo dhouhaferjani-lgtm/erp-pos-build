@@ -203,6 +203,60 @@ class CreatePartnerTest extends TestCase
         ]);
     }
 
+    public function test_second_company_can_reuse_partner_code_with_independent_nature_and_list_scope(): void
+    {
+        $companyB = Company::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Second Company',
+        ]);
+        UserCompanyMembership::create([
+            'user_id' => $this->user->id,
+            'company_id' => $companyB->id,
+            'role' => 'admin',
+        ]);
+
+        $companyAResponse = $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/partners', [
+                'name' => 'Company A Shared Code',
+                'code' => 'SHARED-001',
+                'type' => 'customer',
+                'customer_category' => 'individual',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.customer_category', 'individual');
+
+        $companyBResponse = $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $companyB->id)
+            ->postJson('/api/v1/partners', [
+                'name' => 'Company B Shared Code',
+                'code' => 'SHARED-001',
+                'type' => 'customer',
+                'customer_category' => 'business',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.customer_category', 'business');
+
+        $this->assertNotSame($companyAResponse->json('data.id'), $companyBResponse->json('data.id'));
+        $this->assertDatabaseHas('partners', [
+            'company_id' => $this->company->id,
+            'code' => 'SHARED-001',
+            'customer_category' => 'individual',
+        ]);
+        $this->assertDatabaseHas('partners', [
+            'company_id' => $companyB->id,
+            'code' => 'SHARED-001',
+            'customer_category' => 'business',
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/partners?type=customer&search=Shared%20Code')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.name', 'Company A Shared Code');
+    }
+
     public function test_can_create_customer_type(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')

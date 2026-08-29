@@ -165,6 +165,18 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
     expect(mockApiPost).not.toHaveBeenCalled()
   })
 
+  it('applies the same Nature-required rule after switching to company B', async () => {
+    useCompanyStore.setState({ currentCompanyId: 'company-2', companies: [], isLoading: false })
+    mockApiPost.mockResolvedValue({ id: 'partner-company-b' })
+    renderPartnerForm(['/sales/customers/new'], '/sales/customers/new', 'customer')
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Company B Customer' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+
+    expect(await screen.findByText('Nature is required')).toBeInTheDocument()
+    expect(mockApiPost).not.toHaveBeenCalled()
+  })
+
   it('defaults supplier creation Nature to Company', () => {
     renderPartnerForm(['/purchases/suppliers/new'], '/purchases/suppliers/new', 'supplier')
 

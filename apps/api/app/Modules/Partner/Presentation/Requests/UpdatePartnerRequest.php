@@ -78,6 +78,7 @@ class UpdatePartnerRequest extends FormRequest
         /** @var User|null $user */
         $user = $this->user();
         $tenantId = $user?->tenant_id;
+        $companyId = $this->companyContext->requireCompanyId();
         $partnerId = $this->route('partner');
 
         return [
@@ -89,7 +90,7 @@ class UpdatePartnerRequest extends FormRequest
                 'string',
                 'max:50',
                 Rule::unique('partners', 'code')
-                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
                     ->whereNull('deleted_at')
                     ->ignore($partnerId),
             ],
