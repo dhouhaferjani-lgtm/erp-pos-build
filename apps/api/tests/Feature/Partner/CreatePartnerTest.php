@@ -10,6 +10,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -255,6 +256,35 @@ class CreatePartnerTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.name', 'Company A Shared Code');
+    }
+
+    public function test_rejects_a_duplicate_code_in_the_same_company(): void
+    {
+        $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/partners', [
+                'name' => 'First Holder Of The Code',
+                'code' => 'SAME-CO-001',
+                'type' => 'customer',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.code', 'SAME-CO-001');
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/partners', [
+                'name' => 'Second Holder Of The Code',
+                'code' => 'SAME-CO-001',
+                'type' => 'customer',
+            ]);
+
+        $this->assertApiValidationErrors($response, ['code']);
+
+        $this->assertDatabaseCount('partners', 1);
+        $this->assertSame(1, Partner::query()
+            ->where('company_id', $this->company->id)
+            ->where('code', 'SAME-CO-001')
+            ->count());
     }
 
     public function test_can_create_customer_type(): void
