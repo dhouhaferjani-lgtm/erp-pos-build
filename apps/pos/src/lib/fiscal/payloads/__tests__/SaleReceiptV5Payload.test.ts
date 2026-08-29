@@ -112,6 +112,26 @@ describe('buildSaleReceiptV5Payload', () => {
     }
   });
 
+  it('seals the exact supplied buyer snapshot at the currently authored version', () => {
+    const input = {
+      ...makeInput(mixedRateCart(), '0.000', null),
+      buyer: {
+        address: null,
+        codice_fiscale: null,
+        contact_id: null,
+        customer_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        name: 'Acme SARL',
+        tax_number: '1234567AM000',
+      },
+    } as BuildSaleReceiptPayloadInput & {
+      buyer: NonNullable<import('@/lib/fiscal/FiscalEventEngine').BuyerBlockInput>;
+    };
+
+    const payload = buildSaleReceiptV5Payload(input, UNROUNDED('640.000'));
+
+    expect(payload.buyer).toEqual(input.buyer);
+  });
+
   it('seals the taxable base NET of the remise, ventilated pro-rata per rate', () => {
     const payload = buildSaleReceiptV5Payload(
       makeInput(mixedRateCart(), '50.000', 'Geste commercial'),

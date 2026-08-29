@@ -2,6 +2,7 @@ import { getCurrencyDecimals } from '@/lib/currency';
 import { bcadd, bccomp, bcformat, bcmul, bcsub } from '@/lib/decimal';
 import type {
   AddressInput,
+  BuyerBlockInput,
   LineItemInput,
   PaymentInput,
   SaleReceiptApprovalReferenceInput,
@@ -93,6 +94,8 @@ export interface BuildSaleReceiptPayloadInput {
   tableId?: string | null;
   isTraining: boolean;
   seller: SaleReceiptSellerInput;
+  /** Existing sealed buyer key; omitted and explicit null remain byte-identical. */
+  buyer?: BuyerBlockInput | null;
   approvalReferences?: SaleReceiptApprovalReferenceInput[];
 }
 
@@ -149,7 +152,7 @@ export function buildSaleReceiptPayload(
   return {
     approval_references: input.approvalReferences ?? [],
     business_date: input.businessDate,
-    buyer: null,
+    buyer: input.buyer ?? null,
     cashier_id: input.operatorId,
     cashier_name: input.operatorName,
     consumption_mode: mapConsumptionMode(input.consumptionMode ?? null),
