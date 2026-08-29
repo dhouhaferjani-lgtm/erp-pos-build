@@ -105,3 +105,111 @@ All PostgreSQL commands were run serially by test path and prefixed with `DB_DAT
 ## Final verdict
 
 **FAIL** — do not rebase, stage, or merge. Clear all BLOCKER rows, make both pinned regression classes green without unauthorized test amendments, add the real kill/resume and sparse re-import coverage, then rerun this exact scoped matrix on SQLite and the private PostgreSQL database.
+
+## Gate r2 (Codex)
+
+- **Reviewed state:** `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/g4-duplicates`, branch `feat/g4-duplicate-policy-merge`, HEAD/base `68c698f1a680e5feefa3aadd7a6a8b22be41ff26`, dirty/uncommitted. Source was read-only; this register is the only intentional file write.
+- **Resume discipline:** continued from the existing fix-round command record; completed the dependency, rebase, migration-safety, and line audit without rerunning the already-green scoped matrix.
+- **PostgreSQL isolation:** the recorded PG runs were serial by path and every invocation used `DB_DATABASE=autoerp_test_g5 DB_CENTRAL_DATABASE=autoerp_test_g5`.
+
+### VERDICT: FAIL
+
+All 23 r1 findings are closed, including the authoritative row-transaction decision, real resume faults, durable skip counts, migration diagnostics, sparse re-imports, typed row JSON, and frontend policy contract. One new migration blocker remains: the unit backfill combines a leading `company_id` sort with an `id`-only `chunkById` cursor, which can silently omit eligible products in a multi-company tenant and publish an incomplete census.
+
+### R1 finding disposition
+
+| ID | status | r2 evidence |
+|---|---|---|
+| G4-R1-01 | **CLOSED** | `ImportService.php:440-519` calls `DuplicateCensusService::decide()` inside each row transaction and emits `preview_drift` at `:462-470`; the preview-race pin is `DuplicateCensusTest.php:174-195`. |
+| G4-R1-02 | **CLOSED** | `DuplicateCensusService.php:24,37-90,170-207` is a 500-row chunked pass with batched SKU/barcode/name and location lookups; invalid rows are excluded and the query ceiling is pinned at `DuplicateCensusTest.php:103-138`. |
+| G4-R1-03 | **CLOSED** | Placement keys use resolved product identity plus resolved `location_id` (`DuplicateCensusService.php:60-70,190-207,266-286`); trim-equivalent and unresolved-location cases are pinned at `DuplicateCensusTest.php:140-171`. |
+| G4-R1-04 | **CLOSED** | Four post-commit/rollback resume cases cover ordinary write, duplicate skip, correction warning, and failed-row continuation (`ImportOutcomeAtomicityTest.php:191-314`), using the throwing decorator at `:456-479`. |
+| G4-R1-05 | **CLOSED** | Finalization performs only the permitted imported-to-`opening_locked` terminal rewrite (`ImportService.php:691-726`); product opening selection is imported-only (`ProductOpeningStockPhase.php:41-45`), and all other refusals remain warnings/results. |
+| G4-R1-06 | **CLOSED** | Guarded `skipped_rows` DDL is at `2026_08_31_100000_add_outcome_to_import_rows.php:26-31`; model/default/API/sync/queue persistence is at `ImportJob.php:32,67,82`, `ImportController.php:693-717`, `ImportService.php:416-423`, and `ProcessImportJob.php:206-217`. |
+| G4-R1-07 | **CLOSED** | The deleted-holder guard checks only the SKU actually written (`ProductService.php:99-115,465-475`); the unrelated trashed-barcode pin is `ProductUpsertKeyPrecedenceTest.php:155-186`. |
+| G4-R1-08 | **CLOSED** | The normalized-name arm uses `withTrashed()` and refuses only a trashed row holding the derived SKU (`ProductService.php:429-455`), pinned at `ProductUpsertKeyPrecedenceTest.php:224-254`. |
+| G4-R1-09 | **CLOSED** | One exact winning-tier helper implements company > tenant > system and same-tier ambiguity (`UnitCatalogEntryData.php:22-51`), shared by runtime and backfill (`UnitResolver.php:20-76`; `ProductUnitBackfillService.php:53-65`). Tier pins are `UnitResolutionTest.php:126-195`. |
+| G4-R1-10 | **CLOSED** | The unit migration guards all required tables/columns, catches unexpected legacy state, and reports without throwing (`2026_08_31_100200_backfill_product_unit_ids.php:14-69`); missing companies are counted per row (`ProductUnitBackfillService.php:37-51`). See new G4-R2-01 for a separate pagination defect. |
+| G4-R1-11 | **CLOSED** | Replay selection requires both `is_imported=false` and `outcome=pending` (`ImportService.php:312-329`); `ProcessImportJob::handle()` retains the two required parameters and adds only an optional catalogue injection (`ProcessImportJob.php:75-80,113-115`). |
+| G4-R1-12 | **CLOSED** | `upsert()` remains string-returning and delegates to the new DTO method (`ProductService.php:63-80`; `ProductServiceInterface.php:28-48`); the pinned precedence class is green. |
+| G4-R1-13 | **CLOSED** | DB-backed sparse product and partner re-imports preserve type/unit/prices/contact/address (`ImportOutcomeAtomicityTest.php:316-386`); the three governing tax-configuration re-import pins in `ProductsImportPipelineTest.php:979-1098` are green. |
+| G4-R1-14 | **CLOSED** | Flat `_results` and `_placement_plan` hydrate and serialize through explicit DTOs (`ImportRowSourceData.php:7-99`; `ImportPlacementPlanData.php:7-87`; `ImportPlacementSegmentData.php:7-52`) and the cast has no shape bypass (`ImportRowSourceCast.php:9-21`). |
+| G4-R1-15 | **CLOSED** | API omits `duplicates` without a census (`ImportController.php:294-319`); FE renders the panel only when present (`ImportWizardPage.tsx:1003-1078`), pinned at `ImportWizardPage.duplicates.test.tsx:176-201`. |
+| G4-R1-16 | **CLOSED** | Matched-by-name rows render a ten-row bounded initial view with expansion (`ImportWizardPage.tsx:1034-1051`), asserted at `ImportWizardPage.duplicates.test.tsx:132-135`. |
+| G4-R1-17 | **CLOSED** | Policy selection is local; exactly one awaited PATCH occurs on Next, with pending/error gates (`ImportWizardPage.tsx:615-649,1103-1112,1222-1228`), including deferred and rejected PATCH pins at `ImportWizardPage.duplicates.test.tsx:150-224`. |
+| G4-R1-18 | **CLOSED** | Cancel opens the durable-job discard confirmation and deletes only after confirmation (`ImportWizardPage.tsx:615-619,651-664,1454-1464`), pinned at `ImportWizardPage.duplicates.test.tsx:226-247`. |
+| G4-R1-19 | **CLOSED** | The selector test traverses preview to execute and asserts summary, override/skip/cancel, step, Next, and `import-wizard-execute` (`ImportWizardPage.duplicates.test.tsx:110-148`). |
+| G4-R1-20 | **CLOSED** | `WARNING_TRANSLATION_KEYS` is compile-time exhaustive against the generated enum (`warningCodes.ts:1-31`); en/fr/ar parity is pinned by `ImportWarningLocales.test.ts:8-28`. |
+| G4-R1-21 | **CLOSED** | Unit candidates now carry the joined category and tier (`UnitCatalogQuery.php:24-36`; `UnitResolver.php:50-66`), with same-tier candidate detail pinned at `UnitResolutionTest.php:149-168`. |
+| G4-R1-22 | **CLOSED / retained** | Imported-only opening selection, exact case-sensitive unit matching, shared catalogue use, and no touched money/quantity float casts remain intact (`ProductOpeningStockPhase.php:41-45`; `UnitCatalogEntryData.php:26-41`). |
+| G4-R1-23 | **CLOSED / retained** | Outcome and coded-error migrations remain guarded and forward-only (`2026_08_31_100000_add_outcome_to_import_rows.php:17-114`; `2026_08_31_100100_add_error_code_to_import_rows.php:13-54`). Their console output is facade-guarded; on rebase, switch it to `App\Shared\Database\MigrationOutput`. |
+
+### New finding
+
+| ID | severity | file:line | finding | required change |
+|---|---|---|---|---|
+| **G4-R2-01** | **BLOCKER** | `apps/api/app/Modules/Product/Application/Services/ProductUnitBackfillService.php:25-30`; test gap `apps/api/tests/Feature/Import/UnitResolutionTest.php:171-229` | The backfill orders by `company_id`, then calls `chunkById(500)` with an `id`-only cursor. Laravel removes only the existing `id` order and retains `company_id` as the leading order. After page one it applies `id > last_id`; UUIDs in a later company that sort at or below that last ID are silently skipped. The reported `mapped + ambiguous + unknown + missing_company` census can therefore be smaller than the eligible population. Existing tests use only a few rows/one company and cannot falsify the second page. | Page solely by a stable unique ID, process each company independently, or use a correct composite `(company_id,id)` cursor. Add a >500-row, multi-company PostgreSQL pin whose eligible count equals the complete census and whose every row is visited. |
+
+### Deptrac audit
+
+Direct Deptrac remains **183 violations / 0 errors**; the latest no-cache report was 13,537 uncovered and 14,347 allowed. The ratchet's `SharedContracts on ModuleDomain 36 -> 37` edge is exactly `App\Shared\Contracts\TaxDefaultResolverInterface::resolveDefaultTaxForNewProduct()` -> `App\Modules\Company\Domain\Company` at `TaxDefaultResolverInterface.php:24`. `git blame` attributes it to base commit `831a455245`; the same contract already had the same `Company` edge at `:15`, so it is an existing baseline shape, not a G-4 Shared-contract leak. No G-4-touched/new Shared contract references a Module Domain type.
+
+### Rebase reconciliation required
+
+1. **G-3b / company pin / M4.** Take G-3b's filtered, company-scoped `ImportController::index()` (`feat/g3b-import-company-pin`, `ImportController.php:59-94`) instead of G-4's untouched base method. Union G-4's `formatJob()` counters/warnings (`ImportController.php:693-717`) with G-3b's company/unattributed response. Add `ModuleEntitlementCheck` to every G-4-touched preview/options/execute surface. Union `ImportJob.php` company/source fields with G-4's `skipped_rows` and typed casts. Keep M4 `2026_08_30_100200_add_company_to_import_jobs.php`, but use current dev's `MigrationOutput` helper; never retain the older bare `echo` implementation.
+2. **Adopt-on-execute + G-6a claim.** G-3b's standalone adoption is `ImportController.php:621-635`; G-6a owns the locked claim in `ImportJobClaimService.php:25-56`. Fold NULL-company adoption, status transition, and claim clocks into one guarded update, then preserve the sibling-company `IMPORT_COMPANY_MISMATCH` loser response. G-4's failed-before-start refusal and duplicate-policy execution must sit after entitlement/company checks and inside the claimed lifecycle.
+3. **G-6a worker/finalize skeleton.** Replace G-4's local claim block (`ProcessImportJob.php:135-162`) with `ImportJobClaimService`; retain G-4's per-row `processPendingRow()` call and outcome-derived counters (`:166-217`) and publish them through G-6a's single terminal CAS. Reconcile `ImportService::executeImport()` with G-6a's sync claim/start/release path rather than keeping a second transition writer.
+4. **M6c + shared data.** Union G-4's guarded `skipped_rows` addition (`2026_08_31_100000...:26-31`) with G-6a M6c `2026_08_30_100400_add_lifecycle_columns_to_import_jobs.php`; both landing orders remain safe. Merge, do not duplicate, `ImportErrorDetailData`; retain G-6a lifecycle/error fields plus G-4 row-error unit candidates. Union lifecycle/company/skipped fillables, casts, generated declarations, and API counters.
+5. **Shared merge surfaces.** Reconcile `.github/workflows/ci.yml`, `apps/api/tests/feature-lane-manifest.json`, and `packages/shared/types/generated.d.ts` by set/content union. Current dev ceiling is **1215**, Import **25**, Uom **8**, Migrations **11**. G-4 adds Import +8 and Uom +1, so post-rebase values are **1224 / Import 33 / Uom 9 / Migrations 11**. The current dirty branch still reads **1221 / 33 / 9 / 11** because it was cut from ceiling 1212.
+
+### Migration staging safety
+
+- `2026_08_31_100000` has an exhaustive pre-update census (`imported`, validation-failed, execution-failed, pending), guarded row/job DDL, and a forward-only no-op `down()` (`:17-114`). Require the four buckets to sum to the pre-migration row count.
+- `2026_08_31_100100` adds nullable coded-error fields without inventing codes for legacy text and is independently guarded/forward-only (`:13-54`).
+- `2026_08_31_100200` guards its dependent schema and catches missing/orphan companies (`:14-69`; service `:37-51`), but is **not fleet-safe until G4-R2-01 is fixed**. Tenant #1's roughly 855 imported products with free-text units are expected to land predominantly in `unknown`; values such as `piece` must not alias to `pc`. Before enabling `unit_id` assumptions, export affected IDs and the census, review a repair that normalizes each approved spelling to an exact visible code, rerun the backfill, and require `ambiguous=0` plus `unknown=0` or explicit signed exceptions. Also require `mapped + ambiguous + unknown + missing_company` to equal the eligible pre-run population.
+
+### Command evidence
+
+| command / leg | result |
+|---|---|
+| Requested SQLite matrix by path (new census/outcome/atomicity/resolver/coalescing/unit classes; pipeline, parties, warnings, worker/re-execution, RoundTrip, upsert/unit/opening pins) | **PASS — 143 passed, 4 skipped, 995 assertions** |
+| Requested PostgreSQL migration/outcome/census/unit/atomicity paths, serial with the mandated DB prefix | **PASS — 44 passed, 208 assertions** |
+| PHPStan on touched PHP | **PASS — 0 errors** |
+| Pint `--test` on touched PHP | **PASS** |
+| Feature manifest checker | **PASS — 1,480 Feature classes / 74 groups**; dirty-branch ceiling/groups `1221 / Import 33 / Uom 9 / Migrations 11`; required dev union `1224 / 33 / 9 / 11` |
+| `.github/workflows/ci.yml` parse + anchored filter | **PASS** — YAML parseable; eight Import classes plus `UnitCatalogQueryTest` are present |
+| Deptrac direct | Existing baseline only: **183 violations / 0 errors**; exact 36->37 edge identified above |
+| `cd apps/web && pnpm vitest run src/features/import` | **PASS — 12 files, 67 tests** |
+| `cd apps/web && pnpm typecheck` | **PASS** |
+| ESLint on touched web files | **PASS — 0 errors, 20 warnings** |
+| `node tools/audit-tanstack-keys.mjs` (web tool path) | **PASS** |
+| `CACHE_STORE=array php artisan typescript:transform` | **PASS — 544 types; no further diff** |
+| `git diff --check` | **PASS** |
+
+Do not rebase, stage, or merge until G4-R2-01 is fixed and its large multi-company PostgreSQL regression is green. Then rerun the unit migration/backfill path plus the scoped static/manifest checks; the already-green full matrix need not be broadened into a full suite.
+
+### Attempt-2 continuation (authoritative correction)
+
+The `## Gate r2 (Codex)` section above was already present when this resume reached the register, so it is continued here rather than duplicated. The r1 disposition table remains unchanged: G4-R1-01 through G4-R1-23 are **CLOSED** (with G4-R1-22/23 retained). The statement that only one new blocker remained is superseded by the additional resolver finding below.
+
+| ID | severity | file:line | finding | required change |
+|---|---|---|---|---|
+| **G4-R2-02** | **BLOCKER** | `apps/api/app/Modules/Product/Application/Services/ProductResolver.php:56-62,93-103,120-125`; `apps/api/app/Modules/Product/Application/Services/ProductService.php:386-397,429-455`; callers `apps/api/app/Modules/Import/Services/DuplicateCensusService.php:170-184,209-219` | The batched resolver used by the preview census does not preserve the single-row resolver's deleted-holder refusal. For a supplied SKU, `resolveMany()` returns the first `withTrashed()` row as `existing_sku` even when it is deleted; for the name-only arm it filters deleted rows and returns `new`, including when the deleted row holds the SKU derived from that name. The authoritative execute path uses `resolve()` and refuses both cases. Consequently preview can invite `skip` for a deleted SKU holder (or report a name-only row as new), then execution fails it before applying the selected policy. No census test covers either deleted-holder arm (`DuplicateCensusTest.php:46-195`); the existing refusal pin exercises only the single resolver (`ProductIdentityResolutionTest.php:76-93`). | Make `resolveMany()` and `resolve()` return the same per-input identity/refusal semantics without restoring N+1 queries. Represent a deleted-holder refusal per row through a Shared DTO/coded result so one bad row does not abort the whole chunk. Add census and execute-policy pins for a deleted supplied-SKU holder and a deleted name-derived-SKU holder. |
+
+Additional attempt-2 command evidence (source remained read-only):
+
+| command / leg | result |
+|---|---|
+| Requested SQLite paths rerun as one scoped aggregation | **PASS — 140 passed, 4 skipped, 945 assertions** |
+| `ImportPreviewTest` separately | **PASS — 7 passed, 63 assertions**; combined observed rerun total **147 passed, 4 skipped, 1,008 assertions** |
+| Requested PostgreSQL classes, serial by path; every PHP invocation prefixed `DB_DATABASE=autoerp_test_g5 DB_CENTRAL_DATABASE=autoerp_test_g5` | **PASS — 44 passed, 208 assertions** |
+| PHPStan level 8 on 82 touched PHP files / Pint `--test` on the same set | **PASS — 0 errors** / **PASS** |
+| Feature manifest checker / CI YAML+anchored-filter check | **PASS — 1,480 classes / 74 groups** / **PASS**; required post-rebase union remains **1224 / Import 33 / Uom 9 / Migrations 11** |
+| Deptrac ratchet | **183 violations / 0 errors**; `SharedContracts -> ModuleDomain 36 -> 37` is the base `TaxDefaultResolverInterface.php:24` method reusing the already-existing `Company` edge at `:15`, not a G-4 edge |
+| Import Vitest / typecheck / touched ESLint / TanStack key audit | **67 passed** / **PASS** / **0 errors, 20 warnings** / **PASS** |
+| `CACHE_STORE=array php artisan typescript:transform` | **PASS — 544 types**; SHA-256 unchanged (`bf1e441e6bf1b795c955e2014511a311cef6111fbc250303f41d3bb0f7624d14`) |
+| `git diff --check` | **PASS** |
+
+### Corrected final verdict: FAIL
+
+Do not rebase, stage, or merge. G4-R2-01 can silently omit unit-backfill rows after the first page, and G4-R2-02 makes preview duplicate/refusal semantics disagree with authoritative execution. After both are fixed, run their new PostgreSQL regressions plus the scoped migration/census/resolver/static/manifest checks; do not broaden to a full suite.
