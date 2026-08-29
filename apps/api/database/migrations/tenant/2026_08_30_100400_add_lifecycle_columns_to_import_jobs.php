@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Shared\Database\MigrationOutput;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -64,8 +64,8 @@ return new class extends Migration
 
     public function down(): void
     {
-        Log::warning('imports.lifecycle_columns.rollback_skipped', [
+        MigrationOutput::info('imports.lifecycle_columns.rollback_skipped '.json_encode([
             'reason' => 'Forward-only migration: ownership clocks and terminal aggregates must not be erased.',
-        ]);
+        ], JSON_THROW_ON_ERROR));
     }
 };

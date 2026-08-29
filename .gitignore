@@ -75,3 +75,6 @@ apps/api/storage/tenant*/
 /anchor
 apps/api/phpunit-pgsql-triage.xml
 docs/superpowers/audits/*/screens/
+
+# per-session PG test DB names accidentally materialised as SQLite files when DB_DATABASE is overridden on a sqlite run
+apps/api/autoerp_test_*

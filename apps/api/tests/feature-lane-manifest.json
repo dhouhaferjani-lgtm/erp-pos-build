@@ -6,7 +6,7 @@
     "deferred": "CAN run, but no lane runs it yet. Requires `reason`. Counted loudly on every CI run. After O-29 exactly one group is left here — `(root files)`, which no whole-directory selector can address."
   },
   "debt_ceiling": 1,
-  "gated_ceiling": 1220,
+  "gated_ceiling": 1221,
   "lanes": {
     "security-regression": {
       "job": "security-regression",
@@ -751,8 +751,8 @@
     },
     "Console": {
       "lane": "feature-lane-data-console/Console",
-      "classes": 15,
-      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
+      "classes": 16,
+      "note": "DELIBERATE RAISE 15 -> 16 (2026-08-30, lane G-6a feat/g6a-import-claim-reaper, gate r3 SG-6-FU): ImportSchedulerRegistrationTest pins the two import maintenance sweeps to their exact cron expressions (`imports:reap-stuck` at `*/5 * * * *`, `imports:purge-expired` at `0 0 * * *`), so a silent edit to routes/console.php cannot leave abandoned imports stuck in `importing` or source files retained past the 90-day window with no failing test. It reads the in-memory Schedule and touches no database, so it needs no PostgreSQL leg and is deliberately NOT added to the backend-test-pgsql --filter allowlist. === prior note === Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Contact": {
       "lane": "feature-lane-documents/Contact",

@@ -106,7 +106,9 @@ final class PurgeExpiredImportArtifactsTest extends TestCase
             ])
             ->assertAccepted();
 
-        $job = ImportJob::query()->findOrFail($response->json('data.id'));
+        $jobId = $response->json('data.id');
+        self::assertIsString($jobId);
+        $job = ImportJob::query()->whereKey($jobId)->firstOrFail();
         $queued = null;
         Queue::assertPushed(
             ProcessProductImageImport::class,
