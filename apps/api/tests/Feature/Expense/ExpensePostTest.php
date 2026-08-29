@@ -70,7 +70,7 @@ final class ExpensePostTest extends TestCase
         $response->assertOk();
 
         // Balance decremented: 500.000 - 150.000 = 350.000
-        $this->assertSame('350.000', $repo->fresh()->balance);
+        $this->assertSame('350.000', $repo->refresh()->balance);
 
         // GL journal entry created for the expense
         $this->assertDatabaseHas('journal_entries', [
@@ -115,7 +115,7 @@ final class ExpensePostTest extends TestCase
             ->postJson("/api/v1/expenses/{$expense->id}/post")
             ->assertOk();
 
-        $this->assertSame('350.000', $repo->fresh()->balance);
+        $this->assertSame('350.000', $repo->refresh()->balance);
 
         // Second post must return 422
         $this->actingAs($user, 'sanctum')
@@ -123,7 +123,7 @@ final class ExpensePostTest extends TestCase
             ->assertStatus(422);
 
         // Balance MUST NOT have been decremented again
-        $this->assertSame('350.000', $repo->fresh()->balance);
+        $this->assertSame('350.000', $repo->refresh()->balance);
     }
 
     /**
@@ -177,20 +177,16 @@ final class ExpensePostTest extends TestCase
     }
 
     /**
-     * Q-11 (Treasury sub-report): `generateExpenseNumber` deduped within
-     * `company_id`, but the only unique index on the column is
-     * `documents_tenant_id_type_document_number_unique` on
-     * `(tenant_id, type, document_number)`. In a tenant with two companies the
-     * second company's first expense post generated `EXP-YYYY-000001`, which the
-     * first company already held — an unconditional unique violation that rolls
-     * back the whole post transaction (GL entry, VAT detail, WAC capitalisation).
+     * Expense numbers are independent company legal sequences. A sibling
+     * company's first post starts at 000001, then that company advances to
+     * 000002 without interleaving the first company's sequence.
      */
-    public function test_expense_numbers_do_not_collide_across_two_companies_in_the_same_tenant(): void
+    public function test_expense_numbers_restart_for_a_sibling_company_and_remain_sequential_per_company(): void
     {
         [$user, $companyA] = $this->makeUserWithPermissions(['expenses.post', 'expenses.view']);
         $companyB = $this->makeSiblingCompany($user, 'Second Company');
 
-        // Company A already holds this tenant's EXP-<year>-000001.
+        // Company A already holds its EXP-<year>-000001.
         $numberA = sprintf('EXP-%s-%06d', date('Y'), 1);
         $this->makeExpense($companyA, $user, [
             'status' => DocumentStatus::Posted,
@@ -199,25 +195,23 @@ final class ExpensePostTest extends TestCase
             'currency' => 'TND',
         ]);
 
-        // Company B posts ITS first expense. A company-scoped max+1 mints
-        // EXP-<year>-000001 again and violates
-        // documents_tenant_id_type_document_number_unique.
-        $numberB = $this->postExpenseForCompany($user, $companyB, '140.000');
+        $firstNumberB = $this->postExpenseForCompany($user, $companyB, '140.000');
+        $secondNumberB = $this->postExpenseForCompany($user, $companyB, '160.000');
 
-        $this->assertNotSame(
+        $this->assertSame(
             $numberA,
-            $numberB,
-            'Expense numbers must be unique tenant-wide — the unique index is (tenant_id, type, document_number).'
+            $firstNumberB,
+            'Each company must start its own expense sequence at 000001.'
         );
-        $this->assertSame(sprintf('EXP-%s-%06d', date('Y'), 2), $numberB);
+        $this->assertSame(sprintf('EXP-%s-%06d', date('Y'), 2), $secondNumberB);
     }
 
     /**
      * Q-11: the max+1 read must be serialised by a transaction-scoped advisory
      * lock (the shape `InstrumentRemittance::allocateNumber()` already uses), keyed
-     * on the SAME scope the scan uses — the tenant.
+     * on the SAME scope the scan uses — the company.
      */
-    public function test_expense_number_allocation_takes_the_tenant_advisory_lock(): void
+    public function test_expense_number_allocation_takes_the_company_advisory_lock(): void
     {
         if (DB::connection()->getDriverName() !== 'pgsql') {
             self::markTestSkipped('pg_advisory_xact_lock is observable on PostgreSQL only.');
@@ -233,13 +227,13 @@ final class ExpensePostTest extends TestCase
         $locks = array_values(array_filter(
             $log,
             static fn (array $entry): bool => str_contains((string) $entry['query'], 'pg_advisory_xact_lock(hashtextextended')
-                && in_array("expense_number:{$user->tenant_id}", array_map(strval(...), $entry['bindings']), true)
+                && in_array("expense_number:{$company->id}", array_map(strval(...), $entry['bindings']), true)
         ));
 
         $this->assertNotSame(
             [],
             $locks,
-            'Expected a pg_advisory_xact_lock keyed expense_number:{tenantId} during expense-number allocation.'
+            'Expected a pg_advisory_xact_lock keyed expense_number:{companyId} during expense-number allocation.'
         );
     }
 

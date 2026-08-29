@@ -3,10 +3,10 @@
 declare(strict_types=1);
 
 use App\Modules\Document\Domain\DocumentIndexNames;
+use App\Shared\Database\MigrationOutput;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -226,13 +226,11 @@ return new class extends Migration
 
     private function emitInfo(string $message): void
     {
-        echo $message.PHP_EOL;
-        Log::info($message);
+        MigrationOutput::info($message);
     }
 
     private function emitError(string $message): void
     {
-        echo $message.PHP_EOL;
-        Log::error($message);
+        MigrationOutput::error($message);
     }
 };

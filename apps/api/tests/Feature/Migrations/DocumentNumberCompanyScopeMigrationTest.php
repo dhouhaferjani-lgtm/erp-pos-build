@@ -14,6 +14,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 use Tests\TestCase;
@@ -127,7 +128,12 @@ final class DocumentNumberCompanyScopeMigrationTest extends TestCase
         $this->migration->up();
 
         try {
-            $this->createInvoice($tenant, $companyA, $partnerA, 'INV-2026-0001');
+            DB::transaction(fn (): Document => $this->createInvoice(
+                $tenant,
+                $companyA,
+                $partnerA,
+                'INV-2026-0001',
+            ));
             $this->fail('The company-scoped unique must reject a duplicate number in one company.');
         } catch (QueryException) {
             $this->addToAssertionCount(1);

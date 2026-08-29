@@ -12,6 +12,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentAdditionalCost;
+use App\Modules\Document\Domain\DocumentIndexNames;
 use App\Modules\Document\Domain\Enums\AdditionalCostType;
 use App\Modules\Document\Domain\Enums\CostApplicationPath;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -406,7 +407,7 @@ final class ExpenseService
             // N-6 fix round r1 / fiscal gate F-6 — single write path; the
             // number lands in the same statement as the status.
             $this->documentStatus->transition($expense, DocumentStatus::Posted, [
-                'document_number' => $this->generateExpenseNumber($expense->tenant_id),
+                'document_number' => $this->generateExpenseNumber($expense->tenant_id, $expense->company_id),
             ]);
 
             $metadata = $expense->expenseMetadata;
@@ -935,7 +936,7 @@ final class ExpenseService
                 'partner_id' => $expense->partner_id,
                 'type' => DocumentType::Expense,
                 'status' => DocumentStatus::Posted,
-                'document_number' => $this->generateExpenseNumber($expense->tenant_id),
+                'document_number' => $this->generateExpenseNumber($expense->tenant_id, $expense->company_id),
                 'document_date' => now()->toDateString(),
                 'currency' => $expense->currency,
                 'total' => $expense->total,
@@ -1091,41 +1092,26 @@ final class ExpenseService
     }
 
     /**
-     * Generate expense document number.
+     * Allocate the next expense number for one company.
      *
-     * Q-11 (Treasury state-machine sweep, 2026-08-23) fixes two defects here:
-     *
-     * 1. SCOPE. The scan is TENANT-scoped, not company-scoped, because the only
-     *    unique index on the column is
-     *    `documents_tenant_id_type_document_number_unique` on
-     *    `(tenant_id, type, document_number)`. A company-scoped max+1 is NARROWER
-     *    than the constraint it must satisfy: in a tenant with two companies, the
-     *    second company's first expense post generated `EXP-YYYY-000001`, which the
-     *    first company already held — an unconditional unique violation that rolled
-     *    back the entire post transaction (GL entry, VAT detail, WAC capitalisation)
-     *    with no retry loop. Consequence of the widening: sequential numbers now
-     *    interleave across the companies of a tenant (company A gets ...0001 and
-     *    ...0003, company B ...0002). The index is deliberately left untouched.
-     *
-     * 2. RACE. The max+1 read is serialised by a transaction-scoped advisory lock,
-     *    keyed on the same (tenant) scope as the scan — the shape
-     *    `InstrumentRemittance::allocateNumber()` already uses. Both call sites
-     *    (`post()` and `reverse()`) run inside `DB::transaction`, so the lock is held
-     *    until that transaction commits and two concurrent posts cannot read the same
-     *    maximum.
+     * `DocumentIndexNames::COMPANY_TYPE_NUMBER_UNIQUE` permits sibling companies
+     * to own the same number. The max+1 scan and PostgreSQL advisory lock therefore
+     * share company scope: companies do not interleave, while concurrent posts in
+     * one company remain serialised until the surrounding transaction commits.
      */
-    private function generateExpenseNumber(string $tenantId): string
+    private function generateExpenseNumber(string $tenantId, string $companyId): string
     {
         if (DB::connection()->getDriverName() === 'pgsql') {
             DB::statement(
                 'SELECT pg_advisory_xact_lock(hashtextextended(?, 0))',
-                ["expense_number:{$tenantId}"],
+                ["expense_number:{$companyId}"],
             );
         }
 
         $year = date('Y');
         $lastNumber = Document::query()
             ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->where('type', DocumentType::Expense)
             ->where('document_number', 'like', "EXP-{$year}-%")
             ->orderByDesc('document_number')
