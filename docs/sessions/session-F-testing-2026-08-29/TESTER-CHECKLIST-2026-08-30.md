@@ -1,6 +1,6 @@
 # Staging tester checklist — 2026-08-30 (45 min, one tester)
 
-**Staging build: `0cbaa1457` (+ batch 1b if listed below)** on `erp.otospex.dev`. Follow `docs/qa/MANUAL-TESTING-LOOP.md` §2 (fresh tenant, second company + second location first). Report shape: §4 of that doc — one line per step below: **PASS / FAIL + what you saw** (screenshot for any FAIL). Send to the orchestrator (Session J).
+**Staging build: `0e5d28705`** (batch 1b; supersedes 0cbaa1457) on `erp.otospex.dev`. Follow `docs/qa/MANUAL-TESTING-LOOP.md` §2 (fresh tenant, second company + second location first). Report shape: §4 of that doc — one line per step below: **PASS / FAIL + what you saw** (screenshot for any FAIL). Send to the orchestrator (Session J).
 
 Legend: ☐ = tick when done · ⚠ = known, do not report (owner-ruled or owned by a lane).
 
@@ -19,6 +19,8 @@ Use a **fresh tenant** (`/register`). Then:
 6. ☐ Re-import the same file with one row's `location_code` set to a **shelf code** (e.g. `ZF12`) on purpose. Expected: that row appears in the warnings panel as "location unresolved — no stock created"; the others still land in MAIN. ⚠ A *validation-time* refusal of unknown location codes is Session G's — don't report it as missing.
 7. ☐ Products import into company 2 with the **same SKUs** you imported into company 1 earlier. Expected: it **succeeds** (per-company SKU uniqueness, live since 3ac0de893). Tenant `019fc714` (Paradeals / synerivia) is the canonical case if you'd rather use it: import `model produits.xlsx` into **synerivia** — expected 0 duplicate-key failures. (The 3 rows with `quantity = -1` still fail validation — correct.)
 
+7b. ☐ **Per-company numbering** (company 2): confirm/post its first invoice → number is **INV-<year>-0001**, and company 1's invoice sequence is unaffected; same for a quote / order. An expense / income created in company 2 starts at **EXP-/INC-<year>-000001**.
+
 ## B. Units gate (≈5 min)
 
 8. ☐ In the fresh tenant, Settings → Units **before touching anything**: expected 19 units visible (global set). ⚠ Imported products carry `unit` as free text and no `unit_id` — quantity-display oddities on imported products = known, lane R11.
@@ -31,12 +33,12 @@ Staging runs `SYNERIVA_PLATFORM_PUSH_ENABLED=false` (since 1326a96c1). With a lo
 10. ☐ Purchase Hub → open a campaign → place an order. Expected: the UI shows an order **failure** (API returns **HTTP 502** `{ "error": { "code": "ORDER_FAILED" } }`), and **no order appears** in Purchase Hub → Orders afterwards (refresh the list). If you can, capture the network response of `POST /api/v1/purchase-hub/orders`.
 11. ☐ Products → open a product → **Submit for enrichment**. Expected: the action **completes without an error** in the UI, and nothing changes on the platform side (the orchestrator will confirm platform-side; you just confirm no UI error and no enrichment result arriving within the session).
 
-## D. Session G / H lane retests — **APPLY: 12 (G-3b), 15 (G-3c), 16 (H cleanup) — batch 1a `0cbaa1457`. SKIP 13 (G-6a) and 14 (G-4) unless Session J confirms batch 2 landed overnight.**
+## D. Session G / H lane retests — **APPLY: 12 (G-3b), 15 (G-3c), 16 (H cleanup) — batch 1a `0cbaa1457`. 13 (G-6a) PENDING batch 2 overnight — do it only if Session J confirms; 14 (G-4) SKIP.**
 
 12. ☐ **G-3b** ✅ in build (import job pinned to its company + Composite Items entitlement): (a) create a 2nd company → products import into it succeeds end-to-end; (b) start an import in company A, switch company, try to execute → **409 "company mismatch"**; (c) import history lists only the current company's jobs; pre-existing jobs show an **"unattributed"** badge; (d) a company WITHOUT the Composite Items module: composite tile / template / upload → **403**, and wizard status/order never mention composite items.
 13. ☐ **G-6a** ⏸ NOT in build unless confirmed (atomic claim / reaper / purge / cancel): (a) double-click "start import" → second attempt **409 already-started**, exactly one run; (b) DELETE a pending/validated job → gone; DELETE a completed job → **409 "has effects"**; (c) source-file download works on a fresh job; (d) informational, no UI: a job stuck "importing" > 90 min becomes failed **worker_lost**.
 14. ☐ **G-4** ⏸ NOT in build unless confirmed (duplicate preview + resolvers): (a) re-import the same products file → preview shows **"N existing / M new"** once, with override / skip / cancel; **override** updates non-blank cells and NEVER erases a value from a blank cell; **skip** changes nothing; (b) `unit` column: exact code (`pc`, `kg`) resolves; a misspelling → row error listing the accepted codes; blank → `pc` with a warning; (c) two rows with the same name and no SKU/barcode → **one** product; (d) completion counts imported / skipped / failed match the file.
-15. ☐ **G-3c** (IN batch 1): create a 2nd company → Treasury shows a **cash register + safe at MAIN** (payment repositories provisioned) → open a POS shift with cash on it.
+15. ☐ **G-3c** (IN batch 1): create a 2nd company → Treasury shows a **cash register + safe at MAIN** (payment repositories provisioned) → open a POS shift with cash on it. The Treasury list in company B shows **ONLY company B's** cash register + safe (not company A's).
 16. ☐ **H h1-shape-neutral-cleanup** (IN batch 1 — `8d629ac89`): (a) customers / suppliers lists — the Tax ID column shows the VAT number instead of "-"; (b) inline "Add partner" from a quote — VAT + address persist on the created partner; (c) creating a customer from `/sales/customers/new` — Type offers only Customer / Both, and the record no longer vanishes from the list (suppliers likewise); (d) Nature (Particulier / Société) is required on the new-partner form; a legacy company with a VAT shows its B2B block; (e) Otospex: the vehicle-owner picker searches customers only; (f) `/crm/companies` redirects to `/sales/customers`; "Companies" is gone from the sidebar.
 
 ## E. Always-on (from the loop, 10 min)
