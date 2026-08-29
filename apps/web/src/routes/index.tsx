@@ -276,7 +276,6 @@ const SchedulingAppointmentDetailPage = lazy(() => import('../features/schedulin
 const SchedulingCapacityReportPage = lazy(() => import('../features/scheduling/pages/CapacityReportPage').then((m) => ({ default: m.CapacityReportPage })))
 
 // CRM module
-const CrmCompanyListPage = lazy(() => import('../features/crm/pages/CompanyListPage').then((m) => ({ default: m.CompanyListPage })))
 const CrmContactListPage = lazy(() => import('../features/crm/pages/ContactListPage').then((m) => ({ default: m.ContactListPage })))
 const CrmContactFormPage = lazy(() => import('../features/crm/pages/ContactFormPage').then((m) => ({ default: m.ContactFormPage })))
 const CrmContactDetailPage = lazy(() => import('../features/crm/pages/ContactDetailPage').then((m) => ({ default: m.ContactDetailPage })))
@@ -624,7 +623,7 @@ export function AppRoutes() {
           <Route
             path="customers/:id/edit"
             element={
-              <RequirePermission permission="contacts.update">
+              <RequirePermission permission="partners.update">
                 <SuspenseWrapper>
                   <CustomerForm key="customer" partnerType="customer" />
                 </SuspenseWrapper>
@@ -843,7 +842,7 @@ export function AppRoutes() {
           <Route
             path="suppliers"
             element={
-              <RequirePermission moduleKey="purchases">
+              <RequirePermission permission="partners.view">
                 <SuspenseWrapper>
                   <CustomerListPage key="supplier" partnerType="supplier" />
                 </SuspenseWrapper>
@@ -873,7 +872,7 @@ export function AppRoutes() {
           <Route
             path="suppliers/:id/edit"
             element={
-              <RequirePermission permission="contacts.update">
+              <RequirePermission permission="partners.update">
                 <SuspenseWrapper>
                   <CustomerForm key="supplier" partnerType="supplier" />
                 </SuspenseWrapper>
@@ -2782,20 +2781,6 @@ export function AppRoutes() {
         {/* CRM Module */}
         <Route path="crm">
           <Route index element={<Navigate to="/crm/contacts" replace />} />
-          <Route
-            path="companies"
-            element={
-              /* UI-02: `partners` was never a MODULE_PERMISSIONS key, so this
-                 gated on nothing; `partners.view` is the real permission. The
-                 page itself is a pure redirect to /sales/customers — route
-                 dedup is UI-35 (Wave 4), not this task. */
-              <RequirePermission permission="partners.view">
-                <SuspenseWrapper>
-                  <CrmCompanyListPage />
-                </SuspenseWrapper>
-              </RequirePermission>
-            }
-          />
           <Route
             path="contacts"
             element={
