@@ -1,35 +1,20 @@
 /**
  * Fixture factories for Partner Management tests.
  *
- * There are three slightly different `Partner` interface shapes declared
- * across the feature (one per page file): the list page uses balance fields,
- * the detail page uses legacy `address` + `updated_at`, and the form uses
- * the full B2B profile. This module exposes structural types that match the
- * wire payload each page expects, plus factories that produce valid fixture
- * data. Tests mock `api.get` / `apiGet` against these shapes.
+ * Partner API fixtures are generated-type-first: tests may override the fields
+ * relevant to a scenario, while the factory keeps every DTO field present.
  */
 
 import type { OffsetPaginationMeta } from '@/types/pagination'
+import type { PartnerData } from '../types'
 
 /**
- * Row shape returned by `/partners` list endpoint.
- *
- * Mirrors the `Partner` interface declared in `PartnerListPage.tsx`.
+ * Row shape returned by the `/partners` list endpoint — the same generated
+ * DTO the detail endpoint returns, re-exported here so tests can keep a
+ * single fixture import.
  */
-export interface PartnerListRow {
-  id: string
-  name: string
-  type: 'customer' | 'supplier' | 'both'
-  email: string | null
-  phone: string | null
-  tax_id?: string | null
-  is_active?: boolean
-  receivable_balance?: string | null
-  credit_balance?: string | null
-  payable_balance?: string | null
-  net_balance?: string | null
-  created_at: string
-}
+export type { PartnerData }
+export type PartnerListRow = PartnerData
 
 export interface PartnersListAggregates {
   total_partners: number
@@ -51,25 +36,7 @@ export interface PartnersListResponse {
  * Row shape rendered by `PartnerDetailPage`. The detail page fetches via
  * `api.get<{ data: Partner }>(`/partners/${id}`)` and reads `response.data.data`.
  */
-export interface PartnerDetail {
-  id: string
-  name: string
-  type: 'customer' | 'supplier' | 'both'
-  email: string | null
-  phone: string | null
-  street_address?: string | null
-  city?: string | null
-  postal_code?: string | null
-  country?: string | null
-  vat_number?: string | null
-  receivable_balance?: string | null
-  payable_balance?: string | null
-  credit_balance?: string | null
-  notes?: string | null
-  is_active?: boolean
-  created_at: string
-  updated_at?: string
-}
+export type PartnerDetail = PartnerData
 
 export function makePartnerListRow(
   overrides: Partial<PartnerListRow> = {},
@@ -78,15 +45,45 @@ export function makePartnerListRow(
     id: '00000000-0000-4000-8000-000000000001',
     name: 'Acme Corp',
     type: 'customer',
+    customer_category: null,
+    company_legal_name: null,
+    business_registration_number: null,
+    payment_terms: null,
+    payment_terms_days: null,
+    credit_limit: null,
+    discount_percentage: null,
+    invoice_consolidation: false,
+    consolidation_frequency: null,
+    code: null,
     email: 'contact@acme.com',
     phone: '+1234567890',
-    tax_id: null,
+    country_code: null,
+    vat_number: null,
+    tax_status: 'REGISTERED',
+    exemption_reason: null,
+    exemption_valid_until: null,
+    notes: null,
     is_active: true,
     receivable_balance: null,
     credit_balance: null,
     payable_balance: null,
-    net_balance: null,
+    net_balance: '0.000',
+    street_address: null,
+    street_address_2: null,
+    city: null,
+    state: null,
+    postal_code: null,
+    country: null,
+    account_status: 'active',
+    account_status_version: 1,
+    account_status_changed_at: null,
+    account_status_changed_by: null,
+    account_status_reason: null,
+    contacts_count: 0,
+    primary_contact_name: null,
+    bank_accounts: [],
     created_at: '2025-01-01T00:00:00Z',
+    updated_at: null,
     ...overrides,
   }
 }
@@ -117,24 +114,10 @@ export function makePartnersListResponse(
 export function makePartnerDetail(
   overrides: Partial<PartnerDetail> = {},
 ): PartnerDetail {
-  return {
-    id: '00000000-0000-4000-8000-000000000001',
-    name: 'Acme Corp',
-    type: 'customer',
-    email: 'contact@acme.com',
-    phone: '+1234567890',
-    street_address: null,
-    city: null,
-    postal_code: null,
-    country: null,
-    vat_number: null,
-    receivable_balance: null,
-    payable_balance: null,
-    credit_balance: null,
-    notes: null,
-    is_active: true,
-    created_at: '2025-01-01T00:00:00Z',
+  return makePartnerListRow({
     updated_at: '2025-01-02T00:00:00Z',
     ...overrides,
-  }
+  })
 }
+
+export const makePartnerData = makePartnerListRow

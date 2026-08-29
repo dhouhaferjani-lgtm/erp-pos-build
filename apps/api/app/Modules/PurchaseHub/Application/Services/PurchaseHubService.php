@@ -78,6 +78,12 @@ final class PurchaseHubService
      */
     public function placeOrder(array $data): ?array
     {
+        if (config('services.platform.push_enabled', true) === false) {
+            Log::info('platform push disabled (SYNERIVA_PLATFORM_PUSH_ENABLED=false): placeOrder');
+
+            return null;
+        }
+
         try {
             Cache::forget($this->offersCacheKey());
 

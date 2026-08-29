@@ -10,6 +10,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -201,6 +202,122 @@ class CreatePartnerTest extends TestCase
             'name' => 'ACME Corporation',
             'tenant_id' => $this->tenant->id,
         ]);
+    }
+
+    public function test_second_company_can_reuse_partner_code_with_independent_nature_and_list_scope(): void
+    {
+        $companyB = Company::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Second Company',
+        ]);
+        UserCompanyMembership::create([
+            'user_id' => $this->user->id,
+            'company_id' => $companyB->id,
+            'role' => 'admin',
+        ]);
+
+        $companyAResponse = $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/partners', [
+                'name' => 'Company A Shared Code',
+                'code' => 'SHARED-001',
+                'type' => 'customer',
+                'customer_category' => 'individual',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.customer_category', 'individual');
+
+        $companyBResponse = $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $companyB->id)
+            ->postJson('/api/v1/partners', [
+                'name' => 'Company B Shared Code',
+                'code' => 'SHARED-001',
+                'type' => 'customer',
+                'customer_category' => 'business',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.customer_category', 'business');
+
+        $this->assertNotSame($companyAResponse->json('data.id'), $companyBResponse->json('data.id'));
+        $this->assertDatabaseHas('partners', [
+            'company_id' => $this->company->id,
+            'code' => 'SHARED-001',
+            'customer_category' => 'individual',
+        ]);
+        $this->assertDatabaseHas('partners', [
+            'company_id' => $companyB->id,
+            'code' => 'SHARED-001',
+            'customer_category' => 'business',
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/partners?type=customer&search=Shared%20Code')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.name', 'Company A Shared Code');
+    }
+
+    public function test_rejects_a_duplicate_code_in_the_same_company(): void
+    {
+        $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/partners', [
+                'name' => 'First Holder Of The Code',
+                'code' => 'SAME-CO-001',
+                'type' => 'customer',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.code', 'SAME-CO-001');
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/partners', [
+                'name' => 'Second Holder Of The Code',
+                'code' => 'SAME-CO-001',
+                'type' => 'customer',
+            ]);
+
+        $this->assertApiValidationErrors($response, ['code']);
+
+        $this->assertDatabaseCount('partners', 1);
+        $this->assertSame(1, Partner::query()
+            ->where('company_id', $this->company->id)
+            ->where('code', 'SAME-CO-001')
+            ->count());
+    }
+
+    public function test_rejects_a_code_held_by_a_soft_deleted_partner(): void
+    {
+        $created = $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/partners', [
+                'name' => 'Trashed Code Holder',
+                'code' => 'TRASHED-001',
+                'type' => 'customer',
+            ])
+            ->assertCreated();
+
+        $holder = Partner::query()
+            ->where('id', $created->json('data.id'))
+            ->firstOrFail();
+        $holder->delete();
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/partners', [
+                'name' => 'Would Collide With Trashed',
+                'code' => 'TRASHED-001',
+                'type' => 'customer',
+            ]);
+
+        $this->assertApiValidationErrors($response, ['code']);
+        $this->assertStringContainsString(
+            'code_held_by_deleted_partner',
+            (string) $response->json('error.errors.code.0')
+        );
+
+        $this->assertDatabaseCount('partners', 1);
     }
 
     public function test_can_create_customer_type(): void

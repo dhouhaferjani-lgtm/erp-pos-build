@@ -98,13 +98,13 @@ describe('route module guards', () => {
     expect(posHubSource).toContain("href: '/pos/shift-history'")
   })
 
-  it('removes the duplicate marketing hub while retaining its six sidebar destinations', () => {
+  it('removes the duplicate marketing hub and retired Companies entry while retaining live destinations', () => {
     const retiredMarketingPath = ['mark', 'eting'].join('')
     const retiredMarketingPage = ['Marketing', 'HubPage'].join('')
     expect(routesSource).not.toContain(`path="${retiredMarketingPath}"`)
     expect(routesSource).not.toContain(retiredMarketingPage)
+    expect(sidebarSource).not.toContain("href: '/crm/companies'")
     for (const destination of [
-      '/crm/companies',
       '/crm/contacts',
       '/pos/loyalty/programs',
       '/pos/loyalty/members',

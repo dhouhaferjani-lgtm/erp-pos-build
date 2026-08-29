@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Catalog\Domain\VariantIndexNames;
+use App\Shared\Database\MigrationOutput;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -132,7 +133,6 @@ return new class extends Migration
 
     private function emit(string $message): void
     {
-        echo $message.PHP_EOL;
-        Log::info($message);
+        MigrationOutput::info($message);
     }
 };

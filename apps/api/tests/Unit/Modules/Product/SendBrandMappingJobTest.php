@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Tests\Unit\Modules\Product;
 
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\PlatformIntegration\Application\Services\ProductSubmissionService;
 use App\Modules\Product\Application\Jobs\SendBrandMappingJob;
 use App\Shared\Contracts\PlatformSubmissionInterface;
 use App\Shared\Enums\BrandMappingPushResult;
+use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -61,6 +63,20 @@ final class SendBrandMappingJobTest extends TestCase
 
         $this->expectException(RuntimeException::class);
         $job->handle(app(CompanyContext::class), $service);
+    }
+
+    public function test_handle_completes_without_retry_when_platform_push_is_disabled(): void
+    {
+        config(['services.platform.push_enabled' => false]);
+        Http::fake();
+
+        $companyContext = app(CompanyContext::class);
+        $job = new SendBrandMappingJob('canonical-1', 'brand-1', 'company-1');
+
+        $job->handle($companyContext, app(ProductSubmissionService::class));
+
+        Http::assertNothingSent();
+        $this->assertFalse($companyContext->hasCompany());
     }
 
     public function test_handle_clears_context_when_service_throws(): void

@@ -91,17 +91,17 @@ class BackfillDefaultLocationCodeF1MigrationTest extends TestCase
         ]);
         $expectedLine = "default-location-code-collision company_id={$company->id} location_id={$defaultLocation->id}";
 
-        $warningMessages = [];
-        Log::listen(static function (MessageLogged $message) use (&$warningMessages): void {
-            if ($message->level === 'warning') {
-                $warningMessages[] = $message->message;
+        $infoMessages = [];
+        Log::listen(static function (MessageLogged $message) use (&$infoMessages): void {
+            if ($message->level === 'info') {
+                $infoMessages[] = $message->message;
             }
         });
         $output = $this->runMigration();
 
         self::assertNull($defaultLocation->refresh()->code);
-        self::assertStringContainsString($expectedLine, $output);
-        self::assertSame([$expectedLine], $warningMessages);
+        self::assertSame('', $output);
+        self::assertSame([$expectedLine], $infoMessages);
     }
 
     private function locationWithCode(?string $code, bool $isDefault): Location

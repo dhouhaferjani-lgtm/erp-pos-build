@@ -14,7 +14,9 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
 /**
@@ -181,9 +183,7 @@ final class NullInventedDefaultLotExpiryMigrationTest extends TestCase
         $product = $this->product(shelfLifeDays: 180);
         $drifted = $this->lot($product, 'DEFAULT', '2026-08-25', '2027-08-25');
 
-        ob_start();
-        $this->runMigration();
-        $output = (string) ob_get_clean();
+        $output = $this->runMigrationAndCollectLog();
 
         $this->assertSame(
             '2027-08-25',
@@ -206,9 +206,7 @@ final class NullInventedDefaultLotExpiryMigrationTest extends TestCase
      */
     public function test_a_zero_census_still_prints_so_silence_is_unambiguous(): void
     {
-        ob_start();
-        $this->runMigration();
-        $output = (string) ob_get_clean();
+        $output = $this->runMigrationAndCollectLog();
 
         $this->assertStringContainsString('[W4-1] invented DEFAULT-lot expiries found: 0', $output);
     }
@@ -235,9 +233,7 @@ final class NullInventedDefaultLotExpiryMigrationTest extends TestCase
         DB::statement('ALTER TABLE product_batches ALTER COLUMN expiry_date SET NOT NULL');
 
         try {
-            ob_start();
-            $this->runMigration();
-            $output = (string) ob_get_clean();
+            $output = $this->runMigrationAndCollectLog();
         } finally {
             DB::statement('ALTER TABLE product_batches ALTER COLUMN expiry_date DROP NOT NULL');
         }
@@ -263,9 +259,7 @@ final class NullInventedDefaultLotExpiryMigrationTest extends TestCase
         $invented = $this->lot($this->product(shelfLifeDays: null), 'DEFAULT', '2026-08-25', '2027-08-25');
         $invented->forceFill(['is_expired' => true])->save();
 
-        ob_start();
-        $this->runMigration();
-        $output = (string) ob_get_clean();
+        $output = $this->runMigrationAndCollectLog();
 
         $this->assertStringContainsString('previously flagged expired', $output);
         $this->assertStringContainsString('VERIFY THE PHYSICAL STOCK', $output);
@@ -280,6 +274,18 @@ final class NullInventedDefaultLotExpiryMigrationTest extends TestCase
     {
         $migration = require base_path(self::MIGRATION);
         $migration->up();
+    }
+
+    private function runMigrationAndCollectLog(): string
+    {
+        $messages = [];
+        Log::listen(static function (MessageLogged $event) use (&$messages): void {
+            $messages[] = $event->message;
+        });
+
+        $this->runMigration();
+
+        return implode("\n", $messages);
     }
 
     private function product(?int $shelfLifeDays): Product

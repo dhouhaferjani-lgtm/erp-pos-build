@@ -64,6 +64,7 @@ final class ImportJobCompanyBackfillMigrationTest extends TestCase
         $jobId = $this->insertJob((string) $tenant->id, 'products');
         $this->insertRow($jobId, 1, (string) $productA->id);
         $this->insertRow($jobId, 2, (string) $productB->id);
+        $logSpy = Log::spy();
 
         ob_start();
         $this->runMigration();
@@ -71,11 +72,11 @@ final class ImportJobCompanyBackfillMigrationTest extends TestCase
         $output = (string) ob_get_clean();
 
         $this->assertSame((string) $company->id, DB::table('import_jobs')->where('id', $jobId)->value('company_id'));
-        $this->assertSame(2, substr_count($output, 'import-job-company-attributed'));
-        $this->assertSame(2, substr_count($output, 'import-job-company-ambiguous'));
-        $this->assertSame(2, substr_count($output, 'import-job-company-none'));
-        $this->assertStringContainsString('import-job-company-attributed {"jobs":0}', $output);
-        $this->assertStringContainsString('import-job-company-ambiguous {"jobs":0,"per_job":{}}', $output);
+        $this->assertSame('', $output);
+        $logSpy->shouldHaveReceived('info', ['import-job-company-attributed {"jobs":1}'])->once();
+        $logSpy->shouldHaveReceived('info', ['import-job-company-attributed {"jobs":0}'])->once();
+        $logSpy->shouldHaveReceived('info', ['import-job-company-ambiguous {"jobs":0,"per_job":{}}'])->twice();
+        $logSpy->shouldHaveReceived('info', ['import-job-company-none {"jobs":0}'])->twice();
         $this->assertTrue(Schema::hasIndex('import_jobs', 'import_jobs_company_id_index'));
         $this->assertTrue(Schema::hasIndex('import_jobs', 'import_jobs_company_id_created_at_index'));
         $this->assertTrue(Schema::hasIndex('import_jobs', 'import_jobs_source_hash_index'));

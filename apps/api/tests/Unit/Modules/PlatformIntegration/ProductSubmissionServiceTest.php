@@ -74,6 +74,33 @@ class ProductSubmissionServiceTest extends TestCase
         });
     }
 
+    public function test_submit_returns_null_without_http_when_platform_push_is_disabled(): void
+    {
+        config(['services.platform.push_enabled' => false]);
+        $logger = new CapturingProductSubmissionLog;
+        Log::swap($logger);
+        Http::fake();
+
+        $result = $this->service->submit(new ProductSubmissionData(
+            barcode: '3017620422003',
+            vertical: 'automotive',
+            name: 'Brake Pad Set',
+            brand: 'Brembo',
+            category: 'brake-pads',
+            description: null,
+            attributes: [],
+            photoIds: [],
+            autoEnrich: true,
+        ));
+
+        $this->assertNull($result);
+        Http::assertNothingSent();
+        $this->assertSame(
+            ['platform push disabled (SYNERIVA_PLATFORM_PUSH_ENABLED=false): submit'],
+            array_column($logger->infos, 'message'),
+        );
+    }
+
     public function test_check_status_returns_submission_status_dto(): void
     {
         Http::fake([
@@ -145,6 +172,28 @@ class ProductSubmissionServiceTest extends TestCase
                     'notes' => 'Different package',
                 ];
         });
+    }
+
+    public function test_send_feedback_returns_false_without_http_when_platform_push_is_disabled(): void
+    {
+        config(['services.platform.push_enabled' => false]);
+        $logger = new CapturingProductSubmissionLog;
+        Log::swap($logger);
+        Http::fake();
+
+        $result = $this->service->sendFeedback(
+            '00000000-0000-0000-0000-000000000123',
+            EnrichmentFeedbackAction::Confirmed,
+            null,
+            null,
+        );
+
+        $this->assertFalse($result);
+        Http::assertNothingSent();
+        $this->assertSame(
+            ['platform push disabled (SYNERIVA_PLATFORM_PUSH_ENABLED=false): sendFeedback'],
+            array_column($logger->infos, 'message'),
+        );
     }
 
     public function test_send_feedback_returns_false_on_non_success_response(): void
@@ -239,6 +288,23 @@ class ProductSubmissionServiceTest extends TestCase
             && $request['external_brand_id'] === 'b1');
     }
 
+    public function test_push_brand_mapping_returns_failed_without_http_when_platform_push_is_disabled(): void
+    {
+        config(['services.platform.push_enabled' => false]);
+        $logger = new CapturingProductSubmissionLog;
+        Log::swap($logger);
+        Http::fake();
+
+        $result = $this->service->pushBrandMapping('c1', 'b1');
+
+        $this->assertSame(BrandMappingPushResult::Failed, $result);
+        Http::assertNothingSent();
+        $this->assertSame(
+            ['platform push disabled (SYNERIVA_PLATFORM_PUSH_ENABLED=false): pushBrandMapping'],
+            array_column($logger->infos, 'message'),
+        );
+    }
+
     public function test_push_brand_mapping_returns_conflict_on_422(): void
     {
         Http::fake([
@@ -297,6 +363,23 @@ class ProductSubmissionServiceTest extends TestCase
         });
     }
 
+    public function test_request_upload_url_returns_null_without_http_when_platform_push_is_disabled(): void
+    {
+        config(['services.platform.push_enabled' => false]);
+        $logger = new CapturingProductSubmissionLog;
+        Log::swap($logger);
+        Http::fake();
+
+        $result = $this->service->requestUploadUrl('product.jpg', 'image/jpeg', 524288);
+
+        $this->assertNull($result);
+        Http::assertNothingSent();
+        $this->assertSame(
+            ['platform push disabled (SYNERIVA_PLATFORM_PUSH_ENABLED=false): requestUploadUrl'],
+            array_column($logger->infos, 'message'),
+        );
+    }
+
     public function test_upload_photo_puts_file_contents_to_url(): void
     {
         Http::fake([
@@ -316,6 +399,84 @@ class ProductSubmissionServiceTest extends TestCase
                 && str_contains($request->url(), 'storage.example.com/upload/presigned')
                 && $request->body() === $fileContents;
         });
+    }
+
+    public function test_upload_photo_makes_no_http_request_when_platform_push_is_disabled(): void
+    {
+        config(['services.platform.push_enabled' => false]);
+        $logger = new CapturingProductSubmissionLog;
+        Log::swap($logger);
+        Http::fake();
+
+        $this->service->uploadPhoto(
+            'https://storage.example.com/upload/presigned',
+            'fake-image-binary-data',
+            'image/jpeg',
+        );
+
+        Http::assertNothingSent();
+        $this->assertSame(
+            ['platform push disabled (SYNERIVA_PLATFORM_PUSH_ENABLED=false): uploadPhoto'],
+            array_column($logger->infos, 'message'),
+        );
+    }
+
+    public function test_bulk_submit_returns_null_without_http_when_platform_push_is_disabled(): void
+    {
+        config(['services.platform.push_enabled' => false]);
+        $logger = new CapturingProductSubmissionLog;
+        Log::swap($logger);
+        Http::fake();
+
+        $result = $this->service->bulkSubmit('automotive', [new ProductSubmissionData(
+            barcode: '3017620422003',
+            vertical: 'automotive',
+            name: 'Brake Pad Set',
+            brand: 'Brembo',
+            category: 'brake-pads',
+            description: null,
+            attributes: [],
+            photoIds: [],
+            autoEnrich: true,
+        )], true);
+
+        $this->assertNull($result);
+        Http::assertNothingSent();
+        $this->assertSame(
+            ['platform push disabled (SYNERIVA_PLATFORM_PUSH_ENABLED=false): bulkSubmit'],
+            array_column($logger->infos, 'message'),
+        );
+    }
+
+    public function test_trigger_enrichment_returns_null_without_http_when_platform_push_is_disabled(): void
+    {
+        config(['services.platform.push_enabled' => false]);
+        $logger = new CapturingProductSubmissionLog;
+        Log::swap($logger);
+        Http::fake();
+
+        $result = $this->service->triggerEnrichment('trk-sub-001');
+
+        $this->assertNull($result);
+        Http::assertNothingSent();
+        $this->assertSame(
+            ['platform push disabled (SYNERIVA_PLATFORM_PUSH_ENABLED=false): triggerEnrichment'],
+            array_column($logger->infos, 'message'),
+        );
+    }
+
+    public function test_bulk_lookup_still_calls_platform_when_platform_push_is_disabled(): void
+    {
+        config(['services.platform.push_enabled' => false]);
+        Http::fake([
+            'platform.test/*' => Http::response(['results' => []]),
+        ]);
+
+        $result = $this->service->bulkLookup(['3017620422003'], 'automotive');
+
+        $this->assertSame(['results' => []], $result);
+        Http::assertSent(fn (Request $request): bool => $request->method() === 'POST'
+            && str_contains($request->url(), '/api/v1/products/bulk-lookup'));
     }
 
     public function test_get_category_attributes_returns_attribute_list(): void
@@ -363,7 +524,23 @@ final class CapturingProductSubmissionLog
     /**
      * @var list<array{message: string, context: array<string, mixed>}>
      */
+    public array $infos = [];
+
+    /**
+     * @var list<array{message: string, context: array<string, mixed>}>
+     */
     public array $warnings = [];
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    public function info(string $message, array $context = []): void
+    {
+        $this->infos[] = [
+            'message' => $message,
+            'context' => $context,
+        ];
+    }
 
     /**
      * @param  array<string, mixed>  $context

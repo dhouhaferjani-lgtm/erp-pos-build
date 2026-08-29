@@ -182,7 +182,7 @@ enum ImportType: string
             self::Parties => [
                 'name' => ['required', 'string', 'max:255'],
                 'type' => ['required', 'in:customer,supplier,both'],
-                'code' => ['nullable', 'string', 'max:100'],
+                'code' => ['nullable', 'string', 'max:50'],
                 'email' => ['nullable', 'email', 'max:255'],
                 'phone' => ['nullable', 'string', 'max:50'],
                 'tax_id' => ['nullable', 'string', 'max:50'],

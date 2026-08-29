@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Shared\Database\MigrationOutput;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -174,14 +175,13 @@ return new class extends Migration
     /** @param array<string, int|string> $context */
     private function info(string $message, array $context): void
     {
-        echo $message.' '.json_encode($context, JSON_THROW_ON_ERROR).PHP_EOL;
-        Log::info($message, $context);
+        MigrationOutput::info($message.' '.json_encode($context, JSON_THROW_ON_ERROR));
     }
 
     /** @param array{jobs: int, per_job: object} $context */
     private function warning(string $message, array $context): void
     {
-        echo $message.' '.json_encode($context, JSON_THROW_ON_ERROR).PHP_EOL;
+        MigrationOutput::info($message.' '.json_encode($context, JSON_THROW_ON_ERROR));
         Log::warning($message, $context);
     }
 };
