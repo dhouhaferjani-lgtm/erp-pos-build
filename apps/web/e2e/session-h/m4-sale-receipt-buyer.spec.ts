@@ -297,6 +297,32 @@ async function projectedPartnerId(
   return row.partner_id ?? '__null__'
 }
 
+async function projectedCustomerSnapshot(
+  request: APIRequestContext,
+  session: Session,
+  partnerId: string,
+): Promise<{ customer_name: string; partner_id: string } | null> {
+  const today = new Date()
+  const yesterday = new Date(today.getTime() - 86_400_000)
+  const params = new URLSearchParams({
+    from: yesterday.toISOString().slice(0, 10),
+    to: today.toISOString().slice(0, 10),
+  })
+  const response = await request.get(`${API_BASE}/pos/analytics/customers?${params}`, {
+    headers: headers(session),
+  })
+  if (!response.ok()) return null
+
+  const body = await responseJson(response) as {
+    data: { top_customers: Array<{ customer_name: string; partner_id: string }> }
+  }
+  const row = body.data.top_customers.find((candidate) => candidate.partner_id === partnerId)
+
+  return row == null
+    ? null
+    : { customer_name: row.customer_name, partner_id: row.partner_id }
+}
+
 test('signed v5 receipts accept null/scoped buyers and quarantine pending IDs', async ({ request }) => {
   test.setTimeout(120_000)
   const session = await login(request)
@@ -309,6 +335,7 @@ test('signed v5 receipts accept null/scoped buyers and quarantine pending IDs', 
   await expectStatus(partnerResponse, 201, 'demo customer create')
   const partnerBody = await responseJson(partnerResponse) as { data: { id: string; name: string } }
   expect(partnerBody.data.name).toBe(partnerName)
+  const sealedBuyerName = `Sealed snapshot for ${partnerName}`
 
   const nullTerminal = await createTerminal(request, session)
   const anonymous = await ingestReceipt(request, session, nullTerminal, null)
@@ -324,7 +351,7 @@ test('signed v5 receipts accept null/scoped buyers and quarantine pending IDs', 
     codice_fiscale: null,
     contact_id: null,
     customer_id: partnerBody.data.id,
-    name: partnerName,
+    name: sealedBuyerName,
     tax_number: null,
   })
   expect(customer).toMatchObject({ stored: true, exceptionClass: null })
@@ -332,6 +359,10 @@ test('signed v5 receipts accept null/scoped buyers and quarantine pending IDs', 
     () => projectedPartnerId(request, session, customerTerminal.id),
     { timeout: 60_000, intervals: [500, 1_000, 2_000] },
   ).toBe(partnerBody.data.id)
+  await expect.poll(
+    () => projectedCustomerSnapshot(request, session, partnerBody.data.id),
+    { timeout: 60_000, intervals: [500, 1_000, 2_000] },
+  ).toEqual({ customer_name: sealedBuyerName, partner_id: partnerBody.data.id })
 
   const pendingTerminal = await createTerminal(request, session)
   const pending = await ingestReceipt(request, session, pendingTerminal, {
