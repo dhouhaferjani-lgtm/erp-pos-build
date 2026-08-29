@@ -1,9 +1,11 @@
 # Codex dispatch — Session H (B-18 party/contact program), **Phase 2: `party_kind`** (2026-08-29) — DRAFT
 
-> **DRAFT — not dispatched.** Revision **r7**, after gates r1 (F-1..F-18), r2 (N-1..N-10), r3 (N-11..N-17),
-> r4 (N-18..N-29), r5 (N-30..N-32) and r6
-> (`docs/superpowers/reviews/2026-08-29-session-h-phase2-brief-gate-r6.md`: two residuals — **N-33** plus the
-> N-22 partial). All dispositions applied and re-verified against code at `a33b01354`. **The r7 re-gate
+> **DRAFT — not dispatched.** Revision **r8**, after gates r1 (F-1..F-18), r2 (N-1..N-10), r3 (N-11..N-17),
+> r4 (N-18..N-29), r5 (N-30..N-32) and r6 (**N-33** + the N-22 residual), plus the **r8 amendment** — not a
+> gate finding: CLAUDE.md gained **rule 22 (Journey Hardening, `e94232e97`)** and round-0 **check 6**
+> (`docs/superpowers/SPEC-GATE-ROUND0-MECHANICAL-PRECHECK.md:97-105`) now FAILS any user-facing brief without
+> an **Industry baseline** table, a **Second-of-everything** line and a **Concepts** line — all three added
+> below, before §0. All dispositions applied and re-verified against code at `a33b01354`. **The r8 re-gate
 > runs against the post-Phase-1-merge `dev` tip; `base_sha` and both migration timestamps are pinned then.**
 > Do not dispatch from a HEAD lacking the Phase-1 merge.
 > **Path warning:** r1 cited module paths that do not exist here (`app/Modules/CRM/…`,
@@ -48,7 +50,10 @@ merge). Phase 1 moves anchors in `PartnerForm.tsx`, `PartnerListPage.tsx`, `AddP
 to `PartnerData` and may widen the DTO/generated type, authors the same `sales:partners.nature.*` blocks
 this phase repoints, and `ImportController.php` has moved since `a33b01354`. M3.2 also depends on
 `B2BFieldsSection`'s internal layout, so **re-verify its split tax/credit anchors after the merge before
-you touch it**. **Re-verify every anchor in this census with `grep -n` — never trust a line number blindly.**
+you touch it**. **Re-verify every anchor in this census with `grep -n` — never trust a line number blindly.
+The drift is already real, not theoretical:** at `a33b01354` the `vat_number` rule in `CreatePartnerRequest.php`
+sits at `:81-85`; on the working tree at r8 it has moved to `:83-87`, two lines, from commits landed the same
+day. Every `:line` in this brief is pinned to `a33b01354` — re-derive them all after the Phase-1 merge.
 
 | Lane | Worktree | Branch | Milestones |
 |---|---|---|---|
@@ -57,6 +62,108 @@ you touch it**. **Re-verify every anchor in this census with `grep -n` — never
 One lane, sequential. Do not create the worktree yourself; the parent creates it dependency-ready
 (vendor copied + `composer dump-autoload`, `.env` copied, `pnpm install --offline`). Do not `git stash`
 (repo-global stash — forbidden in worktree lanes); never combine `--force` with `git push`.
+
+---
+
+## Industry baseline (benchmark-first — convention 10)
+
+> Added at **r8** for CLAUDE.md **rule 22** / round-0 **check 6**
+> (`docs/superpowers/SPEC-GATE-ROUND0-MECHANICAL-PRECHECK.md:97-105`). This brief's deliverable **is** a
+> user-facing flow (party create/edit form, customers & suppliers lists, the Parties importer, the POS
+> customer mirror), so the section is mandatory.
+
+Flow: **party identity — creating and editing a customer/supplier of either nature, and importing them.**
+Reference systems: **Odoo 17 `res.partner`, ERPNext v15 `Customer`/`Supplier`, Dolibarr 19 *tiers*.**
+**Sourcing, stated honestly per row:** rows B1, B2 and B8 are **verified in spec §2** of
+`docs/superpowers/specs/2026-08-23-party-contact-target-model-research.md` (§2.1 Odoo `is_company`/`parent_id`,
+§2.2 ERPNext Dynamic Link, §2.3 Dolibarr *personne physique / morale*, §2.4 Square/Lightspeed flat customer,
+§2.5 Silverston/Fowler Party pattern) — **from documentation**. Rows B3–B7 are **from memory** of those
+products' behaviour and are **not** re-verified against their docs in this lane; the gate is invited to
+challenge any of them, and a challenge that lands changes only the baseline column, never a Decision that is
+already owner-ruled.
+
+| # | Guarantee the baseline gives the user | Odoo | ERPNext | Dolibarr | AutoERP today (path:line) | Gap | Decision |
+|---|---|---|---|---|---|---|---|
+| B1 | A person and a company live in **one** party table, separated by a nature flag, not by two entities | ✅ `is_company` (spec §2.1) | ✅ `customer_type` Individual/Company (spec §2.2) | ✅ *personne physique / morale* (spec §2.3) | no nature column at all; `customer_category` is nullable and optional (`app/Modules/Partner/Domain/Partner.php:102,151`; `database/migrations/tenant/2026_03_09_100001_add_customer_category_to_partners.php:21-30`) | MISSING | **MATCH — M1 `party_kind` + M2 write paths + M3 Nature field** |
+| B2 | Contacts are **people at a company** and are **never billable** — a walk-in individual is a party, not a contact | ✅ child `res.partner` (spec §2.1) | ✅ separate doctype (spec §2.2) | ✅ *contacts* under a tiers (spec §2.3) | already true: billing binds to `partner_id` only (`app/Modules/Document/Presentation/Requests/CreateDocumentRequest.php:66-70`); `contacts` + `party_contacts` exist and no document path reads them | NONE | **ALREADY — do not change it.** OQ2 folds the standalone surface into a tab in **Phase 4**, not here |
+| B3 | A tax id is required on a **company** and only at **invoice** time — never blocking party creation, never demanded of a person | ✅ (from memory) | ✅ (from memory) | ✅ (from memory) | VAT is an unconditional optional field on every party (`app/Modules/Partner/Presentation/Requests/CreatePartnerRequest.php:81-85`; form `apps/web/src/features/partners/PartnerForm.tsx:556-565`); **no issuance-time identity policy exists** | PARTIAL | **DEFER — `DocumentPartyIdentityPolicy` is Phase 3** (spec §8.4, OQ3 hard-block for organization). Phase 2 does the half it owns: OQ7 forbids a tax id on a person (M2.1) |
+| B4 | Person attributes (date of birth, gender, national id, mobile) hang off the **party**, not off a contact | ✅ (from memory) | ✅ (from memory) | ✅ (from memory) | they exist only on `contacts` (`app/Modules/Contact/Domain/Enums/Gender.php:7-12`), which nothing can bill; `partners` has none | MISSING | **MATCH — M1 four nullable columns (OQ1), M3 person panel** |
+| B5 | Credit / account-charge eligibility is an explicit **per-party** flag an operator sets | ✅ (from memory) | ✅ (from memory) | ✅ *encours* per tiers (from memory) | no such column; the POS mirror **derives** it as `is_active && account_status === Active` (`app/Modules/POS/Presentation/Resources/PosCustomerMirrorResource.php:30-32`, emitted `:50`), so **every** active party reads as charge-enabled | WRONG | **MATCH — M1 `credit_account_enabled` + mirror predicate + M3 toggle (N-3)** |
+| B6 | The party carries a **preferred language** used for its documents and messages | ✅ `lang` (from memory) | ✅ (from memory) | ✅ (from memory) | `partners` has no locale column; only the tenant does (`database/migrations/tenant/2025_11_30_214948_add_personal_info_to_tenants_table.php:27`) | MISSING | **MATCH — M1 `preferred_locale`, M2.1 country-seeded BCP-47 list (R-B / N-4)** |
+| B7 | Phone and email are **normalized** so the same person is not created twice | ✅ (from memory) | ✅ (from memory) | ✅ (from memory) | no normalizer outside Loyalty's digit-strip (`app/Modules/Loyalty/Domain/Entities/LoyaltyMember.php:112-118`); the dedup ladder is `code → vat_number → exact case-sensitive name` (`app/Modules/Partner/Application/Services/PartnerService.php:67-69`) | MISSING | **MATCH (storage) — M1 `ContactPointNormalizer` + `phone_normalized`/`email_normalized`, normalized at the write boundary (M2.3/F-7).** **DEFER (matching) — the dedup ladder itself is Phase 4**; do not touch `:67-69` |
+| B8 | **Role** (customer/supplier) and **nature** (person/company) are **orthogonal** axes — a supplier may be a person | ✅ (spec §2.1: rank flags are independent of `is_company`) | ✅ (spec §2.2) | ✅ (spec §2.3) | role exists (`PartnerType` on `partners.type`, `database/migrations/tenant/2025_11_30_052119_create_partners_table.php:20`); nature does not, so the axes cannot be crossed | MISSING | **MATCH — M1 keeps them separate enums; OQ6 keeps the labels distinct ("Type" for role, "Nature" for nature)** |
+
+Owner requirements sit **after** this table and are unchanged: LEDGER D-H0-1 (OQ1–OQ9, acks 1–5), assessment
+§4 R-A..R-D. Where the owner asked for **less** than the baseline it is explicit and ruled: **B3** is
+deliberately split (Phase 2 forbids, Phase 3 blocks at issuance) and **B7** is deliberately split (Phase 2
+stores normalized values, Phase 4 matches on them).
+
+**Second-of-everything (convention 09 / rule 22):** `partners` **is** a catalogue entity — operator-edited and
+code-keyed — so this lane is in scope and adds all three tests. Fold them into **M2** (server) and **M3**
+(browser), and reference them from the M5 accumulated-branch review.
+
+- **(a) Second company — the load-bearing one.** `partners` is already company-scoped on code:
+  `database/migrations/tenant/2025_12_30_195300_fix_multi_company_unique_constraints.php:19-23` drops
+  `unique(['tenant_id','code'])` and adds `unique(['company_id','code'])` (the coordinator's `:22-34` covers the
+  payment-methods/repositories blocks that follow; the `partners` block is `:19-23` — cite the real lines), and
+  G-3a since moved VAT to company scope too
+  (`database/migrations/tenant/2026_08_30_100200_enforce_company_scoped_partner_vat_numbers.php:58`). **Test:**
+  provision a **second company in the same tenant through the real company-creation path**, create a party
+  there with the **same `code`** as one in company A but a **different `party_kind`**; assert both rows persist,
+  each company's list returns only its own (`PartnerController::index` is company-scoped at
+  `app/Modules/Partner/Presentation/Controllers/PartnerController.php:117-119`), the derived
+  `customer_category` differs per row, and the **POS mirror is company-scoped** — company B's sync never
+  returns company A's party (`PosCustomerSyncController.php:59`). Assert on **data meaning**, not status codes.
+- **(b) Second location — not in scope, verified.** `partners` has **no location column**: `grep -n
+  'location_id\|location_code'` over the partners migrations and `app/Modules/Partner/Domain/Partner.php`
+  returns **zero hits**, and nothing this lane adds is location-keyed. State that in the M2 register rather
+  than writing a vacuous test.
+- **(c) Re-run / idempotency — already specified, referenced here so check 6 can see it.** Two runs are
+  covered: **Migration A + Migration B second invocation is a no-op** (M1.2 tests and M2.7 tests, PG, including
+  recovery from each partial state), and **a Parties import re-run carrying the `party_kind` column is
+  idempotent** (M4 — the same file re-imported produces no duplicate partner and the derivation warnings do
+  not multiply). Assert row counts and derived values, not "no exception".
+- **No new tenant-only unique is added — explicitly.** The three indexes M1.2 creates —
+  `(tenant_id, company_id, party_kind)`, `(tenant_id, phone_normalized)`, `(tenant_id, email_normalized)` — are
+  **NON-unique `CREATE INDEX`**, never `CREATE UNIQUE INDEX`; they exist for filtering and future lookup, and
+  two companies in one tenant may freely hold the same normalized phone. The only uniqueness this lane touches
+  is the CHECK constraints of M2.7, which are value-domain checks, not uniques. **On the ratchet:**
+  `apps/api/tests/Architecture/TenantOnlyUniqueOnCatalogueTablesRatchetTest.php` **does not exist at
+  `a33b01354`** — convention 09 says it lands with lane I-2 — so it cannot be run or inspected from this lane.
+  Satisfy it by construction and re-check at the M5 gate: if it has landed by then, run it; if it inspects
+  **non-unique** indexes as well, these three still pass because each is either company-qualified
+  (`(tenant_id, company_id, party_kind)`) or non-unique by definition. **If it turns out to fail, that is a
+  STOP** (a baseline waiver is parent-owned at promotion — record it in `owes_parent`).
+
+**Concepts (vocabulary — convention 11 / one surface per concept):** every noun this lane introduces, with its
+glossary state:
+
+- **Party** — glossary ✅ (`docs/glossary.md:26`; the row already carries the nature axis, `party_kind`, the
+  OQ7 sole-trader rule and the role-vs-nature distinction).
+- **Contact** — glossary ✅ (`docs/glossary.md:29`; the corrected row: a person **at an organization**, never
+  billable, standalone surface retired in Phase 4).
+- **Nature** — **NEW**, glossary row added in this lane.
+- **Legal form** — **NEW**, glossary row added in this lane.
+- **Preferred locale** — **NEW**, glossary row added in this lane.
+- **Credit account** — **NEW**, glossary row added in this lane.
+- **Contact point / normalized contact point** — **NEW**, glossary row added in this lane.
+
+**M1 task (do it with the enums, before any UI exists, so the names cannot drift):** add the five NEW rows to
+`docs/glossary.md` following that table's existing columns —
+`| Term | Definition | Table / module | Canonical surface | Synonyms |` (`docs/glossary.md:15-16`) — naming the
+**`partners` columns** as the table (`party_kind`, `legal_form`, `preferred_locale`, `credit_account_enabled`,
+`phone_normalized` / `email_normalized`) and the **party form** (`apps/web/src/features/partners/PartnerForm.tsx`)
+as the single operator surface for all five. Declare the synonyms you will meet in review so nobody rediscovers
+them: *nature* ↔ *type de tiers* ↔ *personne physique/morale* (and note that **"Type" in this product means the
+ROLE**, per OQ6, so "type" is a synonym of *role*, not of *nature*); *legal form* ↔ *forme juridique*;
+*credit account* ↔ *compte client* ↔ *encours* (and that `charge_account_enabled` on the POS wire is the
+**derived** mirror field, not a second concept); *contact point* ↔ *coordonnées*.
+
+**No shadow FE types (convention 11 rule 4):** already handled upstream — **Phase 1 lane a3**
+(`docs/handoff/CODEX-DISPATCH-session-H-phase1-2026-08-29.md:115`) replaces the hand-rolled `Partner`
+interfaces in `PartnerListPage.tsx` / `PartnerForm.tsx` with the generated `PartnerData`. Phase 2 **extends
+that DTO** (M1.4) and must never reintroduce a local interface beside it; if you find one after the Phase-1
+merge, that is a Phase-1 regression — report it, do not paper over it.
 
 ---
 
