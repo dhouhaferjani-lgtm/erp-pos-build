@@ -31,6 +31,9 @@ vi.mock('sonner', () => ({
 }))
 
 vi.mock('@/lib/api', () => ({ authenticatedDownload: vi.fn() }))
+vi.mock('@/features/locations/hooks/useLocations', () => ({
+  useLocations: () => ({ data: [] }),
+}))
 
 vi.mock('../api/importApi', () => ({
   importApi: {

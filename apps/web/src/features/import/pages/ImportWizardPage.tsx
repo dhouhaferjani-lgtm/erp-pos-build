@@ -28,6 +28,8 @@ import type { ImportJobOptions, ImportType, LiveImportType, LocationNodeType } f
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import { Select } from '@/components/atoms/Select/Select'
+import { useLocations } from '@/features/locations/hooks/useLocations'
+import type { Location } from '@/features/locations/types'
 
 type WizardStep = 'upload' | 'mapping' | 'options' | 'validation' | 'execute' | 'complete'
 
@@ -43,6 +45,15 @@ const STEPS: { key: WizardStep; label: string }[] = [
 const PRODUCT_PRICE_COLUMNS = new Set(['sale_price_incl_tax', 'sale_price_excl_tax', 'margin'])
 const PLACEMENT_NODE_TYPES: LocationNodeType[] = ['zone', 'aisle', 'rack', 'shelf', 'bin', 'section']
 const DEFAULT_PLACEMENT_DEPTH_TYPES: LocationNodeType[] = ['aisle', 'rack', 'shelf', 'bin', 'section', 'zone']
+const KNOWN_WARNING_CODES = new Set<string>([
+  'location_unresolved',
+  'qty_without_cost',
+  'price_conflict',
+  'category_created',
+  'expiry_conflict_existing_lot',
+  'quantity_ignored_service',
+  'opening_failed',
+])
 
 /**
  * The message `api.ts`'s response interceptor substitutes for a request that
@@ -115,6 +126,49 @@ function isLocationNodeType(value: string): value is LocationNodeType {
 
 function defaultPlacementNodeType(depth: number): LocationNodeType {
   return DEFAULT_PLACEMENT_DEPTH_TYPES[depth] ?? 'section'
+}
+
+interface StockLocationOptionsProps {
+  locations: Location[]
+  value: string
+  onChange: (value: string) => void
+}
+
+function StockLocationOptions({ locations, value, onChange }: StockLocationOptionsProps) {
+  const { t } = useTranslation('import')
+
+  return (
+    <section className="space-y-4" aria-labelledby="stock-location-import-options">
+      <div>
+        <h2 id="stock-location-import-options" className={`text-lg font-semibold ${colorTokens.text.primary}`}>
+          {t('options.stockLocation.title')}
+        </h2>
+        <p className={`mt-1 text-sm ${colorTokens.text.muted}`}>
+          {t('options.stockLocation.hint')}
+        </p>
+      </div>
+      <label className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
+        {t('options.stockLocation.label')}
+        <Select
+          className="mt-1"
+          value={value}
+          onChange={(event) => { onChange(event.target.value) }}
+        >
+          <option value="" disabled>{t('options.stockLocation.select')}</option>
+          {locations.map((location) => {
+            const code = location.code.trim()
+            return (
+              <option key={location.id} value={code} disabled={code === ''}>
+                {code !== ''
+                  ? `${location.name} (${code})`
+                  : `${location.name} — ${t('options.stockLocation.noCode')}`}
+              </option>
+            )
+          })}
+        </Select>
+      </label>
+    </section>
+  )
 }
 
 // Target columns per import type.
@@ -206,6 +260,7 @@ export function ImportWizardPage() {
   const importType = type as ImportType
   const navigate = useNavigate()
   const { t } = useTranslation('import')
+  const { data: locations = [] } = useLocations()
 
   // Wizard state
   const [currentStep, setCurrentStep] = useState<WizardStep>('upload')
@@ -221,6 +276,20 @@ export function ImportWizardPage() {
   const [priceAuthority, setPriceAuthority] = useState<NonNullable<ImportJobOptions['price_authority']>>('ttc')
   const [placementMode, setPlacementMode] = useState<NonNullable<ImportJobOptions['placement_mode']>>('strict')
   const [placementNodeTypeOverrides, setPlacementNodeTypeOverrides] = useState<Record<number, LocationNodeType>>({})
+  const [selectedLocationCode, setSelectedLocationCode] = useState('')
+
+  const stockLocationCode = useMemo(() => {
+    const codedLocations = locations.filter((location) => location.code.trim() !== '')
+    if (codedLocations.some((location) => location.code.trim() === selectedLocationCode)) {
+      return selectedLocationCode
+    }
+
+    return (
+      codedLocations.find((location) => location.isDefault)?.code.trim()
+      ?? codedLocations[0]?.code.trim()
+      ?? ''
+    )
+  }, [locations, selectedLocationCode])
 
   // Job state
   const [jobId, setJobId] = useState<string | null>(null)
@@ -280,7 +349,7 @@ export function ImportWizardPage() {
 
   const optionVisibility = useMemo(() => {
     if (importType !== 'products') {
-      return { prices: false, placement: false }
+      return { prices: false, placement: false, stock: false }
     }
 
     const mappedPriceColumns = new Set(
@@ -290,10 +359,11 @@ export function ImportWizardPage() {
     return {
       prices: mappedPriceColumns.size >= 2,
       placement: Object.values(columnMapping).includes('placement_path'),
+      stock: Object.values(columnMapping).includes('quantity'),
     }
   }, [columnMapping, importType])
 
-  const shouldShowOptionsStep = optionVisibility.prices || optionVisibility.placement
+  const shouldShowOptionsStep = optionVisibility.prices || optionVisibility.placement || optionVisibility.stock
 
   const visibleSteps = useMemo(() => {
     return STEPS.filter((step) => step.key !== 'options' || shouldShowOptionsStep)
@@ -499,11 +569,14 @@ export function ImportWizardPage() {
         placement_mode: placementMode,
         ...(placementMode === 'auto_create' ? { placement_node_types: placementNodeTypes } : {}),
       } : {}),
+      ...(optionVisibility.stock && stockLocationCode !== ''
+        ? { location_code: stockLocationCode }
+        : {}),
     })
     await refetchPreview()
     markStepCompleted('options')
     setCurrentStep('validation')
-  }, [jobId, markStepCompleted, optionVisibility, placementMode, placementNodeTypes, priceAuthority, refetchPreview])
+  }, [jobId, markStepCompleted, optionVisibility, placementMode, placementNodeTypes, priceAuthority, refetchPreview, stockLocationCode])
 
   // Handle validation step completion
   const handleValidationComplete = useCallback(() => {
@@ -796,6 +869,14 @@ export function ImportWizardPage() {
               </section>
             )}
 
+            {optionVisibility.stock && (
+              <StockLocationOptions
+                locations={locations}
+                value={stockLocationCode}
+                onChange={setSelectedLocationCode}
+              />
+            )}
+
             <div className={`flex items-center justify-between border-t ${colorTokens.border.subtle} pt-4`}>
               <button
                 type="button"
@@ -1057,6 +1138,28 @@ export function ImportWizardPage() {
                     </dd>
                   </div>
                 </dl>
+
+                {(jobData?.warning_rows ?? 0) > 0 && (
+                  <section
+                    className={`mt-4 rounded-lg border ${colorTokens.intent.warning.borderSubtle} ${colorTokens.intent.warning.bgSubtle} p-4`}
+                    aria-labelledby="import-warning-summary"
+                  >
+                    <h4 id="import-warning-summary" className={`font-semibold ${colorTokens.intent.warning.textStrongest}`}>
+                      {t('wizard.complete.warnings', { count: jobData?.warning_rows ?? 0 })}
+                    </h4>
+                    <ul className={`mt-2 space-y-1 text-sm ${colorTokens.intent.warning.textStronger}`}>
+                      {Object.entries(jobData?.warning_summary ?? {})
+                        .filter(([, count]) => count > 0)
+                        .map(([code, count]) => (
+                          <li key={code}>
+                            {KNOWN_WARNING_CODES.has(code)
+                              ? t(`warnings.${code}`, { count })
+                              : t('warnings.other', { code, count })}
+                          </li>
+                        ))}
+                    </ul>
+                  </section>
+                )}
 
                 {jobData?.id && (
                   <div className={`mt-4 flex flex-wrap gap-4 border-t ${colorTokens.border.subtle} pt-4`}>

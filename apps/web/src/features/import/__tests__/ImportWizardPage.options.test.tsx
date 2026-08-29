@@ -4,14 +4,17 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ImportWizardPage } from '../pages/ImportWizardPage'
+import type { ImportJob } from '../types'
 
 let nextMapping: Record<string, string> = {}
+let nextJobData: ImportJob | undefined
 
 const mockParseHeaders = vi.hoisted(() => vi.fn())
 const mockUpdateOptions = vi.hoisted(() => vi.fn())
 const mockCreateMutate = vi.hoisted(() => vi.fn())
 const mockSuggestMutate = vi.hoisted(() => vi.fn())
 const mockRefetchPreview = vi.hoisted(() => vi.fn())
+const mockUseLocations = vi.hoisted(() => vi.fn())
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -28,6 +31,10 @@ vi.mock('sonner', () => ({
 
 vi.mock('@/lib/api', () => ({
   authenticatedDownload: vi.fn(),
+}))
+
+vi.mock('@/features/locations/hooks/useLocations', () => ({
+  useLocations: mockUseLocations,
 }))
 
 vi.mock('../api/importApi', () => ({
@@ -50,7 +57,7 @@ vi.mock('../api/queries', () => ({
   useSuggestMapping: () => ({
     mutate: mockSuggestMutate,
   }),
-  useImportJob: () => ({ data: undefined }),
+  useImportJob: () => ({ data: nextJobData }),
   useImportErrors: () => ({ data: { data: [] } }),
   useImportPreview: () => ({
     data: {
@@ -122,6 +129,8 @@ describe('ImportWizardPage product options step', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     nextMapping = {}
+    nextJobData = undefined
+    mockUseLocations.mockReturnValue({ data: [] })
     mockParseHeaders.mockResolvedValue({
       headers: ['name', 'price_ttc', 'price_ht', 'margin'],
       row_count: 1,
@@ -185,5 +194,82 @@ describe('ImportWizardPage product options step', () => {
       }))
     })
     expect(mockRefetchPreview).toHaveBeenCalledOnce()
+  })
+
+  it('defaults opening stock to the default coded location and patches its code', async () => {
+    nextMapping = {
+      name: 'name',
+      quantity: 'quantity',
+    }
+    mockUseLocations.mockReturnValue({
+      data: [
+        { id: 'branch', name: 'Branch', code: 'BRANCH', isDefault: false },
+        { id: 'main', name: 'Main Location', code: 'MAIN', isDefault: true },
+      ],
+    })
+
+    await uploadAndMap()
+
+    const stockLocation = await screen.findByLabelText('options.stockLocation.label')
+    await waitFor(() => {
+      expect(stockLocation).toHaveValue('MAIN')
+    })
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'common:actions.next' }))
+
+    await waitFor(() => {
+      expect(mockUpdateOptions).toHaveBeenCalledWith('job-1', {
+        location_code: 'MAIN',
+      })
+    })
+  })
+
+  it('lists a code-less location as disabled', async () => {
+    nextMapping = {
+      name: 'name',
+      quantity: 'quantity',
+    }
+    mockUseLocations.mockReturnValue({
+      data: [
+        { id: 'main', name: 'Main Location', code: 'MAIN', isDefault: true },
+        { id: 'uncoded', name: 'Uncoded Branch', code: '', isDefault: false },
+      ],
+    })
+
+    await uploadAndMap()
+
+    expect(await screen.findByRole('option', {
+      name: 'Uncoded Branch — options.stockLocation.noCode',
+    })).toBeDisabled()
+  })
+
+  it('shows warning counts on the completion step', async () => {
+    nextMapping = { name: 'name' }
+    nextJobData = {
+      id: 'job-1',
+      type: 'products',
+      status: 'completed',
+      original_filename: 'products.csv',
+      total_rows: 2,
+      processed_rows: 2,
+      successful_rows: 2,
+      failed_rows: 0,
+      warning_rows: 2,
+      warning_summary: { location_unresolved: 2 },
+      progress_percentage: 100,
+      options: null,
+      error_message: null,
+      started_at: '2026-08-29T10:00:00Z',
+      completed_at: '2026-08-29T10:00:01Z',
+      created_at: '2026-08-29T09:59:59Z',
+    }
+
+    await uploadAndMap()
+    await userEvent.setup().click(await screen.findByRole('button', {
+      name: 'wizard.validation.proceed',
+    }))
+
+    expect(await screen.findByRole('heading', { name: 'wizard.complete.warnings' })).toBeInTheDocument()
+    expect(screen.getByText('warnings.location_unresolved')).toBeInTheDocument()
   })
 })

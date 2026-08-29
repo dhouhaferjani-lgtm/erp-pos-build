@@ -659,6 +659,8 @@ class ImportController extends Controller
      */
     private function formatJob(ImportJob $job): array
     {
+        $warningStats = $this->warningStats($job);
+
         return [
             'id' => $job->id,
             'type' => $job->type->value,
@@ -668,7 +670,8 @@ class ImportController extends Controller
             'processed_rows' => $job->processed_rows,
             'successful_rows' => $job->successful_rows,
             'failed_rows' => $job->failed_rows,
-            'warning_rows' => $this->countWarningRows($job),
+            'warning_rows' => $warningStats['rows'],
+            'warning_summary' => $warningStats['summary'],
             'options' => $job->options,
             'progress_percentage' => $job->getProgressPercentage(),
             'error_message' => $job->error_message,
@@ -678,16 +681,37 @@ class ImportController extends Controller
         ];
     }
 
-    private function countWarningRows(ImportJob $job): int
+    /**
+     * @return array{rows: int, summary: array<string, int>}
+     */
+    private function warningStats(ImportJob $job): array
     {
-        if ($job->getConnection()->getDriverName() === 'sqlite') {
-            return $job->rows()
-                ->whereNotNull('warnings')
-                ->where('warnings', '!=', '[]')
-                ->count();
+        $warningRows = 0;
+        $summary = [];
+
+        foreach ($job->rows()->whereNotNull('warnings')->get(['warnings']) as $row) {
+            if (! is_array($row->warnings) || $row->warnings === []) {
+                continue;
+            }
+
+            $warningRows++;
+
+            foreach ($row->warnings as $warning) {
+                $code = $warning['code'];
+                if ($code === '') {
+                    continue;
+                }
+
+                $summary[$code] = ($summary[$code] ?? 0) + 1;
+            }
         }
 
-        return $job->rows()->whereRaw('jsonb_array_length(warnings) > 0')->count();
+        ksort($summary);
+
+        return [
+            'rows' => $warningRows,
+            'summary' => $summary,
+        ];
     }
 
     /**

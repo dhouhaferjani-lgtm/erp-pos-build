@@ -209,6 +209,31 @@ final class ProductsImportPipelineTest extends TestCase
         $this->assertSame(1, StockMovement::where('product_id', $duplicate->id)->where('movement_type', MovementType::Opening)->count());
     }
 
+    public function test_products_import_job_summarizes_unresolved_location_warnings(): void
+    {
+        $file = UploadedFile::fake()->createWithContent('products-without-location.csv', implode("\n", [
+            'name,sku,type,quantity,purchase_price',
+            'Unlocated Product One,UNLOC-1,part,2.0000,3.000',
+            'Unlocated Product Two,UNLOC-2,part,4.0000,5.000',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', [
+                'file' => $file,
+                'type' => 'products',
+            ])
+            ->assertCreated();
+
+        $jobId = $createResponse->json('data.id');
+        $this->assertIsString($jobId);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.warning_rows', 2)
+            ->assertJsonPath('data.warning_summary.location_unresolved', 2);
+    }
+
     public function test_batch_tracked_product_quantity_creates_opening_movement_with_default_lot(): void
     {
         // Parapharmacy verticals default requires_batch_tracking=true for every

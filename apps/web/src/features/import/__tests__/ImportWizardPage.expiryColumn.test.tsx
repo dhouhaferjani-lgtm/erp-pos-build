@@ -51,6 +51,12 @@ vi.mock('@/lib/api', () => ({
   authenticatedDownload: vi.fn(),
 }))
 
+vi.mock('@/features/locations/hooks/useLocations', () => ({
+  useLocations: () => ({
+    data: [{ id: 'main', name: 'Main Location', code: 'MAIN', isDefault: true }],
+  }),
+}))
+
 vi.mock('../api/importApi', () => ({
   importApi: {
     parseHeaders: mockParseHeaders,

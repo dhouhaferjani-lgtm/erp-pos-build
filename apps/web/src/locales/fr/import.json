@@ -155,6 +155,7 @@
       "results": "Résultats",
       "imported": "Importés avec succès",
       "failed": "Échec d'importation",
+      "warnings": "{{count}} lignes importées avec des avertissements",
       "backToDashboard": "Retour au tableau de bord",
       "importMore": "Importer plus de données",
       "downloadFailedRows": "Télécharger les lignes échouées (CSV)"
@@ -170,6 +171,13 @@
     }
   },
   "options": {
+    "stockLocation": {
+      "title": "Site de stock",
+      "label": "Site du stock d'ouverture",
+      "hint": "Le stock d'ouverture est enregistré sur ce site. Une valeur location_code dans une ligne remplace ce choix.",
+      "select": "Sélectionner un site avec un code",
+      "noCode": "Aucun code — ajoutez un code au site avant d'importer le stock"
+    },
     "placementTitle": "Planifier les emplacements de stockage",
     "placementHint": "En mode strict, chaque niveau du chemin doit exister. La création automatique affiche les nœuds manquants et utilise le type choisi pour chaque profondeur.",
     "placementMode": "Traitement du chemin",
@@ -207,7 +215,21 @@
     "legendSkipped": "Ignoré",
     "legendRequired": "Obligatoire",
     "suggested": "(suggéré)",
+    "targetLabels": {
+      "location_code": "Code du site/de la succursale — ex. MAIN",
+      "placement_path": "Position en rayon (zone/allée/rayonnage/bac)"
+    },
     "skippedColumnsNotice": "Ces colonnes seront ignorées sauf si vous les mappez : {{columns}}"
+  },
+  "warnings": {
+    "location_unresolved": "{{count}} lignes : aucun stock n'a été créé. Corrigez location_code ou choisissez un site de stock, puis réimportez les quantités.",
+    "qty_without_cost": "{{count}} lignes avaient une quantité sans prix d'achat ; le stock d'ouverture n'a pas été créé.",
+    "price_conflict": "{{count}} lignes contenaient des prix contradictoires ; le prix faisant foi a été utilisé.",
+    "category_created": "{{count}} lignes ont créé une catégorie de produits manquante.",
+    "expiry_conflict_existing_lot": "{{count}} lignes indiquaient une date d'expiration différente d'un lot existant ; le lot existant a été conservé.",
+    "quantity_ignored_service": "{{count}} lignes de service contenaient une quantité ; les services ne créent pas de stock.",
+    "opening_failed": "Le stock d'ouverture n'a pas pu être créé pour {{count}} lignes.",
+    "other": "{{count}} lignes ont signalé l'avertissement {{code}}."
   },
   "validation": {
     "allValid": "Toutes les lignes sont valides",
