@@ -46,6 +46,10 @@ After go-live, normal operations move the same accounts:
 - A supplier balance is **positive when we owe them** (credit balance on `401`). If the old system exports "supplier −500", that's money the supplier owes *us* — it flips sides (our importer's `HistoricalOpeningSideReader` handles the side; don't pre-flip in the file).
 - Never import into **control accounts** (`411`/`401` totals) directly through the GL batch — the importer refuses this; person-level balances go through the AR/AP opening flow so the subledger and GL stay tied.
 
+
+### 4. Open-invoice continuity (aged AR/AP)
+Open customer and supplier invoices from the old system are imported **one row per open invoice** (not one lump sum). Each becomes a *historical* document in the new system: posted, back-dated to its real date, carrying its open amount — but with no product lines and **outside the VAT declaration** (the old system already declared it). From then on the normal flows apply: when the customer pays, the payment is **allocated against those exact open invoices** (oldest first or as selected) and purges them; supplier payments likewise settle the imported `401` invoices. An opening credit note is netted against its opening invoice at import, never left floating.
+
 ---
 
 ## Français
@@ -86,3 +90,6 @@ Après démarrage :
 - Un solde client est **positif quand le client nous doit** (solde débiteur du `411`). Un solde créditeur client = *avance client* → `419`, jamais une vente négative.
 - Un solde fournisseur est **positif quand nous devons au fournisseur** (solde créditeur du `401`). « Fournisseur −500 » dans l'ancien système = le fournisseur nous doit → le sens s'inverse (l'importateur gère le sens ; ne pas inverser dans le fichier).
 - Ne jamais importer directement dans les **comptes collectifs** (`411`/`401` globaux) via le lot GL — l'importateur le refuse ; les soldes nominatifs passent par la reprise AR/AP pour garder l'auxiliaire et le général alignés.
+
+### 4. Continuité des factures ouvertes (AR/AP âgés)
+Les factures clients et fournisseurs encore ouvertes dans l'ancien système sont reprises **ligne par facture** (jamais en montant global). Chacune devient un document *historique* : validé, à sa date réelle, avec son restant dû — mais sans lignes produit et **hors déclaration de TVA** (déjà déclarée dans l'ancien système). Ensuite les flux normaux s'appliquent : un règlement client est **lettré contre ces factures ouvertes précises** et les solde ; idem pour les règlements fournisseurs sur `401`. Un avoir d'ouverture est imputé sur sa facture d'ouverture dès la reprise, jamais laissé isolé.
