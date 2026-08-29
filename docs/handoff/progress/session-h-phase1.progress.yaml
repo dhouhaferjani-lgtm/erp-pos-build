@@ -1,0 +1,70 @@
+wave: session-h-phase1
+brief: docs/handoff/CODEX-DISPATCH-session-H-phase1-2026-08-29.md
+harness: docs/handoff/SELF-REVIEW-HARNESS.md
+review_register: docs/handoff/reviews/session-h-phase1/
+reviewer_model: opus
+max_fix_rounds: 4
+browser_verification: apps/web/e2e/session-h/<milestone>-*.spec.ts against :5174 (worktree web) + :8011 (worktree API); screenshots .playwright-mcp/session-h/<milestone>/ — brief §0.1; every milestone register must cite them
+crm_seam_assessment: docs/handoff/ASSESSMENT-crm-seam-party-model-2026-08-29.md
+base_sha: 23b1b8a65
+lanes:
+  h1-cleanup:
+    branch: fix/h1-shape-neutral-cleanup
+    worktree: .worktrees/h1-cleanup
+    commit_series: "h1-cleanup M<m>.<s>:"
+  h1-a1:
+    branch: fix/h1-a1-buyer-block
+    worktree: .worktrees/h1-a1-buyer
+    commit_series: "h1-a1 M<m>.<s>:"
+ledger_rows: D-H1-1 (cleanup), D-H1-2 (a1)
+
+status: in_progress
+
+milestones:
+  - id: M1
+    lane: h1-cleanup
+    title: a3 tax_id->vat_number + generated PartnerData; a7 Parties code max:50; a8 'retail' mirror literal -> null
+    review_lenses: [frontend-conventions, imports]
+    status: review
+    commit: 97ae0ba12e6b651740293559fc4134c57a3bde7d
+    verdict: null
+    last_verdict: null
+    fix_rounds: 0
+  - id: M2
+    lane: h1-cleanup
+    title: a4' nature required on create + NULL heuristic for B2B block + wire CreditLimitWarning
+    review_lenses: [frontend-conventions]
+    status: pending
+    commit: null
+    verdict: null
+    fix_rounds: 0
+  - id: M3
+    lane: h1-cleanup
+    title: a5 delete Companies + contacts.update->partners.update on partner edit routes + gate suppliers; a6 constrain Type select per route
+    review_lenses: [tenancy-authz, frontend-conventions]
+    status: pending
+    commit: null
+    verdict: null
+    fix_rounds: 0
+  - id: M4
+    lane: h1-a1
+    title: SALE_RECEIPT.buyer populated (resolved server partner id only; contact_id null by decision); validateBuyer customer_id uuid-or-null; projection writes partner_id from snapshot
+    review_lenses: [fiscal-pos]
+    status: pending
+    commit: null
+    verdict: null
+    fix_rounds: 0
+  - id: M5
+    lane: h1-a1
+    title: golden populated-buyer canonical-bytes fixture, device + server, hash pinned
+    review_lenses: [fiscal-pos]
+    status: pending
+    commit: null
+    verdict: null
+    fix_rounds: 0
+
+owner_gates:
+  - Phases 2-5 of the program (OQ1-9 in docs/sessions/session-H-party-model-2026-08-29/OQ-SHEET-2026-08-29.md) — NOT this wave
+owes_parent:
+  - M1 browser contract mismatch: public row-level import validation returns 201 with failed_rows and exposes field errors through GET /imports/{id}/errors; no dedicated 422 preview endpoint exists. The focused validator Feature test still proves the 51-character code raises a 422 ValidationException.
+blockers: []
