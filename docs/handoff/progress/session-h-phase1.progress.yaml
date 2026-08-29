@@ -47,11 +47,11 @@ milestones:
     title: a5 delete Companies + contacts.update->partners.update on partner edit routes + gate suppliers; a6 constrain Type select per route
     review_lenses: [tenancy-authz, frontend-conventions]
     status: review
-    commit: f91c6066c
-    verdict: docs/handoff/reviews/session-h-phase1/M3-round1.md
+    commit: 009d61390
+    verdict: docs/handoff/reviews/session-h-phase1/M3-round2.md
     last_verdict: CHANGES-REQUIRED
-    fix_rounds: 1
-    updated: f91c6066c
+    fix_rounds: 2
+    updated: 009d61390
   - id: M4
     lane: h1-a1
     title: SALE_RECEIPT.buyer populated (resolved server partner id only; contact_id null by decision); validateBuyer customer_id uuid-or-null; projection writes partner_id from snapshot
@@ -78,4 +78,8 @@ owes_parent:
   - M2 supplier credit warning: the new warning intentionally uses customer exposure (`receivable - credit`) and therefore does not warn on supplier payable exposure. Phase 2 should either hide/rename the customer credit-limit control on supplier-only routes or define a separate supplier exposure policy.
   - M2 accepted P3 UI edges: a legacy-null B2B section can unmount when its last internal signal is cleared; retained hidden values still submit after switching to Individual; scan-prefilled VAT can reveal B2B fields before Nature is chosen. No data loss; re-evaluate when Phase 2 makes nature canonical.
   - M3 pre-existing vehicle enum drift: VehicleForm still offers display-cased fuel/transmission literals while backend enums use lowercase canonical values; M3 did not broaden this payload behavior.
+  - M3 partner-code contract realignment: validation now matches the existing `(company_id, code)` database constraint, changing same-tenant cross-company create from 422 to 201; promotion must communicate the relaxation to API, POS pending-customer, and Parties-import consumers.
+  - M3 Otospex browser debt: browser item (v) is locally runtime-skipped because `demo-unlimited` has no provisioned tenant database; the customer-only picker has focused Vitest evidence but no live Otospex browser evidence here.
+  - M3 i18n burn-down: removal-only cleanup translated eight prior baseline entries with zero new gaps; no baseline re-pin was required, and parent may lock the burn-down at promotion.
+  - M3 Phase 2 form-state debt: mismatched `partnerType` and pathname can make both route contexts true in an unkeyed reconciliation; production keyed routes prevent the live path and validation blocks submission, but Phase 2 should derive one authoritative context independently of React keys.
 blockers: []
