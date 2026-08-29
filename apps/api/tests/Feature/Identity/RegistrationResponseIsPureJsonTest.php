@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use JsonException;
 use Stancl\Tenancy\Jobs\MigrateDatabase;
@@ -59,25 +60,39 @@ final class RegistrationResponseIsPureJsonTest extends TestCase
             tenancy()->end();
         }
 
-        if ($this->tenant !== null && DB::connection()->getDriverName() === 'pgsql') {
-            try {
+        $tenant = $this->tenant;
+        $usesPostgres = DB::connection()->getDriverName() === 'pgsql';
+
+        try {
+            if ($tenant !== null && $usesPostgres) {
+                $databaseName = $tenant->getDatabaseName();
+
                 DB::purge('tenant');
-                $this->tenant->database()->manager()->deleteDatabase($this->tenant);
-            } catch (\Throwable) {
-                // Best-effort: the unique registration tenant is also removed
-                // from the central directory below.
+                $tenant->database()->manager()->deleteDatabase($tenant);
+
+                self::assertNull(
+                    DB::connection('central')->selectOne(
+                        'SELECT 1 FROM pg_database WHERE datname = ?',
+                        [$databaseName],
+                    ),
+                    "Tenant database [{$databaseName}] still exists after DROP DATABASE.",
+                );
             }
-
-            DB::connection('central')->table('personal_access_tokens')
-                ->where('abilities', 'like', '%tenant:'.$this->tenant->id.'%')
-                ->delete();
-            DB::connection('central')->table('domains')->where('tenant_id', $this->tenant->id)->delete();
-            DB::connection('central')->table('central_identities')->where('tenant_id', $this->tenant->id)->delete();
-            DB::connection('central')->table('tenant_subscriptions')->where('tenant_id', $this->tenant->id)->delete();
-            DB::connection('central')->table('tenants')->where('id', $this->tenant->id)->delete();
+        } finally {
+            try {
+                if ($tenant !== null && $usesPostgres) {
+                    DB::connection('central')->table('personal_access_tokens')
+                        ->where('abilities', 'like', '%tenant:'.$tenant->id.'%')
+                        ->delete();
+                    DB::connection('central')->table('domains')->where('tenant_id', $tenant->id)->delete();
+                    DB::connection('central')->table('central_identities')->where('tenant_id', $tenant->id)->delete();
+                    DB::connection('central')->table('tenant_subscriptions')->where('tenant_id', $tenant->id)->delete();
+                    DB::connection('central')->table('tenants')->where('id', $tenant->id)->delete();
+                }
+            } finally {
+                parent::tearDown();
+            }
         }
-
-        parent::tearDown();
     }
 
     public function refreshDatabase(): void
@@ -105,15 +120,23 @@ final class RegistrationResponseIsPureJsonTest extends TestCase
 
         config(['tenancy_resolver.db_per_tenant' => true]);
 
+        $runUuid = (string) Str::uuid();
+        Tenant::creating(static function (Tenant $tenant) use ($runUuid): void {
+            $tenant->id = $runUuid;
+        });
+
         ob_start();
         try {
-            $response = $this->register('pure-json@example.com', 'Pure JSON Company');
+            $response = $this->register(
+                "pure-json+{$runUuid}@example.com",
+                "Pure JSON Company {$runUuid}",
+            );
             $output = ob_get_contents();
         } finally {
             ob_end_clean();
         }
 
-        $this->tenant = Tenant::query()->where('name', 'Pure JSON Company')->firstOrFail();
+        $this->tenant = Tenant::query()->findOrFail($runUuid);
         $content = $response->getContent();
 
         $response->assertCreated();
