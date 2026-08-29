@@ -527,8 +527,12 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
                 error={!!errors.type}
               >
                 <option value="">{t('sales:partners.selectType')}</option>
-                <option value="customer">{t('sales:partners.types.customer')}</option>
-                <option value="supplier">{t('sales:partners.types.supplier')}</option>
+                {(isEditing || !isSupplierContext) && (
+                  <option value="customer">{t('sales:partners.types.customer')}</option>
+                )}
+                {(isEditing || !isCustomerContext) && (
+                  <option value="supplier">{t('sales:partners.types.supplier')}</option>
+                )}
                 <option value="both">{t('sales:partners.types.both')}</option>
               </Select>
             </FormField>

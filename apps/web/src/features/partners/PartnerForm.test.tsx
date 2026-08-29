@@ -119,6 +119,15 @@ function renderPartnerForm(
   return queryClient
 }
 
+function typeOptionValues(): string[] {
+  const typeSelect = screen.getByRole('combobox', { name: /^Type/ })
+  if (!(typeSelect instanceof HTMLSelectElement)) {
+    throw new Error('Expected the Type field to be a select element')
+  }
+
+  return Array.from(typeSelect.options, (option) => option.value)
+}
+
 describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
   beforeEach(async () => {
     mockApiGet.mockReset()
@@ -160,6 +169,30 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
     renderPartnerForm(['/purchases/suppliers/new'], '/purchases/suppliers/new', 'supplier')
 
     expect(screen.getByLabelText(/^Nature/)).toHaveValue('business')
+  })
+
+  it('offers only Customer and Both Type choices on customer create', () => {
+    renderPartnerForm(['/sales/customers/new'], '/sales/customers/new', 'customer')
+
+    expect(typeOptionValues()).toEqual(['', 'customer', 'both'])
+  })
+
+  it('offers only Supplier and Both Type choices on supplier create', () => {
+    renderPartnerForm(['/purchases/suppliers/new'], '/purchases/suppliers/new', 'supplier')
+
+    expect(typeOptionValues()).toEqual(['', 'supplier', 'both'])
+  })
+
+  it('keeps Customer, Supplier, and Both Type choices on edit', async () => {
+    mockApiGet.mockResolvedValue({ data: { data: makeExistingPartner() } })
+    renderPartnerForm(
+      ['/sales/customers/partner-1/edit'],
+      '/sales/customers/:id/edit',
+      'customer',
+    )
+
+    expect(await screen.findByLabelText(/^Name/)).toHaveValue('Existing Partner')
+    expect(typeOptionValues()).toEqual(['', 'customer', 'supplier', 'both'])
   })
 
   it('does not default Nature to Company on a supplier edit whose detail request fails', async () => {
