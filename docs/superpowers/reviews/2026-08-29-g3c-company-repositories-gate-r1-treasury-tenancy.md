@@ -44,3 +44,38 @@
 ## Verdict
 
 **CHANGES.** The implementation and every requested mechanical gate are otherwise sound: exact two-row provisioning, company ownership, branch-drawer separation, idempotence/partial repair, registration delegation, migration guards/census/forward-only behavior, untouched uniques, scalar Shared contract, manifest union, and both database legs all verify. Promotion remains blocked until G3C-R1-01 through G3C-R1-03 are closed and re-run on SQLite and the prefixed private PostgreSQL database.
+
+## Gate r2 (Codex)
+
+**Review posture:** treasury-reviewer + tenancy/authz-reviewer re-check after fix round 2; source remained read-only. The only write was this append to the r1 register. Design was treated as pre-approved and the three r1 blockers plus the P0 pre-adoption requirement were verified with source `path:line` evidence and fresh scoped commands.
+
+**VERDICT: PASS**
+
+### R1 finding closure
+
+| ID | result | path:line evidence |
+|---|---|---|
+| G3C-R1-01 | **CLOSED** | Every company/account/location/repository read and repository write now executes inside the nested `DB::transaction()` at `apps/api/app/Modules/Treasury/Application/Services/PaymentRepositoryProvisioningService.php:34-72`; the outer catch logs non-unique database failures and all other throwables at `:73-81,142-147`. The HTTP data-provider regression injects actual database errors into the company, cash-account, and fallback-location reads at `apps/api/tests/Feature/Treasury/CompanyPaymentRepositoryProvisioningTest.php:139-239`; for every injected read it asserts HTTP 201, reloads the surviving company, proves its location and membership survive, proves zero payment repositories and no money artifacts remain, and requires `payment_repositories.provisioning_failed` with the company ID and exception at `:207-228`. The same regression passed on PostgreSQL, exercising savepoint recovery from the aborted transaction state. |
+| G3C-R1-02 | **CLOSED** | Runtime HTTP provisioning asserts both repositories have balance zero at `CompanyPaymentRepositoryProvisioningTest.php:95-131`, then asserts zero `repository_movements`, `journal_entries`, and joined `journal_lines` at `:536-544`. The helper docblock names `AccountingOpeningService::postBatch()` as the sole opening-money path at `:134-138`. The brownfield backfill writes literal balance `0` and no money artifacts at `apps/api/database/migrations/tenant/2026_08_30_100800_backfill_company_payment_repositories.php:148-170`; its regression asserts zero balance and the same three zero-count tables at `apps/api/tests/Feature/Migrations/BackfillCompanyPaymentRepositoriesMigrationTest.php:38-60,195-208`, with the same `postBatch()` citation. `PaymentRepositorySeederTest.php:77-95` independently pins zero balance/movement/journal entry/line for the registration seeder. |
+| G3C-R1-03 | **CLOSED** | The resolver order is `is_default DESC`, `is_active DESC`, `pos_enabled DESC`, then oldest `created_at` at `PaymentRepositoryProvisioningService.php:92-103`. Direct runtime tests pin default-first at `CompanyPaymentRepositoryProvisioningTest.php:372-386`, active then POS then oldest at `:388-404`, legal NULL with no location at `:406-418`, and explicit-location precedence at `:420-434`. |
+
+### P0 pre-adoption and tenancy/authz checks
+
+- The migration uses the `App` facade (`2026_08_30_100800_backfill_company_payment_repositories.php:8`) and contains no `app()` helper. Both byte-preserved operator strings — `payment-repositories-census companies={companies} empty={empty}` and `payment-repositories-seeded company_id={id}` — are logged, while each `fwrite(STDOUT, ...)` is separately guarded by `App::runningInConsole()` at `:53-58,179-183`. Web-mode output is asserted empty with both guards exercised at `BackfillCompanyPaymentRepositoriesMigrationTest.php:62-72`; the structured and text log records are asserted at `:38-50`.
+- Company creation remains authenticated and tenant-claim guarded without requiring a pre-existing CompanyContext at `apps/api/app/Modules/Company/routes.php:18-26`. `CompanyController::store()` takes `tenant_id` from the authenticated user and creates the company, location, and membership within the outer transaction at `apps/api/app/Modules/Company/Presentation/Controllers/CompanyController.php:74-155`; it passes the created company's tenant/company IDs and its own location ID through the scalar Shared port at `:194-199`. The Treasury implementation resolves its own module models inside its savepoint and does not read CompanyContext (`PaymentRepositoryProvisioningService.php:32-72`). No new treasury or tenancy/authz finding was found.
+
+### Fresh command outputs
+
+| command | output |
+|---|---|
+| SQLite by path: `CompanyPaymentRepositoryProvisioningTest`, `BackfillCompanyPaymentRepositoriesMigrationTest`, `PaymentRepositorySeederTest`, `CreateCompanyTest`, `CompanyCreationEventsTest`, `PaymentRepositoryLocationTest` | **PASS — 48 passed, 248 assertions, 2 expected PostgreSQL-only skips**, exit 0, 41.04s. |
+| `DB_DATABASE=autoerp_test_g6 DB_CENTRAL_DATABASE=autoerp_test_g6 DB_CONNECTION=pgsql php artisan test --compact` with the two G-3c class paths only | **PASS — 18 passed, 105 assertions**, 0 skips/failures, exit 0, 42.48s. |
+| PHPStan on all 11 dirty PHP paths | **PASS — `[OK] No errors`**, exit 0. |
+| Pint `--test` on all 11 dirty PHP paths | **PASS — `{"result":"pass"}`**, exit 0. |
+| `php tools/feature-lane-manifest-check.php` | **PASS**, exit 0 — 1,473 Feature classes / 74 groups; every group disposed, every declared lane present, every filter anchored and uniquely matched across 1,874 test classes. Standing warnings remain 1,213 parked classes and 1 coverage-debt class. |
+| `php vendor/bin/deptrac analyse --no-progress` | **BASELINE — 183 violations**, 0 skipped, 0 warnings, 0 errors. Raw exit 1 is the repository's baseline violation posture. Focused report search found **0** matches for `PaymentRepositoryProvisioning*`, `CompanyPaymentRepositoryProvisioner*`, or `BackfillCompanyPaymentRepositories*`. |
+| `git diff --check`; migration `app()` scan; final `git status --short` | **PASS** — no whitespace errors; 0 migration `app()` matches; exactly the same 8 tracked modifications + 5 untracked lane files as the pre-run census, with no `apps/web/` path and no source/test changes introduced by this gate. |
+
+### Verdict
+
+**PASS.** G3C-R1-01, G3C-R1-02, and G3C-R1-03 are closed. The nested-savepoint failure boundary, zero-money invariant, nullable-location resolver tiers, console-safe census output, authenticated tenant derivation, scoped tests on SQLite and private PostgreSQL, static/style checks, manifest, deptrac baseline, and lane-only dirty tree all verify.
