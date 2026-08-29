@@ -1354,6 +1354,35 @@ final class PosCoreReceiptProjectionTest extends TestCase
         $this->assertSame('FR10987654321', $receipt->customer_identifier);
     }
 
+    public function test_supplier_only_uuid_buyer_lands_snapshot_with_null_partner_fk(): void
+    {
+        $supplier = Partner::factory()->supplier()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+        ]);
+
+        $event = $this->storeSaleReceiptFiscalEvent(
+            buyer: [
+                'address' => null,
+                'codice_fiscale' => null,
+                'contact_id' => null,
+                'customer_id' => $supplier->id,
+                'name' => 'Supplier-only Sealed Buyer',
+                'tax_number' => 'FR10123456789',
+            ],
+            eventVersion: 5,
+        );
+
+        app(CompanyContext::class)->clear();
+        $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+
+        $receipt = $this->myReceipts()->orderBy('id')->first();
+        $this->assertNotNull($receipt);
+        $this->assertNull($receipt->partner_id);
+        $this->assertSame('Supplier-only Sealed Buyer', $receipt->customer_name);
+        $this->assertSame('FR10123456789', $receipt->customer_identifier);
+    }
+
     public function test_buyer_block_is_sale_time_snapshot_survives_customer_deletion(): void
     {
         // Pass 2A.PHP.2 R2 — Codex P1-1 closure (R3-tightened per R2-P2).

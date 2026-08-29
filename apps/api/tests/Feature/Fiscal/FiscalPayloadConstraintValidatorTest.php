@@ -1338,6 +1338,27 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         );
     }
 
+    public function test_v5_buyer_rejects_uppercase_uuid_customer_id(): void
+    {
+        $payload = $this->canonicalV5Payload();
+        $payload['buyer'] = [
+            'address' => null,
+            'codice_fiscale' => null,
+            'contact_id' => null,
+            'customer_id' => 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA',
+            'name' => 'Acme SARL',
+            'tax_number' => null,
+        ];
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/^payload_buyer_invalid:customer_id must be UUID or null/');
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 5,
+        );
+    }
+
     public function test_v5_buyer_requires_non_empty_name(): void
     {
         $payload = $this->canonicalV5Payload();
@@ -1366,13 +1387,17 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
 
         self::assertIsString($bytes);
         self::assertSame('96e325eedc1b5466e3cd0a0c7b74b203b0110617b46459a47ed4236579e46142', hash('sha256', $bytes));
+        /** @var array<string, mixed> $payload */
+        $payload = json_decode($bytes, true, flags: JSON_THROW_ON_ERROR);
 
-        // The committed v4-directory vector predates the later
-        // approval_references key and remains byte-pinned above. The current
-        // F-07 builder carries that additive key while preserving the legacy
-        // non-UUID buyer identifier whose v1 acceptance is ruled here.
-        $payload = GoldenFixtureBuilder::all()['F-07-b2b-buyer-eur'];
+        self::assertCount(27, $payload);
+        self::assertArrayNotHasKey('approval_references', $payload);
         self::assertSame('cust-007', $payload['buyer']['customer_id']);
+        self::assertNull($this->validator->validatePayloadKeySet(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 1,
+        ));
 
         $this->validator->validatePerEventConstraints(
             FiscalEventType::SALE_RECEIPT,
@@ -1380,6 +1405,21 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
             eventVersion: 1,
         );
         $this->addToAssertionCount(1);
+    }
+
+    public function test_v5_sale_receipt_still_requires_approval_references_key(): void
+    {
+        $payload = $this->canonicalV5Payload();
+        unset($payload['approval_references']);
+
+        self::assertSame(
+            'payload_missing_required:approval_references',
+            $this->validator->validatePayloadKeySet(
+                FiscalEventType::SALE_RECEIPT,
+                $payload,
+                eventVersion: 5,
+            ),
+        );
     }
 
     public function test_malformed_line_item_missing_sku_is_rejected(): void
