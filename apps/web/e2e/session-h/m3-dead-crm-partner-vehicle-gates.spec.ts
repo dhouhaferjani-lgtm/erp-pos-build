@@ -437,11 +437,15 @@ test.describe('Session H M3 dead CRM and partner/vehicle gates', () => {
     await page.unrouteAll({ behavior: 'ignoreErrors' })
   })
 
-  test('retires /crm/companies and removes the Companies sidebar entry', async ({ page }) => {
+  test('redirects retired /crm/companies to customers and removes the Companies sidebar entry', async ({ page }) => {
     await loginPage(page)
     await page.goto('/crm/companies')
 
-    await expect(page).toHaveURL(/\/dashboard$/, { timeout: UI_TIMEOUT })
+    // The page is retired, but the bookmark still resolves: customers is the
+    // surviving surface for the company/partner concept (lane commit G1.9).
+    // The list page normalises its own query string (?sort_by=&type=), so the
+    // path is the assertion, not the full URL.
+    await expect(page).toHaveURL(/\/sales\/customers(\?|$)/, { timeout: UI_TIMEOUT })
     await expect(page.locator('aside a[href="/crm/companies"]')).toHaveCount(0)
     await page.screenshot({
       fullPage: true,
