@@ -9,7 +9,7 @@ M3: retired Companies, corrected partner/contact gates, composed supplier permis
 Web: combined M1–M3 Vitest 20 files/198 tests; typecheck passed; full lint passed with 0 errors/6,463 existing warnings and 160/160 tool tests.
 POS: typecheck passed; touched Vitest 2 files/10 tests.
 API: by-path Parties/import replay/partner suites 61 tests/208 assertions; PHPStan no errors; Pint passed on all 8 touched PHP files.
-Repository gates: feature-lane manifest passed with standing parked-lane/coverage notices; range diff-check and final status passed.
+Repository gates: feature-lane manifest passed with standing notices; range diff-check passed after three review-only EOF repairs; final status clean.
 Browser evidence: committed M1/M2/M3 specs; recorded runs M1 3/3, M2 3/3, M3 4 passed/1 named runtime skip.
 Screenshots: all 10 nonempty artifacts present under `.playwright-mcp/session-h/{m1,m2,m3}/`.
 Fixture cleanup: `demo-pharmacy-tn` has 0 active `session-h-m3-*` users and 0 temporary roles; deleted-user audit rows follow API deactivation semantics.
