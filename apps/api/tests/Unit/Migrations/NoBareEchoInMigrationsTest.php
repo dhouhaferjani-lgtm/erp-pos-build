@@ -35,6 +35,10 @@ final class NoBareEchoInMigrationsTest extends TestCase
                 'source' => '<?php printf("%s", $value); vprintf("%s", [$value]); dump($value); dd($value); var_dump($value);',
                 'writers' => ['printf', 'vprintf', 'dump', 'dd', 'var_dump'],
             ],
+            'qualified output functions' => [
+                'source' => '<?php \\printf("%s", $value); \\dump($value); \\var_dump($value); \\fwrite(STDOUT, "out"); namespace\\dump($value); Output\\dd($value);',
+                'writers' => ['printf', 'dump', 'var_dump', 'fwrite(STDOUT)', 'dump', 'dd'],
+            ],
             'printing print_r' => [
                 'source' => '<?php print_r($value);',
                 'writers' => ['print_r'],
@@ -117,7 +121,7 @@ final class NoBareEchoInMigrationsTest extends TestCase
                 $writer = 'print';
             } elseif ($id === T_INLINE_HTML) {
                 $writer = 'inline HTML';
-            } elseif ($id === T_STRING) {
+            } elseif (in_array($id, [T_STRING, T_NAME_FULLY_QUALIFIED, T_NAME_QUALIFIED, T_NAME_RELATIVE], true)) {
                 $writer = $this->prohibitedStringCall($tokens, $index, $text);
             }
 
@@ -139,7 +143,7 @@ final class NoBareEchoInMigrationsTest extends TestCase
      */
     private function prohibitedStringCall(array $tokens, int $index, string $text): ?string
     {
-        $name = strtolower($text);
+        $name = strtolower(ltrim(strrchr($text, '\\') ?: $text, '\\'));
 
         if ($name === 'getoutput' && $this->isThisMethodCall($tokens, $index)) {
             return '$this->getOutput()';
