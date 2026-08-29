@@ -47,10 +47,11 @@ milestones:
     title: a5 delete Companies + contacts.update->partners.update on partner edit routes + gate suppliers; a6 constrain Type select per route
     review_lenses: [tenancy-authz, frontend-conventions]
     status: review
-    commit: 08bac61fa64c1fd74c93ac0bc9f100f9e57b0d21
-    verdict: null
-    fix_rounds: 0
-    updated: 08bac61fa64c1fd74c93ac0bc9f100f9e57b0d21
+    commit: f91c6066c
+    verdict: docs/handoff/reviews/session-h-phase1/M3-round1.md
+    last_verdict: CHANGES-REQUIRED
+    fix_rounds: 1
+    updated: f91c6066c
   - id: M4
     lane: h1-a1
     title: SALE_RECEIPT.buyer populated (resolved server partner id only; contact_id null by decision); validateBuyer customer_id uuid-or-null; projection writes partner_id from snapshot
@@ -76,4 +77,5 @@ owes_parent:
   - M2 create-surface gap: create-only Nature validation is scoped to full `PartnerForm`; the inline `AddPartnerModal` remains shape-neutral and can create `customer_category = NULL`. Phase 2 must make nature canonical across every write surface.
   - M2 supplier credit warning: the new warning intentionally uses customer exposure (`receivable - credit`) and therefore does not warn on supplier payable exposure. Phase 2 should either hide/rename the customer credit-limit control on supplier-only routes or define a separate supplier exposure policy.
   - M2 accepted P3 UI edges: a legacy-null B2B section can unmount when its last internal signal is cleared; retained hidden values still submit after switching to Individual; scan-prefilled VAT can reveal B2B fields before Nature is chosen. No data loss; re-evaluate when Phase 2 makes nature canonical.
+  - M3 pre-existing vehicle enum drift: VehicleForm still offers display-cased fuel/transmission literals while backend enums use lowercase canonical values; M3 did not broaden this payload behavior.
 blockers: []
