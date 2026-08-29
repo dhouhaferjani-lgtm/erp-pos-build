@@ -41,7 +41,16 @@ After go-live, normal operations move the same accounts:
 | Supplier payment | `401` Supplier | `5x` Bank/Cash |
 | POS refund | `709` Sales returns (+VAT reversal) | `53x` Cash drawer |
 
-### 3. Sign conventions in source files
+### 3. Sign conventions in source files — THE rule (matches the importer, `PartiesRowMapper`)
+
+**Balances are written from YOUR company's point of view.**
+
+| File column | Positive means | Negative means |
+|---|---|---|
+| `opening_balance` (customer) | **The client owes you** → imported as a historical invoice on `411` | **You owe the client** (advance, overpayment, credit) → imported as a historical **credit note** for the absolute amount |
+| `opening_balance` (supplier) | **You owe the supplier** → historical supplier invoice on `401` | **The supplier owes you** (credit, rebate due) → historical **supplier credit note** |
+
+So the sign never flips an account: it selects the DOCUMENT TYPE (invoice vs credit note); the amount imported is always the absolute value. Zero balances are skipped. In the per-invoice aged file (`open_items`), amounts must be **non-negative** and the direction is given explicitly by the `document_type` column (`invoice` or `credit_note`) — a negative amount there is a row error, by design.
 - A customer balance is **positive when they owe us** (debit balance on `411`). A credit balance on a customer (advance received) is an *avance client* → `419`, not a negative sale.
 - A supplier balance is **positive when we owe them** (credit balance on `401`). If the old system exports "supplier −500", that's money the supplier owes *us* — it flips sides (our importer's `HistoricalOpeningSideReader` handles the side; don't pre-flip in the file).
 - Never import into **control accounts** (`411`/`401` totals) directly through the GL batch — the importer refuses this; person-level balances go through the AR/AP opening flow so the subledger and GL stay tied.
@@ -86,7 +95,16 @@ Après démarrage :
 | Règlement fournisseur | `401` Fournisseur | `5x` Banque/Caisse |
 | Remboursement POS | `709` Retours (+ contre-passation TVA) | `53x` Caisse |
 
-### 3. Conventions de signe dans les fichiers sources
+### 3. Conventions de signe dans les fichiers sources — LA règle (celle de l'importateur)
+
+**Les soldes s'écrivent du point de vue de VOTRE société.**
+
+| Colonne du fichier | Positif signifie | Négatif signifie |
+|---|---|---|
+| `opening_balance` (client) | **Le client vous doit** → repris comme facture historique sur `411` | **Vous devez au client** (avance, trop-perçu, avoir) → repris comme **avoir historique** pour le montant absolu |
+| `opening_balance` (fournisseur) | **Vous devez au fournisseur** → facture fournisseur historique sur `401` | **Le fournisseur vous doit** (avoir, ristourne due) → **avoir fournisseur historique** |
+
+Le signe ne change donc jamais de compte : il choisit le TYPE DE DOCUMENT (facture vs avoir) ; le montant repris est toujours la valeur absolue. Les soldes à zéro sont ignorés. Dans le fichier détaillé par facture (`open_items`), les montants doivent être **positifs ou nuls** et le sens est donné explicitement par la colonne `document_type` (`invoice` ou `credit_note`) — un montant négatif y est une erreur de ligne, volontairement.
 - Un solde client est **positif quand le client nous doit** (solde débiteur du `411`). Un solde créditeur client = *avance client* → `419`, jamais une vente négative.
 - Un solde fournisseur est **positif quand nous devons au fournisseur** (solde créditeur du `401`). « Fournisseur −500 » dans l'ancien système = le fournisseur nous doit → le sens s'inverse (l'importateur gère le sens ; ne pas inverser dans le fichier).
 - Ne jamais importer directement dans les **comptes collectifs** (`411`/`401` globaux) via le lot GL — l'importateur le refuse ; les soldes nominatifs passent par la reprise AR/AP pour garder l'auxiliaire et le général alignés.
