@@ -48,7 +48,7 @@ class ProductImageImportService
      *
      * @return list<array<string, mixed>>
      */
-    public function processZipImport(ImportJob $job, string $zipPath): array
+    public function processZipImport(ImportJob $job, string $zipPath, string $companyId): array
     {
         $this->validateZipFile($zipPath);
 
@@ -63,7 +63,7 @@ class ProductImageImportService
             $results = [];
             foreach ($scannedFiles as $fileInfo) {
                 try {
-                    $result = $this->importProductImage($fileInfo, $job->tenant_id);
+                    $result = $this->importProductImage($fileInfo, $job->tenant_id, $companyId);
                     $results[] = $result;
                 } catch (Exception $e) {
                     $results[] = [
@@ -229,14 +229,15 @@ class ProductImageImportService
      * @param  array{path: string, filename: string, sku: string}  $fileInfo
      * @return array{filename: string, sku: string, product_id: string, image_id: string, success: bool}
      */
-    private function importProductImage(array $fileInfo, string $tenantId): array
+    private function importProductImage(array $fileInfo, string $tenantId, string $companyId): array
     {
         $sku = $fileInfo['sku'];
         $filePath = $fileInfo['path'];
 
-        // Find product by SKU scoped to the job's tenant (avoids the tenant() helper).
+        // Queued workers have no CompanyContext, so both scopes come from the job payload.
         $product = Product::where('sku', $sku)
             ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->first();
 
         if (! $product) {

@@ -10,18 +10,23 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Application\Jobs\ProcessProductImageImport;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
+use App\Modules\Import\Services\ImportService;
+use App\Modules\Product\Application\Services\ProductImageImportService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use ZipArchive;
 
 final class PartiesImportTypeTest extends TestCase
 {
@@ -147,5 +152,131 @@ final class PartiesImportTypeTest extends TestCase
         $this->assertSame([
             "For partners of type 'both', use opening_balance_customer / opening_balance_supplier instead of opening_balance.",
         ], $row->errors['opening_balance'] ?? null);
+    }
+
+    public function test_product_images_dispatches_and_purges_the_import_jobs_relative_storage_key(): void
+    {
+        Bus::fake([ProcessProductImageImport::class]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', [
+                'file' => $this->productImagesZip(),
+                'type' => ImportType::ProductImages->value,
+            ]);
+
+        $response->assertAccepted();
+
+        $job = ImportJob::query()->whereKey($response->json('data.id'))->firstOrFail();
+        $queuedJob = null;
+
+        Bus::assertDispatched(
+            ProcessProductImageImport::class,
+            function (ProcessProductImageImport $command) use (&$queuedJob, $job): bool {
+                $queuedJob = $command;
+
+                return $command->importJobId === $job->id;
+            },
+        );
+
+        $this->assertInstanceOf(ProcessProductImageImport::class, $queuedJob);
+        $this->assertSame($job->file_path, $queuedJob->zipPath);
+        $this->assertFalse(str_starts_with($queuedJob->zipPath, '/'), 'The queued ZIP path must be disk-relative.');
+        Storage::disk('local')->assertExists($job->file_path);
+
+        $queuedJob->handle(
+            $this->app->make(ProductImageImportService::class),
+            $this->app->make(ImportService::class),
+        );
+
+        Storage::disk('local')->assertMissing($job->file_path);
+    }
+
+    public function test_legacy_product_images_job_fails_before_importing_and_purges_persisted_relative_key(): void
+    {
+        Bus::fake([ProcessProductImageImport::class]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', [
+                'file' => $this->productImagesZip(),
+                'type' => ImportType::ProductImages->value,
+            ]);
+
+        $response->assertAccepted();
+
+        $job = ImportJob::query()->whereKey($response->json('data.id'))->firstOrFail();
+        $legacyJob = $this->legacyProductImagesJob(
+            $job->id,
+            Storage::disk('local')->path($job->file_path),
+            $this->tenant->id,
+        );
+
+        $this->assertNull($legacyJob->companyId);
+        Storage::disk('local')->assertExists($job->file_path);
+
+        $legacyJob->handle(
+            $this->app->make(ProductImageImportService::class),
+            $this->app->make(ImportService::class),
+        );
+
+        $job->refresh();
+        $this->assertSame(ImportStatus::Failed, $job->status);
+        $this->assertNull($job->started_at);
+        $this->assertStringStartsWith('company_context_missing:', (string) $job->error_message);
+        Storage::disk('local')->assertMissing($job->file_path);
+    }
+
+    private function legacyProductImagesJob(string $importJobId, string $zipPath, string $tenantId): ProcessProductImageImport
+    {
+        $properties = [
+            'importJobId' => $importJobId,
+            'zipPath' => $zipPath,
+            'tenantId' => $tenantId,
+        ];
+        $serializedProperties = '';
+
+        foreach ($properties as $name => $value) {
+            $serializedProperties .= sprintf(
+                's:%d:"%s";s:%d:"%s";',
+                strlen($name),
+                $name,
+                strlen($value),
+                $value,
+            );
+        }
+
+        $class = ProcessProductImageImport::class;
+        $payload = sprintf(
+            'O:%d:"%s":%d:{%s}',
+            strlen($class),
+            $class,
+            count($properties),
+            $serializedProperties,
+        );
+        $legacyJob = unserialize($payload, ['allowed_classes' => [$class]]);
+
+        $this->assertInstanceOf(ProcessProductImageImport::class, $legacyJob);
+
+        return $legacyJob;
+    }
+
+    private function productImagesZip(): UploadedFile
+    {
+        $path = tempnam(sys_get_temp_dir(), 'product-images-');
+        if ($path === false) {
+            $this->fail('Unable to create a temporary ZIP path.');
+        }
+
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open($path, ZipArchive::OVERWRITE));
+        $zip->addFromString('NO-MATCH.jpg', 'not-an-image');
+        $zip->close();
+
+        $this->beforeApplicationDestroyed(static function () use ($path): void {
+            if (is_file($path)) {
+                unlink($path);
+            }
+        });
+
+        return new UploadedFile($path, 'product-images.zip', 'application/zip', null, true);
     }
 }
