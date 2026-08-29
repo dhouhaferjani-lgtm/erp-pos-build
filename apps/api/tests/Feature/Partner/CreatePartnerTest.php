@@ -287,6 +287,39 @@ class CreatePartnerTest extends TestCase
             ->count());
     }
 
+    public function test_rejects_a_code_held_by_a_soft_deleted_partner(): void
+    {
+        $created = $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/partners', [
+                'name' => 'Trashed Code Holder',
+                'code' => 'TRASHED-001',
+                'type' => 'customer',
+            ])
+            ->assertCreated();
+
+        $holder = Partner::query()
+            ->where('id', $created->json('data.id'))
+            ->firstOrFail();
+        $holder->delete();
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/partners', [
+                'name' => 'Would Collide With Trashed',
+                'code' => 'TRASHED-001',
+                'type' => 'customer',
+            ]);
+
+        $this->assertApiValidationErrors($response, ['code']);
+        $this->assertStringContainsString(
+            'code_held_by_deleted_partner',
+            (string) $response->json('error.errors.code.0')
+        );
+
+        $this->assertDatabaseCount('partners', 1);
+    }
+
     public function test_can_create_customer_type(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
