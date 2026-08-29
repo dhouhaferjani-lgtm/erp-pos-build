@@ -79,6 +79,7 @@ class UpdatePartnerRequest extends FormRequest
         $user = $this->user();
         $tenantId = $user?->tenant_id;
         $partnerId = $this->route('partner');
+        $company = $this->companyContext->requireCompany();
 
         return [
             'name' => ['sometimes', 'string', 'max:255'],
@@ -103,7 +104,7 @@ class UpdatePartnerRequest extends FormRequest
                 'max:50',
                 Rule::unique('partners', 'vat_number')
                     ->where('tenant_id', $tenantId)
-                    ->whereNull('deleted_at')
+                    ->where('company_id', $company->id)
                     ->ignore($partnerId),
                 function (string $attribute, mixed $value, \Closure $fail): void {
                     if ($value === null) {
@@ -178,10 +179,24 @@ class UpdatePartnerRequest extends FormRequest
      */
     public function messages(): array
     {
-        return [
+        $messages = [
             'credit_limit.regex' => 'Credit limit must have at most 3 decimal places.',
             'discount_percentage.regex' => 'Discount percentage must have at most 2 decimal places.',
         ];
+
+        $vatNumber = $this->input('vat_number');
+        $company = $this->companyContext->requireCompany();
+        if (is_string($vatNumber) && Partner::onlyTrashed()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->where('vat_number', $vatNumber)
+            ->exists()
+        ) {
+            $messages['vat_number.unique'] = "vat_held_by_deleted_partner: VAT {$vatNumber} is held by a soft-deleted partner; "
+                .'purge the deleted record or choose a different VAT.';
+        }
+
+        return $messages;
     }
 
     /**

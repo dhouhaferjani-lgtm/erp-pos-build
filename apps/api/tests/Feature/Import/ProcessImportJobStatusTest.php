@@ -22,6 +22,7 @@ use App\Modules\Import\Services\ImportService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
@@ -91,6 +92,7 @@ class ProcessImportJobStatusTest extends TestCase
      */
     private function seedJob(array $rows): ImportJob
     {
+        app(UnitsProvisioningService::class)->provisionForCompany($this->company);
         $validCount = count(array_filter($rows, fn (array $r): bool => $r['is_valid']));
 
         // Mirror the state ImportController@store leaves behind after
@@ -123,7 +125,10 @@ class ProcessImportJobStatusTest extends TestCase
     private function runJob(ImportJob $job): void
     {
         (new ProcessImportJob($job->id, $this->company->id, $this->tenant->id))
-            ->handle($this->app->make(ImportService::class));
+            ->handle(
+                $this->app->make(ImportService::class),
+                $this->app->make(UnitsProvisioningService::class),
+            );
     }
 
     /**

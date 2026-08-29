@@ -29,6 +29,7 @@ use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Carbon\CarbonImmutable;
 use Database\Seeders\CountriesSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -126,6 +127,7 @@ final class ProductsImportPipelineTest extends TestCase
         ]);
 
         app(CompanyContext::class)->setCompanyId($this->company->id);
+        app(UnitsProvisioningService::class)->provisionForCompany($this->company);
         Storage::fake('local');
     }
 
@@ -195,7 +197,7 @@ final class ProductsImportPipelineTest extends TestCase
         $htProduct = Product::where('sku', 'HTPRICE')->firstOrFail();
         $this->assertSame('11.900', $htProduct->sale_price);
 
-        $job = ImportJob::findOrFail($jobId);
+        $job = ImportJob::query()->findOrFail($jobId);
         $this->assertInstanceOf(ImportJob::class, $job);
         $rows = $job->rows()->orderBy('row_number')->get()->keyBy('row_number');
 
@@ -407,7 +409,7 @@ final class ProductsImportPipelineTest extends TestCase
             'batch-tracked opening stock must be backed by a default lot'
         );
 
-        $row = ImportJob::findOrFail($jobId)->rows()->firstOrFail();
+        $row = ImportJob::query()->whereKey($jobId)->firstOrFail()->rows()->firstOrFail();
         $this->assertSame('ok', $row->data['_results']['opening_stock'] ?? null);
         $this->assertNull($row->warnings);
     }
@@ -851,13 +853,13 @@ final class ProductsImportPipelineTest extends TestCase
         $this->assertSame($soins->id, Product::where('sku', 'LING-BEBE_72')->firstOrFail()->category_id);
         $this->assertSame($aroma->id, Product::where('sku', 'ELIX-APAI_50')->firstOrFail()->category_id);
 
-        $rows = ImportJob::findOrFail($jobId)->rows()->orderBy('row_number')->get()->keyBy('row_number');
+        $rows = ImportJob::query()->whereKey($jobId)->firstOrFail()->rows()->orderBy('row_number')->get()->keyBy('row_number');
 
         // Row 1 created the category -> reported. Row 2 reused it -> matched, no warning.
         $this->assertSame('category_created', $rows[1]->warnings[0]['code'] ?? null);
         $this->assertStringContainsString('Soins Bebe', (string) ($rows[1]->warnings[0]['detail'] ?? ''));
         $this->assertSame('created', $rows[1]->data['_results']['category'] ?? null);
-        $this->assertNull($rows[2]->warnings);
+        $this->assertNull($rows[2]?->warnings);
         $this->assertSame('matched', $rows[2]->data['_results']['category'] ?? null);
         $this->assertSame('category_created', $rows[3]->warnings[0]['code'] ?? null);
 
@@ -914,9 +916,9 @@ final class ProductsImportPipelineTest extends TestCase
         ], 2);
 
         $categorised = Product::where('sku', 'PARA-500')->firstOrFail();
-        $this->assertSame(
-            0,
-            bccomp((string) $categorised->tax_rate, '7.00', 2),
+        $this->assertDecimalEquals(
+            '7.00',
+            $categorised->tax_rate,
             'A product whose category carries its own default rate must import at that rate, not the company default.'
         );
         $this->assertSame(
@@ -926,7 +928,7 @@ final class ProductsImportPipelineTest extends TestCase
         );
 
         $uncategorised = Product::where('sku', 'BROS-01')->firstOrFail();
-        $this->assertSame(0, bccomp((string) $uncategorised->tax_rate, '19.00', 2));
+        $this->assertDecimalEquals('19.00', $uncategorised->tax_rate);
         $this->assertSame(
             $tva19->id,
             $uncategorised->default_tax_configuration_id,
@@ -961,7 +963,7 @@ final class ProductsImportPipelineTest extends TestCase
 
         $product = Product::where('sku', 'CREM-SOL')->firstOrFail();
 
-        $this->assertSame(0, bccomp((string) $product->tax_rate, '13.00', 2));
+        $this->assertDecimalEquals('13.00', $product->tax_rate);
         $this->assertNull(
             $product->default_tax_configuration_id,
             'No configuration states 13 %, so none may be stored — least of all the company 19 % one.'
@@ -1048,7 +1050,7 @@ final class ProductsImportPipelineTest extends TestCase
 
         $product = Product::where('sku', 'PARA-500')->firstOrFail();
 
-        $this->assertSame(0, bccomp((string) $product->tax_rate, '19.00', 2), 'Pre-condition: the rate moved.');
+        $this->assertDecimalEquals('19.00', $product->tax_rate, 'Pre-condition: the rate moved.');
         $this->assertNotSame(
             $tva7->id,
             $product->default_tax_configuration_id,
@@ -1090,7 +1092,7 @@ final class ProductsImportPipelineTest extends TestCase
 
         $product = Product::where('sku', 'PARA-500')->firstOrFail();
 
-        $this->assertSame(0, bccomp((string) $product->tax_rate, '13.00', 2));
+        $this->assertDecimalEquals('13.00', $product->tax_rate);
         $this->assertNull(
             $product->default_tax_configuration_id,
             'Nothing states 13 %, so the stale 7 % configuration must be cleared, not kept.'
@@ -1126,9 +1128,9 @@ final class ProductsImportPipelineTest extends TestCase
 
         $product = Product::where('sku', 'PARA-500')->firstOrFail();
 
-        $this->assertSame(
-            0,
-            bccomp((string) $product->tax_rate, '7.00', 2),
+        $this->assertDecimalEquals(
+            '7.00',
+            $product->tax_rate,
             "The category's configuration IS its rate statement; the company default must not override it."
         );
         $this->assertSame($tva7->id, $product->default_tax_configuration_id);
@@ -1162,7 +1164,7 @@ final class ProductsImportPipelineTest extends TestCase
 
         $product = Product::where('sku', 'BROS-01')->firstOrFail();
 
-        $this->assertSame(0, bccomp((string) $product->tax_rate, '19.00', 2));
+        $this->assertDecimalEquals('19.00', $product->tax_rate);
         $this->assertSame(
             $tva19->id,
             $product->default_tax_configuration_id,
@@ -1196,7 +1198,7 @@ final class ProductsImportPipelineTest extends TestCase
 
         $product = Product::where('sku', 'BROS-01')->firstOrFail();
 
-        $this->assertSame(0, bccomp((string) $product->tax_rate, '19.00', 2), 'Pre-condition: the rate did not move.');
+        $this->assertDecimalEquals('19.00', $product->tax_rate, 'Pre-condition: the rate did not move.');
         $this->assertSame(
             $tva19->id,
             $product->default_tax_configuration_id,
@@ -1229,7 +1231,7 @@ final class ProductsImportPipelineTest extends TestCase
             'Sirop,SIRO-01,part,Medicaments,10.000',
         ], 3);
 
-        $rows = ImportJob::findOrFail($jobId)->rows()->orderBy('row_number')->get()->keyBy('row_number');
+        $rows = ImportJob::query()->whereKey($jobId)->firstOrFail()->rows()->orderBy('row_number')->get()->keyBy('row_number');
 
         $this->assertSame('category_default', $rows[1]->data['_results']['tax_source'] ?? null);
         $this->assertSame('company_default', $rows[2]->data['_results']['tax_source'] ?? null);
@@ -1277,9 +1279,9 @@ final class ProductsImportPipelineTest extends TestCase
                 $this->assertSame($existing->id, Product::where('sku', $sku)->firstOrFail()->category_id);
             }
 
-            $passRows = ImportJob::findOrFail($jobId)->rows()->orderBy('row_number')->get()->keyBy('row_number');
+            $passRows = ImportJob::query()->whereKey($jobId)->firstOrFail()->rows()->orderBy('row_number')->get()->keyBy('row_number');
             $this->assertSame('matched', $passRows[1]->data['_results']['category'] ?? null);
-            $this->assertNull($passRows[1]->warnings, "pass {$pass}: an exact-name match must stay silent");
+            $this->assertNull($passRows[1]?->warnings, "pass {$pass}: an exact-name match must stay silent");
             $this->assertSame('matched_by_slug', $passRows[2]->data['_results']['category'] ?? null);
             $this->assertSame('category_matched_by_slug', $passRows[2]->warnings[0]['code'] ?? null);
         }
@@ -1318,7 +1320,7 @@ final class ProductsImportPipelineTest extends TestCase
             ->assertJsonPath('data.successful_rows', 1)
             ->assertJsonPath('data.failed_rows', 0);
 
-        $row = ImportJob::findOrFail($jobId)->rows()->firstOrFail();
+        $row = ImportJob::query()->whereKey($jobId)->firstOrFail()->rows()->firstOrFail();
         $this->assertNull($row->import_error, 'a trashed slug holder must not poison the row transaction');
         $this->assertSame('restored', $row->data['_results']['category'] ?? null);
         $this->assertSame('category_restored', $row->warnings[0]['code'] ?? null);
@@ -1356,12 +1358,12 @@ final class ProductsImportPipelineTest extends TestCase
             ->assertJsonPath('data.successful_rows', 1)
             ->assertJsonPath('data.failed_rows', 1);
 
-        $rows = ImportJob::findOrFail($jobId)->rows()->orderBy('row_number')->get()->keyBy('row_number');
-        $this->assertFalse((bool) $rows[1]->is_valid);
+        $rows = ImportJob::query()->whereKey($jobId)->firstOrFail()->rows()->orderBy('row_number')->get()->keyBy('row_number');
+        $this->assertFalse((bool) $rows[1]?->is_valid);
         $this->assertArrayHasKey('category_name', $rows[1]->errors ?? []);
-        $this->assertNull($rows[1]->import_error, 'must fail validation, never mid-import with a SQLSTATE');
-        $this->assertSame(1, $rows[1]->row_number);
-        $this->assertTrue((bool) $rows[2]->is_valid);
+        $this->assertNull($rows[1]?->import_error, 'must fail validation, never mid-import with a SQLSTATE');
+        $this->assertSame(1, $rows[1]?->row_number);
+        $this->assertTrue((bool) $rows[2]?->is_valid);
         $this->assertSame(0, Product::where('sku', 'GEL-CAVA_500')->count());
     }
 
@@ -1394,7 +1396,7 @@ final class ProductsImportPipelineTest extends TestCase
         // Two categories, not four — the merge itself is the intended behaviour.
         $this->assertSame(2, Category::where('company_id', $this->company->id)->count());
 
-        $rows = ImportJob::findOrFail($jobId)->rows()->orderBy('row_number')->get()->keyBy('row_number');
+        $rows = ImportJob::query()->whereKey($jobId)->firstOrFail()->rows()->orderBy('row_number')->get()->keyBy('row_number');
         $this->assertSame('created', $rows[1]->data['_results']['category'] ?? null);
         $this->assertSame('matched_by_slug', $rows[2]->data['_results']['category'] ?? null);
         $this->assertSame('category_matched_by_slug', $rows[2]->warnings[0]['code'] ?? null);
@@ -1479,5 +1481,17 @@ final class ProductsImportPipelineTest extends TestCase
             ->assertJsonPath('data.failed_rows', 0);
 
         return $jobId;
+    }
+
+    /**
+     * @param  numeric-string  $expected
+     */
+    private function assertDecimalEquals(string $expected, ?string $actual, string $message = ''): void
+    {
+        if ($actual === null || ! is_numeric($actual)) {
+            self::fail($message !== '' ? $message : 'Expected a numeric decimal string.');
+        }
+
+        $this->assertSame(0, bccomp($actual, $expected, 2), $message);
     }
 }

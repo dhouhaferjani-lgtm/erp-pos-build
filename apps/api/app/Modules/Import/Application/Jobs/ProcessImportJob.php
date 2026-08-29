@@ -6,11 +6,13 @@ namespace App\Modules\Import\Application\Jobs;
 
 use App\Jobs\Concerns\BindsTenantContext;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Events\ImportCompleted;
 use App\Modules\Import\Domain\Events\ImportProgressUpdated;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Services\ImportService;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -69,9 +71,11 @@ final class ProcessImportJob implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(ImportService $importService): void
-    {
-        $this->withTenantContext(function () use ($importService): void {
+    public function handle(
+        ImportService $importService,
+        UnitsProvisioningService $unitsProvisioning,
+    ): void {
+        $this->withTenantContext(function () use ($importService, $unitsProvisioning): void {
             $job = ImportJob::query()
                 ->where('tenant_id', $this->tenantId)
                 ->where('id', $this->importJobId)
@@ -100,6 +104,17 @@ final class ProcessImportJob implements ShouldQueue
             if ($company === null) {
                 Log::error('ProcessImportJob: Company not found', ['id' => $this->companyId]);
                 $this->failJob($job, 'Company not found');
+
+                return;
+            }
+
+            if (in_array('unit', $job->type->getOptionalColumns(), true)
+                && ! $unitsProvisioning->hasVisibleUnits($company)) {
+                $this->failJob(
+                    $job,
+                    ImportErrorCode::UnitsNotSeeded->value
+                    .': No units of measure are configured for this company; seed them in Settings → Units before importing'
+                );
 
                 return;
             }

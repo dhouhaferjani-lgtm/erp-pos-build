@@ -15,6 +15,7 @@ use App\Modules\Expense\Application\Services\ExpenseCategoryProvisioningService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Database\Seeders\BanksSeeder;
 use Database\Seeders\CountriesSeeder;
 use Database\Seeders\CountryDocumentSettingsSeeder;
@@ -24,7 +25,6 @@ use Database\Seeders\CountryTaxRatesSeeder;
 use Database\Seeders\PaymentMethodSeeder;
 use Database\Seeders\PaymentRepositorySeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
-use Database\Seeders\UomSeeder;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -41,6 +41,7 @@ class TenantInitializationService
         private readonly CompanyTaxProvisioningService $companyTaxProvisioning,
         private readonly ChartOfAccountsService $chartOfAccounts,
         private readonly ExpenseCategoryProvisioningService $expenseCategories,
+        private readonly UnitsProvisioningService $unitsProvisioning,
     ) {}
 
     /**
@@ -80,7 +81,7 @@ class TenantInitializationService
         // notably seedTaxConfigurations(), which silently no-ops when `countries`
         // is empty. Idempotent (the seeders updateOrCreate), so harmless in the
         // shared-DB compat mode where the tables may already be populated.
-        $this->seedReferenceData();
+        $this->seedReferenceData($company);
 
         // 3. Seed country-specific chart of accounts
         $this->seedChartOfAccounts($company);
@@ -218,7 +219,7 @@ class TenantInitializationService
      * database under database-per-tenant). Both seeders use updateOrCreate, so
      * re-running in the shared-DB compat mode is harmless.
      */
-    private function seedReferenceData(): void
+    private function seedReferenceData(Company $company): void
     {
         (new CountriesSeeder)->run();
         (new CountryTaxRatesSeeder)->run();
@@ -235,11 +236,11 @@ class TenantInitializationService
         // country_code FK needs the lookup rows, and this table's migration
         // deliberately seeds nothing.
         (new CountryInventorySettingsSeeder)->run();
-        $this->seedUnitsOfMeasure();
+        $this->seedUnitsOfMeasure($company);
     }
 
     /**
-     * Seed the base unit-of-measure set (N-9).
+     * Seed the company-visible base unit-of-measure set (N-9, G-12).
      *
      * A tenant provisioned through registration came up with ZERO `units` — the
      * table is tenant-scoped and nothing on the registration path ever seeded it,
@@ -254,15 +255,12 @@ class TenantInitializationService
      * on `unit_categories.code` / `units.code`. The guard demands BOTH tables be
      * empty — seeding units into existing categories, or categories over existing
      * units, is exactly the half-state that collides. A tenant that already has
-     * any of either is left alone.
+     * any of either is left alone. UnitsProvisioningService owns the one
+     * company-visibility predicate and the shared both-tables-empty policy.
      */
-    private function seedUnitsOfMeasure(): void
+    private function seedUnitsOfMeasure(Company $company): void
     {
-        if (DB::table('units')->exists() || DB::table('unit_categories')->exists()) {
-            return;
-        }
-
-        (new UomSeeder)->run();
+        $this->unitsProvisioning->provisionForCompany($company);
     }
 
     private function seedChartOfAccounts(Company $company): void

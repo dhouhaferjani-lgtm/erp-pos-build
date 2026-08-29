@@ -9,6 +9,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Import\Application\Jobs\ProcessImportJob;
 use App\Modules\Import\Application\Jobs\ProcessProductImageImport;
+use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
@@ -18,6 +19,7 @@ use App\Modules\Import\Services\ResultWorkbookService;
 use App\Modules\Import\Services\SpreadsheetParserService;
 use App\Modules\Import\Services\ValidationEngine;
 use App\Modules\Inventory\Domain\Enums\LocationNodeType;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -46,6 +48,7 @@ class ImportController extends Controller
         private readonly SpreadsheetParserService $spreadsheetParser,
         private readonly FailedRowsExportService $failedRowsExportService,
         private readonly ResultWorkbookService $resultWorkbookService,
+        private readonly UnitsProvisioningService $unitsProvisioning,
     ) {}
 
     /**
@@ -117,6 +120,19 @@ class ImportController extends Controller
             throw ValidationException::withMessages(['type' => [$deprecation]]);
         }
 
+        if (in_array('unit', $type->getOptionalColumns(), true)
+            && ! $this->unitsProvisioning->hasVisibleUnits($company)) {
+            return response()->json([
+                'error' => [
+                    'code' => ImportErrorCode::UnitsNotSeeded->value,
+                    'message' => 'No units of measure are configured for this company; seed them in Settings → Units before importing',
+                    'details' => [
+                        'company_id' => $company->id,
+                    ],
+                ],
+            ], 422);
+        }
+
         $columnMapping = $request->has('column_mapping')
             ? json_decode($request->input('column_mapping'), true)
             : null;
@@ -124,7 +140,7 @@ class ImportController extends Controller
 
         // Special handling for ProductImages (ZIP file)
         if ($type === ImportType::ProductImages) {
-            return $this->handleProductImagesUpload($file, $user, $tenantId);
+            return $this->handleProductImagesUpload($file, $user, $tenantId, $companyId);
         }
 
         // A GL opening-balance import consumes the company's one-shot opening slot:
@@ -789,19 +805,18 @@ class ImportController extends Controller
 
     /**
      * Handle ProductImages ZIP upload (special case).
-     *
-     * @param  UploadedFile  $file
      */
-    private function handleProductImagesUpload($file, User $user, string $tenantId): JsonResponse
-    {
+    private function handleProductImagesUpload(
+        UploadedFile $file,
+        User $user,
+        string $tenantId,
+        string $companyId,
+    ): JsonResponse {
         // Store the ZIP file
         $path = $file->store('imports/'.$tenantId.'/product-images', 'local');
         if ($path === false) {
             return response()->json(['error' => 'Failed to store ZIP file'], 500);
         }
-
-        // Get the full file path for queue job
-        $fullPath = Storage::disk('local')->path($path);
 
         // Create import job
         $job = $this->importService->createJob(
@@ -820,10 +835,9 @@ class ImportController extends Controller
         $job->update(['status' => ImportStatus::Pending]);
 
         // Dispatch queue job for async ZIP processing.
-        // tenantId is passed so the worker can rebind tenant context via
-        // BindsTenantContext::withTenantContext() before any DB access
-        // (api.scheduled-jobs.002).
-        ProcessProductImageImport::dispatch($job->id, $fullPath, $tenantId);
+        // Tenant and company are serialized because queue workers run without
+        // CompanyContext; tenantId also drives BindsTenantContext rebinding.
+        ProcessProductImageImport::dispatch($job->id, $path, $tenantId, $companyId);
 
         /** @var ImportJob $freshJob */
         $freshJob = $job->fresh();
