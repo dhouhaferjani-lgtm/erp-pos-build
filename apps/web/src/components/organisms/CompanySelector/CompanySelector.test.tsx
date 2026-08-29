@@ -8,12 +8,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore, type Company } from '@/stores/companyStore'
+import { CompanyProvider } from '@/features/company/CompanyProvider'
 
 import { CompanySelector } from './CompanySelector'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }))
+
+const mockApiGet = vi.hoisted(() => vi.fn())
+
+vi.mock('@/lib/api', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
+  return {
+    ...actual,
+    api: { get: mockApiGet },
+  }
+})
 
 const companyA: Company = {
   id: 'company-A',
@@ -48,6 +59,7 @@ function wrapper(queryClient: QueryClient) {
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
+  mockApiGet.mockImplementation(() => new Promise(() => undefined))
   useAuthStore.setState({
     user: {
       id: 'user-1',
@@ -115,5 +127,36 @@ describe('CompanySelector company switch invalidation', () => {
       expect(newCompanyQuery).toHaveBeenCalled()
     })
     expect(oldCompanyQuery).toHaveBeenCalledOnce()
+  })
+
+  it('stays mounted while CompanyProvider refetches the companies list under the new scope', async () => {
+    const user = userEvent.setup()
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+    })
+    queryClient.setQueryData(
+      ['user', 'companies', 'tenant-A', companyA.id],
+      [companyA, companyB],
+    )
+    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries')
+
+    render(
+      <CompanyProvider>
+        <CompanySelector />
+      </CompanyProvider>,
+      { wrapper: wrapper(queryClient) },
+    )
+
+    await user.click(screen.getByRole('button', { name: 'company.select' }))
+    await user.click(screen.getByRole('button', { name: /Company B/ }))
+
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryState(['user', 'companies', 'tenant-A', companyB.id])?.fetchStatus,
+      ).toBe('fetching')
+      expect(mockApiGet).toHaveBeenCalledWith('/user/companies')
+      expect(invalidateQueries).toHaveBeenCalledOnce()
+    })
+    expect(screen.getByRole('button', { name: 'company.select' })).toBeInTheDocument()
   })
 })

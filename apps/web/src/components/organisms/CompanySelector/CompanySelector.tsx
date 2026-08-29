@@ -18,7 +18,6 @@ export function CompanySelector() {
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const previousCompanyIdRef = useRef(currentCompanyId)
-  const invalidationScheduledRef = useRef(false)
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
@@ -42,13 +41,9 @@ export function CompanySelector() {
   useEffect(() => {
     if (previousCompanyIdRef.current !== currentCompanyId) {
       previousCompanyIdRef.current = currentCompanyId
-      if (!invalidationScheduledRef.current) {
-        invalidationScheduledRef.current = true
-        queueMicrotask(() => {
-          invalidationScheduledRef.current = false
-          void queryClient.invalidateQueries()
-        })
-      }
+      queueMicrotask(() => {
+        void queryClient.invalidateQueries()
+      })
     }
   }, [currentCompanyId, queryClient])
 

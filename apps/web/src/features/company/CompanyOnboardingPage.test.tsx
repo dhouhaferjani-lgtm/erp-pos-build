@@ -9,6 +9,7 @@ import { useCompanyStore, type Company } from '@/stores/companyStore'
 
 const mockCreateCompany = vi.hoisted(() => vi.fn())
 const mockNavigate = vi.hoisted(() => vi.fn())
+const mockApiGet = vi.hoisted(() => vi.fn())
 
 // i18n: return interpolation default string when provided, else the key.
 vi.mock('react-i18next', () => ({
@@ -19,6 +20,7 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
+  useLocation: () => ({ pathname: '/company-onboarding' }),
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
 }))
 
@@ -26,7 +28,16 @@ vi.mock('./api', () => ({
   createCompany: mockCreateCompany,
 }))
 
+vi.mock('@/lib/api', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
+  return {
+    ...actual,
+    api: { get: mockApiGet },
+  }
+})
+
 import { CompanyOnboardingPage } from './CompanyOnboardingPage'
+import { CompanyProvider } from './CompanyProvider'
 
 const oldCompany: Company = {
   id: 'company-old',
@@ -52,6 +63,30 @@ const createdCompany: Company = {
   isPrimary: false,
 }
 
+const oldCompanyResponse = {
+  id: 'company-old',
+  name: 'Old Company',
+  legal_name: 'Old Company SARL',
+  tax_id: null,
+  country_code: 'TN',
+  currency: 'TND',
+  locale: 'fr_TN',
+  timezone: 'Africa/Tunis',
+  is_primary: true,
+}
+
+const createdCompanyResponse = {
+  id: 'company-created',
+  name: 'Created Company',
+  legal_name: 'Created Company SARL',
+  tax_id: null,
+  country_code: 'TN',
+  currency: 'TND',
+  locale: 'fr_TN',
+  timezone: 'Africa/Tunis',
+  is_primary: false,
+}
+
 function createClient() {
   return new QueryClient({
     defaultOptions: {
@@ -72,6 +107,19 @@ function renderPage(queryClient = createClient()) {
   }
 }
 
+function renderPageWithProvider(queryClient = createClient()) {
+  return {
+    queryClient,
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <CompanyProvider>
+          <CompanyOnboardingPage />
+        </CompanyProvider>
+      </QueryClientProvider>,
+    ),
+  }
+}
+
 async function submitCreatedCompany() {
   const user = userEvent.setup()
   await user.click(screen.getByRole('button', { name: 'common:next' }))
@@ -85,6 +133,10 @@ beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
   mockCreateCompany.mockResolvedValue(createdCompany)
+  mockApiGet.mockReset()
+  mockApiGet
+    .mockResolvedValueOnce({ data: { data: [oldCompanyResponse] } })
+    .mockResolvedValue({ data: { data: [oldCompanyResponse, createdCompanyResponse] } })
   useAuthStore.setState({
     user: {
       id: 'user-1',
@@ -158,21 +210,22 @@ describe('CompanyOnboardingPage (canonical primitives)', () => {
     expect(localStorage.getItem('autoerp-company-selection')).toBe(createdCompany.id)
   })
 
-  it('invalidates the companies list for the newly adopted selection', async () => {
+  it('refetches companies under the created company scope through CompanyProvider', async () => {
     const queryClient = createClient()
-    queryClient.setQueryData(['user', 'companies', 'tenant-A', oldCompany.id], ['old-marker'])
-    queryClient.setQueryData(['user', 'companies', 'tenant-A', createdCompany.id], ['new-marker'])
-    renderPage(queryClient)
+    renderPageWithProvider(queryClient)
+
+    await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalledTimes(1)
+    })
 
     await submitCreatedCompany()
 
     await waitFor(() => {
       expect(
-        queryClient.getQueryState(['user', 'companies', 'tenant-A', createdCompany.id])?.isInvalidated,
-      ).toBe(true)
+        queryClient.getQueryData(['user', 'companies', 'tenant-A', createdCompany.id]),
+      ).toEqual([oldCompany, createdCompany])
     })
-    expect(
-      queryClient.getQueryState(['user', 'companies', 'tenant-A', oldCompany.id])?.isInvalidated,
-    ).toBe(false)
+    expect(mockApiGet).toHaveBeenCalledTimes(2)
+    expect(useCompanyStore.getState().currentCompanyId).toBe(createdCompany.id)
   })
 })

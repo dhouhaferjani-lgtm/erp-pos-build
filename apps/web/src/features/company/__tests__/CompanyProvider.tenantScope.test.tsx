@@ -93,31 +93,6 @@ function InvalidateCompaniesButton() {
   )
 }
 
-function AdoptAndInvalidateCompaniesButton() {
-  const invalidateCompanies = useInvalidateCompanies()
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        useCompanyStore.getState().adoptCreatedCompany({
-          id: 'company-created',
-          name: 'Created Company',
-          legalName: 'Created Company SARL',
-          taxId: null,
-          countryCode: 'TN',
-          currency: 'TND',
-          locale: 'fr_TN',
-          timezone: 'Africa/Tunis',
-          isPrimary: false,
-        })
-        void invalidateCompanies()
-      }}
-    >
-      adopt and invalidate
-    </button>
-  )
-}
-
 const companiesResponse = {
   data: {
     data: [
@@ -259,27 +234,6 @@ describe('CompanyProvider tenant scope', () => {
     })
     expect(queryClient.getQueryState(['user', 'companies', 'tenant-B', 'company-2'])?.isInvalidated).toBe(false)
     expect(queryClient.getQueryData(['user', 'companies', 'tenant-B', 'company-2'])).toEqual(['tenant-B-marker'])
-  })
-
-  it('reads the newly adopted company when invalidating in the same event', async () => {
-    const user = userEvent.setup()
-    const queryClient = createClient()
-    act(() => {
-      setTenant('tenant-A', 'company-old')
-    })
-    queryClient.setQueryData(['user', 'companies', 'tenant-A', 'company-old'], ['old-marker'])
-    queryClient.setQueryData(['user', 'companies', 'tenant-A', 'company-created'], ['new-marker'])
-
-    render(<AdoptAndInvalidateCompaniesButton />, { wrapper: wrapper(queryClient) })
-
-    await user.click(screen.getByRole('button', { name: 'adopt and invalidate' }))
-
-    await waitFor(() => {
-      expect(
-        queryClient.getQueryState(['user', 'companies', 'tenant-A', 'company-created'])?.isInvalidated,
-      ).toBe(true)
-    })
-    expect(queryClient.getQueryState(['user', 'companies', 'tenant-A', 'company-old'])?.isInvalidated).toBe(false)
   })
 
   it('keeps children mounted while a populated store re-keys to a pending companies query', async () => {

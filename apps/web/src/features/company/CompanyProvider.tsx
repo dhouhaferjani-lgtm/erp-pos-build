@@ -68,6 +68,9 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
   const setLoading = useCompanyStore((state) => state.setLoading)
   const reset = useCompanyStore((state) => state.reset)
   const companies = useCompanyStore((state) => state.companies)
+  // A selection-only switch leaves `companies` unchanged, so subscribe
+  // explicitly to ensure tenantScopedKey is recomputed for the new scope.
+  const currentCompanyId = useCompanyStore((state) => state.currentCompanyId)
   const queryClient = useQueryClient()
   const wasAuthenticated = useRef(false)
 
@@ -103,7 +106,7 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
       // If we can't fetch companies, log error but don't break the app
       setLoading(false)
     }
-  }, [data, isLoading, isError, error, setCompanies, setLoading])
+  }, [data, isLoading, isError, error, setCompanies, setLoading, currentCompanyId])
 
   // Reset company state only after a real authenticated -> unauthenticated transition.
   // Authentication is intentionally false while a persisted session bootstraps.
@@ -147,7 +150,7 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
 }
 
 /**
- * Hook to invalidate companies query (call after company is created/deleted)
+ * Hook to invalidate the active tenant/company companies query.
  */
 export function useInvalidateCompanies() {
   const queryClient = useQueryClient()
