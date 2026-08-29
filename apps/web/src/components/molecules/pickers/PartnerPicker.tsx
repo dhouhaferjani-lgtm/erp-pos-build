@@ -237,7 +237,9 @@ export function PartnerPicker({
           <button
             type="button"
             className={`${textColors.tertiary} ${textColors.hoverPrimary}`}
-            aria-label={effectiveLabel === '' ? t('common.clear') : `${t('common.clear')} ${effectiveLabel}`}
+            aria-label={effectiveLabel === ''
+              ? t('common.clear')
+              : t('common.clearField', { field: effectiveLabel })}
             disabled={disabled}
             onClick={() => {
               onChange(null)

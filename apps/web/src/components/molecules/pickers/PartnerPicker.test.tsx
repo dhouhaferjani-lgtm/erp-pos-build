@@ -268,7 +268,7 @@ describe('PartnerPicker', () => {
     renderWithProviders(<PartnerPicker value={acme} onChange={onChange} />)
 
     expect(screen.getByText(/Acme Auto/i)).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /clear selection/i }))
+    await user.click(screen.getByRole('button', { name: 'Clear Customer selection' }))
     expect(onChange).toHaveBeenCalledWith(null)
   })
 
@@ -281,6 +281,6 @@ describe('PartnerPicker', () => {
     expect(screen.getByRole('group', { name: 'Owner' })).toContainElement(
       screen.getByText('Acme Auto'),
     )
-    expect(screen.getByRole('button', { name: /clear selection owner/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Clear Owner selection' })).toBeInTheDocument()
   })
 })
