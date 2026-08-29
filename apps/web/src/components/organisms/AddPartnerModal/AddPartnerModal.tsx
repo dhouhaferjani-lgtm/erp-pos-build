@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
-import { useMutation, useQueryClient, type Query } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type Query } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
 import { Modal, ModalHeader, ModalContent, ModalFooter } from '../Modal'
@@ -11,37 +11,26 @@ import { Select } from '../../atoms/Select'
 import { Textarea } from '../../atoms/Textarea'
 import { Button } from '../../atoms/Button'
 import { apiPost } from '../../../lib/api'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
+import { getCountries } from '../../../features/settings/api/country'
 import type { PartnerPrefill } from '../../../features/partners/partnerPrefill'
+import type { PartnerData } from '../../../features/partners/types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 type PartnerType = 'customer' | 'supplier' | 'both'
-
-interface Partner {
-  id: string
-  name: string
-  type: PartnerType
-  email: string | null
-  phone: string | null
-  address: string | null
-  city: string | null
-  postal_code: string | null
-  country: string | null
-  tax_id: string | null
-  notes: string | null
-}
 
 interface PartnerFormData {
   name: string
   type: PartnerType | ''
   email: string
   phone: string
-  address: string
+  street_address: string
   city: string
   postal_code: string
-  country: string
-  tax_id: string
+  country_code: string
+  vat_number: string
   notes: string
 }
 
@@ -92,12 +81,11 @@ export interface AddPartnerModalProps {
    * Callback after successful partner creation
    * Receives the newly created partner
    */
-  onSuccess?: (partner: Partner) => void
+  onSuccess?: (partner: PartnerData) => void
 
   /**
    * Optional seed values applied on open. Keys use the shared PartnerPrefill
-   * contract; this modal maps street_address→address, vat_number→tax_id,
-   * country_code→country and ignores `state` (no such field here).
+   * contract and ignores `state` (no such field here).
    */
   prefill?: PartnerPrefill
 }
@@ -140,6 +128,14 @@ export function AddPartnerModal({
   const queryClient = useQueryClient()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const hasTenantScope = tenantId !== null && companyId !== null
+
+  const { data: countries = [] } = useQuery({
+    queryKey: tenantScopedKey(['countries', 'active']),
+    queryFn: () => getCountries({ is_active: true }),
+    enabled: hasTenantScope,
+    staleTime: 10 * 60 * 1000,
+  })
 
   // Context detection (follows PartnerForm pattern)
   const isCustomerContext =
@@ -168,6 +164,7 @@ export function AddPartnerModal({
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors },
   } = useForm<PartnerFormData>({
     defaultValues: {
@@ -175,14 +172,15 @@ export function AddPartnerModal({
       type: defaultType,
       email: prefill?.email ?? '',
       phone: prefill?.phone ?? '',
-      address: prefill?.street_address ?? '',
+      street_address: prefill?.street_address ?? '',
       city: prefill?.city ?? '',
       postal_code: prefill?.postal_code ?? '',
-      country: prefill?.country_code ?? '',
-      tax_id: prefill?.vat_number ?? '',
+      country_code: prefill?.country_code ?? '',
+      vat_number: prefill?.vat_number ?? '',
       notes: '',
     },
   })
+  const countryCode = watch('country_code')
 
   // Reset form only on the closed→open transition (also re-seeds from
   // prefill on every open). `prefill` is intentionally NOT a trigger here:
@@ -197,11 +195,11 @@ export function AddPartnerModal({
         type: defaultType,
         email: prefill?.email ?? '',
         phone: prefill?.phone ?? '',
-        address: prefill?.street_address ?? '',
+        street_address: prefill?.street_address ?? '',
         city: prefill?.city ?? '',
         postal_code: prefill?.postal_code ?? '',
-        country: prefill?.country_code ?? '',
-        tax_id: prefill?.vat_number ?? '',
+        country_code: prefill?.country_code ?? '',
+        vat_number: prefill?.vat_number ?? '',
         notes: '',
       })
     }
@@ -210,7 +208,7 @@ export function AddPartnerModal({
 
   // React Query mutation
   const mutation = useMutation({
-    mutationFn: (data: PartnerFormData) => apiPost<Partner>('/partners', data),
+    mutationFn: (data: PartnerFormData) => apiPost<PartnerData>('/partners', data),
     onSuccess: async (partner) => {
       await queryClient.invalidateQueries({
         predicate: partnerCacheInvalidationPredicate(partner.id, tenantId, companyId),
@@ -309,7 +307,7 @@ export function AddPartnerModal({
           >
             <Input
               id="partner-tax-id"
-              {...register('tax_id')}
+              {...register('vat_number')}
               placeholder={t('sales:partners.taxId')}
             />
           </FormField>
@@ -321,7 +319,7 @@ export function AddPartnerModal({
           >
             <Input
               id="partner-address"
-              {...register('address')}
+              {...register('street_address')}
               placeholder={t('sales:partners.address')}
             />
           </FormField>
@@ -356,11 +354,18 @@ export function AddPartnerModal({
             label={t('sales:partners.country')}
             htmlFor="partner-country"
           >
-            <Input
+            <Select
               id="partner-country"
-              {...register('country')}
-              placeholder={t('sales:partners.country')}
-            />
+              {...register('country_code')}
+              value={countryCode}
+            >
+              <option value="">{t('sales:partners.selectCountryCode')}</option>
+              {countries.map((country) => (
+                <option key={country.code} value={country.code}>
+                  {t(`countries:${country.code}`, { defaultValue: country.name })} ({country.code})
+                </option>
+              ))}
+            </Select>
           </FormField>
 
           {/* Notes */}

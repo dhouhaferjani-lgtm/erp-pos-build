@@ -217,6 +217,22 @@ describe('Partner Management', () => {
       })
     })
 
+    it('renders a generated-typed partner VAT number in the Tax ID column', async () => {
+      mockApiInstance.get.mockResolvedValue({
+        data: makePartnersListResponse({
+          data: [makePartnerListRow({
+            name: 'VAT Customer',
+            vat_number: 'FR12345678901',
+          })],
+        }),
+      })
+
+      renderWithProviders(<PartnerListPage />)
+
+      const row = await screen.findByRole('row', { name: /VAT Customer/ })
+      expect(within(row).getByText('FR12345678901')).toBeInTheDocument()
+    })
+
     it('displays empty state when no partners', async () => {
       mockApiInstance.get.mockResolvedValue({
         data: makePartnersListResponse({ data: [] }),

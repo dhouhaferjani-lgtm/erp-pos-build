@@ -1,20 +1,46 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import type { Country } from '@/features/settings/types/country'
+import { makePartnerData } from '@/features/partners/__fixtures__/partner'
 
 const mockApiGet = vi.hoisted(() => vi.fn())
 const mockApiPost = vi.hoisted(() => vi.fn())
+const mockGetCountries = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/api', () => ({
   apiGet: mockApiGet,
   apiPost: mockApiPost,
 }))
 
+vi.mock('@/features/settings/api/country', () => ({
+  getCountries: mockGetCountries,
+}))
+
 import { AddPartnerModal, type AddPartnerModalProps } from './AddPartnerModal'
+
+function makeCountry(overrides: Partial<Country> = {}): Country {
+  return {
+    code: 'TN',
+    name: 'Tunisia',
+    native_name: 'تونس',
+    currency_code: 'TND',
+    currency_symbol: 'DT',
+    phone_prefix: '+216',
+    date_format: 'DD/MM/YYYY',
+    default_locale: 'fr-TN',
+    default_timezone: 'Africa/Tunis',
+    is_active: true,
+    tax_id_label: null,
+    tax_id_regex: null,
+    created_at: '2025-01-01T00:00:00Z',
+    ...overrides,
+  }
+}
 
 function buildModal(props: Partial<AddPartnerModalProps>) {
   const queryClient = new QueryClient({
@@ -47,7 +73,12 @@ describe('AddPartnerModal prefill', () => {
   beforeEach(() => {
     mockApiGet.mockReset()
     mockApiPost.mockReset()
+    mockGetCountries.mockReset()
     mockApiGet.mockResolvedValue([])
+    mockGetCountries.mockResolvedValue([
+      makeCountry(),
+      makeCountry({ code: 'FR', name: 'France', native_name: 'France', currency_code: 'EUR', currency_symbol: '€' }),
+    ])
     window.localStorage.setItem('autoerp-language', 'en')
     useAuthStore.setState({
       user: {
@@ -86,11 +117,13 @@ describe('AddPartnerModal prefill', () => {
       },
     })
     expect(await screen.findByLabelText(/^name/i)).toHaveValue('PharmaDistrib SARL')
-    expect(screen.getByLabelText(/tax/i)).toHaveValue('TN1234567') // vat_number → tax_id
-    expect(screen.getByLabelText(/^address/i)).toHaveValue('12 Rue de Carthage') // street_address → address
+    expect(screen.getByLabelText(/tax/i)).toHaveValue('TN1234567')
+    expect(screen.getByLabelText(/^address/i)).toHaveValue('12 Rue de Carthage')
     expect(screen.getByLabelText(/^city/i)).toHaveValue('Tunis')
     expect(screen.getByLabelText(/postal/i)).toHaveValue('1000')
-    expect(screen.getByLabelText(/^country/i)).toHaveValue('TN')
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^country/i)).toHaveValue('TN')
+    })
     expect(screen.getByLabelText(/^email/i)).toHaveValue('contact@pharmadistrib.tn')
     expect(screen.getByLabelText(/^phone/i)).toHaveValue('71 234 567')
   })
@@ -104,19 +137,11 @@ describe('AddPartnerModal prefill', () => {
 
   it('submits mapped values (never seeds notes or any commercial field)', async () => {
     const user = userEvent.setup()
-    mockApiPost.mockResolvedValue({
+    mockApiPost.mockResolvedValue(makePartnerData({
       id: 'partner-1',
       name: 'PharmaDistrib SARL',
       type: 'supplier',
-      email: null,
-      phone: null,
-      address: null,
-      city: null,
-      postal_code: null,
-      country: null,
-      tax_id: null,
-      notes: null,
-    })
+    }))
 
     renderModal({
       isOpen: true,
@@ -131,7 +156,10 @@ describe('AddPartnerModal prefill', () => {
       },
     })
 
-    await screen.findByLabelText(/^name/i)
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^country/i)).toHaveValue('TN')
+    })
+    fireEvent.change(screen.getByLabelText(/^country/i), { target: { value: 'TN' } })
     await user.click(screen.getByRole('button', { name: /create/i }))
 
     expect(mockApiPost).toHaveBeenCalledTimes(1)
@@ -139,17 +167,18 @@ describe('AddPartnerModal prefill', () => {
       '/partners',
       expect.objectContaining({
         name: 'PharmaDistrib SARL',
-        tax_id: 'TN1234567',
-        address: '12 Rue de Carthage',
+        vat_number: 'TN1234567',
+        street_address: '12 Rue de Carthage',
         city: 'Tunis',
         postal_code: '1000',
-        country: 'TN',
+        country_code: 'TN',
         notes: '',
       }),
     )
     const payload: unknown = mockApiPost.mock.calls[0]?.[1]
-    expect(payload).not.toHaveProperty('street_address')
-    expect(payload).not.toHaveProperty('vat_number')
+    expect(payload).not.toHaveProperty('address')
+    expect(payload).not.toHaveProperty('tax_id')
+    expect(payload).not.toHaveProperty('country')
     expect(payload).not.toHaveProperty('state')
   })
 
@@ -166,19 +195,11 @@ describe('AddPartnerModal prefill', () => {
     queryClient.setQueryData(['partner', 'partner-1', 'tenant-1', 'company-1'], { id: 'partner-1' })
     queryClient.setQueryData(['partners-search', 'supplier', '', 'tenant-2', 'company-1'], { data: [] })
 
-    mockApiPost.mockResolvedValue({
+    mockApiPost.mockResolvedValue(makePartnerData({
       id: 'partner-1',
       name: 'PharmaDistrib SARL',
       type: 'supplier',
-      email: null,
-      phone: null,
-      address: null,
-      city: null,
-      postal_code: null,
-      country: null,
-      tax_id: null,
-      notes: null,
-    })
+    }))
 
     render(
       <MemoryRouter>

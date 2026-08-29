@@ -25,48 +25,9 @@ import { partnersInvalidationPredicate } from './_invalidation'
 import { readPartnerPrefill } from './partnerPrefill'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import type { PartnerData } from './types'
 
 const PINNED_COUNTRY_CODES = ['FR', 'TN', 'GB', 'IT', 'MA', 'DZ', 'US']
-
-interface Partner {
-  id: string
-  name: string
-  type: 'customer' | 'supplier' | 'both'
-  customer_category: 'individual' | 'business' | null
-  company_legal_name: string | null
-  business_registration_number: string | null
-  payment_terms: string | null
-  payment_terms_days: number | null
-  credit_limit: string | null
-  discount_percentage: string | null
-  invoice_consolidation: boolean
-  email: string | null
-  phone: string | null
-  street_address: string | null
-  city: string | null
-  state: string | null
-  postal_code: string | null
-  country: string | null
-  country_code: string | null
-  vat_number: string | null
-  tax_status: 'REGISTERED' | 'NON_REGISTERED' | 'EXEMPT'
-  exemption_reason: string | null
-  exemption_certificate_path: string | null
-  exemption_valid_until: string | null
-  notes: string | null
-  is_active: boolean
-  bank_accounts?: {
-    id: string
-    label: string | null
-    bank_id: string | null
-    bank_name: string | null
-    rib: string | null
-    iban: string | null
-    bic: string | null
-    currency: string
-    is_primary: boolean
-  }[]
-}
 
 export interface PartnerBankAccountFormData {
   id?: string | undefined
@@ -251,7 +212,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
   const { data: partner, isLoading } = useQuery({
     queryKey: tenantScopedKey(['partner', id]),
     queryFn: async () => {
-      const response = await api.get<{ data: Partner }>(`/partners/${id}`)
+      const response = await api.get<{ data: PartnerData }>(`/partners/${id}`)
       return response.data.data
     },
     enabled: isEditing && hasTenantScope,
@@ -367,7 +328,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
   }
 
   const createMutation = useMutation({
-    mutationFn: (data: PartnerFormData) => apiPost<Partner>('/partners', data),
+    mutationFn: (data: PartnerFormData) => apiPost<PartnerData>('/partners', data),
     onSuccess: async () => {
       toast.success(t('sales:partners.messages.created'))
       await queryClient.invalidateQueries({
@@ -380,7 +341,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
 
   const updateMutation = useMutation({
     mutationFn: (data: PartnerFormData) =>
-      apiPatch<Partner>(`/partners/${id}`, data),
+      apiPatch<PartnerData>(`/partners/${id}`, data),
     onSuccess: async () => {
       toast.success(t('sales:partners.messages.updated'))
       await Promise.all([
