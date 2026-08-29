@@ -697,6 +697,7 @@ async function createReceiptLocalFirst(
     throw new ActiveTerminalRequiredError();
   }
   const isTraining = terminal?.is_training_mode === true;
+  const selectedCustomer = usePaymentStore.getState().selectedCustomer;
 
   const result = await lockTerminal(tenantId, terminalId, () =>
     createOfflineReceiptWithChainRetry(terminalId, () =>
@@ -712,6 +713,7 @@ async function createReceiptLocalFirst(
         // Atomic seller identity (spec 2026-06-11 §4.6): complete location
         // identity wholesale, otherwise company wholesale — never mixed.
         seller: resolveSellerIdentity(company, terminal?.location ?? null),
+        customer: selectedCustomer,
         paymentMethodId: primary.paymentMethodId,
         paymentRepositoryId: primary.repositoryId,
         tenderedAmount,

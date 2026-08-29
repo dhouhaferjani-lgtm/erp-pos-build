@@ -5,6 +5,7 @@ import { bcadd, bcsub, bcformat, bccomp } from '@/lib/decimal';
 import { getFiscalEventEngine } from '@/lib/fiscal/instance';
 import type { FiscalEventAppendResult } from '@/lib/fiscal/FiscalEventEngine';
 import type {
+  BuyerBlockInput,
   SaleReceiptApprovalReferenceInput,
 } from '@/lib/fiscal/FiscalEventEngine';
 import {
@@ -32,6 +33,16 @@ import type { CheckoutPolicySnapshot } from '@/lib/payment/checkoutPolicySnapsho
 import { serializeErrorForLog } from '@/lib/errorLogging';
 import { useSyncStore } from '@/stores/syncStore';
 import { withWriteTransaction } from '@/lib/db/writeGate';
+import { getCustomerAlias } from '@/lib/db/repositories/pendingCustomerRepository';
+
+interface SaleReceiptCustomerInput {
+  id: string;
+  tenant_id: string;
+  company_id: string;
+  name: string;
+  tax_number: string | null;
+  customer_sync_status: 'synced' | 'pending_create';
+}
 
 interface OfflineReceiptInput {
   tenantId: string;
@@ -43,6 +54,8 @@ interface OfflineReceiptInput {
   cartItems: CartItem[];
   currency: string;
   seller: SaleReceiptSellerInput;
+  /** Customer selected at checkout; resolved into the existing sealed buyer block. */
+  customer?: SaleReceiptCustomerInput | null;
   /** Primary payment method (first entry in `payments`) — used for the denormalized column on offline_receipts */
   paymentMethodId: string;
   /** Primary payment repository (first entry in `payments`) */
@@ -105,6 +118,52 @@ interface OfflineReceiptInput {
    * is not optional and there is no default.
    */
   policySnapshot: CheckoutPolicySnapshot;
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Resolve checkout identity before fiscal authoring.
+ *
+ * A mirrored row already carries the server partner UUID. An optimistic row
+ * may only use the canonical, tenant/company-scoped customer_aliases mapping;
+ * its device-minted UUID is never a partner FK and therefore never enters the
+ * sealed buyer.customer_id field.
+ */
+async function resolveSaleReceiptBuyer(
+  db: Database,
+  tenantId: string,
+  companyId: string,
+  customer: SaleReceiptCustomerInput | null | undefined,
+): Promise<BuyerBlockInput | null> {
+  if (customer == null) {
+    return null;
+  }
+  if (customer.tenant_id !== tenantId || customer.company_id !== companyId) {
+    throw new Error('Selected customer does not belong to the active tenant and company.');
+  }
+
+  let serverPartnerId: string | null = null;
+  if (customer.customer_sync_status === 'synced') {
+    serverPartnerId = UUID_PATTERN.test(customer.id) ? customer.id : null;
+  } else {
+    const alias = await getCustomerAlias(db, tenantId, companyId, customer.id);
+    serverPartnerId = alias !== null && UUID_PATTERN.test(alias.server_partner_id)
+      ? alias.server_partner_id
+      : null;
+  }
+
+  const resolved = serverPartnerId !== null;
+  return {
+    address: null,
+    codice_fiscale: null,
+    // Phase 5 decision: the device has no contact mirror, so contact identity
+    // remains deliberately absent from the sealed receipt snapshot.
+    contact_id: null,
+    customer_id: serverPartnerId,
+    name: customer.name,
+    tax_number: resolved ? customer.tax_number : null,
+  };
 }
 
 /**
@@ -426,6 +485,12 @@ export async function createOfflineReceipt(
   const exactTotalFormatted = bcformat(input.policySnapshot.exactTotal, decimals);
   const totalFormatted = bcformat(input.policySnapshot.roundedTotal, decimals);
   const approvalReferences = collectApprovalReferences(input);
+  const buyer = await resolveSaleReceiptBuyer(
+    db,
+    input.tenantId,
+    input.companyId,
+    input.customer,
+  );
   // SaleReceiptV3 (event_version=3): `total` is the ROUNDED total, with the
   // signed `cash_rounding_adjustment` + `cash_rounding_denomination` alongside,
   // so the receipt is verifiable against its OWN authoring policy forever.
@@ -464,6 +529,7 @@ export async function createOfflineReceipt(
       // the sale is ROUNDABLE.
       isTraining,
       seller: input.seller,
+      buyer,
       approvalReferences,
     },
     {

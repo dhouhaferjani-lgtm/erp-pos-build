@@ -187,6 +187,51 @@ describe('paymentStore offline-first cash checkout', () => {
     );
   });
 
+  it('forwards the selected checkout customer to local receipt authoring', async () => {
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+    usePaymentStore.setState({
+      selectedCustomer: {
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        tenant_id: 't1',
+        company_id: 'company-1',
+        name: 'Acme SARL',
+        phone: null,
+        email: null,
+        tax_number: 'FR12345678901',
+        customer_category: 'business',
+        receivable_balance: '0.00',
+        credit_balance: '0.00',
+        credit_limit: null,
+        payment_terms_days: null,
+        charge_account_enabled: false,
+        charge_policy_version: null,
+        account_status: 'active',
+        account_status_changed_at: null,
+        account_status_reason: null,
+        account_status_version: 1,
+        balance_updated_at: null,
+        is_active: 1,
+        customer_sync_status: 'synced',
+      },
+    });
+
+    await usePaymentStore.getState().processCashCheckout(
+      'term-1',
+      useCartStore.getState().items,
+      '100.00',
+    );
+
+    expect(createOfflineReceipt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        customer: expect.objectContaining({
+          id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          name: 'Acme SARL',
+        }),
+      }),
+    );
+  });
+
   it('forwards isTraining=true to createOfflineReceipt when terminal is in training mode (T2.7)', async () => {
     const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
 
