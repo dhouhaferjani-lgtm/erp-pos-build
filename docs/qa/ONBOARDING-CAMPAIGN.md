@@ -42,3 +42,29 @@ The expiry leg requires the public BatchExpiry contract and default batch tracki
 Each run writes `apps/web/test-results/campaign-<runId>/ledger.json`; Playwright writes `apps/web/playwright-report/index.html`, traces, screenshots, video-on-failure, and `apps/web/test-results/campaign-report.json`.
 
 To add a leg, place its `test()` in serial order, add the matching ledger definition in `journey.ts`, and add every UI entry locator to `selectors.ts`. Use role, label, or testid locators only. New assertions must use real APIs, compare money as scale-3 strings, and record product failures without weakening the expectation.
+
+## Preconditions and limits (read before trusting a red or a green)
+
+- **Queue worker.** Imports and fiscal projections are queued (`imports`, `fiscal-projections`). A target without a running worker fails L1/L6/L7 with `projection timeout — worker running?` — that is the campaign telling you the worker is down, not a product bug.
+- **Registration budget.** The target's `POST /auth/register` is throttled (5 per window per IP) and provisions ~576 tenant migrations synchronously in-request (20–60 s; staging caps requests at 60 s until the P0-2 hotfix raises it). One run = one registration; iterate with reuse mode (below) rather than burning the window.
+- **Country.** The fixtures, tax number, VAT rate (19.00), timezone (`Africa/Tunis`) and GL pins are **Tunisia-only tonight**; `--country` is reserved and any other value is unsupported until the fixtures are parameterised.
+- **Tenant retention.** There is **no teardown**: every run leaves its `tenant_<uuid>` database behind (db-per-tenant). `CAMPAIGN_KEEP_TENANT=1` only *prints* the credentials for manual follow-up; cleanup of accumulated campaign tenants is an operator task (`tenants:list` → delete the `campaign+…@test.otospex.dev` tenants). Do not arm the push→dev trigger on a target you cannot clean.
+- **Artifacts.** Traces are retained on failure only; the fixed campaign password appears in the ledger only with `CAMPAIGN_KEEP_TENANT=1`. Treat uploaded artifacts as internal.
+
+## Reuse mode (debugging / staging triage)
+
+`CAMPAIGN_REUSE_EMAIL=… CAMPAIGN_REUSE_PASSWORD=… scripts/campaign-onboarding.sh` logs into an existing campaign tenant instead of registering: L0 skips the second-company census, and the journey runs on the tenant's original company. Caveats: a tenant that already ran L1 will record the G-14 finding on the next parties import (balances after a posted batch are skipped by design) and a tenant past L5 (locked) cannot re-run L1–L4 meaningfully — reuse mode is for iterating on a single leg, not for a green run.
+
+## Known red (as of 2026-08-29)
+
+The findings gate (L10) is red while any product finding is recorded. Findings the campaign records on the current tree and who owns them:
+
+| Finding | Leg | Owner |
+|---|---|---|
+| Registration body prefixed by migration echo (P0) | L0 | Session J lane `migration-echo-p0` — fixed on dev `5656c9899` |
+| Registration exceeds the request time limit under load (P0-2) | L0 | Session J lane `registration-timeout-p0` |
+| `GET /payment-repositories` is tenant-scoped (company B sees company A's drawers) | L0 | Treasury — owner routing owed |
+| Products import never writes `unit_id` (I2-F2) | L2 | Session G (unit resolver, G-13/G-4) |
+| Second parties-with-balances import silently skips balances (G-14) | L1 (reuse mode / second file) | Session G |
+
+L9 (cash count + Z) is `NOT_SCRIPTABLE` by declaration until lane I-3 vendors the Z-session authoring.

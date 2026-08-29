@@ -115,6 +115,7 @@ export const journeyState: {
   supplierId?: string
   terminalGenesisSeed?: string
   terminalId?: string
+  persistedAuth?: string
   vatCollectedAccountCode?: string
   tenantId?: string
   userId?: string
@@ -322,7 +323,10 @@ export async function registerFreshTenant(page: Page): Promise<CampaignCredentia
     const retryAfter = registerResponse.headers()['retry-after'] ?? 'unknown'
     throw new Error(`register throttled (HTTP 429, Retry-After: ${retryAfter}s) — the target rate-limits registrations per IP; re-run later or from another client`)
   }
-  if (!bodyIsJson || registerResponse.status() !== 201) {
+  if (registerResponse.status() !== 201) {
+    throw new Error(`register failed: HTTP ${registerResponse.status()} — ${registerBody.slice(0, 300)}`)
+  }
+  if (!bodyIsJson) {
     // P0 (2026-08-29): tenant migrations run synchronously inside the request
     // (TenantProvisioningService → MigrateDatabase) and several migrations
     // `echo` their census, so the 201 body is prefixed with plain text the
@@ -338,7 +342,6 @@ export async function registerFreshTenant(page: Page): Promise<CampaignCredentia
       what: 'Registration response body is not JSON — migration census lines leak into the HTTP body (client stranded on step 4)',
       where: 'POST /api/v1/auth/register (TenantProvisioningService runs MigrateDatabase in-request; migrations echo)',
     })
-    expect(registerResponse.status(), 'register HTTP status').toBe(201)
     await loginAs(page, credentials)
   } else {
     // The post-auth landing route varies by vertical/role (/reports for the
@@ -368,10 +371,20 @@ export async function ensureSession(page: Page): Promise<void> {
   const credentials = journeyState.credentials
   const companyId = journeyState.companyId
   if (!credentials || !companyId) throw new Error('ensureSession: L0 must run first (credentials/company missing)')
-  await page.addInitScript((selectedCompanyId) => {
+  const persistedAuth = journeyState.persistedAuth
+  await page.addInitScript(({ selectedCompanyId, auth }) => {
     window.localStorage.setItem('autoerp-cookie-consent', 'accepted')
     window.localStorage.setItem('autoerp-company-selection', selectedCompanyId)
-  }, companyId)
+    if (auth) window.localStorage.setItem('autoerp-auth', auth)
+  }, { selectedCompanyId: companyId, auth: persistedAuth ?? null })
+  if (persistedAuth) {
+    // Re-inject the L0 session token instead of logging in again: the login route is
+    // throttled perMinute(5) and a login-per-leg journey would trip it.
+    await page.goto('/')
+    await expect(page).not.toHaveURL(/\/login(?:[/?#]|$)/, { timeout: 30_000 })
+    await expect(campaignSelectors(page).shell.profile).toBeVisible({ timeout: 30_000 })
+    return
+  }
   await loginAs(page, credentials)
 }
 
@@ -589,6 +602,7 @@ function createRunId(): string {
 }
 
 async function readBrowserSession(page: Page): Promise<{ tenantId: string; userId: string }> {
+  journeyState.persistedAuth = (await page.evaluate(() => localStorage.getItem('autoerp-auth'))) ?? undefined
   return page.evaluate(() => {
     const raw = localStorage.getItem('autoerp-auth')
     if (!raw) throw new Error('autoerp-auth was not persisted after registration')

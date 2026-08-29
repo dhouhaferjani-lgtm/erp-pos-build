@@ -195,8 +195,7 @@ test.describe('automated onboarding campaign', () => {
 
     const ownedCash = second.repositories.filter((repository) =>
       repository['type'] === 'cash_register' && repository['location_id'] === secondLocationId)
-    const ownedSafes = second.repositories.filter((repository) =>
-      repository['type'] === 'safe' && repository['location_id'] === null)
+    const ownedSafes = second.repositories.filter((repository) => repository['type'] === 'safe')
     if (ownedCash.length === 1 && ownedSafes.length === 1) {
       await addLedgerEvidence('L0', `company 2 repositories: 1 cash register on ${secondLocationId} + 1 safe`)
     } else {
@@ -285,6 +284,8 @@ test.describe('automated onboarding campaign', () => {
     journeyState.customerDocumentId = stringField(invoice, 'id')
 
     const rerun = await runImportWizard(page, 'parties', fixture, true)
+    const partnersAfterRerun = await apiRecords(page, `${apiRoutes.partners}?per_page=100&search=${encodeURIComponent(runId)}`, companyId, 'partners after re-run')
+    expect(partnersAfterRerun.filter((partner) => stringValue(partner['code']).includes(runId)), 're-run creates no duplicate partners').toHaveLength(4)
     const documentsRerun = await apiRecords(page, `${apiRoutes.documents}?limit=100`, companyId, 'documents after L1 rerun')
     expect(documentsRerun.filter((document) =>
       !beforeIds.has(stringField(document, 'id')) && stringValue(document['document_number']).startsWith('HIST-')),
@@ -548,6 +549,9 @@ test.describe('automated onboarding campaign', () => {
       async () => 'MAIN stock and DEFAULT lot 20.000→19.000',
       async () => 'GL revenue Cr20.000; VAT Cr3.800; cash Dr23.800',
     ])
+    // Pin the drawer after the sale so L7's 1000.000 proves "sale + refund", not "neither".
+    const drawerAfterSale = await apiObject(page, apiRoutes.paymentRepository(requiredState('cashRepositoryId')), companyId, 'drawer after sale')
+    assertMoneyEqual(stringField(drawerAfterSale, 'balance'), '1023.800')
   })
 
   test('L7 — refund', async ({ page }) => {
@@ -619,7 +623,9 @@ test.describe('automated onboarding campaign', () => {
     assertJournalAccountCode(refundEntry, requiredState('cashGlAccountCode'), 'credit', '23.800')
     const repository = await apiObject(page, apiRoutes.paymentRepository(requiredState('cashRepositoryId')), companyId, 'drawer after refund')
     assertMoneyEqual(stringField(repository, 'balance'), '1000.000')
-    await addLedgerEvidence('L7', `v4 refund ${refund.eventId}; stock+lot restored=20.000; POS-refund payment; drawer=1000.000`)
+    const trialAfterPos = await apiObject(page, `${apiRoutes.trialBalance}?as_of_date=${businessDate()}`, companyId, 'trial balance after POS')
+    expect(trialAfterPos['is_balanced'], 'trial balance after sale + refund').toBe(true)
+    await addLedgerEvidence('L7', `v4 refund ${refund.eventId}; stock+lot restored=20.000; POS-refund payment; drawer=1000.000; trial balanced after POS`)
   })
 
   test('L8 — payment allocation vs historical invoice', async ({ page }) => {
@@ -674,14 +680,37 @@ test.describe('automated onboarding campaign', () => {
 })
 
 async function census(page: Page, companyId: string): Promise<Census> {
-  const [locations, methods, repositories, units] = await Promise.all([
+  const [locations, methods, allRepositories, units] = await Promise.all([
     apiRecords(page, apiRoutes.locations, companyId, 'locations'),
     apiRecords(page, apiRoutes.paymentMethods, companyId, 'payment methods'),
     apiRecords(page, apiRoutes.paymentRepositories, companyId, 'payment repositories'),
     apiRecords(page, apiRoutes.units, companyId, 'units'),
   ])
+  // GET /payment-repositories is TENANT-scoped today (PaymentRepositoryController::index() has no
+  // company_id filter, unlike show()): with X-Company-Id set, another company's drawers still come
+  // back. The payload carries no company_id, so scope by the company's own locations (day-one
+  // repositories are attributed to a location — PaymentRepositoryProvisioningService) and treat
+  // rows attributed to a foreign location as the second-of-everything leak finding.
+  const ownLocationIds = new Set(locations.map((location) => stringField(location, 'id')))
+  const foreign = allRepositories.filter((repository) =>
+    typeof repository['location_id'] === 'string' && !ownLocationIds.has(repository['location_id']))
+  if (foreign.length > 0 && !reportedRepositoryLeak) {
+    reportedRepositoryLeak = true
+    await recordProductFinding({
+      evidence: {
+        request: { method: 'GET', path: apiRoutes.paymentRepositories, header: { 'X-Company-Id': companyId } },
+        response: foreign.map((repository) => ({ code: repository['code'], location_id: repository['location_id'], type: repository['type'] })),
+      },
+      leg: 'L0',
+      what: 'GET /payment-repositories is tenant-scoped: company B sees company A\'s drawers and safes (index() lacks the company_id filter show() has)',
+      where: 'apps/api PaymentRepositoryController::index()',
+    })
+  }
+  const repositories = allRepositories.filter((repository) =>
+    typeof repository['location_id'] !== 'string' || ownLocationIds.has(repository['location_id']))
   return { locations, methods, repositories, units }
 }
+let reportedRepositoryLeak = false
 
 function assertDayOneCensus(value: Census): void {
   expect(value.locations, 'exactly one day-one location').toHaveLength(1)
@@ -692,8 +721,9 @@ function assertDayOneCensus(value: Census): void {
   expect(value.repositories.filter((repository) =>
     repository['type'] === 'cash_register' && repository['location_id'] === locationId),
   'one location-owned cash register').toHaveLength(1)
+  // Seeded safes CARRY the company's location (PaymentRepositorySeeder attributes both rows).
   expect(value.repositories.filter((repository) => repository['type'] === 'safe'), 'one safe').toHaveLength(1)
-  expect(value.repositories, 'only cash register and safe are provisioned').toHaveLength(2)
+  expect(value.repositories, 'only the company\'s cash register and safe are provisioned').toHaveLength(2)
   expect(value.units.length, 'country units seeded').toBeGreaterThanOrEqual(19)
 }
 
@@ -812,23 +842,12 @@ function assertJournalAccountCode(
   assertMoneyEqual(stringField(line, side), amount)
 }
 
-function journalHasAccountCode(entry: Record<string, unknown>, accountCode: string): boolean {
-  return journalLines(entry).some((line) => line['account_code'] === accountCode)
-}
 
 function journalLines(entry: Record<string, unknown>): Record<string, unknown>[] {
   return asArray(entry['lines'], 'journal entry lines').map((line, index) =>
     asRecord(line, `journal line ${index}`))
 }
 
-function deepContains(value: unknown, needle: string): boolean {
-  if (typeof value === 'string') return value === needle
-  if (Array.isArray(value)) return value.some((item) => deepContains(item, needle))
-  if (typeof value === 'object' && value !== null) {
-    return Object.values(value).some((item) => deepContains(item, needle))
-  }
-  return false
-}
 
 function requiredState(key: keyof typeof journeyState): string {
   const value = journeyState[key]

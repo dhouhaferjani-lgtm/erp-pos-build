@@ -15,7 +15,7 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   use: {
     baseURL: process.env['CAMPAIGN_WEB_URL'] || 'http://localhost:5173',
-    trace: 'on',
+    trace: 'retain-on-failure',
     screenshot: 'on',
     video: 'retain-on-failure',
   },
