@@ -27,7 +27,7 @@ import { makePartnersListResponse } from '../__fixtures__/partner'
  * correct.
  */
 
-const mockApiInstance = vi.hoisted(() => ({ get: vi.fn() }))
+const mockApiInstance = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
@@ -256,6 +256,7 @@ describe('PartnerForm type select across a route reconciliation (BUG-006, second
     vi.clearAllMocks()
     setTenant()
     mockApiInstance.get.mockResolvedValue({ data: { data: [] } })
+    mockApiInstance.post.mockResolvedValue({ data: { data: { id: 'created-partner' } } })
   })
 
   afterEach(() => {
@@ -285,7 +286,7 @@ describe('PartnerForm type select across a route reconciliation (BUG-006, second
     )
   }
 
-  it('freezes on the previous type when the route elements are NOT keyed (mechanism)', async () => {
+  it('cannot display the previous type when the next route excludes that option', async () => {
     const user = userEvent.setup()
 
     renderWithProviders(<CreateFormRoutes keyed={false} />, { route: '/sales/customers/new' })
@@ -296,8 +297,15 @@ describe('PartnerForm type select across a route reconciliation (BUG-006, second
 
     await user.click(screen.getByRole('link', { name: 'go-to-supplier-form' }))
 
-    // Reconciled, not remounted: useForm keeps the customer default.
-    expect(screen.getByLabelText(/^type/i)).toHaveValue('customer')
+    // The form state is stale, but the supplier route no longer offers customer,
+    // so the native select cannot display that invalid value.
+    expect(screen.getByLabelText(/^type/i)).toHaveValue('')
+
+    await user.type(screen.getByLabelText(/^name/i), 'Stale customer state')
+    await user.selectOptions(screen.getByLabelText(/^nature/i), 'individual')
+    await user.click(screen.getByRole('button', { name: /^save$/i }))
+    await Promise.resolve()
+    expect(mockApiInstance.post).not.toHaveBeenCalled()
   })
 
   it('follows the route context once the elements are keyed by partner type (the fix)', async () => {

@@ -233,6 +233,7 @@ describe('CustomerAttachPanel', () => {
     await waitFor(() => {
       expect(usePaymentStore.getState().selectedCustomer).toMatchObject({
         name: 'Amina Trabelsi',
+        customer_category: null,
         credit_limit: null,
         charge_account_enabled: false,
         charge_policy_version: null,

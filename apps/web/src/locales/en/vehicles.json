@@ -33,7 +33,6 @@
   "created": "Created",
   "updated": "Updated",
   "owner": "Owner (Optional)",
-  "noOwner": "-- No Owner --",
   "licensePlateRequired": "License plate is required",
   "brandRequired": "Brand is required",
   "modelRequired": "Model is required",

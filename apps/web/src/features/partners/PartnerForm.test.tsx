@@ -4,7 +4,9 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import i18n from '@/lib/i18n'
 import type { Country } from '../settings/types/country'
+import { makePartnerDetail } from './__fixtures__/partner'
 
 const mockApiGet = vi.hoisted(() => vi.fn())
 const mockApiPost = vi.hoisted(() => vi.fn())
@@ -41,7 +43,7 @@ import { PartnerForm } from './PartnerForm'
  * GET /partners/:id — used only by the edit-mode test.
  */
 function makeExistingPartner() {
-  return {
+  return makePartnerDetail({
     id: 'partner-1',
     name: 'Existing Partner',
     type: 'supplier' as const,
@@ -64,10 +66,9 @@ function makeExistingPartner() {
     vat_number: 'EXISTING-VAT',
     tax_status: 'REGISTERED' as const,
     exemption_reason: null,
-    exemption_certificate_path: null,
     exemption_valid_until: null,
     notes: null,
-  }
+  })
 }
 
 /**
@@ -118,8 +119,17 @@ function renderPartnerForm(
   return queryClient
 }
 
+function typeOptionValues(): string[] {
+  const typeSelect = screen.getByRole('combobox', { name: /^Type/ })
+  if (!(typeSelect instanceof HTMLSelectElement)) {
+    throw new Error('Expected the Type field to be a select element')
+  }
+
+  return Array.from(typeSelect.options, (option) => option.value)
+}
+
 describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     mockApiGet.mockReset()
     mockApiPost.mockReset()
     mockApiPatch.mockReset()
@@ -127,6 +137,7 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
     mockGetCountries.mockReset()
     mockGetCountries.mockResolvedValue([])
     window.localStorage.setItem('autoerp-language', 'en')
+    await i18n.changeLanguage('en')
     useAuthStore.setState({
       user: {
         id: 'user-1',
@@ -141,6 +152,264 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
       isLoading: false,
     })
     useCompanyStore.setState({ currentCompanyId: 'company-1', companies: [], isLoading: false })
+  })
+
+  it('refuses customer creation without Nature and does not send the create request', async () => {
+    mockApiPost.mockResolvedValue({ id: 'partner-new' })
+    renderPartnerForm(['/sales/customers/new'], '/sales/customers/new', 'customer')
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Walk-in Customer' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+
+    expect(await screen.findByText('Nature is required')).toBeInTheDocument()
+    expect(mockApiPost).not.toHaveBeenCalled()
+  })
+
+  it('applies the same Nature-required rule after switching to company B', async () => {
+    useCompanyStore.setState({ currentCompanyId: 'company-2', companies: [], isLoading: false })
+    mockApiPost.mockResolvedValue({ id: 'partner-company-b' })
+    renderPartnerForm(['/sales/customers/new'], '/sales/customers/new', 'customer')
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Company B Customer' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+
+    expect(await screen.findByText('Nature is required')).toBeInTheDocument()
+    expect(mockApiPost).not.toHaveBeenCalled()
+  })
+
+  it('does not render the tax-status block while its write path is unwired', () => {
+    renderPartnerForm(['/purchases/suppliers/new'], '/purchases/suppliers/new', 'supplier')
+
+    expect(screen.queryByLabelText(/^Tax Status/)).not.toBeInTheDocument()
+  })
+
+  it('omits the unwritable tax-status keys from the create payload', async () => {
+    mockApiPost.mockResolvedValue({ id: 'partner-new' })
+    renderPartnerForm(['/purchases/suppliers/new'], '/purchases/suppliers/new', 'supplier')
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Tax Free Supplier' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+
+    await waitFor(() => expect(mockApiPost).toHaveBeenCalledTimes(1))
+    const payload = mockApiPost.mock.calls[0]?.[1]
+    expect(payload).not.toHaveProperty('tax_status')
+    expect(payload).not.toHaveProperty('exemption_reason')
+    expect(payload).not.toHaveProperty('exemption_valid_until')
+  })
+
+  it('defaults supplier creation Nature to Company', () => {
+    renderPartnerForm(['/purchases/suppliers/new'], '/purchases/suppliers/new', 'supplier')
+
+    expect(screen.getByLabelText(/^Nature/)).toHaveValue('business')
+  })
+
+  it('offers only Customer and Both Type choices on customer create', () => {
+    renderPartnerForm(['/sales/customers/new'], '/sales/customers/new', 'customer')
+
+    expect(typeOptionValues()).toEqual(['', 'customer', 'both'])
+  })
+
+  it('offers only Supplier and Both Type choices on supplier create', () => {
+    renderPartnerForm(['/purchases/suppliers/new'], '/purchases/suppliers/new', 'supplier')
+
+    expect(typeOptionValues()).toEqual(['', 'supplier', 'both'])
+  })
+
+  it('keeps Customer, Supplier, and Both Type choices on edit', async () => {
+    mockApiGet.mockResolvedValue({ data: { data: makeExistingPartner() } })
+    renderPartnerForm(
+      ['/sales/customers/partner-1/edit'],
+      '/sales/customers/:id/edit',
+      'customer',
+    )
+
+    expect(await screen.findByLabelText(/^Name/)).toHaveValue('Existing Partner')
+    expect(typeOptionValues()).toEqual(['', 'customer', 'supplier', 'both'])
+  })
+
+  it('does not default Nature to Company on a supplier edit whose detail request fails', async () => {
+    mockApiGet.mockRejectedValue(new Error('partner unavailable'))
+
+    renderPartnerForm(
+      ['/purchases/suppliers/legacy-supplier/edit'],
+      '/purchases/suppliers/:id/edit',
+      'supplier',
+    )
+
+    expect(await screen.findByLabelText(/^Nature/)).toHaveValue('')
+  })
+
+  it.each([
+    ['en', 'Select nature'],
+    ['fr', 'Sélectionner la nature'],
+    ['ar', 'اختر طبيعة الشريك'],
+  ])('uses the Nature-specific blank option in %s', async (language, placeholder) => {
+    await i18n.changeLanguage(language)
+
+    renderPartnerForm(['/sales/customers/new'], '/sales/customers/new', 'customer')
+
+    expect(screen.getByRole('option', { name: placeholder })).toBeInTheDocument()
+  })
+
+  it('uses an unambiguous Arabic validation message for Nature', async () => {
+    await i18n.changeLanguage('ar')
+    renderPartnerForm(['/sales/customers/new'], '/sales/customers/new', 'customer')
+
+    fireEvent.click(screen.getByRole('button', { name: 'حفظ' }))
+
+    expect(await screen.findByText('طبيعة الشريك مطلوبة')).toBeInTheDocument()
+  })
+
+  it('gives Nature an Arabic label distinct from the adjacent Type label', async () => {
+    await i18n.changeLanguage('ar')
+    renderPartnerForm(['/sales/customers/new'], '/sales/customers/new', 'customer')
+
+    const natureLabel = i18n.t('sales:partners.nature.label')
+    const typeLabel = i18n.t('sales:partners.type')
+
+    expect(natureLabel).not.toBe(typeLabel)
+    expect(screen.getByLabelText(new RegExp(`^${natureLabel}`))).toBeInTheDocument()
+  })
+
+  it('shows B2B fields for a legacy null Nature with a VAT number', async () => {
+    mockApiGet.mockResolvedValue({
+      data: {
+        data: makePartnerDetail({
+          id: 'legacy-company',
+          customer_category: null,
+          vat_number: '1234567ABC000',
+        }),
+      },
+    })
+
+    renderPartnerForm(
+      ['/sales/customers/legacy-company/edit'],
+      '/sales/customers/:id/edit',
+      'customer',
+    )
+
+    expect(await screen.findByText('B2B Information')).toBeInTheDocument()
+  })
+
+  it('keeps legacy B2B fields visible when the UI blank option represents null Nature', async () => {
+    mockApiGet.mockResolvedValue({
+      data: {
+        data: makePartnerDetail({
+          id: 'legacy-company',
+          customer_category: null,
+          vat_number: '1234567ABC000',
+        }),
+      },
+    })
+
+    renderPartnerForm(
+      ['/sales/customers/legacy-company/edit'],
+      '/sales/customers/:id/edit',
+      'customer',
+    )
+
+    expect(await screen.findByText('B2B Information')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText(/^Nature/), { target: { value: '' } })
+    expect(screen.getByText('B2B Information')).toBeInTheDocument()
+  })
+
+  it('hides B2B fields for a legacy null Nature with no B2B data', async () => {
+    mockApiGet.mockResolvedValue({
+      data: {
+        data: makePartnerDetail({
+          id: 'legacy-walk-in',
+          name: 'Legacy Walk-in',
+          customer_category: null,
+          vat_number: null,
+          company_legal_name: null,
+          business_registration_number: null,
+          credit_limit: null,
+        }),
+      },
+    })
+
+    renderPartnerForm(
+      ['/sales/customers/legacy-walk-in/edit'],
+      '/sales/customers/:id/edit',
+      'customer',
+    )
+
+    expect(await screen.findByLabelText(/^Name/)).toHaveValue('Legacy Walk-in')
+    expect(screen.queryByText('B2B Information')).not.toBeInTheDocument()
+  })
+
+  it('renders the credit-limit warning when the partner is over the limit', async () => {
+    mockApiGet.mockResolvedValue({
+      data: {
+        data: makePartnerDetail({
+          id: 'over-limit-company',
+          customer_category: 'business',
+          credit_limit: '100.000',
+          receivable_balance: '125.000',
+          net_balance: '125.000',
+        }),
+      },
+    })
+
+    renderPartnerForm(
+      ['/sales/customers/over-limit-company/edit'],
+      '/sales/customers/:id/edit',
+      'customer',
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Credit limit exceeded')
+  })
+
+  it('uses net customer exposure instead of gross receivables for the credit warning', async () => {
+    mockApiGet.mockResolvedValue({
+      data: {
+        data: makePartnerDetail({
+          id: 'customer-in-credit',
+          customer_category: 'business',
+          credit_limit: '100.000',
+          receivable_balance: '125.000',
+          credit_balance: '30.000',
+          net_balance: '95.000',
+        }),
+      },
+    })
+
+    renderPartnerForm(
+      ['/sales/customers/customer-in-credit/edit'],
+      '/sales/customers/:id/edit',
+      'customer',
+    )
+
+    expect(await screen.findByLabelText(/^Name/)).toHaveValue('Acme Corp')
+    expect(screen.getByRole('alert')).toHaveTextContent('Approaching credit limit')
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Credit limit exceeded')
+  })
+
+  it('does not subtract supplier payables from a both-role partner credit exposure', async () => {
+    mockApiGet.mockResolvedValue({
+      data: {
+        data: makePartnerDetail({
+          id: 'both-role-over-limit',
+          type: 'both',
+          customer_category: 'business',
+          credit_limit: '1000.000',
+          receivable_balance: '5000.000',
+          credit_balance: '0.000',
+          payable_balance: '4900.000',
+          net_balance: '100.000',
+        }),
+      },
+    })
+
+    renderPartnerForm(
+      ['/sales/customers/both-role-over-limit/edit'],
+      '/sales/customers/:id/edit',
+      'customer',
+    )
+
+    expect(await screen.findByLabelText(/^Name/)).toHaveValue('Acme Corp')
+    expect(screen.getByRole('alert')).toHaveTextContent('Credit limit exceeded')
+    expect(screen.getByRole('alert')).toHaveTextContent('5 000,00 EUR')
   })
 
   it('create mode: prefills Name, VAT number, Phone, Street address, City from navigation state', () => {
@@ -293,7 +562,7 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
     // Commercial fields live in B2BFieldsSection, only rendered once
     // customer_category is 'business' — switch to it to expose them and
     // confirm the prefill never reached them.
-    fireEvent.change(screen.getByLabelText(/customer category/i), { target: { value: 'business' } })
+    fireEvent.change(screen.getByLabelText(/^Nature/), { target: { value: 'business' } })
 
     expect(screen.getByLabelText(/credit limit/i)).toHaveValue(null)
     expect(screen.getByLabelText(/discount percentage/i)).toHaveValue(null)
@@ -302,7 +571,7 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
 
   it('describes invoice consolidation as a periodic-billing classification', () => {
     renderPartnerForm(['/sales/customers/new'], '/sales/customers/new', 'customer')
-    fireEvent.change(screen.getByLabelText(/customer category/i), { target: { value: 'business' } })
+    fireEvent.change(screen.getByLabelText(/^Nature/), { target: { value: 'business' } })
 
     expect(screen.getByRole('checkbox', { name: 'Billed periodically' })).toBeInTheDocument()
     expect(screen.getByText('This customer is billed periodically.')).toBeInTheDocument()
@@ -310,7 +579,7 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
 
   it('does not expose a consolidation-frequency selector when periodic billing is selected', () => {
     renderPartnerForm(['/sales/customers/new'], '/sales/customers/new', 'customer')
-    fireEvent.change(screen.getByLabelText(/customer category/i), { target: { value: 'business' } })
+    fireEvent.change(screen.getByLabelText(/^Nature/), { target: { value: 'business' } })
     fireEvent.click(screen.getByRole('checkbox', { name: 'Billed periodically' }))
 
     expect(screen.queryByRole('combobox', { name: /consolidation frequency/i })).not.toBeInTheDocument()
@@ -382,7 +651,7 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
     mockApiPost.mockResolvedValue({ id: 'partner-new' })
     renderPartnerForm(['/purchases/suppliers/new'], '/purchases/suppliers/new')
     fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Legacy Supplier' } })
-    fireEvent.change(screen.getByLabelText(/customer category/i), { target: { value: 'business' } })
+    fireEvent.change(screen.getByLabelText(/^Nature/), { target: { value: 'business' } })
     fireEvent.click(screen.getByRole('button', { name: /add bank account/i }))
 
     fireEvent.change(screen.getByLabelText(/^RIB$/i), { target: { value: '07040005810111129653' } })
@@ -401,7 +670,7 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
     mockApiPost.mockResolvedValue({ id: 'partner-new' })
     renderPartnerForm(['/purchases/suppliers/new'], '/purchases/suppliers/new')
     fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Legacy Supplier' } })
-    fireEvent.change(screen.getByLabelText(/customer category/i), { target: { value: 'business' } })
+    fireEvent.change(screen.getByLabelText(/^Nature/), { target: { value: 'business' } })
     fireEvent.click(screen.getByRole('button', { name: /add bank account/i }))
     fireEvent.change(screen.getByLabelText(/^RIB$/i), { target: { value: '123' } })
 

@@ -14,6 +14,7 @@ import { PartnerForm } from '../PartnerForm'
 import { PartnerListPage } from '../PartnerListPage'
 import {
   partnerAccountBalanceInvalidationPredicate,
+  partnerDetailInvalidationPredicate,
   partnersInvalidationPredicate,
   partnerVehiclesInvalidationPredicate,
 } from '../_invalidation'
@@ -253,6 +254,14 @@ describe('partner queryKey tenant scope', () => {
 })
 
 describe('partner invalidation predicates', () => {
+  it('matches one tenant-scoped partner detail and rejects cross-tenant entries', () => {
+    const pred = partnerDetailInvalidationPredicate('partner-1', 'tenant-A', 'company-1')
+
+    expect(pred({ queryKey: ['partner', 'partner-1', 'tenant-A', 'company-1'] })).toBe(true)
+    expect(pred({ queryKey: ['partner', 'partner-2', 'tenant-A', 'company-1'] })).toBe(false)
+    expect(pred({ queryKey: ['partner', 'partner-1', 'tenant-B', 'company-1'] })).toBe(false)
+  })
+
   it('match tenant-scoped partner list-like caches and reject cross-tenant entries', () => {
     const pred = partnersInvalidationPredicate('tenant-A', 'company-1')
 
@@ -313,6 +322,7 @@ describe('PartnerForm mutation cascades', () => {
 
     await user.type(screen.getByLabelText(/^name\s*\*?$/i), 'New Partner')
     await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
+    await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
     await user.click(screen.getByRole('button', { name: /save/i }))
 
     await waitFor(() => {
