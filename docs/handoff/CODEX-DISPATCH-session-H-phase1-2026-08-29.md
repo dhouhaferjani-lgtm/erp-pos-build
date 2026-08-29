@@ -216,7 +216,21 @@ the API) → B2B block visible; open a NULL walk-in with no B2B data → hidden.
   `supplier`/`both`; the generic edit form keeps all three.
 - Tests: Vitest on both routes.
 
-**M3 browser gate** (`e2e/session-h/m3-*.spec.ts`, :5174): (i) `/crm/companies` → 404/redirect page, no
+**a9 — Otospex: vehicle owner picker must not offer suppliers** (spec §7.4 "one fix while we are here";
+owner-confirmed 2026-08-29).
+- `apps/web/src/features/vehicles/VehicleForm.tsx:106-110` fetches `/partners` UNFILTERED and renders
+  every partner — suppliers included — in a raw `<Select>` at `:244-253`; the same relationship already
+  uses the searchable `PartnerPicker partnerType="customer"` on ownership transfer
+  (`features/vehicles/components/organisms/TransferOwnershipModal.tsx:113`) and on work-order create
+  (`WorkOrderCreatePage.tsx:124`). Make vehicle create/edit use `PartnerPicker partnerType="customer"`
+  too; drop the unfiltered fetch. Owner may be a person OR a company (fleets) — do NOT gate on
+  `customer_category`. Vehicles tab on partner detail (`PartnerDetailPage.tsx:866`) unchanged.
+- Tests: Vitest — VehicleForm renders the picker, submits `partner_id`, never requests `/partners`
+  without `type=customer`.
+
+**M3 browser gate** (`e2e/session-h/m3-*.spec.ts`, :5174): (v) on an Otospex-vertical tenant if one is
+seeded locally (else skip with a named `test.skip` reason and say so in the register), `/vehicles/new`
+owner picker search returns customers only — a demo supplier name yields no match; (i) `/crm/companies` → 404/redirect page, no
 "Companies" entry in the sidebar; (ii) as `owner@` open `/sales/customers/<id>/edit` → renders; then
 log in as a user holding `contacts.update` but NOT `partners.update` (create one via the API on :8011
 with a role you build in the spec, or use `cashier@` and assert the 403/redirect) → blocked;
