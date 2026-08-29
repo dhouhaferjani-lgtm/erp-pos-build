@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Import\Application\Jobs;
 
 use App\Jobs\Concerns\BindsTenantContext;
+use App\Modules\Import\Domain\Data\ImportCountersData;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Services\ImportService;
@@ -66,10 +67,7 @@ final class ProcessProductImageImport implements ShouldQueue
         ImportService $baseImportService
     ): void {
         $this->withTenantContext(function () use ($importService, $baseImportService): void {
-            $job = ImportJob::query()
-                ->where('tenant_id', $this->tenantId)
-                ->where('id', $this->importJobId)
-                ->first();
+            $job = $this->findImportJob();
 
             if ($job === null) {
                 Log::error('ProcessProductImageImport: Import job not found', ['id' => $this->importJobId]);
@@ -77,13 +75,44 @@ final class ProcessProductImageImport implements ShouldQueue
                 return;
             }
 
-            try {
-                // Update status to importing
-                $job->update([
-                    'status' => ImportStatus::Importing,
-                    'started_at' => now(),
+            $observedStatus = $job->status;
+            if ($observedStatus->canStartImport()) {
+                $claim = $baseImportService->claimJob($job);
+                if (! $claim->won) {
+                    Log::warning('ProcessProductImageImport: Import job already claimed by another worker', [
+                        'id' => $this->importJobId,
+                        'status' => $claim->priorStatus->value,
+                    ]);
+
+                    return;
+                }
+                $job = $this->findImportJob();
+                if ($job === null) {
+                    return;
+                }
+            } elseif ($observedStatus !== ImportStatus::Importing) {
+                Log::warning('ProcessProductImageImport: Import job cannot be started', [
+                    'id' => $this->importJobId,
+                    'status' => $observedStatus->value,
                 ]);
 
+                return;
+            }
+
+            if (! $baseImportService->markWorkerStarted($job->id, $this->tenantId)) {
+                Log::warning('ProcessProductImageImport: Duplicate delivery ignored', [
+                    'id' => $this->importJobId,
+                    'status' => $this->findImportJob()?->status->value ?? $job->status->value,
+                ]);
+
+                return;
+            }
+            $job = $this->findImportJob();
+            if ($job === null) {
+                return;
+            }
+
+            try {
                 // Process ZIP file
                 $results = $importService->processZipImport($job, $this->zipPath);
 
@@ -91,16 +120,6 @@ final class ProcessProductImageImport implements ShouldQueue
                 $successCount = collect($results)->where('success', true)->count();
                 $failureCount = collect($results)->where('success', false)->count();
                 $totalProcessed = count($results);
-
-                // Update job with results
-                $job->update([
-                    'status' => ImportStatus::Completed,
-                    'successful_rows' => $successCount,
-                    'failed_rows' => $failureCount,
-                    'processed_rows' => $totalProcessed,
-                    'total_rows' => $totalProcessed,
-                    'completed_at' => now(),
-                ]);
 
                 // Store error details if any failures
                 if ($failureCount > 0) {
@@ -124,6 +143,21 @@ final class ProcessProductImageImport implements ShouldQueue
                     }
                 }
 
+                $baseImportService->finalizeClaimedJob(
+                    $job,
+                    ImportStatus::Completed,
+                    counters: new ImportCountersData(
+                        totalRows: $totalProcessed,
+                        successfulRows: $successCount,
+                        skippedRows: 0,
+                        failedRows: $failureCount,
+                    ),
+                );
+                $job = $this->findImportJob();
+                if ($job === null) {
+                    return;
+                }
+
                 Log::info('ProcessProductImageImport: Completed successfully', [
                     'job_id' => $this->importJobId,
                     'success_count' => $successCount,
@@ -136,17 +170,31 @@ final class ProcessProductImageImport implements ShouldQueue
                     'trace' => $e->getTraceAsString(),
                 ]);
 
-                $job->update([
-                    'status' => ImportStatus::Failed,
-                    'error_message' => $e->getMessage(),
-                    'completed_at' => now(),
-                ]);
+                $baseImportService->finalizeClaimedJob(
+                    $job,
+                    ImportStatus::Failed,
+                    message: $e->getMessage(),
+                );
             } finally {
                 // Cleanup ZIP file
                 if (Storage::disk('local')->exists($this->zipPath)) {
                     Storage::disk('local')->delete($this->zipPath);
                 }
+
+                ImportJob::query()
+                    ->where('tenant_id', $this->tenantId)
+                    ->where('id', $this->importJobId)
+                    ->whereNull('source_purged_at')
+                    ->update(['source_purged_at' => now()]);
             }
         });
+    }
+
+    private function findImportJob(): ?ImportJob
+    {
+        return ImportJob::query()
+            ->where('tenant_id', $this->tenantId)
+            ->where('id', $this->importJobId)
+            ->first();
     }
 }

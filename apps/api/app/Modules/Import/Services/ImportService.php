@@ -6,6 +6,10 @@ namespace App\Modules\Import\Services;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Import\Domain\Data\ClaimResult;
+use App\Modules\Import\Domain\Data\ImportCountersData;
+use App\Modules\Import\Domain\Data\ImportErrorDetailData;
+use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
@@ -19,6 +23,7 @@ use App\Shared\DTOs\CategoryResolutionDTO;
 use App\Shared\DTOs\ProductTaxDefaultDTO;
 use App\Shared\Enums\CategoryResolutionOutcome;
 use App\Shared\Enums\ProductTaxDefaultSource;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -40,6 +45,7 @@ final class ImportService
         private readonly TaxDefaultResolverInterface $taxDefaultResolver,
         private readonly ProductOpeningStockPhase $productOpeningStockPhase,
         private readonly ProductPlacementImportService $productPlacementImportService,
+        private readonly ImportJobClaimService $importJobClaimService,
     ) {}
 
     /**
@@ -69,6 +75,22 @@ final class ImportService
             'column_mapping' => $columnMapping,
             'options' => $options,
         ]);
+    }
+
+    /**
+     * Query-side seam owned by G-6a for G-3b's controller index method.
+     *
+     * @return LengthAwarePaginator<int, ImportJob>
+     */
+    public function paginateJobs(string $tenantId, int $page, int $perPage): LengthAwarePaginator
+    {
+        return ImportJob::query()
+            ->where('tenant_id', $tenantId)
+            ->orderByDesc('created_at')
+            ->paginate(
+                perPage: max(1, $perPage),
+                page: max(1, $page),
+            );
     }
 
     /**
@@ -330,16 +352,37 @@ final class ImportService
      *
      * @return array{imported_count: int, skipped_count: int, execution_error_count: int, total_rows: int}
      */
-    public function executeImport(ImportJob $job): array
+    public function executeImport(ImportJob $job, ?ImportStatus $priorStatus = null): array
     {
-        if (! $job->canStart()) {
+        // Direct service consumers in the existing backend tests enter through
+        // this public API without an HTTP controller. Delegate their ownership
+        // transition to the same CAS service; the HTTP path already arrives
+        // claimed and therefore does not repeat it.
+        if ($job->status->canStartImport()) {
+            $claim = $this->importJobClaimService->claim($job);
+            if (! $claim->won) {
+                throw new RuntimeException('Import has already been started.');
+            }
+            $priorStatus = $claim->priorStatus;
+            $job->refresh();
+        }
+
+        if ($job->status !== ImportStatus::Importing) {
             throw new RuntimeException('Import cannot be started. No valid rows to import.');
         }
 
-        $job->update([
-            'status' => ImportStatus::Importing,
-            'started_at' => now(),
-        ]);
+        if ($this->getValidRows($job)->isEmpty()) {
+            if ($priorStatus !== null) {
+                $this->importJobClaimService->release($job, $priorStatus);
+            }
+
+            throw new RuntimeException('Import cannot be started. No valid rows to import.');
+        }
+
+        if (! $this->importJobClaimService->markWorkerStarted($job->id, $job->tenant_id)) {
+            throw new RuntimeException('Import worker has already started.');
+        }
+        $job->refresh();
 
         // Count validation-skipped rows (invalid from validation phase)
         $validationSkippedCount = $job->rows()->where('is_valid', false)->count();
@@ -376,23 +419,46 @@ final class ImportService
         // opening balances post once, for the whole file, AFTER the loop — so the
         // loop's optimistic tally would otherwise report a green "N imported" for a
         // file that changed nothing. An import that imported nothing has Failed.
-        $importedCount = $job->rows()->where('is_imported', true)->count();
-        $totalFailedCount = $job->rows()->where('is_imported', false)->count();
-        $status = $importedCount === 0 ? ImportStatus::Failed : ImportStatus::Completed;
-
-        $job->update([
-            'status' => $status,
-            'successful_rows' => $importedCount,
-            'failed_rows' => $totalFailedCount,
-            'completed_at' => now(),
-        ]);
+        $counters = ImportCountersData::fromJob($job);
+        $status = $counters->failedRows === $counters->totalRows
+            ? ImportStatus::Failed
+            : ImportStatus::Completed;
+        $this->importJobClaimService->finalize($job, $status, $counters, null, null);
 
         return [
-            'imported_count' => $importedCount,
+            'imported_count' => $counters->successfulRows,
             'skipped_count' => $validationSkippedCount,
             'execution_error_count' => $executionFailCount,
-            'total_rows' => $job->total_rows,
+            'total_rows' => $counters->totalRows,
         ];
+    }
+
+    public function markWorkerStarted(string $jobId, string $tenantId): bool
+    {
+        return $this->importJobClaimService->markWorkerStarted($jobId, $tenantId);
+    }
+
+    public function claimJob(ImportJob $job): ClaimResult
+    {
+        return $this->importJobClaimService->claim($job);
+    }
+
+    public function finalizeClaimedJob(
+        ImportJob $job,
+        ImportStatus $terminal,
+        ?ImportErrorCode $code = null,
+        ?ImportErrorDetailData $detail = null,
+        ?string $message = null,
+        ?ImportCountersData $counters = null,
+    ): bool {
+        return $this->importJobClaimService->finalize(
+            $job,
+            $terminal,
+            $counters ?? ImportCountersData::fromJob($job),
+            $code,
+            $detail,
+            $message,
+        );
     }
 
     /**

@@ -1026,7 +1026,32 @@ maxDiscountPercent: string | null;
 declare namespace App.Modules.Identity.Domain.Enums {
 export type UserStatus = 'active' | 'inactive' | 'suspended' | 'pending_verification';
 }
+declare namespace App.Modules.Import.Domain.Data {
+export type ImportErrorDetailData = {
+supplied?: string | null;
+accepted?: Array<string> | null;
+candidates?: Array<App.Modules.Import.Domain.Data.UnitCandidateData> | null;
+candidate_skus?: Array<string> | null;
+sku?: string | null;
+existing_product_id?: string | null;
+filename?: string | null;
+reason?: string | null;
+column?: string | null;
+raw?: string | null;
+remedy?: string | null;
+held_quantity?: string | null;
+held_at?: string | null;
+};
+export type UnitCandidateData = {
+id: string;
+code: string;
+name: string;
+category: string;
+tier: string;
+};
+}
 declare namespace App.Modules.Import.Domain.Enums {
+export type ImportErrorCode = 'units_not_seeded' | 'worker_lost';
 export type ImportStatus = 'pending' | 'validating' | 'validated' | 'importing' | 'completed' | 'failed';
 export type ImportType = 'parties' | 'partners' | 'products' | 'stock_levels' | 'opening_balances' | 'product_images' | 'composite_items';
 }
@@ -1194,6 +1219,7 @@ export type MovementGlCounterFamily = 'neither' | 'cogs' | 'shrinkage' | 'direct
 export type MovementGlKind = 'exit' | 'entry' | 'count_correction' | 'batch_write_off';
 export type MovementReason = 'goods_receipt' | 'customer_return' | 'adjustment_positive' | 'transfer_in' | 'production_output' | 'opening_balance' | 'delivery' | 'supplier_return' | 'adjustment_negative' | 'count_correction' | 'transfer_out' | 'damage' | 'expiry' | 'write_off' | 'consumption' | 'pos_sale' | 'pos_return';
 export type MovementType = 'receipt' | 'issue' | 'transfer_in' | 'transfer_out' | 'adjustment' | 'opening';
+export type OpeningLotExpiryOutcome = 'not_supplied' | 'applied' | 'filled_existing_lot' | 'expiry_conflict_existing_lot' | 'expiry_ignored_not_batch_tracked' | 'expiry_ignored_no_default_lot';
 export type ReleaseReason = 'delivered' | 'cancelled' | 'expired' | 'manual_release' | 'converted' | 'order_modified' | 'insufficient_stock';
 export type ReplayPreviewMode = 'timestamp_replay' | 'legacy_delta';
 export type ReservationSource = 'sales_order' | 'ecommerce_cart' | 'marketplace_order' | 'manual_hold' | 'customer_return_pending' | 'quality_check' | 'transfer_pending' | 'work_order';
@@ -1807,6 +1833,7 @@ export type RefundDestination = 'original_payment' | 'cash' | 'store_voucher' | 
 export type ReturnLineDisposition = 'restock' | 'scrap' | 'not_received';
 export type ReturnReason = 'defective' | 'wrong_item' | 'customer_changed_mind' | 'other';
 export type SealedHashAlgorithm = 'legacy_pipe_v1' | 'canonical_json_v3';
+export type ShiftCashMovementSource = 'z_session_events' | 'cash_drawer_operations';
 export type ShiftStatus = 'OPEN' | 'CLOSED';
 export type SyncStatus = 'synced' | 'duplicate' | 'failed' | 'chain_broken';
 export type TableShape = 'rectangle' | 'circle' | 'square';
@@ -2554,6 +2581,7 @@ export type AllocationTreatment = 'receivable_clearing' | 'prepayment' | 'payabl
 export type AllocationType = 'invoice_payment' | 'credit_application' | 'credit_note_application' | 'tolerance_writeoff';
 export type BankStatementStatus = 'imported' | 'reconciling' | 'reconciled' | 'voided';
 export type CancellationShape = 'b2b' | 'pos_revenue';
+export type CashTenderInvariantRefusalCode = 'PAYMENT_METHOD_CASH_TENDER_FLAG_ON_NON_CANONICAL_CODE' | 'PAYMENT_METHOD_CANONICAL_CASH_CODE_NOT_FLAGGED';
 export type DepositReferenceRefusal = 'payment_method_not_found' | 'payment_repository_not_found' | 'payment_repository_missing_gl_account' | 'payment_repository_gl_account_inactive' | 'payment_repository_currency_mismatch' | 'payment_repository_frozen' | 'actor_not_active_company_member' | 'payment_repository_behind_checkpoint' | 'missing_instrument_portfolio_account' | 'instrument_currency_mismatches_company';
 export type DishonorRouting = 're_present' | 'receivable' | 'doubtful';
 export type FeeType = 'none' | 'fixed' | 'percentage' | 'mixed';
@@ -2576,6 +2604,7 @@ export type RemittanceLineStatus = 'pending' | 'cleared' | 'bounced';
 export type RemittanceStatus = 'draft' | 'remitted' | 'closed';
 export type RemittanceType = 'collection' | 'discount';
 export type RepositoryType = 'cash_register' | 'safe' | 'bank_account' | 'virtual';
+export type RepositoryWriteRefusal = 'LOCATION_DRAWER_ALREADY_EXISTS';
 export type ReversalSupport = 'cash_reversal' | 'no_cash_leg' | 'unsupported';
 export type StatementDirectionConvention = 'signed_amount' | 'debit_credit_columns';
 export type StatementLineIgnoreReason = 'duplicate' | 'informational' | 'bank_error' | 'out_of_scope' | 'other';
@@ -3138,6 +3167,7 @@ export type CategoryResolutionOutcome = 'matched' | 'matched_by_slug' | 'created
 export type EnrichmentFeedbackAction = 'confirmed' | 'rejected';
 export type EnrichmentFeedbackReason = 'wrong_product' | 'bad_data';
 export type EnrichmentStatus = 'pending' | 'enriching' | 'completed' | 'failed' | 'rejected' | 'not_enrichable';
+export type ProductTaxDefaultSource = 'file' | 'category_default' | 'company_default';
 }
 
 }

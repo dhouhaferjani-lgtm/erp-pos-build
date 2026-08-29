@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Import\Domain;
 
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Domain\Data\ImportErrorDetailData;
+use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Tenant\Domain\Tenant;
@@ -26,11 +28,17 @@ use Illuminate\Support\Carbon;
  * @property int $total_rows
  * @property int $processed_rows
  * @property int $successful_rows
+ * @property int $skipped_rows
  * @property int $failed_rows
  * @property array<string, string>|null $column_mapping
  * @property array<string, mixed>|null $options
  * @property string|null $error_message
+ * @property ImportErrorCode|null $error_code
+ * @property ImportErrorDetailData|null $error_detail
  * @property Carbon|null $started_at
+ * @property Carbon|null $claimed_at
+ * @property Carbon|null $worker_started_at
+ * @property Carbon|null $source_purged_at
  * @property Carbon|null $completed_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -60,11 +68,17 @@ class ImportJob extends Model
         'total_rows',
         'processed_rows',
         'successful_rows',
+        'skipped_rows',
         'failed_rows',
         'column_mapping',
         'options',
         'error_message',
+        'error_code',
+        'error_detail',
         'started_at',
+        'claimed_at',
+        'worker_started_at',
+        'source_purged_at',
         'completed_at',
     ];
 
@@ -74,6 +88,7 @@ class ImportJob extends Model
     protected $attributes = [
         'processed_rows' => 0,
         'successful_rows' => 0,
+        'skipped_rows' => 0,
         'failed_rows' => 0,
     ];
 
@@ -87,7 +102,12 @@ class ImportJob extends Model
             'status' => ImportStatus::class,
             'column_mapping' => 'array',
             'options' => 'array',
+            'error_code' => ImportErrorCode::class,
+            'error_detail' => ImportErrorDetailData::class,
             'started_at' => 'datetime',
+            'claimed_at' => 'datetime',
+            'worker_started_at' => 'datetime',
+            'source_purged_at' => 'datetime',
             'completed_at' => 'datetime',
         ];
     }
