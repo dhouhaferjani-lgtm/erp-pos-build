@@ -46,10 +46,11 @@ milestones:
     lane: h1-cleanup
     title: a5 delete Companies + contacts.update->partners.update on partner edit routes + gate suppliers; a6 constrain Type select per route
     review_lenses: [tenancy-authz, frontend-conventions]
-    status: pending
-    commit: null
+    status: review
+    commit: 08bac61fa64c1fd74c93ac0bc9f100f9e57b0d21
     verdict: null
     fix_rounds: 0
+    updated: 08bac61fa64c1fd74c93ac0bc9f100f9e57b0d21
   - id: M4
     lane: h1-a1
     title: SALE_RECEIPT.buyer populated (resolved server partner id only; contact_id null by decision); validateBuyer customer_id uuid-or-null; projection writes partner_id from snapshot
