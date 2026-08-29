@@ -6,13 +6,14 @@
  */
 
 import type { OffsetPaginationMeta } from '@/types/pagination'
+import type { PartnerData } from '../types'
 
 /**
- * Row shape returned by `/partners` list endpoint.
- *
- * Mirrors the `Partner` interface declared in `PartnerListPage.tsx`.
+ * Row shape returned by the `/partners` list endpoint — the same generated
+ * DTO the detail endpoint returns, re-exported here so tests can keep a
+ * single fixture import.
  */
-export type PartnerData = App.Modules.Partner.Application.DTOs.PartnerData
+export type { PartnerData }
 export type PartnerListRow = PartnerData
 
 export interface PartnersListAggregates {
