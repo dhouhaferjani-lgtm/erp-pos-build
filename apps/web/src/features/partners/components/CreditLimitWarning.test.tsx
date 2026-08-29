@@ -58,6 +58,20 @@ describe('CreditLimitWarning decimal boundaries', () => {
     )
   })
 
+  it('truncates displayed usage so a below-limit balance never reads as 100 percent', () => {
+    render(
+      <CreditLimitWarning
+        creditLimit="1000.000"
+        outstandingBalance="999.500"
+        currency="TND"
+      />,
+    )
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Approaching credit limit')
+    expect(screen.getByRole('alert')).toHaveTextContent('(99% used)')
+    expect(screen.getByRole('alert')).not.toHaveTextContent('(100% used)')
+  })
+
   it('uses Arabic credit-warning copy instead of the English fallback', async () => {
     await i18n.changeLanguage('ar')
 

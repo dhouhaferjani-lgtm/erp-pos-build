@@ -27,7 +27,7 @@ export function CreditLimitWarning({
   }
 
   const usagePercentage = bcmul(bcdiv(outstandingBalance, creditLimit, 6), '100', 6)
-  const displayedPercentage = bcmul(usagePercentage, '1', 0)
+  const displayedPercentage = usagePercentage.split('.', 1)[0] ?? '0'
   const thresholdComparisonLeft = bcmul(outstandingBalance, '100', 6)
   const thresholdComparisonRight = bcmul(creditLimit, String(thresholdPercentage), 6)
   const isExceeded = bccomp(outstandingBalance, creditLimit) >= 0

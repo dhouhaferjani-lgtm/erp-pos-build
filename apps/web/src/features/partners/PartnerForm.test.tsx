@@ -309,6 +309,33 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
     expect(screen.getByRole('alert')).not.toHaveTextContent('Credit limit exceeded')
   })
 
+  it('does not subtract supplier payables from a both-role partner credit exposure', async () => {
+    mockApiGet.mockResolvedValue({
+      data: {
+        data: makePartnerDetail({
+          id: 'both-role-over-limit',
+          type: 'both',
+          customer_category: 'business',
+          credit_limit: '1000.000',
+          receivable_balance: '5000.000',
+          credit_balance: '0.000',
+          payable_balance: '4900.000',
+          net_balance: '100.000',
+        }),
+      },
+    })
+
+    renderPartnerForm(
+      ['/sales/customers/both-role-over-limit/edit'],
+      '/sales/customers/:id/edit',
+      'customer',
+    )
+
+    expect(await screen.findByLabelText(/^Name/)).toHaveValue('Acme Corp')
+    expect(screen.getByRole('alert')).toHaveTextContent('Credit limit exceeded')
+    expect(screen.getByRole('alert')).toHaveTextContent('5 000,00 EUR')
+  })
+
   it('create mode: prefills Name, VAT number, Phone, Street address, City from navigation state', () => {
     renderPartnerForm(
       [

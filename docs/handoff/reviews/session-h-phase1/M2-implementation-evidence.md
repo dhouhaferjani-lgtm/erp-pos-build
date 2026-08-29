@@ -145,3 +145,38 @@ The correction remains FE-only and shape-neutral. It changes no migration, datab
 - `cd apps/api && php tools/feature-lane-manifest-check.php` — **exit 0**, with the standing parked-lane/coverage-debt notices only.
 - `git diff --check` — **exit 0**.
 - `pgrep -af '[v]itest'` — no stray Vitest workers.
+
+## M2 adversarial correction round 2 RED → GREEN evidence
+
+### Customer-only exposure for a dual-role partner
+
+Command:
+
+`pnpm --filter @autoerp/web exec vitest run src/features/partners/PartnerForm.test.tsx -t "does not subtract supplier payables from a both-role partner credit exposure"`
+
+Pre-fix result: **1 failed / 1**. The fixture had receivables `5000.000`, credit `0.000`, payables `4900.000`, an API `net_balance` of `100.000`, and a credit limit of `1000.000`. No alert rendered because the all-role net subtracted supplier payables from customer exposure.
+
+Post-fix result: **1 passed / 1** after adding the shared `getCustomerCreditExposure` helper (`receivable_balance - credit_balance`) and using it for `CreditLimitWarning`. The alert is exceeded and displays the full `5 000,00 EUR` customer exposure; neither `payable_balance` nor `net_balance` participates.
+
+### Below-limit percentage display truncation
+
+Command:
+
+`pnpm --filter @autoerp/web exec vitest run src/features/partners/components/CreditLimitWarning.test.tsx -t "truncates displayed usage"`
+
+Pre-fix result: **1 failed / 1**. The exact `999.500 / 1000.000` TND boundary rendered `100% used` even though the alert correctly remained below the limit.
+
+Post-fix result: **1 passed / 1** after truncating the positive decimal-helper result for display. The alert remains approaching and renders `99% used`, never `100% used`.
+
+### Round 2 locale and consolidated verification
+
+- Removed the four orphaned `partners.b2b` category keys from EN and FR. AR already contained none of the four, so no AR deletion was necessary.
+- `pnpm --filter @autoerp/web exec vitest run src/features/partners/PartnerForm.test.tsx src/features/partners/components/CreditLimitWarning.test.tsx` — **2 files, 29/29 passed**.
+- `pnpm --filter @autoerp/web exec vitest run src/features/partners` — **12 files, 127/127 passed**. Existing unrelated React `act(...)` and unmatched-route diagnostics remain non-failing.
+- `pnpm --filter @autoerp/web audit:i18n:local` — **exit 0**; 8 baseline entries translated (burn-down), 55 namespaces, and 2755 known gaps held at baseline.
+- `pnpm --filter @autoerp/web audit:i18n` — expected local fail-closed because owner-set `I18N_BASELINE_PROTECTED_BLOB` is unavailable; the repository-prescribed local authority command above passed.
+- `pnpm --filter @autoerp/web typecheck` — **exit 0**.
+- `pnpm --filter @autoerp/web lint` — **exit 0**; all key/design/quantity/local-i18n audits passed, custom ESLint rule tests passed, and tool tests passed **160/160**.
+- `pnpm --filter @autoerp/web exec playwright test e2e/session-h/m2-partner-nature.spec.ts --workers=1` — **3/3 passed in 41.5s**.
+- `npx react-doctor@latest --verbose --scope changed --base ed9f69551` — **91/100, no issues found**, 13 changed source files scanned.
+- `cd apps/api && php tools/feature-lane-manifest-check.php` — **exit 0**, with only the standing parked-lane/coverage-debt notices.

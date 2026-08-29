@@ -28,7 +28,7 @@ import {
   partnersInvalidationPredicate,
 } from './_invalidation'
 import { readPartnerPrefill } from './partnerPrefill'
-import { getNetBalance } from './partnerNetBalance'
+import { getCustomerCreditExposure } from './partnerNetBalance'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import type { PartnerData } from './types'
@@ -699,7 +699,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
             watch={watch}
             setValue={setValue}
             partnerId={isEditing ? id : undefined}
-            outstandingBalance={partner ? getNetBalance(partner, isCustomerContext) : null}
+            outstandingBalance={partner ? getCustomerCreditExposure(partner) : null}
           />
         )}
 

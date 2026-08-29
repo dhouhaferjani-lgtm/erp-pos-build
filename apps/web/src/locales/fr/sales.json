@@ -110,10 +110,6 @@
     "totalSummary": "{{count}} {{entity}} au total",
     "b2b": {
       "title": "Informations B2B",
-      "customerCategory": "Catégorie client",
-      "selectCategory": "Sélectionner une catégorie",
-      "individual": "Particulier",
-      "business": "Entreprise",
       "companyLegalName": "Raison sociale",
       "registrationNumber": "Numéro d'immatriculation",
       "paymentTerms": "Conditions de paiement",
