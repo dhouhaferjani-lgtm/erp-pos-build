@@ -128,6 +128,7 @@ class ImportInfrastructureTest extends TestCase
     {
         $job = ImportJob::create([
             'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'user_id' => $this->user->id,
             'type' => ImportType::Partners,
             'status' => ImportStatus::Pending,
@@ -151,6 +152,7 @@ class ImportInfrastructureTest extends TestCase
     {
         $job = ImportJob::create([
             'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'user_id' => $this->user->id,
             'type' => ImportType::Partners,
             'status' => ImportStatus::Pending,
@@ -177,6 +179,7 @@ class ImportInfrastructureTest extends TestCase
     {
         $job = ImportJob::create([
             'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'user_id' => $this->user->id,
             'type' => ImportType::Partners,
             'status' => ImportStatus::Pending,
@@ -221,6 +224,7 @@ class ImportInfrastructureTest extends TestCase
 
         $job = $importService->createJob(
             tenantId: $this->tenant->id,
+            companyId: $this->company->id,
             userId: $this->user->id,
             type: ImportType::Partners,
             filename: 'customers.csv',
@@ -240,6 +244,7 @@ class ImportInfrastructureTest extends TestCase
 
         $job = $importService->createJob(
             tenantId: $this->tenant->id,
+            companyId: $this->company->id,
             userId: $this->user->id,
             type: ImportType::Partners,
             filename: 'customers.csv',
@@ -314,6 +319,7 @@ class ImportInfrastructureTest extends TestCase
 
         $job = $importService->createJob(
             tenantId: $this->tenant->id,
+            companyId: $this->company->id,
             userId: $this->user->id,
             type: ImportType::Partners,
             filename: 'customers.csv',
@@ -346,6 +352,7 @@ class ImportInfrastructureTest extends TestCase
     {
         $job = ImportJob::create([
             'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'user_id' => $this->user->id,
             'type' => ImportType::Partners,
             'status' => ImportStatus::Pending,
@@ -375,6 +382,7 @@ class ImportInfrastructureTest extends TestCase
 
         $job = $importService->createJob(
             tenantId: $this->tenant->id,
+            companyId: $this->company->id,
             userId: $this->user->id,
             type: ImportType::Partners,
             filename: 'customers.csv',
@@ -403,6 +411,7 @@ class ImportInfrastructureTest extends TestCase
 
         $job = $importService->createJob(
             tenantId: $this->tenant->id,
+            companyId: $this->company->id,
             userId: $this->user->id,
             type: ImportType::Partners,
             filename: 'customers.csv',
@@ -465,6 +474,7 @@ class ImportInfrastructureTest extends TestCase
     {
         $job = ImportJob::create([
             'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'user_id' => $this->user->id,
             'type' => ImportType::Partners,
             'status' => ImportStatus::Validated,
@@ -496,6 +506,7 @@ class ImportInfrastructureTest extends TestCase
     {
         $job = ImportJob::create([
             'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'user_id' => $this->user->id,
             'type' => ImportType::Partners,
             'status' => ImportStatus::Validated,
@@ -539,6 +550,7 @@ class ImportInfrastructureTest extends TestCase
     {
         $job = ImportJob::create([
             'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'user_id' => $this->user->id,
             'type' => ImportType::Partners,
             'status' => ImportStatus::Validated,
@@ -568,6 +580,7 @@ class ImportInfrastructureTest extends TestCase
     {
         $job = ImportJob::create([
             'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'user_id' => $this->user->id,
             'type' => ImportType::Partners,
             'status' => ImportStatus::Validated,
@@ -606,9 +619,11 @@ class ImportInfrastructureTest extends TestCase
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
         ]);
+        $otherCompany = Company::factory()->create(['tenant_id' => $otherTenant->id]);
 
         $job = ImportJob::create([
             'tenant_id' => $otherTenant->id,
+            'company_id' => $otherCompany->id,
             'user_id' => $this->user->id,
             'type' => ImportType::Partners,
             'status' => ImportStatus::Pending,

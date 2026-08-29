@@ -7,6 +7,7 @@ namespace App\Modules\Import\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Application\Services\ModuleEntitlementCheck;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Services\MigrationWizardService;
 use App\Modules\Import\Services\SpreadsheetParserService;
@@ -22,6 +23,7 @@ class MigrationWizardController extends Controller
         private readonly MigrationWizardService $wizardService,
         private readonly CompanyContext $companyContext,
         private readonly SpreadsheetParserService $spreadsheetParser,
+        private readonly ModuleEntitlementCheck $moduleEntitlement,
     ) {}
 
     /**
@@ -143,6 +145,10 @@ class MigrationWizardController extends Controller
         } catch (\ValueError) {
             return response()->json(['error' => 'Invalid import type'], 400);
         }
+
+        /** @var User $user */
+        $user = $request->user();
+        $this->moduleEntitlement->ensure($importType, $user);
 
         // Retired types remain in the enum for historical reads only — handing
         // out a template would invite an import the API now refuses (ruling D4).

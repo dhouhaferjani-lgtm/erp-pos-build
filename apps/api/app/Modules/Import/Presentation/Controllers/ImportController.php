@@ -9,6 +9,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Import\Application\Jobs\ProcessImportJob;
 use App\Modules\Import\Application\Jobs\ProcessProductImageImport;
+use App\Modules\Import\Application\Services\ModuleEntitlementCheck;
 use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
@@ -49,6 +50,7 @@ class ImportController extends Controller
         private readonly FailedRowsExportService $failedRowsExportService,
         private readonly ResultWorkbookService $resultWorkbookService,
         private readonly UnitsProvisioningService $unitsProvisioning,
+        private readonly ModuleEntitlementCheck $moduleEntitlement,
     ) {}
 
     /**
@@ -61,11 +63,15 @@ class ImportController extends Controller
         $tenantId = $company->tenant_id;
 
         $jobs = ImportJob::where('tenant_id', $tenantId)
+            ->where(fn ($query) => $query->where('company_id', $companyId)->orWhereNull('company_id'))
             ->orderByDesc('created_at')
             ->paginate(20);
 
         return response()->json([
-            'data' => $jobs->map(fn (ImportJob $job) => $this->formatJob($job, false)),
+            'data' => $jobs->map(fn (ImportJob $job) => array_merge(
+                $this->formatJob($job, false),
+                ['unattributed' => $job->company_id === null],
+            )),
             'meta' => [
                 'current_page' => $jobs->currentPage(),
                 'last_page' => $jobs->lastPage(),
@@ -110,6 +116,11 @@ class ImportController extends Controller
         /** @var UploadedFile $file */
         $file = $request->file('file');
         $type = ImportType::from($request->input('type'));
+        $this->moduleEntitlement->ensure($type, $user);
+        $sourceHash = hash_file('sha256', $file->getRealPath());
+        if (! is_string($sourceHash)) {
+            return response()->json(['error' => 'Failed to hash uploaded file'], 500);
+        }
 
         // Deprecated types stay in the enum so historical `import_jobs` rows
         // remain readable, but they can never start a NEW import (ruling D4).
@@ -140,7 +151,7 @@ class ImportController extends Controller
 
         // Special handling for ProductImages (ZIP file)
         if ($type === ImportType::ProductImages) {
-            return $this->handleProductImagesUpload($file, $user, $tenantId);
+            return $this->handleProductImagesUpload($file, $user, $tenantId, $companyId, $sourceHash);
         }
 
         // A GL opening-balance import consumes the company's one-shot opening slot:
@@ -165,11 +176,13 @@ class ImportController extends Controller
         /** @var array<string, string>|null $columnMapping */
         $job = $this->importService->createJob(
             tenantId: $tenantId,
+            companyId: $companyId,
             userId: $user->id,
             type: $type,
             filename: $file->getClientOriginalName(),
             filePath: $path,
             totalRows: 0,
+            sourceHash: $sourceHash,
             columnMapping: $columnMapping,
             options: $options
         );
@@ -251,6 +264,14 @@ class ImportController extends Controller
             return response()->json(['error' => 'Import job not found'], 404);
         }
 
+        if ($mismatch = $this->companyMismatch($job, $companyId)) {
+            return $mismatch;
+        }
+
+        /** @var User $user */
+        $user = $request->user();
+        $this->moduleEntitlement->ensure($job->type, $user);
+
         return response()->json([
             'data' => $this->formatJob($job, true),
         ]);
@@ -272,6 +293,14 @@ class ImportController extends Controller
         if (! $job) {
             return response()->json(['error' => 'Import job not found'], 404);
         }
+
+        if ($mismatch = $this->companyMismatch($job, $companyId)) {
+            return $mismatch;
+        }
+
+        /** @var User $user */
+        $user = $request->user();
+        $this->moduleEntitlement->ensure($job->type, $user);
 
         // Get sample rows for preview
         $sampleRows = $job->rows()
@@ -332,6 +361,14 @@ class ImportController extends Controller
             return response()->json(['error' => 'Import job not found'], 404);
         }
 
+        if ($mismatch = $this->companyMismatch($job, $companyId)) {
+            return $mismatch;
+        }
+
+        /** @var User $user */
+        $user = $request->user();
+        $this->moduleEntitlement->ensure($job->type, $user);
+
         // Get pagination parameters
         $perPage = (int) $request->query('per_page', 50);
         $perPage = min(max($perPage, 1), 500); // Clamp between 1-500
@@ -388,6 +425,14 @@ class ImportController extends Controller
             return response()->json(['error' => 'Import job not found'], 404);
         }
 
+        if ($mismatch = $this->companyMismatch($job, $companyId)) {
+            return $mismatch;
+        }
+
+        /** @var User $user */
+        $user = $request->user();
+        $this->moduleEntitlement->ensure($job->type, $user);
+
         if (! in_array($job->status, [ImportStatus::Pending, ImportStatus::Validating, ImportStatus::Validated], true)) {
             return response()->json(['error' => ['code' => 'IMPORT_ALREADY_STARTED']], 409);
         }
@@ -438,6 +483,14 @@ class ImportController extends Controller
             return response()->json(['error' => 'Import job not found'], 404);
         }
 
+        if ($mismatch = $this->companyMismatch($job, $companyId)) {
+            return $mismatch;
+        }
+
+        /** @var User $user */
+        $user = $request->user();
+        $this->moduleEntitlement->ensure($job->type, $user);
+
         // Get counts efficiently without loading row data
         $validationErrorCount = $job->rows()->where('is_valid', false)->count();
         $executionErrorCount = $job->rows()->whereNotNull('import_error')->count();
@@ -482,6 +535,14 @@ class ImportController extends Controller
         if (! $job) {
             return response()->json(['error' => 'Import job not found'], 404);
         }
+
+        if ($mismatch = $this->companyMismatch($job, $companyId)) {
+            return $mismatch;
+        }
+
+        /** @var User $user */
+        $user = $request->user();
+        $this->moduleEntitlement->ensure($job->type, $user);
 
         // A job of a retired type can only be a leftover created before the
         // deprecation. Refuse it here rather than letting it reach
@@ -604,6 +665,14 @@ class ImportController extends Controller
             return response()->json(['error' => 'Import job not found'], 404);
         }
 
+        if ($mismatch = $this->companyMismatch($job, $companyId)) {
+            return $mismatch;
+        }
+
+        /** @var User $user */
+        $user = $request->user();
+        $this->moduleEntitlement->ensure($job->type, $user);
+
         // Generate or get existing CSV file
         $filePath = $this->failedRowsExportService->generateFailedRowsCsv($job);
 
@@ -637,6 +706,14 @@ class ImportController extends Controller
         if (! $job) {
             return response()->json(['error' => 'Import job not found'], 404);
         }
+
+        if ($mismatch = $this->companyMismatch($job, $companyId)) {
+            return $mismatch;
+        }
+
+        /** @var User $user */
+        $user = $request->user();
+        $this->moduleEntitlement->ensure($job->type, $user);
 
         $path = $this->resultWorkbookService->generate($job);
 
@@ -805,11 +882,14 @@ class ImportController extends Controller
 
     /**
      * Handle ProductImages ZIP upload (special case).
-     *
-     * @param  UploadedFile  $file
      */
-    private function handleProductImagesUpload($file, User $user, string $tenantId): JsonResponse
-    {
+    private function handleProductImagesUpload(
+        UploadedFile $file,
+        User $user,
+        string $tenantId,
+        string $companyId,
+        string $sourceHash,
+    ): JsonResponse {
         // Store the ZIP file
         $path = $file->store('imports/'.$tenantId.'/product-images', 'local');
         if ($path === false) {
@@ -822,11 +902,13 @@ class ImportController extends Controller
         // Create import job
         $job = $this->importService->createJob(
             tenantId: $tenantId,
+            companyId: $companyId,
             userId: $user->id,
             type: ImportType::ProductImages,
             filename: $file->getClientOriginalName(),
             filePath: $path,
-            totalRows: 0 // Will be set after ZIP extraction
+            totalRows: 0, // Will be set after ZIP extraction
+            sourceHash: $sourceHash,
         );
 
         // Mark as pending BEFORE dispatching — same ordering rule as execute():
@@ -848,5 +930,19 @@ class ImportController extends Controller
             'data' => $this->formatJob($freshJob, true),
             'message' => 'Product images import queued for processing. The ZIP will be extracted and images will be uploaded asynchronously.',
         ], 202);
+    }
+
+    private function companyMismatch(ImportJob $job, string $companyId): ?JsonResponse
+    {
+        if ($job->company_id === null || $job->company_id === $companyId) {
+            return null;
+        }
+
+        return response()->json([
+            'error' => [
+                'code' => 'IMPORT_COMPANY_MISMATCH',
+                'message' => 'This import job belongs to a different company. Switch back to the company that created it.',
+            ],
+        ], 409);
     }
 }

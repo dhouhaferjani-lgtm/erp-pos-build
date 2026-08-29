@@ -74,6 +74,7 @@ final class ProductImageImportServiceMediaTest extends TestCase
 
         $importJob = ImportJob::create([
             'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'user_id' => $this->user->id,
             'type' => ImportType::ProductImages,
             'status' => ImportStatus::Pending,
@@ -129,6 +130,7 @@ final class ProductImageImportServiceMediaTest extends TestCase
 
         $importJob = ImportJob::create([
             'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'user_id' => $this->user->id,
             'type' => ImportType::ProductImages,
             'status' => ImportStatus::Pending,
