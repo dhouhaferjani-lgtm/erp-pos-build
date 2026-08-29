@@ -363,6 +363,25 @@ describe('receiptService — fiscal-event engine wiring', () => {
     });
   });
 
+  it('never seals an uppercase mirrored UUID as customer_id', async () => {
+    const db = makeMockDb();
+
+    await createOfflineReceipt(db, receiptInput(customer({
+      id: 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA',
+    })));
+
+    const engine = await vi.mocked(getFiscalEventEngine).mock.results[0]!.value;
+    const payload = vi.mocked(engine.append).mock.calls[0]![1].payload;
+    expect(payload.buyer).toEqual({
+      address: null,
+      codice_fiscale: null,
+      contact_id: null,
+      customer_id: null,
+      name: 'Acme SARL',
+      tax_number: null,
+    });
+  });
+
   it('carries every discount and tender tolerance approval reference in SALE_RECEIPT payload', async () => {
     const db = makeMockDb();
     const transactionEvidence = evidence({

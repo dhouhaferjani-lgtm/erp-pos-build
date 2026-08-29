@@ -1760,7 +1760,7 @@ export function validateSaleReceiptPayload(payload: unknown, eventVersion: numbe
 
   // -- 6. nested objects --
   validateSeller(p);
-  validateBuyer(p);
+  validateBuyer(p, eventVersion);
   validateOriginalReceiptReference(p, invoiceTypeCode);
 
   // -- 6z. v4-only nested contract (spec §3.3/§3.4) -- reached only when
@@ -2734,7 +2734,7 @@ function validateSeller(p: Record<string, unknown>): string {
   return jurisdiction;
 }
 
-function validateBuyer(p: Record<string, unknown>): void {
+function validateBuyer(p: Record<string, unknown>, saleReceiptEventVersion?: number): void {
   const buyer = p['buyer'];
   if (buyer === null) {
     return;
@@ -2746,13 +2746,38 @@ function validateBuyer(p: Record<string, unknown>): void {
   }
   assertExactKeySetWithPath(buyer, BUYER_KEYS, 'buyer');
 
-  for (const field of ['codice_fiscale', 'contact_id', 'customer_id', 'name'] as const) {
+  for (const field of ['codice_fiscale', 'contact_id', 'customer_id'] as const) {
     const value = buyer[field];
     if (value !== null && (typeof value !== 'string' || value === '')) {
       throw new FiscalEventPayloadValidationError(
         `payload_buyer_${field}_invalid:must be non-empty string or null; got ${jsonOrType(value)}`,
       );
     }
+  }
+
+  const buyerName = buyer['name'];
+  if (saleReceiptEventVersion !== undefined) {
+    if (typeof buyerName !== 'string' || buyerName.trim() === '') {
+      throw new FiscalEventPayloadValidationError(
+        `payload_buyer_name_invalid:must be non-empty string; got ${jsonOrType(buyerName)}`,
+      );
+    }
+  } else if (buyerName !== null && (typeof buyerName !== 'string' || buyerName === '')) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_buyer_name_invalid:must be non-empty string or null; got ${jsonOrType(buyerName)}`,
+    );
+  }
+
+  const customerId = buyer['customer_id'];
+  if (
+    saleReceiptEventVersion !== undefined
+    && saleReceiptEventVersion >= 5
+    && customerId !== null
+    && (typeof customerId !== 'string' || !LOWER_HEX_UUID.test(customerId))
+  ) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_buyer_invalid:customer_id must be lowercase-hex UUID or null; got ${jsonOrType(customerId)}`,
+    );
   }
 
   validateAddress(buyer['address'], 'buyer.address', /* required */ false);
