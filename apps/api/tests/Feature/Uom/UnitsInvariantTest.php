@@ -14,6 +14,7 @@ use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Mockery\VerificationDirector;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -55,7 +56,7 @@ final class UnitsInvariantTest extends TestCase
 
     public function test_already_correct_tenant_logs_zero_empty_companies_and_writes_nothing(): void
     {
-        $this->provisionedCompany();
+        $company = $this->provisionedCompany();
         (new UomSeeder)->run();
         $units = DB::table('units')->count();
         $categories = DB::table('unit_categories')->count();
@@ -66,12 +67,13 @@ final class UnitsInvariantTest extends TestCase
         $this->assertSame($units, DB::table('units')->count());
         $this->assertSame($categories, DB::table('unit_categories')->count());
         $logSpy->shouldHaveReceived('info', ['units.visibility_census companies=1 empty=0']);
+        $logSpy->shouldNotHaveReceived('info', ['units-seeded company_id='.$company->id]);
         $this->assertSame('', $output);
     }
 
     public function test_second_up_is_a_clean_no_op_after_backfill(): void
     {
-        $this->provisionedCompany();
+        $company = $this->provisionedCompany();
         $this->runMigration();
         $units = DB::table('units')->count();
         $categories = DB::table('unit_categories')->count();
@@ -82,6 +84,7 @@ final class UnitsInvariantTest extends TestCase
         $this->assertSame($units, DB::table('units')->count());
         $this->assertSame($categories, DB::table('unit_categories')->count());
         $logSpy->shouldHaveReceived('info', ['units.visibility_census companies=1 empty=0']);
+        $logSpy->shouldNotHaveReceived('info', ['units-seeded company_id='.$company->id]);
         $this->assertSame('', $output);
     }
 
@@ -102,12 +105,13 @@ final class UnitsInvariantTest extends TestCase
             'units.empty_for_company',
             ['company' => $company->id],
         ]);
+        $logSpy->shouldNotHaveReceived('info', ['units-seeded company_id='.$company->id]);
         $this->assertSame('', $output);
     }
 
     public function test_mid_seed_failure_is_logged_and_leaves_both_tables_empty(): void
     {
-        $this->provisionedCompany();
+        $company = $this->provisionedCompany();
         $failure = new RuntimeException('Injected failure after the second unit insert.');
         $this->failAfterSecondUnitInsert($failure);
         $logSpy = Log::spy();
@@ -116,7 +120,34 @@ final class UnitsInvariantTest extends TestCase
 
         $this->assertSame(0, DB::table('units')->count());
         $this->assertSame(0, DB::table('unit_categories')->count());
+        $seedFailureLog = $logSpy->shouldHaveReceived('error');
+        self::assertInstanceOf(VerificationDirector::class, $seedFailureLog);
+        $seedFailureLog->withArgs(
+            static fn (string $message, array $context = []): bool => $message === 'units.seed_failed'
+                && ($context['exception'] ?? null) === $failure
+                && ($context['tenant'] ?? null) === $company->tenant_id,
+        );
         $logSpy->shouldHaveReceived('error', ['units.visibility_census companies=1 empty=1 seed_failed=1']);
+        $this->assertSame('', $output);
+    }
+
+    public function test_visibility_census_failure_logs_the_exception_and_tenant_context(): void
+    {
+        $company = $this->provisionedCompany();
+        $failure = new RuntimeException('Injected visibility census failure.');
+        $this->failOnUnitVisibilityCount($failure);
+        $logSpy = Log::spy();
+
+        $output = $this->runMigration();
+
+        $visibilityFailureLog = $logSpy->shouldHaveReceived('error');
+        self::assertInstanceOf(VerificationDirector::class, $visibilityFailureLog);
+        $visibilityFailureLog->withArgs(
+            static fn (string $message, array $context = []): bool => $message === 'units.visibility_migration_failed'
+                && ($context['exception'] ?? null) === $failure
+                && ($context['tenant'] ?? null) === $company->tenant_id,
+        );
+        $logSpy->shouldHaveReceived('error', ['units-visibility-error Injected visibility census failure.']);
         $this->assertSame('', $output);
     }
 
@@ -178,6 +209,20 @@ final class UnitsInvariantTest extends TestCase
             if ($unitInsertCount === 2) {
                 throw $failure;
             }
+        });
+    }
+
+    private function failOnUnitVisibilityCount(RuntimeException $failure): void
+    {
+        $failed = false;
+
+        DB::listen(static function (QueryExecuted $query) use (&$failed, $failure): void {
+            if ($failed || preg_match('/select count\(\*\).*from ["`]?units["`]?/i', $query->sql) !== 1) {
+                return;
+            }
+
+            $failed = true;
+            throw $failure;
         });
     }
 

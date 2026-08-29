@@ -6,10 +6,13 @@ namespace Tests\Feature\Identity;
 
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\CountriesSeeder;
+use Database\Seeders\PlansSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Testing\TestResponse;
 use JsonException;
 use Stancl\Tenancy\Jobs\MigrateDatabase;
@@ -18,7 +21,11 @@ use Tests\TestCase;
 
 final class RegistrationResponseIsPureJsonTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshDatabase {
+        refreshDatabase as private refreshDatabaseInTransaction;
+    }
+
+    private ?Tenant $tenant = null;
 
     /** @var list<string> */
     private const array CENSUS_MIGRATIONS = [
@@ -36,17 +43,85 @@ final class RegistrationResponseIsPureJsonTest extends TestCase
     {
         parent::setUp();
 
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            Artisan::call('db:seed', ['--class' => PlansSeeder::class, '--force' => true]);
+
+            return;
+        }
+
         $this->seed(RolesAndPermissionsSeeder::class);
         $this->seed(CountriesSeeder::class);
+    }
+
+    protected function tearDown(): void
+    {
+        if (tenancy()->initialized) {
+            tenancy()->end();
+        }
+
+        if ($this->tenant !== null && DB::connection()->getDriverName() === 'pgsql') {
+            try {
+                DB::purge('tenant');
+                $this->tenant->database()->manager()->deleteDatabase($this->tenant);
+            } catch (\Throwable) {
+                // Best-effort: the unique registration tenant is also removed
+                // from the central directory below.
+            }
+
+            DB::connection('central')->table('personal_access_tokens')
+                ->where('abilities', 'like', '%tenant:'.$this->tenant->id.'%')
+                ->delete();
+            DB::connection('central')->table('domains')->where('tenant_id', $this->tenant->id)->delete();
+            DB::connection('central')->table('central_identities')->where('tenant_id', $this->tenant->id)->delete();
+            DB::connection('central')->table('tenant_subscriptions')->where('tenant_id', $this->tenant->id)->delete();
+            DB::connection('central')->table('tenants')->where('id', $this->tenant->id)->delete();
+        }
+
+        parent::tearDown();
+    }
+
+    public function refreshDatabase(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->refreshDatabaseInTransaction();
+
+            return;
+        }
+
+        // CREATE DATABASE cannot run inside RefreshDatabase's transaction.
+        // The dedicated PostgreSQL leg owns autoerp_test_j and the test removes
+        // its physical tenant database plus central rows in tearDown().
+        if (! Schema::connection('central')->hasTable('tenants')) {
+            Artisan::call('migrate', ['--force' => true]);
+        }
     }
 
     /** @throws JsonException */
     public function test_registration_response_is_unprefixed_json(): void
     {
-        $response = $this->register('pure-json@example.com', 'Pure JSON Company');
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('In-request database-per-tenant registration is PostgreSQL-only.');
+        }
+
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        ob_start();
+        try {
+            $response = $this->register('pure-json@example.com', 'Pure JSON Company');
+            $output = ob_get_contents();
+        } finally {
+            ob_end_clean();
+        }
+
+        $this->tenant = Tenant::query()->where('name', 'Pure JSON Company')->firstOrFail();
         $content = $response->getContent();
 
         $response->assertCreated();
+        self::assertSame(
+            '',
+            $output,
+            'In-request tenant migrations must not emit census bytes; first 120 characters: '.substr((string) $output, 0, 120),
+        );
         self::assertIsString($content);
         self::assertTrue(
             str_starts_with(ltrim($content), '{'),
@@ -61,6 +136,10 @@ final class RegistrationResponseIsPureJsonTest extends TestCase
 
     public function test_dispatching_tenant_migrations_during_tests_emits_no_stdout(): void
     {
+        if (DB::connection()->getDriverName() !== 'sqlite') {
+            $this->markTestSkipped('The deterministic output-buffer migration pin uses SQLite.');
+        }
+
         $response = $this->register('migration-output@example.com', 'Migration Output Company');
         $response->assertCreated();
 
