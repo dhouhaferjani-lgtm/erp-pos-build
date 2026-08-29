@@ -25,11 +25,13 @@ milestones:
     lane: h1-cleanup
     title: a3 tax_id->vat_number + generated PartnerData; a7 Parties code max:50; a8 'retail' mirror literal -> null
     review_lenses: [frontend-conventions, imports]
-    status: review
+    status: passed
     commit: 97ae0ba12e6b651740293559fc4134c57a3bde7d
-    verdict: null
-    last_verdict: null
+    verdict: docs/handoff/reviews/session-h-phase1/M1-round1-codex-fallback.md
+    last_verdict: ACCEPT
+    reviewer_model: codex-fallback
     fix_rounds: 0
+    updated: 7ffcb5461
   - id: M2
     lane: h1-cleanup
     title: a4' nature required on create + NULL heuristic for B2B block + wire CreditLimitWarning
