@@ -108,3 +108,31 @@ Manifest arithmetic independently checked: Import `24 → 26` (+2), Migrations `
 Merge-blocking: **F-1** (the isolation regression net runs on no CI event — one-line ci.yml fix) and **F-3** (module-exclusive field served to an unentitled tenant). **F-2** needs an owner ruling before merge because it is a cross-company *write* path the spec only ruled on for reads.
 
 **Fix before merge:** append `ImportCompanyPinTest|ImportModuleEntitlementTest` to the PG `--filter` allowlist (F-1), gate the `composite_items` field in `migration-wizard/status` and the CompositeItems entry in `migration-wizard/order` (F-3), and get the owner ruling on executing a NULL-company job from a sibling company (F-2).
+
+## Gate r2 (Codex, imports+tenancy)
+
+- **Date / target:** 2026-08-29; `feat/g3b-import-company-pin` at `33ab24192fae1c462190fcd7084b18f44fcdf6a1`; reviewed with `git diff dev...HEAD`. Source remained unmodified.
+- **VERDICT: PASS.** All r1 blockers are resolved; no new import or tenancy/authz defect was found.
+
+### Code-grounded verification
+
+1. **F-1 companion:** `CompositeItemsRoundTripTest.php:225-284` executes the upload/template/execute 403 pins and the disabled-tenant companion now asserts 403. The former entitlement RED-BY-DESIGN skip guards are gone. The sole remaining skip is the pre-existing G-8 precision pin at `:190-212`, not a G-3b entitlement skip.
+2. **F-2 G-3a union:** source SHA-256 is computed before storage (`ImportController.php:129-151`); the ZIP path carries it at `:180-182`. `handleProductImagesUpload()` preserves the G-3a disk-relative `$path` and four-anchor dispatch (`:930-964`) while stamping `company_id` and `source_hash` (`:943-953`).
+3. **F-3 index contract:** validation covers `page`, `per_page` (max 100), `status`, `type`, and `q`; the query is tenant + `(company OR NULL)`, filtered, newest-first, and returns `{data,meta}` with `unattributed` (`ImportController.php:59-94`). `formatJob()` is byte-identical to current dev (`HEAD :797-819`; `dev :676-698`). Filter, scope, cap, and two-page/newest-first tests are at `ImportCompanyPinTest.php:135-227`.
+4. **Adopt-on-execute:** one guarded update sets a NULL `company_id` together with the eligible-status flip, then refreshes and returns the normal typed 409 to a losing sibling (`ImportController.php:621-635`). The winning-company pin and sibling refusal are tested at `ImportCompanyPinTest.php:303-332`.
+5. **Rule 12 ruling:** wizard `order` filters through entitlement (`MigrationWizardController.php:69-83`) and `status` removes unentitled typed fields (`:174-190`), pinned both ways at `ImportModuleEntitlementTest.php:109-126`. **Accepted residual:** a legacy CompositeItems row may remain visible in generic import history. This is audit metadata (`type`/filename), not a CompositeItems domain field; all detail/write surfaces remain gated, so it is acceptable under `CLAUDE.md:48-49`. G-6b still owns the FE `hasModule('CompositeItems')` import-tile gate.
+6. **RequireModule parity:** `ModuleEntitlementCheck.php:19-60` reproduces the null principal, non-tenant principal, missing-tenant, config resolution, and 403 message behavior of `RequireModule.php:43-63`; null and `SuperAdmin` cases are pinned at `ImportModuleEntitlementTest.php:129-142`.
+7. **Rule 20 / M4:** normal and product-image jobs serialize tenant/company anchors (`ProcessImportJob.php:63-68,78-103`; `ProcessProductImageImport.php:56-64,74-109`; dispatches at `ImportController.php:684,964`). M4 is tenant-connection-only, guarded/idempotent, unanimous-evidence-or-NULL, and forward-only (`2026_08_30_100200_add_company_to_import_jobs.php:21-74,99-171`); all seven mappings, abstention, second-run zero attribution, indexes, and `down()` are pinned at `ImportJobCompanyBackfillMigrationTest.php:58-219`.
+8. **Manifest / CI:** current dev is ceiling `1212`, Migrations `10`, Import `25`; HEAD is `1215 / 11 / 27` (`feature-lane-manifest.json:9,817-820,862-865`). `.github/workflows/ci.yml:1112` contains one anchored filter line with all three G-3b classes; PHP `preg_match` and Symfony YAML parsing both pass.
+
+### G-6a reconciliation (required before that concurrent lane lands)
+
+- G-3b's current transition is `ImportController.php:621-635`. G-6a replaces the execute transition at its dirty-worktree `ImportController.php:538-548` and owns the guarded claim update in `ImportJobClaimService.php:25-56`; its async duplicate pin is `ImportJobClaimConcurrencyTest.php:621-639`.
+- G-6a must fold adoption into that locked claim: pass the current company id, select/guard `company_id`, and set NULL `company_id` plus `status=importing`/claim clocks in the **same** guarded update. On a lost claim, refresh and run `companyMismatch()` before returning `IMPORT_ALREADY_STARTED`, preserving sibling-company `IMPORT_COMPANY_MISMATCH`.
+- Do **not** retain G-3b's standalone NULL→Pending update followed by G-6a's separate claim; that would split the atomic attribution/claim transition. Extend G-6a's concurrency test to assert one company wins and the sibling gets the typed company mismatch.
+
+### Command outputs
+
+- **SQLite, by path:** migration `13 passed / 45 assertions`; company pin `28/76`; entitlement `6/47`; companion `10/68` plus the one pre-existing G-8 skip; RoundTrip directory `18/201` plus that skip; ImportInfrastructure + ProcessImportJobStatus + ImportReExecutionGuard + ScheduledJobTenantIsolation + ImportPermissionGate `43/127`; Security `113/424` with 14 pre-existing PHPUnit metadata deprecations. No failures; no full suite run.
+- **PostgreSQL, private DB:** every invocation was prefixed `DB_DATABASE=autoerp_test_g2 DB_CENTRAL_DATABASE=autoerp_test_g2`; migration `13/45`, company pin `28/76`, entitlement `6/47`, companion `10/68` plus the same G-8 skip. No failures.
+- **Static/structure:** PHPStan on all 25 touched PHP paths: `[OK] No errors`; Pint `--test`: `{"result":"pass"}`; manifest checker: `1474 Feature classes / 74 groups`, anchored entries uniquely matched; CI regex parse/match `OK`; YAML valid. Deptrac: lane `183 violations / 0 errors`, current dev `183 / 0`, and `0` touched violation files.
