@@ -44,17 +44,13 @@ final class UnitsInvariantTest extends TestCase
             $this->assertContains($expected, $codes, "The invariant backfill must include '{$expected}'.");
         }
 
-        $logSpy->shouldHaveReceived('info', [
-            'units.visibility_census',
-            ['companies' => 1, 'empty' => 1],
-        ]);
+        $logSpy->shouldHaveReceived('info', ['units.visibility_census companies=1 empty=1']);
         $logSpy->shouldHaveReceived('warning', [
             'units.empty_for_company',
             ['company' => $company->id],
         ]);
         $logSpy->shouldHaveReceived('info', ['units-seeded company_id='.$company->id]);
-        $this->assertStringContainsString('units.visibility_census companies=1 empty=1', $output);
-        $this->assertStringContainsString('units-seeded company_id='.$company->id, $output);
+        $this->assertSame('', $output);
     }
 
     public function test_already_correct_tenant_logs_zero_empty_companies_and_writes_nothing(): void
@@ -69,12 +65,8 @@ final class UnitsInvariantTest extends TestCase
 
         $this->assertSame($units, DB::table('units')->count());
         $this->assertSame($categories, DB::table('unit_categories')->count());
-        $logSpy->shouldHaveReceived('info', [
-            'units.visibility_census',
-            ['companies' => 1, 'empty' => 0],
-        ]);
-        $this->assertStringContainsString('units.visibility_census companies=1 empty=0', $output);
-        $this->assertStringNotContainsString('units-seeded', $output);
+        $logSpy->shouldHaveReceived('info', ['units.visibility_census companies=1 empty=0']);
+        $this->assertSame('', $output);
     }
 
     public function test_second_up_is_a_clean_no_op_after_backfill(): void
@@ -89,11 +81,8 @@ final class UnitsInvariantTest extends TestCase
 
         $this->assertSame($units, DB::table('units')->count());
         $this->assertSame($categories, DB::table('unit_categories')->count());
-        $logSpy->shouldHaveReceived('info', [
-            'units.visibility_census',
-            ['companies' => 1, 'empty' => 0],
-        ]);
-        $this->assertStringNotContainsString('units-seeded', $output);
+        $logSpy->shouldHaveReceived('info', ['units.visibility_census companies=1 empty=0']);
+        $this->assertSame('', $output);
     }
 
     public function test_half_state_is_logged_but_not_seeded_and_does_not_throw(): void
@@ -108,21 +97,17 @@ final class UnitsInvariantTest extends TestCase
 
         $this->assertSame(0, DB::table('units')->count());
         $this->assertSame($categories, DB::table('unit_categories')->count());
-        $logSpy->shouldHaveReceived('info', [
-            'units.visibility_census',
-            ['companies' => 1, 'empty' => 1],
-        ]);
+        $logSpy->shouldHaveReceived('info', ['units.visibility_census companies=1 empty=1']);
         $logSpy->shouldHaveReceived('warning', [
             'units.empty_for_company',
             ['company' => $company->id],
         ]);
-        $this->assertStringContainsString('units.visibility_census companies=1 empty=1', $output);
-        $this->assertStringNotContainsString('units-seeded', $output);
+        $this->assertSame('', $output);
     }
 
     public function test_mid_seed_failure_is_logged_and_leaves_both_tables_empty(): void
     {
-        $company = $this->provisionedCompany();
+        $this->provisionedCompany();
         $failure = new RuntimeException('Injected failure after the second unit insert.');
         $this->failAfterSecondUnitInsert($failure);
         $logSpy = Log::spy();
@@ -131,22 +116,13 @@ final class UnitsInvariantTest extends TestCase
 
         $this->assertSame(0, DB::table('units')->count());
         $this->assertSame(0, DB::table('unit_categories')->count());
-        $logSpy->shouldHaveReceived('error', [
-            'units.seed_failed',
-            [
-                'exception' => $failure,
-                'tenant' => $company->tenant_id,
-            ],
-        ]);
-        $this->assertStringContainsString(
-            'units.visibility_census companies=1 empty=1 seed_failed=1',
-            $output,
-        );
+        $logSpy->shouldHaveReceived('error', ['units.visibility_census companies=1 empty=1 seed_failed=1']);
+        $this->assertSame('', $output);
     }
 
     public function test_failed_seed_is_retried_to_completion_on_the_next_up(): void
     {
-        $this->provisionedCompany();
+        $company = $this->provisionedCompany();
         $this->failAfterSecondUnitInsert(
             new RuntimeException('Injected one-shot unit seed failure.'),
         );
@@ -156,11 +132,13 @@ final class UnitsInvariantTest extends TestCase
         $this->assertSame(0, DB::table('units')->count());
         $this->assertSame(0, DB::table('unit_categories')->count());
 
+        $logSpy = Log::spy();
         $output = $this->runMigration();
 
         $this->assertSame(19, DB::table('units')->count());
         $this->assertSame(5, DB::table('unit_categories')->count());
-        $this->assertStringContainsString('units-seeded company_id=', $output);
+        $logSpy->shouldHaveReceived('info', ['units-seeded company_id='.$company->id]);
+        $this->assertSame('', $output);
     }
 
     private function provisionedCompany(): Company

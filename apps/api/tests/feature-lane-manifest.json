@@ -6,7 +6,7 @@
     "deferred": "CAN run, but no lane runs it yet. Requires `reason`. Counted loudly on every CI run. After O-29 exactly one group is left here — `(root files)`, which no whole-directory selector can address."
   },
   "debt_ceiling": 1,
-  "gated_ceiling": 1214,
+  "gated_ceiling": 1215,
   "lanes": {
     "security-regression": {
       "job": "security-regression",
@@ -812,8 +812,8 @@
     },
     "Identity": {
       "lane": "feature-lane-tenancy/Identity",
-      "classes": 31,
-      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
+      "classes": 32,
+      "note": "DELIBERATE RAISE 31 -> 32 (2026-08-29, P0 micro-lane fix/migration-echo-p0): RegistrationResponseIsPureJsonTest pins the real POST /api/v1/auth/register response as parseable JSON and deterministically re-drives Stancl MigrateDatabase after forgetting only the eight census migrations, proving synchronous migration output stays out of PHPUnit/HTTP buffers. RED captured with the first 120 characters beginning `[W4-1] invented DEFAULT-lot expiries found: 0`; GREEN after routing all census emission through MigrationOutput. Run BY PATH on SQLite and PostgreSQL in-lane; not named in a live --filter allowlist. gated_ceiling 1212 -> 1213 is exactly this one parked Identity class. === prior note === Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Import": {
       "lane": "feature-lane-data-console/Import",

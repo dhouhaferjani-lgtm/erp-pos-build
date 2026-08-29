@@ -100,6 +100,7 @@ case, its rules, or the import wizard cards; `a4` as written in the audit is REP
   already has an `ar/*.json`); design tokens for any colour class you touch; `tenantScopedKey` on every
   tenant-data query key; zod + RHF for forms you touch.
 - **Backend:** constructor injection only; PHPStan level 8 clean on touched files; Pint clean.
+- **PG test legs — per-session database (machine rule 2026-08-29 evening, from the orchestrator/broker):** the shared default test DB was `migrate:fresh`-ed mid-run by concurrent sessions. Every PG leg in this lane (and in the parent's reviewer agents) MUST run as `DB_DATABASE=autoerp_test_h DB_CENTRAL_DATABASE=autoerp_test_h php artisan test -c phpunit-pgsql.xml <paths>` (DB already exists on 127.0.0.1:5433). ONE PG leg at a time within this session. Never run a PG leg against the default DB name.
 - **Tests:** TDD red-first. Backend tests by PATH only (`./vendor/bin/phpunit <file>`); **never the full
   suite**. Web: `pnpm vitest run <dir>`; kill stray workers after (`pkill -f 'node (vitest'`).
 - **At every commit:** `cd apps/api && php tools/feature-lane-manifest-check.php` — a new Feature test
@@ -305,8 +306,31 @@ Implement spec §8.2 Flow 1 **exactly**:
   `customer` block).
 - Server: `apps/api/app/Modules/Fiscal/Application/Services/FiscalPayloadConstraintValidator.php:2316`
   `validateBuyer()` — keep the key set and object-or-null check; **tighten `customer_id` to
-  uuid-or-null** (safe: null on 100 % of existing sealed events — assert that in a test against the
-  existing fixtures). `name` required non-empty string when buyer is an object.
+  uuid-or-null — VERSION-GATED** (see the M4.0 ruling below). `name` required non-empty string when
+  buyer is an object.
+
+  **⚖️ M4.0 STOP — RULED by the parent orchestrator 2026-08-29 (architecture, not an owner gate; the
+  lane resumes).** Codex correctly found that the golden canonical fixtures
+  `apps/api/tests/Fixtures/Fiscal/sale-receipt-golden/v4/F-07-b2b-buyer-eur/payload.json` (`cust-007`,
+  built by `tests/Helpers/Fiscal/GoldenFixtureBuilder.php:266`) and `…/v4/F-15-large/payload.json`
+  (`customer-f15-001`, `LargeReceiptFixtureGenerator.php:211`) carry NON-UUID `buyer.customer_id`, and
+  F-07 must validate at legacy `event_version=1`; the brief's "null on 100 % of existing sealed events"
+  was about live events, not fixtures. Ruling:
+  1. **Grandfather by `event_version`**, exactly like the validator's other version-gated rules
+     (`:1269`, `:1320`): `customer_id` must be uuid-or-null **only when `event_version >= 5`** (the
+     version `SaleReceiptV5Payload.ts` emits today — verify the constant); for `event_version <= 4`
+     the existing string-or-null acceptance is unchanged. Golden fixtures F-07/F-15 are **NOT touched**
+     (no fixture-byte or hash change — §5 condition 1 holds).
+  2. **Projection is defensive regardless of version:** `PosCoreReceiptProjection` writes `partner_id`
+     only when `buyer.customer_id` is a syntactically valid UUID AND resolves to a partner scoped to
+     tenant+company; otherwise `partner_id = null` and the snapshot `customer_name` /
+     `customer_identifier` still land. This is what keeps the `pos_receipts.partner_id` FK satisfiable
+     for legacy/fixture payloads without rewriting anything.
+  3. Tests: v5 payload with non-uuid `customer_id` → `payload_buyer_invalid`; v4 fixture F-07 still
+     validates byte-identically (assert its pinned hash); projection of F-07 yields `partner_id = null`
+     with the snapshot fields populated; v5 payload with a real scoped partner uuid → `partner_id` set.
+  Set the YAML back to `status: in_progress`, move the blocker to `resolved_blockers` (parent has
+  already done this — read the YAML), and proceed with M4.
 - Projection: `PosCoreReceiptProjection` (grep `customer_name`, `partner_id`, `customer_identifier`)
   must write `partner_id` / `customer_name` / `customer_identifier` from the buyer snapshot when
   present. If it already does, prove it with a test; if it doesn't, add it — and scope the partner
