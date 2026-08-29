@@ -20,6 +20,7 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -93,6 +94,7 @@ final class ImportReExecutionGuardTest extends TestCase
         ]);
 
         app(CompanyContext::class)->setCompanyId($this->company->id);
+        app(UnitsProvisioningService::class)->provisionForCompany($this->company);
     }
 
     /**
@@ -254,7 +256,10 @@ final class ImportReExecutionGuardTest extends TestCase
         });
 
         (new ProcessImportJob($job->id, $this->company->id, $this->tenant->id))
-            ->handle($this->app->make(ImportService::class));
+            ->handle(
+                $this->app->make(ImportService::class),
+                $this->app->make(UnitsProvisioningService::class),
+            );
 
         $this->assertSame(
             0,
