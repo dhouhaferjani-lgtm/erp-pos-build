@@ -8,6 +8,7 @@ use App\Console\TenantScopedCommand;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -49,7 +50,21 @@ final class PurgeExpiredImportArtifactsCommand extends TenantScopedCommand
                 })
                 ->lazyById(500)
                 ->each(function (ImportJob $job) use (&$purged): void {
-                    Storage::disk('local')->delete($job->file_path);
+                    $disk = Storage::disk('local');
+                    $sourcePurged = ! $disk->exists($job->file_path);
+                    if (! $sourcePurged) {
+                        $sourcePurged = $disk->delete($job->file_path);
+                    }
+
+                    if (! $sourcePurged) {
+                        Log::warning('import_jobs.expired_source_cleanup_failed', [
+                            'id' => $job->id,
+                            'tenant_id' => $job->tenant_id,
+                            'storage_key' => $job->file_path,
+                        ]);
+
+                        return;
+                    }
 
                     $updated = ImportJob::query()
                         ->where('tenant_id', $job->tenant_id)

@@ -16,6 +16,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -887,9 +888,7 @@ final class PaymentMethodCashTenderTest extends TestCase
             'position' => 2,
         ])->id;
 
-        ob_start();
-        $this->runCashTenderCensusMigration();
-        $output = (string) ob_get_clean();
+        $output = $this->runCashTenderCensusMigrationAndCollectLog();
 
         $this->assertStringContainsString('[I-1] cash-tender invariant violations found: 3', $output);
         $this->assertStringContainsString($this->company->id, $output, 'the census must group by company');
@@ -937,9 +936,7 @@ final class PaymentMethodCashTenderTest extends TestCase
             'position' => 1,
         ]);
 
-        ob_start();
-        $this->runCashTenderCensusMigration();
-        $output = (string) ob_get_clean();
+        $output = $this->runCashTenderCensusMigrationAndCollectLog();
 
         $this->assertStringContainsString('[I-1] cash-tender invariant violations found: 0', $output);
         $this->assertStringNotContainsString('NOTHING WAS CHANGED', $output);
@@ -1004,6 +1001,18 @@ final class PaymentMethodCashTenderTest extends TestCase
         );
 
         $migration->up();
+    }
+
+    private function runCashTenderCensusMigrationAndCollectLog(): string
+    {
+        $messages = [];
+        Log::listen(static function (MessageLogged $event) use (&$messages): void {
+            $messages[] = $event->message;
+        });
+
+        $this->runCashTenderCensusMigration();
+
+        return implode("\n", $messages);
     }
 
     /**

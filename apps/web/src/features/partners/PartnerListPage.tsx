@@ -21,26 +21,12 @@ import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import type { OffsetPaginationMeta } from '@/types/pagination'
+import type { PartnerData } from './types'
 
 type StatusFilter = 'all' | 'active' | 'inactive'
 
-interface Partner {
-  id: string
-  name: string
-  type: 'customer' | 'supplier' | 'both'
-  email: string | null
-  phone: string | null
-  tax_id: string | null
-  is_active: boolean
-  receivable_balance: string | null
-  credit_balance: string | null
-  payable_balance: string | null
-  net_balance: string | null
-  created_at: string
-}
-
 interface PartnersResponse {
-  data: Partner[]
+  data: PartnerData[]
   meta: OffsetPaginationMeta
   aggregates?: {
     total_partners: number
@@ -389,7 +375,7 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
                       </div>
                     </td>
                     <td className={`whitespace-nowrap px-4 py-4 text-sm ${colorTokens.text.subtle}`}>
-                      {partner.tax_id ?? '-'}
+                      {partner.vat_number ?? '-'}
                     </td>
                     <td className={`whitespace-nowrap px-4 py-4 text-sm text-end ${balanceColor}`}>
                       {balanceComparison !== 0

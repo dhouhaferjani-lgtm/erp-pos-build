@@ -100,6 +100,7 @@ case, its rules, or the import wizard cards; `a4` as written in the audit is REP
   already has an `ar/*.json`); design tokens for any colour class you touch; `tenantScopedKey` on every
   tenant-data query key; zod + RHF for forms you touch.
 - **Backend:** constructor injection only; PHPStan level 8 clean on touched files; Pint clean.
+- **PG test legs — per-session database (machine rule 2026-08-29 evening, from the orchestrator/broker):** the shared default test DB was `migrate:fresh`-ed mid-run by concurrent sessions. Every PG leg in this lane (and in the parent's reviewer agents) MUST run as `DB_DATABASE=autoerp_test_h DB_CENTRAL_DATABASE=autoerp_test_h php artisan test -c phpunit-pgsql.xml <paths>` (DB already exists on 127.0.0.1:5433). ONE PG leg at a time within this session. Never run a PG leg against the default DB name.
 - **Tests:** TDD red-first. Backend tests by PATH only (`./vendor/bin/phpunit <file>`); **never the full
   suite**. Web: `pnpm vitest run <dir>`; kill stray workers after (`pkill -f 'node (vitest'`).
 - **At every commit:** `cd apps/api && php tools/feature-lane-manifest-check.php` — a new Feature test
@@ -242,6 +243,28 @@ with a role you build in the spec, or use `cashier@` and assert the 403/redirect
 (iii) `/purchases/suppliers` blocked for that same user, open for owner; (iv) `/sales/customers/new`
 Type select offers only Customer/Both; `/purchases/suppliers/new` only Supplier/Both.
 
+**M3 addendum — Journey hardening (CLAUDE.md rule 22, added 2026-08-29 while this lane was in flight;
+`docs/conventions/09-SECOND-OF-EVERYTHING.md`, `11-ONE-SURFACE-PER-CONCEPT.md`).** `partners` is a
+catalogue entity (code-keyed, unique `(company_id, code)` —
+`apps/api/database/migrations/tenant/2025_12_30_195300_fix_multi_company_unique_constraints.php:22-34`),
+so both merge-gate reviewers now grade a missing second-of-everything test as MAJOR. Add, in this lane:
+- **Second company:** a Vitest/PHPUnit (or the M2/M3 Playwright spec) case where company B of the same
+  tenant creates a partner with the SAME `code` as company A's and a different nature — both persist,
+  `/sales/customers` is company-scoped (B's row invisible under A), the Nature-required rule and the B2B
+  NULL heuristic behave identically for B. Demo tenant has one company — create company B through the
+  API in the spec (or use a PHPUnit feature test with two companies) and say which.
+- **Second location:** state explicitly "not in scope: no location-keyed table touched by this lane"
+  (verify `partners` has no location column; the vehicle picker change is FE-only).
+- **Re-run / idempotency:** a7's Parties import re-run is covered by the existing
+  `ImportReExecutionGuardTest` (cite file:line) — reference it; the nature/B2B heuristic must be a pure
+  function of the row (re-render idempotent) — one assertion.
+- **`Concepts:`** Party (glossary ✅ — row updated `df921cccf`), Contact (glossary ✅), Nature (label only in
+  Phase 1 over `customer_category`; the glossary row lands with Phase 2's `party_kind`). No hand-rolled FE
+  type beside a generated DTO — that is a3 (M1), cite it in the register.
+- **Industry baseline:** Phase 1 is shape-neutral cleanup of surfaces already benchmarked in the spec
+  (`docs/superpowers/specs/2026-08-23-party-contact-target-model-research.md` §2.1–2.5) — cite that section
+  in the M3 register instead of re-tabulating; the full convention-10 table lives in the Phase 2 brief.
+
 **M3 review lenses:** `tenancy-authz`, `frontend-conventions`.
 
 **H1-cleanup done when:** M1–M3 ACCEPT, `pnpm typecheck && pnpm lint` clean in `apps/web`, touched
@@ -283,8 +306,31 @@ Implement spec §8.2 Flow 1 **exactly**:
   `customer` block).
 - Server: `apps/api/app/Modules/Fiscal/Application/Services/FiscalPayloadConstraintValidator.php:2316`
   `validateBuyer()` — keep the key set and object-or-null check; **tighten `customer_id` to
-  uuid-or-null** (safe: null on 100 % of existing sealed events — assert that in a test against the
-  existing fixtures). `name` required non-empty string when buyer is an object.
+  uuid-or-null — VERSION-GATED** (see the M4.0 ruling below). `name` required non-empty string when
+  buyer is an object.
+
+  **⚖️ M4.0 STOP — RULED by the parent orchestrator 2026-08-29 (architecture, not an owner gate; the
+  lane resumes).** Codex correctly found that the golden canonical fixtures
+  `apps/api/tests/Fixtures/Fiscal/sale-receipt-golden/v4/F-07-b2b-buyer-eur/payload.json` (`cust-007`,
+  built by `tests/Helpers/Fiscal/GoldenFixtureBuilder.php:266`) and `…/v4/F-15-large/payload.json`
+  (`customer-f15-001`, `LargeReceiptFixtureGenerator.php:211`) carry NON-UUID `buyer.customer_id`, and
+  F-07 must validate at legacy `event_version=1`; the brief's "null on 100 % of existing sealed events"
+  was about live events, not fixtures. Ruling:
+  1. **Grandfather by `event_version`**, exactly like the validator's other version-gated rules
+     (`:1269`, `:1320`): `customer_id` must be uuid-or-null **only when `event_version >= 5`** (the
+     version `SaleReceiptV5Payload.ts` emits today — verify the constant); for `event_version <= 4`
+     the existing string-or-null acceptance is unchanged. Golden fixtures F-07/F-15 are **NOT touched**
+     (no fixture-byte or hash change — §5 condition 1 holds).
+  2. **Projection is defensive regardless of version:** `PosCoreReceiptProjection` writes `partner_id`
+     only when `buyer.customer_id` is a syntactically valid UUID AND resolves to a partner scoped to
+     tenant+company; otherwise `partner_id = null` and the snapshot `customer_name` /
+     `customer_identifier` still land. This is what keeps the `pos_receipts.partner_id` FK satisfiable
+     for legacy/fixture payloads without rewriting anything.
+  3. Tests: v5 payload with non-uuid `customer_id` → `payload_buyer_invalid`; v4 fixture F-07 still
+     validates byte-identically (assert its pinned hash); projection of F-07 yields `partner_id = null`
+     with the snapshot fields populated; v5 payload with a real scoped partner uuid → `partner_id` set.
+  Set the YAML back to `status: in_progress`, move the blocker to `resolved_blockers` (parent has
+  already done this — read the YAML), and proceed with M4.
 - Projection: `PosCoreReceiptProjection` (grep `customer_name`, `partner_id`, `customer_identifier`)
   must write `partner_id` / `customer_name` / `customer_identifier` from the buyer snapshot when
   present. If it already does, prove it with a test; if it doesn't, add it — and scope the partner

@@ -56,21 +56,25 @@ final class ImportService
      */
     public function createJob(
         string $tenantId,
+        string $companyId,
         string $userId,
         ImportType $type,
         string $filename,
         string $filePath,
         int $totalRows,
+        ?string $sourceHash = null,
         ?array $columnMapping = null,
         ?array $options = null
     ): ImportJob {
         return ImportJob::create([
             'tenant_id' => $tenantId,
+            'company_id' => $companyId,
             'user_id' => $userId,
             'type' => $type,
             'status' => ImportStatus::Pending,
             'original_filename' => $filename,
             'file_path' => $filePath,
+            'source_hash' => $sourceHash,
             'total_rows' => $totalRows,
             'column_mapping' => $columnMapping,
             'options' => $options,
@@ -438,9 +442,9 @@ final class ImportService
         return $this->importJobClaimService->markWorkerStarted($jobId, $tenantId);
     }
 
-    public function claimJob(ImportJob $job): ClaimResult
+    public function claimJob(ImportJob $job, ?string $companyId = null): ClaimResult
     {
-        return $this->importJobClaimService->claim($job);
+        return $this->importJobClaimService->claim($job, $companyId);
     }
 
     public function finalizeClaimedJob(

@@ -108,6 +108,7 @@ final class ImportJobOptionsTest extends TestCase
 
         $pendingJob = app(ImportService::class)->createJob(
             tenantId: $this->tenant->id,
+            companyId: $this->company->id,
             userId: $this->user->id,
             type: ImportType::Products,
             filename: 'products.csv',

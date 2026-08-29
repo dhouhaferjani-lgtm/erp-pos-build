@@ -42,7 +42,7 @@ export function optimisticCustomerMirrorRow(input: PendingCustomerInput): Custom
     tax_number: null,
     // Matches the optimistic AttachedCheckoutCustomer built by
     // CustomerAttachPanel.handleCreate; the pull overwrites with server truth.
-    customer_category: 'retail',
+    customer_category: null,
     receivable_balance: '0.000',
     credit_balance: '0.000',
     credit_limit: null,

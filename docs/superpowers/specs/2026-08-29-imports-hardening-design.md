@@ -1,10 +1,28 @@
 # Imports hardening — design spec (Session G)
 
-> **Status: DRAFT r4.1 (post Codex gate r3; converged; G-12 ownership reconciled).** Gates r1/r2/r3 all returned **REWORK**
-> (`G-R1..G-R24`, `G-R25..G-R45`, `G-R46..G-R56`); **every finding is ACCEPTED** and adjudicated in
-> **§13**. No lane is authorized until a gate returns ACCEPT. Per
-> `feedback_codex_adversarial_review_before_execution`, the spec is reviewed before any code and at
-> every subsequent milestone.
+> **Status: DRAFT r5.1 (benchmark table added per CLAUDE.md rule 22).**
+>
+> **r5.1** adds **§0 Industry baseline** (convention 10 / CLAUDE.md rule 22 — Odoo · ERPNext · Dolibarr
+> guarantee, AutoERP today `path:line`, decision) directly after this header. It is a **documentation-only**
+> revision: every decision it records is one already taken in §§3–9 and it changes no design. Round-0 check 6
+> blocks the gate without it.
+>
+> **Status inherited from r5 (post Codex gate r4; briefs are the executable contract).** Gates r1/r2/r3/r4 all
+> returned **REWORK** (`G-R1..G-R24`, `G-R25..G-R45`, `G-R46..G-R56`, `G-R57..G-R70`); **every finding is
+> ACCEPTED** and adjudicated in **§13** (gate r4 in **§13.6**). No lane is authorized until a gate
+> returns ACCEPT. Per `feedback_codex_adversarial_review_before_execution`, the spec is reviewed before
+> any code and at every subsequent milestone.
+>
+> **PRINCIPLE, binding from r5 onward — where a code-verified lane brief and this spec differ, the
+> BRIEF WINS and the spec is corrected to match.** The spec is the **program contract** (what the
+> program must be true of, across lanes); the briefs under
+> `docs/sessions/session-G-imports-hardening-2026-08-29/briefs/` are the **executable per-lane
+> contract** (what a lane actually builds, verified against `path:line`). Three lanes — **G-7, G-3a,
+> G-12** — are already built; where their summaries or briefs contradict an older spec sentence, the
+> spec text below has been rewritten to what was built, never the reverse. A remaining lane whose brief
+> is more exact than the spec (G-3b's removed one-company fallback, G-5's scale-6 WAC and
+> `BatchExpiry\BatchStockService` path, G-13's three partial uniques, G-11's ownership of the i18n
+> generator, G-2's `SkuAllocator`) follows its brief; this spec now says the same thing.
 >
 > **r4 is a CONVERGENCE round, not a design round.** Gate r3 stated that every remaining finding is a
 > deterministic spec/lane consistency correction. r4 therefore *removes* contradictions rather than
@@ -15,6 +33,15 @@
 > `units_not_seeded` and a new **G-12** invariant lane (§4.13); a two-clock, compare-and-set reaper
 > with no ownership token (§4.7); exact serialized JSONB schemas (§3.2); and a lane graph re-cut so
 > every method has ONE owner, with waves **derived from the dependency closure** (§9).
+>
+> **r5 is a RECONCILIATION round.** It discharges gate r4 (`G-R57..G-R70`) without reopening a single
+> pre-approved behavioural choice: the validation→`failed` transition is written down (§3.2.2); the
+> unit-catalogue seam becomes a real Shared contract owned by G-4 (§4.13.2a, §9.2 G-4); unit matching
+> is **exact, case-sensitive** so the surfaced list truly equals the accepted vocabulary (§4.13.3); the
+> claim/release/finalize API is pinned with signatures and transaction boundaries (§4.1.1); every
+> JSONB `list`/`map` gets a concrete element type (§3.2.3); G-6b is confirmed in scope with the waves
+> re-derived from the dependency table (§9.1); and §§9.2/9.3/11.2/12.1/13 are corrected to what G-7,
+> G-3a and G-12 actually built.
 >
 > **Owner:** Session G orchestrator (imports hardening program), for the AutoERP owner.
 > **Date:** 2026-08-29. **Baseline:** `dev` @ `a4ceeb0f5` (all Phase-1 audits worked read-only
@@ -29,6 +56,57 @@
 > - Sign convention for opening balances: `docs/guides/legacy-migration-accounting-conventions.md` §3.
 > - Operating/merge protocol: `docs/sessions/session-F-testing-2026-08-29/HANDOVER.md` §Operating constraints.
 > - **Gate records:** `docs/superpowers/reviews/2026-08-29-imports-hardening-spec-codex-review-r1.md`, `…-r2.md`, `…-r3.md`. Every `path:line` they cite was independently re-verified against `a4ceeb0f5` before this revision; corrections found are recorded in §13.
+
+---
+
+## 0. Industry baseline (benchmark-first — convention 10)
+
+Flow: **spreadsheet import of a company's starting data** (catalogue, partners, opening stock, opening balances).
+Reference systems: **Odoo 18.0/19.0**, **ERPNext / Frappe**, **Dolibarr** (Module Imports). Every ✅/❌ cell was read
+from the vendor's own documentation on 2026-08-29 — sources `[1]`–`[10]`. A cell marked **?** could **not** be
+confirmed in vendor documentation and is carried as a **hypothesis, never a fact**; no decision below rests on one.
+
+| # | Guarantee the baseline gives the user | Odoo | ERPNext | Dolibarr | AutoERP today (`path:line`) | Gap | Decision |
+|---|---|---|---|---|---|---|---|
+| **B1** | Re-importing the same file **updates** the matched records instead of creating a second set, under a policy the operator sets | ✅ "records that have already been imported will be modified instead of being created" via the External/Database ID column `[1]` | ✅ "the ID column is used to identify the records in the system" — blank inserts, populated updates `[2]` | ❌ "The imported data is added to existing data" `[3]`; the per-run `import_key` exists only to "track all records added by an import" for a mass-delete correction `[4]` — no documented match key | write-time **field-level** merge exists for products (`apps/api/app/Modules/Product/Application/Services/ProductService.php:70-71`) but there is **no preview census and no policy key** — `ImportJobOptions` carries five keys, none a duplicate policy (`apps/web/src/features/import/types.ts:68-74`); a parties row with a blank `code` mints a per-job code and a **second** partner (`ImportService.php:441-444`) | MISSING (preview + policy) | **MATCH** — RUL-1 pre-import duplicate summary (override/skip/cancel), run stays non-interactive (§4.2, §4.2.3); lane **G-4**; parties identity-before-code §4.6 in **G-9** |
+| **B2** | Failing rows are reported **per row**, and the operator can fix them offline and re-upload | ✅ preview + "click **Test** to verify that the data is valid" before Import `[1]`; a downloadable failed-rows file **?** | ✅ "warnings will be categorized by Row or Column with their number" `[2]`; a "download failed rows" export is **not documented — hypothesis only** | ✅ "The simulation will check the values in the fields and display an error report" `[3]`; downloadable error file **?** | `FailedRowsExportService` CSV exists (`apps/api/app/Modules/Import/Services/FailedRowsExportService.php`) but excludes warning-only rows, takes headers from row 1 only, and is **unreachable for every ≥100-row (async) import** — `failed_rows_csv_url` is set on the sync branch only (`.../Presentation/Controllers/ImportController.php:560`; the button is gated on it at `ImportWizardPage.tsx:1218`) | PARTIAL — **below baseline for async** | **MATCH & EXCEED** — R1/§4.10 `ImportRowExportService`: failed **and** warning rows, the operator's **own** header names, coded reasons, and a pinned **round-trip** re-import (`reimport_of`); lane **G-1** |
+| **B3** | A blank/sample template can be downloaded, and its numbers are written in the operator's own convention | ✅ "Click **Import Template** … to download a template", and the CSV import screen exposes **Formatting** options (date format, thousands separator) `[1]` | ✅ "Click on **Download Template**"; or "Export Type as '5 Records'" for a worked sample `[2]`. Locale decimal/delimiter **?** | ✅ "download an empty/example file which contains information/hints about the allowed field values" `[3]`. Locale **?** | **CSV only** — hardcoded `,` delimiter, unescaped headers, no BOM, LF endings, every sample number dot-decimal (`apps/api/app/Modules/Import/Services/MigrationWizardService.php:222-233,258,275`); `CountryDefaults` has **no number-format concept at all** (gap matrix R8) | MISSING (XLSX + locale) | **MATCH & EXCEED** — §7.3 CSV (BOM/CRLF/country delimiter/escaped) **and** XLSX with money & quantity as exact decimal **text**, plus Dolibarr's hint idea as a sentinel hint row; lane **G-8** |
+| **B4** | A product code is not a hand-typed prerequisite — it is optional, or generated for you | `default_code` required-on-import **?** (not stated on the import page) | ✅ "generate an Item Code based on a **Naming Series** by enabling this feature in Stock Settings" `[5]`; mandatory otherwise | product `ref` numbering masks exist but the doc does not state import behaviour **?** | `sku` is nullable, but a blank cell falls back to an uppercased **name-slug** (else the literal `PRODUCT`) — `ProductService.php:70,307` `skuFromName()` — which collides across same-named products in one company; **no generator exists anywhere**, and the operator is never told a code was invented | WRONG (a silent colliding fallback, not a generated code) | **MATCH** — R2/§4.5.2 `SkuAllocator` behind `SkuAllocatorInterface` + a `sku_generated` warning carrying the value; `skuFromName` and the barcode-as-SKU fallback are **removed**; lane **G-2** |
+| **B5** | A unit of measure must resolve to a real unit; an unknown spelling is an error the operator sees, not a silent write | ⚠️ relational fields match an existing record by name / Database ID / External ID `[1]`; **UoM-specific** miss behaviour **?** | UOM must pre-exist **?** | fixed unit dictionary **?** | **worse than "a misspelling errors"** — `unit` is validated only as `['nullable','string','max:50']` and written **verbatim** into the legacy free-text column (`ProductService.php:98`); **`products.unit_id` is never written by the import at all** (§4.13.1). `"kg"`, `"KG "`, `"kgs"`, `"Kilogrammes"` land as four values and every later quantity loses the unit's `decimal_places` | MISSING (no resolution at all) | **MATCH, stricter** — R11/§4.13.3 **exact, case-sensitive** code match over the company-visible active catalogue; `unit_unknown` / `unit_ambiguous` / `units_not_seeded`; accepted list surfaced wherever it is demanded (§4.13.4); lanes **G-4** (resolver + `UnitCatalogQueryInterface`), **G-12** (invariant, BUILT), **G-13** (company scoping), **G-8/G-11** (surfacing) |
+| **B6** | Opening stock is a re-statable document, and re-stating it after real operations is refused with a named alternative | Inventory Adjustment as the opening mechanism; re-submission semantics **?** | ✅ mechanism: Stock Reconciliation, Purpose = **Opening Stock**, difference posting to "Temporary Opening" `[6]`; re-submission/duplicate behaviour **?** | stock movement import **?** | the predicate **already exists and is already enforced elsewhere** — `InventoryService::hasDownstreamMovements()` (`apps/api/app/Modules/Inventory/Application/Services/InventoryService.php:52-60`) fences `ResetOpeningBalanceService` and `ProductController::postOpening` — but **the import never calls it**: a second opening is refused identically as `opening_exists` whether or not operations happened, with no override and no redirect (`ProductOpeningStockPhase.php:131-132`) | PARTIAL (predicate exists, unwired) | **MATCH & EXCEED** — R5/§4.9.2 one coordinator-owned correction transaction; §4.9.3 refuses with `opening_locked_has_operations` / `opening_locked_reserved` and **names the stock adjustment**; never silent in any branch; lane **G-5** |
+| **B7** | Every past import is listed with its status and a report the operator can reopen | ❌ no import-log page in core — "Imports are permanent and **cannot** be undone. However, it is possible to use filters (`created on` or `last modified`) to identify records changed or created by the import" `[1]` | ✅ "you'll see a log of each record that was created in the **Import Log** section" `[2]` | ⚠️ no history UI documented — only the `import_key` stamp, found "with a SQL editor" `[3]`, `[4]` | history page is **live and routed** (`apps/web/src/features/import/pages/ImportHistoryPage.tsx:36`) but has no pagination, no per-job detail, never renders `error_message`, omits the operator, and `import_jobs` has **no `company_id`** so a 2–4-company tenant sees one mixed list (`2025_11_30_150000_create_import_tables.php:14-33`) | PARTIAL — **already ahead of Odoo and Dolibarr**, behind ERPNext on detail | **MATCH** — R6: §3.3 `company_id` pin + `source_hash` (**G-3b**); §9.2 **G-6b** detail page, pagination, company scoping, operator, resume/discard |
+| **B8** | In a multi-company database a product code belongs to a **company** — two companies may each hold the same code | ⚠️ the opposite by default, but **explicitly scopeable**: "new products and contacts are **shared across companies by default**", and on each record you "either leave the field blank to make it accessible to all companies; or select the company" `[7]`. Whether `default_code` is unique **at any scope** is **?** | `item_code` is the Item docname, so plausibly unique **per site** — **not confirmed in the docs; hypothesis** | per-entity in multi-entity setups **?** | `unique(['tenant_id','sku'])` (`apps/api/database/migrations/tenant/2025_11_30_052910_create_products_table.php:37`) and `unique(['tenant_id','vat_number'])` (`…2025_11_30_052119_create_partners_table.php:34`) while **both lookups are company-scoped** → a live raw `SQLSTATE 23505` when a second company imports the same catalogue (gap matrix finding 27 — the "856 failures with a DB error string" F-BUG-1 recorded) | WRONG (constraint disagrees with its own lookup) | **MATCH** (RUL-2) — §3.1 M1/M2/M3 census-then-refuse re-scope to `(company_id, …)`; barcode kept as the cross-company key (§3.1a). Note we deliberately land **nearer Odoo's scopeable model than its shared default**. Lane **G-3a — BUILT** |
+| **B9** | A partner is de-duplicated on a stable business key (VAT / customer code), not on a per-run surrogate | ⚠️ import dedup is the External/Database ID, not a business key `[1]`; the separate **manual** Merge contacts tool searches on "Email / Name / Is Company / VAT / Parent Company" `[8]` | ⚠️ Customer Name is the identifier — "may also become the Customer ID when naming by Customer Name is enabled" `[9]` | ⚠️ only Name is a documented mandatory identity field on the thirdparty import `[10]`; no dedup key documented | the ladder is right — `code → vat_number → name` (`apps/api/app/Modules/Partner/Application/Services/PartnerService.php:62-70`) — but a balance-bearing row with a **blank** code mints `IMP-<job>-<row>` (`ImportService.php:441-444`), so the **same file uploaded twice yields two partners** | WRONG (non-deterministic key) | **MATCH & EXCEED** (all three baselines are weaker here) — §4.6: resolve identity **first**, then mint a deterministic `IMP-` + `sha256(company + vat‖name)` code and emit `code_generated`; lane **G-9**, with **G-3a**'s `partners.vat_number` re-scope (built) |
+| **B10** | The import surface itself states the sign / whose-perspective convention for balances, at the point of use | opening balances can be entered from the Chart of Accounts, but the page gives **no** debit/credit sign guidance **?** | ✅ the strongest baseline: "**Enter debit or credit, not both, on each row**" and "Do not include a control-account balance in the Journal Entry if another opening document already creates it" — outstanding invoices route to the Opening Invoice Creation Tool, stock to Stock Reconciliation `[11]` | ⚠️ closest analogue is the example file that "contains information/hints about the allowed field values" `[3]` | `ColumnMapper` **types** a `description` prop and never renders it (`apps/web/src/features/import/components/ColumnMapper.tsx:10`); preview returns four sample rows plus counts and echoes no interpretation; `location_code` and `quantity` — the two columns staging misread — carry no description at all | MISSING | **MATCH & EXCEED** — R10/§4.12 on the **existing** authorities (`PartiesRowMapper::balancePayload()`, `ArApOpeningService::getPostPreview()`, `AccountingOpeningService::getPostPreview()`), one YAML copy source, no second sign implementation; lanes **G-8** (YAML + template hint row) / **G-11** (FE hints, per-row echo, `columns/{type}`) |
+| **B11** | A long/async import that dies is visible as **failed** — never stuck, never a false success | queued/failed import job UI in core **?** (the async chunked importer is OCA, not core) | a Data Import status field is **not documented on any page read — hypothesis only** | **?** | a worker SIGKILL/OOM/restart never calls `failed()` and **nothing sweeps `importing`**; the job becomes permanently un-executable (execute requires `Validated`/`Pending`) and the wizard polls forever (`ProcessImportJob.php:51,56`; gap matrix finding 2). Worse: the completion step renders a **green check even when the status is `failed`** (gap matrix finding 28) | MISSING | **MATCH** — §4.1.1 CAS `claim`/`release`/`finalize` + §4.7 two-clock `imports:reap-stuck` (90 min, `TenantScopedCommand`/`forEachTenant`); lane **G-6a**; the green-check fix is **G-1**, failed-job rendering **G-6b**. **No baseline could be verified — this is a DIVERGE-upward, justified by our own incident record, not by a competitor** |
+
+Decision vocabulary: MATCH (do what they do — lane named), DEFER (agreed gap, parked with a ticket), DIVERGE
+(deliberately otherwise, owner-ruled), ALREADY (we already match; cited). **Six rows — B2, B3, B5, B6, B8, B10 —
+put AutoERP BELOW the open-source baseline today; B5 and B8 are silent-corruption class.** Two rows (B7, B9) put
+us at or above it. Nothing in this table reopens a decision: every one was already taken in §§3–9.
+
+**Second-of-everything (convention 09):** **G-3a** (built) ships the second-company same-SKU import that today
+raises 23505, a second-**location** import asserting product count unchanged with `stock_levels` rows added
+(RUL-2c), and the cross-company barcode/variant refusals; **G-12** (built) asserts a second company inside a
+tenant sees a non-empty visible active unit set; **G-13** asserts a second company's shadowing unit resolves;
+**G-4**, **G-5**, **G-6a** and **G-9** each ship a re-run/idempotency test (a re-import creates no duplicate
+product, partner, AR document or opening).
+
+Sources, all vendor documentation, read 2026-08-29 — `[1]` Odoo 18.0 *Export and import data*
+https://www.odoo.com/documentation/18.0/applications/essentials/export_import_data.html ·
+`[2]` Frappe/ERPNext *Data Import* https://docs.frappe.io/erpnext/user/manual/en/data-import ·
+`[3]` Dolibarr wiki *Module Imports* https://wiki.dolibarr.org/index.php?title=Module_Imports_En ·
+`[4]` Dolibarr wiki *Field Import key* https://wiki.dolibarr.org/index.php/Field_Import_key ·
+`[5]` Frappe/ERPNext *Item* https://docs.frappe.io/erpnext/user/manual/en/item ·
+`[6]` Frappe/ERPNext *Stock Reconciliation* https://docs.frappe.io/erpnext/v13/user/manual/en/stock/stock-reconciliation ·
+`[7]` Odoo *Multi-company* https://www.odoo.com/documentation/18.0/applications/general/companies/multi_company.html ·
+`[8]` Odoo *Merge contacts* https://www.odoo.com/documentation/18.0/applications/essentials/contacts/merge.html ·
+`[9]` Frappe/ERPNext *Customer* https://docs.frappe.io/erpnext/v14/user/manual/en/CRM/customer ·
+`[10]` Dolibarr wiki *Mass imports* https://wiki.dolibarr.org/index.php/Mass_imports ·
+`[11]` Frappe/ERPNext *Opening Balance* https://docs.frappe.io/erpnext/opening-balance.
+`[1]`–`[5]`, `[7]` and `[11]` were fetched and quote-checked directly by the spec author; the remainder come from
+the Phase-0 research pass. **Cells marked `?` or "hypothesis" are NOT evidence** and a gate must not cite them
+as competitor fact — the honest answer to "what does Odoo do about stuck import jobs?" is *we could not verify*.
 
 ---
 
@@ -211,17 +289,17 @@ guards, its `down()` policy and the test that pins it. No later wave edits any o
 
 | # | Migration file (name) | Table | Owning lane / wave | Change | Guards | Pinning test |
 |---|---|---|---|---|---|---|
-| **M1** | `enforce_company_scoped_product_skus` | `products` | **G-3a / Wave 0** | drop `unique(tenant_id, sku)` (`2025_11_30_052910_create_products_table.php:37`); add `unique(company_id, sku)` named `products_company_id_sku_unique` | driver + `hasTable` + `hasColumn`; census-then-refuse; index added only if absent | `ProductSkuCompanyScopeMigrationTest` — collision → `RuntimeException` with the census logged; clean → repaired shape; PG **and** SQLite |
-| **M2** | `enforce_company_scoped_product_variant_skus` | `product_variants` | **G-3a / Wave 0** | drop **only** the partial PG unique `product_variants_tenant_sku_unique` (`2026_06_02_100003_create_product_variants_table.php:38-39`); re-create as `product_variants_company_sku_unique` on `(company_id, sku)` with the same `WHERE deleted_at IS NULL`. **`product_variants_tenant_barcode_unique` is NOT touched** — §3.1a | PG-only (`DB::statement`); complete no-op on SQLite, where neither index exists; census excludes soft-deleted rows | `VariantIndexScopeTest` — the SQLite no-op is asserted explicitly |
-| **M3** | `enforce_company_scoped_partner_vat_numbers` | `partners` | **G-3a / Wave 0** | drop `unique(tenant_id, vat_number)` (`2025_11_30_052119_create_partners_table.php:34` — untouched by `2025_12_30_195300_fix_multi_company_unique_constraints.php:20-23`, which re-scoped only `code`); add `unique(company_id, vat_number)` | same as M1; rows with NULL `vat_number` excluded from the census (a unique permits many NULLs) | sibling case in `ProductSkuCompanyScopeMigrationTest` |
-| **M4** | `add_company_and_source_hash_to_import_jobs` | `import_jobs` | **G-3b / Wave 0** | add `company_id` uuid **nullable**, indexed `(tenant_id, company_id, created_at)`; add `source_hash` char(64) nullable, indexed; evidence-based backfill per §3.3 | per-column `hasColumn`; index added only if absent; the backfill runs **whenever `company_id` is NULL**, independently of whether this run created the column | `ImportJobCompanyPinTest` — agreeing links, mixed links, one-company fallback, evidence-free |
+| **M1** | `enforce_company_scoped_product_skus` | `products` | **G-3a / Wave 0 (BUILT)** | drop `unique(tenant_id, sku)` (`2025_11_30_052910_create_products_table.php:37`); add `unique(company_id, sku)` named `products_company_id_sku_unique` | driver + `hasTable` + `hasColumn`; census-then-refuse; index added only if absent | `ProductSkuCompanyScopeMigrationTest` — collision → `RuntimeException` with the census logged; clean → repaired shape; PG **and** SQLite |
+| **M2** | `enforce_company_scoped_product_variant_skus` | `product_variants` | **G-3a / Wave 0 (BUILT)** | drop **only** the partial PG unique `product_variants_tenant_sku_unique` (`2026_06_02_100003_create_product_variants_table.php:38-39`); re-create as `product_variants_company_sku_unique` on `(company_id, sku)` with the same `WHERE deleted_at IS NULL`. **`product_variants_tenant_barcode_unique` is NOT touched** — §3.1a | PG-only (`DB::statement`); complete no-op on SQLite, where neither index exists; census excludes soft-deleted rows | `VariantIndexScopeTest` — the SQLite no-op is asserted explicitly |
+| **M3** | `enforce_company_scoped_partner_vat_numbers` | `partners` | **G-3a / Wave 0 (BUILT)** | drop `unique(tenant_id, vat_number)` (`2025_11_30_052119_create_partners_table.php:34` — untouched by `2025_12_30_195300_fix_multi_company_unique_constraints.php:20-23`, which re-scoped only `code`); add `unique(company_id, vat_number)` | same as M1; rows with NULL `vat_number` excluded from the census (a unique permits many NULLs) | sibling case in `ProductSkuCompanyScopeMigrationTest` |
+| **M4** | `add_company_to_import_jobs` (the G-3b brief's filename, `2026_08_30_100200_add_company_to_import_jobs.php` — it carries **both** columns; the spec's older `add_company_and_source_hash_…` name is retired, G-R62) | `import_jobs` | **G-3b / Wave 0b** | add `company_id` uuid **nullable** (no FK — brownfield rows may reference a deleted company) with index `import_jobs_company_id_index`, **plus the compound index `(company_id, created_at)`** that backs the company-scoped, newest-first history listing (§5.2 `index`); add `source_hash` char(64) nullable, indexed; evidence-based backfill per §3.3 | per-column `hasColumn`; each index added only if absent; the backfill runs **whenever `company_id` is NULL**, independently of whether this run created the column | `ImportJobCompanyBackfillMigrationTest` (the brief's class name) — agreeing links, mixed links, **evidence-free in a single-company tenant still NULL** (there is no one-company fallback, §3.3), columns/indexes present, `source_hash` nullable |
 | **M5** | `create_sku_sequences_table` | new `sku_sequences` | **G-2 / Wave 3** | `id` uuid PK, `tenant_id` uuid, `company_id` uuid, `prefix` string(16), `next_value` unsignedBigInteger default 1, `padding` unsignedTinyInteger default 6, timestamps; `unique(company_id, prefix)` | `! Schema::hasTable('sku_sequences')` → create, else no-op | `SkuGenerationTest` — first-use race on PG |
 | **M6a** | `add_outcome_to_import_rows` | `import_rows` | **G-4 / Wave 2** | add `outcome` string(32) default `pending` (cast `ImportRowOutcome`, index `(import_job_id, outcome)`) and `duplicate_bucket` string(24) nullable (cast `DuplicateBucket`); **plus the historical backfill/census of §3.1d** | per-column `hasColumn`; index added only if absent; **repair order** = create missing columns → create the index if absent → run the backfill for every row still at the `pending` default. Each of the three steps is guarded independently, so a partially-repaired rerun (column present, index or backfill missing) completes the rest | `ImportRowOutcomeBackfillTest` — the four historical mappings + the census line + a partial-repair rerun |
 | **M6b** | `add_error_code_to_import_rows` | `import_rows` | **G-4 / Wave 2** | add `import_error_code` string(64) nullable (indexed, cast `ImportErrorCode`) and `import_error_detail` jsonb nullable (cast `ImportErrorDetailData`) | per-column `hasColumn` | `ImportRowCodedErrorTest` |
-| **M6c** | `add_lifecycle_columns_to_import_jobs` | `import_jobs` | **G-6a / Wave 0** | add `error_code` string(64) nullable (cast `ImportErrorCode` — the job-level code `formatJob` and the reaper both require), `error_detail` jsonb nullable, `claimed_at` timestamp nullable, `worker_started_at` timestamp nullable (§4.1.1), `source_purged_at` timestamp nullable (§4.14) | per-column `hasColumn` | `ImportJobClaimConcurrencyTest` + `ReapStuckImportsTest` |
+| **M6c** | `add_lifecycle_columns_to_import_jobs` | `import_jobs` | **G-6a / Wave 0b** | add `error_code` string(64) nullable (cast `ImportErrorCode` — the job-level code `formatJob` and the reaper both require), `error_detail` jsonb nullable, `claimed_at` timestamp nullable, `worker_started_at` timestamp nullable (§4.1.1), `source_purged_at` timestamp nullable (§4.14) | per-column `hasColumn` | `ImportJobClaimConcurrencyTest` + `ReapStuckImportsTest` |
 | **M7** | `add_number_conventions_to_countries` | `countries` | **G-8 / Wave 3** | add `number_decimal_separator` char(1) default `'.'` and `csv_delimiter` char(1) default `','`, **then backfill every existing row from the explicit country-code table inside the migration** (§7.1) and log a census | `hasTable('countries')` + per-column `hasColumn`; the backfill is an idempotent `UPDATE … WHERE code IN (…)` that runs on every invocation, independently of column creation | `LocaleTemplateTest` brownfield case — FR, TN, US |
-| **M9** | `add_company_scope_to_units` | `units` | **G-13 / Wave 3** | add `company_id` uuid **nullable**; create `unique(tenant_id, code) WHERE company_id IS NULL` and `unique(company_id, code) WHERE company_id IS NOT NULL` (raw `DB::statement`, the `2026_04_28_120000_fix_unit_categories_partial_unique.php:67-77` idiom); drop the old `unique(tenant_id, code)`. **No backfill and no FK re-pointing** — existing rows stay `company_id = NULL` and every `unit_id` stays valid (RUL-7, research §5(b)) | PG-only for the partial indexes, no-op on SQLite; `hasColumn` guard; **census-then-refuse** before dropping the old unique, on the M1 pattern — it must find zero, since the shared partition is strictly weaker | `UnitCompanyScopeMigrationTest` — clean repair, collision refusal, SQLite no-op |
-| **M8** | `census_companies_without_visible_units` | `units` (read-only) | **G-12 / Wave 1** | **no schema change.** Counts, per company, the units visible to it (§4.13.2) that are `is_active`; logs `Log::info('units.visibility_census', ['companies' => n, 'empty' => n])` unconditionally and `Log::warning('units.empty_for_company', ['company' => <id>])` per empty company. **It never seeds and never refuses** — a brownfield tenant must not have its deploy aborted by reference data, and G-12's provisioning guarantee covers new companies | `hasTable('units')` + `hasTable('companies')`; driver-agnostic | `UnitsInvariantTest` — a company with no visible active unit is logged, a normal tenant logs zero |
+| **M9** | `add_company_scope_to_units` | `units` | **G-13 / Wave 3** | add `company_id` uuid **nullable**; create **THREE** partial uniques (raw `DB::statement`, the `2026_04_28_120000_fix_unit_categories_partial_unique.php:67-77` idiom) — `units_shared_system_code_unique` on `(code) WHERE company_id IS NULL AND tenant_id IS NULL`, `units_shared_tenant_code_unique` on `(tenant_id, code) WHERE company_id IS NULL AND tenant_id IS NOT NULL`, and `units_company_code_unique` on `(company_id, code) WHERE company_id IS NOT NULL`; drop the old `unique(tenant_id, code)`. **The three-way split is required, not stylistic (G-R65):** a single `unique(tenant_id, code) WHERE company_id IS NULL` is still NULL-distinct for the seeded `tenant_id = NULL` rows and would **not** repair the §4.13.2 gap it claims to repair — the G-13 brief's refinement is the contract. **No backfill and no FK re-pointing** — existing rows stay `company_id = NULL` and every `unit_id` stays valid (RUL-7, research §5(b)) | PG-only for the partial indexes, no-op on SQLite; `hasColumn` guard; **census-then-refuse** before dropping the old unique, on the M1 pattern. It refuses on **exact duplicate code strings** within one of the three partitions; a `kg`/`KG` pair is **not** a duplicate (codes are compared exactly — §4.13.3) and is logged, not refused | `UnitCompanyScopeMigrationTest` — clean repair, exact-duplicate refusal, `kg`/`KG` pair succeeds with a logged count, SQLite no-op |
+| **M8** | `ensure_units_visible_per_company` (**as built** — `2026_08_30_100300_ensure_units_visible_per_company.php`; the spec's older `census_companies_without_visible_units` name and its "never seeds" wording are retired, G-R57/reconciliation) | `units` | **G-12 / Wave 0 (BUILT)** | **no schema change.** Counts, per company, the units visible to it (§4.13.2) that are `is_active`; logs `Log::info('units.visibility_census', …)` unconditionally and a warning per empty company. **It additionally performs a one-shot backfill seed of the 19/5 base set — but ONLY when `units` AND `unit_categories` are BOTH globally empty**, so no tenant that already owns units can change behaviour; the seed runs in a nested transaction/savepoint and any `Throwable` rolls both tables back, logs `units.seed_failed` and returns. **It never refuses and never aborts a deploy** — a brownfield tenant must not have its migration run killed by reference data | `hasTable('units')` + `hasTable('companies')`; driver-agnostic; catch-all no-throw; forward-only logged `down()` | `UnitsInvariantTest` + `UnitsNotSeededRefusalTest` — a company with no visible active unit is logged, a normal tenant logs zero, a mid-seed failure leaves zero rows and the next `up()` seeds the full set |
 
 **M2 partial-predicate note.** Re-creating a partial unique is not a `$table->unique()` call — it is
 raw `DB::statement` behind the same `pgsql` guard the create-table migration used, and the drop must
@@ -354,7 +432,7 @@ are a different namespace and are listed once in §5.3; they are not enum cases.
 
 | Enum | File | Owner | Cases |
 |---|---|---|---|
-| `ImportErrorCode` (new, backed string) | `apps/api/app/Modules/Import/Domain/Enums/ImportErrorCode.php` | **G-12** (created; G-6a adds `worker_lost`) | **Row-level:** `duplicate_sku_in_company`, `sku_held_by_deleted_product`, `vat_held_by_deleted_partner`, `sku_allocation_exhausted`, `opening_locked_has_operations`, `opening_locked_reserved`, `opening_correction_failed`, `product_not_found`, `partner_not_found`, `location_unknown`, `category_resolution_failed`, `unit_unknown`, `unit_ambiguous`, `unit_default_missing`, `barcode_ambiguous`, `numeric_cell_is_date`, `formula_not_allowed`, `xls_inexact_value`, `party_key_insufficient`, `image_file_failed`, `internal_error` (the catch-all for an unmapped `\Throwable`). **Job-level:** `worker_lost`, `units_not_seeded`, `unsupported_file_format`, `mapping_not_injective`. One exhaustive `isJobLevel(): bool` match separates them, so `formatJob` and the row channel share one translation namespace and a new case cannot skip the decision |
+| `ImportErrorCode` (new, backed string) | `apps/api/app/Modules/Import/Domain/Enums/ImportErrorCode.php` | **G-12** (created; G-6a adds `worker_lost`) | **Row-level:** `duplicate_sku_in_company`, `sku_held_by_deleted_product`, `vat_held_by_deleted_partner`, `sku_allocation_exhausted`, `opening_locked_has_operations`, `opening_locked_reserved`, `opening_correction_failed`, `product_not_found`, `partner_not_found`, `location_unknown`, `category_resolution_failed`, `unit_unknown`, `unit_ambiguous`, `unit_default_missing`, `barcode_ambiguous`, `numeric_cell_is_date`, `formula_not_allowed`, `xls_inexact_value`, `party_key_insufficient`, `image_file_failed`, **`validation_failed`** (the umbrella code for a row rejected at VALIDATE time — §3.2.2; the field-keyed messages stay in `import_rows.errors`), `internal_error` (the catch-all for an unmapped `\Throwable`). **Job-level:** `worker_lost`, `units_not_seeded`, `unsupported_file_format`, `mapping_not_injective`. One exhaustive `isJobLevel(): bool` match separates them, so `formatJob` and the row channel share one translation namespace and a new case cannot skip the decision |
 | `ImportWarningCode` (new, backed string) — **exhaustive** | same directory | **G-4** | existing: `price_conflict`, `margin_without_cost`, `balance_not_posted`, `opening_failed`, `quantity_ignored_service`, `qty_without_cost`, `expiry_in_past`, `expiry_conflict_existing_lot`, `expiry_ignored_not_batch_tracked`, `expiry_ignored_no_default_lot`; the **dynamic `category_*` family** composed at `ImportService.php:557-562` from `CategoryResolutionOutcome` — `category_matched_by_slug`, `category_created`, `category_restored` (`Matched` is not a state change and emits nothing, `CategoryResolutionOutcome.php:35-39`); new: `sku_generated`, `code_generated`, `matched_by_name`, `duplicate_in_file`, `preview_drift`, `opening_skipped_existing`, `opening_corrected`, `unit_defaulted`, and the `location_unresolved` **split** into `location_not_supplied` / `location_code_unknown`. **Two read-only legacy cases**, retired from emission but still translated because historical rows carry them: `location_unresolved` and `opening_exists` |
 | `ImportRowOutcome` (new, backed string) — M6a column | same directory | **G-4** | `pending`, `imported`, `duplicate_skipped`, `duplicate_loser`, `failed`, `opening_locked` |
 | `DuplicateBucket` (new, backed string) — M6a column | same directory | **G-4** | `new`, `existing_sku`, `existing_barcode`, `existing_name`, `in_file`. **`in_file`, not `duplicate_in_file`** — a bucket and a warning must not share a string (§3.2.1's one-enum rule); the loser row carries bucket `in_file` **and** warning `duplicate_in_file` |
@@ -384,8 +462,33 @@ consumers, but it is never the decision input again.
 | `imported` | the entity write committed (**including a corrected opening**, §4.9) | yes |
 | `duplicate_skipped` | policy `skip` and execute-time resolution matched an existing entity | yes |
 | `duplicate_loser` | a later row won the same `(product, location)` side-effect key | yes |
-| `failed` | the row transaction rolled back; `import_error_code` is set | yes |
+| `failed` | **either** the row was rejected at **VALIDATE** time (`is_valid = false`, code `validation_failed`), **or** the row transaction rolled back at **EXECUTE** time; `import_error_code` is set in both cases | yes |
 | `opening_locked` | the master write committed but the opening was refused by the fence (§4.9) | yes |
+
+**The validation transition — how an invalid row leaves `pending` (G-R57).** `failed` is **not** only an
+execution rollback. `validateJob()` already validates **every** row at upload
+(`ImportService.php:139-188`), and a row it rejects is never executed, so it could never reach a
+terminal outcome through the execute path — yet M6a's historical backfill maps `is_valid = false` to
+`failed` (§3.1d). The two are reconciled by making the **validate step itself** write the terminal
+outcome:
+
+- Every row `validateJob()` marks `is_valid = false` is persisted, **in the same statement**, with
+  `outcome = failed` and `import_error_code = validation_failed`; the field-keyed validator messages
+  stay exactly where they are today, in `import_rows.errors` (`ImportRowErrorBagData`, §3.2.3), and
+  `import_error_detail` is left unset. The job then becomes `validated` with those rows already
+  terminal.
+- **Execute selects only `is_valid = true AND outcome = pending`** (§4.2.4) — unchanged — so a
+  validation failure is never re-selected, never re-validated into a second outcome, and never
+  double-counted.
+- The equations below therefore hold at every point after validation: `failed` legitimately contains
+  **both** validation failures and execution rollbacks, and `processed = total_rows` is reachable on a
+  job where no row ever executed.
+- **The historical backfill is consistent by construction**: M6a maps `is_valid = false` → `failed`,
+  which is the same rule applied retroactively. Historical rows carry no `import_error_code` and are
+  rendered through the `import.errors.unknown` fallback; **M6a does not invent one for them.**
+- G-4 owns this: the transition, the `validation_failed` case, and the equation tests
+  (a file where **every** row fails validation ends `Failed` with `failed_rows == total_rows` and
+  `processed == total_rows`).
 
 **Equations (the only definitions; §4, §9 and §12 reference them and never restate them):**
 
@@ -424,13 +527,13 @@ actually persists today, re-verified at `a4ceeb0f5`; each cast must reproduce th
 
 | Column | DTO / cast | Owner | Exact serialized shape |
 |---|---|---|---|
-| `import_rows.data` | `ImportRowSourceData` | G-4 | a **string map** of canonical target key → cell value, **plus two reserved keys**: `_provided` (list of canonical keys whose source cell was non-blank, §4.4.1) and `_results` (a **one-level nested `array<string,string>`** of execution breadcrumbs). Execution **mutates this column in place** — `type` (`ImportService.php:513`), `tax_rate` (`:529-530`), `sale_price` and the `_results` merges (`:525-549`), then `finalizeImport` merges each phase's `results` map (`:473-485`; the phases return `array{row_id,code,detail,results: array<string,string>}` — `ProductOpeningStockPhase.php:30,218,263`). So it is **not** a flat source map, and the DTO must model the reserved keys explicitly. Every value is a **string** (rule 19) |
-| `import_rows.errors` | `ImportRowErrorBagData` | G-4 | a **bag keyed by canonical field name** → list of already-translated validator messages: `{"sku": ["The sku field is required."], "sale_price": ["…"]}` (`ImportService.php:162-166`; `ImportRow.php:19` types it `array<string, array<string>>`). It is **not** a collection of per-error DTOs, and it is **not** where coded errors live — those go to `import_error_code` (M6b) |
-| `import_rows.warnings` | collection cast of `ImportRowWarningData` | G-4 | a **list** of `{"code": "<ImportWarningCode>", "detail": "<string>"}` (`ImportRow.php:20`, written by `addRowWarning`, `ImportService.php:93-98`). `code` becomes enum-backed; `detail` stays a free string |
-| `import_rows.import_error_detail` | `ImportErrorDetailData` | G-4 (M6b) | a per-code payload with nullable typed fields — `supplied`, `accepted` (list), `candidates` (list), `sku`, `existing_product_id`, `filename`, `held_quantity`, `held_at`. Unset fields are omitted, never `null`-padded |
-| `import_jobs.column_mapping` | `ColumnMappingData` | G-4 | `{"<source header>": "<canonical target>"}`, validated **injective** (§4.10) |
-| `import_jobs.options` | `ImportJobOptionsData` (new — no such DTO exists today; the FE has a `types.ts` interface only) | G-4 | `duplicate_census` (`DuplicateCensusData`), `duplicate_policy`, `location_code`, `price_authority`, `placement_mode`, `placement_node_types` |
-| `import_jobs.error_detail` | `ImportErrorDetailData` | **G-6a** (it lands first — §3.1d) | same payload shape, job-level |
+| `import_rows.data` | `ImportRowSourceData` | G-4 | typed `array<string, string>` — a map of canonical target key → cell value — **plus two reserved keys**: `_provided`, typed `list<string>` (canonical keys whose source cell was non-blank, §4.4.1), and `_results`, typed `array<string, array<string, string>>` (one level of nesting: phase name → breadcrumb map, §4.4.1's `_results` merges). **No element type in this program is left as a bare `list` or `map` (G-R61)**; every one is named here. Execution **mutates this column in place** — `type` (`ImportService.php:513`), `tax_rate` (`:529-530`), `sale_price` and the `_results` merges (`:525-549`), then `finalizeImport` merges each phase's `results` map (`:473-485`; the phases return `array{row_id,code,detail,results: array<string,string>}` — `ProductOpeningStockPhase.php:30,218,263`). So it is **not** a flat source map, and the DTO must model the reserved keys explicitly. Every value is a **string** (rule 19) |
+| `import_rows.errors` | `ImportRowErrorBagData` | G-4 | typed `array<string, list<string>>` — a bag keyed by canonical field name → list of already-translated validator messages: `{"sku": ["The sku field is required."], "sale_price": ["…"]}` (`ImportService.php:162-166`; `ImportRow.php:19` types it `array<string, array<string>>`). It is **not** a collection of per-error DTOs, and it is **not** where coded errors live — those go to `import_error_code` (M6b) |
+| `import_rows.warnings` | collection cast of `ImportRowWarningData` | G-4 | typed `list<ImportRowWarningData>`, each `ImportRowWarningData{code: ?ImportWarningCode, detail: string}` (`ImportRow.php:20`, written by `addRowWarning`, `ImportService.php:93-98`). `code` is enum-backed and **nullable only on legacy hydration** (an unrecognised historical string hydrates to `code = null` with the raw string preserved in `detail`); `detail` stays a single free string, never a nested structure |
+| `import_rows.import_error_detail` | `ImportErrorDetailData` | **G-6a declares the class** (it lands first, §3.1d); **G-4 adds the fields its codes need** | a per-code payload, every field nullable and **concretely typed** (G-R61): `supplied: ?string`, `accepted: ?list<string>` (accepted unit codes), `candidates: ?list<UnitCandidateData>` where `UnitCandidateData{id: string, code: string, name: string, category: string, tier: string}` (`tier ∈ {system, tenant, company}`, §4.13.3 step 3), `sku: ?string`, `existing_product_id: ?string`, `candidate_skus: ?list<string>` (`barcode_ambiguous`), `filename: ?string`, `reason: ?string` (`image_file_failed`), `column: ?string`, `raw: ?string`, `remedy: ?string` (`xls_inexact_value`, §4.11(1a)), `held_quantity: ?string`, `held_at: ?string` (`opening_locked_reserved`). Unset fields are **omitted, never `null`-padded**. **Version-tolerant serializer rule:** an unknown key on read is ignored, a missing key defaults to null, nothing throws; a later lane may only populate fields declared here, and adding a field is an additive change to G-6a's class made by the lane that needs it |
+| `import_jobs.column_mapping` | `ColumnMappingData` | G-4 | typed `array<string, string>` — `{"<source header>": "<canonical target>"}` — validated **injective** (§4.10) |
+| `import_jobs.options` | `ImportJobOptionsData` (new — no such DTO exists today; the FE has a `types.ts` interface only) | G-4 | `duplicate_census: ?DuplicateCensusData` where `DuplicateCensusData{counts: array<string, int>` keyed by `DuplicateBucket` value, `matched_by_name: list<int>` (row numbers)`}`; `duplicate_policy: ?DuplicatePolicy`; `location_code: ?string`; `price_authority: ?string`; `placement_mode: ?string`; `placement_node_types: ?list<string>`; `enrichment_enabled: ?bool` (present today at `ImportController.php:92-98` — **keep it**, G-4 brief Task 1) |
+| `import_jobs.error_detail` | `ImportErrorDetailData` | **G-6a** (it lands first — §3.1d) | the same class and the same field set, populated job-level (typically `reason` and, for `units_not_seeded`, nothing at all) |
 
 **Legacy hydration is part of the contract**, documented on each cast class and pinned by a fixture
 per historical shape: (1) `data` with **no `_provided` key** → the mask hydrates **empty**, which is
@@ -464,12 +567,15 @@ M4's backfill is therefore **evidence-based**, in this order:
    with the per-company evidence counts. **No majority rule** (G-R35): a mixed job has no
    authoritative company, a majority silently hides the minority's writes, and attributing the job to
    one company would surface it under a company that did not produce half of it.
-3. If the job has **no** resolvable entity (never executed, or GL rows whose batch never posted) and
-   the tenant holds exactly **one** company, use that company.
-4. Otherwise the row stays NULL, with `Log::info('import_jobs.company_backfill.unattributed', ['rows' => n])`.
+3. If the job has **no** resolvable entity (never executed, or GL rows whose batch never posted) the
+   row stays NULL, with `Log::info('import_jobs.company_backfill.unattributed', ['rows' => n])` —
+   **including in a tenant that holds exactly one company.** r4.1 carried a one-company fallback; it is
+   **REMOVED** (G-R62), because the G-3b brief removes it and the brief is the executable contract: a
+   tenant that has one company **today** may have two tomorrow, and a free attribution written now
+   cannot be distinguished later from real evidence.
 
-So `company_id` is set **only when all resolvable links agree**, or when the tenant has exactly one
-company. Everything else is honestly unattributed.
+So `company_id` is set **only when every resolvable link agrees**. Everything else — mixed evidence
+and evidence-free alike — is honestly unattributed.
 
 **Unattributed-history policy (G-R15).** A NULL job is shown to **all** companies of the tenant with
 an explicit "unattributed" badge and a tooltip explaining it predates company pinning. It is **not**
@@ -526,11 +632,26 @@ Both sides also read row state **before** any claim today — the worker calls `
 `rows()->where('is_valid', true)->count()` before dispatching (`ImportController.php:490-563`).
 
 1. **The controller claims first, before any row read.** One
-   `ImportJobClaimService::claim(ImportJob): bool` issues the conditional
-   `UPDATE import_jobs SET status = importing, claimed_at = now() WHERE id = ? AND status IN
-   (pending, validated)` and returns whether it affected a row. A loser returns **409
+   `ImportJobClaimService::claim(ImportJob $job): ClaimResult` issues the conditional
+   `UPDATE import_jobs SET status = importing, claimed_at = now(), started_at = now() WHERE id = ?
+   AND tenant_id = ? AND status IN ('pending','validated')`. A loser returns **409
    `IMPORT_ALREADY_STARTED`** immediately, having read nothing.
 2. **The sync/async decision happens after the claim** — the row count is read by the winner only.
+
+   **The executable API, pinned (G-R60).** `App\Modules\Import\Services\ImportJobClaimService`,
+   `final`, constructor-injected; every statement also re-asserts `tenant_id`:
+
+   | method | signature | statement | transaction boundary |
+   |---|---|---|---|
+   | claim | `claim(ImportJob $job): ClaimResult` | the CAS above | its **own** statement, outside any row transaction; **`ClaimResult` is a `final readonly` DTO `{won: bool, priorStatus: ImportStatus}`** — `priorStatus` is the status the row held **before** the update, read in the same statement (PG `RETURNING`, else a pre-read inside the same short transaction), because the release below must restore exactly it |
+   | release | `release(ImportJob $job, ImportStatus $priorStatus): bool` | `UPDATE … SET status = :priorStatus, claimed_at = NULL, started_at = NULL WHERE id = ? AND tenant_id = ? AND status = 'importing' AND worker_started_at IS NULL` | its own statement. **A release is NOT a terminal transition** and must never write `failed` (that would collide with the one-shot invariant, item 6). It is used for exactly one case: the claim winner finds **zero valid rows** and returns today's 422 body unchanged, leaving the job re-executable after the operator fixes rows. The `worker_started_at IS NULL` predicate is what makes it safe against a worker that started in between |
+   | markWorkerStarted | `markWorkerStarted(string $jobId, string $tenantId): bool` | `UPDATE … SET worker_started_at = now() WHERE id = ? AND tenant_id = ? AND status = 'importing' AND worker_started_at IS NULL` | its own statement; `false` → duplicate delivery, log and return (item 3) |
+   | finalize | `finalize(ImportJob $job, ImportStatus $terminal, ImportCountersData $counters, ?ImportErrorCode $code, ?ImportErrorDetailData $detail, ?string $message = null): bool` | **ONE** `UPDATE … SET status = ?, successful_rows = ?, skipped_rows = ?, failed_rows = ?, total_rows = ?, error_code = ?, error_detail = ?, error_message = ?, completed_at = now() WHERE id = ? AND tenant_id = ? AND status = 'importing'` | **one statement, one transaction — status, counters and the job-level error are published atomically.** `ImportCountersData` is a `final readonly` DTO `{totalRows: int, successfulRows: int, skippedRows: int, failedRows: int}` whose values are the §3.2.2 equations recomputed from `import_rows.outcome`. `false` → **the writer lost the race**: log `import_jobs.terminal_write_lost` with `id`, `attempted_status`, `writer` and return **without touching counters, without a second UPDATE, and without retrying** |
+
+   **The winner writes all terminal aggregates; the loser writes none.** There is no path on which a
+   counter update and a status update are two statements, and no path on which a loser's counters
+   overwrite a winner's. The reaper calls the same `finalize()` with
+   `ImportErrorCode::worker_lost` and the counters read at sweep time.
 3. **The worker re-verifies rather than re-claims.** It issues its own conditional
    `UPDATE … SET worker_started_at = now() WHERE id = ? AND status = importing AND worker_started_at
    IS NULL` (both columns from **M6c**). Zero rows affected → the delivery is a duplicate and the job
@@ -539,10 +660,11 @@ Both sides also read row state **before** any claim today — the worker calls `
 4. **There is NO ownership token.** r3 claimed one and never defined it; the claim is
    `claimed_at` + `status`, nothing more. A token would only be needed if a failed job could be
    resumed or redispatched, and it cannot — see the one-shot invariant below.
-5. **Every terminal transition is compare-and-set.** Worker and reaper alike write
-   `UPDATE import_jobs SET status = <completed|failed>, … WHERE id = ? AND status = 'importing'`
-   and **check the affected-row count**. A writer that affected zero rows lost the race, logs
-   `import_jobs.terminal_write_lost` and returns without touching counters. This is what makes the
+5. **Every terminal transition is compare-and-set, and carries its counters.** Worker and reaper alike
+   go through `finalize()` above — status **and** counters **and** the job-level code/detail in one
+   `UPDATE … WHERE id = ? AND status = 'importing'` — and **check the affected-row count**. A writer
+   that affected zero rows lost the race, logs `import_jobs.terminal_write_lost` and returns without
+   touching counters. This is what makes the
    reaper and a late-finishing worker safe against each other; the clocks (§4.7) make the race rare,
    the CAS makes it harmless.
 6. **One-shot invariant:** a job that reached `failed` — by the worker, by the reaper, or by a
@@ -903,9 +1025,10 @@ a **live** worker at 10:31, and a claim-only sweep would kill it. `claimed_at` a
 ever pick this up?"; `worker_started_at` answers "is the thing that picked it up still alive?".
 Both columns come from **M6c**.
 
-The flip is the **compare-and-set** of §4.1.1 item 5 —
-`UPDATE … SET status = failed, error_code = worker_lost, error_message = … WHERE id = ? AND
-status = 'importing'` — so a worker that finishes in the same instant either wins (the reaper's
+The flip is the **compare-and-set** of §4.1.1 item 5, issued through the same
+`ImportJobClaimService::finalize($job, Failed, $counters, ImportErrorCode::worker_lost, $detail, $message)`
+the worker uses — one statement writing status, counters and the code together — so a worker that
+finishes in the same instant either wins (the reaper's
 update affects zero rows and it logs and moves on) or loses (its own terminal write affects zero rows
 and it logs and returns). Neither can overwrite the other's terminal status.
 
@@ -1080,10 +1203,17 @@ cost_price = Σ(qty_i × unit_cost_i) / Σ(qty_i)      over every active, non-re
                                                       movement of the product in the company
 ```
 
-computed with `bcmath` at **monetary scale + 4** for the intermediates and written back through
-`CurrencyScale::bcformatStrict($value, $scale)` at the company currency's scale (rule 19). When
-`Σ(qty_i)` is zero — every opening reversed and none re-posted — `cost_price` is cleared to `'0'` and
-`cost_updated_at` to NULL, matching today's reset semantics for a genuinely cost-less product.
+computed with `bcmath` (`bcmul`/`bcadd`/`bcdiv`) at **scale 10** for the intermediates and written
+back through **`CurrencyScale::bcformatStrict($wac, 6)` — scale SIX, one final half-up write**, with
+`cost_updated_at = now()`. **Not the company currency's scale (G-R64):** `products.cost_price` is
+`decimal(19,6)`, the perpetual WAC column widened by
+`2026_05_30_000000_widen_wac_cost_columns_to_scale_6.php:41-44`, and `ResetOpeningBalanceService.php:195-198`
+already writes it as `bcformatStrict('0', 6)`; rounding to a 3-decimal company currency here would
+**truncate WAC precision on every correction**. The G-5 brief carries this correction and is the
+authority. Intermediates at scale 10 = 6 + 4, the §19 "intermediates at scale+4" rule applied to the
+storage scale that actually governs. When `Σ(qty_i)` is zero — every opening reversed and none
+re-posted — `cost_price` is cleared to `'0'` at scale 6 and `cost_updated_at` to NULL, matching
+today's reset semantics for a genuinely cost-less product.
 
 Tests: **MAIN remains + ANNEX corrected** (cost is the weighted blend, not ANNEX's);
 **single-location correction** (cost is that location's new unit cost); **correction to zero at the
@@ -1151,9 +1281,12 @@ its button on that field (`ImportWizardPage.tsx:1074-1086`).
 **New `ImportRowExportService`** (replacing `FailedRowsExportService`, whose dead `cleanup()` and
 `getFilePath()` go with it, `:80-92,191-200`):
 
-- **Row selection:** `is_valid = false` **OR** `outcome = failed` **OR** the row has warnings —
-  failed **and** warning rows, because the 422 `location_not_supplied` rows are precisely the lines
-  the operator must fix (OQ-G-8). The warning predicate **must use the existing portable driver
+- **Row selection:** `is_valid = false` **OR** `outcome IN (failed, opening_locked)` **OR** the row has
+  warnings — failed **and** warning rows, because the 422 `location_not_supplied` rows are precisely
+  the lines the operator must fix (OQ-G-8). A **validation-only** failure is in the selection by both
+  predicates and carries `_status = error`, `_code = validation_failed` (§3.2.2) and, as `_message`,
+  the **first** validator message of the **first** field in the row's `errors` bag, in the bag's
+  stored key order — deterministic, no re-ranking (G-R66). The warning predicate **must use the existing portable driver
   split**, not raw `jsonb_array_length` — `ImportController::countWarningRows()` already models it
   (`:681-691`: an `sqlite` branch on `whereNotNull('warnings')->where('warnings','!=','[]')`,
   `jsonb_array_length(warnings) > 0` otherwise). G-1 extracts that predicate into one reusable scope
@@ -1172,8 +1305,15 @@ its button on that field (`ImportWizardPage.tsx:1074-1086`).
   **duplicate canonical targets are refused 422 `mapping_not_injective`** naming the colliding
   sources. The reverse mapping is defined only over that injective map, and an exact source-header
   round trip is pinned.
-- **Appended columns:** `_status` (`error` | `warning`), `_code` (the `ImportErrorCode` or first
-  warning code), `_message` (the translated operator message). Underscore-prefixed so a re-upload
+- **Appended columns:** `_status`, `_code`, `_message`, chosen by **one deterministic rule (G-R66)** —
+  **an error always outranks a warning on the same row**: if the row has an `import_error_code` OR
+  `is_valid = false`, `_status = error` and `_code` is that `ImportErrorCode` (`validation_failed` for
+  a validation-only failure); otherwise `_status = warning` and `_code` is the **first** warning in
+  `import_rows.warnings` **in stored order** (the order `addRowWarning` appended them — never
+  re-sorted, never severity-ranked, because no severity exists on `ImportWarningCode`). `_message` is
+  the translated operator message for that one code (`unit_unknown` / `unit_ambiguous` carry the
+  accepted-code list, §4.13.4). A row therefore never carries two codes, and two runs over the same
+  data produce byte-identical export cells. Underscore-prefixed so a re-upload
   treats them as unknown-and-ignored — `validateHeaders` reports unknown columns without blocking
   (`ValidationEngine.php:130-146`; `ImportController.php:180-193` refuses only on `missing`).
 - **Header union across ALL rows**, as `ResultWorkbookService::headersForRows` (`:92-110`) already
@@ -1186,9 +1326,23 @@ its button on that field (`ImportWizardPage.tsx:1074-1086`).
   the history detail page both link to the job-id route unconditionally, and the endpoint 404s only
   when there is genuinely nothing to export.
 
+**Numeric cells are echoed, never reformatted (G-R66).** The export writes **the stored string** for
+every cell — `import_rows.data` holds strings only (§3.2.3, rule 19) — so a money or quantity value
+leaves exactly as it arrived. G-8's `LocaleAwareCsvWriter` owns the **container** shape (BOM, CRLF,
+the company's `csv_delimiter`, escaping of every cell including headers) and **passes values through
+untouched**; it never re-renders a decimal separator and never sees a float. There is therefore no
+conflict with G-8's "strings unchanged" writer: the convention governs the delimiter, the value
+governs itself. Dates are likewise echoed as the stored `Y-m-d` string (rule 20).
+
 **Re-import.** The FE offers "re-upload the corrected file" from the completion/detail screen, which
 navigates to the wizard with `?reimport_of=<jobId>`. `POST /imports` accepts an optional
-`reimport_of` uuid, loads that job's `column_mapping`, and pre-applies it — so the operator skips the
+`reimport_of` uuid, loads that job's `column_mapping`, and pre-applies it — **scoped exactly as any
+other job read (G-R66):** the referenced job is loaded by `(tenant_id, id)`, refused **409
+`IMPORT_COMPANY_MISMATCH`** when its `company_id` disagrees with the current context (§5.2), and put
+through `ModuleEntitlementCheck::ensure()` for its type before its mapping is copied — a mapping is
+not a public artifact. If the uploaded file's headers do not **contain every source header** of that
+mapping, the mapping is **not** pre-applied and the operator is returned to the mapping step with a
+non-blocking notice; the import is never silently mapped against headers that moved — so the operator skips the
 mapping step entirely. **Chosen over header fingerprinting** because a fingerprint breaks the moment
 the operator renames a column while fixing the file, which is the likeliest edit. Pinned by a
 **round-trip test** (upload → fail some rows → export → re-upload the export with `reimport_of` →
@@ -1198,9 +1352,26 @@ those rows import), which does not exist today anywhere in `apps/api/tests/Featu
 IS NULL` with **no `is_imported` check** (`ResultWorkbookService.php:22-25`), so a merely-validated
 job, or a row demoted by a post-loop finalize phase, is reported as Imported — and can contradict the
 job's own `successful_rows`, which does derive from `is_imported` (`ImportService.php:379-380`). Add
-the `is_imported` predicate, add a third `Skipped` sheet for `duplicate_skipped`, and add a **job
-header block** (filename, type, company, operator, status, started/finished, counts, options used) —
-today it is two raw grids with no provenance.
+an `outcome = imported` predicate, add a third `Skipped` sheet, and add a **job header block**
+(filename, type, company, operator, status, started/finished, counts, options used) — today it is two
+raw grids with no provenance.
+
+**Sheet membership, stated once (G-R66) — every outcome lands on exactly one sheet, and the sheets
+partition `total_rows`:**
+
+| `ImportRowOutcome` | Result-workbook sheet | Reason column | In the rows-export? |
+|---|---|---|---|
+| `imported` | **Imported** | — | only if it carries warnings (`_status = warning`) |
+| `duplicate_skipped` | **Skipped** | `duplicate_skipped` + the matched entity's key | yes, `_status = warning` |
+| `duplicate_loser` | **Skipped** | `duplicate_in_file` naming the **winning row number** (§4.2.1) | yes, `_status = warning` |
+| `failed` (validation) | **Errors** | `validation_failed` + the first field message | yes, `_status = error`, `_code = validation_failed` |
+| `failed` (execution) | **Errors** | its `ImportErrorCode` | yes, `_status = error` |
+| `opening_locked` | **Errors** | `opening_locked_has_operations` / `opening_locked_reserved`, with "the master row WAS written; only the opening was refused" | yes, `_status = error` |
+| `pending` (unfinished run) | **none** | — | no |
+
+`duplicate_loser` goes on the **Skipped** sheet — not omitted, not on Errors — because §3.2.2 counts
+it in `skipped_rows`, and a sheet that disagrees with the counts is the defect this paragraph exists
+to remove.
 
 ### 4.11 Precision (rule 19) at the spreadsheet boundary (G-R4/G-R25/G-R47, RUL-4)
 
@@ -1386,8 +1557,11 @@ maintained files by test is not a single source; a **tracked copy catalog** is:
   rows and XLSX cell comments, resolving locale as **request → company country `default_locale` →
   `en`**.
 - **Frontend** does not read YAML at runtime: `pnpm i18n:conventions` **generates** the
-  `import.conventions.*` / `openingBalances.conventions.*` blocks in `locales/{en,fr}/*.json`, and CI
-  fails if the committed output differs.
+  `import.conventions.*` block in `locales/{en,fr}/import.json` and the
+  `openingBalances.conventions.*` block in `locales/{en,fr}/common.json` (`openingBalances.*` lives in
+  `common.json` — there is no `openingBalances` namespace), and CI fails if the committed output
+  differs. **Owner: G-11** — the generator, the committed generated catalogs, the `lint`/preflight
+  `--check` leg (G-R68). G-8 owns the YAML the generator reads.
 - **The guide keeps its prose** (`§3`/`§3b`), a parity test asserts each key's **EN sentence appears
   verbatim** in it (containment against fixed strings, not prose parsing), and the guide gains a
   pointer to the YAML as the authority.
@@ -1458,7 +1632,7 @@ half).
 | **Operator-authored** units ARE tenant-stamped (`tenant_id = <tenant>`, `is_system = false`) | `UomController.php:131,140` |
 | The read path is therefore a **union**: `tenant_id IS NULL OR tenant_id = <tenant>` | `UomController.php:40-46,72-79` |
 | `units` never got the partial-unique repair `unit_categories` got, so **two `tenant_id = NULL` rows with the same code are legal in PostgreSQL** | `2026_04_28_120000_fix_unit_categories_partial_unique.php:67-77` fixed only `unit_categories`; research §1.4 |
-| **Live ambiguity, not hypothetical:** demo tenants hold lowercase **system** `kg`/`l`/`hr` *and* uppercase **tenant** `KG`/`L`/`HR` in different categories | `UomSeeder.php:52,113,249` vs `DemoTenantSeeder.php:328-420`; research §3.5 |
+| **Case pairs are live, not hypothetical:** demo tenants hold lowercase **system** `kg`/`l`/`hr` *and* uppercase **tenant** `KG`/`L`/`HR` in different categories. Under the exact, case-sensitive match ruled in §4.13.3 these are **two distinct accepted codes**, both surfaced, neither ambiguous — the r4 case-insensitive reading is what made them a defect (G-R59) | `UomSeeder.php:52,113,249` vs `DemoTenantSeeder.php:328-420`; research §3.5 |
 | Seeded set: **19 units in 5 categories** — weight `g`(base)/`mg`/`kg`/`oz`/`lb`, volume `ml`(base)/`cl`/`l`/`floz`, length `mm`(base)/`cm`/`m`/`in`, pieces `pc`(base)/`pair`/`doz`, time `min`(base)/`hr`/`day` | `UomSeeder.php:24-259` |
 | Provisioned per **tenant** at registration, and backfilled for older tenants | `TenantInitializationService.php:238,259-265`; `2026_08_26_100000_seed_base_units_for_unit_less_tenants.php` |
 | **There is no company default unit** to fall back to: `grep -rniE "default_unit\|defaultUnit"` over Company/Uom/Product returns nothing, and there are **five** category base units, not one | research §0, §3.4 |
@@ -1481,12 +1655,27 @@ keeps the hardening wave independent of a schema change:
 | Provisioning target (G-12) | the tenant's visible set (guaranteed at registration, `TenantInitializationService.php:238,259-265`) | unchanged — shared rows keep serving every company; `CompanyController::store`'s call stays a self-guarding no-op unless the company owns rows |
 | Backfill / FK re-pointing | none | **none** — existing rows keep `company_id = NULL` and every existing `unit_id` stays valid (research §5(b)) |
 
-**Both columns of that table are served by one class:** `UnitCatalogQuery` (G-12,
-§9.2) is the sole home of the visibility predicate **and of the shadowing tie-break**, so G-13 changes
-one file and every consumer — resolver, template list, ColumnMapper hint, export message, UoM pickers
-— inherits the new scope without edits. Nothing else in §4.13 changes with the step: the resolver
-algorithm, the ambiguity refusal, the accepted-vocabulary rule and the `units_not_seeded` invariant
-are written once and hold in both columns.
+**Both columns of that table are served by one class — and the seam that makes it legal is owed by
+G-4, not shipped by G-12 (G-R58).** What G-12 **actually built** is
+`App\Modules\Uom\Application\Services\UnitsProvisioningService`, whose
+**`visibleActiveUnitCount(Company): int`** is the ONE place the visibility predicate
+(`is_active AND (tenant_id IS NULL OR tenant_id = <tenant>)`) is expressed — and Import currently
+imports that **internal application service directly** (`ImportController.php:22,51`,
+`ProcessImportJob.php:15,76`), which violates rule 6. It also exposes a count only, so it cannot serve
+a resolver rows or an accepted-code list. The correction, and it is a **hard prerequisite inside G-4,
+its first task** (§9.2 G-4):
+
+| artifact | placement | contract |
+|---|---|---|
+| `UnitCatalogQueryInterface` | **`app/Shared/Contracts/UnitCatalogQueryInterface.php`** — a genuine cross-module seam, so `Shared/Contracts` is correct here (unlike `NumericFieldNormalizerInterface`, which is module-internal, §4.11(6)) | `visibleUnits(string $companyId): list<UnitCatalogEntryData>` where `UnitCatalogEntryData{id, code, name, symbol, decimalPlaces, tier}` (`tier ∈ {system, tenant, company}`) — ordered deterministically (company tier first, then code ascending), and `visibleActiveUnitCount(string $companyId): int` |
+| `UnitCatalogQuery` | `app/Modules/Uom/Application/Services/UnitCatalogQuery.php`, bound to the interface in `UomServiceProvider` | implements both methods over **ONE predicate**, by wrapping G-12's `UnitsProvisioningService` predicate — `visibleActiveUnitCount()` is derived from the same query that `visibleUnits()` returns, so a count and a list can never disagree. **One predicate method, reused — never a second `tenant_id IS NULL OR tenant_id = …` anywhere** |
+| Import's callers | `ImportController`, `ProcessImportJob`, `UnitResolver` | constructor-inject **`UnitCatalogQueryInterface` only**; the direct `Modules\Uom\…\UnitsProvisioningService` imports G-12 left behind are removed in the same commit (rule 6, rule 9) |
+
+**G-13 then re-points that one class** — the RUL-7 predicate and the shadowing tie-break — and every
+consumer (resolver, template list, ColumnMapper hint, export message, UoM pickers) inherits the new
+scope without edits. Nothing else in §4.13 changes with the step: the resolver algorithm, the
+ambiguity refusal, the accepted-vocabulary rule and the `units_not_seeded` invariant are written once
+and hold in both columns.
 
 #### 4.13.3 Resolution contract (owned by **G-4**) — deterministic on today's schema (G-R49)
 
@@ -1498,30 +1687,47 @@ A new `UnitResolver` (constructor-injected, rule 13) resolves the cell as follow
 scope-independent; only the word **visible** carries the substitution above.
 
 1. `trim()` the cell. A blank cell skips to step 5.
-2. Match the cell **against `code` only**, **case-insensitively**, over the rows **visible** to the
-   importing company **with `is_active = true`**. Name and symbol matching is **REMOVED** (r3 accepted
-   `code`/`name`/`symbol` while showing the operator codes only, so the displayed list was not the
-   accepted vocabulary — §4.13.4).
+2. Match the cell **against `code` only**, **EXACTLY — byte-for-byte, CASE-SENSITIVE, after the trim**
+   — over the rows **visible** to the importing company **with `is_active = true`**. Name and symbol
+   matching is **REMOVED** (r3 accepted `code`/`name`/`symbol` while showing the operator codes only,
+   so the displayed list was not the accepted vocabulary — §4.13.4).
+
+   **Case-sensitive is a correction of r4's case-insensitive rule (G-R59), and it is the only reading
+   that makes §4.13.4's invariant true.** Under a case-insensitive match, a tenant holding both a
+   system `kg` and a tenant-authored `KG` (the live demo shape, §4.13.2) surfaces **both** codes as
+   accepted while **either** typed value returns `unit_ambiguous` — "the surfaced list is the accepted
+   list" would be false for two of the codes on the list. Exact matching resolves `kg` to `kg` and
+   `KG` to `KG`, and both remain on the list. It is also literally what R11 says: units are "entered
+   **exactly as they are spelled**". Consequences, stated so no test contradicts them:
+   - `"kg"` → the row whose code is `kg`. `"KG"` → the row whose code is `KG` **if one is visible**,
+     otherwise `unit_unknown` — an autocapitalising spreadsheet is a row error the operator can see
+     and fix, exactly as a misspelling is, and the error message carries the accepted list.
+   - `" kg "` still resolves — **trim is the only normalisation**, and it is applied before the
+     comparison.
+   - `"Kg"`, `"kgs"`, `"Kilogrammes"` are all `unit_unknown`. No alias map (OQ-G-22(iii), ruled NO).
+   - **OQ-G-22(i) is RULED: exact, case-sensitive.** Its "open" status is closed by this section.
 3. **Apply the RUL-7 tie-break, then count. Never take an arbitrary first row.** If the matches span
    both visibility tiers — a **shared** row (`company_id IS NULL`) and the importing **company's own**
    row — the **company row wins** and the shared one is discarded before counting. `unit_ambiguous`
-   therefore describes ambiguity **within one tier** (two shared rows `kg` and `KG` under a
-   case-insensitive match, which is the live demo-tenant shape), never the legal shadowing case.
-   Until G-13 lands there is only one tier, so the tie-break is a no-op and the rule is already
-   correct today.
+   therefore describes ambiguity **within the winning tier only**: two visible rows carrying the
+   **same exact code string** in the same tier. Under the exact-match rule of step 2 that is a genuine
+   data defect — precisely the duplicate set M9's three partial uniques will forbid (§3.1 M9) and that
+   today's census reports — and never the legal shadowing case, and never a `kg`/`KG` pair (two
+   different codes, both accepted). Until G-13 lands there is only one tier, so the tie-break is a
+   no-op and the rule is already correct today.
    - **1 match** (after the tie-break) → resolve: write **both** `unit_id` (the FK the import has
      never populated) and the legacy `unit` string set to that unit's canonical `code`, so the stored
      value is normalised rather than whatever the operator typed.
    - **0 matches** → coded ROW ERROR `unit_unknown`. Detail: `{"supplied": "<cell>", "accepted":
      ["kg","g",…]}`; the operator-facing message is the "enter exactly as spelled" instruction plus
      the full comma-separated list of accepted **codes**.
-   - **more than 1 match** → coded ROW ERROR **`unit_ambiguous`**. Detail lists the matching rows
-     (`id`, `code`, `name`, category, and whether the row is system or tenant-authored) so the
-     operator can see *why* it is ambiguous. This is not hypothetical: a case-insensitive `"kg"` on a
-     demo tenant matches the system `kg` and the tenant `KG` (§4.13.2). **Never resolve to an
-     arbitrary row** — `ProductController::resolveUnitId` already refuses this way
-     (`ProductController.php:1226`, `count() === 1 ? … : null`), except that it refuses *silently*;
-     the import refuses *loudly*.
+   - **more than 1 match** → coded ROW ERROR **`unit_ambiguous`**. Detail lists the matching rows as
+     `candidates: list<UnitCandidateData>` (§3.2.3) — `id`, `code`, `name`, category, `tier` — so the
+     operator can see *why* it is ambiguous. Under exact matching this fires only on **duplicate code
+     strings within the winning tier**, which is the NULL-distinct gap M9 repairs (§3.1 M9, §4.13.2);
+     it is rare but real, and it must not be papered over. **Never resolve to an arbitrary row** —
+     `ProductController::resolveUnitId` already refuses this way (`ProductController.php:1226`,
+     `count() === 1 ? … : null`), except that it refuses *silently*; the import refuses *loudly*.
 4. Never a silent default, never a free-text passthrough: every non-blank cell ends at exactly one of
    the three outcomes above.
 5. **Blank cell (RUL-7).** On **update**, keep the product's existing unit — §4.4's coalescing rule,
@@ -1565,9 +1771,12 @@ code; everything else is left alone and counted).
 #### 4.13.4 Where the accepted vocabulary is surfaced
 
 **The list shown anywhere is EXACTLY the set the resolver accepts** — the live, visible, active
-**codes**, and nothing else. That equality is the point of removing name/symbol matching in step 2:
-an operator who types a value from the list can never be refused, and a value not on the list is
-always refused.
+**codes**, in the deterministic order `UnitCatalogQueryInterface::visibleUnits()` returns (company
+tier first, then code ascending), and nothing else. Two decisions make that equality **true rather
+than aspirational**: removing name/symbol matching (step 2), and matching the code **exactly,
+case-sensitively** (G-R59). An operator who copies a value from the list — including a `KG` that sits
+beside a `kg` — can never be refused, and a value not on the list is always refused. Every surface
+below renders the same call's output.
 
 | Surface | Lane | Behaviour |
 |---|---|---|
@@ -1690,11 +1899,23 @@ reason is also persisted or is the operator's whole message: `units_not_seeded` 
   `ImportController`, but **`MigrationWizardController::template()` is a different controller**
   (`:139-160`) and would have kept handing out composite-item templates; r2 also dropped r1's
   show/resume requirement, so an already-created composite job stayed readable and resumable after the
-  module was removed. The gated surfaces are **every route that exposes the job or its type**:
-  `store`, `template`, `preview`, `execute`, **`show`**, resume, **`updateOptions` (PATCH options)**,
-  **`errors`**, **`error-summary`**, and every type-specific download (`rows-export`,
-  `result-workbook`, `source-file`). The last three were the gap gate r3 flagged under rule 12; they
-  are in G-3b's test list, not a follow-up.
+  module was removed.
+
+  **Who gates what — one rule, stated once and binding on every lane (G-R62): a lane gates the routes
+  it CREATES; G-3b gates every route that EXISTS on its base sha.** G-3b cannot pre-gate a route that
+  does not yet exist, and a later lane must not leave one open.
+
+  | Route | Exists on G-3b's base? | Gated by |
+  |---|---|---|
+  | `POST /imports` (`store`) · `GET /imports/{id}` (`show`) · `GET /imports/{id}/preview` · `POST /imports/{id}/execute` · **`PATCH /imports/{id}/options` (`updateOptions`)** · **`GET /imports/{id}/errors`** · **`GET /imports/{id}/error-summary`** · `GET /imports/{id}/failed-rows.csv` · `GET /imports/{id}/result-workbook` · `GET /migration-wizard/template/{type}` (**`MigrationWizardController`**) | **yes** | **G-3b**, in its own test list — not a follow-up. All ten are enumerated in the brief's mandatory surface × check table, and a route present in `ImportServiceProvider.php:67-88` and missing from that table is a gate finding |
+  | `GET /imports/{id}/source-file` (§5.1) | no — created by G-6a | **G-6a**, calling the same `ModuleEntitlementCheck::ensure()` |
+  | `GET /imports/{id}/rows-export` (§5.1) | no — created by G-1 | **G-1**, same check |
+  | `GET /migration-wizard/columns/{type}` (G-11's hint endpoint) | no — created by G-11 | **G-11**, same check |
+  | resume | **there is no backend resume route on the base sha**, and G-6b does not add one (resume is client-side rehydration over `GET /imports/{id}`, already gated). If G-6b concludes a server route is unavoidable, **G-6b** gates it | — | **G-6b**, if it ever exists |
+
+  Each of those lanes carries the line *"gate what you create: any route this lane adds joins the
+  existing group in `ImportServiceProvider.php:67` **and** calls `ModuleEntitlementCheck::ensure()`
+  for its `ImportType`"* in its brief, and pins it with a disabled-module 403 test of its own route.
 
   FE: `ImportDashboardPage` hides the composite-items card and the wizard refuses the type when the
   module is absent. Both sides are tested from **G-7** onward — a disabled tenant is refused on every
@@ -1757,6 +1978,10 @@ r3's four-lane claim was proved only against the five held files, which shows *n
 | G-11 | G-4, G-8, G-9 | yes | no |
 | G-6b | G-3b, G-4, G-6a, G-1 | yes | no |
 | G-10 | G-1, G-6b, G-11 | yes | no |
+
+**r5:** three of those five — **G-7, G-3a and G-12 — are now BUILT**, so the startable set today is
+**{G-3b, G-6a}** (Wave 0b, §9.1), and G-4 becomes startable the moment both merge. The derivation
+below is kept because it is the derivation, not a status board.
 
 **The startable-now set is {G-7, G-3a, G-3b, G-6a, G-12}** — derived rather than asserted, with
 `ImportController::index` moved wholly into G-3b so the G-6a↔G-3b co-ownership that made r3's claim
@@ -2017,7 +2242,13 @@ everywhere downstream (`Partner::isCustomer()`/`isSupplier()` return true for `B
 §Operating constraints): worktree under `.worktrees/<lane>` off `dev`; **never stash** (the stash
 stack is repo-global); never combine `--force`-anything with `git push` in one Bash call; run
 `php tools/feature-lane-manifest-check.php` (from `apps/api`) at **every** merge — new Feature test
-classes need manifest ceiling raises; review records committed to `docs/superpowers/reviews/`; merge
+classes need manifest ceiling raises. **No lane quotes a fixed fleet-wide total (G-R63/reconciliation):
+every lane records the manifest numbers read from its OWN base sha, states its delta, and the lane
+that lands SECOND recomputes the union arithmetic from the then-current file.** Three built lanes
+already collide on the same counters — G-7 (Import 18→23, gated 1197→1202), G-3a (Import 18→19,
+Migrations 7→10, Catalog 33→34) and G-12 (Import 18→19, Uom 6→8) — which is exactly why a frozen total
+in this spec would be wrong within a day. The merge gate is `feature-lane-manifest-check.php` passing
+plus **zero regression** against the merger's own pre-merge counts; review records committed to `docs/superpowers/reviews/`; merge
 to **local** `dev` first and promote to `origin/dev` in verified fast-forward batches (rule 21).
 Every lane is **TDD**: the listed tests are written red first. **Every lane updates
 `docs/modules/imports.md` for its own drift rows** from the gap matrix §6 table; G-6b additionally
@@ -2035,7 +2266,7 @@ needs a type, a column, an enum case, a service contract or a behaviour that ano
 | **G-3b** Job company pin + module entitlement | — | M4, `ModuleEntitlementCheck`, `ImportController::index` |
 | **G-12** Units invariant | — | it **declares `ImportErrorCode`** with case `units_not_seeded` (§3.1d, dispatched 2026-08-29 ahead of G-6a) |
 | **G-6a** Claim, reaper, DELETE, purge | G-12 | M6c; adds `worker_lost` to G-12's `ImportErrorCode` — until M6c lands, G-12's own worker-refusal path uses the existing `failJob()` leading-token convention |
-| **G-4** Row semantics: identity, outcomes, merge, units | G-3a, G-3b, G-6a, G-12 | `(company_id, sku)`; the job's company (a census for A is meaningless if execute lands on B); the enum to add row-level cases to; `UnitCatalogQueryInterface` + the empty-catalogue refusal ahead of the resolver |
+| **G-4** Row semantics: identity, outcomes, merge, units | G-3a, G-3b, G-6a, G-12 | `(company_id, sku)`; the job's company (a census for A is meaningless if execute lands on B); the enum to add row-level cases to; G-12's **visibility predicate** and its empty-catalogue refusal ahead of the resolver. **G-4 BUILDS the `UnitCatalogQueryInterface` seam over that predicate as its first task** (§4.13.2a, G-R58) — G-12 shipped `UnitsProvisioningService::visibleActiveUnitCount()` and a direct Import→Uom import, which is a rule-6 violation G-4 closes before its resolver exists |
 | **G-2** SKU generation | G-3a, **G-4** | the unique it catches by name; and it edits `ProductService::upsert` **after** G-4 has reshaped it (G-R52: r3 had G-4 using G-2's resolver without declaring it — r4 folds the **resolver into G-4** and leaves G-2 generator-only) |
 | **G-5** Opening fence + correction | **G-4** | `duplicate_policy`, `outcome`, and the row-truth write it commits with |
 | **G-8** Locale templates, exact reader, ceilings | G-3b, **G-4**, G-6a | the job's company for the convention; `ColumnMappingData` for `parseRows(type, mapping)`; the enum to add `numeric_cell_is_date` / `formula_not_allowed` / `xls_inexact_value` / `unsupported_file_format` |
@@ -2046,25 +2277,36 @@ needs a type, a column, an enum case, a service contract or a behaviour that ano
 | **G-13** Unit company scoping | **G-4**, **G-12** | RUL-7 step 2: it changes the visibility predicate **inside `UnitCatalogQuery`**, which G-12 creates, and it must not move under a resolver that is not yet written |
 | **G-10** Wizard hygiene | **G-1**, **G-6b**, **G-11** | it lands last on the same FE files |
 
-**Waves = the levels of that graph.** Nothing is scheduled by preference.
+**Waves = the levels of that graph, RE-DERIVED at r5 from the table above with G-7/G-3a/G-12 treated
+as satisfied nodes (G-R63).** Nothing is scheduled by preference. **G-6b is IN SCOPE** — the r4 review
+request's remaining-lane list omitted it while the graph, the file table, the tests and a complete
+brief all assign it required work and G-10 depends on it; the omission was the error, and it is
+corrected here (**G-R70**). The remaining-lane set is therefore exactly:
+**{G-3b, G-6a, G-4, G-2, G-5, G-8, G-9, G-13, G-1, G-11, G-6b, G-10}** — twelve lanes, of which
+**G-7, G-3a and G-12 are already BUILT**.
 
 | Wave | Lanes | Note |
 |---|---|---|
-| **0** | G-7, G-3a, G-3b, G-6a | dependency-free **and** F1-free → the startable-now set (§6.1), which as of r4.1 also includes G-12 (below) — see note |
-| **1** | G-12 | placed here by the original closure derivation (needed G-6a's enum); **r4.1**: its dependency closure is actually empty (it *creates* the enum — §3.1d), so it is dependency-free like Wave 0 and was in fact dispatched 2026-08-29 alongside G-7/G-3a, ahead of G-6a. Left numbered Wave 1 rather than renumbering every downstream wave, since nothing else in its closure changes |
-| **2** | G-4 | the hinge lane; almost everything downstream needs it |
+| **0 (BUILT)** | **G-7, G-3a, G-12** | dependency-free, F1-free, and **dispatched 2026-08-29 in parallel**. G-12 sits here rather than in the old "Wave 1" because its closure is empty — it *creates* `ImportErrorCode` (§3.1d) |
+| **0b** | **G-3b, G-6a** | G-3b's closure is empty; **G-6a depends on G-12** (it appends `worker_lost` to G-12's enum), so with G-12 built it is now startable. Both are backend-only and F1-free |
+| **2** | G-4 | the hinge lane; almost everything downstream needs it. Its first task is the `UnitCatalogQueryInterface` seam (G-R58) |
 | **3** | G-2, G-5, G-8, G-9, **G-13** | mutually independent; may run in parallel |
 | **4** | G-1, G-11 | |
-| **5** | G-6b | |
+| **5** | **G-6b** | restored to the wave list (G-R70); G-10 depends on it |
 | **6** | G-10 | last by construction |
+
+**The dispatch order actually used, stated once so no reader has to re-derive it:**
+`G-7, G-3a, G-12` → `G-3b, G-6a` → `G-4` → `G-2, G-5` → `G-8` → `G-1` → `G-6b` → `G-9, G-11, G-10, G-13`.
+Wave numbers 0/0b/2…6 are kept rather than renumbered, so every existing brief's "Wave N" line stays
+true; the ordering above is what governs dispatch.
 
 | Lane | Wave | Size | Decisions | Gates | Held by F1? |
 |---|---|---|---|---|---|
-| G-7 Coverage baseline | 0 | S | D12 | imports-reviewer | no |
-| G-3a SKU scope schema + barcode contract | 0 | M | RUL-2 | imports-reviewer + tenancy-authz + inventory-costing | no |
-| G-3b Job company pin + module entitlement | 0 | M | D5 | imports-reviewer + tenancy-authz | no |
-| G-6a Claim, reaper, DELETE, purge | 0 | M | D7 | imports-reviewer + tenancy-authz | no |
-| **G-12 Units invariant** | 1 | S | R11 refinement | imports-reviewer + tenancy-authz | no |
+| G-7 Coverage baseline (**BUILT**) | 0 | S | D12 | imports-reviewer | no |
+| G-3a SKU scope schema + barcode contract (**BUILT**) | 0 | M | RUL-2 | imports-reviewer + tenancy-authz + inventory-costing | no |
+| **G-12 Units invariant** (**BUILT**) | 0 | S | R11 refinement | imports-reviewer + tenancy-authz | no |
+| G-3b Job company pin + module entitlement | 0b | M | D5 | imports-reviewer + tenancy-authz | no |
+| G-6a Claim, reaper, DELETE, purge | 0b | M | D7 | imports-reviewer + tenancy-authz | no |
 | G-4 Row semantics (identity, outcomes, merge, units) | 2 | **L** | D2, D3(resolution), D10, RUL-1, R11 | imports-reviewer | **yes** |
 | G-2 SKU generation | 3 | S/M | D3 | imports-reviewer | **yes** |
 | G-5 Opening fence + correction | 3 | M | D1, RUL-5 | imports-reviewer + inventory-costing + **stock-gl-interaction** | **yes** |
@@ -2081,9 +2323,17 @@ touching the hold set` (§6). F1 is not merged (Codex fix round 1 in progress).*
 
 ### 9.2 Lane briefs
 
-#### G-7 — Coverage baseline (Wave 0, test-only, runs FIRST as the safety net)
+#### G-7 — Coverage baseline (Wave 0, test-only, runs FIRST as the safety net) — **BUILT**
 
-**Scope.** A parameterised `ImportTypeHttpRoundTripTest` driving the **real route pair**
+**As built (r5 reconciliation).** The lane shipped **five focused classes under
+`apps/api/tests/Feature/Import/RoundTrip/`**, not one monolithic `ImportTypeHttpRoundTripTest`; the
+behavioural contract below is what they assert and it is unchanged. It also **deliberately added
+RED-by-design entitlement pins for G-3b** — those are **prewritten red acceptance pins handed to
+G-3b**, which still owns making them green; G-7 did not claim the behaviour. Its recorded manifest
+snapshot is gated 1202 / Import 23 / Migrations 7 / Catalog 33 / Uom 6 / Company 33 (see §11.2 on why
+no single frozen total is quoted anywhere in this spec).
+
+**Scope.** A parameterised round-trip suite driving the **real route pair**
 (`POST /api/v1/imports` with an `UploadedFile` CSV fixture → `POST /api/v1/imports/{id}/execute`) per
 live type, asserting persisted domain rows. Today only legacy `partners` has a true HTTP E2E
 (`ImportTypesTest.php:94-130`); `parties` and `opening_balances` call the service directly, and
@@ -2104,7 +2354,20 @@ the suite is discoverable. **Fixtures use in-scale values** so this baseline doe
 G-8's rule-19 ceilings land (§7.3a). It must **not** claim entitlement behaviour before G-3b — the
 composite-items entitlement assertions are G-3b's.
 
-#### G-3a — SKU scope schema + barcode contract (Wave 0)
+#### G-3a — SKU scope schema + barcode contract (Wave 0) — **BUILT**
+
+**As built (r5 reconciliation).** Migrations `2026_08_30_100000_enforce_company_scoped_product_skus`,
+`…_100100_enforce_company_scoped_variant_skus`, `…_100200_enforce_company_scoped_partner_vat_numbers`;
+tests `ProductSkuCompanyScopeMigrationTest`, `VariantSkuCompanyScopeMigrationTest`,
+`PartnerVatCompanyScopeMigrationTest` (**one class per table, under
+`apps/api/tests/Feature/Migrations/`**), plus `VariantIndexScopeTest` and
+`ProductSkuCompanyScopeImportTest`. Local PG census: **zero** collision groups on all three tuples.
+**Two ownership corrections that the file table (§9.3) now records:** G-3a — not G-4 — implemented the
+`withTrashed()` lifetime ladder **and** the deleted-holder refusals in `ProductService` (`:36-48`,
+`:291-322`) and `PartnerService` (`:25-126`), together with the create/update FormRequest rules. Those
+refusals are today a **leading-code `RuntimeException`** with "purge it or choose another" text, not an
+`ImportErrorCode` result; **G-4 translates those stable leading codes into typed row
+details/`ImportErrorCode` values and G-1 renders the remediation — neither re-owns the lookup.**
 
 **Scope.** M1/M2/M3 (§3.1) plus **every non-Import consumer**. **Files:** the three migrations; the
 new `VariantIndexNames` / `ProductIndexNames` / `PartnerIndexNames` constant classes, introduced **in
@@ -2115,10 +2378,12 @@ constraint-name branches); `CreateProductRequest.php:177-184` and `UpdateProduct
 (`companyId` through the **job payload**, never `CompanyContext` — queued job, rule 20) plus the
 relative-storage-key fix (G-R22).
 
-**Explicitly NOT in this lane (single-ownership cut, G-R52):** the `withTrashed()` sweep inside
-`ProductService::findExistingProduct` / `PartnerService` resolution and the deleted-holder **row
-errors** (`sku_held_by_deleted_product`, `vat_held_by_deleted_partner`) belong to **G-4**, which owns
-the resolver and the coded row channel. G-3a owns the DB shape and the **UI** path.
+**Ownership as actually built (r5 supersedes the r4 cut):** G-3a owns the DB shape, the **UI** path,
+**and** the `withTrashed()` lifetime sweep inside `ProductService::findExistingProduct` /
+`PartnerService` resolution together with the low-level deleted-holder **refusal fence**. What remains
+**G-4's** is narrower and unchanged in substance: normalising those refusals into the coded row errors
+`sku_held_by_deleted_product` / `vat_held_by_deleted_partner` with typed `ImportErrorDetailData`,
+inside the coded row channel it owns. G-4 must **not** reimplement the lookup.
 
 **Deliberately not changed**, verified already company-scoped by Audit D §2a–2g:
 `ProductService::findIdBySku`, `InventoryOpeningService.php:144-147`,
@@ -2199,7 +2464,28 @@ while `importing`; **purge** — 89-day survives, 91-day purged, source download
 `source_purged`, tenant-isolated, second run a no-op, ProductImages' immediate-purge exception
 asserted (RUL-6).
 
-#### G-12 — Units invariant (Wave 1, backend only, NEW in r4 — G-R49)
+#### G-12 — Units invariant (Wave 0, backend only — G-R49) — **BUILT**
+
+**As built (r5 reconciliation) — read this before the scope paragraph, which describes the plan.**
+1. **`UnitCatalogQueryInterface` / `UnitCatalogQuery` were NOT delivered.** What exists is
+   `App\Modules\Uom\Application\Services\UnitsProvisioningService`, whose
+   **`visibleActiveUnitCount()`** holds the one visibility predicate, and Import imports that internal
+   service **directly** (`ImportController.php:22,51`, `ProcessImportJob.php:15,76`) — a rule-6
+   violation. **G-4 lands the Shared contract over that predicate as its first task** (§4.13.2a,
+   G-R58) and re-points Import; G-13 then re-points the predicate body. `UomController`'s six
+   hand-rolled scopings were **not** re-pointed and are folded into that follow-up.
+2. **M8 is `ensure_units_visible_per_company` and it SEEDS**, under a both-tables-globally-empty
+   guard, in a nested transaction with a catch-all no-throw (§3.1 M8). The "read-only census that
+   never seeds" wording is retired.
+3. **`TenantInitializationService` WAS edited** (`:18,44,258`) to delegate to the one provisioning
+   service, and `CompanyController::store` provisions inside its existing transaction. The old file
+   table's "pinned, not edited" claim is corrected in §9.3.
+4. **G-12 owns `ImportErrorCode`** with the single case `units_not_seeded` and an exhaustive
+   `isJobLevel()`; G-6a appends `worker_lost` only.
+5. Census on local data: 15 tenant DBs / 17 companies, 9 companies fully unit-less and seedable,
+   **0 half-states, 0 exact-duplicate code groups.**
+
+#### G-12 — the planned scope, for reference
 
 **Dispatched 2026-08-29 from brief
 `docs/sessions/session-G-imports-hardening-2026-08-29/briefs/LANE-G12-units-invariant-BRIEF.md`;
@@ -2245,13 +2531,22 @@ template list and the export message for the same company (the equality asserted
 (G-R52), because the duplicate census must use "the same resolver the writer uses" and r3 had the two
 in different lanes with no declared dependency.
 
-**Scope.** D2 + D3's *resolution* half + D10 + RUL-1 + R11's resolver, in the r4 shape (§3.2, §4.2,
-§4.4, §4.5.1, §4.13.3). **Files:** **M6a** and **M6b** (same wave, §3.1d); the `ImportRowOutcome`,
+**FIRST TASK, before any resolver code (G-R58).** Land `App\Shared\Contracts\UnitCatalogQueryInterface`
+and its `App\Modules\Uom\Application\Services\UnitCatalogQuery` implementation over G-12's **one**
+predicate method, bind it in `UomServiceProvider`, and re-point `ImportController`, `ProcessImportJob`
+and the new `UnitResolver` onto the **interface only** — deleting the direct
+`Modules\Uom\…\UnitsProvisioningService` imports G-12 left behind. Signatures and placement are in
+§4.13.2a. Without this, G-4 either guesses scope SQL or ships a rule-6 violation; with it, G-13 is a
+one-file change.
+
+**Scope.** D2 + D3's *resolution* half + D10 + RUL-1 + R11's resolver, in the r4/r5 shape (§3.2, §4.2,
+§4.4, §4.5.1, §4.13.3). **Files:** the `UnitCatalogQueryInterface` + `UnitCatalogQuery` pair above; **M6a** and **M6b** (same wave, §3.1d); the `ImportRowOutcome`,
 `DuplicateBucket`, `DuplicatePolicy` and `ImportWarningCode` enums; the five DTOs + casts of §3.2.3
 (`ColumnMappingData`, `ImportJobOptionsData`, `ImportRowSourceData`, `ImportRowWarningData`,
 `ImportRowErrorBagData`) and the row-level `ImportErrorCode` cases; new `DuplicateCensusService`; new
 `CoalescingAttributeMerger` (signature `(existing, incoming, provided)` — **no `exemptKeys`**); new
-`UnitResolver` (consuming `UnitCatalogQueryInterface`); `ImportService::applyColumnMapping` (emit the
+`UnitResolver` (consuming **`UnitCatalogQueryInterface` only** — never a Uom class, never a second
+visibility predicate); `ImportService::applyColumnMapping` (emit the
 `_provided` set), `::validateJob` (census hook), `::getValidRows` (select on `outcome`),
 `::executeImport` + `ProcessImportJob` (**re-resolve inside the row transaction, write each terminal
 outcome with its own decision — never per chunk**, derive counts from §3.2.2);
@@ -2275,9 +2570,12 @@ supplies its governing cell; **the equations of §3.2.2** with
 but **not** to name; two company-local barcode matches → `barcode_ambiguous` listing candidate SKUs
 (brownfield duplicate-barcode fixture); an arm-1/2 hit on a **soft-deleted** product →
 `sku_held_by_deleted_product`. **R11:** an exact `kg` resolves and sets `unit_id` **and** normalises
-`unit` to `kg`; `" KG "` and `"Kg"` resolve (trim + case-insensitive on **code**) while `"kgs"` and
-`"Kilogrammes"` do **not**; **a demo-shaped fixture holding system `kg` and tenant `KG` makes `"kg"` a
-coded `unit_ambiguous` row error listing both rows — never an arbitrary pick**; an unknown unit is
+`unit` to `kg`; `" kg "` resolves (**trim is the only normalisation**) while `"Kg"`, `"kgs"` and
+`"Kilogrammes"` are `unit_unknown` — the match is **exact and case-sensitive** (§4.13.3, G-R59);
+**a demo-shaped fixture holding system `kg` and tenant `KG` resolves `"kg"` to `kg` and `"KG"` to
+`KG`, each to exactly one row**, while a fixture holding two visible rows with the **same exact code**
+in one tier makes that code a coded `unit_ambiguous` row error listing both candidates — never an
+arbitrary pick; an unknown unit is
 `unit_unknown` whose detail carries the supplied value **and** the live accepted-code list; a blank
 cell keeps the existing unit on update and, on create, applies the OQ-G-22(ii) default with warning
 `unit_defaulted`; a **tenant-added** unit (`sachet`) resolves, proving the list is read live;
@@ -2288,12 +2586,28 @@ exactly one visible active code, logs its counts, and leaves ambiguous/unknown v
 
 **Precondition: rebase after F1 merges** (touches `ImportWizardPage.tsx`).
 
-**Scope.** D3's *generation* half only — the resolver is G-4's. **Files:** M5; new `SkuGenerator`
-(constructor-injected); `ProductService::upsert` (call the allocator; **remove `skuFromName` and the
+**Scope.** D3's *generation* half only — the resolver is G-4's. **The component is
+`SkuAllocator`, not `SkuGenerator` (G-R69 — the brief's name wins and the spec now uses it
+everywhere):** `App\Modules\Product\Application\Services\SkuAllocator`, `final`,
+constructor-injected, behind `App\Modules\Import\Application\Contracts\SkuAllocatorInterface`
+(module-internal `Application/Contracts`, the sibling-module placement — **not** `Shared/Contracts`,
+which is reserved for cross-module seams like `UnitCatalogQueryInterface`), bound in
+`AppServiceProvider` beside the `ProductServiceInterface` binding. **Files:** M5; `SkuAllocator` +
+its interface; `ProductService::upsert` (call the allocator; **remove `skuFromName` and the
 barcode-as-SKU fallback**, `:59-63,282-287`); `CreateProductRequest` (`sku` → nullable) +
 `ProductController::store`; the `sku_generated` warning case and the `sku_allocation_exhausted` error
 case; `ImportWizardPage.tsx` description for `sku`; `docs/modules/imports.md:147-149,165` corrected —
 the matrix calls this "the single most dangerous line of drift for Session G".
+
+**One upsert result DTO, owned by the lane that lands first (G-R69).**
+`ProductServiceInterface::upsert()` returns a bare `string` today
+(`app/Shared/Contracts/ProductServiceInterface.php:14`) with exactly one production caller
+(`ImportService.php:551`). It becomes **`App\Shared\DTOs\ProductUpsertResultData`** —
+`final readonly`, fields `productId: string`, `sku: string`, `skuWasGenerated: bool` — the name and
+shape the G-2 brief specifies. **G-4 lands first and therefore OWNS the DTO and the signature
+change** (it is already reshaping `upsert`'s merge branch, §9.3): G-4 introduces
+`ProductUpsertResultData` with `skuWasGenerated` hardcoded `false`, and **G-2 extends the same class**
+rather than adding a second one. Neither lane branches on execution order.
 
 **Tests.** Blank SKU → `SKU-000001`, `SKU-000002`, … with `sku_generated` warnings carrying the
 values; **two DIFFERENT-name blank-SKU rows get two different generated SKUs**; **two SAME-name
@@ -2356,8 +2670,12 @@ currency (rule 20); `ProductsImportPipelineTest.php:470` stays green.
 here once** (G-R52). **Files:** M7 **with its in-migration backfill** (G-R17); `Country` model
 fillable/casts; `CountriesSeeder` (future provisioning only); new `NumberConventionResolver` +
 `NumberConventionData` DTO; new `ConventionCopy` service +
-`docs/guides/legacy-migration-conventions.copy.yaml` + the `pnpm i18n:conventions` generator and its
-CI check (§4.12); new `ExactDecimalXlsxReader` per the §4.11 contract **and the `.xls` float→validated
+`docs/guides/legacy-migration-conventions.copy.yaml` (the copy catalog itself, with the keys this
+lane's templates need). **The `pnpm i18n:conventions` generator, its committed generated catalogs and
+the CI stale check are NOT G-8's — they are G-11's** (G-R68): the G-8 brief declares them out of
+scope, the G-11 brief claims them explicitly, and the brief pair is the executable contract. G-8 owns
+the **YAML source** and reads it server-side through `ConventionCopy`; G-11 owns the **generation of
+the FE catalogs from it** and the `--check` CI leg; new `ExactDecimalXlsxReader` per the §4.11 contract **and the `.xls` float→validated
 string path of §4.11(1a)**, with `parse()` split into `parseHeaders()` / `parseRows(type, mapping)`;
 new `NumericFieldNormalizerInterface` in `Import/Application/Contracts` + the provider binding +
 `ImportService` injecting the interface (§4.11(6));
@@ -2411,7 +2729,13 @@ customer balance → invoice, negative → credit note for the absolute amount, 
 #### G-13 — Unit company scoping (Wave 3, backend + UoM FE, NOT held by F1)
 
 **Scope.** Step 2 of RUL-7 (§4.13.2a): shared tenant defaults **plus** per-company additions, with
-company rows shadowing shared rows of the same code.
+company rows shadowing shared rows of the same code. **Two contract points the brief pins and the
+spec now follows:** (a) **M9 creates THREE partial uniques, not two** (§3.1 M9, G-R65) — a single
+`unique(tenant_id, code) WHERE company_id IS NULL` is still NULL-distinct for the seeded
+`tenant_id = NULL` rows and would not repair the gap it claims to repair; (b) the class G-13 re-points
+is the **`UnitCatalogQuery` behind `UnitCatalogQueryInterface` that G-4 lands** (§4.13.2a) over
+G-12's `UnitsProvisioningService` predicate — G-13 changes **one** method body and every consumer
+inherits the new scope; it renames and relocates nothing.
 
 **Files.** **M9**; `Unit` model (`fillable`/`casts` gain `company_id`);
 `UnitCatalogQuery` — **the one file that changes the visibility predicate and turns the shadowing
@@ -2472,7 +2796,17 @@ containing the warning row with `_status=warning`, while the validity/failed-cou
 `types.ts` and the locales, four of the five hold-set files.
 
 **Scope.** R10 / §4.12, **on the real authorities** (G-R53). **G-11 emits no template, no hint row and
-no sentinel — those are G-8's, and G-11 consumes the generated copy.** **Files:**
+no sentinel — those are G-8's.** **G-11 DOES own the i18n side of the copy catalog (G-R68):** the
+`apps/web/tools/i18n-conventions.mjs` generator that reads G-8's
+`docs/guides/legacy-migration-conventions.copy.yaml`, the committed generated `import.conventions.*`
+(in `import.json`) and `openingBalances.conventions.*` (in `common.json`) blocks, the
+`pnpm i18n:conventions --check` legs wired into `apps/web/package.json`'s `lint` chain and
+`scripts/preflight.sh`, and the guide-parity test. It also adds
+**`GET /migration-wizard/columns/{type}`** (`MigrationWizardController::columns`) returning
+`{explainer_key, columns:[{name, required, hint_key}], unit_accepted_codes}` — a route §5.1 did not
+list; it **joins the existing group and calls `ModuleEntitlementCheck::ensure()` itself** (gate what
+you create, §5.4), and `unit_accepted_codes` comes from the **same** `UnitCatalogQueryInterface` call
+G-8's template uses, asserted identical (§4.13.4). **Files:**
 
 | R10 surface | What G-11 changes |
 |---|---|
@@ -2545,6 +2879,14 @@ Every production file this program touches, with **one primary owner**. Where a 
 the file it is listed as a contributor **in dependency order**; a contributor never edits the primary
 owner's methods, and no two lanes edit the same file concurrently (their waves differ).
 
+**r5 correction (G-R63): "primary owner" now means the owner of the REMAINING change**, not a
+historical plan. G-7, G-3a and G-12 are built, so files they already changed name **them** as owner
+and the later lane as contributor — never the reverse. Shared documentation is split by named section
+rather than assigned to everyone: `docs/modules/imports.md` has **G-6b as its single integrator
+owner** (footer, endpoint list, structure), and every other lane may edit **only the drift rows its
+own brief names** (G-2 `:147-149,165`; G-10 `:485-518`; G-4's idempotency/products/units/outcome rows;
+G-8's template/ceiling/`.xls` rows; each listed in that lane's brief).
+
 | File | Primary owner | Later contributors (in order) |
 |---|---|---|
 | `database/migrations/tenant/…enforce_company_scoped_product_skus` (M1) | G-3a | — |
@@ -2565,10 +2907,15 @@ owner's methods, and no two lanes edit the same file concurrently (their waves d
 | `Import/Domain/Enums/ImportType.php` | G-3b (`requiredModule()`) | G-8 (numeric rules), G-9 (deprecate `Partners`, `customer_category`), G-11 (`explainerKey`, `columnHintKeys`) |
 | `Import/…/ModuleEntitlementCheck.php` | G-3b | — |
 | `Import/Domain/Enums/ImportErrorCode.php` | **G-12** (r4.1 — created here, not G-6a; §3.1d) | G-6a (`worker_lost`), G-4, G-2, G-8, G-5, G-1 (cases only) |
-| `ImportErrorDetailData` | **G-6a** | — |
+| `ImportErrorDetailData` (+ its nested `UnitCandidateData`) | **G-6a** (declares the class, §3.2.3) | G-4, G-5, G-8, G-1 — **fields only**, each lane adding only the declared optional fields its codes populate |
+| `Product/…/SkuAllocator.php` + `Import/Application/Contracts/SkuAllocatorInterface.php` (**`SkuAllocator`, not `SkuGenerator`** — G-R69) | G-2 | — |
+| `Shared/Contracts/ProductServiceInterface.php` + `Shared/DTOs/ProductUpsertResultData.php` | **G-4** (introduces the DTO and the signature change — it lands first) | G-2 (**extends** the same DTO with `skuWasGenerated`; never a second DTO) |
 | `Import/…/ImportJobClaimService.php`, `ReapStuckImportsCommand.php`, `PurgeExpiredImportArtifactsCommand.php`, `routes/console.php` | G-6a | — |
 | `Import/Providers/ImportServiceProvider.php` | G-6a (routes) | G-8 (the `MigrationWizardService` binding + the normalizer interface binding) |
-| `Shared/Contracts/UnitCatalogQueryInterface.php`, `Uom/…/UnitCatalogQuery.php`, `Uom/…/UomController.php` | G-12 | **G-13** (the RUL-7 predicate + tie-break) |
+| `Uom/…/UnitsProvisioningService.php` (the ONE visibility predicate, **as built**) | **G-12** | G-4 (wrapped, not re-expressed), G-13 (the RUL-7 predicate + tie-break) |
+| `Shared/Contracts/UnitCatalogQueryInterface.php` + `Uom/…/UnitCatalogQuery.php` (**NOT delivered by G-12** — G-R58) | **G-4** (its first task) | **G-13** (re-points the predicate body + turns the shadowing tie-break from a no-op into a real preference) |
+| `Uom/…/UomController.php` (six hand-rolled scopings, **not** re-pointed by G-12) | **G-4** (re-points them onto the interface in the same commit) | G-13 |
+| `Tenant/…/TenantInitializationService.php` (**edited by G-12**, `:18,44,258` — the r4 "pinned, not edited" claim is withdrawn) | **G-12** | — |
 | `…add_company_scope_to_units` (M9), `Uom/Domain/Entities/Unit.php`, `CreateUnitRequest.php`, `UpdateUnitRequest.php`, `apps/web/…/features/uom/` | G-13 | — |
 | `Company/…/CompanyController.php` | G-12 | — |
 | `Import/Domain/Enums/ImportRowOutcome.php`, `DuplicateBucket.php`, `DuplicatePolicy.php`, `ImportWarningCode.php` | G-4 | G-2, G-5, G-1 (cases only) |
@@ -2576,10 +2923,11 @@ owner's methods, and no two lanes edit the same file concurrently (their waves d
 | `Import/…/DuplicateCensusService.php`, `CoalescingAttributeMerger.php`, `UnitResolver.php` | G-4 | — |
 | `Import/Services/ImportService.php` | **G-4** | G-3b (`createJob`), G-9 (`finalizeImport` exhaustive), G-8 (normalizer call sites), G-1 (coded refusals) — G-3b's edit lands first, in Wave 0 |
 | `Import/Application/Jobs/ProcessImportJob.php` | **G-4** (outcome writes) | G-6a (re-verify + CAS, Wave 0), G-12 (units re-verify), G-1 (codes) |
-| `Product/…/ProductService.php` | **G-4** (`findExistingProduct`, `upsert` merge/unit) | G-2 (generation branch) |
-| `Partner/…/PartnerService.php` | G-4 | G-9 (`customer_category`) |
+| `Product/…/ProductService.php` | **G-3a** (the `withTrashed()` lifetime ladder + deleted-holder refusal, `:36-48`, `:291-322` — **already built**) | G-4 (`findExistingProduct` chain/arm-3 guard/barcode count, `upsert` merge + `unit_id` write, and translating G-3a's refusal into `sku_held_by_deleted_product`), G-2 (generation branch + `ProductUpsertResultData`) |
+| `Partner/…/PartnerService.php` | **G-3a** (company-scoped `withTrashed()` VAT paths + `vat_held_by_deleted_partner` refusal — **already built**) | G-4 (resolution ladder + coalescing merge + coded translation), G-9 (`customer_category`) |
+| `Product/…/CreateProductRequest.php`, `UpdateProductRequest.php` (company + lifetime rules) | **G-3a** (**built**) | G-2 (`sku` → nullable on create) |
 | `Import/Services/ProductOpeningStockPhase.php` | **G-4** (selector) | G-5 (`correctRow`), G-1 (`location_unresolved` split) |
-| `Inventory/…/OpeningCorrectionService.php` (new), `ResetOpeningBalanceService.php`, `BatchStockService.php` | G-5 | — |
+| `Inventory/…/OpeningCorrectionService.php` (new), `Inventory/…/ResetOpeningBalanceService.php`, **`BatchExpiry/Application/Services/BatchStockService.php`** (the real path — `App\Modules\BatchExpiry\Application\Services`, **not** `Inventory/…`, G-R64; `OpeningBalancePostingService` already injects it at `:53-57`, so no new cross-module edge is created) | G-5 | — |
 | `Import/…/ExactDecimalXlsxReader.php` (new), `SpreadsheetParserService.php`, `NumericFieldNormalizer.php` + its new interface, `NumberConventionResolver.php`, `ConventionCopy.php`, `…conventions.copy.yaml` | G-8 | — |
 | `Import/Services/MigrationWizardService.php` | G-8 | G-9 (preset templates) |
 | `Import/Services/ResultWorkbookService.php` | **G-8** (`formatValue` only) | G-1 (predicate, Skipped sheet, header block) |
@@ -2593,7 +2941,7 @@ owner's methods, and no two lanes edit the same file concurrently (their waves d
 | `apps/web/…/import/pages/ImportDashboardPage.tsx` | G-9 (preset cards) | G-6b (hide the gated card) |
 | `apps/web/…/import/pages/ImportHistoryPage.tsx`, `ImportJobDetailPage.tsx` (new), `queries.ts`, `importApi.ts`, `routes/index.tsx` | G-6b | G-10 (dead-code removal) |
 | `apps/web/…/opening-balances/components/BatchPreview.tsx`, `pages/OpeningBalanceWizardPage.tsx` | G-11 | — |
-| `docs/modules/imports.md` | G-6b (the drift block + endpoint list + footer) | every lane, for its **own** drift rows only; G-2 `:147-149,165`; G-10 `:485-518` |
+| `docs/modules/imports.md` | **G-6b — the single integrator owner** (drift block, endpoint list, footer, structure) | every other lane edits **only the drift rows its own brief names**, never a shared section: G-4 (idempotency `:54-62`, products `:145-170`, units, duplicate policy, outcome vocabulary `:71-83`/`:341-382`), G-2 (`:147-149,165`), G-8 (template formats, sentinel, conventions, ceilings, `.xls`), G-10 (`:485-518`) |
 
 **Test files** follow the lane that owns the behaviour they pin; the only shared ones are
 `ProductsImportPipelineTest.php` (G-4 amends, G-2/G-5 keep green) and `ProcessImportJobStatusTest.php`
@@ -2628,7 +2976,7 @@ contiguously OQ-G-1 … OQ-G-26.
 | **OQ-G-19** | Should `products.barcode` become tenant-wide unique? (§1.2, §3.1a) | **NO — out of scope.** It has no constraint at any scope today; RUL-2's "barcode = cross-company key" is implemented as a **lookup** concept | yes: a new census-then-refuse migration over every tenant's catalogue plus a duplicate-barcode remediation story. A program of its own | open |
 | **OQ-G-20** | An import row whose SKU/VAT is held by a **soft-deleted** record — refuse, or auto-restore? (§3.1c) | **refuse**, coded, "restore or purge it in the UI" | auto-restore: a spreadsheet cell would resurrect a product carrying stock history, movements and possibly sealed fiscal allocations | open |
 | **OQ-G-21** | Two distinct products sharing a name, both with no SKU and no barcode, **will merge** into one. Accept? (§4.5.1) | **accept** — today's behaviour via the name-slug SKU, now **visible** (bucket `existing_name`, warning `matched_by_name`) | refuse: a name-only collision becomes a row error demanding disambiguation. Safer, but it rejects the tenant-#1 859-row blank-SKU file this program exists to make work | open |
-| **OQ-G-22** | **Unit matching strictness and the blank-cell default on create** (R11, §4.13.3). (i) how strictly is the cell matched? (ii) what does a blank cell do on **create**? (iii) revive the ~90-entry EN+FR alias map? | (i) **trim + case-insensitive, against `code` ONLY** — name/symbol matching is removed so the surfaced list is exactly the accepted vocabulary (§4.13.4), and more than one match **within a visibility tier** is `unit_ambiguous`, never an arbitrary pick; (ii) **`pc` on create**, warning `unit_defaulted`; existing unit kept on update with **no** warning; `unit_default_missing` if `pc` is not visible; (iii) **NO** alias map | (i) strictly case-sensitive on `code` — closest to "exactly as spelled", but `KG` from an Excel autocapitalise becomes a row error; (ii) and (iii) are ruled | **(ii) and (iii) RULED — RUL-7; (i) open** |
+| **OQ-G-22** | **Unit matching strictness and the blank-cell default on create** (R11, §4.13.3). (i) how strictly is the cell matched? (ii) what does a blank cell do on **create**? (iii) revive the ~90-entry EN+FR alias map? | (i) **trim, then EXACT CASE-SENSITIVE match against `code` ONLY** — name/symbol matching is removed and case-folding is removed, so the surfaced list is exactly the accepted vocabulary (§4.13.4); two visible rows with the **same exact code** in the winning tier are `unit_ambiguous`, never an arbitrary pick; (ii) **`pc` on create**, warning `unit_defaulted`; existing unit kept on update with **no** warning; `unit_default_missing` if `pc` is not visible; (iii) **NO** alias map | (i) was decided against case-insensitive matching: folding `KG` onto `kg` makes both codes un-typable on a tenant that owns both, which breaks the surfaced-equals-accepted invariant. An autocapitalised `KG` that matches no visible row is a row error whose message carries the accepted list; (ii) and (iii) are ruled | **ALL THREE RULED — (ii)/(iii) by RUL-7; (i) by the orchestrator at gate r4 (G-R59): exact, case-sensitive** |
 | **OQ-G-23** | The `imports:purge-expired` **schedule cadence** (the 90-day window itself is OQ-G-18) (§4.14) | **daily**, `withoutOverlapping()`, with `->onFailure()` logging | hourly (more churn, no benefit — the window is 90 days) or weekly (a purged-file promise the UI keeps up to 6 days late) | **RULED — RUL-6** |
 | **OQ-G-24** | How should legacy `.xls` be handled? (§4.11(1)/(1a)) | **ACCEPT via conversion**, with per-cell exactness enforced: money/quantity cells must satisfy the rule-19 ceiling **and** round-trip to the same double, else row error `xls_inexact_value` with "re-save as .xlsx" | reject `.xls` outright (r3's design — simpler, but refuses whole files for a defect that is usually per-cell); or accept it and knowingly round money (rule 19 violation) | **RULED — RUL-4** |
 | **OQ-G-25** | **Unit scope (NEW, r4).** (a) company-owned, (b) tenant-shared + nullable per-company additions, or (c) tenant-global? Plus shadowing, sequencing, and the blank-cell default | **(b)**, shadowing **legal with the company row winning**, sequenced as **G-4 + G-12 now / G-13 after**, blank-on-create → `pc` | (a) would cost L (research §5: 6 FK columns re-pointed, 3 through upward joins, a base-unit cycle); (c) leaves units the last operator-editable catalogue bleeding across companies | **RULED — RUL-7** (§4.13.2a, lane G-13) |
@@ -2713,19 +3061,19 @@ Run **by path** (never the full suite without permission — `feedback_no_full_t
 
 | Wave | Lane | Commands |
 |---|---|---|
-| 0 | G-7 | `php artisan test tests/Feature/Import/ImportTypeHttpRoundTripTest.php` |
-| 0 | G-3a | `php artisan test tests/Feature/Import/ProductSkuCompanyScopeMigrationTest.php tests/Feature/Catalog/VariantIndexScopeTest.php tests/Feature/Catalog/VariantBarcodeRaceTest.php tests/Feature/Modules/Catalog/Media/ProductImageImportServiceMediaTest.php` |
-| 0 | G-3b | `php artisan test tests/Feature/Import/ImportJobCompanyPinTest.php tests/Feature/Import/ImportHistoryQueryTest.php tests/Feature/Import/ImportModuleEntitlementTest.php` |
-| 0 | G-6a | `php artisan test tests/Feature/Import/ReapStuckImportsTest.php tests/Feature/Import/ImportJobClaimConcurrencyTest.php tests/Feature/Import/PurgeExpiredImportArtifactsTest.php` |
-| 1 | G-12 | `php artisan test tests/Feature/Import/UnitsInvariantTest.php tests/Feature/Uom/UnitCatalogQueryTest.php` |
+| 0 | G-7 (**built**) | `php artisan test tests/Feature/Import/RoundTrip` (five focused classes, not one) |
+| 0 | G-3a (**built**) | `php artisan test tests/Feature/Migrations/ProductSkuCompanyScopeMigrationTest.php tests/Feature/Migrations/VariantSkuCompanyScopeMigrationTest.php tests/Feature/Migrations/PartnerVatCompanyScopeMigrationTest.php tests/Feature/Catalog/VariantIndexScopeTest.php tests/Feature/Catalog/VariantBarcodeRaceTest.php tests/Feature/Import/ProductSkuCompanyScopeImportTest.php tests/Feature/Modules/Catalog/Media/ProductImageImportServiceMediaTest.php` |
+| 0b | G-3b | `php artisan test tests/Feature/Migrations/ImportJobCompanyBackfillMigrationTest.php tests/Feature/Import/ImportCompanyPinTest.php tests/Feature/Import/ImportModuleEntitlementTest.php` (the brief's class names) |
+| 0b | G-6a | `php artisan test tests/Feature/Import/ReapStuckImportsTest.php tests/Feature/Import/ImportJobClaimConcurrencyTest.php tests/Feature/Import/PurgeExpiredImportArtifactsTest.php` |
+| 0 | G-12 (**built**) | `php artisan test tests/Feature/Import/UnitsInvariantTest.php tests/Feature/Import/UnitsNotSeededRefusalTest.php tests/Feature/Uom/UnitsProvisioningTest.php` (the class that would have been `UnitCatalogQueryTest` moves to **G-4**, with the seam) |
 | 2 | G-4 | `php artisan test tests/Feature/Import/DuplicateCensusTest.php tests/Feature/Import/CoalescingMergeTest.php tests/Feature/Import/UnitResolutionTest.php tests/Feature/Import/ImportRowOutcomeBackfillTest.php tests/Feature/Import/ProcessImportJobStatusTest.php tests/Feature/Import/ProductsImportPipelineTest.php` · `cd apps/web && pnpm test src/features/import` |
 | 3 | G-2 | `php artisan test tests/Feature/Import/SkuGenerationTest.php tests/Feature/Product/CreateProductTest.php` |
 | 3 | G-5 | `php artisan test tests/Feature/Inventory/OpeningCorrectionServiceTest.php tests/Feature/Inventory/OpeningCorrectionReservationTest.php tests/Feature/Import/OpeningStockFenceTest.php tests/Feature/Import/ProductsImportPipelineTest.php` |
-| 3 | G-8 | `php artisan test tests/Feature/Import/LocaleTemplateTest.php tests/Feature/Import/ExactDecimalXlsxReaderTest.php tests/Feature/Import/XlsConversionExactnessTest.php tests/Feature/Import/ImportTypeScaleCeilingTest.php tests/Unit/Import/NumericFieldNormalizerTest.php` · `cd apps/web && pnpm i18n:conventions --check` |
-| 3 | G-13 | `php artisan test tests/Feature/Uom/UnitCompanyScopeMigrationTest.php tests/Feature/Uom/UnitCatalogQueryTest.php` · `cd apps/web && pnpm test src/features/uom` |
+| 3 | G-8 | `php artisan test tests/Feature/Import/LocaleTemplateTest.php tests/Feature/Import/ExactDecimalXlsxReaderTest.php tests/Feature/Import/XlsConversionExactnessTest.php tests/Feature/Import/ImportTypeScaleCeilingTest.php tests/Unit/Import/NumericFieldNormalizerTest.php` |
+| 3 | G-13 | `php artisan test tests/Feature/Uom/UnitCompanyScopeMigrationTest.php tests/Feature/Uom/UnitCatalogVisibilityTest.php tests/Feature/Uom/UomCompanyScopeTest.php` (brief names; `UnitCatalogVisibilityTest` is the class that pins the re-pointed predicate) · `cd apps/web && pnpm test src/features/uom` |
 | 3 | G-9 | `php artisan test tests/Feature/Import/PartiesPresetsTest.php tests/Feature/Import/PartiesImportBalancesTest.php tests/Feature/Import/ImportTypesTest.php` |
 | 4 | G-1 | `php artisan test tests/Feature/Import/ImportRowExportTest.php tests/Feature/Import/ImportExportRoundTripTest.php tests/Feature/Import/ResultWorkbookTest.php tests/Feature/Import/ImportRowWarningsTest.php` |
-| 4 | G-11 | `php artisan test tests/Feature/Import/SignGuidanceInterpretationTest.php tests/Feature/OpeningBalances/OpeningPreviewEchoTest.php` · `cd apps/web && pnpm test src/features/import src/features/opening-balances` |
+| 4 | G-11 | `php artisan test tests/Feature/Import/SignGuidanceInterpretationTest.php tests/Feature/OpeningBalances/OpeningPreviewEchoTest.php` · `cd apps/web && pnpm i18n:conventions --check && pnpm test src/features/import src/features/opening-balances` (the generator + its CI check are **G-11's**, G-R68) |
 | 5 | G-6b | `php artisan test tests/Feature/Import/ImportJobPayloadTest.php` · `cd apps/web && pnpm test src/features/import src/routes` |
 | 6 | G-10 | `cd apps/web && pnpm test src/features/import && pnpm lint && pnpm typecheck` |
 | every lane | — | `./vendor/bin/pint --test <touched>` · `./vendor/bin/phpstan analyse <touched>` · `php tools/feature-lane-manifest-check.php` |
@@ -2881,7 +3229,7 @@ Gate records: `docs/superpowers/reviews/2026-08-29-imports-hardening-spec-codex-
 | G-R42 | Superseded by G-R52: the graph is re-cut and waves are derived from the dependency closure | §6.1, §9.1 |
 | G-R43 | `ImportServiceProvider` is G-8's for the binding; §7.4's process map is correct | §7.4, G-8 |
 | G-R44 | `VariantBarcodeRaceTest.php:92-106` in G-3a's literal-name census | §3.1b, G-3a |
-| G-R45 | Migration count and forward-only policy reconciled: **ten files, `down()` a logged no-op on every one** | §3.1 |
+| G-R45 | Migration count and forward-only policy reconciled: **ELEVEN files** (M1, M2, M3, M4, M5, M6a, M6b, M6c, M7, M8, M9 — corrected from "ten" at r5, G-R65), `down()` a logged no-op on every one | §3.1 |
 
 ### 13.3 Gate r3 — G-R46..G-R56 adjudication (all ACCEPTED)
 
@@ -2890,12 +3238,12 @@ Gate records: `docs/superpowers/reviews/2026-08-29-imports-hardening-spec-codex-
 | **G-R46** | BLOCKER | **One typed state model.** `opening_corrected` is a **warning** on an `imported` row, never an outcome. The five terminal outcomes and the equations `processed = imported + duplicate_skipped + duplicate_loser + failed + opening_locked = total`, `successful = imported`, `failed = failed + opening_locked`, `skipped = duplicate_skipped + duplicate_loser` are stated **once** in §3.2.2 and referenced everywhere. Terminal status uses the existing `ImportStatus` cases only — **verified `ImportStatus.php:9-14` has no `completed_with_errors` and none is invented**. "Write outcomes per chunk" is **deleted** from G-4. The four fault tests are listed once in §4.2.4 | §3.2.2, §4.2.4, G-4 |
 | **G-R47** | BLOCKER | Sheet selection is the workbook's **`activeTab`** (else the first visible); the invented wizard-recorded sheet is **deleted**. `t="n"` and rich-text run aggregation added to the cell table. The guard is made implementable: new `NumericFieldNormalizerInterface` in `Import/Application/Contracts`, bound in `ImportServiceProvider`, injected into `ImportService`; the test binds a double that **throws on `is_float`**. All eighteen cell-kind/multi-sheet cases are enumerated as G-8 tests. `TYPE_STRING` binding kept; the `.xls` decision was superseded by **RUL-4** | §4.11, G-8 |
 | **G-R48** | BLOCKER | `correctInCurrentTransaction()` acquires `ProductCostLock` **internally** — Import touches no Inventory domain class (rule 6, asserted by a grep test). One order: **fence → reverse+reconcile → repost → recompute WAC**, with the poster's line-cost stamp explicitly **not** final and a test that fails if it is. The reservation rule is stated once; G-5's contradictory "reservation does not lock" line is **deleted** | §4.9.2, §4.9.2a, G-5 |
-| **G-R49** | BLOCKER | Resolver is deterministic on today's schema: exact **code** match, case-insensitive, over **active visible** rows; **more than one match → `unit_ambiguous`**, never a first-row pick. Name/symbol matching removed so the surfaced list **equals** the accepted vocabulary. Job-level `units_not_seeded` at upload and re-verified by the worker. New lane **G-12** owns the provisioning guarantee, the brownfield census (**M8**) and the single visibility predicate (`UnitCatalogQuery`). **OQ-G-25 was put to the owner during this round and RULED (RUL-7)**, so §4.13.2a now carries the final two-step scope contract instead of a substitution placeholder: option (b), shadowing legal with the company row winning, `UnitCatalogQuery` as the single predicate home, and a follow-on lane **G-13**. **OQ-G-26** (`unit_id` backfill) added | §4.13, §4.13.2a, G-12, G-4, G-13 |
-| **G-R50** | BLOCKER | **Two clocks** (`claimed_at` while `worker_started_at IS NULL`; `worker_started_at` once started), all terminal transitions **compare-and-set** with an affected-row check, **no ownership token**, and the one-shot invariant pinned. M6c moved into **G-6a's Wave 0**; the earliest-lane ownership rule is stated once and gives `ImportErrorCode` to G-6a. Reaper-vs-late-start and reaper-vs-terminal-write tests added | §3.1d, §4.1.1, §4.7, G-6a |
+| **G-R49** | BLOCKER | Resolver is deterministic on today's schema: exact **code** match over **active visible** rows (**r5/G-R59 made the comparison case-sensitive**, and **r5/G-R58 moved the `UnitCatalogQueryInterface` seam into G-4 as its first task**, because G-12 shipped only `UnitsProvisioningService`'s count predicate — see §13.6); **more than one match → `unit_ambiguous`**, never a first-row pick. Name/symbol matching removed so the surfaced list **equals** the accepted vocabulary. Job-level `units_not_seeded` at upload and re-verified by the worker. New lane **G-12** owns the provisioning guarantee, the brownfield census (**M8**) and the single visibility predicate (`UnitCatalogQuery`). **OQ-G-25 was put to the owner during this round and RULED (RUL-7)**, so §4.13.2a now carries the final two-step scope contract instead of a substitution placeholder: option (b), shadowing legal with the company row winning, `UnitCatalogQuery` as the single predicate home, and a follow-on lane **G-13**. **OQ-G-26** (`unit_id` backfill) added | §4.13, §4.13.2a, G-12, G-4, G-13 |
+| **G-R50** | BLOCKER | **Two clocks** (`claimed_at` while `worker_started_at IS NULL`; `worker_started_at` once started), all terminal transitions **compare-and-set** with an affected-row check, **no ownership token**, and the one-shot invariant pinned. M6c moved into **G-6a's Wave 0**; the earliest-lane ownership rule is stated once and gives `ImportErrorCode` to the earliest **dispatched** lane, **G-12** (r4.1 corrected r3's assignment to G-6a; r5 keeps it). Reaper-vs-late-start and reaper-vs-terminal-write tests added, and **r5 pins the executable claim/release/finalize API** (§4.1.1, G-R60) | §3.1d, §4.1.1, §4.7, G-6a |
 | **G-R51** | MAJOR | Exact serialized shape per column, from the code: `data` = string map + `_provided` + nested `_results` (`ImportService.php:473-485,525-549`); `errors` = a **keyed bag** `{field: [messages]}` → `ImportRowErrorBagData` (`ImportRow.php:16-20,62-70`); `warnings` = list of `{code, detail}`. Legacy-hydration fixtures per historical shape. The warning DTO/cast/enum/emitter are **atomically G-4's**; later lanes add cases only | §3.2.3, §3.1d |
 | **G-R52** | BLOCKER | Ownership re-cut, then waves **derived from the closure**: `ImportController::index` → **G-3b only**; the **product resolver folds into G-4** and G-2 becomes generator-only depending on G-4; **G-8 moves before G-1** so locale-aware export formatting has one owner; `formatValue` float removal → G-8 only; `useDeleteImport` → G-6b only; G-8 and G-11 declare their G-4/G-1 dependencies. §9.1 carries the dependency table and the derived wave list; §9.3 carries a **file → owning lane** table; §6.1 recomputes the startable set from the closure **and** the F1 hold | §6.1, §9.1, §9.3 |
 | **G-R53** | MAJOR | G-11 rewritten to §4.12's authorities: Parties formats the `PartiesRowMapper` payload; AR/AP extends `ArApOpeningService::getPostPreview` (`:431-489`); GL extends `AccountingOpeningService::getPostPreview` (`:836-894`); FE owns `BatchPreview.tsx`, `OpeningBalanceWizardPage.tsx` and the generated union types. **"GL side reader" and the `PartiesRowMapper`-for-open-items text are deleted.** G-8 alone emits template/hint/sentinel | §4.12, G-11 |
-| **G-R54** | MAJOR | "**Ten** migration files" (M8 added by G-12). `down()` is a **logged no-op on every file**, so the forward-only label and the rollback rows agree. M6c is in G-6a's wave. §3.1's register gives each file its lane, wave, guards, `down()` and pinning test; M4/M6a/M7 state that backfill and index repair run **independently of column creation** | §3.1, §3.1d, §11.1 |
+| **G-R54** | MAJOR | "**Eleven** migration files" (M8 by G-12, M9 by G-13 — r4 said ten and r5 corrects every count, G-R65). `down()` is a **logged no-op on every file**, so the forward-only label and the rollback rows agree. M6c is in G-6a's wave; **`ImportErrorCode` is G-12's, not G-6a's** (r4.1/r5 — G-12 was dispatched first and created it; G-6a appends `worker_lost` only). §3.1's register gives each file its lane, wave, guards, `down()` and pinning test; M4/M6a/M7 state that backfill and index repair run **independently of column creation** | §3.1, §3.1d, §11.1 |
 | **G-R55** | MAJOR | §13 rewritten from the **final** body: 13.1 and 13.2 now state the current contract rather than the round's delta, and 13.4 reconciles every row gate r3 marked PARTIAL/NOT CLOSED | §13 |
 | **G-R56** | MINOR | Header is **DRAFT r4**; the lifecycle graph is regenerated from the claim contract (no "async execute writes pending"); §7.3 names the exact sentinel; G-10's handoff says **G-6b**. Sweep run for `r2`, `per chunk`, `shared claim`, `started_at`, `# hint` and stale `G-6a` ownership | header, §4.1, §7.3, G-10 |
 
@@ -2905,7 +3253,7 @@ Gate records: `docs/superpowers/reviews/2026-08-29-imports-hardening-spec-codex-
 |---|---|---|
 | G-R25 (r2) / G-R4 (r1) | NOT CLOSED | G-R47: active-tab selection, `t="n"`, run aggregation, injectable normalizer; wizard-sheet idea deleted |
 | G-R26 (r2) / G-R5 (r1) | PARTIAL | G-R46: per-chunk write deleted from G-4; one equation set in §3.2.2 |
-| G-R27 (r2) | PARTIAL | G-R50/G-R54: M6c in G-6a's Wave 0; `ImportErrorCode` owned by G-6a; M6a/M6b in G-4's wave |
+| G-R27 (r2) | PARTIAL | G-R50/G-R54: M6c in G-6a's wave; **`ImportErrorCode` owned by G-12** (r4.1/r5, superseding "G-6a"); M6a/M6b in G-4's wave |
 | G-R28 (r2) / G-R10 (r1) | PARTIAL / NOT CLOSED | G-R48: lock inside the seam, order fixed to repost-before-recompute, cost-order test |
 | G-R29 (r2) / G-R11 (r1) | PARTIAL | G-R48: the reservation rule stated once; G-5's contradictory line deleted and replaced by the allowed/refused pair of tests |
 | G-R31 (r2) | PARTIAL | G-R53: G-11 rewritten onto the real authorities and files |
@@ -2913,32 +3261,82 @@ Gate records: `docs/superpowers/reviews/2026-08-29-imports-hardening-spec-codex-
 | G-R38 (r2) / G-R21 (r1) | PARTIAL | G-R50: two clocks, CAS on every terminal write, no token, one-shot invariant |
 | G-R39 (r2) / G-R13 (r1) | PARTIAL | G-R51: exact shapes + legacy fixtures; warning channel atomically G-4's |
 | G-R42 (r2) / G-R19 (r1) | NOT CLOSED | G-R52: single ownership, dependency table, derived waves, file→lane table |
-| G-R45 (r2) | PARTIAL | G-R54/G-R55: ten files, uniform no-op `down()`, §13 rewritten |
+| G-R45 (r2) | PARTIAL | G-R54/G-R55: **eleven** files (r5 correction), uniform no-op `down()`, §13 rewritten |
 | G-R9 (r1) | PARTIAL | G-R48 (order + boundary) and the reservation test pair |
 | G-R20 (r1) | closed in r3, extended here | `updateOptions`, `errors`, `error-summary` added to the gated surfaces (the rule-12 note in gate r3's sweep) |
 | G-R22 (r1) | PARTIAL | RUL-6 makes the retention split an owner ruling, not a spec choice |
 | G-R23 (r1), G-R2, G-R6, G-R15, G-R16 | CLOSED / PARTIAL | carried unchanged into §13.1's final-contract rows |
 
-**Items gate r3 explicitly left open, and how r4 treats them:** the `opening_locked` counting question
+**Items gate r3 left open, and their status after r5 (G-R67):** the `opening_locked` counting question
 is **decided** (it counts as failed, §3.2.2, on the orchestrator's ruling); the `cost_price`
-weighted-average question is **decided** (recompute — it is the only value true of the product as a
-whole); OQ-G-3/18/23/24 are now **RULED** (RUL-4/5/6); OQ-G-19/20/21/22/25/26 remain owner calls.
+weighted-average question is **decided** (recompute, at scale 6 — §4.9.2b, G-R64);
+**OQ-G-3/18/23/24/25 are RULED** (RUL-4/5/6/7) and **OQ-G-22 is now RULED in all three parts** —
+(ii)/(iii) by RUL-7 and **(i) by the orchestrator at gate r4: exact, case-sensitive** (G-R59). The
+remaining owner calls are **OQ-G-19, OQ-G-20, OQ-G-21 and OQ-G-26** (default yes), plus the
+still-defaulted OQ-G-2/4/5/6/7/8/9/10/11/13/14/15/16/17. **OQ-G-25 is no longer an owner call** and
+any sentence describing it as one is superseded by RUL-7.
 
-**Gate r3's "Deliberately NOT taken" list is honoured in full:** no unit re-scoping migration, no
-shadowing policy chosen on the owner's behalf, no objection to the M6 split or M6a's mapping order,
-no second sign implementation, no POS migration, no new Horizon queue, no second Parties writer, no
-clear token, no interactive mid-run prompt, no contacts import, no B-18 expansion.
+**Gate r3's "Deliberately NOT taken" list, corrected at r5 (G-R67):** the two unit items on it are
+**no longer accurate and must not be read as current** — RUL-7 **took** the unit re-scope (**M9**,
+lane **G-13**) and **did** choose the shadowing policy (legal, company row wins), on the **owner's own
+ruling** rather than on the spec's initiative. Everything else on that list still holds: no objection
+to the M6 split or M6a's mapping order, no second sign implementation, no POS migration, no new
+Horizon queue, no second Parties writer, no clear token, no interactive mid-run prompt, no contacts
+import, no B-18 expansion.
 
 ### 13.5 Post-gate reconciliation
 
 | Round | Change | Where |
 |---|---|---|
 | r4.1 (orchestrator) | G-12 enum ownership reconciled with dispatch order; no design change | §3.1d, §9.1, §9.2 (G-6a, G-12) |
+| r5 (orchestrator) | Gate r4 adjudicated in full (§13.6); the brief-wins principle adopted in the header; §§3.1/3.3/4.1.1/4.9.2b/4.10/4.13/5.4/9/11.2/12.1 corrected to the code-verified briefs and to what G-7/G-3a/G-12 built | header, §13.6 |
+
+### 13.6 Gate r4 adjudication — G-R57..G-R70 (all ACCEPTED)
+
+Gate record: `docs/superpowers/reviews/2026-08-29-imports-hardening-spec-codex-review-r4.md`
+(verdict **REWORK**; six blockers, eight majors). Every finding is discharged as a spec/brief edit —
+**no pre-approved behavioural choice was reopened**, and the two decisions the orchestrator had to
+make (the validation transition, and exact-vs-case-insensitive unit matching) are recorded as rulings
+below rather than left to a lane.
+
+| Finding | Sev | Change made | Section / brief |
+|---|---|---|---|
+| **G-R57** | BLOCKER | **The validation transition is defined.** A row rejected at VALIDATE time is persisted by **the validate step itself** with `outcome = failed` and `import_error_code = validation_failed` (a new umbrella case), the field-keyed messages staying in `import_rows.errors`. Execute selects only `outcome = pending`, so a validation failure is never re-selected; the equations hold with `failed` covering both causes; M6a's `is_valid = false → failed` backfill is the same rule applied retroactively | §3.2.1, **§3.2.2**, §3.2.3; **G-4 brief r5 patch** |
+| **G-R58** | BLOCKER | **The cross-module seam is created and assigned.** New `App\Shared\Contracts\UnitCatalogQueryInterface` — `visibleUnits(companyId): list<UnitCatalogEntryData{id,code,name,symbol,decimalPlaces,tier}>` + `visibleActiveUnitCount(companyId): int` — implemented by `Uom\…\UnitCatalogQuery` **wrapping G-12's ONE predicate method**, bound in `UomServiceProvider`; Import consumes the interface only (rule 6/9). **Assigned to G-4 as its FIRST task** (G-12 is at merge); **G-13 re-points it** | **§4.13.2a**, §9.2 (G-4, G-12, G-13), §9.3; **G-4 + G-13 brief r5 patches** |
+| **G-R59** | BLOCKER | **RULED: units match EXACTLY as spelled — trim, then CASE-SENSITIVE code comparison.** The accepted vocabulary is the exact codes of visible active rows, company tier first; `unit_ambiguous` fires only on **duplicate exact codes within the winning tier** (the set M9 forbids and today's census reports). "Surfaced == accepted" is now true. **OQ-G-22(i) is RULED** | §4.13.2, **§4.13.3**, §4.13.4, §10 OQ-G-22; **G-4 + G-8 + G-11 brief r5 patches** |
+| **G-R60** | BLOCKER | **The claim API is pinned**: `claim(ImportJob): ClaimResult{won, priorStatus}`, `release(ImportJob, ImportStatus $priorStatus): bool` (CAS `WHERE status='importing' AND worker_started_at IS NULL`), `markWorkerStarted(jobId, tenantId): bool`, and `finalize(ImportJob, ImportStatus, ImportCountersData, ?ImportErrorCode, ?ImportErrorDetailData, ?string): bool` — **one CAS UPDATE writing status + counters + error atomically**; the loser writes nothing and never retries | **§4.1.1**, §4.7; **G-6a brief r5 patch** |
+| **G-R61** | MAJOR | **Every JSONB `list`/`map` gets a concrete element type**, plus a version-tolerant serializer rule: `data` = `array<string,string>` + `_provided: list<string>` + `_results: array<string,array<string,string>>`; `errors` = `array<string,list<string>>`; `warnings` = `list<ImportRowWarningData{code: ?ImportWarningCode, detail: string}>`; `ImportErrorDetailData` enumerated field by field incl. nested `UnitCandidateData` and the `.xls` column/raw/remedy and image `reason` fields. G-6a declares the class; later lanes populate declared fields only | **§3.2.3**; G-4 + G-6a brief r5 patches |
+| **G-R62** | BLOCKER | **Spec adopts the G-3b brief**: the one-company fallback is **removed** (all-agree or NULL); M4 is `add_company_to_import_jobs` carrying `company_id` + `source_hash` with the **compound `(company_id, created_at)`** index; entitlement covers **every existing route incl. `updateOptions`, `errors`, `error-summary`, `show`, `preview`, `execute`, `store`, `template`, the two downloads** on **both** controllers; and the rule **"gate what you create"** is stated once — G-6a gates `source-file`, G-1 gates `rows-export`, G-11 gates `columns/{type}`, G-6b gates any resume route it adds | **§3.3**, §3.1 M4, **§5.4**; **G-3b + G-6a + G-1 + G-6b + G-11 brief r5 patches** |
+| **G-R63** | MAJOR | **Waves re-derived** from the dependency table with G-7/G-3a/G-12 as satisfied nodes (Wave 0 built · 0b G-3b+G-6a · 2 G-4 · 3 G-2/G-5/G-8/G-9/G-13 · 4 G-1/G-11 · 5 G-6b · 6 G-10), with the **actual dispatch order** stated once. File ownership now means **remaining-change** ownership, and `docs/modules/imports.md` gets one integrator owner (G-6b) with per-lane named rows | **§9.1**, §9.3 |
+| **G-R64** | MAJOR | **WAC is written at scale 6** (`products.cost_price decimal(19,6)`, widened by `2026_05_30_000000_widen_wac_cost_columns_to_scale_6.php:41-44`) with **scale-10 intermediates** and one final `bcformatStrict($wac, 6)` — the G-5 brief wins over "company currency scale". `BatchStockService`'s real path is **`BatchExpiry/Application/Services`**. The brief's `:72` reservation label reads RUL-6 and must read **RUL-5** | **§4.9.2b**, §9.3; **G-5 brief r5 patch** |
+| **G-R65** | MAJOR | **M9 creates THREE partial uniques** (`system: company_id IS NULL AND tenant_id IS NULL` · `tenant: company_id IS NULL AND tenant_id IS NOT NULL` · `company: company_id IS NOT NULL`) per the G-13 brief, which is what actually repairs the NULL-distinct gap; what it refuses (exact duplicate codes within a partition) is stated; **every migration count reads ELEVEN** | §3.1 M9, §11.1, **§13.2/§13.3/§13.4**; G-13 brief r5 patch |
+| **G-R66** | MAJOR | **G-1 made deterministic**: sheet-membership table (`duplicate_loser` → **Skipped**); error-outranks-warning `_status`/`_code`/`_message` selection with stored-order tie-breaks; validation-only failures exported as `_code = validation_failed`; values **echoed as stored strings**, the writer owning only the container (no conflict with G-8); `reimport_of` scoped by tenant + company + entitlement with a header-compatibility fallback to the mapping step | **§4.10**; **G-1 brief r5 patch** |
+| **G-R67** | MAJOR | **Adjudication tail fixed**: `ImportErrorCode` → **G-12**; **OQ-G-25 RULED (RUL-7)** and struck from the open list; the "no unit re-scoping / no shadowing policy" NOT-taken lines corrected — both **were** taken, on the owner's ruling, as **M9 + lane G-13** | **§13.4**, §13.3 |
+| **G-R68** | MAJOR | **The i18n generator, its committed catalogs and the CI stale check are G-11's**, matching both briefs; G-8 owns the YAML source and the server-side `ConventionCopy` only | §4.12, §9.2 (G-8, G-11), **§12.1** |
+| **G-R69** | MAJOR | **One name, one DTO**: the component is **`SkuAllocator`** behind `SkuAllocatorInterface` (`Import/Application/Contracts`); `ProductServiceInterface::upsert()` returns **`ProductUpsertResultData{productId, sku, skuWasGenerated}`**, **owned by G-4** (it merges first) and **extended**, never duplicated, by G-2 | §9.2 (G-2), §9.3; **G-2 + G-4 brief r5 patches** |
+| **G-R70** | BLOCKER | **G-6b is restored to the remaining-lane set**, the dependency table, the waves (Wave 5, after G-6a/G-3b/G-4; **G-1 optional** — without it the detail page ships the result-workbook download only) and the file table. G-10 no longer depends on an out-of-scope lane | **§9.1**, §9.2 (G-6b), §9.3; G-6b brief r5 patch |
+
+**Reconciliation with the built lanes (the r4 review's spec-vs-implementation table), applied:** G-7's
+five `RoundTrip/` classes and its red-by-design G-3b pins; G-3a's `tests/Feature/Migrations/` layout,
+its ownership of `ProductService`/`PartnerService` `withTrashed()` + the deleted-holder tokens, and its
+real migration filenames; G-12's `ensure_units_visible_per_company` (which **seeds** under a
+globally-empty guard), its edit to `TenantInitializationService`, its `ImportErrorCode` ownership, and
+the **absent** `UnitCatalogQueryInterface`; and the removal of every frozen fleet-wide manifest total
+in favour of per-lane baselines plus union arithmetic at merge.
+
+### 13.7 r5.1 — benchmark table (convention 10 / CLAUDE.md rule 22)
+
+| Round | Change | Where |
+|---|---|---|
+| r5.1 (orchestrator) | **r5.1 — benchmark table added per rule 22; no design change.** §0 Industry baseline states the Odoo/ERPNext/Dolibarr guarantee, AutoERP today (`path:line`) and the decision already taken, for the eleven user-facing import guarantees this program touches (B1–B11). Vendor claims cite the doc URL read on 2026-08-29; unconfirmable claims are marked `?` / "unverified — treat as hypothesis" and none is load-bearing. Six rows (**B2, B3, B5, B6, B8, B10**) record AutoERP as **below** the open-source baseline today | **§0**, header |
 
 ---
 
 *Prepared by Session G, 2026-08-29, against `dev` @ `a4ceeb0f5`. Phase 1 record:
 `docs/superpowers/audits/2026-08-29-imports-hardening-gap-matrix.md`; unit-scoping research:
 `docs/superpowers/research/2026-08-29-unit-scoping-tenant-vs-company.md`; gate records
-`…-codex-review-r1.md`, `…-r2.md`, `…-r3.md` in `docs/superpowers/reviews/`. This spec is **r4** and
-is not authorization to write code — gate r4 runs first.*
+`…-codex-review-r1.md`, `…-r2.md`, `…-r3.md`, `…-r4.md` in `docs/superpowers/reviews/`. This spec is
+**r5**. **G-7, G-3a and G-12 are built; every other lane's executable contract is its brief under
+`docs/sessions/session-G-imports-hardening-2026-08-29/briefs/`, each carrying an `## r5 patch (gate
+r4)` section that this spec's §13.6 indexes.** r5 is not authorization to write code — gate r5 runs
+first.*

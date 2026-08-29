@@ -29,6 +29,10 @@ final class ProductSubmissionService implements PlatformSubmissionInterface
      */
     public function requestUploadUrl(string $filename, string $contentType, int $sizeBytes): ?array
     {
+        if ($this->pushDisabled(__FUNCTION__)) {
+            return null;
+        }
+
         return $this->platformClient->postRaw('/api/v1/products/upload-url', [
             'filename' => $filename,
             'content_type' => $contentType,
@@ -50,6 +54,10 @@ final class ProductSubmissionService implements PlatformSubmissionInterface
      */
     public function uploadPhoto(string $uploadUrl, string $fileContents, string $contentType): void
     {
+        if ($this->pushDisabled(__FUNCTION__)) {
+            return;
+        }
+
         Http::withBody($fileContents, $contentType)
             ->timeout(30)
             ->connectTimeout(10)
@@ -61,6 +69,10 @@ final class ProductSubmissionService implements PlatformSubmissionInterface
      */
     public function submit(ProductSubmissionData $submission): ?SubmissionResultData
     {
+        if ($this->pushDisabled(__FUNCTION__)) {
+            return null;
+        }
+
         $response = $this->platformClient->postRaw('/api/v1/products/submit', [
             'barcode' => $submission->barcode,
             'vertical' => $submission->vertical,
@@ -90,6 +102,10 @@ final class ProductSubmissionService implements PlatformSubmissionInterface
      */
     public function bulkSubmit(string $vertical, array $submissions, bool $autoEnrich): ?array
     {
+        if ($this->pushDisabled(__FUNCTION__)) {
+            return null;
+        }
+
         $items = array_map(fn (ProductSubmissionData $s) => [
             'barcode' => $s->barcode,
             'name' => $s->name,
@@ -153,6 +169,10 @@ final class ProductSubmissionService implements PlatformSubmissionInterface
         ?EnrichmentFeedbackReason $reason,
         ?string $notes,
     ): bool {
+        if ($this->pushDisabled(__FUNCTION__)) {
+            return false;
+        }
+
         $exceptionContext = [];
 
         try {
@@ -186,6 +206,10 @@ final class ProductSubmissionService implements PlatformSubmissionInterface
 
     public function pushBrandMapping(string $canonicalBrandId, string $externalBrandId): BrandMappingPushResult
     {
+        if ($this->pushDisabled(__FUNCTION__)) {
+            return BrandMappingPushResult::Failed;
+        }
+
         try {
             $response = $this->platformClient->postWithStatus(
                 "/api/v1/brands/{$canonicalBrandId}/external-mapping",
@@ -239,6 +263,10 @@ final class ProductSubmissionService implements PlatformSubmissionInterface
      */
     public function triggerEnrichment(string $trackingId): ?SubmissionResultData
     {
+        if ($this->pushDisabled(__FUNCTION__)) {
+            return null;
+        }
+
         $response = $this->platformClient->postRaw('/api/v1/products/'.$trackingId.'/enrich');
 
         if ($response === null) {
@@ -256,5 +284,16 @@ final class ProductSubmissionService implements PlatformSubmissionInterface
     public function getCategoryAttributes(string $vertical, string $category): ?array
     {
         return $this->platformClient->getRaw('/api/v1/verticals/'.$vertical.'/categories/'.$category.'/attributes');
+    }
+
+    private function pushDisabled(string $method): bool
+    {
+        if (config('services.platform.push_enabled', true) !== false) {
+            return false;
+        }
+
+        Log::info("platform push disabled (SYNERIVA_PLATFORM_PUSH_ENABLED=false): {$method}");
+
+        return true;
     }
 }

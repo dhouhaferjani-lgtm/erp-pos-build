@@ -4,6 +4,7 @@
     "loading": "Chargement…",
     "error": "Impossible de charger les résultats.",
     "clear": "Effacer la sélection",
+    "clearField": "Effacer la sélection « {{field}} »",
     "close": "Fermer",
     "minCharacters": "Saisissez au moins 2 caractères pour rechercher."
   },

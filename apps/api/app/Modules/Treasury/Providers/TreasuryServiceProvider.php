@@ -22,6 +22,7 @@ use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
 use App\Modules\Treasury\Application\Services\InstrumentRemittanceService;
 use App\Modules\Treasury\Application\Services\LocationCashRegisterProvisioner;
 use App\Modules\Treasury\Application\Services\OutboundInstrumentIssuer;
+use App\Modules\Treasury\Application\Services\PaymentRepositoryProvisioningService;
 use App\Modules\Treasury\Application\Services\PaymentToleranceService;
 use App\Modules\Treasury\Application\Services\RepositoryAdjustmentService;
 use App\Modules\Treasury\Application\Services\RepositoryOpeningBalanceService;
@@ -40,6 +41,7 @@ use App\Modules\Treasury\Presentation\Console\ReconcileTreasuryCommand;
 use App\Modules\Treasury\Presentation\Console\TreasuryOrphanCensusCommand;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use App\Shared\Contracts\Partner\PartnerReferenceSource;
+use App\Shared\Contracts\Treasury\CompanyPaymentRepositoryProvisionerInterface;
 use App\Shared\Contracts\Treasury\InstrumentReversalCancellerInterface;
 use App\Shared\Contracts\Treasury\LocationCashRegisterProvisionerInterface;
 use App\Shared\Contracts\Treasury\OutboundInstrumentIssuerInterface;
@@ -108,6 +110,11 @@ class TreasuryServiceProvider extends ServiceProvider
         $this->app->bind(
             LocationCashRegisterProvisionerInterface::class,
             LocationCashRegisterProvisioner::class,
+        );
+
+        $this->app->bind(
+            CompanyPaymentRepositoryProvisionerInterface::class,
+            PaymentRepositoryProvisioningService::class,
         );
 
         // DPA lane V3/G3 — the single repository-adjustment orchestration port

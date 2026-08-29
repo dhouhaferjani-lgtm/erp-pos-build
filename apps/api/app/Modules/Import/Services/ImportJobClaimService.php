@@ -22,10 +22,12 @@ final class ImportJobClaimService
         private readonly LoggerInterface $logger,
     ) {}
 
-    public function claim(ImportJob $job): ClaimResult
+    public function claim(ImportJob $job, ?string $companyId = null): ClaimResult
     {
-        return $this->database->connection($job->getConnectionName())->transaction(
-            function () use ($job): ClaimResult {
+        $connection = $this->database->connection($job->getConnectionName());
+
+        return $connection->transaction(
+            function () use ($companyId, $connection, $job): ClaimResult {
                 $current = ImportJob::query()
                     ->where('tenant_id', $job->tenant_id)
                     ->where('id', $job->id)
@@ -38,18 +40,25 @@ final class ImportJobClaimService
                     return new ClaimResult(false, $priorStatus);
                 }
 
-                $affected = ImportJob::query()
-                    ->where('tenant_id', $job->tenant_id)
-                    ->where('id', $job->id)
-                    ->whereIn('status', [
+                $claimedAt = now();
+                $table = $connection->getQueryGrammar()->wrapTable($job->getTable());
+                $affected = $connection->update(
+                    "UPDATE {$table}
+                    SET status = ?, claimed_at = ?, started_at = ?,
+                        company_id = COALESCE(company_id, ?), updated_at = ?
+                    WHERE tenant_id = ? AND id = ? AND status IN (?, ?)",
+                    [
+                        ImportStatus::Importing->value,
+                        $claimedAt,
+                        $claimedAt,
+                        $companyId,
+                        $claimedAt,
+                        $job->tenant_id,
+                        $job->id,
                         ImportStatus::Pending->value,
                         ImportStatus::Validated->value,
-                    ])
-                    ->update([
-                        'status' => ImportStatus::Importing->value,
-                        'claimed_at' => now(),
-                        'started_at' => now(),
-                    ]);
+                    ],
+                );
 
                 return new ClaimResult($affected === 1, $priorStatus);
             },

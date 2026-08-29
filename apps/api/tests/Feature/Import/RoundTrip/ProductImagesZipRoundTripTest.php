@@ -116,14 +116,23 @@ final class ProductImagesZipRoundTripTest extends TestCase
 
         $job = ImportJob::query()->findOrFail($jobId);
         $this->assertSame(ImportType::ProductImages, $job->type);
+        $this->assertSame($this->company->id, $job->company_id);
+        $this->assertSame(hash('sha256', $contents), $job->source_hash);
         $this->assertSame('product-images.zip', $job->original_filename);
         $this->assertSame(ImportStatus::Pending, $job->status);
+
+        // G-3a contract: the dispatched payload carries the DISK-RELATIVE key
+        // (identical to the persisted ImportJob::$file_path, never an absolute
+        // path) plus the request company, because queue workers run without
+        // CompanyContext.
+        $this->assertStringStartsWith('imports/'.$this->tenant->id.'/product-images/', $job->file_path);
 
         Queue::assertPushed(
             ProcessProductImageImport::class,
             fn (ProcessProductImageImport $queued): bool => $queued->importJobId === $job->id
                 && $queued->tenantId === $this->tenant->id
-                && $queued->zipPath === Storage::disk('local')->path($job->file_path),
+                && $queued->zipPath === $job->file_path
+                && $queued->companyId === $this->company->id,
         );
     }
 

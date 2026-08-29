@@ -1,10 +1,12 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm, Controller } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { z } from 'zod'
 import { api, apiPost, apiPatch, getErrorMessage, isApiError } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { tokens } from '../../lib/designTokens'
@@ -21,52 +23,34 @@ import { B2BFieldsSection } from './components/B2BFieldsSection'
 import { getCountries } from '../settings/api/country'
 import type { Country } from '../settings/types/country'
 import type { PartnerType } from './PartnerListPage'
-import { partnersInvalidationPredicate } from './_invalidation'
+import {
+  partnerDetailInvalidationPredicate,
+  partnersInvalidationPredicate,
+} from './_invalidation'
 import { readPartnerPrefill } from './partnerPrefill'
+import { getCustomerCreditExposure } from './partnerNetBalance'
+import { shouldShowPartnerB2BFields } from './partnerNature'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import type { PartnerData } from './types'
 
 const PINNED_COUNTRY_CODES = ['FR', 'TN', 'GB', 'IT', 'MA', 'DZ', 'US']
 
-interface Partner {
-  id: string
-  name: string
-  type: 'customer' | 'supplier' | 'both'
-  customer_category: 'individual' | 'business' | null
-  company_legal_name: string | null
-  business_registration_number: string | null
-  payment_terms: string | null
-  payment_terms_days: number | null
-  credit_limit: string | null
-  discount_percentage: string | null
-  invoice_consolidation: boolean
-  email: string | null
-  phone: string | null
-  street_address: string | null
-  city: string | null
-  state: string | null
-  postal_code: string | null
-  country: string | null
-  country_code: string | null
-  vat_number: string | null
-  tax_status: 'REGISTERED' | 'NON_REGISTERED' | 'EXEMPT'
-  exemption_reason: string | null
-  exemption_certificate_path: string | null
-  exemption_valid_until: string | null
-  notes: string | null
-  is_active: boolean
-  bank_accounts?: {
-    id: string
-    label: string | null
-    bank_id: string | null
-    bank_name: string | null
-    rib: string | null
-    iban: string | null
-    bic: string | null
-    currency: string
-    is_primary: boolean
-  }[]
-}
+/**
+ * The Tax Status / exemption-reason / valid-until / certificate controls have
+ * NO write path: neither CreatePartnerRequest nor UpdatePartnerRequest declares
+ * a rule for `tax_status`, `exemption_reason` or `exemption_valid_until`, and
+ * both controller actions spread `$request->validated()` — so the keys are
+ * stripped, the user sees a success toast, and nothing persists. Since M1 added
+ * `tax_status` to PartnerData the form reloads the unchanged server value and
+ * visibly reverts the edit.
+ *
+ * House rule OQ-11: a dead control is hidden, not shipped. Phase-2 brief
+ * M2.2/M3 wires the canonical `tax_*` FormRequest rules; flip this to `true` in
+ * the same change that lands them. The JSX below is kept, not deleted, so that
+ * change is a one-line revert.
+ */
+const PHASE2_TAX_STATUS_WRITE_PATH: boolean = false
 
 export interface PartnerBankAccountFormData {
   id?: string | undefined
@@ -83,7 +67,7 @@ export interface PartnerBankAccountFormData {
 export interface PartnerFormData {
   name: string
   type: 'customer' | 'supplier' | 'both' | ''
-  customer_category: 'individual' | 'business' | ''
+  customer_category: 'individual' | 'business' | '' | null
   company_legal_name: string
   business_registration_number: string
   payment_terms: string
@@ -100,7 +84,7 @@ export interface PartnerFormData {
   country: string
   country_code: string
   vat_number: string
-  tax_status: 'REGISTERED' | 'NON_REGISTERED' | 'EXEMPT'
+  tax_status: PartnerData['tax_status']
   exemption_reason: string
   exemption_valid_until: string
   notes: string
@@ -190,6 +174,55 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
       ? 'supplier'
       : ''
 
+  const partnerFormSchema = useMemo(() => z.object({
+    name: z.string().min(1, t('sales:partners.validation.nameRequired')),
+    type: z.enum(['customer', 'supplier', 'both', '']).refine(
+      (value) => value !== '',
+      t('sales:partners.validation.typeRequired'),
+    ),
+    customer_category: z.enum(['individual', 'business', '']).nullable().refine(
+      (value) => isEditing || (value !== null && value !== ''),
+      t('sales:partners.validation.natureRequired'),
+    ),
+    company_legal_name: z.string(),
+    business_registration_number: z.string(),
+    payment_terms: z.string(),
+    payment_terms_days: z.string(),
+    credit_limit: z.string(),
+    discount_percentage: z.string(),
+    invoice_consolidation: z.boolean(),
+    email: z.string().refine(
+      (value) => value === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
+      t('common:validation.invalidEmail'),
+    ),
+    phone: z.string(),
+    street_address: z.string(),
+    city: z.string(),
+    state: z.string(),
+    postal_code: z.string(),
+    country: z.string(),
+    country_code: z.string(),
+    vat_number: z.string(),
+    tax_status: z.enum(
+      ['REGISTERED', 'NON_REGISTERED', 'EXEMPT'] as const satisfies readonly PartnerData['tax_status'][],
+    ),
+    exemption_reason: z.string(),
+    exemption_valid_until: z.string(),
+    notes: z.string(),
+    is_active: z.boolean(),
+    bank_accounts: z.array(z.object({
+      id: z.string().optional(),
+      label: z.string(),
+      bank_id: z.string(),
+      bank_name: z.string(),
+      rib: z.string(),
+      iban: z.string(),
+      bic: z.string(),
+      currency: z.string(),
+      is_primary: z.boolean(),
+    })),
+  }), [isEditing, t])
+
   const {
     register,
     handleSubmit,
@@ -200,10 +233,11 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
     setError,
     formState: { errors },
   } = useForm<PartnerFormData>({
+    resolver: zodResolver(partnerFormSchema),
     defaultValues: {
       name: '',
       type: defaultType,
-      customer_category: '',
+      customer_category: !isEditing && isSupplierContext ? 'business' : null,
       company_legal_name: '',
       business_registration_number: '',
       payment_terms: '',
@@ -233,9 +267,20 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
 
   const taxStatus = watch('tax_status')
   const customerCategory = watch('customer_category')
+  const vatNumber = watch('vat_number')
+  const companyLegalName = watch('company_legal_name')
+  const businessRegistrationNumber = watch('business_registration_number')
+  const creditLimit = watch('credit_limit')
   const addressCountry = watch('country')
   const taxCountry = watch('country_code')
   const usesTunisiaLabels = addressCountry === 'TN' || taxCountry === 'TN' || defaultCountryCode === 'TN'
+  const showB2BFields = shouldShowPartnerB2BFields({
+    business_registration_number: businessRegistrationNumber,
+    company_legal_name: companyLegalName,
+    credit_limit: creditLimit,
+    customer_category: customerCategory === '' ? null : customerCategory,
+    vat_number: vatNumber,
+  })
 
   // Fetch countries for dropdown
   const { data: countries = [] } = useQuery({
@@ -251,7 +296,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
   const { data: partner, isLoading } = useQuery({
     queryKey: tenantScopedKey(['partner', id]),
     queryFn: async () => {
-      const response = await api.get<{ data: Partner }>(`/partners/${id}`)
+      const response = await api.get<{ data: PartnerData }>(`/partners/${id}`)
       return response.data.data
     },
     enabled: isEditing && hasTenantScope,
@@ -313,7 +358,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
       reset({
         name: partner.name,
         type: partner.type,
-        customer_category: partner.customer_category ?? '',
+        customer_category: partner.customer_category,
         company_legal_name: partner.company_legal_name ?? '',
         business_registration_number: partner.business_registration_number ?? '',
         payment_terms: partner.payment_terms ?? '',
@@ -367,7 +412,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
   }
 
   const createMutation = useMutation({
-    mutationFn: (data: PartnerFormData) => apiPost<Partner>('/partners', data),
+    mutationFn: (data: PartnerFormData) => apiPost<PartnerData>('/partners', data),
     onSuccess: async () => {
       toast.success(t('sales:partners.messages.created'))
       await queryClient.invalidateQueries({
@@ -380,14 +425,16 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
 
   const updateMutation = useMutation({
     mutationFn: (data: PartnerFormData) =>
-      apiPatch<Partner>(`/partners/${id}`, data),
+      apiPatch<PartnerData>(`/partners/${id}`, data),
     onSuccess: async () => {
       toast.success(t('sales:partners.messages.updated'))
       await Promise.all([
         queryClient.invalidateQueries({
           predicate: partnersInvalidationPredicate(tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: ['partner', id] }),
+        queryClient.invalidateQueries({
+          predicate: partnerDetailInvalidationPredicate(id, tenantId, companyId),
+        }),
       ])
       void navigate(`${basePath}/${id}`)
     },
@@ -395,9 +442,19 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
   })
 
   const onSubmit = (data: PartnerFormData) => {
+    // The tax-status trio has no FormRequest rule (see
+    // PHASE2_TAX_STATUS_WRITE_PATH); posting it is a silent no-op, so it never
+    // leaves the form.
+    const {
+      tax_status: _taxStatus,
+      exemption_reason: _exemptionReason,
+      exemption_valid_until: _exemptionValidUntil,
+      ...writable
+    } = data
+
     // Clean up empty strings to null for optional fields
     const cleaned = {
-      ...data,
+      ...writable,
       customer_category: data.customer_category || null,
       payment_terms: data.payment_terms || null,
       payment_terms_days: data.payment_terms_days || null,
@@ -411,8 +468,6 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
       email: data.email || null,
       phone: data.phone || null,
       notes: data.notes || null,
-      exemption_reason: data.exemption_reason || null,
-      exemption_valid_until: data.exemption_valid_until || null,
       credit_limit: data.credit_limit || null,
       discount_percentage: data.discount_percentage || null,
       company_legal_name: data.company_legal_name || null,
@@ -480,7 +535,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
             >
               <Input
                 id="name"
-                {...register('name', { required: t('sales:partners.validation.nameRequired') })}
+                {...register('name')}
                 error={!!errors.name}
               />
             </FormField>
@@ -494,28 +549,35 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
             >
               <Select
                 id="type"
-                {...register('type', { required: t('sales:partners.validation.typeRequired') })}
+                {...register('type')}
                 error={!!errors.type}
               >
                 <option value="">{t('sales:partners.selectType')}</option>
-                <option value="customer">{t('sales:partners.types.customer')}</option>
-                <option value="supplier">{t('sales:partners.types.supplier')}</option>
+                {(isEditing || !isSupplierContext) && (
+                  <option value="customer">{t('sales:partners.types.customer')}</option>
+                )}
+                {(isEditing || !isCustomerContext) && (
+                  <option value="supplier">{t('sales:partners.types.supplier')}</option>
+                )}
                 <option value="both">{t('sales:partners.types.both')}</option>
               </Select>
             </FormField>
 
-            {/* Customer Category */}
+            {/* Nature */}
             <FormField
-              label={t('sales:partners.b2b.customerCategory')}
+              label={t('sales:partners.nature.label')}
               htmlFor="customer_category"
+              required={!isEditing}
+              error={errors.customer_category?.message}
             >
               <Select
                 id="customer_category"
                 {...register('customer_category')}
+                error={!!errors.customer_category}
               >
-                <option value="">{t('sales:partners.b2b.selectCategory')}</option>
-                <option value="individual">{t('sales:partners.b2b.individual')}</option>
-                <option value="business">{t('sales:partners.b2b.business')}</option>
+                <option value="">{t('sales:partners.nature.selectPlaceholder')}</option>
+                <option value="individual">{t('sales:partners.nature.individual')}</option>
+                <option value="business">{t('sales:partners.nature.company')}</option>
               </Select>
             </FormField>
 
@@ -528,12 +590,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
               <Input
                 type="email"
                 id="email"
-                {...register('email', {
-                  pattern: {
-                    value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-                    message: t('common:validation.invalidEmail'),
-                  },
-                })}
+                {...register('email')}
                 error={!!errors.email}
               />
             </FormField>
@@ -601,77 +658,82 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
               />
             </FormField>
 
-            {/* Tax Status */}
-            <FormField
-              label={t('sales:partners.taxInfo.status')}
-              htmlFor="tax_status"
-              className="sm:col-span-2"
-            >
-              <Select
-                id="tax_status"
-                {...register('tax_status')}
-              >
-                <option value="REGISTERED">{t('sales:partners.taxInfo.statusRegistered')}</option>
-                <option value="NON_REGISTERED">{t('sales:partners.taxInfo.statusNonRegistered')}</option>
-                <option value="EXEMPT">{t('sales:partners.taxInfo.statusExempt')}</option>
-              </Select>
-            </FormField>
-
-            {/* Exemption Fields (shown only when EXEMPT) */}
-            {taxStatus === 'EXEMPT' && (
+            {PHASE2_TAX_STATUS_WRITE_PATH && (
               <>
-                <FormField
-                  label={t('sales:partners.taxInfo.exemptionReason')}
-                  htmlFor="exemption_reason"
-                  className="sm:col-span-2"
+              {/* Tax Status */}
+              <FormField
+                label={t('sales:partners.taxInfo.status')}
+                htmlFor="tax_status"
+                className="sm:col-span-2"
+              >
+                <Select
+                  id="tax_status"
+                  {...register('tax_status')}
                 >
-                  <Textarea
-                    id="exemption_reason"
-                    rows={3}
-                    {...register('exemption_reason')}
-                    placeholder={t('sales:partners.taxInfo.exemptionReasonPlaceholder')}
-                  />
-                </FormField>
+                  <option value="REGISTERED">{t('sales:partners.taxInfo.statusRegistered')}</option>
+                  <option value="NON_REGISTERED">{t('sales:partners.taxInfo.statusNonRegistered')}</option>
+                  <option value="EXEMPT">{t('sales:partners.taxInfo.statusExempt')}</option>
+                </Select>
+              </FormField>
 
-                <FormField
-                  label={t('sales:partners.taxInfo.validUntil')}
-                  htmlFor="exemption_valid_until"
-                >
-                  <Input
-                    type="date"
-                    id="exemption_valid_until"
-                    {...register('exemption_valid_until')}
-                  />
-                </FormField>
-
-                <div>
-                  <label className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
-                    {t('sales:partners.taxInfo.certificate')}
-                  </label>
-                  <p className={`mt-1 text-xs ${colorTokens.text.subtle}`}>
-                    {t('sales:partners.taxInfo.certificateHint')}
-                  </p>
-                  <div className="mt-2">
-                    <input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png"
-                      className={`block w-full text-sm ${colorTokens.text.subtle} file:me-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold ${colorTokens.intent.primary.fileBgSubtle} ${colorTokens.intent.primary.fileText} ${colorTokens.intent.primary.fileBgHoverSoft}`}
+              {/* Exemption Fields (shown only when EXEMPT) */}
+              {taxStatus === 'EXEMPT' && (
+                <>
+                  <FormField
+                    label={t('sales:partners.taxInfo.exemptionReason')}
+                    htmlFor="exemption_reason"
+                    className="sm:col-span-2"
+                  >
+                    <Textarea
+                      id="exemption_reason"
+                      rows={3}
+                      {...register('exemption_reason')}
+                      placeholder={t('sales:partners.taxInfo.exemptionReasonPlaceholder')}
                     />
+                  </FormField>
+
+                  <FormField
+                    label={t('sales:partners.taxInfo.validUntil')}
+                    htmlFor="exemption_valid_until"
+                  >
+                    <Input
+                      type="date"
+                      id="exemption_valid_until"
+                      {...register('exemption_valid_until')}
+                    />
+                  </FormField>
+
+                  <div>
+                    <label className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
+                      {t('sales:partners.taxInfo.certificate')}
+                    </label>
+                    <p className={`mt-1 text-xs ${colorTokens.text.subtle}`}>
+                      {t('sales:partners.taxInfo.certificateHint')}
+                    </p>
+                    <div className="mt-2">
+                      <input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        className={`block w-full text-sm ${colorTokens.text.subtle} file:me-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold ${colorTokens.intent.primary.fileBgSubtle} ${colorTokens.intent.primary.fileText} ${colorTokens.intent.primary.fileBgHoverSoft}`}
+                      />
+                    </div>
                   </div>
-                </div>
+              </>
+            )}
               </>
             )}
           </div>
         </div>
 
-        {/* B2B Fields Section — shown only when customer_category is 'business' */}
-        {customerCategory === 'business' && (
+        {/* Legacy null-category partners retain B2B fields only when B2B data exists. */}
+        {showB2BFields && (
           <B2BFieldsSection
             control={control}
             register={register}
             watch={watch}
             setValue={setValue}
             partnerId={isEditing ? id : undefined}
+            outstandingBalance={partner ? getCustomerCreditExposure(partner) : null}
           />
         )}
 

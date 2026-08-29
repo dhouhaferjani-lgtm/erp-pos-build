@@ -22,13 +22,16 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Mockery\CompositeExpectation;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use ZipArchive;
 
 final class PurgeExpiredImportArtifactsTest extends TestCase
 {
@@ -81,17 +84,44 @@ final class PurgeExpiredImportArtifactsTest extends TestCase
 
     public function test_product_images_zip_is_stamped_when_immediately_purged(): void
     {
-        $tenant = $this->createTenant('purge-product-images');
-        $job = ImportJob::create([
-            'tenant_id' => $tenant->id,
-            'user_id' => (string) Str::uuid(),
-            'type' => ImportType::ProductImages,
-            'status' => ImportStatus::Pending,
-            'original_filename' => 'images.zip',
-            'file_path' => "imports/{$tenant->id}/product-images/images.zip",
-            'total_rows' => 0,
-        ]);
-        Storage::disk('local')->put($job->file_path, 'zip bytes');
+        [$tenant, $user] = $this->createAuthorizedContext('purge-product-images');
+        $company = Company::query()->where('tenant_id', $tenant->id)->firstOrFail();
+        Queue::fake([ProcessProductImageImport::class]);
+
+        $zipFile = tempnam(sys_get_temp_dir(), 'purge-product-images-');
+        self::assertIsString($zipFile);
+        $zip = new ZipArchive;
+        self::assertTrue($zip->open($zipFile, ZipArchive::OVERWRITE));
+        $zip->addFromString('README.txt', 'production dispatch proof');
+        $zip->close();
+        $zipBytes = file_get_contents($zipFile);
+        self::assertIsString($zipBytes);
+        unlink($zipFile);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->withHeader('X-Company-Id', $company->id)
+            ->postJson('/api/v1/imports', [
+                'file' => UploadedFile::fake()->createWithContent('images.zip', $zipBytes),
+                'type' => ImportType::ProductImages->value,
+            ])
+            ->assertAccepted();
+
+        $job = ImportJob::query()->findOrFail($response->json('data.id'));
+        $queued = null;
+        Queue::assertPushed(
+            ProcessProductImageImport::class,
+            function (ProcessProductImageImport $dispatched) use (&$queued, $job): bool {
+                $queued = $dispatched;
+
+                return $dispatched->zipPath === $job->file_path;
+            },
+        );
+        self::assertInstanceOf(ProcessProductImageImport::class, $queued);
+        self::assertFalse(str_starts_with($queued->zipPath, DIRECTORY_SEPARATOR));
+
+        $storageRoot = Storage::disk('local')->path('');
+        $freshDiskBefore = Storage::build(['driver' => 'local', 'root' => $storageRoot]);
+        self::assertTrue($freshDiskBefore->exists($job->file_path));
 
         $imageService = \Mockery::mock(ProductImageImportService::class);
         self::assertInstanceOf(ProductImageImportService::class, $imageService);
@@ -102,12 +132,13 @@ final class PurgeExpiredImportArtifactsTest extends TestCase
         $expectation->__call('once', []);
         $expectation->andReturn([]);
 
-        (new ProcessProductImageImport($job->id, $job->file_path, $tenant->id))->handle(
+        $queued->handle(
             $imageService,
             $this->app->make(ImportService::class),
         );
 
-        Storage::disk('local')->assertMissing($job->file_path);
+        $freshDiskAfter = Storage::build(['driver' => 'local', 'root' => $storageRoot]);
+        self::assertFalse($freshDiskAfter->exists($job->file_path));
         $completed = $job->refresh();
         $this->assertSame(ImportStatus::Completed, $completed->status);
         $this->assertNotNull($completed->claimed_at);

@@ -20,11 +20,13 @@ use Illuminate\Support\Carbon;
 /**
  * @property string $id
  * @property string $tenant_id
+ * @property string|null $company_id
  * @property string $user_id
  * @property ImportType $type
  * @property ImportStatus $status
  * @property string $original_filename
  * @property string $file_path
+ * @property string|null $source_hash
  * @property int $total_rows
  * @property int $processed_rows
  * @property int $successful_rows
@@ -60,11 +62,13 @@ class ImportJob extends Model
      */
     protected $fillable = [
         'tenant_id',
+        'company_id',
         'user_id',
         'type',
         'status',
         'original_filename',
         'file_path',
+        'source_hash',
         'total_rows',
         'processed_rows',
         'successful_rows',

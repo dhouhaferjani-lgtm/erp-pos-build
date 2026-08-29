@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Shared\Database\MigrationOutput;
 use Database\Seeders\UomSeeder;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Query\Builder;
@@ -60,11 +61,7 @@ return new class extends Migration
 
             $companyCount = $companies->count();
             $emptyCount = count($emptyCompanyIds);
-            Log::info('units.visibility_census', [
-                'companies' => $companyCount,
-                'empty' => $emptyCount,
-            ]);
-            echo "units.visibility_census companies={$companyCount} empty={$emptyCount}".PHP_EOL;
+            MigrationOutput::info("units.visibility_census companies={$companyCount} empty={$emptyCount}");
 
             if ($emptyCompanyIds === []) {
                 return;
@@ -83,22 +80,21 @@ return new class extends Migration
                     'exception' => $exception,
                     'tenant' => $tenantId,
                 ]);
-                echo "units.visibility_census companies={$companyCount} empty={$emptyCount} seed_failed=1".PHP_EOL;
+                MigrationOutput::error("units.visibility_census companies={$companyCount} empty={$emptyCount} seed_failed=1");
 
                 return;
             }
 
             foreach ($emptyCompanyIds as $companyId) {
                 $message = 'units-seeded company_id='.$companyId;
-                Log::info($message);
-                echo $message.PHP_EOL;
+                MigrationOutput::info($message);
             }
         } catch (Throwable $exception) {
             Log::error('units.visibility_migration_failed', [
                 'exception' => $exception,
                 'tenant' => $tenantId,
             ]);
-            echo 'units-visibility-error '.$exception->getMessage().PHP_EOL;
+            MigrationOutput::error('units-visibility-error '.$exception->getMessage());
         }
     }
 

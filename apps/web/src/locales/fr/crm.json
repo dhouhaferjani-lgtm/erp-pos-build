@@ -1,16 +1,5 @@
 {
   "title": "CRM",
-  "companies": {
-    "title": "Entreprises",
-    "name": "Nom de l'entreprise",
-    "code": "Code",
-    "vatNumber": "Numéro TVA",
-    "phone": "Téléphone",
-    "email": "Email",
-    "primaryContact": "Contact principal",
-    "balance": "Solde",
-    "noCompanies": "Aucune entreprise trouvée"
-  },
   "contacts": {
     "title": "Contacts",
     "firstName": "Prénom",

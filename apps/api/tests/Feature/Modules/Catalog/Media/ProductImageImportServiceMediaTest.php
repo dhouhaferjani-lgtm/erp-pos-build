@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Modules\Catalog\Media;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
@@ -74,6 +75,7 @@ final class ProductImageImportServiceMediaTest extends TestCase
 
         $importJob = ImportJob::create([
             'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'user_id' => $this->user->id,
             'type' => ImportType::ProductImages,
             'status' => ImportStatus::Pending,
@@ -81,7 +83,7 @@ final class ProductImageImportServiceMediaTest extends TestCase
             'file_path' => $zipPath,
         ]);
 
-        $results = $this->service->processZipImport($importJob, $zipPath);
+        $results = $this->service->processZipImport($importJob, $zipPath, $this->company->id);
 
         // Exactly one result for the one image in the ZIP.
         $this->assertCount(1, $results);
@@ -129,6 +131,7 @@ final class ProductImageImportServiceMediaTest extends TestCase
 
         $importJob = ImportJob::create([
             'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'user_id' => $this->user->id,
             'type' => ImportType::ProductImages,
             'status' => ImportStatus::Pending,
@@ -136,12 +139,49 @@ final class ProductImageImportServiceMediaTest extends TestCase
             'file_path' => $zipPath,
         ]);
 
-        $results = $this->service->processZipImport($importJob, $zipPath);
+        $results = $this->service->processZipImport($importJob, $zipPath, $this->company->id);
 
         $this->assertCount(1, $results);
         $this->assertFalse($results[0]['success']);
         self::assertSame(0, MediaAsset::count(), 'No media_assets rows for unmatched SKU');
         self::assertSame(0, MediaAttachment::count(), 'No media_attachments rows for unmatched SKU');
+    }
+
+    public function test_zip_import_uses_explicit_company_when_sibling_companies_share_the_sku(): void
+    {
+        $sku = 'SHAREDIMAGE001';
+        Product::factory()->create([
+            'sku' => $sku,
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $targetCompany = Company::factory()->for($this->tenant)->create();
+        $target = Product::factory()->create([
+            'sku' => $sku,
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $targetCompany->id,
+        ]);
+
+        $zipPath = $this->makeZipWithImage("{$sku}.jpg");
+        $importJob = ImportJob::create([
+            'tenant_id' => $this->tenant->id,
+            'user_id' => $this->user->id,
+            'type' => ImportType::ProductImages,
+            'status' => ImportStatus::Pending,
+            'original_filename' => 'test.zip',
+            'file_path' => $zipPath,
+        ]);
+
+        app(CompanyContext::class)->clear();
+        $results = $this->service->processZipImport($importJob, $zipPath, $targetCompany->id);
+
+        $this->assertTrue($results[0]['success'], $results[0]['error'] ?? 'Image import failed.');
+        $this->assertSame($target->id, $results[0]['product_id']);
+        $this->assertDatabaseHas('media_attachments', [
+            'owner_type' => MediaOwnerType::Product->value,
+            'owner_id' => $target->id,
+            'role' => MediaRole::Primary->value,
+        ]);
     }
 
     /**
