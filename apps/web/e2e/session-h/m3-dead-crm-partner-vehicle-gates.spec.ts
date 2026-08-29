@@ -1,4 +1,11 @@
-import { expect, test, type APIRequestContext, type Browser, type Page } from '@playwright/test'
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type APIResponse,
+  type Browser,
+  type Page,
+} from '@playwright/test'
 import { mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -21,6 +28,11 @@ const RESTRICTED_CREDENTIALS: LoginCredentials = {
   email: 'viewer@pharmabio.tn',
   password: 'password',
 }
+const OTOSPEX_CREDENTIALS: LoginCredentials = {
+  email: 'admin@demo.local',
+  password: 'password',
+}
+const OTOSPEX_TENANT_SLUG = 'demo-unlimited'
 const SCREENSHOT_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../../../.playwright-mcp/session-h/m3',
@@ -45,6 +57,162 @@ interface RoleRow {
 interface AuthMeBody {
   data: {
     permissions: string[]
+  }
+}
+
+interface LoginSuccess {
+  token: string
+  user: {
+    tenantId: string
+  }
+}
+
+interface OrganizationSelection {
+  requires_org_selection: true
+  organizations: Array<{
+    tenant_id: string
+    slug: string
+  }>
+}
+
+interface OtospexFixture {
+  credentials: LoginCredentials
+  customer: PartnerRow
+  supplier: PartnerRow
+}
+
+type OtospexAvailability =
+  | { available: true; fixture: OtospexFixture }
+  | { available: false; reason: string }
+
+async function postLogin(
+  request: APIRequestContext,
+  credentials: LoginCredentials,
+): Promise<{ response: APIResponse; text: string }> {
+  const data = {
+    email: credentials.email,
+    password: credentials.password,
+    ...(credentials.tenantId === undefined ? {} : { tenant_id: credentials.tenantId }),
+  }
+  let response = await request.post(`${API_BASE}/auth/login`, {
+    data,
+    headers: { Accept: 'application/json' },
+  })
+  for (let attempt = 1; response.status() === 429 && attempt < 3; attempt += 1) {
+    const retryAfter = Number(response.headers()['retry-after'] ?? '1')
+    const delayMs = (Number.isFinite(retryAfter) ? Math.min(Math.max(retryAfter, 1), 59) : 1) * 1000
+    await new Promise((resolve) => setTimeout(resolve, delayMs))
+    response = await request.post(`${API_BASE}/auth/login`, {
+      data,
+      headers: { Accept: 'application/json' },
+    })
+  }
+  return { response, text: await response.text() }
+}
+
+function parseLoginData(text: string): LoginSuccess | OrganizationSelection | null {
+  try {
+    const body = JSON.parse(text) as { data?: LoginSuccess | OrganizationSelection }
+    return body.data ?? null
+  } catch {
+    return null
+  }
+}
+
+async function discoverOtospexFixture(request: APIRequestContext): Promise<OtospexAvailability> {
+  const initial = await postLogin(request, OTOSPEX_CREDENTIALS)
+  if (!initial.response.ok()) {
+    return {
+      available: false,
+      reason: `Otospex discovery unavailable: email-first login for ${OTOSPEX_CREDENTIALS.email} returned HTTP ${initial.response.status()} (${initial.text}).`,
+    }
+  }
+
+  const initialData = parseLoginData(initial.text)
+  if (initialData === null) {
+    return {
+      available: false,
+      reason: 'Otospex discovery unavailable: deterministic login returned an unreadable response.',
+    }
+  }
+
+  let tenantId: string
+  let token: string
+  if ('requires_org_selection' in initialData) {
+    const organization = initialData.organizations.find((row) => row.slug === OTOSPEX_TENANT_SLUG)
+    if (organization === undefined) {
+      return {
+        available: false,
+        reason: `Otospex discovery unavailable: login organizations did not include ${OTOSPEX_TENANT_SLUG}.`,
+      }
+    }
+    tenantId = organization.tenant_id
+    const explicit = await postLogin(request, { ...OTOSPEX_CREDENTIALS, tenantId })
+    if (!explicit.response.ok()) {
+      return {
+        available: false,
+        reason: `Otospex explicit-tenant login unavailable for discovered ${OTOSPEX_TENANT_SLUG}: HTTP ${explicit.response.status()} (${explicit.text}).`,
+      }
+    }
+    const explicitData = parseLoginData(explicit.text)
+    if (explicitData === null || 'requires_org_selection' in explicitData) {
+      return {
+        available: false,
+        reason: `Otospex explicit-tenant login unavailable for discovered ${OTOSPEX_TENANT_SLUG}: no authenticated session was returned.`,
+      }
+    }
+    token = explicitData.token
+  } else {
+    tenantId = initialData.user.tenantId
+    token = initialData.token
+  }
+
+  const companies = await request.get(`${API_BASE}/user/companies`, {
+    headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+  })
+  if (!companies.ok()) {
+    return {
+      available: false,
+      reason: `Otospex company discovery unavailable: HTTP ${companies.status()} (${await companies.text()}).`,
+    }
+  }
+  const companyBody = await companies.json() as {
+    data: Array<{ id: string; is_primary?: boolean }>
+  }
+  const company = companyBody.data.find((row) => row.is_primary === true) ?? companyBody.data[0]
+  if (company === undefined) {
+    return { available: false, reason: 'Otospex company discovery unavailable: no company was returned.' }
+  }
+
+  const session: ApiSession = { token, companyId: company.id }
+  const [customers, suppliers] = await Promise.all([
+    request.get(`${API_BASE}/partners?type=customer&per_page=50`, { headers: apiHeaders(session) }),
+    request.get(`${API_BASE}/partners?type=supplier&per_page=50`, { headers: apiHeaders(session) }),
+  ])
+  if (!customers.ok() || !suppliers.ok()) {
+    return {
+      available: false,
+      reason: `Otospex partner discovery unavailable: customer HTTP ${customers.status()}, supplier HTTP ${suppliers.status()}.`,
+    }
+  }
+  const customerBody = await customers.json() as { data: PartnerRow[] }
+  const supplierBody = await suppliers.json() as { data: PartnerRow[] }
+  const customer = customerBody.data.find((row) => row.type === 'customer' || row.type === 'both')
+  const supplier = supplierBody.data.find((row) => row.type === 'supplier')
+  if (customer === undefined || supplier === undefined) {
+    return {
+      available: false,
+      reason: `Otospex partner discovery unavailable: customer fixture=${String(customer !== undefined)}, supplier-only fixture=${String(supplier !== undefined)}.`,
+    }
+  }
+
+  return {
+    available: true,
+    fixture: {
+      credentials: { ...OTOSPEX_CREDENTIALS, tenantId },
+      customer,
+      supplier,
+    },
   }
 }
 
@@ -267,10 +435,40 @@ test.describe('Session H M3 dead CRM and partner/vehicle gates', () => {
     })
   })
 
-  test('vehicle owner search returns customers and excludes supplier-only partners on Otospex', async () => {
-    test.skip(
-      true,
-      'The active mechanic tenant demo-unlimited exists centrally, but explicit-tenant login returns 503 because its tenant database is not provisioned; M3 must not provision a fake vertical fixture.',
-    )
+  test('vehicle owner search returns customers and excludes supplier-only partners on Otospex', async ({ browser, request }) => {
+    const availability = await discoverOtospexFixture(request)
+    test.skip(!availability.available, availability.available ? undefined : availability.reason)
+    if (!availability.available) return
+
+    const { credentials, customer: otospexCustomer, supplier } = availability.fixture
+    const otospex = await loggedPage(browser, credentials)
+    try {
+      await otospex.page.goto('/vehicles/new')
+      const ownerPicker = otospex.page.getByTestId('vehicle-owner-picker')
+      const ownerSearch = ownerPicker.getByRole('combobox')
+      await expect(ownerSearch).toBeVisible({ timeout: UI_TIMEOUT })
+
+      const customerResponse = otospex.page.waitForResponse((response) => {
+        const url = new URL(response.url())
+        return url.pathname.endsWith('/partners')
+          && url.searchParams.get('type') === 'customer'
+          && url.searchParams.get('search') === otospexCustomer.name
+      })
+      await ownerSearch.fill(otospexCustomer.name)
+      expect((await customerResponse).ok()).toBeTruthy()
+      await expect(ownerPicker.getByRole('option').filter({ hasText: otospexCustomer.name })).toBeVisible()
+
+      const supplierResponse = otospex.page.waitForResponse((response) => {
+        const url = new URL(response.url())
+        return url.pathname.endsWith('/partners')
+          && url.searchParams.get('type') === 'customer'
+          && url.searchParams.get('search') === supplier.name
+      })
+      await ownerSearch.fill(supplier.name)
+      expect((await supplierResponse).ok()).toBeTruthy()
+      await expect(ownerPicker.getByRole('option').filter({ hasText: supplier.name })).toHaveCount(0)
+    } finally {
+      await otospex.close()
+    }
   })
 })

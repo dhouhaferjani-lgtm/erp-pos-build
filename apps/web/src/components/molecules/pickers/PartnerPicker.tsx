@@ -105,6 +105,7 @@ export function PartnerPicker({
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const inputId = useId()
+  const labelId = useId()
   const listboxId = useId()
 
   const [query, setQuery] = useState('')
@@ -210,31 +211,42 @@ export function PartnerPicker({
     return (
       <div
         ref={containerRef}
-        className={`flex items-center gap-2 rounded-md border ${borderColors.default} ${colorTokens.surface.base} px-3 py-2`}
         data-testid={testIdAttr}
       >
-        <div className="min-w-0 flex-1">
-          <div className={`truncate text-sm font-medium ${textColors.primary}`}>{selectedValue.name}</div>
-          <div className={`flex items-center gap-1 truncate text-xs ${textColors.tertiary}`}>
-            <span className={`${tokens.badge.base} ${tokens.badge.blue}`}>
-              {t(`partner.typeChip.${selectedValue.type}`)}
-            </span>
-            {selectedValue.city !== undefined && selectedValue.city !== null ? <span>{selectedValue.city}</span> : null}
-            {selectedValue.email !== undefined && selectedValue.email !== null ? <span>{selectedValue.email}</span> : null}
-          </div>
-        </div>
-        <button
-          type="button"
-          className={`${textColors.tertiary} ${textColors.hoverPrimary}`}
-          aria-label={t('common.clear')}
-          disabled={disabled}
-          onClick={() => {
-            onChange(null)
-            setQuery('')
-          }}
+        {effectiveLabel !== '' ? (
+          <span id={labelId} className={tokens.label.base}>
+            {effectiveLabel}
+            {required ? <span className={tokens.label.required}> *</span> : null}
+          </span>
+        ) : null}
+        <div
+          role={effectiveLabel !== '' ? 'group' : undefined}
+          aria-labelledby={effectiveLabel !== '' ? labelId : undefined}
+          className={`flex items-center gap-2 rounded-md border ${borderColors.default} ${colorTokens.surface.base} px-3 py-2`}
         >
-          <X className="h-4 w-4" aria-hidden />
-        </button>
+          <div className="min-w-0 flex-1">
+            <div className={`truncate text-sm font-medium ${textColors.primary}`}>{selectedValue.name}</div>
+            <div className={`flex items-center gap-1 truncate text-xs ${textColors.tertiary}`}>
+              <span className={`${tokens.badge.base} ${tokens.badge.blue}`}>
+                {t(`partner.typeChip.${selectedValue.type}`)}
+              </span>
+              {selectedValue.city !== undefined && selectedValue.city !== null ? <span>{selectedValue.city}</span> : null}
+              {selectedValue.email !== undefined && selectedValue.email !== null ? <span>{selectedValue.email}</span> : null}
+            </div>
+          </div>
+          <button
+            type="button"
+            className={`${textColors.tertiary} ${textColors.hoverPrimary}`}
+            aria-label={effectiveLabel === '' ? t('common.clear') : `${t('common.clear')} ${effectiveLabel}`}
+            disabled={disabled}
+            onClick={() => {
+              onChange(null)
+              setQuery('')
+            }}
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
       </div>
     )
   }

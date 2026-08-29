@@ -5,10 +5,12 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { makePartnerData, type PartnerData } from '@/features/partners/__fixtures__/partner'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 
 import { VehicleForm } from '../VehicleForm'
+import type { VehicleData } from '../types'
 
 const mockApiGet = vi.hoisted(() => vi.fn())
 const mockApiPost = vi.hoisted(() => vi.fn())
@@ -89,9 +91,11 @@ function wrapper(queryClient: QueryClient) {
   }
 }
 
-function vehicleFixture() {
+function vehicleFixture(): VehicleData {
   return {
     id: 'vehicle-1',
+    tenant_id: 'tenant-A',
+    company_id: 'company-1',
     partner_id: 'partner-1',
     license_plate: '123-TUN-456',
     brand: 'Renault',
@@ -101,10 +105,26 @@ function vehicleFixture() {
     mileage: 45000,
     vin: null,
     engine_code: null,
-    fuel_type: 'Petrol',
-    transmission: 'Manual',
+    fuel_type: 'gasoline',
+    transmission: 'manual',
+    body_type: 'hatchback',
     notes: null,
+    current_owner_partner_id: 'partner-1',
+    current_owner_display_name: 'Partner A',
+    created_at: '2026-08-29T12:00:00Z',
+    updated_at: null,
   }
+}
+
+function partnerFixture(overrides: Partial<PartnerData> = {}): PartnerData {
+  return makePartnerData({
+    id: 'partner-1',
+    name: 'Partner A',
+    type: 'customer',
+    email: null,
+    city: null,
+    ...overrides,
+  })
 }
 
 function mockVehicleResponses() {
@@ -112,14 +132,14 @@ function mockVehicleResponses() {
     if (url.startsWith('/partners?')) {
       return {
         data: {
-          data: [{ id: 'partner-1', name: 'Partner A', type: 'customer', email: null, city: null }],
+          data: [partnerFixture()],
         },
       }
     }
     if (url === '/partners/partner-1') {
       return {
         data: {
-          data: { id: 'partner-1', name: 'Partner A', type: 'customer', email: null, city: null },
+          data: partnerFixture(),
         },
       }
     }

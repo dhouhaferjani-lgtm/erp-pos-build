@@ -1,6 +1,6 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test'
 
-export const API_BASE = process.env.API_BASE ?? 'http://127.0.0.1:8011/api/v1'
+export const API_BASE = process.env['API_BASE'] ?? 'http://127.0.0.1:8011/api/v1'
 export const DEMO_CREDENTIALS = {
   email: 'owner@pharmabio.tn',
   password: 'password',
@@ -9,6 +9,20 @@ export const DEMO_CREDENTIALS = {
 export interface LoginCredentials {
   email: string
   password: string
+  tenantId?: string
+}
+
+interface LoginRequestData {
+  email: string
+  password: string
+  tenant_id?: string
+}
+
+export function loginRequestData(credentials: LoginCredentials): LoginRequestData {
+  const base = { email: credentials.email, password: credentials.password }
+  return credentials.tenantId === undefined
+    ? base
+    : { ...base, tenant_id: credentials.tenantId }
 }
 
 const API_ORIGIN = new URL(API_BASE).origin
@@ -69,8 +83,14 @@ export async function loginPage(
   await page.route('**/api/v1/**', async (route) => {
     const sourceUrl = new URL(route.request().url())
     const apiPath = sourceUrl.pathname.replace(/^\/api\/v1/, '')
+    const explicitLoginBody = apiPath === '/auth/login'
+      && route.request().method() === 'POST'
+      && credentials.tenantId !== undefined
+      ? JSON.stringify(loginRequestData(credentials))
+      : undefined
     const response = await route.fetch({
       url: `${API_BASE}${apiPath}${sourceUrl.search}`,
+      ...(explicitLoginBody === undefined ? {} : { postData: explicitLoginBody }),
     })
     expect(new URL(response.url()).origin).toBe(API_ORIGIN)
     await route.fulfill({ response })
