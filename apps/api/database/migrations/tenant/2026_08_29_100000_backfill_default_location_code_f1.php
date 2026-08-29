@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Shared\Database\MigrationOutput;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -48,8 +48,7 @@ return new class extends Migration
 
             if ($hasMainLocation) {
                 $line = "default-location-code-collision company_id={$location->company_id} location_id={$location->id}";
-                Log::warning($line);
-                echo $line.PHP_EOL;
+                MigrationOutput::info($line);
 
                 continue;
             }
