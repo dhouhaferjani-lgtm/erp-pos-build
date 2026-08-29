@@ -180,6 +180,7 @@ export function AddPartnerModal({
       notes: '',
     },
   })
+
   const countryCode = watch('country_code')
 
   // Reset form only on the closed→open transition (also re-seeds from
@@ -349,14 +350,20 @@ export function AddPartnerModal({
             </FormField>
           </div>
 
-          {/* Country */}
+          {/* Tax country — this control writes `country_code`, NOT the address
+              `country` column. Labelled accordingly (merge-gate r1 FE-2). */}
           <FormField
-            label={t('sales:partners.country')}
+            label={t('sales:partners.countryCode')}
             htmlFor="partner-country"
           >
             <Select
               id="partner-country"
               {...register('country_code')}
+              // NOT redundant with `register`: the <option> list arrives from an
+              // async countries query, so a value seeded by `reset()` before the
+              // options exist is dropped by the DOM. This prop re-applies it on
+              // the render that first has a matching option (pinned by the
+              // prefill tests below).
               value={countryCode}
             >
               <option value="">{t('sales:partners.selectCountryCode')}</option>

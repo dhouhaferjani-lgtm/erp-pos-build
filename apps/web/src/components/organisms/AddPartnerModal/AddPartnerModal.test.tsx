@@ -117,6 +117,9 @@ describe('AddPartnerModal prefill', () => {
       },
     })
     expect(await screen.findByLabelText(/^name/i)).toHaveValue('PharmaDistrib SARL')
+    // The control is registered to `country_code` (the TAX country), so it must
+    // carry the tax-country label, not the address-country one.
+    expect(screen.getByLabelText(/^country \(VAT\)/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/tax/i)).toHaveValue('TN1234567')
     expect(screen.getByLabelText(/^address/i)).toHaveValue('12 Rue de Carthage')
     expect(screen.getByLabelText(/^city/i)).toHaveValue('Tunis')
