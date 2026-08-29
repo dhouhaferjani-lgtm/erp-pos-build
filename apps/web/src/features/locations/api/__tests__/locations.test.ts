@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { getLocations, getLocation } from '../locations'
+import { getLocations, getLocation, getTransactionLocations } from '../locations'
+import { getScopedLocations } from '../scopedLocations'
 
 vi.mock('@/lib/api', () => ({
   api: {
@@ -73,5 +74,51 @@ describe('locations api mapping', () => {
     expect(mockApi.get).toHaveBeenCalledWith(`/locations/${rawLocation.id}`)
     expect(location.isActive).toBe(true)
     expect(location.addressCity).toBe(rawLocation.address_city)
+  })
+
+  it('normalizes a nullable location code at the API boundary', async () => {
+    mockApiGet.mockResolvedValue([{ ...rawLocation, code: null }])
+
+    const [location] = await getLocations()
+
+    expect(location.code).toBe('')
+  })
+
+  it('normalizes a nullable transaction location code at the API boundary', async () => {
+    mockApiGet.mockResolvedValue([{
+      id: rawLocation.id,
+      name: rawLocation.name,
+      code: null,
+      type: rawLocation.type,
+      is_default: false,
+      is_active: true,
+    }])
+
+    const [location] = await getTransactionLocations()
+
+    expect(location.code).toBe('')
+  })
+
+  it('maps scoped locations from the ungated company endpoint', async () => {
+    mockApiGet.mockResolvedValue([{
+      id: rawLocation.id,
+      name: rawLocation.name,
+      code: null,
+      type: rawLocation.type,
+      is_default: true,
+      is_active: false,
+    }])
+
+    const [location] = await getScopedLocations()
+
+    expect(mockApiGet).toHaveBeenCalledWith('/company/locations')
+    expect(location).toEqual({
+      id: rawLocation.id,
+      name: rawLocation.name,
+      code: '',
+      type: rawLocation.type,
+      isDefault: true,
+      isActive: false,
+    })
   })
 })

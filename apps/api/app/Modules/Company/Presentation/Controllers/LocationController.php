@@ -120,6 +120,7 @@ class LocationController extends Controller
                 'code' => $location->code,
                 'type' => $location->type->value,
                 'is_default' => $location->is_default,
+                'is_active' => $location->is_active,
             ])->values()->all(),
         ]);
     }

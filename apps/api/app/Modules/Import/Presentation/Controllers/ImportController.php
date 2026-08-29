@@ -62,7 +62,7 @@ class ImportController extends Controller
             ->paginate(20);
 
         return response()->json([
-            'data' => $jobs->map(fn (ImportJob $job) => $this->formatJob($job)),
+            'data' => $jobs->map(fn (ImportJob $job) => $this->formatJob($job, false)),
             'meta' => [
                 'current_page' => $jobs->currentPage(),
                 'last_page' => $jobs->lastPage(),
@@ -184,7 +184,7 @@ class ImportController extends Controller
                 ]);
 
                 return response()->json([
-                    'data' => $this->formatJob($job),
+                    'data' => $this->formatJob($job, true),
                     'errors' => [
                         'missing_columns' => $headerValidation['missing'],
                         'unknown_columns' => $headerValidation['unknown'],
@@ -203,7 +203,7 @@ class ImportController extends Controller
             $freshJob = $job->fresh();
 
             return response()->json([
-                'data' => $this->formatJob($freshJob),
+                'data' => $this->formatJob($freshJob, true),
             ], 201);
         } catch (\Exception $e) {
             $job->update([
@@ -212,7 +212,7 @@ class ImportController extends Controller
             ]);
 
             return response()->json([
-                'data' => $this->formatJob($job),
+                'data' => $this->formatJob($job, true),
                 'error' => 'Failed to parse file: '.$e->getMessage(),
             ], 422);
         }
@@ -236,7 +236,7 @@ class ImportController extends Controller
         }
 
         return response()->json([
-            'data' => $this->formatJob($job),
+            'data' => $this->formatJob($job, true),
         ]);
     }
 
@@ -399,7 +399,7 @@ class ImportController extends Controller
         $freshJob = $job->fresh();
 
         return response()->json([
-            'data' => $this->formatJob($freshJob),
+            'data' => $this->formatJob($freshJob, true),
         ]);
     }
 
@@ -535,7 +535,7 @@ class ImportController extends Controller
             }
 
             return response()->json([
-                'data' => $this->formatJob($freshJob),
+                'data' => $this->formatJob($freshJob, true),
                 'import_result' => [
                     'imported_count' => $result['imported_count'],
                     'skipped_count' => $result['skipped_count'],
@@ -566,7 +566,7 @@ class ImportController extends Controller
         $freshJob = $job->fresh();
 
         return response()->json([
-            'data' => $this->formatJob($freshJob),
+            'data' => $this->formatJob($freshJob, true),
             'message' => 'Import job queued for processing. Subscribe to WebSocket for real-time updates.',
         ], 202);
     }
@@ -657,7 +657,7 @@ class ImportController extends Controller
      *
      * @return array<string, mixed>
      */
-    private function formatJob(ImportJob $job): array
+    private function formatJob(ImportJob $job, bool $withWarningSummary): array
     {
         return [
             'id' => $job->id,
@@ -669,6 +669,9 @@ class ImportController extends Controller
             'successful_rows' => $job->successful_rows,
             'failed_rows' => $job->failed_rows,
             'warning_rows' => $this->countWarningRows($job),
+            'warning_summary' => $withWarningSummary && $job->status->isTerminal()
+                ? $this->warningSummary($job)
+                : null,
             'options' => $job->options,
             'progress_percentage' => $job->getProgressPercentage(),
             'error_message' => $job->error_message,
@@ -678,6 +681,9 @@ class ImportController extends Controller
         ];
     }
 
+    /**
+     * Count rows with at least one warning without hydrating row models.
+     */
     private function countWarningRows(ImportJob $job): int
     {
         if ($job->getConnection()->getDriverName() === 'sqlite') {
@@ -688,6 +694,43 @@ class ImportController extends Controller
         }
 
         return $job->rows()->whereRaw('jsonb_array_length(warnings) > 0')->count();
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function warningSummary(ImportJob $job): array
+    {
+        $summary = [];
+
+        foreach ($job->rows()->whereNotNull('warnings')->get(['warnings']) as $row) {
+            $warnings = $row->getAttribute('warnings');
+            if (! is_array($warnings) || $warnings === []) {
+                continue;
+            }
+
+            $rowCodes = [];
+            foreach ($warnings as $warning) {
+                if (! is_array($warning)) {
+                    continue;
+                }
+
+                $code = $warning['code'] ?? null;
+                if (! is_string($code) || $code === '') {
+                    continue;
+                }
+
+                $rowCodes[$code] = true;
+            }
+
+            foreach (array_keys($rowCodes) as $code) {
+                $summary[$code] = ($summary[$code] ?? 0) + 1;
+            }
+        }
+
+        ksort($summary);
+
+        return $summary;
     }
 
     /**
@@ -786,7 +829,7 @@ class ImportController extends Controller
         $freshJob = $job->fresh();
 
         return response()->json([
-            'data' => $this->formatJob($freshJob),
+            'data' => $this->formatJob($freshJob, true),
             'message' => 'Product images import queued for processing. The ZIP will be extracted and images will be uploaded asynchronously.',
         ], 202);
     }

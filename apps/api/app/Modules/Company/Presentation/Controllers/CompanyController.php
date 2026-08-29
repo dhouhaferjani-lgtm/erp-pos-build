@@ -123,6 +123,7 @@ class CompanyController extends Controller
             Location::create([
                 'company_id' => $company->id,
                 'name' => 'Main Location',
+                'code' => 'MAIN',
                 'type' => LocationType::Shop,
                 'is_default' => true,
                 'is_active' => true,

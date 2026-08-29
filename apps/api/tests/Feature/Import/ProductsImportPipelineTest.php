@@ -15,6 +15,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Domain\ImportRow;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
@@ -207,6 +208,159 @@ final class ProductsImportPipelineTest extends TestCase
         $this->assertSame('opening_exists', $rows[4]->warnings[0]['code'] ?? null);
         $this->assertSame('price_conflict', $rows[6]->warnings[0]['code'] ?? null);
         $this->assertSame(1, StockMovement::where('product_id', $duplicate->id)->where('movement_type', MovementType::Opening)->count());
+    }
+
+    public function test_products_import_job_summarizes_unresolved_location_warnings(): void
+    {
+        $file = UploadedFile::fake()->createWithContent('products-without-location.csv', implode("\n", [
+            'name,sku,type,quantity,purchase_price',
+            'Unlocated Product One,UNLOC-1,part,2.0000,3.000',
+            'Unlocated Product Two,UNLOC-2,part,4.0000,5.000',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', [
+                'file' => $file,
+                'type' => 'products',
+            ])
+            ->assertCreated();
+
+        $jobId = $createResponse->json('data.id');
+        $this->assertIsString($jobId);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.warning_rows', 2)
+            ->assertJsonPath('data.warning_summary.location_unresolved', 2);
+    }
+
+    public function test_import_list_and_processing_show_omit_warning_summary_while_terminal_show_counts_valid_codes_per_row(): void
+    {
+        $file = UploadedFile::fake()->createWithContent('products-warning-summary.csv', implode("\n", [
+            'name,sku,type',
+            'Warning Product,WARN-1,part',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', ['file' => $file, 'type' => 'products'])
+            ->assertCreated();
+        $jobId = $createResponse->json('data.id');
+        $this->assertIsString($jobId);
+
+        $this->onlyRowOf($jobId)->update([
+            'warnings' => [
+                ['code' => 'price_conflict', 'detail' => 'TTC conflicts with HT'],
+                ['code' => 'price_conflict', 'detail' => 'Margin conflicts with HT'],
+                ['detail' => 'Legacy warning without a code'],
+                'Legacy scalar warning',
+                ['code' => '', 'detail' => 'Legacy warning with an empty code'],
+                ['code' => 42, 'detail' => 'Legacy warning with a non-string code'],
+            ],
+        ]);
+
+        ImportJob::query()->findOrFail($jobId)->update(['status' => ImportStatus::Importing]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/imports')
+            ->assertOk()
+            ->assertJsonPath('data.0.warning_rows', 1)
+            ->assertJsonPath('data.0.warning_summary', null);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/imports/{$jobId}")
+            ->assertOk()
+            ->assertJsonPath('data.warning_rows', 1)
+            ->assertJsonPath('data.warning_summary', null);
+
+        ImportJob::query()->findOrFail($jobId)->update(['status' => ImportStatus::Completed]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/imports/{$jobId}")
+            ->assertOk()
+            ->assertJsonPath('data.warning_rows', 1)
+            ->assertJsonPath('data.warning_summary', ['price_conflict' => 1]);
+    }
+
+    public function test_products_import_uses_job_location_option_when_rows_have_no_location_code(): void
+    {
+        $file = UploadedFile::fake()->createWithContent('products-option-location.csv', implode("\n", [
+            'name,sku,type,quantity,purchase_price',
+            'Option Location Product,OPTION-LOC,part,3.0000,2.500',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', [
+                'file' => $file,
+                'type' => 'products',
+                'options' => ['location_code' => 'MAIN'],
+            ])
+            ->assertCreated();
+        $jobId = $createResponse->json('data.id');
+        $this->assertIsString($jobId);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.warning_rows', 0);
+
+        $product = Product::where('sku', 'OPTION-LOC')->firstOrFail();
+        $movement = StockMovement::where('product_id', $product->id)
+            ->where('movement_type', MovementType::Opening)
+            ->firstOrFail();
+
+        $this->assertSame($this->location->id, $movement->location_id);
+        $this->assertSame(
+            '3.0000',
+            StockLevel::where('product_id', $product->id)
+                ->where('location_id', $this->location->id)
+                ->firstOrFail()
+                ->quantity,
+        );
+    }
+
+    public function test_per_row_location_code_overrides_the_job_location_option(): void
+    {
+        $branch = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'Branch Warehouse',
+            'code' => 'BRANCH',
+            'type' => 'warehouse',
+            'is_default' => false,
+            'is_active' => true,
+        ]);
+        $file = UploadedFile::fake()->createWithContent('products-row-location.csv', implode("\n", [
+            'name,sku,type,quantity,purchase_price,location_code',
+            'Row Location Product,ROW-LOC,part,4.0000,3.500,BRANCH',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', [
+                'file' => $file,
+                'type' => 'products',
+                'options' => ['location_code' => 'MAIN'],
+            ])
+            ->assertCreated();
+        $jobId = $createResponse->json('data.id');
+        $this->assertIsString($jobId);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.warning_rows', 0);
+
+        $product = Product::where('sku', 'ROW-LOC')->firstOrFail();
+        $movement = StockMovement::where('product_id', $product->id)
+            ->where('movement_type', MovementType::Opening)
+            ->firstOrFail();
+
+        $this->assertSame($branch->id, $movement->location_id);
+        $this->assertSame(
+            0,
+            StockLevel::where('product_id', $product->id)
+                ->where('location_id', $this->location->id)
+                ->count(),
+        );
     }
 
     public function test_batch_tracked_product_quantity_creates_opening_movement_with_default_lot(): void

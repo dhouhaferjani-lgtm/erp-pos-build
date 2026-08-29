@@ -155,6 +155,7 @@ class CreateCompanyTest extends TestCase
 
         $this->assertNotNull($location);
         $this->assertEquals('Main Location', $location->name);
+        $this->assertSame('MAIN', $location->code);
         $this->assertTrue($location->is_default);
         $this->assertTrue($location->is_active);
         // Owner ruling B-3 (2026-08-23) + its parent-delegated
