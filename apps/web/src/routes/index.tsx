@@ -842,7 +842,7 @@ export function AppRoutes() {
           <Route
             path="suppliers"
             element={
-              <RequirePermission permission="partners.view">
+              <RequirePermission moduleKey="purchases" permission="partners.view">
                 <SuspenseWrapper>
                   <CustomerListPage key="supplier" partnerType="supplier" />
                 </SuspenseWrapper>

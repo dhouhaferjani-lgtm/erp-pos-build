@@ -10,6 +10,7 @@ import { AppRoutes } from './index'
 vi.mock('../components/layout/Layout', () => ({ Layout: () => <Outlet /> }))
 vi.mock('../features/dashboard/Dashboard', () => ({ Dashboard: () => <main>dashboard fallback</main> }))
 vi.mock('../features/partners/PartnerForm', () => ({ PartnerForm: () => <main>partner edit form</main> }))
+vi.mock('../features/partners/PartnerDetailPage', () => ({ PartnerDetailPage: () => <main>partner detail</main> }))
 vi.mock('../features/partners/PartnerListPage', () => ({ PartnerListPage: () => <main>partner list</main> }))
 vi.mock('../features/crm/pages/ContactFormPage', () => ({ ContactFormPage: () => <main>contact edit form</main> }))
 
@@ -61,16 +62,26 @@ describe('partner and contact route gates', () => {
     expect(screen.queryByText('partner edit form')).not.toBeInTheDocument()
   })
 
-  it('requires partners.view for the supplier list', async () => {
-    setActor([], ['partners.view'])
-    const allowed = renderWithProviders(<AppRoutes />, { route: '/purchases/suppliers' })
-    expect(await screen.findByText('partner list')).toBeInTheDocument()
-    allowed.unmount()
-
-    setActor([], ['purchases.view'])
+  it.each([
+    ['partners.view only', ['partners.view']],
+    ['purchases.view only', ['purchases.view']],
+  ])('blocks the supplier list with %s', async (_label, permissions) => {
+    setActor([], permissions)
     renderRoute('/purchases/suppliers')
+
     expect(await screen.findByText('dashboard fallback')).toBeInTheDocument()
     expect(screen.queryByText('partner list')).not.toBeInTheDocument()
+  })
+
+  it('keeps the supplier list and detail coherent when both gates pass', async () => {
+    setActor([], ['partners.view', 'purchases.view'])
+
+    const list = renderWithProviders(<AppRoutes />, { route: '/purchases/suppliers' })
+    expect(await screen.findByText('partner list')).toBeInTheDocument()
+    list.unmount()
+
+    renderRoute('/purchases/suppliers/supplier-1')
+    expect(await screen.findByText('partner detail')).toBeInTheDocument()
   })
 
   it('keeps the true contact edit route gated by contacts.update', async () => {
