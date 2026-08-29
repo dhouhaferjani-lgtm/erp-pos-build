@@ -113,6 +113,7 @@ final class ImportReExecutionGuardTest extends TestCase
     {
         $job = ImportJob::create([
             'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'user_id' => $this->user->id,
             'type' => ImportType::Products,
             'status' => ImportStatus::Validated,

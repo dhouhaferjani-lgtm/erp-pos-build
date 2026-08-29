@@ -76,6 +76,10 @@ return new class extends Migration
                     (new UomSeeder)->run();
                 });
             } catch (Throwable $exception) {
+                Log::error('units.seed_failed', [
+                    'exception' => $exception,
+                    'tenant' => $tenantId,
+                ]);
                 MigrationOutput::error("units.visibility_census companies={$companyCount} empty={$emptyCount} seed_failed=1");
 
                 return;
@@ -86,6 +90,10 @@ return new class extends Migration
                 MigrationOutput::info($message);
             }
         } catch (Throwable $exception) {
+            Log::error('units.visibility_migration_failed', [
+                'exception' => $exception,
+                'tenant' => $tenantId,
+            ]);
             MigrationOutput::error('units-visibility-error '.$exception->getMessage());
         }
     }

@@ -7,6 +7,7 @@ namespace App\Modules\Import\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Application\Services\ModuleEntitlementCheck;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Services\MigrationWizardService;
 use App\Modules\Import\Services\SpreadsheetParserService;
@@ -22,6 +23,7 @@ class MigrationWizardController extends Controller
         private readonly MigrationWizardService $wizardService,
         private readonly CompanyContext $companyContext,
         private readonly SpreadsheetParserService $spreadsheetParser,
+        private readonly ModuleEntitlementCheck $moduleEntitlement,
     ) {}
 
     /**
@@ -64,9 +66,14 @@ class MigrationWizardController extends Controller
     /**
      * Get recommended import order
      */
-    public function order(): JsonResponse
+    public function order(Request $request): JsonResponse
     {
-        $importOrder = $this->wizardService->getRecommendedImportOrder();
+        /** @var User $user */
+        $user = $request->user();
+        $importOrder = array_values(array_filter(
+            $this->wizardService->getRecommendedImportOrder(),
+            fn (ImportType $type): bool => $this->moduleEntitlement->allows($type, $user),
+        ));
 
         $data = array_map(
             fn (ImportType $type) => $this->wizardService->getImportTypeMetadata($type),
@@ -81,9 +88,6 @@ class MigrationWizardController extends Controller
      */
     public function dependencies(Request $request, string $type): JsonResponse
     {
-        /** @var User $user */
-        $user = $request->user();
-        $companyId = $this->companyContext->requireCompanyId();
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
@@ -144,6 +148,10 @@ class MigrationWizardController extends Controller
             return response()->json(['error' => 'Invalid import type'], 400);
         }
 
+        /** @var User $user */
+        $user = $request->user();
+        $this->moduleEntitlement->ensure($importType, $user);
+
         // Retired types remain in the enum for historical reads only — handing
         // out a template would invite an import the API now refuses (ruling D4).
         if ($importType->isDeprecated()) {
@@ -165,11 +173,19 @@ class MigrationWizardController extends Controller
      */
     public function status(Request $request): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
         $status = $this->wizardService->getMigrationStatus($tenantId);
+
+        /** @var User $user */
+        $user = $request->user();
+        foreach (array_keys($status) as $typeValue) {
+            $type = ImportType::tryFrom($typeValue);
+            if ($type !== null && ! $this->moduleEntitlement->allows($type, $user)) {
+                unset($status[$typeValue]);
+            }
+        }
 
         return response()->json(['data' => $status]);
     }

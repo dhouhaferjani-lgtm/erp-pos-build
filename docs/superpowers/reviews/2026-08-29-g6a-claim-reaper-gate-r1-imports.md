@@ -95,3 +95,79 @@ class covering the queued opening-balances path is red.
 ## 5. What to fix before merge
 
 Fix **C-1** (the async worker now silently drops any delivery whose job is not already `importing` — one Import test is red and every queued job in flight at deploy time is lost), then close **I-1..I-4** (ProductImages jobs unreapable+undeletable, `executeImport`'s unreleased self-claim, unowned entitlement carry-over, unrecorded DELETE scope), and re-run the **full** `tests/Feature/Import/` set — not only the three classes the brief named — before the next gate.
+
+## Gate r2 (Codex, imports+tenancy)
+
+- **Reviewer:** Codex standing in for both `imports-reviewer` and `tenancy-authz-reviewer`.
+- **Reviewed state:** `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/g6a-claim-reaper`, branch `feat/g6a-import-claim-reaper`, HEAD/base `4e7f9a031c5b9708d31479a2745d1a317b51c6dd`, dirty/uncommitted (14 modified + 7 untracked). Source was not edited by this gate.
+- **PostgreSQL isolation:** every PG invocation used `DB_DATABASE=autoerp_test_g4 DB_CENTRAL_DATABASE=autoerp_test_g4`; no full suite was run.
+
+### VERDICT: CHANGES
+
+The atomic claim/two-clock reaper/DELETE/authz core and all requested scoped test paths are green, but the ProductImages immediate-purge production path still retains the ZIP while recording it as purged. Fix **R2-1** below, then perform the already-recorded G-3b rebase carry-over before merge.
+
+### Finding / required change
+
+| ID | severity | path:line | finding | required change |
+|---|---|---|---|---|
+| **R2-1** | Important | `apps/api/app/Modules/Import/Presentation/Controllers/ImportController.php:929-957`; `apps/api/app/Modules/Import/Application/Jobs/ProcessProductImageImport.php:178-188`; `apps/api/tests/Feature/Import/PurgeExpiredImportArtifactsTest.php:82-116` | The controller persists relative `$path` but dispatches absolute `$fullPath`. The worker passes that absolute value to `Storage::disk('local')->exists/delete`, whose API expects a disk-relative key, then stamps `source_purged_at` unconditionally. Fresh isolated adapter proof: `exists(relative) before=true`, `exists(absolute-key)=false`, `exists(relative) after delete(absolute-key)=true`. The test passes `$job->file_path` (relative), unlike production, so its green result is a false pin. The retained ZIP is permanently excluded by purge's `whereNull('source_purged_at')` (`PurgeExpiredImportArtifactsCommand.php:40-58`) and source-file falsely returns 410 (`ImportController.php:664-670`). | Keep absolute `$zipPath` for ZIP processing, but delete using the persisted relative `$job->file_path`; stamp only after the relative key is absent/deleted, and log a failed cleanup without stamping. Change the test constructor argument to `Storage::disk('local')->path($job->file_path)` and assert the relative file is missing before asserting the stamp. |
+
+### Code-grounded verification
+
+1. **C-1/G6A-1 closed.** `ProcessImportJob` claims observed `pending|validated`, accepts controller-claimed `importing`, then calls the worker-start CAS (`ProcessImportJob.php:89-120`). ProductImages mirrors the same sequence (`ProcessProductImageImport.php:78-109`). `markWorkerStarted` requires `tenant_id`, `id`, `status='importing'`, and `worker_started_at IS NULL` and returns `affected===1` (`ImportJobClaimService.php:77-85`); true started duplicates are pinned at `ImportJobClaimConcurrencyTest.php:703-729`. OpeningBalances' rule-20 queue pin, `UnitsNotSeededRefusalTest`, and `ProductPlacementImportTest` are green. The PostgreSQL fork test creates two distinct backend PIDs and asserts exactly one winner (`ImportJobClaimConcurrencyTest.php:745-815`) and passed.
+2. **Transition census.** Claim is one conditional update after the short locked prior-status read (`ImportJobClaimService.php:25-56`); release is one CAS restoring the exact prior status (`:59-75`); worker start is one CAS (`:77-85`); every lane-owned terminal publication uses the single `status='importing'` update that atomically writes status, all four counters, error payload, and `completed_at` (`:87-172`). Affected rows are checked and a loser logs `import_jobs.terminal_write_lost` (`:99-107`, `:123-135`). Sync (`ImportService.php:415-426`), general async completion/failure (`ProcessImportJob.php:197-209,298-315`), ProductImages completion/failure (`ProcessProductImageImport.php:146-177`), fresh-worker `failed()` (`ProcessImportJob.php:343-357`), and reaper (`ReapStuckImportsCommand.php:61-74`) all route through it. No lane-owned terminal write escapes `status='importing'`; the unchanged upload/header validation failures at `ImportController.php:203,231` are pre-claim/base behavior outside this lifecycle table.
+
+| from | to | writer | exact predicate | affected-rows check | counters |
+|---|---|---|---|---|---|
+| `pending|validated` | `importing` | controller or either legacy-delivered worker via claim service | `tenant_id=? AND id=? AND status IN ('pending','validated')` | `affected === 1` → `ClaimResult.won` | no |
+| `importing`, worker not started | exact prior `pending|validated` | controller/direct-service zero-valid release | `tenant_id=? AND id=? AND status='importing' AND worker_started_at IS NULL` | `=== 1` | no |
+| `worker_started_at IS NULL` | `worker_started_at=now()` | sync/general/ProductImages worker | `tenant_id=? AND id=? AND status='importing' AND worker_started_at IS NULL` | `=== 1` | no |
+| `importing` | `completed|failed` | sync/general/ProductImages worker | `tenant_id=? AND id=? AND status='importing'` | `affected === 1`; loser logs | yes, atomically |
+| `importing` | `failed` | fresh-worker `failed()` | `tenant_id=? AND id=? AND status='importing'` | `affected === 1`; loser logs | yes, atomically |
+| stale `importing` | `failed` + `worker_lost` | per-tenant reaper | candidate: `tenant_id=? AND status='importing' AND ((worker_started_at IS NULL AND claimed_at<cutoff) OR (worker_started_at IS NOT NULL AND worker_started_at<cutoff))`; terminal CAS by tenant/id/status | boolean winner; loser logs | yes, sweep-time |
+| non-importing with zero effects | row deleted | DELETE controller | `tenant_id=? AND id=? AND status!='importing' AND successful_rows=0` | `$deleted === 1`; otherwise 409 | row/FK rows removed |
+
+3. **Zero-valid behavior closed.** HTTP winner counts only valid, not-yet-imported rows then releases to `ClaimResult.priorStatus` before returning the unchanged 422 body (`ImportController.php:548-561`). Direct service consumers do the same before throwing today's refusal (`ImportService.php:355-380`). Both exact-prior-status cases are pinned (`ImportJobClaimConcurrencyTest.php:551-619`).
+4. **DELETE matches the approved guard.** Precheck and delete CAS require `status != importing AND successful_rows = 0`; every conflict is 409 `IMPORT_HAS_EFFECTS` with reset/adjustment guidance (`ImportController.php:703-736`). Tests prove job + cascaded `import_rows` FK (`2025_11_30_150000_create_import_tables.php:48-51`) + source removal, importing/effects refusals, 403, and cross-tenant 404 (`ImportJobClaimConcurrencyTest.php:430-549`).
+5. **Sweeps and scheduler.** Reaper and purge both re-assert tenant and use `lazyById(500)` (`ReapStuckImportsCommand.php:47-75`; `PurgeExpiredImportArtifactsCommand.php:39-63`); 2,001-row one-pass pins are at `ReapStuckImportsTest.php:154-193` and `PurgeExpiredImportArtifactsTest.php:183-220` and passed on SQLite and PG. Both extend `TenantScopedCommand` and call `forEachTenant`; provider registration is `ImportServiceProvider.php:64-73`.
+
+Exact command signatures and schedule lines:
+
+```php
+protected $signature = 'imports:reap-stuck';       // ReapStuckImportsCommand.php:30
+protected $signature = 'imports:purge-expired';    // PurgeExpiredImportArtifactsCommand.php:24
+
+Schedule::command('imports:reap-stuck')            // routes/console.php:179
+    ->everyFiveMinutes()                            // routes/console.php:180
+    ->withoutOverlapping(15);
+Schedule::command('imports:purge-expired')          // routes/console.php:186
+    ->daily()                                       // routes/console.php:187
+    ->withoutOverlapping();
+```
+
+`schedule:list` output: `*/5 * * * * php artisan imports:reap-stuck` and `0 0 * * * php artisan imports:purge-expired`.
+
+6. **Two-clock/one-shot contract.** The reaper predicate is exact at `ReapStuckImportsCommand.php:45-59`; no ownership token exists. `WorkerLost = 'worker_lost'` is retained beside G-12's `UnitsNotSeeded`, and `isJobLevel()` is exhaustive with no default (`ImportErrorCode.php:15-24`). Failed jobs refuse re-execution and dispatch (`ImportJobClaimConcurrencyTest.php:302-320`).
+7. **M6c/DTOs.** `2026_08_30_100400_add_lifecycle_columns_to_import_jobs.php:22-63` has a table guard and six independent additive column guards; `down()` is the documented logged no-op (`:65-70`). `ImportJob` exposes lifecycle fillables/casts and uses the DTO cast for new JSON `error_detail` (`ImportJob.php:61-112`); `ImportErrorDetailData` is version-tolerant (`ImportErrorDetailData.php:13-46`) and its fixture passed (`ImportJobClaimConcurrencyTest.php:66-157`).
+8. **Generated drift retained faithfully.** `CACHE_STORE=array php artisan typescript:transform` transformed 540 types; `generated.d.ts` content hash stayed `d68f204c4228a22c702426f090dbf415bd7f2dab` and its Git-diff hash stayed `4196b226ed21c52382485364449e498bfe317087`. No further diff. The declared unrelated union remains `OpeningLotExpiryOutcome`, `ShiftCashMovementSource`, `CashTenderInvariantRefusalCode`, `RepositoryWriteRefusal`, `ProductTaxDefaultSource`.
+9. **Routes/authz/tenancy.** Both routes are inside the one existing `['api','auth:sanctum',SetPermissionsTeam::class,EnforceTokenTenantClaim::class,'can:imports.manage']` group (`ImportServiceProvider.php:76-93`). UUID guards return 404 before PG UUID binding (`ImportController.php:646-650,685-689`); PG pin passed. Source-file 403/cross-tenant 404 is pinned (`PurgeExpiredImportArtifactsTest.php:149-180`). Fix notes record the required merge order and both hard carry-overs: G-3b first, then G-6a rebase adding `ModuleEntitlementCheck` **and** company-pin 409 to DELETE + source-file (`lane-g6a-summary.md:38-39`). Those guards are not on this base and remain a pre-merge condition.
+10. **Fresh-worker DI/path safety.** `failed()` rebinds tenancy via `withTenantContext` and uses the documented static terminal CAS exception without `app()` (`ProcessImportJob.php:340-385`; `ImportJobClaimService.php:110-136`). Normal uploads persist Laravel-generated relative keys under `imports/{tenantId}` (`ImportController.php:160-167`) and purge deletes only persisted relative `file_path` (`PurgeExpiredImportArtifactsCommand.php:50-58`), so there is no user-filename traversal path. R2-1 is a relative/absolute mismatch, not traversal.
+11. **Manifest/CI union.** Current lane manifest is ceiling 1209 / Import 27; checker passed. Current `dev` reads ceiling 1212 / Import 25 / Migrations 10, so after G-3b rebase the required union is **Import 28 / ceiling 1215 / Migrations 11** (25→28, 1212→1215, 10→11). `ci.yml:1093-1098` contains the three anchored G-6a classes including purge; YAML parsing passed.
+
+### Commands run and outputs
+
+| command | output |
+|---|---|
+| SQLite: claim/reaper/purge + OpeningBalances + Units + ProductPlacement paths | **PASS** — 65 passed, 1 PG-only skip, 344 assertions |
+| SQLite: ImportReExecutionGuard + ProcessImportJobStatus + ProductsImportPipeline + `tests/Feature/Import/RoundTrip` | **PASS** — 54 passed, 4 declared G-7 skips, 495 assertions |
+| SQLite: HorizonQueueCoverage + ScheduledJobTenantIsolation + ImportPermissionGate + `tests/Feature/Security` | **PASS** — 122 passed, 459 assertions |
+| `DB_DATABASE=autoerp_test_g4 DB_CENTRAL_DATABASE=autoerp_test_g4 php artisan test -c phpunit-pgsql.xml` with the five requested paths | **PASS** — 58 passed, 311 assertions; includes two-PID single winner and both 2,001-row sweeps |
+| `CACHE_STORE=array php artisan typescript:transform` | **PASS** — 540 transformed; content and diff hashes unchanged |
+| `./vendor/bin/phpstan analyse app/Modules/Import routes/console.php <M6c> tests/Feature/Import` | **PASS** — 64 files, `[OK] No errors` |
+| `./vendor/bin/pint --test app/Modules/Import routes/console.php <M6c> tests/Feature/Import` | **PASS** — `{"result":"pass"}` |
+| `php tools/feature-lane-manifest-check.php` | **PASS** — 1468 Feature classes/74 groups; anchored entries uniquely matched; ceiling 1209 |
+| Ruby YAML parse of `.github/workflows/ci.yml` | **PASS** — `ci.yml YAML parse: OK` |
+| `php vendor/bin/deptrac analyse` | Existing non-zero baseline only: **183 violations, 0 errors**; filtered report contains no `App\\Modules\\Import` touched-class edge |
+| `git diff --check` / held-surface audit | **PASS** — no whitespace errors, no `apps/web` files, no hunk in `index` or `formatJob` |
+
+Full suite intentionally not run.

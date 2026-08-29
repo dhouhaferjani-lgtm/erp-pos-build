@@ -4,13 +4,10 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
-use App\Modules\Accounting\Domain\Account;
-use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
-use App\Modules\Company\Domain\Location;
 use App\Modules\Tenant\Domain\Tenant;
-use App\Modules\Treasury\Domain\Enums\RepositoryType;
-use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Contracts\Treasury\CompanyPaymentRepositoryProvisionerInterface;
+use Illuminate\Console\Command;
 use Illuminate\Database\Seeder;
 
 /**
@@ -42,25 +39,11 @@ use Illuminate\Database\Seeder;
  */
 class PaymentRepositorySeeder extends Seeder
 {
-    /**
-     * Locales that ship a `lang/<locale>/treasury.php` file. Kept in step with
-     * the SetLocale middleware's supported list; an unknown company locale
-     * degrades to `FALLBACK_LOCALE` rather than persisting a raw translation key
-     * as a repository name.
-     *
-     * @var list<string>
-     */
-    private const TRANSLATED_LOCALES = ['en', 'fr', 'ar'];
+    private ?Command $outputCommand = null;
 
-    /**
-     * Gate finding M-1: deliberately NOT `config('app.locale')`. That value is
-     * request-mutable — `Application::setLocale()` writes it and the SetLocale
-     * middleware calls it on every request — so reading it here would persist a
-     * repository name derived from whatever `Accept-Language` the registering
-     * HTTP request happened to carry. A provisioning default must not depend on
-     * the shape of one request.
-     */
-    private const FALLBACK_LOCALE = 'en';
+    public function __construct(
+        private readonly CompanyPaymentRepositoryProvisionerInterface $provisioner,
+    ) {}
 
     /**
      * Run the database seeds.
@@ -85,7 +68,7 @@ class PaymentRepositorySeeder extends Seeder
         $firstCompany = Company::first();
 
         if (! $tenant || ! $firstCompany) {
-            $this->command->error('No tenant or company found. Please run DatabaseSeeder first.');
+            $this->outputCommand?->error('No tenant or company found. Please run DatabaseSeeder first.');
 
             return;
         }
@@ -98,18 +81,6 @@ class PaymentRepositorySeeder extends Seeder
      */
     private function seedRepositoriesForCompany(Company $company, Tenant $tenant): void
     {
-        // Both seeded types (cash register, safe) are cash on the balance sheet,
-        // so a single purpose lookup covers them. Resolution is purpose-based —
-        // never by literal account code.
-        $cashAccount = Account::findByPurpose($company->id, SystemAccountPurpose::Cash);
-
-        if ($cashAccount === null) {
-            $this->command?->warn(
-                "Cash GL account not found for {$company->name}. Payment repositories will be created without GL links. "
-                .'Run ChartOfAccountsSeeder first, then re-run this seeder.'
-            );
-        }
-
         // Campaign lane N-12 — attribute the day-one repositories to the
         // company's own POS location instead of leaving `location_id = NULL`.
         //
@@ -125,99 +96,24 @@ class PaymentRepositorySeeder extends Seeder
         // Null-safe by design: the location table may legitimately be empty at
         // this point in the provisioning order, and a NULL here is still the
         // resolver's tier 2 — i.e. exactly today's behaviour, never a failure.
-        $locationId = $this->defaultLocationId($company);
-
-        foreach ($this->defaultRepositories($company) as $repo) {
-            // A repository is BORN at balance 0 — the direct-balance-write
-            // trigger (`2026_07_08_160000`) rejects any other opening value, and
-            // `balance` is port-managed and not fillable. Nothing here writes it.
-            PaymentRepository::forceCreate([
-                'tenant_id' => $tenant->id,
-                'company_id' => $company->id,
-                'account_id' => $cashAccount?->id,
-                'gl_account_id' => $cashAccount?->id,
-                'location_id' => $locationId,
-                ...$repo,
-            ]);
-        }
+        // A repository is BORN at balance 0 — the direct-balance-write trigger
+        // (`2026_07_08_160000`) rejects any other opening value, and `balance`
+        // is port-managed and not fillable. Nothing here writes it.
+        $this->provisioner->provisionForCompany($company->tenant_id, $company->id);
 
         // Null-safe: this seeder is `new`-instantiated (not container-resolved) from
         // TenantInitializationService::seedPaymentRepositories(), so `$command` is
         // null on the live registration path. A hard call threw AFTER
         // seedReferenceData(), and compensate() then dropped the tenant database —
         // which made the country_payment_settings self-healing inert.
-        $this->command?->info('Created 2 payment repositories for '.$company->name);
+        $this->outputCommand?->info('Created 2 payment repositories for '.$company->name);
     }
 
-    /**
-     * N-12 — the location these day-one repositories belong to.
-     *
-     * The default location first (`is_default`), then an active one, then any
-     * POS-enabled one, then the oldest. `TenantProvisioningService` creates a
-     * `type=shop`, POS-enabled Main Location, so the ordinary registration path
-     * resolves it; a seeder run against a company that has no locations yet
-     * returns null and the repositories stay unattributed, which is the pre-N-12
-     * shape and still fully served by the resolver's tier 2.
-     *
-     * Kept byte-for-byte in step with the fleet backfill
-     * (`2026_08_26_100000_backfill_payment_repository_location_n12`) so a tenant
-     * migrated today and a tenant registered today land in the same shape.
-     */
-    private function defaultLocationId(Company $company): ?string
+    public function setCommand(Command $command): static
     {
-        $locationId = Location::query()
-            ->where('company_id', $company->id)
-            ->orderByDesc('is_default')
-            ->orderByDesc('is_active')
-            ->orderByDesc('pos_enabled')
-            ->orderBy('created_at')
-            ->value('id');
+        parent::setCommand($command);
+        $this->outputCommand = $command;
 
-        return is_string($locationId) ? $locationId : null;
-    }
-
-    /**
-     * The two repositories every tenant starts with.
-     *
-     * No country axis: a cash register and a safe are universal, and the only
-     * country-dependent thing the old implementation carried (bank identities)
-     * was fabricated. Labels come from `lang/<locale>/treasury.php` under the
-     * registering company's locale, so a French-speaking tenant is not handed
-     * English defaults.
-     *
-     * @return list<array{code: string, name: string, type: string, is_active: bool}>
-     */
-    private function defaultRepositories(Company $company): array
-    {
-        $locale = $this->resolveLocale($company);
-
-        return [
-            [
-                'code' => 'CASH-01',
-                'name' => trans('treasury.default_repositories.cash_register', [], $locale),
-                'type' => RepositoryType::CashRegister->value,
-                'is_active' => true,
-            ],
-            [
-                'code' => 'SAFE-01',
-                'name' => trans('treasury.default_repositories.safe', [], $locale),
-                'type' => RepositoryType::Safe->value,
-                'is_active' => true,
-            ],
-        ];
-    }
-
-    /**
-     * Reduce a company locale (`fr_TN`, `fr-FR`, `en`) to a translated language
-     * code, falling back to a FIXED default when the tenant asked for a language
-     * this build has no `lang/` directory for.
-     */
-    private function resolveLocale(Company $company): string
-    {
-        $language = strtolower(explode('-', str_replace('_', '-', $company->locale))[0]);
-
-        return in_array($language, self::TRANSLATED_LOCALES, true)
-            ? $language
-            : self::FALLBACK_LOCALE;
+        return $this;
     }
 }

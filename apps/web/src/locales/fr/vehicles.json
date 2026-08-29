@@ -33,7 +33,6 @@
   "created": "Cree",
   "updated": "Mis a jour",
   "owner": "Propriétaire (optionnel)",
-  "noOwner": "-- Aucun propriétaire --",
   "licensePlateRequired": "La plaque d'immatriculation est obligatoire",
   "brandRequired": "La marque est obligatoire",
   "modelRequired": "Le modèle est obligatoire",

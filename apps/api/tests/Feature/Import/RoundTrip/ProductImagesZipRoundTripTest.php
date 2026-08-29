@@ -116,6 +116,8 @@ final class ProductImagesZipRoundTripTest extends TestCase
 
         $job = ImportJob::query()->findOrFail($jobId);
         $this->assertSame(ImportType::ProductImages, $job->type);
+        $this->assertSame($this->company->id, $job->company_id);
+        $this->assertSame(hash('sha256', $contents), $job->source_hash);
         $this->assertSame('product-images.zip', $job->original_filename);
         $this->assertSame(ImportStatus::Pending, $job->status);
 

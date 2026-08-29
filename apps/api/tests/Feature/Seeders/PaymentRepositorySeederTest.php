@@ -78,7 +78,7 @@ final class PaymentRepositorySeederTest extends TestCase
      * DPA lane H-3: the seeder used to push 57 700 of fabricated cash through
      * the treasury movement port as real `opening_balance` movements.
      */
-    public function test_seeder_records_no_balance_and_no_movement(): void
+    public function test_seeder_records_no_balance_movement_or_journal_entry(): void
     {
         $company = $this->seedCompany();
 
@@ -87,6 +87,11 @@ final class PaymentRepositorySeederTest extends TestCase
         }
 
         $this->assertSame(0, DB::table('repository_movements')->where('company_id', $company->id)->count());
+        $this->assertSame(0, DB::table('journal_entries')->where('company_id', $company->id)->count());
+        $this->assertSame(0, DB::table('journal_lines')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->where('journal_entries.company_id', $company->id)
+            ->count());
     }
 
     /**
@@ -169,7 +174,8 @@ final class PaymentRepositorySeederTest extends TestCase
             ));
         });
 
-        $this->assertSame(0, bccomp($till->fresh()?->balance ?? '0', '0', 3));
+        $till->refresh();
+        $this->assertSame(0, bccomp($till->balance, '0', 3));
 
         $movementsBefore = DB::table('repository_movements')->where('company_id', $company->id)->count();
         $this->runSeeder(new DemoPaymentRepositorySeeder, $company);
@@ -179,7 +185,8 @@ final class PaymentRepositorySeederTest extends TestCase
             DB::table('repository_movements')->where('company_id', $company->id)->count(),
             'A repository already carrying an opening_balance movement must never be opened twice.',
         );
-        $this->assertSame(0, bccomp($till->fresh()?->balance ?? '-1', '0', 3));
+        $till->refresh();
+        $this->assertSame(0, bccomp($till->balance, '0', 3));
     }
 
     private function seedCompany(): Company
@@ -205,7 +212,7 @@ final class PaymentRepositorySeederTest extends TestCase
         ]);
 
         $this->app->make(BanksSeeder::class)->run($company);
-        $this->runSeeder(new PaymentRepositorySeeder, $company);
+        $this->runSeeder(app(PaymentRepositorySeeder::class), $company);
 
         return $company;
     }

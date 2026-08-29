@@ -309,6 +309,7 @@ final class ScheduledJobTenantIsolationTest extends TestCase
         return ImportJob::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenant->id,
+            'company_id' => Company::query()->where('tenant_id', $tenant->id)->firstOrFail()->id,
             'user_id' => $user->id,
             'type' => $type->value,
             'status' => $status->value,

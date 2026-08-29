@@ -16,6 +16,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Uom\Application\Services\UnitsProvisioningService;
+use App\Shared\Contracts\Treasury\CompanyPaymentRepositoryProvisionerInterface;
 use Database\Seeders\BanksSeeder;
 use Database\Seeders\CountriesSeeder;
 use Database\Seeders\CountryDocumentSettingsSeeder;
@@ -42,6 +43,7 @@ class TenantInitializationService
         private readonly ChartOfAccountsService $chartOfAccounts,
         private readonly ExpenseCategoryProvisioningService $expenseCategories,
         private readonly UnitsProvisioningService $unitsProvisioning,
+        private readonly CompanyPaymentRepositoryProvisionerInterface $paymentRepositoryProvisioner,
     ) {}
 
     /**
@@ -312,7 +314,7 @@ class TenantInitializationService
      */
     private function seedPaymentRepositories(Company $company): void
     {
-        $seeder = new PaymentRepositorySeeder;
+        $seeder = new PaymentRepositorySeeder($this->paymentRepositoryProvisioner);
         $seeder->run($company);
     }
 
