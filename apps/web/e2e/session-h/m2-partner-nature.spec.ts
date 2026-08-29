@@ -59,6 +59,7 @@ test.describe('Session H M2 partner Nature gate', () => {
   let apiSession: ApiSession
   let legacyCompany: PartnerRow
   let legacyWalkIn: PartnerRow
+  let createdPartnerId: string | null = null
 
   test.beforeAll(async ({ request }) => {
     apiSession = await loginApi(request)
@@ -83,7 +84,18 @@ test.describe('Session H M2 partner Nature gate', () => {
     legacyWalkIn = walkIn!
   })
 
-  test.afterEach(async ({ page }) => {
+  test.afterEach(async ({ page, request }) => {
+    if (createdPartnerId !== null) {
+      const partnerId = createdPartnerId
+      createdPartnerId = null
+      const deleted = await request.delete(`${API_BASE}/partners/${partnerId}`, {
+        headers: apiHeaders(apiSession),
+      })
+      expect(
+        deleted.status(),
+        `created partner cleanup failed: ${deleted.status()} ${await deleted.text()}`,
+      ).toBe(204)
+    }
     await page.unrouteAll({ behavior: 'ignoreErrors' })
   })
 
@@ -115,7 +127,10 @@ test.describe('Session H M2 partner Nature gate', () => {
     )
     await page.getByRole('button', { name: /^save$/i }).click()
     const createdResponse = await createdResponsePromise
+    const createdBody = await createdResponse.json() as { data: { id: string; name: string } }
+    createdPartnerId = createdBody.data.id
     expect(createdResponse.status()).toBe(201)
+    expect(createdBody.data.name).toBe(uniqueName)
     expect(createRequestCount).toBe(1)
     await expect(page).toHaveURL(/\/sales\/customers$/)
   })
@@ -134,17 +149,15 @@ test.describe('Session H M2 partner Nature gate', () => {
     await page.goto(`/sales/customers/${legacyCompany.id}/edit`)
     await expect(page.getByLabel(/^Name/)).toHaveValue(legacyCompany.name, { timeout: UI_TIMEOUT })
     await expect(page.getByText('B2B Information')).toBeVisible()
-    await page.screenshot({
+    await page.locator('form').screenshot({
       path: path.join(SCREENSHOT_DIR, 'm2-legacy-company-visible.png'),
-      fullPage: true,
     })
 
     await page.goto(`/sales/customers/${legacyWalkIn.id}/edit`)
     await expect(page.getByLabel(/^Name/)).toHaveValue(legacyWalkIn.name, { timeout: UI_TIMEOUT })
     await expect(page.getByText('B2B Information')).toBeHidden()
-    await page.screenshot({
+    await page.locator('form').screenshot({
       path: path.join(SCREENSHOT_DIR, 'm2-legacy-walk-in-hidden.png'),
-      fullPage: true,
     })
   })
 })

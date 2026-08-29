@@ -179,6 +179,7 @@ export function B2BFieldsSection({
             <CreditLimitWarning
               creditLimit={watch('credit_limit')}
               outstandingBalance={outstandingBalance ?? null}
+              currency={currency}
             />
           </div>
         </div>

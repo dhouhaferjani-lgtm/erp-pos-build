@@ -57,6 +57,7 @@
     },
     "nature": {
       "label": "Nature",
+      "selectPlaceholder": "Select nature",
       "individual": "Individual",
       "company": "Company"
     },

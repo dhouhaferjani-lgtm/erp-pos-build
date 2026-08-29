@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import i18n from '@/lib/i18n'
 import type { Country } from '../settings/types/country'
 import { makePartnerDetail } from './__fixtures__/partner'
 
@@ -119,7 +120,7 @@ function renderPartnerForm(
 }
 
 describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     mockApiGet.mockReset()
     mockApiPost.mockReset()
     mockApiPatch.mockReset()
@@ -127,6 +128,7 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
     mockGetCountries.mockReset()
     mockGetCountries.mockResolvedValue([])
     window.localStorage.setItem('autoerp-language', 'en')
+    await i18n.changeLanguage('en')
     useAuthStore.setState({
       user: {
         id: 'user-1',
@@ -160,6 +162,39 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
     expect(screen.getByLabelText(/^Nature/)).toHaveValue('business')
   })
 
+  it('does not default Nature to Company on a supplier edit whose detail request fails', async () => {
+    mockApiGet.mockRejectedValue(new Error('partner unavailable'))
+
+    renderPartnerForm(
+      ['/purchases/suppliers/legacy-supplier/edit'],
+      '/purchases/suppliers/:id/edit',
+      'supplier',
+    )
+
+    expect(await screen.findByLabelText(/^Nature/)).toHaveValue('')
+  })
+
+  it.each([
+    ['en', 'Select nature'],
+    ['fr', 'Sélectionner la nature'],
+    ['ar', 'اختر طبيعة الشريك'],
+  ])('uses the Nature-specific blank option in %s', async (language, placeholder) => {
+    await i18n.changeLanguage(language)
+
+    renderPartnerForm(['/sales/customers/new'], '/sales/customers/new', 'customer')
+
+    expect(screen.getByRole('option', { name: placeholder })).toBeInTheDocument()
+  })
+
+  it('uses an unambiguous Arabic validation message for Nature', async () => {
+    await i18n.changeLanguage('ar')
+    renderPartnerForm(['/sales/customers/new'], '/sales/customers/new', 'customer')
+
+    fireEvent.click(screen.getByRole('button', { name: 'حفظ' }))
+
+    expect(await screen.findByText('طبيعة الشريك مطلوبة')).toBeInTheDocument()
+  })
+
   it('shows B2B fields for a legacy null Nature with a VAT number', async () => {
     mockApiGet.mockResolvedValue({
       data: {
@@ -178,6 +213,28 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
     )
 
     expect(await screen.findByText('B2B Information')).toBeInTheDocument()
+  })
+
+  it('keeps legacy B2B fields visible when the UI blank option represents null Nature', async () => {
+    mockApiGet.mockResolvedValue({
+      data: {
+        data: makePartnerDetail({
+          id: 'legacy-company',
+          customer_category: null,
+          vat_number: '1234567ABC000',
+        }),
+      },
+    })
+
+    renderPartnerForm(
+      ['/sales/customers/legacy-company/edit'],
+      '/sales/customers/:id/edit',
+      'customer',
+    )
+
+    expect(await screen.findByText('B2B Information')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText(/^Nature/), { target: { value: '' } })
+    expect(screen.getByText('B2B Information')).toBeInTheDocument()
   })
 
   it('hides B2B fields for a legacy null Nature with no B2B data', async () => {
@@ -213,6 +270,7 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
           customer_category: 'business',
           credit_limit: '100.000',
           receivable_balance: '125.000',
+          net_balance: '125.000',
         }),
       },
     })
@@ -224,6 +282,31 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
     )
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Credit limit exceeded')
+  })
+
+  it('uses net customer exposure instead of gross receivables for the credit warning', async () => {
+    mockApiGet.mockResolvedValue({
+      data: {
+        data: makePartnerDetail({
+          id: 'customer-in-credit',
+          customer_category: 'business',
+          credit_limit: '100.000',
+          receivable_balance: '125.000',
+          credit_balance: '30.000',
+          net_balance: '95.000',
+        }),
+      },
+    })
+
+    renderPartnerForm(
+      ['/sales/customers/customer-in-credit/edit'],
+      '/sales/customers/:id/edit',
+      'customer',
+    )
+
+    expect(await screen.findByLabelText(/^Name/)).toHaveValue('Acme Corp')
+    expect(screen.getByRole('alert')).toHaveTextContent('Approaching credit limit')
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Credit limit exceeded')
   })
 
   it('create mode: prefills Name, VAT number, Phone, Street address, City from navigation state', () => {

@@ -28,6 +28,7 @@ import {
   partnersInvalidationPredicate,
 } from './_invalidation'
 import { readPartnerPrefill } from './partnerPrefill'
+import { getNetBalance } from './partnerNetBalance'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import type { PartnerData } from './types'
@@ -217,7 +218,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
     defaultValues: {
       name: '',
       type: defaultType,
-      customer_category: isSupplierContext ? 'business' : null,
+      customer_category: !isEditing && isSupplierContext ? 'business' : null,
       company_legal_name: '',
       business_registration_number: '',
       payment_terms: '',
@@ -261,7 +262,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
     creditLimit,
   ].some((value) => value.trim() !== '')
   const showB2BFields = customerCategory === 'business'
-    || (customerCategory === null && hasLegacyB2BSignal)
+    || ((customerCategory === null || customerCategory === '') && hasLegacyB2BSignal)
 
   // Fetch countries for dropdown
   const { data: countries = [] } = useQuery({
@@ -544,7 +545,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
                 {...register('customer_category')}
                 error={!!errors.customer_category}
               >
-                <option value="">{t('sales:partners.b2b.selectCategory')}</option>
+                <option value="">{t('sales:partners.nature.selectPlaceholder')}</option>
                 <option value="individual">{t('sales:partners.nature.individual')}</option>
                 <option value="business">{t('sales:partners.nature.company')}</option>
               </Select>
@@ -698,7 +699,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
             watch={watch}
             setValue={setValue}
             partnerId={isEditing ? id : undefined}
-            outstandingBalance={partner?.receivable_balance ?? null}
+            outstandingBalance={partner ? getNetBalance(partner, isCustomerContext) : null}
           />
         )}
 
