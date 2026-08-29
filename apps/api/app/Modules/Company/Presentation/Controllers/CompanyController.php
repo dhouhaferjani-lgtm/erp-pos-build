@@ -27,6 +27,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Database\Seeders\PaymentMethodSeeder;
@@ -53,6 +54,7 @@ class CompanyController extends Controller
         private readonly CompanyFiscalIdentityService $companyFiscalIdentityService,
         private readonly AuditService $auditService,
         private readonly PaymentMethodSeeder $paymentMethodSeeder,
+        private readonly UnitsProvisioningService $unitsProvisioning,
     ) {}
 
     /**
@@ -123,6 +125,7 @@ class CompanyController extends Controller
             Location::create([
                 'company_id' => $company->id,
                 'name' => 'Main Location',
+                'code' => 'MAIN',
                 'type' => LocationType::Shop,
                 'is_default' => true,
                 'is_active' => true,
@@ -182,6 +185,8 @@ class CompanyController extends Controller
 
             // 6. Provision country tax configurations and set company default tax
             $this->companyTaxProvisioning->provisionForCompany($company);
+
+            $this->unitsProvisioning->provisionForCompany($company);
 
             return $company;
         });

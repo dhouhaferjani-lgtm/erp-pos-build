@@ -15,6 +15,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Domain\ImportRow;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
@@ -28,6 +29,7 @@ use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Carbon\CarbonImmutable;
 use Database\Seeders\CountriesSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -125,6 +127,7 @@ final class ProductsImportPipelineTest extends TestCase
         ]);
 
         app(CompanyContext::class)->setCompanyId($this->company->id);
+        app(UnitsProvisioningService::class)->provisionForCompany($this->company);
         Storage::fake('local');
     }
 
@@ -194,7 +197,7 @@ final class ProductsImportPipelineTest extends TestCase
         $htProduct = Product::where('sku', 'HTPRICE')->firstOrFail();
         $this->assertSame('11.900', $htProduct->sale_price);
 
-        $job = ImportJob::findOrFail($jobId);
+        $job = ImportJob::query()->findOrFail($jobId);
         $this->assertInstanceOf(ImportJob::class, $job);
         $rows = $job->rows()->orderBy('row_number')->get()->keyBy('row_number');
 
@@ -207,6 +210,159 @@ final class ProductsImportPipelineTest extends TestCase
         $this->assertSame('opening_exists', $rows[4]->warnings[0]['code'] ?? null);
         $this->assertSame('price_conflict', $rows[6]->warnings[0]['code'] ?? null);
         $this->assertSame(1, StockMovement::where('product_id', $duplicate->id)->where('movement_type', MovementType::Opening)->count());
+    }
+
+    public function test_products_import_job_summarizes_unresolved_location_warnings(): void
+    {
+        $file = UploadedFile::fake()->createWithContent('products-without-location.csv', implode("\n", [
+            'name,sku,type,quantity,purchase_price',
+            'Unlocated Product One,UNLOC-1,part,2.0000,3.000',
+            'Unlocated Product Two,UNLOC-2,part,4.0000,5.000',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', [
+                'file' => $file,
+                'type' => 'products',
+            ])
+            ->assertCreated();
+
+        $jobId = $createResponse->json('data.id');
+        $this->assertIsString($jobId);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.warning_rows', 2)
+            ->assertJsonPath('data.warning_summary.location_unresolved', 2);
+    }
+
+    public function test_import_list_and_processing_show_omit_warning_summary_while_terminal_show_counts_valid_codes_per_row(): void
+    {
+        $file = UploadedFile::fake()->createWithContent('products-warning-summary.csv', implode("\n", [
+            'name,sku,type',
+            'Warning Product,WARN-1,part',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', ['file' => $file, 'type' => 'products'])
+            ->assertCreated();
+        $jobId = $createResponse->json('data.id');
+        $this->assertIsString($jobId);
+
+        $this->onlyRowOf($jobId)->update([
+            'warnings' => [
+                ['code' => 'price_conflict', 'detail' => 'TTC conflicts with HT'],
+                ['code' => 'price_conflict', 'detail' => 'Margin conflicts with HT'],
+                ['detail' => 'Legacy warning without a code'],
+                'Legacy scalar warning',
+                ['code' => '', 'detail' => 'Legacy warning with an empty code'],
+                ['code' => 42, 'detail' => 'Legacy warning with a non-string code'],
+            ],
+        ]);
+
+        ImportJob::query()->findOrFail($jobId)->update(['status' => ImportStatus::Importing]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/imports')
+            ->assertOk()
+            ->assertJsonPath('data.0.warning_rows', 1)
+            ->assertJsonPath('data.0.warning_summary', null);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/imports/{$jobId}")
+            ->assertOk()
+            ->assertJsonPath('data.warning_rows', 1)
+            ->assertJsonPath('data.warning_summary', null);
+
+        ImportJob::query()->findOrFail($jobId)->update(['status' => ImportStatus::Completed]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/imports/{$jobId}")
+            ->assertOk()
+            ->assertJsonPath('data.warning_rows', 1)
+            ->assertJsonPath('data.warning_summary', ['price_conflict' => 1]);
+    }
+
+    public function test_products_import_uses_job_location_option_when_rows_have_no_location_code(): void
+    {
+        $file = UploadedFile::fake()->createWithContent('products-option-location.csv', implode("\n", [
+            'name,sku,type,quantity,purchase_price',
+            'Option Location Product,OPTION-LOC,part,3.0000,2.500',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', [
+                'file' => $file,
+                'type' => 'products',
+                'options' => ['location_code' => 'MAIN'],
+            ])
+            ->assertCreated();
+        $jobId = $createResponse->json('data.id');
+        $this->assertIsString($jobId);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.warning_rows', 0);
+
+        $product = Product::where('sku', 'OPTION-LOC')->firstOrFail();
+        $movement = StockMovement::where('product_id', $product->id)
+            ->where('movement_type', MovementType::Opening)
+            ->firstOrFail();
+
+        $this->assertSame($this->location->id, $movement->location_id);
+        $this->assertSame(
+            '3.0000',
+            StockLevel::where('product_id', $product->id)
+                ->where('location_id', $this->location->id)
+                ->firstOrFail()
+                ->quantity,
+        );
+    }
+
+    public function test_per_row_location_code_overrides_the_job_location_option(): void
+    {
+        $branch = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'Branch Warehouse',
+            'code' => 'BRANCH',
+            'type' => 'warehouse',
+            'is_default' => false,
+            'is_active' => true,
+        ]);
+        $file = UploadedFile::fake()->createWithContent('products-row-location.csv', implode("\n", [
+            'name,sku,type,quantity,purchase_price,location_code',
+            'Row Location Product,ROW-LOC,part,4.0000,3.500,BRANCH',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', [
+                'file' => $file,
+                'type' => 'products',
+                'options' => ['location_code' => 'MAIN'],
+            ])
+            ->assertCreated();
+        $jobId = $createResponse->json('data.id');
+        $this->assertIsString($jobId);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.warning_rows', 0);
+
+        $product = Product::where('sku', 'ROW-LOC')->firstOrFail();
+        $movement = StockMovement::where('product_id', $product->id)
+            ->where('movement_type', MovementType::Opening)
+            ->firstOrFail();
+
+        $this->assertSame($branch->id, $movement->location_id);
+        $this->assertSame(
+            0,
+            StockLevel::where('product_id', $product->id)
+                ->where('location_id', $this->location->id)
+                ->count(),
+        );
     }
 
     public function test_batch_tracked_product_quantity_creates_opening_movement_with_default_lot(): void
@@ -253,7 +409,7 @@ final class ProductsImportPipelineTest extends TestCase
             'batch-tracked opening stock must be backed by a default lot'
         );
 
-        $row = ImportJob::findOrFail($jobId)->rows()->firstOrFail();
+        $row = ImportJob::query()->whereKey($jobId)->firstOrFail()->rows()->firstOrFail();
         $this->assertSame('ok', $row->data['_results']['opening_stock'] ?? null);
         $this->assertNull($row->warnings);
     }
@@ -697,13 +853,13 @@ final class ProductsImportPipelineTest extends TestCase
         $this->assertSame($soins->id, Product::where('sku', 'LING-BEBE_72')->firstOrFail()->category_id);
         $this->assertSame($aroma->id, Product::where('sku', 'ELIX-APAI_50')->firstOrFail()->category_id);
 
-        $rows = ImportJob::findOrFail($jobId)->rows()->orderBy('row_number')->get()->keyBy('row_number');
+        $rows = ImportJob::query()->whereKey($jobId)->firstOrFail()->rows()->orderBy('row_number')->get()->keyBy('row_number');
 
         // Row 1 created the category -> reported. Row 2 reused it -> matched, no warning.
         $this->assertSame('category_created', $rows[1]->warnings[0]['code'] ?? null);
         $this->assertStringContainsString('Soins Bebe', (string) ($rows[1]->warnings[0]['detail'] ?? ''));
         $this->assertSame('created', $rows[1]->data['_results']['category'] ?? null);
-        $this->assertNull($rows[2]->warnings);
+        $this->assertNull($rows[2]?->warnings);
         $this->assertSame('matched', $rows[2]->data['_results']['category'] ?? null);
         $this->assertSame('category_created', $rows[3]->warnings[0]['code'] ?? null);
 
@@ -760,9 +916,9 @@ final class ProductsImportPipelineTest extends TestCase
         ], 2);
 
         $categorised = Product::where('sku', 'PARA-500')->firstOrFail();
-        $this->assertSame(
-            0,
-            bccomp((string) $categorised->tax_rate, '7.00', 2),
+        $this->assertDecimalEquals(
+            '7.00',
+            $categorised->tax_rate,
             'A product whose category carries its own default rate must import at that rate, not the company default.'
         );
         $this->assertSame(
@@ -772,7 +928,7 @@ final class ProductsImportPipelineTest extends TestCase
         );
 
         $uncategorised = Product::where('sku', 'BROS-01')->firstOrFail();
-        $this->assertSame(0, bccomp((string) $uncategorised->tax_rate, '19.00', 2));
+        $this->assertDecimalEquals('19.00', $uncategorised->tax_rate);
         $this->assertSame(
             $tva19->id,
             $uncategorised->default_tax_configuration_id,
@@ -807,7 +963,7 @@ final class ProductsImportPipelineTest extends TestCase
 
         $product = Product::where('sku', 'CREM-SOL')->firstOrFail();
 
-        $this->assertSame(0, bccomp((string) $product->tax_rate, '13.00', 2));
+        $this->assertDecimalEquals('13.00', $product->tax_rate);
         $this->assertNull(
             $product->default_tax_configuration_id,
             'No configuration states 13 %, so none may be stored — least of all the company 19 % one.'
@@ -894,7 +1050,7 @@ final class ProductsImportPipelineTest extends TestCase
 
         $product = Product::where('sku', 'PARA-500')->firstOrFail();
 
-        $this->assertSame(0, bccomp((string) $product->tax_rate, '19.00', 2), 'Pre-condition: the rate moved.');
+        $this->assertDecimalEquals('19.00', $product->tax_rate, 'Pre-condition: the rate moved.');
         $this->assertNotSame(
             $tva7->id,
             $product->default_tax_configuration_id,
@@ -936,7 +1092,7 @@ final class ProductsImportPipelineTest extends TestCase
 
         $product = Product::where('sku', 'PARA-500')->firstOrFail();
 
-        $this->assertSame(0, bccomp((string) $product->tax_rate, '13.00', 2));
+        $this->assertDecimalEquals('13.00', $product->tax_rate);
         $this->assertNull(
             $product->default_tax_configuration_id,
             'Nothing states 13 %, so the stale 7 % configuration must be cleared, not kept.'
@@ -972,9 +1128,9 @@ final class ProductsImportPipelineTest extends TestCase
 
         $product = Product::where('sku', 'PARA-500')->firstOrFail();
 
-        $this->assertSame(
-            0,
-            bccomp((string) $product->tax_rate, '7.00', 2),
+        $this->assertDecimalEquals(
+            '7.00',
+            $product->tax_rate,
             "The category's configuration IS its rate statement; the company default must not override it."
         );
         $this->assertSame($tva7->id, $product->default_tax_configuration_id);
@@ -1008,7 +1164,7 @@ final class ProductsImportPipelineTest extends TestCase
 
         $product = Product::where('sku', 'BROS-01')->firstOrFail();
 
-        $this->assertSame(0, bccomp((string) $product->tax_rate, '19.00', 2));
+        $this->assertDecimalEquals('19.00', $product->tax_rate);
         $this->assertSame(
             $tva19->id,
             $product->default_tax_configuration_id,
@@ -1042,7 +1198,7 @@ final class ProductsImportPipelineTest extends TestCase
 
         $product = Product::where('sku', 'BROS-01')->firstOrFail();
 
-        $this->assertSame(0, bccomp((string) $product->tax_rate, '19.00', 2), 'Pre-condition: the rate did not move.');
+        $this->assertDecimalEquals('19.00', $product->tax_rate, 'Pre-condition: the rate did not move.');
         $this->assertSame(
             $tva19->id,
             $product->default_tax_configuration_id,
@@ -1075,7 +1231,7 @@ final class ProductsImportPipelineTest extends TestCase
             'Sirop,SIRO-01,part,Medicaments,10.000',
         ], 3);
 
-        $rows = ImportJob::findOrFail($jobId)->rows()->orderBy('row_number')->get()->keyBy('row_number');
+        $rows = ImportJob::query()->whereKey($jobId)->firstOrFail()->rows()->orderBy('row_number')->get()->keyBy('row_number');
 
         $this->assertSame('category_default', $rows[1]->data['_results']['tax_source'] ?? null);
         $this->assertSame('company_default', $rows[2]->data['_results']['tax_source'] ?? null);
@@ -1123,9 +1279,9 @@ final class ProductsImportPipelineTest extends TestCase
                 $this->assertSame($existing->id, Product::where('sku', $sku)->firstOrFail()->category_id);
             }
 
-            $passRows = ImportJob::findOrFail($jobId)->rows()->orderBy('row_number')->get()->keyBy('row_number');
+            $passRows = ImportJob::query()->whereKey($jobId)->firstOrFail()->rows()->orderBy('row_number')->get()->keyBy('row_number');
             $this->assertSame('matched', $passRows[1]->data['_results']['category'] ?? null);
-            $this->assertNull($passRows[1]->warnings, "pass {$pass}: an exact-name match must stay silent");
+            $this->assertNull($passRows[1]?->warnings, "pass {$pass}: an exact-name match must stay silent");
             $this->assertSame('matched_by_slug', $passRows[2]->data['_results']['category'] ?? null);
             $this->assertSame('category_matched_by_slug', $passRows[2]->warnings[0]['code'] ?? null);
         }
@@ -1164,7 +1320,7 @@ final class ProductsImportPipelineTest extends TestCase
             ->assertJsonPath('data.successful_rows', 1)
             ->assertJsonPath('data.failed_rows', 0);
 
-        $row = ImportJob::findOrFail($jobId)->rows()->firstOrFail();
+        $row = ImportJob::query()->whereKey($jobId)->firstOrFail()->rows()->firstOrFail();
         $this->assertNull($row->import_error, 'a trashed slug holder must not poison the row transaction');
         $this->assertSame('restored', $row->data['_results']['category'] ?? null);
         $this->assertSame('category_restored', $row->warnings[0]['code'] ?? null);
@@ -1202,12 +1358,12 @@ final class ProductsImportPipelineTest extends TestCase
             ->assertJsonPath('data.successful_rows', 1)
             ->assertJsonPath('data.failed_rows', 1);
 
-        $rows = ImportJob::findOrFail($jobId)->rows()->orderBy('row_number')->get()->keyBy('row_number');
-        $this->assertFalse((bool) $rows[1]->is_valid);
+        $rows = ImportJob::query()->whereKey($jobId)->firstOrFail()->rows()->orderBy('row_number')->get()->keyBy('row_number');
+        $this->assertFalse((bool) $rows[1]?->is_valid);
         $this->assertArrayHasKey('category_name', $rows[1]->errors ?? []);
-        $this->assertNull($rows[1]->import_error, 'must fail validation, never mid-import with a SQLSTATE');
-        $this->assertSame(1, $rows[1]->row_number);
-        $this->assertTrue((bool) $rows[2]->is_valid);
+        $this->assertNull($rows[1]?->import_error, 'must fail validation, never mid-import with a SQLSTATE');
+        $this->assertSame(1, $rows[1]?->row_number);
+        $this->assertTrue((bool) $rows[2]?->is_valid);
         $this->assertSame(0, Product::where('sku', 'GEL-CAVA_500')->count());
     }
 
@@ -1240,7 +1396,7 @@ final class ProductsImportPipelineTest extends TestCase
         // Two categories, not four — the merge itself is the intended behaviour.
         $this->assertSame(2, Category::where('company_id', $this->company->id)->count());
 
-        $rows = ImportJob::findOrFail($jobId)->rows()->orderBy('row_number')->get()->keyBy('row_number');
+        $rows = ImportJob::query()->whereKey($jobId)->firstOrFail()->rows()->orderBy('row_number')->get()->keyBy('row_number');
         $this->assertSame('created', $rows[1]->data['_results']['category'] ?? null);
         $this->assertSame('matched_by_slug', $rows[2]->data['_results']['category'] ?? null);
         $this->assertSame('category_matched_by_slug', $rows[2]->warnings[0]['code'] ?? null);
@@ -1325,5 +1481,17 @@ final class ProductsImportPipelineTest extends TestCase
             ->assertJsonPath('data.failed_rows', 0);
 
         return $jobId;
+    }
+
+    /**
+     * @param  numeric-string  $expected
+     */
+    private function assertDecimalEquals(string $expected, ?string $actual, string $message = ''): void
+    {
+        if ($actual === null || ! is_numeric($actual)) {
+            self::fail($message !== '' ? $message : 'Expected a numeric decimal string.');
+        }
+
+        $this->assertSame(0, bccomp($actual, $expected, 2), $message);
     }
 }

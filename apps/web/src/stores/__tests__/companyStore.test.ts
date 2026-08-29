@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useCompanyStore, type Company } from '../companyStore'
+import {
+  clearDeniedCompanyIds,
+  isCompanyAccessDenied,
+  markCompanyAccessDenied,
+  useCompanyStore,
+  type Company,
+} from '../companyStore'
 
 /**
  * Regression tests for company selection and persistence
@@ -56,6 +62,7 @@ describe('companyStore', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    clearDeniedCompanyIds()
     // Reset store to initial state
     useCompanyStore.getState().reset()
   })
@@ -318,6 +325,32 @@ describe('companyStore', () => {
 
       // State should still update (only persistence failed)
       expect(result.current.currentCompanyId).toBe('company-tunisia-id')
+    })
+  })
+
+  describe('adoptCreatedCompany', () => {
+    it('adopts, selects, and persists a newly created company', () => {
+      const { result } = renderHook(() => useCompanyStore())
+      const createdCompany: Company = {
+        id: 'company-created-id',
+        name: 'Created Company',
+        legalName: 'Created Company SARL',
+        taxId: null,
+        countryCode: 'TN',
+        currency: 'TND',
+        locale: 'fr_TN',
+        timezone: 'Africa/Tunis',
+      }
+      markCompanyAccessDenied(createdCompany.id)
+
+      act(() => {
+        result.current.adoptCreatedCompany(createdCompany)
+      })
+
+      expect(result.current.companies).toContainEqual(createdCompany)
+      expect(result.current.currentCompanyId).toBe(createdCompany.id)
+      expect(localStorage.getItem('autoerp-company-selection')).toBe(createdCompany.id)
+      expect(isCompanyAccessDenied(createdCompany.id)).toBe(false)
     })
   })
 

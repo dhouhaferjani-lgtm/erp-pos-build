@@ -36,3 +36,9 @@ Ruling of record: `docs/handoff/OWNER-DECISIONS-ui-audit-2026-08-10.md`. These a
 
 ## Output
 Findings ranked BLOCKER/MAJOR/MINOR, each with file:line + a one-line fix directive, then a verdict: APPROVE / APPROVE-WITH-FIXES / REJECT. Write reviews to a file when asked; never merge or push.
+
+## Cross-cutting checks (added 2026-08-29, Session I — apply to every diff, after the subsystem checks)
+- **Second-of-everything** (`docs/conventions/09-SECOND-OF-EVERYTHING.md`): does the diff touch a catalogue entity (code/SKU/number/name-keyed: products, partners, units, payment methods, repositories, accounts, taxes, categories, brands, locations, terminals…)? If yes, cite the lane's second-company, second-location and re-run/idempotency tests (file:line). Any one missing → MAJOR. A new `unique(['tenant_id', …])` on such a table without `company_id` or a baseline `waiver` entry → BLOCKER.
+- **One surface per concept** (`docs/conventions/11-ONE-SURFACE-PER-CONCEPT.md`): for every noun the diff introduces or renames — is it in `docs/glossary.md` under that exact name? Does another table / import type / form / tile / FE type already express the same concept (grep the glossary row's synonyms)? Second writer? Hand-rolled FE type shadowing a generated DTO? Undeclared second surface → MAJOR; a second write path that can drop data the primary keeps → BLOCKER.
+- **Industry baseline** (`docs/conventions/10-BENCHMARK-FIRST-SPECS.md`): for a user-facing flow, does the spec/brief carry the baseline table, and does the diff honour every MATCH row? A baseline guarantee the flow silently lacks is a finding at the same severity as a missing requirement.
+- **Data-meaning tests**: reject tests that assert status codes or "no exception" where the requirement is about a balance, a row another company sees, or a count after a re-run.

@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft, ArrowRight, Check, Building2, Globe, Mail, Loader2 } from 'lucide-react'
 import { useMutation } from '@tanstack/react-query'
 import { createCompany, type CreateCompanyInput } from './api'
-import { useInvalidateCompanies } from './CompanyProvider'
 import { getErrorMessage } from '../../lib/api'
 import { orderCountries } from '../../lib/orderCountries'
 import { useCompanyStore } from '../../stores/companyStore'
@@ -41,8 +40,7 @@ const ORDERED_COUNTRIES = orderCountries(COUNTRIES, null)
 export function CompanyOnboardingPage() {
   const { t } = useTranslation(['common', 'settings'])
   const navigate = useNavigate()
-  const invalidateCompanies = useInvalidateCompanies()
-  const setCurrentCompany = useCompanyStore((state) => state.setCurrentCompany)
+  const adoptCreatedCompany = useCompanyStore((state) => state.adoptCreatedCompany)
 
   const [currentStep, setCurrentStep] = useState<Step>('country')
   const [formData, setFormData] = useState({
@@ -66,9 +64,8 @@ export function CompanyOnboardingPage() {
       return createCompany(input)
     },
     onSuccess: (data) => {
-      void invalidateCompanies()
-      setCurrentCompany(data.id)
-      navigate('/dashboard')
+      adoptCreatedCompany(data)
+      void navigate('/dashboard')
     },
     onError: (err: unknown) => {
       setError(getErrorMessage(err))

@@ -253,7 +253,7 @@ final class LocationListEndpointsTest extends TestCase
     }
 
     /**
-     * @return array{id: string, name: string, code: string|null, type: string, is_default: bool}
+     * @return array{id: string, name: string, code: string|null, type: string, is_default: bool, is_active: bool}
      */
     private function pickerRow(Location $location): array
     {
@@ -263,6 +263,7 @@ final class LocationListEndpointsTest extends TestCase
             'code' => $location->code,
             'type' => $location->type->value,
             'is_default' => $location->is_default,
+            'is_active' => $location->is_active,
         ];
     }
 }

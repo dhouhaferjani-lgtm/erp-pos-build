@@ -18,6 +18,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use PHPUnit\Framework\Attributes\Test;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -85,6 +86,8 @@ class PurchaseHubOrderTest extends TestCase
     #[Test]
     public function it_places_order_through_platform(): void
     {
+        config(['services.platform.push_enabled' => true]);
+
         Http::fake([
             'platform.test/api/v1/purchase-hub/tenant/orders' => Http::response([
                 'data' => [
@@ -112,6 +115,33 @@ class PurchaseHubOrderTest extends TestCase
             ->assertJsonPath('data.id', 'order-001')
             ->assertJsonPath('data.status', 'pending')
             ->assertJsonPath('data.total', 125);
+
+        Http::assertSentCount(1);
+    }
+
+    #[Test]
+    public function it_refuses_order_without_http_when_platform_push_is_disabled(): void
+    {
+        config(['services.platform.push_enabled' => false]);
+        Http::fake();
+        Log::spy();
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/purchase-hub/orders', [
+                'campaign_id' => 'campaign-001',
+                'items' => [
+                    ['campaign_item_id' => 'item-001', 'quantity' => 10],
+                ],
+            ]);
+
+        $response->assertStatus(502)
+            ->assertJsonPath('error.code', 'ORDER_FAILED')
+            ->assertJsonPath('error.message', 'Failed to place order');
+
+        Http::assertNothingSent();
+        Log::shouldHaveReceived('info')
+            ->once()
+            ->with('platform push disabled (SYNERIVA_PLATFORM_PUSH_ENABLED=false): placeOrder');
     }
 
     #[Test]

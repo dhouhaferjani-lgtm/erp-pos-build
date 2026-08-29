@@ -88,6 +88,27 @@ class LabelBarcodeCollisionTest extends TestCase
         $this->assertTrue($this->service()->valueIsUsable($this->tenant->id, 'TOTALLY-FREE', $subject->id));
     }
 
+    public function test_value_is_unusable_when_it_matches_a_sibling_company_product_sku(): void
+    {
+        $sibling = Company::factory()->for($this->tenant)->create();
+        ProductFactory::new()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $sibling->id,
+            'sku' => 'SIBLING-PRODUCT-SKU',
+            'barcode' => null,
+        ]);
+
+        $subject = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'barcode' => null,
+        ]);
+
+        $this->assertFalse(
+            $this->service()->valueIsUsable($this->tenant->id, 'SIBLING-PRODUCT-SKU', $subject->id),
+        );
+    }
+
     public function test_value_is_unusable_when_taken_by_soft_deleted_variant_barcode(): void
     {
         // A soft-deleted variant still holds its barcode (a stale offline POS

@@ -13,6 +13,7 @@ use App\Modules\Catalog\Domain\Repositories\AttributeRepository;
 use App\Modules\Catalog\Domain\Repositories\AttributeValueRepository;
 use App\Modules\Catalog\Domain\Repositories\ProductVariantRepository;
 use App\Modules\Catalog\Domain\Support\VariantMatrixLimit;
+use App\Modules\Catalog\Domain\VariantIndexNames;
 use App\Modules\Inventory\Application\Services\StockLevelMigrationService;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Domain\Exceptions\DuplicateBarcodeException;
@@ -116,19 +117,15 @@ final class ProductVariantService
     }
 
     /**
-     * Persist a variant, translating a barcode partial-unique violation (the
-     * validate-then-write race window) into a 422 barcode validation error.
-     *
-     * Only the barcode constraint is remapped: SKU / variant_code / default
-     * violations are re-thrown untouched so they are NOT mislabelled as barcode
-     * errors.
+     * Persist a variant, translating named barcode and company-SKU partial
+     * unique races into field-specific 422 validation errors.
      */
     private function saveBarcodeSafe(ProductVariant $variant): void
     {
         try {
             $variant->save();
         } catch (QueryException $e) {
-            if (DuplicateBarcodeException::isViolationOf($e, 'product_variants_tenant_barcode_unique')) {
+            if (DuplicateBarcodeException::isViolationOf($e, VariantIndexNames::TENANT_BARCODE_UNIQUE)) {
                 $name = $this->barcodeConflictName($variant->tenant_id, (string) $variant->barcode, $variant->id);
                 throw DuplicateBarcodeException::asValidation(
                     $name !== null
@@ -136,7 +133,12 @@ final class ProductVariantService
                         : 'Barcode already used by another variant.'
                 );
             }
-            throw $e; // sku / variant_code / default violations NOT reported as barcode errors
+            if (DuplicateBarcodeException::isViolationOf($e, VariantIndexNames::COMPANY_SKU_UNIQUE)) {
+                throw ValidationException::withMessages([
+                    'sku' => ['SKU already used by another variant in this company.'],
+                ]);
+            }
+            throw $e; // variant_code / default violations are not mislabelled
         }
     }
 
@@ -247,6 +249,7 @@ final class ProductVariantService
      *
      * @throws RuntimeException when the product or an attribute does not exist.
      * @throws MatrixGenerationLimitException when the gross matrix exceeds the cap.
+     * @throws ValidationException when restoring a variant collides with a reserved barcode or company SKU.
      */
     public function generateMatrix(string $productId, array $axes): array
     {
@@ -381,10 +384,10 @@ final class ProductVariantService
                     try {
                         $locked->restore();
                     } catch (QueryException $e) {
-                        if (DuplicateBarcodeException::isViolationOf($e, 'product_variants_tenant_barcode_unique')) {
+                        if (DuplicateBarcodeException::isViolationOf($e, VariantIndexNames::TENANT_BARCODE_UNIQUE)) {
                             throw DuplicateBarcodeException::asValidation('Cannot restore variant: its barcode is now used by another variant.');
                         }
-                        if (DuplicateBarcodeException::isViolationOf($e, 'product_variants_tenant_sku_unique')) {
+                        if (DuplicateBarcodeException::isViolationOf($e, VariantIndexNames::COMPANY_SKU_UNIQUE)) {
                             throw ValidationException::withMessages(['sku' => ['Cannot restore variant: its SKU is now used by another variant.']]);
                         }
                         throw $e;

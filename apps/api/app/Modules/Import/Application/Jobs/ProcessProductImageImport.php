@@ -47,14 +47,20 @@ final class ProcessProductImageImport implements ShouldQueue
      */
     public int $timeout = 1800;
 
+    /** Company context added after ProductImages jobs first shipped. */
+    public ?string $companyId = null;
+
     /**
      * Create a new job instance.
      */
     public function __construct(
         public readonly string $importJobId,
+        /** Disk-relative key on the local storage disk. */
         public readonly string $zipPath,
         public readonly string $tenantId,
+        ?string $companyId = null,
     ) {
+        $this->companyId = $companyId;
         $this->onQueue('imports');
     }
 
@@ -77,7 +83,18 @@ final class ProcessProductImageImport implements ShouldQueue
                 return;
             }
 
+            // The persisted key is authoritative for both new and pre-deployment
+            // queue payloads. Legacy payloads carried an absolute zipPath and did
+            // not contain companyId.
+            $storageKey = $job->file_path;
+
             try {
+                if ($this->companyId === null) {
+                    throw new Exception(
+                        'company_context_missing: Re-upload this ProductImages import so it can be processed in a company context.'
+                    );
+                }
+
                 // Update status to importing
                 $job->update([
                     'status' => ImportStatus::Importing,
@@ -85,7 +102,11 @@ final class ProcessProductImageImport implements ShouldQueue
                 ]);
 
                 // Process ZIP file
-                $results = $importService->processZipImport($job, $this->zipPath);
+                $results = $importService->processZipImport(
+                    $job,
+                    Storage::disk('local')->path($storageKey),
+                    $this->companyId,
+                );
 
                 // Calculate counts
                 $successCount = collect($results)->where('success', true)->count();
@@ -143,8 +164,8 @@ final class ProcessProductImageImport implements ShouldQueue
                 ]);
             } finally {
                 // Cleanup ZIP file
-                if (Storage::disk('local')->exists($this->zipPath)) {
-                    Storage::disk('local')->delete($this->zipPath);
+                if (Storage::disk('local')->exists($storageKey)) {
+                    Storage::disk('local')->delete($storageKey);
                 }
             }
         });

@@ -9,6 +9,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Import\Application\Jobs\ProcessImportJob;
 use App\Modules\Import\Application\Jobs\ProcessProductImageImport;
+use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
@@ -18,6 +19,7 @@ use App\Modules\Import\Services\ResultWorkbookService;
 use App\Modules\Import\Services\SpreadsheetParserService;
 use App\Modules\Import\Services\ValidationEngine;
 use App\Modules\Inventory\Domain\Enums\LocationNodeType;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -46,6 +48,7 @@ class ImportController extends Controller
         private readonly SpreadsheetParserService $spreadsheetParser,
         private readonly FailedRowsExportService $failedRowsExportService,
         private readonly ResultWorkbookService $resultWorkbookService,
+        private readonly UnitsProvisioningService $unitsProvisioning,
     ) {}
 
     /**
@@ -62,7 +65,7 @@ class ImportController extends Controller
             ->paginate(20);
 
         return response()->json([
-            'data' => $jobs->map(fn (ImportJob $job) => $this->formatJob($job)),
+            'data' => $jobs->map(fn (ImportJob $job) => $this->formatJob($job, false)),
             'meta' => [
                 'current_page' => $jobs->currentPage(),
                 'last_page' => $jobs->lastPage(),
@@ -117,6 +120,19 @@ class ImportController extends Controller
             throw ValidationException::withMessages(['type' => [$deprecation]]);
         }
 
+        if (in_array('unit', $type->getOptionalColumns(), true)
+            && ! $this->unitsProvisioning->hasVisibleUnits($company)) {
+            return response()->json([
+                'error' => [
+                    'code' => ImportErrorCode::UnitsNotSeeded->value,
+                    'message' => 'No units of measure are configured for this company; seed them in Settings → Units before importing',
+                    'details' => [
+                        'company_id' => $company->id,
+                    ],
+                ],
+            ], 422);
+        }
+
         $columnMapping = $request->has('column_mapping')
             ? json_decode($request->input('column_mapping'), true)
             : null;
@@ -124,7 +140,7 @@ class ImportController extends Controller
 
         // Special handling for ProductImages (ZIP file)
         if ($type === ImportType::ProductImages) {
-            return $this->handleProductImagesUpload($file, $user, $tenantId);
+            return $this->handleProductImagesUpload($file, $user, $tenantId, $companyId);
         }
 
         // A GL opening-balance import consumes the company's one-shot opening slot:
@@ -184,7 +200,7 @@ class ImportController extends Controller
                 ]);
 
                 return response()->json([
-                    'data' => $this->formatJob($job),
+                    'data' => $this->formatJob($job, true),
                     'errors' => [
                         'missing_columns' => $headerValidation['missing'],
                         'unknown_columns' => $headerValidation['unknown'],
@@ -203,7 +219,7 @@ class ImportController extends Controller
             $freshJob = $job->fresh();
 
             return response()->json([
-                'data' => $this->formatJob($freshJob),
+                'data' => $this->formatJob($freshJob, true),
             ], 201);
         } catch (\Exception $e) {
             $job->update([
@@ -212,7 +228,7 @@ class ImportController extends Controller
             ]);
 
             return response()->json([
-                'data' => $this->formatJob($job),
+                'data' => $this->formatJob($job, true),
                 'error' => 'Failed to parse file: '.$e->getMessage(),
             ], 422);
         }
@@ -236,7 +252,7 @@ class ImportController extends Controller
         }
 
         return response()->json([
-            'data' => $this->formatJob($job),
+            'data' => $this->formatJob($job, true),
         ]);
     }
 
@@ -399,7 +415,7 @@ class ImportController extends Controller
         $freshJob = $job->fresh();
 
         return response()->json([
-            'data' => $this->formatJob($freshJob),
+            'data' => $this->formatJob($freshJob, true),
         ]);
     }
 
@@ -535,7 +551,7 @@ class ImportController extends Controller
             }
 
             return response()->json([
-                'data' => $this->formatJob($freshJob),
+                'data' => $this->formatJob($freshJob, true),
                 'import_result' => [
                     'imported_count' => $result['imported_count'],
                     'skipped_count' => $result['skipped_count'],
@@ -566,7 +582,7 @@ class ImportController extends Controller
         $freshJob = $job->fresh();
 
         return response()->json([
-            'data' => $this->formatJob($freshJob),
+            'data' => $this->formatJob($freshJob, true),
             'message' => 'Import job queued for processing. Subscribe to WebSocket for real-time updates.',
         ], 202);
     }
@@ -657,7 +673,7 @@ class ImportController extends Controller
      *
      * @return array<string, mixed>
      */
-    private function formatJob(ImportJob $job): array
+    private function formatJob(ImportJob $job, bool $withWarningSummary): array
     {
         return [
             'id' => $job->id,
@@ -669,6 +685,9 @@ class ImportController extends Controller
             'successful_rows' => $job->successful_rows,
             'failed_rows' => $job->failed_rows,
             'warning_rows' => $this->countWarningRows($job),
+            'warning_summary' => $withWarningSummary && $job->status->isTerminal()
+                ? $this->warningSummary($job)
+                : null,
             'options' => $job->options,
             'progress_percentage' => $job->getProgressPercentage(),
             'error_message' => $job->error_message,
@@ -678,6 +697,9 @@ class ImportController extends Controller
         ];
     }
 
+    /**
+     * Count rows with at least one warning without hydrating row models.
+     */
     private function countWarningRows(ImportJob $job): int
     {
         if ($job->getConnection()->getDriverName() === 'sqlite') {
@@ -688,6 +710,43 @@ class ImportController extends Controller
         }
 
         return $job->rows()->whereRaw('jsonb_array_length(warnings) > 0')->count();
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function warningSummary(ImportJob $job): array
+    {
+        $summary = [];
+
+        foreach ($job->rows()->whereNotNull('warnings')->get(['warnings']) as $row) {
+            $warnings = $row->getAttribute('warnings');
+            if (! is_array($warnings) || $warnings === []) {
+                continue;
+            }
+
+            $rowCodes = [];
+            foreach ($warnings as $warning) {
+                if (! is_array($warning)) {
+                    continue;
+                }
+
+                $code = $warning['code'] ?? null;
+                if (! is_string($code) || $code === '') {
+                    continue;
+                }
+
+                $rowCodes[$code] = true;
+            }
+
+            foreach (array_keys($rowCodes) as $code) {
+                $summary[$code] = ($summary[$code] ?? 0) + 1;
+            }
+        }
+
+        ksort($summary);
+
+        return $summary;
     }
 
     /**
@@ -746,19 +805,18 @@ class ImportController extends Controller
 
     /**
      * Handle ProductImages ZIP upload (special case).
-     *
-     * @param  UploadedFile  $file
      */
-    private function handleProductImagesUpload($file, User $user, string $tenantId): JsonResponse
-    {
+    private function handleProductImagesUpload(
+        UploadedFile $file,
+        User $user,
+        string $tenantId,
+        string $companyId,
+    ): JsonResponse {
         // Store the ZIP file
         $path = $file->store('imports/'.$tenantId.'/product-images', 'local');
         if ($path === false) {
             return response()->json(['error' => 'Failed to store ZIP file'], 500);
         }
-
-        // Get the full file path for queue job
-        $fullPath = Storage::disk('local')->path($path);
 
         // Create import job
         $job = $this->importService->createJob(
@@ -777,16 +835,15 @@ class ImportController extends Controller
         $job->update(['status' => ImportStatus::Pending]);
 
         // Dispatch queue job for async ZIP processing.
-        // tenantId is passed so the worker can rebind tenant context via
-        // BindsTenantContext::withTenantContext() before any DB access
-        // (api.scheduled-jobs.002).
-        ProcessProductImageImport::dispatch($job->id, $fullPath, $tenantId);
+        // Tenant and company are serialized because queue workers run without
+        // CompanyContext; tenantId also drives BindsTenantContext rebinding.
+        ProcessProductImageImport::dispatch($job->id, $path, $tenantId, $companyId);
 
         /** @var ImportJob $freshJob */
         $freshJob = $job->fresh();
 
         return response()->json([
-            'data' => $this->formatJob($freshJob),
+            'data' => $this->formatJob($freshJob, true),
             'message' => 'Product images import queued for processing. The ZIP will be extracted and images will be uploaded asynchronously.',
         ], 202);
     }

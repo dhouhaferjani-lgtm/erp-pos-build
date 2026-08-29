@@ -10,9 +10,10 @@ import type { LocationType } from '../types'
 interface RawManagementLocation {
   id: string
   name: string
-  code: string
+  code: string | null
   type: LocationType
   is_default: boolean
+  is_active: boolean
 }
 
 export function useManagementLocations(): UseQueryResult<ScopedLocation[]> {
@@ -27,9 +28,10 @@ export function useManagementLocations(): UseQueryResult<ScopedLocation[]> {
       return rows.map((row) => ({
         id: row.id,
         name: row.name,
-        code: row.code,
+        code: row.code ?? '',
         type: row.type,
         isDefault: row.is_default,
+        isActive: row.is_active,
       }))
     },
     enabled: Boolean(tenantId && companyId && hasPermission('users.manage_location_access')),

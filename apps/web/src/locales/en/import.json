@@ -155,6 +155,7 @@
       "results": "Results",
       "imported": "Successfully imported",
       "failed": "Failed to import",
+      "warnings": "{{count}} rows completed with warnings",
       "backToDashboard": "Back to Import Dashboard",
       "importMore": "Import More Data",
       "downloadFailedRows": "Download failed rows (CSV)"
@@ -170,6 +171,13 @@
     }
   },
   "options": {
+    "stockLocation": {
+      "title": "Stock location",
+      "label": "Opening stock location",
+      "hint": "Opening stock is posted here. A location_code value in a row overrides this choice.",
+      "select": "Select a coded location",
+      "noCode": "No code — add a location code before importing stock"
+    },
     "placementTitle": "Plan storage placements",
     "placementHint": "Strict mode requires every path segment to exist. Auto-create previews missing nodes and uses the node type selected for each depth.",
     "placementMode": "Path handling",
@@ -207,7 +215,21 @@
     "legendSkipped": "Skipped",
     "legendRequired": "Required",
     "suggested": "(suggested)",
+    "targetLabels": {
+      "location_code": "Location (site/branch) code — e.g. MAIN",
+      "placement_path": "Shelf position (zone/aisle/rack/bin)"
+    },
     "skippedColumnsNotice": "These columns will be skipped unless you map them: {{columns}}"
+  },
+  "warnings": {
+    "location_unresolved": "{{count}} rows: no stock was created. Fix location_code or choose a stock location, then re-import the quantities.",
+    "qty_without_cost": "{{count}} rows had a quantity but no purchase cost, so opening stock was not created.",
+    "price_conflict": "{{count}} rows contained conflicting prices; the selected authoritative price was used.",
+    "category_created": "{{count}} rows created a missing product category.",
+    "expiry_conflict_existing_lot": "{{count}} rows supplied an expiry date that conflicted with an existing lot; the existing lot was kept.",
+    "quantity_ignored_service": "{{count}} service rows included a quantity; services do not create stock.",
+    "opening_failed": "Opening stock could not be created for {{count}} rows.",
+    "other": "{{count}} rows reported warning {{code}}."
   },
   "validation": {
     "allValid": "All rows are valid",

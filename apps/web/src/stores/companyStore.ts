@@ -135,6 +135,7 @@ interface CompanyState {
 interface CompanyActions {
   setCompanies: (companies: Company[]) => void
   setCurrentCompany: (companyId: string) => void
+  adoptCreatedCompany: (company: Company) => void
   setLoading: (loading: boolean) => void
   getCurrentCompany: () => Company | null
   reset: () => void
@@ -194,6 +195,17 @@ export const useCompanyStore = create<CompanyStore>()(
           // Manually persist to separate key to avoid Zustand persist middleware conflicts
           persistCompanyId(companyId)
         }
+      },
+
+      adoptCreatedCompany: (company) => {
+        deniedCompanyIds.delete(company.id)
+        set((state) => ({
+          companies: state.companies.some((existing) => existing.id === company.id)
+            ? state.companies
+            : [...state.companies, company],
+          currentCompanyId: company.id,
+        }))
+        persistCompanyId(company.id)
       },
 
       setLoading: (isLoading) => set({ isLoading }),

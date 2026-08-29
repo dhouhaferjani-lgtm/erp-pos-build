@@ -1,10 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useCompanyStore } from '@/stores/companyStore'
 
 import { AddCompanyModal } from '../AddCompanyModal'
+
+const mockCreateCompany = vi.hoisted(() => vi.fn())
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -13,11 +16,7 @@ vi.mock('react-i18next', () => ({
 }))
 
 vi.mock('@/features/company/api', () => ({
-  createCompany: vi.fn(),
-}))
-
-vi.mock('@/features/company/CompanyProvider', () => ({
-  useInvalidateCompanies: () => vi.fn(),
+  createCompany: mockCreateCompany,
 }))
 
 function seedCompany(countryCode: string) {
@@ -60,10 +59,12 @@ function countryOptionValues(): string[] {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  localStorage.clear()
 })
 
 afterEach(() => {
   useCompanyStore.setState({ currentCompanyId: null, companies: [], isLoading: false })
+  localStorage.clear()
 })
 
 describe('AddCompanyModal country ordering', () => {
@@ -76,5 +77,28 @@ describe('AddCompanyModal country ordering', () => {
   it('puts Tunisia first for a Tunisian company', () => {
     renderModal('TN')
     expect(countryOptionValues()).toEqual(['TN', 'DZ', 'FR', 'IT', 'MA', 'GB', 'US'])
+  })
+
+  it('switches to and persists the company returned by create', async () => {
+    const user = userEvent.setup()
+    mockCreateCompany.mockResolvedValue({
+      id: 'company-created-id',
+      name: 'Created Company',
+      legalName: 'Created Company SARL',
+      taxId: null,
+      countryCode: 'TN',
+      currency: 'TND',
+      locale: 'fr_TN',
+      timezone: 'Africa/Tunis',
+    })
+    renderModal('TN')
+
+    await user.type(screen.getByLabelText(/fields\.name/i), 'Created Company')
+    await user.click(screen.getByRole('button', { name: 'settings:company.modal.createButton' }))
+
+    await waitFor(() => {
+      expect(useCompanyStore.getState().currentCompanyId).toBe('company-created-id')
+    })
+    expect(localStorage.getItem('autoerp-company-selection')).toBe('company-created-id')
   })
 })
