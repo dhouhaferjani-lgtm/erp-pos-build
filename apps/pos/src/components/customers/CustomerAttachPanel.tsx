@@ -160,7 +160,7 @@ export function CustomerAttachBody({
         phone: phone || null,
         email: email || null,
         tax_number: null,
-        customer_category: 'retail',
+        customer_category: null,
         receivable_balance: '0.000',
         credit_balance: '0.000',
         credit_limit: null,

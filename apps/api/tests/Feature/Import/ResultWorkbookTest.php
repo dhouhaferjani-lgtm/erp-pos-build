@@ -75,6 +75,7 @@ final class ResultWorkbookTest extends TestCase
         $service = app(ImportService::class);
         $job = $service->createJob(
             tenantId: $this->tenant->id,
+            companyId: $this->company->id,
             userId: $this->user->id,
             type: ImportType::Products,
             filename: 'products.csv',
@@ -142,6 +143,7 @@ final class ResultWorkbookTest extends TestCase
     {
         $job = app(ImportService::class)->createJob(
             tenantId: $this->tenant->id,
+            companyId: $this->company->id,
             userId: $this->user->id,
             type: ImportType::Products,
             filename: 'products.csv',

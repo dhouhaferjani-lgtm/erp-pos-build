@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Shared\Database\MigrationOutput;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -101,8 +102,6 @@ return new class extends Migration
             $rows->count(),
         ));
 
-        Log::info('cash_tender_invariant.census', ['violations' => $rows->count()]);
-
         if ($rows->isEmpty()) {
             return;
         }
@@ -125,11 +124,6 @@ return new class extends Migration
                 implode(', ', $codes),
             ));
 
-            Log::warning('cash_tender_invariant.census.company', [
-                'company_id' => (string) $companyId,
-                'violations' => $companyRows->count(),
-                'codes' => $codes,
-            ]);
         }
 
         $listed = 0;
@@ -216,12 +210,12 @@ return new class extends Migration
     /**
      * Write to the migrate output.
      *
-     * `echo` and not a logger call alone: `tenants:migrate` streams stdout per
-     * tenant, and that stream is what the deploy note asks the operator to read.
+     * `tenants:migrate` streams stdout per tenant, and that stream is what the
+     * deploy note asks the operator to read.
      */
     private function emit(string $message): void
     {
-        echo $message.PHP_EOL;
+        MigrationOutput::info($message);
     }
 
     /**

@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
 import { api, apiPost, apiPatch } from '../../lib/api'
@@ -10,16 +10,8 @@ import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { PartnerPicker } from '@/components/molecules/pickers'
 import { Button, Input, Select, Textarea } from '@/components/atoms'
-
-interface Partner {
-  id: string
-  name: string
-}
-
-interface PartnersResponse {
-  data: Partner[]
-}
 
 interface Vehicle {
   id: string
@@ -85,7 +77,7 @@ export function VehicleForm() {
   const isEdit = Boolean(id)
   const vehicleId = id ?? ''
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<VehicleFormData>({
+  const { control, register, handleSubmit, reset, formState: { errors } } = useForm<VehicleFormData>({
     defaultValues: {
       partner_id: '',
       license_plate: '',
@@ -100,16 +92,6 @@ export function VehicleForm() {
       transmission: '',
       notes: '',
     },
-  })
-
-  // Fetch partners for dropdown
-  const { data: partnersData } = useQuery({
-    queryKey: tenantScopedKey(['partners']),
-    queryFn: async () => {
-      const response = await api.get<PartnersResponse>('/partners')
-      return response.data
-    },
-    enabled: tenantId !== null && companyId !== null,
   })
 
   // Fetch vehicle if editing
@@ -203,7 +185,6 @@ export function VehicleForm() {
 
   const isSubmitting = createMutation.isPending || updateMutation.isPending
   const mutationError = createMutation.error ?? updateMutation.error
-  const partners = partnersData?.data ?? []
 
   if (isEdit && loadingVehicle) {
     return (
@@ -237,20 +218,19 @@ export function VehicleForm() {
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {/* Owner (Partner) */}
             <div>
-              <label htmlFor="partner_id" className={tokens.label.base}>
-                {t('vehicles:owner')}
-              </label>
-              <Select
-                id="partner_id"
-                {...register('partner_id')}
-              >
-                <option value="">{t('vehicles:noOwner')}</option>
-                {partners.map((partner) => (
-                  <option key={partner.id} value={partner.id}>
-                    {partner.name}
-                  </option>
-                ))}
-              </Select>
+              <Controller
+                control={control}
+                name="partner_id"
+                render={({ field }) => (
+                  <PartnerPicker
+                    value={field.value ?? null}
+                    onChange={(partner) => { field.onChange(partner?.id ?? '') }}
+                    label={t('vehicles:owner')}
+                    partnerType="customer"
+                    testId="vehicle-owner-picker"
+                  />
+                )}
+              />
             </div>
 
             {/* License Plate */}
