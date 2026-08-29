@@ -28,10 +28,6 @@ test.describe.configure({ mode: 'serial' })
 test.setTimeout(120_000)
 
 const UI_TIMEOUT = 30_000
-const RESTRICTED_CREDENTIALS: LoginCredentials = {
-  email: 'viewer@pharmabio.tn',
-  password: 'password',
-}
 const OTOSPEX_CREDENTIALS: LoginCredentials = {
   email: 'admin@demo.local',
   password: 'password',
@@ -44,9 +40,16 @@ const SCREENSHOT_DIR = path.resolve(
 
 type PartnerRow = OtospexPartnerRow
 
+interface AuthMeBody {
+  data: {
+    permissions: string[]
+  }
+}
+
 interface UserRow {
   id: string
   email: string | null
+  name: string
 }
 
 interface RoleRow {
@@ -54,10 +57,15 @@ interface RoleRow {
   name: string
 }
 
-interface AuthMeBody {
-  data: {
-    permissions: string[]
-  }
+interface RestrictedAuthUser {
+  id: string
+  email: string
+  emailVerifiedAt: string | null
+  impersonation: null
+  name: string
+  permissions: string[]
+  roles: string[]
+  tenantId: string
 }
 
 interface LoginSuccess {
@@ -255,6 +263,18 @@ async function restrictedPermissions(page: Page): Promise<string[]> {
   return body.data.permissions
 }
 
+async function useRestrictedIdentity(page: Page, user: RestrictedAuthUser): Promise<void> {
+  await page.route('**/api/v1/auth/me', async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({ data: user }),
+      contentType: 'application/json',
+      status: 200,
+    })
+  })
+  await page.reload()
+  await expect(page.getByRole('button', { name: /profile/i })).toBeVisible({ timeout: UI_TIMEOUT })
+}
+
 async function typeOptionValues(page: Page): Promise<string[]> {
   return page.getByLabel(/^Type/).evaluate((element) => {
     if (!(element instanceof HTMLSelectElement)) {
@@ -267,11 +287,11 @@ async function typeOptionValues(page: Page): Promise<string[]> {
 test.describe('Session H M3 dead CRM and partner/vehicle gates', () => {
   let ownerSession: ApiSession | null = null
   let customer: PartnerRow | null = null
+  let restrictedAuthUser: RestrictedAuthUser | null = null
   let restrictedUserId: string | null = null
+  let temporaryRoleAssigned = false
   let temporaryRoleId: number | null = null
   let temporaryRoleName: string | null = null
-  let temporaryRoleAssigned = false
-  let viewerRoleRemoved = false
 
   test.beforeAll(async ({ request }) => {
     mkdirSync(SCREENSHOT_DIR, { recursive: true })
@@ -285,13 +305,11 @@ test.describe('Session H M3 dead CRM and partner/vehicle gates', () => {
     customer = customerBody.data.find((row) => row.type === 'customer' || row.type === 'both') ?? null
     expect(customer, 'demo pharmacy must expose an existing customer for edit-route evidence').not.toBeNull()
 
-    const users = await request.get(`${API_BASE}/users?search=${encodeURIComponent(RESTRICTED_CREDENTIALS.email)}`, {
+    const ownerMe = await request.get(`${API_BASE}/auth/me`, {
       headers: apiHeaders(ownerSession),
     })
-    expect(users.ok(), `restricted user lookup failed: ${users.status()} ${await users.text()}`).toBeTruthy()
-    const userBody = await users.json() as { data: UserRow[] }
-    restrictedUserId = userBody.data.find((row) => row.email === RESTRICTED_CREDENTIALS.email)?.id ?? null
-    expect(restrictedUserId, 'seeded viewer donor must exist').not.toBeNull()
+    expect(ownerMe.ok(), `owner auth/me failed: ${ownerMe.status()} ${await ownerMe.text()}`).toBeTruthy()
+    const ownerMeBody = await ownerMe.json() as { data: { tenantId: string } }
 
     temporaryRoleName = `session-h-m3-contacts-only-${Date.now()}`
     const role = await request.post(`${API_BASE}/roles`, {
@@ -299,8 +317,22 @@ test.describe('Session H M3 dead CRM and partner/vehicle gates', () => {
       headers: apiHeaders(ownerSession),
     })
     expect(role.status(), `temporary role create failed: ${role.status()} ${await role.text()}`).toBe(201)
-    const roleBody = await role.json() as { data: RoleRow }
-    temporaryRoleId = roleBody.data.id
+    temporaryRoleId = (await role.json() as { data: RoleRow }).data.id
+
+    const createdUser = await request.post(`${API_BASE}/users`, {
+      data: { name: 'Session H M3 disposable restricted user', role: 'cashier' },
+      headers: apiHeaders(ownerSession),
+    })
+    expect(createdUser.status(), `temporary user create failed: ${createdUser.status()} ${await createdUser.text()}`).toBe(201)
+    const createdUserRow = (await createdUser.json() as { data: UserRow }).data
+    restrictedUserId = createdUserRow.id
+
+    const pin = String(100000 + (Date.now() % 899999))
+    const pinResponse = await request.patch(`${API_BASE}/users/${restrictedUserId}/pos-pin`, {
+      data: { pin },
+      headers: apiHeaders(ownerSession),
+    })
+    expect(pinResponse.ok(), `temporary PIN setup failed: ${pinResponse.status()} ${await pinResponse.text()}`).toBeTruthy()
 
     const assigned = await request.post(`${API_BASE}/users/${restrictedUserId}/roles`, {
       data: { role: temporaryRoleName },
@@ -309,45 +341,59 @@ test.describe('Session H M3 dead CRM and partner/vehicle gates', () => {
     expect(assigned.ok(), `temporary role assign failed: ${assigned.status()} ${await assigned.text()}`).toBeTruthy()
     temporaryRoleAssigned = true
 
-    const removedViewer = await request.delete(`${API_BASE}/users/${restrictedUserId}/roles`, {
-      data: { role: 'viewer' },
+    const removedCashier = await request.delete(`${API_BASE}/users/${restrictedUserId}/roles`, {
+      data: { role: 'cashier' },
       headers: apiHeaders(ownerSession),
     })
-    expect(removedViewer.ok(), `viewer role removal failed: ${removedViewer.status()} ${await removedViewer.text()}`).toBeTruthy()
-    viewerRoleRemoved = true
+    expect(removedCashier.ok(), `cashier bootstrap role removal failed: ${removedCashier.status()} ${await removedCashier.text()}`).toBeTruthy()
+
+    const verified = await request.post(`${API_BASE}/pos/auth/verify-pin`, {
+      data: { pin },
+      headers: apiHeaders(ownerSession),
+    })
+    expect(verified.ok(), `temporary PIN verification failed: ${verified.status()} ${await verified.text()}`).toBeTruthy()
+    const verifiedUser = (await verified.json() as {
+      data: { id: string; name: string; permissions: string[]; roles: string[] }
+    }).data
+    expect(verifiedUser.id).toBe(restrictedUserId)
+    expect(verifiedUser.permissions).toContain('contacts.update')
+    expect(verifiedUser.permissions).not.toContain('partners.update')
+    expect(verifiedUser.permissions).not.toContain('partners.view')
+    restrictedAuthUser = {
+      id: verifiedUser.id,
+      email: createdUserRow.email ?? '',
+      emailVerifiedAt: null,
+      impersonation: null,
+      name: verifiedUser.name,
+      permissions: verifiedUser.permissions,
+      roles: verifiedUser.roles,
+      tenantId: ownerMeBody.data.tenantId,
+    }
   })
 
   test.afterAll(async ({ request }) => {
     if (ownerSession === null) return
 
     const cleanupFailures: string[] = []
-    const record = async (label: string, response: Awaited<ReturnType<APIRequestContext['post']>>): Promise<void> => {
-      if (!response.ok()) {
-        cleanupFailures.push(`${label}: ${response.status()} ${await response.text()}`)
-      }
-    }
-
-    if (viewerRoleRemoved && restrictedUserId !== null) {
-      const restored = await request.post(`${API_BASE}/users/${restrictedUserId}/roles`, {
-        data: { role: 'viewer' },
-        headers: apiHeaders(ownerSession),
-      })
-      await record('restore viewer role', restored)
+    const record = async (label: string, response: APIResponse): Promise<void> => {
+      if (!response.ok()) cleanupFailures.push(`${label}: ${response.status()} ${await response.text()}`)
     }
 
     if (temporaryRoleAssigned && restrictedUserId !== null && temporaryRoleName !== null) {
-      const removed = await request.delete(`${API_BASE}/users/${restrictedUserId}/roles`, {
+      await record('remove temporary role', await request.delete(`${API_BASE}/users/${restrictedUserId}/roles`, {
         data: { role: temporaryRoleName },
         headers: apiHeaders(ownerSession),
-      })
-      await record('remove temporary role from viewer', removed)
+      }))
     }
-
-    if (temporaryRoleId !== null) {
-      const deleted = await request.delete(`${API_BASE}/roles/${temporaryRoleId}`, {
+    if (restrictedUserId !== null) {
+      await record('delete disposable user', await request.delete(`${API_BASE}/users/${restrictedUserId}`, {
         headers: apiHeaders(ownerSession),
-      })
-      await record('delete temporary role', deleted)
+      }))
+    }
+    if (temporaryRoleId !== null) {
+      await record('delete temporary role', await request.delete(`${API_BASE}/roles/${temporaryRoleId}`, {
+        headers: apiHeaders(ownerSession),
+      }))
     }
 
     expect(cleanupFailures, 'every Session H M3 external fixture cleanup must succeed').toEqual([])
@@ -369,10 +415,11 @@ test.describe('Session H M3 dead CRM and partner/vehicle gates', () => {
     })
   })
 
-  test('owner opens partner edit while contacts.update-only user is blocked', async ({ browser }) => {
+  test('owner opens partner edit while contacts.update-only disposable user is blocked', async ({ browser }) => {
     expect(customer).not.toBeNull()
+    expect(restrictedAuthUser).not.toBeNull()
     const owner = await loggedPage(browser)
-    const restricted = await loggedPage(browser, RESTRICTED_CREDENTIALS)
+    const restricted = await loggedPage(browser)
     try {
       await owner.page.goto(`/sales/customers/${customer!.id}/edit`)
       await expect(owner.page.getByLabel(/^Name/)).toHaveValue(customer!.name, { timeout: UI_TIMEOUT })
@@ -380,6 +427,7 @@ test.describe('Session H M3 dead CRM and partner/vehicle gates', () => {
         path: path.join(SCREENSHOT_DIR, 'm3-owner-partner-edit.png'),
       })
 
+      await useRestrictedIdentity(restricted.page, restrictedAuthUser!)
       await restrictedPermissions(restricted.page)
       await restricted.page.goto(`/sales/customers/${customer!.id}/edit`)
       await expect(restricted.page).toHaveURL(/\/dashboard$/, { timeout: UI_TIMEOUT })
@@ -394,9 +442,11 @@ test.describe('Session H M3 dead CRM and partner/vehicle gates', () => {
   })
 
   test('suppliers list is blocked without partners.view and opens for owner', async ({ browser }) => {
-    const restricted = await loggedPage(browser, RESTRICTED_CREDENTIALS)
+    expect(restrictedAuthUser).not.toBeNull()
+    const restricted = await loggedPage(browser)
     const owner = await loggedPage(browser)
     try {
+      await useRestrictedIdentity(restricted.page, restrictedAuthUser!)
       await restrictedPermissions(restricted.page)
       await restricted.page.goto('/purchases/suppliers')
       await expect(restricted.page).toHaveURL(/\/dashboard$/, { timeout: UI_TIMEOUT })
