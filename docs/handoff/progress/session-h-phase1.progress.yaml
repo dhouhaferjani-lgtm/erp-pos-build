@@ -37,10 +37,10 @@ milestones:
     title: a4' nature required on create + NULL heuristic for B2B block + wire CreditLimitWarning
     review_lenses: [frontend-conventions]
     status: review
-    commit: 0fb6f5b27d1e0fa47368d8058cfe2d877f7d93be
-    verdict: null
-    last_verdict: null
-    fix_rounds: 0
+    commit: 7b33f3c1d93f82000a416ca35301ad858bce41ac
+    verdict: docs/handoff/reviews/session-h-phase1/M2-round1.md
+    last_verdict: CHANGES-REQUIRED
+    fix_rounds: 1
   - id: M3
     lane: h1-cleanup
     title: a5 delete Companies + contacts.update->partners.update on partner edit routes + gate suppliers; a6 constrain Type select per route
