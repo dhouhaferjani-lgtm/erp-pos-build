@@ -8,9 +8,10 @@ test.setTimeout(120_000)
 
 const API_BASE = process.env.API_BASE ?? 'http://127.0.0.1:8011/api/v1'
 const DEMO_CREDENTIALS = {
-  email: 'session-h-demo@demo.local',
-  password: 'SessionH1!Demo',
+  email: 'owner@pharmabio.tn',
+  password: 'password',
 } as const
+const API_ORIGIN = new URL(API_BASE).origin
 const SCREENSHOT_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../../../.playwright-mcp/session-h/m1',
@@ -28,6 +29,14 @@ interface PartnerRow {
   street_address: string | null
   city: string | null
   country_code: string | null
+}
+
+interface PartnerPage {
+  data: PartnerRow[]
+  meta: {
+    current_page: number
+    last_page: number
+  }
 }
 
 function apiHeaders(session: ApiSession): Record<string, string> {
@@ -61,6 +70,23 @@ async function loginApi(request: APIRequestContext): Promise<ApiSession> {
 }
 
 async function loginPage(page: Page): Promise<void> {
+  await page.route('**/api/v1/**', async (route) => {
+    const sourceUrl = new URL(route.request().url())
+    const apiPath = sourceUrl.pathname.replace(/^\/api\/v1/, '')
+    const response = await route.fetch({
+      url: `${API_BASE}${apiPath}${sourceUrl.search}`,
+    })
+    expect(new URL(response.url()).origin).toBe(API_ORIGIN)
+    await route.fulfill({ response })
+  })
+  await page.route('**/sanctum/**', async (route) => {
+    const sourceUrl = new URL(route.request().url())
+    const response = await route.fetch({
+      url: `${API_ORIGIN}${sourceUrl.pathname}${sourceUrl.search}`,
+    })
+    expect(new URL(response.url()).origin).toBe(API_ORIGIN)
+    await route.fulfill({ response })
+  })
   await page.addInitScript(() => {
     window.localStorage.setItem('autoerp-cookie-consent', 'accepted')
   })
@@ -72,13 +98,29 @@ async function loginPage(page: Page): Promise<void> {
   await expect(page.getByRole('button', { name: /profile/i })).toBeVisible({ timeout: 15_000 })
 }
 
+async function listAllCustomerPartners(
+  request: APIRequestContext,
+  session: ApiSession,
+): Promise<PartnerRow[]> {
+  const partners: PartnerRow[] = []
+  let page = 1
+
+  while (true) {
+    const response = await request.get(
+      `${API_BASE}/partners?type=customer&per_page=100&page=${page}`,
+      { headers: apiHeaders(session) },
+    )
+    expect(response.ok(), `partner lookup failed: ${response.status()} ${await response.text()}`).toBeTruthy()
+    const body = await response.json() as PartnerPage
+    partners.push(...body.data)
+    if (body.meta.current_page >= body.meta.last_page) return partners
+    page += 1
+  }
+}
+
 async function ensureVatPartner(request: APIRequestContext, session: ApiSession): Promise<PartnerRow> {
-  const existing = await request.get(`${API_BASE}/partners?type=customer&per_page=100`, {
-    headers: apiHeaders(session),
-  })
-  expect(existing.ok(), `partner lookup failed: ${existing.status()} ${await existing.text()}`).toBeTruthy()
-  const existingBody = await existing.json() as { data: PartnerRow[] }
-  const vatPartner = existingBody.data.find((partner) => partner.vat_number !== null)
+  const existing = await listAllCustomerPartners(request, session)
+  const vatPartner = existing.find((partner) => partner.vat_number !== null)
   if (vatPartner !== undefined) return vatPartner
 
   const created = await request.post(`${API_BASE}/partners`, {
@@ -101,13 +143,19 @@ test.describe('Session H M1 data-shape drift gate', () => {
     apiSession = await loginApi(request)
   })
 
+  test.afterEach(async ({ page }) => {
+    await page.unrouteAll({ behavior: 'ignoreErrors' })
+  })
+
   test('customer list renders the API vat_number in the Tax ID column', async ({ page, request }) => {
     const partner = await ensureVatPartner(request, apiSession)
     await loginPage(page)
     await page.goto('/sales/customers')
     await page.getByPlaceholder(/search/i).fill(partner.name)
 
-    const row = page.getByRole('row', { name: new RegExp(partner.name) })
+    const row = page.getByRole('row').filter({
+      has: page.getByText(partner.name, { exact: true }),
+    })
     await expect(row).toContainText(partner.vat_number!, { timeout: 30_000 })
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'm1-customer-vat-list.png'), fullPage: true })
   })
@@ -117,12 +165,8 @@ test.describe('Session H M1 data-shape drift gate', () => {
     await page.goto('/sales/quotes/new')
 
     const uniqueName = `Session H Inline Partner ${Date.now()}`
-    const current = await request.get(`${API_BASE}/partners?type=customer&per_page=100`, {
-      headers: apiHeaders(apiSession),
-    })
-    expect(current.ok()).toBeTruthy()
     const usedVat = new Set(
-      (await current.json() as { data: PartnerRow[] }).data.flatMap((partner) =>
+      (await listAllCustomerPartners(request, apiSession)).flatMap((partner) =>
         partner.vat_number === null ? [] : [partner.vat_number],
       ),
     )
