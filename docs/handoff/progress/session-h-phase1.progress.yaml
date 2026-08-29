@@ -46,12 +46,13 @@ milestones:
     lane: h1-cleanup
     title: a5 delete Companies + contacts.update->partners.update on partner edit routes + gate suppliers; a6 constrain Type select per route
     review_lenses: [tenancy-authz, frontend-conventions]
-    status: review
+    status: passed
     commit: 009d61390
-    verdict: docs/handoff/reviews/session-h-phase1/M3-round2.md
-    last_verdict: CHANGES-REQUIRED
+    verdict: docs/handoff/reviews/session-h-phase1/M3-round3-codex-fallback.md
+    last_verdict: ACCEPT
+    reviewer_model: codex-fallback
     fix_rounds: 2
-    updated: 009d61390
+    updated: f45ed7a9b
   - id: M4
     lane: h1-a1
     title: SALE_RECEIPT.buyer populated (resolved server partner id only; contact_id null by decision); validateBuyer customer_id uuid-or-null; projection writes partner_id from snapshot
