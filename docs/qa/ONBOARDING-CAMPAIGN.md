@@ -1,6 +1,6 @@
 # Automated onboarding campaign
 
-This campaign is AutoERP's fresh-tenant promotion gate. It registers a unique tenant, exercises the onboarding data path in serial order, and checks where every money-bearing action landed through public UI and API contracts. A red campaign blocks promotion; the orchestrator links this document from the applicable `docs/handoff/PROMOTION-CHECKLIST-*` row.
+This campaign is AutoERP's fresh-tenant promotion gate. It registers a unique tenant, exercises the onboarding data path in serial order, and checks where every money-bearing action landed through public UI and API contracts. A red campaign blocks promotion; the orchestrator links this document from the applicable `docs/handoff/PROMOTION-CHECKLIST-*` row. Promotion reads the ledger, not the exit code: every scriptable leg must PASS, declared gaps (`NOT_SCRIPTABLE`) are listed, and the findings gate (L10) enumerates the known product findings — a run is RED by construction while any finding is open, and the promotion checklist row accepts it only with those findings named and owned (see "Known red").
 
 ## Run it
 
