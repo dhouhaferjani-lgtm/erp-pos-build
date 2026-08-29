@@ -1,0 +1,71 @@
+# Push runs remain inert until the owner sets ONBOARDING_CAMPAIGN_ON_PUSH=true;
+# the B-11/S-14 runner and quota decision is still unresolved.
+name: Onboarding Campaign
+
+on:
+  workflow_dispatch:
+    inputs:
+      web_url:
+        description: Web target
+        required: false
+        default: https://erp.otospex.dev
+      api_url:
+        description: API target
+        required: false
+        default: https://api.erp.otospex.dev
+      country:
+        description: Registration country code
+        required: false
+        default: TN
+  push:
+    branches: [dev]
+
+concurrency:
+  group: onboarding-campaign
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+  PNPM_VERSION: '9'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  campaign:
+    name: Fresh-tenant onboarding promotion gate
+    if: github.event_name == 'workflow_dispatch' || vars.ONBOARDING_CAMPAIGN_ON_PUSH == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm --dir apps/web exec playwright install --with-deps chromium
+
+      - name: Run onboarding campaign
+        run: scripts/campaign-onboarding.sh --web "$CAMPAIGN_WEB_URL" --api "$CAMPAIGN_API_URL" --country "$CAMPAIGN_COUNTRY"
+        env:
+          CAMPAIGN_WEB_URL: ${{ inputs.web_url || 'https://erp.otospex.dev' }}
+          CAMPAIGN_API_URL: ${{ inputs.api_url || 'https://api.erp.otospex.dev' }}
+          CAMPAIGN_COUNTRY: ${{ inputs.country || 'TN' }}
+
+      - name: Upload campaign evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: onboarding-campaign-results
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          retention-days: 7

@@ -1,0 +1,2 @@
+code,name,type,phone,opening_balance,balance_date,reference
+LOCKED-{{RUN}},Campaign Locked Balance {{RUN}},customer,+21671000009,25.000,2026-08-28,LOCKED-{{RUN}}
