@@ -8,6 +8,7 @@ import { useCompanyStore } from '@/stores/companyStore'
 import { AddCompanyModal } from '../AddCompanyModal'
 
 const mockCreateCompany = vi.hoisted(() => vi.fn())
+const mockInvalidateCompanies = vi.hoisted(() => vi.fn())
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -20,7 +21,7 @@ vi.mock('@/features/company/api', () => ({
 }))
 
 vi.mock('@/features/company/CompanyProvider', () => ({
-  useInvalidateCompanies: () => vi.fn(),
+  useInvalidateCompanies: () => mockInvalidateCompanies,
 }))
 
 function seedCompany(countryCode: string) {
@@ -85,6 +86,11 @@ describe('AddCompanyModal country ordering', () => {
 
   it('switches to and persists the company returned by create', async () => {
     const user = userEvent.setup()
+    let companyIdWhenInvalidated: string | null = null
+    mockInvalidateCompanies.mockImplementation(() => {
+      companyIdWhenInvalidated = useCompanyStore.getState().currentCompanyId
+      return Promise.resolve()
+    })
     mockCreateCompany.mockResolvedValue({
       id: 'company-created-id',
       name: 'Created Company',
@@ -104,5 +110,7 @@ describe('AddCompanyModal country ordering', () => {
       expect(useCompanyStore.getState().currentCompanyId).toBe('company-created-id')
     })
     expect(localStorage.getItem('autoerp-company-selection')).toBe('company-created-id')
+    expect(mockInvalidateCompanies).toHaveBeenCalledOnce()
+    expect(companyIdWhenInvalidated).toBe('company-created-id')
   })
 })

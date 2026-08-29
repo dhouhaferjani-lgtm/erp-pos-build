@@ -47,8 +47,8 @@ interface CreateCompanyResponse {
   default_tax_rate: string | null
   default_tax_configuration_id: string | null
   tax_status: string
-  default_target_margin: string
-  default_minimum_margin: string
+  default_target_margin: string | null
+  default_minimum_margin: string | null
   default_max_discount_percent: string | null
   discount_floor_mode: string
   price_entry_mode: string
@@ -109,5 +109,6 @@ export async function createCompany(input: CreateCompanyInput): Promise<Company>
     currency: company.currency,
     locale: company.locale,
     timezone: company.timezone,
+    isPrimary: false,
   }
 }

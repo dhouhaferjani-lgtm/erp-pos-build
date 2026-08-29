@@ -316,10 +316,12 @@ function createApiClient(): AxiosInstance {
         if (!response) {
           return Promise.reject(new Error('Network error'))
         }
-        const sentCompanyIdHeader: unknown = error.config?.headers['X-Company-Id']
+        const configHeaders: unknown = error.config?.headers
+        const sentCompanyIdHeader = isRecord(configHeaders) ? configHeaders['X-Company-Id'] : null
         const sentCompanyId = typeof sentCompanyIdHeader === 'string' ? sentCompanyIdHeader : null
+        const currentCompanyId = useCompanyStore.getState().currentCompanyId
         const isStaleCompanyResponse =
-          sentCompanyId !== null && sentCompanyId !== useCompanyStore.getState().currentCompanyId
+          currentCompanyId !== null && sentCompanyId !== null && sentCompanyId !== currentCompanyId
 
         // Handle 401 Unauthorized
         // Don't call queryClient.clear() here — it destroys the auth query

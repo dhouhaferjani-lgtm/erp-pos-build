@@ -118,7 +118,7 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
   }, [isAuthenticated, reset, queryClient])
 
   // Show loading while fetching companies (only if authenticated and not on admin routes)
-  if (isAuthenticated && !isAdminRoute && isLoading) {
+  if (isAuthenticated && !isAdminRoute && isLoading && companies.length === 0) {
     return (
       <div className={`min-h-screen flex items-center justify-center ${colorTokens.surface.page}`}>
         <div className="flex flex-col items-center gap-4">
@@ -152,7 +152,6 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
 export function useInvalidateCompanies() {
   const queryClient = useQueryClient()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
-  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   // Deliberate per-tenant precision (pinned by CompanyProvider.tenantScope
   // test .107): only the ACTIVE tenant's companies entry is invalidated, so
   // the filter is the explicit FULL key — literal prefix + tenant/company in
@@ -160,6 +159,8 @@ export function useInvalidateCompanies() {
   // wrap invalidation filters in tenantScopedKey(...): filters match as
   // positional prefixes, so the wrapper only works for exact-full-key
   // matches like this one and silently no-ops everywhere else.
-  return () =>
-    queryClient.invalidateQueries({ queryKey: ['user', 'companies', tenantId, companyId] })
+  return () => {
+    const companyId = useCompanyStore.getState().currentCompanyId
+    return queryClient.invalidateQueries({ queryKey: ['user', 'companies', tenantId, companyId] })
+  }
 }

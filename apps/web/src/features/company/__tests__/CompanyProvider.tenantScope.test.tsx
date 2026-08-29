@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -89,6 +89,31 @@ function InvalidateCompaniesButton() {
       }}
     >
       invalidate {queryClient.getQueryCache().getAll().length}
+    </button>
+  )
+}
+
+function AdoptAndInvalidateCompaniesButton() {
+  const invalidateCompanies = useInvalidateCompanies()
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        useCompanyStore.getState().adoptCreatedCompany({
+          id: 'company-created',
+          name: 'Created Company',
+          legalName: 'Created Company SARL',
+          taxId: null,
+          countryCode: 'TN',
+          currency: 'TND',
+          locale: 'fr_TN',
+          timezone: 'Africa/Tunis',
+          isPrimary: false,
+        })
+        void invalidateCompanies()
+      }}
+    >
+      adopt and invalidate
     </button>
   )
 }
@@ -234,6 +259,68 @@ describe('CompanyProvider tenant scope', () => {
     })
     expect(queryClient.getQueryState(['user', 'companies', 'tenant-B', 'company-2'])?.isInvalidated).toBe(false)
     expect(queryClient.getQueryData(['user', 'companies', 'tenant-B', 'company-2'])).toEqual(['tenant-B-marker'])
+  })
+
+  it('reads the newly adopted company when invalidating in the same event', async () => {
+    const user = userEvent.setup()
+    const queryClient = createClient()
+    act(() => {
+      setTenant('tenant-A', 'company-old')
+    })
+    queryClient.setQueryData(['user', 'companies', 'tenant-A', 'company-old'], ['old-marker'])
+    queryClient.setQueryData(['user', 'companies', 'tenant-A', 'company-created'], ['new-marker'])
+
+    render(<AdoptAndInvalidateCompaniesButton />, { wrapper: wrapper(queryClient) })
+
+    await user.click(screen.getByRole('button', { name: 'adopt and invalidate' }))
+
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryState(['user', 'companies', 'tenant-A', 'company-created'])?.isInvalidated,
+      ).toBe(true)
+    })
+    expect(queryClient.getQueryState(['user', 'companies', 'tenant-A', 'company-old'])?.isInvalidated).toBe(false)
+  })
+
+  it('keeps children mounted while a populated store re-keys to a pending companies query', async () => {
+    const queryClient = createClient()
+    const childUnmounted = vi.fn()
+    setTenant('tenant-A', 'company-old')
+    queryClient.setQueryData(
+      ['user', 'companies', 'tenant-A', 'company-old'],
+      useCompanyStore.getState().companies,
+    )
+    mockApiGet.mockImplementation(() => new Promise(() => undefined))
+
+    function StatefulChild() {
+      useEffect(() => () => { childUnmounted() }, [])
+      return <div>stateful child</div>
+    }
+
+    render(<CompanyProvider><StatefulChild /></CompanyProvider>, { wrapper: wrapper(queryClient) })
+
+    act(() => {
+      useCompanyStore.getState().adoptCreatedCompany({
+        id: 'company-created',
+        name: 'Created Company',
+        legalName: 'Created Company SARL',
+        taxId: null,
+        countryCode: 'TN',
+        currency: 'TND',
+        locale: 'fr_TN',
+        timezone: 'Africa/Tunis',
+        isPrimary: false,
+      })
+    })
+
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryState(['user', 'companies', 'tenant-A', 'company-created'])?.fetchStatus,
+      ).toBe('fetching')
+    })
+    expect(screen.getByText('stateful child')).toBeInTheDocument()
+    expect(screen.queryByText('company.modal.loading')).not.toBeInTheDocument()
+    expect(childUnmounted).not.toHaveBeenCalled()
   })
 
   it('does not fetch companies without an authenticated tenant', () => {

@@ -66,9 +66,9 @@ export function CompanyOnboardingPage() {
       return createCompany(input)
     },
     onSuccess: (data) => {
-      void invalidateCompanies()
       adoptCreatedCompany(data)
-      navigate('/dashboard')
+      void invalidateCompanies()
+      void navigate('/dashboard')
     },
     onError: (err: unknown) => {
       setError(getErrorMessage(err))

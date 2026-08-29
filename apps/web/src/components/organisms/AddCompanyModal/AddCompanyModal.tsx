@@ -68,10 +68,10 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
       return createCompany(input)
     },
     onSuccess: (data) => {
-      // Invalidate companies query to refetch the list
-      void invalidateCompanies()
       // Switch to the new company
       adoptCreatedCompany(data)
+      // Invalidate companies query to refetch the adopted company's list
+      void invalidateCompanies()
       // Close the modal
       onClose()
       // Reset form
