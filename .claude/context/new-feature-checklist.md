@@ -110,3 +110,10 @@ Add navigation item with permission check.
   1. Import the JSON files
   2. Add to `resources` object
   3. Add namespace to `ns` array
+
+## Cross-cutting (added 2026-08-29, Session I)
+
+### 15. Second-of-everything, glossary, baseline
+- Catalogue entity touched (code/SKU/number/name-keyed, operator-edited)? Add the second-company, second-location and re-run tests — `docs/conventions/09-SECOND-OF-EVERYTHING.md`. No new `unique(['tenant_id', …])` without `company_id` or a waiver.
+- New noun? Add its row to `docs/glossary.md` in the same lane; one table, one write path, one operator surface — `docs/conventions/11-ONE-SURFACE-PER-CONCEPT.md`.
+- User-facing flow? The spec opens with the industry-baseline table — `docs/conventions/10-BENCHMARK-FIRST-SPECS.md`. If the flow is part of onboarding, add/extend a campaign leg — `docs/qa/ONBOARDING-CAMPAIGN.md`.
