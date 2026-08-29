@@ -13,10 +13,14 @@ import path from 'node:path'
 import {
   API_BASE,
   apiHeaders,
+  classifyOtospexAuthentication,
   loginApi,
   loginPage,
+  requireOtospexCompany,
+  requireOtospexPartners,
   type ApiSession,
   type LoginCredentials,
+  type OtospexPartnerRow,
 } from './helpers'
 
 test.use({ baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:5174' })
@@ -38,11 +42,7 @@ const SCREENSHOT_DIR = path.resolve(
   '../../../../.playwright-mcp/session-h/m3',
 )
 
-interface PartnerRow {
-  id: string
-  name: string
-  type: 'customer' | 'supplier' | 'both'
-}
+type PartnerRow = OtospexPartnerRow
 
 interface UserRow {
   id: string
@@ -121,20 +121,15 @@ function parseLoginData(text: string): LoginSuccess | OrganizationSelection | nu
 
 async function discoverOtospexFixture(request: APIRequestContext): Promise<OtospexAvailability> {
   const initial = await postLogin(request, OTOSPEX_CREDENTIALS)
-  if (!initial.response.ok()) {
-    return {
-      available: false,
-      reason: `Otospex discovery unavailable: email-first login for ${OTOSPEX_CREDENTIALS.email} returned HTTP ${initial.response.status()} (${initial.text}).`,
-    }
-  }
-
-  const initialData = parseLoginData(initial.text)
-  if (initialData === null) {
-    return {
-      available: false,
-      reason: 'Otospex discovery unavailable: deterministic login returned an unreadable response.',
-    }
-  }
+  const initialAuth = classifyOtospexAuthentication({
+    data: parseLoginData(initial.text),
+    label: `email-first login for ${OTOSPEX_CREDENTIALS.email}`,
+    ok: initial.response.ok(),
+    status: initial.response.status(),
+    text: initial.text,
+  })
+  if (!initialAuth.available) return initialAuth
+  const initialData = initialAuth.data
 
   let tenantId: string
   let token: string
@@ -148,18 +143,19 @@ async function discoverOtospexFixture(request: APIRequestContext): Promise<Otosp
     }
     tenantId = organization.tenant_id
     const explicit = await postLogin(request, { ...OTOSPEX_CREDENTIALS, tenantId })
-    if (!explicit.response.ok()) {
-      return {
-        available: false,
-        reason: `Otospex explicit-tenant login unavailable for discovered ${OTOSPEX_TENANT_SLUG}: HTTP ${explicit.response.status()} (${explicit.text}).`,
-      }
-    }
-    const explicitData = parseLoginData(explicit.text)
-    if (explicitData === null || 'requires_org_selection' in explicitData) {
-      return {
-        available: false,
-        reason: `Otospex explicit-tenant login unavailable for discovered ${OTOSPEX_TENANT_SLUG}: no authenticated session was returned.`,
-      }
+    const explicitAuth = classifyOtospexAuthentication({
+      data: parseLoginData(explicit.text),
+      label: `explicit-tenant login for discovered ${OTOSPEX_TENANT_SLUG}`,
+      ok: explicit.response.ok(),
+      status: explicit.response.status(),
+      text: explicit.text,
+    })
+    if (!explicitAuth.available) return explicitAuth
+    const explicitData = explicitAuth.data
+    if ('requires_org_selection' in explicitData) {
+      throw new Error(
+        `Otospex explicit-tenant login for discovered ${OTOSPEX_TENANT_SLUG} returned another organization selection instead of an authenticated session.`,
+      )
     }
     token = explicitData.token
   } else {
@@ -170,41 +166,41 @@ async function discoverOtospexFixture(request: APIRequestContext): Promise<Otosp
   const companies = await request.get(`${API_BASE}/user/companies`, {
     headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
   })
-  if (!companies.ok()) {
-    return {
-      available: false,
-      reason: `Otospex company discovery unavailable: HTTP ${companies.status()} (${await companies.text()}).`,
-    }
-  }
-  const companyBody = await companies.json() as {
-    data: Array<{ id: string; is_primary?: boolean }>
-  }
-  const company = companyBody.data.find((row) => row.is_primary === true) ?? companyBody.data[0]
-  if (company === undefined) {
-    return { available: false, reason: 'Otospex company discovery unavailable: no company was returned.' }
-  }
+  const companyRows = companies.ok()
+    ? (await companies.json() as { data: Array<{ id: string; is_primary?: boolean }> }).data
+    : []
+  const companyId = requireOtospexCompany({
+    data: companyRows,
+    ok: companies.ok(),
+    status: companies.status(),
+    text: companies.ok() ? '' : await companies.text(),
+  })
 
-  const session: ApiSession = { token, companyId: company.id }
+  const session: ApiSession = { token, companyId }
   const [customers, suppliers] = await Promise.all([
     request.get(`${API_BASE}/partners?type=customer&per_page=50`, { headers: apiHeaders(session) }),
     request.get(`${API_BASE}/partners?type=supplier&per_page=50`, { headers: apiHeaders(session) }),
   ])
-  if (!customers.ok() || !suppliers.ok()) {
-    return {
-      available: false,
-      reason: `Otospex partner discovery unavailable: customer HTTP ${customers.status()}, supplier HTTP ${suppliers.status()}.`,
-    }
-  }
-  const customerBody = await customers.json() as { data: PartnerRow[] }
-  const supplierBody = await suppliers.json() as { data: PartnerRow[] }
-  const customer = customerBody.data.find((row) => row.type === 'customer' || row.type === 'both')
-  const supplier = supplierBody.data.find((row) => row.type === 'supplier')
-  if (customer === undefined || supplier === undefined) {
-    return {
-      available: false,
-      reason: `Otospex partner discovery unavailable: customer fixture=${String(customer !== undefined)}, supplier-only fixture=${String(supplier !== undefined)}.`,
-    }
-  }
+  const customerRows = customers.ok()
+    ? (await customers.json() as { data: PartnerRow[] }).data
+    : []
+  const supplierRows = suppliers.ok()
+    ? (await suppliers.json() as { data: PartnerRow[] }).data
+    : []
+  const { customer, supplier } = requireOtospexPartners(
+    {
+      data: customerRows,
+      ok: customers.ok(),
+      status: customers.status(),
+      text: customers.ok() ? '' : await customers.text(),
+    },
+    {
+      data: supplierRows,
+      ok: suppliers.ok(),
+      status: suppliers.status(),
+      text: suppliers.ok() ? '' : await suppliers.text(),
+    },
+  )
 
   return {
     available: true,

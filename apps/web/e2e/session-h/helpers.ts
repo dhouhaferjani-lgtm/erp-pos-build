@@ -25,6 +25,83 @@ export function loginRequestData(credentials: LoginCredentials): LoginRequestDat
     : { ...base, tenant_id: credentials.tenantId }
 }
 
+export interface OtospexPartnerRow {
+  id: string
+  name: string
+  type: 'customer' | 'supplier' | 'both'
+}
+
+interface OtospexLookup<T> {
+  data: readonly T[]
+  ok: boolean
+  status: number
+  text: string
+}
+
+export type OtospexAuthentication<T> =
+  | { available: true; data: T }
+  | { available: false; reason: string }
+
+export function classifyOtospexAuthentication<T>({
+  data,
+  label,
+  ok,
+  status,
+  text,
+}: {
+  data: T | null
+  label: string
+  ok: boolean
+  status: number
+  text: string
+}): OtospexAuthentication<T> {
+  if (!ok) {
+    return {
+      available: false,
+      reason: `Otospex ${label} unavailable: HTTP ${String(status)} (${text}).`,
+    }
+  }
+  if (data === null) {
+    throw new Error(`Otospex ${label} returned an unreadable successful response.`)
+  }
+  return { available: true, data }
+}
+
+export function requireOtospexCompany(
+  lookup: OtospexLookup<{ id: string; is_primary?: boolean }>,
+): string {
+  if (!lookup.ok) {
+    throw new Error(
+      `Otospex company discovery failed after authentication: HTTP ${String(lookup.status)} (${lookup.text}).`,
+    )
+  }
+  const company = lookup.data.find((row) => row.is_primary === true) ?? lookup.data[0]
+  if (company === undefined) {
+    throw new Error('Otospex company discovery failed after authentication: no company was returned.')
+  }
+  return company.id
+}
+
+export function requireOtospexPartners(
+  customers: OtospexLookup<OtospexPartnerRow>,
+  suppliers: OtospexLookup<OtospexPartnerRow>,
+): { customer: OtospexPartnerRow; supplier: OtospexPartnerRow } {
+  if (!customers.ok || !suppliers.ok) {
+    throw new Error(
+      `Otospex partner discovery failed after authentication: customer HTTP ${String(customers.status)}, supplier HTTP ${String(suppliers.status)}.`,
+    )
+  }
+  const customer = customers.data.find((row) => row.type === 'customer' || row.type === 'both')
+  if (customer === undefined) {
+    throw new Error('Otospex partner discovery failed after authentication: missing a customer fixture.')
+  }
+  const supplier = suppliers.data.find((row) => row.type === 'supplier')
+  if (supplier === undefined) {
+    throw new Error('Otospex partner discovery failed after authentication: missing a supplier-only fixture.')
+  }
+  return { customer, supplier }
+}
+
 const API_ORIGIN = new URL(API_BASE).origin
 const MAX_LOGIN_ATTEMPTS = 3
 
