@@ -260,6 +260,17 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
     expect(await screen.findByText('طبيعة الشريك مطلوبة')).toBeInTheDocument()
   })
 
+  it('gives Nature an Arabic label distinct from the adjacent Type label', async () => {
+    await i18n.changeLanguage('ar')
+    renderPartnerForm(['/sales/customers/new'], '/sales/customers/new', 'customer')
+
+    const natureLabel = i18n.t('sales:partners.nature.label')
+    const typeLabel = i18n.t('sales:partners.type')
+
+    expect(natureLabel).not.toBe(typeLabel)
+    expect(screen.getByLabelText(new RegExp(`^${natureLabel}`))).toBeInTheDocument()
+  })
+
   it('shows B2B fields for a legacy null Nature with a VAT number', async () => {
     mockApiGet.mockResolvedValue({
       data: {
