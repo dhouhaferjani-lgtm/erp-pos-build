@@ -26,6 +26,7 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -85,6 +86,7 @@ class ImportTypesTest extends TestCase
         ]);
 
         app(CompanyContext::class)->setCompanyId($this->company->id);
+        app(UnitsProvisioningService::class)->provisionForCompany($this->company);
 
         Storage::fake('local');
     }
@@ -347,6 +349,7 @@ class ImportTypesTest extends TestCase
 
         $job = $importService->createJob(
             tenantId: $this->tenant->id,
+            companyId: $this->company->id,
             userId: $this->user->id,
             type: ImportType::OpeningBalances,
             filename: 'balances.csv',
@@ -400,6 +403,7 @@ class ImportTypesTest extends TestCase
 
         $job = $importService->createJob(
             tenantId: $this->tenant->id,
+            companyId: $this->company->id,
             userId: $this->user->id,
             type: ImportType::OpeningBalances,
             filename: 'balances.csv',
@@ -477,6 +481,7 @@ class ImportTypesTest extends TestCase
 
         $job = $importService->createJob(
             tenantId: $this->tenant->id,
+            companyId: $this->company->id,
             userId: $this->user->id,
             type: ImportType::OpeningBalances,
             filename: 'balances.csv',

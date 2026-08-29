@@ -42,6 +42,19 @@ enum ImportType: string
     case ProductImages = 'product_images';
     case CompositeItems = 'composite_items';
 
+    public function requiredModule(): ?string
+    {
+        return match ($this) {
+            self::CompositeItems => 'CompositeItems',
+            self::Parties,
+            self::Partners,
+            self::Products,
+            self::StockLevels,
+            self::OpeningBalances,
+            self::ProductImages => null,
+        };
+    }
+
     /**
      * Operator-facing explanation for a retired type — null while the type is
      * still importable. Single source of truth for every refusal message so the

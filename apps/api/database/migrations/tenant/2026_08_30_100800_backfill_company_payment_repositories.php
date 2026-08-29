@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Shared\Database\MigrationOutput;
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -52,10 +52,7 @@ return new class extends Migration
 
             Log::info('payment_repositories.census', $census);
             $line = "payment-repositories-census companies={$companyCount} empty={$emptyCount}";
-            Log::info($line);
-            if (App::runningInConsole()) {
-                fwrite(STDOUT, $line.PHP_EOL);
-            }
+            MigrationOutput::info($line);
 
             // Intentionally inline: deployed migrations must remain runnable if
             // the application provisioning service is refactored later.
@@ -177,10 +174,7 @@ return new class extends Migration
             }
 
             $line = "payment-repositories-seeded company_id={$companyId}";
-            Log::info($line);
-            if (App::runningInConsole()) {
-                fwrite(STDOUT, $line.PHP_EOL);
-            }
+            MigrationOutput::info($line);
         } catch (Throwable $exception) {
             Log::error('payment_repositories.backfill_company_failed', [
                 'company_id' => $companyId,

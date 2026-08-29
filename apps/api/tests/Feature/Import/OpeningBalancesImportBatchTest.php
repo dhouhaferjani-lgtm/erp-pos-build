@@ -492,6 +492,7 @@ final class OpeningBalancesImportBatchTest extends TestCase
     {
         $job = $this->importService->createJob(
             tenantId: $this->tenant->id,
+            companyId: $this->company->id,
             userId: $this->user->id,
             type: ImportType::OpeningBalances,
             filename: 'balances.csv',

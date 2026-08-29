@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Import;
 
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Company\Domain\Company;
@@ -65,6 +66,7 @@ class ProcessImportJobStatusTest extends TestCase
             'currency' => 'EUR',
             'status' => CompanyStatus::Active,
         ]);
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
         $this->seed(RolesAndPermissionsSeeder::class);
@@ -99,6 +101,7 @@ class ProcessImportJobStatusTest extends TestCase
         // validation: successful_rows = valid count, failed_rows = invalid.
         $job = ImportJob::create([
             'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'user_id' => $this->user->id,
             'type' => ImportType::Products,
             'status' => ImportStatus::Validated,
@@ -201,6 +204,7 @@ class ProcessImportJobStatusTest extends TestCase
         $importService = $this->app->make(ImportService::class);
         $job = $importService->createJob(
             tenantId: $this->tenant->id,
+            companyId: $this->company->id,
             userId: $this->user->id,
             type: ImportType::Parties,
             filename: 'parties.csv',
