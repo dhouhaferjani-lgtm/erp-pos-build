@@ -33,12 +33,29 @@ class BackfillDefaultLocationCodeF1MigrationTest extends TestCase
         $nullCodeLocation = $this->locationWithCode(null, true);
         $emptyCodeLocation = $this->locationWithCode('', true);
         $nonDefaultLocation = $this->locationWithCode(null, false);
+        DB::table('locations')
+            ->whereIn('id', [$nullCodeLocation->id, $emptyCodeLocation->id, $nonDefaultLocation->id])
+            ->update(['updated_at' => now()->subYear()]);
+        $timestampBeforeBackfill = DB::table('locations')
+            ->where('id', $nullCodeLocation->id)
+            ->value('updated_at');
+        $nonDefaultTimestamp = DB::table('locations')
+            ->where('id', $nonDefaultLocation->id)
+            ->value('updated_at');
 
         $this->runMigration();
 
         self::assertSame('MAIN', $nullCodeLocation->refresh()->code);
         self::assertSame('MAIN', $emptyCodeLocation->refresh()->code);
         self::assertNull($nonDefaultLocation->refresh()->code);
+        self::assertNotSame(
+            $timestampBeforeBackfill,
+            DB::table('locations')->where('id', $nullCodeLocation->id)->value('updated_at'),
+        );
+        self::assertSame(
+            $nonDefaultTimestamp,
+            DB::table('locations')->where('id', $nonDefaultLocation->id)->value('updated_at'),
+        );
 
         DB::table('locations')
             ->whereIn('id', [$nullCodeLocation->id, $emptyCodeLocation->id])

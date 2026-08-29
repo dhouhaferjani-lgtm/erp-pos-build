@@ -28,8 +28,8 @@ import type { ImportJobOptions, ImportType, LiveImportType, LocationNodeType } f
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import { Select } from '@/components/atoms/Select/Select'
-import { useLocations } from '@/features/locations/hooks/useLocations'
-import type { Location } from '@/features/locations/types'
+import { useScopedLocations } from '@/features/locations/hooks/useScopedLocations'
+import type { ScopedLocation } from '@/features/locations/api/scopedLocations'
 
 type WizardStep = 'upload' | 'mapping' | 'options' | 'validation' | 'execute' | 'complete'
 
@@ -129,7 +129,7 @@ function defaultPlacementNodeType(depth: number): LocationNodeType {
 }
 
 interface StockLocationOptionsProps {
-  locations: Location[]
+  locations: ScopedLocation[]
   value: string
   onChange: (value: string) => void
 }
@@ -260,7 +260,11 @@ export function ImportWizardPage() {
   const importType = type as ImportType
   const navigate = useNavigate()
   const { t } = useTranslation('import')
-  const { data: locations = [] } = useLocations()
+  const { data: scopedLocations = [] } = useScopedLocations()
+  const locations = useMemo(
+    () => scopedLocations.filter((location) => location.isActive),
+    [scopedLocations],
+  )
 
   // Wizard state
   const [currentStep, setCurrentStep] = useState<WizardStep>('upload')
@@ -280,15 +284,16 @@ export function ImportWizardPage() {
 
   const stockLocationCode = useMemo(() => {
     const codedLocations = locations.filter((location) => location.code.trim() !== '')
+    if (codedLocations.length === 0) {
+      return ''
+    }
     if (codedLocations.some((location) => location.code.trim() === selectedLocationCode)) {
       return selectedLocationCode
     }
 
-    return (
-      codedLocations.find((location) => location.isDefault)?.code.trim()
-      ?? codedLocations[0]?.code.trim()
-      ?? ''
-    )
+    const fallbackLocation = codedLocations.find((location) => location.isDefault) ?? codedLocations[0]
+
+    return fallbackLocation.code.trim()
   }, [locations, selectedLocationCode])
 
   // Job state
@@ -315,13 +320,23 @@ export function ImportWizardPage() {
   const { getImportProgress, updateProgress, completeImport } = useImportProgressStore()
   const realtimeProgress = jobId ? getImportProgress(jobId) : undefined
   const completedProgressJobsRef = useRef<Set<string>>(new Set())
+  const terminalTransitionJobsRef = useRef<Set<string>>(new Set())
+  const isWizardMountedRef = useRef(true)
+
+  useEffect(() => {
+    isWizardMountedRef.current = true
+
+    return () => {
+      isWizardMountedRef.current = false
+    }
+  }, [])
 
   // Track if we're actively importing (for polling fallback)
   const [isImporting, setIsImporting] = useState(false)
 
   // Fetch job status from API - poll during importing as fallback for WebSocket
   const shouldFetchJob = jobId !== null && (currentStep === 'validation' || currentStep === 'execute' || currentStep === 'complete')
-  const { data: apiJobData } = useImportJob(jobId ?? '', {
+  const { data: apiJobData, refetch: refetchJob } = useImportJob(jobId ?? '', {
     enabled: shouldFetchJob,
     // Poll every 2 seconds during importing as fallback (WebSocket may not be working)
     refetchInterval: isImporting ? 2000 : false,
@@ -448,12 +463,38 @@ export function ImportWizardPage() {
   // Auto-navigate to complete step when import is completed (from API or WebSocket)
   useEffect(() => {
     const status = realtimeProgress?.status ?? apiJobData?.status
-    if ((status === 'completed' || status === 'failed') && currentStep === 'execute') {
-      setIsImporting(false)
-      markStepCompleted('execute')
-      setCurrentStep('complete')
+    if (
+      jobId
+      && (status === 'completed' || status === 'failed')
+      && currentStep === 'execute'
+      && !terminalTransitionJobsRef.current.has(jobId)
+    ) {
+      terminalTransitionJobsRef.current.add(jobId)
+      const enterCompleteStep = () => {
+        if (!isWizardMountedRef.current) {
+          return
+        }
+
+        setIsImporting(false)
+        markStepCompleted('execute')
+        setCurrentStep('complete')
+      }
+      if (realtimeProgress?.status === 'completed') {
+        void refetchJob().then((result) => {
+          if (result.isError) {
+            terminalTransitionJobsRef.current.delete(jobId)
+            return
+          }
+
+          enterCompleteStep()
+        }, () => {
+          terminalTransitionJobsRef.current.delete(jobId)
+        })
+      } else {
+        enterCompleteStep()
+      }
     }
-  }, [realtimeProgress?.status, apiJobData?.status, currentStep, markStepCompleted])
+  }, [realtimeProgress?.status, apiJobData?.status, currentStep, jobId, markStepCompleted, refetchJob])
 
   // Fetch validation errors when on validation step
   const { data: errorsData } = useImportErrors(

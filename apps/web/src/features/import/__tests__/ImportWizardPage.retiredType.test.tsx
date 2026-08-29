@@ -20,8 +20,8 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 vi.mock('@/lib/api', () => ({ authenticatedDownload: vi.fn() }))
-vi.mock('@/features/locations/hooks/useLocations', () => ({
-  useLocations: () => ({ data: [] }),
+vi.mock('@/features/locations/hooks/useScopedLocations', () => ({
+  useScopedLocations: () => ({ data: [] }),
 }))
 
 vi.mock('../api/importApi', () => ({

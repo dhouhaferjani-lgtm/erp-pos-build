@@ -56,7 +56,7 @@ export interface ImportJob {
   successful_rows: number
   failed_rows: number
   warning_rows: number
-  warning_summary: Record<string, number>
+  warning_summary: Record<string, number> | null
   progress_percentage: number
   options?: ImportJobOptions | null
   error_message: string | null

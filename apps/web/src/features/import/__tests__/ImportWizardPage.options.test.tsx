@@ -1,10 +1,15 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ReactNode } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ImportWizardPage } from '../pages/ImportWizardPage'
 import type { ImportJob } from '../types'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
+import { useImportProgressStore } from '@/stores/importProgressStore'
 
 let nextMapping: Record<string, string> = {}
 let nextJobData: ImportJob | undefined
@@ -12,9 +17,11 @@ let nextJobData: ImportJob | undefined
 const mockParseHeaders = vi.hoisted(() => vi.fn())
 const mockUpdateOptions = vi.hoisted(() => vi.fn())
 const mockCreateMutate = vi.hoisted(() => vi.fn())
+const mockExecuteMutate = vi.hoisted(() => vi.fn())
 const mockSuggestMutate = vi.hoisted(() => vi.fn())
 const mockRefetchPreview = vi.hoisted(() => vi.fn())
-const mockUseLocations = vi.hoisted(() => vi.fn())
+const mockRefetchJob = vi.hoisted(() => vi.fn())
+const mockApiGet = vi.hoisted(() => vi.fn())
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -31,10 +38,7 @@ vi.mock('sonner', () => ({
 
 vi.mock('@/lib/api', () => ({
   authenticatedDownload: vi.fn(),
-}))
-
-vi.mock('@/features/locations/hooks/useLocations', () => ({
-  useLocations: mockUseLocations,
+  apiGet: mockApiGet,
 }))
 
 vi.mock('../api/importApi', () => ({
@@ -51,13 +55,14 @@ vi.mock('../api/queries', () => ({
     isPending: false,
   }),
   useExecuteImport: () => ({
-    mutate: vi.fn(),
+    mutate: mockExecuteMutate,
     isSuccess: false,
+    isPending: false,
   }),
   useSuggestMapping: () => ({
     mutate: mockSuggestMutate,
   }),
-  useImportJob: () => ({ data: nextJobData }),
+  useImportJob: () => ({ data: nextJobData, refetch: mockRefetchJob }),
   useImportErrors: () => ({ data: { data: [] } }),
   useImportPreview: () => ({
     data: {
@@ -104,12 +109,24 @@ vi.mock('../components/ImportPreviewTable', () => ({
 }))
 
 function renderWizard() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  })
+
+  function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  }
+
   return render(
     <MemoryRouter initialEntries={['/settings/import/products']}>
       <Routes>
         <Route path="/settings/import/:type" element={<ImportWizardPage />} />
       </Routes>
-    </MemoryRouter>
+    </MemoryRouter>,
+    { wrapper: Wrapper },
   )
 }
 
@@ -130,7 +147,29 @@ describe('ImportWizardPage product options step', () => {
     vi.clearAllMocks()
     nextMapping = {}
     nextJobData = undefined
-    mockUseLocations.mockReturnValue({ data: [] })
+    useAuthStore.setState({
+      user: {
+        id: 'user-1',
+        name: 'Import User',
+        email: 'import@example.com',
+        tenant_id: 'tenant-1',
+        roles: [],
+        email_verified_at: null,
+      },
+      token: 'token',
+      isAuthenticated: true,
+      isLoading: false,
+    })
+    useCompanyStore.setState({
+      currentCompanyId: 'company-1',
+      companies: [],
+      isLoading: false,
+    })
+    useImportProgressStore.setState({
+      activeImports: new Map(),
+      completedImportIds: new Set(),
+    })
+    mockApiGet.mockResolvedValue([])
     mockParseHeaders.mockResolvedValue({
       headers: ['name', 'price_ttc', 'price_ht', 'margin'],
       row_count: 1,
@@ -143,6 +182,7 @@ describe('ImportWizardPage product options step', () => {
     })
     mockUpdateOptions.mockResolvedValue({ data: { id: 'job-1' } })
     mockRefetchPreview.mockResolvedValue({ data: undefined })
+    mockRefetchJob.mockResolvedValue({ data: nextJobData })
   })
 
   it('shows the options step when at least two product price columns are mapped', async () => {
@@ -201,12 +241,10 @@ describe('ImportWizardPage product options step', () => {
       name: 'name',
       quantity: 'quantity',
     }
-    mockUseLocations.mockReturnValue({
-      data: [
-        { id: 'branch', name: 'Branch', code: 'BRANCH', isDefault: false },
-        { id: 'main', name: 'Main Location', code: 'MAIN', isDefault: true },
-      ],
-    })
+    mockApiGet.mockResolvedValue([
+      { id: 'branch', name: 'Branch', code: 'BRANCH', type: 'warehouse', is_default: false, is_active: true },
+      { id: 'main', name: 'Main Location', code: 'MAIN', type: 'warehouse', is_default: true, is_active: true },
+    ])
 
     await uploadAndMap()
 
@@ -224,23 +262,177 @@ describe('ImportWizardPage product options step', () => {
     })
   })
 
-  it('lists a code-less location as disabled', async () => {
+  it('uses scoped company locations, disables a null code, and excludes inactive locations', async () => {
     nextMapping = {
       name: 'name',
       quantity: 'quantity',
     }
-    mockUseLocations.mockReturnValue({
-      data: [
-        { id: 'main', name: 'Main Location', code: 'MAIN', isDefault: true },
-        { id: 'uncoded', name: 'Uncoded Branch', code: '', isDefault: false },
-      ],
-    })
+    mockApiGet.mockResolvedValue([
+      { id: 'main', name: 'Main Location', code: 'MAIN', type: 'warehouse', is_default: true, is_active: true },
+      { id: 'uncoded', name: 'Uncoded Branch', code: null, type: 'shop', is_default: false, is_active: true },
+      { id: 'inactive', name: 'Inactive Branch', code: 'OLD', type: 'shop', is_default: false, is_active: false },
+    ])
 
     await uploadAndMap()
 
+    expect(mockApiGet).toHaveBeenCalledWith('/company/locations')
     expect(await screen.findByRole('option', {
       name: 'Uncoded Branch — options.stockLocation.noCode',
     })).toBeDisabled()
+    expect(screen.queryByRole('option', { name: 'Inactive Branch (OLD)' })).not.toBeInTheDocument()
+  })
+
+  it('refetches the finalized job before showing WebSocket completion warnings', async () => {
+    nextMapping = { name: 'name' }
+    const staleJob: ImportJob = {
+      id: 'job-1',
+      type: 'products',
+      status: 'validated',
+      original_filename: 'products.csv',
+      total_rows: 100,
+      processed_rows: 0,
+      successful_rows: 100,
+      failed_rows: 0,
+      warning_rows: 0,
+      warning_summary: {},
+      progress_percentage: 0,
+      options: null,
+      error_message: null,
+      started_at: null,
+      completed_at: null,
+      created_at: '2026-08-29T09:59:59Z',
+    }
+    nextJobData = staleJob
+    mockExecuteMutate.mockImplementation((_jobId: string, options?: { onSuccess?: (data: ImportJob) => void }) => {
+      options?.onSuccess?.({ ...staleJob, status: 'pending' })
+    })
+
+    let finishRefetch: (() => void) | undefined
+    mockRefetchJob.mockImplementation(() => new Promise((resolve) => {
+      finishRefetch = () => {
+        nextJobData = {
+          ...staleJob,
+          status: 'completed',
+          processed_rows: 100,
+          progress_percentage: 100,
+          warning_rows: 2,
+          warning_summary: { location_unresolved: 2 },
+          completed_at: '2026-08-29T10:00:01Z',
+        }
+        resolve({ data: nextJobData })
+      }
+    }))
+
+    await uploadAndMap()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'wizard.validation.proceed' }))
+    await user.click(screen.getByRole('button', { name: 'wizard.execute.start' }))
+
+    act(() => {
+      useImportProgressStore.getState().updateProgress({
+        import_job_id: 'job-1',
+        status: 'completed',
+        total_rows: 100,
+        processed_rows: 100,
+        successful_rows: 100,
+        failed_rows: 0,
+        progress_percentage: 100,
+        import_type: 'products',
+        original_filename: 'products.csv',
+      })
+    })
+
+    await waitFor(() => { expect(mockRefetchJob).toHaveBeenCalledOnce() })
+    expect(screen.queryByRole('heading', { name: 'wizard.complete.warnings' })).not.toBeInTheDocument()
+
+    await act(async () => {
+      finishRefetch?.()
+      await Promise.resolve()
+    })
+
+    expect(await screen.findByRole('heading', { name: 'wizard.complete.warnings' })).toBeInTheDocument()
+    expect(screen.getByText('warnings.location_unresolved')).toBeInTheDocument()
+  })
+
+  it('keeps the execute step after a failed final refetch and retries before completion', async () => {
+    nextMapping = { name: 'name' }
+    const staleJob: ImportJob = {
+      id: 'job-1',
+      type: 'products',
+      status: 'validated',
+      original_filename: 'products.csv',
+      total_rows: 100,
+      processed_rows: 0,
+      successful_rows: 100,
+      failed_rows: 0,
+      warning_rows: 0,
+      warning_summary: {},
+      progress_percentage: 0,
+      options: null,
+      error_message: null,
+      started_at: null,
+      completed_at: null,
+      created_at: '2026-08-29T09:59:59Z',
+    }
+    const finalizedJob: ImportJob = {
+      ...staleJob,
+      status: 'completed',
+      processed_rows: 100,
+      progress_percentage: 100,
+      warning_rows: 2,
+      warning_summary: { location_unresolved: 2 },
+      completed_at: '2026-08-29T10:00:01Z',
+    }
+    nextJobData = staleJob
+    mockExecuteMutate.mockImplementation((_jobId: string, options?: { onSuccess?: (data: ImportJob) => void }) => {
+      options?.onSuccess?.({ ...staleJob, status: 'pending' })
+    })
+    mockRefetchJob
+      .mockResolvedValueOnce({ data: staleJob, isError: true })
+      .mockImplementationOnce(() => {
+        nextJobData = finalizedJob
+        return Promise.resolve({ data: finalizedJob, isError: false })
+      })
+
+    await uploadAndMap()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'wizard.validation.proceed' }))
+    await user.click(screen.getByRole('button', { name: 'wizard.execute.start' }))
+
+    act(() => {
+      useImportProgressStore.getState().updateProgress({
+        import_job_id: 'job-1',
+        status: 'completed',
+        total_rows: 100,
+        processed_rows: 100,
+        successful_rows: 100,
+        failed_rows: 0,
+        progress_percentage: 100,
+        import_type: 'products',
+        original_filename: 'products.csv',
+      })
+    })
+
+    await waitFor(() => { expect(mockRefetchJob).toHaveBeenCalledOnce() })
+    expect(screen.queryByRole('heading', { name: 'wizard.complete.warnings' })).not.toBeInTheDocument()
+
+    nextJobData = finalizedJob
+    act(() => {
+      useImportProgressStore.getState().updateProgress({
+        import_job_id: 'job-1',
+        status: 'completed',
+        total_rows: 100,
+        processed_rows: 100,
+        successful_rows: 100,
+        failed_rows: 0,
+        progress_percentage: 100,
+        import_type: 'products',
+        original_filename: 'products.csv',
+      })
+    })
+
+    await waitFor(() => { expect(mockRefetchJob).toHaveBeenCalledTimes(2) })
+    expect(await screen.findByRole('heading', { name: 'wizard.complete.warnings' })).toBeInTheDocument()
   })
 
   it('shows warning counts on the completion step', async () => {

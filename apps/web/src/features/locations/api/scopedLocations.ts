@@ -7,14 +7,16 @@ export interface ScopedLocation {
   code: string
   type: LocationType
   isDefault: boolean
+  isActive: boolean
 }
 
 interface RawScopedLocation {
   id: string
   name: string
-  code: string
+  code: string | null
   type: LocationType
   is_default: boolean
+  is_active: boolean
 }
 
 export async function getScopedLocations(): Promise<ScopedLocation[]> {
@@ -22,8 +24,9 @@ export async function getScopedLocations(): Promise<ScopedLocation[]> {
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
-    code: row.code,
+    code: row.code ?? '',
     type: row.type,
     isDefault: row.is_default,
+    isActive: row.is_active,
   }))
 }

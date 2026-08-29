@@ -10,6 +10,11 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    /**
+     * Backfill MAIN on code-less default locations without violating the
+     * company/code unique index. A collision is left untouched and emitted as
+     * a census line so operators can resolve that tenant explicitly.
+     */
     public function up(): void
     {
         if (! Schema::hasTable('locations')) {
@@ -56,7 +61,10 @@ return new class extends Migration
                 ->where(static function (Builder $query): void {
                     $query->whereNull('code')->orWhere('code', '');
                 })
-                ->update(['code' => 'MAIN']);
+                ->update([
+                    'code' => 'MAIN',
+                    'updated_at' => now(),
+                ]);
         }
     }
 
