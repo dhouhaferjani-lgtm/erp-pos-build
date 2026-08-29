@@ -36,6 +36,22 @@ import type { PartnerData } from './types'
 
 const PINNED_COUNTRY_CODES = ['FR', 'TN', 'GB', 'IT', 'MA', 'DZ', 'US']
 
+/**
+ * The Tax Status / exemption-reason / valid-until / certificate controls have
+ * NO write path: neither CreatePartnerRequest nor UpdatePartnerRequest declares
+ * a rule for `tax_status`, `exemption_reason` or `exemption_valid_until`, and
+ * both controller actions spread `$request->validated()` — so the keys are
+ * stripped, the user sees a success toast, and nothing persists. Since M1 added
+ * `tax_status` to PartnerData the form reloads the unchanged server value and
+ * visibly reverts the edit.
+ *
+ * House rule OQ-11: a dead control is hidden, not shipped. Phase-2 brief
+ * M2.2/M3 wires the canonical `tax_*` FormRequest rules; flip this to `true` in
+ * the same change that lands them. The JSX below is kept, not deleted, so that
+ * change is a one-line revert.
+ */
+const PHASE2_TAX_STATUS_WRITE_PATH: boolean = false
+
 export interface PartnerBankAccountFormData {
   id?: string | undefined
   label: string
@@ -424,9 +440,19 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
   })
 
   const onSubmit = (data: PartnerFormData) => {
+    // The tax-status trio has no FormRequest rule (see
+    // PHASE2_TAX_STATUS_WRITE_PATH); posting it is a silent no-op, so it never
+    // leaves the form.
+    const {
+      tax_status: _taxStatus,
+      exemption_reason: _exemptionReason,
+      exemption_valid_until: _exemptionValidUntil,
+      ...writable
+    } = data
+
     // Clean up empty strings to null for optional fields
     const cleaned = {
-      ...data,
+      ...writable,
       customer_category: data.customer_category || null,
       payment_terms: data.payment_terms || null,
       payment_terms_days: data.payment_terms_days || null,
@@ -440,8 +466,6 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
       email: data.email || null,
       phone: data.phone || null,
       notes: data.notes || null,
-      exemption_reason: data.exemption_reason || null,
-      exemption_valid_until: data.exemption_valid_until || null,
       credit_limit: data.credit_limit || null,
       discount_percentage: data.discount_percentage || null,
       company_legal_name: data.company_legal_name || null,
@@ -632,64 +656,68 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
               />
             </FormField>
 
-            {/* Tax Status */}
-            <FormField
-              label={t('sales:partners.taxInfo.status')}
-              htmlFor="tax_status"
-              className="sm:col-span-2"
-            >
-              <Select
-                id="tax_status"
-                {...register('tax_status')}
-              >
-                <option value="REGISTERED">{t('sales:partners.taxInfo.statusRegistered')}</option>
-                <option value="NON_REGISTERED">{t('sales:partners.taxInfo.statusNonRegistered')}</option>
-                <option value="EXEMPT">{t('sales:partners.taxInfo.statusExempt')}</option>
-              </Select>
-            </FormField>
-
-            {/* Exemption Fields (shown only when EXEMPT) */}
-            {taxStatus === 'EXEMPT' && (
+            {PHASE2_TAX_STATUS_WRITE_PATH && (
               <>
-                <FormField
-                  label={t('sales:partners.taxInfo.exemptionReason')}
-                  htmlFor="exemption_reason"
-                  className="sm:col-span-2"
+              {/* Tax Status */}
+              <FormField
+                label={t('sales:partners.taxInfo.status')}
+                htmlFor="tax_status"
+                className="sm:col-span-2"
+              >
+                <Select
+                  id="tax_status"
+                  {...register('tax_status')}
                 >
-                  <Textarea
-                    id="exemption_reason"
-                    rows={3}
-                    {...register('exemption_reason')}
-                    placeholder={t('sales:partners.taxInfo.exemptionReasonPlaceholder')}
-                  />
-                </FormField>
+                  <option value="REGISTERED">{t('sales:partners.taxInfo.statusRegistered')}</option>
+                  <option value="NON_REGISTERED">{t('sales:partners.taxInfo.statusNonRegistered')}</option>
+                  <option value="EXEMPT">{t('sales:partners.taxInfo.statusExempt')}</option>
+                </Select>
+              </FormField>
 
-                <FormField
-                  label={t('sales:partners.taxInfo.validUntil')}
-                  htmlFor="exemption_valid_until"
-                >
-                  <Input
-                    type="date"
-                    id="exemption_valid_until"
-                    {...register('exemption_valid_until')}
-                  />
-                </FormField>
-
-                <div>
-                  <label className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
-                    {t('sales:partners.taxInfo.certificate')}
-                  </label>
-                  <p className={`mt-1 text-xs ${colorTokens.text.subtle}`}>
-                    {t('sales:partners.taxInfo.certificateHint')}
-                  </p>
-                  <div className="mt-2">
-                    <input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png"
-                      className={`block w-full text-sm ${colorTokens.text.subtle} file:me-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold ${colorTokens.intent.primary.fileBgSubtle} ${colorTokens.intent.primary.fileText} ${colorTokens.intent.primary.fileBgHoverSoft}`}
+              {/* Exemption Fields (shown only when EXEMPT) */}
+              {taxStatus === 'EXEMPT' && (
+                <>
+                  <FormField
+                    label={t('sales:partners.taxInfo.exemptionReason')}
+                    htmlFor="exemption_reason"
+                    className="sm:col-span-2"
+                  >
+                    <Textarea
+                      id="exemption_reason"
+                      rows={3}
+                      {...register('exemption_reason')}
+                      placeholder={t('sales:partners.taxInfo.exemptionReasonPlaceholder')}
                     />
+                  </FormField>
+
+                  <FormField
+                    label={t('sales:partners.taxInfo.validUntil')}
+                    htmlFor="exemption_valid_until"
+                  >
+                    <Input
+                      type="date"
+                      id="exemption_valid_until"
+                      {...register('exemption_valid_until')}
+                    />
+                  </FormField>
+
+                  <div>
+                    <label className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
+                      {t('sales:partners.taxInfo.certificate')}
+                    </label>
+                    <p className={`mt-1 text-xs ${colorTokens.text.subtle}`}>
+                      {t('sales:partners.taxInfo.certificateHint')}
+                    </p>
+                    <div className="mt-2">
+                      <input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        className={`block w-full text-sm ${colorTokens.text.subtle} file:me-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold ${colorTokens.intent.primary.fileBgSubtle} ${colorTokens.intent.primary.fileText} ${colorTokens.intent.primary.fileBgHoverSoft}`}
+                      />
+                    </div>
                   </div>
-                </div>
+              </>
+            )}
               </>
             )}
           </div>

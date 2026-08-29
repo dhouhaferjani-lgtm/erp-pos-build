@@ -177,6 +177,26 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
     expect(mockApiPost).not.toHaveBeenCalled()
   })
 
+  it('does not render the tax-status block while its write path is unwired', () => {
+    renderPartnerForm(['/purchases/suppliers/new'], '/purchases/suppliers/new', 'supplier')
+
+    expect(screen.queryByLabelText(/^Tax Status/)).not.toBeInTheDocument()
+  })
+
+  it('omits the unwritable tax-status keys from the create payload', async () => {
+    mockApiPost.mockResolvedValue({ id: 'partner-new' })
+    renderPartnerForm(['/purchases/suppliers/new'], '/purchases/suppliers/new', 'supplier')
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Tax Free Supplier' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+
+    await waitFor(() => expect(mockApiPost).toHaveBeenCalledTimes(1))
+    const payload = mockApiPost.mock.calls[0]?.[1]
+    expect(payload).not.toHaveProperty('tax_status')
+    expect(payload).not.toHaveProperty('exemption_reason')
+    expect(payload).not.toHaveProperty('exemption_valid_until')
+  })
+
   it('defaults supplier creation Nature to Company', () => {
     renderPartnerForm(['/purchases/suppliers/new'], '/purchases/suppliers/new', 'supplier')
 

@@ -1071,20 +1071,15 @@ describe('Partner Management', () => {
     // ──────────────────────────────────────────────
     // Conditional sections
     // ──────────────────────────────────────────────
-    it('shows exemption fields only when tax status is EXEMPT', async () => {
-      const user = userEvent.setup()
+    // Tax status and its exemption fields have no FormRequest rule, so the
+    // whole block is gated off (PHASE2_TAX_STATUS_WRITE_PATH). It used to
+    // reveal the exemption inputs on EXEMPT; now it renders nothing at all.
+    it('does not expose tax-status or exemption fields while their write path is unwired', () => {
       renderWithProviders(<PartnerForm />)
 
-      // Initially not visible (default is REGISTERED)
+      expect(screen.queryByLabelText(/tax status/i)).not.toBeInTheDocument()
       expect(screen.queryByLabelText(/exemption reason/i)).not.toBeInTheDocument()
-
-      // Change to EXEMPT
-      await user.selectOptions(screen.getByLabelText(/tax status/i), 'EXEMPT')
-
-      await waitFor(() => {
-        expect(screen.getByLabelText(/exemption reason/i)).toBeInTheDocument()
-        expect(screen.getByLabelText(/valid until/i)).toBeInTheDocument()
-      })
+      expect(screen.queryByLabelText(/valid until/i)).not.toBeInTheDocument()
     })
 
     it('submits form data on save', async () => {
