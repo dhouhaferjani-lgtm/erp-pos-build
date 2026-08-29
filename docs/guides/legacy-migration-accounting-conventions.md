@@ -56,6 +56,22 @@ So the sign never flips an account: it selects the DOCUMENT TYPE (invoice vs cre
 - Never import into **control accounts** (`411`/`401` totals) directly through the GL batch — the importer refuses this; person-level balances go through the AR/AP opening flow so the subledger and GL stay tied.
 
 
+### 3b. Bank, cash, and other GL opening balances — no signs at all
+The GL opening file (bank `512`, cash `53x`, any other account) does **not** use a signed balance column. It has two columns, **`debit` and `credit`, both ≥ 0** — a negative in either is a row error. You state the side yourself:
+
+| Situation | Put the amount in |
+|---|---|
+| Bank account **has money** (your asset) | **debit** of `512` |
+| Bank account **overdrawn** (you owe the bank) | **credit** of `512` |
+| Cash drawer float | **debit** of `53x` |
+| Any liability/equity opening | **credit** column |
+
+The whole batch must balance; the Opening Balance Equity plug absorbs the counterpart, and the batch is all-or-nothing, then locked.
+
+⚠️ Classic confusion: your **bank statement** says "credit" when you have money — that's the *bank's* books (they owe you). In **your** books the same money is a **debit** balance on `512`. Always write the file from your books' side.
+
+**Summary — three files, three regimes:** parties net balances = SIGNED (sign picks invoice vs credit note) · AR/AP open items = amounts ≥ 0 + explicit `document_type` · GL openings = no signs, separate debit/credit columns.
+
 ### 4. Open-invoice continuity (aged AR/AP)
 Open customer and supplier invoices from the old system are imported **one row per open invoice** (not one lump sum). Each becomes a *historical* document in the new system: posted, back-dated to its real date, carrying its open amount — but with no product lines and **outside the VAT declaration** (the old system already declared it). From then on the normal flows apply: when the customer pays, the payment is **allocated against those exact open invoices** (oldest first or as selected) and purges them; supplier payments likewise settle the imported `401` invoices. An opening credit note is netted against its opening invoice at import, never left floating.
 
@@ -108,6 +124,22 @@ Le signe ne change donc jamais de compte : il choisit le TYPE DE DOCUMENT (factu
 - Un solde client est **positif quand le client nous doit** (solde débiteur du `411`). Un solde créditeur client = *avance client* → `419`, jamais une vente négative.
 - Un solde fournisseur est **positif quand nous devons au fournisseur** (solde créditeur du `401`). « Fournisseur −500 » dans l'ancien système = le fournisseur nous doit → le sens s'inverse (l'importateur gère le sens ; ne pas inverser dans le fichier).
 - Ne jamais importer directement dans les **comptes collectifs** (`411`/`401` globaux) via le lot GL — l'importateur le refuse ; les soldes nominatifs passent par la reprise AR/AP pour garder l'auxiliaire et le général alignés.
+
+### 3b. Banque, caisse et autres soldes d'ouverture GL — aucun signe
+Le fichier d'ouverture GL (banque `512`, caisse `53x`, tout autre compte) n'utilise **pas** de colonne signée : deux colonnes, **`debit` et `credit`, toutes deux ≥ 0** — un négatif est une erreur de ligne. C'est vous qui indiquez le sens :
+
+| Situation | Montant dans |
+|---|---|
+| Compte bancaire **approvisionné** (votre actif) | **débit** du `512` |
+| Compte bancaire **à découvert** (vous devez à la banque) | **crédit** du `512` |
+| Fonds de caisse | **débit** du `53x` |
+| Toute ouverture de passif/capitaux | colonne **crédit** |
+
+Le lot doit s'équilibrer ; la contrepartie d'ouverture (OBE) absorbe l'écart, le lot est tout-ou-rien puis verrouillé.
+
+⚠️ Confusion classique : votre **relevé bancaire** dit « crédit » quand vous avez de l'argent — c'est le livre de la *banque* (elle vous doit). Dans **vos** livres, le même argent est un solde **débiteur** du `512`. Toujours remplir le fichier du point de vue de vos livres.
+
+**Résumé — trois fichiers, trois régimes :** soldes nets tiers = SIGNÉS (le signe choisit facture vs avoir) · factures ouvertes AR/AP = montants ≥ 0 + `document_type` explicite · ouvertures GL = pas de signes, colonnes débit/crédit séparées.
 
 ### 4. Continuité des factures ouvertes (AR/AP âgés)
 Les factures clients et fournisseurs encore ouvertes dans l'ancien système sont reprises **ligne par facture** (jamais en montant global). Chacune devient un document *historique* : validé, à sa date réelle, avec son restant dû — mais sans lignes produit et **hors déclaration de TVA** (déjà déclarée dans l'ancien système). Ensuite les flux normaux s'appliquent : un règlement client est **lettré contre ces factures ouvertes précises** et les solde ; idem pour les règlements fournisseurs sur `401`. Un avoir d'ouverture est imputé sur sa facture d'ouverture dès la reprise, jamais laissé isolé.
