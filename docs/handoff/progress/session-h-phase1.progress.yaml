@@ -18,7 +18,7 @@ lanes:
     commit_series: "h1-a1 M<m>.<s>:"
 ledger_rows: D-H1-1 (cleanup), D-H1-2 (a1)
 
-status: blocked_architecture
+status: in_progress
 
 milestones:
   - id: M1
@@ -57,7 +57,7 @@ milestones:
     lane: h1-a1
     title: SALE_RECEIPT.buyer populated (resolved server partner id only; contact_id null by decision); validateBuyer customer_id uuid-or-null; projection writes partner_id from snapshot
     review_lenses: [fiscal-pos]
-    status: blocked_architecture
+    status: pending
     commit: null
     verdict: null
     fix_rounds: 0
@@ -83,5 +83,7 @@ owes_parent:
   - M3 Otospex browser debt: browser item (v) is locally runtime-skipped because `demo-unlimited` has no provisioned tenant database; the customer-only picker has focused Vitest evidence but no live Otospex browser evidence here.
   - M3 i18n burn-down: removal-only cleanup translated eight prior baseline entries with zero new gaps; no baseline re-pin was required, and parent may lock the burn-down at promotion.
   - M3 Phase 2 form-state debt: mismatched `partnerType` and pathname can make both route contexts true in an unkeyed reconciliation; production keyed routes prevent the live path and validation blocks submission, but Phase 2 should derive one authoritative context independently of React keys.
-blockers:
+blockers: []
+# Parent ruling 2026-08-29 (Session H orchestrator): architecture, not an owner gate — see the Phase-1 brief §3 M4 'M4.0 STOP — RULED' block (customer_id uuid-or-null gated on event_version>=5; golden fixtures F-07/F-15 untouched; projection defensive). Lane resumes at M4.
+resolved_blockers:
   - "M4 architecture contradiction: dispatch §3 requires buyer.customer_id UUID-or-null and asserts existing sealed fixtures are 100% null, but committed canonical F-07 (`cust-007`) and F-15 (`customer-f15-001`) contain non-UUID values and F-07 is required to validate at legacy event_version=1. Changing those pinned payloads violates dispatch §5 sealed-byte STOP; unconditional validation breaks canonical compatibility. Owner must choose a version/cutover grandfather or explicitly authorize fixture-byte/hash changes."
