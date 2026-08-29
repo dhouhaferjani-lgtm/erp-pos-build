@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle } from 'lucide-react'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
-import { bccomp, bcdiv, bcmul, formatCurrency } from '@/lib/decimal'
+import { bcadd, bccomp, bcdiv, bcmul, formatCurrency } from '@/lib/decimal'
 
 interface CreditLimitWarningProps {
   creditLimit: string | null
@@ -27,11 +27,18 @@ export function CreditLimitWarning({
   }
 
   const usagePercentage = bcmul(bcdiv(outstandingBalance, creditLimit, 6), '100', 6)
-  const displayedPercentage = usagePercentage.split('.', 1)[0] ?? '0'
   const thresholdComparisonLeft = bcmul(outstandingBalance, '100', 6)
   const thresholdComparisonRight = bcmul(creditLimit, String(thresholdPercentage), 6)
   const isExceeded = bccomp(outstandingBalance, creditLimit) >= 0
   const isApproaching = bccomp(thresholdComparisonLeft, thresholdComparisonRight) >= 0
+
+  // Round half-up (bcadd inherits Big.RM = 1) so a usage of 79.5 reads as
+  // "80" beside an 80% threshold instead of truncating to "79". A balance
+  // that is still strictly below the limit is capped at 99 so it can never
+  // read as "100% used" while the copy says "approaching".
+  const roundedPercentage = bcadd(usagePercentage, '0', 0)
+  const displayedPercentage =
+    !isExceeded && bccomp(roundedPercentage, '100') >= 0 ? '99' : roundedPercentage
 
   if (!isApproaching && !isExceeded) {
     return null

@@ -58,6 +58,28 @@ describe('CreditLimitWarning decimal boundaries', () => {
     )
   })
 
+  it.each([
+    ['794.000', '79'],
+    ['795.000', '80'],
+    ['799.000', '80'],
+  ])(
+    'rounds the displayed usage half-up so %s reads as %s percent',
+    (outstandingBalance, expectedPercentage) => {
+      render(
+        <CreditLimitWarning
+          creditLimit="1000.000"
+          outstandingBalance={outstandingBalance}
+          currency="TND"
+          thresholdPercentage={70}
+        />,
+      )
+
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        `(${expectedPercentage}% used)`,
+      )
+    },
+  )
+
   it('truncates displayed usage so a below-limit balance never reads as 100 percent', () => {
     render(
       <CreditLimitWarning
