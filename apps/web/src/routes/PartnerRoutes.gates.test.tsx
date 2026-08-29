@@ -62,6 +62,62 @@ describe('partner and contact route gates', () => {
     expect(screen.queryByText('partner edit form')).not.toBeInTheDocument()
   })
 
+  it('opens both partner create routes for a partners.create-only user', async () => {
+    setActor([], ['partners.create'])
+
+    const customer = renderWithProviders(<AppRoutes />, { route: '/sales/customers/new' })
+    expect(await screen.findByText('partner edit form')).toBeInTheDocument()
+    customer.unmount()
+
+    renderRoute('/purchases/suppliers/new')
+    expect(await screen.findByText('partner edit form')).toBeInTheDocument()
+  })
+
+  it.each([
+    '/sales/customers/new',
+    '/purchases/suppliers/new',
+  ])('blocks a contacts.update-only user from the create route %s', async (path) => {
+    setActor([], ['contacts.update'])
+
+    renderRoute(path)
+
+    expect(await screen.findByText('dashboard fallback')).toBeInTheDocument()
+    expect(screen.queryByText('partner edit form')).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['partners.view only', ['partners.view']],
+    ['sales.view only', ['sales.view']],
+  ])('blocks the customer list with %s', async (_label, permissions) => {
+    setActor([], permissions)
+    renderRoute('/sales/customers')
+
+    expect(await screen.findByText('dashboard fallback')).toBeInTheDocument()
+    expect(screen.queryByText('partner list')).not.toBeInTheDocument()
+  })
+
+  it('keeps the customer list and detail coherent when both gates pass', async () => {
+    setActor([], ['partners.view', 'sales.view'])
+
+    const list = renderWithProviders(<AppRoutes />, { route: '/sales/customers' })
+    expect(await screen.findByText('partner list')).toBeInTheDocument()
+    list.unmount()
+
+    renderRoute('/sales/customers/customer-1')
+    expect(await screen.findByText('partner detail')).toBeInTheDocument()
+  })
+
+  it.each([
+    ['partners.view only', ['partners.view']],
+    ['purchases.view only', ['purchases.view']],
+  ])('blocks the supplier detail with %s', async (_label, permissions) => {
+    setActor([], permissions)
+    renderRoute('/purchases/suppliers/supplier-1')
+
+    expect(await screen.findByText('dashboard fallback')).toBeInTheDocument()
+    expect(screen.queryByText('partner detail')).not.toBeInTheDocument()
+  })
+
   it.each([
     ['partners.view only', ['partners.view']],
     ['purchases.view only', ['purchases.view']],

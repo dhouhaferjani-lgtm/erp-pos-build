@@ -593,7 +593,7 @@ export function AppRoutes() {
           <Route
             path="customers"
             element={
-              <RequirePermission moduleKey="sales">
+              <RequirePermission moduleKey="sales" permission="partners.view">
                 <SuspenseWrapper>
                   <CustomerListPage key="customer" partnerType="customer" />
                 </SuspenseWrapper>
@@ -603,7 +603,7 @@ export function AppRoutes() {
           <Route
             path="customers/new"
             element={
-              <RequirePermission permission="sales.create">
+              <RequirePermission permission="partners.create">
                 <SuspenseWrapper>
                   <CustomerForm key="customer" partnerType="customer" />
                 </SuspenseWrapper>
@@ -613,7 +613,7 @@ export function AppRoutes() {
           <Route
             path="customers/:id"
             element={
-              <RequirePermission moduleKey="sales">
+              <RequirePermission moduleKey="sales" permission="partners.view">
                 <SuspenseWrapper>
                   <CustomerDetailPage />
                 </SuspenseWrapper>
@@ -852,7 +852,7 @@ export function AppRoutes() {
           <Route
             path="suppliers/new"
             element={
-              <RequirePermission permission="purchases.create">
+              <RequirePermission permission="partners.create">
                 <SuspenseWrapper>
                   <CustomerForm key="supplier" partnerType="supplier" />
                 </SuspenseWrapper>
@@ -862,7 +862,7 @@ export function AppRoutes() {
           <Route
             path="suppliers/:id"
             element={
-              <RequirePermission moduleKey="purchases">
+              <RequirePermission moduleKey="purchases" permission="partners.view">
                 <SuspenseWrapper>
                   <CustomerDetailPage />
                 </SuspenseWrapper>
