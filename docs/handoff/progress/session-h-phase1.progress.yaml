@@ -67,7 +67,7 @@ milestones:
     lane: h1-a1
     title: golden populated-buyer canonical-bytes fixture, device + server, hash pinned
     review_lenses: [fiscal-pos]
-    status: pending
+    status: in_progress
     commit: null
     verdict: null
     fix_rounds: 0
