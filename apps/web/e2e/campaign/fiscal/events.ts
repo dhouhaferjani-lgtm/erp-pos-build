@@ -1,8 +1,15 @@
 import { randomUUID } from 'node:crypto'
 import { FiscalEventCanonicalEncoder } from './FiscalEventCanonicalEncoder'
+import { withMilliseconds } from './util'
 
 const EVENT_TYPE = 'SALE_RECEIPT'
 const SIGNATURE_VERSION = 'hash-chain-integrity-v1'
+
+export type CampaignFiscalEventType =
+  | 'SALE_RECEIPT'
+  | 'SESSION_CLOSE'
+  | 'SESSION_OPEN'
+  | 'Z_REPORT'
 
 export interface SaleEnvelopeCoordinates {
   businessDate: string
@@ -17,6 +24,7 @@ export interface SaleEnvelopeCoordinates {
   productId: string
   productName: string
   productSku: string
+  shiftId: string
   tenantId: string
   terminalId: string
 }
@@ -27,13 +35,13 @@ export interface RefundEnvelopeCoordinates extends SaleEnvelopeCoordinates {
   previousHash: string
 }
 
-export interface AuthoredFiscalEnvelope {
+export interface AuthoredEnvelope {
   canonicalBytes: string
   currentHash: string
   eventId: string
   eventVersion: number
   payload: Record<string, unknown>
-  receiptUuid: string
+  sequenceNumber: number
   requestBody: {
     envelopes: Array<{
       envelope_id: string
@@ -45,15 +53,24 @@ export interface AuthoredFiscalEnvelope {
   }
 }
 
-interface EnvelopeCoordinates {
+export interface AuthoredFiscalEnvelope extends AuthoredEnvelope {
+  receiptUuid: string
+}
+
+export interface FiscalEnvelopeCoordinates {
   body: Record<string, unknown>
   businessDate: string
+  chainContext: 'operational' | 'z_session'
   companyId: string
   eventTimeDevice: string
+  eventType: CampaignFiscalEventType
   eventVersion: number
   operatorId: string
   previousHash: string
+  referenceEventId: string | null
   sequenceNumber: number
+  sourceEventClass: string | null
+  sourceEventId: string | null
   tenantId: string
   terminalId: string
 }
@@ -83,7 +100,7 @@ export async function buildSaleEnvelope(
     payments: [payment(coordinates.methodCode, money.gross)],
     receipt_uuid: receiptUuid,
     seller: seller(coordinates.countryCode),
-    shift_id: randomUUID(),
+    shift_id: coordinates.shiftId,
     subtotal: money.net,
     table_id: null,
     terminal_id: coordinates.terminalId,
@@ -103,15 +120,20 @@ export async function buildSaleEnvelope(
     vouchers_redeemed: [],
   }
 
-  return authorEnvelope({
+  return authorReceiptEnvelope({
     body,
     businessDate: coordinates.businessDate,
+    chainContext: 'operational',
     companyId: coordinates.companyId,
     eventTimeDevice: coordinates.eventTimeDevice,
+    eventType: EVENT_TYPE,
     eventVersion: 5,
     operatorId: coordinates.operatorId,
     previousHash: coordinates.genesisSeed,
+    referenceEventId: null,
     sequenceNumber: 1,
+    sourceEventClass: null,
+    sourceEventId: null,
     tenantId: coordinates.tenantId,
     terminalId: coordinates.terminalId,
   }, receiptUuid)
@@ -155,7 +177,7 @@ export async function buildRefundEnvelope(
     refund_destination: 'cash',
     seller: seller(coordinates.countryCode),
     settlement_allocation: null,
-    shift_id: randomUUID(),
+    shift_id: coordinates.shiftId,
     subtotal: money.net,
     table_id: null,
     terminal_id: coordinates.terminalId,
@@ -174,37 +196,51 @@ export async function buildRefundEnvelope(
     vouchers_redeemed: [],
   }
 
-  return authorEnvelope({
+  return authorReceiptEnvelope({
     body,
     businessDate: coordinates.businessDate,
+    chainContext: 'operational',
     companyId: coordinates.companyId,
     eventTimeDevice: coordinates.eventTimeDevice,
+    eventType: EVENT_TYPE,
     eventVersion: 4,
     operatorId: coordinates.operatorId,
     previousHash: coordinates.previousHash,
+    referenceEventId: null,
     sequenceNumber: 2,
+    sourceEventClass: null,
+    sourceEventId: null,
     tenantId: coordinates.tenantId,
     terminalId: coordinates.terminalId,
   }, receiptUuid)
 }
 
-function authorEnvelope(
-  coordinates: EnvelopeCoordinates,
+function authorReceiptEnvelope(
+  coordinates: FiscalEnvelopeCoordinates,
   receiptUuid: string,
 ): AuthoredFiscalEnvelope {
+  return {
+    ...authorFiscalEnvelope(coordinates),
+    receiptUuid,
+  }
+}
+
+export function authorFiscalEnvelope(
+  coordinates: FiscalEnvelopeCoordinates,
+): AuthoredEnvelope {
   const eventId = randomUUID()
   const canonicalEnvelope: Record<string, unknown> = {
     business_date: coordinates.businessDate,
-    chain_context: 'operational',
+    chain_context: coordinates.chainContext,
     company_id: coordinates.companyId,
     event_time_device: coordinates.eventTimeDevice,
-    event_type: EVENT_TYPE,
+    event_type: coordinates.eventType,
     event_version: coordinates.eventVersion,
     operator_id: coordinates.operatorId,
     payload: coordinates.body,
     previous_hash: coordinates.previousHash,
     reference_document_id: null,
-    reference_event_id: null,
+    reference_event_id: coordinates.referenceEventId,
     sequence_number: coordinates.sequenceNumber,
     signature_version: SIGNATURE_VERSION,
     tenant_id: coordinates.tenantId,
@@ -219,8 +255,8 @@ function authorEnvelope(
     current_hash: currentHash,
     id: eventId,
     last_server_time_seen: null,
-    source_event_class: null,
-    source_event_id: null,
+    source_event_class: coordinates.sourceEventClass,
+    source_event_id: coordinates.sourceEventId,
   }
 
   return {
@@ -229,11 +265,11 @@ function authorEnvelope(
     eventId,
     eventVersion: coordinates.eventVersion,
     payload: coordinates.body,
-    receiptUuid,
+    sequenceNumber: coordinates.sequenceNumber,
     requestBody: {
       envelopes: [{
         envelope_id: randomUUID(),
-        idempotency_key: `${coordinates.terminalId}:${coordinates.sequenceNumber}`,
+        idempotency_key: `${coordinates.terminalId}:${coordinates.chainContext}:${coordinates.sequenceNumber}`,
         payload: transportPayload,
         payload_version: 1,
         type: 'FISCAL_EVENT',
@@ -300,8 +336,4 @@ function receiptAmounts(scale: number): { gross: string; net: string; vat: strin
     vat: `3.80${suffix}`,
     zero: `0.00${suffix}`,
   }
-}
-
-function withMilliseconds(value: string): string {
-  return value.replace(/Z$/, '.000Z')
 }

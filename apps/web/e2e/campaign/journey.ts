@@ -78,6 +78,7 @@ const LEG_DEFINITIONS: ReadonlyArray<Omit<LedgerEntry, 'evidence' | 'finishedAt'
   { leg: 'L3', title: 'opening lots with expiries', drive: 'UI' },
   { leg: 'L4', title: 'GL / bank / cash-float openings', drive: 'API-contract' },
   { leg: 'L5', title: 'lock', drive: 'API-contract' },
+  { leg: 'L5b', title: 'session open', drive: 'API-contract (device-authored chain)' },
   { leg: 'L6', title: 'POS sale', drive: 'API-contract (device-authored chain)' },
   { leg: 'L7', title: 'refund', drive: 'API-contract (device-authored chain)' },
   { leg: 'L8', title: 'payment allocation vs historical invoice', drive: 'API-contract' },
@@ -99,6 +100,7 @@ export const journeyState: {
   cashRepositoryId?: string
   cashRepositoryCode?: string
   cashGlAccountCode?: string
+  companyName?: string
   locationId?: string
   openingBatchId?: string
   productId?: string
@@ -110,11 +112,25 @@ export const journeyState: {
   salesRevenueAccountCode?: string
   runDirectory?: string
   saleEventId?: string
+  saleEventTimeDevice?: string
   saleHash?: string
   saleReceiptUuid?: string
+  saleSequenceNumber?: number
+  sessionId?: string
+  sessionOpenEventId?: string
+  sessionOpenEventTimeDevice?: string
+  sessionOpenHash?: string
+  sessionOpenSequenceNumber?: number
   supplierId?: string
   terminalGenesisSeed?: string
+  terminalCode?: string
   terminalId?: string
+  bankRepositoryCode?: string
+  terminalLabel?: string
+  refundEventId?: string
+  refundEventTimeDevice?: string
+  refundHash?: string
+  refundSequenceNumber?: number
   persistedAuth?: string
   vatCollectedAccountCode?: string
   tenantId?: string
@@ -130,8 +146,8 @@ const ledger: CampaignLedger = {
     ...definition,
     evidence: [],
     finishedAt: null,
-    reason: definition.leg === 'L9' ? 'Z-session authoring not vendored' : null,
-    result: definition.leg === 'L9' ? 'NOT_SCRIPTABLE' : 'PENDING',
+    reason: null,
+    result: 'PENDING',
   })),
   runId,
   startedAt: new Date().toISOString(),
@@ -191,7 +207,7 @@ export async function initializeCampaignLedger(): Promise<void> {
 }
 
 export async function recordTestResult(testInfo: TestInfo): Promise<void> {
-  const legName = /^L\d+a?/.exec(testInfo.title)?.[0]
+  const legName = /^L\d+[a-z]?/.exec(testInfo.title)?.[0]
   if (!legName) return
 
   const entry = ledger.legs.find((candidate) => candidate.leg === legName)

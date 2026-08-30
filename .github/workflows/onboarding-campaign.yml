@@ -53,6 +53,9 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm --dir apps/web exec playwright install --with-deps chromium
 
+      - name: Fiscal builder contract tests (network-free)
+        run: pnpm --dir apps/web campaign:fiscal-test
+
       - name: Run onboarding campaign
         run: scripts/campaign-onboarding.sh --web "$CAMPAIGN_WEB_URL" --api "$CAMPAIGN_API_URL" --country "$CAMPAIGN_COUNTRY"
         env:

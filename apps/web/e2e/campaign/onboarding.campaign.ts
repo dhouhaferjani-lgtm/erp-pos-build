@@ -1,10 +1,21 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 import { FiscalEventCanonicalEncoder } from './fiscal/FiscalEventCanonicalEncoder'
 import { routes } from './selectors'
 import { buildRefundEnvelope, buildSaleEnvelope } from './fiscal/events'
+import {
+  buildSessionCloseEnvelope,
+  buildSessionOpenEnvelope,
+  buildZReportEnvelope,
+} from './fiscal/zSession'
+import {
+  buildFixedZSessionEnvelopes,
+  fixedZSessionCoordinates,
+  Z_SESSION_GOLDEN_HASHES,
+} from './fiscal/zSession.golden'
+import { formatScaleThreeMoney, semanticLeafPaths, withMilliseconds } from './fiscal/util'
 import {
   addLedgerEvidence,
   apiRequest,
@@ -70,7 +81,7 @@ test.describe('automated onboarding campaign', () => {
   })
 
   test.beforeEach(async ({ page }, testInfo) => {
-    const leg = /^L\d+a?/.exec(testInfo.title)?.[0] ?? ''
+    const leg = /^L\d+[a-z]?/.exec(testInfo.title)?.[0] ?? ''
     if (leg === 'L0a' || leg === 'L0' || leg === 'L10') return
     await ensureSession(page)
   })
@@ -110,6 +121,7 @@ test.describe('automated onboarding campaign', () => {
       productId: '44444444-4444-4444-8444-444444444444',
       productName: 'Campaign product',
       productSku: 'CAMPAIGN-SKU',
+      shiftId: '66666666-6666-4666-8666-666666666666',
       tenantId: '11111111-1111-4111-8111-111111111111',
       terminalId: '55555555-5555-4555-8555-555555555555',
     }
@@ -134,7 +146,53 @@ test.describe('automated onboarding campaign', () => {
     expect(refund.payload['currency_code']).toBe('TND')
     expect(refund.payload['currency_scale']).toBe(3)
     expect(refund.payload['invoice_type_code']).toBe('REFUND')
-    await addLedgerEvidence('L0a', 'both payload golden vectors byte/hash matched; 15-key wrapper hash cross-checked')
+
+    const zSession = await buildFixedZSessionEnvelopes()
+    expect(zSession.open.currentHash).toBe(Z_SESSION_GOLDEN_HASHES.SESSION_OPEN)
+    expect(zSession.close.currentHash).toBe(Z_SESSION_GOLDEN_HASHES.SESSION_CLOSE)
+    expect(zSession.zReport.currentHash).toBe(Z_SESSION_GOLDEN_HASHES.Z_REPORT)
+    for (const envelope of Object.values(zSession)) {
+      expect(Object.keys(JSON.parse(envelope.canonicalBytes) as Record<string, unknown>)).toHaveLength(15)
+      expect(createHash('sha256').update(envelope.canonicalBytes).digest('hex')).toBe(envelope.currentHash)
+    }
+    const semantic = JSON.parse(await readFile(
+      resolve(process.cwd(), 'e2e/campaign/fiscal/zSession.semantic.json'),
+      'utf8',
+    )) as { citations: Record<string, string[]>; values: Record<string, unknown> }
+    expect(Object.keys(semantic.citations).sort()).toEqual(semanticLeafPaths(semantic.values).sort())
+    expect(Object.values(semantic.citations).every((citations) => citations.length > 0)).toBe(true)
+    const zCashCount = zSession.zReport.payload['cash_count'] as Record<string, unknown>
+    expect(semantic.values).toMatchObject({
+      cash_count: {
+        counted_cash: zCashCount['counted_cash'],
+        expected_cash: zCashCount['expected_cash'],
+        variance_amount: zCashCount['variance_amount'],
+        variance_direction: zCashCount['variance_direction'],
+        variance_reason: zCashCount['variance_reason'],
+      },
+      cash_count_lines: zCashCount['lines'],
+      cash_drawer_totals: zSession.zReport.payload['cash_drawer_totals'],
+      event_times: {
+        period_end: fixedZSessionCoordinates.periodEnd,
+        period_start: fixedZSessionCoordinates.periodStart,
+        refund: fixedZSessionCoordinates.refundEventTimeDevice,
+        sale: fixedZSessionCoordinates.saleEventTimeDevice,
+        session_close_and_z: fixedZSessionCoordinates.eventTimeDevice,
+        session_open: fixedZSessionCoordinates.openedAtDevice,
+      },
+      formatted_z_number: zSession.zReport.payload['formatted_z_number'],
+      grand_totals_after: zSession.zReport.payload['grand_totals_after'],
+      grand_totals_before: zSession.zReport.payload['grand_totals_before'],
+      operational_event_range: zSession.zReport.payload['operational_event_range'],
+      payment_method_totals: zSession.zReport.payload['payment_method_totals'],
+      receipt_totals: zSession.zReport.payload['receipt_totals'],
+      refunds_totals: zSession.zReport.payload['refunds_totals'],
+      session_event_range: zSession.zReport.payload['session_event_range'],
+      vat_breakdown: zSession.zReport.payload['vat_breakdown'],
+      voids_totals: zSession.zReport.payload['voids_totals'],
+      z_number: zSession.zReport.payload['z_number'],
+    })
+    await addLedgerEvidence('L0a', 'sale/refund plus SESSION_OPEN/SESSION_CLOSE/Z_REPORT golden vectors byte/hash matched; every canonical wrapper has 15 keys; semantic vector has per-field citations')
   })
 
   test('L0 — health + register', async ({ page }) => {
@@ -152,6 +210,7 @@ test.describe('automated onboarding campaign', () => {
       : companies[0]) ?? fail('registered company missing')
     const companyId = stringField(company, 'id')
     journeyState.companyId = companyId
+    journeyState.companyName = stringField(company, 'name')
     expect(company['country_code']).toBe(country)
     expect(company['currency']).toBe(currencyForCountry(country))
 
@@ -410,6 +469,7 @@ test.describe('automated onboarding campaign', () => {
       type: 'bank_account',
     }, companyId)
     const bank = asRecord(requireApiData(bankCreate, 'bank repository create'), 'bank repository')
+    journeyState.bankRepositoryCode = bankCode
 
     const batchCreate = await apiRequest(page, 'POST', apiRoutes.openingBatches(companyId), {
       cutover_date: businessDate(),
@@ -474,9 +534,8 @@ test.describe('automated onboarding campaign', () => {
     await addLedgerEvidence('L5', `opening batch ${batchId} LOCKED; fresh balance row reports opening_locked; document delta=0`)
   })
 
-  test('L6 — POS sale', async ({ page }) => {
+  test('L5b — session open', async ({ page }) => {
     const companyId = requiredState('companyId')
-    const productId = requiredState('productId')
     const locationId = requiredState('locationId')
     const terminalResult = await apiRequest(page, 'POST', apiRoutes.terminalCreate, {
       code: `CMP-${runId.replace(/[^a-z0-9]/gi, '').slice(-12).toUpperCase()}`,
@@ -486,25 +545,96 @@ test.describe('automated onboarding campaign', () => {
     const terminal = asRecord(requireApiData(terminalResult, 'terminal create'), 'terminal')
     journeyState.terminalId = stringField(terminal, 'id')
     journeyState.terminalGenesisSeed = stringField(terminal, 'genesis_seed')
+    journeyState.terminalCode = stringField(terminal, 'code')
+    journeyState.terminalLabel = stringField(terminal, 'name')
     expect(terminal['is_active']).toBe(true)
     expect(terminal['fiscal_schema_version']).toBe(3)
     expect(terminal['v4_refund_authoring_enabled']).toBe(true)
 
+    const terminalId = requiredState('terminalId')
+    const preflight = await Promise.all([
+      apiRequest(page, 'GET', `${apiRoutes.shifts}?terminal_id=${terminalId}`, undefined, companyId),
+      apiRequest(page, 'GET', `${apiRoutes.zReports}?terminal_id=${terminalId}`, undefined, companyId),
+      apiRequest(page, 'GET', apiRoutes.terminalZChainState(terminalId), undefined, companyId),
+    ])
+    for (const [index, result] of preflight.entries()) {
+      expect(result.status, `L5b read permission preflight ${String(index + 1)} (403 means reuse principal lacks POS reads): ${JSON.stringify(result.body)}`).toBe(200)
+    }
+    const virginState = asRecord(requireApiData(preflight[2] ?? fail('z-chain preflight missing'), 'virgin z-chain state'), 'virgin z-chain state')
+    expect(virginState).toEqual({
+      grand_totals: null,
+      z_hash_sequence: 0,
+      z_last_hash: 'GENESIS',
+      z_number: 0,
+    })
+
+    const sessionId = randomUUID()
+    const openedAt = eventTime()
+    const currencyScale = supportedFiscalScale()
+    const open = await buildSessionOpenEnvelope({
+      businessDate: businessDate(),
+      companyId,
+      currencyCode: currencyForCountry(campaignCountry()),
+      currencyScale,
+      eventTimeDevice: openedAt,
+      genesisSeed: requiredState('terminalGenesisSeed'),
+      openingFloatAmount: formatScaleThreeMoney('1000.000', currencyScale),
+      operatorId: requiredState('userId'),
+      operatorName: requiredCredentials().name,
+      sessionId,
+      shiftId: sessionId,
+      shiftNumber: 1,
+      tenantId: requiredState('tenantId'),
+      terminalId,
+      terminalLabel: requiredState('terminalLabel'),
+    })
+    const ingest = await apiRequest(page, 'POST', apiRoutes.fiscalEvents, open.requestBody, companyId)
+    expect(ingest.status, JSON.stringify(ingest.body)).toBe(200)
+    const ingestResults = records(asRecord(ingest.body, 'session open ingest response')['results'], 'session open ingest results')
+    assertStoredFiscalResult(ingestResults[0] ?? fail('session open ingest result missing'), open.eventId)
+
+    journeyState.sessionId = sessionId
+    journeyState.sessionOpenEventId = open.eventId
+    journeyState.sessionOpenEventTimeDevice = openedAt
+    journeyState.sessionOpenHash = open.currentHash
+    journeyState.sessionOpenSequenceNumber = open.sequenceNumber
+
+    const shiftResult = await pollUntil(
+      () => apiRequest(page, 'GET', apiRoutes.shift(sessionId), undefined, companyId),
+      (value) => value.status === 200 && projectedShiftStatus(value) === 'OPEN',
+    )
+    const shift = asRecord(requireApiData(shiftResult, 'projected open shift'), 'projected open shift')
+    expect(shift['id']).toBe(sessionId)
+    expect(shift['session_id']).toBe(sessionId)
+    expect(shift['shift_number']).toBe(1)
+    expect(shift['status']).toBe('OPEN')
+    assertMoneyEqual(stringField(shift, 'opening_cash'), formatScaleThreeMoney('1000.000', currencyScale))
+    const current = await apiObject(page, apiRoutes.currentShift(requiredState('terminalCode')), companyId, 'current open shift')
+    expect(current['id']).toBe(sessionId)
+    await addLedgerEvidence('L5b', `server-minimal synthetic lifecycle (OPENING_FLOAT event deliberately omitted): terminal=${terminalId}; session_id=shift_id=${sessionId}; SESSION_OPEN seq=1 projected open; read preflight=200/200/200; virgin Z state=0`)
+  })
+
+  test('L6 — POS sale', async ({ page }) => {
+    const companyId = requiredState('companyId')
+    const productId = requiredState('productId')
+    const locationId = requiredState('locationId')
+    const saleEventTimeDevice = eventTime(1)
     const sale = await buildSaleEnvelope({
       businessDate: businessDate(),
       companyId,
       countryCode: campaignCountry(),
       currencyCode: currencyForCountry(campaignCountry()),
-      currencyScale: currencyScaleForCountry(campaignCountry()),
-      eventTimeDevice: eventTime(),
-      genesisSeed: journeyState.terminalGenesisSeed,
+      currencyScale: supportedFiscalScale(),
+      eventTimeDevice: saleEventTimeDevice,
+      genesisSeed: requiredState('terminalGenesisSeed'),
       methodCode: requiredState('cashMethodCode'),
       operatorId: requiredState('userId'),
       productId,
       productName: requiredState('productName'),
       productSku: requiredState('productSku'),
+      shiftId: requiredState('sessionId'),
       tenantId: requiredState('tenantId'),
-      terminalId: journeyState.terminalId,
+      terminalId: requiredState('terminalId'),
     })
     const ingest = await apiRequest(page, 'POST', apiRoutes.fiscalEvents, sale.requestBody, companyId)
     expect(ingest.status, JSON.stringify(ingest.body)).toBe(200)
@@ -512,8 +642,10 @@ test.describe('automated onboarding campaign', () => {
     const ingestResults = records(ingestBody['results'], 'sale ingest results')
     assertStoredFiscalResult(ingestResults[0] ?? fail('sale ingest result missing'), sale.eventId)
     journeyState.saleEventId = sale.eventId
+    journeyState.saleEventTimeDevice = saleEventTimeDevice
     journeyState.saleHash = sale.currentHash
     journeyState.saleReceiptUuid = sale.receiptUuid
+    journeyState.saleSequenceNumber = sale.sequenceNumber
 
     const projectedStock = await pollUntil(
       () => stock(page, companyId, productId, locationId),
@@ -558,13 +690,14 @@ test.describe('automated onboarding campaign', () => {
     const companyId = requiredState('companyId')
     const productId = requiredState('productId')
     const locationId = requiredState('locationId')
+    const refundEventTimeDevice = eventTime(5)
     const refund = await buildRefundEnvelope({
       businessDate: businessDate(),
       companyId,
       countryCode: campaignCountry(),
       currencyCode: currencyForCountry(campaignCountry()),
-      currencyScale: currencyScaleForCountry(campaignCountry()),
-      eventTimeDevice: eventTime(5),
+      currencyScale: supportedFiscalScale(),
+      eventTimeDevice: refundEventTimeDevice,
       genesisSeed: requiredState('terminalGenesisSeed'),
       methodCode: requiredState('cashMethodCode'),
       operatorId: requiredState('userId'),
@@ -574,6 +707,7 @@ test.describe('automated onboarding campaign', () => {
       productId,
       productName: requiredState('productName'),
       productSku: requiredState('productSku'),
+      shiftId: requiredState('sessionId'),
       tenantId: requiredState('tenantId'),
       terminalId: requiredState('terminalId'),
     })
@@ -581,6 +715,10 @@ test.describe('automated onboarding campaign', () => {
     expect(ingest.status, JSON.stringify(ingest.body)).toBe(200)
     const ingestResults = records(asRecord(ingest.body, 'refund ingest response')['results'], 'refund ingest results')
     assertStoredFiscalResult(ingestResults[0] ?? fail('refund ingest result missing'), refund.eventId)
+    journeyState.refundEventId = refund.eventId
+    journeyState.refundEventTimeDevice = refundEventTimeDevice
+    journeyState.refundHash = refund.currentHash
+    journeyState.refundSequenceNumber = refund.sequenceNumber
     await pollUntil(
       () => stock(page, companyId, productId, locationId),
       (value) => moneyIs(stringField(value, 'quantity'), '20.000'),
@@ -666,8 +804,231 @@ test.describe('automated onboarding campaign', () => {
     await addLedgerEvidence('L8', 'HIST invoice paid/balance=0; partner receivable=0; drawer=2250.500; AR credited=1250.500')
   })
 
-  test.skip('L9 — cash count + Z', async () => {
-    // NOT_SCRIPTABLE is pre-declared in the ledger: device SQLite Z-session authoring is not vendored.
+  test('L9 — cash count + Z', async ({ page }) => {
+    const companyId = requiredState('companyId')
+    const terminalId = requiredState('terminalId')
+    const sessionId = requiredState('sessionId')
+    const drawerBefore = await apiObject(
+      page,
+      apiRoutes.paymentRepository(requiredState('cashRepositoryId')),
+      companyId,
+      'drawer before close and Z',
+    )
+    const drawerBalanceBefore = stringField(drawerBefore, 'balance')
+    assertMoneyEqual(drawerBalanceBefore, '2250.500')
+
+    const closeEventTimeDevice = eventTime(10)
+    const reportCoordinates = {
+      businessDate: businessDate(),
+      cashMethodCode: requiredState('cashMethodCode'),
+      cashMethodId: requiredState('cashMethodId'),
+      companyId,
+      companyName: requiredState('companyName'),
+      currencyCode: currencyForCountry(campaignCountry()),
+      currencyScale: supportedFiscalScale(),
+      eventTimeDevice: closeEventTimeDevice,
+      openedAtDevice: requiredState('sessionOpenEventTimeDevice'),
+      operatorId: requiredState('userId'),
+      operatorName: requiredCredentials().name,
+      periodEnd: withMilliseconds(closeEventTimeDevice),
+      periodStart: withMilliseconds(requiredState('sessionOpenEventTimeDevice')),
+      refundEventTimeDevice: requiredState('refundEventTimeDevice'),
+      refundHash: requiredState('refundHash'),
+      refundSequenceNumber: requiredSequenceState('refundSequenceNumber'),
+      saleEventTimeDevice: requiredState('saleEventTimeDevice'),
+      saleHash: requiredState('saleHash'),
+      saleSequenceNumber: requiredSequenceState('saleSequenceNumber'),
+      sessionId,
+      shiftId: sessionId,
+      tenantId: requiredState('tenantId'),
+      terminalId,
+      terminalLabel: requiredState('terminalLabel'),
+    }
+    expect(Date.parse(reportCoordinates.periodStart)).toBeLessThanOrEqual(Date.parse(reportCoordinates.saleEventTimeDevice))
+    expect(Date.parse(reportCoordinates.periodEnd)).toBeGreaterThanOrEqual(Date.parse(reportCoordinates.refundEventTimeDevice))
+    expect(Date.parse(reportCoordinates.openedAtDevice)).toBeLessThanOrEqual(Date.parse(closeEventTimeDevice))
+    expect(Date.parse(closeEventTimeDevice)).toBeGreaterThan(Date.parse(reportCoordinates.refundEventTimeDevice))
+
+    const close = await buildSessionCloseEnvelope({
+      ...reportCoordinates,
+      previousHash: requiredState('sessionOpenHash'),
+      sessionCloseUuid: randomUUID(),
+    })
+    const closeIngest = await apiRequest(page, 'POST', apiRoutes.fiscalEvents, close.requestBody, companyId)
+    expect(closeIngest.status, JSON.stringify(closeIngest.body)).toBe(200)
+    const closeResults = records(asRecord(closeIngest.body, 'session close ingest response')['results'], 'session close ingest results')
+    assertStoredFiscalResult(closeResults[0] ?? fail('session close ingest result missing'), close.eventId)
+
+    const closedShiftResult = await pollUntil(
+      () => apiRequest(page, 'GET', apiRoutes.shift(sessionId), undefined, companyId),
+      (value) => value.status === 200 && projectedShiftStatus(value) === 'CLOSED',
+    )
+    const closedShift = asRecord(requireApiData(closedShiftResult, 'projected closed shift'), 'projected closed shift')
+    expect(closedShift['status']).toBe('CLOSED')
+    assertMoneyEqual(
+      stringField(closedShift, 'expected_cash'),
+      formatScaleThreeMoney('1000.000', reportCoordinates.currencyScale),
+    )
+    assertMoneyEqual(
+      stringField(closedShift, 'actual_cash'),
+      formatScaleThreeMoney('1000.000', reportCoordinates.currencyScale),
+    )
+    assertMoneyEqual(
+      stringField(closedShift, 'variance'),
+      formatScaleThreeMoney('0.000', reportCoordinates.currencyScale),
+    )
+
+    const virginBeforeZ = await apiObject(
+      page,
+      apiRoutes.terminalZChainState(terminalId),
+      companyId,
+      'virgin z-chain state immediately before first Z',
+    )
+    expect(virginBeforeZ).toEqual({
+      grand_totals: null,
+      z_hash_sequence: 0,
+      z_last_hash: 'GENESIS',
+      z_number: 0,
+    })
+
+    const zReport = await buildZReportEnvelope({
+      ...reportCoordinates,
+      closeEventId: close.eventId,
+      closeHash: close.currentHash,
+      closeSequenceNumber: close.sequenceNumber,
+      openEventId: requiredState('sessionOpenEventId'),
+      openHash: requiredState('sessionOpenHash'),
+      openSequenceNumber: requiredSequenceState('sessionOpenSequenceNumber'),
+      zReportUuid: randomUUID(),
+    })
+    const zIngest = await apiRequest(page, 'POST', apiRoutes.fiscalEvents, zReport.requestBody, companyId)
+    expect(zIngest.status, JSON.stringify(zIngest.body)).toBe(200)
+    const zResults = records(asRecord(zIngest.body, 'Z ingest response')['results'], 'Z ingest results')
+    assertStoredFiscalResult(zResults[0] ?? fail('Z ingest result missing'), zReport.eventId)
+
+    const zDetailResult = await pollUntil(
+      () => apiRequest(page, 'GET', `${apiRoutes.zReport(1)}?terminal_id=${terminalId}`, undefined, companyId),
+      (value) => value.status === 200,
+    )
+    const zDetail = asRecord(requireApiData(zDetailResult, 'projected Z detail'), 'projected Z detail')
+    expect(zDetail['z_number']).toBe(1)
+    expect(zDetail['fiscal_hash']).toBe(zReport.currentHash)
+    expect(
+      zDetail['is_first_z_report'],
+      'I3-F5 (previous_z_hash legacy surface) — flip to true when the projection stops writing the close hash; see docs/qa/ONBOARDING-CAMPAIGN.md',
+    ).toBe(false)
+    const reportData = asRecord(zDetail['report_data'], 'Z report_data')
+    expect(reportData).toMatchObject({
+      actual_cash: formatScaleThreeMoney('1000.000', reportCoordinates.currencyScale),
+      expected_cash: formatScaleThreeMoney('1000.000', reportCoordinates.currencyScale),
+      gross_sales: formatScaleThreeMoney('23.800', reportCoordinates.currencyScale),
+      net_sales: formatScaleThreeMoney('20.000', reportCoordinates.currencyScale),
+      refunds_amount: formatScaleThreeMoney('23.800', reportCoordinates.currencyScale),
+      refunds_count: 1,
+      sales_count: 1,
+      tax_amount: formatScaleThreeMoney('3.800', reportCoordinates.currencyScale),
+      variance: formatScaleThreeMoney('0.000', reportCoordinates.currencyScale),
+      voided_count: 0,
+    })
+    const expectedVatBreakdown = [{
+      gross_amount: formatScaleThreeMoney('0.000', reportCoordinates.currencyScale),
+      net_amount: formatScaleThreeMoney('0.000', reportCoordinates.currencyScale),
+      tax_rate: 19,
+      vat_amount: formatScaleThreeMoney('0.000', reportCoordinates.currencyScale),
+    }]
+    const expectedPaymentTotals = [{
+      payment_type: requiredState('cashMethodCode'),
+      total_amount: formatScaleThreeMoney('0.000', reportCoordinates.currencyScale),
+      transaction_count: 2,
+    }]
+    expect(reportData['vat_breakdown']).toEqual(expectedVatBreakdown)
+    expect(reportData['payment_methods']).toEqual(expectedPaymentTotals)
+    const cashCount = asRecord(reportData['cash_count'], 'Z report_data.cash_count')
+    expect(cashCount['variance_reason']).toBe('campaign counted balance')
+    const canonicalZ = asRecord(reportData['canonical_z_report'], 'Z report_data.canonical_z_report')
+    expect(canonicalZ['vat_breakdown']).toEqual(expectedVatBreakdown)
+    expect(canonicalZ['payment_method_totals']).toEqual(expectedPaymentTotals)
+    expect(canonicalZ['operational_event_range']).toEqual({
+      first_receipt_hash: requiredState('saleHash'),
+      first_receipt_sequence: 1,
+      last_receipt_hash: requiredState('refundHash'),
+      last_receipt_sequence: 2,
+      receipt_count: 2,
+    })
+    expect(canonicalZ['session_event_range']).toEqual({
+      first_sequence: 1,
+      last_sequence: 2,
+      session_close_event_id: close.eventId,
+      session_close_hash: close.currentHash,
+      session_open_event_id: requiredState('sessionOpenEventId'),
+      session_open_hash: requiredState('sessionOpenHash'),
+    })
+
+    const zList = await apiRecords(
+      page,
+      `${apiRoutes.zReports}?terminal_id=${terminalId}`,
+      companyId,
+      'projected Z list',
+    )
+    expect(zList).toHaveLength(1)
+    expect(zList[0]?.['z_number']).toBe(1)
+
+    const replay = await apiRequest(page, 'POST', apiRoutes.fiscalEvents, zReport.requestBody, companyId)
+    expect(replay.status, JSON.stringify(replay.body)).toBe(200)
+    const replayResults = records(asRecord(replay.body, 'Z replay response')['results'], 'Z replay results')
+    assertReplayedFiscalResult(replayResults[0] ?? fail('Z replay result missing'), zReport.eventId)
+    expect(await apiRecords(
+      page,
+      `${apiRoutes.zReports}?terminal_id=${terminalId}`,
+      companyId,
+      'Z list after replay',
+    )).toHaveLength(1)
+
+    const zState = await apiObject(page, apiRoutes.terminalZChainState(terminalId), companyId, 'Z state after first Z')
+    expect(zState).toEqual({
+      grand_totals: {
+        cumulative_refunds: formatScaleThreeMoney('23.800', reportCoordinates.currencyScale),
+        cumulative_sales: formatScaleThreeMoney('23.800', reportCoordinates.currencyScale),
+        cumulative_tax: formatScaleThreeMoney('3.800', reportCoordinates.currencyScale),
+        perpetual_grand_total: formatScaleThreeMoney('0.000', reportCoordinates.currencyScale),
+        receipt_count_lifetime: 1,
+      },
+      z_hash_sequence: 1,
+      z_last_hash: zReport.currentHash,
+      z_number: 1,
+    })
+    const currentAfterClose = await apiRequest(
+      page,
+      'GET',
+      apiRoutes.currentShift(requiredState('terminalCode')),
+      undefined,
+      companyId,
+    )
+    expect(currentAfterClose.status, JSON.stringify(currentAfterClose.body)).toBe(200)
+    expect(requireApiData(currentAfterClose, 'current shift after close')).toBeNull()
+    const shifts = await apiRecords(
+      page,
+      `${apiRoutes.shifts}?terminal_id=${terminalId}`,
+      companyId,
+      'terminal shift list after close',
+    )
+    expect(shifts).toHaveLength(1)
+    expect(shifts[0]?.['status']).toBe('CLOSED')
+
+    const drawerAfter = await apiObject(
+      page,
+      apiRoutes.paymentRepository(requiredState('cashRepositoryId')),
+      companyId,
+      'drawer after close and Z',
+    )
+    assertMoneyEqual(stringField(drawerAfter, 'balance'), drawerBalanceBefore)
+    // B5: the repository SET after close + Z is exactly the day-one pair plus L4's bank repository —
+    // an implicit close/Z-time provisioning would surface here (fiscal gate I3C-2).
+    const censusAfterZ = await census(page, companyId)
+    assertDayOneCensus(censusAfterZ, { allowExtraRepositories: true })
+    expect(censusAfterZ.repositories, 'exactly cash register + safe + L4 bank after Z').toHaveLength(3)
+    expect(censusAfterZ.repositories.filter((repository) => repository['type'] === 'bank_account' && repository['code'] === requiredState('bankRepositoryCode')), 'the third repository is L4\'s bank').toHaveLength(1)
+    await addLedgerEvidence('L9', `SESSION_CLOSE seq=2 + Z_REPORT seq=3 projected; shift expected=actual=1000.000 variance=0; Z=1 first=false (known legacy defect); net VAT row=0; ${requiredState('cashMethodCode')} net=0/2 transactions; replay stored=false/one Z row; drawer unchanged=${drawerBalanceBefore}; current shift=null; census asserted one POS location, one cash tender, one drawer, one safe, >=19 units, and exactly 3 repositories (seeded drawer + safe + L4 bank)`)
   })
 
   test('L10 — findings gate', async () => {
@@ -712,7 +1073,10 @@ async function census(page: Page, companyId: string): Promise<Census> {
 }
 let reportedRepositoryLeak = false
 
-function assertDayOneCensus(value: Census): void {
+function assertDayOneCensus(
+  value: Census,
+  options: { allowExtraRepositories?: boolean } = {},
+): void {
   expect(value.locations, 'exactly one day-one location').toHaveLength(1)
   expect(value.locations[0]?.['pos_enabled'], 'day-one location is POS enabled').toBe(true)
   expect(value.methods.length, 'payment methods seeded').toBeGreaterThanOrEqual(1)
@@ -723,7 +1087,9 @@ function assertDayOneCensus(value: Census): void {
   'one location-owned cash register').toHaveLength(1)
   // Seeded safes CARRY the company's location (PaymentRepositorySeeder attributes both rows).
   expect(value.repositories.filter((repository) => repository['type'] === 'safe'), 'one safe').toHaveLength(1)
-  if (!reuseMode) expect(value.repositories, 'only the company\'s cash register and safe are provisioned').toHaveLength(2)
+  if (!reuseMode && options.allowExtraRepositories !== true) {
+    expect(value.repositories, 'only the company\'s cash register and safe are provisioned').toHaveLength(2)
+  }
   expect(value.units.length, 'country units seeded').toBeGreaterThanOrEqual(19)
 }
 
@@ -831,6 +1197,13 @@ function assertStoredFiscalResult(result: Record<string, unknown>, eventId: stri
   expect(result['exception_class'], 'fiscal event was not quarantined').toBeNull()
 }
 
+function assertReplayedFiscalResult(result: Record<string, unknown>, eventId: string): void {
+  expect(result['stored'], 'replayed fiscal event was not inserted again').toBe(false)
+  expect(result['fiscal_event_id'], 'replay resolves the existing fiscal event id').toBe(eventId)
+  expect(result['sequence_conflict'], 'exact replay is not a sequence conflict').toBe(false)
+  expect(result['exception_class'], 'exact replay is not quarantined').toBeNull()
+}
+
 function assertJournalAccountCode(
   entry: Record<string, unknown>,
   accountCode: string,
@@ -853,6 +1226,38 @@ function requiredState(key: keyof typeof journeyState): string {
   const value = journeyState[key]
   if (typeof value !== 'string' || value === '') throw new Error(`Campaign state ${key} is missing`)
   return value
+}
+
+function requiredSequenceState(
+  key: 'refundSequenceNumber' | 'saleSequenceNumber' | 'sessionOpenSequenceNumber',
+): number {
+  const value = journeyState[key]
+  if (value === undefined || !Number.isInteger(value) || value < 1) {
+    throw new Error(`Campaign state ${key} is missing`)
+  }
+  return value
+}
+
+function requiredCredentials() {
+  return journeyState.credentials ?? fail('Campaign state credentials are missing')
+}
+
+function supportedFiscalScale(): 2 | 3 {
+  const scale = currencyScaleForCountry(campaignCountry())
+  if (scale === 2 || scale === 3) return scale
+  throw new Error(`Unsupported fiscal currency scale: ${String(scale)}`)
+}
+
+function projectedShiftStatus(result: ApiResult): string {
+  if (result.status !== 200 || !isObjectWithData(result.body)) return ''
+  const data = result.body['data']
+  return typeof data === 'object' && data !== null && !Array.isArray(data)
+    ? stringValue((data as Record<string, unknown>)['status'])
+    : ''
+}
+
+function isObjectWithData(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) && 'data' in value
 }
 
 function moneyIs(actual: string, expected: string): boolean {

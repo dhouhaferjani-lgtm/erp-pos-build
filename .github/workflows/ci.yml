@@ -2453,6 +2453,14 @@ jobs:
         # membership, so no new `needs` entry is required.
         run: pnpm test:eslint-rules && pnpm test:tools
 
+      - name: Campaign fiscal builder contract tests (network-free)
+        # docs/conventions/08-DETECTOR-LIVENESS.md: the onboarding campaign's vendored
+        # canonicaliser + z-session builders carry golden/semantic pins
+        # (apps/web/e2e/campaign/fiscal/*.test.ts). The campaign workflow itself is
+        # inert on push (ONBOARDING_CAMPAIGN_ON_PUSH), so this always-on lane is the
+        # only place a drifted builder fails before a live run.
+        run: pnpm campaign:fiscal-test
+
       - name: Run ESLint warning ratchet
         # Supersedes a raw `pnpm lint`: errors still hard-fail immediately,
         # and the per-app warning count is ratcheted against

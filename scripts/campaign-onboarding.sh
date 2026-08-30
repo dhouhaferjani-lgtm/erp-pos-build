@@ -47,6 +47,12 @@ export CAMPAIGN_RUN_ID="$campaign_run_id"
 echo "Reminder: the target must run a queue worker consuming fiscal-projections (L6/L7 poll and fail clearly if absent)."
 echo "Onboarding campaign run-id: $campaign_run_id"
 
+# Network-free contract tests for the vendored fiscal builders run first and FAIL FAST (convention 08):
+# a drifted encoder/builder must never reach the live target.
+if ! pnpm --dir apps/web campaign:fiscal-test; then
+  echo "campaign: fiscal builder contract tests FAILED — aborting before any live request" >&2
+  exit 1
+fi
 set +e
 pnpm --dir apps/web campaign:onboarding
 campaign_status=$?
