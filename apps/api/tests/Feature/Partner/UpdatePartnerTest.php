@@ -125,6 +125,133 @@ class UpdatePartnerTest extends TestCase
             ->assertJsonPath('data.type', 'supplier');
     }
 
+    public function test_can_retain_its_own_code_on_update(): void
+    {
+        $this->partner->update(['code' => 'OWN-001']);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/partners/{$this->partner->id}", [
+                'code' => 'OWN-001',
+                'name' => 'Updated With Same Code',
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.code', 'OWN-001');
+
+        $this->assertDatabaseHas('partners', [
+            'id' => $this->partner->id,
+            'code' => 'OWN-001',
+            'name' => 'Updated With Same Code',
+        ]);
+    }
+
+    public function test_rejects_another_live_partners_code_in_the_same_company(): void
+    {
+        $this->partner->update(['code' => 'OWN-001']);
+
+        Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Same Company Partner',
+            'type' => PartnerType::Customer,
+            'code' => 'DUPLICATE-001',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/partners/{$this->partner->id}", [
+                'code' => 'DUPLICATE-001',
+            ]);
+
+        $this->assertApiValidationErrors($response, ['code']);
+        $this->assertDatabaseHas('partners', [
+            'id' => $this->partner->id,
+            'code' => 'OWN-001',
+        ]);
+    }
+
+    public function test_rejects_a_code_held_by_a_soft_deleted_partner_on_update(): void
+    {
+        $this->partner->update(['code' => 'OWN-001']);
+
+        $trashed = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Trashed Code Holder',
+            'type' => PartnerType::Customer,
+            'code' => 'TRASHED-001',
+        ]);
+        $trashed->delete();
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/partners/{$this->partner->id}", [
+                'code' => 'TRASHED-001',
+            ]);
+
+        $this->assertApiValidationErrors($response, ['code']);
+        $this->assertStringContainsString(
+            'code_held_by_deleted_partner',
+            (string) $response->json('error.errors.code.0')
+        );
+
+        $this->assertDatabaseHas('partners', [
+            'id' => $this->partner->id,
+            'code' => 'OWN-001',
+        ]);
+    }
+
+    public function test_can_reuse_another_companys_code_without_opening_cross_company_updates(): void
+    {
+        $otherCompany = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Other Company',
+            'legal_name' => 'Other Company LLC',
+            'tax_id' => 'OTHER-COMPANY-TAX',
+            'country_code' => 'FR',
+            'locale' => 'fr_FR',
+            'timezone' => 'Europe/Paris',
+            'currency' => 'EUR',
+            'status' => CompanyStatus::Active,
+        ]);
+
+        $otherPartner = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+            'name' => 'Other Company Partner',
+            'type' => PartnerType::Customer,
+            'code' => 'SHARED-001',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/partners/{$this->partner->id}", [
+                'code' => 'SHARED-001',
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.code', 'SHARED-001');
+
+        $this->assertDatabaseHas('partners', [
+            'id' => $this->partner->id,
+            'company_id' => $this->company->id,
+            'code' => 'SHARED-001',
+        ]);
+        $this->assertDatabaseHas('partners', [
+            'id' => $otherPartner->id,
+            'company_id' => $otherCompany->id,
+            'code' => 'SHARED-001',
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/partners/{$otherPartner->id}", [
+                'name' => 'Cross-company overwrite',
+            ])
+            ->assertNotFound();
+
+        $this->assertDatabaseMissing('partners', [
+            'id' => $otherPartner->id,
+            'name' => 'Cross-company overwrite',
+        ]);
+    }
+
     public function test_email_format_validation_on_update(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')

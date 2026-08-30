@@ -7,6 +7,8 @@ namespace App\Modules\Import\Domain;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Import\Domain\Casts\ColumnMappingCast;
 use App\Modules\Import\Domain\Casts\ImportJobOptionsCast;
+use App\Modules\Import\Domain\Data\ImportErrorDetailData;
+use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportRowOutcome;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
@@ -21,11 +23,13 @@ use Illuminate\Support\Carbon;
 /**
  * @property string $id
  * @property string $tenant_id
+ * @property string|null $company_id
  * @property string $user_id
  * @property ImportType $type
  * @property ImportStatus $status
  * @property string $original_filename
  * @property string $file_path
+ * @property string|null $source_hash
  * @property int $total_rows
  * @property int $processed_rows
  * @property int $successful_rows
@@ -34,7 +38,12 @@ use Illuminate\Support\Carbon;
  * @property array<string, string>|null $column_mapping
  * @property array<string, mixed>|null $options
  * @property string|null $error_message
+ * @property ImportErrorCode|null $error_code
+ * @property ImportErrorDetailData|null $error_detail
  * @property Carbon|null $started_at
+ * @property Carbon|null $claimed_at
+ * @property Carbon|null $worker_started_at
+ * @property Carbon|null $source_purged_at
  * @property Carbon|null $completed_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -56,11 +65,13 @@ class ImportJob extends Model
      */
     protected $fillable = [
         'tenant_id',
+        'company_id',
         'user_id',
         'type',
         'status',
         'original_filename',
         'file_path',
+        'source_hash',
         'total_rows',
         'processed_rows',
         'successful_rows',
@@ -69,7 +80,12 @@ class ImportJob extends Model
         'column_mapping',
         'options',
         'error_message',
+        'error_code',
+        'error_detail',
         'started_at',
+        'claimed_at',
+        'worker_started_at',
+        'source_purged_at',
         'completed_at',
     ];
 
@@ -93,7 +109,12 @@ class ImportJob extends Model
             'status' => ImportStatus::class,
             'column_mapping' => ColumnMappingCast::class,
             'options' => ImportJobOptionsCast::class,
+            'error_code' => ImportErrorCode::class,
+            'error_detail' => ImportErrorDetailData::class,
             'started_at' => 'datetime',
+            'claimed_at' => 'datetime',
+            'worker_started_at' => 'datetime',
+            'source_purged_at' => 'datetime',
             'completed_at' => 'datetime',
         ];
     }

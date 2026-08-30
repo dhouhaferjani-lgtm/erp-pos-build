@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Shared\Database\MigrationOutput;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -15,12 +16,14 @@ return new class extends Migration
         $driver = DB::connection()->getDriverName();
         if (! in_array($driver, ['pgsql', 'sqlite'], true)) {
             Log::info('import_rows.error_code.skipped', ['driver' => $driver]);
+            MigrationOutput::info('import_rows.error_code.skipped');
 
             return;
         }
 
         if (! Schema::hasTable('import_rows')) {
             Log::info('import_rows.error_code.skipped', ['reason' => 'table_missing']);
+            MigrationOutput::info('import_rows.error_code.skipped');
 
             return;
         }

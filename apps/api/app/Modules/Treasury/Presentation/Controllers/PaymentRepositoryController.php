@@ -38,6 +38,7 @@ class PaymentRepositoryController extends Controller
 
         $repositories = PaymentRepository::query()
             ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->with(['glAccount:id,code,name', 'location:id,name'])
             ->orderBy('name')
             ->get();

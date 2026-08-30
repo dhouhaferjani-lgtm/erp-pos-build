@@ -50,7 +50,6 @@ import {
   PanelLeft,
   Combine,
   Ticket,
-  Building2,
   Search,
   Sparkles,
   Package2,
@@ -261,7 +260,6 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
       key: 'customersAndMarketing',
       icon: Tag,
       children: [
-        { key: 'companies', href: '/crm/companies', icon: Building2, permission: 'contacts' },
         { key: 'contacts', href: '/crm/contacts', icon: Users, permission: 'contacts' },
         { key: 'loyaltyPrograms', href: '/pos/loyalty/programs', icon: Award, module: 'Loyalty', permission: 'loyalty' },
         { key: 'loyaltyMembers', href: '/pos/loyalty/members', icon: Users, module: 'Loyalty', permission: 'loyalty' },

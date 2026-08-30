@@ -7,6 +7,7 @@ import { useTaxIdValidation } from '../hooks/useTaxIdValidation'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import type { PartnerFormData } from '../PartnerForm'
 import { PartnerBankAccountsSection } from './PartnerBankAccountsSection'
+import { CreditLimitWarning } from './CreditLimitWarning'
 
 interface B2BFieldsSectionProps {
   control: Control<PartnerFormData>
@@ -14,9 +15,17 @@ interface B2BFieldsSectionProps {
   watch: UseFormWatch<PartnerFormData>
   setValue: UseFormSetValue<PartnerFormData>
   partnerId?: string | undefined
+  outstandingBalance?: string | null | undefined
 }
 
-export function B2BFieldsSection({ control, register, watch, setValue, partnerId }: B2BFieldsSectionProps) {
+export function B2BFieldsSection({
+  control,
+  register,
+  watch,
+  setValue,
+  partnerId,
+  outstandingBalance,
+}: B2BFieldsSectionProps) {
   const { currentCompany } = useCompany()
   const currency = currentCompany?.currency ?? 'EUR'
   const { t } = useTranslation('sales')
@@ -166,6 +175,13 @@ export function B2BFieldsSection({ control, register, watch, setValue, partnerId
             min="0"
             className="mt-1 block w-full"
           />
+          <div className="mt-2">
+            <CreditLimitWarning
+              creditLimit={watch('credit_limit')}
+              outstandingBalance={outstandingBalance ?? null}
+              currency={currency}
+            />
+          </div>
         </div>
 
         {/* Discount Percentage */}

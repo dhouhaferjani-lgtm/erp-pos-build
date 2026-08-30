@@ -21,6 +21,7 @@ use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Domain\ImportRow;
+use App\Modules\Import\Services\ImportJobClaimService;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -90,6 +91,7 @@ class ProcessImportJobStatusTest extends TestCase
         ]);
 
         app(CompanyContext::class)->setCompanyId($this->company->id);
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
     }
 
     /**
@@ -103,6 +105,7 @@ class ProcessImportJobStatusTest extends TestCase
         // Mirror the durable outcome equations left by validation.
         $job = ImportJob::create([
             'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'user_id' => $this->user->id,
             'type' => ImportType::Products,
             'status' => ImportStatus::Validated,
@@ -130,6 +133,11 @@ class ProcessImportJobStatusTest extends TestCase
 
     private function runJob(ImportJob $job): void
     {
+        $this->assertTrue(
+            $this->app->make(ImportJobClaimService::class)->claim($job)->won,
+            'The controller-owned claim fixture must win before the worker is delivered.',
+        );
+
         (new ProcessImportJob($job->id, $this->company->id, $this->tenant->id))
             ->handle(
                 $this->app->make(ImportService::class),
@@ -230,6 +238,7 @@ class ProcessImportJobStatusTest extends TestCase
         $importService = $this->app->make(ImportService::class);
         $job = $importService->createJob(
             tenantId: $this->tenant->id,
+            companyId: $this->company->id,
             userId: $this->user->id,
             type: ImportType::Parties,
             filename: 'parties.csv',

@@ -1,0 +1,5 @@
+name,sku,type,description,sale_price_incl_tax,purchase_price,quantity,location_code,expiry_date,barcode,category_name,brand,tax_rate,unit,is_active
+Campaign Batch Product {{RUN}},BATCH-{{RUN}},consumable,Batch tracked opening item,23.800,10.000,20.0000,MAIN,2027-12-31,619000{{RUN}},Campaign Health,Campaign Brand,19.00,pcs,true
+Campaign Unit Product {{RUN}},UNIT-{{RUN}},part,Unit-linked opening item,11.300,5.000,12.0000,MAIN,,620000{{RUN}},Campaign General,Campaign Brand,13.00,kg,true
+Campaign Blank Unit {{RUN}},BLANK-{{RUN}},part,Blank unit import,10.700,4.000,8.0000,MAIN,,621000{{RUN}},Campaign General,Campaign Brand,7.00,,true
+Campaign Exempt Product {{RUN}},ZERO-{{RUN}},part,Exempt import,9.000,3.000,5.0000,MAIN,,622000{{RUN}},Campaign General,Campaign Brand,0.00,pcs,true

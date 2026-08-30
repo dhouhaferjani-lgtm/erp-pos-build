@@ -143,6 +143,7 @@ final class StockLevelsImportDeprecatedTest extends TestCase
         // because the API can no longer create one.
         $job = ImportJob::create([
             'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'user_id' => $this->user->id,
             'type' => ImportType::StockLevels,
             'status' => ImportStatus::Validated,
@@ -168,6 +169,7 @@ final class StockLevelsImportDeprecatedTest extends TestCase
         // blow up Eloquent's enum cast on read.
         $job = ImportJob::create([
             'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'user_id' => $this->user->id,
             'type' => ImportType::StockLevels,
             'status' => ImportStatus::Completed,

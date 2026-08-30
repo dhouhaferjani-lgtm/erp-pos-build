@@ -42,9 +42,11 @@ export default tseslint.config(
   {
     ignores: [
       'dist',
-      'e2e',
+      'e2e/*',
+      '!e2e/campaign',
       '*.d.ts',
       '*.config.ts',
+      '!playwright.campaign.config.ts',
       '*.config.js',
       // Files not included in tsconfig.json project references — can't be
       // type-checked by ESLint's project-aware parser. Either the files are
@@ -68,7 +70,7 @@ export default tseslint.config(
       ecmaVersion: 2022,
       globals: globals.browser,
       parserOptions: {
-        project: ['./tsconfig.json', './tsconfig.node.json'],
+        project: ['./tsconfig.json', './tsconfig.node.json', './e2e/tsconfig.json'],
         tsconfigRootDir: import.meta.dirname,
       },
     },
@@ -407,5 +409,32 @@ export default tseslint.config(
       'src/features/support-access/**/*.{ts,tsx}',
     ],
     rules: { 'local/no-untranslated-literal': 'error' },
+  },
+  {
+    files: ['e2e/campaign/fiscal/canonicalCore.ts'],
+    rules: { 'no-irregular-whitespace': 'off' },
+  },
+  {
+    // Campaign e2e code walks untyped API payloads (Record<string, unknown>) by design; these
+    // src-oriented style rules would only add noise and would move the lint-warning ratchet.
+    files: ['e2e/campaign/**/*.ts'],
+    rules: {
+      '@typescript-eslint/array-type': 'off',
+      '@typescript-eslint/dot-notation': 'off',
+      '@typescript-eslint/no-base-to-string': 'off',
+      '@typescript-eslint/no-unnecessary-condition': 'off',
+      '@typescript-eslint/no-unsafe-type-assertion': 'off',
+      '@typescript-eslint/prefer-nullish-coalescing': 'off',
+      '@typescript-eslint/prefer-regexp-exec': 'off',
+      '@typescript-eslint/require-await': 'off',
+      '@typescript-eslint/restrict-template-expressions': 'off',
+    },
+  },
+  {
+    extends: [tseslint.configs.disableTypeChecked],
+    files: ['playwright.campaign.config.ts'],
+    languageOptions: {
+      parserOptions: { project: false },
+    },
   },
 )

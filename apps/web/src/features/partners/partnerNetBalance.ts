@@ -8,6 +8,12 @@ interface PartnerBalanceSnapshot {
   net_balance?: string | null
 }
 
+export function getCustomerCreditExposure(
+  partner: Pick<PartnerBalanceSnapshot, 'receivable_balance' | 'credit_balance'>,
+): string {
+  return bcsub(partner.receivable_balance ?? '0', partner.credit_balance ?? '0')
+}
+
 export function getNetBalance(partner: PartnerBalanceSnapshot, isCustomerView: boolean): string {
   if (partner.net_balance !== undefined && partner.net_balance !== null) {
     return partner.net_balance
@@ -22,7 +28,7 @@ export function getNetBalance(partner: PartnerBalanceSnapshot, isCustomerView: b
   }
 
   if (isCustomerView || partner.type === 'customer') {
-    return bcsub(receivable, credit)
+    return getCustomerCreditExposure(partner)
   }
 
   return payable

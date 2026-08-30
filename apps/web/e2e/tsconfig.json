@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "exactOptionalPropertyTypes": false,
+    "noPropertyAccessFromIndexSignature": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "typeRoots": ["../node_modules", "../node_modules/@types", "../../../packages/shared/types"],
+    "types": ["@playwright/test", "node"],
+    "verbatimModuleSyntax": false
+  },
+  "include": ["campaign/**/*.ts", "../playwright.campaign.config.ts"]
+}

@@ -24,6 +24,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 use ZipArchive;
@@ -95,8 +97,32 @@ final class PartiesImportTypeTest extends TestCase
 
         $rules = $type->getValidationRules();
         $this->assertSame(['required', 'in:customer,supplier,both'], $rules['type']);
-        $this->assertSame(['nullable', 'string', 'max:100'], $rules['code']);
+        $this->assertSame(['nullable', 'string', 'max:50'], $rules['code']);
         $this->assertContains('regex:/^-?\d+(\.\d{1,3})?$/', $rules['opening_balance']);
+    }
+
+    public function test_parties_validation_rejects_a_code_longer_than_the_partner_column(): void
+    {
+        $validator = Validator::make(
+            [
+                'name' => 'Boundary Partner',
+                'type' => 'customer',
+                'code' => str_repeat('A', 51),
+            ],
+            ImportType::Parties->getValidationRules(),
+        );
+
+        try {
+            $validator->validate();
+            $this->fail('A 51-character party code must fail validation.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(422, $exception->status);
+            $this->assertArrayHasKey('code', $exception->errors());
+            $this->assertSame(
+                'The code field must not be greater than 50 characters.',
+                $exception->errors()['code'][0],
+            );
+        }
     }
 
     public function test_parties_template_contains_opening_balance_columns(): void

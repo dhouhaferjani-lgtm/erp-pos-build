@@ -15,6 +15,6 @@ final class ImportErrorDetailCast extends TypedJsonArrayCast
     protected function normalize(array $payload): array
     {
         /** @var array<string, mixed> $payload */
-        return ImportErrorDetailData::fromStorage($payload)->toStorage();
+        return ImportErrorDetailData::from($payload)->toArray();
     }
 }

@@ -443,12 +443,13 @@ final class ImportOutcomeAtomicityTest extends TestCase
     private function job(ImportType $type, int $totalRows): ImportJob
     {
         return app(ImportService::class)->createJob(
-            $this->tenant->id,
-            $this->user->id,
-            $type,
-            'atomic.csv',
-            'imports/atomic.csv',
-            $totalRows,
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            userId: $this->user->id,
+            type: $type,
+            filename: 'atomic.csv',
+            filePath: 'imports/atomic.csv',
+            totalRows: $totalRows,
         );
     }
 }

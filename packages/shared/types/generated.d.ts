@@ -1026,10 +1026,34 @@ maxDiscountPercent: string | null;
 declare namespace App.Modules.Identity.Domain.Enums {
 export type UserStatus = 'active' | 'inactive' | 'suspended' | 'pending_verification';
 }
+declare namespace App.Modules.Import.Domain.Data {
+export type ImportErrorDetailData = {
+supplied?: string | null;
+accepted?: Array<string> | null;
+candidates?: Array<App.Modules.Import.Domain.Data.UnitCandidateData> | null;
+candidate_skus?: Array<string> | null;
+sku?: string | null;
+existing_product_id?: string | null;
+filename?: string | null;
+reason?: string | null;
+column?: string | null;
+raw?: string | null;
+remedy?: string | null;
+held_quantity?: string | null;
+held_at?: string | null;
+};
+export type UnitCandidateData = {
+id: string;
+code: string;
+name: string;
+category: string;
+tier: string;
+};
+}
 declare namespace App.Modules.Import.Domain.Enums {
 export type DuplicateBucket = 'new' | 'existing_sku' | 'existing_barcode' | 'existing_name' | 'in_file' | 'refused';
 export type DuplicatePolicy = 'override' | 'skip';
-export type ImportErrorCode = 'units_not_seeded' | 'unit_unknown' | 'unit_ambiguous' | 'unit_default_missing' | 'barcode_ambiguous' | 'product_not_found' | 'partner_not_found' | 'sku_held_by_deleted_product' | 'vat_held_by_deleted_partner' | 'duplicate_sku_in_company' | 'validation_failed' | 'internal_error';
+export type ImportErrorCode = 'units_not_seeded' | 'unit_unknown' | 'unit_ambiguous' | 'unit_default_missing' | 'barcode_ambiguous' | 'product_not_found' | 'partner_not_found' | 'sku_held_by_deleted_product' | 'vat_held_by_deleted_partner' | 'duplicate_sku_in_company' | 'validation_failed' | 'internal_error' | 'worker_lost';
 export type ImportRowOutcome = 'pending' | 'imported' | 'duplicate_skipped' | 'duplicate_loser' | 'failed' | 'opening_locked';
 export type ImportStatus = 'pending' | 'validating' | 'validated' | 'importing' | 'completed' | 'failed';
 export type ImportType = 'parties' | 'partners' | 'products' | 'stock_levels' | 'opening_balances' | 'product_images' | 'composite_items';
@@ -1854,6 +1878,9 @@ email: string | null;
 phone: string | null;
 country_code: string | null;
 vat_number: string | null;
+tax_status: App.Modules.Taxation.Domain.Enums.PartnerTaxStatus;
+exemption_reason: string | null;
+exemption_valid_until: string | null;
 notes: string | null;
 receivable_balance: string | null;
 credit_balance: string | null;

@@ -291,12 +291,13 @@ final class DuplicateCensusTest extends TestCase
     private function job(int $totalRows): ImportJob
     {
         return app(ImportService::class)->createJob(
-            $this->tenant->id,
-            $this->user->id,
-            ImportType::Products,
-            'products.csv',
-            'imports/products.csv',
-            $totalRows,
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            userId: $this->user->id,
+            type: ImportType::Products,
+            filename: 'products.csv',
+            filePath: 'imports/products.csv',
+            totalRows: $totalRows,
         );
     }
 

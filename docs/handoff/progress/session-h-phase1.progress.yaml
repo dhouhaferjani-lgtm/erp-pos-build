@@ -2,12 +2,10 @@ wave: session-h-phase1
 brief: docs/handoff/CODEX-DISPATCH-session-H-phase1-2026-08-29.md
 harness: docs/handoff/SELF-REVIEW-HARNESS.md
 review_register: docs/handoff/reviews/session-h-phase1/
-reviewer_model: opus          # per-milestone override to codex-fallback allowed (brief EXECUTION MODE)
+reviewer_model: opus
 max_fix_rounds: 4
 browser_verification: apps/web/e2e/session-h/<milestone>-*.spec.ts against :5174 (worktree web) + :8011 (worktree API); screenshots .playwright-mcp/session-h/<milestone>/ — brief §0.1; every milestone register must cite them
-crm_seam_assessment: docs/handoff/ASSESSMENT-crm-seam-party-model-2026-08-29.md   # verdict CRM-safe; no marketing surface in this wave
-
-# Pinned 2026-08-29 by the Session H orchestrator at worktree creation (= local dev tip).
+crm_seam_assessment: docs/handoff/ASSESSMENT-crm-seam-party-model-2026-08-29.md
 base_sha: 23b1b8a65
 lanes:
   h1-cleanup:
@@ -18,35 +16,43 @@ lanes:
     branch: fix/h1-a1-buyer-block
     worktree: .worktrees/h1-a1-buyer
     commit_series: "h1-a1 M<m>.<s>:"
-ledger_rows: D-H1-1 (cleanup), D-H1-2 (a1)   # parent writes at merge
+ledger_rows: D-H1-1 (cleanup), D-H1-2 (a1)
 
-status: not_started
+status: in_progress
 
 milestones:
   - id: M1
     lane: h1-cleanup
     title: a3 tax_id->vat_number + generated PartnerData; a7 Parties code max:50; a8 'retail' mirror literal -> null
     review_lenses: [frontend-conventions, imports]
-    status: pending
-    commit: null
-    verdict: null
+    status: passed
+    commit: 97ae0ba12e6b651740293559fc4134c57a3bde7d
+    verdict: docs/handoff/reviews/session-h-phase1/M1-round1-codex-fallback.md
+    last_verdict: ACCEPT
+    reviewer_model: codex-fallback
     fix_rounds: 0
+    updated: 7ffcb5461
   - id: M2
     lane: h1-cleanup
     title: a4' nature required on create + NULL heuristic for B2B block + wire CreditLimitWarning
     review_lenses: [frontend-conventions]
-    status: pending
-    commit: null
-    verdict: null
-    fix_rounds: 0
+    status: passed
+    commit: d9d36679d
+    verdict: docs/handoff/reviews/session-h-phase1/M2-round3.md
+    last_verdict: ACCEPT
+    fix_rounds: 2
+    updated: d9d36679d
   - id: M3
     lane: h1-cleanup
     title: a5 delete Companies + contacts.update->partners.update on partner edit routes + gate suppliers; a6 constrain Type select per route
     review_lenses: [tenancy-authz, frontend-conventions]
-    status: pending
-    commit: null
-    verdict: null
-    fix_rounds: 0
+    status: passed
+    commit: 009d61390
+    verdict: docs/handoff/reviews/session-h-phase1/M3-round3-codex-fallback.md
+    last_verdict: ACCEPT
+    reviewer_model: codex-fallback
+    fix_rounds: 2
+    updated: f45ed7a9b
   - id: M4
     lane: h1-a1
     title: SALE_RECEIPT.buyer populated (resolved server partner id only; contact_id null by decision); validateBuyer customer_id uuid-or-null; projection writes partner_id from snapshot
@@ -66,5 +72,15 @@ milestones:
 
 owner_gates:
   - Phases 2-5 of the program (OQ1-9 in docs/sessions/session-H-party-model-2026-08-29/OQ-SHEET-2026-08-29.md) — NOT this wave
-owes_parent: []
+owes_parent:
+  - M1 browser contract mismatch: public row-level import validation returns 201 with failed_rows and exposes field errors through GET /imports/{id}/errors; no dedicated 422 preview endpoint exists. The focused validator Feature test still proves the 51-character code raises a 422 ValidationException.
+  - M2 Arabic label collision: the owner-prescribed Nature label `النوع` is byte-identical to the adjacent role Type label. Nature now has a distinct placeholder and validation error, but changing the prescribed label requires parent/owner copy approval.
+  - M2 create-surface gap: create-only Nature validation is scoped to full `PartnerForm`; the inline `AddPartnerModal` remains shape-neutral and can create `customer_category = NULL`. Phase 2 must make nature canonical across every write surface.
+  - M2 supplier credit warning: the new warning intentionally uses customer exposure (`receivable - credit`) and therefore does not warn on supplier payable exposure. Phase 2 should either hide/rename the customer credit-limit control on supplier-only routes or define a separate supplier exposure policy.
+  - M2 accepted P3 UI edges: a legacy-null B2B section can unmount when its last internal signal is cleared; retained hidden values still submit after switching to Individual; scan-prefilled VAT can reveal B2B fields before Nature is chosen. No data loss; re-evaluate when Phase 2 makes nature canonical.
+  - M3 pre-existing vehicle enum drift: VehicleForm still offers display-cased fuel/transmission literals while backend enums use lowercase canonical values; M3 did not broaden this payload behavior.
+  - M3 partner-code contract realignment: validation now matches the existing `(company_id, code)` database constraint, changing same-tenant cross-company create from 422 to 201; promotion must communicate the relaxation to API, POS pending-customer, and Parties-import consumers.
+  - M3 Otospex browser debt: browser item (v) is locally runtime-skipped because `demo-unlimited` has no provisioned tenant database; the customer-only picker has focused Vitest evidence but no live Otospex browser evidence here.
+  - M3 i18n burn-down: removal-only cleanup translated eight prior baseline entries with zero new gaps; no baseline re-pin was required, and parent may lock the burn-down at promotion.
+  - M3 Phase 2 form-state debt: mismatched `partnerType` and pathname can make both route contexts true in an unkeyed reconciliation; production keyed routes prevent the live path and validation blocks submission, but Phase 2 should derive one authoritative context independently of React keys.
 blockers: []

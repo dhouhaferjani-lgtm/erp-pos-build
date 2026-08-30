@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Shared\Database\MigrationOutput;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -93,15 +93,13 @@ return new class extends Migration
         ];
         Log::info('import_rows.outcome_backfill', $census);
         $line = sprintf(
-            "import_rows.outcome_backfill imported=%d failed_validation=%d failed_execution=%d pending=%d\n",
+            'import_rows.outcome_backfill imported=%d failed_validation=%d failed_execution=%d pending=%d',
             $imported,
             $failedValidation,
             $failedExecution,
             $stillPending,
         );
-        if (App::runningInConsole()) {
-            fwrite(STDOUT, $line);
-        }
+        MigrationOutput::info($line);
     }
 
     /**

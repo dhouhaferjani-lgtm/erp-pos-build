@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Tests\Unit\Modules\Product;
 
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\PlatformIntegration\Application\Services\ProductSubmissionService;
 use App\Modules\Product\Application\Jobs\SendEnrichmentFeedbackJob;
 use App\Shared\Contracts\PlatformSubmissionInterface;
 use App\Shared\Enums\EnrichmentFeedbackAction;
 use App\Shared\Enums\EnrichmentFeedbackReason;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Tests\TestCase;
@@ -92,6 +94,26 @@ class SendEnrichmentFeedbackJobTest extends TestCase
         } finally {
             $this->assertFalse($companyContext->hasCompany());
         }
+    }
+
+    public function test_handle_completes_without_retry_when_platform_push_is_disabled(): void
+    {
+        config(['services.platform.push_enabled' => false]);
+        Http::fake();
+
+        $companyContext = app(CompanyContext::class);
+        $job = new SendEnrichmentFeedbackJob(
+            trackingId: '00000000-0000-0000-0000-000000000123',
+            action: EnrichmentFeedbackAction::Confirmed->value,
+            reason: null,
+            notes: null,
+            companyId: '00000000-0000-0000-0000-000000000456',
+        );
+
+        $job->handle($companyContext, app(ProductSubmissionService::class));
+
+        Http::assertNothingSent();
+        $this->assertFalse($companyContext->hasCompany());
     }
 
     public function test_failed_logs_permanent_failure(): void

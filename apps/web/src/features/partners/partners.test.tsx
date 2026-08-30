@@ -217,6 +217,22 @@ describe('Partner Management', () => {
       })
     })
 
+    it('renders a generated-typed partner VAT number in the Tax ID column', async () => {
+      mockApiInstance.get.mockResolvedValue({
+        data: makePartnersListResponse({
+          data: [makePartnerListRow({
+            name: 'VAT Customer',
+            vat_number: 'FR12345678901',
+          })],
+        }),
+      })
+
+      renderWithProviders(<PartnerListPage />)
+
+      const row = await screen.findByRole('row', { name: /VAT Customer/ })
+      expect(within(row).getByText('FR12345678901')).toBeInTheDocument()
+    })
+
     it('displays empty state when no partners', async () => {
       mockApiInstance.get.mockResolvedValue({
         data: makePartnersListResponse({ data: [] }),
@@ -698,6 +714,7 @@ describe('Partner Management', () => {
 
       await user.type(screen.getByLabelText(/name/i), 'Test Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
+      await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
       await user.type(screen.getByLabelText(/street address/i), '123 Main St')
 
       await user.click(screen.getByRole('button', { name: /save/i }))
@@ -720,6 +737,7 @@ describe('Partner Management', () => {
 
       await user.type(screen.getByLabelText(/name/i), 'Test Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
+      await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
       // Tunisia (TN) default country → the field is labeled "Matricule fiscal", but
       // it still submits as vat_number.
       await user.type(screen.getByLabelText(/matricule fiscal/i), 'FR12345678901')
@@ -744,6 +762,7 @@ describe('Partner Management', () => {
 
       await user.type(screen.getByLabelText(/name/i), 'Test Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
+      await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
 
       // Wait for countries to load
       await waitFor(() => {
@@ -770,6 +789,7 @@ describe('Partner Management', () => {
 
       await user.type(screen.getByLabelText(/name/i), 'Test Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
+      await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
       // Tunisia (TN) default country → the field is labeled "Gouvernorat", but it
       // still submits as state.
       await user.type(screen.getByLabelText(/gouvernorat/i), 'Île-de-France')
@@ -795,6 +815,7 @@ describe('Partner Management', () => {
       // Fill only required fields
       await user.type(screen.getByLabelText(/name/i), 'Minimal Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'supplier')
+      await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
 
       await user.click(screen.getByRole('button', { name: /save/i }))
 
@@ -828,6 +849,7 @@ describe('Partner Management', () => {
 
       await user.type(screen.getByLabelText(/name/i), 'New Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
+      await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
 
       await user.click(screen.getByRole('button', { name: /save/i }))
 
@@ -882,6 +904,7 @@ describe('Partner Management', () => {
 
       await user.type(screen.getByLabelText(/name/i), 'Test')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
+      await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
 
       await user.click(screen.getByRole('button', { name: /save/i }))
 
@@ -914,6 +937,7 @@ describe('Partner Management', () => {
 
       await user.type(screen.getByLabelText(/name/i), 'Test')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
+      await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
 
       await user.click(screen.getByRole('button', { name: /save/i }))
 
@@ -946,6 +970,7 @@ describe('Partner Management', () => {
 
       await user.type(screen.getByLabelText(/name/i), 'Test')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
+      await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
       // Tunisia (TN) default country → the field is labeled "Matricule fiscal".
       await user.type(screen.getByLabelText(/matricule fiscal/i), 'INVALID')
 
@@ -1046,20 +1071,15 @@ describe('Partner Management', () => {
     // ──────────────────────────────────────────────
     // Conditional sections
     // ──────────────────────────────────────────────
-    it('shows exemption fields only when tax status is EXEMPT', async () => {
-      const user = userEvent.setup()
+    // Tax status and its exemption fields have no FormRequest rule, so the
+    // whole block is gated off (PHASE2_TAX_STATUS_WRITE_PATH). It used to
+    // reveal the exemption inputs on EXEMPT; now it renders nothing at all.
+    it('does not expose tax-status or exemption fields while their write path is unwired', () => {
       renderWithProviders(<PartnerForm />)
 
-      // Initially not visible (default is REGISTERED)
+      expect(screen.queryByLabelText(/tax status/i)).not.toBeInTheDocument()
       expect(screen.queryByLabelText(/exemption reason/i)).not.toBeInTheDocument()
-
-      // Change to EXEMPT
-      await user.selectOptions(screen.getByLabelText(/tax status/i), 'EXEMPT')
-
-      await waitFor(() => {
-        expect(screen.getByLabelText(/exemption reason/i)).toBeInTheDocument()
-        expect(screen.getByLabelText(/valid until/i)).toBeInTheDocument()
-      })
+      expect(screen.queryByLabelText(/valid until/i)).not.toBeInTheDocument()
     })
 
     it('submits form data on save', async () => {
@@ -1070,6 +1090,7 @@ describe('Partner Management', () => {
 
       await user.type(screen.getByLabelText(/name/i), 'New Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
+      await user.selectOptions(screen.getByLabelText(/^Nature/), 'individual')
       await user.type(screen.getByLabelText(/email/i), 'new@partner.com')
 
       const submitButton = screen.getByRole('button', { name: /save/i })

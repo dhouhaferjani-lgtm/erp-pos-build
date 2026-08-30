@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 use App\Modules\Product\Application\Services\ProductUnitBackfillService;
+use App\Shared\Database\MigrationOutput;
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -39,7 +39,7 @@ return new class extends Migration
         if ($missing !== []) {
             $context = ['missing' => $missing];
             Log::info('products.unit_id_backfill.skipped', $context);
-            $this->consoleOutput('products.unit_id_backfill skipped missing='.implode(',', $missing));
+            MigrationOutput::info('products.unit_id_backfill skipped missing='.implode(',', $missing));
 
             return;
         }
@@ -48,7 +48,7 @@ return new class extends Migration
             $result = App::make(ProductUnitBackfillService::class)->backfill();
         } catch (Throwable $exception) {
             Log::warning('products.unit_id_backfill.skipped', ['reason' => $exception->getMessage()]);
-            $this->consoleOutput('products.unit_id_backfill skipped unexpected_legacy_state');
+            MigrationOutput::error('products.unit_id_backfill skipped unexpected_legacy_state');
 
             return;
         }
@@ -66,7 +66,7 @@ return new class extends Migration
             $result->unknown,
             $result->missingCompany,
         );
-        $this->consoleOutput($line);
+        MigrationOutput::info($line);
     }
 
     /**
@@ -76,12 +76,5 @@ return new class extends Migration
     public function down(): void
     {
         Log::info('products.unit_id_backfill.down_skipped', ['reason' => 'forward-only data repair']);
-    }
-
-    private function consoleOutput(string $line): void
-    {
-        if (App::runningInConsole()) {
-            fwrite(STDOUT, $line.PHP_EOL);
-        }
     }
 };

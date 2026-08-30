@@ -6,12 +6,14 @@ namespace App\Modules\Import\Application\Jobs;
 
 use App\Jobs\Concerns\BindsTenantContext;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Import\Domain\Data\ImportCountersData;
 use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportRowOutcome;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Events\ImportCompleted;
 use App\Modules\Import\Domain\Events\ImportProgressUpdated;
 use App\Modules\Import\Domain\ImportJob;
+use App\Modules\Import\Services\ImportJobClaimService;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use App\Shared\Contracts\UnitCatalogQueryInterface;
@@ -78,10 +80,7 @@ final class ProcessImportJob implements ShouldQueue
         ?UnitCatalogQueryInterface $unitCatalog = null,
     ): void {
         $this->withTenantContext(function () use ($importService, $unitsProvisioning, $unitCatalog): void {
-            $job = ImportJob::query()
-                ->where('tenant_id', $this->tenantId)
-                ->where('id', $this->importJobId)
-                ->first();
+            $job = $this->findImportJob();
 
             if ($job === null) {
                 Log::error('ProcessImportJob: Import job not found', ['id' => $this->importJobId]);
@@ -89,13 +88,40 @@ final class ProcessImportJob implements ShouldQueue
                 return;
             }
 
-            if (! $job->canStart()) {
+            $observedStatus = $job->status;
+            if ($observedStatus->canStartImport()) {
+                $claim = $importService->claimJob($job, $this->companyId);
+                if (! $claim->won) {
+                    Log::warning('ProcessImportJob: Import job already claimed by another worker', [
+                        'id' => $this->importJobId,
+                        'status' => $claim->priorStatus->value,
+                    ]);
+
+                    return;
+                }
+                $job = $this->findImportJob();
+                if ($job === null) {
+                    return;
+                }
+            } elseif ($observedStatus !== ImportStatus::Importing) {
                 Log::warning('ProcessImportJob: Import job cannot be started', [
                     'id' => $this->importJobId,
-                    'status' => $job->status->value,
-                    'failed_rows' => $job->failed_rows,
+                    'status' => $observedStatus->value,
                 ]);
 
+                return;
+            }
+
+            if (! $importService->markWorkerStarted($job->id, $this->tenantId)) {
+                Log::warning('ProcessImportJob: Duplicate delivery ignored', [
+                    'id' => $this->importJobId,
+                    'status' => $this->findImportJob()?->status->value ?? $job->status->value,
+                ]);
+
+                return;
+            }
+            $job = $this->findImportJob();
+            if ($job === null) {
                 return;
             }
 
@@ -105,7 +131,7 @@ final class ProcessImportJob implements ShouldQueue
                 ->first();
             if ($company === null) {
                 Log::error('ProcessImportJob: Company not found', ['id' => $this->companyId]);
-                $this->failJob($job, 'Company not found');
+                $this->failJob($job, $importService, null, 'Company not found');
 
                 return;
             }
@@ -116,8 +142,9 @@ final class ProcessImportJob implements ShouldQueue
                 && $visibleUnitCount === 0) {
                 $this->failJob(
                     $job,
-                    ImportErrorCode::UnitsNotSeeded->value
-                    .': No units of measure are configured for this company; seed them in Settings → Units before importing'
+                    $importService,
+                    ImportErrorCode::UnitsNotSeeded,
+                    'No units of measure are configured for this company; seed them in Settings → Units before importing',
                 );
 
                 return;
@@ -132,37 +159,6 @@ final class ProcessImportJob implements ShouldQueue
      */
     private function processImport(ImportJob $job, ImportService $importService, Company $company): void
     {
-        // CLAIM the job rather than asserting ownership of it. handle()'s
-        // canStart() check above is a read; between that read and this write a
-        // second worker (queue redelivery, a duplicate dispatch) can have claimed
-        // and advanced the same job. A conditional update makes the claim atomic:
-        // only a job still sitting in a start-eligible status can be taken, and an
-        // affected-row count of 0 means somebody else already owns it — log and
-        // return without touching a single row. Tenant is re-asserted here for the
-        // same defence-in-depth reason as every other query in this job.
-        $claimed = ImportJob::query()
-            ->where('tenant_id', $this->tenantId)
-            ->where('id', $job->id)
-            ->whereIn('status', [
-                ImportStatus::Pending->value,
-                ImportStatus::Validated->value,
-            ])
-            ->update([
-                'status' => ImportStatus::Importing->value,
-                'started_at' => now(),
-            ]);
-
-        if ($claimed === 0) {
-            Log::warning('ProcessImportJob: Import job already claimed by another worker', [
-                'id' => $job->id,
-                'tenant_id' => $this->tenantId,
-            ]);
-
-            return;
-        }
-
-        $job->refresh();
-
         // Rows that failed validation are skipped at execution but still count as
         // failed in the final tally (sync-path parity) — they never reach
         // is_imported=true, so the row-state tally below already includes them.
@@ -203,21 +199,27 @@ final class ProcessImportJob implements ShouldQueue
         // demote rows it could not commit (GL opening balances post once, for the
         // whole file, after the loop). Nothing imported => Failed; partial success
         // completes.
-        $counts = $importService->outcomeCounts($job);
-        $finalStatus = ($counts['successful'] + $counts['skipped']) === 0
+        $counters = ImportCountersData::fromJob($job);
+        $finalStatus = ($counters->successfulRows + $counters->skippedRows) === 0
             ? ImportStatus::Failed
             : ImportStatus::Completed;
-        $job->update([
-            'status' => $finalStatus,
-            'processed_rows' => $counts['processed'],
-            'successful_rows' => $counts['successful'],
-            'skipped_rows' => $counts['skipped'],
-            'failed_rows' => $counts['failed'],
-            'completed_at' => now(),
-        ]);
+        if (! $importService->finalizeClaimedJob($job, $finalStatus, counters: $counters)) {
+            return;
+        }
+        $job = $this->findImportJob();
+        if ($job === null) {
+            return;
+        }
 
         // Broadcast completion
-        $this->broadcastCompleted($job, $company, $totalRows, $counts['successful'], $counts['failed'], null);
+        $this->broadcastCompleted(
+            $job,
+            $company,
+            $totalRows,
+            $counters->successfulRows,
+            $counters->failedRows,
+            null,
+        );
     }
 
     /**
@@ -293,13 +295,28 @@ final class ProcessImportJob implements ShouldQueue
      * Called from inside withTenantContext closure in handle(); the
      * Company lookup re-asserts tenant_id for defense-in-depth.
      */
-    private function failJob(ImportJob $job, string $errorMessage): void
-    {
-        $job->update([
-            'status' => ImportStatus::Failed,
-            'error_message' => $errorMessage,
-            'completed_at' => now(),
-        ]);
+    private function failJob(
+        ImportJob $job,
+        ImportService $importService,
+        ?ImportErrorCode $errorCode,
+        string $errorMessage,
+    ): void {
+        $storedMessage = $errorCode === null
+            ? $errorMessage
+            : $errorCode->value.': '.$errorMessage;
+
+        if (! $importService->finalizeClaimedJob(
+            $job,
+            ImportStatus::Failed,
+            $errorCode,
+            message: $storedMessage,
+        )) {
+            return;
+        }
+        $job = $this->findImportJob();
+        if ($job === null) {
+            return;
+        }
 
         $company = Company::query()
             ->where('tenant_id', $this->tenantId)
@@ -326,30 +343,35 @@ final class ProcessImportJob implements ShouldQueue
     public function failed(\Throwable $exception): void
     {
         $this->withTenantContext(function () use ($exception): void {
-            $job = ImportJob::query()
-                ->where('tenant_id', $this->tenantId)
-                ->where('id', $this->importJobId)
-                ->first();
+            $job = $this->findImportJob();
 
             if ($job !== null) {
-                $job->update([
-                    'status' => ImportStatus::Failed,
-                    'error_message' => 'Job failed: '.$exception->getMessage(),
-                    'completed_at' => now(),
-                ]);
+                $message = 'Job failed: '.$exception->getMessage();
+                $won = ImportJobClaimService::finalizeFromFailedHandler(
+                    $job,
+                    ImportStatus::Failed,
+                    ImportCountersData::fromJob($job),
+                    null,
+                    null,
+                    $message,
+                );
 
                 $company = Company::query()
                     ->where('tenant_id', $this->tenantId)
                     ->where('id', $this->companyId)
                     ->first();
-                if ($company !== null) {
+                if ($won && $company !== null) {
+                    $job = $this->findImportJob();
+                    if ($job === null) {
+                        return;
+                    }
                     $this->broadcastCompleted(
                         $job,
                         $company,
                         $job->total_rows,
                         $job->successful_rows,
                         $job->failed_rows,
-                        'Job failed: '.$exception->getMessage()
+                        $message
                     );
                 }
             }
@@ -360,5 +382,13 @@ final class ProcessImportJob implements ShouldQueue
                 'trace' => $exception->getTraceAsString(),
             ]);
         });
+    }
+
+    private function findImportJob(): ?ImportJob
+    {
+        return ImportJob::query()
+            ->where('tenant_id', $this->tenantId)
+            ->where('id', $this->importJobId)
+            ->first();
     }
 }

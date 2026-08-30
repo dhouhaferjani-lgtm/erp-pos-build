@@ -109,6 +109,7 @@ describe('createPendingCustomer', () => {
       name: 'Amina Trabelsi',
       phone: null,
       email: 'amina@example.test',
+      customer_category: null,
       receivable_balance: '0.000',
       credit_balance: '0.000',
       credit_limit: null,

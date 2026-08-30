@@ -6,6 +6,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\Services\PaymentRepositoryProvisioningService;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\PaymentRepositorySeeder;
@@ -51,7 +52,7 @@ return new class extends Migration
         // 1. Seed payment repositories if none exist
         $repoCount = PaymentRepository::where('company_id', $company->id)->count();
         if ($repoCount === 0) {
-            $seeder = new PaymentRepositorySeeder;
+            $seeder = new PaymentRepositorySeeder(new PaymentRepositoryProvisioningService);
             $seeder->run($company);
             $changes[] = 'payment_repositories_seeded';
         } else {

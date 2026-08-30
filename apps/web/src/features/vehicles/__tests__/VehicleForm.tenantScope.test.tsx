@@ -5,10 +5,12 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { makePartnerData, type PartnerData } from '@/features/partners/__fixtures__/partner'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 
 import { VehicleForm } from '../VehicleForm'
+import type { VehicleData } from '../types'
 
 const mockApiGet = vi.hoisted(() => vi.fn())
 const mockApiPost = vi.hoisted(() => vi.fn())
@@ -21,7 +23,9 @@ const mockTranslate = vi.hoisted(() =>
       'vehicles:licensePlate': 'License Plate',
       'vehicles:brand': 'Brand',
       'vehicles:model': 'Model',
+      'vehicles:owner': 'Owner',
       'common:actions.save': 'actions.save',
+      'partner.searchPlaceholder': 'Search partners',
     }
     return translations[key] ?? key
   }),
@@ -87,9 +91,11 @@ function wrapper(queryClient: QueryClient) {
   }
 }
 
-function vehicleFixture() {
+function vehicleFixture(): VehicleData {
   return {
     id: 'vehicle-1',
+    tenant_id: 'tenant-A',
+    company_id: 'company-1',
     partner_id: 'partner-1',
     license_plate: '123-TUN-456',
     brand: 'Renault',
@@ -99,15 +105,44 @@ function vehicleFixture() {
     mileage: 45000,
     vin: null,
     engine_code: null,
-    fuel_type: 'Petrol',
-    transmission: 'Manual',
+    fuel_type: 'gasoline',
+    transmission: 'manual',
+    body_type: 'hatchback',
     notes: null,
+    current_owner_partner_id: 'partner-1',
+    current_owner_display_name: 'Partner A',
+    created_at: '2026-08-29T12:00:00Z',
+    updated_at: null,
   }
+}
+
+function partnerFixture(overrides: Partial<PartnerData> = {}): PartnerData {
+  return makePartnerData({
+    id: 'partner-1',
+    name: 'Partner A',
+    type: 'customer',
+    email: null,
+    city: null,
+    ...overrides,
+  })
 }
 
 function mockVehicleResponses() {
   mockApiGet.mockImplementation(async (url: string) => {
-    if (url === '/partners') return { data: { data: [{ id: 'partner-1', name: 'Partner A' }] } }
+    if (url.startsWith('/partners?')) {
+      return {
+        data: {
+          data: [partnerFixture()],
+        },
+      }
+    }
+    if (url === '/partners/partner-1') {
+      return {
+        data: {
+          data: partnerFixture(),
+        },
+      }
+    }
     if (url === '/vehicles/vehicle-1') return { data: { data: vehicleFixture() } }
     return { data: { data: [] } }
   })
@@ -130,30 +165,60 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  resetTenant()
+  act(() => { resetTenant() })
 })
 
 describe('VehicleForm tenant scope', () => {
-  it('wraps partner and vehicle read keys and gates missing tenant/company (.756-.757)', async () => {
-    const createQueryClient = createClient()
-    render(<VehicleForm />, { wrapper: wrapper(createQueryClient) })
-
-    await waitFor(() => {
-      expect(createQueryClient.getQueryData(['partners', 'tenant-A', 'company-1'])).toBeDefined()
-    })
-
+  it('wraps the vehicle read key and gates missing tenant/company (.756-.757)', async () => {
     mockRouteId.current = 'vehicle-1'
     const editQueryClient = createClient()
-    render(<VehicleForm />, { wrapper: wrapper(editQueryClient) })
+    const edit = render(<VehicleForm />, { wrapper: wrapper(editQueryClient) })
 
     await waitFor(() => {
       expect(editQueryClient.getQueryData(['vehicle', 'vehicle-1', 'tenant-A', 'company-1'])).toBeDefined()
+      expect(editQueryClient.getQueryData(['partner', 'partner-1', 'tenant-A', 'company-1'])).toBeDefined()
     })
+    edit.unmount()
 
-    resetTenant()
+    act(() => { resetTenant() })
     const calls = mockApiGet.mock.calls.length
     render(<VehicleForm />, { wrapper: wrapper(createClient()) })
     expect(mockApiGet).toHaveBeenCalledTimes(calls)
+  })
+
+  it('uses the searchable customer PartnerPicker without an unfiltered partners request', async () => {
+    render(<VehicleForm />, { wrapper: wrapper(createClient()) })
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Owner' }))
+
+    await waitFor(() => {
+      expect(mockApiGet.mock.calls.some(([url]) => String(url).startsWith('/partners?'))).toBe(true)
+    })
+    const listUrls = mockApiGet.mock.calls
+      .map(([url]) => String(url))
+      .filter((url) => url === '/partners' || url.startsWith('/partners?'))
+    expect(listUrls).not.toContain('/partners')
+    expect(listUrls).not.toHaveLength(0)
+    for (const url of listUrls) {
+      expect(new URL(url, 'http://autoerp.test').searchParams.get('type')).toBe('customer')
+    }
+  })
+
+  it('submits the selected customer partner_id unchanged', async () => {
+    render(<VehicleForm />, { wrapper: wrapper(createClient()) })
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Owner' }))
+    await userEvent.click(await screen.findByRole('option', { name: /Partner A/ }))
+    await userEvent.type(screen.getByLabelText(/License Plate/), '123-TUN-456')
+    await userEvent.type(screen.getByLabelText(/Brand/), 'Renault')
+    await userEvent.type(screen.getByLabelText(/Model/), 'Clio')
+    await userEvent.click(screen.getByRole('button', { name: 'actions.save' }))
+
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith('/vehicles', expect.objectContaining({
+        partner_id: 'partner-1',
+      }))
+    })
   })
 
   it('invalidates create vehicles list for only active tenant (.758)', async () => {

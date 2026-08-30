@@ -84,6 +84,7 @@ final class ImportRowWarningsTest extends TestCase
         $service = app(ImportService::class);
         $job = $service->createJob(
             tenantId: $this->tenant->id,
+            companyId: $this->company->id,
             userId: $this->user->id,
             type: ImportType::Partners,
             filename: 'partners.csv',

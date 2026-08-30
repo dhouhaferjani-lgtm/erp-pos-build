@@ -282,6 +282,7 @@ class ImportPreviewTest extends TestCase
 
         $job = $importService->createJob(
             tenantId: $otherTenant->id,
+            companyId: $otherCompany->id,
             userId: $otherUser->id,
             type: ImportType::Partners,
             filename: 'other.csv',

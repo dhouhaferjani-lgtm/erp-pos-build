@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentIndexNames;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\DocumentStatusService;
@@ -153,7 +154,7 @@ final class IncomeService
         return DB::transaction(function () use ($income, $user): Document {
             // N-6 fix round r1 / fiscal gate F-6 — single write path.
             $this->documentStatus->transition($income, DocumentStatus::Posted, [
-                'document_number' => $this->generateIncomeNumber($income->tenant_id),
+                'document_number' => $this->generateIncomeNumber($income->tenant_id, $income->company_id),
             ]);
 
             $metadata = $income->incomeMetadata;
@@ -201,40 +202,26 @@ final class IncomeService
     }
 
     /**
-     * Allocate the next income document number for the tenant.
+     * Allocate the next income document number for one company.
      *
-     * LEDGER C-27 (Session B2, 2026-08-25) — the Income twin of the
-     * journal-entry defect, fixed in the same shape Q-11 applied to
-     * `ExpenseService::generateExpenseNumber()`:
-     *
-     * 1. SCOPE. The scan is TENANT-scoped, not company-scoped, because the only
-     *    unique index on the column is
-     *    `documents_tenant_id_type_document_number_unique` on
-     *    `(tenant_id, type, document_number)`. A company-scoped max+1 is NARROWER
-     *    than the constraint it must satisfy: in a tenant with two companies, the
-     *    second company's first income post minted `INC-YYYY-000001`, which the
-     *    first company already held — an unconditional unique violation that rolled
-     *    back the whole post transaction (GL entry + treasury movement).
-     *    Consequence of the widening: sequential income numbers now interleave
-     *    across the companies of a tenant. The index is deliberately untouched.
-     *
-     * 2. RACE. There was NO lock at all. The max+1 read is now serialised by a
-     *    transaction-scoped advisory lock keyed on the same (tenant) scope as the
-     *    scan. The single call site (`post()`) runs inside `DB::transaction`, so
-     *    the lock is held until that transaction commits.
+     * `DocumentIndexNames::COMPANY_TYPE_NUMBER_UNIQUE` permits sibling companies
+     * to own the same number. The max+1 scan and PostgreSQL advisory lock therefore
+     * share company scope: companies do not interleave, while concurrent posts in
+     * one company remain serialised until the surrounding transaction commits.
      */
-    private function generateIncomeNumber(string $tenantId): string
+    private function generateIncomeNumber(string $tenantId, string $companyId): string
     {
         if (DB::connection()->getDriverName() === 'pgsql') {
             DB::statement(
                 'SELECT pg_advisory_xact_lock(hashtextextended(?, 0))',
-                ["income_number:{$tenantId}"],
+                ["income_number:{$companyId}"],
             );
         }
 
         $year = date('Y');
         $lastNumber = Document::query()
             ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->where('type', DocumentType::Income)
             ->where('document_number', 'like', "INC-{$year}-%")
             ->orderByDesc('document_number')

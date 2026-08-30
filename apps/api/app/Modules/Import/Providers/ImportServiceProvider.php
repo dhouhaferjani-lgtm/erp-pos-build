@@ -7,11 +7,14 @@ namespace App\Modules\Import\Providers;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
+use App\Modules\Import\Infrastructure\Commands\PurgeExpiredImportArtifactsCommand;
+use App\Modules\Import\Infrastructure\Commands\ReapStuckImportsCommand;
 use App\Modules\Import\Presentation\Controllers\ImportController;
 use App\Modules\Import\Presentation\Controllers\MigrationWizardController;
 use App\Modules\Import\Services\AccountingBalancesPhase;
 use App\Modules\Import\Services\CoalescingAttributeMerger;
 use App\Modules\Import\Services\DuplicateCensusService;
+use App\Modules\Import\Services\ImportJobClaimService;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Import\Services\MigrationWizardService;
 use App\Modules\Import\Services\NumericFieldNormalizer;
@@ -64,6 +67,7 @@ class ImportServiceProvider extends ServiceProvider
                 $app->make(ProductPlacementImportService::class),
                 $app->make(UnitResolver::class),
                 $app->make(DuplicateCensusService::class),
+                $app->make(ImportJobClaimService::class),
             );
         });
 
@@ -75,6 +79,13 @@ class ImportServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->registerRoutes();
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                PurgeExpiredImportArtifactsCommand::class,
+                ReapStuckImportsCommand::class,
+            ]);
+        }
     }
 
     private function registerRoutes(): void
@@ -86,12 +97,14 @@ class ImportServiceProvider extends ServiceProvider
                 Route::get('/imports', [ImportController::class, 'index']);
                 Route::post('/imports', [ImportController::class, 'store']);
                 Route::get('/imports/{id}', [ImportController::class, 'show']);
+                Route::delete('/imports/{id}', [ImportController::class, 'destroy']);
                 Route::patch('/imports/{id}/options', [ImportController::class, 'updateOptions']);
                 Route::get('/imports/{id}/preview', [ImportController::class, 'preview']);
                 Route::get('/imports/{id}/errors', [ImportController::class, 'errors']);
                 Route::get('/imports/{id}/error-summary', [ImportController::class, 'errorSummary']);
                 Route::post('/imports/{id}/execute', [ImportController::class, 'execute']);
                 Route::get('/imports/{id}/failed-rows.csv', [ImportController::class, 'downloadFailedRows']);
+                Route::get('/imports/{id}/source-file', [ImportController::class, 'downloadSourceFile']);
                 Route::get('/imports/{id}/result-workbook', [ImportController::class, 'downloadResultWorkbook']);
 
                 // Migration wizard routes

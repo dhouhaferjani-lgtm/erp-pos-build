@@ -51,7 +51,7 @@ final class SendEnrichmentFeedbackJob implements ShouldQueue
                 $this->notes,
             );
 
-            if (! $sent) {
+            if (! $sent && config('services.platform.push_enabled', true) !== false) {
                 throw new RuntimeException("enrichment feedback delivery failed for {$this->trackingId}");
             }
         } finally {
