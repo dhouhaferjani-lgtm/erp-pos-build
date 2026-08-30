@@ -377,10 +377,10 @@ test.describe('automated onboarding campaign', () => {
     expect(products, 'four products imported').toHaveLength(4)
 
     const expectedUnits = new Map([
-      [`BATCH-${runId}`, 'pcs'],
+      [`BATCH-${runId}`, 'pc'],
       [`UNIT-${runId}`, 'kg'],
-      [`BLANK-${runId}`, ''],
-      [`ZERO-${runId}`, 'pcs'],
+      [`BLANK-${runId}`, 'pc'] /* blank unit → company fallback `pc` (RUL-4, G-4 UnitResolver) */,
+      [`ZERO-${runId}`, 'pc'],
     ])
     for (const product of products) {
       const sku = stringField(product, 'sku')
@@ -399,7 +399,7 @@ test.describe('automated onboarding campaign', () => {
     const stockAfterRerun = await stock(page, companyId, journeyState.productId, locationId)
     assertMoneyEqual(stringField(stockAfterRerun, 'quantity'), '20.000')
     await whereDidItLand('L2', 'catalog and stock', [
-      async () => 'products=4; unit strings pcs/kg/blank/pcs',
+      async () => 'products=4; unit strings pc/kg/pc(defaulted)/pc',
       async () => 'MAIN opening quantity=20.000; rerun quantity=20.000',
     ])
 

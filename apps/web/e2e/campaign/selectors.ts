@@ -97,7 +97,10 @@ export const testIds = {
 } as const
 
 function testIdOrRole(page: Page, testId: string, roleLocator: Locator): Locator {
-  return page.getByTestId(testId).or(roleLocator)
+  // Testid-first with a label fallback. Once the testid ships (Session G G-4), BOTH halves match the same
+  // step and `.or()` resolves to two elements — strict mode then fails every `toBeVisible`/click.
+  // `.first()` keeps the contract (either surface proves the step) without the strict-mode trip.
+  return page.getByTestId(testId).or(roleLocator).first()
 }
 
 export function campaignSelectors(page: Page) {
@@ -163,22 +166,22 @@ export function campaignSelectors(page: Page) {
       step: {
         upload: page.getByTestId('import-wizard-step-upload').or(
           page.getByRole('heading', { name: /upload your file|téléverser.*fichier/i }),
-        ),
+        ).first(),
         mapping: page.getByTestId('import-wizard-step-mapping').or(
         page.getByRole('heading', { name: /map your columns|associer.*colonnes|mappez.*colonnes/i }),
-        ),
+        ).first(),
         options: page.getByTestId('import-wizard-step-options').or(
           page.getByRole('heading', { name: /stock location|emplacement.*stock|which price is authoritative|quel prix.*référence|quel prix.*foi/i }),
-        ),
+        ).first(),
         preview: page.getByTestId('import-wizard-step-preview').or(
           page.getByRole('heading', { name: /review validation results|examiner.*validation|vérifi.*données/i }),
-        ),
+        ).first(),
         execute: page.getByTestId('import-wizard-step-execute').or(
           page.getByRole('heading', { name: /import your data|importer.*données|importez.*données/i }),
-        ),
+        ).first(),
         complete: page.getByTestId('import-wizard-step-complete').or(
           page.getByRole('heading', { name: /import complete|importation terminée/i }),
-        ),
+        ).first(),
       },
       refusal: page.getByRole('alert'),
     },
