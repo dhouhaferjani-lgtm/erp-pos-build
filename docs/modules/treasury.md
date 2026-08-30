@@ -264,6 +264,33 @@ PaymentRepository::create([
 ]);
 ```
 
+#### Legacy repository census and normalisation
+
+Legacy repository repair is operator-driven and company-scoped. Run the read-only census first, then dry-run the normaliser, inspect every proposed action or refusal, and only then repeat it with `--apply`:
+
+```bash
+php artisan treasury:census-repositories --tenant=<tenant-uuid> --company=<company-uuid>
+php artisan treasury:normalise-repositories --tenant=<tenant-uuid> --company=<company-uuid>
+php artisan treasury:normalise-repositories --tenant=<tenant-uuid> --company=<company-uuid> --apply
+```
+
+Use `--all-companies` instead of `--company` for an explicitly selected tenant scope. The census also supports `--json`. Findings do not make the census fail; incomplete coverage does. The normaliser refuses money-bearing surplus safes and fails that company while continuing the rest of an `--all-companies` run.
+
+The reference census is exhaustive for all 16 direct repository-id columns across 14 tenant tables: repository movements, payments, repository adjustments, bank statements and lines, expense and income metadata, payment-method defaults, payment-instrument custody (`repository_id`) and deposit destination (`deposited_to_id`), instrument event source/destination repositories, instrument remittances, statement import profiles, bank reconciliations, and expense recurrence templates. Add any future direct `payment_repositories` reference to `RepositoryCensusService` in the same change as its migration.
+
+Per the SG-3c-FU tenancy ruling, console commands retain the established per-company `CompanyContext` binding; `RepositoryCensusService` decisions are context-independent and resolve scale from each repository currency explicitly.
+
+| Census code | Meaning | Operator action |
+|---|---|---|
+| `repo.cash.location_null` | An active cash register or safe has no location; the finding includes the N-12 `ambiguous` or `attributable` verdict. | Use the N-12 migration only where attribution is unambiguous. Ambiguous companies need an owner ruling and approved one-off data fix. |
+| `repo.safe.count_ne_1` | The company does not have exactly one active safe. | Review the safe findings below; the normaliser only handles proven-clean surplus rows. |
+| `repo.safe.gl_unlinked` | An active safe is invisible to tender resolution because it has no GL account. | The normaliser links only the canonical safe to the company's cash-purpose account. If that account is absent, repair the chart first. |
+| `repo.safe.duplicate_clean` | A surplus safe has zero balance, no movements, and no references. | The normaliser may deactivate it. |
+| `repo.duplicate.money_bearing` | A surplus safe has a non-zero balance, a movement, or a treasury reference. | First post a `RepositoryTransfer` through `RepositoryTransferService` from this safe to the canonical safe, then re-run. The command never moves money. |
+| `repo.duplicate.per_location_type` | More than one active GL-linked drawer of one type exists at one location. | Review and repair manually; the normaliser does not auto-repair this pre-index legacy state. |
+
+Drawer `payment_repositories.location_id` drift is not fixed by either command. It is also not fixed by `treasury:backfill-location-attribution`, which reads repository attribution and copies it to payments and payment instruments; it never attributes the repository itself.
+
 ---
 
 ## Payment Instrument Lifecycle

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Treasury;
 
+use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
@@ -125,5 +126,110 @@ final class BackfillLocationAttributionTest extends TestCase
     {
         $this->artisan('treasury:backfill-location-attribution')->assertFailed();
         $this->artisan('treasury:backfill-location-attribution', ['--company' => (string) Str::uuid()])->assertFailed();
+    }
+
+    public function test_legacy_unattributed_drawers_leave_repositories_and_documents_unattributed_on_re_run(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => $tenant->id, 'currency' => 'TND']);
+        Location::factory()->count(2)->create(['company_id' => $company->id]);
+        $cashAccount = Account::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+        ]);
+        $repositories = collect(['CASH-01', 'CASH-02'])->map(
+            fn (string $code): PaymentRepository => PaymentRepository::factory()->for($company)->create([
+                'tenant_id' => $tenant->id,
+                'code' => $code,
+                'location_id' => null,
+                'gl_account_id' => $cashAccount->id,
+            ]),
+        );
+        $method = PaymentMethod::factory()->for($company)->create(['tenant_id' => $tenant->id]);
+        $partner = Partner::factory()->for($company)->create(['tenant_id' => $tenant->id]);
+        $user = User::factory()->create(['tenant_id' => $tenant->id]);
+        $payment = Payment::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'partner_id' => $partner->id,
+            'payment_method_id' => $method->id,
+            'repository_id' => $repositories->firstOrFail()->id,
+            'location_id' => null,
+            'origin' => PaymentOrigin::WebAdmin,
+            'status' => PaymentStatus::Completed,
+            'payment_type' => PaymentType::Advance,
+        ]);
+        $instrument = PaymentInstrument::create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'payment_method_id' => $method->id,
+            'reference' => 'LEGACY-NULL-DRAWER',
+            'partner_id' => $partner->id,
+            'amount' => '10.000',
+            'currency' => 'TND',
+            'received_date' => now()->toDateString(),
+            'status' => InstrumentStatus::Received,
+            'direction' => InstrumentDirection::Inbound,
+            'kind' => InstrumentKind::Cheque,
+            'origin' => InstrumentOrigin::Web,
+            'repository_id' => $repositories->last()->id,
+            'location_id' => null,
+            'created_by' => $user->id,
+        ]);
+
+        foreach (range(1, 2) as $_run) {
+            $this->artisan('treasury:backfill-location-attribution', ['--company' => $company->id])
+                ->expectsOutputToContain('Backfilled 0 payment(s) and 0 instrument(s)')
+                ->assertSuccessful();
+
+            self::assertSame(2, PaymentRepository::query()
+                ->where('company_id', $company->id)
+                ->whereNull('location_id')
+                ->count());
+            self::assertNull($payment->fresh()->location_id);
+            self::assertNull($instrument->fresh()->location_id);
+        }
+    }
+
+    public function test_all_companies_processes_each_company_in_the_selected_tenant(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $payments = collect(['A', 'B'])->map(function (string $suffix) use ($tenant): Payment {
+            $company = Company::factory()->create(['tenant_id' => $tenant->id, 'currency' => 'TND']);
+            $location = Location::factory()->create(['company_id' => $company->id]);
+            $repository = PaymentRepository::factory()->for($company)->create([
+                'tenant_id' => $tenant->id,
+                'code' => 'CASH-'.$suffix,
+                'location_id' => $location->id,
+            ]);
+            $method = PaymentMethod::factory()->for($company)->create(['tenant_id' => $tenant->id]);
+            $partner = Partner::factory()->for($company)->create(['tenant_id' => $tenant->id]);
+
+            return Payment::factory()->create([
+                'tenant_id' => $tenant->id,
+                'company_id' => $company->id,
+                'partner_id' => $partner->id,
+                'payment_method_id' => $method->id,
+                'repository_id' => $repository->id,
+                'location_id' => null,
+                'origin' => PaymentOrigin::WebAdmin,
+                'status' => PaymentStatus::Completed,
+                'payment_type' => PaymentType::Advance,
+            ]);
+        });
+
+        $this->artisan('treasury:backfill-location-attribution', [
+            '--tenant' => $tenant->id,
+            '--all-companies' => true,
+        ])->assertSuccessful();
+
+        foreach ($payments as $payment) {
+            self::assertNotNull($payment->fresh()->location_id);
+        }
+
+        $this->artisan('treasury:backfill-location-attribution', [
+            '--company' => $payments->firstOrFail()->company_id,
+            '--all-companies' => true,
+        ])->assertFailed();
     }
 }
