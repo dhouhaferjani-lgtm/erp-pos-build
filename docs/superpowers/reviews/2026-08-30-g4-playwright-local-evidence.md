@@ -23,3 +23,20 @@ Recorded correctly: `Kg` → `unit_unknown` with the accepted-code list (`import
       4 passed (1.1m)
 
 Screenshots: scratchpad/shots2 (session-local). Follow-up (not blocking): surface `unit_unknown` at preview time, not only at execute.
+
+## Gate r8 → fix round 7 → Run 3 (5/5 green, incl. sparse-row override)
+Gate r8 found G4-R8-01 (HIGH): a purchase-price-only or margin-only override row made the resolver return null and the merger cleared the stored sale price. Fix 7: derived sale_price is written only on a non-null resolver result; the resolver sees incoming cells coalesced over stored cost/tax (margin-only derives from the stored purchase price); stored TTC sale_price stays authoritative on cost-only / tax-only rows; phantom `margin_percent` removed. New sample `products-v3.csv` (cost-only, margin-only, tax-only rows; the `margin` column triggers the price-authority Options step, kept at the TTC default).
+
+    ===== v1 COUNTS ===== {"imported":5,"skipped":1,"failed":1}
+      ✓  1 [chromium] › e2e-local/g4-imports-v2.spec.ts:122:3 › G-4 after fix round 6 — real wizard on a fresh tenant › v1: units + in-file pair + blank SKUs (18.9s)
+    ===== v2-override COUNTS ===== {"imported":5,"skipped":0,"failed":0}
+    HAR-200 before/after {"before":{"sale_price":"4.165","purchase_price":"2.000"},"after":{"sale_price":"4.462","purchase_price":"2.000"}}
+      ✓  2 [chromium] › e2e-local/g4-imports-v2.spec.ts:134:3 › G-4 after fix round 6 — real wizard on a fresh tenant › v2 OVERRIDE: HT-only price change with blank purchase price updates the price (20.9s)
+    ===== v2-skip COUNTS ===== {"imported":0,"skipped":5,"failed":0}
+      ✓  3 [chromium] › e2e-local/g4-imports-v2.spec.ts:162:3 › G-4 after fix round 6 — real wizard on a fresh tenant › v2 SKIP: nothing changes, tiles show 0 / 5 / 0 (24.5s)
+    ===== v3-sparse COUNTS ===== {"imported":3,"skipped":0,"failed":0}
+    v3 {"har":["4.462","2.000","4.462","2.250"],"csc":["4.998","2.800","4.331","2.800"],"wat":["1.190","19.00","1.190","7.00"]}
+      ✓  4 [chromium] › e2e-local/g4-imports-v2.spec.ts:173:3 › G-4 after fix round 6 — real wizard on a fresh tenant › v3 OVERRIDE sparse rows: cost-only keeps price; margin-only derives from stored cost; tax-only keeps price (43.2s)
+    ===== cust COUNTS ===== {"imported":2,"skipped":0,"failed":0}
+      ✓  5 [chromium] › e2e-local/g4-imports-v2.spec.ts:203:3 › G-4 after fix round 6 — real wizard on a fresh tenant › customers via parties (23.9s)
+      5 passed (3.6m)
