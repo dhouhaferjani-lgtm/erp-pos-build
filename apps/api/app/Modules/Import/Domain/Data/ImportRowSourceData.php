@@ -9,13 +9,11 @@ final readonly class ImportRowSourceData
     /**
      * @param  array<string, string>  $values
      * @param  list<string>  $provided
-     *                                  `_results` is the flat map written by the current phase writers.
-     * @param  array<string, string>  $results
      */
     public function __construct(
         public array $values,
         public array $provided,
-        public array $results,
+        public ImportRowResultsData $results,
         public ?ImportPlacementPlanData $placementPlan,
     ) {}
 
@@ -47,31 +45,10 @@ final readonly class ImportRowSourceData
             }
         }
 
-        $results = [];
         $rawResults = $payload['_results'] ?? [];
-        if (is_array($rawResults)) {
-            foreach ($rawResults as $phase => $breadcrumbs) {
-                if (! is_string($phase)) {
-                    continue;
-                }
-
-                if (is_string($breadcrumbs)) {
-                    $results[$phase] = $breadcrumbs;
-
-                    continue;
-                }
-
-                if (! is_array($breadcrumbs)) {
-                    continue;
-                }
-
-                foreach ($breadcrumbs as $name => $detail) {
-                    if (is_string($name) && is_string($detail)) {
-                        $results[$phase.'.'.$name] = $detail;
-                    }
-                }
-            }
-        }
+        $results = is_array($rawResults)
+            ? ImportRowResultsData::fromStorage($rawResults)
+            : new ImportRowResultsData([]);
 
         $rawPlacement = $payload['_placement_plan'] ?? null;
         $placementPlan = is_array($rawPlacement)
@@ -89,7 +66,7 @@ final readonly class ImportRowSourceData
         $storage = [
             ...$this->values,
             '_provided' => $this->provided,
-            '_results' => $this->results,
+            '_results' => $this->results->toStorage(),
         ];
         if ($this->placementPlan !== null) {
             $storage['_placement_plan'] = $this->placementPlan->toStorage();

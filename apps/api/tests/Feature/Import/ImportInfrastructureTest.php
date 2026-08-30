@@ -10,6 +10,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Domain\Enums\ImportRowOutcome;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
@@ -171,7 +172,12 @@ class ImportInfrastructureTest extends TestCase
 
         $this->assertEquals($job->id, $row->import_job_id);
         $this->assertEquals(1, $row->row_number);
-        $this->assertEquals(['name' => 'Acme Corp', 'email' => 'acme@example.com'], $row->data);
+        $this->assertSame('Acme Corp', $row->data['name']);
+        $this->assertSame('acme@example.com', $row->data['email']);
+        $this->assertIsArray($row->data['_provided']);
+        $this->assertSame([], $row->data['_provided']);
+        $this->assertIsArray($row->data['_results']);
+        $this->assertSame([], $row->data['_results']);
         $this->assertTrue($row->is_valid);
     }
 
@@ -485,6 +491,23 @@ class ImportInfrastructureTest extends TestCase
             'successful_rows' => 48,
             'failed_rows' => 2,
         ]);
+
+        for ($rowNumber = 1; $rowNumber <= 100; $rowNumber++) {
+            $outcome = match (true) {
+                $rowNumber <= 48 => ImportRowOutcome::Imported,
+                $rowNumber <= 50 => ImportRowOutcome::Failed,
+                default => ImportRowOutcome::Pending,
+            };
+
+            ImportRow::create([
+                'import_job_id' => $job->id,
+                'row_number' => $rowNumber,
+                'data' => ['name' => "Partner {$rowNumber}"],
+                'is_valid' => $outcome !== ImportRowOutcome::Failed,
+                'is_imported' => $outcome === ImportRowOutcome::Imported,
+                'outcome' => $outcome,
+            ]);
+        }
 
         $response = $this->actingAs($this->user, 'sanctum')
             ->getJson("/api/v1/imports/{$job->id}");

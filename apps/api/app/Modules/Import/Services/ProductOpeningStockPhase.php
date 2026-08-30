@@ -211,8 +211,8 @@ final class ProductOpeningStockPhase
     /**
      * A non-blocking expiry note.
      *
-     * Reported under its OWN result key, never `opening_stock`: `finalizeImport()`
-     * array_merges each result into `$row->data['_results']`, so reusing
+     * Reported under its OWN breadcrumb, never `opening_stock`: `finalizeImport()`
+     * merges each result into `$row->data['_results']['opening_stock']`, so reusing
      * `opening_stock` here would overwrite the `ok` the posting itself earned and
      * the workbook would read as if the stock had not opened.
      *

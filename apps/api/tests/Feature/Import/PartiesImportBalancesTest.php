@@ -154,7 +154,7 @@ final class PartiesImportBalancesTest extends TestCase
         $rowOne = $job->rows()->where('row_number', 1)->firstOrFail()->refresh();
         $rowFour = $job->rows()->where('row_number', 4)->firstOrFail()->refresh();
         $this->assertSame('code_generated', $rowOne->warnings[0]['code'] ?? null);
-        $this->assertSame('ok', $rowOne->data['_results']['ar_balance']);
+        $this->assertSame('ok', $rowOne->data['_results']['parties_balances']['ar_balance']);
         $this->assertNull($rowFour->warnings);
         $this->assertSame([], $rowFour->data['_results']);
     }
@@ -183,7 +183,7 @@ final class PartiesImportBalancesTest extends TestCase
         $this->assertIsArray($row->warnings);
         $this->assertArrayHasKey(0, $row->warnings);
         $this->assertSame('balance_not_posted', $row->warnings[0]['code']);
-        $this->assertSame('error: batch_conflict', $row->data['_results']['ar_balance']);
+        $this->assertSame('error: batch_conflict', $row->data['_results']['parties_balances']['ar_balance']);
     }
 
     public function test_finalize_import_retry_does_not_duplicate_posted_documents(): void

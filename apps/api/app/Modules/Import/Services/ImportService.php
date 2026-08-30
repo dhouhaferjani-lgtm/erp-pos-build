@@ -9,6 +9,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Import\Domain\Data\ClaimResult;
 use App\Modules\Import\Domain\Data\ImportCountersData;
 use App\Modules\Import\Domain\Data\ImportErrorDetailData;
+use App\Modules\Import\Domain\Data\ImportRowResultsData;
 use App\Modules\Import\Domain\Enums\DuplicateBucket;
 use App\Modules\Import\Domain\Enums\DuplicatePolicy;
 use App\Modules\Import\Domain\Enums\ImportErrorCode;
@@ -776,7 +777,9 @@ final class ImportService
             }
 
             $data = $row->data;
-            $data['_results'] = array_merge($data['_results'] ?? [], $result['results']);
+            $data['_results'] = ImportRowResultsData::fromStorage($data['_results'] ?? [])
+                ->merged($this->finalizationResultPhase($job->type), $result['results'])
+                ->toStorage();
             $openingLocked = in_array('error: opening_locked', $result['results'], true);
             $update = ['data' => $data, 'warnings' => $warnings === [] ? null : $warnings];
             if ($openingLocked) {
@@ -790,6 +793,16 @@ final class ImportService
             }
             $row->update($update);
         }
+    }
+
+    private function finalizationResultPhase(ImportType $type): string
+    {
+        return match ($type) {
+            ImportType::Parties => ImportRowResultsData::PHASE_PARTIES_BALANCES,
+            ImportType::Products => ImportRowResultsData::PHASE_OPENING_STOCK,
+            ImportType::OpeningBalances => ImportRowResultsData::PHASE_ACCOUNTING_BALANCES,
+            default => ImportRowResultsData::PHASE_LEGACY,
+        };
     }
 
     /**
@@ -866,7 +879,9 @@ final class ImportService
         // here was resolved company-only.
         $category = $this->resolveRowCategory($companyId, $data);
         if ($category !== null) {
-            $data['_results'] = array_merge($data['_results'] ?? [], ['category' => $category->outcome->value]);
+            $data['_results'] = ImportRowResultsData::fromStorage($data['_results'] ?? [])
+                ->merged(ImportRowResultsData::PHASE_PRODUCT, ['category' => $category->outcome->value])
+                ->toStorage();
         }
 
         $tax = $this->resolveProductTax($company, $data, $category?->categoryId);
@@ -885,7 +900,9 @@ final class ImportService
             // and a flat `default` stopped being true the moment the category
             // became a real source (W2-5) — which is the case this lane exists
             // to fix, so it is the case the breadcrumb must get right.
-            $data['_results'] = array_merge($data['_results'] ?? [], ['tax_source' => $tax->source->value]);
+            $data['_results'] = ImportRowResultsData::fromStorage($data['_results'] ?? [])
+                ->merged(ImportRowResultsData::PHASE_PRODUCT, ['tax_source' => $tax->source->value])
+                ->toStorage();
         }
 
         $row->update(['data' => $data]);

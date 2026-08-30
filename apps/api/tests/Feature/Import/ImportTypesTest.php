@@ -428,7 +428,7 @@ class ImportTypesTest extends TestCase
 
         $row = $job->rows()->where('row_number', 1)->firstOrFail();
         $this->assertSame('balance_not_posted', ($row->warnings ?? [])[0]['code'] ?? null);
-        $this->assertSame('error: validation_failed', $row->data['_results']['gl_balance'] ?? null);
+        $this->assertSame('error: validation_failed', $row->data['_results']['accounting_balances']['gl_balance'] ?? null);
         $this->assertFalse($row->is_imported);
         $this->assertSame(0, $job->successful_rows);
 

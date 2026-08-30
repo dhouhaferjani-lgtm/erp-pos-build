@@ -201,10 +201,10 @@ final class ProductsImportPipelineTest extends TestCase
         $this->assertInstanceOf(ImportJob::class, $job);
         $rows = $job->rows()->orderBy('row_number')->get()->keyBy('row_number');
 
-        $this->assertSame('ok', $rows[1]->data['_results']['opening_stock'] ?? null);
+        $this->assertSame('ok', $rows[1]->data['_results']['opening_stock']['opening_stock'] ?? null);
         // Gate r1 F-4: the breadcrumb names the LEVEL now, not just "not from the
         // file". This row carries no category, so the company default answered.
-        $this->assertSame('company_default', $rows[5]->data['_results']['tax_source'] ?? null);
+        $this->assertSame('company_default', $rows[5]->data['_results']['product']['tax_source'] ?? null);
         $this->assertSame('qty_without_cost', $rows[2]->warnings[0]['code'] ?? null);
         $this->assertSame('quantity_ignored_service', $rows[3]->warnings[0]['code'] ?? null);
         $this->assertSame('opening_exists', $rows[4]->warnings[0]['code'] ?? null);
@@ -410,7 +410,7 @@ final class ProductsImportPipelineTest extends TestCase
         );
 
         $row = ImportJob::query()->whereKey($jobId)->firstOrFail()->rows()->firstOrFail();
-        $this->assertSame('ok', $row->data['_results']['opening_stock'] ?? null);
+        $this->assertSame('ok', $row->data['_results']['opening_stock']['opening_stock'] ?? null);
         $this->assertNull($row->warnings);
     }
 
@@ -445,7 +445,7 @@ final class ProductsImportPipelineTest extends TestCase
             $this->lotExpiryForSku('LOT-DATED'),
             'the expiry printed on the sheet must reach the opening lot',
         );
-        $this->assertSame('ok', $this->onlyRowOf($jobId)->data['_results']['opening_stock'] ?? null);
+        $this->assertSame('ok', $this->onlyRowOf($jobId)->data['_results']['opening_stock']['opening_stock'] ?? null);
     }
 
     public function test_an_omitted_expiry_column_leaves_the_opening_lot_undated_rather_than_inventing_one(): void
@@ -609,7 +609,7 @@ final class ProductsImportPipelineTest extends TestCase
         $this->assertSame($past, $batch->expiry_date?->toDateString(), 'the past date is honoured, not silently dropped');
         $this->assertTrue($batch->isExpired(), 'and the lot is genuinely expired — which is why the row must warn');
 
-        $this->assertSame('ok', $this->onlyRowOf($jobId)->data['_results']['opening_stock'] ?? null, 'the stock still opens');
+        $this->assertSame('ok', $this->onlyRowOf($jobId)->data['_results']['opening_stock']['opening_stock'] ?? null, 'the stock still opens');
         $this->assertContains(
             'expiry_in_past',
             $this->warningCodesOf($jobId),
@@ -858,9 +858,9 @@ final class ProductsImportPipelineTest extends TestCase
         // Row 1 created the category -> reported. Row 2 reused it -> matched, no warning.
         $this->assertSame('category_created', $rows[1]->warnings[0]['code'] ?? null);
         $this->assertStringContainsString('Soins Bebe', (string) ($rows[1]->warnings[0]['detail'] ?? ''));
-        $this->assertSame('created', $rows[1]->data['_results']['category'] ?? null);
+        $this->assertSame('created', $rows[1]->data['_results']['product']['category'] ?? null);
         $this->assertNull($rows[2]?->warnings);
-        $this->assertSame('matched', $rows[2]->data['_results']['category'] ?? null);
+        $this->assertSame('matched', $rows[2]->data['_results']['product']['category'] ?? null);
         $this->assertSame('category_created', $rows[3]->warnings[0]['code'] ?? null);
 
         // ...and it reaches the operator's result workbook, which is the only
@@ -1233,9 +1233,9 @@ final class ProductsImportPipelineTest extends TestCase
 
         $rows = ImportJob::query()->whereKey($jobId)->firstOrFail()->rows()->orderBy('row_number')->get()->keyBy('row_number');
 
-        $this->assertSame('category_default', $rows[1]->data['_results']['tax_source'] ?? null);
-        $this->assertSame('company_default', $rows[2]->data['_results']['tax_source'] ?? null);
-        $this->assertSame('category_default', $rows[3]->data['_results']['tax_source'] ?? null);
+        $this->assertSame('category_default', $rows[1]->data['_results']['product']['tax_source'] ?? null);
+        $this->assertSame('company_default', $rows[2]->data['_results']['product']['tax_source'] ?? null);
+        $this->assertSame('category_default', $rows[3]->data['_results']['product']['tax_source'] ?? null);
     }
 
     public function test_re_importing_the_same_categories_reuses_them_without_duplicates_or_warnings(): void
@@ -1280,9 +1280,9 @@ final class ProductsImportPipelineTest extends TestCase
             }
 
             $passRows = ImportJob::query()->whereKey($jobId)->firstOrFail()->rows()->orderBy('row_number')->get()->keyBy('row_number');
-            $this->assertSame('matched', $passRows[1]->data['_results']['category'] ?? null);
+            $this->assertSame('matched', $passRows[1]->data['_results']['product']['category'] ?? null);
             $this->assertNull($passRows[1]?->warnings, "pass {$pass}: an exact-name match must stay silent");
-            $this->assertSame('matched_by_slug', $passRows[2]->data['_results']['category'] ?? null);
+            $this->assertSame('matched_by_slug', $passRows[2]->data['_results']['product']['category'] ?? null);
             $this->assertSame('category_matched_by_slug', $passRows[2]->warnings[0]['code'] ?? null);
         }
     }
@@ -1322,7 +1322,7 @@ final class ProductsImportPipelineTest extends TestCase
 
         $row = ImportJob::query()->whereKey($jobId)->firstOrFail()->rows()->firstOrFail();
         $this->assertNull($row->import_error, 'a trashed slug holder must not poison the row transaction');
-        $this->assertSame('restored', $row->data['_results']['category'] ?? null);
+        $this->assertSame('restored', $row->data['_results']['product']['category'] ?? null);
         $this->assertSame('category_restored', $row->warnings[0]['code'] ?? null);
         // The operator must be told a deleted category came back WITH its policy:
         // categories carry default_tax_rate / margin / discount / restock policy.
@@ -1397,16 +1397,16 @@ final class ProductsImportPipelineTest extends TestCase
         $this->assertSame(2, Category::where('company_id', $this->company->id)->count());
 
         $rows = ImportJob::query()->whereKey($jobId)->firstOrFail()->rows()->orderBy('row_number')->get()->keyBy('row_number');
-        $this->assertSame('created', $rows[1]->data['_results']['category'] ?? null);
-        $this->assertSame('matched_by_slug', $rows[2]->data['_results']['category'] ?? null);
+        $this->assertSame('created', $rows[1]->data['_results']['product']['category'] ?? null);
+        $this->assertSame('matched_by_slug', $rows[2]->data['_results']['product']['category'] ?? null);
         $this->assertSame('category_matched_by_slug', $rows[2]->warnings[0]['code'] ?? null);
 
         $detail = (string) ($rows[2]->warnings[0]['detail'] ?? '');
         $this->assertStringContainsString('Creme', $detail, 'the warning must name the incoming value');
         $this->assertStringContainsString('Crème', $detail, 'and the category it was merged into');
 
-        $this->assertSame('created', $rows[3]->data['_results']['category'] ?? null);
-        $this->assertSame('matched_by_slug', $rows[4]->data['_results']['category'] ?? null);
+        $this->assertSame('created', $rows[3]->data['_results']['product']['category'] ?? null);
+        $this->assertSame('matched_by_slug', $rows[4]->data['_results']['product']['category'] ?? null);
         $this->assertSame('category_matched_by_slug', $rows[4]->warnings[0]['code'] ?? null);
 
         // An EXACT name hit stays silent — no new noise on ordinary re-imports.

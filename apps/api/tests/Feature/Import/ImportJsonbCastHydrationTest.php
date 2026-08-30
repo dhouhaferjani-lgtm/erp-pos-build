@@ -70,8 +70,52 @@ final class ImportJsonbCastHydrationTest extends TestCase
         $this->assertArrayNotHasKey('ignored', $warnings[0]);
     }
 
-    public function test_results_and_placement_plan_round_trip_through_the_typed_source_shape(): void
+    public function test_legacy_nested_results_without_provided_round_trip_losslessly(): void
     {
+        $legacyResults = [
+            'accounting_balances' => [
+                'gl_balance' => 'error: file_not_posted',
+            ],
+        ];
+
+        $row = $this->row([
+            'account_code' => '411000',
+            '_results' => $legacyResults,
+        ], null, null);
+
+        $this->assertSame([], $row->data['_provided']);
+        $this->assertSame($legacyResults, $row->data['_results']);
+    }
+
+    public function test_legacy_flat_breadcrumbs_hydrate_into_the_exact_nested_schema(): void
+    {
+        $legacyResults = [
+            'category' => 'restored',
+            'tax_source' => 'category_default',
+        ];
+
+        $row = $this->row([
+            'name' => 'Legacy product',
+            '_results' => $legacyResults,
+        ], null, null);
+
+        $this->assertSame([
+            'product' => $legacyResults,
+        ], $row->data['_results']);
+    }
+
+    public function test_current_nested_results_and_placement_plan_round_trip_losslessly(): void
+    {
+        $results = [
+            'product' => [
+                'category' => 'matched_by_slug',
+                'tax_source' => 'company_default',
+            ],
+            'opening_stock' => [
+                'opening_stock' => 'ok',
+                'opening_lot_expiry' => 'ok',
+            ],
+        ];
         $placement = [
             'mode' => 'auto_create',
             'location_id' => 'location-1',
@@ -98,11 +142,11 @@ final class ImportJsonbCastHydrationTest extends TestCase
         $row = $this->row([
             'name' => 'Placed',
             '_provided' => ['name'],
-            '_results' => ['tax_source' => 'company_default'],
+            '_results' => $results,
             '_placement_plan' => $placement,
         ], null, null);
 
-        $this->assertSame(['tax_source' => 'company_default'], $row->data['_results']);
+        $this->assertSame($results, $row->data['_results']);
         $this->assertSame($placement, $row->data['_placement_plan']);
     }
 

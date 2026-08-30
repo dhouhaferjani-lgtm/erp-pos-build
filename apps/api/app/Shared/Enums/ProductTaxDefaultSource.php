@@ -10,7 +10,7 @@ use App\Shared\Contracts\TaxDefaultResolverInterface;
  * WHICH level of the new-product tax ladder supplied a product's default rate.
  *
  * Crosses the module boundary via {@see TaxDefaultResolverInterface}
- * so the unified import can record it on the row (`_results.tax_source`) — the only
+ * so the unified import can record it on the row (`_results.product.tax_source`) — the only
  * breadcrumb an imported row keeps about where its rate came from. It used to say
  * `default` for every inherited rate, which stopped being true the moment the
  * category became a real source (W2-5).

@@ -191,7 +191,7 @@ final class OpeningBalancesImportBatchTest extends TestCase
 
         $row = $job->rows()->where('row_number', 1)->firstOrFail();
         $this->assertSame($entry->id, $row->imported_entity_id);
-        $this->assertSame('ok', $row->data['_results']['gl_balance'] ?? null);
+        $this->assertSame('ok', $row->data['_results']['accounting_balances']['gl_balance'] ?? null);
     }
 
     public function test_balanced_opening_balance_import_posts_without_an_obe_plug(): void
@@ -243,7 +243,7 @@ final class OpeningBalancesImportBatchTest extends TestCase
         $this->assertCount(1, $warnings);
         $this->assertSame('balance_not_posted', $warnings[0]['code']);
         $this->assertStringContainsString('999999', $warnings[0]['detail']);
-        $this->assertSame('error: validation_failed', $row->data['_results']['gl_balance'] ?? null);
+        $this->assertSame('error: validation_failed', $row->data['_results']['accounting_balances']['gl_balance'] ?? null);
         $this->assertNull($row->imported_entity_id);
         $this->assertTrue($row->is_imported, 'a finalize warning does not rewrite one terminal outcome into another');
 
@@ -280,12 +280,12 @@ final class OpeningBalancesImportBatchTest extends TestCase
 
         $goodRow = $job->rows()->where('row_number', 1)->firstOrFail();
         $this->assertSame('balance_not_posted', ($goodRow->warnings ?? [])[0]['code'] ?? null);
-        $this->assertSame('error: file_not_posted', $goodRow->data['_results']['gl_balance'] ?? null);
+        $this->assertSame('error: file_not_posted', $goodRow->data['_results']['accounting_balances']['gl_balance'] ?? null);
         $this->assertNull($goodRow->imported_entity_id);
         $this->assertTrue($goodRow->is_imported);
 
         $badRow = $job->rows()->where('row_number', 2)->firstOrFail();
-        $this->assertSame('error: validation_failed', $badRow->data['_results']['gl_balance'] ?? null);
+        $this->assertSame('error: validation_failed', $badRow->data['_results']['accounting_balances']['gl_balance'] ?? null);
         $this->assertStringContainsString('999999', ($badRow->warnings ?? [])[0]['detail'] ?? '');
     }
 
@@ -326,7 +326,7 @@ final class OpeningBalancesImportBatchTest extends TestCase
         $this->assertSame(ImportStatus::Completed, $job->status);
 
         $goodRow = $job->rows()->where('row_number', 1)->firstOrFail();
-        $this->assertSame('error: file_not_posted', $goodRow->data['_results']['gl_balance'] ?? null);
+        $this->assertSame('error: file_not_posted', $goodRow->data['_results']['accounting_balances']['gl_balance'] ?? null);
         $this->assertSame('balance_not_posted', ($goodRow->warnings ?? [])[0]['code'] ?? null);
         $this->assertTrue($goodRow->is_imported);
         $this->assertNull($goodRow->imported_entity_id);
@@ -436,7 +436,7 @@ final class OpeningBalancesImportBatchTest extends TestCase
         $this->assertSame(0, bccomp($cashLine->debit, '5000', 3));
 
         $row = $job->rows()->where('row_number', 1)->firstOrFail();
-        $this->assertSame('ok', $row->data['_results']['gl_balance'] ?? null);
+        $this->assertSame('ok', $row->data['_results']['accounting_balances']['gl_balance'] ?? null);
         $this->assertSame($entry->id, $row->imported_entity_id);
     }
 
@@ -459,7 +459,7 @@ final class OpeningBalancesImportBatchTest extends TestCase
 
         // A redelivery must not wipe the linkage it reports as 'ok'.
         $row = $job->rows()->where('row_number', 1)->firstOrFail();
-        $this->assertSame('ok', $row->data['_results']['gl_balance'] ?? null);
+        $this->assertSame('ok', $row->data['_results']['accounting_balances']['gl_balance'] ?? null);
         $this->assertSame($entryId, $row->imported_entity_id);
         $this->assertTrue($row->is_imported);
     }
@@ -480,7 +480,7 @@ final class OpeningBalancesImportBatchTest extends TestCase
 
         $row = $job->rows()->where('row_number', 1)->firstOrFail();
         $this->assertSame('balance_not_posted', ($row->warnings ?? [])[0]['code'] ?? null);
-        $this->assertSame('error: post_failed', $row->data['_results']['gl_balance'] ?? null);
+        $this->assertSame('error: post_failed', $row->data['_results']['accounting_balances']['gl_balance'] ?? null);
         $this->assertSame(0, OpeningBalanceBatch::forCompany($this->company->id)->count());
     }
 
