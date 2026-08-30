@@ -128,4 +128,31 @@ final class PosCoreReceiptProjectionD16Test extends TestCase
             "Violations:\n".implode("\n", $violations)
         );
     }
+
+    public function test_partner_service_is_single_purpose_and_snapshot_fields_stay_payload_derived(): void
+    {
+        $source = file_get_contents(self::PROJECTION_FILE);
+        self::assertNotFalse($source, 'PosCoreReceiptProjection.php must be readable.');
+
+        self::assertSame(
+            1,
+            preg_match_all('/\$this->partnerService->/', $source),
+            'PartnerService may have exactly one projector call site: scoped partner_id resolution.',
+        );
+        self::assertSame(
+            1,
+            preg_match_all('/\$this->partnerService->resolveScopedPartnerId\s*\(/', $source),
+            'The single PartnerService call must resolve only the scoped partner_id.',
+        );
+        self::assertMatchesRegularExpression(
+            '/\$customerName\s*=\s*\$buyer\?->name;/',
+            $source,
+            'customer_name must remain sourced from the sealed buyer payload.',
+        );
+        self::assertMatchesRegularExpression(
+            '/\$customerIdentifier\s*=\s*\$buyer\?->taxNumber;/',
+            $source,
+            'customer_identifier must remain sourced from the sealed buyer payload.',
+        );
+    }
 }

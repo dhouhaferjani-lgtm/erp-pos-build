@@ -12,15 +12,16 @@ namespace App\Shared\Contracts;
 interface PartnerServiceInterface
 {
     /**
-     * Resolve a customer-capable partner within the event's explicit scope.
+     * Resolve an existing partner within the event's explicit scope.
      *
      * Queue consumers must supply tenant and company directly; this method
-     * never relies on request-bound company context.
+     * never relies on request-bound company context. Archived partners remain
+     * resolvable because immutable fiscal receipts may arrive after archival.
      */
-    public function resolveScopedCustomerId(
+    public function resolveScopedPartnerId(
         string $tenantId,
         string $companyId,
-        string $customerId,
+        string $partnerId,
     ): ?string;
 
     /**

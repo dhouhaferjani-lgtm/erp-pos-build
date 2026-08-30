@@ -92,9 +92,11 @@ use RuntimeException;
  * **D16 sale-time snapshot invariant.** Buyer display and tax data come
  * exclusively from `fiscal_events.payload.buyer`. The payload customer ID is
  * used only as a candidate FK: a shared-contract resolver confirms that it is
- * a customer-capable partner in the event's tenant + company. Missing, legacy,
+ * an existing partner in the event's tenant + company, including archived
+ * partners whose immutable receipt may arrive later. Missing, legacy,
  * malformed, or out-of-scope candidates land with a null partner FK while the
- * sealed snapshot still projects. No request-bound company context is used.
+ * sealed snapshot still projects. Partner type never changes this identity
+ * resolution, and no request-bound company context is used.
  *
  * **Idempotency anchor.** The durable guard is the `pos_receipts.fiscal_event_id
  * UNIQUE` column added in Task 11 — `apply()` checks for an existing
@@ -371,7 +373,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
 
             // Buyer block snapshot — display/tax fields are sealed payload
             // values. customer_id is only a candidate FK and is written when
-            // it is a scoped, existing customer-capable partner.
+            // it is an existing partner in the event's explicit scope.
             $buyer = $view->buyer;
             $customerName = $buyer?->name;
             $partnerId = $this->resolveBuyerPartnerId($event, $buyer?->customerId);
@@ -1673,7 +1675,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             return null;
         }
 
-        return $this->partnerService->resolveScopedCustomerId(
+        return $this->partnerService->resolveScopedPartnerId(
             $event->tenant_id,
             $event->company_id,
             $candidateId,

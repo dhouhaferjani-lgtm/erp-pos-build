@@ -33,7 +33,10 @@ use App\Modules\Voucher\Domain\Enums\VoucherEvent;
 use App\Modules\Voucher\Domain\Enums\VoucherStatus;
 use App\Modules\Voucher\Domain\Voucher;
 use App\Modules\Voucher\Domain\VoucherLedger;
+use App\Shared\Contracts\Loyalty\LoyaltyEarningContract;
+use App\Shared\Contracts\Loyalty\SaleEarnContext;
 use App\Shared\Domain\ByteaBinding;
+use Closure;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -114,6 +117,8 @@ use Tests\TestCase;
 final class PosCoreReceiptProjectionTest extends TestCase
 {
     use RefreshDatabase;
+
+    private ?SaleEarnContext $capturedEarn = null;
 
     private string $tenantId;
 
@@ -1354,7 +1359,7 @@ final class PosCoreReceiptProjectionTest extends TestCase
         $this->assertSame('FR10987654321', $receipt->customer_identifier);
     }
 
-    public function test_supplier_only_uuid_buyer_lands_snapshot_with_null_partner_fk(): void
+    public function test_supplier_only_uuid_buyer_preserves_partner_fk_snapshot_and_loyalty_context(): void
     {
         $supplier = Partner::factory()->supplier()->create([
             'tenant_id' => $this->tenantId,
@@ -1373,14 +1378,50 @@ final class PosCoreReceiptProjectionTest extends TestCase
             eventVersion: 5,
         );
 
+        $this->captureLoyaltyEarning();
         app(CompanyContext::class)->clear();
         $this->app->make(PosCoreReceiptProjection::class)->apply($event);
 
         $receipt = $this->myReceipts()->orderBy('id')->first();
         $this->assertNotNull($receipt);
-        $this->assertNull($receipt->partner_id);
+        $this->assertSame($supplier->id, $receipt->partner_id);
         $this->assertSame('Supplier-only Sealed Buyer', $receipt->customer_name);
         $this->assertSame('FR10123456789', $receipt->customer_identifier);
+        $this->assertSame($supplier->id, $this->capturedEarn?->partnerId);
+    }
+
+    public function test_archived_after_seal_uuid_buyer_preserves_partner_fk_snapshot_and_loyalty_context(): void
+    {
+        $partner = Partner::factory()->customer()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'name' => 'Archived Partner Master Name',
+            'vat_number' => 'FR99999999999',
+        ]);
+
+        $event = $this->storeSaleReceiptFiscalEvent(
+            buyer: [
+                'address' => null,
+                'codice_fiscale' => null,
+                'contact_id' => null,
+                'customer_id' => $partner->id,
+                'name' => 'Archived Sealed Buyer',
+                'tax_number' => 'FR10123456789',
+            ],
+            eventVersion: 5,
+        );
+        $partner->delete();
+
+        $this->captureLoyaltyEarning();
+        app(CompanyContext::class)->clear();
+        $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+
+        $receipt = $this->myReceipts()->orderBy('id')->first();
+        $this->assertNotNull($receipt);
+        $this->assertSame($partner->id, $receipt->partner_id);
+        $this->assertSame('Archived Sealed Buyer', $receipt->customer_name);
+        $this->assertSame('FR10123456789', $receipt->customer_identifier);
+        $this->assertSame($partner->id, $this->capturedEarn?->partnerId);
     }
 
     public function test_buyer_block_is_sale_time_snapshot_survives_customer_deletion(): void
@@ -1843,6 +1884,24 @@ final class PosCoreReceiptProjectionTest extends TestCase
         }
 
         return $val.'.00';
+    }
+
+    private function captureLoyaltyEarning(): void
+    {
+        $capture = function (SaleEarnContext $context): void {
+            $this->capturedEarn = $context;
+        };
+
+        $this->app->instance(LoyaltyEarningContract::class, new class($capture) implements LoyaltyEarningContract
+        {
+            /** @param Closure(SaleEarnContext): void $capture */
+            public function __construct(private readonly Closure $capture) {}
+
+            public function earnForSale(SaleEarnContext $context): void
+            {
+                ($this->capture)($context);
+            }
+        });
     }
 
     private function seedVoucher(string $code, string $balance): Voucher

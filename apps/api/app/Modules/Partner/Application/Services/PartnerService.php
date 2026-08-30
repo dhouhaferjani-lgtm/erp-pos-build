@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\Partner\Application\Services;
 
-use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Shared\Contracts\PartnerServiceInterface;
 
@@ -15,16 +14,16 @@ use App\Shared\Contracts\PartnerServiceInterface;
  */
 final class PartnerService implements PartnerServiceInterface
 {
-    public function resolveScopedCustomerId(
+    public function resolveScopedPartnerId(
         string $tenantId,
         string $companyId,
-        string $customerId,
+        string $partnerId,
     ): ?string {
         $id = Partner::query()
+            ->withTrashed()
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
-            ->whereKey($customerId)
-            ->whereIn('type', [PartnerType::Customer->value, PartnerType::Both->value])
+            ->whereKey($partnerId)
             ->value('id');
 
         return is_string($id) ? $id : null;
