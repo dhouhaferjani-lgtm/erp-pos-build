@@ -305,3 +305,33 @@ Using the prompt's dev ceiling, the required union remains **1,224 total / Impor
 ### VERDICT: FAIL
 
 Do not rebase, stage, or merge. G4-R2-02 remains behaviorally open: the preview census reports resolver refusals as `new`, while authoritative execution fails those rows. Fix the census/result contract and replace the mismatch-enshrining test with independently derived parity expectations. Also remove and ignore the tracked SQLite database in G4-R3-01. Then rerun the scoped census/resolver PostgreSQL pins, manifest/static checks, and generated-type no-diff check; never broaden this lane gate to the full suite.
+
+## Gate r4 (Codex, narrow)
+
+Re-check target: snapshot `fad74078a97005adcf89513de14b114e52c7273a` plus the dirty fix-round-3 overlay. Scope was limited to r3's two open items. Source was reviewed read-only; this section is the only intentional review write.
+
+### Open-item closure audit
+
+| finding | r4 status | verification |
+|---|---|---|
+| G4-R2-02 | **CLOSED** | Census now maps a typed resolver failure to `DuplicateBucket::Refused`, increments that bucket, and persists a row-number/code advisory (`apps/api/app/Modules/Import/Services/DuplicateCensusService.php:63-94,275-295`). Preview returns both the stored duplicate census and the per-row advisory (`apps/api/app/Modules/Import/Presentation/Controllers/ImportController.php:294-319`), pinned at `apps/api/tests/Feature/Import/ImportPreviewTest.php:204-236`. RUL-1 renders the `refused` count and distinct codes only when the count is positive (`apps/web/src/features/import/pages/ImportWizardPage.tsx:1022-1042`); the positive and hidden-at-zero cases are pinned at `apps/web/src/features/import/__tests__/ImportWizardPage.duplicates.test.tsx:133-136,159-181`, and non-empty en/fr/ar keys are pinned at `apps/web/src/features/import/__tests__/ImportWarningLocales.test.ts:8-33`. Execute re-resolves authoritatively inside the row transaction and converts the same coded resolver failure to `failed` after rollback (`ImportService.php:441-450,521-534`; `DuplicateCensusService.php:298-315`). The six-case parity table is hand-written for SKU, barcode, name-only, supplied deleted holder, name-derived deleted holder, and ambiguous barcode; it independently fixes preview bucket/code and execute outcome/code, then asserts both sides and exact refusal-code equality (`DuplicateCensusTest.php:199-288`). It expects three `refused` census rows and three coded execution failures. Final sync/queue equations remain outcome-derived, so those refusals enter `failed`, not `skipped` (`ImportService.php:550-571`; `ProcessImportJob.php:206-216`). |
+| G4-R3-01 | **CLOSED** | `git ls-tree -r HEAD --name-only | grep autoerp_test_` returned no path. Root `.gitignore:79-80` carries `apps/api/autoerp_test_*`. No matching file exists at `apps/api` top level after all runs. Final `git status --short` contains only the 16 tracked fix-round lane files already listed in the fix notes; no artifact, untracked file, or unrelated path appeared. |
+
+### Fresh command evidence
+
+| command / leg | result |
+|---|---|
+| Requested SQLite paths by path: census plus API preview, outcome/atomicity/resolver/coalescing/unit classes, pipeline, upsert precedence, re-execution guard, worker status, and all RoundTrip classes | **PASS — 119 passed, 4 skipped, 861 assertions** |
+| Requested PostgreSQL census/resolver/outcome/unit paths, serial by path; every invocation prefixed `DB_DATABASE=autoerp_test_g5 DB_CENTRAL_DATABASE=autoerp_test_g5 DB_CONNECTION=pgsql` | **PASS — 46 passed, 255 assertions** |
+| PHPStan level 8 on the dirty fix-round touched PHP | **PASS — 0 errors** |
+| Pint `--test` on the dirty fix-round touched PHP | **PASS** |
+| Feature manifest checker | **PASS — 1,480 Feature classes / 74 groups**; all filters anchored and uniquely matched against 1,880 test classes |
+| `cd apps/web && pnpm vitest run src/features/import` | **PASS — 12 files, 67 tests** |
+| `cd apps/web && pnpm typecheck` | **PASS** |
+| ESLint on all eight G-4-touched TypeScript/TSX files | **PASS — 0 errors, 20 warnings** |
+| `CACHE_STORE=array php artisan typescript:transform` | **PASS — 545 types; generated declaration SHA-256 unchanged** (`fe93295dfc16d54416d317abe729c6356bbe66aa50d4dbfe3e22c85e4605820d`) |
+| Artifact/state audit and `git diff --check` | **PASS** — tracked-tree grep empty, ignore present, no materialized `apps/api/autoerp_test_*`, only the expected 16 dirty lane files, and no whitespace errors |
+
+### VERDICT: PASS
+
+Both r3 open items are closed. This narrow r4 found no remaining imports-reviewer or frontend-conventions-reviewer blocker in scope.
