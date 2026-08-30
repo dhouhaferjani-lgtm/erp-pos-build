@@ -29,7 +29,7 @@ final class TenantOnlyUniqueRatchetChecker
             }
 
             $growth[] = sprintf(
-                'new tenant-only unique on catalogue table %s (index %s) — add company_id to the key, or add it to the baseline with a `waiver` reason field',
+                'new tenant-only unique on catalogue table %s (index %s) — add company_id to the key, or re-pin reviewed legacy debt as {"key": ...}; `waiver` is only for a legitimately tenant-global key',
                 $index->tableName,
                 $index->indexName,
             );

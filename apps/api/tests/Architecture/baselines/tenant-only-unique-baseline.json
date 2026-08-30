@@ -1,23 +1,62 @@
 [
     {
-        "key": "brands|brands_tenant_canonical_unique|tenant_id,canonical_brand_id",
-        "waiver": "Pre-existing tenant-only catalogue key; company-scope ownership remains to be resolved."
+        "key": "brands|brands_tenant_canonical_unique|tenant_id,canonical_brand_id"
     },
     {
-        "key": "brands|brands_tenant_id_slug_unique|tenant_id,slug",
-        "waiver": "Pre-existing tenant-only catalogue key; company-scope ownership remains to be resolved."
+        "key": "brands|brands_tenant_id_slug_unique|tenant_id,slug"
     },
     {
-        "key": "loyalty_members|loyalty_members_tenant_id_phone_unique|tenant_id,phone",
-        "waiver": "Pre-existing tenant-only catalogue key; company-scope ownership remains to be resolved."
+        "key": "composite_item_variants|composite_item_variants_composite_item_id_code_unique|composite_item_id,code",
+        "waiver": "Variant codes are unique within their company-owned composite item, so composite_item_id supplies the ownership boundary."
     },
     {
-        "key": "product_attributes|product_attributes_tenant_id_code_unique|tenant_id,code",
-        "waiver": "Pre-existing tenant-only catalogue key; company-scope ownership remains to be resolved."
+        "key": "composite_item_variants|composite_item_variants_default_unique|composite_item_id",
+        "waiver": "One default variant is unique within its company-owned composite item, so composite_item_id supplies the ownership boundary."
+    },
+    {
+        "key": "location_nodes|location_nodes_location_code_live_unique|location_id,code",
+        "waiver": "Node codes are unique within their company-owned location, so location_id supplies the ownership boundary."
+    },
+    {
+        "key": "loyalty_members|loyalty_members_tenant_id_phone_unique|tenant_id,phone"
+    },
+    {
+        "key": "loyalty_tiers|loyalty_tiers_program_id_level_unique|program_id,level",
+        "waiver": "Tier levels are unique within their company-owned loyalty program, so program_id supplies the ownership boundary."
+    },
+    {
+        "key": "modifiers|modifiers_modifier_group_id_code_unique|modifier_group_id,code",
+        "waiver": "Modifier codes are unique within their company-owned modifier group, so modifier_group_id supplies the ownership boundary."
+    },
+    {
+        "key": "price_lists|price_lists_code_unique|code"
+    },
+    {
+        "key": "product_attribute_values|product_attribute_values_attribute_id_code_unique|attribute_id,code",
+        "waiver": "Attribute-value codes are unique within their company-owned attribute, so attribute_id supplies the ownership boundary."
+    },
+    {
+        "key": "product_attributes|product_attributes_tenant_id_code_unique|tenant_id,code"
+    },
+    {
+        "key": "product_variants|product_variants_default_unique|product_id",
+        "waiver": "One live default variant is unique within its company-owned product, so product_id already supplies the ownership boundary."
+    },
+    {
+        "key": "product_variants|product_variants_product_id_variant_code_unique|product_id,variant_code",
+        "waiver": "Variant codes are unique within their company-owned product, so product_id already supplies the ownership boundary."
     },
     {
         "key": "product_variants|product_variants_tenant_barcode_unique|tenant_id,barcode",
         "waiver": "RUL-2 keeps physical barcodes unique across the tenant pending an owner rule change."
+    },
+    {
+        "key": "products|products_platform_submission_id_unique|platform_submission_id",
+        "waiver": "A platform submission id is an external platform identity and is globally unique by definition."
+    },
+    {
+        "key": "unit_categories|unit_categories_system_code_unique|code",
+        "waiver": "System unit-category codes identify global reference rows shared by every tenant and company."
     },
     {
         "key": "unit_categories|unit_categories_tenant_code_unique|tenant_id,code",
@@ -28,11 +67,9 @@
         "waiver": "Units and their categories are tenant-scoped reference data with per-company visibility."
     },
     {
-        "key": "vehicles|vehicles_tenant_id_license_plate_unique|tenant_id,license_plate",
-        "waiver": "Pre-existing tenant-only catalogue key; company-scope ownership remains to be resolved."
+        "key": "vehicles|vehicles_tenant_id_license_plate_unique|tenant_id,license_plate"
     },
     {
-        "key": "vehicles|vehicles_tenant_id_vin_unique|tenant_id,vin",
-        "waiver": "Pre-existing tenant-only catalogue key; company-scope ownership remains to be resolved."
+        "key": "vehicles|vehicles_tenant_id_vin_unique|tenant_id,vin"
     }
 ]

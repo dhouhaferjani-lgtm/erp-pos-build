@@ -40,7 +40,7 @@ final class TenantOnlyUniqueRatchetLivenessTest extends TestCase
         $report = (new TenantOnlyUniqueRatchetChecker)->check($liveIndexes, []);
 
         self::assertStringContainsString(
-            'new tenant-only unique on catalogue table products (index liveness_products_tenant_barcode) — add company_id to the key, or add it to the baseline with a `waiver` reason field',
+            'new tenant-only unique on catalogue table products (index liveness_products_tenant_barcode) — add company_id to the key, or re-pin reviewed legacy debt as {"key": ...}; `waiver` is only for a legitimately tenant-global key',
             $report->message(),
         );
     }
@@ -77,6 +77,43 @@ final class TenantOnlyUniqueRatchetLivenessTest extends TestCase
         self::assertStringContainsString(
             'baseline entry no longer in schema — remove it (a lane fixed it): '.$entry->key,
             $report->message(),
+        );
+    }
+
+    #[Test]
+    public function unique_without_tenant_id_on_a_catalogue_table_is_reported(): void
+    {
+        DB::statement(
+            'CREATE UNIQUE INDEX liveness_products_sku_without_tenant ON products (sku)',
+        );
+
+        $liveIndexes = (new TenantOnlyUniqueIndexScanner)->scan(
+            DB::connection(),
+            TenantOnlyUniqueOnCatalogueTablesRatchetTest::CATALOGUE_TABLES,
+        );
+        $report = (new TenantOnlyUniqueRatchetChecker)->check($liveIndexes, []);
+
+        self::assertStringContainsString(
+            'new tenant-only unique on catalogue table products (index liveness_products_sku_without_tenant)',
+            $report->message(),
+        );
+    }
+
+    #[Test]
+    public function qualifying_unique_on_an_unclassified_table_reports_the_classification_remediation(): void
+    {
+        DB::statement('CREATE TABLE liveness_unclassified_catalogue (id uuid PRIMARY KEY, sku text NOT NULL)');
+        DB::statement(
+            'CREATE UNIQUE INDEX liveness_unclassified_catalogue_sku_unique ON liveness_unclassified_catalogue (sku)',
+        );
+
+        $violations = TenantOnlyUniqueOnCatalogueTablesRatchetTest::unclassifiedTableViolations(
+            (new TenantOnlyUniqueIndexScanner)->scanAll(DB::connection()),
+        );
+
+        self::assertContains(
+            'classify table liveness_unclassified_catalogue: catalogue (company-owned) or excluded (tenant-global, say why)',
+            $violations,
         );
     }
 }

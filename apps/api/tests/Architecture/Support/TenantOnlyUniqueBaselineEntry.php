@@ -8,6 +8,6 @@ final readonly class TenantOnlyUniqueBaselineEntry
 {
     public function __construct(
         public string $key,
-        public string $waiver,
+        public ?string $waiver,
     ) {}
 }

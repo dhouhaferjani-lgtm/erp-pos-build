@@ -14,11 +14,21 @@ final class TenantOnlyUniqueIndexScanner
      */
     public function scan(ConnectionInterface $connection, array $catalogueTables): array
     {
+        return array_values(array_filter(
+            $this->scanAll($connection),
+            static fn (TenantOnlyUniqueIndex $index): bool => in_array($index->tableName, $catalogueTables, true),
+        ));
+    }
+
+    /** @return list<TenantOnlyUniqueIndex> */
+    public function scanAll(ConnectionInterface $connection): array
+    {
         /** @var list<\stdClass> $rows */
         $rows = $connection->select(<<<'SQL'
             SELECT
                 table_class.relname AS table_name,
                 index_class.relname AS index_name,
+                indexes.indisprimary AS is_primary,
                 string_agg(
                     pg_get_indexdef(indexes.indexrelid, positions.position, true),
                     chr(31)
@@ -32,7 +42,7 @@ final class TenantOnlyUniqueIndexScanner
             CROSS JOIN LATERAL generate_series(1, indexes.indnkeyatts) AS positions(position)
             WHERE indexes.indisunique = true
               AND table_namespace.nspname = current_schema()
-            GROUP BY table_class.relname, index_class.relname, indexes.indexrelid
+            GROUP BY table_class.relname, index_class.relname, indexes.indexrelid, indexes.indisprimary
             ORDER BY table_class.relname, index_class.relname
             SQL);
 
@@ -41,10 +51,10 @@ final class TenantOnlyUniqueIndexScanner
             $tableName = (string) $row->table_name;
             $columns = explode(chr(31), (string) $row->indexed_columns);
 
-            if (! in_array($tableName, $catalogueTables, true)) {
+            if ((bool) $row->is_primary) {
                 continue;
             }
-            if ($columns[0] !== 'tenant_id') {
+            if (count($columns) === 1 && in_array($columns[0], ['id', 'uuid'], true)) {
                 continue;
             }
             if (in_array('company_id', $columns, true)) {

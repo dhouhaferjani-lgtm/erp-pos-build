@@ -11,6 +11,7 @@ use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
 use App\Modules\CountryDefaults\Domain\Services\ProvisioningRequiredPurposesV1;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
@@ -176,8 +177,9 @@ final class FreshTenantCensusInvariantsTest extends TestCase
                         ->where('location_id', $location->id)
                         ->where('type', RepositoryType::CashRegister)
                         ->where('is_active', true)
+                        ->whereNotNull('gl_account_id')
                         ->count(),
-                    "{$location->name} would open without exactly one active attributed drawer.",
+                    "{$location->name} would open without exactly one active GL-linked attributed drawer.",
                 );
             }
 
@@ -187,8 +189,9 @@ final class FreshTenantCensusInvariantsTest extends TestCase
                     ->where('company_id', $company->id)
                     ->where('type', RepositoryType::Safe)
                     ->where('is_active', true)
+                    ->whereNotNull('gl_account_id')
                     ->count(),
-                "{$company->name} would open without exactly one active safe.",
+                "{$company->name} would open without exactly one active GL-linked safe.",
             );
         }
     }
@@ -221,9 +224,9 @@ final class FreshTenantCensusInvariantsTest extends TestCase
     }
 
     #[Test]
-    public function payment_methods_seeded_is_true_for_both_companies(): void
+    public function cash_tender_coherent_is_true_for_both_companies(): void
     {
-        $this->assertCensusPassed('payment_methods_seeded');
+        $this->assertCensusPassed('cash_tender_coherent');
 
         foreach ($this->companies() as $company) {
             self::assertGreaterThan(
@@ -234,14 +237,20 @@ final class FreshTenantCensusInvariantsTest extends TestCase
                     ->count(),
                 "{$company->name} would show no active payment method.",
             );
+            $flagged = PaymentMethod::query()
+                ->where('company_id', $company->id)
+                ->where('is_active', true)
+                ->where('is_cash_tender', true)
+                ->get();
+            self::assertCount(1, $flagged, "{$company->name} would have an ambiguous or missing cash tender.");
+            self::assertSame('CASH', strtoupper($flagged->firstOrFail()->code));
             self::assertSame(
                 1,
                 PaymentMethod::query()
                     ->where('company_id', $company->id)
-                    ->where('is_active', true)
-                    ->where('is_cash_tender', true)
+                    ->whereRaw('UPPER(code) = ?', ['CASH'])
                     ->count(),
-                "{$company->name} would have an ambiguous or missing cash tender.",
+                "{$company->name} would have another method interpreted as CASH by code readers.",
             );
         }
     }
@@ -384,7 +393,7 @@ final class FreshTenantCensusInvariantsTest extends TestCase
     private function numberedDraftCount(): int
     {
         return Document::query()
-            ->where('status', 'draft')
+            ->where('status', DocumentStatus::Draft)
             ->whereNotNull('document_number')
             ->count();
     }

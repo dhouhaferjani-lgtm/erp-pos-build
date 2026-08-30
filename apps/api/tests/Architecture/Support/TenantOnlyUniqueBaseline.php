@@ -8,6 +8,16 @@ use JsonException;
 use RuntimeException;
 use UnexpectedValueException;
 
+/**
+ * Reviewed baseline for qualifying catalogue uniques.
+ *
+ * An entry with only `key` is frozen legacy debt and must shrink. An optional
+ * non-empty `waiver` records why the key is legitimately tenant-global by
+ * nature. Residual: unlike the DPA ratchet, this baseline has no protected-blob
+ * authority; reviewers must inspect its diff. To re-pin after a reviewed schema
+ * change, regenerate the sorted live keys, preserve only legitimate waivers,
+ * and raise LEGACY_ENTRY_CEILING in the ratchet test if legacy debt grew.
+ */
 final class TenantOnlyUniqueBaseline
 {
     /**
@@ -38,11 +48,14 @@ final class TenantOnlyUniqueBaseline
             if (! is_string($key) || $key === '') {
                 throw new UnexpectedValueException("Baseline entry {$position} needs a non-empty key.");
             }
-            if (! is_string($waiver) || trim($waiver) === '') {
-                throw new UnexpectedValueException("Baseline entry {$position} needs a non-empty waiver reason.");
+            if (array_key_exists('waiver', $item) && (! is_string($waiver) || trim($waiver) === '')) {
+                throw new UnexpectedValueException("Baseline entry {$position} waiver must be a non-empty reason when present.");
             }
 
-            $entries[] = new TenantOnlyUniqueBaselineEntry($key, $waiver);
+            $entries[] = new TenantOnlyUniqueBaselineEntry(
+                $key,
+                is_string($waiver) ? $waiver : null,
+            );
         }
 
         return $entries;

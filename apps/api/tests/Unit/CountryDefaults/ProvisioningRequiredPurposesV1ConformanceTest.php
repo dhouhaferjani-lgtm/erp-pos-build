@@ -105,6 +105,28 @@ final class ProvisioningRequiredPurposesV1ConformanceTest extends TestCase
         self::assertSame(['MODULE_GATE', 'DOMAIN_PRECHECK_4XX'], ProvisioningRequiredPurposesV1::allowedGateKinds());
     }
 
+    public function test_reporting_partitions_are_exposed_by_the_manifest_authority(): void
+    {
+        self::assertSame(
+            ['sales_return', 'refund_write_off', 'sales_rounding_difference_income', 'sales_rounding_difference_expense'],
+            array_map(
+                static fn (SystemAccountPurpose $purpose): string => $purpose->value,
+                ProvisioningRequiredPurposesV1::conditionalPurposes(),
+            ),
+        );
+        self::assertSame(
+            [
+                'office_expense', 'travel_expense', 'meals_expense', 'utilities_expense',
+                'retained_earnings', 'realized_fx_gain', 'realized_fx_loss',
+                'voucher_breakage_income', 'uninvoiced_revenue', 'inventory_gain_income',
+            ],
+            array_map(
+                static fn (SystemAccountPurpose $purpose): string => $purpose->value,
+                ProvisioningRequiredPurposesV1::softPurposes(),
+            ),
+        );
+    }
+
     public function test_deliberately_misclassified_throwing_fixture_is_rejected(): void
     {
         // Production break caught: the validator accepts a throwing lookup re-labelled SOFT.

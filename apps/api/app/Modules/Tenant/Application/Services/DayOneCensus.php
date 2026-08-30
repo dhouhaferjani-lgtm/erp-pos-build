@@ -5,16 +5,20 @@ declare(strict_types=1);
 namespace App\Modules\Tenant\Application\Services;
 
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Company\Domain\Company;
 use App\Modules\CountryDefaults\Domain\Services\ProvisioningRequiredPurposesV1;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Tenant\Application\DTOs\DayOneInvariantResult;
 use App\Modules\Tenant\Domain\Enums\OnboardingStep;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Illuminate\Database\DatabaseManager;
 
 /**
  * Read-only, shared definitions for the CI and operator day-one censuses.
  *
  * @phpstan-type CompanyScope array{
+ *     model: Company,
  *     id: string,
  *     tenant_id: string,
  *     name: string,
@@ -27,6 +31,7 @@ final readonly class DayOneCensus
     public function __construct(
         private DatabaseManager $database,
         private OnboardingChecklistService $onboardingChecklist,
+        private UnitsProvisioningService $unitsProvisioning,
     ) {}
 
     /** @return list<DayOneInvariantResult> */
@@ -72,6 +77,7 @@ final readonly class DayOneCensus
         foreach ($query->get() as $row) {
             $defaultTaxConfigurationId = $row->default_tax_configuration_id;
             $companies[] = [
+                'model' => Company::query()->findOrFail((string) $row->id),
                 'id' => (string) $row->id,
                 'tenant_id' => (string) $row->tenant_id,
                 'name' => (string) $row->name,
@@ -88,13 +94,7 @@ final readonly class DayOneCensus
     /** @param CompanyScope $company */
     private function units(array $company): DayOneInvariantResult
     {
-        $visibleUnits = $this->database->table('units')
-            ->where('is_active', true)
-            ->where(function ($query) use ($company): void {
-                $query->whereNull('tenant_id')
-                    ->orWhere('tenant_id', $company['tenant_id']);
-            })
-            ->count();
+        $visibleUnits = $this->unitsProvisioning->visibleActiveUnitCount($company['model']);
         $unresolvedCategories = $this->database->table('unit_categories')
             ->where(function ($query) use ($company): void {
                 $query->whereNull('tenant_id')
@@ -162,8 +162,14 @@ final readonly class DayOneCensus
             SystemAccountPurpose::SalesStampDutyPayable,
         );
         $scopePassed = $company['country_code'] !== 'TN' || $scopePurposeCount === 1;
-        $conditional = $this->classifiedPurposePresence($company['id'], 'CONDITIONAL');
-        $soft = $this->classifiedPurposePresence($company['id'], 'SOFT');
+        $conditional = $this->purposePresence(
+            $company['id'],
+            ProvisioningRequiredPurposesV1::conditionalPurposes(),
+        );
+        $soft = $this->purposePresence(
+            $company['id'],
+            ProvisioningRequiredPurposesV1::softPurposes(),
+        );
         $requiredCount = count(ProvisioningRequiredPurposesV1::requiredPurposes());
 
         return new DayOneInvariantResult(
@@ -214,9 +220,20 @@ final readonly class DayOneCensus
         $locations = $this->database->table('locations')
             ->where('company_id', $company['id'])
             ->where('pos_enabled', true)
+            ->where('is_active', true)
             ->orderBy('created_at')
             ->orderBy('id')
             ->get(['id', 'name']);
+
+        $results[] = new DayOneInvariantResult(
+            key: 'one_drawer_per_pos_location_and_one_safe',
+            description: 'Every company owns at least one active POS-enabled location.',
+            expected: 'active_pos_locations>=1',
+            actual: 'active_pos_locations='.$locations->count(),
+            passed: $locations->isNotEmpty(),
+            companyId: $company['id'],
+            locationId: null,
+        );
 
         foreach ($locations as $location) {
             $locationId = (string) $location->id;
@@ -226,13 +243,20 @@ final readonly class DayOneCensus
                 ->where('type', RepositoryType::CashRegister->value)
                 ->where('is_active', true)
                 ->count();
+            $glLinkedDrawers = $this->database->table('payment_repositories')
+                ->where('company_id', $company['id'])
+                ->where('location_id', $locationId)
+                ->where('type', RepositoryType::CashRegister->value)
+                ->where('is_active', true)
+                ->whereNotNull('gl_account_id')
+                ->count();
 
             $results[] = new DayOneInvariantResult(
                 key: 'one_drawer_per_pos_location_and_one_safe',
-                description: 'Every POS-enabled location owns exactly one active attributed cash drawer.',
-                expected: 'active_attributed_cash_registers=1',
-                actual: "active_attributed_cash_registers={$drawers}",
-                passed: $drawers === 1,
+                description: 'Every active POS-enabled location owns exactly one active GL-linked attributed cash drawer.',
+                expected: 'active_attributed_cash_registers=1; GL-linked=1',
+                actual: "active_attributed_cash_registers={$drawers}; gl_linked={$glLinkedDrawers}",
+                passed: $drawers === 1 && $glLinkedDrawers === 1,
                 companyId: $company['id'],
                 locationId: $locationId,
             );
@@ -243,12 +267,18 @@ final readonly class DayOneCensus
             ->where('type', RepositoryType::Safe->value)
             ->where('is_active', true)
             ->count();
+        $glLinkedSafes = $this->database->table('payment_repositories')
+            ->where('company_id', $company['id'])
+            ->where('type', RepositoryType::Safe->value)
+            ->where('is_active', true)
+            ->whereNotNull('gl_account_id')
+            ->count();
         $results[] = new DayOneInvariantResult(
             key: 'one_drawer_per_pos_location_and_one_safe',
-            description: 'Every company owns exactly one active safe.',
-            expected: 'active_safes=1',
-            actual: "active_safes={$safes}",
-            passed: $safes === 1,
+            description: 'Every company owns exactly one active GL-linked safe.',
+            expected: 'active_safes=1; GL-linked=1',
+            actual: "active_safes={$safes}; gl_linked={$glLinkedSafes}",
+            passed: $safes === 1 && $glLinkedSafes === 1,
             companyId: $company['id'],
             locationId: null,
         );
@@ -267,14 +297,31 @@ final readonly class DayOneCensus
             ->where('company_id', $company['id'])
             ->where('is_active', true)
             ->where('is_cash_tender', true)
+            ->orderBy('code')
+            ->pluck('code')
+            ->map(static fn ($code): string => (string) $code)
+            ->all();
+        $flaggedCode = count($cashTenders) === 1 ? $cashTenders[0] : implode(',', $cashTenders);
+        $cashCodeMethods = $this->database->table('payment_methods')
+            ->where('company_id', $company['id'])
+            ->whereRaw('UPPER(code) = ?', ['CASH'])
             ->count();
 
         return new DayOneInvariantResult(
-            key: 'payment_methods_seeded',
-            description: 'Active payment methods exist with one unambiguous cash tender.',
-            expected: 'active_methods>=1; active_cash_tenders=1',
-            actual: "active_methods={$active}; active_cash_tenders={$cashTenders}",
-            passed: $active >= 1 && $cashTenders === 1,
+            key: 'cash_tender_coherent',
+            description: 'Exactly one active cash-tender flag agrees with the sole CASH-family code.',
+            expected: 'active_methods>=1; active_cash_tenders=1; flagged_code=CASH; cash_code_methods=1',
+            actual: sprintf(
+                'active_methods=%d; active_cash_tenders=%d; flagged_code=%s; cash_code_methods=%d',
+                $active,
+                count($cashTenders),
+                $flaggedCode === '' ? 'none' : $flaggedCode,
+                $cashCodeMethods,
+            ),
+            passed: $active >= 1
+                && count($cashTenders) === 1
+                && strtoupper($flaggedCode) === 'CASH'
+                && $cashCodeMethods === 1,
             companyId: $company['id'],
             locationId: null,
         );
@@ -285,7 +332,7 @@ final readonly class DayOneCensus
     {
         $numberedDrafts = $this->database->table('documents')
             ->where('company_id', $company['id'])
-            ->where('status', 'draft')
+            ->where('status', DocumentStatus::Draft->value)
             ->whereNotNull('document_number')
             ->count();
 
@@ -341,22 +388,19 @@ final readonly class DayOneCensus
             ->count();
     }
 
-    /** @return array{present: int, total: int} */
-    private function classifiedPurposePresence(string $companyId, string $classification): array
+    /**
+     * @param  list<SystemAccountPurpose>  $purposes
+     * @return array{present: int, total: int}
+     */
+    private function purposePresence(string $companyId, array $purposes): array
     {
         $present = 0;
-        $total = 0;
-        foreach (ProvisioningRequiredPurposesV1::entries() as $entry) {
-            if ($entry['classification'] !== $classification) {
-                continue;
-            }
-
-            $total++;
-            if ($this->activePurposeCount($companyId, $entry['purpose']) > 0) {
+        foreach ($purposes as $purpose) {
+            if ($this->activePurposeCount($companyId, $purpose) > 0) {
                 $present++;
             }
         }
 
-        return ['present' => $present, 'total' => $total];
+        return ['present' => $present, 'total' => count($purposes)];
     }
 }

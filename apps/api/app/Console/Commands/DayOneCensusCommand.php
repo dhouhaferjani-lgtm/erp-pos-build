@@ -8,6 +8,7 @@ use App\Modules\Tenant\Application\DTOs\DayOneInvariantResult;
 use App\Modules\Tenant\Application\Services\DayOneCensus;
 use Illuminate\Console\Command;
 use Illuminate\Database\DatabaseManager;
+use Illuminate\Support\Str;
 use Stancl\Tenancy\Contracts\Tenant as TenantContract;
 use Stancl\Tenancy\Tenancy;
 
@@ -31,11 +32,17 @@ final class DayOneCensusCommand extends Command
     {
         $companyOption = $this->option('company');
         $companyId = is_string($companyOption) && $companyOption !== '' ? $companyOption : null;
+        if ($companyId !== null && ! Str::isUuid($companyId)) {
+            $this->error('DAY-ONE CENSUS: --company must be a valid UUID.');
+
+            return self::INVALID;
+        }
+
         $results = $this->census->inspect($companyId);
 
         if ($results === []) {
             $this->error($companyId === null
-                ? 'DAY-ONE CENSUS: no companies exist on the current tenant connection.'
+                ? 'DAY-ONE CENSUS '.$this->tenantId().' -: NO-COMPANY'
                 : "DAY-ONE CENSUS: company {$companyId} does not exist on the current tenant connection.");
 
             return self::FAILURE;
@@ -82,16 +89,16 @@ final class DayOneCensusCommand extends Command
         return self::SUCCESS;
     }
 
-    private function tenantId(string $companyId): string
+    private function tenantId(?string $companyId = null): string
     {
         $boundTenant = $this->tenancy->tenant;
         if ($boundTenant instanceof TenantContract) {
             return (string) $boundTenant->getTenantKey();
         }
 
-        $tenantId = $this->database->table('companies')
-            ->where('id', $companyId)
-            ->value('tenant_id');
+        $tenantId = $companyId === null
+            ? null
+            : $this->database->table('companies')->where('id', $companyId)->value('tenant_id');
 
         return is_string($tenantId) && $tenantId !== '' ? $tenantId : '(unbound)';
     }
