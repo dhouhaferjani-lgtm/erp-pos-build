@@ -70,7 +70,7 @@ also depends on
 `B2BFieldsSection`'s internal layout, so **re-verify its split tax/credit anchors after the merge before
 you touch it**. **The drift was real and large:** `PartnerForm.tsx` went 832 → **894** lines and its every
 anchor moved (the VAT field `:556-565` → `:617`, the tax block `:604-663` → `:663-690`, `onSubmit`
-`:397-420` → `:444-470`); `PartnerService.php`'s matching ladder moved twice (`:82-85` → `:98-107` → now
+`:397-420` → `:444-470`); `PartnerService.php`'s matching ladder moved twice since the spec (now `:98-107` at 31f49e4f4;
 **`:98-107`**, because a1 inserted `resolveScopedPartnerId` at `:19`); `ImportController.php`'s upload-201
 moved `:205-207` → **`:267-269`**. Every `:line` below is now pinned to **`31f49e4f4`** and was grepped in
 the worktree. Still run `grep -n` before editing any of them — the base can move again.
