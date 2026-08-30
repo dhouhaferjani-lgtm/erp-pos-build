@@ -253,3 +253,13 @@ The synthesis §5 puts A1 under "Now (this week)" as an Otospex money-path fix. 
 ---
 
 *Produced read-only. No code was modified and no test suite was run. Where this document and `docs/handoff/LEDGER.md` disagree on vertical-agnostic launch items, the ledger wins.*
+
+---
+
+## 7. Post-report corrections + owner rulings (2026-08-30 evening, session K)
+
+**Correction:** the §4 containment claim for threats 3–4 ("platform key unset") is **WRONG** — `SYNERIVA_PLATFORM_API_KEY` is set in the ERP `.env` (read by `apps/api/config/services.php:106`), confirmed by the owner ("there is already a platform key being used"). The PurchaseHub exposure is live, not latent. Lane K-4.
+
+**Owner rulings:** (1) A1/A3-POS: fix properly even though tenant #1 won't use credit sales — correctness; long-running Codex lane K-1. (2) A3-WO goods lane = **internal consumption document** (lane K-3). (3) A3-POS stock = **project like SALE_RECEIPT** (lane K-1 task 2). (4) `line_total` = **NET forever**, POS not an exception at storage (glossary pin, K-1 task 5). (5) A5 timbre: **show on final invoice now**, TN accountant confirms wording later (lane K-5).
+
+**Lane briefs:** `docs/sessions/session-K-otospex-money-2026-08-30/LANE-K1..K5-*.md` (K-1 = the owner-dispatched long-running Codex lane).
