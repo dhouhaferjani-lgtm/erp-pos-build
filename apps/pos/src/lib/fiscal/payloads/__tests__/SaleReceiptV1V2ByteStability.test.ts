@@ -4,7 +4,6 @@ import {
   type BuildSaleReceiptPayloadInput,
 } from '@/lib/fiscal/payloads/SaleReceiptPayload';
 import { buildSaleReceiptV2Payload } from '@/lib/fiscal/payloads/SaleReceiptV2Payload';
-import type { BuyerBlockInput } from '@/lib/fiscal/FiscalEventEngine';
 import type { CartItem } from '@/types/cart';
 
 /**
@@ -83,41 +82,5 @@ describe('V1/V2 byte stability under the v3 rollout', () => {
     expect(Object.keys(v1)).not.toContain('cash_rounding_denomination');
     expect(Object.keys(v2)).not.toContain('cash_rounding_adjustment');
     expect(Object.keys(v2)).not.toContain('cash_rounding_denomination');
-  });
-
-  it('preserves the null-buyer bytes when buyer is omitted or explicitly null', () => {
-    const omitted = JSON.stringify(buildSaleReceiptPayload(makeInput([makeCartItem()])));
-    const explicit = JSON.stringify(buildSaleReceiptPayload({
-      ...makeInput([makeCartItem()]),
-      buyer: null,
-    } as BuildSaleReceiptPayloadInput & { buyer: null }));
-
-    expect(explicit).toBe(omitted);
-  });
-
-  it('seals the supplied buyer block without adding or dropping a key in V1 and V2', () => {
-    const buyer: BuyerBlockInput = {
-      address: null,
-      codice_fiscale: null,
-      contact_id: null,
-      customer_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-      name: 'Acme SARL',
-      tax_number: 'FR12345678901',
-    };
-    const input = {
-      ...makeInput([makeCartItem()]),
-      buyer,
-    } as BuildSaleReceiptPayloadInput & { buyer: BuyerBlockInput };
-
-    expect(buildSaleReceiptPayload(input).buyer).toEqual(buyer);
-    expect(buildSaleReceiptV2Payload(input).buyer).toEqual(buyer);
-    expect(Object.keys(buildSaleReceiptPayload(input).buyer ?? {}).sort()).toEqual([
-      'address',
-      'codice_fiscale',
-      'contact_id',
-      'customer_id',
-      'name',
-      'tax_number',
-    ]);
   });
 });

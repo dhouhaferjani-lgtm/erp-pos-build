@@ -6,7 +6,6 @@ namespace Tests\Unit\Fiscal;
 
 use App\Modules\Fiscal\Application\Services\FiscalPayloadConstraintValidator;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
-use App\Modules\POS\Domain\Services\Fiscal\V3\CanonicalJsonEncoder;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 
@@ -33,8 +32,6 @@ use RuntimeException;
  */
 final class SaleReceiptV5GoldenParityTest extends TestCase
 {
-    private const POPULATED_BUYER_SHA256 = '02bbf732ede83ae131989df29db7deb651548704024527a43c24a86e186d4fef';
-
     public function test_golden_hash_matches_the_device_authored_bytes(): void
     {
         $fixture = $this->fixture();
@@ -119,39 +116,6 @@ final class SaleReceiptV5GoldenParityTest extends TestCase
         $validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $stripped, eventVersion: 3);
     }
 
-    public function test_populated_buyer_vector_carries_the_exact_m4_snapshot(): void
-    {
-        $fixture = $this->fixture('sale-receipt-v5-populated-buyer-golden.json');
-        /** @var array<string, mixed> $payload */
-        $payload = json_decode($fixture['expected_canonical_string'], true, 512, JSON_THROW_ON_ERROR);
-
-        $this->assertSame([
-            'address' => null,
-            'codice_fiscale' => null,
-            'contact_id' => null,
-            'customer_id' => '44444444-4444-4444-8444-444444444444',
-            'name' => 'Atelier Carthage SARL',
-            'tax_number' => '9876543AB000',
-        ], $payload['buyer']);
-
-        // This encoder is used only as the server-side parity oracle. Runtime
-        // ingestion still verifies and stores the device bytes verbatim.
-        $serverCanonical = (new CanonicalJsonEncoder)->encode($payload);
-
-        $this->assertSame($fixture['expected_canonical_string'], $serverCanonical);
-        $this->assertSame(self::POPULATED_BUYER_SHA256, $fixture['expected_sha256_hex']);
-        $this->assertSame(self::POPULATED_BUYER_SHA256, hash('sha256', $serverCanonical));
-
-        $validator = new FiscalPayloadConstraintValidator;
-        $this->assertNull($validator->validatePayloadKeySet(
-            FiscalEventType::SALE_RECEIPT,
-            $payload,
-            eventVersion: 5,
-        ));
-        $validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload, eventVersion: 5);
-        $this->addToAssertionCount(1);
-    }
-
     /**
      * @return array<string, mixed>
      */
@@ -166,12 +130,12 @@ final class SaleReceiptV5GoldenParityTest extends TestCase
     /**
      * @return array{expected_canonical_string: string, expected_sha256_hex: string}
      */
-    private function fixture(string $fileName = 'sale-receipt-v5-golden.json'): array
+    private function fixture(): array
     {
-        $path = __DIR__.'/../../Fixtures/Fiscal/'.$fileName;
+        $path = __DIR__.'/../../Fixtures/Fiscal/sale-receipt-v5-golden.json';
         $raw = file_get_contents($path);
         if ($raw === false) {
-            $this->fail($fileName.' is unreadable at '.$path);
+            $this->fail('sale-receipt-v5-golden.json is unreadable at '.$path);
         }
 
         /** @var array{expected_canonical_string: string, expected_sha256_hex: string} $decoded */

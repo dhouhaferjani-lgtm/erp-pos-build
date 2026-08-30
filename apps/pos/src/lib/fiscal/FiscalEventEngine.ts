@@ -1446,24 +1446,6 @@ const Z_REPORT_PAYLOAD_KEYS = [
 /** Lowercase-hex UUID (RFC 4122 — version-agnostic at this layer). */
 const LOWER_HEX_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-/**
- * First SALE_RECEIPT event version whose buyer block is post-discount-base.
- * Mirrors `FiscalPayloadConstraintValidator::SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION`.
- */
-const SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION = 5;
-
-/**
- * Single lowercase-hex UUID predicate for the whole device.
- *
- * Seal-time callers (`resolveSaleReceiptBuyer`) and validate-time callers
- * (`validateBuyer`) MUST share this definition so the two can never drift —
- * a value the resolver accepts but the validator rejects would fail the
- * checkout after the cashier tendered. Merge-gate r1 finding 7.
- */
-export function isLowerHexUuid(value: unknown): value is string {
-  return typeof value === 'string' && LOWER_HEX_UUID.test(value);
-}
-
 /** ISO 4217 alpha-3 uppercase currency code. */
 const ISO_4217 = /^[A-Z]{3}$/;
 
@@ -1778,7 +1760,7 @@ export function validateSaleReceiptPayload(payload: unknown, eventVersion: numbe
 
   // -- 6. nested objects --
   validateSeller(p);
-  validateBuyer(p, eventVersion);
+  validateBuyer(p);
   validateOriginalReceiptReference(p, invoiceTypeCode);
 
   // -- 6z. v4-only nested contract (spec §3.3/§3.4) -- reached only when
@@ -2752,7 +2734,7 @@ function validateSeller(p: Record<string, unknown>): string {
   return jurisdiction;
 }
 
-function validateBuyer(p: Record<string, unknown>, saleReceiptEventVersion?: number): void {
+function validateBuyer(p: Record<string, unknown>): void {
   const buyer = p['buyer'];
   if (buyer === null) {
     return;
@@ -2764,46 +2746,13 @@ function validateBuyer(p: Record<string, unknown>, saleReceiptEventVersion?: num
   }
   assertExactKeySetWithPath(buyer, BUYER_KEYS, 'buyer');
 
-  for (const field of ['codice_fiscale', 'contact_id', 'customer_id'] as const) {
+  for (const field of ['codice_fiscale', 'contact_id', 'customer_id', 'name'] as const) {
     const value = buyer[field];
     if (value !== null && (typeof value !== 'string' || value === '')) {
       throw new FiscalEventPayloadValidationError(
         `payload_buyer_${field}_invalid:must be non-empty string or null; got ${jsonOrType(value)}`,
       );
     }
-  }
-
-  // M4 (merge-gate r1 finding 2): the non-empty `name` requirement is
-  // version-gated exactly like the `customer_id` UUID rule below. Server twin:
-  // `FiscalPayloadConstraintValidator::validateBuyer` — historical v1-v4 sealed
-  // bytes carrying `buyer.name: null` must keep re-validating.
-  const requiresNonEmptyBuyerName =
-    saleReceiptEventVersion !== undefined
-    && saleReceiptEventVersion >= SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION;
-
-  const buyerName = buyer['name'];
-  if (requiresNonEmptyBuyerName) {
-    if (typeof buyerName !== 'string' || buyerName.trim() === '') {
-      throw new FiscalEventPayloadValidationError(
-        `payload_buyer_name_invalid:must be non-empty string; got ${jsonOrType(buyerName)}`,
-      );
-    }
-  } else if (buyerName !== null && (typeof buyerName !== 'string' || buyerName === '')) {
-    throw new FiscalEventPayloadValidationError(
-      `payload_buyer_name_invalid:must be non-empty string or null; got ${jsonOrType(buyerName)}`,
-    );
-  }
-
-  const customerId = buyer['customer_id'];
-  if (
-    saleReceiptEventVersion !== undefined
-    && saleReceiptEventVersion >= SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION
-    && customerId !== null
-    && (typeof customerId !== 'string' || !LOWER_HEX_UUID.test(customerId))
-  ) {
-    throw new FiscalEventPayloadValidationError(
-      `payload_buyer_invalid:customer_id must be lowercase-hex UUID or null; got ${jsonOrType(customerId)}`,
-    );
   }
 
   validateAddress(buyer['address'], 'buyer.address', /* required */ false);

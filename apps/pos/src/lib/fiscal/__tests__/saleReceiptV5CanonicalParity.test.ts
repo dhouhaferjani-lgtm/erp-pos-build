@@ -5,17 +5,6 @@ import type { BuildSaleReceiptPayloadInput } from '../payloads/SaleReceiptPayloa
 import { buildSaleReceiptV5Payload } from '../payloads/SaleReceiptV5Payload';
 import type { CartItem } from '@/types/cart';
 
-const GOLDEN_BUYER = {
-  address: null,
-  codice_fiscale: null,
-  contact_id: null,
-  customer_id: '44444444-4444-4444-8444-444444444444',
-  name: 'Atelier Carthage SARL',
-  tax_number: '9876543AB000',
-} as const;
-
-const POPULATED_BUYER_SHA256 = '02bbf732ede83ae131989df29db7deb651548704024527a43c24a86e186d4fef';
-
 /**
  * SALE_RECEIPT V5 (D-1, owner ruling 2026-08-25) cross-language canonical
  * parity — the GOLDEN VECTOR for the post-remise VAT base.
@@ -94,20 +83,18 @@ interface GoldenFixture {
   expected_sha256_hex: string;
 }
 
-function readGoldenFixture(
-  fileName = 'sale-receipt-v5-golden.json',
-): GoldenFixture {
+function readGoldenFixture(): GoldenFixture {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const fs = require('node:fs') as typeof import('node:fs');
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const path = require('node:path') as typeof import('node:path');
   const candidates = [
-    path.resolve(__dirname, `../../../../../../apps/api/tests/Fixtures/Fiscal/${fileName}`),
-    path.resolve(__dirname, `../../../../../api/tests/Fixtures/Fiscal/${fileName}`),
+    path.resolve(__dirname, '../../../../../../apps/api/tests/Fixtures/Fiscal/sale-receipt-v5-golden.json'),
+    path.resolve(__dirname, '../../../../../api/tests/Fixtures/Fiscal/sale-receipt-v5-golden.json'),
   ];
   const fixturePath = candidates.find((p) => fs.existsSync(p));
   if (!fixturePath) {
-    throw new Error(`${fileName} not found at any candidate path: ${candidates.join(', ')}`);
+    throw new Error(`sale-receipt-v5-golden.json not found at any candidate path: ${candidates.join(', ')}`);
   }
 
   return JSON.parse(fs.readFileSync(fixturePath, 'utf8')) as GoldenFixture;
@@ -144,25 +131,5 @@ describe('SALE_RECEIPT V5 canonical parity (D-1)', () => {
     expect(payload.subtotal).toBe('524.547');
     expect(payload.vat_total).toBe('65.453');
     expect(payload.transaction_discount_amount).toBe('50.000');
-  });
-
-  it('encodes the exact populated buyer block to locked canonical bytes and hash', () => {
-    const encoder = new FiscalEventCanonicalEncoder();
-    const fixture = readGoldenFixture('sale-receipt-v5-populated-buyer-golden.json');
-    const payload = buildSaleReceiptV5Payload({
-      ...goldenInput(),
-      buyer: GOLDEN_BUYER,
-    }, {
-      exactTotal: '590.000',
-      roundedTotal: '590.000',
-      adjustment: '0.000',
-      denomination: '0.000',
-    });
-    const canonical = encoder.encode(payload);
-
-    expect(payload.buyer).toEqual(GOLDEN_BUYER);
-    expect(canonical).toBe(fixture.expected_canonical_string);
-    expect(fixture.expected_sha256_hex).toBe(POPULATED_BUYER_SHA256);
-    expect(encoder.sha256Hex(canonical)).toBe(POPULATED_BUYER_SHA256);
   });
 });

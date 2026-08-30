@@ -12,19 +12,6 @@ namespace App\Shared\Contracts;
 interface PartnerServiceInterface
 {
     /**
-     * Resolve an existing partner within the event's explicit scope.
-     *
-     * Queue consumers must supply tenant and company directly; this method
-     * never relies on request-bound company context. Archived partners remain
-     * resolvable because immutable fiscal receipts may arrive after archival.
-     */
-    public function resolveScopedPartnerId(
-        string $tenantId,
-        string $companyId,
-        string $partnerId,
-    ): ?string;
-
-    /**
      * Find a partner by VAT number or name.
      *
      * @return array{id: string, type: string}|null Partner info or null if not found

@@ -56,9 +56,6 @@ describe('Fiscal payload PHP/TS key drift gates', () => {
   // The TOP-LEVEL set is unchanged from v3; what moves is the semantics of
   // subtotal / vat_total / vat_breakdown[] and the new per-row
   // `discount_allocated`. Both lists are pinned against their PHP twins.
-  // `buyer` remains one frozen top-level key; its null/object VALUE contract
-  // is pinned cross-language by saleReceiptV5CanonicalParity.test.ts and the
-  // adjacent sale-receipt-v5-populated-buyer-golden.json fixture.
   // -------------------------------------------------------------------
 
   it('SALE_RECEIPT_PAYLOAD_KEYS_V5 byte-mirrors the PHP named const', () => {

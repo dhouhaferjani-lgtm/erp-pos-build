@@ -130,7 +130,7 @@ export function buildSaleReceiptV5Payload(
   const payload: SaleReceiptV5PayloadInput = {
     approval_references: input.approvalReferences ?? [],
     business_date: input.businessDate,
-    buyer: input.buyer ?? null,
+    buyer: null,
     cash_rounding_adjustment: canonicalMoney(rounding.adjustment, scale),
     cash_rounding_denomination: canonicalMoney(rounding.denomination, scale),
     cashier_id: input.operatorId,

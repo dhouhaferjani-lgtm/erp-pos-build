@@ -18,7 +18,7 @@ lanes:
     commit_series: "h1-a1 M<m>.<s>:"
 ledger_rows: D-H1-1 (cleanup), D-H1-2 (a1)
 
-status: passed
+status: in_progress
 
 milestones:
   - id: M1
@@ -57,26 +57,18 @@ milestones:
     lane: h1-a1
     title: SALE_RECEIPT.buyer populated (resolved server partner id only; contact_id null by decision); validateBuyer customer_id uuid-or-null; projection writes partner_id from snapshot
     review_lenses: [fiscal-pos]
-    status: passed
-    commit: b4210a155
-    verdict: docs/handoff/reviews/session-h-phase1/M4-round2.md
-    last_verdict: ACCEPT
-    reviewer_model: codex-fallback
-    gate_of_record: docs/superpowers/reviews/2026-08-30-session-h-h1-a1-merge-gate-r1-fiscal-pos.md
-    fix_rounds: 1
-    updated: b4210a155
+    status: pending
+    commit: null
+    verdict: null
+    fix_rounds: 0
   - id: M5
     lane: h1-a1
     title: golden populated-buyer canonical-bytes fixture, device + server, hash pinned
     review_lenses: [fiscal-pos]
-    status: passed
-    commit: 8997f14ff
-    verdict: docs/handoff/reviews/session-h-phase1/M5-round1.md
-    last_verdict: ACCEPT
-    reviewer_model: codex-fallback
-    gate_of_record: docs/superpowers/reviews/2026-08-30-session-h-h1-a1-merge-gate-r1-fiscal-pos.md
+    status: pending
+    commit: null
+    verdict: null
     fix_rounds: 0
-    updated: 8997f14ff
 
 owner_gates:
   - Phases 2-5 of the program (OQ1-9 in docs/sessions/session-H-party-model-2026-08-29/OQ-SHEET-2026-08-29.md) — NOT this wave
@@ -91,14 +83,4 @@ owes_parent:
   - M3 Otospex browser debt: browser item (v) is locally runtime-skipped because `demo-unlimited` has no provisioned tenant database; the customer-only picker has focused Vitest evidence but no live Otospex browser evidence here.
   - M3 i18n burn-down: removal-only cleanup translated eight prior baseline entries with zero new gaps; no baseline re-pin was required, and parent may lock the burn-down at promotion.
   - M3 Phase 2 form-state debt: mismatched `partnerType` and pathname can make both route contexts true in an unkeyed reconciliation; production keyed routes prevent the live path and validation blocks submission, but Phase 2 should derive one authoritative context independently of React keys.
-  - M4 sealed-fixture erratum: F-07's committed payload is a pinned 27-key legacy artifact missing `approval_references`, while the frozen v1 schema and builder are 28-key. Its bytes/hash remain untouched and it is not claimed schema-valid; any regeneration or re-pin remains an owner gate.
-  - M4 legacy-name note: the explicitly authorized non-empty buyer name rule also applies when re-validating v1-v4 populated buyers; committed legacy fixtures have names, but a historic nullable-name correction would fail. PHP/JS Unicode-whitespace trim semantics also differ in the safe direction (device stricter).
-  - M4 refund/caller debt: v4 refund authoring and the currently unused `offlineCheckoutService.ts` path do not forward a buyer. Original-sale buyer hydration for refunds needs a separate product/design decision before those paths are expanded or revived.
-  - M4 POS UX debt: a tenant/company-mismatched selected customer throws a raw English error in `receiptService.ts`; currently low reachability, but it must be localized or degraded safely if surfaced to cashiers.
-  - M4 live-gate debt: the signed-ingestion Playwright gate is local evidence, mutates the demo tenant with immutable fiscal fixtures, and skips in CI without `SESSION_H_API_BASE`; durable coverage remains in Vitest/PHPUnit.
-  - M5 canonical-text debt: the populated-buyer vector is ASCII-only. Add a future free-text buyer-name vector containing U+2028/U+2029 to pin the documented PHP/JS canonical JSON escape divergence before such names are relied on operationally.
-  - M5 fixture-infrastructure debt: standalone V5 goldens are protected by TS/PHP literal hash pins but sit outside the raw-bytes integrity registry; PHP also retains a separate test-helper canonical encoder alongside the production encoder. Consolidation is a later fiscal-test infrastructure task.
 blockers: []
-# Parent ruling 2026-08-29 (Session H orchestrator): architecture, not an owner gate — see the Phase-1 brief §3 M4 'M4.0 STOP — RULED' block (customer_id uuid-or-null gated on event_version>=5; golden fixtures F-07/F-15 untouched; projection defensive). Lane resumes at M4.
-resolved_blockers:
-  - "M4 architecture contradiction: dispatch §3 requires buyer.customer_id UUID-or-null and asserts existing sealed fixtures are 100% null, but committed canonical F-07 (`cust-007`) and F-15 (`customer-f15-001`) contain non-UUID values and F-07 is required to validate at legacy event_version=1. Changing those pinned payloads violates dispatch §5 sealed-byte STOP; unconditional validation breaks canonical compatibility. Owner must choose a version/cutover grandfather or explicitly authorize fixture-byte/hash changes."
