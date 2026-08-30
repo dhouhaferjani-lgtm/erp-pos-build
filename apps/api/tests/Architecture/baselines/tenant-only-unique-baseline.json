@@ -1,0 +1,38 @@
+[
+    {
+        "key": "brands|brands_tenant_canonical_unique|tenant_id,canonical_brand_id",
+        "waiver": "Pre-existing tenant-only catalogue key; company-scope ownership remains to be resolved."
+    },
+    {
+        "key": "brands|brands_tenant_id_slug_unique|tenant_id,slug",
+        "waiver": "Pre-existing tenant-only catalogue key; company-scope ownership remains to be resolved."
+    },
+    {
+        "key": "loyalty_members|loyalty_members_tenant_id_phone_unique|tenant_id,phone",
+        "waiver": "Pre-existing tenant-only catalogue key; company-scope ownership remains to be resolved."
+    },
+    {
+        "key": "product_attributes|product_attributes_tenant_id_code_unique|tenant_id,code",
+        "waiver": "Pre-existing tenant-only catalogue key; company-scope ownership remains to be resolved."
+    },
+    {
+        "key": "product_variants|product_variants_tenant_barcode_unique|tenant_id,barcode",
+        "waiver": "RUL-2 keeps physical barcodes unique across the tenant pending an owner rule change."
+    },
+    {
+        "key": "unit_categories|unit_categories_tenant_code_unique|tenant_id,code",
+        "waiver": "Units and their categories are tenant-scoped reference data with per-company visibility."
+    },
+    {
+        "key": "units|units_tenant_id_code_unique|tenant_id,code",
+        "waiver": "Units and their categories are tenant-scoped reference data with per-company visibility."
+    },
+    {
+        "key": "vehicles|vehicles_tenant_id_license_plate_unique|tenant_id,license_plate",
+        "waiver": "Pre-existing tenant-only catalogue key; company-scope ownership remains to be resolved."
+    },
+    {
+        "key": "vehicles|vehicles_tenant_id_vin_unique|tenant_id,vin",
+        "waiver": "Pre-existing tenant-only catalogue key; company-scope ownership remains to be resolved."
+    }
+]
