@@ -1380,7 +1380,7 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         );
     }
 
-    public function test_legacy_f07_non_uuid_buyer_remains_accepted_with_pinned_bytes(): void
+    public function test_stale_f07_file_remains_byte_pinned_with_documented_27_key_drift(): void
     {
         $path = __DIR__.'/../../Fixtures/Fiscal/sale-receipt-golden/v4/F-07-b2b-buyer-eur/payload.json';
         $bytes = file_get_contents($path);
@@ -1392,6 +1392,15 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
 
         self::assertCount(27, $payload);
         self::assertArrayNotHasKey('approval_references', $payload);
+        self::assertSame('cust-007', $payload['buyer']['customer_id']);
+    }
+
+    public function test_legacy_f07_builder_semantics_accept_non_uuid_buyer_at_v1(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-07-b2b-buyer-eur'];
+
+        self::assertCount(28, $payload);
+        self::assertSame([], $payload['approval_references']);
         self::assertSame('cust-007', $payload['buyer']['customer_id']);
         self::assertNull($this->validator->validatePayloadKeySet(
             FiscalEventType::SALE_RECEIPT,
@@ -1407,7 +1416,30 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
-    public function test_v5_sale_receipt_still_requires_approval_references_key(): void
+    public function test_v1_sale_receipt_requires_approval_references_key(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-07-b2b-buyer-eur'];
+        unset($payload['approval_references']);
+
+        self::assertSame(
+            'payload_missing_required:approval_references',
+            $this->validator->validatePayloadKeySet(
+                FiscalEventType::SALE_RECEIPT,
+                $payload,
+                eventVersion: 1,
+            ),
+        );
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/^payload_approval_references_invalid:/');
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 1,
+        );
+    }
+
+    public function test_v5_sale_receipt_requires_approval_references_key(): void
     {
         $payload = $this->canonicalV5Payload();
         unset($payload['approval_references']);

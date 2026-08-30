@@ -1310,6 +1310,16 @@ d('FiscalEventEngine.append', () => {
     }
   });
 
+  it('M4 adversarial — v1 rejects a missing approval_references key', () => {
+    const payload = omitKey(validSaleReceiptPayload(), 'approval_references');
+    delete payload['cash_rounding_adjustment'];
+    delete payload['cash_rounding_denomination'];
+
+    expect(() => validateSaleReceiptPayload(payload, 1)).toThrow(
+      /payload_missing_required:approval_references/,
+    );
+  });
+
   it('Pass 2A.TS — rejects non-UUID cashier_id', async () => {
     const payload = { ...validSaleReceiptPayload(), cashier_id: 'not-a-uuid' };
     await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(

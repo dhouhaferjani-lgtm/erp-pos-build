@@ -550,16 +550,6 @@ final class FiscalPayloadConstraintValidator
             $expected = ZCashDrawerMovementPayload::PAYLOAD_KEYS;
         }
 
-        // The byte-pinned F-07 event_version=1 vector predates the additive
-        // approval_references key. Grandfather only that legacy omission;
-        // v2+ and any v1 payload that carries the key retain strict key-set
-        // validation and per-row validation below.
-        if ($type === FiscalEventType::SALE_RECEIPT
-            && $eventVersion === 1
-            && ! array_key_exists('approval_references', $payload)) {
-            $expected = array_values(array_diff($expected, ['approval_references']));
-        }
-
         if ($type === FiscalEventType::ACCOUNT_CHARGE && array_key_exists('payments', $payload)) {
             return 'payload_account_charge_payments_forbidden:payments is not valid on ACCOUNT_CHARGE';
         }
@@ -1437,9 +1427,7 @@ final class FiscalPayloadConstraintValidator
 
         // ---- 7. list containers — line_items, payments, vat_breakdown,
         // ----    vouchers_redeemed. List-ness checked before per-row validation. ----
-        $approvalReferences = $eventVersion === 1 && ! array_key_exists('approval_references', $payload)
-            ? []
-            : $this->requireList($payload, 'approval_references');
+        $approvalReferences = $this->requireList($payload, 'approval_references');
         foreach ($approvalReferences as $index => $row) {
             $this->validateSaleReceiptApprovalReference($index, $row);
         }
