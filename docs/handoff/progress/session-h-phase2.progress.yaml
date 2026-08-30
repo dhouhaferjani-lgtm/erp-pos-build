@@ -7,6 +7,8 @@ max_fix_rounds: 4
 
 # Pinned 2026-08-30 by the Session H orchestrator = local dev tip AFTER both Phase-1 merges
 # (h1-cleanup 8d629ac89 = D-H1-1; h1-a1-buyer c4c171a8e = D-H1-2). Re-pin if dev moves before dispatch.
+# NOTE 2026-08-30: a1 was REVERTED on local dev (5c175db22, test-day rule) pending O-36; this base still
+# CONTAINS a1, so Phase 2 merges into dev only AFTER a1 is re-applied (git revert 5c175db22).
 base_sha: 31f49e4f47ed4f80dcb55d48436f233312014f99
 branch: feat/h2-party-kind
 worktree: .worktrees/h2-party-kind
