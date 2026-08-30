@@ -212,6 +212,112 @@ final class ProductsImportPipelineTest extends TestCase
         $this->assertSame(1, StockMovement::where('product_id', $duplicate->id)->where('movement_type', MovementType::Opening)->count());
     }
 
+    public function test_override_reimport_recomputes_sale_price_from_ht_without_erasing_blank_purchase_price(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Harissa 200g',
+            'sku' => 'HAR-200',
+            'type' => ProductType::Part,
+            'sale_price' => '4.165',
+            'purchase_price' => '2.000',
+            'tax_rate' => '19.00',
+            'unit' => 'pc',
+            'barcode' => '6191234567890',
+        ]);
+        $before = now()->subDay();
+        DB::table('products')->where('id', $product->id)->update(['updated_at' => $before]);
+
+        $file = UploadedFile::fake()->createWithContent('harissa.csv', implode("\n", [
+            'name,sku,type,sale_price_excl_tax,purchase_price,tax_rate,unit,barcode',
+            'Harissa 200g,HAR-200,part,3.750,,19,pc,6191234567890',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/imports', [
+            'file' => $file,
+            'type' => 'products',
+            'options' => [
+                'price_authority' => 'ht',
+                'duplicate_policy' => 'override',
+            ],
+        ]);
+        $createResponse->assertCreated();
+        $jobId = (string) $createResponse->json('data.id');
+
+        $executeResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute");
+
+        $executeResponse->assertOk()->assertJsonPath('import_result.imported_count', 1);
+        $product->refresh();
+        $this->assertSame('4.462', $product->sale_price);
+        $this->assertSame('2.000', $product->purchase_price);
+        $updatedAt = $product->updated_at;
+        $this->assertNotNull($updatedAt);
+        $this->assertTrue($updatedAt->greaterThan($before));
+
+        $row = ImportJob::query()->findOrFail($jobId)->rows()->sole();
+        $this->assertSame(
+            ['name', 'sku', 'type', 'sale_price_excl_tax', 'tax_rate', 'unit', 'barcode'],
+            $row->data['_provided'] ?? null,
+        );
+        $this->assertSame('imported', $row->outcome->value);
+    }
+
+    public function test_override_purchase_price_only_preserves_existing_ttc_sale_price(): void
+    {
+        [$product] = $this->executeSparsePriceOverride(
+            'SPARSE-PURCHASE',
+            ['purchase_price'],
+            ['9.000'],
+        );
+
+        $this->assertSame('9.000', $product->purchase_price);
+        $this->assertSame('11.900', $product->sale_price);
+    }
+
+    public function test_override_margin_only_derives_sale_price_from_existing_purchase_price(): void
+    {
+        $this->company->update(['default_tax_rate' => '7.00']);
+
+        [$product, $row] = $this->executeSparsePriceOverride(
+            'SPARSE-MARGIN',
+            ['margin'],
+            ['25'],
+            'margin',
+        );
+
+        $this->assertSame('8.000', $product->purchase_price);
+        $this->assertSame('11.900', $product->sale_price);
+        $this->assertSame('11.900', $row->data['sale_price'] ?? null);
+    }
+
+    public function test_override_tax_rate_only_preserves_existing_ttc_sale_price(): void
+    {
+        [$product] = $this->executeSparsePriceOverride(
+            'SPARSE-TAX',
+            ['tax_rate'],
+            ['7'],
+        );
+
+        $this->assertSame('7.00', $product->tax_rate);
+        $this->assertSame('8.000', $product->purchase_price);
+        $this->assertSame('11.900', $product->sale_price);
+    }
+
+    public function test_override_all_blank_price_cells_preserves_existing_prices(): void
+    {
+        [$product, $row] = $this->executeSparsePriceOverride(
+            'SPARSE-BLANKS',
+            ['sale_price', 'sale_price_incl_tax', 'sale_price_excl_tax', 'purchase_price', 'margin'],
+            ['', '', '', '', ''],
+        );
+
+        $this->assertSame('8.000', $product->purchase_price);
+        $this->assertSame('11.900', $product->sale_price);
+        $this->assertSame(['name', 'sku'], $row->data['_provided'] ?? null);
+    }
+
     public function test_products_import_job_summarizes_unresolved_location_warnings(): void
     {
         $file = UploadedFile::fake()->createWithContent('products-without-location.csv', implode("\n", [
@@ -1416,6 +1522,58 @@ final class ProductsImportPipelineTest extends TestCase
     // ──────────────────────────────────────────────────────────────────
     // Helpers
     // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * Execute an override import for one existing product through the real HTTP
+     * create and execute endpoints.
+     *
+     * @param  list<string>  $columns
+     * @param  list<string>  $values
+     * @return array{0: Product, 1: ImportRow}
+     */
+    private function executeSparsePriceOverride(
+        string $sku,
+        array $columns,
+        array $values,
+        ?string $priceAuthority = null,
+    ): array {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Sparse price product',
+            'sku' => $sku,
+            'type' => ProductType::Part,
+            'sale_price' => '11.900',
+            'purchase_price' => '8.000',
+            'tax_rate' => '19.00',
+        ]);
+        $file = UploadedFile::fake()->createWithContent('sparse-price.csv', implode("\n", [
+            implode(',', ['name', 'sku', ...$columns]),
+            implode(',', ['Sparse price product', $sku, ...$values]),
+        ]));
+        $options = ['duplicate_policy' => 'override'];
+        if ($priceAuthority !== null) {
+            $options['price_authority'] = $priceAuthority;
+        }
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/imports', [
+            'file' => $file,
+            'type' => 'products',
+            'options' => $options,
+        ]);
+        $createResponse->assertCreated();
+        $jobId = (string) $createResponse->json('data.id');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('import_result.imported_count', 1);
+
+        return [
+            $product->refresh(),
+            ImportJob::query()->findOrFail($jobId)->rows()->sole(),
+        ];
+    }
 
     /**
      * The two TN line-item VAT configurations these tests reason about, plus the

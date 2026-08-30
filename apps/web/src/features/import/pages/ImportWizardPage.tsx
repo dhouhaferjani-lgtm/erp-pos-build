@@ -354,6 +354,13 @@ export function ImportWizardPage() {
     return apiJobData
   }, [apiJobData, realtimeProgress])
 
+  const completedImportedCount = importResults?.imported_count ?? jobData?.successful_rows ?? 0
+  const completedSkippedCount = importResults?.skipped_count ?? jobData?.skipped_rows ?? 0
+  const completedFailedCount = importResults?.execution_error_count ?? jobData?.failed_rows ?? 0
+  const isSkipOnlyCompletion = completedImportedCount === 0
+    && completedSkippedCount > 0
+    && completedFailedCount === 0
+
   const optionVisibility = useMemo(() => {
     if (importType !== 'products') {
       return { prices: false, placement: false, stock: false }
@@ -1273,7 +1280,7 @@ export function ImportWizardPage() {
                 {t('wizard.complete.title')}
               </h2>
               <p className={`mt-2 ${colorTokens.text.muted}`}>
-                {t('wizard.complete.description')}
+                {t(isSkipOnlyCompletion ? 'wizard.complete.noChanges' : 'wizard.complete.description')}
               </p>
             </div>
 
@@ -1283,17 +1290,32 @@ export function ImportWizardPage() {
                 <h3 className={`font-medium ${colorTokens.text.primary} mb-4`}>
                   {t('wizard.complete.results')}
                 </h3>
-                <dl className="grid grid-cols-2 gap-4">
-                  <div className={`rounded-lg ${colorTokens.intent.success.bgSubtle} p-4`}>
+                <dl className="grid grid-cols-3 gap-4">
+                  <div
+                    data-testid="import-complete-count-imported"
+                    className={`rounded-lg ${colorTokens.intent.success.bgSubtle} p-4`}
+                  >
                     <dt className={`text-sm ${colorTokens.intent.success.text}`}>{t('wizard.complete.imported')}</dt>
                     <dd className={`text-2xl font-bold ${colorTokens.intent.success.textStrongest}`}>
-                      {importResults?.imported_count ?? jobData?.successful_rows ?? 0}
+                      {completedImportedCount}
                     </dd>
                   </div>
-                  <div className={`rounded-lg ${colorTokens.intent.danger.bgSubtle} p-4`}>
+                  <div
+                    data-testid="import-complete-count-skipped"
+                    className={`rounded-lg ${colorTokens.intent.warning.bgSubtle} p-4`}
+                  >
+                    <dt className={`text-sm ${colorTokens.intent.warning.text}`}>{t('wizard.complete.skipped')}</dt>
+                    <dd className={`text-2xl font-bold ${colorTokens.intent.warning.textStrongest}`}>
+                      {completedSkippedCount}
+                    </dd>
+                  </div>
+                  <div
+                    data-testid="import-complete-count-failed"
+                    className={`rounded-lg ${colorTokens.intent.danger.bgSubtle} p-4`}
+                  >
                     <dt className={`text-sm ${colorTokens.intent.danger.text}`}>{t('wizard.complete.failed')}</dt>
                     <dd className={`text-2xl font-bold ${colorTokens.intent.danger.textStrongest}`}>
-                      {((importResults?.skipped_count ?? 0) + (importResults?.execution_error_count ?? 0)) || (jobData?.failed_rows ?? 0)}
+                      {completedFailedCount}
                     </dd>
                   </div>
                 </dl>

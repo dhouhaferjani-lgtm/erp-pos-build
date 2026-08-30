@@ -62,6 +62,26 @@ final class ProductService implements ProductServiceInterface
         return $product?->id;
     }
 
+    public function findPriceInputs(
+        string $tenantId,
+        string $companyId,
+        string $productId,
+    ): ?array {
+        $product = Product::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->find($productId);
+
+        if ($product === null) {
+            return null;
+        }
+
+        return [
+            'purchase_price' => $product->purchase_price,
+            'tax_rate' => $product->tax_rate,
+        ];
+    }
+
     /**
      * Create or update a product.
      *

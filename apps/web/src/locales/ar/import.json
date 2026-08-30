@@ -16,6 +16,8 @@
   },
   "wizard": {
     "complete": {
+      "noChanges": "لم يتم تغيير أي سجلات.",
+      "skipped": "تم التخطي",
       "warnings": "اكتملت {{count}} صفوف مع تحذيرات"
     }
   },

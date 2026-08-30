@@ -62,4 +62,54 @@ final class CoalescingMergeTest extends TestCase
             $merger->merge([], ['type' => 'part'], ['type']),
         );
     }
+
+    public function test_provided_sale_price_excl_tax_updates_sale_price_and_preserves_blank_purchase_price(): void
+    {
+        $merged = (new CoalescingAttributeMerger)->merge(
+            ['sale_price' => '4.165', 'purchase_price' => '2.000'],
+            ['sale_price' => '4.462', 'purchase_price' => null],
+            ['sale_price_excl_tax'],
+        );
+
+        $this->assertSame('4.462', $merged['sale_price']);
+        $this->assertSame('2.000', $merged['purchase_price']);
+    }
+
+    public function test_provided_sale_price_incl_tax_updates_sale_price_and_preserves_blank_purchase_price(): void
+    {
+        $merged = (new CoalescingAttributeMerger)->merge(
+            ['sale_price' => '4.165', 'purchase_price' => '2.000'],
+            ['sale_price' => '4.900', 'purchase_price' => null],
+            ['sale_price_incl_tax'],
+        );
+
+        $this->assertSame('4.900', $merged['sale_price']);
+        $this->assertSame('2.000', $merged['purchase_price']);
+    }
+
+    public function test_blank_sale_price_authority_cells_leave_prices_unchanged(): void
+    {
+        $existing = ['sale_price' => '4.165', 'purchase_price' => '2.000'];
+
+        $this->assertSame(
+            $existing,
+            (new CoalescingAttributeMerger)->merge(
+                $existing,
+                ['sale_price' => null, 'purchase_price' => null],
+                [],
+            ),
+        );
+    }
+
+    public function test_null_sale_price_from_a_derived_arm_never_overwrites_existing_ttc(): void
+    {
+        $merged = (new CoalescingAttributeMerger)->merge(
+            ['sale_price' => '11.900', 'purchase_price' => '8.000'],
+            ['sale_price' => null, 'purchase_price' => '9.000'],
+            ['purchase_price'],
+        );
+
+        $this->assertSame('11.900', $merged['sale_price']);
+        $this->assertSame('9.000', $merged['purchase_price']);
+    }
 }

@@ -102,6 +102,24 @@ final class DuplicateCensusTest extends TestCase
         $this->assertSame(1, $census->counts[DuplicateBucket::InFile->value]);
     }
 
+    public function test_name_only_rows_without_a_location_use_normalized_name_for_in_file_census(): void
+    {
+        $job = $this->job(2);
+        app(ImportService::class)->addRowsBatch($job, [
+            5 => ['name' => ' Fresh Bread ', 'sku' => '', 'barcode' => ''],
+            6 => ['name' => 'fresh bread', 'sku' => '', 'barcode' => ''],
+        ]);
+        DB::table('import_rows')->where('import_job_id', $job->id)->update(['is_valid' => true]);
+
+        $census = app(DuplicateCensusService::class)->census($job->refresh(), $this->company->id);
+        $rows = $job->rows()->orderBy('row_number')->get()->keyBy('row_number');
+
+        $this->assertSame(DuplicateBucket::InFile, $rows->get(5)?->duplicate_bucket);
+        $this->assertSame(DuplicateBucket::New, $rows->get(6)?->duplicate_bucket);
+        $this->assertSame(1, $census->counts[DuplicateBucket::InFile->value]);
+        $this->assertSame(1, $census->counts[DuplicateBucket::New->value]);
+    }
+
     public function test_census_excludes_invalid_rows_and_batches_each_identity_arm_per_chunk(): void
     {
         $job = $this->job(601);

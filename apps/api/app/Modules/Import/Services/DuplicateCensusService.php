@@ -66,6 +66,7 @@ final readonly class DuplicateCensusService
                             $placementKey = $bucket === DuplicateBucket::Refused
                                 ? null
                                 : $this->placementKey(
+                                    $job,
                                     $row,
                                     $resolution,
                                     $locationIds[$row->id] ?? null,
@@ -135,7 +136,7 @@ final readonly class DuplicateCensusService
         $bucket = $this->bucketForResolution($resolution);
         $locationId = $this->locationId($job, $row, $companyId);
         $locationUnresolved = $this->locationIsUnresolved($job, $row, $locationId);
-        $placementKey = $this->placementKey($row, $resolution, $locationId);
+        $placementKey = $this->placementKey($job, $row, $resolution, $locationId);
         if ($placementKey === null) {
             return new DuplicateRowDecisionData($bucket, null, $locationUnresolved);
         }
@@ -161,6 +162,7 @@ final readonly class DuplicateCensusService
                     /** @var ImportRow $candidate */
                     foreach ($rows as $candidate) {
                         $candidateKey = $this->placementKey(
+                            $job,
                             $candidate,
                             $resolutions[$candidate->id],
                             $locationIds[$candidate->id] ?? null,
@@ -317,17 +319,21 @@ final readonly class DuplicateCensusService
     }
 
     private function placementKey(
+        ImportJob $job,
         ImportRow $row,
         ProductIdentityResolutionData $resolution,
         ?string $locationId,
     ): ?string {
-        if ($locationId === null || $resolution->isBarcodeAmbiguous()) {
+        if ($resolution->isBarcodeAmbiguous()
+            || ($locationId === null && $this->effectiveLocationCode($job, $row) !== null)) {
             return null;
         }
 
         $data = $row->data;
         $identity = $resolution->productId;
         if ($identity === null) {
+            // Mirror ProductResolver::resolveInput(): supplied SKU first, then
+            // barcode, then normalized name only when both identifiers are blank.
             $sku = $this->nonBlank($data['sku'] ?? null);
             $barcode = $this->nonBlank($data['barcode'] ?? null);
             $name = mb_strtolower(trim((string) ($data['name'] ?? '')));
@@ -336,7 +342,7 @@ final readonly class DuplicateCensusService
                 : ($barcode !== null ? 'barcode:'.$barcode : 'name:'.$name);
         }
 
-        return $identity."\0".$locationId;
+        return $identity."\0".($locationId ?? 'no-location');
     }
 
     /** @return array<string, int> */

@@ -165,8 +165,10 @@
     "complete": {
       "title": "Import Complete!",
       "description": "Your data has been successfully imported.",
+      "noChanges": "No records were changed.",
       "results": "Results",
       "imported": "Successfully imported",
+      "skipped": "Skipped",
       "failed": "Failed to import",
       "warnings": "{{count}} rows completed with warnings",
       "backToDashboard": "Back to Import Dashboard",

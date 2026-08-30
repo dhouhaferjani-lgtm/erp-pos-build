@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ImportWizardPage } from '../pages/ImportWizardPage'
+import type { ImportJob, ImportResult } from '../types'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { useImportProgressStore } from '@/stores/importProgressStore'
@@ -185,6 +186,63 @@ describe('ImportWizardPage duplicate policy', () => {
     expect(screen.getByTestId('import-wizard-step-preview')).toBeInTheDocument()
     resolvePatch?.({ data: { id: 'job-1' } })
     expect(await screen.findByTestId('import-wizard-step-execute')).toBeInTheDocument()
+  })
+
+  it('shows skip-only completion as zero imported, five skipped, and zero failed', async () => {
+    const completedJob: ImportJob & { import_result: ImportResult } = {
+      id: 'job-1',
+      type: 'products',
+      status: 'completed',
+      original_filename: 'products.csv',
+      total_rows: 5,
+      processed_rows: 5,
+      successful_rows: 0,
+      skipped_rows: 5,
+      failed_rows: 0,
+      warning_rows: 0,
+      warning_summary: null,
+      progress_percentage: 100,
+      error_message: null,
+      started_at: '2026-08-31T00:00:00Z',
+      completed_at: '2026-08-31T00:00:01Z',
+      created_at: '2026-08-30T23:59:59Z',
+      import_result: {
+        imported_count: 0,
+        skipped_count: 5,
+        execution_error_count: 0,
+        preview_drift_count: 0,
+        total_rows: 5,
+        failed_rows_csv_url: null,
+      },
+    }
+    mockExecuteMutate.mockImplementation((
+      _jobId: string,
+      options?: { onSuccess?: (data: ImportJob & { import_result?: ImportResult }) => void },
+    ) => {
+      options?.onSuccess?.(completedJob)
+    })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    const Wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/settings/import/products']}>
+        <Routes><Route path="/settings/import/:type" element={<ImportWizardPage />} /></Routes>
+      </MemoryRouter>,
+      { wrapper: Wrapper },
+    )
+
+    await user.click(screen.getByRole('button', { name: 'choose' }))
+    await user.click(await screen.findByTestId('import-wizard-next'))
+    await user.click(screen.getByRole('button', { name: 'map' }))
+    await user.click(screen.getByTestId('import-wizard-validate'))
+    await user.click(screen.getByTestId('import-preview-policy-skip'))
+    await user.click(screen.getByTestId('import-wizard-next'))
+    await user.click(await screen.findByTestId('import-wizard-execute'))
+
+    expect(await screen.findByTestId('import-complete-count-imported')).toHaveTextContent('0')
+    expect(screen.getByTestId('import-complete-count-skipped')).toHaveTextContent('5')
+    expect(screen.getByTestId('import-complete-count-failed')).toHaveTextContent('0')
+    expect(screen.getByText('wizard.complete.noChanges')).toBeInTheDocument()
   })
 
   it('hides duplicate policy when preview has no census and advances without PATCH', async () => {

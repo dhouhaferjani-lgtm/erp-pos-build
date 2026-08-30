@@ -856,6 +856,10 @@ final class ImportService
             );
         }
 
+        $existingPriceInputs = $identity->productId === null
+            ? null
+            : $this->productService->findPriceInputs($job->tenant_id, $companyId, $identity->productId);
+
         $unit = $this->unitResolver->resolve(
             $companyId,
             is_string($data['unit'] ?? null) ? $data['unit'] : null,
@@ -886,7 +890,11 @@ final class ImportService
 
         $tax = $this->resolveProductTax($company, $data, $category?->categoryId);
         $authority = $this->resolvePriceAuthority($job);
-        $price = $this->productPriceResolver->resolve($data, $authority, $tax->taxRate);
+        $price = $this->productPriceResolver->resolve(
+            $this->effectivePriceInputs($data, $existingPriceInputs),
+            $authority,
+            $this->effectivePriceTaxRate($data, $category, $tax->taxRate, $existingPriceInputs),
+        );
 
         if ($price['sale_price'] !== null) {
             $data['sale_price'] = $price['sale_price'];
@@ -1014,6 +1022,47 @@ final class ImportService
         $authority = $job->options['price_authority'] ?? null;
 
         return in_array($authority, ['ttc', 'ht', 'margin'], true) ? $authority : 'ttc';
+    }
+
+    /**
+     * Coalesce only persisted derivation dependencies over sparse incoming cells.
+     * The stored `sale_price` is the TTC-authoritative output under the precision
+     * contract: it is never recycled as a new resolver candidate. With no incoming
+     * TTC, HT, or margin cell, the resolver must return no candidate and leave it.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array{purchase_price: ?string, tax_rate: ?string}|null  $existing
+     * @return array<string, mixed>
+     */
+    private function effectivePriceInputs(array $data, ?array $existing): array
+    {
+        if ($this->emptyString($data['purchase_price'] ?? null)
+            && $existing !== null
+            && $existing['purchase_price'] !== null) {
+            $data['purchase_price'] = $existing['purchase_price'];
+        }
+
+        return $data;
+    }
+
+    /**
+     * Use the product's persisted rate for a sparse update. An incoming rate or
+     * category still governs the rate selected by resolveProductTax().
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array{purchase_price: ?string, tax_rate: ?string}|null  $existing
+     */
+    private function effectivePriceTaxRate(
+        array $data,
+        ?CategoryResolutionDTO $category,
+        string $resolvedTaxRate,
+        ?array $existing,
+    ): string {
+        if (! $this->emptyString($data['tax_rate'] ?? null) || $category !== null) {
+            return $resolvedTaxRate;
+        }
+
+        return $existing['tax_rate'] ?? $resolvedTaxRate;
     }
 
     private function resolveCompany(string $tenantId, string $companyId): Company

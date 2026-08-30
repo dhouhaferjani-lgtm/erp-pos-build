@@ -26,6 +26,17 @@ interface ProductServiceInterface
     ): ?string;
 
     /**
+     * Read the persisted inputs needed to derive an imported product price.
+     *
+     * @return array{purchase_price: ?string, tax_rate: ?string}|null
+     */
+    public function findPriceInputs(
+        string $tenantId,
+        string $companyId,
+        string $productId,
+    ): ?array;
+
+    /**
      * Create or update a product.
      *
      * @param  array<string, mixed>  $data  Product data

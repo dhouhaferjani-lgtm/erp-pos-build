@@ -165,8 +165,10 @@
     "complete": {
       "title": "Import terminé !",
       "description": "Vos données ont été importées avec succès.",
+      "noChanges": "Aucun enregistrement n’a été modifié.",
       "results": "Résultats",
       "imported": "Importés avec succès",
+      "skipped": "Ignorés",
       "failed": "Échec d'importation",
       "warnings": "{{count}} lignes importées avec des avertissements",
       "backToDashboard": "Retour au tableau de bord",
