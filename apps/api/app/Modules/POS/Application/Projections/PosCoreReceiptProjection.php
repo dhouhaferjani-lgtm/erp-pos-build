@@ -91,13 +91,28 @@ use RuntimeException;
  * Shared/Contracts seam instead of a direct Treasury Eloquent traversal).
  *
  * **D16 sale-time snapshot invariant.** Buyer display and tax data come
- * exclusively from `fiscal_events.payload.buyer`. The payload customer ID is
- * used only as a candidate FK: a shared-contract resolver confirms that it is
- * an existing partner in the event's tenant + company, including archived
- * partners whose immutable receipt may arrive later. Missing, legacy,
- * malformed, or out-of-scope candidates land with a null partner FK while the
- * sealed snapshot still projects. Partner type never changes this identity
+ * exclusively from `fiscal_events.payload.buyer`. The payload customer ID and
+ * contact ID are used only as candidate FKs: shared-contract resolvers
+ * (`PartnerServiceInterface::resolveScopedPartnerId`,
+ * `ContactResolverInterface::resolveScopedContactId`) confirm that each is an
+ * existing row in the event's tenant + company, including archived ones whose
+ * immutable receipt may arrive later. Partner type never changes this identity
  * resolution, and no request-bound company context is used.
+ *
+ * **Scope of the defensive nulling (merge-gate r1 finding 3).** This
+ * projector's null-FK fallback only ever rescues values the FISCAL VALIDATOR
+ * ACCEPTS: a legacy non-UUID `customer_id` at `event_version <= 4`, a
+ * syntactically valid UUID that resolves to no partner in scope, and any
+ * `contact_id` (the validator accepts an arbitrary non-empty string for it at
+ * every version). Those land with a null FK while the sealed snapshot still
+ * projects. It is NOT a rescue for a payload the validator REJECTS: such an
+ * event is stored as `IntegrityExceptionClass::CanonicalParseFailure` with a
+ * NULL payload (`OutboxIngestor.php:793-805`) and `dispatchProjections()`
+ * returns early for that class (`OutboxIngestor.php:987-990`), so the sale
+ * produces NO `pos_receipts` row, no GL and no stock until an operator repairs
+ * it through `ParseFailureResolutionService`. The chain is intact either way;
+ * the device runs the identical gate before sealing, so only a
+ * buggy/forged/older-shape client can reach that outcome.
  *
  * **Idempotency anchor.** The durable guard is the `pos_receipts.fiscal_event_id
  * UNIQUE` column added in Task 11 — `apply()` checks for an existing
