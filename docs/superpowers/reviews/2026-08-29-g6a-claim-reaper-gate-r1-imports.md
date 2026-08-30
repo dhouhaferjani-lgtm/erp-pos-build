@@ -213,3 +213,40 @@ The functional lane contract is green, including the G-3b merge, R2-1 relative-k
 | `git diff --check`; final `git status --short --branch` | **PASS** — no whitespace errors; branch clean. |
 
 Full suite intentionally not run.
+
+## Gate r4 (Codex, narrow)
+
+- **Reviewer/scope:** Codex standing in for `imports-reviewer`; re-check limited to Gate r3 items R3-1, R3-2, and R3-3 plus the explicitly requested scheduler and worktree-status checks.
+- **Reviewed state:** `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/g6a-claim-reaper`, branch `feat/g6a-import-claim-reaper`, HEAD `5e601ecaeac05d888b7758595930f9b0cc80252d`, dirty/uncommitted fix round 2. No source file was edited by this review.
+- **PostgreSQL isolation:** the PostgreSQL invocation was prefixed exactly with `DB_DATABASE=autoerp_test_g4 DB_CENTRAL_DATABASE=autoerp_test_g4`. No full suite was run.
+
+### VERDICT: CHANGES
+
+R3-1, R3-2, and R3-3 are substantively closed: touched Import PHPStan is clean; M6c routes the unchanged forward-only notice through `MigrationOutput::info` with no `Log::warning` or bare-output path; both migration guards pass; the new test genuinely inspects Laravel's in-memory `Schedule` and pins both cron expressions; the focused SQLite and PostgreSQL paths, Pint, and the manifest checker are green; and the live-`dev` union is exactly **1223 / Console 16 / Import 30 / Migrations 13**. Approval is withheld only because the required final status condition is not met: `apps/api/autoerp_test_g4` is an untracked 6,844,416-byte SQLite database and is not a lane file. Remove that artifact and confirm the remaining four dirty paths are the three fix-round-2 modifications plus `ImportSchedulerRegistrationTest.php`; no source correction is otherwise requested by this narrow gate.
+
+### Narrow closure evidence
+
+1. **R3-1 CLOSED.** `PurgeExpiredImportArtifactsTest.php` now narrows `data.id` with `assertIsString()` and uses `whereKey($jobId)->firstOrFail()`. `./vendor/bin/phpstan analyse app/Modules/Import routes/console.php <M6c> tests/Feature/Import tests/Feature/Console/ImportSchedulerRegistrationTest.php --no-progress` exited 0 with `[OK] No errors`.
+2. **R3-2 CLOSED.** M6c imports `App\Shared\Database\MigrationOutput` and `down()` calls `MigrationOutput::info(...)`. The reason literal remains byte-identical to the Gate r3 version: `Forward-only migration: ownership clocks and terminal aggregates must not be erased.` The file has no `Log` import/call and no `echo`/`print` statement. The path-scoped SQLite invocation ran both guard files: `RegistrationResponseIsPureJsonTest::dispatching tenant migrations during tests emits no stdout` passed and `NoBareEchoInMigrationsTest::migrations do not write directly to stdout` passed (the unrelated environment-dependent registration-response case was the invocation's single skip).
+3. **Scheduler registration genuine.** `ImportSchedulerRegistrationTest` resolves `Schedule::class`, filters `Schedule::events()` to exactly one matching command event, and asserts `imports:reap-stuck` is `*/5 * * * *` and `imports:purge-expired` is `0 0 * * *`. It does not inspect `routes/console.php` as text.
+4. **R3-3 CLOSED / merger union pinned.** The branch checker passed: **1,481 Feature classes / 74 groups**, every filter anchored and uniquely matched, with working-tree manifest **1221 / Console 16 / Import 30 / Migrations 12**. The rebase baseline at `0d2ef6a92` is **1217 / Console 15 / Import 27 / Migrations 12**, so G-6a contributes **+4 / +1 / +3 / +0**. Live `dev` at `f68d5e169a06a2950630300e9daf6f673ec9fa24` is **1219 / Console 15 / Import 27 / Migrations 13**; applying that delta yields the required integration union **1223 / Console 16 / Import 30 / Migrations 13**.
+
+### Fresh command outputs
+
+| command | result |
+|---|---|
+| Touched Import + scheduler PHPStan | **PASS** — exit 0, `[OK] No errors`. |
+| SQLite scheduler + purge + reaper + both guard paths | **PASS** — 18 passed, 1 declared/environment skip, 697 assertions. Scheduler 2/2, purge 6/6, reaper 7/7, and both requested guard assertions passed. |
+| `DB_DATABASE=autoerp_test_g4 DB_CENTRAL_DATABASE=autoerp_test_g4 php artisan test -c phpunit-pgsql.xml` on claim/reaper/purge classes | **PASS** — 43 passed, 215 assertions, including the real two-connection PostgreSQL claim winner. |
+| `./vendor/bin/pint --test` on the touched PHP surface | **PASS** — `{"result":"pass"}`. |
+| `php tools/feature-lane-manifest-check.php` | **PASS** — 1,481 Feature classes / 74 groups; anchored entries uniquely matched. |
+| `git diff --check` | **PASS** — no whitespace errors. |
+| Final `git status --short` | **CHANGES** — expected lane paths are present, but so is the non-lane SQLite artifact shown below. |
+
+```text
+ M apps/api/database/migrations/tenant/2026_08_30_100400_add_lifecycle_columns_to_import_jobs.php
+ M apps/api/tests/Feature/Import/PurgeExpiredImportArtifactsTest.php
+ M apps/api/tests/feature-lane-manifest.json
+?? apps/api/autoerp_test_g4
+?? apps/api/tests/Feature/Console/ImportSchedulerRegistrationTest.php
+```
