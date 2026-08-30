@@ -35,4 +35,14 @@ describe('importApi options', () => {
     })
     expect(result.data.options).toEqual({ price_authority: 'margin' })
   })
+
+  it('threads the duplicate policy through the options patch', async () => {
+    mockApiPatch.mockResolvedValue({ data: { data: { id: 'job-1', options: { duplicate_policy: 'skip' } } } })
+
+    await importApi.updateOptions('job-1', { duplicate_policy: 'skip' })
+
+    expect(mockApiPatch).toHaveBeenCalledWith('/imports/job-1/options', {
+      options: { duplicate_policy: 'skip' },
+    })
+  })
 })

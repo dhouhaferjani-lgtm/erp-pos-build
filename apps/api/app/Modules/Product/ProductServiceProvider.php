@@ -8,11 +8,13 @@ use App\Modules\POS\Infrastructure\Broadcasting\CatalogModelObserver;
 use App\Modules\Product\Application\Contracts\ProductRepositoryInterface;
 use App\Modules\Product\Application\Listeners\ProcessEnrichmentEventListener;
 use App\Modules\Product\Application\Services\DiscountPolicySubjectProvider;
+use App\Modules\Product\Application\Services\ProductResolver;
 use App\Modules\Product\Domain\Events\EnrichmentWebhookReceived;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Product\Infrastructure\Persistence\EloquentProductRepository;
 use App\Modules\Product\Presentation\Console\RunEnrichmentCommand;
 use App\Shared\Contracts\DiscountPolicySubjectProviderInterface;
+use App\Shared\Contracts\ProductResolverInterface;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
@@ -22,6 +24,7 @@ class ProductServiceProvider extends ServiceProvider
     {
         $this->app->bind(ProductRepositoryInterface::class, EloquentProductRepository::class);
         $this->app->bind(DiscountPolicySubjectProviderInterface::class, DiscountPolicySubjectProvider::class);
+        $this->app->bind(ProductResolverInterface::class, ProductResolver::class);
     }
 
     public function boot(): void

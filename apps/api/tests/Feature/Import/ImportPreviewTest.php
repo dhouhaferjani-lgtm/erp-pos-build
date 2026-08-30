@@ -15,6 +15,7 @@ use App\Modules\Import\Services\ImportService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -76,6 +77,7 @@ class ImportPreviewTest extends TestCase
         ]);
 
         app(CompanyContext::class)->setCompanyId($this->company->id);
+        app(UnitsProvisioningService::class)->provisionForCompany($this->company);
 
         Storage::fake('local');
     }
@@ -109,6 +111,7 @@ class ImportPreviewTest extends TestCase
             ->getJson("/api/v1/imports/{$jobId}/preview");
 
         $previewResponse->assertOk();
+        $previewResponse->assertJsonMissingPath('data.duplicates');
 
         // Verify response structure
         $previewResponse->assertJsonStructure([

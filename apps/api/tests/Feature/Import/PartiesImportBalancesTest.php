@@ -109,7 +109,10 @@ final class PartiesImportBalancesTest extends TestCase
         $this->assertSame(3, Document::where('company_id', $this->company->id)->where('is_historical', true)->count());
 
         $generatedCode = (string) $job->rows()->where('row_number', 1)->firstOrFail()->refresh()->data['code'];
-        $this->assertStringStartsWith('IMP-'.substr($job->id, 0, 8).'-1', $generatedCode);
+        $this->assertSame(
+            'IMP-'.substr(hash('sha256', $this->company->id.'acme corp'), 0, 12),
+            $generatedCode,
+        );
         $this->assertDatabaseHas('partners', [
             'company_id' => $this->company->id,
             'code' => $generatedCode,
@@ -150,10 +153,10 @@ final class PartiesImportBalancesTest extends TestCase
 
         $rowOne = $job->rows()->where('row_number', 1)->firstOrFail()->refresh();
         $rowFour = $job->rows()->where('row_number', 4)->firstOrFail()->refresh();
-        $this->assertNull($rowOne->warnings);
+        $this->assertSame('code_generated', $rowOne->warnings[0]['code'] ?? null);
         $this->assertSame('ok', $rowOne->data['_results']['ar_balance']);
         $this->assertNull($rowFour->warnings);
-        $this->assertArrayNotHasKey('_results', $rowFour->data);
+        $this->assertSame([], $rowFour->data['_results']);
     }
 
     public function test_unlocked_ar_batch_records_balance_warning_without_blocking_partner_import(): void

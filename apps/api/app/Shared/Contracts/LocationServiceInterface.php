@@ -17,4 +17,12 @@ interface LocationServiceInterface
      * @return string|null Location ID or null if not found
      */
     public function findIdByCode(string $companyId, string $code): ?string;
+
+    /**
+     * Resolve a chunk of exact location codes for one company.
+     *
+     * @param  list<string>  $codes
+     * @return array<string, string> code => location id
+     */
+    public function findIdsByCodes(string $companyId, array $codes): array;
 }

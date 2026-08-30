@@ -82,6 +82,13 @@ export function ImportPreviewTable({ preview }: ImportPreviewTableProps) {
               ))}
               <th
                 scope="col"
+                data-testid="import-preview-interpretation"
+                className={`px-3 py-2 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}
+              >
+                {t('duplicates.interpretation')}
+              </th>
+              <th
+                scope="col"
                 className={`px-3 py-2 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}
               >
                 {t('preview.status')}
@@ -109,6 +116,13 @@ export function ImportPreviewTable({ preview }: ImportPreviewTableProps) {
                     </td>
                   ))}
                   <td className="whitespace-nowrap px-3 py-2">
+                    {row.duplicate_bucket && (
+                      <span className={`inline-flex rounded-full ${colorTokens.intent.neutral.bgSubtle} px-2 py-1 text-xs font-medium ${colorTokens.text.secondary}`}>
+                        {t(`duplicates.bucket.${row.duplicate_bucket}`)}
+                      </span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2">
                     {row.is_valid ? (
                       <span className={`inline-flex items-center gap-1 ${colorTokens.intent.success.text}`}>
                         <CheckCircle className="h-4 w-4" />
@@ -125,7 +139,7 @@ export function ImportPreviewTable({ preview }: ImportPreviewTableProps) {
                 {/* Inline error details row */}
                 {!row.is_valid && row.errors && Object.keys(row.errors).length > 0 && (
                   <tr className={colorTokens.intent.danger.bgSubtle}>
-                    <td colSpan={headers.length + 2} className="px-3 py-2">
+                    <td colSpan={headers.length + 3} className="px-3 py-2">
                       <div className={`flex flex-wrap gap-x-4 gap-y-1 text-xs ${colorTokens.intent.danger.textStrong}`}>
                         {Object.entries(row.errors).map(([field, msgs]) => (
                           <span key={field} className="inline-flex items-center gap-1">

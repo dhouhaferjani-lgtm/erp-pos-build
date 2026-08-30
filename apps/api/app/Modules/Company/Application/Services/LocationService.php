@@ -27,4 +27,18 @@ final class LocationService implements LocationServiceInterface
 
         return $location?->id;
     }
+
+    public function findIdsByCodes(string $companyId, array $codes): array
+    {
+        if ($codes === []) {
+            return [];
+        }
+
+        return Location::query()
+            ->where('company_id', $companyId)
+            ->whereIn('code', array_values(array_unique($codes)))
+            ->pluck('id', 'code')
+            ->map(static fn (mixed $id): string => (string) $id)
+            ->all();
+    }
 }

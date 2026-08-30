@@ -13,11 +13,33 @@ namespace App\Modules\Import\Domain\Enums;
 enum ImportErrorCode: string
 {
     case UnitsNotSeeded = 'units_not_seeded';
+    case UnitUnknown = 'unit_unknown';
+    case UnitAmbiguous = 'unit_ambiguous';
+    case UnitDefaultMissing = 'unit_default_missing';
+    case BarcodeAmbiguous = 'barcode_ambiguous';
+    case ProductNotFound = 'product_not_found';
+    case PartnerNotFound = 'partner_not_found';
+    case SkuHeldByDeletedProduct = 'sku_held_by_deleted_product';
+    case VatHeldByDeletedPartner = 'vat_held_by_deleted_partner';
+    case DuplicateSkuInCompany = 'duplicate_sku_in_company';
+    case ValidationFailed = 'validation_failed';
+    case InternalError = 'internal_error';
 
     public function isJobLevel(): bool
     {
         return match ($this) {
             self::UnitsNotSeeded => true,
+            self::UnitUnknown,
+            self::UnitAmbiguous,
+            self::UnitDefaultMissing,
+            self::BarcodeAmbiguous,
+            self::ProductNotFound,
+            self::PartnerNotFound,
+            self::SkuHeldByDeletedProduct,
+            self::VatHeldByDeletedPartner,
+            self::DuplicateSkuInCompany,
+            self::ValidationFailed,
+            self::InternalError => false,
         };
     }
 }

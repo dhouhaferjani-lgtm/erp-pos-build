@@ -1,0 +1,17 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Shared\Contracts;
+
+use App\Shared\DTOs\UnitCatalogEntryData;
+
+interface UnitCatalogQueryInterface
+{
+    /**
+     * @return list<UnitCatalogEntryData>
+     */
+    public function visibleUnits(string $companyId): array;
+
+    public function visibleActiveUnitCount(string $companyId): int;
+}

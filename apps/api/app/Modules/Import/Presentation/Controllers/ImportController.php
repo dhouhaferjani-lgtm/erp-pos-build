@@ -9,6 +9,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Import\Application\Jobs\ProcessImportJob;
 use App\Modules\Import\Application\Jobs\ProcessProductImageImport;
+use App\Modules\Import\Domain\Data\ImportCountersData;
 use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
@@ -19,7 +20,7 @@ use App\Modules\Import\Services\ResultWorkbookService;
 use App\Modules\Import\Services\SpreadsheetParserService;
 use App\Modules\Import\Services\ValidationEngine;
 use App\Modules\Inventory\Domain\Enums\LocationNodeType;
-use App\Modules\Uom\Application\Services\UnitsProvisioningService;
+use App\Shared\Contracts\UnitCatalogQueryInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -48,7 +49,7 @@ class ImportController extends Controller
         private readonly SpreadsheetParserService $spreadsheetParser,
         private readonly FailedRowsExportService $failedRowsExportService,
         private readonly ResultWorkbookService $resultWorkbookService,
-        private readonly UnitsProvisioningService $unitsProvisioning,
+        private readonly UnitCatalogQueryInterface $unitCatalog,
     ) {}
 
     /**
@@ -99,6 +100,7 @@ class ImportController extends Controller
             'options.placement_mode' => ['sometimes', 'in:strict,auto_create'],
             'options.placement_node_types' => ['sometimes', 'array'],
             'options.placement_node_types.*' => ['required', new Enum(LocationNodeType::class)],
+            'options.duplicate_policy' => ['sometimes', 'in:override,skip'],
         ]);
 
         /** @var User $user */
@@ -121,7 +123,7 @@ class ImportController extends Controller
         }
 
         if (in_array('unit', $type->getOptionalColumns(), true)
-            && ! $this->unitsProvisioning->hasVisibleUnits($company)) {
+            && $this->unitCatalog->visibleActiveUnitCount($company->id) === 0) {
             return response()->json([
                 'error' => [
                     'code' => ImportErrorCode::UnitsNotSeeded->value,
@@ -289,27 +291,32 @@ class ImportController extends Controller
                 ))
                 : []);
 
-        return response()->json([
-            'data' => [
-                'headers' => $headers,
-                'rows' => $sampleRows->map(fn ($row) => [
-                    'row_number' => $row->row_number,
-                    'data' => array_filter(
-                        $row->data,
-                        static fn (string $header): bool => ! str_starts_with($header, '_'),
-                        ARRAY_FILTER_USE_KEY,
-                    ),
-                    'is_valid' => $row->is_valid,
-                    'errors' => $row->errors ?? [],
-                ]),
-                'summary' => [
-                    'total_rows' => $job->total_rows,
-                    'valid_rows' => $job->successful_rows,
-                    'invalid_rows' => $job->failed_rows,
-                ],
-                'placement' => $this->importService->productPlacementPreview($job),
+        $preview = [
+            'headers' => $headers,
+            'rows' => $sampleRows->map(fn ($row) => [
+                'row_number' => $row->row_number,
+                'data' => array_filter(
+                    $row->data,
+                    static fn (string $header): bool => ! str_starts_with($header, '_'),
+                    ARRAY_FILTER_USE_KEY,
+                ),
+                'is_valid' => $row->is_valid,
+                'errors' => $row->errors ?? [],
+                'duplicate_bucket' => $row->duplicate_bucket?->value,
+            ]),
+            'summary' => [
+                'total_rows' => $job->total_rows,
+                'valid_rows' => $job->rows()->where('is_valid', true)->count(),
+                'invalid_rows' => $job->rows()->where('is_valid', false)->count(),
             ],
-        ]);
+            'placement' => $this->importService->productPlacementPreview($job),
+        ];
+        $duplicateCensus = $job->options['duplicate_census'] ?? null;
+        if (is_array($duplicateCensus)) {
+            $preview['duplicates'] = $duplicateCensus;
+        }
+
+        return response()->json(['data' => $preview]);
     }
 
     /**
@@ -400,6 +407,7 @@ class ImportController extends Controller
             'options.placement_mode' => ['sometimes', 'in:strict,auto_create'],
             'options.placement_node_types' => ['sometimes', 'array'],
             'options.placement_node_types.*' => ['required', new Enum(LocationNodeType::class)],
+            'options.duplicate_policy' => ['sometimes', 'in:override,skip'],
         ]);
 
         $requestOptions = $this->optionsFromRequest($request) ?? [];
@@ -503,6 +511,14 @@ class ImportController extends Controller
             return $this->openingBalancesForbidden();
         }
 
+        if ($job->status === ImportStatus::Failed && $job->started_at === null) {
+            return response()->json([
+                'error' => 'Import cannot be started. No valid rows to import.',
+                'failed_rows' => $job->failed_rows,
+                'valid_rows' => $job->getValidRowsCount(),
+            ], 422);
+        }
+
         // Status precondition, separate from the "no valid rows" refusal below.
         // A Completed/Failed/Importing/Validating job must be refused for what it
         // is, not with a misleading "no valid rows" message — executing this
@@ -556,6 +572,7 @@ class ImportController extends Controller
                     'imported_count' => $result['imported_count'],
                     'skipped_count' => $result['skipped_count'],
                     'execution_error_count' => $result['execution_error_count'],
+                    'preview_drift_count' => $result['preview_drift_count'],
                     'total_rows' => $result['total_rows'],
                     'failed_rows_csv_url' => $failedRowsCsvUrl,
                 ],
@@ -675,15 +692,18 @@ class ImportController extends Controller
      */
     private function formatJob(ImportJob $job, bool $withWarningSummary): array
     {
+        $counters = ImportCountersData::fromJob($job);
+
         return [
             'id' => $job->id,
             'type' => $job->type->value,
             'status' => $job->status->value,
             'original_filename' => $job->original_filename,
-            'total_rows' => $job->total_rows,
+            'total_rows' => $counters->totalRows,
             'processed_rows' => $job->processed_rows,
-            'successful_rows' => $job->successful_rows,
-            'failed_rows' => $job->failed_rows,
+            'successful_rows' => $counters->successfulRows,
+            'skipped_rows' => $counters->skippedRows,
+            'failed_rows' => $counters->failedRows,
             'warning_rows' => $this->countWarningRows($job),
             'warning_summary' => $withWarningSummary && $job->status->isTerminal()
                 ? $this->warningSummary($job)
@@ -782,6 +802,11 @@ class ImportController extends Controller
         $placementNodeTypes = $request->input('options.placement_node_types');
         if (is_array($placementNodeTypes)) {
             $options['placement_node_types'] = array_values($placementNodeTypes);
+        }
+
+        $duplicatePolicy = $request->input('options.duplicate_policy');
+        if (is_string($duplicatePolicy)) {
+            $options['duplicate_policy'] = $duplicatePolicy;
         }
 
         return $options;

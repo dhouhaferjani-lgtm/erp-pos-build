@@ -7,19 +7,20 @@ namespace App\Modules\Import\Application\Jobs;
 use App\Jobs\Concerns\BindsTenantContext;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Import\Domain\Enums\ImportErrorCode;
+use App\Modules\Import\Domain\Enums\ImportRowOutcome;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Events\ImportCompleted;
 use App\Modules\Import\Domain\Events\ImportProgressUpdated;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Uom\Application\Services\UnitsProvisioningService;
+use App\Shared\Contracts\UnitCatalogQueryInterface;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -74,8 +75,9 @@ final class ProcessImportJob implements ShouldQueue
     public function handle(
         ImportService $importService,
         UnitsProvisioningService $unitsProvisioning,
+        ?UnitCatalogQueryInterface $unitCatalog = null,
     ): void {
-        $this->withTenantContext(function () use ($importService, $unitsProvisioning): void {
+        $this->withTenantContext(function () use ($importService, $unitsProvisioning, $unitCatalog): void {
             $job = ImportJob::query()
                 ->where('tenant_id', $this->tenantId)
                 ->where('id', $this->importJobId)
@@ -108,8 +110,10 @@ final class ProcessImportJob implements ShouldQueue
                 return;
             }
 
+            $visibleUnitCount = $unitCatalog?->visibleActiveUnitCount($company->id)
+                ?? $unitsProvisioning->visibleActiveUnitCount($company);
             if (in_array('unit', $job->type->getOptionalColumns(), true)
-                && ! $unitsProvisioning->hasVisibleUnits($company)) {
+                && $visibleUnitCount === 0) {
                 $this->failJob(
                     $job,
                     ImportErrorCode::UnitsNotSeeded->value
@@ -163,29 +167,23 @@ final class ProcessImportJob implements ShouldQueue
         // failed in the final tally (sync-path parity) — they never reach
         // is_imported=true, so the row-state tally below already includes them.
         $validRows = $importService->getValidRows($job);
-        $processedCount = 0;
-        $successCount = 0;
-        $failCount = 0;
-        $totalRows = $validRows->count();
+        $initialCounts = $importService->outcomeCounts($job);
+        $processedCount = $initialCounts['processed'];
+        $successCount = $initialCounts['successful'];
+        $skippedCount = $initialCounts['skipped'];
+        $failCount = $initialCounts['failed'];
+        $totalRows = $job->total_rows;
 
         // Broadcast initial progress
-        $this->broadcastProgress($job, $company, $totalRows, $processedCount, $successCount, $failCount);
+        $this->broadcastProgress($job, $company, $totalRows, $processedCount, $successCount, $skippedCount, $failCount);
 
         foreach ($validRows as $row) {
-            try {
-                DB::transaction(function () use ($importService, $job, $row, &$successCount): void {
-                    $entityId = $importService->importSingleRow($job, $row, $this->companyId);
-                    $row->update([
-                        'is_imported' => true,
-                        'imported_entity_id' => $entityId,
-                    ]);
-                    $successCount++;
-                });
-            } catch (\Throwable $e) {
-                $row->update([
-                    'is_imported' => false,
-                    'import_error' => $e->getMessage(),
-                ]);
+            $outcome = $importService->processPendingRow($job, $row, $this->companyId);
+            if ($outcome === ImportRowOutcome::Imported) {
+                $successCount++;
+            } elseif (in_array($outcome, [ImportRowOutcome::DuplicateSkipped, ImportRowOutcome::DuplicateLoser], true)) {
+                $skippedCount++;
+            } elseif (in_array($outcome, [ImportRowOutcome::Failed, ImportRowOutcome::OpeningLocked], true)) {
                 $failCount++;
             }
 
@@ -194,7 +192,7 @@ final class ProcessImportJob implements ShouldQueue
 
             // Broadcast progress at intervals
             if ($processedCount % self::PROGRESS_BROADCAST_INTERVAL === 0) {
-                $this->broadcastProgress($job, $company, $totalRows, $processedCount, $successCount, $failCount);
+                $this->broadcastProgress($job, $company, $totalRows, $processedCount, $successCount, $skippedCount, $failCount);
             }
         }
 
@@ -205,18 +203,21 @@ final class ProcessImportJob implements ShouldQueue
         // demote rows it could not commit (GL opening balances post once, for the
         // whole file, after the loop). Nothing imported => Failed; partial success
         // completes.
-        $importedCount = $job->rows()->where('is_imported', true)->count();
-        $totalFailedCount = $job->rows()->where('is_imported', false)->count();
-        $finalStatus = $importedCount === 0 ? ImportStatus::Failed : ImportStatus::Completed;
+        $counts = $importService->outcomeCounts($job);
+        $finalStatus = ($counts['successful'] + $counts['skipped']) === 0
+            ? ImportStatus::Failed
+            : ImportStatus::Completed;
         $job->update([
             'status' => $finalStatus,
-            'successful_rows' => $importedCount,
-            'failed_rows' => $totalFailedCount,
+            'processed_rows' => $counts['processed'],
+            'successful_rows' => $counts['successful'],
+            'skipped_rows' => $counts['skipped'],
+            'failed_rows' => $counts['failed'],
             'completed_at' => now(),
         ]);
 
         // Broadcast completion
-        $this->broadcastCompleted($job, $company, $totalRows, $importedCount, $totalFailedCount, null);
+        $this->broadcastCompleted($job, $company, $totalRows, $counts['successful'], $counts['failed'], null);
     }
 
     /**
@@ -228,6 +229,7 @@ final class ProcessImportJob implements ShouldQueue
         int $totalRows,
         int $processedRows,
         int $successfulRows,
+        int $skippedRows,
         int $failedRows
     ): void {
         try {
@@ -242,6 +244,7 @@ final class ProcessImportJob implements ShouldQueue
                 failedRows: $failedRows,
                 importType: $job->type->value,
                 originalFilename: $job->original_filename,
+                skippedRows: $skippedRows,
             ));
         } catch (\Throwable $e) {
             Log::warning('Failed to broadcast import progress', [

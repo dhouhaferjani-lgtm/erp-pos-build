@@ -220,9 +220,8 @@ final class OpeningBalancesImportBatchTest extends TestCase
 
     /**
      * Requirement 4/5: an unmappable account is actionable per-row feedback, never a
-     * thrown/aborted run. The job's terminal LABEL is Failed because nothing posted —
-     * a green Completed on an import that changed nothing is the failure mode rule 20
-     * exists to prevent.
+     * thrown/aborted run. Per the import outcome contract, the staged row stays
+     * imported with a warning when finalization cannot post it.
      */
     public function test_unknown_account_becomes_an_invalid_row_without_aborting_the_run(): void
     {
@@ -232,10 +231,10 @@ final class OpeningBalancesImportBatchTest extends TestCase
 
         // Must not throw — the whole point of requirement 4.
         $result = $this->importService->executeImport($job);
-        $this->assertSame(0, $result['imported_count']);
+        $this->assertSame(1, $result['imported_count']);
 
         $job->refresh();
-        $this->assertSame(ImportStatus::Failed, $job->status);
+        $this->assertSame(ImportStatus::Completed, $job->status);
 
         $this->assertSame(0, JournalEntry::where('company_id', $this->company->id)->count());
 
@@ -246,12 +245,12 @@ final class OpeningBalancesImportBatchTest extends TestCase
         $this->assertStringContainsString('999999', $warnings[0]['detail']);
         $this->assertSame('error: validation_failed', $row->data['_results']['gl_balance'] ?? null);
         $this->assertNull($row->imported_entity_id);
-        $this->assertFalse($row->is_imported, 'a row that did not post must not count as imported');
+        $this->assertTrue($row->is_imported, 'a finalize warning does not rewrite one terminal outcome into another');
 
         // Nothing posted => no batch residue that would block the next import or
         // the accountant's opening-balance wizard.
         $this->assertSame(0, OpeningBalanceBatch::forCompany($this->company->id)->count());
-        $this->assertSame(0, $job->refresh()->successful_rows);
+        $this->assertSame(1, $job->refresh()->successful_rows);
     }
 
     /**
@@ -270,7 +269,7 @@ final class OpeningBalancesImportBatchTest extends TestCase
         $this->importService->executeImport($job);
 
         $job->refresh();
-        $this->assertSame(ImportStatus::Failed, $job->status);
+        $this->assertSame(ImportStatus::Completed, $job->status);
 
         $this->assertSame(
             0,
@@ -283,7 +282,7 @@ final class OpeningBalancesImportBatchTest extends TestCase
         $this->assertSame('balance_not_posted', ($goodRow->warnings ?? [])[0]['code'] ?? null);
         $this->assertSame('error: file_not_posted', $goodRow->data['_results']['gl_balance'] ?? null);
         $this->assertNull($goodRow->imported_entity_id);
-        $this->assertFalse($goodRow->is_imported);
+        $this->assertTrue($goodRow->is_imported);
 
         $badRow = $job->rows()->where('row_number', 2)->firstOrFail();
         $this->assertSame('error: validation_failed', $badRow->data['_results']['gl_balance'] ?? null);
@@ -323,13 +322,13 @@ final class OpeningBalancesImportBatchTest extends TestCase
         $this->assertSame(0, OpeningBalanceBatch::forCompany($this->company->id)->count());
 
         $job->refresh();
-        $this->assertSame(0, $job->successful_rows);
-        $this->assertSame(ImportStatus::Failed, $job->status, 'an import that posted nothing has not succeeded');
+        $this->assertSame(1, $job->successful_rows);
+        $this->assertSame(ImportStatus::Completed, $job->status);
 
         $goodRow = $job->rows()->where('row_number', 1)->firstOrFail();
         $this->assertSame('error: file_not_posted', $goodRow->data['_results']['gl_balance'] ?? null);
         $this->assertSame('balance_not_posted', ($goodRow->warnings ?? [])[0]['code'] ?? null);
-        $this->assertFalse($goodRow->is_imported);
+        $this->assertTrue($goodRow->is_imported);
         $this->assertNull($goodRow->imported_entity_id);
 
         // …and the corrected file still imports cleanly afterwards.
@@ -476,7 +475,7 @@ final class OpeningBalancesImportBatchTest extends TestCase
         $this->importService->executeImport($job);
 
         $job->refresh();
-        $this->assertSame(ImportStatus::Failed, $job->status);
+        $this->assertSame(ImportStatus::Completed, $job->status);
         $this->assertSame(0, JournalEntry::where('company_id', $this->company->id)->count());
 
         $row = $job->rows()->where('row_number', 1)->firstOrFail();

@@ -96,42 +96,7 @@ final class AccountingBalancesPhase
             );
         }
 
-        $this->syncRowImportState($results);
-
         return $results;
-    }
-
-    /**
-     * A GL opening-balance row "imported" only if it reached the posted journal
-     * entry. The execution loop optimistically marked every staged row imported
-     * before this phase ran (posting happens once, for the whole file, afterwards),
-     * so demote the rows that did not make it — otherwise the job would report
-     * "N imported" for a file that posted nothing.
-     *
-     * @param  list<array{row_id: string, code: string, detail: string, results: array<string, string>}>  $results
-     */
-    private function syncRowImportState(array $results): void
-    {
-        $posted = [];
-        $notPosted = [];
-
-        foreach ($results as $result) {
-            if (($result['results'][self::RESULT_KEY] ?? null) === 'ok') {
-                $posted[] = $result['row_id'];
-
-                continue;
-            }
-
-            $notPosted[] = $result['row_id'];
-        }
-
-        if ($posted !== []) {
-            ImportRow::whereIn('id', $posted)->update(['is_imported' => true]);
-        }
-
-        if ($notPosted !== []) {
-            ImportRow::whereIn('id', $notPosted)->update(['is_imported' => false]);
-        }
     }
 
     /**

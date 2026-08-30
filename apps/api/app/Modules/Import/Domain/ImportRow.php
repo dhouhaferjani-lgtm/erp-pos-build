@@ -4,6 +4,13 @@ declare(strict_types=1);
 
 namespace App\Modules\Import\Domain;
 
+use App\Modules\Import\Domain\Casts\ImportErrorDetailCast;
+use App\Modules\Import\Domain\Casts\ImportRowErrorBagCast;
+use App\Modules\Import\Domain\Casts\ImportRowSourceCast;
+use App\Modules\Import\Domain\Casts\ImportRowWarningCollectionCast;
+use App\Modules\Import\Domain\Enums\DuplicateBucket;
+use App\Modules\Import\Domain\Enums\ImportErrorCode;
+use App\Modules\Import\Domain\Enums\ImportRowOutcome;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -16,10 +23,14 @@ use Illuminate\Support\Carbon;
  * @property array<string, mixed> $data
  * @property bool $is_valid
  * @property array<string, array<string>>|null $errors
- * @property list<array{code: string, detail: string}>|null $warnings
+ * @property list<array{code: string|null, detail: string}>|null $warnings
  * @property bool $is_imported
  * @property string|null $imported_entity_id
  * @property string|null $import_error
+ * @property ImportRowOutcome $outcome
+ * @property DuplicateBucket|null $duplicate_bucket
+ * @property ImportErrorCode|null $import_error_code
+ * @property array<string, mixed>|null $import_error_detail
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read ImportJob $importJob
@@ -46,6 +57,10 @@ class ImportRow extends Model
         'is_imported',
         'imported_entity_id',
         'import_error',
+        'outcome',
+        'duplicate_bucket',
+        'import_error_code',
+        'import_error_detail',
     ];
 
     /**
@@ -54,6 +69,7 @@ class ImportRow extends Model
     protected $attributes = [
         'is_valid' => false,
         'is_imported' => false,
+        'outcome' => ImportRowOutcome::Pending->value,
     ];
 
     /**
@@ -62,11 +78,15 @@ class ImportRow extends Model
     protected function casts(): array
     {
         return [
-            'data' => 'array',
-            'errors' => 'array',
-            'warnings' => 'array',
+            'data' => ImportRowSourceCast::class,
+            'errors' => ImportRowErrorBagCast::class,
+            'warnings' => ImportRowWarningCollectionCast::class,
             'is_valid' => 'boolean',
             'is_imported' => 'boolean',
+            'outcome' => ImportRowOutcome::class,
+            'duplicate_bucket' => DuplicateBucket::class,
+            'import_error_code' => ImportErrorCode::class,
+            'import_error_detail' => ImportErrorDetailCast::class,
         ];
     }
 

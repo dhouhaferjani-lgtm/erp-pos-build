@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Import\Services;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Import\Domain\Enums\ImportRowOutcome;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Inventory\Application\DTOs\OpeningBalanceLine;
 use App\Modules\Inventory\Application\DTOs\OpeningBalancePosting;
@@ -38,7 +39,7 @@ final class ProductOpeningStockPhase
         $results = [];
 
         $job->rows()
-            ->where('is_imported', true)
+            ->where('outcome', ImportRowOutcome::Imported)
             ->whereNotNull('imported_entity_id')
             ->orderBy('row_number')
             ->chunk(100, function ($rows) use ($job, $companyId, $scale, &$results): void {

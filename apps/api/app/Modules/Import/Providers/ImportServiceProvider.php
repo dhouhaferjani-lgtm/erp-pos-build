@@ -10,6 +10,8 @@ use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Import\Presentation\Controllers\ImportController;
 use App\Modules\Import\Presentation\Controllers\MigrationWizardController;
 use App\Modules\Import\Services\AccountingBalancesPhase;
+use App\Modules\Import\Services\CoalescingAttributeMerger;
+use App\Modules\Import\Services\DuplicateCensusService;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Import\Services\MigrationWizardService;
 use App\Modules\Import\Services\NumericFieldNormalizer;
@@ -18,9 +20,13 @@ use App\Modules\Import\Services\PartiesRowMapper;
 use App\Modules\Import\Services\ProductOpeningStockPhase;
 use App\Modules\Import\Services\ProductPlacementImportService;
 use App\Modules\Import\Services\ProductPriceResolver;
+use App\Modules\Import\Services\UnitResolver;
 use App\Modules\Import\Services\ValidationEngine;
+use App\Shared\Contracts\CoalescingAttributeMergerInterface;
 use App\Shared\Contracts\CompositeItemServiceInterface;
+use App\Shared\Contracts\PartnerResolverInterface;
 use App\Shared\Contracts\PartnerServiceInterface;
+use App\Shared\Contracts\ProductResolverInterface;
 use App\Shared\Contracts\ProductServiceInterface;
 use App\Shared\Contracts\TaxDefaultResolverInterface;
 use Illuminate\Support\Facades\Route;
@@ -30,16 +36,23 @@ class ImportServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->bind(CoalescingAttributeMergerInterface::class, CoalescingAttributeMerger::class);
+        $this->app->singleton(DuplicateCensusService::class);
+
         $this->app->singleton(ValidationEngine::class, function () {
             return new ValidationEngine;
         });
+
+        $this->app->singleton(UnitResolver::class);
 
         $this->app->singleton(ImportService::class, function ($app) {
             return new ImportService(
                 $app->make(ValidationEngine::class),
                 $app->make(CompanyContext::class),
                 $app->make(PartnerServiceInterface::class),
+                $app->make(PartnerResolverInterface::class),
                 $app->make(ProductServiceInterface::class),
+                $app->make(ProductResolverInterface::class),
                 $app->make(CompositeItemServiceInterface::class),
                 $app->make(NumericFieldNormalizer::class),
                 $app->make(PartiesRowMapper::class),
@@ -49,6 +62,8 @@ class ImportServiceProvider extends ServiceProvider
                 $app->make(TaxDefaultResolverInterface::class),
                 $app->make(ProductOpeningStockPhase::class),
                 $app->make(ProductPlacementImportService::class),
+                $app->make(UnitResolver::class),
+                $app->make(DuplicateCensusService::class),
             );
         });
 

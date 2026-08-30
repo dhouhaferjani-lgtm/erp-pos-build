@@ -24,12 +24,13 @@ import { importApi } from '../api/importApi'
 import { authenticatedDownload } from '@/lib/api'
 import { useImportProgressStore } from '../../../stores/importProgressStore'
 import { isDeprecatedImportType } from '../types'
-import type { ImportJobOptions, ImportType, LiveImportType, LocationNodeType } from '../types'
+import type { DuplicatePolicy, ImportJobOptions, ImportResult, ImportType, LiveImportType, LocationNodeType } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import { Select } from '@/components/atoms/Select/Select'
 import { useScopedLocations } from '@/features/locations/hooks/useScopedLocations'
 import type { ScopedLocation } from '@/features/locations/api/scopedLocations'
+import { KNOWN_WARNING_CODES } from '../warningCodes'
 
 type WizardStep = 'upload' | 'mapping' | 'options' | 'validation' | 'execute' | 'complete'
 
@@ -45,15 +46,6 @@ const STEPS: { key: WizardStep; label: string }[] = [
 const PRODUCT_PRICE_COLUMNS = new Set(['sale_price_incl_tax', 'sale_price_excl_tax', 'margin'])
 const PLACEMENT_NODE_TYPES: LocationNodeType[] = ['zone', 'aisle', 'rack', 'shelf', 'bin', 'section']
 const DEFAULT_PLACEMENT_DEPTH_TYPES: LocationNodeType[] = ['aisle', 'rack', 'shelf', 'bin', 'section', 'zone']
-const KNOWN_WARNING_CODES = new Set<string>([
-  'location_unresolved',
-  'qty_without_cost',
-  'price_conflict',
-  'category_created',
-  'expiry_conflict_existing_lot',
-  'quantity_ignored_service',
-  'opening_failed',
-])
 
 /**
  * The message `api.ts`'s response interceptor substitutes for a request that
@@ -280,6 +272,7 @@ export function ImportWizardPage() {
   const [priceAuthority, setPriceAuthority] = useState<NonNullable<ImportJobOptions['price_authority']>>('ttc')
   const [placementMode, setPlacementMode] = useState<NonNullable<ImportJobOptions['placement_mode']>>('strict')
   const [placementNodeTypeOverrides, setPlacementNodeTypeOverrides] = useState<Record<number, LocationNodeType>>({})
+  const [duplicatePolicy, setDuplicatePolicy] = useState<DuplicatePolicy>('override')
   const [selectedLocationCode, setSelectedLocationCode] = useState('')
 
   const stockLocationCode = useMemo(() => {
@@ -301,15 +294,14 @@ export function ImportWizardPage() {
 
   // Dialog state for partial import confirmation
   const [showPartialImportDialog, setShowPartialImportDialog] = useState(false)
+  const [showDiscardImportDialog, setShowDiscardImportDialog] = useState(false)
+  const [isDiscardingImport, setIsDiscardingImport] = useState(false)
+  const [isPolicyPending, setIsPolicyPending] = useState(false)
+  const [policyError, setPolicyError] = useState<string | null>(null)
+  const [showAllNameMatches, setShowAllNameMatches] = useState(false)
 
   // Import results state (from execute response)
-  const [importResults, setImportResults] = useState<{
-    imported_count: number
-    skipped_count: number
-    execution_error_count: number
-    total_rows: number
-    failed_rows_csv_url: string | null
-  } | null>(null)
+  const [importResults, setImportResults] = useState<ImportResult | null>(null)
 
   // Mutations
   const createImport = useCreateImport()
@@ -620,7 +612,31 @@ export function ImportWizardPage() {
   }, [jobId, markStepCompleted, optionVisibility, placementMode, placementNodeTypes, priceAuthority, refetchPreview, stockLocationCode])
 
   // Handle validation step completion
-  const handleValidationComplete = useCallback(() => {
+  const handleDuplicatePolicyChange = useCallback((policy: DuplicatePolicy | 'cancel') => {
+    if (policy === 'cancel') {
+      setShowDiscardImportDialog(true)
+      return
+    }
+
+    setDuplicatePolicy(policy)
+    setPolicyError(null)
+  }, [])
+
+  const handleValidationComplete = useCallback(async () => {
+    if (isPolicyPending) return
+
+    setPolicyError(null)
+    if (jobId && previewData?.duplicates) {
+      setIsPolicyPending(true)
+      try {
+        await importApi.updateOptions(jobId, { duplicate_policy: duplicatePolicy })
+      } catch {
+        setPolicyError(t('duplicates.policy.persistenceError'))
+        return
+      } finally {
+        setIsPolicyPending(false)
+      }
+    }
     const hasErrors = (jobData?.failed_rows ?? 0) > 0
     if (hasErrors) {
       // Show dialog to confirm partial import
@@ -630,7 +646,22 @@ export function ImportWizardPage() {
 
     markStepCompleted('validation')
     setCurrentStep('execute')
-  }, [jobData?.failed_rows, markStepCompleted])
+  }, [duplicatePolicy, isPolicyPending, jobData?.failed_rows, jobId, markStepCompleted, previewData?.duplicates, t])
+
+  const handleDiscardImport = useCallback(async () => {
+    if (!jobId || isDiscardingImport) return
+
+    setIsDiscardingImport(true)
+    try {
+      // G-6a owns the DELETE route; this lane consumes the existing client seam.
+      await importApi.deleteJob(jobId)
+      navigate('/settings/import')
+    } catch {
+      toast.error(t('messages.deleteError'))
+    } finally {
+      setIsDiscardingImport(false)
+    }
+  }, [isDiscardingImport, jobId, navigate, t])
 
   // Handle confirmation to proceed with partial import
   const handleConfirmPartialImport = useCallback(() => {
@@ -645,20 +676,9 @@ export function ImportWizardPage() {
 
     executeImport.mutate(jobId, {
       onSuccess: (response) => {
-        // Cast to any to access import_result from extended response
-        const fullResponse = response as typeof response & {
-          import_result?: {
-            imported_count: number
-            skipped_count: number
-            execution_error_count: number
-            total_rows: number
-            failed_rows_csv_url: string | null
-          }
-        }
-
         // Capture import results if present (synchronous import)
-        if (fullResponse.import_result) {
-          setImportResults(fullResponse.import_result)
+        if (response.import_result) {
+          setImportResults(response.import_result)
         }
 
         // Check if import completed synchronously (small imports < 100 rows)
@@ -763,6 +783,7 @@ export function ImportWizardPage() {
                 {t('wizard.upload.downloadTemplate')}
               </button>
               <button
+                data-testid="import-wizard-next"
                 type="button"
                 onClick={handleUploadComplete}
                 disabled={!selectedFile || sourceColumns.length === 0}
@@ -797,6 +818,7 @@ export function ImportWizardPage() {
 
             <div className={`flex items-center justify-between border-t ${colorTokens.border.subtle} pt-4`}>
               <button
+                data-testid="import-wizard-back"
                 type="button"
                 onClick={() => { setCurrentStep('upload'); }}
                 className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.intent.neutral.textHoverStrongest}`}
@@ -805,6 +827,7 @@ export function ImportWizardPage() {
                 {t('common:actions.back')}
               </button>
               <button
+                data-testid="import-wizard-validate"
                 type="button"
                 onClick={handleMappingComplete}
                 disabled={!isMappingValid || createImport.isPending}
@@ -920,6 +943,7 @@ export function ImportWizardPage() {
 
             <div className={`flex items-center justify-between border-t ${colorTokens.border.subtle} pt-4`}>
               <button
+                data-testid="import-wizard-back"
                 type="button"
                 onClick={() => { setCurrentStep('mapping'); }}
                 className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.intent.neutral.textHoverStrongest}`}
@@ -928,6 +952,7 @@ export function ImportWizardPage() {
                 {t('common:actions.back')}
               </button>
               <button
+                data-testid="import-wizard-next"
                 type="button"
                 onClick={() => { void handleOptionsComplete() }}
                 className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover}`}
@@ -975,6 +1000,83 @@ export function ImportWizardPage() {
               </div>
             )}
 
+            {!isPreviewLoading && !isPreviewError && previewData?.duplicates && (
+              <section
+                data-testid="import-preview-duplicate-summary"
+                className={`space-y-4 rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.page} p-4`}
+                aria-labelledby="import-duplicate-summary-title"
+              >
+                <div>
+                  <h3 id="import-duplicate-summary-title" className={`font-semibold ${colorTokens.text.primary}`}>
+                    {t('duplicates.title')}
+                  </h3>
+                  <p className={`mt-1 text-sm ${colorTokens.text.muted}`}>
+                    {t('duplicates.summary', {
+                      existing: previewData.duplicates.counts.existing_sku
+                        + previewData.duplicates.counts.existing_barcode
+                        + previewData.duplicates.counts.existing_name,
+                      inFile: previewData.duplicates.counts.in_file,
+                    })}
+                  </p>
+                </div>
+                <dl className="grid gap-2 sm:grid-cols-5">
+                  {(['new', 'existing_sku', 'existing_barcode', 'existing_name', 'in_file'] as const).map((bucket) => (
+                    <div key={bucket} className={`rounded-md ${colorTokens.surface.base} p-3`}>
+                      <dt className={`text-xs ${colorTokens.text.muted}`}>{t(`duplicates.bucket.${bucket}`)}</dt>
+                      <dd className={`text-lg font-semibold ${colorTokens.text.primary}`}>
+                        {previewData.duplicates?.counts[bucket] ?? 0}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+                <p className={`text-sm ${colorTokens.text.secondary}`}>{t('duplicates.blankCells')}</p>
+                <p className={`text-sm ${colorTokens.text.secondary}`}>{t('duplicates.lastRowWins')}</p>
+                {previewData.duplicates.matched_by_name.length > 0 && (
+                  <div className={`rounded-md ${colorTokens.intent.warning.bgSubtle} p-3 text-sm ${colorTokens.intent.warning.textStronger}`}>
+                    <p>{t('duplicates.matchedByName', { count: previewData.duplicates.matched_by_name.length })}</p>
+                    <p className="mt-1 font-mono">
+                      {(showAllNameMatches
+                        ? previewData.duplicates.matched_by_name
+                        : previewData.duplicates.matched_by_name.slice(0, 10)).join(', ')}
+                    </p>
+                    {previewData.duplicates.matched_by_name.length > 10 && (
+                      <button
+                        type="button"
+                        onClick={() => { setShowAllNameMatches((shown) => !shown) }}
+                        className={`mt-2 font-medium ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverStronger}`}
+                      >
+                        {t(showAllNameMatches ? 'duplicates.showLess' : 'duplicates.showAll')}
+                      </button>
+                    )}
+                  </div>
+                )}
+                <fieldset className="space-y-2">
+                  <legend className={`text-sm font-medium ${colorTokens.text.primary}`}>{t('duplicates.policy.title')}</legend>
+                  {(['override', 'skip', 'cancel'] as const).map((policy) => (
+                    <label key={policy} className={`flex cursor-pointer items-start gap-3 rounded-lg border ${colorTokens.border.subtle} p-3 ${colorTokens.intent.neutral.bgHover}`}>
+                      <input
+                        data-testid={`import-preview-policy-${policy}`}
+                        type="radio"
+                        name="duplicate_policy"
+                        value={policy}
+                        checked={policy !== 'cancel' && duplicatePolicy === policy}
+                        onChange={() => { handleDuplicatePolicyChange(policy) }}
+                        disabled={isPolicyPending}
+                        className={`mt-0.5 h-4 w-4 ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.focus.primaryRing}`}
+                      />
+                      <span>
+                        <span className={`block text-sm font-medium ${colorTokens.text.primary}`}>{t(`duplicates.policy.${policy}.label`)}</span>
+                        <span className={`block text-xs ${colorTokens.text.muted}`}>{t(`duplicates.policy.${policy}.description`)}</span>
+                      </span>
+                    </label>
+                  ))}
+                </fieldset>
+                {policyError && (
+                  <p role="alert" className={`text-sm ${colorTokens.intent.danger.textStrong}`}>{policyError}</p>
+                )}
+              </section>
+            )}
+
             {/* Validation Errors Grid */}
             {validationRows.length > 0 && (
               <div className="space-y-2">
@@ -990,6 +1092,7 @@ export function ImportWizardPage() {
 
             <div className={`flex items-center justify-between border-t ${colorTokens.border.subtle} pt-4`}>
               <button
+                data-testid="import-wizard-back"
                 type="button"
                 onClick={() => { setCurrentStep(shouldShowOptionsStep ? 'options' : 'mapping'); }}
                 className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.intent.neutral.textHoverStrongest}`}
@@ -998,8 +1101,10 @@ export function ImportWizardPage() {
                 {t('common:actions.back')}
               </button>
               <button
+                data-testid="import-wizard-next"
                 type="button"
-                onClick={handleValidationComplete}
+                onClick={() => { void handleValidationComplete() }}
+                disabled={isPolicyPending}
                 className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover}`}
               >
                 {t('wizard.validation.proceed')}
@@ -1104,6 +1209,7 @@ export function ImportWizardPage() {
 
             <div className={`flex items-center justify-between border-t ${colorTokens.border.subtle} pt-4`}>
               <button
+                data-testid="import-wizard-back"
                 type="button"
                 onClick={() => { setCurrentStep('validation'); }}
                 disabled={executeImport.isPending || jobData?.status === 'importing'}
@@ -1115,9 +1221,10 @@ export function ImportWizardPage() {
 
               {!jobData || jobData.status === 'validated' ? (
                 <button
+                  data-testid="import-wizard-execute"
                   type="button"
                   onClick={handleExecute}
-                  disabled={executeImport.isPending}
+                  disabled={executeImport.isPending || isPolicyPending}
                   className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.success.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.success.bgStrongHover} disabled:cursor-not-allowed ${colorTokens.surface.disabledWhenDisabled}`}
                 >
                   {executeImport.isPending ? (
@@ -1205,6 +1312,7 @@ export function ImportWizardPage() {
                 {jobData?.id && (
                   <div className={`mt-4 flex flex-wrap gap-4 border-t ${colorTokens.border.subtle} pt-4`}>
                     <button
+                      data-testid="import-complete-download-workbook"
                       type="button"
                       onClick={() => authenticatedDownload(
                         importApi.downloadResultWorkbookUrl(jobData.id),
@@ -1217,6 +1325,7 @@ export function ImportWizardPage() {
                     </button>
                     {importResults?.failed_rows_csv_url && (
                       <button
+                        data-testid="import-complete-download-rows_export_csv"
                         type="button"
                         onClick={() => authenticatedDownload(
                           importResults.failed_rows_csv_url!,
@@ -1321,7 +1430,10 @@ export function ImportWizardPage() {
       </div>
 
       {/* Step content */}
-      <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
+      <div
+        data-testid={`import-wizard-step-${currentStep === 'validation' ? 'preview' : currentStep}`}
+        className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}
+      >
         {renderStepContent()}
       </div>
 
@@ -1338,6 +1450,17 @@ export function ImportWizardPage() {
         confirmText={t('wizard.proceedWithValid')}
         cancelText={t('common:actions.cancel')}
         variant="warning"
+      />
+      <ConfirmDialog
+        isOpen={showDiscardImportDialog}
+        onClose={() => { setShowDiscardImportDialog(false) }}
+        onConfirm={() => { void handleDiscardImport() }}
+        title={t('duplicates.discard.title')}
+        message={t('duplicates.discard.message')}
+        confirmText={t('duplicates.discard.confirm')}
+        cancelText={t('duplicates.discard.keep')}
+        variant="danger"
+        isLoading={isDiscardingImport}
       />
     </div>
   )

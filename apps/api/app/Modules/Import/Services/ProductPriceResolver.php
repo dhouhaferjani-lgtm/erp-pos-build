@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Import\Services;
 
+use App\Modules\Import\Domain\Enums\ImportWarningCode;
 use App\Shared\Domain\CurrencyScale;
 
 final class ProductPriceResolver
@@ -11,11 +12,11 @@ final class ProductPriceResolver
     /**
      * @param  array<string, mixed>  $row  normalized row data
      * @param  'ttc'|'ht'|'margin'  $authority
-     * @return array{sale_price: ?string, warnings: list<array{code: string, detail: string}>}
+     * @return array{sale_price: ?string, warnings: list<array{code: ImportWarningCode, detail: string}>}
      */
     public function resolve(array $row, string $authority, string $taxRate): array
     {
-        /** @var list<array{code: string, detail: string}> $warnings */
+        /** @var list<array{code: ImportWarningCode, detail: string}> $warnings */
         $warnings = [];
         /** @var array<string, array{field: string, ttc: numeric-string}> $candidates */
         $candidates = [];
@@ -41,7 +42,7 @@ final class ProductPriceResolver
         if ($this->present($row['margin'] ?? null)) {
             if (! $this->present($row['purchase_price'] ?? null)) {
                 $warnings[] = [
-                    'code' => 'margin_without_cost',
+                    'code' => ImportWarningCode::MarginWithoutCost,
                     'detail' => 'margin provided without purchase_price; margin candidate skipped',
                 ];
             } else {
@@ -66,7 +67,7 @@ final class ProductPriceResolver
 
             if ($this->differsByMoreThanLastUnit($candidate['ttc'], $chosen)) {
                 $warnings[] = [
-                    'code' => 'price_conflict',
+                    'code' => ImportWarningCode::PriceConflict,
                     'detail' => "{$candidate['field']}: provided implies {$candidate['ttc']}, kept {$chosen}",
                 ];
             }

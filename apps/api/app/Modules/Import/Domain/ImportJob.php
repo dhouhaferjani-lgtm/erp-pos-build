@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Modules\Import\Domain;
 
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Domain\Casts\ColumnMappingCast;
+use App\Modules\Import\Domain\Casts\ImportJobOptionsCast;
+use App\Modules\Import\Domain\Enums\ImportRowOutcome;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Tenant\Domain\Tenant;
@@ -26,6 +29,7 @@ use Illuminate\Support\Carbon;
  * @property int $total_rows
  * @property int $processed_rows
  * @property int $successful_rows
+ * @property int $skipped_rows
  * @property int $failed_rows
  * @property array<string, string>|null $column_mapping
  * @property array<string, mixed>|null $options
@@ -60,6 +64,7 @@ class ImportJob extends Model
         'total_rows',
         'processed_rows',
         'successful_rows',
+        'skipped_rows',
         'failed_rows',
         'column_mapping',
         'options',
@@ -74,6 +79,7 @@ class ImportJob extends Model
     protected $attributes = [
         'processed_rows' => 0,
         'successful_rows' => 0,
+        'skipped_rows' => 0,
         'failed_rows' => 0,
     ];
 
@@ -85,8 +91,8 @@ class ImportJob extends Model
         return [
             'type' => ImportType::class,
             'status' => ImportStatus::class,
-            'column_mapping' => 'array',
-            'options' => 'array',
+            'column_mapping' => ColumnMappingCast::class,
+            'options' => ImportJobOptionsCast::class,
             'started_at' => 'datetime',
             'completed_at' => 'datetime',
         ];
@@ -132,12 +138,10 @@ class ImportJob extends Model
      */
     public function getValidRowsCount(): int
     {
-        // Use successful_rows if already validated, otherwise count from DB
-        if ($this->status === ImportStatus::Validated) {
-            return $this->successful_rows;
-        }
-
-        return $this->rows()->where('is_valid', true)->count();
+        return $this->rows()
+            ->where('is_valid', true)
+            ->where('outcome', ImportRowOutcome::Pending)
+            ->count();
     }
 
     /**
