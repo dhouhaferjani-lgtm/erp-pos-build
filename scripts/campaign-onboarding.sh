@@ -48,6 +48,8 @@ echo "Reminder: the target must run a queue worker consuming fiscal-projections 
 echo "Onboarding campaign run-id: $campaign_run_id"
 
 set +e
+# Network-free contract tests for the vendored fiscal builders run first (fail fast, convention 08).
+pnpm --dir apps/web campaign:fiscal-test
 pnpm --dir apps/web campaign:onboarding
 campaign_status=$?
 set -e

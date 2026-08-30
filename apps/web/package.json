@@ -17,6 +17,7 @@
     "audit:i18n": "node tools/audit-i18n-completeness.mjs",
     "audit:i18n:local": "bash ../../scripts/i18n-baseline-authority.sh",
     "campaign:onboarding": "playwright test -c playwright.campaign.config.ts",
+    "campaign:fiscal-test": "vitest run --config e2e/campaign/vitest.config.ts",
     "typecheck": "tsc --noEmit",
     "typecheck:e2e": "tsc --noEmit -p e2e/tsconfig.json",
     "test": "vitest run",

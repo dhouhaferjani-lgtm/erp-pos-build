@@ -32,10 +32,11 @@ The campaign registers the **Parapharmacy** vertical (batch tracking on by defau
 | L3 | UI result, API assertion | The imported batch product's DEFAULT lot preserves the file expiry and agrees with aggregate stock. |
 | L4 | API-contract | Accounting opening batch seeds drawer and bank balances, opening equity, and a balanced trial balance. |
 | L5 | API-contract, then UI | The opening batch locks and a later balance import is refused. |
-| L6 | API-contract (device-authored chain) | A v5 sale projects receipt, stock/DEFAULT lot decrement, revenue, VAT, and cash tender legs. |
-| L7 | API-contract (device-authored chain) | A v4 refund on the same chain restores stock/lot and reverses sales, VAT, and cash. |
+| L5b | API-contract (device-authored chain) | A terminal is created, POS read permissions are preflighted, and `SESSION_OPEN` sequence 1 projects one open `session_id == shift_id`. This is a server-minimal synthetic lifecycle: the L4 opening batch supplies the float, so the device-faithful `OPENING_FLOAT` event is deliberately omitted. |
+| L6 | API-contract (device-authored chain) | A v5 sale attributed to the L5b shift projects receipt, stock/DEFAULT lot decrement, revenue, VAT, and cash tender legs. |
+| L7 | API-contract (device-authored chain) | A v4 refund attributed to the same shift and operational chain restores stock/lot and reverses sales, VAT, and cash. |
 | L8 | API-contract | Customer payment settles the HIST invoice, partner receivable, repository, and GL together. |
-| L9 | API-contract (device-authored chain) | `NOT_SCRIPTABLE`: Z-session authoring is not vendored; follow-up lane I-3 owns it. |
+| L9 | API-contract (device-authored chain) | `SESSION_CLOSE` sequence 2 projects the counted drawer, then `Z_REPORT` sequence 3 projects the device-derived first-Z vector. Exact Z replay is idempotent, the current shift becomes null, and close/Z do not move repository cash. |
 
 ## Evidence and maintenance
 
@@ -56,7 +57,7 @@ To add a leg, place its `test()` in serial order, add the matching ledger defini
 
 `CAMPAIGN_REUSE_EMAIL=… CAMPAIGN_REUSE_PASSWORD=… scripts/campaign-onboarding.sh` logs into an existing campaign tenant instead of registering: L0 skips the second-company census, and the journey runs on the tenant's original company. Caveats: a tenant that already ran L1 will record the G-14 finding on the next parties import (balances after a posted batch are skipped by design) and a tenant past L5 (locked) cannot re-run L1–L4 meaningfully — reuse mode is for iterating on a single leg, not for a green run.
 
-## Known red (as of 2026-08-29)
+## Known red (as of 2026-08-30)
 
 The findings gate (L10) is red while any product finding is recorded. Findings the campaign records on the current tree and who owns them:
 
@@ -68,4 +69,12 @@ The findings gate (L10) is red while any product finding is recorded. Findings t
 | Products import never writes `unit_id` (I2-F2) | L2 | Session G (unit resolver, G-13/G-4) |
 | Second parties-with-balances import silently skips balances (G-14) | L1 (reuse mode / second file) | Session G |
 
-L9 (cash count + Z) is `NOT_SCRIPTABLE` by declaration until lane I-3 vendors the Z-session authoring.
+The following Lane I-3 findings are code-evidenced product gaps, not observations emitted by a campaign run. They therefore do not populate the L10 findings ledger by themselves:
+
+| Finding | Code-evidenced gap | Owner |
+|---|---|---|
+| I3-F1 | `SESSION_CLOSE` copies device-supplied expected/count values; the server does not derive expected drawer cash from session activity. | POS/fiscal — owner routing |
+| I3-F2 | Z projection copies hand-authored totals and does not reconcile them against the session receipts by tender and VAT rate. | POS/fiscal — owner routing |
+| I3-F3 | Operational receipts bypass the Z lifecycle, so a valid later sale can still post to an already Z-reported session. The campaign deliberately does not probe this on its promoted terminal. | POS/fiscal — owner routing |
+| I3-F4 | Variance reason remains in canonical `report_data.cash_count`; it is not projected onto the public shift resource. | POS/fiscal — owner routing |
+| I3-F5 | Canonical Z projection stores the preceding `SESSION_CLOSE` hash in legacy `previous_z_hash`; consequently the first canonical Z reports `is_first_z_report=false`. L9 verifies the fiscal-event `z_session` chain and Z state/count, not the legacy Z-hash chain. | POS/fiscal — owner routing |

@@ -1,0 +1,129 @@
+{
+  "description": "First-Z semantic vector for the campaign's one-sale/one-refund server-minimal synthetic lifecycle. OPENING_FLOAT is omitted; SESSION_OPEN carries the opening float. The legacy local-Z reference is null because the campaign authors only the authoritative fiscal-event chain.",
+  "values": {
+    "event_times": {
+      "session_open": "2026-08-29T10:00:00Z",
+      "sale": "2026-08-29T10:01:00Z",
+      "refund": "2026-08-29T10:05:00Z",
+      "session_close_and_z": "2026-08-29T10:10:00Z",
+      "period_start": "2026-08-29T10:00:00.000Z",
+      "period_end": "2026-08-29T10:10:00.000Z"
+    },
+    "cash_count": {
+      "expected_cash": "1000.000",
+      "counted_cash": "1000.000",
+      "variance_amount": "0.000",
+      "variance_direction": "balanced",
+      "variance_reason": "campaign counted balance"
+    },
+    "grand_totals_before": {
+      "cumulative_refunds": "0.000",
+      "cumulative_sales": "0.000",
+      "cumulative_tax": "0.000",
+      "perpetual_grand_total": "0.000",
+      "receipt_count_lifetime": 0
+    },
+    "grand_totals_after": {
+      "cumulative_refunds": "23.800",
+      "cumulative_sales": "23.800",
+      "cumulative_tax": "3.800",
+      "perpetual_grand_total": "0.000",
+      "receipt_count_lifetime": 1
+    },
+    "receipt_totals": {
+      "count": 1,
+      "gross_sales": "23.800",
+      "net_sales": "20.000",
+      "tax_amount": "3.800"
+    },
+    "refunds_totals": {
+      "count": 1,
+      "amount": "23.800"
+    },
+    "voids_totals": {
+      "count": 0
+    },
+    "vat_breakdown": [
+      {
+        "tax_rate": 19,
+        "net_amount": "0.000",
+        "vat_amount": "0.000",
+        "gross_amount": "0.000"
+      }
+    ],
+    "payment_method_totals": [
+      {
+        "payment_type": "CASH",
+        "total_amount": "0.000",
+        "transaction_count": 2
+      }
+    ],
+    "operational_event_range": {
+      "first_receipt_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "first_receipt_sequence": 1,
+      "last_receipt_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "last_receipt_sequence": 2,
+      "receipt_count": 2
+    },
+    "session_event_range": {
+      "first_sequence": 1,
+      "last_sequence": 2,
+      "session_open_event_id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      "session_open_hash": "74d7d69b7abeb49320d09babceae5a9ae9698a748c89ebad4855a5a31ded36e3",
+      "session_close_event_id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      "session_close_hash": "ad584a13813c28644ce6ba965ec6b25f9391b680e2177a62da06ea0ea3405742"
+    },
+    "z_number": 1,
+    "formatted_z_number": "Z0001"
+  },
+  "citations": {
+    "event_times.session_open": ["apps/pos/src/lib/fiscal/zSessionAuthoring.ts:291-310"],
+    "event_times.sale": ["apps/pos/src/lib/offline/zReportService.ts:748-754"],
+    "event_times.refund": ["apps/pos/src/lib/offline/zReportService.ts:198-203", "apps/pos/src/lib/offline/zReportService.ts:748-754"],
+    "event_times.session_close_and_z": ["apps/pos/src/lib/fiscal/zSessionAuthoring.ts:675-710"],
+    "event_times.period_start": ["apps/pos/src/lib/offline/zReportService.ts:675-681"],
+    "event_times.period_end": ["apps/pos/src/lib/offline/zReportService.ts:675-681"],
+    "cash_count.expected_cash": ["apps/pos/src/lib/offline/zReportService.ts:685-690", "apps/pos/src/lib/fiscal/zSessionAuthoring.ts:455-462"],
+    "cash_count.counted_cash": ["apps/pos/src/lib/offline/zReportService.ts:685-690", "apps/pos/src/lib/fiscal/zSessionAuthoring.ts:455-462"],
+    "cash_count.variance_amount": ["apps/pos/src/lib/offline/zReportService.ts:685-690", "apps/pos/src/lib/fiscal/zSessionAuthoring.ts:455-462"],
+    "cash_count.variance_direction": ["apps/pos/src/lib/offline/zReportService.ts:685-690", "apps/pos/src/lib/fiscal/zSessionAuthoring.ts:455-462"],
+    "cash_count.variance_reason": ["apps/pos/src/lib/offline/zReportService.ts:685-690", "apps/pos/src/lib/fiscal/zSessionAuthoring.ts:455-462"],
+    "grand_totals_before.cumulative_refunds": ["apps/pos/src/lib/offline/zReportService.ts:716-722"],
+    "grand_totals_before.cumulative_sales": ["apps/pos/src/lib/offline/zReportService.ts:716-722"],
+    "grand_totals_before.cumulative_tax": ["apps/pos/src/lib/offline/zReportService.ts:716-722"],
+    "grand_totals_before.perpetual_grand_total": ["apps/pos/src/lib/offline/zReportService.ts:716-722"],
+    "grand_totals_before.receipt_count_lifetime": ["apps/pos/src/lib/offline/zReportService.ts:716-722"],
+    "grand_totals_after.cumulative_refunds": ["apps/pos/src/lib/offline/zReportService.ts:469-482", "apps/pos/src/lib/offline/zReportService.ts:723-729"],
+    "grand_totals_after.cumulative_sales": ["apps/pos/src/lib/offline/zReportService.ts:469-482", "apps/pos/src/lib/offline/zReportService.ts:723-729"],
+    "grand_totals_after.cumulative_tax": ["apps/pos/src/lib/offline/zReportService.ts:469-482", "apps/pos/src/lib/offline/zReportService.ts:723-729"],
+    "grand_totals_after.perpetual_grand_total": ["apps/pos/src/lib/offline/zReportService.ts:475-481", "apps/pos/src/lib/offline/zReportService.ts:723-729"],
+    "grand_totals_after.receipt_count_lifetime": ["apps/pos/src/lib/offline/zReportService.ts:473-481", "apps/pos/src/lib/offline/zReportService.ts:723-729"],
+    "receipt_totals.count": ["apps/pos/src/lib/offline/zReportService.ts:895-901", "apps/pos/src/lib/offline/zReportService.ts:951-951", "apps/pos/src/lib/offline/zReportService.ts:1173-1183"],
+    "receipt_totals.gross_sales": ["apps/pos/src/lib/offline/zReportService.ts:895-901", "apps/pos/src/lib/offline/zReportService.ts:1173-1183"],
+    "receipt_totals.net_sales": ["apps/pos/src/lib/offline/zReportService.ts:895-901", "apps/pos/src/lib/offline/zReportService.ts:1030-1034", "apps/pos/src/lib/offline/zReportService.ts:1173-1183"],
+    "receipt_totals.tax_amount": ["apps/pos/src/lib/offline/zReportService.ts:895-901", "apps/pos/src/lib/offline/zReportService.ts:1030-1034", "apps/pos/src/lib/offline/zReportService.ts:1173-1183"],
+    "refunds_totals.count": ["apps/pos/src/lib/offline/zReportService.ts:198-203", "apps/pos/src/lib/offline/zReportService.ts:895-901", "apps/pos/src/lib/offline/zReportService.ts:1173-1183"],
+    "refunds_totals.amount": ["apps/pos/src/lib/offline/zReportService.ts:872-885", "apps/pos/src/lib/offline/zReportService.ts:895-901", "apps/pos/src/lib/offline/zReportService.ts:1173-1183"],
+    "voids_totals.count": ["apps/pos/src/lib/offline/zReportService.ts:880-887", "apps/pos/src/lib/offline/zReportService.ts:1173-1183"],
+    "vat_breakdown[0].tax_rate": ["apps/pos/src/lib/offline/zReportService.ts:889-890", "apps/pos/src/lib/offline/zReportService.ts:1151-1162"],
+    "vat_breakdown[0].net_amount": ["apps/pos/src/lib/offline/zReportService.ts:917-928", "apps/pos/src/lib/offline/zReportService.ts:1063-1084", "apps/pos/src/lib/offline/zReportService.ts:1151-1162"],
+    "vat_breakdown[0].vat_amount": ["apps/pos/src/lib/offline/zReportService.ts:917-928", "apps/pos/src/lib/offline/zReportService.ts:1063-1084", "apps/pos/src/lib/offline/zReportService.ts:1151-1162"],
+    "vat_breakdown[0].gross_amount": ["apps/pos/src/lib/offline/zReportService.ts:917-928", "apps/pos/src/lib/offline/zReportService.ts:1063-1084", "apps/pos/src/lib/offline/zReportService.ts:1151-1162"],
+    "payment_method_totals[0].payment_type": ["apps/pos/src/lib/offline/zReportService.ts:931-946", "apps/pos/src/lib/offline/zReportService.ts:1087-1136", "apps/pos/src/lib/offline/zReportService.ts:1164-1170"],
+    "payment_method_totals[0].total_amount": ["apps/pos/src/lib/offline/zReportService.ts:931-946", "apps/pos/src/lib/offline/zReportService.ts:1087-1136", "apps/pos/src/lib/offline/zReportService.ts:1164-1170"],
+    "payment_method_totals[0].transaction_count": ["apps/pos/src/lib/offline/zReportService.ts:931-946", "apps/pos/src/lib/offline/zReportService.ts:1087-1136", "apps/pos/src/lib/offline/zReportService.ts:1164-1170"],
+    "operational_event_range.first_receipt_hash": ["apps/pos/src/lib/offline/zReportService.ts:748-754"],
+    "operational_event_range.first_receipt_sequence": ["apps/pos/src/lib/offline/zReportService.ts:748-754"],
+    "operational_event_range.last_receipt_hash": ["apps/pos/src/lib/offline/zReportService.ts:748-754"],
+    "operational_event_range.last_receipt_sequence": ["apps/pos/src/lib/offline/zReportService.ts:748-754"],
+    "operational_event_range.receipt_count": ["apps/pos/src/lib/offline/zReportService.ts:198-203", "apps/pos/src/lib/offline/zReportService.ts:748-754"],
+    "session_event_range.first_sequence": ["apps/pos/src/lib/fiscal/zSessionAuthoring.ts:689-696"],
+    "session_event_range.last_sequence": ["apps/pos/src/lib/fiscal/zSessionAuthoring.ts:689-696"],
+    "session_event_range.session_open_event_id": ["apps/pos/src/lib/fiscal/zSessionAuthoring.ts:689-696"],
+    "session_event_range.session_open_hash": ["apps/pos/src/lib/fiscal/zSessionAuthoring.ts:689-696"],
+    "session_event_range.session_close_event_id": ["apps/pos/src/lib/fiscal/zSessionAuthoring.ts:689-696"],
+    "session_event_range.session_close_hash": ["apps/pos/src/lib/fiscal/zSessionAuthoring.ts:689-696"],
+    "z_number": ["apps/pos/src/lib/offline/zReportService.ts:454-457", "apps/pos/src/lib/fiscal/zSessionAuthoring.ts:502-503"],
+    "formatted_z_number": ["apps/pos/src/lib/offline/zReportService.ts:454-457", "apps/pos/src/lib/fiscal/zSessionAuthoring.ts:469-469"]
+  }
+}
