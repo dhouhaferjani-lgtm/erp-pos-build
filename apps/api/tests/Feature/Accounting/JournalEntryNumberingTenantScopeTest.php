@@ -33,15 +33,13 @@ use Tests\TestCase;
 /**
  * LEDGER C-27 (Session B2 lane B2-1).
  *
- * `journal_entries` carries exactly ONE unique index on the number column —
- * `journal_entries_tenant_id_entry_number_unique` on `(tenant_id, entry_number)`
- * (`database/migrations/tenant/2025_11_30_100000_create_journal_entries_table.php`).
- * `GeneralLedgerService::generateEntryNumber()` allocated with a COMPANY-scoped
- * max+1 scan, i.e. a scope NARROWER than the constraint it must satisfy. In a
- * tenant with two companies, the second company's first journal entry of the year
- * minted `JE-YYYY-000001` — a number the first company already held — so EVERY
- * JE-minting flow for that company 500'd on SQLSTATE 23505 and the whole posting
- * transaction rolled back. The company was GL-dead for the rest of the year.
+ * `GeneralLedgerService::generateEntryNumber()` deliberately allocates JE-* from
+ * one TENANT-wide sequence under one `journal_entry_number:{tenantId}` lock. Since
+ * migration `2026_08_30_100900`, persistence uniqueness is
+ * `(company_id, entry_number)`, named
+ * `JournalEntryIndexNames::COMPANY_ENTRY_NUMBER_UNIQUE`; the wider allocator stays
+ * unique under that narrower constraint. Per-company JE-* allocation remains the
+ * separate LEDGER D-J0-2 follow-up.
  */
 final class JournalEntryNumberingTenantScopeTest extends TestCase
 {
@@ -50,8 +48,9 @@ final class JournalEntryNumberingTenantScopeTest extends TestCase
     /**
      * T1 — the reproduction. Two companies of ONE tenant each post an expense
      * through the real `GeneralLedgerService::createFromExpense` path. Before the
-     * fix, company B's post died on the tenant-wide unique index. After it, B
-     * receives `JE-YYYY-000002` and both rows persist.
+     * C-27 fix, company B's post died on the then-tenant-wide unique index. The
+     * allocator still gives B `JE-YYYY-000002`, and both rows persist under the
+     * current company-scoped unique.
      */
     public function test_journal_entry_numbers_do_not_collide_across_two_companies_in_the_same_tenant(): void
     {
@@ -69,7 +68,7 @@ final class JournalEntryNumberingTenantScopeTest extends TestCase
         self::assertSame(
             sprintf('JE-%s-%06d', $year, 2),
             $entryB->entry_number,
-            'Entry numbers must be unique tenant-wide — the unique index is (tenant_id, entry_number).'
+            'JE-* allocation deliberately remains one tenant-wide sequence (LEDGER D-J0-2 is the per-company follow-up).'
         );
 
         // Both rows really persisted (company B's transaction did not roll back).

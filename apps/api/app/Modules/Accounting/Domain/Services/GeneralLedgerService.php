@@ -5686,19 +5686,14 @@ final class GeneralLedgerService
      * LEDGER C-27 (Session B2, 2026-08-25) fixes two defects here, in the shape
      * Q-11 already applied to `ExpenseService::generateExpenseNumber()`:
      *
-     * 1. SCOPE. The scan is TENANT-scoped, not company-scoped, because the only
-     *    unique index on the column is
-     *    `journal_entries_tenant_id_entry_number_unique` on
-     *    `(tenant_id, entry_number)`. A company-scoped max+1 is NARROWER than the
-     *    constraint it must satisfy: in a tenant with two companies, the second
-     *    company's first entry of the year minted `JE-YYYY-000001`, which the
-     *    first company already held — an unconditional `SQLSTATE 23505` that
-     *    rolled back the whole posting transaction on EVERY JE-minting flow,
-     *    leaving that company GL-dead for the year. Consequence of the widening:
-     *    sequential entry numbers now interleave across the companies of a tenant
-     *    (company A gets ...0001 and ...0003, company B ...0002). The index is
-     *    deliberately left untouched — widening it is an owner ruling
-     *    (FEC-quoted identifier).
+     * 1. SCOPE. Since migration `2026_08_30_100900`, persistence uniqueness is
+     *    `(company_id, entry_number)`, named
+     *    `JournalEntryIndexNames::COMPANY_ENTRY_NUMBER_UNIQUE`. JE-* allocation
+     *    deliberately remains TENANT-wide: one sequence and one lock key,
+     *    `journal_entry_number:{tenantId}`. A tenant-wide sequence stays unique
+     *    under the narrower company constraint, while sequential numbers continue
+     *    to interleave across sibling companies. Per-company JE-* allocation is a
+     *    separate follow-up (LEDGER D-J0-2); this allocator is not changed here.
      *
      * 2. LOCK SCOPE AND ORDER. The max+1 read is serialised by a
      *    transaction-scoped advisory lock keyed on the SAME (tenant) scope as the
