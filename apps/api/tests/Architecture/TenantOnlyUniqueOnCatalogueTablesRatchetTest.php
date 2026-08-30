@@ -184,6 +184,7 @@ final class TenantOnlyUniqueOnCatalogueTablesRatchetTest extends TestCase
 
     private const BASELINE_RELATIVE = 'tests/Architecture/baselines/tenant-only-unique-baseline.json';
 
+    /** Coverage residual: the census fixture exercises the Tunisia chart template only (FR/generic seeders unguarded in CI). */
     private const LEGACY_ENTRY_CEILING = 11;
 
     /**

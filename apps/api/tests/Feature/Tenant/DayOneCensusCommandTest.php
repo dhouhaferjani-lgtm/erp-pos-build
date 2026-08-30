@@ -188,7 +188,8 @@ final class DayOneCensusCommandTest extends TestCase
                 name text,
                 country_code text,
                 default_tax_configuration_id text,
-                created_at text
+                created_at text,
+                deleted_at text
             )
             SQL);
 
