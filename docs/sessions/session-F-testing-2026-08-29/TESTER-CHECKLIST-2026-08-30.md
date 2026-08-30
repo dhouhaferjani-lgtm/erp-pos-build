@@ -1,6 +1,8 @@
 # Staging tester checklist — 2026-08-30 (45 min, one tester)
 
-**Staging build: `0e5d28705`** (batch 1b; supersedes 0cbaa1457) on `erp.otospex.dev`. Follow `docs/qa/MANUAL-TESTING-LOOP.md` §2 (fresh tenant, second company + second location first). Report shape: §4 of that doc — one line per step below: **PASS / FAIL + what you saw** (screenshot for any FAIL). Send to the orchestrator (Session J).
+**Staging build: `0e5d28705`** (batch 1b; supersedes 0cbaa1457) on `erp.otospex.dev`.
+
+Evidence: onboarding campaign run 23 on this build's content — L0a–L8 PASS on a fresh tenant (register, census, parties + balances, products + stock, lots, openings, lock, device sale v5, refund v4, customer payment); known: I2-F2 (`unit_id` never written), L9 (Z) not scripted. Follow `docs/qa/MANUAL-TESTING-LOOP.md` §2 (fresh tenant, second company + second location first). Report shape: §4 of that doc — one line per step below: **PASS / FAIL + what you saw** (screenshot for any FAIL). Send to the orchestrator (Session J).
 
 Legend: ☐ = tick when done · ⚠ = known, do not report (owner-ruled or owned by a lane).
 
