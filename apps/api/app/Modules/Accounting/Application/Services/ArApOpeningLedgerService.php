@@ -258,7 +258,8 @@ class ArApOpeningLedgerService
      * mint opening entries for the same company and year, so they must serialize
      * against each other or two concurrent posts read the same max and both mint
      * `OB-{year}-000001` (the loser then fails on the
-     * `journal_entries (tenant_id, entry_number)` unique index, which stays as the
+     * `(company_id, entry_number)` unique index,
+     * `JournalEntryIndexNames::COMPANY_ENTRY_NUMBER_UNIQUE`, which stays as the
      * second line of defence). Changing the key here without changing it there
      * re-opens that race. On SQLite (test runner) the advisory lock is skipped;
      * concurrency is not meaningful there.
