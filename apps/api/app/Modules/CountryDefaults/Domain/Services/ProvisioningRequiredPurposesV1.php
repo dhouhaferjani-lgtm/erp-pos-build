@@ -125,6 +125,18 @@ final class ProvisioningRequiredPurposesV1
         return $required;
     }
 
+    /** @return list<SystemAccountPurpose> */
+    public static function conditionalPurposes(): array
+    {
+        return self::purposesByClassification(self::CONDITIONAL);
+    }
+
+    /** @return list<SystemAccountPurpose> */
+    public static function softPurposes(): array
+    {
+        return self::purposesByClassification(self::SOFT);
+    }
+
     /**
      * Complete AST ratchet inventory. A line is deliberately part of the registration key: moving or
      * adding a throwing lookup requires re-reviewing its manifest evidence rather than silently passing.
@@ -338,5 +350,19 @@ final class ProvisioningRequiredPurposesV1
             'gate_kind' => $gateKind,
             'evidence_citation' => $evidenceCitation,
         ];
+    }
+
+    /** @return list<SystemAccountPurpose> */
+    private static function purposesByClassification(string $classification): array
+    {
+        $purposes = [];
+
+        foreach (self::entries() as $entry) {
+            if ($entry['classification'] === $classification) {
+                $purposes[] = $entry['purpose'];
+            }
+        }
+
+        return $purposes;
     }
 }
