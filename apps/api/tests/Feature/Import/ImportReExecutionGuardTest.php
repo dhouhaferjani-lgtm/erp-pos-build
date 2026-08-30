@@ -237,24 +237,15 @@ final class ImportReExecutionGuardTest extends TestCase
         );
     }
 
-    public function test_worker_does_not_reprocess_a_job_another_worker_already_claimed(): void
+    public function test_worker_does_not_reprocess_a_job_another_worker_already_started(): void
     {
         $job = $this->seedValidatedJob(['CLAIM-1', 'CLAIM-2']);
-
-        // handle() reads the job, checks canStart(), THEN loads the Company.
-        // Flipping the DB row during that Company load reproduces the window in
-        // which a second worker claims the job — the exact race the conditional
-        // claim exists to lose.
-        $flipped = false;
-        Company::retrieved(function () use ($job, &$flipped): void {
-            if ($flipped) {
-                return;
-            }
-            $flipped = true;
-            DB::table('import_jobs')
-                ->where('id', $job->id)
-                ->update(['status' => ImportStatus::Importing->value]);
-        });
+        $job->update([
+            'status' => ImportStatus::Importing,
+            'claimed_at' => now(),
+            'started_at' => now(),
+            'worker_started_at' => now(),
+        ]);
 
         (new ProcessImportJob($job->id, $this->company->id, $this->tenant->id))
             ->handle(
@@ -265,7 +256,7 @@ final class ImportReExecutionGuardTest extends TestCase
         $this->assertSame(
             0,
             Product::where('company_id', $this->company->id)->count(),
-            'A job already claimed by another worker must not be processed a second time.'
+            'A job already started by another worker must not be processed a second time.'
         );
         $this->assertSame(
             0,

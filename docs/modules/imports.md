@@ -79,6 +79,16 @@ pending → validating → processing → completed
 | `failed` | Critical error, no rows imported |
 | `partially_completed` | Some rows imported, some failed |
 
+### Temporary Counter Compatibility (G-6a → G-4)
+
+`import_jobs.skipped_rows` is reserved for the typed row outcomes delivered by
+G-4's M6a migration, but it remains `0` until that migration lands. During this
+compatibility window `ImportCountersData::fromJob()` treats every non-imported
+row as failed, and terminal status is `failed` only when `failed_rows ===
+total_rows`; partial success remains completed. History/detail APIs, the
+frontend, and result workbooks must not consume `skipped_rows` until G-4 replaces
+that compatibility calculation with the §3.2.2 outcome equations.
+
 ---
 
 ## The Migration Wizard

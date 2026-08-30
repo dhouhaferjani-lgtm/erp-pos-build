@@ -90,7 +90,9 @@ final class ImportCompanyPinTest extends TestCase
             'error summary' => ['GET', '/error-summary'],
             'execute' => ['POST', '/execute'],
             'failed rows' => ['GET', '/failed-rows.csv'],
+            'source file' => ['GET', '/source-file'],
             'result workbook' => ['GET', '/result-workbook'],
+            'discard' => ['DELETE', ''],
         ];
     }
 
@@ -324,7 +326,7 @@ final class ImportCompanyPinTest extends TestCase
 
         $job->refresh();
         $this->assertSame($this->companyA->id, $job->company_id);
-        $this->assertSame(ImportStatus::Pending, $job->status);
+        $this->assertSame(ImportStatus::Importing, $job->status);
 
         $this->switchCompany($this->companyB);
         $this->postJson('/api/v1/imports/'.$job->id.'/execute')
@@ -407,6 +409,7 @@ final class ImportCompanyPinTest extends TestCase
             'GET' => $this->getJson($uri),
             'POST' => $this->postJson($uri),
             'PATCH' => $this->patchJson($uri, ['options' => []]),
+            'DELETE' => $this->deleteJson($uri),
             default => throw new \LogicException('Unsupported test endpoint method: '.$method),
         };
     }

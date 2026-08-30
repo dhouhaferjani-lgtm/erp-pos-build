@@ -15,6 +15,7 @@ use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Services\FailedRowsExportService;
+use App\Modules\Import\Services\ImportJobClaimService;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Import\Services\ResultWorkbookService;
 use App\Modules\Import\Services\SpreadsheetParserService;
@@ -23,8 +24,11 @@ use App\Modules\Inventory\Domain\Enums\LocationNodeType;
 use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Enum;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -44,6 +48,7 @@ class ImportController extends Controller
 
     public function __construct(
         private readonly ImportService $importService,
+        private readonly ImportJobClaimService $importJobClaimService,
         private readonly ValidationEngine $validationEngine,
         private readonly CompanyContext $companyContext,
         private readonly SpreadsheetParserService $spreadsheetParser,
@@ -598,6 +603,15 @@ class ImportController extends Controller
         // endpoint twice re-applies the whole file, and this is the tenant-#1
         // onboarding path. Only Validated/Pending are start-eligible
         // (ImportStatus::canStartImport).
+        if ($job->status === ImportStatus::Importing) {
+            return response()->json([
+                'error' => [
+                    'code' => 'IMPORT_ALREADY_STARTED',
+                    'message' => 'This import has already started.',
+                ],
+            ], 409);
+        }
+
         if (! $job->status->canStartImport()) {
             return response()->json([
                 'error' => [
@@ -610,33 +624,31 @@ class ImportController extends Controller
             ], 422);
         }
 
-        if (! $job->canStart()) {
+        $claim = $this->importJobClaimService->claim($job, $companyId);
+        if (! $claim->won) {
+            return response()->json([
+                'error' => [
+                    'code' => 'IMPORT_ALREADY_STARTED',
+                    'message' => 'This import has already started.',
+                ],
+            ], 409);
+        }
+
+        $job->refresh();
+
+        // The winner alone may inspect row state. If validation left no row to
+        // apply, restore the exact status claimed so an operator can fix rows
+        // and execute again; release is non-terminal and worker-safe by CAS.
+        $validRowsCount = $job->rows()->where('is_valid', true)->where('is_imported', false)->count();
+        if ($validRowsCount === 0) {
+            $this->importJobClaimService->release($job, $claim->priorStatus);
+
             return response()->json([
                 'error' => 'Import cannot be started. No valid rows to import.',
                 'failed_rows' => $job->failed_rows,
-                'valid_rows' => $job->getValidRowsCount(),
+                'valid_rows' => 0,
             ], 422);
         }
-
-        if ($job->company_id === null) {
-            ImportJob::query()
-                ->whereKey($job->id)
-                ->whereNull('company_id')
-                ->whereIn('status', [ImportStatus::Validated->value, ImportStatus::Pending->value])
-                ->update([
-                    'company_id' => $companyId,
-                    'status' => ImportStatus::Pending->value,
-                ]);
-
-            $job->refresh();
-            if ($mismatch = $this->companyMismatch($job, $companyId)) {
-                return $mismatch;
-            }
-        }
-
-        // Use actual valid rows count for threshold check (more reliable than total_rows)
-        // This prevents issues where total_rows might be 0 or stale
-        $validRowsCount = $job->rows()->where('is_valid', true)->count();
 
         // Small imports: process synchronously for instant feedback
         // But only if we're confident the count is accurate (not 0 with large total_rows)
@@ -644,7 +656,7 @@ class ImportController extends Controller
             // Extend time limit for small synchronous imports (1 minute should be plenty)
             set_time_limit(60);
 
-            $result = $this->importService->executeImport($job);
+            $result = $this->importService->executeImport($job, $claim->priorStatus);
 
             /** @var ImportJob $freshJob */
             $freshJob = $job->fresh();
@@ -667,15 +679,6 @@ class ImportController extends Controller
                 'message' => $this->buildImportResultMessage($result),
             ]);
         }
-
-        // Mark as queued BEFORE dispatching. On a warm `imports` queue the worker
-        // can claim the job and advance it (Importing, then a terminal status)
-        // before this line would otherwise run, and the write would then clobber
-        // the worker's status back to a start-eligible Pending — leaving a
-        // finished job re-executable. Order matters; do not move this below the
-        // dispatch. See ProcessImportJob::processImport()'s conditional claim,
-        // which allows exactly the Pending written here.
-        $job->update(['status' => ImportStatus::Pending]);
 
         // Large imports: dispatch to queue for async processing.
         // tenantId is passed so the worker can rebind tenant context via
@@ -732,6 +735,120 @@ class ImportController extends Controller
             'Content-Type' => 'text/csv',
             'Content-Disposition' => 'attachment; filename="'.$filename.'"',
         ]);
+    }
+
+    /**
+     * Download the original source uploaded for an import job.
+     */
+    public function downloadSourceFile(Request $request, string $id): StreamedResponse|JsonResponse
+    {
+        if (! Str::isUuid($id)) {
+            return response()->json(['error' => 'Import job not found'], 404);
+        }
+
+        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $tenantId = $company->tenant_id;
+
+        $job = ImportJob::query()
+            ->where('tenant_id', $tenantId)
+            ->where('id', $id)
+            ->first();
+
+        if ($job === null) {
+            return response()->json(['error' => 'Import job not found'], 404);
+        }
+
+        if ($mismatch = $this->companyMismatch($job, $companyId)) {
+            return $mismatch;
+        }
+
+        /** @var User $user */
+        $user = $request->user();
+        $this->moduleEntitlement->ensure($job->type, $user);
+
+        if ($job->source_purged_at !== null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'source_purged',
+                    'message' => 'The original import source has expired and was purged.',
+                ],
+            ], 410);
+        }
+
+        if (! Storage::disk('local')->exists($job->file_path)) {
+            return response()->json(['error' => 'Import source file not found'], 404);
+        }
+
+        return response()->streamDownload(function () use ($job): void {
+            echo Storage::disk('local')->get($job->file_path);
+        }, $job->original_filename);
+    }
+
+    /**
+     * Discard an import job and its retained artifacts.
+     */
+    public function destroy(Request $request, string $id): JsonResponse|Response
+    {
+        if (! Str::isUuid($id)) {
+            return response()->json(['error' => 'Import job not found'], 404);
+        }
+
+        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $tenantId = $company->tenant_id;
+
+        $job = ImportJob::query()
+            ->where('tenant_id', $tenantId)
+            ->where('id', $id)
+            ->first();
+
+        if ($job === null) {
+            return response()->json(['error' => 'Import job not found'], 404);
+        }
+
+        if ($mismatch = $this->companyMismatch($job, $companyId)) {
+            return $mismatch;
+        }
+
+        /** @var User $user */
+        $user = $request->user();
+        $this->moduleEntitlement->ensure($job->type, $user);
+
+        if ($job->status === ImportStatus::Importing || $job->successful_rows !== 0) {
+            return $this->importHasEffectsConflict();
+        }
+
+        $deleted = ImportJob::query()
+            ->where('tenant_id', $tenantId)
+            ->where('id', $id)
+            ->where('status', '!=', ImportStatus::Importing->value)
+            ->where('successful_rows', 0)
+            ->delete();
+
+        if ($deleted !== 1) {
+            return $this->importHasEffectsConflict();
+        }
+
+        if (! Storage::disk('local')->delete($job->file_path)) {
+            Log::warning('import_jobs.discard_orphaned_source', [
+                'id' => $job->id,
+                'tenant_id' => $tenantId,
+                'file_path' => $job->file_path,
+            ]);
+        }
+
+        return response()->noContent();
+    }
+
+    private function importHasEffectsConflict(): JsonResponse
+    {
+        return response()->json([
+            'error' => [
+                'code' => 'IMPORT_HAS_EFFECTS',
+                'message' => 'This import cannot be discarded because it is running or has posted effects. Use the opening-balance reset or stock adjustment flows to correct posted data.',
+            ],
+        ], 409);
     }
 
     /**

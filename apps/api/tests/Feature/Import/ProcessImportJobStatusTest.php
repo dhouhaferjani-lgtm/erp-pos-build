@@ -19,6 +19,7 @@ use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Domain\ImportRow;
+use App\Modules\Import\Services\ImportJobClaimService;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -87,6 +88,7 @@ class ProcessImportJobStatusTest extends TestCase
         ]);
 
         app(CompanyContext::class)->setCompanyId($this->company->id);
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
     }
 
     /**
@@ -127,6 +129,11 @@ class ProcessImportJobStatusTest extends TestCase
 
     private function runJob(ImportJob $job): void
     {
+        $this->assertTrue(
+            $this->app->make(ImportJobClaimService::class)->claim($job)->won,
+            'The controller-owned claim fixture must win before the worker is delivered.',
+        );
+
         (new ProcessImportJob($job->id, $this->company->id, $this->tenant->id))
             ->handle(
                 $this->app->make(ImportService::class),

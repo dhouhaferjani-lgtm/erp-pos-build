@@ -65,7 +65,7 @@ final class ImportModuleEntitlementTest extends TestCase
         $this->withHeader('X-Company-Id', $this->company->id);
     }
 
-    public function test_disabled_composite_items_module_refuses_all_ten_existing_surfaces(): void
+    public function test_disabled_composite_items_module_refuses_all_twelve_existing_surfaces(): void
     {
         foreach ($this->allCompositeSurfaces() as $response) {
             $response->assertForbidden()
@@ -87,7 +87,9 @@ final class ImportModuleEntitlementTest extends TestCase
             'error summary' => 200,
             'execute' => 422,
             'failed rows' => 404,
+            'source file' => 404,
             'result workbook' => 200,
+            'discard' => 204,
         ];
 
         foreach ($this->allCompositeSurfaces() as $surface => $response) {
@@ -163,7 +165,9 @@ final class ImportModuleEntitlementTest extends TestCase
             'error summary' => $this->getJson($base.'/error-summary'),
             'execute' => $this->postJson($base.'/execute'),
             'failed rows' => $this->getJson($base.'/failed-rows.csv'),
+            'source file' => $this->getJson($base.'/source-file'),
             'result workbook' => $this->getJson($base.'/result-workbook'),
+            'discard' => $this->deleteJson($base),
         ];
     }
 

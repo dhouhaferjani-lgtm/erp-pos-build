@@ -1026,7 +1026,32 @@ maxDiscountPercent: string | null;
 declare namespace App.Modules.Identity.Domain.Enums {
 export type UserStatus = 'active' | 'inactive' | 'suspended' | 'pending_verification';
 }
+declare namespace App.Modules.Import.Domain.Data {
+export type ImportErrorDetailData = {
+supplied?: string | null;
+accepted?: Array<string> | null;
+candidates?: Array<App.Modules.Import.Domain.Data.UnitCandidateData> | null;
+candidate_skus?: Array<string> | null;
+sku?: string | null;
+existing_product_id?: string | null;
+filename?: string | null;
+reason?: string | null;
+column?: string | null;
+raw?: string | null;
+remedy?: string | null;
+held_quantity?: string | null;
+held_at?: string | null;
+};
+export type UnitCandidateData = {
+id: string;
+code: string;
+name: string;
+category: string;
+tier: string;
+};
+}
 declare namespace App.Modules.Import.Domain.Enums {
+export type ImportErrorCode = 'units_not_seeded' | 'worker_lost';
 export type ImportStatus = 'pending' | 'validating' | 'validated' | 'importing' | 'completed' | 'failed';
 export type ImportType = 'parties' | 'partners' | 'products' | 'stock_levels' | 'opening_balances' | 'product_images' | 'composite_items';
 }
