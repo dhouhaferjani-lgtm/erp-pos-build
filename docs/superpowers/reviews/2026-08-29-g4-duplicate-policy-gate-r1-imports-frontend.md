@@ -213,3 +213,95 @@ Additional attempt-2 command evidence (source remained read-only):
 ### Corrected final verdict: FAIL
 
 Do not rebase, stage, or merge. G4-R2-01 can silently omit unit-backfill rows after the first page, and G4-R2-02 makes preview duplicate/refusal semantics disagree with authoritative execution. After both are fixed, run their new PostgreSQL regressions plus the scoped migration/census/resolver/static/manifest checks; do not broaden to a full suite.
+
+## Gate r3 (Codex)
+
+Re-review target: snapshot `383ff6bec475ab96595fefed5dbc10b1e576da06` plus the dirty fix-round-2 overlay. Source was reviewed read-only. This section is the only write.
+
+### Finding closure audit
+
+| finding | r3 status | verification |
+|---|---|---|
+| G4-R1-01 | **CLOSED** | Authoritative identity is re-resolved inside each row transaction and drift is warned (`apps/api/app/Modules/Import/Services/ImportService.php:441-470`); the race pin remains at `apps/api/tests/Feature/Import/DuplicateCensusTest.php:175-195`. |
+| G4-R1-02 | **CLOSED** | The census remains a valid/pending-only, 500-row chunked pass with batched identity/location resolution (`apps/api/app/Modules/Import/Services/DuplicateCensusService.php:40-93,174-210`); the query-ceiling pin remains at `DuplicateCensusTest.php:104-139`. |
+| G4-R1-03 | **CLOSED** | Within-file placement still keys product identity with resolved `location_id` (`DuplicateCensusService.php:291-312`), with alias/unresolved coverage at `DuplicateCensusTest.php:141-173`. |
+| G4-R1-04 | **CLOSED** | Four real throwing-decorator resume cases remain (`apps/api/tests/Feature/Import/ImportOutcomeAtomicityTest.php:191-314,456-479`). |
+| G4-R1-05 | **CLOSED** | The only terminal rewrite remains `imported -> opening_locked` (`ImportService.php:692-726`); opening selection remains imported-only (`apps/api/app/Modules/Import/Services/ProductOpeningStockPhase.php:41-45`). |
+| G4-R1-06 | **CLOSED** | G-4's `skipped_rows` addition is column-guarded (`apps/api/database/migrations/tenant/2026_08_31_100000_add_outcome_to_import_rows.php:26-31`) and counters remain outcome-derived in sync/queue finalization (`ImportService.php:416-423`; `apps/api/app/Modules/Import/Application/Jobs/ProcessImportJob.php:206-217`). |
+| G4-R1-07 | **CLOSED** | Deleted-holder refusal applies only when the trashed row holds the effective SKU (`apps/api/app/Modules/Product/Application/Services/ProductService.php:99-115,377-420`); the unrelated-barcode pin remains (`apps/api/tests/Feature/Product/ProductUpsertKeyPrecedenceTest.php:155-186`). |
+| G4-R1-08 | **CLOSED** | The name arm remains `withTrashed()` with the effective-SKU guard (`ProductService.php:429-455`), pinned at `ProductUpsertKeyPrecedenceTest.php:224-254`. |
+| G4-R1-09 | **CLOSED** | Exact tier selection remains company > tenant > system with same-tier ambiguity in the shared helper (`apps/api/app/Shared/DTOs/UnitCatalogEntryData.php:26-51`), used by runtime and backfill (`apps/api/app/Modules/Import/Services/UnitResolver.php:20-76`; `apps/api/app/Modules/Product/Application/Services/ProductUnitBackfillService.php:51-63`). |
+| G4-R1-10 | **CLOSED** | All three migrations remain guarded/forward-only; unit backfill guards dependencies and catches legacy exceptions (`apps/api/database/migrations/tenant/2026_08_31_100200_backfill_product_unit_ids.php:20-69`). Console output is guarded, not bare echo (`2026_08_31_100000_add_outcome_to_import_rows.php:102-104`; `2026_08_31_100200_backfill_product_unit_ids.php:81-85`). |
+| G4-R1-11 | **CLOSED** | Replay selection requires `is_imported=false` and `outcome=pending` (`ImportService.php:323-330`); the worker retains two required arguments with only optional catalogue injection (`ProcessImportJob.php:75-79`). |
+| G4-R1-12 | **CLOSED** | `upsert()` still returns `string`; `upsertWithResult()` is additive (`ProductService.php:70-82`; `apps/api/app/Shared/Contracts/ProductServiceInterface.php:28-48`). |
+| G4-R1-13 | **CLOSED** | DB-backed sparse re-import pins remain at `ImportOutcomeAtomicityTest.php:316-386`; all three tax-governor pins remain at `apps/api/tests/Feature/Import/ProductsImportPipelineTest.php:979-1098`. |
+| G4-R1-14 | **CLOSED** | `_results` and `_placement_plan` remain typed/hydrated (`apps/api/app/Modules/Import/Domain/Data/ImportRowSourceData.php:7-99`; `ImportPlacementPlanData.php:7-87`; `ImportPlacementSegmentData.php:7-52`; `apps/api/app/Modules/Import/Domain/Casts/ImportRowSourceCast.php:9-21`). |
+| G4-R1-15 | **CLOSED** | API omits census-less `duplicates` (`apps/api/app/Modules/Import/Presentation/Controllers/ImportController.php:294-319`) and FE hides the panel (`apps/web/src/features/import/pages/ImportWizardPage.tsx:1003-1078`). |
+| G4-R1-16 | **CLOSED** | The matched-by-name list remains bounded to ten with expansion (`ImportWizardPage.tsx:1034-1051`). |
+| G4-R1-17 | **CLOSED** | There remains one awaited policy PATCH with Next/Execute disabled while pending (`ImportWizardPage.tsx:625-649,1103-1112,1222-1228`). |
+| G4-R1-18 | **CLOSED** | Cancel still uses confirmation before deleting the durable draft (`ImportWizardPage.tsx:615-619,651-664,1454-1464`). |
+| G4-R1-19 | **CLOSED** | Selector-contract coverage still asserts summary, both policies, cancel, step/Next/execute, and `import-wizard-execute` (`apps/web/src/features/import/__tests__/ImportWizardPage.duplicates.test.tsx:110-148`). |
+| G4-R1-20 | **CLOSED** | Warning translation keys remain exhaustive against the generated enum and en/fr/ar parity is pinned (`apps/web/src/features/import/warningCodes.ts:1-31`; `apps/web/src/features/import/__tests__/ImportWarningLocales.test.ts:8-28`). |
+| G4-R1-21 | **CLOSED** | Ambiguity candidates still carry category and tier (`apps/api/app/Modules/Uom/Application/Services/UnitCatalogQuery.php:24-36`; `UnitResolver.php:50-66`). |
+| G4-R1-22 | **CLOSED / retained** | Imported-only opening selection, exact case-sensitive unit matching, shared catalogue use, and absence of touched float casts remain intact (`ProductOpeningStockPhase.php:41-45`; `UnitCatalogEntryData.php:26-41`). |
+| G4-R1-23 | **CLOSED / retained** | Outcome/error migrations remain guarded, distinct, and forward-only (`2026_08_31_100000_add_outcome_to_import_rows.php:17-114`; `2026_08_31_100100_add_error_code_to_import_rows.php:13-54`). |
+| G4-R2-01 | **CLOSED** | Backfill now uses id-only `lazyById(500)` with no competing order (`ProductUnitBackfillService.php:25-64`). The two-company/1,001-row PostgreSQL pin visits and accounts for all 1,001 rows (`apps/api/tests/Feature/Import/UnitResolutionTest.php:232-279`). |
+| G4-R2-02 | **NOT CLOSED** | `resolve()` and `resolveMany()` now share one `resolveInput()` ladder (`apps/api/app/Modules/Product/Application/Services/ProductResolver.php:19-28,31-53,63-138`) and the Shared contract is clean, but the census discards `resolution->failure`: only execute calls `throwIfResolutionFailed()` (`DuplicateCensusService.php:112-120`), while `bucketForResolution()` converts every failed/null match to `new` (`:260-267`). The purported parity test independently hard-codes the mismatch: supplied deleted holder, name-derived deleted holder, and ambiguous barcode preview as `new`, then execute as `failed` (`DuplicateCensusTest.php:198-260`). This preserves the original operator-visible preview/execute disagreement instead of closing it. |
+
+### New findings
+
+| ID | severity | file:line | finding | required change |
+|---|---|---|---|---|
+| **G4-R3-01** | **MAJOR** | `apps/api/autoerp_test_g5` (tracked by snapshot `383ff6bec`; blob `3ff34659de8f9329d4a7aebe94546019a866d12f`, 6,819,840 bytes); `apps/api/.gitignore:1-24` | The snapshot commit contains a 6.5 MB local SQLite test database. Even though its sampled application tables are empty, it is generated state, bloats history, and creates an unsafe precedent for accidentally committing tenant/test data. | Remove the database artifact from the branch before merge and ignore the local test-database naming pattern. Do not rewrite or delete it as part of this read-only gate. |
+
+### R2-specific and architecture checks
+
+- The r2-01 pagination defect is fixed and the required PostgreSQL 1,001-row/two-company regression is green. `lazyById(500)` is ID ordered by the framework; there is no explicit conflicting `orderBy` (`ProductUnitBackfillService.php:25-64`).
+- There is one resolver ladder, used by batch census and single-row execution (`ProductResolver.php:19-28,31-53,63-138`; `DuplicateCensusService.php:174-188,213-223`). However, one ladder is not sufficient while the census consumer drops its typed failure. G4-R2-02 therefore remains a blocker.
+- `ProductIdentityFailure` is a Shared backed enum and `ProductIdentityResolutionData`/`ProductResolverInterface` contain only scalars, Shared enums, and Shared DTOs (`apps/api/app/Shared/Enums/ProductIdentityFailure.php:7-11`; `apps/api/app/Shared/DTOs/ProductIdentityResolutionData.php:7-20`; `apps/api/app/Shared/Contracts/ProductResolverInterface.php:7-26`). Fresh deptrac remains **183 violations / 0 errors**. The apparent `SharedContracts -> ModuleDomain 36 -> 37` edge is `apps/api/app/Shared/Contracts/TaxDefaultResolverInterface.php:24 -> App\\Modules\\Company\\Domain\\Company`, reusing the pre-existing edge at `:15`; blame identifies `831a455245` for `:24`. No G-4 Shared-to-ModuleDomain edge was introduced.
+- React Doctor scoped to the eight changed web files reports **No issues found**, score 93, zero findings.
+
+### Migration staging safety
+
+The three migrations are structurally staging-safe: owned tables/columns/indexes are guarded, data repair is forward-only, exceptions do not stop the fleet, and diagnostics are console-only (`2026_08_31_100000_add_outcome_to_import_rows.php:17-114`; `2026_08_31_100100_add_error_code_to_import_rows.php:13-54`; `2026_08_31_100200_backfill_product_unit_ids.php:20-85`). The facade-guarded `fwrite` calls are acceptable on this pre-helper branch. On rebase they **must** switch to `App\Shared\Database\MigrationOutput` at exactly:
+
+- `apps/api/database/migrations/tenant/2026_08_31_100000_add_outcome_to_import_rows.php:102-104`
+- `apps/api/database/migrations/tenant/2026_08_31_100200_backfill_product_unit_ids.php:81-85`
+
+Tenant #1's approximately 855 imported products with free-text units are expected to produce a material `unknown` census because backfill is deliberately trim-then-exact and case-sensitive (`ProductUnitBackfillService.php:51-63`). Before staging rollout, export the affected IDs/free-text values, review the emitted `mapped/ambiguous/unknown/missing_company` census, normalize only operator-approved exact codes, rerun the repair, and require the four counters to equal the eligible-row total. Do not silently alias values such as `piece` to `pc`; require `ambiguous=0` and `unknown=0`, or signed operator exceptions, before treating the migration as reconciled.
+
+### Rebase reconciliation against current dev
+
+G-4 must reconcile, not overwrite, these exact dev surfaces:
+
+- G-3b controller ownership/entitlement/adopt-on-execute: `apps/api/app/Modules/Import/Presentation/Controllers/ImportController.php:49-100,137,300-336,397-403,461-467,519-525,558-690,715-721,762-768,810-816,871-877,1092-1103`.
+- G-6a claim/finalization service, including guarded `skipped_rows`: `apps/api/app/Modules/Import/Application/Services/ImportJobClaimService.php:25-181`; retain its claim/start/finalize skeleton while merging G-4's transactional `processPendingRow()` and outcome counters into `apps/api/app/Modules/Import/Application/Jobs/ProcessImportJob.php:76-149,156+`.
+- Union the dev `ImportJob` company/source/lifecycle/error/skipped fields (`apps/api/app/Modules/Import/Domain/ImportJob.php:23-42,65-113`) and merge, rather than duplicate, `apps/api/app/Modules/Import/Domain/Data/ImportErrorDetailData.php:22-46`.
+- Preserve G-3b M4 company adoption/backfill (`apps/api/database/migrations/tenant/2026_08_30_100200_add_company_and_source_to_import_jobs.php:49-57,108-116,176-184`) and G-6a M6c lifecycle/error plus guarded `skipped_rows` (`2026_08_30_100400_add_lifecycle_fields_to_import_jobs.php:58-67`).
+- Union `.github/workflows/ci.yml`, `apps/api/tests/Feature/manifest.json`, and generated TypeScript; do not take either side wholesale.
+
+Using the prompt's dev ceiling, the required union remains **1,224 total / Import 33 / Uom 9 / Migrations 11** (`1215/25/8/11 + G-4's 9 tests`). The live local `dev` has advanced to **1,223 / 30 / 8 / 13**; all eight G-4 Import classes plus its Uom class are absent there, so the live-ref union is now **1,232 / 38 / 9 / 13**. The dirty G-4 manifest checker itself reports **1,480 Feature classes / 74 groups**; its current category ceiling is **1,221 / Import 33 / Uom 9 / Migrations 10**. Recompute the ratchet from the actual merge base during rebase.
+
+### Fresh command evidence
+
+| command / leg | result |
+|---|---|
+| Requested SQLite paths only: all new Import census/outcome/atomicity/resolver/coalescing/unit classes; pipeline, parties, warnings, worker/re-execution, RoundTrip, upsert/unit/opening pins | **PASS — 142 passed, 4 skipped, 974 assertions** |
+| `ImportPreviewTest` supplemental API pin | **PASS — 7 passed, 63 assertions**; combined observed SQLite total **149 passed, 4 skipped, 1,037 assertions** |
+| Requested PostgreSQL paths, serial by path; every invocation prefixed `DB_DATABASE=autoerp_test_g5 DB_CENTRAL_DATABASE=autoerp_test_g5 DB_CONNECTION=pgsql` | **PASS — 46 passed, 237 assertions**; includes the 1,001-row/two-company pin |
+| PHPStan on touched PHP | **PASS — 0 errors** |
+| Pint `--test` on touched PHP | **PASS** |
+| Feature manifest checker | **PASS — 1,480 Feature classes / 74 groups**; all CI filters anchored and uniquely matched |
+| `.github/workflows/ci.yml` parse and filter audit | **PASS** — YAML parseable; G-4 PostgreSQL filters present |
+| Deptrac direct | **183 violations / 0 errors / 14,348 allowed / 13,541 uncovered**; no G-4 SharedContracts-to-Domain edge |
+| `cd apps/web && pnpm vitest run src/features/import` | **PASS — 12 files, 67 tests** |
+| `cd apps/web && pnpm typecheck` | **PASS** |
+| ESLint on the eight touched web files | **PASS — 0 errors, 20 warnings** |
+| `node tools/audit-tanstack-keys.mjs` | **PASS — 0 acknowledged, 0 new, 0 stale** |
+| `NPM_CONFIG_CACHE=/private/tmp/g4-react-doctor-cache npx react-doctor@latest --verbose --scope changed --base 68c698f1a` | **PASS — eight files, zero findings, score 93** |
+| `CACHE_STORE=array php artisan typescript:transform` | **PASS — 545 types; generated declaration SHA-256 unchanged** (`2e34d87e36a2e78df9afb7f051832ed3a72e9833d53667594b1fd1bca5f549cd`) |
+| `git diff --check` | **PASS** |
+
+### VERDICT: FAIL
+
+Do not rebase, stage, or merge. G4-R2-02 remains behaviorally open: the preview census reports resolver refusals as `new`, while authoritative execution fails those rows. Fix the census/result contract and replace the mismatch-enshrining test with independently derived parity expectations. Also remove and ignore the tracked SQLite database in G4-R3-01. Then rerun the scoped census/resolver PostgreSQL pins, manifest/static checks, and generated-type no-diff check; never broaden this lane gate to the full suite.
