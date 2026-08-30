@@ -66,6 +66,8 @@ final readonly class DayOneCensus
                 'country_code',
                 'default_tax_configuration_id',
             ])
+            // Company uses SoftDeletes: a trashed company must not be censused (nor make findOrFail throw).
+            ->whereNull('deleted_at')
             ->orderBy('created_at')
             ->orderBy('id');
 

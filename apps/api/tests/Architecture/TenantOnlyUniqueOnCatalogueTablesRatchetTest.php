@@ -112,7 +112,7 @@ final class TenantOnlyUniqueOnCatalogueTablesRatchetTest extends TestCase
         'inventory_counter_metrics' => 'The key identifies one user metrics window.',
         'inventory_counting_assignments' => 'Count numbers are unique within an inventory count.',
         'inventory_counting_items' => 'Product and location keys identify projection rows within one count.',
-        'journal_entries' => 'Journal entry identity and numbering are ledger-global rather than operator catalogue keys.',
+        'journal_entries' => 'Not an operator catalogue key — but NOT clean either: unique(tenant_id, entry_number) is tenant-wide while AccountingOpeningService::generateEntryNumber() mints OB-{year}-{seq} from a COMPANY-scoped max, so company B\'s first opening batch re-mints OB-2026-000001 and dies on 23505 (same class as the documents numbering fix; ledger accounting follow-up — treasury gate r2-N1). The chain sequence itself is already per company (uniq_je_company_chain_sequence).',
         'key_component_product' => 'This pivot is unique within its product-to-component relationship.',
         'key_component_translations' => 'Translations are unique within their platform component and locale.',
         'loyalty_enrollments' => 'A member enrolls once within a loyalty program.',
