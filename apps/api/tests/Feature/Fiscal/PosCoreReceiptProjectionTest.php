@@ -1424,6 +1424,125 @@ final class PosCoreReceiptProjectionTest extends TestCase
         $this->assertSame($partner->id, $this->capturedEarn?->partnerId);
     }
 
+    // =================================================================
+    // Merge-gate r1 finding 1 — buyer.contact_id is the sibling FK of
+    // partner_id and must be guarded the same way.
+    // =================================================================
+
+    /**
+     * The fiscal validator accepts an arbitrary non-empty string for
+     * `buyer.contact_id` at EVERY event version (unlike `customer_id`, which
+     * is UUID-gated from v5). `pos_receipts.contact_id` is a
+     * `foreignUuid(...)->constrained('contacts')` column, so the raw value
+     * would raise 22P02 and cost the whole projection. The exact shape lives in
+     * the repo: `tests/Fixtures/Fiscal/sale-receipt-golden/v4/F-15-large/payload.json`
+     * seals `"contact_id": "contact-f15-001"`.
+     */
+    public function test_legacy_non_uuid_buyer_contact_id_lands_snapshot_with_null_contact_fk(): void
+    {
+        $event = $this->storeSaleReceiptFiscalEvent(
+            buyer: [
+                'address' => null,
+                'codice_fiscale' => null,
+                'contact_id' => 'contact-f15-001',
+                'customer_id' => null,
+                'name' => 'Legacy Contact Buyer',
+                'tax_number' => 'FR12345678901',
+            ],
+            eventVersion: 5,
+        );
+
+        $this->captureLoyaltyEarning();
+        app(CompanyContext::class)->clear();
+        $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+
+        $receipt = $this->myReceipts()->orderBy('id')->first();
+        $this->assertNotNull($receipt);
+        $this->assertNull($receipt->contact_id);
+        $this->assertNull($receipt->partner_id);
+        $this->assertSame('Legacy Contact Buyer', $receipt->customer_name);
+        $this->assertSame('FR12345678901', $receipt->customer_identifier);
+        $this->assertNull($this->capturedEarn?->contactId);
+    }
+
+    public function test_uuid_buyer_contact_outside_event_company_lands_snapshot_with_null_contact_fk(): void
+    {
+        $otherCompany = Company::factory()->create(['tenant_id' => $this->tenantId]);
+        $otherCompanyContactId = $this->seedContact($this->tenantId, (string) $otherCompany->id);
+
+        $event = $this->storeSaleReceiptFiscalEvent(
+            buyer: [
+                'address' => null,
+                'codice_fiscale' => null,
+                'contact_id' => $otherCompanyContactId,
+                'customer_id' => null,
+                'name' => 'Cross-company Contact Buyer',
+                'tax_number' => null,
+            ],
+            eventVersion: 5,
+        );
+
+        $this->captureLoyaltyEarning();
+        app(CompanyContext::class)->clear();
+        $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+
+        $receipt = $this->myReceipts()->orderBy('id')->first();
+        $this->assertNotNull($receipt);
+        $this->assertNull($receipt->contact_id);
+        $this->assertSame('Cross-company Contact Buyer', $receipt->customer_name);
+        $this->assertNull($this->capturedEarn?->contactId);
+    }
+
+    public function test_in_scope_uuid_buyer_contact_preserves_contact_fk_and_loyalty_context(): void
+    {
+        $contactId = $this->seedContact($this->tenantId, $this->companyId);
+
+        $event = $this->storeSaleReceiptFiscalEvent(
+            buyer: [
+                'address' => null,
+                'codice_fiscale' => null,
+                'contact_id' => $contactId,
+                'customer_id' => null,
+                'name' => 'Scoped Contact Buyer',
+                'tax_number' => null,
+            ],
+            eventVersion: 5,
+        );
+
+        $this->captureLoyaltyEarning();
+        app(CompanyContext::class)->clear();
+        $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+
+        $receipt = $this->myReceipts()->orderBy('id')->first();
+        $this->assertNotNull($receipt);
+        $this->assertSame($contactId, $receipt->contact_id);
+        $this->assertSame('Scoped Contact Buyer', $receipt->customer_name);
+        $this->assertSame($contactId, $this->capturedEarn?->contactId);
+    }
+
+    /**
+     * Seed a `contacts` row without importing the Contact module model into the
+     * fiscal test surface — the projector reaches contacts only through
+     * `ContactResolverInterface`, and this helper mirrors that arm's-length
+     * stance at the fixture level.
+     */
+    private function seedContact(string $tenantId, string $companyId): string
+    {
+        $id = (string) Str::uuid();
+        DB::table('contacts')->insert([
+            'id' => $id,
+            'tenant_id' => $tenantId,
+            'company_id' => $companyId,
+            'first_name' => 'Sealed',
+            'last_name' => 'Contact',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $id;
+    }
+
     public function test_buyer_block_is_sale_time_snapshot_survives_customer_deletion(): void
     {
         // Pass 2A.PHP.2 R2 — Codex P1-1 closure (R3-tightened per R2-P2).

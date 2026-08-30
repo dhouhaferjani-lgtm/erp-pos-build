@@ -155,4 +155,35 @@ final class PosCoreReceiptProjectionD16Test extends TestCase
             'customer_identifier must remain sourced from the sealed buyer payload.',
         );
     }
+
+    /**
+     * Merge-gate r1 finding 1 — `contact_id` is the sibling FK of `partner_id`
+     * and must reach `pos_receipts` through the same single-purpose Shared
+     * contract seam, never through a direct Contact-module read.
+     */
+    public function test_contact_resolver_is_single_purpose_and_reached_only_through_the_shared_contract(): void
+    {
+        $source = file_get_contents(self::PROJECTION_FILE);
+        self::assertNotFalse($source, 'PosCoreReceiptProjection.php must be readable.');
+
+        self::assertSame(
+            1,
+            preg_match_all('/\$this->contactResolver->/', $source),
+            'ContactResolver may have exactly one projector call site: scoped contact_id resolution.',
+        );
+        self::assertSame(
+            1,
+            preg_match_all('/\$this->contactResolver->resolveScopedContactId\s*\(/', $source),
+            'The single ContactResolver call must resolve only the scoped contact_id.',
+        );
+        self::assertMatchesRegularExpression(
+            '/\$contactId\s*=\s*\$this->resolveBuyerContactId\(\$event,\s*\$buyer\?->contactId\);/',
+            $source,
+            'contact_id must be guarded by resolveBuyerContactId, never assigned raw from the payload.',
+        );
+        self::assertFalse(
+            str_contains($source, "'contact_id' => \$buyer?->contactId"),
+            'The raw payload contact_id must never be written straight into the pos_receipts FK.',
+        );
+    }
 }

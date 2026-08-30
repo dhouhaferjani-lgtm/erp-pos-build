@@ -18,6 +18,7 @@ use App\Modules\Accounting\Infrastructure\Adapters\FiscalPeriodLockReader;
 use App\Modules\Company\Application\Services\LocationService;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
+use App\Modules\Contact\Application\Services\ContactService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Expense\Domain\ExpenseCategory;
 use App\Modules\Identity\Domain\User;
@@ -56,6 +57,7 @@ use App\Shared\Contracts\EnrichmentQueryInterface;
 use App\Shared\Contracts\EnrichmentSubmissionCorrelatorInterface;
 use App\Shared\Contracts\InventoryServiceInterface;
 use App\Shared\Contracts\LocationServiceInterface;
+use App\Shared\Contracts\ContactResolverInterface;
 use App\Shared\Contracts\PartnerServiceInterface;
 use App\Shared\Contracts\PlatformSubmissionInterface;
 use App\Shared\Contracts\ProductInventoryQueryInterface;
@@ -103,6 +105,7 @@ class AppServiceProvider extends ServiceProvider
 
         // Register cross-module service interfaces
         $this->app->bind(PartnerServiceInterface::class, PartnerService::class);
+        $this->app->bind(ContactResolverInterface::class, ContactService::class);
         $this->app->bind(ProductServiceInterface::class, ProductService::class);
         $this->app->bind(InventoryServiceInterface::class, InventoryService::class);
         $this->app->bind(LocationServiceInterface::class, LocationService::class);

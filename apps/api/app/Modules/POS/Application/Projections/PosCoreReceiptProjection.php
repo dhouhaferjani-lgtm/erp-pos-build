@@ -55,6 +55,7 @@ use App\Modules\Voucher\Application\DTOs\VoucherRedemptionRequest;
 use App\Modules\Voucher\Application\Services\VoucherRedemptionService;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use App\Shared\Contracts\Loyalty\LoyaltyEarningContract;
+use App\Shared\Contracts\ContactResolverInterface;
 use App\Shared\Contracts\Loyalty\SaleEarnContext;
 use App\Shared\Contracts\PartnerServiceInterface;
 use App\Shared\Domain\ByteaBinding;
@@ -200,6 +201,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         private readonly CanonicalPayloadReader $canonicalReader,
         private readonly PaymentMethodResolver $paymentMethodResolver,
         private readonly PartnerServiceInterface $partnerService,
+        private readonly ContactResolverInterface $contactResolver,
         private readonly LoyaltyEarningContract $loyaltyEarning,
         private readonly CountingBlockService $countingBlockService,
         private readonly AuditService $auditService,
@@ -377,7 +379,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             $buyer = $view->buyer;
             $customerName = $buyer?->name;
             $partnerId = $this->resolveBuyerPartnerId($event, $buyer?->customerId);
-            $contactId = $buyer?->contactId;
+            $contactId = $this->resolveBuyerContactId($event, $buyer?->contactId);
             $customerIdentifier = $buyer?->taxNumber;
 
             $row = [
@@ -488,7 +490,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 ? bcsub($totalNorm, $roundingAdjustmentNorm, self::SCALE)
                 : $totalNorm;
 
-            $this->earnLoyaltyPoints($receiptId, $event, $view, $payload, $receiptTypeEnum, $partnerId, $earnBase);
+            $this->earnLoyaltyPoints($receiptId, $event, $view, $payload, $receiptTypeEnum, $partnerId, $contactId, $earnBase);
             $this->applyStockMovementForLines(
                 $receiptId,
                 $event,
@@ -1683,6 +1685,31 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
     }
 
     /**
+     * Convert a sealed buyer contact ID into a safe local FK.
+     *
+     * Merge-gate r1 finding 1 — sibling of `resolveBuyerPartnerId`. The
+     * fiscal validator accepts an ARBITRARY non-empty string for
+     * `buyer.contact_id` at every event version (there is no UUID gate the way
+     * `customer_id` has one from v5), while `pos_receipts.contact_id` is a
+     * `foreignUuid(...)->constrained('contacts')` column. Writing the raw value
+     * would raise `22P02` / an FK violation and cost the WHOLE projection —
+     * no receipt row, no GL, no stock — for a buyer-only defect. Same defensive
+     * stance as the partner FK: UUID syntax + scoped existence, else null.
+     */
+    private function resolveBuyerContactId(FiscalEvent $event, ?string $candidateId): ?string
+    {
+        if ($candidateId === null || ! Str::isUuid($candidateId)) {
+            return null;
+        }
+
+        return $this->contactResolver->resolveScopedContactId(
+            $event->tenant_id,
+            $event->company_id,
+            $candidateId,
+        );
+    }
+
+    /**
      * Credit loyalty points for an earning SALE. Mirrors redeemVouchers() —
      * synchronous, try/catch, must never break the sale projection.
      * Earns only on a real SALE (not REFUND/VOID → Return, not training).
@@ -1699,6 +1726,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         SaleReceiptPayload $payload,
         ReceiptType $receiptType,
         ?string $partnerId,
+        ?string $contactId,
         string $earnBase,
     ): void {
         // Earn-eligibility guard (Codex BLOCKER-2): refunds/voids/training earn nothing.
@@ -1709,7 +1737,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         try {
             $this->loyaltyEarning->earnForSale(new SaleEarnContext(
                 tenantId: $event->tenant_id,
-                contactId: $view->buyer?->contactId,
+                contactId: $contactId,
                 partnerId: $partnerId,
                 currency: $payload->currencyCode,
                 sourceType: 'pos_receipt',
