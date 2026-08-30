@@ -1,10 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { mkdir, stat } from 'node:fs/promises'
+import { resolve } from 'node:path'
 import { expect, test, type APIRequestContext, type APIResponse } from '@playwright/test'
 import { canonicalEncode } from '../money-campaign/statement-support'
 
 const FRONTEND_BASE_URL = process.env['E2E_BASE_URL'] ?? 'http://localhost:5174'
 const API_BASE = process.env['SESSION_H_API_BASE'] ?? 'http://127.0.0.1:8011/api/v1'
 const CREDENTIALS = { email: 'owner@pharmabio.tn', password: 'password' }
+const EVIDENCE_DIR = resolve(process.cwd(), '../../.playwright-mcp/session-h/m4')
+const EVIDENCE_PATH = resolve(EVIDENCE_DIR, 'signed-buyer-ingestion-summary.png')
 
 test.skip(
   !!process.env['CI'] && !process.env['SESSION_H_API_BASE'],
@@ -323,7 +327,35 @@ async function projectedCustomerSnapshot(
     : { customer_name: row.customer_name, partner_id: row.partner_id }
 }
 
-test('signed v5 receipts accept null/scoped buyers and quarantine pending IDs', async ({ request }) => {
+async function quarantineReason(
+  request: APIRequestContext,
+  session: Session,
+  fiscalEventId: string,
+): Promise<string> {
+  const response = await request.get(
+    `${API_BASE}/fiscal/dead-lettered-projections/${encodeURIComponent(fiscalEventId)}`,
+    { headers: headers(session) },
+  )
+  if (!response.ok()) return `__request_failed_${response.status()}__`
+
+  const body = await responseJson(response) as {
+    data: { integrity_exception_reason: string | null; source: string }
+  }
+  if (body.data.source !== 'ingress_quarantine') return `__wrong_source_${body.data.source}__`
+
+  return body.data.integrity_exception_reason ?? '__missing_reason__'
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;')
+}
+
+test('signed v5 receipts accept null/scoped buyers and quarantine pending IDs', async ({ page, request }, testInfo) => {
   test.setTimeout(120_000)
   const session = await login(request)
 
@@ -374,4 +406,41 @@ test('signed v5 receipts accept null/scoped buyers and quarantine pending IDs', 
     tax_number: null,
   })
   expect(pending).toMatchObject({ stored: true, exceptionClass: 'canonical_parse_failure' })
+  await expect.poll(
+    () => quarantineReason(request, session, pending.fiscalEventId),
+    { timeout: 30_000, intervals: [250, 500, 1_000] },
+  ).toContain('payload_buyer_invalid')
+
+  const anonymousPartnerId = await projectedPartnerId(request, session, nullTerminal.id)
+  const projectedCustomer = await projectedCustomerSnapshot(request, session, partnerBody.data.id)
+  const pendingReason = await quarantineReason(request, session, pending.fiscalEventId)
+  const evidenceRows = [
+    ['Anonymous v5 receipt', `stored=${anonymous.stored}; projected partner_id=${anonymousPartnerId}`],
+    ['Scoped v5 receipt', `partner_id=${projectedCustomer?.partner_id ?? '__missing__'}`],
+    ['Sealed snapshot', `customer_name=${projectedCustomer?.customer_name ?? '__missing__'}`],
+    ['Pending-ID quarantine', `class=${pending.exceptionClass}; reason=${pendingReason}`],
+  ]
+
+  await mkdir(EVIDENCE_DIR, { recursive: true })
+  await page.setContent(`<!doctype html>
+    <html lang="en"><head><meta charset="utf-8"><title>Session H M4 evidence</title>
+    <style>
+      body { background: #f5f7fb; color: #172033; font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; padding: 48px; }
+      main { background: white; border: 1px solid #d9dfeb; border-radius: 16px; box-shadow: 0 12px 32px #23304d1f; margin: auto; max-width: 1040px; padding: 36px; }
+      h1 { font-size: 28px; margin: 0 0 8px; } p { color: #5a6579; margin: 0 0 28px; }
+      table { border-collapse: collapse; width: 100%; } th, td { border-top: 1px solid #e4e8f0; padding: 16px 12px; text-align: left; vertical-align: top; }
+      th { color: #26324a; width: 220px; } td { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+      .pass { background: #e8f7ee; border-radius: 999px; color: #166534; display: inline-block; font-size: 13px; font-weight: 700; padding: 5px 10px; }
+    </style></head><body><main>
+      <span class="pass">LIVE SIGNED HTTP GATE PASSED</span>
+      <h1>Session H · M4 buyer ingestion evidence</h1>
+      <p>Observed through the worktree API, POS receipt projection, analytics snapshot, and quarantine read surface.</p>
+      <table><tbody>${evidenceRows.map(([label, value]) => `<tr><th>${escapeHtml(label!)}</th><td>${escapeHtml(value!)}</td></tr>`).join('')}</tbody></table>
+    </main></body></html>`)
+  await page.screenshot({ path: EVIDENCE_PATH, fullPage: true })
+  expect((await stat(EVIDENCE_PATH)).size).toBeGreaterThan(0)
+  await testInfo.attach('m4-signed-buyer-ingestion-summary', {
+    path: EVIDENCE_PATH,
+    contentType: 'image/png',
+  })
 })
