@@ -18,7 +18,7 @@ lanes:
     commit_series: "h1-a1 M<m>.<s>:"
 ledger_rows: D-H1-1 (cleanup), D-H1-2 (a1)
 
-status: in_progress
+status: passed
 
 milestones:
   - id: M1
