@@ -36,7 +36,7 @@ export function TaxExemptionNotice({ document, warnings = [] }: TaxExemptionNoti
   const { t } = useTranslation('sales')
 
   // Don't show notice if partner is not exempt
-  if (!document.partner || document.partner.tax_status !== 'EXEMPT') {
+  if (document.partner?.tax_status !== 'EXEMPT') {
     return null
   }
 
@@ -53,10 +53,10 @@ export function TaxExemptionNotice({ document, warnings = [] }: TaxExemptionNoti
       : `${colorClasses.borderBlue200} ${colorClasses.bgBlue50}`
 
   const iconColor = hasErrors
-    ? `${colorClasses.textRed600}`
+    ? colorClasses.textRed600
     : hasWarnings
-      ? `${colorClasses.textYellow600}`
-      : `${colorClasses.textBlue600}`
+      ? colorClasses.textYellow600
+      : colorClasses.textBlue600
 
   return (
     <div className={`rounded-lg border p-4 ${severityColor}`}>
@@ -99,7 +99,7 @@ export function TaxExemptionNotice({ document, warnings = [] }: TaxExemptionNoti
                 <div
                   key={index}
                   className={`flex items-start gap-2 text-sm ${
-                    warning.severity === 'error' ? `${colorClasses.textRed700}` : `${colorClasses.textYellow700}`
+                    warning.severity === 'error' ? colorClasses.textRed700 : colorClasses.textYellow700
                   }`}
                 >
                   <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
