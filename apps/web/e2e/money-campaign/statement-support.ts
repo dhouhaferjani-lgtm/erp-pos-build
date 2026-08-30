@@ -401,7 +401,7 @@ function canonicalize(value: unknown): unknown {
   )
 }
 
-function canonicalEncode(value: Record<string, unknown>): string {
+export function canonicalEncode(value: Record<string, unknown>): string {
   return JSON.stringify(canonicalize(value))
 }
 

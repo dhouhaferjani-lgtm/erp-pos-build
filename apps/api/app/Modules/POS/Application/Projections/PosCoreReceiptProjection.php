@@ -53,9 +53,11 @@ use App\Modules\Product\Domain\Enums\RestockPolicy;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Voucher\Application\DTOs\VoucherRedemptionRequest;
 use App\Modules\Voucher\Application\Services\VoucherRedemptionService;
+use App\Shared\Contracts\ContactResolverInterface;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use App\Shared\Contracts\Loyalty\LoyaltyEarningContract;
 use App\Shared\Contracts\Loyalty\SaleEarnContext;
+use App\Shared\Contracts\PartnerServiceInterface;
 use App\Shared\Domain\ByteaBinding;
 use App\Shared\Domain\CashRoundingCutover;
 use App\Shared\Domain\ConcurrencyFault;
@@ -88,11 +90,29 @@ use RuntimeException;
  * (same security stance as Task 21 R2 Opus F3, now expressed via the
  * Shared/Contracts seam instead of a direct Treasury Eloquent traversal).
  *
- * **D16 sale-time snapshot invariant.** The projector reads buyer data
- * EXCLUSIVELY from `fiscal_events.payload.buyer` (sale-time snapshot).
- * NEVER traverses runtime customer / contact / B2B tables; the
- * `PosCoreReceiptProjectionD16Test` grep guard pins this invariant by
- * forbidding both module imports AND Eloquent static-call surfaces.
+ * **D16 sale-time snapshot invariant.** Buyer display and tax data come
+ * exclusively from `fiscal_events.payload.buyer`. The payload customer ID and
+ * contact ID are used only as candidate FKs: shared-contract resolvers
+ * (`PartnerServiceInterface::resolveScopedPartnerId`,
+ * `ContactResolverInterface::resolveScopedContactId`) confirm that each is an
+ * existing row in the event's tenant + company, including archived ones whose
+ * immutable receipt may arrive later. Partner type never changes this identity
+ * resolution, and no request-bound company context is used.
+ *
+ * **Scope of the defensive nulling (merge-gate r1 finding 3).** This
+ * projector's null-FK fallback only ever rescues values the FISCAL VALIDATOR
+ * ACCEPTS: a legacy non-UUID `customer_id` at `event_version <= 4`, a
+ * syntactically valid UUID that resolves to no partner in scope, and any
+ * `contact_id` (the validator accepts an arbitrary non-empty string for it at
+ * every version). Those land with a null FK while the sealed snapshot still
+ * projects. It is NOT a rescue for a payload the validator REJECTS: such an
+ * event is stored as `IntegrityExceptionClass::CanonicalParseFailure` with a
+ * NULL payload (`OutboxIngestor.php:793-805`) and `dispatchProjections()`
+ * returns early for that class (`OutboxIngestor.php:987-990`), so the sale
+ * produces NO `pos_receipts` row, no GL and no stock until an operator repairs
+ * it through `ParseFailureResolutionService`. The chain is intact either way;
+ * the device runs the identical gate before sealing, so only a
+ * buggy/forged/older-shape client can reach that outcome.
  *
  * **Idempotency anchor.** The durable guard is the `pos_receipts.fiscal_event_id
  * UNIQUE` column added in Task 11 — `apply()` checks for an existing
@@ -195,6 +215,8 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         private readonly ReceiptHashService $receiptHashService,
         private readonly CanonicalPayloadReader $canonicalReader,
         private readonly PaymentMethodResolver $paymentMethodResolver,
+        private readonly PartnerServiceInterface $partnerService,
+        private readonly ContactResolverInterface $contactResolver,
         private readonly LoyaltyEarningContract $loyaltyEarning,
         private readonly CountingBlockService $countingBlockService,
         private readonly AuditService $auditService,
@@ -366,12 +388,13 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 $this->assertApprovalEvidenceResolved($event, $payload);
             }
 
-            // Buyer block snapshot — D16 invariant: read ONLY from the
-            // parsed payload. NO live customer/contact/B2B lookup.
+            // Buyer block snapshot — display/tax fields are sealed payload
+            // values. customer_id is only a candidate FK and is written when
+            // it is an existing partner in the event's explicit scope.
             $buyer = $view->buyer;
             $customerName = $buyer?->name;
-            $partnerId = $buyer?->customerId;
-            $contactId = $buyer?->contactId;
+            $partnerId = $this->resolveBuyerPartnerId($event, $buyer?->customerId);
+            $contactId = $this->resolveBuyerContactId($event, $buyer?->contactId);
             $customerIdentifier = $buyer?->taxNumber;
 
             $row = [
@@ -482,7 +505,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 ? bcsub($totalNorm, $roundingAdjustmentNorm, self::SCALE)
                 : $totalNorm;
 
-            $this->earnLoyaltyPoints($receiptId, $event, $view, $payload, $receiptTypeEnum, $earnBase);
+            $this->earnLoyaltyPoints($receiptId, $event, $view, $payload, $receiptTypeEnum, $partnerId, $contactId, $earnBase);
             $this->applyStockMovementForLines(
                 $receiptId,
                 $event,
@@ -1657,6 +1680,51 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
     }
 
     /**
+     * Convert a sealed buyer ID into a safe local FK.
+     *
+     * Historical receipts may carry opaque device identifiers. New receipts
+     * carry UUID-or-null, but projection remains defensive at every event
+     * version because it is the final FK boundary.
+     */
+    private function resolveBuyerPartnerId(FiscalEvent $event, ?string $candidateId): ?string
+    {
+        if ($candidateId === null || ! Str::isUuid($candidateId)) {
+            return null;
+        }
+
+        return $this->partnerService->resolveScopedPartnerId(
+            $event->tenant_id,
+            $event->company_id,
+            $candidateId,
+        );
+    }
+
+    /**
+     * Convert a sealed buyer contact ID into a safe local FK.
+     *
+     * Merge-gate r1 finding 1 — sibling of `resolveBuyerPartnerId`. The
+     * fiscal validator accepts an ARBITRARY non-empty string for
+     * `buyer.contact_id` at every event version (there is no UUID gate the way
+     * `customer_id` has one from v5), while `pos_receipts.contact_id` is a
+     * `foreignUuid(...)->constrained('contacts')` column. Writing the raw value
+     * would raise `22P02` / an FK violation and cost the WHOLE projection —
+     * no receipt row, no GL, no stock — for a buyer-only defect. Same defensive
+     * stance as the partner FK: UUID syntax + scoped existence, else null.
+     */
+    private function resolveBuyerContactId(FiscalEvent $event, ?string $candidateId): ?string
+    {
+        if ($candidateId === null || ! Str::isUuid($candidateId)) {
+            return null;
+        }
+
+        return $this->contactResolver->resolveScopedContactId(
+            $event->tenant_id,
+            $event->company_id,
+            $candidateId,
+        );
+    }
+
+    /**
      * Credit loyalty points for an earning SALE. Mirrors redeemVouchers() —
      * synchronous, try/catch, must never break the sale projection.
      * Earns only on a real SALE (not REFUND/VOID → Return, not training).
@@ -1672,6 +1740,8 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         SaleReceiptCanonicalView $view,
         SaleReceiptPayload $payload,
         ReceiptType $receiptType,
+        ?string $partnerId,
+        ?string $contactId,
         string $earnBase,
     ): void {
         // Earn-eligibility guard (Codex BLOCKER-2): refunds/voids/training earn nothing.
@@ -1682,8 +1752,8 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         try {
             $this->loyaltyEarning->earnForSale(new SaleEarnContext(
                 tenantId: $event->tenant_id,
-                contactId: $view->buyer?->contactId,
-                partnerId: $view->buyer?->customerId,
+                contactId: $contactId,
+                partnerId: $partnerId,
                 currency: $payload->currencyCode,
                 sourceType: 'pos_receipt',
                 sourceId: $receiptId,

@@ -1277,6 +1277,265 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
     }
 
+    public function test_v5_buyer_accepts_uuid_customer_id(): void
+    {
+        $payload = $this->canonicalV5Payload();
+        $payload['buyer'] = [
+            'address' => null,
+            'codice_fiscale' => null,
+            'contact_id' => null,
+            'customer_id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            'name' => 'Acme SARL',
+            'tax_number' => '1234567AM000',
+        ];
+
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 5,
+        );
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_v5_buyer_accepts_null_customer_id(): void
+    {
+        $payload = $this->canonicalV5Payload();
+        $payload['buyer'] = [
+            'address' => null,
+            'codice_fiscale' => null,
+            'contact_id' => null,
+            'customer_id' => null,
+            'name' => 'Pending Acme SARL',
+            'tax_number' => null,
+        ];
+
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 5,
+        );
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_v5_buyer_rejects_pending_non_uuid_customer_id(): void
+    {
+        $payload = $this->canonicalV5Payload();
+        $payload['buyer'] = [
+            'address' => null,
+            'codice_fiscale' => null,
+            'contact_id' => null,
+            'customer_id' => 'pending-customer-7',
+            'name' => 'Pending Acme SARL',
+            'tax_number' => null,
+        ];
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/^payload_buyer_invalid:customer_id must be UUID or null/');
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 5,
+        );
+    }
+
+    public function test_v5_buyer_rejects_uppercase_uuid_customer_id(): void
+    {
+        $payload = $this->canonicalV5Payload();
+        $payload['buyer'] = [
+            'address' => null,
+            'codice_fiscale' => null,
+            'contact_id' => null,
+            'customer_id' => 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA',
+            'name' => 'Acme SARL',
+            'tax_number' => null,
+        ];
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/^payload_buyer_invalid:customer_id must be UUID or null/');
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 5,
+        );
+    }
+
+    public function test_v5_buyer_requires_non_empty_name(): void
+    {
+        $payload = $this->canonicalV5Payload();
+        $payload['buyer'] = [
+            'address' => null,
+            'codice_fiscale' => null,
+            'contact_id' => null,
+            'customer_id' => null,
+            'name' => null,
+            'tax_number' => null,
+        ];
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/^payload_buyer_name_invalid:/');
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 5,
+        );
+    }
+
+    public function test_v5_buyer_rejects_blank_name(): void
+    {
+        $payload = $this->canonicalV5Payload();
+        $payload['buyer'] = [
+            'address' => null,
+            'codice_fiscale' => null,
+            'contact_id' => null,
+            'customer_id' => null,
+            'name' => '   ',
+            'tax_number' => null,
+        ];
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/^payload_buyer_name_invalid:/');
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 5,
+        );
+    }
+
+    /**
+     * Merge-gate r1 finding 2 — the non-empty `buyer.name` rule is gated on
+     * `event_version >= SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION`, exactly like
+     * the `customer_id` UUID rule. This validator also re-parses STORED bytes
+     * (`StrictCanonicalParser` for `VerifyEventChainCommand` /
+     * `ParseFailureResolutionService`), so a historical v1 receipt sealed with
+     * a buyer object carrying `name: null` must keep re-validating instead of
+     * flipping to `canonical_parse_failure`.
+     */
+    public function test_v1_buyer_with_null_name_still_validates(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-07-b2b-buyer-eur'];
+        $payload['buyer']['name'] = null;
+
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 1,
+        );
+        $this->addToAssertionCount(1);
+    }
+
+    /** Merge-gate r1 finding 2 — same grandfathering at the last pre-gate version. */
+    public function test_v4_buyer_with_null_name_still_validates(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur'];
+        $payload['buyer'] = [
+            'address' => null,
+            'codice_fiscale' => null,
+            'contact_id' => null,
+            'customer_id' => 'cust-007',
+            'name' => null,
+            'tax_number' => null,
+        ];
+
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 4,
+        );
+        $this->addToAssertionCount(1);
+    }
+
+    /**
+     * Merge-gate r1 finding 2 — an EMPTY string name is still rejected before
+     * v5 (pre-M4 `$nullableStringFields` behavior, byte-for-byte).
+     */
+    public function test_v1_buyer_with_empty_string_name_is_still_rejected(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-07-b2b-buyer-eur'];
+        $payload['buyer']['name'] = '';
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/^payload_buyer_name_invalid:must be non-empty string or null/');
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 1,
+        );
+    }
+
+    public function test_stale_f07_file_remains_byte_pinned_with_documented_27_key_drift(): void
+    {
+        $path = __DIR__.'/../../Fixtures/Fiscal/sale-receipt-golden/v4/F-07-b2b-buyer-eur/payload.json';
+        $bytes = file_get_contents($path);
+
+        self::assertIsString($bytes);
+        self::assertSame('96e325eedc1b5466e3cd0a0c7b74b203b0110617b46459a47ed4236579e46142', hash('sha256', $bytes));
+        /** @var array<string, mixed> $payload */
+        $payload = json_decode($bytes, true, flags: JSON_THROW_ON_ERROR);
+
+        self::assertCount(27, $payload);
+        self::assertArrayNotHasKey('approval_references', $payload);
+        self::assertSame('cust-007', $payload['buyer']['customer_id']);
+    }
+
+    public function test_legacy_f07_builder_semantics_accept_non_uuid_buyer_at_v1(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-07-b2b-buyer-eur'];
+
+        self::assertCount(28, $payload);
+        self::assertSame([], $payload['approval_references']);
+        self::assertSame('cust-007', $payload['buyer']['customer_id']);
+        self::assertNull($this->validator->validatePayloadKeySet(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 1,
+        ));
+
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 1,
+        );
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_v1_sale_receipt_requires_approval_references_key(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-07-b2b-buyer-eur'];
+        unset($payload['approval_references']);
+
+        self::assertSame(
+            'payload_missing_required:approval_references',
+            $this->validator->validatePayloadKeySet(
+                FiscalEventType::SALE_RECEIPT,
+                $payload,
+                eventVersion: 1,
+            ),
+        );
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/^payload_approval_references_invalid:/');
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 1,
+        );
+    }
+
+    public function test_v5_sale_receipt_requires_approval_references_key(): void
+    {
+        $payload = $this->canonicalV5Payload();
+        unset($payload['approval_references']);
+
+        self::assertSame(
+            'payload_missing_required:approval_references',
+            $this->validator->validatePayloadKeySet(
+                FiscalEventType::SALE_RECEIPT,
+                $payload,
+                eventVersion: 5,
+            ),
+        );
+    }
+
     public function test_malformed_line_item_missing_sku_is_rejected(): void
     {
         $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
@@ -2101,6 +2360,24 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         ];
 
         return array_replace_recursive($payload, $overrides);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function canonicalV5Payload(): array
+    {
+        $path = __DIR__.'/../../Fixtures/Fiscal/sale-receipt-v5-golden.json';
+        $fixtureBytes = file_get_contents($path);
+        self::assertIsString($fixtureBytes);
+
+        /** @var array{expected_canonical_string: string} $fixture */
+        $fixture = json_decode($fixtureBytes, true, 512, JSON_THROW_ON_ERROR);
+
+        /** @var array<string, mixed> $payload */
+        $payload = json_decode($fixture['expected_canonical_string'], true, 512, JSON_THROW_ON_ERROR);
+
+        return $payload;
     }
 
     /**

@@ -123,10 +123,9 @@ final class FiscalPayloadConstraintValidator
      * `original_receipt_reference.original_receipt_uuid` per synthesis v3
      * lines 46-95 + spec v7 §11.2 line 571.
      *
-     * Note: `product_id`, `buyer.customer_id`, `buyer.contact_id`,
-     * `table_id` are documented as opaque `string`, NOT UUIDs
-     * (synthesis v3 lines 61, 93, 116, 117) — they remain non-empty-string
-     * checks elsewhere.
+     * Note: `product_id`, legacy `buyer.customer_id`, `buyer.contact_id`, and
+     * `table_id` were documented as opaque strings. SALE_RECEIPT v5 tightens
+     * buyer.customer_id to UUID-or-null while v1-v4 remain grandfathered.
      */
     private const LOWER_HEX_UUID = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/D';
 
@@ -1411,7 +1410,7 @@ final class FiscalPayloadConstraintValidator
         // ---- 6. nested objects — seller (required) + buyer (nullable) +
         // ----    original_receipt_reference (nullable per invoice_type) ----
         $this->validateSeller($payload);
-        $this->validateBuyer($payload);
+        $this->validateBuyer($payload, $eventVersion);
         $this->validateOriginalReceiptReference($payload);
 
         // ---- 6z. v4-only nested contract (spec §3.3/§3.4) — reached only
@@ -2313,7 +2312,7 @@ final class FiscalPayloadConstraintValidator
     /**
      * @param  array<string, mixed>  $payload
      */
-    private function validateBuyer(array $payload): void
+    private function validateBuyer(array $payload, ?int $saleReceiptEventVersion = null): void
     {
         $buyer = $payload['buyer'] ?? null;
         if ($buyer === null) {
@@ -2335,11 +2334,47 @@ final class FiscalPayloadConstraintValidator
             throw new RuntimeException('payload_buyer_extra_keys:'.implode(',', $extras));
         }
 
-        foreach (['codice_fiscale', 'contact_id', 'customer_id', 'name'] as $field) {
+        // M4 (merge-gate r1 finding 2): the non-empty `name` requirement is
+        // version-gated exactly like the `customer_id` UUID rule below.
+        // `StrictCanonicalParser::parse()` re-parses STORED bytes for
+        // `VerifyEventChainCommand` and `ParseFailureResolutionService`, so an
+        // ungated tightening would flip historical v1-v4 receipts carrying a
+        // buyer object with `name: null` from verified to
+        // `canonical_parse_failure`. The device only ever authors v5, so the
+        // intended forward guarantee is unchanged.
+        $requiresNonEmptyBuyerName = $saleReceiptEventVersion !== null
+            && $saleReceiptEventVersion >= self::SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION;
+
+        $nullableStringFields = ['codice_fiscale', 'contact_id', 'customer_id'];
+        if (! $requiresNonEmptyBuyerName) {
+            // ACCOUNT_CHARGE (no event version) and grandfathered SALE_RECEIPT
+            // v1-v4 keep their pre-M4 nullable-name behavior byte-for-byte.
+            $nullableStringFields[] = 'name';
+        }
+
+        foreach ($nullableStringFields as $field) {
             $value = $buyer[$field] ?? null;
             if ($value !== null && (! is_string($value) || $value === '')) {
                 throw new RuntimeException('payload_buyer_'.$field.'_invalid:must be non-empty string or null; got '.var_export($value, true));
             }
+        }
+
+        if ($requiresNonEmptyBuyerName) {
+            $name = $buyer['name'] ?? null;
+            if (! is_string($name) || trim($name) === '') {
+                throw new RuntimeException('payload_buyer_name_invalid:must be non-empty string; got '.var_export($name, true));
+            }
+        }
+
+        $customerId = $buyer['customer_id'] ?? null;
+        if ($saleReceiptEventVersion !== null
+            && $saleReceiptEventVersion >= self::SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION
+            && $customerId !== null
+            && (! is_string($customerId) || preg_match(self::LOWER_HEX_UUID, $customerId) !== 1)) {
+            throw new RuntimeException(
+                'payload_buyer_invalid:customer_id must be UUID or null for SALE_RECEIPT event_version>='.
+                self::SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION.'; got '.var_export($customerId, true)
+            );
         }
 
         $this->validateAddress($buyer['address'] ?? null, 'buyer.address', required: false);

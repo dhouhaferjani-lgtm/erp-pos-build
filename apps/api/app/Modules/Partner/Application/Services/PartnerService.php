@@ -16,6 +16,21 @@ use RuntimeException;
  */
 final class PartnerService implements PartnerServiceInterface
 {
+    public function resolveScopedPartnerId(
+        string $tenantId,
+        string $companyId,
+        string $partnerId,
+    ): ?string {
+        $id = Partner::query()
+            ->withTrashed()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->whereKey($partnerId)
+            ->value('id');
+
+        return is_string($id) ? $id : null;
+    }
+
     /**
      * Find a partner by VAT number or name.
      *

@@ -42,6 +42,15 @@ import {
 } from '@/lib/payment/checkoutPolicySnapshot';
 import type { PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
 
+interface ReceiptBuyerCustomer {
+  id: string;
+  tenant_id: string;
+  company_id: string;
+  name: string;
+  tax_number: string | null;
+  customer_sync_status: 'synced' | 'pending_create';
+}
+
 function makeMockDb() {
   const db = {
     execute: vi.fn().mockResolvedValue({ rowsAffected: 1 }),
@@ -112,6 +121,41 @@ function evidence(overrides: Partial<PosOverrideEvidence> = {}): PosOverrideEvid
     supervisor_user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     target_reference_id: 'cart-item-1',
     ...overrides,
+  };
+}
+
+function customer(overrides: Partial<ReceiptBuyerCustomer> = {}): ReceiptBuyerCustomer {
+  return {
+    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    tenant_id: '11111111-1111-4111-8111-111111111111',
+    company_id: '22222222-2222-4222-8222-222222222222',
+    name: 'Acme SARL',
+    tax_number: '1234567AM000',
+    customer_sync_status: 'synced',
+    ...overrides,
+  };
+}
+
+function receiptInput(
+  attachedCustomer?: ReceiptBuyerCustomer,
+): Parameters<typeof createOfflineReceipt>[1] & { customer?: ReceiptBuyerCustomer } {
+  return {
+    tenantId: '11111111-1111-4111-8111-111111111111',
+    companyId: '22222222-2222-4222-8222-222222222222',
+    terminalId: terminalState.terminal_id,
+    operatorId: '33333333-3333-4333-8333-333333333333',
+    operatorName: 'Cashier',
+    shiftId: '55555555-5555-4555-8555-555555555555',
+    cartItems: [makeCartItem({ tax_rate: '0.00' })],
+    currency: 'EUR',
+    seller,
+    paymentMethodId: 'pm-1',
+    paymentRepositoryId: 'repo-1',
+    tenderedAmount: '10.00',
+    idempotencyKey: '66666666-6666-4666-8666-666666666666',
+    payments: [{ methodCode: 'CASH', amount: '10.00' }],
+    policySnapshot: unroundedSnapshot('10.00'),
+    ...(attachedCustomer === undefined ? {} : { customer: attachedCustomer }),
   };
 }
 
@@ -253,6 +297,89 @@ describe('receiptService — fiscal-event engine wiring', () => {
     expect(inserted.hash_sequence).toBe(6);
     expect(inserted.canonical_bytes).toBe('{"business_date":"2026-05-20"}');
     expect(result.fiscalHash).toBe('c'.repeat(64));
+  });
+
+  it('seals a mirrored customer with its server partner UUID', async () => {
+    const db = makeMockDb();
+
+    await createOfflineReceipt(db, receiptInput(customer()));
+
+    const engine = await vi.mocked(getFiscalEventEngine).mock.results[0]!.value;
+    const payload = vi.mocked(engine.append).mock.calls[0]![1].payload;
+    expect(payload.buyer).toEqual({
+      address: null,
+      codice_fiscale: null,
+      contact_id: null,
+      customer_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      name: 'Acme SARL',
+      tax_number: '1234567AM000',
+    });
+  });
+
+  it('seals the canonical server alias for an offline-created customer', async () => {
+    const db = makeMockDb();
+    vi.mocked(db.select).mockResolvedValueOnce([{
+      tenant_id: '11111111-1111-4111-8111-111111111111',
+      company_id: '22222222-2222-4222-8222-222222222222',
+      client_customer_uuid: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      server_partner_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      resolved_at: '2026-08-29T10:00:00.000Z',
+    }]);
+
+    await createOfflineReceipt(db, receiptInput(customer({
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      customer_sync_status: 'pending_create',
+    })));
+
+    const engine = await vi.mocked(getFiscalEventEngine).mock.results[0]!.value;
+    const payload = vi.mocked(engine.append).mock.calls[0]![1].payload;
+    expect(payload.buyer).toEqual({
+      address: null,
+      codice_fiscale: null,
+      contact_id: null,
+      customer_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      name: 'Acme SARL',
+      tax_number: '1234567AM000',
+    });
+  });
+
+  it('never seals an unresolved pending device UUID as customer_id', async () => {
+    const db = makeMockDb();
+
+    await createOfflineReceipt(db, receiptInput(customer({
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      customer_sync_status: 'pending_create',
+    })));
+
+    const engine = await vi.mocked(getFiscalEventEngine).mock.results[0]!.value;
+    const payload = vi.mocked(engine.append).mock.calls[0]![1].payload;
+    expect(payload.buyer).toEqual({
+      address: null,
+      codice_fiscale: null,
+      contact_id: null,
+      customer_id: null,
+      name: 'Acme SARL',
+      tax_number: null,
+    });
+  });
+
+  it('never seals an uppercase mirrored UUID as customer_id', async () => {
+    const db = makeMockDb();
+
+    await createOfflineReceipt(db, receiptInput(customer({
+      id: 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA',
+    })));
+
+    const engine = await vi.mocked(getFiscalEventEngine).mock.results[0]!.value;
+    const payload = vi.mocked(engine.append).mock.calls[0]![1].payload;
+    expect(payload.buyer).toEqual({
+      address: null,
+      codice_fiscale: null,
+      contact_id: null,
+      customer_id: null,
+      name: 'Acme SARL',
+      tax_number: null,
+    });
   });
 
   it('carries every discount and tender tolerance approval reference in SALE_RECEIPT payload', async () => {

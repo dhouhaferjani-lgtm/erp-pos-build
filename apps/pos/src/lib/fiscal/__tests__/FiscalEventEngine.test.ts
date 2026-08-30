@@ -1310,6 +1310,16 @@ d('FiscalEventEngine.append', () => {
     }
   });
 
+  it('M4 adversarial — v1 rejects a missing approval_references key', () => {
+    const payload = omitKey(validSaleReceiptPayload(), 'approval_references');
+    delete payload['cash_rounding_adjustment'];
+    delete payload['cash_rounding_denomination'];
+
+    expect(() => validateSaleReceiptPayload(payload, 1)).toThrow(
+      /payload_missing_required:approval_references/,
+    );
+  });
+
   it('Pass 2A.TS — rejects non-UUID cashier_id', async () => {
     const payload = { ...validSaleReceiptPayload(), cashier_id: 'not-a-uuid' };
     await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
@@ -1595,6 +1605,166 @@ d('FiscalEventEngine.append', () => {
     };
 
     expect(() => validateSaleReceiptPayload(payload, 5)).not.toThrow();
+  });
+
+  it('M4 buyer gate — accepts a lowercase canonical customer UUID at v5', () => {
+    const payload = {
+      ...validSaleReceiptPayload(),
+      buyer: {
+        address: null,
+        codice_fiscale: null,
+        contact_id: null,
+        customer_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        name: 'Sealed Buyer',
+        tax_number: null,
+      },
+    };
+
+    expect(() => validateSaleReceiptPayload(payload, 5)).not.toThrow();
+  });
+
+  it('M4 buyer gate — accepts an explicit null customer ID at v5', () => {
+    const payload = {
+      ...validSaleReceiptPayload(),
+      buyer: {
+        address: null,
+        codice_fiscale: null,
+        contact_id: null,
+        customer_id: null,
+        name: 'Pending Buyer',
+        tax_number: null,
+      },
+    };
+
+    expect(() => validateSaleReceiptPayload(payload, 5)).not.toThrow();
+  });
+
+  it('M4 buyer gate — rejects a pending non-UUID customer ID at v5', () => {
+    const payload = {
+      ...validSaleReceiptPayload(),
+      buyer: {
+        address: null,
+        codice_fiscale: null,
+        contact_id: null,
+        customer_id: 'pending-customer-7',
+        name: 'Pending Buyer',
+        tax_number: null,
+      },
+    };
+
+    expect(() => validateSaleReceiptPayload(payload, 5)).toThrow(
+      /payload_buyer_invalid:customer_id must be lowercase-hex UUID or null/,
+    );
+  });
+
+  it('M4 buyer gate — engine refuses an uppercase UUID before sealing v5', async () => {
+    const payload = {
+      ...validSaleReceiptPayload(),
+      buyer: {
+        address: null,
+        codice_fiscale: null,
+        contact_id: null,
+        customer_id: 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA',
+        name: 'Uppercase Buyer',
+        tax_number: null,
+      },
+    };
+
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_buyer_invalid:customer_id must be lowercase-hex UUID or null/,
+    );
+  });
+
+  it('M4 buyer gate — requires a non-empty buyer name at v5', () => {
+    const payload = {
+      ...validSaleReceiptPayload(),
+      buyer: {
+        address: null,
+        codice_fiscale: null,
+        contact_id: null,
+        customer_id: null,
+        name: '   ',
+        tax_number: null,
+      },
+    };
+
+    expect(() => validateSaleReceiptPayload(payload, 5)).toThrow(
+      /payload_buyer_name_invalid:must be non-empty string/,
+    );
+  });
+
+  it('M4 buyer gate — grandfathers an opaque customer ID before v5', () => {
+    const base = validSaleReceiptPayload();
+    const legacyVatBreakdown = (base['vat_breakdown'] as Array<Record<string, unknown>>)
+      .map(({ discount_allocated: _allocated, ...row }) => row);
+    const payload = {
+      ...base,
+      buyer: {
+        address: null,
+        codice_fiscale: null,
+        contact_id: null,
+        customer_id: 'cust-007',
+        name: 'Legacy customer snapshot',
+        tax_number: null,
+      },
+      vat_breakdown: legacyVatBreakdown,
+    };
+
+    expect(() => validateSaleReceiptPayload(payload, 3)).not.toThrow();
+  });
+
+  it('M4 buyer gate r1 finding 2 — grandfathers a null buyer name before v5 (v3)', () => {
+    const base = validSaleReceiptPayload();
+    const legacyVatBreakdown = (base['vat_breakdown'] as Array<Record<string, unknown>>)
+      .map(({ discount_allocated: _allocated, ...row }) => row);
+    const payload = {
+      ...base,
+      buyer: {
+        address: null,
+        codice_fiscale: null,
+        contact_id: null,
+        customer_id: 'cust-007',
+        name: null,
+        tax_number: null,
+      },
+      vat_breakdown: legacyVatBreakdown,
+    };
+
+    expect(() => validateSaleReceiptPayload(payload, 3)).not.toThrow();
+  });
+
+  it('M4 buyer gate r1 finding 2 — grandfathers a null buyer name at v4', () => {
+    const payload = {
+      ...validRefundReceiptV4Payload(),
+      buyer: {
+        address: null,
+        codice_fiscale: null,
+        contact_id: null,
+        customer_id: 'cust-007',
+        name: null,
+        tax_number: null,
+      },
+    };
+
+    expect(() => validateSaleReceiptPayload(payload, 4)).not.toThrow();
+  });
+
+  it('M4 buyer gate r1 finding 2 — rejects an explicit null buyer name at v5', () => {
+    const payload = {
+      ...validSaleReceiptPayload(),
+      buyer: {
+        address: null,
+        codice_fiscale: null,
+        contact_id: null,
+        customer_id: null,
+        name: null,
+        tax_number: null,
+      },
+    };
+
+    expect(() => validateSaleReceiptPayload(payload, 5)).toThrow(
+      /payload_buyer_name_invalid:must be non-empty string/,
+    );
   });
 
   it('spec §2/§3.4 — rejects a v4 REFUND payload missing the three v4-only keys (still v3-shaped)', async () => {
