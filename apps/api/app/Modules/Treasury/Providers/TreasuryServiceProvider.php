@@ -36,7 +36,9 @@ use App\Modules\Treasury\Infrastructure\EloquentOutboundInstrumentPaymentLinkRes
 use App\Modules\Treasury\Infrastructure\EloquentPaymentMethodResolver;
 use App\Modules\Treasury\Presentation\Console\AuditDiscountsCommand;
 use App\Modules\Treasury\Presentation\Console\BackfillLocationAttributionCommand;
+use App\Modules\Treasury\Presentation\Console\CensusRepositoriesCommand;
 use App\Modules\Treasury\Presentation\Console\InstrumentMaturityAlertsCommand;
+use App\Modules\Treasury\Presentation\Console\NormaliseRepositoriesCommand;
 use App\Modules\Treasury\Presentation\Console\ReconcileTreasuryCommand;
 use App\Modules\Treasury\Presentation\Console\TreasuryOrphanCensusCommand;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
@@ -235,6 +237,8 @@ class TreasuryServiceProvider extends ServiceProvider
             $this->commands([
                 AuditDiscountsCommand::class,
                 BackfillLocationAttributionCommand::class,
+                CensusRepositoriesCommand::class,
+                NormaliseRepositoriesCommand::class,
                 InstrumentMaturityAlertsCommand::class,
                 ReconcileTreasuryCommand::class,
                 TreasuryOrphanCensusCommand::class,

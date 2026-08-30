@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Presentation\Console;
 
+use App\Console\TenantScopedCommand;
 use App\Modules\Company\Domain\Company;
-use Illuminate\Console\Command;
+use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 /**
  * Multi-Location §3 backfill. This is deliberately a command, not a
@@ -15,28 +17,68 @@ use Illuminate\Support\Facades\DB;
  *
  * Only NULL location_id values are filled. Documents are never touched.
  */
-final class BackfillLocationAttributionCommand extends Command
+final class BackfillLocationAttributionCommand extends TenantScopedCommand
 {
-    protected $signature = 'treasury:backfill-location-attribution {--company= : Company id (required)}';
+    protected $signature = 'treasury:backfill-location-attribution
+        {--tenant= : Restrict the run to one tenant id}
+        {--company= : Process one company id}
+        {--all-companies : Process every company in the selected tenant scope}';
 
     protected $description = 'Backfill payment and instrument locations from repository and POS terminal attribution.';
 
-    public function handle(): int
+    protected function executeCommand(): int
     {
-        $companyId = $this->option('company');
-        if (! is_string($companyId) || $companyId === '') {
-            $this->error('The --company option is required.');
+        $companyId = $this->stringOption('company');
+        $allCompanies = (bool) $this->option('all-companies');
+        if (($companyId === null) === ! $allCompanies) {
+            $this->error('Pass exactly one of --company=<uuid> or --all-companies.');
 
             return self::FAILURE;
         }
 
-        $company = Company::query()->find($companyId);
-        if (! $company instanceof Company) {
-            $this->error("Company {$companyId} not found.");
+        $processed = 0;
+        $failed = false;
+        $exit = $this->forEachTenantFiltered(
+            $this->stringOption('tenant'),
+            function (Tenant $tenant) use ($allCompanies, $companyId, &$failed, &$processed): int {
+                $companies = Company::query()
+                    ->where('tenant_id', $tenant->id)
+                    ->when(! $allCompanies, static fn ($query) => $query->whereKey($companyId))
+                    ->orderBy('id')
+                    ->get();
+
+                foreach ($companies as $company) {
+                    try {
+                        $this->companyContext->setCompanyId($company->id);
+                        $this->backfillCompany($company);
+                        $processed++;
+                    } catch (Throwable $exception) {
+                        $failed = true;
+                        $this->error(sprintf(
+                            'Company %s failed: %s',
+                            $company->id,
+                            $exception->getMessage(),
+                        ));
+                    }
+                }
+
+                return self::SUCCESS;
+            },
+        );
+
+        if ($processed === 0) {
+            $this->error($companyId === null
+                ? 'No companies were visited.'
+                : "Company {$companyId} not found in the selected tenant scope.");
 
             return self::FAILURE;
         }
 
+        return $exit === self::SUCCESS && ! $failed ? self::SUCCESS : self::FAILURE;
+    }
+
+    private function backfillCompany(Company $company): void
+    {
         $repositoryLocations = DB::table('payment_repositories')
             ->where('company_id', $company->id)
             ->whereNotNull('location_id')
@@ -108,7 +150,5 @@ final class BackfillLocationAttributionCommand extends Command
             });
 
         $this->info("Backfilled {$paymentCount} payment(s) and {$instrumentCount} instrument(s) for company {$company->id}.");
-
-        return self::SUCCESS;
     }
 }
