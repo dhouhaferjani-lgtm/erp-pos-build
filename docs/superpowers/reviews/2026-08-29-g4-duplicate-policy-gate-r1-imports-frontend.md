@@ -455,3 +455,34 @@ Review target: `a92fd59e2` plus the dirty fix-round-4 overlay in `feat/g4-duplic
 ### VERDICT: CHANGES
 
 G4-R5-01 and G4-R5-02 are closed, and every requested application/feature/PG/static/frontend leg is green. The lane is not yet a clean PASS because its touched price-resolver contract has a red unit regression pin. Reconcile those two enum assertions and rerun that isolated class plus the same targeted SQLite matrix; do not broaden to the full suite.
+
+## Gate r7 (Codex, narrow final)
+
+Review target: `a92fd59e2` plus the dirty fix-round-4 and fix-round-5 overlays in `feat/g4-duplicate-policy-merge`. This was a read-only final re-check of r6's single finding plus the requested scoped green sweep; this register section is the only intentional review write. No full suite was run. Every PostgreSQL invocation was serial, by explicit path, used `phpunit-pgsql.xml`, and was prefixed `DB_DATABASE=autoerp_test_g5 DB_CENTRAL_DATABASE=autoerp_test_g5`.
+
+### R6 closure audit
+
+| finding | r7 status | verification |
+|---|---|---|
+| G4-R6-01 | **CLOSED** | `ProductPriceResolver::resolve()` declares and returns `ImportWarningCode` cases in its warning records (`ProductPriceResolver.php:15,45,70`). The two stale unit assertions now compare case identity with `ImportWarningCode::PriceConflict` and `ImportWarningCode::MarginWithoutCost` (`ProductPriceResolverTest.php:60,93`). The fix-round-5 delta is test-only; production behavior was not changed. The isolated class is green: **8 tests, 17 assertions**. |
+
+### Fresh command evidence
+
+| command / leg | result |
+|---|---|
+| Requested SQLite paths only: all of `tests/Unit/Import`, row warnings, product pipeline, infrastructure, JSONB hydration, census, outcome/coded-error/atomicity/resolver/unit/coalescing classes, worker/re-execution, all RoundTrip classes, G-6a claim/reaper/purge, company pin, entitlement, and both echo guards | **PASS — 258 tests, 1,937 assertions, 2 skipped**. |
+| `./vendor/bin/phpunit tests/Unit/Import/ProductPriceResolverTest.php` | **PASS — 8 tests, 17 assertions**. |
+| PostgreSQL serial paths: outcome backfill, outcome atomicity, census, JSONB hydration, unit resolution, claim concurrency, reaper, and purge | **PASS — 82 tests, 437 assertions** (3/14, 11/67, 6/73, 8/21, 11/47, 30/154, 7/24, 6/37). |
+| PHPStan level 8 on the 92 branch/dirty/new touched PHP files | **PASS — 0 errors** on a fresh cache-bypassing traversal. An initial cached traversal emitted two stale `UnitResolutionTest` diagnostics; the isolated fresh run and the complete fresh 92-file run both returned zero errors. |
+| Pint `--test` on the same 92 touched PHP files | **PASS**. |
+| Feature manifest checker | **PASS — 1,493 Feature classes / 74 groups; 1,232 parked; 1 debt; all filters anchored and uniquely matched against 1,898 test classes**. The manifest itself records the required union `gated_ceiling 1223 -> 1232`, with **Import 38 / Uom 9**. |
+| `.github/workflows/ci.yml` YAML parse | **PASS**. |
+| Deptrac direct | **185 violations / 0 errors / 14,432 allowed / 13,638 uncovered**. The only records whose file is dirty are the two pre-existing `TaxDefaultResolverInterface -> Company` occurrences at lines 15 and 24; that file's lane delta is comment-only, both dependencies already exist on `dev`, and no new touched-class edge is introduced. |
+| `CACHE_STORE=array php artisan typescript:transform` | **PASS — 547 types; no residual generated diff**. SHA-256 stayed `d600ba2cd36ca68924506bf7a1b0acfd6fd805a88d23c8d6ec9d439e874cd86b`. |
+| `cd apps/web && pnpm vitest run src/features/import` | **PASS — 12 files, 67 tests** (existing React `act()` and local-storage warnings only). |
+| `cd apps/web && pnpm typecheck` | **PASS**. |
+| Final scope/artifact audit | **PASS** — `git status --short` contains only the 13 modified plus 2 new fix-round lane files; `git diff --check` passes; generated types have no diff; no tracked or materialized `apps/api/autoerp_test_*` exists. |
+
+### VERDICT: PASS
+
+G4-R6-01 is closed, no new finding was identified, and every requested narrow final gate is green. Lane G-4 is clear from the imports-reviewer gate perspective; no source was modified, staged, committed, or rebased during this review.
