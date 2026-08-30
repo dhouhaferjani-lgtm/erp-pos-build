@@ -1452,6 +1452,18 @@ const LOWER_HEX_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
  */
 const SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION = 5;
 
+/**
+ * Single lowercase-hex UUID predicate for the whole device.
+ *
+ * Seal-time callers (`resolveSaleReceiptBuyer`) and validate-time callers
+ * (`validateBuyer`) MUST share this definition so the two can never drift —
+ * a value the resolver accepts but the validator rejects would fail the
+ * checkout after the cashier tendered. Merge-gate r1 finding 7.
+ */
+export function isLowerHexUuid(value: unknown): value is string {
+  return typeof value === 'string' && LOWER_HEX_UUID.test(value);
+}
+
 /** ISO 4217 alpha-3 uppercase currency code. */
 const ISO_4217 = /^[A-Z]{3}$/;
 

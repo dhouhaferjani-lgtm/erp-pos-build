@@ -3,6 +3,7 @@ import i18n from '@/lib/i18n';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { bcadd, bcsub, bcformat, bccomp } from '@/lib/decimal';
 import { getFiscalEventEngine } from '@/lib/fiscal/instance';
+import { isLowerHexUuid } from '@/lib/fiscal/FiscalEventEngine';
 import type { FiscalEventAppendResult } from '@/lib/fiscal/FiscalEventEngine';
 import type {
   BuyerBlockInput,
@@ -120,8 +121,6 @@ interface OfflineReceiptInput {
   policySnapshot: CheckoutPolicySnapshot;
 }
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
 /**
  * Resolve checkout identity before fiscal authoring.
  *
@@ -145,10 +144,10 @@ async function resolveSaleReceiptBuyer(
 
   let serverPartnerId: string | null = null;
   if (customer.customer_sync_status === 'synced') {
-    serverPartnerId = UUID_PATTERN.test(customer.id) ? customer.id : null;
+    serverPartnerId = isLowerHexUuid(customer.id) ? customer.id : null;
   } else {
     const alias = await getCustomerAlias(db, tenantId, companyId, customer.id);
-    serverPartnerId = alias !== null && UUID_PATTERN.test(alias.server_partner_id)
+    serverPartnerId = alias !== null && isLowerHexUuid(alias.server_partner_id)
       ? alias.server_partner_id
       : null;
   }
