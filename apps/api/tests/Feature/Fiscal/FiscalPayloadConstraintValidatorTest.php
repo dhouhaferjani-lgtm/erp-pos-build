@@ -1380,6 +1380,88 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         );
     }
 
+    public function test_v5_buyer_rejects_blank_name(): void
+    {
+        $payload = $this->canonicalV5Payload();
+        $payload['buyer'] = [
+            'address' => null,
+            'codice_fiscale' => null,
+            'contact_id' => null,
+            'customer_id' => null,
+            'name' => '   ',
+            'tax_number' => null,
+        ];
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/^payload_buyer_name_invalid:/');
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 5,
+        );
+    }
+
+    /**
+     * Merge-gate r1 finding 2 — the non-empty `buyer.name` rule is gated on
+     * `event_version >= SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION`, exactly like
+     * the `customer_id` UUID rule. This validator also re-parses STORED bytes
+     * (`StrictCanonicalParser` for `VerifyEventChainCommand` /
+     * `ParseFailureResolutionService`), so a historical v1 receipt sealed with
+     * a buyer object carrying `name: null` must keep re-validating instead of
+     * flipping to `canonical_parse_failure`.
+     */
+    public function test_v1_buyer_with_null_name_still_validates(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-07-b2b-buyer-eur'];
+        $payload['buyer']['name'] = null;
+
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 1,
+        );
+        $this->addToAssertionCount(1);
+    }
+
+    /** Merge-gate r1 finding 2 — same grandfathering at the last pre-gate version. */
+    public function test_v4_buyer_with_null_name_still_validates(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur'];
+        $payload['buyer'] = [
+            'address' => null,
+            'codice_fiscale' => null,
+            'contact_id' => null,
+            'customer_id' => 'cust-007',
+            'name' => null,
+            'tax_number' => null,
+        ];
+
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 4,
+        );
+        $this->addToAssertionCount(1);
+    }
+
+    /**
+     * Merge-gate r1 finding 2 — an EMPTY string name is still rejected before
+     * v5 (pre-M4 `$nullableStringFields` behavior, byte-for-byte).
+     */
+    public function test_v1_buyer_with_empty_string_name_is_still_rejected(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-07-b2b-buyer-eur'];
+        $payload['buyer']['name'] = '';
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/^payload_buyer_name_invalid:must be non-empty string or null/');
+        $this->validator->validatePerEventConstraints(
+            FiscalEventType::SALE_RECEIPT,
+            $payload,
+            eventVersion: 1,
+        );
+    }
+
     public function test_stale_f07_file_remains_byte_pinned_with_documented_27_key_drift(): void
     {
         $path = __DIR__.'/../../Fixtures/Fiscal/sale-receipt-golden/v4/F-07-b2b-buyer-eur/payload.json';

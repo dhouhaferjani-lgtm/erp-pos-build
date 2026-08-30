@@ -1446,6 +1446,12 @@ const Z_REPORT_PAYLOAD_KEYS = [
 /** Lowercase-hex UUID (RFC 4122 — version-agnostic at this layer). */
 const LOWER_HEX_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+/**
+ * First SALE_RECEIPT event version whose buyer block is post-discount-base.
+ * Mirrors `FiscalPayloadConstraintValidator::SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION`.
+ */
+const SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION = 5;
+
 /** ISO 4217 alpha-3 uppercase currency code. */
 const ISO_4217 = /^[A-Z]{3}$/;
 
@@ -2755,8 +2761,16 @@ function validateBuyer(p: Record<string, unknown>, saleReceiptEventVersion?: num
     }
   }
 
+  // M4 (merge-gate r1 finding 2): the non-empty `name` requirement is
+  // version-gated exactly like the `customer_id` UUID rule below. Server twin:
+  // `FiscalPayloadConstraintValidator::validateBuyer` — historical v1-v4 sealed
+  // bytes carrying `buyer.name: null` must keep re-validating.
+  const requiresNonEmptyBuyerName =
+    saleReceiptEventVersion !== undefined
+    && saleReceiptEventVersion >= SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION;
+
   const buyerName = buyer['name'];
-  if (saleReceiptEventVersion !== undefined) {
+  if (requiresNonEmptyBuyerName) {
     if (typeof buyerName !== 'string' || buyerName.trim() === '') {
       throw new FiscalEventPayloadValidationError(
         `payload_buyer_name_invalid:must be non-empty string; got ${jsonOrType(buyerName)}`,
@@ -2771,7 +2785,7 @@ function validateBuyer(p: Record<string, unknown>, saleReceiptEventVersion?: num
   const customerId = buyer['customer_id'];
   if (
     saleReceiptEventVersion !== undefined
-    && saleReceiptEventVersion >= 5
+    && saleReceiptEventVersion >= SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION
     && customerId !== null
     && (typeof customerId !== 'string' || !LOWER_HEX_UUID.test(customerId))
   ) {

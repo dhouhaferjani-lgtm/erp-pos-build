@@ -2334,11 +2334,21 @@ final class FiscalPayloadConstraintValidator
             throw new RuntimeException('payload_buyer_extra_keys:'.implode(',', $extras));
         }
 
+        // M4 (merge-gate r1 finding 2): the non-empty `name` requirement is
+        // version-gated exactly like the `customer_id` UUID rule below.
+        // `StrictCanonicalParser::parse()` re-parses STORED bytes for
+        // `VerifyEventChainCommand` and `ParseFailureResolutionService`, so an
+        // ungated tightening would flip historical v1-v4 receipts carrying a
+        // buyer object with `name: null` from verified to
+        // `canonical_parse_failure`. The device only ever authors v5, so the
+        // intended forward guarantee is unchanged.
+        $requiresNonEmptyBuyerName = $saleReceiptEventVersion !== null
+            && $saleReceiptEventVersion >= self::SALE_RECEIPT_POST_DISCOUNT_BASE_VERSION;
+
         $nullableStringFields = ['codice_fiscale', 'contact_id', 'customer_id'];
-        if ($saleReceiptEventVersion === null) {
-            // ACCOUNT_CHARGE reuses this six-key buyer validator. Keep its
-            // pre-M4 nullable-name behavior byte-for-byte; M4 tightens only
-            // SALE_RECEIPT, whose caller always supplies an event version.
+        if (! $requiresNonEmptyBuyerName) {
+            // ACCOUNT_CHARGE (no event version) and grandfathered SALE_RECEIPT
+            // v1-v4 keep their pre-M4 nullable-name behavior byte-for-byte.
             $nullableStringFields[] = 'name';
         }
 
@@ -2349,7 +2359,7 @@ final class FiscalPayloadConstraintValidator
             }
         }
 
-        if ($saleReceiptEventVersion !== null) {
+        if ($requiresNonEmptyBuyerName) {
             $name = $buyer['name'] ?? null;
             if (! is_string($name) || trim($name) === '') {
                 throw new RuntimeException('payload_buyer_name_invalid:must be non-empty string; got '.var_export($name, true));
