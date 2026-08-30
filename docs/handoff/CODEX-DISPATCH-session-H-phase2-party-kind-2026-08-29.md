@@ -1,6 +1,6 @@
 # Codex dispatch — Session H (B-18 party/contact program), **Phase 2: `party_kind`** (2026-08-29) — DRAFT
 
-> **REPINNED at `31f49e4f4` — ready for the post-merge final gate (round 10).** Revision **r10.1** (r10 + gate-r10 N-40 anchor repins; N-41 materialized in the execution worktree), after gates r1 (F-1..F-18), r2 (N-1..N-10), r3 (N-11..N-17),
+> **REPINNED at `31f49e4f4` — ready for the post-merge final gate (round 10).** Revision **r10.2** (r10 + gate-r10 N-40 anchor repins; N-41 materialized in the execution worktree), after gates r1 (F-1..F-18), r2 (N-1..N-10), r3 (N-11..N-17),
 > r4 (N-18..N-29), r5 (N-30..N-32) and r6 (**N-33** + the N-22 residual), plus the **r8 amendment** — not a
 > gate finding: CLAUDE.md gained **rule 22 (Journey Hardening, `e94232e97`)** and round-0 **check 6**
 > (`docs/superpowers/SPEC-GATE-ROUND0-MECHANICAL-PRECHECK.md:97-105`) now FAILS any user-facing brief without
@@ -713,7 +713,7 @@ on create AND update**, operating on the **merged final state**, not the incomin
 4. **`ImportType::Parties` + `PartiesRowMapper`** — deferred to **M4**; say so in the M2 register.
 5. **`PartnerService::upsertWithTypeMerge`** (`PartnerService.php:77-147`): the `updateOrCreate` payload
    at `:126-144` gains `party_kind` from the **merged** state via `PartyKindDeriver` (F-6) and the derived
-   `customer_category`. **Do not touch the matching ladder at `:82-85`** — dedup is Phase 4.
+   `customer_category`. **Do not touch the matching ladder at `:98-107`** — dedup is Phase 4.
 
 **M2.3 Every `Partner` insert routes through `PartnerService` (R-A, F-7).** Verified census
 (`grep -rn "Partner::create\|Partner::query()->create\|Partner::updateOrCreate\|Partner::firstOrCreate" apps/api/app`):
