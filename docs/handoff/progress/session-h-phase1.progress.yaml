@@ -61,6 +61,8 @@ milestones:
     commit: b4210a155
     verdict: docs/handoff/reviews/session-h-phase1/M4-round2.md
     last_verdict: ACCEPT
+    reviewer_model: codex-fallback
+    gate_of_record: docs/superpowers/reviews/2026-08-30-session-h-h1-a1-merge-gate-r1-fiscal-pos.md
     fix_rounds: 1
     updated: b4210a155
   - id: M5
@@ -71,6 +73,8 @@ milestones:
     commit: 8997f14ff
     verdict: docs/handoff/reviews/session-h-phase1/M5-round1.md
     last_verdict: ACCEPT
+    reviewer_model: codex-fallback
+    gate_of_record: docs/superpowers/reviews/2026-08-30-session-h-h1-a1-merge-gate-r1-fiscal-pos.md
     fix_rounds: 0
     updated: 8997f14ff
 
