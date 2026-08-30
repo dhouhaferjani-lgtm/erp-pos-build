@@ -636,7 +636,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
         className={`fixed inset-y-0 start-0 z-50 flex flex-col transition-all duration-300 lg:static lg:translate-x-0 rtl:lg:-translate-x-0 ${
           isOtospex
             ? `${colorTokens.surface.muted} border-e ${colorTokens.border.subtle}`
-            : `${colorTokens.surface.inverseStrong}`
+            : colorTokens.surface.inverseStrong
         } ${
           isCollapsed ? 'w-16' : 'w-64'
         } ${
@@ -650,7 +650,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
           isCollapsed ? 'justify-center px-2' : 'justify-between px-6'
         }`}>
           {!isCollapsed && (
-            <span className={`text-xl font-bold ${isOtospex ? `${colorTokens.text.primary}` : `${colorTokens.text.inverse}`}`}>{productName}</span>
+            <span className={`text-xl font-bold ${isOtospex ? colorTokens.text.primary : colorTokens.text.inverse}`}>{productName}</span>
           )}
           <div className="flex items-center gap-2">
             <button
@@ -695,7 +695,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
 
         {/* Bottom navigation (support access and Settings) */}
         {bottomNavigation.length > 0 && (
-          <div className={`border-t px-3 py-3 ${isOtospex ? `${colorTokens.border.subtle}` : colorTokens.variants.borderGray800}`}>
+          <div className={`border-t px-3 py-3 ${isOtospex ? colorTokens.border.subtle : colorTokens.variants.borderGray800}`}>
             <ul className="space-y-1">
               {bottomNavigation.map(renderNavItem)}
             </ul>
