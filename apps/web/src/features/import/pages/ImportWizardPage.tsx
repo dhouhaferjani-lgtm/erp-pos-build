@@ -1019,8 +1019,8 @@ export function ImportWizardPage() {
                     })}
                   </p>
                 </div>
-                <dl className="grid gap-2 sm:grid-cols-5">
-                  {(['new', 'existing_sku', 'existing_barcode', 'existing_name', 'in_file'] as const).map((bucket) => (
+                <dl className="grid gap-2 sm:grid-cols-6">
+                  {(['new', 'existing_sku', 'existing_barcode', 'existing_name', 'in_file', 'refused'] as const).map((bucket) => (
                     <div key={bucket} className={`rounded-md ${colorTokens.surface.base} p-3`}>
                       <dt className={`text-xs ${colorTokens.text.muted}`}>{t(`duplicates.bucket.${bucket}`)}</dt>
                       <dd className={`text-lg font-semibold ${colorTokens.text.primary}`}>
@@ -1029,6 +1029,17 @@ export function ImportWizardPage() {
                     </div>
                   ))}
                 </dl>
+                {previewData.duplicates.counts.refused > 0 && (
+                  <p
+                    data-testid="import-preview-refused-summary"
+                    className={`text-sm ${colorTokens.intent.danger.textStrong}`}
+                  >
+                    {t('duplicates.refusedSummary', {
+                      count: previewData.duplicates.counts.refused,
+                      codes: [...new Set(previewData.duplicates.refused.map((detail) => detail.code))].join(', '),
+                    })}
+                  </p>
+                )}
                 <p className={`text-sm ${colorTokens.text.secondary}`}>{t('duplicates.blankCells')}</p>
                 <p className={`text-sm ${colorTokens.text.secondary}`}>{t('duplicates.lastRowWins')}</p>
                 {previewData.duplicates.matched_by_name.length > 0 && (

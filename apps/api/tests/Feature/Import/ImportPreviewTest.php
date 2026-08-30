@@ -10,8 +10,11 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Domain\Enums\DuplicateBucket;
+use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Services\ImportService;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -196,6 +199,41 @@ class ImportPreviewTest extends TestCase
         $summary = $previewResponse->json('data.summary');
         $this->assertEquals(2, $summary['valid_rows']);
         $this->assertEquals(2, $summary['invalid_rows']);
+    }
+
+    public function test_product_preview_exposes_each_refusal_as_advisory_detail(): void
+    {
+        $deleted = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'DELETED-SKU',
+        ]);
+        $deleted->delete();
+        $file = UploadedFile::fake()->createWithContent(
+            'products.csv',
+            "name,sku\nReplacement,DELETED-SKU",
+        );
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', [
+                'file' => $file,
+                'type' => ImportType::Products->value,
+            ]);
+
+        $response->assertCreated();
+        $preview = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/imports/'.$response->json('data.id').'/preview');
+
+        $preview->assertOk()
+            ->assertJsonPath('data.duplicates.counts.'.DuplicateBucket::Refused->value, 1)
+            ->assertJsonPath('data.duplicates.refused.0.row_number', 1)
+            ->assertJsonPath('data.duplicates.refused.0.code', ImportErrorCode::SkuHeldByDeletedProduct->value)
+            ->assertJsonPath('data.rows.0.duplicate_bucket', DuplicateBucket::Refused->value)
+            ->assertJsonPath('data.rows.0.duplicate_advisory.row_number', 1)
+            ->assertJsonPath(
+                'data.rows.0.duplicate_advisory.code',
+                ImportErrorCode::SkuHeldByDeletedProduct->value,
+            );
     }
 
     public function test_preview_returns_404_for_nonexistent_job(): void

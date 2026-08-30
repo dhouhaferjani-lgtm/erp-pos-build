@@ -25,5 +25,10 @@ describe('import warning locale parity', () => {
         expect(copy.trim()).not.toBe('')
       }
     }
+
+    expect(messages.duplicates.refusedSummary).toEqual(expect.any(String))
+    expect(messages.duplicates.refusedSummary.trim()).not.toBe('')
+    expect(messages.duplicates.bucket.refused).toEqual(expect.any(String))
+    expect(messages.duplicates.bucket.refused.trim()).not.toBe('')
   })
 })

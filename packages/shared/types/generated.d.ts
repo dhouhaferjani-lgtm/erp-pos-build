@@ -1027,7 +1027,7 @@ declare namespace App.Modules.Identity.Domain.Enums {
 export type UserStatus = 'active' | 'inactive' | 'suspended' | 'pending_verification';
 }
 declare namespace App.Modules.Import.Domain.Enums {
-export type DuplicateBucket = 'new' | 'existing_sku' | 'existing_barcode' | 'existing_name' | 'in_file';
+export type DuplicateBucket = 'new' | 'existing_sku' | 'existing_barcode' | 'existing_name' | 'in_file' | 'refused';
 export type DuplicatePolicy = 'override' | 'skip';
 export type ImportErrorCode = 'units_not_seeded' | 'unit_unknown' | 'unit_ambiguous' | 'unit_default_missing' | 'barcode_ambiguous' | 'product_not_found' | 'partner_not_found' | 'sku_held_by_deleted_product' | 'vat_held_by_deleted_partner' | 'duplicate_sku_in_company' | 'validation_failed' | 'internal_error';
 export type ImportRowOutcome = 'pending' | 'imported' | 'duplicate_skipped' | 'duplicate_loser' | 'failed' | 'opening_locked';

@@ -11,4 +11,5 @@ enum DuplicateBucket: string
     case ExistingBarcode = 'existing_barcode';
     case ExistingName = 'existing_name';
     case InFile = 'in_file';
+    case Refused = 'refused';
 }

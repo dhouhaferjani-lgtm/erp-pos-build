@@ -42,7 +42,13 @@ final readonly class ImportJobOptionsData
         );
     }
 
-    /** @return array<string, bool|string|list<string>|array{counts: array<string, int>, matched_by_name: list<int>}> */
+    /**
+     * @return array<string, bool|string|list<string>|array{
+     *     counts: array<string, int>,
+     *     matched_by_name: list<int>,
+     *     refused: list<array{row_number: int, code: string}>
+     * }>
+     */
     public function toStorage(): array
     {
         $options = [];

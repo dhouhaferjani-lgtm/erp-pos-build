@@ -266,6 +266,7 @@
   "duplicates": {
     "title": "Vérification des doublons",
     "summary": "{{existing}} lignes correspondent à des produits existants et {{inFile}} répètent un produit sur le même site.",
+    "refusedSummary": "{{count}} lignes seront refusées — {{codes}}",
     "blankCells": "Les mises à jour sont fusionnées champ par champ ; les cellules vides n'écrasent jamais les valeurs existantes.",
     "lastRowWins": "Dans un même fichier, la dernière ligne l'emporte pour un produit sur un même site.",
     "matchedByName": "{{count}} lignes utilisent la correspondance la plus faible : le nom normalisé. Vérifiez ces numéros de ligne avant de continuer.",
@@ -277,7 +278,8 @@
       "existing_sku": "Référence existante",
       "existing_barcode": "Code-barres existant",
       "existing_name": "Nom existant",
-      "in_file": "Répété dans le fichier"
+      "in_file": "Répété dans le fichier",
+      "refused": "Refusé"
     },
     "policy": {
       "title": "Comment traiter les enregistrements existants ?",

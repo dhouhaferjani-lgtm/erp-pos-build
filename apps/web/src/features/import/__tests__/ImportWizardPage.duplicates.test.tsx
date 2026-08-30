@@ -20,21 +20,27 @@ const mockPreview = vi.hoisted(() => ({
     headers: ['name'], rows: [],
     summary: { total_rows: 7, valid_rows: 7, invalid_rows: 0 },
     duplicates: {
-      counts: { new: 2, existing_sku: 2, existing_barcode: 1, existing_name: 1, in_file: 1 },
+      counts: { new: 1, existing_sku: 2, existing_barcode: 1, existing_name: 1, in_file: 1, refused: 1 },
       matched_by_name: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+      refused: [{ row_number: 7, code: 'sku_held_by_deleted_product' }],
     },
   } as {
     headers: string[]
     rows: never[]
     summary: { total_rows: number; valid_rows: number; invalid_rows: number }
     duplicates?: {
-      counts: { new: number; existing_sku: number; existing_barcode: number; existing_name: number; in_file: number }
+      counts: { new: number; existing_sku: number; existing_barcode: number; existing_name: number; in_file: number; refused: number }
       matched_by_name: number[]
+      refused: { row_number: number; code: string }[]
     }
   },
 }))
 
-vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, options?: { codes?: string }) => options?.codes ? `${key} ${options.codes}` : key,
+  }),
+}))
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 vi.mock('@/lib/api', () => ({ authenticatedDownload: vi.fn(), apiGet: vi.fn().mockResolvedValue([]) }))
 vi.mock('../api/importApi', () => ({
@@ -101,8 +107,9 @@ describe('ImportWizardPage duplicate policy', () => {
       headers: ['name'], rows: [],
       summary: { total_rows: 7, valid_rows: 7, invalid_rows: 0 },
       duplicates: {
-        counts: { new: 2, existing_sku: 2, existing_barcode: 1, existing_name: 1, in_file: 1 },
+        counts: { new: 1, existing_sku: 2, existing_barcode: 1, existing_name: 1, in_file: 1, refused: 1 },
         matched_by_name: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        refused: [{ row_number: 7, code: 'sku_held_by_deleted_product' }],
       },
     }
   })
@@ -125,6 +132,8 @@ describe('ImportWizardPage duplicate policy', () => {
 
     expect(await screen.findAllByTestId('import-preview-duplicate-summary')).toHaveLength(1)
     expect(screen.getByTestId('import-preview-duplicate-summary')).toHaveTextContent('duplicates.blankCells')
+    expect(screen.getByTestId('import-preview-refused-summary')).toHaveTextContent('duplicates.refusedSummary')
+    expect(screen.getByTestId('import-preview-refused-summary')).toHaveTextContent('sku_held_by_deleted_product')
     expect(screen.getByTestId('import-wizard-step-preview')).toBeInTheDocument()
     expect(screen.getByTestId('import-preview-policy-override')).toBeInTheDocument()
     expect(screen.getByTestId('import-preview-policy-skip')).toBeInTheDocument()
@@ -148,6 +157,10 @@ describe('ImportWizardPage duplicate policy', () => {
   })
 
   it('keeps Next disabled and stays on preview until the policy PATCH resolves', async () => {
+    if (mockPreview.current.duplicates) {
+      mockPreview.current.duplicates.counts.refused = 0
+      mockPreview.current.duplicates.refused = []
+    }
     let resolvePatch: ((value: { data: { id: string } }) => void) | undefined
     mockUpdateOptions.mockImplementation(() => new Promise((resolve) => { resolvePatch = resolve }))
     const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
@@ -165,6 +178,7 @@ describe('ImportWizardPage duplicate policy', () => {
     await user.click(screen.getByRole('button', { name: 'map' }))
     await user.click(screen.getByTestId('import-wizard-validate'))
     const next = await screen.findByTestId('import-wizard-next')
+    expect(screen.queryByTestId('import-preview-refused-summary')).not.toBeInTheDocument()
     await user.click(next)
 
     expect(next).toBeDisabled()

@@ -75,8 +75,9 @@ export interface ImportJobOptions {
   duplicate_policy?: DuplicatePolicy
 }
 
-export type DuplicateBucket = 'new' | 'existing_sku' | 'existing_barcode' | 'existing_name' | 'in_file'
+export type DuplicateBucket = 'new' | 'existing_sku' | 'existing_barcode' | 'existing_name' | 'in_file' | 'refused'
 export type DuplicatePolicy = 'override' | 'skip'
+export type ImportErrorCode = App.Modules.Import.Domain.Enums.ImportErrorCode
 
 export type LocationNodeType = App.Modules.Inventory.Domain.Enums.LocationNodeType
 
@@ -177,6 +178,7 @@ export interface ImportPreviewRow {
   is_valid: boolean
   errors: ImportRowErrors
   duplicate_bucket?: DuplicateBucket | null
+  duplicate_advisory?: { row_number: number; code: ImportErrorCode } | null
 }
 
 export interface ImportPreview {
@@ -190,6 +192,7 @@ export interface ImportPreview {
   duplicates?: {
     counts: Record<DuplicateBucket, number>
     matched_by_name: number[]
+    refused: { row_number: number; code: ImportErrorCode }[]
   }
   placement?: {
     max_depth: number

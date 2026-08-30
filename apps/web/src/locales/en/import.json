@@ -266,6 +266,7 @@
   "duplicates": {
     "title": "Duplicate review",
     "summary": "{{existing}} rows match existing products and {{inFile}} rows repeat a product at the same location.",
+    "refusedSummary": "{{count}} rows will be refused — {{codes}}",
     "blankCells": "Updates are merged field by field; blank cells never overwrite existing values.",
     "lastRowWins": "Within one file, the last row wins for the same product at the same location.",
     "matchedByName": "{{count}} rows used the weakest match: normalized name. Review these row numbers before continuing.",
@@ -277,7 +278,8 @@
       "existing_sku": "Existing SKU",
       "existing_barcode": "Existing barcode",
       "existing_name": "Existing name",
-      "in_file": "Repeated in file"
+      "in_file": "Repeated in file",
+      "refused": "Refused"
     },
     "policy": {
       "title": "How should existing records be handled?",

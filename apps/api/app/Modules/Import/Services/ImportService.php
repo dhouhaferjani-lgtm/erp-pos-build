@@ -542,7 +542,8 @@ final class ImportService
             DuplicateBucket::ExistingBarcode,
             DuplicateBucket::ExistingName => true,
             DuplicateBucket::New,
-            DuplicateBucket::InFile => false,
+            DuplicateBucket::InFile,
+            DuplicateBucket::Refused => false,
         };
     }
 

@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Domain\Data\DuplicateCensusData;
 use App\Modules\Import\Domain\Enums\DuplicateBucket;
 use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportRowOutcome;
@@ -221,44 +222,70 @@ final class DuplicateCensusTest extends TestCase
 
         app(DuplicateCensusService::class)->census($job->refresh(), $this->company->id);
         $previewRows = $job->rows()->orderBy('row_number')->get()->keyBy('row_number');
-        $expectedBuckets = [
-            1 => DuplicateBucket::ExistingSku,
-            2 => DuplicateBucket::ExistingBarcode,
-            3 => DuplicateBucket::ExistingName,
-            4 => DuplicateBucket::New,
-            5 => DuplicateBucket::New,
-            6 => DuplicateBucket::New,
-        ];
-        foreach ($expectedBuckets as $rowNumber => $bucket) {
-            $this->assertSame($bucket, $previewRows->get($rowNumber)?->duplicate_bucket);
+        $options = $job->refresh()->options;
+        $this->assertIsArray($options);
+        $censusPayload = $options['duplicate_census'] ?? null;
+        $this->assertIsArray($censusPayload);
+        $census = DuplicateCensusData::fromStorage($censusPayload);
+        $previewCodes = [];
+        foreach ($census->refused as $detail) {
+            $previewCodes[$detail['row_number']] = $detail['code'];
         }
-
-        $expectedOutcomes = [
-            1 => ImportRowOutcome::DuplicateSkipped,
-            2 => ImportRowOutcome::DuplicateSkipped,
-            3 => ImportRowOutcome::DuplicateSkipped,
-            4 => ImportRowOutcome::Failed,
-            5 => ImportRowOutcome::Failed,
-            6 => ImportRowOutcome::Failed,
+        $expected = [
+            1 => [
+                'preview_bucket' => DuplicateBucket::ExistingSku,
+                'preview_code' => null,
+                'execute_outcome' => ImportRowOutcome::DuplicateSkipped,
+                'execute_code' => null,
+            ],
+            2 => [
+                'preview_bucket' => DuplicateBucket::ExistingBarcode,
+                'preview_code' => null,
+                'execute_outcome' => ImportRowOutcome::DuplicateSkipped,
+                'execute_code' => null,
+            ],
+            3 => [
+                'preview_bucket' => DuplicateBucket::ExistingName,
+                'preview_code' => null,
+                'execute_outcome' => ImportRowOutcome::DuplicateSkipped,
+                'execute_code' => null,
+            ],
+            4 => [
+                'preview_bucket' => DuplicateBucket::Refused,
+                'preview_code' => ImportErrorCode::SkuHeldByDeletedProduct,
+                'execute_outcome' => ImportRowOutcome::Failed,
+                'execute_code' => ImportErrorCode::SkuHeldByDeletedProduct,
+            ],
+            5 => [
+                'preview_bucket' => DuplicateBucket::Refused,
+                'preview_code' => ImportErrorCode::SkuHeldByDeletedProduct,
+                'execute_outcome' => ImportRowOutcome::Failed,
+                'execute_code' => ImportErrorCode::SkuHeldByDeletedProduct,
+            ],
+            6 => [
+                'preview_bucket' => DuplicateBucket::Refused,
+                'preview_code' => ImportErrorCode::BarcodeAmbiguous,
+                'execute_outcome' => ImportRowOutcome::Failed,
+                'execute_code' => ImportErrorCode::BarcodeAmbiguous,
+            ],
         ];
-        foreach ($expectedOutcomes as $rowNumber => $outcome) {
+        foreach ($expected as $rowNumber => $case) {
+            $this->assertSame($case['preview_bucket'], $previewRows->get($rowNumber)?->duplicate_bucket);
+            $this->assertSame($case['preview_code'], $previewCodes[$rowNumber] ?? null);
+        }
+        $this->assertSame(3, $census->counts[DuplicateBucket::Refused->value]);
+
+        foreach ($expected as $rowNumber => $case) {
             $row = $job->rows()->where('row_number', $rowNumber)->firstOrFail();
-            $this->assertSame($outcome, app(ImportService::class)->processPendingRow($job->refresh(), $row));
-            $this->assertSame($expectedBuckets[$rowNumber], $row->refresh()->duplicate_bucket);
+            $this->assertSame(
+                $case['execute_outcome'],
+                app(ImportService::class)->processPendingRow($job->refresh(), $row),
+            );
+            $row->refresh();
+            $this->assertSame($case['preview_bucket'], $row->duplicate_bucket);
+            $this->assertSame($case['execute_code'], $row->import_error_code);
+            $this->assertSame($case['preview_code'], $row->import_error_code);
         }
-
-        $this->assertSame(
-            ImportErrorCode::SkuHeldByDeletedProduct,
-            $job->rows()->where('row_number', 4)->firstOrFail()->import_error_code,
-        );
-        $this->assertSame(
-            ImportErrorCode::SkuHeldByDeletedProduct,
-            $job->rows()->where('row_number', 5)->firstOrFail()->import_error_code,
-        );
-        $this->assertSame(
-            ImportErrorCode::BarcodeAmbiguous,
-            $job->rows()->where('row_number', 6)->firstOrFail()->import_error_code,
-        );
     }
 
     private function job(int $totalRows): ImportJob

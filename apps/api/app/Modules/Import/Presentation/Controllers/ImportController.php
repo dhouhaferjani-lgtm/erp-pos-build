@@ -290,6 +290,15 @@ class ImportController extends Controller
                     static fn (string $header): bool => ! str_starts_with($header, '_'),
                 ))
                 : []);
+        $duplicateCensus = $job->options['duplicate_census'] ?? null;
+        $refusalDetailsByRow = [];
+        if (is_array($duplicateCensus) && is_array($duplicateCensus['refused'] ?? null)) {
+            foreach ($duplicateCensus['refused'] as $detail) {
+                if (is_array($detail) && is_int($detail['row_number'] ?? null)) {
+                    $refusalDetailsByRow[$detail['row_number']] = $detail;
+                }
+            }
+        }
 
         $preview = [
             'headers' => $headers,
@@ -303,6 +312,7 @@ class ImportController extends Controller
                 'is_valid' => $row->is_valid,
                 'errors' => $row->errors ?? [],
                 'duplicate_bucket' => $row->duplicate_bucket?->value,
+                'duplicate_advisory' => $refusalDetailsByRow[$row->row_number] ?? null,
             ]),
             'summary' => [
                 'total_rows' => $job->total_rows,
@@ -311,7 +321,6 @@ class ImportController extends Controller
             ],
             'placement' => $this->importService->productPlacementPreview($job),
         ];
-        $duplicateCensus = $job->options['duplicate_census'] ?? null;
         if (is_array($duplicateCensus)) {
             $preview['duplicates'] = $duplicateCensus;
         }

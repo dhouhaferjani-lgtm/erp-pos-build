@@ -35,6 +35,7 @@ final readonly class DuplicateCensusService
     {
         $counts = self::emptyCounts();
         $matchedByName = [];
+        $refused = [];
         $seenPlacementKeys = [];
 
         if ($job->type === ImportType::Products) {
@@ -50,6 +51,7 @@ final readonly class DuplicateCensusService
                         $companyId,
                         &$counts,
                         &$matchedByName,
+                        &$refused,
                         &$seenPlacementKeys,
                     ): void {
                         $resolutions = $this->resolveChunk($job, $companyId, $rows);
@@ -60,11 +62,14 @@ final readonly class DuplicateCensusService
                         foreach ($rows as $row) {
                             $resolution = $resolutions[$row->id];
                             $bucket = $this->bucketForResolution($resolution);
-                            $placementKey = $this->placementKey(
-                                $row,
-                                $resolution,
-                                $locationIds[$row->id] ?? null,
-                            );
+                            $refusalCode = $this->refusalCode($resolution);
+                            $placementKey = $bucket === DuplicateBucket::Refused
+                                ? null
+                                : $this->placementKey(
+                                    $row,
+                                    $resolution,
+                                    $locationIds[$row->id] ?? null,
+                                );
                             if ($placementKey !== null) {
                                 if (isset($seenPlacementKeys[$placementKey])) {
                                     $bucket = DuplicateBucket::InFile;
@@ -76,6 +81,12 @@ final readonly class DuplicateCensusService
                             $counts[$bucket->value]++;
                             if ($bucket === DuplicateBucket::ExistingName) {
                                 $matchedByName[] = $row->row_number;
+                            }
+                            if ($refusalCode !== null) {
+                                $refused[] = [
+                                    'row_number' => $row->row_number,
+                                    'code' => $refusalCode,
+                                ];
                             }
                             $updates[] = [
                                 'id' => $row->id,
@@ -94,7 +105,11 @@ final readonly class DuplicateCensusService
         }
 
         sort($matchedByName);
-        $census = new DuplicateCensusData($counts, $matchedByName);
+        usort(
+            $refused,
+            static fn (array $left, array $right): int => $left['row_number'] <=> $right['row_number'],
+        );
+        $census = new DuplicateCensusData($counts, $matchedByName, $refused);
         $job->update([
             'options' => array_merge(
                 $job->options ?? [],
@@ -259,11 +274,24 @@ final readonly class DuplicateCensusService
 
     private function bucketForResolution(ProductIdentityResolutionData $resolution): DuplicateBucket
     {
+        if ($resolution->failure !== null) {
+            return DuplicateBucket::Refused;
+        }
+
         return match ($resolution->matchedBy) {
             ProductIdentityMatch::Sku => DuplicateBucket::ExistingSku,
             ProductIdentityMatch::Barcode => DuplicateBucket::ExistingBarcode,
             ProductIdentityMatch::Name => DuplicateBucket::ExistingName,
             null => DuplicateBucket::New,
+        };
+    }
+
+    private function refusalCode(ProductIdentityResolutionData $resolution): ?ImportErrorCode
+    {
+        return match ($resolution->failure) {
+            ProductIdentityFailure::SkuHeldByDeletedProduct => ImportErrorCode::SkuHeldByDeletedProduct,
+            ProductIdentityFailure::BarcodeAmbiguous => ImportErrorCode::BarcodeAmbiguous,
+            null => null,
         };
     }
 
