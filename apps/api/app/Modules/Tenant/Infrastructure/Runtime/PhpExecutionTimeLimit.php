@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Tenant\Infrastructure\Runtime;
 
+use App\Modules\Tenant\Application\Contracts\ExecutionTimeLimit;
 use Closure;
 
 final class PhpExecutionTimeLimit implements ExecutionTimeLimit

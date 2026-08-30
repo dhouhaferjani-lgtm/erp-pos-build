@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Tenant\Infrastructure\Runtime;
+namespace App\Modules\Tenant\Application\Contracts;
 
 use Closure;
 
