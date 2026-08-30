@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, CheckCircle, FileText } from 'lucide-react'
+import { AlertTriangle, CheckCircle } from 'lucide-react'
 import { colorClasses } from '@/lib/designTokens'
+import type { PartnerData } from '@/features/partners/types'
 
 interface TaxExemptionWarning {
   type: 'missing_certificate' | 'expired_certificate' | 'expiring_soon'
@@ -8,14 +9,17 @@ interface TaxExemptionWarning {
   severity: 'error' | 'warning'
 }
 
-interface Partner {
-  id: string
-  name: string
-  tax_status: 'REGISTERED' | 'NON_REGISTERED' | 'EXEMPT'
-  exemption_reason?: string | null
-  exemption_certificate_path?: string | null
-  exemption_valid_until?: string | null
-}
+/**
+ * Narrowed view of the generated PartnerData DTO — not a re-declaration.
+ * `exemption_certificate_path` is deliberately absent: no such field exists on
+ * PartnerData (the column is `tax_exemption_certificate_media_id` and is not
+ * serialised), so the old hand-rolled interface could only ever have rendered
+ * an unconditional "Certificate: No" (merge-gate r1 FE-3/FE-12).
+ */
+type Partner = Pick<
+  PartnerData,
+  'id' | 'name' | 'tax_status' | 'exemption_reason' | 'exemption_valid_until'
+>
 
 interface Document {
   partner?: Partner
@@ -38,7 +42,6 @@ export function TaxExemptionNotice({ document, warnings = [] }: TaxExemptionNoti
 
   const partner = document.partner
   const hasWarnings = warnings.length > 0
-  const hasCertificate = !!partner.exemption_certificate_path
   const hasValidUntil = !!partner.exemption_valid_until
 
   // Determine overall status
@@ -79,20 +82,9 @@ export function TaxExemptionNotice({ document, warnings = [] }: TaxExemptionNoti
             </p>
           )}
 
-          {/* Certificate Info */}
+          {/* Certificate presence is not readable from PartnerData, so it is not
+              claimed here. */}
           <div className="mt-2 space-y-1">
-            {hasCertificate ? (
-              <div className={`flex items-center gap-2 text-sm ${colorClasses.textGray600}`}>
-                <FileText className="h-4 w-4" />
-                <span>{t('partners.taxInfo.certificate')}: {t('common:yes')}</span>
-              </div>
-            ) : (
-              <div className={`flex items-center gap-2 text-sm ${colorClasses.textGray600}`}>
-                <FileText className="h-4 w-4" />
-                <span>{t('partners.taxInfo.certificate')}: {t('common:no')}</span>
-              </div>
-            )}
-
             {hasValidUntil && partner.exemption_valid_until && (
               <p className={`text-sm ${colorClasses.textGray600}`}>
                 {t('partners.taxInfo.validUntil')}: {new Date(partner.exemption_valid_until).toLocaleDateString()}

@@ -120,6 +120,21 @@ Learn about:
 
 **Key Takeaway:** Every detector ships with at least one test proving it FIRES on a planted violation, running in the same CI lane as the detector
 
+### 9. [Second-of-Everything](./09-SECOND-OF-EVERYTHING.md)
+**When to read:** Touching any catalogue entity (products, partners, units, payment methods, repositories, accounts, taxes, categories, brands, locations, terminals) on any layer
+
+**Key Takeaway:** Second-company + second-location + re-run test in the same lane; no new `unique(['tenant_id', …])` on a catalogue table without `company_id` or a waiver
+
+### 10. [Benchmark-First Specs](./10-BENCHMARK-FIRST-SPECS.md)
+**When to read:** Writing a spec, design, or dispatch brief for a user-facing flow
+
+**Key Takeaway:** The spec opens with the Odoo/ERPNext/Dolibarr baseline table — guarantee · AutoERP today (`path:line`) · decision — before the owner's requirements
+
+### 11. [One Surface per Concept](./11-ONE-SURFACE-PER-CONCEPT.md)
+**When to read:** Introducing or renaming any domain noun, table, import type, tile, form, or FE type
+
+**Key Takeaway:** Look the noun up in `docs/glossary.md` first; one table, one primary write path, one operator surface; synonyms are declared, not discovered
+
 ---
 
 ## Common Workflows

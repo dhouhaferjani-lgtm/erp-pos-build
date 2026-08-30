@@ -13,6 +13,8 @@ use App\Modules\Tenant\Application\Commands\ResetTenantCommand;
 use App\Modules\Tenant\Application\Commands\RestoreTenantCommand;
 use App\Modules\Tenant\Application\Commands\RollingTenantMigrationCommand;
 use App\Modules\Tenant\Application\Commands\TenantStatusCommand;
+use App\Modules\Tenant\Application\Contracts\ExecutionTimeLimit;
+use App\Modules\Tenant\Infrastructure\Runtime\PhpExecutionTimeLimit;
 use Illuminate\Support\ServiceProvider;
 
 class TenantServiceProvider extends ServiceProvider
@@ -22,7 +24,7 @@ class TenantServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(ExecutionTimeLimit::class, PhpExecutionTimeLimit::class);
     }
 
     /**

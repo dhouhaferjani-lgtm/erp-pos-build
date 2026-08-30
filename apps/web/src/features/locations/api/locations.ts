@@ -8,7 +8,7 @@ interface RawLocation {
   id: string
   company_id: string
   name: string
-  code: string
+  code: string | null
   type: LocationType
   phone: string | null
   email: string | null
@@ -38,7 +38,7 @@ export interface TransactionLocation {
 interface RawTransactionLocation {
   id: string
   name: string
-  code: string
+  code: string | null
   type: LocationType
   is_default: boolean
   is_active: boolean
@@ -49,7 +49,7 @@ function mapLocation(raw: RawLocation): Location {
     id: raw.id,
     companyId: raw.company_id,
     name: raw.name,
-    code: raw.code,
+    code: raw.code ?? '',
     type: raw.type,
     phone: raw.phone,
     email: raw.email,
@@ -85,7 +85,7 @@ export async function getTransactionLocations(): Promise<TransactionLocation[]> 
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
-    code: row.code,
+    code: row.code ?? '',
     type: row.type,
     isDefault: row.is_default,
     isActive: row.is_active,

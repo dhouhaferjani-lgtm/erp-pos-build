@@ -27,7 +27,9 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\Treasury\CompanyPaymentRepositoryProvisionerInterface;
 use App\Shared\Domain\CurrencyScale;
 use Database\Seeders\PaymentMethodSeeder;
 use Illuminate\Http\JsonResponse;
@@ -53,6 +55,8 @@ class CompanyController extends Controller
         private readonly CompanyFiscalIdentityService $companyFiscalIdentityService,
         private readonly AuditService $auditService,
         private readonly PaymentMethodSeeder $paymentMethodSeeder,
+        private readonly UnitsProvisioningService $unitsProvisioning,
+        private readonly CompanyPaymentRepositoryProvisionerInterface $paymentRepositoryProvisioner,
     ) {}
 
     /**
@@ -65,6 +69,7 @@ class CompanyController extends Controller
      * - Initializes hash chains for all fiscal document types
      * - Seeds chart of accounts based on country
      * - Seeds the country's default expense categories
+     * - Provisions the company's day-one cash register and safe
      */
     public function store(CreateCompanyRequest $request): JsonResponse
     {
@@ -120,9 +125,10 @@ class CompanyController extends Controller
             ]);
 
             // 2. Create default location
-            Location::create([
+            $location = Location::create([
                 'company_id' => $company->id,
                 'name' => 'Main Location',
+                'code' => 'MAIN',
                 'type' => LocationType::Shop,
                 'is_default' => true,
                 'is_active' => true,
@@ -182,6 +188,12 @@ class CompanyController extends Controller
 
             // 6. Provision country tax configurations and set company default tax
             $this->companyTaxProvisioning->provisionForCompany($company);
+
+            $this->unitsProvisioning->provisionForCompany($company);
+
+            // 6.5. Gate finding I2-R1-03: provision the second company's day-one
+            // cash register and safe after its cash-purpose account exists.
+            $this->paymentRepositoryProvisioner->provisionForCompany($company->tenant_id, $company->id, $location->id);
 
             return $company;
         });

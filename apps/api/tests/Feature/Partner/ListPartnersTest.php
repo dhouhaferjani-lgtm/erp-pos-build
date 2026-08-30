@@ -12,6 +12,7 @@ use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -101,6 +102,37 @@ class ListPartnersTest extends TestCase
                 ],
                 'meta' => ['current_page', 'per_page', 'total'],
             ]);
+    }
+
+    public function test_partner_data_exposes_tax_status_fields_consumed_by_the_form(): void
+    {
+        $partner = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Exempt Partner',
+            'type' => PartnerType::Customer,
+            'tax_status' => PartnerTaxStatus::EXEMPT,
+            'tax_exemption_reason' => 'Diplomatic immunity',
+            'tax_exemption_valid_until' => '2027-08-29',
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/partners/{$partner->id}")
+            ->assertOk()
+            ->assertJsonPath('data.tax_status', 'EXEMPT')
+            ->assertJsonPath('data.exemption_reason', 'Diplomatic immunity')
+            ->assertJsonPath('data.exemption_valid_until', '2027-08-29');
+    }
+
+    public function test_created_partner_data_exposes_the_database_default_tax_status(): void
+    {
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/partners', [
+                'name' => 'Default Tax Partner',
+                'type' => PartnerType::Customer->value,
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.tax_status', PartnerTaxStatus::REGISTERED->value);
     }
 
     public function test_list_is_paginated(): void

@@ -16,6 +16,7 @@ use App\Modules\Product\Application\Services\ProductImageImportService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -134,7 +135,10 @@ final class ScheduledJobTenantIsolationTest extends TestCase
             // is (importJobId, companyId) — instantiation will fail with a
             // TypeError until the cat-(a) fix lands. That IS the red signal.
             $instance = new ProcessImportJob($jobA->id, $this->companyA->id, $this->tenantA->id);
-            $instance->handle($this->app->make(ImportService::class));
+            $instance->handle(
+                $this->app->make(ImportService::class),
+                $this->app->make(UnitsProvisioningService::class),
+            );
         } catch (\Throwable) {
             // Swallow — handle() may throw for unrelated reasons (no valid
             // rows etc.). We assert on SQL shape, not on terminal status.
@@ -177,9 +181,8 @@ final class ScheduledJobTenantIsolationTest extends TestCase
     // =========================================================================
 
     /**
-     * Same constructor-shape assertion as ProcessImportJob: the job must
-     * carry a tenantId anchor. Today the constructor is `(string $importJobId,
-     * string $zipPath)` — RED.
+     * The image job must carry both tenantId and companyId anchors because
+     * queue workers have no CompanyContext.
      *
      * Inventory: api.scheduled-jobs.002
      */
@@ -189,10 +192,9 @@ final class ScheduledJobTenantIsolationTest extends TestCase
         $params = $constructor->getParameters();
 
         $this->assertGreaterThanOrEqual(
-            3,
+            4,
             count($params),
-            'ProcessProductImageImport::__construct must accept at least 3 params (importJobId, zipPath, tenantId). '.
-            'Today the queue worker has no way to rebind CompanyContext because the job payload carries no tenant anchor.',
+            'ProcessProductImageImport::__construct must accept importJobId, zipPath, tenantId, and companyId.',
         );
 
         $paramNames = array_map(static fn ($p) => strtolower($p->getName()), $params);
@@ -203,6 +205,15 @@ final class ScheduledJobTenantIsolationTest extends TestCase
         $this->assertNotEmpty(
             $tenantParams,
             'ProcessProductImageImport::__construct must declare a tenantId-named parameter. '.
+            'Got params: '.implode(', ', $paramNames),
+        );
+        $companyParams = array_filter(
+            $paramNames,
+            static fn (string $n): bool => str_contains($n, 'company'),
+        );
+        $this->assertNotEmpty(
+            $companyParams,
+            'ProcessProductImageImport::__construct must declare a companyId-named parameter. '.
             'Got params: '.implode(', ', $paramNames),
         );
     }
@@ -233,6 +244,7 @@ final class ScheduledJobTenantIsolationTest extends TestCase
                 $jobA->id,
                 'imports/non-existent-test.zip',
                 $this->tenantA->id,
+                $this->companyA->id,
             );
             $instance->handle(
                 $this->app->make(ProductImageImportService::class),
@@ -297,6 +309,7 @@ final class ScheduledJobTenantIsolationTest extends TestCase
         return ImportJob::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenant->id,
+            'company_id' => Company::query()->where('tenant_id', $tenant->id)->firstOrFail()->id,
             'user_id' => $user->id,
             'type' => $type->value,
             'status' => $status->value,

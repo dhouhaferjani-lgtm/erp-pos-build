@@ -7,6 +7,7 @@ namespace App\Modules\Partner\Application\Services;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Shared\Contracts\PartnerServiceInterface;
+use RuntimeException;
 
 /**
  * Application service for partner operations.
@@ -41,11 +42,18 @@ final class PartnerService implements PartnerServiceInterface
         ?string $vatNumber,
         string $name
     ): ?array {
-        $partner = Partner::where('tenant_id', $tenantId)
-            ->where('company_id', $companyId)
-            ->when($vatNumber !== null, fn ($q) => $q->where('vat_number', $vatNumber))
-            ->when($vatNumber === null, fn ($q) => $q->where('name', $name))
-            ->first();
+        $partner = $vatNumber !== null
+            ? Partner::withTrashed()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('vat_number', $vatNumber)
+                ->first()
+            : Partner::where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('name', $name)
+                ->first();
+
+        $partner = $this->refuseSoftDeletedVatHolder($partner);
 
         if ($partner === null) {
             return null;
@@ -76,13 +84,28 @@ final class PartnerService implements PartnerServiceInterface
         $vatNumber = ! empty($data['vat_number']) ? $data['vat_number'] : null;
         $newType = PartnerType::from($data['type']);
 
+        $vatHolder = $vatNumber !== null
+            ? $this->refuseSoftDeletedVatHolder(
+                Partner::withTrashed()
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
+                    ->where('vat_number', $vatNumber)
+                    ->first()
+            )
+            : null;
+
         // Find existing partner
-        $existing = Partner::where('tenant_id', $tenantId)
-            ->where('company_id', $companyId)
-            ->when($code !== null, fn ($q) => $q->where('code', $code))
-            ->when($code === null && $vatNumber !== null, fn ($q) => $q->where('vat_number', $vatNumber))
-            ->when($code === null && $vatNumber === null, fn ($q) => $q->where('name', $data['name']))
-            ->first();
+        $existing = match (true) {
+            $code !== null => Partner::where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('code', $code)
+                ->first(),
+            $vatNumber !== null => $vatHolder,
+            default => Partner::where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('name', $data['name'])
+                ->first(),
+        };
 
         // Smart type merging: customer + supplier = both
         $finalType = $newType;
@@ -122,6 +145,18 @@ final class PartnerService implements PartnerServiceInterface
         );
 
         return $partner->id;
+    }
+
+    private function refuseSoftDeletedVatHolder(?Partner $partner): ?Partner
+    {
+        if ($partner?->trashed()) {
+            throw new RuntimeException(
+                "vat_held_by_deleted_partner: VAT {$partner->vat_number} is held by a soft-deleted partner; "
+                .'purge the deleted record or choose a different VAT.'
+            );
+        }
+
+        return $partner;
     }
 
     private static function nullableString(mixed $value): ?string

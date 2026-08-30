@@ -55,9 +55,16 @@
       "supplier": "Supplier",
       "both": "Both"
     },
+    "nature": {
+      "label": "Nature",
+      "selectPlaceholder": "Select nature",
+      "individual": "Individual",
+      "company": "Company"
+    },
     "validation": {
       "nameRequired": "Name is required",
-      "typeRequired": "Type is required"
+      "typeRequired": "Type is required",
+      "natureRequired": "Nature is required"
     },
     "messages": {
       "created": "Partner created successfully",
@@ -103,10 +110,6 @@
     "totalSummary": "{{count}} {{entity}} total",
     "b2b": {
       "title": "B2B Information",
-      "customerCategory": "Customer Category",
-      "selectCategory": "Select category",
-      "individual": "Individual",
-      "business": "Business",
       "companyLegalName": "Company Legal Name",
       "registrationNumber": "Business Registration Number",
       "paymentTerms": "Payment Terms",

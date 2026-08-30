@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Import;
 
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Company\Domain\Company;
@@ -18,10 +19,12 @@ use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Domain\ImportRow;
+use App\Modules\Import\Services\ImportJobClaimService;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
@@ -64,6 +67,7 @@ class ProcessImportJobStatusTest extends TestCase
             'currency' => 'EUR',
             'status' => CompanyStatus::Active,
         ]);
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
         $this->seed(RolesAndPermissionsSeeder::class);
@@ -84,6 +88,7 @@ class ProcessImportJobStatusTest extends TestCase
         ]);
 
         app(CompanyContext::class)->setCompanyId($this->company->id);
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
     }
 
     /**
@@ -91,12 +96,14 @@ class ProcessImportJobStatusTest extends TestCase
      */
     private function seedJob(array $rows): ImportJob
     {
+        app(UnitsProvisioningService::class)->provisionForCompany($this->company);
         $validCount = count(array_filter($rows, fn (array $r): bool => $r['is_valid']));
 
         // Mirror the state ImportController@store leaves behind after
         // validation: successful_rows = valid count, failed_rows = invalid.
         $job = ImportJob::create([
             'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'user_id' => $this->user->id,
             'type' => ImportType::Products,
             'status' => ImportStatus::Validated,
@@ -122,8 +129,16 @@ class ProcessImportJobStatusTest extends TestCase
 
     private function runJob(ImportJob $job): void
     {
+        $this->assertTrue(
+            $this->app->make(ImportJobClaimService::class)->claim($job)->won,
+            'The controller-owned claim fixture must win before the worker is delivered.',
+        );
+
         (new ProcessImportJob($job->id, $this->company->id, $this->tenant->id))
-            ->handle($this->app->make(ImportService::class));
+            ->handle(
+                $this->app->make(ImportService::class),
+                $this->app->make(UnitsProvisioningService::class),
+            );
     }
 
     /**
@@ -196,6 +211,7 @@ class ProcessImportJobStatusTest extends TestCase
         $importService = $this->app->make(ImportService::class);
         $job = $importService->createJob(
             tenantId: $this->tenant->id,
+            companyId: $this->company->id,
             userId: $this->user->id,
             type: ImportType::Parties,
             filename: 'parties.csv',

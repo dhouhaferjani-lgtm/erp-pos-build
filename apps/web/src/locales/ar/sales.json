@@ -95,9 +95,16 @@
       "supplier": "مورّد",
       "both": "كلاهما"
     },
+    "nature": {
+      "label": "الطبيعة",
+      "selectPlaceholder": "اختر طبيعة الشريك",
+      "individual": "فرد",
+      "company": "شركة"
+    },
     "validation": {
       "nameRequired": "الاسم مطلوب",
-      "typeRequired": "النوع مطلوب"
+      "typeRequired": "النوع مطلوب",
+      "natureRequired": "طبيعة الشريك مطلوبة"
     },
     "messages": {
       "created": "تم إنشاء الشريك بنجاح",
@@ -115,6 +122,11 @@
     },
     "balance": "الرصيد",
     "hasBalance": "لديه رصيد مستحق",
+    "b2b": {
+      "creditLimitExceeded": "تم تجاوز حد الائتمان",
+      "creditLimitApproaching": "الاقتراب من حد الائتمان",
+      "creditLimitUsage": "المستحق: {{outstanding}} / الحد: {{limit}} (تم استخدام {{percentage}}٪)"
+    },
     "countLabels": {
       "customer_zero": "عميل",
       "customer_one": "عميل",

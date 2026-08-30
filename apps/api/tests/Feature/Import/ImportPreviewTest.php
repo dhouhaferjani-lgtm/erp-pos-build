@@ -15,6 +15,7 @@ use App\Modules\Import\Services\ImportService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -76,6 +77,7 @@ class ImportPreviewTest extends TestCase
         ]);
 
         app(CompanyContext::class)->setCompanyId($this->company->id);
+        app(UnitsProvisioningService::class)->provisionForCompany($this->company);
 
         Storage::fake('local');
     }
@@ -241,6 +243,7 @@ class ImportPreviewTest extends TestCase
 
         $job = $importService->createJob(
             tenantId: $otherTenant->id,
+            companyId: $otherCompany->id,
             userId: $otherUser->id,
             type: ImportType::Partners,
             filename: 'other.csv',

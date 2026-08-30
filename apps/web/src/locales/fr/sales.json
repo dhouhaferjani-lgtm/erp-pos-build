@@ -55,9 +55,16 @@
       "supplier": "Fournisseur",
       "both": "Les deux"
     },
+    "nature": {
+      "label": "Nature",
+      "selectPlaceholder": "Sélectionner la nature",
+      "individual": "Particulier",
+      "company": "Société"
+    },
     "validation": {
       "nameRequired": "Le nom est obligatoire",
-      "typeRequired": "Le type est obligatoire"
+      "typeRequired": "Le type est obligatoire",
+      "natureRequired": "La nature est obligatoire"
     },
     "messages": {
       "created": "Partenaire créé avec succès",
@@ -103,10 +110,6 @@
     "totalSummary": "{{count}} {{entity}} au total",
     "b2b": {
       "title": "Informations B2B",
-      "customerCategory": "Catégorie client",
-      "selectCategory": "Sélectionner une catégorie",
-      "individual": "Particulier",
-      "business": "Entreprise",
       "companyLegalName": "Raison sociale",
       "registrationNumber": "Numéro d'immatriculation",
       "paymentTerms": "Conditions de paiement",

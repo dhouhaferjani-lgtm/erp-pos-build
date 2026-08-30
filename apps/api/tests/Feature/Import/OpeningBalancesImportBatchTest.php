@@ -25,6 +25,7 @@ use App\Modules\Import\Services\ImportService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -417,7 +418,10 @@ final class OpeningBalancesImportBatchTest extends TestCase
         app(CompanyContext::class)->clear();
 
         (new ProcessImportJob($job->id, $this->company->id, $this->tenant->id))
-            ->handle(app(ImportService::class));
+            ->handle(
+                app(ImportService::class),
+                app(UnitsProvisioningService::class),
+            );
 
         $job->refresh();
         $this->assertSame(ImportStatus::Completed, $job->status);
@@ -488,6 +492,7 @@ final class OpeningBalancesImportBatchTest extends TestCase
     {
         $job = $this->importService->createJob(
             tenantId: $this->tenant->id,
+            companyId: $this->company->id,
             userId: $this->user->id,
             type: ImportType::OpeningBalances,
             filename: 'balances.csv',

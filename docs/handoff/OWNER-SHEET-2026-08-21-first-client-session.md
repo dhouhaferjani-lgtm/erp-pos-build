@@ -60,6 +60,8 @@
 
 **RULED 2026-08-25 (owner): count-correction GL posting — flip `inventory.count_correction_gl_posting_enabled` to true (seeded default) when W4-6 lands; the expert-comptable reviews the account choice (6586/7586) later at onboarding. Supersedes the OQ-12/H-5 deploy-time blocker. Brief `docs/sessions/session-A-2026-08-24/BRIEF-P1-count-correction-gl-default.md`.**
 
+**RULED 2026-08-29 (owner) — B-18 party/contact program, OQ1-9 + acks 1-5 ALL ACCEPTED as recommended** ("I agree with all the rulings, 1-9"). Full record: LEDGER row **D-H0-1**. Headlines: `party_kind` on `partners` with person attributes as columns; standalone CRM Contacts/Companies surfaces deleted (table+API kept); facture to an organization hard-blocks on missing matricule, persons exempt; 1 receipt → 1 facture at launch; cashier facture button at launch, any cashier, no PIN; nature field = **Nature**; sole trader with matricule = organization; Phase 1 + Phase 2 pre-launch, Phase 3 first post-launch. Future marketing CRM: model assessed CRM-safe (`docs/handoff/ASSESSMENT-crm-seam-party-model-2026-08-29.md`), standing rule = no third person table / audiences as read models / outbound via `Communication` behind consent.
+
 **RULED 2026-08-25 (owner) — OQ-74 + STANDING RULE:** AP historical openings are ALLOWED as supplier-typed documents now that W4-3 books them correctly (Session C's provenance columns remain program work). General rule: *anything that is standard ERP logic — the way things should work — is applied as soon as it is implemented; no fail-safe refusal holds back a correctly built standard flow.* Sessions B/C: apply to pending fail-safe defaults.
 
 ## B. Asks — need your ruling (from the first-client onboarding audit)

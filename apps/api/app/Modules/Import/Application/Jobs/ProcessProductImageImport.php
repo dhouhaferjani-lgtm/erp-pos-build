@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Import\Application\Jobs;
 
 use App\Jobs\Concerns\BindsTenantContext;
+use App\Modules\Import\Domain\Data\ImportCountersData;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Services\ImportService;
@@ -47,14 +48,20 @@ final class ProcessProductImageImport implements ShouldQueue
      */
     public int $timeout = 1800;
 
+    /** Company context added after ProductImages jobs first shipped. */
+    public ?string $companyId = null;
+
     /**
      * Create a new job instance.
      */
     public function __construct(
         public readonly string $importJobId,
+        /** Disk-relative key on the local storage disk. */
         public readonly string $zipPath,
         public readonly string $tenantId,
+        ?string $companyId = null,
     ) {
+        $this->companyId = $companyId;
         $this->onQueue('imports');
     }
 
@@ -66,10 +73,7 @@ final class ProcessProductImageImport implements ShouldQueue
         ImportService $baseImportService
     ): void {
         $this->withTenantContext(function () use ($importService, $baseImportService): void {
-            $job = ImportJob::query()
-                ->where('tenant_id', $this->tenantId)
-                ->where('id', $this->importJobId)
-                ->first();
+            $job = $this->findImportJob();
 
             if ($job === null) {
                 Log::error('ProcessProductImageImport: Import job not found', ['id' => $this->importJobId]);
@@ -77,30 +81,86 @@ final class ProcessProductImageImport implements ShouldQueue
                 return;
             }
 
-            try {
-                // Update status to importing
-                $job->update([
-                    'status' => ImportStatus::Importing,
-                    'started_at' => now(),
+            // The persisted disk-relative key is authoritative for processing and
+            // cleanup, including legacy payloads that serialized an absolute path.
+            $storageKey = $job->file_path;
+
+            if ($this->companyId === null) {
+                $message = 'company_context_missing: Re-upload this ProductImages import so it can be processed in a company context.';
+                Log::error('ProcessProductImageImport: Failed', [
+                    'job_id' => $this->importJobId,
+                    'error' => $message,
                 ]);
 
+                ImportJob::query()
+                    ->where('tenant_id', $this->tenantId)
+                    ->where('id', $this->importJobId)
+                    ->whereNull('worker_started_at')
+                    ->whereIn('status', [
+                        ImportStatus::Pending->value,
+                        ImportStatus::Validated->value,
+                        ImportStatus::Importing->value,
+                    ])
+                    ->update([
+                        'status' => ImportStatus::Failed->value,
+                        'error_message' => $message,
+                        'completed_at' => now(),
+                    ]);
+
+                $this->purgeSource($storageKey);
+
+                return;
+            }
+
+            $observedStatus = $job->status;
+            if ($observedStatus->canStartImport()) {
+                $claim = $baseImportService->claimJob($job, $this->companyId);
+                if (! $claim->won) {
+                    Log::warning('ProcessProductImageImport: Import job already claimed by another worker', [
+                        'id' => $this->importJobId,
+                        'status' => $claim->priorStatus->value,
+                    ]);
+
+                    return;
+                }
+                $job = $this->findImportJob();
+                if ($job === null) {
+                    return;
+                }
+            } elseif ($observedStatus !== ImportStatus::Importing) {
+                Log::warning('ProcessProductImageImport: Import job cannot be started', [
+                    'id' => $this->importJobId,
+                    'status' => $observedStatus->value,
+                ]);
+
+                return;
+            }
+
+            if (! $baseImportService->markWorkerStarted($job->id, $this->tenantId)) {
+                Log::warning('ProcessProductImageImport: Duplicate delivery ignored', [
+                    'id' => $this->importJobId,
+                    'status' => $this->findImportJob()?->status->value ?? $job->status->value,
+                ]);
+
+                return;
+            }
+            $job = $this->findImportJob();
+            if ($job === null) {
+                return;
+            }
+
+            try {
                 // Process ZIP file
-                $results = $importService->processZipImport($job, $this->zipPath);
+                $results = $importService->processZipImport(
+                    $job,
+                    Storage::disk('local')->path($storageKey),
+                    $this->companyId,
+                );
 
                 // Calculate counts
                 $successCount = collect($results)->where('success', true)->count();
                 $failureCount = collect($results)->where('success', false)->count();
                 $totalProcessed = count($results);
-
-                // Update job with results
-                $job->update([
-                    'status' => ImportStatus::Completed,
-                    'successful_rows' => $successCount,
-                    'failed_rows' => $failureCount,
-                    'processed_rows' => $totalProcessed,
-                    'total_rows' => $totalProcessed,
-                    'completed_at' => now(),
-                ]);
 
                 // Store error details if any failures
                 if ($failureCount > 0) {
@@ -124,6 +184,21 @@ final class ProcessProductImageImport implements ShouldQueue
                     }
                 }
 
+                $baseImportService->finalizeClaimedJob(
+                    $job,
+                    ImportStatus::Completed,
+                    counters: new ImportCountersData(
+                        totalRows: $totalProcessed,
+                        successfulRows: $successCount,
+                        skippedRows: 0,
+                        failedRows: $failureCount,
+                    ),
+                );
+                $job = $this->findImportJob();
+                if ($job === null) {
+                    return;
+                }
+
                 Log::info('ProcessProductImageImport: Completed successfully', [
                     'job_id' => $this->importJobId,
                     'success_count' => $successCount,
@@ -136,17 +211,46 @@ final class ProcessProductImageImport implements ShouldQueue
                     'trace' => $e->getTraceAsString(),
                 ]);
 
-                $job->update([
-                    'status' => ImportStatus::Failed,
-                    'error_message' => $e->getMessage(),
-                    'completed_at' => now(),
-                ]);
+                $baseImportService->finalizeClaimedJob(
+                    $job,
+                    ImportStatus::Failed,
+                    message: $e->getMessage(),
+                );
             } finally {
-                // Cleanup ZIP file
-                if (Storage::disk('local')->exists($this->zipPath)) {
-                    Storage::disk('local')->delete($this->zipPath);
-                }
+                $this->purgeSource($storageKey);
             }
         });
+    }
+
+    private function purgeSource(string $storageKey): void
+    {
+        $disk = Storage::disk('local');
+        $sourcePurged = ! $disk->exists($storageKey);
+        if (! $sourcePurged) {
+            $sourcePurged = $disk->delete($storageKey);
+        }
+
+        if ($sourcePurged) {
+            ImportJob::query()
+                ->where('tenant_id', $this->tenantId)
+                ->where('id', $this->importJobId)
+                ->whereNull('source_purged_at')
+                ->update(['source_purged_at' => now()]);
+
+            return;
+        }
+
+        Log::warning('ProcessProductImageImport: Source cleanup failed', [
+            'id' => $this->importJobId,
+            'storage_key' => $storageKey,
+        ]);
+    }
+
+    private function findImportJob(): ?ImportJob
+    {
+        return ImportJob::query()
+            ->where('tenant_id', $this->tenantId)
+            ->where('id', $this->importJobId)
+            ->first();
     }
 }

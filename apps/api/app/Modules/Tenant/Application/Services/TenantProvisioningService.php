@@ -14,6 +14,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\Device;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Procurement\Domain\ProcurementPolicy;
+use App\Modules\Tenant\Application\Contracts\ExecutionTimeLimit;
 use App\Modules\Tenant\Domain\Domain;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -24,6 +25,7 @@ use DateTimeInterface;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Stancl\Tenancy\Jobs\CreateDatabase;
 use Stancl\Tenancy\Jobs\MigrateDatabase;
@@ -57,6 +59,7 @@ class TenantProvisioningService
         private readonly TenantInitializationService $tenantInitializationService,
         private readonly IdentityIndexService $identityIndexService,
         private readonly TenantTokenRevoker $tokenRevoker,
+        private readonly ExecutionTimeLimit $executionTimeLimit,
     ) {}
 
     /**
@@ -104,6 +107,8 @@ class TenantProvisioningService
         ]);
 
         $databaseCreated = false;
+        $provisioningCompleted = false;
+        $compensationPerformed = false;
 
         try {
             // 1b. Central: subdomain shortcut row.
@@ -115,6 +120,28 @@ class TenantProvisioningService
             ]);
 
             // 2. Provision + migrate the per-tenant database.
+            $this->executionTimeLimit->registerShutdownHandler(
+                function () use (
+                    $tenant,
+                    &$databaseCreated,
+                    &$provisioningCompleted,
+                    &$compensationPerformed,
+                ): void {
+                    if (! $this->shouldCompensateAfterShutdown(
+                        $databaseCreated,
+                        $provisioningCompleted,
+                        $compensationPerformed,
+                    )) {
+                        return;
+                    }
+
+                    $compensationPerformed = true;
+                    $this->compensate($tenant, true);
+                },
+            );
+            $this->executionTimeLimit->setTimeLimit(ExecutionTimeLimit::PROVISIONING_SECONDS);
+            Log::info('tenant.provisioning time_limit=240 tenant_id='.$tenant->id);
+
             Bus::dispatchSync(new CreateDatabase($tenant));
             $databaseCreated = true;
             Bus::dispatchSync(new MigrateDatabase($tenant));
@@ -209,6 +236,7 @@ class TenantProvisioningService
             );
 
             tenancy()->end();
+            $provisioningCompleted = true;
 
             return [
                 'user' => $user,
@@ -217,10 +245,23 @@ class TenantProvisioningService
                 'device' => $device,
             ];
         } catch (\Throwable $e) {
-            $this->compensate($tenant, $databaseCreated);
+            if (! $compensationPerformed) {
+                $compensationPerformed = true;
+                $this->compensate($tenant, $databaseCreated);
+            }
 
             throw $e;
+        } finally {
+            $this->executionTimeLimit->clear();
         }
+    }
+
+    private function shouldCompensateAfterShutdown(
+        bool $databaseCreated,
+        bool $provisioningCompleted,
+        bool $compensationPerformed,
+    ): bool {
+        return $databaseCreated && ! $provisioningCompleted && ! $compensationPerformed;
     }
 
     /**

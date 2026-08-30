@@ -21,13 +21,13 @@ Post-mortem: the round-multipliers were NOT deep design flaws. They were five re
 ## How to run
 
 1. Dispatch round 0 to a cheap/mechanical model (Sonnet-tier is fine), or execute it yourself in the authoring session. It needs only Read/Grep/Glob/Bash — no design judgment.
-2. The runner executes checks 1–5 plus the hygiene sub-check, producing the report in the output format below.
+2. The runner executes checks 1–6 plus the hygiene sub-check, producing the report in the output format below.
 3. **Attach the round-0 report to the gate dispatch.** The adversarial reviewer starts from "mechanical claims verified" and spends its round on substance.
 4. **HARD RULE: round-0 FAIL = fix the document, then re-run round 0 from the top.** Never send a document with a failing round-0 report to the adversarial gate. Never "note the failure and dispatch anyway."
 
 ---
 
-## The five checks
+## The six checks
 
 ### Check 1 — Revision-log truth
 
@@ -94,6 +94,16 @@ Every permission key and module key named in the document must exist where the s
 
 ---
 
+### Check 6 — Journey-hardening sections present (added 2026-08-29, Session I)
+
+For a document whose deliverable is a **user-facing flow** (imports, onboarding, POS, purchasing, transfers/counting, treasury, documents, reports, operator settings):
+
+- an `## Industry baseline` section exists (`docs/conventions/10-BENCHMARK-FIRST-SPECS.md` skeleton); every row has a Decision (MATCH/DEFER/DIVERGE/ALREADY) and every "AutoERP today" cell is a real `path:line` (grep it — same evidence rule as check 4);
+- a `Second-of-everything:` line names the second-company / second-location / re-run tests the lane adds, or states "not in scope: no catalogue entity touched" — verify the claim against the deliverable's tables (`docs/conventions/09-SECOND-OF-EVERYTHING.md`);
+- a `Concepts:` (vocabulary) line lists every noun the lane introduces with a glossary ✅ or "NEW — row added in this lane"; grep `docs/glossary.md` for each ✅ (`docs/conventions/11-ONE-SURFACE-PER-CONCEPT.md`).
+
+A document claiming "no user-facing flow" is checked against its own deliverable list; a UI tile, importer, form, endpoint an operator calls, or report counts as user-facing. FAIL on any missing section or unverifiable cell.
+
 ## Document-hygiene sub-check
 
 Fast, always run, part of the same report:
@@ -118,6 +128,7 @@ Runner: <model / session> · Date: <date>
 | 3 | Test contracts executable     | PASS/FAIL | n found  |
 | 4 | Behavior claims cited         | PASS/FAIL | n found  |
 | 5 | Permission keys verified      | PASS/FAIL | n found  |
+| 6 | Journey-hardening sections    | PASS/FAIL | n found  |
 | H | Hygiene (pipes, banner)       | PASS/FAIL | n found  |
 
 ## Findings

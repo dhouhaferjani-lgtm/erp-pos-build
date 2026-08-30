@@ -171,6 +171,25 @@ Schedule::command('inventory:expire-reservations')
         Log::error('inventory:expire-reservations exited non-zero — one or more tenants failed their stock-reservation expiry sweep (expired reservations stay ACTIVE and their reserved quantity stays locked out of available stock until a later run succeeds). Per-tenant detail is in the application error log under the TenantScopedCommand::forEachTenant failure entry (tenant_id + exception).');
     });
 
+// Import maintenance runs in-process and iterates explicitly per tenant. The
+// scheduler starts on the central connection, where import_jobs does not exist
+// in database-per-tenant deployments. Foreground execution keeps the exit code
+// and failure hook in the scheduler process if a child would otherwise be
+// killed during a deploy or OOM; the overlap mutex then expires predictably.
+Schedule::command('imports:reap-stuck')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(15)
+    ->onFailure(function (): void {
+        Log::error('imports:reap-stuck exited non-zero — one or more tenants failed their stale-import sweep. Abandoned jobs remain importing and cannot be retried until a later sweep marks them failed; per-tenant detail is in the TenantScopedCommand::forEachTenant failure log.');
+    });
+
+Schedule::command('imports:purge-expired')
+    ->daily()
+    ->withoutOverlapping()
+    ->onFailure(function (): void {
+        Log::error('imports:purge-expired exited non-zero — one or more tenants retained source files past the 90-day policy window. Job audit rows remain intact; per-tenant detail is in the TenantScopedCommand::forEachTenant failure log.');
+    });
+
 // Schedule: Check for expired batches daily at 1:30 AM.
 //
 // Was `Schedule::job(DailyExpiryCheck::class)` until 2026-08-04. That queue job

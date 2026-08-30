@@ -3,7 +3,6 @@ import { useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { X, Loader2 } from 'lucide-react'
 import { createCompany, type CreateCompanyInput } from '../../../features/company/api'
-import { useInvalidateCompanies } from '../../../features/company/CompanyProvider'
 import { getErrorMessage } from '../../../lib/api'
 import { orderCountries } from '../../../lib/orderCountries'
 import { useCompany } from '../../../hooks/useCompany'
@@ -41,8 +40,7 @@ const COUNTRIES: CountryConfig[] = [
  */
 export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
   const { t } = useTranslation(['settings', 'common', 'countries'])
-  const invalidateCompanies = useInvalidateCompanies()
-  const setCurrentCompany = useCompanyStore((state) => state.setCurrentCompany)
+  const adoptCreatedCompany = useCompanyStore((state) => state.adoptCreatedCompany)
   const { currentCompany } = useCompany()
   // Current company's country first, then alphabetical — no hardcoded bias.
   const orderedCountries = orderCountries(COUNTRIES, currentCompany?.countryCode)
@@ -68,10 +66,8 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
       return createCompany(input)
     },
     onSuccess: (data) => {
-      // Invalidate companies query to refetch the list
-      void invalidateCompanies()
       // Switch to the new company
-      setCurrentCompany(data.id)
+      adoptCreatedCompany(data)
       // Close the modal
       onClose()
       // Reset form

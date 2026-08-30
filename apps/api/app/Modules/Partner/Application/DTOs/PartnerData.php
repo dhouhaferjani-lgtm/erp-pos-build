@@ -10,6 +10,7 @@ use App\Modules\Partner\Domain\Enums\CustomerCategory;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Enums\PaymentTerms;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Shared\Banking\Contracts\BankAccountValidatorInterface;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
@@ -35,6 +36,9 @@ class PartnerData extends Data
         public ?string $phone,
         public ?string $country_code,
         public ?string $vat_number,
+        public PartnerTaxStatus $tax_status,
+        public ?string $exemption_reason,
+        public ?string $exemption_valid_until,
         public ?string $notes,
         public ?string $receivable_balance,
         public ?string $credit_balance,
@@ -83,6 +87,13 @@ class PartnerData extends Data
             phone: $partner->phone,
             country_code: $partner->country_code,
             vat_number: $partner->vat_number,
+            // Eloquent does not hydrate database defaults back onto the model
+            // after INSERT, so a freshly-created partner has no in-memory
+            // tax_status until it is refreshed. Mirror the schema default in
+            // the response DTO to keep create and subsequent reads identical.
+            tax_status: $partner->tax_status ?? PartnerTaxStatus::REGISTERED,
+            exemption_reason: $partner->tax_exemption_reason,
+            exemption_valid_until: $partner->tax_exemption_valid_until?->format('Y-m-d'),
             notes: $partner->notes,
             receivable_balance: $partner->receivable_balance,
             credit_balance: $partner->credit_balance,

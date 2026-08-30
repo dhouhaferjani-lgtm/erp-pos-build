@@ -1,16 +1,19 @@
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle } from 'lucide-react'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { bcadd, bccomp, bcdiv, bcmul, formatCurrency } from '@/lib/decimal'
 
 interface CreditLimitWarningProps {
   creditLimit: string | null
   outstandingBalance: string | null
+  currency: string
   thresholdPercentage?: number
 }
 
 export function CreditLimitWarning({
   creditLimit,
   outstandingBalance,
+  currency,
   thresholdPercentage = 80,
 }: CreditLimitWarningProps) {
   const { t } = useTranslation('sales')
@@ -19,16 +22,23 @@ export function CreditLimitWarning({
     return null
   }
 
-  const limit = parseFloat(creditLimit)
-  const outstanding = parseFloat(outstandingBalance)
-
-  if (limit <= 0 || outstanding <= 0) {
+  if (bccomp(creditLimit, '0') <= 0 || bccomp(outstandingBalance, '0') <= 0) {
     return null
   }
 
-  const usagePercentage = (outstanding / limit) * 100
-  const isExceeded = outstanding >= limit
-  const isApproaching = usagePercentage >= thresholdPercentage
+  const usagePercentage = bcmul(bcdiv(outstandingBalance, creditLimit, 6), '100', 6)
+  const thresholdComparisonLeft = bcmul(outstandingBalance, '100', 6)
+  const thresholdComparisonRight = bcmul(creditLimit, String(thresholdPercentage), 6)
+  const isExceeded = bccomp(outstandingBalance, creditLimit) >= 0
+  const isApproaching = bccomp(thresholdComparisonLeft, thresholdComparisonRight) >= 0
+
+  // Round half-up (bcadd inherits Big.RM = 1) so a usage of 79.5 reads as
+  // "80" beside an 80% threshold instead of truncating to "79". A balance
+  // that is still strictly below the limit is capped at 99 so it can never
+  // read as "100% used" while the copy says "approaching".
+  const roundedPercentage = bcadd(usagePercentage, '0', 0)
+  const displayedPercentage =
+    !isExceeded && bccomp(roundedPercentage, '100') >= 0 ? '99' : roundedPercentage
 
   if (!isApproaching && !isExceeded) {
     return null
@@ -58,15 +68,9 @@ export function CreditLimitWarning({
         </p>
         <p className="mt-1 text-sm opacity-90">
           {t('partners.b2b.creditLimitUsage', {
-            outstanding: parseFloat(outstandingBalance).toLocaleString(undefined, {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            }),
-            limit: parseFloat(creditLimit).toLocaleString(undefined, {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            }),
-            percentage: Math.round(usagePercentage),
+            outstanding: formatCurrency(outstandingBalance, true, currency),
+            limit: formatCurrency(creditLimit, true, currency),
+            percentage: displayedPercentage,
           })}
         </p>
       </div>

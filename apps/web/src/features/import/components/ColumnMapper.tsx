@@ -157,6 +157,9 @@ export function ColumnMapper({
                               }
                             >
                               {col.name}
+                              {col.name === 'location_code' || col.name === 'placement_path'
+                                ? ` — ${t(`mapping.targetLabels.${col.name}`)}`
+                                : ''}
                               {col.required ? ' *' : ''}
                               {mappedTargets.has(col.name) &&
                                 mapping[sourceCol] !== col.name
@@ -178,6 +181,9 @@ export function ColumnMapper({
                               }
                             >
                               {col.name}
+                              {col.name === 'location_code' || col.name === 'placement_path'
+                                ? ` — ${t(`mapping.targetLabels.${col.name}`)}`
+                                : ''}
                               {mappedTargets.has(col.name) &&
                                 mapping[sourceCol] !== col.name
                                 ? ` (${t('mapping.alreadyMapped')})`

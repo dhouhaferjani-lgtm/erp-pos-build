@@ -202,7 +202,7 @@ the API) → B2B block visible; open a NULL walk-in with no B2B data → hidden.
   now-unused `crm:companies.*` key block in every locale file (EN/FR/AR). Keep `/crm/contacts*`
   routes for now (owner-gated OQ2) and keep the `/partners → /sales/customers` legacy redirects
   (`routes/index.tsx:3201-3203`, verify).
-- The two partner EDIT routes gated on `contacts.update` (`routes/index.tsx:627` and `:876`) →
+- The two partner EDIT routes gated on `contacts.update` (`routes/index.tsx:627` and `:876`) → 
   `partners.update`. Line `:2832` is the contact edit route — leave it. Verify the permission name
   exists in `RolesAndPermissionsSeeder` (grep `partners.update`).
 - `/purchases/suppliers` list route currently has no permission gate (spec §7.3); add

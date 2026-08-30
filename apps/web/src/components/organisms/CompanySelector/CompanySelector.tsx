@@ -14,9 +14,10 @@ import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
  */
 export function CompanySelector() {
   const { t } = useTranslation('common')
-  const { currentCompany, companies, hasMultipleCompanies, switchCompany } = useCompany()
+  const { currentCompany, currentCompanyId, companies, hasMultipleCompanies, switchCompany } = useCompany()
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const previousCompanyIdRef = useRef(currentCompanyId)
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
@@ -34,18 +35,28 @@ export function CompanySelector() {
     }
   }, [])
 
+  // Wait until the company change has re-rendered query observers onto their
+  // new scoped keys. Default invalidation then refetches only active new-scope
+  // queries and merely marks the abandoned old-scope keys stale.
+  useEffect(() => {
+    if (previousCompanyIdRef.current !== currentCompanyId) {
+      previousCompanyIdRef.current = currentCompanyId
+      queueMicrotask(() => {
+        void queryClient.invalidateQueries()
+      })
+    }
+  }, [currentCompanyId, queryClient])
+
   const handleCompanyChange = (companyId: string) => {
     if (companyId !== currentCompany?.id) {
       switchCompany(companyId)
-      // Invalidate all queries to refetch data for new company
-      void queryClient.invalidateQueries()
     }
     setIsOpen(false)
   }
 
   const handleAddCompany = () => {
     setIsOpen(false)
-    navigate('/company-onboarding')
+    void navigate('/company-onboarding')
   }
 
   return (

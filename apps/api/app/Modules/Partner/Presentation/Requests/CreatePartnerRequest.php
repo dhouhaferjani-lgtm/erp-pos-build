@@ -10,6 +10,7 @@ use App\Modules\Partner\Domain\Enums\ConsolidationFrequency;
 use App\Modules\Partner\Domain\Enums\CustomerCategory;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Enums\PaymentTerms;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Partner\Presentation\Requests\Concerns\ValidatesPartnerBankAccounts;
 use App\Shared\Banking\Contracts\BankAccountValidatorInterface;
 use App\Shared\Domain\Validation\CountryTaxNumberRules;
@@ -62,6 +63,7 @@ class CreatePartnerRequest extends FormRequest
         /** @var User|null $user */
         $user = $this->user();
         $tenantId = $user?->tenant_id;
+        $company = $this->companyContext->requireCompany();
 
         return [
             'name' => ['required', 'string', 'max:255'],
@@ -71,9 +73,14 @@ class CreatePartnerRequest extends FormRequest
                 'nullable',
                 'string',
                 'max:50',
+                // No `whereNull('deleted_at')`: the live index is a plain
+                // unique(company_id, code) (migration
+                // 2025_12_30_195300_fix_multi_company_unique_constraints),
+                // which counts soft-deleted rows. Excluding them here let a
+                // code held by a trashed partner pass validation and then
+                // raise a 23505 at insert (merge-gate r1 finding 5).
                 Rule::unique('partners', 'code')
-                    ->where('tenant_id', $tenantId)
-                    ->whereNull('deleted_at'),
+                    ->where('company_id', $company->id),
             ],
             'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
@@ -84,7 +91,7 @@ class CreatePartnerRequest extends FormRequest
                 'max:50',
                 Rule::unique('partners', 'vat_number')
                     ->where('tenant_id', $tenantId)
-                    ->whereNull('deleted_at'),
+                    ->where('company_id', $company->id),
                 function (string $attribute, mixed $value, \Closure $fail): void {
                     if ($value === null) {
                         return;
@@ -143,10 +150,36 @@ class CreatePartnerRequest extends FormRequest
      */
     public function messages(): array
     {
-        return [
+        $messages = [
             'credit_limit.regex' => 'Credit limit must have at most 3 decimal places.',
             'discount_percentage.regex' => 'Discount percentage must have at most 2 decimal places.',
         ];
+
+        $company = $this->companyContext->requireCompany();
+
+        $code = $this->input('code');
+        if (is_string($code) && Partner::onlyTrashed()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->where('code', $code)
+            ->exists()
+        ) {
+            $messages['code.unique'] = "code_held_by_deleted_partner: code {$code} is held by a soft-deleted partner; "
+                .'purge the deleted record or choose a different code.';
+        }
+
+        $vatNumber = $this->input('vat_number');
+        if (is_string($vatNumber) && Partner::onlyTrashed()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->where('vat_number', $vatNumber)
+            ->exists()
+        ) {
+            $messages['vat_number.unique'] = "vat_held_by_deleted_partner: VAT {$vatNumber} is held by a soft-deleted partner; "
+                .'purge the deleted record or choose a different VAT.';
+        }
+
+        return $messages;
     }
 
     /**

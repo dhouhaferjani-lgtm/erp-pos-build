@@ -1,0 +1,5 @@
+code,name,type,phone,opening_balance,balance_date,reference
+CUST-POS-{{RUN}},Campaign Customer Owes {{RUN}},customer,+21671000001,1250.500,2026-08-15,CUST-POS-{{RUN}}
+CUST-NEG-{{RUN}},Campaign Customer Credit {{RUN}},customer,+21671000002,-300.000,2026-08-20,CUST-NEG-{{RUN}}
+SUPP-POS-{{RUN}},Campaign Supplier Owed {{RUN}},supplier,+21671000003,4780.250,2026-08-10,SUPP-POS-{{RUN}}
+SUPP-NEG-{{RUN}},Campaign Supplier Credit {{RUN}},supplier,+21671000004,-150.000,2026-08-22,SUPP-NEG-{{RUN}}
