@@ -184,7 +184,19 @@ final class TenantOnlyUniqueOnCatalogueTablesRatchetTest extends TestCase
 
     private const BASELINE_RELATIVE = 'tests/Architecture/baselines/tenant-only-unique-baseline.json';
 
-    private const LEGACY_ENTRY_CEILING = 7;
+    private const LEGACY_ENTRY_CEILING = 11;
+
+    /**
+     * Waived entries are pinned too: a contributor cannot silence growth in-diff by adding a
+     * `waiver` string — any new waiver also needs this constant raised, which the reviewer sees.
+     */
+    private const WAIVED_ENTRY_CEILING = 9;
+
+    /**
+     * The company-owned tables the rule is about (convention 09) — pinned so nobody trims the set to
+     * make a violation disappear. Tables may be ADDED to CATALOGUE_TABLES; these may never leave it.
+     */
+    private const PINNED_CATALOGUE_TABLES = ['products', 'product_variants', 'partners', 'units', 'unit_categories', 'payment_methods', 'payment_repositories', 'accounts', 'tax_configurations', 'categories', 'brands', 'product_attributes', 'locations', 'pos_terminals', 'documents'];
 
     protected function setUp(): void
     {
@@ -215,6 +227,25 @@ final class TenantOnlyUniqueOnCatalogueTablesRatchetTest extends TestCase
             self::LEGACY_ENTRY_CEILING,
             count($legacyEntries),
             'Un-waived legacy baseline growth requires a reviewed raise of LEGACY_ENTRY_CEILING.',
+        );
+        $waivedEntries = array_filter(
+            $baseline,
+            static fn ($entry): bool => $entry->waiver !== null,
+        );
+        self::assertLessThanOrEqual(
+            self::WAIVED_ENTRY_CEILING,
+            count($waivedEntries),
+            'A new waiver requires a reviewed raise of WAIVED_ENTRY_CEILING (waivers are for keys tenant-global by nature only).',
+        );
+    }
+
+    #[Test]
+    public function the_core_catalogue_tables_stay_in_scope(): void
+    {
+        self::assertSame(
+            [],
+            array_values(array_diff(self::PINNED_CATALOGUE_TABLES, self::CATALOGUE_TABLES)),
+            'A pinned catalogue table was removed from CATALOGUE_TABLES — the rule is about these tables.',
         );
     }
 

@@ -51,21 +51,28 @@ status or "no exception thrown".
 
 ### The architecture ratchet (the mechanical half)
 
-`TenantOnlyUniqueOnCatalogueTablesRatchetTest` (lands with lane I-2; PG lane only) introspects the **live
+`TenantOnlyUniqueOnCatalogueTablesRatchetTest` (lane I-2; PG lane only, `RefreshDatabase`) introspects the **live
 PostgreSQL schema** of the migrated test database — `pg_index` / `pg_get_indexdef()`, partial and raw-SQL indexes
-included — for unique keys whose leading column is `tenant_id` and which lack `company_id`, on a catalogue table.
-(Migration text is not scanned: `down()` bodies re-add dropped keys, superseded `create_*` lines never go stale,
-raw-SQL indexes are invisible.) Existing instances live in
-`tests/Architecture/baselines/tenant-only-unique-baseline.json` (shrink-only). A new one fails CI with:
+included — for **any unique key on a catalogue table whose column list lacks `company_id`** (regardless of where
+`tenant_id` sits, or whether it is present at all: under db-per-tenant `unique(['sku'])` is the same bug; primary
+keys and single-column `id`/`uuid` uniques are excluded). Every table that carries such a key must be classified —
+in `CATALOGUE_TABLES` (company-owned) or in `EXCLUDED_TABLES` with a written reason (tenant-global by nature) — or
+the test fails with a "classify table X" message. (Migration text is not scanned: `down()` bodies re-add dropped
+keys, superseded `create_*` lines never go stale, raw-SQL indexes are invisible.)
 
-> new tenant-only unique on catalogue table `X` (index `Y`) — add `company_id` to the key, or add the entry to
-> the baseline with a `waiver` reason
+Known instances live in `tests/Architecture/baselines/tenant-only-unique-baseline.json`. An entry WITHOUT a
+`waiver` is **legacy debt** — shrink-only, and counted against `LEGACY_ENTRY_CEILING` in the test. An entry WITH
+a `waiver` is a key that is tenant-global by nature (a physical barcode per RUL-2, a platform submission id, a
+child key scoped by a company-owned parent row) — counted against `WAIVED_ENTRY_CEILING`. A new key fails CI with:
 
-A waiver is legitimate when the value is tenant-global by nature (a user email, a signing-key id, an
-idempotency key). Write the reason in the baseline entry; the reviewer reads it in the diff.
+> new catalogue unique lacking company_id on `X` (index `Y`) — add `company_id` to the key, or add a baseline
+> entry (legacy → raise `LEGACY_ENTRY_CEILING`; tenant-global by nature → `waiver` + raise `WAIVED_ENTRY_CEILING`)
 
-When a lane *fixes* a baselined instance (G-3a SKU), the live schema no longer carries the index, the entry goes
-stale, and the ratchet fails until the merge deletes it — so it cannot be forgotten.
+Both ceilings live in the test file, so silencing the ratchet always shows up as a reviewed edit there; the residual
+(no protected-blob authority like the DPA ratchet) is that a reviewer must actually read that diff.
+
+When a lane *fixes* a baselined instance (G-3a SKU, numbering per company), the live schema no longer carries the
+index, the entry goes stale, and the ratchet fails until the merge deletes it — so it cannot be forgotten.
 
 ---
 

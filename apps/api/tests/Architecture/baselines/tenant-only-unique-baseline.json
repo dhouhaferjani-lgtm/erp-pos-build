@@ -21,8 +21,7 @@
         "key": "loyalty_members|loyalty_members_tenant_id_phone_unique|tenant_id,phone"
     },
     {
-        "key": "loyalty_tiers|loyalty_tiers_program_id_level_unique|program_id,level",
-        "waiver": "Tier levels are unique within their company-owned loyalty program, so program_id supplies the ownership boundary."
+        "key": "loyalty_tiers|loyalty_tiers_program_id_level_unique|program_id,level"
     },
     {
         "key": "modifiers|modifiers_modifier_group_id_code_unique|modifier_group_id,code",
@@ -32,8 +31,7 @@
         "key": "price_lists|price_lists_code_unique|code"
     },
     {
-        "key": "product_attribute_values|product_attribute_values_attribute_id_code_unique|attribute_id,code",
-        "waiver": "Attribute-value codes are unique within their company-owned attribute, so attribute_id supplies the ownership boundary."
+        "key": "product_attribute_values|product_attribute_values_attribute_id_code_unique|attribute_id,code"
     },
     {
         "key": "product_attributes|product_attributes_tenant_id_code_unique|tenant_id,code"
@@ -59,12 +57,10 @@
         "waiver": "System unit-category codes identify global reference rows shared by every tenant and company."
     },
     {
-        "key": "unit_categories|unit_categories_tenant_code_unique|tenant_id,code",
-        "waiver": "Units and their categories are tenant-scoped reference data with per-company visibility."
+        "key": "unit_categories|unit_categories_tenant_code_unique|tenant_id,code"
     },
     {
-        "key": "units|units_tenant_id_code_unique|tenant_id,code",
-        "waiver": "Units and their categories are tenant-scoped reference data with per-company visibility."
+        "key": "units|units_tenant_id_code_unique|tenant_id,code"
     },
     {
         "key": "vehicles|vehicles_tenant_id_license_plate_unique|tenant_id,license_plate"
