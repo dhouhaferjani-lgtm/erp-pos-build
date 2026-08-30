@@ -40,6 +40,9 @@ final class RegistrationResponseIsPureJsonTest extends TestCase
         '2026_08_30_100100_enforce_company_scoped_variant_skus',
         '2026_08_30_100200_enforce_company_scoped_partner_vat_numbers',
         '2026_08_30_100300_ensure_units_visible_per_company',
+        '2026_08_31_100000_add_outcome_to_import_rows',
+        '2026_08_31_100100_add_error_code_to_import_rows',
+        '2026_08_31_100200_backfill_product_unit_ids',
     ];
 
     protected function setUp(): void

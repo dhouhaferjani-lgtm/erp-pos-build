@@ -1051,9 +1051,13 @@ tier: string;
 };
 }
 declare namespace App.Modules.Import.Domain.Enums {
-export type ImportErrorCode = 'units_not_seeded' | 'worker_lost';
+export type DuplicateBucket = 'new' | 'existing_sku' | 'existing_barcode' | 'existing_name' | 'in_file' | 'refused';
+export type DuplicatePolicy = 'override' | 'skip';
+export type ImportErrorCode = 'units_not_seeded' | 'unit_unknown' | 'unit_ambiguous' | 'unit_default_missing' | 'barcode_ambiguous' | 'product_not_found' | 'partner_not_found' | 'sku_held_by_deleted_product' | 'vat_held_by_deleted_partner' | 'duplicate_sku_in_company' | 'validation_failed' | 'internal_error' | 'worker_lost';
+export type ImportRowOutcome = 'pending' | 'imported' | 'duplicate_skipped' | 'duplicate_loser' | 'failed' | 'opening_locked';
 export type ImportStatus = 'pending' | 'validating' | 'validated' | 'importing' | 'completed' | 'failed';
 export type ImportType = 'parties' | 'partners' | 'products' | 'stock_levels' | 'opening_balances' | 'product_images' | 'composite_items';
+export type ImportWarningCode = 'price_conflict' | 'margin_without_cost' | 'balance_not_posted' | 'opening_failed' | 'quantity_ignored_service' | 'qty_without_cost' | 'expiry_in_past' | 'expiry_conflict_existing_lot' | 'expiry_ignored_not_batch_tracked' | 'expiry_ignored_no_default_lot' | 'category_matched_by_slug' | 'category_created' | 'category_restored' | 'sku_generated' | 'code_generated' | 'matched_by_name' | 'duplicate_in_file' | 'preview_drift' | 'opening_skipped_existing' | 'opening_corrected' | 'unit_defaulted' | 'location_not_supplied' | 'location_code_unknown' | 'location_unresolved' | 'opening_exists';
 }
 declare namespace App.Modules.Inventory.Application.DTOs {
 export type GoodsReceiptData = {
@@ -3170,6 +3174,9 @@ export type CategoryResolutionOutcome = 'matched' | 'matched_by_slug' | 'created
 export type EnrichmentFeedbackAction = 'confirmed' | 'rejected';
 export type EnrichmentFeedbackReason = 'wrong_product' | 'bad_data';
 export type EnrichmentStatus = 'pending' | 'enriching' | 'completed' | 'failed' | 'rejected' | 'not_enrichable';
+export type PartnerIdentityMatch = 'code' | 'vat_number' | 'name';
+export type ProductIdentityFailure = 'barcode_ambiguous' | 'sku_held_by_deleted_product';
+export type ProductIdentityMatch = 'sku' | 'barcode' | 'name';
 export type ProductTaxDefaultSource = 'file' | 'category_default' | 'company_default';
 }
 

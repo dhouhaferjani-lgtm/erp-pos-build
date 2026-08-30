@@ -6,8 +6,10 @@ namespace App\Modules\Partner;
 
 use App\Modules\Partner\Application\Contracts\PartnerRepositoryInterface;
 use App\Modules\Partner\Application\Services\PartnerReferenceCounter;
+use App\Modules\Partner\Application\Services\PartnerResolver;
 use App\Modules\Partner\Infrastructure\Persistence\EloquentPartnerRepository;
 use App\Shared\Contracts\Partner\PartnerReferenceSource;
+use App\Shared\Contracts\PartnerResolverInterface;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 
@@ -16,6 +18,7 @@ class PartnerServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(PartnerRepositoryInterface::class, EloquentPartnerRepository::class);
+        $this->app->bind(PartnerResolverInterface::class, PartnerResolver::class);
 
         // Partner delete guard (BUG-007 / lane R2-S). The counter itself
         // knows no table names — each owning module tags its own

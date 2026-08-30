@@ -15,12 +15,15 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Import\Application\Jobs\ProcessImportJob;
+use App\Modules\Import\Domain\Enums\ImportErrorCode;
+use App\Modules\Import\Domain\Enums\ImportRowOutcome;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Domain\ImportRow;
 use App\Modules\Import\Services\ImportJobClaimService;
 use App\Modules\Import\Services\ImportService;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -99,8 +102,7 @@ class ProcessImportJobStatusTest extends TestCase
         app(UnitsProvisioningService::class)->provisionForCompany($this->company);
         $validCount = count(array_filter($rows, fn (array $r): bool => $r['is_valid']));
 
-        // Mirror the state ImportController@store leaves behind after
-        // validation: successful_rows = valid count, failed_rows = invalid.
+        // Mirror the durable outcome equations left by validation.
         $job = ImportJob::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -110,8 +112,8 @@ class ProcessImportJobStatusTest extends TestCase
             'original_filename' => 'products.csv',
             'file_path' => 'imports/products.csv',
             'total_rows' => count($rows),
-            'processed_rows' => 0,
-            'successful_rows' => $validCount,
+            'processed_rows' => count($rows) - $validCount,
+            'successful_rows' => 0,
             'failed_rows' => count($rows) - $validCount,
         ]);
 
@@ -121,6 +123,8 @@ class ProcessImportJobStatusTest extends TestCase
                 'row_number' => $i + 1,
                 'data' => $row['data'],
                 'is_valid' => $row['is_valid'],
+                'outcome' => $row['is_valid'] ? ImportRowOutcome::Pending : ImportRowOutcome::Failed,
+                'import_error_code' => $row['is_valid'] ? null : ImportErrorCode::ValidationFailed,
             ]);
         }
 
@@ -204,6 +208,29 @@ class ProcessImportJobStatusTest extends TestCase
         $this->assertSame(ImportStatus::Failed, $job->status);
         $this->assertSame(0, $job->successful_rows);
         $this->assertSame(2, $job->failed_rows);
+    }
+
+    public function test_queue_persists_duplicate_skips_separately_from_failures(): void
+    {
+        Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'QUEUE-SKIP',
+        ]);
+        $job = $this->seedJob([
+            $this->validProductRow('QUEUE-SKIP'),
+            $this->validProductRow('QUEUE-NEW'),
+        ]);
+        $job->update(['options' => ['duplicate_policy' => 'skip']]);
+
+        $this->runJob($job);
+
+        $job->refresh();
+        $this->assertSame(ImportStatus::Completed, $job->status);
+        $this->assertSame(2, $job->processed_rows);
+        $this->assertSame(1, $job->successful_rows);
+        $this->assertSame(1, $job->skipped_rows);
+        $this->assertSame(0, $job->failed_rows);
     }
 
     public function test_parties_job_posts_ar_opening_batch_after_async_row_loop(): void

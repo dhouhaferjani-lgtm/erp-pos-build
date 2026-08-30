@@ -6,7 +6,10 @@ namespace App\Modules\Partner\Application\Services;
 
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
+use App\Shared\Contracts\CoalescingAttributeMergerInterface;
 use App\Shared\Contracts\PartnerServiceInterface;
+use App\Shared\DTOs\PartnerIdentityResolutionData;
+use App\Shared\Enums\PartnerIdentityMatch;
 use RuntimeException;
 
 /**
@@ -16,6 +19,10 @@ use RuntimeException;
  */
 final class PartnerService implements PartnerServiceInterface
 {
+    public function __construct(
+        private readonly ?CoalescingAttributeMergerInterface $attributeMerger = null,
+    ) {}
+
     /**
      * Find a partner by VAT number or name.
      *
@@ -69,28 +76,13 @@ final class PartnerService implements PartnerServiceInterface
         $vatNumber = ! empty($data['vat_number']) ? $data['vat_number'] : null;
         $newType = PartnerType::from($data['type']);
 
-        $vatHolder = $vatNumber !== null
-            ? $this->refuseSoftDeletedVatHolder(
-                Partner::withTrashed()
-                    ->where('tenant_id', $tenantId)
-                    ->where('company_id', $companyId)
-                    ->where('vat_number', $vatNumber)
-                    ->first()
-            )
-            : null;
-
-        // Find existing partner
-        $existing = match (true) {
-            $code !== null => Partner::where('tenant_id', $tenantId)
-                ->where('company_id', $companyId)
-                ->where('code', $code)
-                ->first(),
-            $vatNumber !== null => $vatHolder,
-            default => Partner::where('tenant_id', $tenantId)
-                ->where('company_id', $companyId)
-                ->where('name', $data['name'])
-                ->first(),
-        };
+        $resolution = $this->resolveIdentity($tenantId, $companyId, $code, $vatNumber, (string) $data['name']);
+        $existing = $resolution->partnerId === null
+            ? null
+            : Partner::query()->where('company_id', $companyId)->find($resolution->partnerId);
+        if ($existing !== null) {
+            $code = $existing->code;
+        }
 
         // Smart type merging: customer + supplier = both
         $finalType = $newType;
@@ -102,34 +94,110 @@ final class PartnerService implements PartnerServiceInterface
             }
         }
 
-        $searchCriteria = match (true) {
-            $code !== null => ['tenant_id' => $tenantId, 'company_id' => $companyId, 'code' => $code],
-            $vatNumber !== null => ['tenant_id' => $tenantId, 'company_id' => $companyId, 'vat_number' => $vatNumber],
-            default => ['tenant_id' => $tenantId, 'company_id' => $companyId, 'name' => $data['name']],
-        };
+        $attributes = [
+            'tenant_id' => $tenantId,
+            'company_id' => $companyId,
+            'code' => $code,
+            'name' => (string) $data['name'],
+            'type' => $finalType->value,
+            'email' => self::nullableString($data['email'] ?? null),
+            'phone' => self::nullableString($data['phone'] ?? null),
+            'vat_number' => $vatNumber,
+            'street_address' => self::nullableString($data['street_address'] ?? $data['address'] ?? null),
+            'street_address_2' => self::nullableString($data['street_address_2'] ?? null),
+            'city' => self::nullableString($data['city'] ?? null),
+            'state' => self::nullableString($data['state'] ?? null),
+            'postal_code' => self::nullableString($data['postal_code'] ?? null),
+            'country' => self::countryCode($data['country'] ?? null),
+            'country_code' => self::countryCode($data['country_code'] ?? $data['country'] ?? null),
+        ];
+        /** @var array<string, bool|int|string|null> $attributes */
+        if ($existing !== null) {
+            $provided = is_array($data['_provided'] ?? null)
+                ? array_values(array_filter($data['_provided'], static fn (mixed $key): bool => is_string($key)))
+                : array_keys($attributes);
+            $existingAttributes = [];
+            foreach (array_keys($attributes) as $field) {
+                $value = $existing->getAttribute($field);
+                if (is_bool($value) || is_int($value) || is_string($value) || $value === null) {
+                    $existingAttributes[$field] = $value;
+                }
+            }
+            /** @var array<string, bool|int|string|null> $attributes */
+            $attributes = $this->attributeMerger !== null
+                ? $this->attributeMerger->merge($existingAttributes, $attributes, $provided)
+                : $this->mergeWithoutBlankOverwrite($existingAttributes, $attributes, $provided);
+            $existing->fill($attributes);
+            $existing->save();
 
-        $partner = Partner::updateOrCreate(
-            $searchCriteria,
-            [
-                'tenant_id' => $tenantId,
-                'company_id' => $companyId,
-                'code' => $code,
-                'name' => $data['name'],
-                'type' => $finalType,
-                'email' => $data['email'] ?? null,
-                'phone' => $data['phone'] ?? null,
-                'vat_number' => $vatNumber,
-                'street_address' => self::nullableString($data['street_address'] ?? $data['address'] ?? null),
-                'street_address_2' => self::nullableString($data['street_address_2'] ?? null),
-                'city' => self::nullableString($data['city'] ?? null),
-                'state' => self::nullableString($data['state'] ?? null),
-                'postal_code' => self::nullableString($data['postal_code'] ?? null),
-                'country' => self::countryCode($data['country'] ?? null),
-                'country_code' => self::countryCode($data['country_code'] ?? $data['country'] ?? null),
-            ]
-        );
+            return $existing->id;
+        }
+
+        $partner = Partner::create($attributes);
 
         return $partner->id;
+    }
+
+    public function resolveIdentity(
+        string $tenantId,
+        string $companyId,
+        ?string $code,
+        ?string $vatNumber,
+        string $name,
+    ): PartnerIdentityResolutionData {
+        $query = Partner::withTrashed()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId);
+
+        if ($code !== null) {
+            $codeMatch = (clone $query)->where('code', $code)->first();
+            if ($codeMatch !== null && ! $codeMatch->trashed()) {
+                return new PartnerIdentityResolutionData($codeMatch->id, $codeMatch->code, PartnerIdentityMatch::Code);
+            }
+        }
+
+        if ($vatNumber !== null) {
+            $vatMatch = $this->refuseSoftDeletedVatHolder(
+                (clone $query)->where('vat_number', $vatNumber)->first()
+            );
+            if ($vatMatch !== null) {
+                return new PartnerIdentityResolutionData($vatMatch->id, $vatMatch->code, PartnerIdentityMatch::VatNumber);
+            }
+        }
+
+        if (trim($name) !== '') {
+            $nameMatch = Partner::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower(trim($name))])
+                ->orderBy('id')
+                ->first();
+            if ($nameMatch !== null) {
+                return new PartnerIdentityResolutionData($nameMatch->id, $nameMatch->code, PartnerIdentityMatch::Name);
+            }
+        }
+
+        return new PartnerIdentityResolutionData(null, null, null);
+    }
+
+    /**
+     * Compatibility for direct construction in the legacy public-service tests;
+     * production resolves the constructor-injected shared merger.
+     *
+     * @param  array<string, bool|int|string|null>  $existing
+     * @param  array<string, bool|int|string|null>  $incoming
+     * @param  list<string>  $provided
+     * @return array<string, bool|int|string|null>
+     */
+    private function mergeWithoutBlankOverwrite(array $existing, array $incoming, array $provided): array
+    {
+        foreach ($incoming as $field => $value) {
+            if (in_array($field, $provided, true) || ! array_key_exists($field, $existing)) {
+                $existing[$field] = $value;
+            }
+        }
+
+        return $existing;
     }
 
     private function refuseSoftDeletedVatHolder(?Partner $partner): ?Partner

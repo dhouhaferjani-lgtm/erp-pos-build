@@ -11,6 +11,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Import\Domain\Enums\ImportType;
+use App\Modules\Import\Domain\Enums\ImportWarningCode;
 use App\Modules\Import\Services\FailedRowsExportService;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -92,8 +93,8 @@ final class ImportRowWarningsTest extends TestCase
         );
         $row = $service->addRow($job, 1, ['name' => 'ACME', 'type' => 'customer']);
 
-        $service->addRowWarning($row, 'price_conflict', 'provided 12.00 vs derived 11.90');
-        $service->addRowWarning($row, 'balance_not_posted', 'opening balances locked');
+        $service->addRowWarning($row, ImportWarningCode::PriceConflict, 'provided 12.00 vs derived 11.90');
+        $service->addRowWarning($row, ImportWarningCode::BalanceNotPosted, 'opening balances locked');
 
         $row->refresh();
         $warnings = $row->warnings;

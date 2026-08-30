@@ -256,11 +256,12 @@ final class FreshTenantCensusInvariantsTest extends TestCase
     }
 
     /**
-     * Desired contract after I2-F2 closes: a coded row resolves its unit_id to
-     * that unit, while a blank row receives the company's fallback unit_id.
+     * I2-F2 CLOSED by lane G-4 (UnitResolver, RUL-4): a coded row resolves its
+     * unit_id to that unit, while a blank row receives the company's fallback
+     * unit (`pc`) and is flagged `unit_defaulted` on the import row.
      */
     #[Test]
-    public function products_import_preserves_unit_text_but_leaves_unit_ids_unresolved_known_i2_f2(): void
+    public function products_import_resolves_unit_ids_and_defaults_blank_units_i2_f2_closed(): void
     {
         Storage::fake('local');
         $file = UploadedFile::fake()->createWithContent('day-one-products.csv', implode("\n", [
@@ -284,13 +285,11 @@ final class FreshTenantCensusInvariantsTest extends TestCase
         $coded = Product::query()->where('company_id', $this->firstCompany->id)->where('sku', 'I2-CODED')->firstOrFail();
         $blank = Product::query()->where('company_id', $this->firstCompany->id)->where('sku', 'I2-BLANK')->firstOrFail();
         self::assertSame('kg', $coded->unit, 'The importer must preserve the coded row unit varchar.');
-        self::assertNull($blank->unit, 'The importer must preserve a blank unit as NULL in the unit varchar.');
-        self::assertNull($coded->unit_id, 'I2-F2 evidence: even a coded imported unit never resolves to unit_id.');
-        self::assertNull($blank->unit_id, 'I2-F2 evidence: the blank imported unit receives no fallback unit_id.');
-
-        self::markTestIncomplete(
-            'PRODUCT FINDING I2-F2: Products import never resolves unit -> unit_id (ProductService::importProduct); every imported product has unit_id NULL; owner lane TBD',
-        );
+        self::assertNotNull($coded->unit_id, 'I2-F2 closed (G-4): a coded imported unit resolves to unit_id.');
+        self::assertSame('kg', DB::table('units')->where('id', $coded->unit_id)->value('code'), 'The coded row must resolve to the kg unit.');
+        self::assertSame('pc', $blank->unit, 'RUL-4: a blank unit on create falls back to pc.');
+        self::assertNotNull($blank->unit_id, 'I2-F2 closed (G-4): the blank imported unit receives the fallback unit_id.');
+        self::assertSame('pc', DB::table('units')->where('id', $blank->unit_id)->value('code'), 'The blank row must resolve to the pc fallback unit.');
     }
 
     #[Test]

@@ -14,6 +14,7 @@ use App\Modules\Import\Application\Jobs\ProcessImportJob;
 use App\Modules\Import\Domain\Data\ImportCountersData;
 use App\Modules\Import\Domain\Data\ImportErrorDetailData;
 use App\Modules\Import\Domain\Enums\ImportErrorCode;
+use App\Modules\Import\Domain\Enums\ImportRowOutcome;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
@@ -255,9 +256,9 @@ final class ImportJobClaimConcurrencyTest extends TestCase
         $job->update(['total_rows' => 99, 'successful_rows' => 88, 'failed_rows' => 11]);
 
         foreach ([
-            ['is_valid' => true, 'is_imported' => true, 'import_error' => null],
-            ['is_valid' => false, 'is_imported' => false, 'import_error' => null],
-            ['is_valid' => true, 'is_imported' => false, 'import_error' => 'writer failed'],
+            ['is_valid' => true, 'is_imported' => true, 'import_error' => null, 'outcome' => ImportRowOutcome::Imported],
+            ['is_valid' => false, 'is_imported' => false, 'import_error' => null, 'outcome' => ImportRowOutcome::Failed],
+            ['is_valid' => true, 'is_imported' => false, 'import_error' => 'writer failed', 'outcome' => ImportRowOutcome::Failed],
         ] as $index => $state) {
             ImportRow::create([
                 'import_job_id' => $job->id,

@@ -6,24 +6,56 @@ namespace App\Modules\Uom\Application\Services;
 
 use App\Modules\Company\Domain\Company;
 use Database\Seeders\UomSeeder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 final class UnitsProvisioningService
 {
     /**
      * This is the ⛔ SCOPE-DEPENDENT predicate of spec §4.13.2 and is the single substitution point for OQ-G-25.
+     *
+     * @return Collection<int, \stdClass>
      */
+    public function visibleActiveUnits(Company $company): Collection
+    {
+        // Single scope substitution point: tenant_id IS NULL OR tenant_id = company tenant.
+        $hasCompanyScope = Schema::hasColumn('units', 'company_id');
+        $query = DB::table('units')
+            ->leftJoin('unit_categories', 'unit_categories.id', '=', 'units.category_id')
+            ->where('units.is_active', true)
+            ->where(static function ($query) use ($company, $hasCompanyScope): void {
+                $query->where(static function ($shared) use ($company): void {
+                    $shared->whereNull('units.tenant_id')
+                        ->orWhere('units.tenant_id', $company->tenant_id);
+                });
+                if ($hasCompanyScope) {
+                    $query->where(static function ($scope) use ($company): void {
+                        $scope->whereNull('units.company_id')
+                            ->orWhere('units.company_id', $company->id);
+                    });
+                }
+            });
+
+        $columns = [
+            'units.id',
+            'units.tenant_id',
+            'units.code',
+            'units.name',
+            'units.symbol',
+            'units.decimal_places',
+            'unit_categories.name as category',
+        ];
+        $columns[] = $hasCompanyScope ? 'units.company_id' : DB::raw('NULL as company_id');
+
+        return $query->select($columns)->get();
+    }
+
     public function visibleActiveUnitCount(Company $company): int
     {
-        return DB::table('units')
-            ->where('is_active', true)
-            ->where(static function ($query) use ($company): void {
-                $query->whereNull('tenant_id')
-                    ->orWhere('tenant_id', $company->tenant_id);
-            })
-            ->count();
+        return $this->visibleActiveUnits($company)->count();
     }
 
     public function hasVisibleUnits(Company $company): bool

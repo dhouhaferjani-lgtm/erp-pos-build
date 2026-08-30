@@ -7,6 +7,11 @@
 
 ## Overview
 
+`import_rows.data._results` uses the writer's durable flat breadcrumb map
+(`opening_stock => ok`, `tax_source => company_default`). The typed source DTO
+also owns the private `_placement_plan`; casts do not pass either shape through
+as untyped JSON.
+
 The Import module handles:
 - Bulk import of products, customers, suppliers
 - Legacy ERP migration (opening balances, historical data)
@@ -54,18 +59,22 @@ Level 4 (State)
 ### 3. Idempotent Imports
 
 Re-running an import should produce the same result:
-- Use external IDs for matching existing records
-- Update if exists, create if not
-- Never duplicate on re-import
+- Products resolve within the company by SKU, then barcode, then normalized name
+  only when neither SKU nor barcode was supplied.
+- Partners resolve within the company by code, VAT number, then normalized name.
+- Existing records use a field-level coalescing update: a non-blank source cell
+  overrides, while a blank cell preserves the stored value.
+- The preview records duplicate buckets and the operator chooses `override` or
+  `skip`; execution resolves identity again and its decision is authoritative.
 
 ---
 
 ## Import Job Lifecycle
 
 ```
-pending → validating → processing → completed
-              ↓            ↓
-           failed    partially_completed
+pending → validating → validated → importing → completed
+              ↓                         ↓
+            failed                    failed
 ```
 
 ### Status Definitions
@@ -74,20 +83,15 @@ pending → validating → processing → completed
 |--------|---------|
 | `pending` | Job created, file uploaded, waiting to start |
 | `validating` | Running validation rules on staging data |
-| `processing` | Moving validated rows to production |
-| `completed` | All rows successfully imported |
-| `failed` | Critical error, no rows imported |
-| `partially_completed` | Some rows imported, some failed |
+| `validated` | Validation finished and at least one row is pending execution |
+| `importing` | Applying pending rows to production |
+| `completed` | At least one row was imported or deliberately skipped |
+| `failed` | No row was imported or deliberately skipped |
 
-### Temporary Counter Compatibility (G-6a → G-4)
-
-`import_jobs.skipped_rows` is reserved for the typed row outcomes delivered by
-G-4's M6a migration, but it remains `0` until that migration lands. During this
-compatibility window `ImportCountersData::fromJob()` treats every non-imported
-row as failed, and terminal status is `failed` only when `failed_rows ===
-total_rows`; partial success remains completed. History/detail APIs, the
-frontend, and result workbooks must not consume `skipped_rows` until G-4 replaces
-that compatibility calculation with the §3.2.2 outcome equations.
+Rows use the durable outcomes `pending`, `imported`, `duplicate_skipped`,
+`duplicate_loser`, `failed`, and `opening_locked`. Successful rows are exactly
+`imported`; skipped rows are `duplicate_skipped + duplicate_loser`; failed rows
+are `failed + opening_locked`. Those three counts sum to `total_rows`.
 
 ---
 
@@ -155,12 +159,13 @@ For legacy ERP migrations, provide a guided flow:
 ### Products
 
 **Required Fields:**
-- `sku` - Unique product code
 - `name` - Product name
 
 **Optional Fields:**
 - `description`
 - `barcode`
+- `sku` - Product code; when blank, the current slug/barcode fallback supplies it
+- `unit` - An active visible unit code, entered exactly as spelled after trimming
 - `category` - Category code reference
 - `brand` - Brand code reference
 - `supplier` - Supplier code reference
@@ -171,8 +176,19 @@ For legacy ERP migrations, provide a guided flow:
 - `oem_numbers` - Comma-separated list
 - `cross_references` - Comma-separated list
 
+**Identity and duplicate rules:**
+- A supplied SKU is tried first; on a miss a supplied barcode is tried next.
+- Name matching is allowed only when neither SKU nor barcode was supplied.
+- A barcode matching multiple company products is refused as ambiguous.
+- Unit names and symbols are not accepted. The accepted-code list is read live
+  from the same visible active unit catalog query used by the resolver.
+- On create, a blank unit defaults to `pc`; on update, a blank unit preserves the
+  existing unit.
+- `override` merges non-blank cells. `skip` performs no write for matched rows.
+- Within one file, rows for one product coalesce master data; for the same product
+  and location, the last opening/placement instruction wins.
+
 **Validation Rules:**
-- SKU is required and unique
 - Category must exist if provided
 - Supplier must exist if provided
 - Prices must be positive numbers
@@ -355,35 +371,22 @@ class ImportProcessor
 {
     public function process(ImportJob $job): void
     {
-        $job->update(['status' => 'processing', 'started_at' => now()]);
-
-        $transformer = $this->getTransformerForType($job->import_type);
-
-        ImportStaging::where('job_id', $job->id)
-            ->where('is_valid', true)
-            ->where('processed', false)
-            ->chunk(50, function ($rows) use ($transformer, $job) {
-                DB::transaction(function () use ($rows, $transformer, $job) {
-                    foreach ($rows as $row) {
-                        try {
-                            $record = $transformer->transform($row->raw_data);
-                            $row->update([
-                                'processed' => true,
-                                'created_record_id' => $record->id,
-                            ]);
-                            $job->increment('success_rows');
-                        } catch (\Exception $e) {
-                            $row->update([
-                                'processed' => true,
-                                'error_message' => $e->getMessage(),
-                            ]);
-                            $job->increment('error_rows');
-                        }
-                    }
+        foreach ($job->rows()->where('is_valid', true)->where('outcome', 'pending')->get() as $row) {
+            try {
+                DB::transaction(function () use ($job, $row): void {
+                    $decision = $this->applyRow($job, $row);
+                    $row->update([
+                        'outcome' => $decision->value,
+                        'is_imported' => $decision === ImportRowOutcome::Imported,
+                    ]);
                 });
-            });
+            } catch (Throwable $error) {
+                // This single-row coded failure update runs only after rollback.
+                $this->recordFailedRow($row, $error);
+            }
+        }
 
-        $this->finalizeJob($job);
+        $this->finalizeAndRecountFromOutcomes($job);
     }
 }
 ```

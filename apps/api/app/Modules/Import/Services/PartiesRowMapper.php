@@ -14,7 +14,7 @@ final class PartiesRowMapper
      */
     public function toPartnerData(array $data): array
     {
-        return [
+        $mapped = [
             'name' => $data['name'] ?? null,
             'type' => $data['type'] ?? null,
             'code' => $data['code'] ?? null,
@@ -26,6 +26,30 @@ final class PartiesRowMapper
             'postal_code' => $data['address_postal_code'] ?? null,
             'country' => $data['address_country'] ?? null,
         ];
+
+        $providedMap = [
+            'name' => 'name',
+            'type' => 'type',
+            'code' => 'code',
+            'email' => 'email',
+            'phone' => 'phone',
+            'tax_id' => 'vat_number',
+            'address_line1' => 'street_address',
+            'address_city' => 'city',
+            'address_postal_code' => 'postal_code',
+            'address_country' => 'country',
+        ];
+        $provided = [];
+        if (is_array($data['_provided'] ?? null)) {
+            foreach ($data['_provided'] as $source) {
+                if (is_string($source) && isset($providedMap[$source])) {
+                    $provided[] = $providedMap[$source];
+                }
+            }
+        }
+        $mapped['_provided'] = $provided;
+
+        return $mapped;
     }
 
     /**

@@ -54,6 +54,7 @@ export interface ImportJob {
   total_rows: number
   processed_rows: number
   successful_rows: number
+  skipped_rows: number
   failed_rows: number
   warning_rows: number
   warning_summary: Record<string, number> | null
@@ -71,7 +72,12 @@ export interface ImportJobOptions {
   price_authority?: 'ttc' | 'ht' | 'margin'
   placement_mode?: 'strict' | 'auto_create'
   placement_node_types?: LocationNodeType[]
+  duplicate_policy?: DuplicatePolicy
 }
+
+export type DuplicateBucket = 'new' | 'existing_sku' | 'existing_barcode' | 'existing_name' | 'in_file' | 'refused'
+export type DuplicatePolicy = 'override' | 'skip'
+export type ImportErrorCode = App.Modules.Import.Domain.Enums.ImportErrorCode
 
 export type LocationNodeType = App.Modules.Inventory.Domain.Enums.LocationNodeType
 
@@ -161,6 +167,7 @@ export interface ImportResult {
   imported_count: number
   skipped_count: number
   execution_error_count: number
+  preview_drift_count: number
   total_rows: number
   failed_rows_csv_url: string | null
 }
@@ -170,6 +177,8 @@ export interface ImportPreviewRow {
   data: Record<string, string>
   is_valid: boolean
   errors: ImportRowErrors
+  duplicate_bucket?: DuplicateBucket | null
+  duplicate_advisory?: { row_number: number; code: ImportErrorCode } | null
 }
 
 export interface ImportPreview {
@@ -179,6 +188,11 @@ export interface ImportPreview {
     total_rows: number
     valid_rows: number
     invalid_rows: number
+  }
+  duplicates?: {
+    counts: Record<DuplicateBucket, number>
+    matched_by_name: number[]
+    refused: { row_number: number; code: ImportErrorCode }[]
   }
   placement?: {
     max_depth: number

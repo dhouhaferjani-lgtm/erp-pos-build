@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Import;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Import\Domain\Enums\ImportWarningCode;
 use App\Modules\Import\Services\ProductPriceResolver;
 use App\Shared\Contracts\TaxDefaultResolverInterface;
 use App\Shared\DTOs\ProductTaxDefaultDTO;
@@ -56,7 +57,7 @@ final class ProductPriceResolverTest extends TestCase
         ], 'ttc', '19.00');
 
         $this->assertSame('12.000', $result['sale_price']);
-        $this->assertSame('price_conflict', $result['warnings'][0]['code']);
+        $this->assertSame(ImportWarningCode::PriceConflict, $result['warnings'][0]['code']);
         $this->assertSame('sale_price_excl_tax: provided implies 11.900, kept 12.000', $result['warnings'][0]['detail']);
     }
 
@@ -89,7 +90,7 @@ final class ProductPriceResolverTest extends TestCase
         ], 'margin', '19.00');
 
         $this->assertSame('11.900', $result['sale_price']);
-        $this->assertSame('margin_without_cost', $result['warnings'][0]['code']);
+        $this->assertSame(ImportWarningCode::MarginWithoutCost, $result['warnings'][0]['code']);
     }
 
     public function test_legacy_sale_price_is_ttc_candidate(): void

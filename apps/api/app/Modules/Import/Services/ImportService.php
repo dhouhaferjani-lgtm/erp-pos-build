@@ -9,19 +9,29 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Import\Domain\Data\ClaimResult;
 use App\Modules\Import\Domain\Data\ImportCountersData;
 use App\Modules\Import\Domain\Data\ImportErrorDetailData;
+use App\Modules\Import\Domain\Data\ImportRowResultsData;
+use App\Modules\Import\Domain\Enums\DuplicateBucket;
+use App\Modules\Import\Domain\Enums\DuplicatePolicy;
 use App\Modules\Import\Domain\Enums\ImportErrorCode;
+use App\Modules\Import\Domain\Enums\ImportRowOutcome;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
+use App\Modules\Import\Domain\Enums\ImportWarningCode;
+use App\Modules\Import\Domain\Exceptions\CodedImportRowException;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Domain\ImportRow;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Shared\Contracts\CompositeItemServiceInterface;
+use App\Shared\Contracts\PartnerResolverInterface;
 use App\Shared\Contracts\PartnerServiceInterface;
+use App\Shared\Contracts\ProductResolverInterface;
 use App\Shared\Contracts\ProductServiceInterface;
 use App\Shared\Contracts\TaxDefaultResolverInterface;
 use App\Shared\DTOs\CategoryResolutionDTO;
 use App\Shared\DTOs\ProductTaxDefaultDTO;
 use App\Shared\Enums\CategoryResolutionOutcome;
+use App\Shared\Enums\ProductIdentityFailure;
+use App\Shared\Enums\ProductIdentityMatch;
 use App\Shared\Enums\ProductTaxDefaultSource;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -35,7 +45,9 @@ final class ImportService
         private readonly ValidationEngine $validationEngine,
         private readonly CompanyContext $companyContext,
         private readonly PartnerServiceInterface $partnerService,
+        private readonly PartnerResolverInterface $partnerResolver,
         private readonly ProductServiceInterface $productService,
+        private readonly ProductResolverInterface $productResolver,
         private readonly CompositeItemServiceInterface $compositeItemService,
         private readonly NumericFieldNormalizer $numericNormalizer,
         private readonly PartiesRowMapper $partiesRowMapper,
@@ -45,6 +57,8 @@ final class ImportService
         private readonly TaxDefaultResolverInterface $taxDefaultResolver,
         private readonly ProductOpeningStockPhase $productOpeningStockPhase,
         private readonly ProductPlacementImportService $productPlacementImportService,
+        private readonly UnitResolver $unitResolver,
+        private readonly DuplicateCensusService $duplicateCensus,
         private readonly ImportJobClaimService $importJobClaimService,
     ) {}
 
@@ -116,10 +130,10 @@ final class ImportService
      * Append a non-blocking warning to a row. Warnings never affect validity,
      * import success, failed-row counts, or the failed-rows export.
      */
-    public function addRowWarning(ImportRow $row, string $code, string $detail): void
+    public function addRowWarning(ImportRow $row, ImportWarningCode $code, string $detail): void
     {
         $warnings = $row->warnings ?? [];
-        $warnings[] = ['code' => $code, 'detail' => $detail];
+        $warnings[] = ['code' => $code->value, 'detail' => $detail];
         $row->update(['warnings' => $warnings]);
     }
 
@@ -189,6 +203,12 @@ final class ImportService
                         'id' => $row->id,
                         'is_valid' => $result['is_valid'],
                         'errors' => $result['errors'] ?: null,
+                        'outcome' => $result['is_valid']
+                            ? ImportRowOutcome::Pending
+                            : ImportRowOutcome::Failed,
+                        'import_error_code' => $result['is_valid']
+                            ? null
+                            : ImportErrorCode::ValidationFailed,
                     ];
 
                     if ($result['is_valid']) {
@@ -203,13 +223,18 @@ final class ImportService
             });
 
         $job->update([
-            'status' => ImportStatus::Validated,
-            'successful_rows' => $validCount,
+            'status' => $validCount === 0 ? ImportStatus::Failed : ImportStatus::Validated,
+            'processed_rows' => $invalidCount,
+            'successful_rows' => 0,
             'failed_rows' => $invalidCount,
         ]);
 
         if ($job->type === ImportType::Parties) {
             $this->applyPartiesExtraValidation($job);
+        }
+
+        if ($job->type === ImportType::Products && $job->total_rows > 0) {
+            $this->duplicateCensus->census($job->refresh(), $this->companyContext->requireCompanyId());
         }
     }
 
@@ -255,12 +280,21 @@ final class ImportService
                     $row->update([
                         'is_valid' => false,
                         'errors' => $errors,
+                        'outcome' => ImportRowOutcome::Failed,
+                        'import_error_code' => ImportErrorCode::ValidationFailed,
                     ]);
                 }
             });
 
         $job->update([
-            'successful_rows' => $job->rows()->where('is_valid', true)->count(),
+            'status' => $job->rows()
+                ->where('is_valid', true)
+                ->where('outcome', ImportRowOutcome::Pending)
+                ->exists()
+                ? ImportStatus::Validated
+                : ImportStatus::Failed,
+            'processed_rows' => $job->rows()->where('outcome', ImportRowOutcome::Failed)->count(),
+            'successful_rows' => 0,
             'failed_rows' => $job->rows()->where('is_valid', false)->count(),
         ]);
     }
@@ -268,7 +302,7 @@ final class ImportService
     /**
      * Batch update validation results using raw SQL for efficiency.
      *
-     * @param  array<array{id: string, is_valid: bool, errors: array<string, array<string>>|null}>  $updates
+     * @param  array<array{id: string, is_valid: bool, errors: array<string, array<string>>|null, outcome: ImportRowOutcome, import_error_code: ImportErrorCode|null}>  $updates
      */
     private function batchUpdateValidation(array $updates): void
     {
@@ -282,6 +316,8 @@ final class ImportService
                 ->update([
                     'is_valid' => $update['is_valid'],
                     'errors' => $update['errors'] ? json_encode($update['errors']) : null,
+                    'outcome' => $update['outcome']->value,
+                    'import_error_code' => $update['import_error_code']?->value,
                     'updated_at' => now(),
                 ]);
         }
@@ -315,6 +351,7 @@ final class ImportService
         return $job->rows()
             ->where('is_valid', true)
             ->where('is_imported', false)
+            ->where('outcome', ImportRowOutcome::Pending)
             ->orderBy('row_number')
             ->get();
     }
@@ -354,7 +391,7 @@ final class ImportService
      * Supports partial imports: only valid rows are imported, invalid rows are skipped.
      * Returns import result data including counts and any skipped rows.
      *
-     * @return array{imported_count: int, skipped_count: int, execution_error_count: int, total_rows: int}
+     * @return array{imported_count: int, skipped_count: int, execution_error_count: int, preview_drift_count: int, total_rows: int}
      */
     public function executeImport(ImportJob $job, ?ImportStatus $priorStatus = null): array
     {
@@ -388,28 +425,22 @@ final class ImportService
         }
         $job->refresh();
 
-        // Count validation-skipped rows (invalid from validation phase)
-        $validationSkippedCount = $job->rows()->where('is_valid', false)->count();
-
         $validRows = $this->getValidRows($job);
-        $processedCount = 0;
+        $initialCounts = $this->outcomeCounts($job);
+        $processedCount = $initialCounts['processed'];
         $executionFailCount = 0;
+        $previewDriftCount = 0;
 
         foreach ($validRows as $row) {
-            try {
-                DB::transaction(function () use ($job, $row): void {
-                    $entityId = $this->importRow($job, $row);
-                    $row->update([
-                        'is_imported' => true,
-                        'imported_entity_id' => $entityId,
-                    ]);
-                });
-            } catch (\Throwable $e) {
-                $row->update([
-                    'is_imported' => false,
-                    'import_error' => $e->getMessage(),
-                ]);
+            if ($this->processPendingRow($job, $row) === ImportRowOutcome::Failed) {
                 $executionFailCount++;
+            }
+            $warnings = $row->refresh()->warnings ?? [];
+            if (array_any(
+                $warnings,
+                static fn (array $warning): bool => $warning['code'] === ImportWarningCode::PreviewDrift->value,
+            )) {
+                $previewDriftCount++;
             }
 
             $processedCount++;
@@ -424,15 +455,16 @@ final class ImportService
         // loop's optimistic tally would otherwise report a green "N imported" for a
         // file that changed nothing. An import that imported nothing has Failed.
         $counters = ImportCountersData::fromJob($job);
-        $status = $counters->failedRows === $counters->totalRows
+        $status = ($counters->successfulRows + $counters->skippedRows) === 0
             ? ImportStatus::Failed
             : ImportStatus::Completed;
         $this->importJobClaimService->finalize($job, $status, $counters, null, null);
 
         return [
             'imported_count' => $counters->successfulRows,
-            'skipped_count' => $validationSkippedCount,
+            'skipped_count' => $counters->skippedRows,
             'execution_error_count' => $executionFailCount,
+            'preview_drift_count' => $previewDriftCount,
             'total_rows' => $counters->totalRows,
         ];
     }
@@ -463,6 +495,177 @@ final class ImportService
             $detail,
             $message,
         );
+    }
+
+    /**
+     * Apply one pending row with its durable terminal decision.
+     *
+     * Successful decisions commit beside the entity mutation. Failures are
+     * deliberately recorded only after that transaction has rolled back.
+     */
+    public function processPendingRow(
+        ImportJob $job,
+        ImportRow $row,
+        ?string $companyId = null,
+    ): ImportRowOutcome {
+        try {
+            return DB::transaction(function () use ($job, $row, $companyId): ImportRowOutcome {
+                $companyId ??= $this->companyContext->requireCompanyId();
+                $decision = $this->duplicateCensus->decide($job, $row, $companyId);
+                $currentBucket = $decision->bucket;
+                $warnings = $row->warnings ?? [];
+                $decisionWarnings = [];
+                if ($decision->locationUnresolved
+                    && ! array_any(
+                        $warnings,
+                        static fn (array $warning): bool => ($warning['code'] ?? null) === ImportWarningCode::LocationUnresolved->value,
+                    )) {
+                    $decisionWarnings[] = [
+                        'code' => ImportWarningCode::LocationUnresolved->value,
+                        'detail' => 'Location code could not be resolved.',
+                    ];
+                }
+                if ($row->duplicate_bucket !== null && $row->duplicate_bucket !== $currentBucket) {
+                    $decisionWarnings[] = [
+                        'code' => ImportWarningCode::PreviewDrift->value,
+                        'detail' => sprintf(
+                            'Preview classified this row as %s; execution resolved it as %s.',
+                            $row->duplicate_bucket->value,
+                            $currentBucket->value,
+                        ),
+                    ];
+                }
+
+                $winnerRow = $decision->winnerRowNumber;
+                if ($winnerRow !== null) {
+                    $decisionWarnings[] = [
+                        'code' => ImportWarningCode::DuplicateInFile->value,
+                        'detail' => sprintf('A later row for this product and location wins (row %d).', $winnerRow),
+                    ];
+                    $row->update([
+                        'is_imported' => false,
+                        'outcome' => ImportRowOutcome::DuplicateLoser,
+                        'warnings' => array_merge($warnings, $decisionWarnings),
+                        'import_error' => null,
+                        'import_error_code' => null,
+                        'import_error_detail' => null,
+                    ]);
+
+                    return ImportRowOutcome::DuplicateLoser;
+                }
+
+                $policy = DuplicatePolicy::tryFrom((string) ($job->options['duplicate_policy'] ?? ''))
+                    ?? DuplicatePolicy::Override;
+                if ($policy === DuplicatePolicy::Skip && $this->isExistingBucket($currentBucket)) {
+                    $row->update([
+                        'is_imported' => false,
+                        'outcome' => ImportRowOutcome::DuplicateSkipped,
+                        'warnings' => array_merge($warnings, $decisionWarnings) ?: null,
+                        'import_error' => null,
+                        'import_error_code' => null,
+                        'import_error_detail' => null,
+                    ]);
+
+                    return ImportRowOutcome::DuplicateSkipped;
+                }
+
+                $entityId = $this->importRow($job, $row, $companyId);
+                $warnings = array_merge($row->refresh()->warnings ?? [], $decisionWarnings);
+                $row->update([
+                    'is_imported' => true,
+                    'imported_entity_id' => $entityId,
+                    'outcome' => ImportRowOutcome::Imported,
+                    'warnings' => $warnings === [] ? null : $warnings,
+                    'import_error' => null,
+                    'import_error_code' => null,
+                    'import_error_detail' => null,
+                ]);
+
+                return ImportRowOutcome::Imported;
+            });
+        } catch (\Throwable $exception) {
+            $coded = $this->codedFailure($exception);
+            DB::table('import_rows')->where('id', $row->id)->update([
+                'is_imported' => false,
+                'import_error' => $exception->getMessage(),
+                'import_error_code' => $coded['code']->value,
+                'import_error_detail' => $coded['detail'] === []
+                    ? null
+                    : json_encode($coded['detail'], JSON_THROW_ON_ERROR),
+                'outcome' => ImportRowOutcome::Failed->value,
+                'updated_at' => now(),
+            ]);
+
+            return ImportRowOutcome::Failed;
+        }
+    }
+
+    private function isExistingBucket(DuplicateBucket $bucket): bool
+    {
+        return match ($bucket) {
+            DuplicateBucket::ExistingSku,
+            DuplicateBucket::ExistingBarcode,
+            DuplicateBucket::ExistingName => true,
+            DuplicateBucket::New,
+            DuplicateBucket::InFile,
+            DuplicateBucket::Refused => false,
+        };
+    }
+
+    /** @return array{processed: int, successful: int, skipped: int, failed: int} */
+    public function outcomeCounts(ImportJob $job): array
+    {
+        $counts = $job->rows()
+            ->reorder()
+            ->selectRaw('outcome, COUNT(*) AS aggregate')
+            ->groupBy('outcome')
+            ->toBase()
+            ->pluck('aggregate', 'outcome');
+
+        $imported = (int) ($counts[ImportRowOutcome::Imported->value] ?? 0);
+        $skipped = (int) ($counts[ImportRowOutcome::DuplicateSkipped->value] ?? 0)
+            + (int) ($counts[ImportRowOutcome::DuplicateLoser->value] ?? 0);
+        $failed = (int) ($counts[ImportRowOutcome::Failed->value] ?? 0)
+            + (int) ($counts[ImportRowOutcome::OpeningLocked->value] ?? 0);
+
+        return [
+            'processed' => $imported + $skipped + $failed,
+            'successful' => $imported,
+            'skipped' => $skipped,
+            'failed' => $failed,
+        ];
+    }
+
+    /**
+     * @return array{code: ImportErrorCode, detail: array{
+     *   supplied?: string,
+     *   accepted?: list<string>,
+     *   candidates?: list<array{id: string, code: string, name: string, category: string, tier: string}>,
+     *   candidate_skus?: list<string>,
+     *   sku?: string,
+     *   existing_product_id?: string
+     * }}
+     */
+    private function codedFailure(\Throwable $exception): array
+    {
+        if ($exception instanceof CodedImportRowException) {
+            return ['code' => $exception->errorCode, 'detail' => $exception->detail];
+        }
+
+        $message = $exception->getMessage();
+        if (str_starts_with($message, ImportErrorCode::SkuHeldByDeletedProduct->value.':')) {
+            preg_match('/SKU\s+([^\s]+)\s+is held/', $message, $matches);
+
+            return [
+                'code' => ImportErrorCode::SkuHeldByDeletedProduct,
+                'detail' => isset($matches[1]) ? ['sku' => $matches[1]] : [],
+            ];
+        }
+        if (str_starts_with($message, ImportErrorCode::VatHeldByDeletedPartner->value.':')) {
+            return ['code' => ImportErrorCode::VatHeldByDeletedPartner, 'detail' => []];
+        }
+
+        return ['code' => ImportErrorCode::InternalError, 'detail' => []];
     }
 
     /**
@@ -507,13 +710,34 @@ final class ImportService
      */
     private function importParty(ImportJob $job, ImportRow $row, ?string $companyId = null): string
     {
+        $companyId ??= $this->companyContext->requireCompanyId();
         $data = $row->data;
-        if ($this->hasAnyBalanceColumn($data) && $this->emptyString($data['code'] ?? null)) {
-            $data['code'] = 'IMP-'.substr($job->id, 0, 8).'-'.$row->row_number;
+        $identity = $this->partnerResolver->resolve(
+            $job->tenant_id,
+            $companyId,
+            is_string($data['code'] ?? null) ? $data['code'] : null,
+            is_string($data['tax_id'] ?? null) ? $data['tax_id'] : null,
+            (string) ($data['name'] ?? ''),
+        );
+        if ($identity->partnerId !== null) {
+            $data['code'] = $identity->code;
+        } elseif ($this->hasAnyBalanceColumn($data) && $this->emptyString($data['code'] ?? null)) {
+            $data['code'] = $this->syntheticPartnerCode($companyId, $data);
             $row->update(['data' => $data]);
+            $this->addRowWarning($row, ImportWarningCode::CodeGenerated, 'A stable import code was generated for this partner.');
         }
 
         return $this->importPartner($job->tenant_id, $this->partiesRowMapper->toPartnerData($data), $companyId);
+    }
+
+    /** @param array<string, mixed> $data */
+    private function syntheticPartnerCode(string $companyId, array $data): string
+    {
+        $vat = preg_replace('/\s+/', '', mb_strtoupper(trim((string) ($data['tax_id'] ?? '')))) ?? '';
+        $name = mb_strtolower(trim(preg_replace('/\s+/', ' ', (string) ($data['name'] ?? '')) ?? ''));
+        $identity = $vat !== '' ? $vat : $name;
+
+        return 'IMP-'.substr(hash('sha256', $companyId.$identity), 0, 12);
     }
 
     /**
@@ -546,14 +770,39 @@ final class ImportService
                 continue;
             }
 
+            $warnings = $row->warnings ?? [];
             if ($result['code'] !== '') {
-                $this->addRowWarning($row, $result['code'], $result['detail']);
+                $warningCode = ImportWarningCode::from($result['code']);
+                $warnings[] = ['code' => $warningCode->value, 'detail' => $result['detail']];
             }
 
-            $data = $row->refresh()->data;
-            $data['_results'] = array_merge($data['_results'] ?? [], $result['results']);
-            $row->update(['data' => $data]);
+            $data = $row->data;
+            $data['_results'] = ImportRowResultsData::fromStorage($data['_results'] ?? [])
+                ->merged($this->finalizationResultPhase($job->type), $result['results'])
+                ->toStorage();
+            $openingLocked = in_array('error: opening_locked', $result['results'], true);
+            $update = ['data' => $data, 'warnings' => $warnings === [] ? null : $warnings];
+            if ($openingLocked) {
+                $update = array_merge($update, [
+                    'is_imported' => false,
+                    'outcome' => ImportRowOutcome::OpeningLocked,
+                    'import_error' => 'Opening balances are locked; post an adjustment instead.',
+                    'import_error_code' => ImportErrorCode::InternalError,
+                    'import_error_detail' => ['supplied' => 'opening_locked'],
+                ]);
+            }
+            $row->update($update);
         }
+    }
+
+    private function finalizationResultPhase(ImportType $type): string
+    {
+        return match ($type) {
+            ImportType::Parties => ImportRowResultsData::PHASE_PARTIES_BALANCES,
+            ImportType::Products => ImportRowResultsData::PHASE_OPENING_STOCK,
+            ImportType::OpeningBalances => ImportRowResultsData::PHASE_ACCOUNTING_BALANCES,
+            default => ImportRowResultsData::PHASE_LEGACY,
+        };
     }
 
     /**
@@ -580,6 +829,46 @@ final class ImportService
     {
         $companyId ??= $this->companyContext->requireCompanyId();
         $data = $row->data;
+        $sourceMaskWasCaptured = $this->sourceMaskWasCaptured($row);
+        $unitWasInSource = array_key_exists('unit', $data);
+        $identity = $this->productResolver->resolve(
+            $job->tenant_id,
+            $companyId,
+            is_string($data['sku'] ?? null) ? $data['sku'] : null,
+            is_string($data['barcode'] ?? null) ? $data['barcode'] : null,
+            (string) ($data['name'] ?? ''),
+        );
+        if ($identity->failure === ProductIdentityFailure::SkuHeldByDeletedProduct) {
+            throw new CodedImportRowException(
+                ImportErrorCode::SkuHeldByDeletedProduct,
+                sprintf(
+                    'SKU %s is held by a soft-deleted product; purge the deleted record or choose a different SKU.',
+                    $identity->failureSku ?? '',
+                ),
+                $identity->failureSku === null ? [] : ['sku' => $identity->failureSku],
+            );
+        }
+        if ($identity->isBarcodeAmbiguous()) {
+            throw new CodedImportRowException(
+                ImportErrorCode::BarcodeAmbiguous,
+                'Barcode matches more than one product in this company.',
+                ['candidate_skus' => $identity->candidateSkus],
+            );
+        }
+
+        $existingPriceInputs = $identity->productId === null
+            ? null
+            : $this->productService->findPriceInputs($job->tenant_id, $companyId, $identity->productId);
+
+        $unit = $this->unitResolver->resolve(
+            $companyId,
+            is_string($data['unit'] ?? null) ? $data['unit'] : null,
+            $identity->productId !== null,
+        );
+        if ($unit->unitId !== null) {
+            $data['unit_id'] = $unit->unitId;
+            $data['unit'] = $unit->unitCode;
+        }
         $data['type'] = $this->emptyString($data['type'] ?? null) ? ProductType::Part->value : $data['type'];
         $company = $this->resolveCompany($job->tenant_id, $companyId);
 
@@ -594,12 +883,18 @@ final class ImportService
         // here was resolved company-only.
         $category = $this->resolveRowCategory($companyId, $data);
         if ($category !== null) {
-            $data['_results'] = array_merge($data['_results'] ?? [], ['category' => $category->outcome->value]);
+            $data['_results'] = ImportRowResultsData::fromStorage($data['_results'] ?? [])
+                ->merged(ImportRowResultsData::PHASE_PRODUCT, ['category' => $category->outcome->value])
+                ->toStorage();
         }
 
         $tax = $this->resolveProductTax($company, $data, $category?->categoryId);
         $authority = $this->resolvePriceAuthority($job);
-        $price = $this->productPriceResolver->resolve($data, $authority, $tax->taxRate);
+        $price = $this->productPriceResolver->resolve(
+            $this->effectivePriceInputs($data, $existingPriceInputs),
+            $authority,
+            $this->effectivePriceTaxRate($data, $category, $tax->taxRate, $existingPriceInputs),
+        );
 
         if ($price['sale_price'] !== null) {
             $data['sale_price'] = $price['sale_price'];
@@ -613,12 +908,22 @@ final class ImportService
             // and a flat `default` stopped being true the moment the category
             // became a real source (W2-5) — which is the case this lane exists
             // to fix, so it is the case the breadcrumb must get right.
-            $data['_results'] = array_merge($data['_results'] ?? [], ['tax_source' => $tax->source->value]);
+            $data['_results'] = ImportRowResultsData::fromStorage($data['_results'] ?? [])
+                ->merged(ImportRowResultsData::PHASE_PRODUCT, ['tax_source' => $tax->source->value])
+                ->toStorage();
         }
 
         $row->update(['data' => $data]);
 
-        $productId = $this->productService->upsert($job->tenant_id, $companyId, $data);
+        $upsert = $this->productService->upsertWithResult($job->tenant_id, $companyId, $data);
+        $productId = $upsert->productId;
+
+        if ($sourceMaskWasCaptured && $identity->matchedBy === ProductIdentityMatch::Name) {
+            $this->addRowWarning($row, ImportWarningCode::MatchedByName, 'Matched the existing product by normalized name.');
+        }
+        if ($unit->warning !== null && $unitWasInSource) {
+            $this->addRowWarning($row, $unit->warning, 'No unit was supplied; the product defaulted to pc.');
+        }
 
         foreach ($price['warnings'] as $warning) {
             $this->addRowWarning($row, $warning['code'], $warning['detail']);
@@ -627,7 +932,12 @@ final class ImportService
         if ($category !== null && $category->outcome->isStateChange()) {
             $this->addRowWarning(
                 $row,
-                'category_'.$category->outcome->value,
+                match ($category->outcome) {
+                    CategoryResolutionOutcome::Created => ImportWarningCode::CategoryCreated,
+                    CategoryResolutionOutcome::Restored => ImportWarningCode::CategoryRestored,
+                    CategoryResolutionOutcome::MatchedBySlug => ImportWarningCode::CategoryMatchedBySlug,
+                    CategoryResolutionOutcome::Matched => throw new RuntimeException('Matched categories do not emit warnings.'),
+                },
                 $this->categoryWarningDetail($category, trim((string) $data['category_name'])),
             );
         }
@@ -714,6 +1024,47 @@ final class ImportService
         return in_array($authority, ['ttc', 'ht', 'margin'], true) ? $authority : 'ttc';
     }
 
+    /**
+     * Coalesce only persisted derivation dependencies over sparse incoming cells.
+     * The stored `sale_price` is the TTC-authoritative output under the precision
+     * contract: it is never recycled as a new resolver candidate. With no incoming
+     * TTC, HT, or margin cell, the resolver must return no candidate and leave it.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array{purchase_price: ?string, tax_rate: ?string}|null  $existing
+     * @return array<string, mixed>
+     */
+    private function effectivePriceInputs(array $data, ?array $existing): array
+    {
+        if ($this->emptyString($data['purchase_price'] ?? null)
+            && $existing !== null
+            && $existing['purchase_price'] !== null) {
+            $data['purchase_price'] = $existing['purchase_price'];
+        }
+
+        return $data;
+    }
+
+    /**
+     * Use the product's persisted rate for a sparse update. An incoming rate or
+     * category still governs the rate selected by resolveProductTax().
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array{purchase_price: ?string, tax_rate: ?string}|null  $existing
+     */
+    private function effectivePriceTaxRate(
+        array $data,
+        ?CategoryResolutionDTO $category,
+        string $resolvedTaxRate,
+        ?array $existing,
+    ): string {
+        if (! $this->emptyString($data['tax_rate'] ?? null) || $category !== null) {
+            return $resolvedTaxRate;
+        }
+
+        return $existing['tax_rate'] ?? $resolvedTaxRate;
+    }
+
     private function resolveCompany(string $tenantId, string $companyId): Company
     {
         /** @var Company $company */
@@ -761,6 +1112,10 @@ final class ImportService
     public function applyColumnMapping(array $rows, ?array $mapping): array
     {
         if ($mapping === null || $mapping === []) {
+            foreach ($rows as $rowNumber => $row) {
+                $rows[$rowNumber]['_provided'] = $this->providedKeys($row);
+            }
+
             return $rows;
         }
 
@@ -780,10 +1135,43 @@ final class ImportService
                 }
             }
 
+            $mapped['_provided'] = $this->providedKeys($mapped);
+
             $mappedRows[$rowNumber] = $mapped;
         }
 
         return $mappedRows;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return list<string>
+     */
+    private function providedKeys(array $row): array
+    {
+        $provided = [];
+        foreach ($row as $key => $value) {
+            if (str_starts_with($key, '_')) {
+                continue;
+            }
+            if ($value !== null && trim((string) $value) !== '') {
+                $provided[] = $key;
+            }
+        }
+
+        return $provided;
+    }
+
+    private function sourceMaskWasCaptured(ImportRow $row): bool
+    {
+        $raw = $row->getRawOriginal('data');
+        if (! is_string($raw)) {
+            return false;
+        }
+
+        $decoded = json_decode($raw, true);
+
+        return is_array($decoded) && array_key_exists('_provided', $decoded);
     }
 
     private static function normalizeColumnKey(string $key): string

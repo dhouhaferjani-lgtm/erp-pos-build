@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Shared\Contracts;
 
 use App\Shared\DTOs\CategoryResolutionDTO;
+use App\Shared\DTOs\ProductUpsertResultData;
 
 /**
  * Interface for product operations used by other modules.
@@ -25,16 +26,37 @@ interface ProductServiceInterface
     ): ?string;
 
     /**
+     * Read the persisted inputs needed to derive an imported product price.
+     *
+     * @return array{purchase_price: ?string, tax_rate: ?string}|null
+     */
+    public function findPriceInputs(
+        string $tenantId,
+        string $companyId,
+        string $productId,
+    ): ?array;
+
+    /**
      * Create or update a product.
      *
      * @param  array<string, mixed>  $data  Product data
-     * @return string The product ID
      */
     public function upsert(
         string $tenantId,
         string $companyId,
         array $data
     ): string;
+
+    /**
+     * Create or update a product and return import-specific metadata.
+     *
+     * @param  array<string, mixed>  $data  Product data
+     */
+    public function upsertWithResult(
+        string $tenantId,
+        string $companyId,
+        array $data
+    ): ProductUpsertResultData;
 
     /**
      * Resolve a free-text category name to a company category, creating it when

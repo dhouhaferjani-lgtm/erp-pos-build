@@ -1,7 +1,20 @@
 {
   "errors": {
     "invalidFileType": "Invalid file type. Accepted types: {{types}}",
-    "fileTooLarge": "File is too large. Maximum size: {{maxSize}}"
+    "fileTooLarge": "File is too large. Maximum size: {{maxSize}}",
+    "units_not_seeded": "Units are not available for this company.",
+    "unit_unknown": "The unit code is not accepted. Use one of the listed codes exactly as spelled.",
+    "unit_ambiguous": "The unit code matches more than one unit.",
+    "unit_default_missing": "The default unit pc is not available.",
+    "barcode_ambiguous": "The barcode belongs to more than one product.",
+    "product_not_found": "The product could not be found.",
+    "partner_not_found": "The business partner could not be found.",
+    "sku_held_by_deleted_product": "The SKU is held by a deleted product.",
+    "vat_held_by_deleted_partner": "The VAT number is held by a deleted partner.",
+    "duplicate_sku_in_company": "This company already has a product with that SKU.",
+    "validation_failed": "The row did not pass validation.",
+    "internal_error": "The row could not be imported because of an internal error.",
+    "unknown": "This historical import error has no current code."
   },
   "upload": {
     "dragDrop": "Drag and drop your file here",
@@ -152,8 +165,10 @@
     "complete": {
       "title": "Import Complete!",
       "description": "Your data has been successfully imported.",
+      "noChanges": "No records were changed.",
       "results": "Results",
       "imported": "Successfully imported",
+      "skipped": "Skipped",
       "failed": "Failed to import",
       "warnings": "{{count}} rows completed with warnings",
       "backToDashboard": "Back to Import Dashboard",
@@ -229,7 +244,58 @@
     "expiry_conflict_existing_lot": "{{count}} rows supplied an expiry date that conflicted with an existing lot; the existing lot was kept.",
     "quantity_ignored_service": "{{count}} service rows included a quantity; services do not create stock.",
     "opening_failed": "Opening stock could not be created for {{count}} rows.",
+    "margin_without_cost": "{{count}} rows supplied a margin without a purchase cost.",
+    "balance_not_posted": "{{count}} rows had an opening balance that was not posted.",
+    "expiry_in_past": "{{count}} rows supplied an expiry date in the past.",
+    "expiry_ignored_not_batch_tracked": "{{count}} rows supplied an expiry date for a product that is not batch tracked.",
+    "expiry_ignored_no_default_lot": "{{count}} rows supplied an expiry date but no default lot was available.",
+    "category_matched_by_slug": "{{count}} rows matched an existing category by slug.",
+    "category_restored": "{{count}} rows restored a deleted category.",
+    "sku_generated": "{{count}} rows received a generated SKU.",
+    "code_generated": "{{count}} partners received a stable generated code.",
+    "matched_by_name": "{{count}} rows matched an existing record by normalized name.",
+    "duplicate_in_file": "{{count}} rows lost to a later row for the same product and location.",
+    "preview_drift": "{{count}} rows resolved differently at execution than at preview.",
+    "opening_skipped_existing": "{{count}} opening-stock instructions were skipped because opening stock already exists.",
+    "opening_corrected": "{{count}} opening-stock instructions corrected an existing opening.",
+    "unit_defaulted": "{{count}} rows defaulted to the pc unit.",
+    "location_not_supplied": "{{count}} rows did not supply a stock location.",
+    "location_code_unknown": "{{count}} rows supplied an unknown location code.",
+    "opening_exists": "{{count}} rows already had opening stock; no second opening was posted.",
+    "unknown": "{{count}} rows contain a historical warning that is not recognised by this version.",
     "other": "{{count}} rows reported warning {{code}}."
+  },
+  "duplicates": {
+    "title": "Duplicate review",
+    "summary": "{{existing}} rows match existing products and {{inFile}} rows repeat a product at the same location.",
+    "refusedSummary": "{{count}} rows will be refused — {{codes}}",
+    "blankCells": "Updates are merged field by field; blank cells never overwrite existing values.",
+    "lastRowWins": "Within one file, the last row wins for the same product at the same location.",
+    "matchedByName": "{{count}} rows used the weakest match: normalized name. Review these row numbers before continuing.",
+    "showAll": "Show all row numbers",
+    "showLess": "Show fewer row numbers",
+    "interpretation": "Duplicate match",
+    "bucket": {
+      "new": "New",
+      "existing_sku": "Existing SKU",
+      "existing_barcode": "Existing barcode",
+      "existing_name": "Existing name",
+      "in_file": "Repeated in file",
+      "refused": "Refused"
+    },
+    "policy": {
+      "title": "How should existing records be handled?",
+      "override": { "label": "Override", "description": "Merge non-blank cells into existing records." },
+      "skip": { "label": "Skip", "description": "Leave matched existing records unchanged." },
+      "cancel": { "label": "Cancel", "description": "Leave this wizard and discard the import from import history." },
+      "persistenceError": "The duplicate policy could not be saved. Try again before continuing."
+    },
+    "discard": {
+      "title": "Discard this import?",
+      "message": "This removes the uploaded file and its preview rows. This action cannot be undone.",
+      "confirm": "Discard import",
+      "keep": "Keep draft"
+    }
   },
   "validation": {
     "allValid": "All rows are valid",

@@ -11,6 +11,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Import\Domain\Enums\ImportType;
+use App\Modules\Import\Domain\Enums\ImportWarningCode;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -97,9 +98,9 @@ final class ResultWorkbookTest extends TestCase
             'imported_entity_id' => self::IMPORTED_PRODUCT_ID,
             // Execution writes internal bookkeeping (arrays) into data — the
             // workbook must skip underscore-prefixed keys, not crash on them.
-            'data' => array_merge($importedRow->data, ['_results' => ['opening_stock' => 'ok']]),
+            'data' => array_merge($importedRow->data, ['_results' => ['opening_stock' => ['opening_stock' => 'ok']]]),
         ]);
-        $service->addRowWarning($importedRow, 'price_conflict', 'provided 12.000 vs derived 11.900');
+        $service->addRowWarning($importedRow, ImportWarningCode::PriceConflict, 'provided 12.000 vs derived 11.900');
 
         $rejectedRow = $service->addRow($job, 2, [
             'sku' => 'SKU-2',

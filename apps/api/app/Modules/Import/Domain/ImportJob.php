@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace App\Modules\Import\Domain;
 
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Domain\Casts\ColumnMappingCast;
+use App\Modules\Import\Domain\Casts\ImportJobOptionsCast;
 use App\Modules\Import\Domain\Data\ImportErrorDetailData;
 use App\Modules\Import\Domain\Enums\ImportErrorCode;
+use App\Modules\Import\Domain\Enums\ImportRowOutcome;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Tenant\Domain\Tenant;
@@ -104,8 +107,8 @@ class ImportJob extends Model
         return [
             'type' => ImportType::class,
             'status' => ImportStatus::class,
-            'column_mapping' => 'array',
-            'options' => 'array',
+            'column_mapping' => ColumnMappingCast::class,
+            'options' => ImportJobOptionsCast::class,
             'error_code' => ImportErrorCode::class,
             'error_detail' => ImportErrorDetailData::class,
             'started_at' => 'datetime',
@@ -156,12 +159,10 @@ class ImportJob extends Model
      */
     public function getValidRowsCount(): int
     {
-        // Use successful_rows if already validated, otherwise count from DB
-        if ($this->status === ImportStatus::Validated) {
-            return $this->successful_rows;
-        }
-
-        return $this->rows()->where('is_valid', true)->count();
+        return $this->rows()
+            ->where('is_valid', true)
+            ->where('outcome', ImportRowOutcome::Pending)
+            ->count();
     }
 
     /**

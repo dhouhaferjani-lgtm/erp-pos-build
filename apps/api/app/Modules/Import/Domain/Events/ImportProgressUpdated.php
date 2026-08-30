@@ -23,6 +23,7 @@ final readonly class ImportProgressUpdated
         public int $failedRows,
         public string $importType,
         public string $originalFilename,
+        public int $skippedRows = 0,
     ) {}
 
     /**
@@ -53,6 +54,7 @@ final readonly class ImportProgressUpdated
             'processed_rows' => $this->processedRows,
             'successful_rows' => $this->successfulRows,
             'failed_rows' => $this->failedRows,
+            'skipped_rows' => $this->skippedRows,
             'progress_percentage' => $this->getProgressPercentage(),
             'import_type' => $this->importType,
             'original_filename' => $this->originalFilename,

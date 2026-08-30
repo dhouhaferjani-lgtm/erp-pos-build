@@ -19,7 +19,7 @@ interface TaxDefaultResolverInterface
      *
      * The rate alone cannot answer "where did this come from" — a category and its
      * company routinely state the same percentage — and the unified import needs the
-     * provenance for the row's `_results.tax_source` breadcrumb (W2-5 gate r1 F-4).
+     * provenance for the row's `_results.product.tax_source` breadcrumb (W2-5 gate r1 F-4).
      */
     public function resolveDefaultTaxForNewProduct(Company $company, int|string|null $categoryId = null): ProductTaxDefaultDTO;
 }

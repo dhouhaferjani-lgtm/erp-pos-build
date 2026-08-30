@@ -10,8 +10,14 @@ use App\Modules\Product\Domain\Enums\BrandSource;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Services\TaxResolutionService;
+use App\Shared\Contracts\CoalescingAttributeMergerInterface;
+use App\Shared\Contracts\ProductResolverInterface;
 use App\Shared\Contracts\ProductServiceInterface;
 use App\Shared\DTOs\CategoryResolutionDTO;
+use App\Shared\DTOs\ProductIdentityResolutionData;
+use App\Shared\DTOs\ProductUpsertResultData;
+use App\Shared\Enums\ProductIdentityFailure;
+use BackedEnum;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -26,6 +32,8 @@ final class ProductService implements ProductServiceInterface
         private readonly TaxResolutionService $taxResolution,
         private readonly BrandResolutionService $brandResolution,
         private readonly CategoryResolutionService $categoryResolution,
+        private readonly CoalescingAttributeMergerInterface $attributeMerger,
+        private readonly ProductResolverInterface $productResolver,
     ) {}
 
     /**
@@ -54,21 +62,62 @@ final class ProductService implements ProductServiceInterface
         return $product?->id;
     }
 
+    public function findPriceInputs(
+        string $tenantId,
+        string $companyId,
+        string $productId,
+    ): ?array {
+        $product = Product::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->find($productId);
+
+        if ($product === null) {
+            return null;
+        }
+
+        return [
+            'purchase_price' => $product->purchase_price,
+            'tax_rate' => $product->tax_rate,
+        ];
+    }
+
     /**
      * Create or update a product.
      *
      * @param  array<string, mixed>  $data  Product data
-     * @return string The product ID
      */
     public function upsert(
         string $tenantId,
         string $companyId,
         array $data
     ): string {
+        return $this->upsertWithResult($tenantId, $companyId, $data)->productId;
+    }
+
+    public function upsertWithResult(
+        string $tenantId,
+        string $companyId,
+        array $data
+    ): ProductUpsertResultData {
         $fileSku = $this->emptyToNull($data['sku'] ?? null);
         $barcode = $this->emptyToNull($data['barcode'] ?? null);
         $nameSku = $this->skuFromName((string) $data['name']);
-        $existing = $this->findExistingProduct($tenantId, $companyId, $fileSku, $barcode, $nameSku);
+        $resolution = $this->resolveIdentity(
+            $tenantId,
+            $companyId,
+            $fileSku,
+            $barcode,
+            (string) $data['name'],
+        );
+        if ($resolution->isBarcodeAmbiguous()) {
+            throw new RuntimeException(
+                'barcode_ambiguous: barcode matches multiple products: '.implode(', ', $resolution->candidateSkus)
+            );
+        }
+        $existing = $resolution->productId === null
+            ? null
+            : Product::query()->where('company_id', $companyId)->find($resolution->productId);
         $createSku = $fileSku ?? ($barcode ?? $nameSku);
 
         // Gate r2 G3A-R2-1: the deleted-holder guard keys on the SKU that will be
@@ -88,14 +137,15 @@ final class ProductService implements ProductServiceInterface
         }
 
         $attributes = [
-            'name' => $data['name'],
-            'type' => ProductType::from((string) ($this->emptyToNull($data['type'] ?? null) ?? ProductType::Part->value)),
+            'name' => (string) $data['name'],
+            'type' => ProductType::from((string) ($this->emptyToNull($data['type'] ?? null) ?? ProductType::Part->value))->value,
             'description' => $this->emptyToNull($data['description'] ?? null),
             'sale_price' => $this->emptyToNull($data['sale_price'] ?? null),
             'purchase_price' => $this->emptyToNull($data['purchase_price'] ?? null),
             'barcode' => $barcode,
             'tax_rate' => $this->emptyToNull($data['tax_rate'] ?? null),
             'unit' => $this->emptyToNull($data['unit'] ?? null),
+            'unit_id' => $this->emptyToNull($data['unit_id'] ?? null),
         ];
 
         if (isset($data['is_active']) && $data['is_active'] !== '') {
@@ -118,7 +168,7 @@ final class ProductService implements ProductServiceInterface
         if (isset($data['brand']) && trim((string) $data['brand']) !== '') {
             $brand = $this->brandResolution->resolve($tenantId, trim((string) $data['brand']), null, null)->brand;
             $attributes['brand_id'] = $brand->id;
-            $attributes['brand_source'] = BrandSource::User;
+            $attributes['brand_source'] = BrandSource::User->value;
         }
 
         if (($attributes['tax_rate'] ?? null) === null) {
@@ -160,10 +210,30 @@ final class ProductService implements ProductServiceInterface
         );
 
         if ($existing !== null) {
+            $provided = is_array($data['_provided'] ?? null)
+                ? array_values(array_filter($data['_provided'], static fn (mixed $key): bool => is_string($key)))
+                : array_keys($attributes);
+            $existingAttributes = [];
+            foreach (array_keys($attributes) as $field) {
+                $value = $existing->getAttribute($field);
+                // Preserve the useful decimal string casts while reducing
+                // enum-backed attributes to their persisted scalar value.
+                if ($value instanceof BackedEnum) {
+                    $value = $value->value;
+                }
+                if (is_bool($value) || is_int($value) || is_string($value) || $value === null) {
+                    $existingAttributes[$field] = $value;
+                }
+            }
+            $attributes = $this->attributeMerger->merge($existingAttributes, $attributes, $provided);
             $existing->fill($attributes);
             $existing->save();
 
-            return $existing->id;
+            return new ProductUpsertResultData(
+                productId: $existing->id,
+                sku: $existing->sku,
+                skuWasGenerated: false,
+            );
         }
 
         $product = Product::create(
@@ -174,7 +244,11 @@ final class ProductService implements ProductServiceInterface
             ], $attributes)
         );
 
-        return $product->id;
+        return new ProductUpsertResultData(
+            productId: $product->id,
+            sku: $product->sku,
+            skuWasGenerated: false,
+        );
     }
 
     /**
@@ -320,26 +394,24 @@ final class ProductService implements ProductServiceInterface
      * caller is about to write, which `refuseIfSkuHeldByDeletedProduct()` checks
      * against `$createSku` in `upsert()`, independently of which column matched.
      */
-    private function findExistingProduct(
+    public function resolveIdentity(
         string $tenantId,
         string $companyId,
         ?string $fileSku,
         ?string $barcode,
-        string $nameSku
-    ): ?Product {
-        $query = Product::query()
-            ->where('tenant_id', $tenantId)
-            ->where('company_id', $companyId);
-
-        if ($fileSku !== null) {
-            return $query->where('sku', $fileSku)->first();
+        string $name,
+    ): ProductIdentityResolutionData {
+        $resolution = $this->productResolver->resolve($tenantId, $companyId, $fileSku, $barcode, $name);
+        if ($resolution->failure === ProductIdentityFailure::SkuHeldByDeletedProduct) {
+            $this->refuseSkuHeldByDeletedProduct($resolution->failureSku ?? (string) $fileSku);
+        }
+        if ($resolution->failure === ProductIdentityFailure::BarcodeAmbiguous) {
+            throw new RuntimeException(
+                'barcode_ambiguous: barcode matches multiple products: '.implode(', ', $resolution->candidateSkus)
+            );
         }
 
-        if ($barcode !== null) {
-            return $query->where('barcode', $barcode)->first();
-        }
-
-        return $query->where('sku', $nameSku)->first();
+        return $resolution;
     }
 
     /**
