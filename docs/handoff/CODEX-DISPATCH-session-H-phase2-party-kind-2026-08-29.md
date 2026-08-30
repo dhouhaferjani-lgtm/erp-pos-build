@@ -70,7 +70,7 @@ also depends on
 `B2BFieldsSection`'s internal layout, so **re-verify its split tax/credit anchors after the merge before
 you touch it**. **The drift was real and large:** `PartnerForm.tsx` went 832 → **894** lines and its every
 anchor moved (the VAT field `:556-565` → `:617`, the tax block `:604-663` → `:663-690`, `onSubmit`
-`:397-420` → `:444-470`); `PartnerService.php`'s matching ladder moved twice (`:67-69` → `:83-92` → now
+`:397-420` → `:444-470`); `PartnerService.php`'s matching ladder moved twice (`:82-85` → `:98-107` → now
 **`:98-107`**, because a1 inserted `resolveScopedPartnerId` at `:19`); `ImportController.php`'s upload-201
 moved `:205-207` → **`:267-269`**. Every `:line` below is now pinned to **`31f49e4f4`** and was grepped in
 the worktree. Still run `grep -n` before editing any of them — the base can move again.
@@ -110,7 +110,7 @@ owner-ruled Decision.
 | B4 | Person attributes hang off the **party** itself, so a billable individual carries its own identity | ✅ on `res.partner` | ❌ **contradicts** — v15 Customer's `mobile_no` / `email_id` are **read-only, fetched from the linked primary Contact** [S4] | ✅ on the *tiers* | they exist **only on `contacts`** — `mobile` `:24`, `date_of_birth` `:25`, `gender` `:26`, `national_id` `:27` in `apps/api/database/migrations/tenant/2026_03_10_100001_create_contacts_table.php` (enum `app/Modules/Contact/Domain/Enums/Gender.php:7-12`), and `contacts` is never billable (B2). **`partners` has none:** grepping `date_of_birth`, `gender`, `national_id` and `mobile` across `database/migrations/tenant/*partners*.php` and `app/Modules/Partner/Domain/Partner.php` returns **zero hits** (r9) | MISSING | **MATCH vs Odoo/Dolibarr · DIVERGE vs ERPNext** — owner-ruled OQ1 puts the four columns on `partners` (M1) with the M3 person panel. ERPNext's contact-sourced shape is exactly the option OQ1 rejected: it makes a walk-in individual depend on a Contact row, and **contacts are never billable here** (B2) |
 | B5 | The party carries explicit **per-party credit controls** an operator sets — modelled as a **numeric limit**, not a boolean eligibility flag [S5][S6] | ✅ credit limit on the partner | ✅ `Customer Credit Limit` **child table** (per-company limits) [S5] | ✅ numeric `outstanding_limit` on the *tiers* [S6] | the numeric half already exists (`credit_limit`, `app/Modules/Partner/Domain/Partner.php:40,107`); what is missing is **eligibility** — the POS mirror **derives** charge-enablement as `is_active && account_status === Active` (`app/Modules/POS/Presentation/Resources/PosCustomerMirrorResource.php:30-32`, emitted `:50`), so **every** active party reads as charge-enabled | PARTIAL | **ALREADY (numeric limit) · DIVERGE-by-addition (eligibility).** No reference product needs an eligibility boolean because none has our till-side account charge. M1 adds `credit_account_enabled` on top of the existing `credit_limit` because spec §7.5 keeps a **person-with-credit** path (so eligibility cannot be inferred from nature) and the mirror predicate must stop meaning "active" (N-3). M1 column + mirror predicate + M3 toggle |
 | B6 | The party carries a **preferred language** used for its documents and messages | ✅ `res.partner.lang` [S7] | ✅ Customer `language` / "Print Language" [S8] | ✅ *tiers* `default_lang` [S6] | `partners` has no locale column; only the tenant does — **`apps/api/database/migrations/2025_11_30_214948_add_personal_info_to_tenants_table.php:27`**, a **central** migration, **not** under `migrations/tenant/` (the r8 path was wrong — N-34) | MISSING | **MATCH — M1 `preferred_locale`, M2.1 country-seeded BCP-47 list (R-B / N-4)** |
-| B7 | Phone and email are **normalized on write**, with email uniqueness available as an **option** — **none of them guarantees deduplication of people** [S9][S10][S11] | ⚠️ formatting only: `phone_validation` reformats on change [S9] | ⚠️ no normalization guarantee | ⚠️ strips phone punctuation, trims email [S10]; email uniqueness only when `SOCIETE_EMAIL_UNIQUE` is set [S11] | **no normalization at all** outside Loyalty's digit-strip (`app/Modules/Loyalty/Domain/Entities/LoyaltyMember.php:112-118`); the matching ladder is `code → vat_number → exact case-sensitive name`, **repinned at r9 to `app/Modules/Partner/Application/Services/PartnerService.php:98-107`** (the `match(true)` block; r8's `:67-69` is now input preparation — N-34) | MISSING | **MATCH (Phase 2, storage) — M1 `ContactPointNormalizer` + `phone_normalized` / `email_normalized`, normalized at the write boundary (M2.3/F-7): that is the half the baseline actually guarantees.** **DEFER (Phase 4, matching) — using them to dedup or merge goes beyond every reference product**; do not touch `:83-92` |
+| B7 | Phone and email are **normalized on write**, with email uniqueness available as an **option** — **none of them guarantees deduplication of people** [S9][S10][S11] | ⚠️ formatting only: `phone_validation` reformats on change [S9] | ⚠️ no normalization guarantee | ⚠️ strips phone punctuation, trims email [S10]; email uniqueness only when `SOCIETE_EMAIL_UNIQUE` is set [S11] | **no normalization at all** outside Loyalty's digit-strip (`app/Modules/Loyalty/Domain/Entities/LoyaltyMember.php:112-118`); the matching ladder is `code → vat_number → exact case-sensitive name`, **repinned at r9 to `app/Modules/Partner/Application/Services/PartnerService.php:98-107`** (the `match(true)` block; r8's `:82-85` is now input preparation — N-34) | MISSING | **MATCH (Phase 2, storage) — M1 `ContactPointNormalizer` + `phone_normalized` / `email_normalized`, normalized at the write boundary (M2.3/F-7): that is the half the baseline actually guarantees.** **DEFER (Phase 4, matching) — using them to dedup or merge goes beyond every reference product**; do not touch `:98-107` |
 | B8 | **Role** (customer/supplier) and **nature** (person/company) are **orthogonal** axes — a supplier may be a person | ✅ (spec §2.1: rank flags are independent of `is_company`) | ✅ (spec §2.2) | ✅ (spec §2.3) | role exists (`PartnerType` on `partners.type`, `database/migrations/tenant/2025_11_30_052119_create_partners_table.php:20`); nature does not, so the axes cannot be crossed | MISSING | **MATCH — M1 keeps them separate enums; OQ6 keeps the labels distinct ("Type" for role, "Nature" for nature)** |
 
 **Sources** — upstream code read by the r8 gate; clickable URLs in
@@ -712,20 +712,20 @@ on create AND update**, operating on the **merged final state**, not the incomin
    `party_kind = Person` — the till only ever mints persons. The validation block at `:163-171` stays.
 4. **`ImportType::Parties` + `PartiesRowMapper`** — deferred to **M4**; say so in the M2 register.
 5. **`PartnerService::upsertWithTypeMerge`** (`PartnerService.php:77-147`): the `updateOrCreate` payload
-   at `:88-104` gains `party_kind` from the **merged** state via `PartyKindDeriver` (F-6) and the derived
-   `customer_category`. **Do not touch the matching ladder at `:67-69`** — dedup is Phase 4.
+   at `:126-144` gains `party_kind` from the **merged** state via `PartyKindDeriver` (F-6) and the derived
+   `customer_category`. **Do not touch the matching ladder at `:82-85`** — dedup is Phase 4.
 
 **M2.3 Every `Partner` insert routes through `PartnerService` (R-A, F-7).** Verified census
 (`grep -rn "Partner::create\|Partner::query()->create\|Partner::updateOrCreate\|Partner::firstOrCreate" apps/api/app`):
 `PartnerController.php:215`, `PartnerService.php:126`, `PosPendingCustomerController.php:82`,
 `MarketplaceOrderService.php:222` and `:234`, `CartConversionService.php:87` — the last three bypass every
 FormRequest and are rule-6 violations. Widen `App\Shared\Contracts\PartnerServiceInterface`
-(`apps/api/app/Shared/Contracts/PartnerServiceInterface.php:12-53`) with typed create/update seams and move
+(`apps/api/app/Shared/Contracts/PartnerServiceInterface.php:12-52`) with typed create/update seams and move
 all four non-service call sites onto them, making `PartnerService` the single place that (a) requires/derives
 `party_kind`; (b) derives `customer_category`; (c) applies `PartyIdentityPolicy`; (d) **normalizes phone and
 email at the write boundary** with the company `country_code` as default region; (e) dispatches the V2 events.
 (d) is F-7: POS writes raw phone/email (`PosPendingCustomerController.php:87-88`), the import mapper passes
-raw values (`PartiesRowMapper.php:21-22`) and the upsert persists them directly (`PartnerService.php:133-134`),
+raw values (`PartiesRowMapper.php:21-22`) and the upsert persists them directly (`PartnerService.php:134-135`),
 so request-level normalization covers nothing but HTTP. Lock it with a **grep-guard test** failing on any
 `Partner::create(` / `Partner::query()->create(` outside `PartnerService` and the factory — precedent: the D16
 no-live-lookup guard at `PosCoreReceiptProjection.php:96-99 (docblock) + `:425-427` (the partner_id write)`. Normalization tests cover all five
@@ -1027,7 +1027,7 @@ text. Screenshots for all six. Marker: `party_kind` present on the intercepted `
 - `apps/api/app/Modules/Import/Services/PartiesRowMapper.php:15-30` — `toPartnerData()` maps `party_kind`
   and `legal_form` through **as strings**; derivation happens inside `PartnerService`.
   **Rule-6 boundary (N-25) — the Import module must NOT import Partner domain classes.** Widen the public
-  seam `apps/api/app/Shared/Contracts/PartnerServiceInterface.php:12-53`: the typed upsert returns
+  seam `apps/api/app/Shared/Contracts/PartnerServiceInterface.php:12-52`: the typed upsert returns
   **`{id, kind, reason, cleared_fields}`** (a readonly result DTO), so the importer reads `reason` for its
   warning without owning any derivation logic; and add **`legalFormValues(): list<string>`**.
 - **New `PartiesValidationRulesFactory` — where the contract call actually lives (N-31).** Put it in
@@ -1156,7 +1156,7 @@ in `owes_parent` is insufficient — say so explicitly in the lane report so the
    `docs/handoff/progress/session-h-phase2.progress.yaml` is absent.
 8. Any pull toward Phase 3 (facture escalation), Phase 4 (dedup ladder, `pos_receipt_party_links`, contacts
    tab, tombstone merge) or Phase 5 (device contacts). In particular do **not** touch `PartnerService`'s
-   matching ladder (`PartnerService.php:98-107` — repinned at r9; the old `:67-69` is now input preparation)
+   matching ladder (`PartnerService.php:98-107` — repinned at r9; the old `:82-85` is now input preparation)
    or the `hashCustomerUuid` **seed** (Amendment A-1, M1.3) —
    wiring the normalizer into that file's display/matching helpers is in scope; re-seeding the hash is not.
 9. Any owner-gated question, or fix rounds exhausted (4) on any milestone.
