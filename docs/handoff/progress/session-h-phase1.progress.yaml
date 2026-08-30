@@ -58,9 +58,11 @@ milestones:
     title: SALE_RECEIPT.buyer populated (resolved server partner id only; contact_id null by decision); validateBuyer customer_id uuid-or-null; projection writes partner_id from snapshot
     review_lenses: [fiscal-pos]
     status: in_progress
-    commit: null
-    verdict: null
-    fix_rounds: 0
+    commit: a59826588
+    verdict: docs/handoff/reviews/session-h-phase1/M4-round1.md
+    last_verdict: CHANGES-REQUIRED
+    fix_rounds: 1
+    updated: a59826588
   - id: M5
     lane: h1-a1
     title: golden populated-buyer canonical-bytes fixture, device + server, hash pinned
