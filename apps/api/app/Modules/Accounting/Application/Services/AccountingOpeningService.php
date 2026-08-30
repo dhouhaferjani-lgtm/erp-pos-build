@@ -901,9 +901,10 @@ class AccountingOpeningService
      * transaction-scoped advisory lock keyed on (companyId, year) to close the
      * TOCTOU race between the read-max and the insert: without it two concurrent
      * posts both read the same max and both mint OB-{year}-000001, and the loser
-     * fails on the journal_entries (tenant_id, entry_number) unique index — which
-     * stays as the second line of defence. On SQLite (test runner) the advisory
-     * lock is skipped: concurrency is not meaningful there.
+     * fails on the `(company_id, entry_number)` unique index
+     * (`JournalEntryIndexNames::COMPANY_ENTRY_NUMBER_UNIQUE`), which stays as the
+     * second line of defence. On SQLite (test runner) the advisory lock is skipped:
+     * concurrency is not meaningful there.
      *
      * Same pattern as the corrected sibling generateOpeningEntryNumber() in the
      * Inventory module's OpeningBalancePostingService (named, not imported: module

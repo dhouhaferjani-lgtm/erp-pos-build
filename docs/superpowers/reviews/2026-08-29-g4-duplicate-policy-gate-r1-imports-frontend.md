@@ -305,3 +305,184 @@ Using the prompt's dev ceiling, the required union remains **1,224 total / Impor
 ### VERDICT: FAIL
 
 Do not rebase, stage, or merge. G4-R2-02 remains behaviorally open: the preview census reports resolver refusals as `new`, while authoritative execution fails those rows. Fix the census/result contract and replace the mismatch-enshrining test with independently derived parity expectations. Also remove and ignore the tracked SQLite database in G4-R3-01. Then rerun the scoped census/resolver PostgreSQL pins, manifest/static checks, and generated-type no-diff check; never broaden this lane gate to the full suite.
+
+## Gate r4 (Codex, narrow)
+
+Re-check target: snapshot `fad74078a97005adcf89513de14b114e52c7273a` plus the dirty fix-round-3 overlay. Scope was limited to r3's two open items. Source was reviewed read-only; this section is the only intentional review write.
+
+### Open-item closure audit
+
+| finding | r4 status | verification |
+|---|---|---|
+| G4-R2-02 | **CLOSED** | Census now maps a typed resolver failure to `DuplicateBucket::Refused`, increments that bucket, and persists a row-number/code advisory (`apps/api/app/Modules/Import/Services/DuplicateCensusService.php:63-94,275-295`). Preview returns both the stored duplicate census and the per-row advisory (`apps/api/app/Modules/Import/Presentation/Controllers/ImportController.php:294-319`), pinned at `apps/api/tests/Feature/Import/ImportPreviewTest.php:204-236`. RUL-1 renders the `refused` count and distinct codes only when the count is positive (`apps/web/src/features/import/pages/ImportWizardPage.tsx:1022-1042`); the positive and hidden-at-zero cases are pinned at `apps/web/src/features/import/__tests__/ImportWizardPage.duplicates.test.tsx:133-136,159-181`, and non-empty en/fr/ar keys are pinned at `apps/web/src/features/import/__tests__/ImportWarningLocales.test.ts:8-33`. Execute re-resolves authoritatively inside the row transaction and converts the same coded resolver failure to `failed` after rollback (`ImportService.php:441-450,521-534`; `DuplicateCensusService.php:298-315`). The six-case parity table is hand-written for SKU, barcode, name-only, supplied deleted holder, name-derived deleted holder, and ambiguous barcode; it independently fixes preview bucket/code and execute outcome/code, then asserts both sides and exact refusal-code equality (`DuplicateCensusTest.php:199-288`). It expects three `refused` census rows and three coded execution failures. Final sync/queue equations remain outcome-derived, so those refusals enter `failed`, not `skipped` (`ImportService.php:550-571`; `ProcessImportJob.php:206-216`). |
+| G4-R3-01 | **CLOSED** | `git ls-tree -r HEAD --name-only | grep autoerp_test_` returned no path. Root `.gitignore:79-80` carries `apps/api/autoerp_test_*`. No matching file exists at `apps/api` top level after all runs. Final `git status --short` contains only the 16 tracked fix-round lane files already listed in the fix notes; no artifact, untracked file, or unrelated path appeared. |
+
+### Fresh command evidence
+
+| command / leg | result |
+|---|---|
+| Requested SQLite paths by path: census plus API preview, outcome/atomicity/resolver/coalescing/unit classes, pipeline, upsert precedence, re-execution guard, worker status, and all RoundTrip classes | **PASS — 119 passed, 4 skipped, 861 assertions** |
+| Requested PostgreSQL census/resolver/outcome/unit paths, serial by path; every invocation prefixed `DB_DATABASE=autoerp_test_g5 DB_CENTRAL_DATABASE=autoerp_test_g5 DB_CONNECTION=pgsql` | **PASS — 46 passed, 255 assertions** |
+| PHPStan level 8 on the dirty fix-round touched PHP | **PASS — 0 errors** |
+| Pint `--test` on the dirty fix-round touched PHP | **PASS** |
+| Feature manifest checker | **PASS — 1,480 Feature classes / 74 groups**; all filters anchored and uniquely matched against 1,880 test classes |
+| `cd apps/web && pnpm vitest run src/features/import` | **PASS — 12 files, 67 tests** |
+| `cd apps/web && pnpm typecheck` | **PASS** |
+| ESLint on all eight G-4-touched TypeScript/TSX files | **PASS — 0 errors, 20 warnings** |
+| `CACHE_STORE=array php artisan typescript:transform` | **PASS — 545 types; generated declaration SHA-256 unchanged** (`fe93295dfc16d54416d317abe729c6356bbe66aa50d4dbfe3e22c85e4605820d`) |
+| Artifact/state audit and `git diff --check` | **PASS** — tracked-tree grep empty, ignore present, no materialized `apps/api/autoerp_test_*`, only the expected 16 dirty lane files, and no whitespace errors |
+
+### VERDICT: PASS
+
+Both r3 open items are closed. This narrow r4 found no remaining imports-reviewer or frontend-conventions-reviewer blocker in scope.
+
+## Gate r5 (Codex, post-rebase full)
+
+Review target: clean `feat/g4-duplicate-policy-merge` worktree, `git diff dev...HEAD` (98 files) plus uncommitted changes (none). Source remained read-only; this register append is the only workspace write. PostgreSQL commands were serial, by explicit path, and every invocation was prefixed `DB_DATABASE=autoerp_test_g5 DB_CENTRAL_DATABASE=autoerp_test_g5`.
+
+### Conflict-resolution audit
+
+| file / surface | resolution found | verified by |
+|---|---|---|
+| `ImportController::execute` | Entitlement and company mismatch are checked first. A start-eligible job is claimed by `ImportJobClaimService::claim($job, $companyId)` before the pending-row count is read; the claim SQL performs `company_id = COALESCE(company_id, ?)` atomically. The only pre-claim row count is the diagnostic for an already-`failed`, never-started job, which is not claim-eligible. Sync execution receives the claim's exact prior status; async dispatch occurs only after the controller claim. | `ImportController.php:575-723`; SQLite `ImportCompanyPinTest`, `ImportJobClaimConcurrencyTest`, `ImportReExecutionGuardTest`; PG claim/company-pin paths. |
+| `ProcessImportJob` | There is no second claim implementation. A legacy/unclaimed delivery calls `ImportService::claimJob()`, which delegates to the same CAS service; an already controller-claimed delivery only calls `markWorkerStarted()`. Duplicate delivery loses the worker-start CAS. | `ProcessImportJob.php:80-153`; `ImportService.php:471-496`; SQLite/PG `ImportJobClaimConcurrencyTest`; `ProcessImportJobStatusTest`. |
+| `ImportService` row loop | Every pending row calls `processPendingRow()`. It re-runs duplicate identity/location resolution inside that row's DB transaction, writes imported/duplicate terminal outcomes in that transaction, and writes a coded failure only after rollback. `preview_drift` compares the preview bucket with that execute-time decision. | `ImportService.php:395-468,505-600`; `DuplicateCensusTest`; four resume/fault cases in `ImportOutcomeAtomicityTest`; SQLite and PG green. |
+| `ImportJobClaimService` + `ImportCountersData` | One claim/release/start/finalize CAS lifecycle remains. `ImportCountersData` is one class with the G-6a fields and an outcome-only `fromJob()`: success=`imported`; skipped=`duplicate_skipped + duplicate_loser`; failed=`failed + opening_locked`; total=row count. No compatibility calculation reads `is_imported`. | `ImportJobClaimService.php:25-181`; `ImportCountersData.php:10-39`; `rg` census; SQLite/PG claim/outcome paths. |
+| `docs/modules/imports.md` | The temporary counter-compatibility section is absent. The lifecycle and counter text names outcome as authority and states the success/skipped/failed equations. | `docs/modules/imports.md:83-94,367-387`; source search found no “Temporary Counter Compatibility”. |
+| `ImportErrorDetailData` / `UnitCandidateData` and casts | Exactly one definition of each exists. G-6a optional lifecycle fields and G-4 unit candidate fields are united; candidates are typed `list<UnitCandidateData>` and carry id/code/name/category/tier. Job hydration uses the Spatie data cast; row hydration uses `ImportErrorDetailCast`; additive/unknown job detail and row candidate hydration pass. | `ImportErrorDetailData.php:21-46`; `UnitCandidateData.php:10-25`; `ImportErrorDetailCast.php`; `ImportJob.php:112-118`; `ImportRow.php:78-90`; SQLite/PG `ImportJsonbCastHydrationTest` and `ImportJobClaimConcurrencyTest`. |
+| `ImportErrorCode` | One exhaustive union contains `units_not_seeded`, `worker_lost`, `validation_failed`, all currently emitted G-4 row codes, and the pre-existing resolver cases. `isJobLevel()` has no default and names every case. | `ImportErrorCode.php:15-47`; PHPStan; generated union equality. |
+| `ImportJob` + M6a/M6c `skipped_rows` | Fillable/casts contain company/source, lifecycle/error detail, typed options/mapping, outcome counters, and `skipped_rows`. Both migrations guard `skipped_rows` with `Schema::hasColumn`. On a fresh tenant timestamp order makes M6c (`2026_08_30_100400`) create it; M6a (`2026_08_31_100000`) then skips. In the reverse order M6a creates it and M6c skips, so both orders are DDL-safe by inspection; physically reversing timestamp migrations was unnecessary. | `ImportJob.php:23-120`; M6c `:58-62`; M6a `:26-32`; SQLite/PG lifecycle and outcome-migration tests. |
+| Three G-4 migrations / echo helper | All diagnostics use `MigrationOutput::info|error`; no `echo` or facade-guarded `fwrite` remains. | `2026_08_31_100000...:102`; `100100...:19,26`; `100200...:42,51,69`; both echo guards PASS (4 tests, 634 assertions, 1 skipped). |
+| Service-provider union | G-4 merger/census/unit services and resolver interfaces are registered once in their owning providers; G-6a claim service is constructor-autowired once. `UnitCatalogQueryInterface` is bound to `UnitCatalogQuery` in Uom. | `ImportServiceProvider.php:40-77`; `ProductServiceProvider.php:27`; `PartnerServiceProvider.php:21`; `UomServiceProvider.php:13-16`; container-backed test matrix. |
+| Generated types | An isolated `CACHE_STORE=array php artisan typescript:transform` transformed 547 types; the temporary output and committed `packages/shared/types/generated.d.ts` had identical SHA-256 `d600ba2cd36ca68924506bf7a1b0acfd6fd805a88d23c8d6ec9d439e874cd86b`. | Temp-copy transform + byte comparison; source worktree stayed clean. |
+| CI + manifest + G-3b gates | `ci.yml` parses and has one anchored PG allowlist containing the union of G-3b/G-6a/G-4 classes. Actual dev values are `1223 / Console 16 / Import 30 / Migrations 13 / Uom 8`; G-4 adds Import +8 and Uom +1, yielding the committed `1232 / 16 / 38 / 13 / 9`. Preview `duplicates` and PATCH `options.duplicate_policy` remain behind company pin and module entitlement. | Ruby YAML parse; manifest checker; `git show dev:... | jq`; `ImportCompanyPinTest` SQLite+PG; `ImportModuleEntitlementTest` SQLite. |
+
+### Regression re-check of r1-r4
+
+The 25 functional findings through r2 plus r3's repository-artifact finding were checked again. One prior typed-JSON finding is reopened; all others remain closed.
+
+| prior finding | r5 status | evidence |
+|---|---|---|
+| G4-R1-01 | **CLOSED** | Execute re-resolves inside each row transaction and warns on drift; census/atomicity tests pass on SQLite and PG. |
+| G4-R1-02 | **CLOSED** | Census is a 500-row chunked, batched identity/location pass with the query ceiling pinned. |
+| G4-R1-03 | **CLOSED** | Within-file identity uses resolved product plus resolved `location_id`; alias/unresolved-location pins pass. |
+| G4-R1-04 | **CLOSED** | All four real commit/rollback resume fault cases pass. |
+| G4-R1-05 | **CLOSED** | Opening selection remains imported-only and the only terminal rewrite is imported → opening_locked. |
+| G4-R1-06 | **CLOSED** | Durable `skipped_rows`, progress separation, outcome equations, and CAS finalization remain present; sync/queue counter pins pass. |
+| G4-R1-07 | **CLOSED** | A trashed barcode twin with a different effective SKU does not block create; pinned precedence path passes. |
+| G4-R1-08 | **CLOSED** | Name-only resolution includes trashed rows and applies the effective-SKU refusal consistently. |
+| G4-R1-09 | **CLOSED** | Runtime and backfill share exact winning-tier selection; cross-tier and same-tier pins pass SQLite/PG. |
+| G4-R1-10 | **CLOSED** | Unit backfill guards every dependency, counts missing companies, catches legacy exceptions, and remains forward-only. |
+| G4-R1-11 | **CLOSED** | Resume selection requires `is_valid=true`, `is_imported=false`, and `outcome=pending`; worker seam pins pass. |
+| G4-R1-12 | **CLOSED** | String-returning `upsert()` compatibility plus DTO-returning `upsertWithResult()` remain; precedence test passes. |
+| G4-R1-13 | **CLOSED** | DB-backed sparse product/partner re-import and all tax-governor pins pass. |
+| G4-R1-14 | **REOPENED** | The cast is typed, but `ImportRowSourceData` still flattens nested `_results` into dotted string keys and serializes `array<string,string>` (`:50-72,87-93`); the round-trip test explicitly pins a flat map (`ImportJsonbCastHydrationTest.php:73-106`). This contradicts §3.2.3's exact `array<string,array<string,string>>` phase → breadcrumb shape. See G4-R5-02. |
+| G4-R1-15 | **CLOSED** | API omits non-applicable census data and FE conditionally renders the panel; API/Vitest pins pass. |
+| G4-R1-16 | **CLOSED** | Matched-by-name rows render a bounded list with expansion; Vitest passes. |
+| G4-R1-17 | **CLOSED** | One awaited policy PATCH gates progression; deferred/rejected PATCH tests pass. |
+| G4-R1-18 | **CLOSED** | Cancel opens discard confirmation and deletes only after confirmation. |
+| G4-R1-19 | **CLOSED** | Selector test crosses preview → execute and asserts owned step/action IDs. |
+| G4-R1-20 | **CLOSED** | Warning translation mapping remains compile-time exhaustive and en/fr/ar parity passes. |
+| G4-R1-21 | **CLOSED** | Ambiguous unit candidates retain category and tier. |
+| G4-R1-22 | **CLOSED / retained** | Imported-only opening selection, trim-then-exact unit matching, shared catalogue use, and no touched float drift remain. |
+| G4-R1-23 | **CLOSED / retained** | Outcome/error migrations remain guarded, distinct, forward-only, ordered, and echo-helper clean. |
+| G4-R2-01 | **CLOSED** | Backfill remains ID-only `lazyById(500)`; 1,001-row/two-company unit pin passes on PG. |
+| G4-R2-02 | **CLOSED** | Resolver failures remain `refused` in preview and coded `failed` on authoritative execution; six-case parity passes SQLite/PG. |
+| G4-R3-01 | **CLOSED** | No tracked or materialized `apps/api/autoerp_test_*`; root ignore remains at `.gitignore:80`. |
+
+### New findings
+
+| ID | severity | file:line | finding | required change |
+|---|---|---|---|---|
+| **G4-R5-01** | **BLOCKER** | `apps/api/tests/Feature/Import/ImportInfrastructureTest.php:151-175,473-502`; `ImportController.php:942-955` | The explicitly required `ImportInfrastructureTest` is red in isolation and in the full SQLite matrix. Its row assertion still expects the pre-DTO raw shape, while hydration now adds `_provided` and `_results`. Its status fixture stores `100/48/2` job counters but creates zero rows; `formatJob()` correctly treats outcomes as authority and returns `0/0/0`, so the old assertion fails. This is a post-rebase regression-pin reconciliation failure even though the second fixture, not the outcome equations, is stale. | Amend the pin deliberately: assert the typed reserved keys, and create an outcome-consistent 100-row fixture (48 imported, 2 failed, 50 pending) while keeping `processed_rows=50`; rerun this required path and the full scoped SQLite matrix. |
+| **G4-R5-02** | **MAJOR** | `apps/api/app/Modules/Import/Domain/Data/ImportRowSourceData.php:10-19,50-72,87-93`; `apps/api/tests/Feature/Import/ImportJsonbCastHydrationTest.php:73-106` | G4-R1-14 does not satisfy the cited §3.2.3 contract. Nested legacy/current phase results are collapsed to dotted keys and written back as a flat string map, and the round-trip test enshrines that different shape. The required exact schema is phase → breadcrumb map, `array<string,array<string,string>>`. | Model the nested result value with a concrete DTO/typed map, update all `_results` writers/readers to the one nested storage shape, retain explicit legacy hydration, and change the round-trip fixture to assert the specified nesting. |
+
+### Fresh command evidence
+
+| command / leg | result |
+|---|---|
+| Complete requested SQLite paths, including G-4/G-6a, pipeline/balance/replay/RoundTrip/product-partner/unit/opening/company/entitlement/infrastructure/scheduler/permission/security and both echo guards | **FAIL — 387 tests, 2 failures, 3 skipped, 2,581 assertions**. Both failures are `ImportInfrastructureTest`; every other selected test passed. Isolated rerun: **26 tests, 2 failures, 69 assertions**. |
+| Both echo guards alone | **PASS — 4 tests, 634 assertions, 1 skipped**. |
+| Requested PostgreSQL paths, serial by explicit path with the mandated DB prefix | **PASS — 121 tests, 552 assertions**. Includes G-4 migration/outcome/census/unit/atomicity, G-6a claim/reaper/purge, the real two-connection claim pin, and `ImportCompanyPinTest`. |
+| PHPStan on 83 touched PHP files | **PASS — 0 errors**. |
+| Pint `--test` on the same touched PHP set | **PASS**. |
+| Feature manifest checker / CI YAML / anchored-filter audit | **PASS — 1,493 Feature classes / 74 groups; 1,232 gated ceiling; every filter anchored and uniquely matched against 1,898 test classes; YAML parseable**. |
+| Deptrac direct | **185 violations / 0 errors / 14,432 allowed / 13,638 uncovered** versus baseline 183. The two added edges are both untouched `TenantProvisioningService -> ExecutionTimeLimit` lines 62/142; no touched G-4 class introduces an edge. |
+| Import Vitest | **PASS — 12 files, 67 tests**. |
+| Web typecheck | **PASS**. |
+| ESLint on eight touched TS/TSX files | **PASS — 0 errors, 20 warnings** (same warning count as r3/r4; one new-line warning is non-blocking). |
+| TanStack key audit | **PASS — 0 acknowledged, 0 new, 0 stale**. |
+| React Doctor scoped to the eight changed web files vs `dev` | **PASS — score 93, no findings**. |
+| Isolated TypeScript transform equality | **PASS — 547 types; byte-identical SHA-256 `d600ba2cd36ca68924506bf7a1b0acfd6fd805a88d23c8d6ec9d439e874cd86b`**. |
+| Artifact/state/whitespace/conflict audit | **PASS** — clean worktree, no `autoerp_test_*`, no conflict markers, and `git diff --check dev...HEAD` clean. |
+
+### VERDICT: FAIL
+
+Do not merge. The full required SQLite gate is red on `ImportInfrastructureTest`, and the exact typed `_results` schema required by §3.2.3 reopens G4-R1-14. Reconcile the two infrastructure fixtures and the nested result contract, then rerun this same scoped SQLite matrix plus JSONB hydration, PHPStan/Pint, generated-type equality, and the frontend import lane. PostgreSQL, CAS lifecycle, manifest/CI, entitlement/company pin, and the rest of the rebase conflict union are green.
+
+## Gate r6 (Codex, narrow)
+
+Review target: `a92fd59e2` plus the dirty fix-round-4 overlay in `feat/g4-duplicate-policy-merge`. This was a read-only re-check of r5's two findings plus the requested no-regression paths; this register section is the only intentional review write. No full suite was run. Every PostgreSQL invocation was serial, by explicit path, and prefixed `DB_DATABASE=autoerp_test_g5 DB_CENTRAL_DATABASE=autoerp_test_g5`.
+
+### R5 closure audit
+
+| finding | r6 status | verification |
+|---|---|---|
+| G4-R5-01 | **CLOSED** | The sanctioned amendment is confined to the two stale fixtures. The row-shape pin preserves the original value assertions and now explicitly pins hydrated `_provided=[]` and typed `_results=[]` (`ImportInfrastructureTest.php:165-181`). The status fixture creates 100 real rows with 48 `imported`, 2 `failed`, and 50 `pending` outcomes while retaining `processed_rows=50`, then asserts 100/50/48/2 (`:481-525`). No unrelated assertion was weakened. The dirty overlay does not touch `ImportController::formatJob`. Isolated path: **PASS — 26 tests, 75 assertions**. |
+| G4-R5-02 | **CLOSED** | `ImportRowSourceData::$results` is a concrete `ImportRowResultsData`; its phase values are concrete `ImportRowResultPhaseData` instances with `array<string,string>` breadcrumbs, and `toStorage()` returns exactly `array<string,array<string,string>>` (`ImportRowResultsData.php:19-20,22-70`; `ImportRowResultPhaseData.php:7-29`). All dirty writers merge into named phases; the cast normalizes through `fromStorage()->toStorage()`. Nested legacy/current input is preserved, while flat legacy/dotted input is normalized to nested output rather than flattened. Hydration pins use independently hand-written JSON fixtures for legacy nested, legacy flat, and current two-phase nested shapes (`ImportJsonbCastHydrationTest.php:73-150`). SQLite and PostgreSQL hydration paths pass. |
+
+### No-regression finding
+
+| ID | severity | file:line | finding | required change |
+|---|---|---|---|---|
+| **G4-R6-01** | **MAJOR** | `apps/api/app/Modules/Import/Services/ProductPriceResolver.php:13,45,70`; `apps/api/tests/Unit/Import/ProductPriceResolverTest.php:59,92`; `ImportService.php:133,920-922` | The branch deliberately typed resolver warning codes as `ImportWarningCode`, which matches `ImportService::addRowWarning()`, but its unit pin still asserts raw strings. The isolated class is red in two cases: enum `PriceConflict` versus `'price_conflict'`, and enum `MarginWithoutCost` versus `'margin_without_cost'`. This is a stale lane regression pin, not evidence that the typed production contract should be reverted. | Amend the two assertions to pin `ImportWarningCode::PriceConflict` and `ImportWarningCode::MarginWithoutCost` (or explicitly pin `->value` only if the intended unit-test boundary is serialized output), then rerun this class and the exact r6 SQLite matrix. |
+
+### Fresh command evidence
+
+| command / leg | result |
+|---|---|
+| Exact requested SQLite paths: infrastructure, hydration, census, outcome/atomicity/product-identity/unit pins, worker/re-execution, product pipeline, all RoundTrip classes, G-6a claim/reaper/purge, company pin, entitlement, and both echo guards | **PASS — 215 tests, 1,809 assertions, 2 skipped**. |
+| `ImportInfrastructureTest` isolated | **PASS — 26 tests, 75 assertions**. |
+| `ProductPriceResolverTest` isolated no-regression pin | **FAIL — 8 tests, 16 assertions, 2 failures** at lines 59 and 92 (typed enum versus stale string assertion). |
+| PostgreSQL serial paths: outcome backfill, outcome atomicity, census, hydration, claim concurrency, reaper, purge | **PASS — 71 tests, 390 assertions** (3/14, 11/67, 6/73, 8/21, 30/154, 7/24, 6/37). |
+| PHPStan on the 91 branch/dirty/new touched PHP files | **PASS — 0 errors**. |
+| Pint `--test` on the same 91 PHP files | **PASS**. |
+| Feature manifest checker | **PASS — 1,493 Feature classes / 74 groups; 1,232 parked; 1 debt; all filters anchored and uniquely matched against 1,898 test classes**. Against current-dev snapshot `165b6f97f` (**1,486 / 74**), the merge union is **1,495 / 74**, with **Import 38 / Uom 9 / Migrations 13 / Tenant 31** and a **1,234** parked ceiling. |
+| `CACHE_STORE=array php artisan typescript:transform` | **PASS — 547 types; `packages/shared/types/generated.d.ts` remained byte-identical**, SHA-256 `d600ba2cd36ca68924506bf7a1b0acfd6fd805a88d23c8d6ec9d439e874cd86b`; no residual generated diff. |
+| `cd apps/web && pnpm typecheck` | **PASS**. |
+| Final scope/artifact audit | **PASS** — `git status --short` contains only the 12 modified plus 2 new fix-round-4 lane files; no `apps/api/autoerp_test_*`; `formatJob` and generated types have no dirty diff; `git diff --check` passes. |
+
+### VERDICT: CHANGES
+
+G4-R5-01 and G4-R5-02 are closed, and every requested application/feature/PG/static/frontend leg is green. The lane is not yet a clean PASS because its touched price-resolver contract has a red unit regression pin. Reconcile those two enum assertions and rerun that isolated class plus the same targeted SQLite matrix; do not broaden to the full suite.
+
+## Gate r7 (Codex, narrow final)
+
+Review target: `a92fd59e2` plus the dirty fix-round-4 and fix-round-5 overlays in `feat/g4-duplicate-policy-merge`. This was a read-only final re-check of r6's single finding plus the requested scoped green sweep; this register section is the only intentional review write. No full suite was run. Every PostgreSQL invocation was serial, by explicit path, used `phpunit-pgsql.xml`, and was prefixed `DB_DATABASE=autoerp_test_g5 DB_CENTRAL_DATABASE=autoerp_test_g5`.
+
+### R6 closure audit
+
+| finding | r7 status | verification |
+|---|---|---|
+| G4-R6-01 | **CLOSED** | `ProductPriceResolver::resolve()` declares and returns `ImportWarningCode` cases in its warning records (`ProductPriceResolver.php:15,45,70`). The two stale unit assertions now compare case identity with `ImportWarningCode::PriceConflict` and `ImportWarningCode::MarginWithoutCost` (`ProductPriceResolverTest.php:60,93`). The fix-round-5 delta is test-only; production behavior was not changed. The isolated class is green: **8 tests, 17 assertions**. |
+
+### Fresh command evidence
+
+| command / leg | result |
+|---|---|
+| Requested SQLite paths only: all of `tests/Unit/Import`, row warnings, product pipeline, infrastructure, JSONB hydration, census, outcome/coded-error/atomicity/resolver/unit/coalescing classes, worker/re-execution, all RoundTrip classes, G-6a claim/reaper/purge, company pin, entitlement, and both echo guards | **PASS — 258 tests, 1,937 assertions, 2 skipped**. |
+| `./vendor/bin/phpunit tests/Unit/Import/ProductPriceResolverTest.php` | **PASS — 8 tests, 17 assertions**. |
+| PostgreSQL serial paths: outcome backfill, outcome atomicity, census, JSONB hydration, unit resolution, claim concurrency, reaper, and purge | **PASS — 82 tests, 437 assertions** (3/14, 11/67, 6/73, 8/21, 11/47, 30/154, 7/24, 6/37). |
+| PHPStan level 8 on the 92 branch/dirty/new touched PHP files | **PASS — 0 errors** on a fresh cache-bypassing traversal. An initial cached traversal emitted two stale `UnitResolutionTest` diagnostics; the isolated fresh run and the complete fresh 92-file run both returned zero errors. |
+| Pint `--test` on the same 92 touched PHP files | **PASS**. |
+| Feature manifest checker | **PASS — 1,493 Feature classes / 74 groups; 1,232 parked; 1 debt; all filters anchored and uniquely matched against 1,898 test classes**. The manifest itself records the required union `gated_ceiling 1223 -> 1232`, with **Import 38 / Uom 9**. |
+| `.github/workflows/ci.yml` YAML parse | **PASS**. |
+| Deptrac direct | **185 violations / 0 errors / 14,432 allowed / 13,638 uncovered**. The only records whose file is dirty are the two pre-existing `TaxDefaultResolverInterface -> Company` occurrences at lines 15 and 24; that file's lane delta is comment-only, both dependencies already exist on `dev`, and no new touched-class edge is introduced. |
+| `CACHE_STORE=array php artisan typescript:transform` | **PASS — 547 types; no residual generated diff**. SHA-256 stayed `d600ba2cd36ca68924506bf7a1b0acfd6fd805a88d23c8d6ec9d439e874cd86b`. |
+| `cd apps/web && pnpm vitest run src/features/import` | **PASS — 12 files, 67 tests** (existing React `act()` and local-storage warnings only). |
+| `cd apps/web && pnpm typecheck` | **PASS**. |
+| Final scope/artifact audit | **PASS** — `git status --short` contains only the 13 modified plus 2 new fix-round lane files; `git diff --check` passes; generated types have no diff; no tracked or materialized `apps/api/autoerp_test_*` exists. |
+
+### VERDICT: PASS
+
+G4-R6-01 is closed, no new finding was identified, and every requested narrow final gate is green. Lane G-4 is clear from the imports-reviewer gate perspective; no source was modified, staged, committed, or rebased during this review.

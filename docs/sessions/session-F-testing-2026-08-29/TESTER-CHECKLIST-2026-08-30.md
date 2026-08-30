@@ -1,6 +1,6 @@
 # Staging tester checklist — 2026-08-30 (45 min, one tester)
 
-**Staging build: `0d97dc37e`** (batch 2; supersedes 0e5d28705) on `erp.otospex.dev`.
+**Staging build: `d8215e111`** (hotfix batch; supersedes 0d97dc37e) on `erp.otospex.dev`.
 
 Evidence: onboarding campaign run 23 on this build's content — L0a–L8 PASS on a fresh tenant (register, census, parties + balances, products + stock, lots, openings, lock, device sale v5, refund v4, customer payment); known: I2-F2 (`unit_id` never written), L9 (Z) not scripted. Follow `docs/qa/MANUAL-TESTING-LOOP.md` §2 (fresh tenant, second company + second location first). Report shape: §4 of that doc — one line per step below: **PASS / FAIL + what you saw** (screenshot for any FAIL). Send to the orchestrator (Session J).
 
@@ -35,7 +35,7 @@ Staging runs `SYNERIVA_PLATFORM_PUSH_ENABLED=false` (since 1326a96c1). With a lo
 10. ☐ Purchase Hub → open a campaign → place an order. Expected: the UI shows an order **failure** (API returns **HTTP 502** `{ "error": { "code": "ORDER_FAILED" } }`), and **no order appears** in Purchase Hub → Orders afterwards (refresh the list). If you can, capture the network response of `POST /api/v1/purchase-hub/orders`.
 11. ☐ Products → open a product → **Submit for enrichment**. Expected: the action **completes without an error** in the UI, and nothing changes on the platform side (the orchestrator will confirm platform-side; you just confirm no UI error and no enrichment result arriving within the session).
 
-## D. Session G / H lane retests — **APPLY: 12 (G-3b), 13 (G-6a), 15 (G-3c), 16 (H cleanup) — all in build `0d97dc37e`. 14 (G-4) SKIP unless Session J confirms a batch 3 before the team starts.**
+## D. Session G / H lane retests — **APPLY: 12 (G-3b), 13 (G-6a), 15 (G-3c), 16 (H cleanup) — all in build `d8215e111`. 14 (G-4) SKIP unless Session J confirms a batch 3 before the team starts.**
 
 12. ☐ **G-3b** ✅ in build (import job pinned to its company + Composite Items entitlement): (a) create a 2nd company → products import into it succeeds end-to-end; (b) start an import in company A, switch company, try to execute → **409 "company mismatch"**; (c) import history lists only the current company's jobs; pre-existing jobs show an **"unattributed"** badge; (d) a company WITHOUT the Composite Items module: composite tile / template / upload → **403**, and wizard status/order never mention composite items.
 13. ☐ **G-6a** ✅ in build (batch 2, atomic claim / reaper / purge / cancel): (a) double-click "start import" → exactly **one** run, second attempt **409 already-started**; (b) DELETE a pending/validated job → gone; DELETE a completed job → **409 "has effects"**; (c) source-file download on a fresh job works; (d) execute in company B a job created in company A → **409**.
@@ -47,5 +47,7 @@ Staging runs `SYNERIVA_PLATFORM_PUSH_ENABLED=false` (since 1326a96c1). With a lo
 
 17. ☐ Parties import with opening balances → open a customer → balance correct. ⚠ Same `vat_number` in two companies is allowed now (3ac0de893); a *duplicate within one company* must still be refused.
 18. ☐ Re-run A5 and E17 with the same files → nothing doubles; the wizard says "skipped".
+
+> ✅ **D-J0-2 FIXED in `d8215e111`** (journal-entry numbers now unique per company on all tenants): §A step 5 with quantities and second-company opening batches are **GO**. If you still see a 500 there, report tenant + company + time — that is new.
 
 Known & owned — do **not** re-report: shelf codes accepted in `location_code` at validation time (G); `unit_id` NULL on imported products (R11); generic toast on `units_not_seeded` (G-1); empty warning list under a warnings heading right after a very fast import (F1 P3-R9, cosmetic); **second parties-with-balances import after the first AR/AP batch is posted → partners created but balances dropped with warning `balance_not_posted`** (I-1 finding, routed to G as G-14) — **workaround for tomorrow: put ALL opening balances (customers + suppliers) in ONE parties file per company.** Partner form: the **Tax Status / exemption block is hidden** (never persisted; Phase 2 wires it) and the **quick-create modal has no Nature field yet** (Phase 2).

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Identity;
 
+use App\Modules\Tenant\Application\Contracts\ExecutionTimeLimit;
 use App\Modules\Tenant\Domain\Tenant;
-use App\Modules\Tenant\Infrastructure\Runtime\ExecutionTimeLimit;
 use Closure;
 use Database\Seeders\CountriesSeeder;
 use Database\Seeders\PlansSeeder;

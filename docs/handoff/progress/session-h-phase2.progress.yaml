@@ -1,0 +1,63 @@
+wave: session-h-phase2
+brief: docs/handoff/CODEX-DISPATCH-session-H-phase2-party-kind-2026-08-29.md
+harness: docs/handoff/SELF-REVIEW-HARNESS.md
+review_register: docs/handoff/reviews/session-h-phase2/
+reviewer_model: opus          # per-milestone override to codex-fallback allowed (brief EXECUTION MODE)
+max_fix_rounds: 4
+
+# Pinned 2026-08-30 by the Session H orchestrator = local dev tip AFTER both Phase-1 merges
+# (h1-cleanup 8d629ac89 = D-H1-1; h1-a1-buyer c4c171a8e = D-H1-2). Re-pin if dev moves before dispatch.
+# NOTE 2026-08-30: a1 was REVERTED on local dev (5c175db22, test-day rule) pending O-36; this base still
+# CONTAINS a1, so Phase 2 merges into dev only AFTER a1 is re-applied (git revert 5c175db22).
+base_sha: 31f49e4f47ed4f80dcb55d48436f233312014f99
+branch: feat/h2-party-kind
+worktree: .worktrees/h2-party-kind
+commit_series: "h2 M<m>.<s>:"
+ledger_row: D-H2-1   # parent writes at merge
+pg_test_db: autoerp_test_h   # DB_DATABASE + DB_CENTRAL_DATABASE override; one PG leg at a time
+browser_verification: apps/web/e2e/session-h/<milestone>-*.spec.ts against :5174 (worktree web, VITE_API_PROXY_TARGET=http://127.0.0.1:8011) + :8011 (worktree API); --workers=1 against single-process artisan serve; screenshots .playwright-mcp/session-h/<milestone>/
+owner_rulings: LEDGER D-H0-1 (OQ1-9 + acks); OQ10 DEFERRED → default (a); D-1..D-5 orchestrator decisions on the sheet §C2; Amendment A-1 (§5.4 hash-seed deferral)
+
+status: not_started
+
+milestones:
+  - id: M1
+    title: task 0 vite proxy env; PartyKind/LegalForm/PartyTaxRegime/PartyGender enums + derivation DTOs; Migration A (nullable party_kind, no default; backfill; person repairs; new columns; non-unique indexes); ContactPointNormalizer ×3 + shared fixture; DTO/typescript:transform; glossary rows
+    review_lenses: [tenancy-authz, imports]
+    status: pending
+    commit: null
+    verdict: null
+    fix_rounds: 0
+  - id: M2
+    title: five write paths through PartnerService + PartyIdentityPolicy; derived customer_category at mirror + DEPOSIT_RECEIPT; V1+V2 dual dispatch + Contact events; seeders via service; Migration B (candidate set, SET NOT NULL, CHECKs); canonical-bytes proofs
+    review_lenses: [fiscal-pos, imports]
+    status: pending
+    commit: null
+    verdict: null
+    fix_rounds: 0
+  - id: M3
+    title: UI — Nature on party_kind, §7.5 affordance gates incl. person-with-credit, person panel, legal_form/preferred_locale, badge+filter, AddPartnerModal party_kind, transition confirm + meta.cleared_fields, AR i18n
+    review_lenses: [frontend-conventions, tenancy-authz]
+    status: pending
+    commit: null
+    verdict: null
+    fix_rounds: 0
+  - id: M4
+    title: Parties import — optional party_kind + legal_form via PartiesValidationRulesFactory; derivation warning in result workbook; Playwright upload/execute/download gate
+    review_lenses: [imports]
+    status: pending
+    commit: null
+    verdict: null
+    fix_rounds: 0
+  - id: M5
+    title: accumulated-branch review across all four lenses
+    review_lenses: [fiscal-pos, tenancy-authz, imports, frontend-conventions]
+    status: pending
+    commit: null
+    verdict: null
+    fix_rounds: 0
+
+owner_gates:
+  - OQ10 deferred (default (a)); conditional M4 STOP only if neither workbook-verification branch is feasible; any sealed-byte/key-set/device-schema change
+owes_parent: []
+blockers: []

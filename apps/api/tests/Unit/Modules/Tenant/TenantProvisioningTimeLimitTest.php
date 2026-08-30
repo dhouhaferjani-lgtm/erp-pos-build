@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Modules\Tenant;
 
+use App\Modules\Tenant\Application\Contracts\ExecutionTimeLimit;
 use App\Modules\Tenant\Application\Services\IdentityIndexService;
 use App\Modules\Tenant\Application\Services\TenantInitializationService;
 use App\Modules\Tenant\Application\Services\TenantProvisioningService;
 use App\Modules\Tenant\Domain\Tenant;
-use App\Modules\Tenant\Infrastructure\Runtime\ExecutionTimeLimit;
 use App\Services\TenantTokenRevoker;
 use Closure;
 use Error;
