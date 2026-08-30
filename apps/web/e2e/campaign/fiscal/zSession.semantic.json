@@ -16,6 +16,21 @@
       "variance_direction": "balanced",
       "variance_reason": "campaign counted balance"
     },
+    "cash_count_lines": [
+      {
+        "actual_amount": "1000.000",
+        "currency_code": "TND",
+        "expected_amount": "1000.000",
+        "payment_method_id": "77777777-7777-4777-8777-777777777777",
+        "transaction_count": 2,
+        "variance_amount": "0.000",
+        "variance_direction": "balanced"
+      }
+    ],
+    "cash_drawer_totals": {
+      "expected_cash": "1000.000",
+      "opening_cash": "1000.000"
+    },
     "grand_totals_before": {
       "cumulative_refunds": "0.000",
       "cumulative_sales": "0.000",
@@ -88,6 +103,15 @@
     "cash_count.variance_amount": ["apps/pos/src/lib/offline/zReportService.ts:685-690", "apps/pos/src/lib/fiscal/zSessionAuthoring.ts:455-462"],
     "cash_count.variance_direction": ["apps/pos/src/lib/offline/zReportService.ts:685-690", "apps/pos/src/lib/fiscal/zSessionAuthoring.ts:455-462"],
     "cash_count.variance_reason": ["apps/pos/src/lib/offline/zReportService.ts:685-690", "apps/pos/src/lib/fiscal/zSessionAuthoring.ts:455-462"],
+    "cash_count_lines[0].actual_amount": ["apps/pos/src/lib/offline/zReportService.ts:400-416"],
+    "cash_count_lines[0].currency_code": ["apps/pos/src/lib/offline/zReportService.ts:406-416"],
+    "cash_count_lines[0].expected_amount": ["apps/pos/src/lib/offline/zReportService.ts:392-416"],
+    "cash_count_lines[0].payment_method_id": ["apps/pos/src/lib/offline/zReportService.ts:387-416"],
+    "cash_count_lines[0].transaction_count": ["apps/pos/src/lib/offline/zReportService.ts:412-416"],
+    "cash_count_lines[0].variance_amount": ["apps/pos/src/lib/offline/zReportService.ts:400-416"],
+    "cash_count_lines[0].variance_direction": ["apps/pos/src/lib/offline/zReportService.ts:400-416"],
+    "cash_drawer_totals.expected_cash": ["apps/pos/src/lib/offline/zReportService.ts:712-715"],
+    "cash_drawer_totals.opening_cash": ["apps/pos/src/lib/offline/zReportService.ts:712-715"],
     "grand_totals_before.cumulative_refunds": ["apps/pos/src/lib/offline/zReportService.ts:716-722"],
     "grand_totals_before.cumulative_sales": ["apps/pos/src/lib/offline/zReportService.ts:716-722"],
     "grand_totals_before.cumulative_tax": ["apps/pos/src/lib/offline/zReportService.ts:716-722"],

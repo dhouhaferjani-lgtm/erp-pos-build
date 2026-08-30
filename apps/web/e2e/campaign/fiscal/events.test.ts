@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildRefundEnvelope, buildSaleEnvelope } from './events'
+import { buildSessionOpenEnvelope } from './zSession'
+import { formatScaleThreeMoney } from './util'
 
 const coordinates = {
   businessDate: '2026-08-29',
@@ -34,5 +36,32 @@ describe('campaign receipt envelope authoring', () => {
     expect(sale.sequenceNumber).toBe(1)
     expect(refund.payload['shift_id']).toBe(coordinates.shiftId)
     expect(refund.sequenceNumber).toBe(2)
+  })
+
+  it('scopes idempotency keys by terminal, chain context, and sequence', async () => {
+    const sale = await buildSaleEnvelope(coordinates)
+    const open = await buildSessionOpenEnvelope({
+      ...coordinates,
+      currencyScale: 3,
+      operatorName: 'Campaign Owner',
+      sessionId: coordinates.shiftId,
+      terminalLabel: 'CMP-I3',
+      openingFloatAmount: '1000.000',
+      shiftNumber: 1,
+    })
+
+    expect(sale.requestBody.envelopes[0]?.idempotency_key)
+      .toBe(`${coordinates.terminalId}:operational:1`)
+    expect(open.requestBody.envelopes[0]?.idempotency_key)
+      .toBe(`${coordinates.terminalId}:z_session:1`)
+  })
+
+  it.each([
+    { expected: '23.80', scale: 2 as const, value: '23.800' },
+    { expected: '23.81', scale: 2 as const, value: '23.805' },
+    { expected: '-23.81', scale: 2 as const, value: '-23.805' },
+    { expected: '23.805', scale: 3 as const, value: '23.805' },
+  ])('formats $value at scale $scale without floating point', ({ expected, scale, value }) => {
+    expect(formatScaleThreeMoney(value, scale)).toBe(expected)
   })
 })

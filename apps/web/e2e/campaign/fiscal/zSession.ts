@@ -1,4 +1,5 @@
 import { authorFiscalEnvelope, type AuthoredEnvelope } from './events'
+import { formatScaleThreeMoney, withMilliseconds } from './util'
 
 const HASH_PATTERN = /^[0-9a-f]{64}$/
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
@@ -251,11 +252,11 @@ export async function buildZReportEnvelope(
 }
 
 function reportVector(coordinates: ZSessionReportCoordinates) {
-  const zero = scaledMoney('0.000', coordinates.currencyScale)
-  const gross = scaledMoney('23.800', coordinates.currencyScale)
-  const net = scaledMoney('20.000', coordinates.currencyScale)
-  const vat = scaledMoney('3.800', coordinates.currencyScale)
-  const expectedCash = scaledMoney('1000.000', coordinates.currencyScale)
+  const zero = formatScaleThreeMoney('0.000', coordinates.currencyScale)
+  const gross = formatScaleThreeMoney('23.800', coordinates.currencyScale)
+  const net = formatScaleThreeMoney('20.000', coordinates.currencyScale)
+  const vat = formatScaleThreeMoney('3.800', coordinates.currencyScale)
+  const expectedCash = formatScaleThreeMoney('1000.000', coordinates.currencyScale)
 
   return {
     cashCountLines: [{
@@ -402,12 +403,4 @@ function assertHash(value: string, name: string): void {
 function assertMoney(value: string, scale: 2 | 3, name: string): void {
   const pattern = scale === 3 ? /^-?\d+\.\d{3}$/ : /^-?\d+\.\d{2}$/
   if (!pattern.test(value)) throw new Error(`${name} must be an exact-scale money string`)
-}
-
-function scaledMoney(value: string, scale: 2 | 3): string {
-  return scale === 3 ? value : value.slice(0, -1)
-}
-
-function withMilliseconds(value: string): string {
-  return value.replace(/Z$/, '.000Z')
 }

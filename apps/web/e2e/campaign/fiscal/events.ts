@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { FiscalEventCanonicalEncoder } from './FiscalEventCanonicalEncoder'
+import { withMilliseconds } from './util'
 
 const EVENT_TYPE = 'SALE_RECEIPT'
 const SIGNATURE_VERSION = 'hash-chain-integrity-v1'
@@ -268,7 +269,7 @@ export function authorFiscalEnvelope(
     requestBody: {
       envelopes: [{
         envelope_id: randomUUID(),
-        idempotency_key: `${coordinates.terminalId}:${coordinates.sequenceNumber}`,
+        idempotency_key: `${coordinates.terminalId}:${coordinates.chainContext}:${coordinates.sequenceNumber}`,
         payload: transportPayload,
         payload_version: 1,
         type: 'FISCAL_EVENT',
@@ -335,8 +336,4 @@ function receiptAmounts(scale: number): { gross: string; net: string; vat: strin
     vat: `3.80${suffix}`,
     zero: `0.00${suffix}`,
   }
-}
-
-function withMilliseconds(value: string): string {
-  return value.replace(/Z$/, '.000Z')
 }

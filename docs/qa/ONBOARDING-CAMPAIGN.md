@@ -66,15 +66,15 @@ The findings gate (L10) is red while any product finding is recorded. Findings t
 | Registration body prefixed by migration echo (P0) | L0 | Session J lane `migration-echo-p0` — fixed on dev `5656c9899` |
 | Registration exceeds the request time limit under load (P0-2) — recorded when the server answers the time-limit 500; the client waits up to 300 s to match the hotfix seam | L0 | Session J lane `registration-timeout-p0` |
 | `GET /payment-repositories` is tenant-scoped (company B sees company A's drawers) | L0 | Treasury — owner routing owed |
-| Products import never writes `unit_id` (I2-F2) | L2 | Session G (unit resolver, G-13/G-4) |
+| Products import never writes `unit_id` (I2-F2) | L2 | **FIXED** by Session G lane G-4 (`f878a248c`, UnitResolver: coded unit → `unit_id`, blank → `pc` per RUL-4) — the L2 assertion turns green once it is on the target |
 | Second parties-with-balances import silently skips balances (G-14) | L1 (reuse mode / second file) | Session G |
 
 The following Lane I-3 findings are code-evidenced product gaps, not observations emitted by a campaign run. They therefore do not populate the L10 findings ledger by themselves:
 
 | Finding | Code-evidenced gap | Owner |
 |---|---|---|
-| I3-F1 | `SESSION_CLOSE` copies device-supplied expected/count values; the server does not derive expected drawer cash from session activity. | POS/fiscal — owner routing |
-| I3-F2 | Z projection copies hand-authored totals and does not reconcile them against the session receipts by tender and VAT rate. | POS/fiscal — owner routing |
+| I3-F1 | `SESSION_CLOSE` copies device-supplied expected/count values; the server does not derive expected drawer cash from session activity. After L8, the device formula would derive expected cash `2250.500` because `cashAccountCollections` includes cash collected against customer accounts (`apps/pos/src/lib/offline/zReportService.ts:285-303`), while the campaign's session cash count remains `1000.000`. | POS/fiscal — owner routing |
+| I3-F2 | Z projection copies hand-authored totals and does not reconcile them against the session receipts by tender and VAT rate. With `refund_count > 0`, the server skips both VAT sum identities (`FiscalPayloadConstraintValidator.php:1069-1073`), so the netted-zero VAT row is admitted and never checked. | POS/fiscal — owner routing |
 | I3-F3 | Operational receipts bypass the Z lifecycle, so a valid later sale can still post to an already Z-reported session. The campaign deliberately does not probe this on its promoted terminal. | POS/fiscal — owner routing |
 | I3-F4 | Variance reason remains in canonical `report_data.cash_count`; it is not projected onto the public shift resource. | POS/fiscal — owner routing |
 | I3-F5 | Canonical Z projection stores the preceding `SESSION_CLOSE` hash in legacy `previous_z_hash`; consequently the first canonical Z reports `is_first_z_report=false`. L9 verifies the fiscal-event `z_session` chain and Z state/count, not the legacy Z-hash chain. | POS/fiscal — owner routing |

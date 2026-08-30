@@ -10,7 +10,12 @@ import {
   buildSessionOpenEnvelope,
   buildZReportEnvelope,
 } from './fiscal/zSession'
-import { buildFixedZSessionEnvelopes, Z_SESSION_GOLDEN_HASHES } from './fiscal/zSession.golden'
+import {
+  buildFixedZSessionEnvelopes,
+  fixedZSessionCoordinates,
+  Z_SESSION_GOLDEN_HASHES,
+} from './fiscal/zSession.golden'
+import { formatScaleThreeMoney, semanticLeafPaths, withMilliseconds } from './fiscal/util'
 import {
   addLedgerEvidence,
   apiRequest,
@@ -156,7 +161,26 @@ test.describe('automated onboarding campaign', () => {
     )) as { citations: Record<string, string[]>; values: Record<string, unknown> }
     expect(Object.keys(semantic.citations).sort()).toEqual(semanticLeafPaths(semantic.values).sort())
     expect(Object.values(semantic.citations).every((citations) => citations.length > 0)).toBe(true)
+    const zCashCount = zSession.zReport.payload['cash_count'] as Record<string, unknown>
     expect(semantic.values).toMatchObject({
+      cash_count: {
+        counted_cash: zCashCount['counted_cash'],
+        expected_cash: zCashCount['expected_cash'],
+        variance_amount: zCashCount['variance_amount'],
+        variance_direction: zCashCount['variance_direction'],
+        variance_reason: zCashCount['variance_reason'],
+      },
+      cash_count_lines: zCashCount['lines'],
+      cash_drawer_totals: zSession.zReport.payload['cash_drawer_totals'],
+      event_times: {
+        period_end: fixedZSessionCoordinates.periodEnd,
+        period_start: fixedZSessionCoordinates.periodStart,
+        refund: fixedZSessionCoordinates.refundEventTimeDevice,
+        sale: fixedZSessionCoordinates.saleEventTimeDevice,
+        session_close_and_z: fixedZSessionCoordinates.eventTimeDevice,
+        session_open: fixedZSessionCoordinates.openedAtDevice,
+      },
+      formatted_z_number: zSession.zReport.payload['formatted_z_number'],
       grand_totals_after: zSession.zReport.payload['grand_totals_after'],
       grand_totals_before: zSession.zReport.payload['grand_totals_before'],
       operational_event_range: zSession.zReport.payload['operational_event_range'],
@@ -165,6 +189,8 @@ test.describe('automated onboarding campaign', () => {
       refunds_totals: zSession.zReport.payload['refunds_totals'],
       session_event_range: zSession.zReport.payload['session_event_range'],
       vat_breakdown: zSession.zReport.payload['vat_breakdown'],
+      voids_totals: zSession.zReport.payload['voids_totals'],
+      z_number: zSession.zReport.payload['z_number'],
     })
     await addLedgerEvidence('L0a', 'sale/refund plus SESSION_OPEN/SESSION_CLOSE/Z_REPORT golden vectors byte/hash matched; every canonical wrapper has 15 keys; semantic vector has per-field citations')
   })
@@ -443,6 +469,7 @@ test.describe('automated onboarding campaign', () => {
       type: 'bank_account',
     }, companyId)
     const bank = asRecord(requireApiData(bankCreate, 'bank repository create'), 'bank repository')
+    journeyState.bankRepositoryCode = bankCode
 
     const batchCreate = await apiRequest(page, 'POST', apiRoutes.openingBatches(companyId), {
       cutover_date: businessDate(),
@@ -543,14 +570,15 @@ test.describe('automated onboarding campaign', () => {
 
     const sessionId = randomUUID()
     const openedAt = eventTime()
+    const currencyScale = supportedFiscalScale()
     const open = await buildSessionOpenEnvelope({
       businessDate: businessDate(),
       companyId,
       currencyCode: currencyForCountry(campaignCountry()),
-      currencyScale: supportedFiscalScale(),
+      currencyScale,
       eventTimeDevice: openedAt,
       genesisSeed: requiredState('terminalGenesisSeed'),
-      openingFloatAmount: fiscalMoney('1000.000'),
+      openingFloatAmount: formatScaleThreeMoney('1000.000', currencyScale),
       operatorId: requiredState('userId'),
       operatorName: requiredCredentials().name,
       sessionId,
@@ -580,7 +608,7 @@ test.describe('automated onboarding campaign', () => {
     expect(shift['session_id']).toBe(sessionId)
     expect(shift['shift_number']).toBe(1)
     expect(shift['status']).toBe('OPEN')
-    assertMoneyEqual(stringField(shift, 'opening_cash'), fiscalMoney('1000.000'))
+    assertMoneyEqual(stringField(shift, 'opening_cash'), formatScaleThreeMoney('1000.000', currencyScale))
     const current = await apiObject(page, apiRoutes.currentShift(requiredState('terminalCode')), companyId, 'current open shift')
     expect(current['id']).toBe(sessionId)
     await addLedgerEvidence('L5b', `server-minimal synthetic lifecycle (OPENING_FLOAT event deliberately omitted): terminal=${terminalId}; session_id=shift_id=${sessionId}; SESSION_OPEN seq=1 projected open; read preflight=200/200/200; virgin Z state=0`)
@@ -596,7 +624,7 @@ test.describe('automated onboarding campaign', () => {
       companyId,
       countryCode: campaignCountry(),
       currencyCode: currencyForCountry(campaignCountry()),
-      currencyScale: currencyScaleForCountry(campaignCountry()),
+      currencyScale: supportedFiscalScale(),
       eventTimeDevice: saleEventTimeDevice,
       genesisSeed: requiredState('terminalGenesisSeed'),
       methodCode: requiredState('cashMethodCode'),
@@ -668,7 +696,7 @@ test.describe('automated onboarding campaign', () => {
       companyId,
       countryCode: campaignCountry(),
       currencyCode: currencyForCountry(campaignCountry()),
-      currencyScale: currencyScaleForCountry(campaignCountry()),
+      currencyScale: supportedFiscalScale(),
       eventTimeDevice: refundEventTimeDevice,
       genesisSeed: requiredState('terminalGenesisSeed'),
       methodCode: requiredState('cashMethodCode'),
@@ -802,8 +830,8 @@ test.describe('automated onboarding campaign', () => {
       openedAtDevice: requiredState('sessionOpenEventTimeDevice'),
       operatorId: requiredState('userId'),
       operatorName: requiredCredentials().name,
-      periodEnd: withMillisecondsTimestamp(closeEventTimeDevice),
-      periodStart: withMillisecondsTimestamp(requiredState('sessionOpenEventTimeDevice')),
+      periodEnd: withMilliseconds(closeEventTimeDevice),
+      periodStart: withMilliseconds(requiredState('sessionOpenEventTimeDevice')),
       refundEventTimeDevice: requiredState('refundEventTimeDevice'),
       refundHash: requiredState('refundHash'),
       refundSequenceNumber: requiredSequenceState('refundSequenceNumber'),
@@ -837,9 +865,18 @@ test.describe('automated onboarding campaign', () => {
     )
     const closedShift = asRecord(requireApiData(closedShiftResult, 'projected closed shift'), 'projected closed shift')
     expect(closedShift['status']).toBe('CLOSED')
-    assertMoneyEqual(stringField(closedShift, 'expected_cash'), fiscalMoney('1000.000'))
-    assertMoneyEqual(stringField(closedShift, 'actual_cash'), fiscalMoney('1000.000'))
-    assertMoneyEqual(stringField(closedShift, 'variance'), fiscalMoney('0.000'))
+    assertMoneyEqual(
+      stringField(closedShift, 'expected_cash'),
+      formatScaleThreeMoney('1000.000', reportCoordinates.currencyScale),
+    )
+    assertMoneyEqual(
+      stringField(closedShift, 'actual_cash'),
+      formatScaleThreeMoney('1000.000', reportCoordinates.currencyScale),
+    )
+    assertMoneyEqual(
+      stringField(closedShift, 'variance'),
+      formatScaleThreeMoney('0.000', reportCoordinates.currencyScale),
+    )
 
     const virginBeforeZ = await apiObject(
       page,
@@ -876,29 +913,32 @@ test.describe('automated onboarding campaign', () => {
     const zDetail = asRecord(requireApiData(zDetailResult, 'projected Z detail'), 'projected Z detail')
     expect(zDetail['z_number']).toBe(1)
     expect(zDetail['fiscal_hash']).toBe(zReport.currentHash)
-    expect(zDetail['is_first_z_report'], 'known previous_z_hash legacy-surface defect').toBe(false)
+    expect(
+      zDetail['is_first_z_report'],
+      'I3-F5 (previous_z_hash legacy surface) — flip to true when the projection stops writing the close hash; see docs/qa/ONBOARDING-CAMPAIGN.md',
+    ).toBe(false)
     const reportData = asRecord(zDetail['report_data'], 'Z report_data')
     expect(reportData).toMatchObject({
-      actual_cash: fiscalMoney('1000.000'),
-      expected_cash: fiscalMoney('1000.000'),
-      gross_sales: fiscalMoney('23.800'),
-      net_sales: fiscalMoney('20.000'),
-      refunds_amount: fiscalMoney('23.800'),
+      actual_cash: formatScaleThreeMoney('1000.000', reportCoordinates.currencyScale),
+      expected_cash: formatScaleThreeMoney('1000.000', reportCoordinates.currencyScale),
+      gross_sales: formatScaleThreeMoney('23.800', reportCoordinates.currencyScale),
+      net_sales: formatScaleThreeMoney('20.000', reportCoordinates.currencyScale),
+      refunds_amount: formatScaleThreeMoney('23.800', reportCoordinates.currencyScale),
       refunds_count: 1,
       sales_count: 1,
-      tax_amount: fiscalMoney('3.800'),
-      variance: fiscalMoney('0.000'),
+      tax_amount: formatScaleThreeMoney('3.800', reportCoordinates.currencyScale),
+      variance: formatScaleThreeMoney('0.000', reportCoordinates.currencyScale),
       voided_count: 0,
     })
     const expectedVatBreakdown = [{
-      gross_amount: fiscalMoney('0.000'),
-      net_amount: fiscalMoney('0.000'),
+      gross_amount: formatScaleThreeMoney('0.000', reportCoordinates.currencyScale),
+      net_amount: formatScaleThreeMoney('0.000', reportCoordinates.currencyScale),
       tax_rate: 19,
-      vat_amount: fiscalMoney('0.000'),
+      vat_amount: formatScaleThreeMoney('0.000', reportCoordinates.currencyScale),
     }]
     const expectedPaymentTotals = [{
       payment_type: requiredState('cashMethodCode'),
-      total_amount: fiscalMoney('0.000'),
+      total_amount: formatScaleThreeMoney('0.000', reportCoordinates.currencyScale),
       transaction_count: 2,
     }]
     expect(reportData['vat_breakdown']).toEqual(expectedVatBreakdown)
@@ -947,10 +987,10 @@ test.describe('automated onboarding campaign', () => {
     const zState = await apiObject(page, apiRoutes.terminalZChainState(terminalId), companyId, 'Z state after first Z')
     expect(zState).toEqual({
       grand_totals: {
-        cumulative_refunds: fiscalMoney('23.800'),
-        cumulative_sales: fiscalMoney('23.800'),
-        cumulative_tax: fiscalMoney('3.800'),
-        perpetual_grand_total: fiscalMoney('0.000'),
+        cumulative_refunds: formatScaleThreeMoney('23.800', reportCoordinates.currencyScale),
+        cumulative_sales: formatScaleThreeMoney('23.800', reportCoordinates.currencyScale),
+        cumulative_tax: formatScaleThreeMoney('3.800', reportCoordinates.currencyScale),
+        perpetual_grand_total: formatScaleThreeMoney('0.000', reportCoordinates.currencyScale),
         receipt_count_lifetime: 1,
       },
       z_hash_sequence: 1,
@@ -982,8 +1022,13 @@ test.describe('automated onboarding campaign', () => {
       'drawer after close and Z',
     )
     assertMoneyEqual(stringField(drawerAfter, 'balance'), drawerBalanceBefore)
-    assertDayOneCensus(await census(page, companyId), false)
-    await addLedgerEvidence('L9', `SESSION_CLOSE seq=2 + Z_REPORT seq=3 projected; shift expected=actual=1000.000 variance=0; Z=1 first=false (known legacy defect); net VAT row=0; ${requiredState('cashMethodCode')} net=0/2 transactions; replay stored=false/one Z row; drawer unchanged=${drawerBalanceBefore}; current shift=null; day-one census holds`)
+    // B5: the repository SET after close + Z is exactly the day-one pair plus L4's bank repository —
+    // an implicit close/Z-time provisioning would surface here (fiscal gate I3C-2).
+    const censusAfterZ = await census(page, companyId)
+    assertDayOneCensus(censusAfterZ, { allowExtraRepositories: true })
+    expect(censusAfterZ.repositories, 'exactly cash register + safe + L4 bank after Z').toHaveLength(3)
+    expect(censusAfterZ.repositories.filter((repository) => repository['type'] === 'bank_account' && repository['code'] === requiredState('bankRepositoryCode')), 'the third repository is L4\'s bank').toHaveLength(1)
+    await addLedgerEvidence('L9', `SESSION_CLOSE seq=2 + Z_REPORT seq=3 projected; shift expected=actual=1000.000 variance=0; Z=1 first=false (known legacy defect); net VAT row=0; ${requiredState('cashMethodCode')} net=0/2 transactions; replay stored=false/one Z row; drawer unchanged=${drawerBalanceBefore}; current shift=null; census asserted one POS location, one cash tender, one drawer, one safe, >=19 units, and exactly 3 repositories (seeded drawer + safe + L4 bank)`)
   })
 
   test('L10 — findings gate', async () => {
@@ -1028,7 +1073,10 @@ async function census(page: Page, companyId: string): Promise<Census> {
 }
 let reportedRepositoryLeak = false
 
-function assertDayOneCensus(value: Census, requireOnlyProvisionedRepositories = true): void {
+function assertDayOneCensus(
+  value: Census,
+  options: { allowExtraRepositories?: boolean } = {},
+): void {
   expect(value.locations, 'exactly one day-one location').toHaveLength(1)
   expect(value.locations[0]?.['pos_enabled'], 'day-one location is POS enabled').toBe(true)
   expect(value.methods.length, 'payment methods seeded').toBeGreaterThanOrEqual(1)
@@ -1039,7 +1087,7 @@ function assertDayOneCensus(value: Census, requireOnlyProvisionedRepositories = 
   'one location-owned cash register').toHaveLength(1)
   // Seeded safes CARRY the company's location (PaymentRepositorySeeder attributes both rows).
   expect(value.repositories.filter((repository) => repository['type'] === 'safe'), 'one safe').toHaveLength(1)
-  if (!reuseMode && requireOnlyProvisionedRepositories) {
+  if (!reuseMode && options.allowExtraRepositories !== true) {
     expect(value.repositories, 'only the company\'s cash register and safe are provisioned').toHaveLength(2)
   }
   expect(value.units.length, 'country units seeded').toBeGreaterThanOrEqual(19)
@@ -1200,17 +1248,6 @@ function supportedFiscalScale(): 2 | 3 {
   throw new Error(`Unsupported fiscal currency scale: ${String(scale)}`)
 }
 
-function fiscalMoney(scaleThreeValue: string): string {
-  return supportedFiscalScale() === 3 ? scaleThreeValue : scaleThreeValue.slice(0, -1)
-}
-
-function withMillisecondsTimestamp(value: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(value)) {
-    throw new Error(`Timestamp must use UTC second precision: ${value}`)
-  }
-  return value.replace(/Z$/, '.000Z')
-}
-
 function projectedShiftStatus(result: ApiResult): string {
   if (result.status !== 200 || !isObjectWithData(result.body)) return ''
   const data = result.body['data']
@@ -1242,17 +1279,6 @@ function eventTime(offsetMinutes = 0): string {
 
 function fail(message: string): never {
   throw new Error(message)
-}
-
-function semanticLeafPaths(value: unknown, prefix = ''): string[] {
-  if (Array.isArray(value)) {
-    return value.flatMap((item, index) => semanticLeafPaths(item, `${prefix}[${String(index)}]`))
-  }
-  if (typeof value === 'object' && value !== null) {
-    return Object.entries(value).flatMap(([key, item]) =>
-      semanticLeafPaths(item, prefix === '' ? key : `${prefix}.${key}`))
-  }
-  return [prefix]
 }
 
 /** Net credit (credit − debit) of one account on the trial balance as of today, scale 3, no floats. */

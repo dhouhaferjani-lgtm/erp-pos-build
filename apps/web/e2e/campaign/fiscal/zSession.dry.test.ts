@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
-import { buildFixedZSessionEnvelopes, Z_SESSION_GOLDEN_HASHES } from './zSession.golden'
+import {
+  buildFixedZSessionEnvelopes,
+  fixedZSessionCoordinates,
+  Z_SESSION_GOLDEN_HASHES,
+} from './zSession.golden'
+import { semanticLeafPaths } from './util'
 
 describe('L0a Z-session dry construction', () => {
   it('constructs and prints the three sealed envelopes without network access', async () => {
@@ -21,7 +26,26 @@ describe('L0a Z-session dry construction', () => {
     }
     expect(Object.keys(semantic.citations).sort()).toEqual(semanticLeafPaths(semantic.values).sort())
     expect(Object.values(semantic.citations).every((citations) => citations.length > 0)).toBe(true)
+    const zCashCount = envelopes.zReport.payload['cash_count'] as Record<string, unknown>
     expect(semantic.values).toMatchObject({
+      cash_count: {
+        counted_cash: zCashCount['counted_cash'],
+        expected_cash: zCashCount['expected_cash'],
+        variance_amount: zCashCount['variance_amount'],
+        variance_direction: zCashCount['variance_direction'],
+        variance_reason: zCashCount['variance_reason'],
+      },
+      cash_count_lines: zCashCount['lines'],
+      cash_drawer_totals: envelopes.zReport.payload['cash_drawer_totals'],
+      event_times: {
+        period_end: fixedZSessionCoordinates.periodEnd,
+        period_start: fixedZSessionCoordinates.periodStart,
+        refund: fixedZSessionCoordinates.refundEventTimeDevice,
+        sale: fixedZSessionCoordinates.saleEventTimeDevice,
+        session_close_and_z: fixedZSessionCoordinates.eventTimeDevice,
+        session_open: fixedZSessionCoordinates.openedAtDevice,
+      },
+      formatted_z_number: envelopes.zReport.payload['formatted_z_number'],
       grand_totals_after: envelopes.zReport.payload['grand_totals_after'],
       grand_totals_before: envelopes.zReport.payload['grand_totals_before'],
       operational_event_range: envelopes.zReport.payload['operational_event_range'],
@@ -30,6 +54,8 @@ describe('L0a Z-session dry construction', () => {
       refunds_totals: envelopes.zReport.payload['refunds_totals'],
       session_event_range: envelopes.zReport.payload['session_event_range'],
       vat_breakdown: envelopes.zReport.payload['vat_breakdown'],
+      voids_totals: envelopes.zReport.payload['voids_totals'],
+      z_number: envelopes.zReport.payload['z_number'],
     })
 
     const dryEnvelope = (envelope: typeof envelopes.open) => {
@@ -58,14 +84,3 @@ describe('L0a Z-session dry construction', () => {
     }, null, 2))
   })
 })
-
-function semanticLeafPaths(value: unknown, prefix = ''): string[] {
-  if (Array.isArray(value)) {
-    return value.flatMap((item, index) => semanticLeafPaths(item, `${prefix}[${String(index)}]`))
-  }
-  if (typeof value === 'object' && value !== null) {
-    return Object.entries(value).flatMap(([key, item]) =>
-      semanticLeafPaths(item, prefix === '' ? key : `${prefix}.${key}`))
-  }
-  return [prefix]
-}

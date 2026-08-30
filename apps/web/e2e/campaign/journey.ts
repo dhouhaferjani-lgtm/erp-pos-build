@@ -125,6 +125,7 @@ export const journeyState: {
   terminalGenesisSeed?: string
   terminalCode?: string
   terminalId?: string
+  bankRepositoryCode?: string
   terminalLabel?: string
   refundEventId?: string
   refundEventTimeDevice?: string

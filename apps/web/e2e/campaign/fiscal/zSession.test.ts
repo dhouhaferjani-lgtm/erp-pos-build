@@ -35,6 +35,33 @@ const report = {
   saleSequenceNumber: 1,
 }
 
+const validOpenCoordinates = () => ({
+  ...common,
+  eventTimeDevice: '2026-08-29T10:00:00Z',
+  genesisSeed: 'a'.repeat(64),
+  openingFloatAmount: '1000.000',
+  shiftNumber: 1,
+})
+
+const validCloseCoordinates = () => ({
+  ...report,
+  eventTimeDevice: '2026-08-29T10:10:00Z',
+  previousHash: 'd'.repeat(64),
+  sessionCloseUuid: '88888888-8888-4888-8888-888888888888',
+})
+
+const validZReportCoordinates = () => ({
+  ...report,
+  closeEventId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+  closeHash: 'd'.repeat(64),
+  closeSequenceNumber: 2,
+  eventTimeDevice: '2026-08-29T10:10:00Z',
+  openEventId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+  openHash: 'a'.repeat(64),
+  openSequenceNumber: 1,
+  zReportUuid: '99999999-9999-4999-8999-999999999999',
+})
+
 describe('campaign Z-session envelope authoring', () => {
   it('authors SESSION_OPEN with the exact payload and canonical envelope contracts', async () => {
     const open = await buildSessionOpenEnvelope({
@@ -212,13 +239,105 @@ describe('campaign Z-session envelope authoring', () => {
     })
   })
 
-  it('refuses malformed outer coordinates before authoring immutable bytes', async () => {
-    await expect(buildSessionOpenEnvelope({
-      ...common,
-      eventTimeDevice: '2026-08-29T10:00:00.123Z',
-      genesisSeed: 'a'.repeat(64),
-      openingFloatAmount: '1000.000',
-      shiftNumber: 1,
-    })).rejects.toThrow(/second precision/)
+  it.each([
+    {
+      build: () => buildSessionOpenEnvelope({ ...validOpenCoordinates(), shiftNumber: 0 }),
+      message: 'shiftNumber must be a positive integer',
+      name: 'non-positive shift number',
+    },
+    {
+      build: () => buildZReportEnvelope({ ...validZReportCoordinates(), openSequenceNumber: 2 }),
+      message: 'session event range must be SESSION_OPEN sequence 1 through SESSION_CLOSE sequence 2',
+      name: 'invalid session sequence range',
+    },
+    {
+      build: () => buildSessionOpenEnvelope({
+        ...validOpenCoordinates(),
+        sessionId: 'not-a-uuid',
+        shiftId: 'not-a-uuid',
+      }),
+      message: 'sessionId must be a canonical lowercase UUID',
+      name: 'malformed UUID',
+    },
+    {
+      build: () => buildSessionOpenEnvelope({
+        ...validOpenCoordinates(),
+        shiftId: '77777777-7777-4777-8777-777777777777',
+      }),
+      message: 'sessionId and shiftId must be the same UUID',
+      name: 'different session and shift UUIDs',
+    },
+    {
+      build: () => buildSessionOpenEnvelope({ ...validOpenCoordinates(), businessDate: '2026/08/29' }),
+      message: 'businessDate must be an ISO date',
+      name: 'malformed business date',
+    },
+    {
+      build: () => buildSessionOpenEnvelope({
+        ...validOpenCoordinates(),
+        eventTimeDevice: '2026-08-29T10:00:00.123Z',
+      }),
+      message: 'eventTimeDevice must use UTC second precision',
+      name: 'outer timestamp with milliseconds',
+    },
+    {
+      build: () => buildSessionOpenEnvelope({ ...validOpenCoordinates(), currencyCode: 'tnd' }),
+      message: 'currencyCode must be a three-letter uppercase code',
+      name: 'malformed currency code',
+    },
+    {
+      build: () => buildSessionOpenEnvelope({ ...validOpenCoordinates(), operatorName: '  ' }),
+      message: 'operatorName and terminalLabel must be non-empty',
+      name: 'blank display label',
+    },
+    {
+      build: () => buildSessionOpenEnvelope({ ...validOpenCoordinates(), genesisSeed: 'A'.repeat(64) }),
+      message: 'genesisSeed must be a lowercase 64-character hash',
+      name: 'malformed hash',
+    },
+    {
+      build: () => buildSessionOpenEnvelope({ ...validOpenCoordinates(), openingFloatAmount: '1000.00' }),
+      message: 'openingFloatAmount must be an exact-scale money string',
+      name: 'money at the wrong scale',
+    },
+    {
+      build: () => buildSessionCloseEnvelope({ ...validCloseCoordinates(), saleSequenceNumber: 2 }),
+      message: 'operational range must be sale sequence 1 through refund sequence 2',
+      name: 'invalid operational sequence range',
+    },
+    {
+      build: () => buildSessionCloseEnvelope({
+        ...validCloseCoordinates(),
+        periodStart: '2026-08-29T10:00:00Z',
+      }),
+      message: 'periodStart must use UTC millisecond precision',
+      name: 'nested period timestamp without milliseconds',
+    },
+    {
+      build: () => buildSessionCloseEnvelope({
+        ...validCloseCoordinates(),
+        openedAtDevice: '2026-08-29T10:00:00.000Z',
+      }),
+      message: 'openedAtDevice must use UTC second precision',
+      name: 'nested device timestamp with milliseconds',
+    },
+    {
+      build: () => buildSessionCloseEnvelope({
+        ...validCloseCoordinates(),
+        periodStart: '2026-08-29T10:02:00.000Z',
+      }),
+      message: 'reporting window must contain both operational receipts',
+      name: 'reporting window excluding a receipt',
+    },
+    {
+      build: () => buildSessionCloseEnvelope({
+        ...validCloseCoordinates(),
+        eventTimeDevice: '2026-08-29T10:04:00Z',
+      }),
+      message: 'SESSION_CLOSE and Z_REPORT must follow the open, sale, and refund',
+      name: 'close before the refund',
+    },
+  ])('refuses $name before authoring immutable bytes', async ({ build, message }) => {
+    await expect(build()).rejects.toMatchObject({ message })
   })
 })
