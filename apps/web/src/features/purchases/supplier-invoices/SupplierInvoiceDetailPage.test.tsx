@@ -409,6 +409,80 @@ describe('SupplierInvoiceDetailPage — per-line match table', () => {
       expect(screen.getByTestId('match-row-po-line-1')).toBeInTheDocument()
     })
   })
+
+  it('collapses duplicate PO-line aggregates and ORs price variance', async () => {
+    const detail = makeDetail()
+    detail.lines[0].quantity = '2.0000'
+    detail.match.per_line = [
+      {
+        po_line_id: 'po-line-shared',
+        ordered: '11.0000',
+        received: '7.0000',
+        invoiced: '6.0000',
+        matchable: '3.0000',
+        price_variance: false,
+      },
+      {
+        po_line_id: 'po-line-shared',
+        ordered: '11.0000',
+        received: '7.0000',
+        invoiced: '6.0000',
+        matchable: '3.0000',
+        price_variance: true,
+      },
+    ]
+    mockApiGet.mockResolvedValue(detail)
+
+    renderWithProviders(<SupplierInvoiceDetailPage />)
+
+    expect(await screen.findAllByTestId(/^match-row-/)).toHaveLength(1)
+    expect(screen.getAllByText('11.0000')).toHaveLength(1)
+    expect(screen.getAllByText('7.0000')).toHaveLength(1)
+    expect(screen.getAllByText('6.0000')).toHaveLength(1)
+    expect(screen.getAllByText('3.0000')).toHaveLength(1)
+    expect(screen.getByTestId('match-variance-po-line-shared')).toHaveAttribute(
+      'data-variance',
+      'true'
+    )
+  })
+
+  it('preserves a separate match row for a second PO line', async () => {
+    const detail = makeDetail()
+    detail.lines[0].quantity = '2.0000'
+    detail.match.per_line = [
+      {
+        po_line_id: 'po-line-shared',
+        ordered: '11.0000',
+        received: '7.0000',
+        invoiced: '6.0000',
+        matchable: '3.0000',
+        price_variance: false,
+      },
+      {
+        po_line_id: 'po-line-shared',
+        ordered: '11.0000',
+        received: '7.0000',
+        invoiced: '6.0000',
+        matchable: '3.0000',
+        price_variance: true,
+      },
+      {
+        po_line_id: 'po-line-other',
+        ordered: '13.0000',
+        received: '8.0000',
+        invoiced: '5.0000',
+        matchable: '4.0000',
+        price_variance: false,
+      },
+    ]
+    mockApiGet.mockResolvedValue(detail)
+
+    renderWithProviders(<SupplierInvoiceDetailPage />)
+
+    expect(await screen.findAllByTestId(/^match-row-/)).toHaveLength(2)
+    expect(screen.getByTestId('match-row-po-line-shared')).toBeInTheDocument()
+    expect(screen.getByTestId('match-row-po-line-other')).toBeInTheDocument()
+  })
 })
 
 describe('SupplierInvoiceDetailPage — source PO link', () => {

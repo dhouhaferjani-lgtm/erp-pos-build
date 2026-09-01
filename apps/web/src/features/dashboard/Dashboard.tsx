@@ -128,6 +128,9 @@ export function Dashboard() {
       const response = await api.get<{ data: DashboardStats }>('/dashboard/stats')
       return response.data.data
     },
+    // Backend debt: dashboard.stats has no `can:` gate. An FE-only permission
+    // predicate would hide data from legitimate users. Owner: lane L-14,
+    // ticket L-2-FU-dashboard-stats-ungated.
     enabled: tenantId !== null && companyId !== null,
   })
 
@@ -137,7 +140,7 @@ export function Dashboard() {
       const response = await api.get<DocumentsResponse>('/documents?limit=5&sort=-created_at')
       return response.data
     },
-    enabled: tenantId !== null && companyId !== null,
+    enabled: tenantId !== null && companyId !== null && hasPermission('documents.view'),
   })
 
   const { data: paymentsData, isLoading: paymentsLoading } = useQuery({
@@ -146,7 +149,7 @@ export function Dashboard() {
       const response = await api.get<PaymentsResponse>('/payments?limit=5&sort=-created_at')
       return response.data
     },
-    enabled: tenantId !== null && companyId !== null,
+    enabled: tenantId !== null && companyId !== null && hasPermission('payments.view'),
   })
 
   const isLoading = statsLoading || documentsLoading || paymentsLoading
@@ -342,7 +345,8 @@ export function Dashboard() {
       <div className="grid gap-6 lg:grid-cols-2">
         <CashPositionWidget />
         {/* Recent Documents */}
-        <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white`}>
+        {hasPermission('documents.view') && (
+          <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white`}>
           <div className={`flex items-center justify-between border-b ${colorTokens.border.subtle} px-6 py-4`}>
             <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>{t('dashboard.recentDocuments')}</h2>
             <Link
@@ -395,10 +399,12 @@ export function Dashboard() {
               })
             )}
           </div>
-        </div>
+          </div>
+        )}
 
         {/* Recent Payments */}
-        <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white`}>
+        {hasPermission('payments.view') && (
+          <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white`}>
           <div className={`flex items-center justify-between border-b ${colorTokens.border.subtle} px-6 py-4`}>
             <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>{t('dashboard.recentPayments')}</h2>
             <Link
@@ -439,7 +445,8 @@ export function Dashboard() {
               ))
             )}
           </div>
-        </div>
+          </div>
+        )}
       </div>
     </div>
   )
