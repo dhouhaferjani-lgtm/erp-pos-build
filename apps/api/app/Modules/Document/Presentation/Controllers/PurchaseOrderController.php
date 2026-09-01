@@ -26,6 +26,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\GoodsReceiptData;
 use App\Modules\Inventory\Application\DTOs\GoodsReceiptResult;
 use App\Modules\Inventory\Application\Services\GoodsReceiptService;
+use App\Modules\Inventory\Domain\Exceptions\GoodsReceiptException;
 use App\Modules\Inventory\Domain\GoodsReceipt;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Modules\Procurement\Application\PurchaseBonusGate;
@@ -795,6 +796,7 @@ class PurchaseOrderController extends Controller
             /** @var string|null $priceOverrideReason */
             $priceOverrideReason = $validated['price_override_reason'] ?? null;
             $saveAsDraft = (bool) ($validated['save_as_draft'] ?? false);
+            $allowExpired = (bool) ($validated['allow_expired'] ?? false);
             $destinationLocationId = isset($validated['location_id']) ? (string) $validated['location_id'] : null;
 
             if ($destinationLocationId !== null) {
@@ -821,6 +823,7 @@ class PurchaseOrderController extends Controller
                     null,
                     null,
                     $destinationLocationId,
+                    $allowExpired,
                 );
                 $updatedDocument = new GoodsReceiptResult(
                     $documentModel->fresh(['lines']) ?? $documentModel,
@@ -837,10 +840,17 @@ class PurchaseOrderController extends Controller
                     $priceOverrideReason,
                     $user->id,
                     $destinationLocationId,
+                    $allowExpired,
                 );
             } else {
                 // Receive all remaining quantities
-                $updatedDocument = $this->goodsReceiptService->receiveAll($documentModel, $user->id, $destinationLocationId);
+                $updatedDocument = $this->goodsReceiptService->receiveAll(
+                    $documentModel,
+                    $user->id,
+                    $destinationLocationId,
+                    is_array($batches) ? $batches : [],
+                    $allowExpired,
+                );
             }
 
             // Get receipt status for response
@@ -853,6 +863,11 @@ class PurchaseOrderController extends Controller
                     'receipt_status' => $receiptStatus,
                     'goods_receipt' => GoodsReceiptData::fromModel($updatedDocument->receipt, withLines: false),
                 ],
+            ]);
+        } catch (GoodsReceiptException $e) {
+            return $this->validationErrorResponse('GOODS_RECEIPT_FAILED', $e->getMessage(), [
+                'reason' => $e->reason->value,
+                'details' => $e->details->toArray(),
             ]);
         } catch (\DomainException $e) {
             return $this->validationErrorResponse('GOODS_RECEIPT_FAILED', $e->getMessage());
