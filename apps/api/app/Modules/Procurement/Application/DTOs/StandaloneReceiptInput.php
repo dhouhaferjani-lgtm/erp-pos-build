@@ -20,5 +20,6 @@ final readonly class StandaloneReceiptInput
         public ?string $externalDate,
         public bool $postImmediately,
         public array $lines,
+        public bool $allowExpired = false,
     ) {}
 }

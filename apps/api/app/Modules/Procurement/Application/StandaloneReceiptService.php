@@ -128,6 +128,7 @@ final readonly class StandaloneReceiptService
                     $input->actorId,
                     $input->externalReference,
                     $input->externalDate,
+                    allowExpired: $input->allowExpired,
                 );
 
                 $receipt = $input->postImmediately

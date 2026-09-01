@@ -9,6 +9,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Application\DTOs\DocumentData;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\GoodsReceiptData;
+use App\Modules\Inventory\Domain\Exceptions\GoodsReceiptException;
 use App\Modules\Procurement\Application\DTOs\StandaloneReceiptInput;
 use App\Modules\Procurement\Application\DTOs\StandaloneReceiptLineInput;
 use App\Modules\Procurement\Application\StandaloneReceiptService;
@@ -45,7 +46,17 @@ final class StandaloneReceiptController extends Controller
                 externalDate: isset($validated['external_date']) ? (string) $validated['external_date'] : null,
                 postImmediately: (bool) ($validated['post_immediately'] ?? false),
                 lines: $this->lines($validated['lines']),
+                allowExpired: (bool) ($validated['allow_expired'] ?? false),
             ));
+        } catch (GoodsReceiptException $exception) {
+            return response()->json([
+                'error' => [
+                    'code' => 'STANDALONE_RECEIPT_FAILED',
+                    'reason' => $exception->reason->value,
+                    'message' => $exception->getMessage(),
+                    'details' => $exception->details->toArray(),
+                ],
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (\DomainException $exception) {
             return response()->json([
                 'error' => [

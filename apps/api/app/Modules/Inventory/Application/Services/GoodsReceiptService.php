@@ -14,8 +14,11 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\GoodsReceiptResult;
+use App\Modules\Inventory\Domain\DTOs\GoodsReceiptFailureDetails;
+use App\Modules\Inventory\Domain\Enums\GoodsReceiptFailureReason;
 use App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus;
 use App\Modules\Inventory\Domain\Events\GoodsReceived;
+use App\Modules\Inventory\Domain\Exceptions\GoodsReceiptException;
 use App\Modules\Inventory\Domain\GoodsReceipt;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
@@ -23,7 +26,10 @@ use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Inventory\ReceiptLineGuardInterface;
 use App\Shared\Domain\CurrencyScale;
+use App\Shared\Domain\Exceptions\MissingVariantException;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -47,6 +53,7 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
         private readonly ProductCostLock $costLock,
         private readonly DocumentNumberingService $numberingService,
         private readonly ReceiptBatchCostAllocator $receiptBatchCostAllocator,
+        private readonly GoodsReceiptExpiredLotPolicy $expiredLotPolicy,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly GeneralLedgerService $generalLedgerService,
     ) {}
@@ -56,7 +63,7 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
      *
      * @param  Document  $purchaseOrder  The confirmed purchase order
      * @param  array<string, string>  $receivedQuantities  Map of line_id => paid quantity to receive
-     * @param  array<string, array{batch_number: string, expiry_date: string, manufacturing_date?: string}>  $batchData  Optional batch data per line_id
+     * @param  array<string, array{batch_number: string, expiry_date: string|null, manufacturing_date?: string}>  $batchData  Optional batch data per line_id
      * @param  array<string, string>  $freeQuantities  Map of line_id => free quantity to receive
      * @param  array<string, string>  $receivedUnitPrices  Map of line_id => received unit price override
      *
@@ -71,8 +78,9 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
         ?string $priceOverrideReason = null,
         ?string $actorId = null,
         ?string $destinationLocationId = null,
+        bool $allowExpired = false,
     ): GoodsReceiptResult {
-        return DB::transaction(function () use ($purchaseOrder, $receivedQuantities, $batchData, $freeQuantities, $receivedUnitPrices, $priceOverrideReason, $actorId, $destinationLocationId): GoodsReceiptResult {
+        return DB::transaction(function () use ($purchaseOrder, $receivedQuantities, $batchData, $freeQuantities, $receivedUnitPrices, $priceOverrideReason, $actorId, $destinationLocationId, $allowExpired): GoodsReceiptResult {
             $draft = $this->createDraft(
                 $purchaseOrder,
                 $receivedQuantities,
@@ -84,6 +92,7 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
                 null,
                 null,
                 $destinationLocationId,
+                $allowExpired,
             );
 
             $posted = $this->post($draft, (string) ($actorId ?? ''), $destinationLocationId);
@@ -100,7 +109,7 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
 
     /**
      * @param  array<string, string>  $receivedQuantities
-     * @param  array<string, array{batch_number: string, expiry_date: string, manufacturing_date?: string}>  $batchData
+     * @param  array<string, array{batch_number: string, expiry_date: string|null, manufacturing_date?: string}>  $batchData
      * @param  array<string, string>  $freeQuantities
      * @param  array<string, string>  $receivedUnitPrices
      */
@@ -115,10 +124,13 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
         ?string $externalReference = null,
         ?string $externalDate = null,
         ?string $destinationLocationId = null,
+        bool $allowExpired = false,
     ): GoodsReceipt {
         $this->assertReceivablePurchaseOrder($po);
+        $this->assertBatchDataForTrackedLines($po, $receivedQuantities, $freeQuantities, $batchData);
+        $this->assertExpiredLotsAllowed($po, $receivedQuantities, $freeQuantities, $batchData, $allowExpired, $actorId);
 
-        return DB::transaction(function () use ($po, $receivedQuantities, $batchData, $freeQuantities, $receivedUnitPrices, $priceOverrideReason, $actorId, $externalReference, $externalDate, $destinationLocationId): GoodsReceipt {
+        return DB::transaction(function () use ($po, $receivedQuantities, $batchData, $freeQuantities, $receivedUnitPrices, $priceOverrideReason, $actorId, $externalReference, $externalDate, $destinationLocationId, $allowExpired): GoodsReceipt {
             $priceScale = $this->scaleResolver->getScale((string) ($po->currency ?? 'TND'));
             $hasDraftLines = false;
 
@@ -135,6 +147,7 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
                 'external_date' => $externalDate,
                 'payload' => [
                     'batch_data' => $batchData,
+                    'allow_expired' => $allowExpired,
                     'external_reference' => $externalReference,
                     'external_date' => $externalDate,
                 ],
@@ -160,7 +173,7 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
                 if (array_key_exists((string) $line->id, $receivedUnitPrices) && bccomp($qtyToReceive, '0.00', self::QUANTITY_SCALE) > 0) {
                     $rawReceivedUnitPrice = (string) $receivedUnitPrices[(string) $line->id];
                     if (! is_numeric($rawReceivedUnitPrice) || bccomp($rawReceivedUnitPrice, '0', $priceScale) <= 0) {
-                        throw new \DomainException("received_unit_price must be greater than zero for line {$line->id}.");
+                        throw $this->receivedPriceInvalid($line);
                     }
                     $receivedUnitPrice = CurrencyScale::bcround($rawReceivedUnitPrice, $priceScale);
                 }
@@ -190,7 +203,10 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
             }
 
             if (! $hasDraftLines) {
-                throw new \DomainException('No items to receive. Please specify quantities to receive.');
+                throw new GoodsReceiptException(
+                    GoodsReceiptFailureReason::NothingToReceive,
+                    'No items to receive. Please specify quantities to receive.',
+                );
             }
 
             /** @var GoodsReceipt $fresh */
@@ -217,6 +233,7 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
             $purchaseOrder = $lockedReceipt->purchaseOrder;
             $this->assertReceivablePurchaseOrder($purchaseOrder);
             $this->assertCanApplyDraftPriceOverrides($lockedReceipt, $actorId);
+            $this->assertCanReceiveExpiredLots($lockedReceipt, $actorId);
 
             // Get the default location for this company
             $location = $this->resolveDestinationLocation($purchaseOrder, $destinationLocationId ?? $lockedReceipt->location_id);
@@ -313,9 +330,19 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
         $remaining = bcsub((string) $line->quantity, $alreadyReceived, self::QUANTITY_SCALE);
 
         if (bccomp($qtyToReceive, '0.00', self::QUANTITY_SCALE) > 0 && bccomp($qtyToReceive, $remaining, self::QUANTITY_SCALE) > 0) {
-            throw new \DomainException(
-                "Cannot receive more than ordered for line {$line->id}. ".
-                "Ordered: {$line->quantity}, Already received: {$alreadyReceived}, Requested: {$qtyToReceive}"
+            throw new GoodsReceiptException(
+                GoodsReceiptFailureReason::OverReceipt,
+                sprintf(
+                    'Cannot receive more than ordered for %s: requested more than the remaining quantity.',
+                    $this->describeLine($line),
+                ),
+                new GoodsReceiptFailureDetails(
+                    lines: [$this->lineDetails($line)],
+                    ordered: $this->quantity((string) $line->quantity),
+                    alreadyReceived: $this->quantity($alreadyReceived),
+                    requested: $this->quantity($qtyToReceive),
+                    remaining: $this->quantity($remaining),
+                ),
             );
         }
 
@@ -324,9 +351,19 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
         $freeRemaining = bcsub((string) ($line->free_quantity ?? '0.00'), $alreadyFreeReceived, self::QUANTITY_SCALE);
 
         if (bccomp($freeQtyToReceive, '0.00', self::QUANTITY_SCALE) > 0 && bccomp($freeQtyToReceive, $freeRemaining, self::QUANTITY_SCALE) > 0) {
-            throw new \DomainException(
-                "Cannot receive more free quantity than ordered for line {$line->id}. ".
-                "Free ordered: {$line->free_quantity}, Already received: {$alreadyFreeReceived}, Requested: {$freeQtyToReceive}"
+            throw new GoodsReceiptException(
+                GoodsReceiptFailureReason::OverReceiptFree,
+                sprintf(
+                    'Cannot receive more free quantity than ordered for %s: requested more than the remaining free quantity.',
+                    $this->describeLine($line),
+                ),
+                new GoodsReceiptFailureDetails(
+                    lines: [$this->lineDetails($line)],
+                    ordered: $this->quantity((string) ($line->free_quantity ?? '0')),
+                    alreadyReceived: $this->quantity($alreadyFreeReceived),
+                    requested: $this->quantity($freeQtyToReceive),
+                    remaining: $this->quantity($freeRemaining),
+                ),
             );
         }
     }
@@ -348,13 +385,38 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
         }
     }
 
+    private function assertCanReceiveExpiredLots(GoodsReceipt $receipt, string $actorId): void
+    {
+        $payload = $receipt->payload ?? [];
+        $allowExpired = is_bool($payload['allow_expired'] ?? null) && $payload['allow_expired'];
+
+        if (! $allowExpired) {
+            return;
+        }
+
+        $this->assertActorCanReceiveExpiredLots($actorId);
+    }
+
+    private function assertActorCanReceiveExpiredLots(string $actorId): void
+    {
+        /** @var User|null $actor */
+        $actor = $actorId !== '' ? User::find($actorId) : null;
+        if ($actor === null || ! $actor->can('goods-receipt.receive-expired')) {
+            throw new GoodsReceiptException(
+                GoodsReceiptFailureReason::ExpiredLotRefused,
+                'User is not allowed to receive expired lots.',
+            );
+        }
+    }
+
     /**
      * @return array{
      *   receivedQuantities: array<string, string>,
      *   freeQuantities: array<string, string>,
      *   receivedUnitPrices: array<string, string>,
-     *   batchData: array<string, array{batch_number: string, expiry_date: string, manufacturing_date?: string}>,
-     *   priceOverrideReason: ?string
+     *   batchData: array<string, array{batch_number: string, expiry_date: string|null, manufacturing_date?: string}>,
+     *   priceOverrideReason: ?string,
+     *   allowExpired: bool
      * }
      */
     private function draftInput(GoodsReceipt $receipt): array
@@ -376,6 +438,7 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
 
         $payload = $receipt->payload ?? [];
         $batchData = is_array($payload['batch_data'] ?? null) ? $payload['batch_data'] : [];
+        $allowExpired = is_bool($payload['allow_expired'] ?? null) && $payload['allow_expired'];
 
         return [
             'receivedQuantities' => $receivedQuantities,
@@ -383,6 +446,7 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
             'receivedUnitPrices' => $receivedUnitPrices,
             'batchData' => $batchData,
             'priceOverrideReason' => $priceOverrideReason,
+            'allowExpired' => $allowExpired,
         ];
     }
 
@@ -423,7 +487,7 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
      * row lock is held before recordPurchase() is invoked.
      *
      * @param  array<string, string>  $receivedQuantities
-     * @param  array<string, array{batch_number: string, expiry_date: string, manufacturing_date?: string}>  $batchData
+     * @param  array<string, array{batch_number: string, expiry_date: string|null, manufacturing_date?: string}>  $batchData
      * @param  array<string, string>  $freeQuantities
      * @param  array<string, string>  $receivedUnitPrices
      * @param  array<string, string>  $batchFreightShares
@@ -444,6 +508,8 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
         bool $failClosedGrir = false,
     ): GoodsReceiptResult {
         $hasReceivedItems = false;
+
+        $this->assertBatchDataForTrackedLines($purchaseOrder, $receivedQuantities, $freeQuantities, $batchData);
 
         /**
          * DPA Wave 3 T5b — the GL POSTING BUFFER.
@@ -521,7 +587,9 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
             }
 
             if (($product->requires_batch_tracking ?? false) && ! isset($batchData[$line->id])) {
-                throw new \DomainException("Batch data is required for batch-tracked product {$product->id}");
+                // Defence in depth: validated inputs are rejected by the
+                // aggregating pre-pass before this write loop starts.
+                throw $this->batchDataRequired([$this->lineDetails($line, $product)]);
             }
 
             // Use landed cost from the PO line (includes allocated additional costs).
@@ -535,7 +603,7 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
             if ($hasReceivedPriceOverride) {
                 $rawReceivedUnitPrice = (string) $receivedUnitPrices[(string) $line->id];
                 if (! is_numeric($rawReceivedUnitPrice) || bccomp($rawReceivedUnitPrice, '0', $priceScale) <= 0) {
-                    throw new \DomainException("received_unit_price must be greater than zero for line {$line->id}.");
+                    throw $this->receivedPriceInvalid($line, $product);
                 }
                 $receivedUnitPrice = CurrencyScale::bcround($rawReceivedUnitPrice, $priceScale);
             }
@@ -556,14 +624,37 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
             $batch = null;
             if (isset($batchData[$line->id]) && ($product->requires_batch_tracking ?? false)) {
                 $lineBatch = $batchData[$line->id];
-                $batch = $this->batchStockService->findOrCreateBatch(
-                    companyId: $purchaseOrder->company_id,
-                    tenantId: $purchaseOrder->tenant_id,
-                    productId: (string) $product->id,
-                    batchNumber: $lineBatch['batch_number'],
-                    expiryDate: $lineBatch['expiry_date'],
-                    manufacturingDate: $lineBatch['manufacturing_date'] ?? null,
+                $this->assertReceiptBatchExpiryMatchesExisting(
+                    $purchaseOrder,
+                    $line,
+                    $product,
+                    $lineBatch['batch_number'],
+                    $lineBatch['expiry_date'],
+                    $variantId,
                 );
+                try {
+                    $batch = $this->batchStockService->findOrCreateBatch(
+                        companyId: $purchaseOrder->company_id,
+                        tenantId: $purchaseOrder->tenant_id,
+                        productId: (string) $product->id,
+                        batchNumber: $lineBatch['batch_number'],
+                        expiryDate: $lineBatch['expiry_date'],
+                        manufacturingDate: $lineBatch['manufacturing_date'] ?? null,
+                        variantId: $variantId,
+                        isExpired: $this->expiredLotPolicy->isPastExpiry($lineBatch['expiry_date']),
+                    );
+                } catch (MissingVariantException) {
+                    $designation = $this->lineDesignation($line, $product);
+                    throw new GoodsReceiptException(
+                        GoodsReceiptFailureReason::VariantRequired,
+                        sprintf(
+                            'Product %s on line %d has active variants; batches must be variant-scoped — a variant_id is required.',
+                            $designation,
+                            (int) $line->line_number,
+                        ),
+                        new GoodsReceiptFailureDetails(lines: [$this->lineDetails($line, $product)]),
+                    );
+                }
             }
 
             if (bccomp($freeQtyToReceive, '0.00', self::QUANTITY_SCALE) > 0) {
@@ -717,7 +808,10 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
         }
 
         if (! $hasReceivedItems) {
-            throw new \DomainException('No items to receive. Please specify quantities to receive.');
+            throw new GoodsReceiptException(
+                GoodsReceiptFailureReason::NothingToReceive,
+                'No items to receive. Please specify quantities to receive.',
+            );
         }
 
         // Check if fully received
@@ -767,9 +861,15 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
      * Receive all remaining items for a purchase order.
      *
      * @param  Document  $purchaseOrder  The confirmed purchase order
+     * @param  array<string, array{batch_number: string, expiry_date: string|null, manufacturing_date?: string}>  $batchData
      */
-    public function receiveAll(Document $purchaseOrder, ?string $actorId = null, ?string $destinationLocationId = null): GoodsReceiptResult
-    {
+    public function receiveAll(
+        Document $purchaseOrder,
+        ?string $actorId = null,
+        ?string $destinationLocationId = null,
+        array $batchData = [],
+        bool $allowExpired = false,
+    ): GoodsReceiptResult {
         $receivedQuantities = [];
 
         foreach ($purchaseOrder->lines as $line) {
@@ -792,7 +892,228 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
             }
         }
 
-        return $this->receiveGoods($purchaseOrder, $receivedQuantities, [], $freeQuantities, [], null, $actorId, $destinationLocationId);
+        return $this->receiveGoods($purchaseOrder, $receivedQuantities, $batchData, $freeQuantities, [], null, $actorId, $destinationLocationId, $allowExpired);
+    }
+
+    /**
+     * @param  array<string, string>  $receivedQuantities
+     * @param  array<string, string>  $freeQuantities
+     * @param  array<string, array{batch_number: string, expiry_date: string|null, manufacturing_date?: string}>  $batchData
+     */
+    private function assertBatchDataForTrackedLines(
+        Document $po,
+        array $receivedQuantities,
+        array $freeQuantities,
+        array $batchData,
+    ): void {
+        $products = $this->receiptProducts($po, $receivedQuantities, $freeQuantities);
+        $missing = [];
+
+        foreach ($po->lines as $line) {
+            $product = $line->product_id !== null ? $products->get((string) $line->product_id) : null;
+            if (! $product instanceof Product || ! $product->isPhysical() || ! ($product->requires_batch_tracking ?? false)) {
+                continue;
+            }
+
+            if (! $this->hasPositiveReceiptQuantity($line, $receivedQuantities, $freeQuantities) || isset($batchData[$line->id])) {
+                continue;
+            }
+
+            $missing[] = $this->lineDetails($line, $product);
+        }
+
+        if ($missing !== []) {
+            throw $this->batchDataRequired($missing);
+        }
+    }
+
+    /**
+     * @param  array<string, string>  $receivedQuantities
+     * @param  array<string, string>  $freeQuantities
+     * @param  array<string, array{batch_number: string, expiry_date: string|null, manufacturing_date?: string}>  $batchData
+     */
+    private function assertExpiredLotsAllowed(
+        Document $po,
+        array $receivedQuantities,
+        array $freeQuantities,
+        array $batchData,
+        bool $allowExpired,
+        string $actorId,
+    ): void {
+        if ($allowExpired) {
+            $this->assertActorCanReceiveExpiredLots($actorId);
+
+            return;
+        }
+
+        $refusal = $this->expiredLotPolicy->firstRefusal($po, $receivedQuantities, $freeQuantities, $batchData);
+        if ($refusal !== null) {
+            throw $refusal;
+        }
+    }
+
+    /**
+     * @param  array<string, string>  $receivedQuantities
+     * @param  array<string, string>  $freeQuantities
+     * @return Collection<string, Product>
+     */
+    private function receiptProducts(Document $po, array $receivedQuantities, array $freeQuantities): Collection
+    {
+        $productIds = $po->lines
+            ->filter(fn (DocumentLine $line): bool => $line->product_id !== null && $this->hasPositiveReceiptQuantity($line, $receivedQuantities, $freeQuantities))
+            ->map(static fn (DocumentLine $line): string => (string) $line->product_id)
+            ->unique()
+            ->values()
+            ->all();
+
+        /** @var Collection<string, Product> $products */
+        $products = Product::query()
+            ->where('tenant_id', $po->tenant_id)
+            ->where('company_id', $po->company_id)
+            ->whereIn('id', $productIds)
+            ->get()
+            ->keyBy(static fn (Product $product): string => (string) $product->id);
+
+        return $products;
+    }
+
+    /**
+     * @param  array<string, string>  $receivedQuantities
+     * @param  array<string, string>  $freeQuantities
+     */
+    private function hasPositiveReceiptQuantity(DocumentLine $line, array $receivedQuantities, array $freeQuantities): bool
+    {
+        $paid = $receivedQuantities[$line->id] ?? '0';
+        $free = $freeQuantities[$line->id] ?? '0';
+
+        return (is_numeric($paid) && bccomp($paid, '0', self::QUANTITY_SCALE) > 0)
+            || (is_numeric($free) && bccomp($free, '0', self::QUANTITY_SCALE) > 0);
+    }
+
+    /**
+     * @param  list<array{line_number: int, sku: string|null, description: string}>  $lines
+     */
+    private function batchDataRequired(array $lines): GoodsReceiptException
+    {
+        $labels = array_map(
+            fn (array $line): string => $this->labelFromDetails($line),
+            $lines,
+        );
+
+        return new GoodsReceiptException(
+            GoodsReceiptFailureReason::BatchDataRequired,
+            sprintf('Batch data is required for batch-tracked products: %s.', implode(', ', $labels)),
+            new GoodsReceiptFailureDetails(lines: $lines),
+        );
+    }
+
+    private function receivedPriceInvalid(DocumentLine $line, ?Product $product = null): GoodsReceiptException
+    {
+        return new GoodsReceiptException(
+            GoodsReceiptFailureReason::ReceivedPriceInvalid,
+            sprintf('received_unit_price must be greater than zero for %s.', $this->describeLine($line, $product)),
+            new GoodsReceiptFailureDetails(lines: [$this->lineDetails($line, $product)]),
+        );
+    }
+
+    private function assertReceiptBatchExpiryMatchesExisting(
+        Document $purchaseOrder,
+        DocumentLine $line,
+        Product $product,
+        string $batchNumber,
+        ?string $suppliedExpiry,
+        ?string $variantId,
+    ): void {
+        if ($batchNumber === BatchStockService::DEFAULT_BATCH_NUMBER || $suppliedExpiry === null) {
+            return;
+        }
+
+        $existing = $this->batchStockService->findByBatchNumber(
+            companyId: $purchaseOrder->company_id,
+            productId: (string) $product->id,
+            batchNumber: $batchNumber,
+            variantId: $variantId,
+        );
+
+        if ($existing === null) {
+            return;
+        }
+
+        $storedExpiry = $existing->expiry_date?->toDateString();
+        $normalizedSuppliedExpiry = CarbonImmutable::parse($suppliedExpiry)->toDateString();
+        if ($storedExpiry === $normalizedSuppliedExpiry) {
+            return;
+        }
+
+        $storedLabel = $storedExpiry ?? 'unknown';
+        throw new GoodsReceiptException(
+            GoodsReceiptFailureReason::BatchExpiryConflict,
+            sprintf(
+                'Batch %s for %s already has expiry date %s; supplied expiry date %s conflicts.',
+                $batchNumber,
+                $this->describeLine($line, $product),
+                $storedLabel,
+                $suppliedExpiry,
+            ),
+            new GoodsReceiptFailureDetails(
+                lines: [$this->lineDetails($line, $product)],
+                batchNumber: $batchNumber,
+                storedExpiry: $storedLabel,
+                suppliedExpiry: $suppliedExpiry,
+            ),
+        );
+    }
+
+    private function describeLine(DocumentLine $line, ?Product $product = null): string
+    {
+        return $this->labelFromDetails($this->lineDetails($line, $product));
+    }
+
+    /**
+     * @return array{line_number: int, sku: string|null, description: string}
+     */
+    private function lineDetails(DocumentLine $line, ?Product $product = null): array
+    {
+        $productSku = $product instanceof Product ? trim((string) $product->sku) : '';
+        $sku = $productSku !== '' ? $productSku : null;
+        $description = trim((string) ($line->description ?? $line->designation_default_snapshot ?? ''));
+
+        return [
+            'line_number' => (int) $line->line_number,
+            'sku' => $sku,
+            'description' => $description,
+        ];
+    }
+
+    /** @param array{line_number: int, sku: string|null, description: string} $line */
+    private function labelFromDetails(array $line): string
+    {
+        $designations = [];
+        if ($line['sku'] !== null && $line['sku'] !== '') {
+            $designations[] = $line['sku'];
+        }
+        if ($line['description'] !== '' && $line['description'] !== $line['sku']) {
+            $designations[] = $line['description'];
+        }
+
+        return sprintf(
+            'line %d%s',
+            $line['line_number'],
+            $designations === [] ? '' : ' ('.implode(' — ', $designations).')',
+        );
+    }
+
+    private function lineDesignation(DocumentLine $line, ?Product $product = null): string
+    {
+        $details = $this->lineDetails($line, $product);
+
+        return $details['sku'] ?? ($details['description'] !== '' ? $details['description'] : 'unknown product');
+    }
+
+    /** @param numeric-string $value */
+    private function quantity(string $value): string
+    {
+        return bcadd($value, '0', self::QUANTITY_SCALE);
     }
 
     /**
