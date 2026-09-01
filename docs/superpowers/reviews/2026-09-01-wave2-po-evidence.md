@@ -270,6 +270,18 @@ Aggregate/batch/receipt ledgers agree (0 mismatches); invoice posts reconcile fa
 - W2-EDGE-11 | measured: status=500 body={"error":{"code":"CONFIGURATION_ERROR","message":"SQLSTATE[22001]: String data, right truncated: 7 ERROR:  value too long for type character varying(100) (Connection: tenant, Host: 127.0.0.1, Port: 5433, Database: tenant01a05f1d-1375-7256-8827-39cc768b5587, SQL: insert into \"product_batches\" (\"tenant_id\", \"company_id\", \"product_id\", \"batch_number\", \"expiry_date\", \"manufacturing_date\", \"is_active\", \"is_expired\", \"is_recalled\", \"uuid\", \"updated_at\", \"created_at\") values (01a05f1d-1375-7256-8827-39cc768b5587, 01a05f1d-5212-708a-8316-414b152071f1, 01a05f1d-cf89-73da-a5f7-673c15c16adc, BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB, 2027-12-31 00:00:00, ?, 1, 0, 0, 1e486894-42df-469a-bd87-0bbda16a7ac7, 2026-09-01 22:40:16, 2026-09-01 22:40:16) returning \"id\")"}} receipt/movement=0|0→0|0 | expected CONFIGURATION_ERROR finding with rollback; expected fix 422 | FAIL-AS-EXPECTED
 - W2-EDGE-12 | measured: supplier_invoice=201 delivery_note=201 | expected [derived F-W2-31] no document-type filter | PASS
 
+## Post-fix browser verification — **part 1 re-run 50/50 PASS, 2026-09-01 23:47, on L-1 (5aa42aac9) + L-2 (14d98daa7) merged**
+
+With the F-W2-37 and F-W2-39 tolerances REMOVED and the L-1 AFTER-strings asserted (verbatim ledger: `docs/superpowers/audits/2026-09-01-wave2-po-flow/05-part1-postfix-verification.md`):
+- **LOT-5**: empty-body receive → 422 `BATCH_DATA_REQUIRED`, aggregated `line 1 (P-LOT-1)` label, **no UUID in the message** (F-W2-02/27 fixed).
+- **LOT-6**: expired lot **refused** (`EXPIRED_LOT_REFUSED`, dated sentence); `allow_expired: true` with the new permission → 200 with **`is_expired = t`** stored truthfully (F-W2-09 fixed; the FEFO fixture survives via the override).
+- **LOT-7**: conflicting expiry on the same batch → 422 `BATCH_EXPIRY_CONFLICT` naming both dates; same expiry reuses the lot and sums to 6.0000 (F-W2-10 fixed).
+- **LOT-8**: variant-bearing product without `variant_id` → 422 `VARIANT_REQUIRED`, SKU-labelled (F-W2-12 fixed as a typed refusal; receiving WITH `variant_id` works per the lane's tests).
+- **OVER-1**: `OVER_RECEIPT` with `line 1 (P-OVER-1)` label, quantities only in `details` (F-W2-27 fixed).
+- Dashboard permission gates + ConfirmDialog role + SI match-table dedupe verified implicitly: **zero console errors without the removed tolerances**.
+
+Merged into local dev after this verification. Remaining open (fix lanes to brief next): F-W2-01 (receive idempotency, P0), F-W2-03 (GR-IR swallow + broken replay, P0), F-W2-13 (supplier refund books customer_receivable — Q-10 hotfix trigger), F-W2-14 (cashier authorisation), F-W2-40/41 (FE match-status UI), F-W2-04/05 + Q-1..Q-12 owner rulings.
+
 ## Cross-wave flags (not fixed here)
 | Finding | Owner lane | Evidence row |
 |---|---|---|
