@@ -101,7 +101,7 @@ function configureApiMocks() {
 describe('Dashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    seedAuth()
+    seedAuth({ roles: ['admin'] })
     configureApiMocks()
   })
 
@@ -159,6 +159,51 @@ describe('Dashboard', () => {
       expect(screen.getByText('PAY-2025-0001')).toBeInTheDocument()
       expect(screen.getByTestId('cash-position-widget')).toBeInTheDocument()
     })
+  })
+
+  it('does not request or render permission-gated activity for a synthetic minimal principal', async () => {
+    seedAuth({ permissions: ['purchase-orders.receive'] })
+
+    renderWithProviders(<Dashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /dashboard/i })).toBeInTheDocument()
+    })
+
+    const requestedUrls = mockApi.get.mock.calls.map(([url]) => String(url))
+    expect(requestedUrls.filter((url) => url.startsWith('/documents'))).toHaveLength(0)
+    expect(requestedUrls.filter((url) => url.startsWith('/payments'))).toHaveLength(0)
+    expect(screen.queryByText(/recent documents/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/recent payments/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/loading/i)).not.toBeInTheDocument()
+  })
+
+  it('requests and renders only documents for a documents-only principal', async () => {
+    seedAuth({ permissions: ['documents.view'] })
+
+    renderWithProviders(<Dashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recent documents/i)).toBeInTheDocument()
+    })
+
+    const requestedUrls = mockApi.get.mock.calls.map(([url]) => String(url))
+    expect(requestedUrls.filter((url) => url.startsWith('/documents'))).toHaveLength(1)
+    expect(requestedUrls.filter((url) => url.startsWith('/payments'))).toHaveLength(0)
+    expect(screen.queryByText(/recent payments/i)).not.toBeInTheDocument()
+  })
+
+  it('requests and renders both activity cards for an admin principal', async () => {
+    renderWithProviders(<Dashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recent documents/i)).toBeInTheDocument()
+      expect(screen.getByText(/recent payments/i)).toBeInTheDocument()
+    })
+
+    const requestedUrls = mockApi.get.mock.calls.map(([url]) => String(url))
+    expect(requestedUrls.filter((url) => url.startsWith('/documents'))).toHaveLength(1)
+    expect(requestedUrls.filter((url) => url.startsWith('/payments'))).toHaveLength(1)
   })
 
   it('has quick action buttons', async () => {

@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom'
+import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, X } from 'lucide-react'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
@@ -42,6 +43,8 @@ export function ConfirmDialog({
   isLoading = false,
 }: ConfirmDialogProps) {
   const { t } = useTranslation('common')
+  const headingId = useId()
+  const descriptionId = useId()
 
   if (!isOpen) return null
 
@@ -49,7 +52,12 @@ export function ConfirmDialog({
 
   return createPortal(
     <div className={`fixed inset-0 z-50 flex items-center justify-center overflow-y-auto ${colorTokens.surface.overlay}`}>
-      <div className={`relative mx-4 w-full max-w-md rounded-lg ${colorTokens.surface.base} p-6 shadow-xl`}>
+      <div
+        role="dialog"
+        aria-labelledby={headingId}
+        aria-describedby={descriptionId}
+        className={`relative mx-4 w-full max-w-md rounded-lg ${colorTokens.surface.base} p-6 shadow-xl`}
+      >
         {/* Close button */}
         <button
           type="button"
@@ -74,8 +82,8 @@ export function ConfirmDialog({
             content still grows past it.
           */}
           <div className="min-h-[4.5rem] flex-1">
-            <h3 className={`text-lg font-semibold ${colorTokens.text.primary}`}>{title}</h3>
-            <p className={`mt-2 text-sm ${colorTokens.text.muted}`}>{message}</p>
+            <h3 id={headingId} className={`text-lg font-semibold ${colorTokens.text.primary}`}>{title}</h3>
+            <p id={descriptionId} className={`mt-2 text-sm ${colorTokens.text.muted}`}>{message}</p>
           </div>
         </div>
 

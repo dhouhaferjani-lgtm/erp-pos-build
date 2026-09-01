@@ -36,6 +36,40 @@ describe('ConfirmDialog', () => {
     expect(screen.getByText('This action cannot be undone.')).toBeInTheDocument()
   })
 
+  it('exposes the open panel as a dialog', () => {
+    render(<ConfirmDialog {...defaultProps} />)
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('names the dialog from the rendered title', () => {
+    render(<ConfirmDialog {...defaultProps} />)
+
+    const dialog = screen.getByRole('dialog', { name: 'Delete item?' })
+    const headingId = dialog.getAttribute('aria-labelledby')
+    expect(headingId).not.toBeNull()
+    expect(document.getElementById(headingId as string)).toHaveTextContent('Delete item?')
+  })
+
+  it('describes the dialog from the rendered message', () => {
+    render(<ConfirmDialog {...defaultProps} />)
+
+    const dialog = screen.getByRole('dialog')
+    const descriptionId = dialog.getAttribute('aria-describedby')
+    expect(descriptionId).not.toBeNull()
+    expect(document.getElementById(descriptionId as string)).toHaveTextContent(
+      'This action cannot be undone.'
+    )
+  })
+
+  it('does not claim modal containment before the dialog-surfaces follow-up', () => {
+    render(<ConfirmDialog {...defaultProps} />)
+
+    const dialog = screen.getByRole('dialog')
+    // L-2-FU-dialog-surfaces owns focus trapping, Escape handling, and containment.
+    expect(dialog).not.toHaveAttribute('aria-modal')
+  })
+
   it('renders via portal so it does not nest inside parent forms', () => {
     const { container } = render(
       <form data-testid="parent-form">
