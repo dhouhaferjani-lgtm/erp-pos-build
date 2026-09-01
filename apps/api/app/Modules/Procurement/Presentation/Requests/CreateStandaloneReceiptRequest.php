@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Procurement\Presentation\Requests;
 
+use App\Modules\Identity\Domain\User;
 use Illuminate\Foundation\Http\FormRequest;
 
 final class CreateStandaloneReceiptRequest extends FormRequest
@@ -18,6 +19,10 @@ final class CreateStandaloneReceiptRequest extends FormRequest
      */
     public function rules(): array
     {
+        /** @var User|null $user */
+        $user = $this->user();
+        $canReceiveExpired = $user !== null && $user->can('goods-receipt.receive-expired');
+
         return [
             'supplier_id' => ['required', 'uuid'],
             'location_id' => ['required', 'uuid'],
@@ -25,6 +30,7 @@ final class CreateStandaloneReceiptRequest extends FormRequest
             'external_reference' => ['nullable', 'string', 'max:100'],
             'external_date' => ['nullable', 'date_format:Y-m-d'],
             'post_immediately' => ['sometimes', 'boolean'],
+            'allow_expired' => $canReceiveExpired ? ['sometimes', 'boolean'] : ['prohibited'],
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.product_id' => ['required', 'uuid'],
             'lines.*.variant_id' => ['nullable', 'uuid'],

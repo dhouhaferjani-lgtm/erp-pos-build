@@ -311,14 +311,16 @@ trait HandlesDocuments
 
     /**
      * Return a standardized validation error response.
+     *
+     * @param  array{reason?: string, details?: array<string, string|list<array{line_number: int, sku: string|null, description: string}>>}|null  $extra
      */
-    protected function validationErrorResponse(string $code, string $message): JsonResponse
+    protected function validationErrorResponse(string $code, string $message, ?array $extra = null): JsonResponse
     {
         return response()->json([
-            'error' => [
+            'error' => array_merge([
                 'code' => $code,
                 'message' => $message,
-            ],
+            ], $extra ?? []),
         ], 422);
     }
 

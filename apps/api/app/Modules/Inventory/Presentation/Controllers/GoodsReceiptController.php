@@ -12,6 +12,7 @@ use App\Modules\Inventory\Application\DTOs\GoodsReceiptData;
 use App\Modules\Inventory\Application\Services\GoodsReceiptPdfService;
 use App\Modules\Inventory\Application\Services\GoodsReceiptService;
 use App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus;
+use App\Modules\Inventory\Domain\Exceptions\GoodsReceiptException;
 use App\Modules\Inventory\Domain\GoodsReceipt;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -122,6 +123,15 @@ final class GoodsReceiptController extends Controller
 
         try {
             $posted = $this->goodsReceiptService->post($this->receiptForCurrentCompany($receipt), $user->id, $destinationLocationId);
+        } catch (GoodsReceiptException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'GOODS_RECEIPT_POST_FAILED',
+                    'reason' => $e->reason->value,
+                    'message' => $e->getMessage(),
+                    'details' => $e->details->toArray(),
+                ],
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (\DomainException $e) {
             return response()->json([
                 'error' => [
