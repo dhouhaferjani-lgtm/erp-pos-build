@@ -12,7 +12,7 @@
 | Findings | 28 | 36 | 36 | **36** (F-W2-03 widened again — the repair is a no-op) |
 | Owner questions | 12 | 10 | 10 | **10** |
 | Settings ledger | — | — | 6 | **6** (S-3 residue + principal-scope clause added) |
-| Fixture table | — | 30 SKUs | 36 rows | **38 rows** — `P-OVER-5a/b` added; `P-IFIRST-1`/`-2` split so `-2` can carry its own price and its orchestrator-minted-PO note |
+| Fixture table | — | 30 SKUs | 37 rows | **39 rows** — `P-OVER-5a/b` added; `P-IFIRST-1`/`-2` split so `-2` can carry its own price and its orchestrator-minted-PO note. **[r4c] corrected from the 38 claimed here at r4 — the spec table itself was always right; the miscount was in this response file only (gate r4).** |
 
 **Every finding from both reviews is FIXED. No rebuttal in r4.** The r3 costing reviewer **withdrew its own r1 G1-C1-16** and ruled the r2 `allocated_costs` resolution correct — that resolution is retained unchanged.
 
