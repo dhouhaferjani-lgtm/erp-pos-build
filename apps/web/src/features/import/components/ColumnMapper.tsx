@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowRight, Check, AlertCircle, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -24,19 +24,6 @@ export function ColumnMapper({
   const targetNames = useMemo(() => {
     return new Set(targetColumns.map((col) => col.name))
   }, [targetColumns])
-
-  // Apply suggestions on mount if mapping is empty
-  useEffect(() => {
-    if (Object.keys(mapping).length === 0 && Object.keys(suggestions).length > 0) {
-      const initialMapping: Record<string, string> = {}
-      for (const [target, source] of Object.entries(suggestions)) {
-        if (source && targetNames.has(target)) {
-          initialMapping[source] = target
-        }
-      }
-      onMappingChange(initialMapping)
-    }
-  }, [suggestions, mapping, onMappingChange, targetNames])
 
   // Get which target columns are already mapped
   const mappedTargets = useMemo(() => {

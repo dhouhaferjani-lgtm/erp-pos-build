@@ -17,6 +17,8 @@ use App\Modules\Uom\Domain\Entities\UnitCategory;
 use App\Shared\Contracts\UnitCatalogQueryInterface;
 use App\Shared\DTOs\UnitCatalogEntryData;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 final class UnitResolutionTest extends TestCase
@@ -121,6 +123,34 @@ final class UnitResolutionTest extends TestCase
 
         $this->assertSame($sachet->id, $resolved->unitId);
         $this->assertSame('sachet', $resolved->unitCode);
+    }
+
+    public function test_explicit_mapping_alias_is_exact_company_scoped_and_loses_to_a_real_code(): void
+    {
+        $piece = $this->unit('pc', null, 'Piece');
+        $secondCompany = Company::factory()->for($this->tenant)->create();
+        DB::table('unit_text_mappings')->insert([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'source_text' => 'piece',
+            'target_unit_id' => $piece->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $resolver = app(UnitResolver::class);
+        $this->assertSame($piece->id, $resolver->resolve($this->company->id, 'piece', false)->unitId);
+
+        try {
+            $resolver->resolve($secondCompany->id, 'piece', false);
+            $this->fail('A mapping from another company must not resolve.');
+        } catch (CodedImportRowException $exception) {
+            $this->assertSame(ImportErrorCode::UnitUnknown, $exception->errorCode);
+        }
+
+        $realPiece = $this->unit('piece', $this->tenant->id, 'Actual piece code');
+        $this->assertSame($realPiece->id, $resolver->resolve($this->company->id, 'piece', false)->unitId);
     }
 
     public function test_company_tier_wins_over_tenant_and_system_code_collisions(): void
@@ -308,6 +338,16 @@ final class UnitResolutionTest extends TestCase
             public function visibleActiveUnitCount(string $companyId): int
             {
                 return count($this->entries);
+            }
+
+            public function explicitMappingTarget(string $companyId, string $sourceText): ?UnitCatalogEntryData
+            {
+                return null;
+            }
+
+            public function explicitMappingTargetIds(string $companyId): array
+            {
+                return [];
             }
         };
     }

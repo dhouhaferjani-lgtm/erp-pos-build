@@ -20,7 +20,10 @@ final readonly class ImportCountersData
     {
         $rows = $job->rows()->reorder();
         $totalRows = (clone $rows)->count();
-        $successfulRows = (clone $rows)->where('outcome', ImportRowOutcome::Imported)->count();
+        $successfulRows = (clone $rows)->whereIn('outcome', [
+            ImportRowOutcome::Imported,
+            ImportRowOutcome::MergedLine,
+        ])->count();
         $skippedRows = (clone $rows)->whereIn('outcome', [
             ImportRowOutcome::DuplicateSkipped,
             ImportRowOutcome::DuplicateLoser,

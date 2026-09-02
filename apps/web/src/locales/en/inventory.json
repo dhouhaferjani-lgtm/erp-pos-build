@@ -83,6 +83,8 @@
     "title": "Products",
     "singular": "product",
     "plural": "products",
+    "barcodeConflict": "This barcode already belongs to {{name}} ({{sku}}).",
+    "barcodeConflictUnknown": "This barcode already belongs to another product in this company.",
     "new": "Add Product",
     "searchPlaceholder": "Search products…",
     "addQuick": "Add Product (Quick)",

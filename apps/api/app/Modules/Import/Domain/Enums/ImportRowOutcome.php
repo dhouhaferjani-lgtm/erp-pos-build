@@ -8,6 +8,7 @@ enum ImportRowOutcome: string
 {
     case Pending = 'pending';
     case Imported = 'imported';
+    case MergedLine = 'merged_line';
     case DuplicateSkipped = 'duplicate_skipped';
     case DuplicateLoser = 'duplicate_loser';
     case Failed = 'failed';
@@ -18,6 +19,7 @@ enum ImportRowOutcome: string
         return match ($this) {
             self::Pending => false,
             self::Imported,
+            self::MergedLine,
             self::DuplicateSkipped,
             self::DuplicateLoser,
             self::Failed,

@@ -12,13 +12,16 @@ use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\Enums\ImportWarningCode;
+use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Services\FailedRowsExportService;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -75,6 +78,7 @@ final class ImportRowWarningsTest extends TestCase
         ]);
 
         app(CompanyContext::class)->setCompanyId($this->company->id);
+        app(UnitsProvisioningService::class)->provisionForCompany($this->company);
 
         Storage::fake('local');
     }
@@ -108,5 +112,25 @@ final class ImportRowWarningsTest extends TestCase
 
         $exportPath = app(FailedRowsExportService::class)->generateFailedRowsCsv($job->refresh());
         $this->assertNull($exportPath);
+    }
+
+    public function test_float_shaped_barcode_ending_in_five_zeroes_gets_a_non_blocking_corruption_warning(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/imports', [
+            'file' => UploadedFile::fake()->createWithContent('float-barcode.csv', implode("\n", [
+                'name,sku,barcode',
+                'Float Barcode Product,FLOAT-BARCODE,3337870000000.00000',
+            ])),
+            'type' => 'products',
+        ])->assertCreated();
+        $jobId = $response->json('data.id');
+        $this->assertIsString($jobId);
+
+        $row = ImportJob::query()->findOrFail($jobId)->rows()->sole();
+        $this->assertTrue($row->is_valid);
+        $this->assertContains(
+            'barcode_float_corruption_suspected',
+            array_column($row->warnings ?? [], 'code'),
+        );
     }
 }

@@ -1,6 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchUnits, fetchCategories, createUnit, updateUnit, deleteUnit } from '../api/uomApi'
-import type { CreateUnitInput } from '../api/uomApi'
+import {
+  applyUnitTextMapping,
+  createUnit,
+  deleteUnit,
+  fetchCategories,
+  fetchUnits,
+  fetchUnmappedUnitTexts,
+  updateUnit,
+} from '../api/uomApi'
+import type { ApplyUnitTextMappingInput, CreateUnitInput } from '../api/uomApi'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
@@ -20,8 +28,32 @@ export const uomKeys = {
   all: ['uom'] as const,
   categories: () => [...uomKeys.all, 'categories'] as const,
   units: () => [...uomKeys.all, 'units'] as const,
+  unmappedUnitTexts: () => [...uomKeys.all, 'unmapped-unit-texts'] as const,
   unitsByCategory: (categoryId?: string) =>
     [...uomKeys.units(), { categoryId }] as const,
+}
+
+export function useUnmappedUnitTexts() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
+  return useQuery({
+    queryKey: tenantScopedKey([...uomKeys.unmappedUnitTexts()]),
+    queryFn: fetchUnmappedUnitTexts,
+    enabled: !!tenantId && !!companyId,
+  })
+}
+
+export function useApplyUnitTextMapping() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: ApplyUnitTextMappingInput) => applyUnitTextMapping(input),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: tenantScopedKey([...uomKeys.unmappedUnitTexts()]),
+      })
+    },
+  })
 }
 
 /**

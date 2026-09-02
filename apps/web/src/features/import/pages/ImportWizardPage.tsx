@@ -10,6 +10,7 @@ import { ColumnMapper } from '../components/ColumnMapper'
 import { ValidationGrid } from '../components/ValidationGrid'
 import { ImportProgress } from '../components/ImportProgress'
 import { ImportPreviewTable } from '../components/ImportPreviewTable'
+import { UnknownUnitSummary } from '../components/UnknownUnitSummary'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import {
   useCreateImport,
@@ -24,7 +25,7 @@ import { importApi } from '../api/importApi'
 import { authenticatedDownload } from '@/lib/api'
 import { useImportProgressStore } from '../../../stores/importProgressStore'
 import { isDeprecatedImportType } from '../types'
-import type { DuplicatePolicy, ImportJobOptions, ImportResult, ImportType, LiveImportType, LocationNodeType } from '../types'
+import { DUPLICATE_BUCKETS, type DuplicatePolicy, type ImportJobOptions, type ImportResult, type ImportType, type LiveImportType, type LocationNodeType } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import { Select } from '@/components/atoms/Select/Select'
@@ -119,6 +120,22 @@ function isLocationNodeType(value: string): value is LocationNodeType {
 
 function defaultPlacementNodeType(depth: number): LocationNodeType {
   return DEFAULT_PLACEMENT_DEPTH_TYPES[depth] ?? 'section'
+}
+
+function mappingFromSuggestions(
+  suggestions: Record<string, string | null>,
+  targetColumns: readonly { name: string }[],
+): Record<string, string> {
+  const targetNames = new Set(targetColumns.map((column) => column.name))
+  const mapping: Record<string, string> = {}
+
+  for (const [target, source] of Object.entries(suggestions)) {
+    if (source !== null && targetNames.has(target)) {
+      mapping[source] = target
+    }
+  }
+
+  return mapping
 }
 
 interface StockLocationOptionsProps {
@@ -298,9 +315,11 @@ export function ImportWizardPage() {
   // Dialog state for partial import confirmation
   const [showPartialImportDialog, setShowPartialImportDialog] = useState(false)
   const [showDiscardImportDialog, setShowDiscardImportDialog] = useState(false)
+  const [showMultiLocationDialog, setShowMultiLocationDialog] = useState(false)
   const [isDiscardingImport, setIsDiscardingImport] = useState(false)
   const [isPolicyPending, setIsPolicyPending] = useState(false)
   const [policyError, setPolicyError] = useState<string | null>(null)
+  const [mappingSuggestionFailed, setMappingSuggestionFailed] = useState(false)
   const [showAllNameMatches, setShowAllNameMatches] = useState(false)
 
   // Import results state (from execute response)
@@ -317,6 +336,8 @@ export function ImportWizardPage() {
   const completedProgressJobsRef = useRef<Set<string>>(new Set())
   const terminalTransitionJobsRef = useRef<Set<string>>(new Set())
   const isWizardMountedRef = useRef(true)
+  const mappingRequestIdRef = useRef(0)
+  const mappingTouchedByUserRef = useRef(false)
 
   useEffect(() => {
     isWizardMountedRef.current = true
@@ -519,6 +540,8 @@ export function ImportWizardPage() {
     isError: isPreviewError,
     refetch: refetchPreview,
   } = useImportPreview(previewJobId, { enabled: shouldFetchPreview })
+  const validationValidRows = previewData?.summary.valid_rows
+    ?? Math.max((jobData?.total_rows ?? 0) - (jobData?.failed_rows ?? 0), 0)
   const placementDepthCount = Math.max(previewData?.placement?.max_depth ?? 1, 1)
   const placementNodeTypes = useMemo(
     () => Array.from(
@@ -543,6 +566,12 @@ export function ImportWizardPage() {
 
   // Handle file selection
   const handleFileSelect = useCallback(async (file: File) => {
+    const requestId = mappingRequestIdRef.current + 1
+    mappingRequestIdRef.current = requestId
+    mappingTouchedByUserRef.current = false
+    setMappingSuggestionFailed(false)
+    setColumnMapping({})
+    setSuggestions({})
     setSelectedFile(file)
 
     // Parse headers server-side: handles XLSX/XLS and any CSV delimiter
@@ -550,6 +579,7 @@ export function ImportWizardPage() {
     // which the browser cannot split as plain comma-separated text.
     try {
       const { headers } = await importApi.parseHeaders(file)
+      if (requestId !== mappingRequestIdRef.current) return
       setSourceColumns(headers)
 
       // Get mapping suggestions
@@ -557,11 +587,22 @@ export function ImportWizardPage() {
         { type: importType, headers },
         {
           onSuccess: (data) => {
+            if (requestId !== mappingRequestIdRef.current) return
+            setMappingSuggestionFailed(false)
             setSuggestions(data.suggestions)
+            if (!mappingTouchedByUserRef.current) {
+              const targetColumns = isDeprecatedImportType(importType) ? [] : TARGET_COLUMNS[importType]
+              setColumnMapping(mappingFromSuggestions(data.suggestions, targetColumns))
+            }
+          },
+          onError: () => {
+            if (requestId !== mappingRequestIdRef.current) return
+            setMappingSuggestionFailed(true)
           },
         }
       )
     } catch (uploadError: unknown) {
+      if (requestId !== mappingRequestIdRef.current) return
       // BUG-004: a bare `catch {}` used to map EVERY failure — 500, nginx 413,
       // CSRF bounce, dropped connection — to "invalid file", which is what hid
       // the real causes of BUG-001/BUG-002 for days. Only a 422 from
@@ -574,6 +615,11 @@ export function ImportWizardPage() {
       setSourceColumns([])
     }
   }, [importType, suggestMapping, t])
+
+  const handleColumnMappingChange = useCallback((mapping: Record<string, string>) => {
+    mappingTouchedByUserRef.current = true
+    setColumnMapping(mapping)
+  }, [])
 
   // Handle upload step completion
   const handleUploadComplete = useCallback(() => {
@@ -638,14 +684,28 @@ export function ImportWizardPage() {
     setPolicyError(null)
   }, [])
 
-  const handleValidationComplete = useCallback(async () => {
+  const advanceAfterValidation = useCallback(() => {
+    const hasErrors = (jobData?.failed_rows ?? 0) > 0
+    if (hasErrors) {
+      setShowPartialImportDialog(true)
+      return
+    }
+
+    markStepCompleted('validation')
+    setCurrentStep('execute')
+  }, [jobData?.failed_rows, markStepCompleted])
+
+  const persistValidationOptions = useCallback(async (multiLocationConfirmed: boolean) => {
     if (isPolicyPending) return
 
     setPolicyError(null)
     if (jobId && previewData?.duplicates) {
       setIsPolicyPending(true)
       try {
-        await importApi.updateOptions(jobId, { duplicate_policy: duplicatePolicy })
+        await importApi.updateOptions(jobId, {
+          duplicate_policy: duplicatePolicy,
+          ...(multiLocationConfirmed ? { multi_location_confirmed: true } : {}),
+        })
       } catch {
         setPolicyError(t('duplicates.policy.persistenceError'))
         return
@@ -653,16 +713,22 @@ export function ImportWizardPage() {
         setIsPolicyPending(false)
       }
     }
-    const hasErrors = (jobData?.failed_rows ?? 0) > 0
-    if (hasErrors) {
-      // Show dialog to confirm partial import
-      setShowPartialImportDialog(true)
+    advanceAfterValidation()
+  }, [advanceAfterValidation, duplicatePolicy, isPolicyPending, jobId, previewData?.duplicates, t])
+
+  const handleValidationComplete = useCallback(async () => {
+    if ((previewData?.duplicates?.barcode_groups?.counts.multi_location_products ?? 0) > 0) {
+      setShowMultiLocationDialog(true)
       return
     }
 
-    markStepCompleted('validation')
-    setCurrentStep('execute')
-  }, [duplicatePolicy, isPolicyPending, jobData?.failed_rows, jobId, markStepCompleted, previewData?.duplicates, t])
+    await persistValidationOptions(false)
+  }, [persistValidationOptions, previewData?.duplicates?.barcode_groups?.counts.multi_location_products])
+
+  const handleConfirmMultiLocation = useCallback(async () => {
+    setShowMultiLocationDialog(false)
+    await persistValidationOptions(true)
+  }, [persistValidationOptions])
 
   const handleDiscardImport = useCallback(async () => {
     if (!jobId || isDiscardingImport) return
@@ -824,12 +890,21 @@ export function ImportWizardPage() {
               </p>
             </div>
 
+            {mappingSuggestionFailed && (
+              <div
+                role="status"
+                className={`rounded-lg ${colorTokens.intent.caution.bgSubtle} p-4 text-sm ${colorTokens.intent.caution.textStronger}`}
+              >
+                {t('mapping.automaticMatchingFailed')}
+              </div>
+            )}
+
             <ColumnMapper
               sourceColumns={sourceColumns}
               targetColumns={isDeprecatedImportType(importType) ? [] : TARGET_COLUMNS[importType]}
               suggestions={suggestions}
               mapping={columnMapping}
-              onMappingChange={setColumnMapping}
+              onMappingChange={handleColumnMappingChange}
             />
 
             <div className={`flex items-center justify-between border-t ${colorTokens.border.subtle} pt-4`}>
@@ -1017,6 +1092,8 @@ export function ImportWizardPage() {
               </p>
             </div>
 
+            <UnknownUnitSummary summary={previewData?.error_summary ?? jobData?.error_summary} />
+
             {/* Data Preview Table */}
             {isPreviewLoading && (
               <div className={`flex items-center justify-center gap-2 py-8 ${colorTokens.text.subtle}`}>
@@ -1061,7 +1138,7 @@ export function ImportWizardPage() {
                   </p>
                 </div>
                 <dl className="grid gap-2 sm:grid-cols-6">
-                  {(['new', 'existing_sku', 'existing_barcode', 'existing_name', 'in_file', 'refused'] as const).map((bucket) => (
+                  {DUPLICATE_BUCKETS.map((bucket) => (
                     <div key={bucket} className={`rounded-md ${colorTokens.surface.base} p-3`}>
                       <dt className={`text-xs ${colorTokens.text.muted}`}>{t(`duplicates.bucket.${bucket}`)}</dt>
                       <dd className={`text-lg font-semibold ${colorTokens.text.primary}`}>
@@ -1070,6 +1147,33 @@ export function ImportWizardPage() {
                     </div>
                   ))}
                 </dl>
+                {(previewData.duplicates.barcode_groups?.counts.multi_location_products ?? 0) > 0 && (
+                  <div
+                    data-testid="import-preview-multi-location-summary"
+                    className={`rounded-md ${colorTokens.intent.warning.bgSubtle} p-3 text-sm ${colorTokens.intent.warning.textStronger}`}
+                  >
+                    {t('duplicates.barcode.multiLocation', {
+                      count: previewData.duplicates.barcode_groups?.counts.multi_location_products ?? 0,
+                    })}
+                  </div>
+                )}
+                {(previewData.duplicates.barcode_groups?.counts.barcode_identity_conflict_groups ?? 0) > 0 && (
+                  <div
+                    data-testid="import-preview-barcode-conflict-summary"
+                    className={`space-y-2 rounded-md ${colorTokens.intent.danger.bgSubtle} p-3 text-sm ${colorTokens.intent.danger.textStrong}`}
+                  >
+                    <p>{t('duplicates.barcode.identityConflict', {
+                      count: previewData.duplicates.barcode_groups?.counts.barcode_identity_conflict_rows ?? 0,
+                    })}</p>
+                    {previewData.duplicates.barcode_groups?.groups.map((group) => (
+                      group.classification === 'barcode_identity_conflict' ? (
+                        <p key={group.barcode} className="font-mono">
+                          {group.barcode}: {group.differing_fields.join(', ')} ({group.row_numbers.join(', ')})
+                        </p>
+                      ) : null
+                    ))}
+                  </div>
+                )}
                 {previewData.duplicates.counts.refused > 0 && (
                   <p
                     data-testid="import-preview-refused-summary"
@@ -1156,13 +1260,18 @@ export function ImportWizardPage() {
                 data-testid="import-wizard-next"
                 type="button"
                 onClick={() => { void handleValidationComplete() }}
-                disabled={isPolicyPending}
+                disabled={isPolicyPending || validationValidRows === 0}
                 className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover}`}
               >
                 {t('wizard.validation.proceed')}
                 <ArrowRight className="h-4 w-4" />
               </button>
             </div>
+            {validationValidRows === 0 && (
+              <p role="status" className={`text-end text-sm ${colorTokens.intent.danger.textStrong}`}>
+                {t('wizard.validation.noValidRows')}
+              </p>
+            )}
           </div>
         )
 
@@ -1382,6 +1491,8 @@ export function ImportWizardPage() {
                   </section>
                 )}
 
+                <UnknownUnitSummary summary={jobData?.error_summary} />
+
                 {jobData?.id && (
                   <div className={`mt-4 flex flex-wrap gap-4 border-t ${colorTokens.border.subtle} pt-4`}>
                     <button
@@ -1512,6 +1623,19 @@ export function ImportWizardPage() {
 
       {/* Partial import confirmation dialog */}
       <ConfirmDialog
+        isOpen={showMultiLocationDialog}
+        onClose={() => { setShowMultiLocationDialog(false) }}
+        onConfirm={() => { void handleConfirmMultiLocation() }}
+        title={t('duplicates.multiLocationConfirm.title')}
+        message={t('duplicates.multiLocationConfirm.message', {
+          count: previewData?.duplicates?.barcode_groups?.counts.multi_location_products ?? 0,
+        })}
+        confirmText={t('duplicates.multiLocationConfirm.confirm')}
+        cancelText={t('common:actions.cancel')}
+        variant="warning"
+        isLoading={isPolicyPending}
+      />
+      <ConfirmDialog
         isOpen={showPartialImportDialog}
         onClose={() => { setShowPartialImportDialog(false); }}
         onConfirm={handleConfirmPartialImport}
@@ -1520,7 +1644,10 @@ export function ImportWizardPage() {
           valid: (jobData?.total_rows ?? 0) - (jobData?.failed_rows ?? 0),
           failed: jobData?.failed_rows ?? 0
         })}
-        confirmText={t('wizard.proceedWithValid')}
+        confirmText={t('wizard.proceedWithValidCounts', {
+          valid: validationValidRows,
+          failed: jobData?.failed_rows ?? 0,
+        })}
         cancelText={t('common:actions.cancel')}
         variant="warning"
       />

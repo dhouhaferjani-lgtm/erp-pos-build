@@ -11,6 +11,7 @@ import type { ImportJob, ImportStatus } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { UnknownUnitSummary } from '../components/UnknownUnitSummary'
 import { KNOWN_WARNING_CODES } from '../warningCodes'
 
 const importStateGlyphs: Record<ImportStatus, ReactNode> = {
@@ -149,6 +150,9 @@ export function ImportHistoryPage() {
                   </td>
                   <td className="px-6 py-4">
                     <span className={`text-sm ${colorTokens.text.primary}`}>{job.original_filename}</span>
+                    <div className="mt-2 max-w-xl">
+                      <UnknownUnitSummary summary={job.error_summary} compact />
+                    </div>
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
                     {renderImportStatePill(job.status)}
@@ -157,11 +161,21 @@ export function ImportHistoryPage() {
                     {job.status === 'completed' || job.status === 'failed' ? (
                       <div className="space-y-1 text-sm">
                         <div className="whitespace-nowrap">
-                          <span className={colorTokens.intent.success.text}>{job.successful_rows ?? 0}</span>
+                          <span data-testid={`import-history-count-imported-${job.id}`} className={colorTokens.intent.success.text}>
+                            {t('history.counts.imported', { count: job.successful_rows })}
+                          </span>
                           <span className={colorTokens.text.disabled}> / </span>
-                          <span className={colorTokens.intent.danger.text}>{job.failed_rows ?? 0}</span>
+                          <span data-testid={`import-history-count-skipped-${job.id}`} className={colorTokens.intent.warning.textStronger}>
+                            {t('history.counts.skipped', { count: job.skipped_rows })}
+                          </span>
                           <span className={colorTokens.text.disabled}> / </span>
-                          <span className={colorTokens.text.muted}>{job.total_rows ?? 0}</span>
+                          <span data-testid={`import-history-count-failed-${job.id}`} className={colorTokens.intent.danger.text}>
+                            {t('history.counts.failed', { count: job.failed_rows })}
+                          </span>
+                          <span className={colorTokens.text.disabled}> / </span>
+                          <span data-testid={`import-history-count-total-${job.id}`} className={colorTokens.text.muted}>
+                            {t('history.counts.total', { count: job.total_rows })}
+                          </span>
                         </div>
                         {(job.warning_summary?.['enriched'] ?? 0) > 0 && (
                           <div className={colorTokens.intent.success.text}>

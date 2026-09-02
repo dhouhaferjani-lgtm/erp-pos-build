@@ -14,4 +14,9 @@ interface UnitCatalogQueryInterface
     public function visibleUnits(string $companyId): array;
 
     public function visibleActiveUnitCount(string $companyId): int;
+
+    public function explicitMappingTarget(string $companyId, string $sourceText): ?UnitCatalogEntryData;
+
+    /** @return array<string, string> Source text keyed to target unit ID. */
+    public function explicitMappingTargetIds(string $companyId): array;
 }

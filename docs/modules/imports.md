@@ -88,10 +88,13 @@ pending → validating → validated → importing → completed
 | `completed` | At least one row was imported or deliberately skipped |
 | `failed` | No row was imported or deliberately skipped |
 
-Rows use the durable outcomes `pending`, `imported`, `duplicate_skipped`,
-`duplicate_loser`, `failed`, and `opening_locked`. Successful rows are exactly
-`imported`; skipped rows are `duplicate_skipped + duplicate_loser`; failed rows
-are `failed + opening_locked`. Those three counts sum to `total_rows`.
+Rows use the durable outcomes `pending`, `imported`, `merged_line`,
+`duplicate_skipped`, `duplicate_loser`, `failed`, and `opening_locked`.
+Successful rows are `imported + merged_line`; skipped rows are
+`duplicate_skipped + duplicate_loser`; failed rows are `failed + opening_locked`.
+Those three counts sum to `total_rows`. `merged_line` means the product master
+was already resolved while this confirmed row still applied its own placement or
+opening-stock instruction.
 
 ---
 
@@ -187,6 +190,90 @@ For legacy ERP migrations, provide a guided flow:
 - `override` merges non-blank cells. `skip` performs no write for matched rows.
 - Within one file, rows for one product coalesce master data; for the same product
   and location, the last opening/placement instruction wins.
+
+#### Barcode collision census and write invariant (K-11)
+
+`products.barcode` is a live, company-scoped key. It is unique for non-deleted
+products by the `products_company_barcode_live_unique` partial index on both
+PostgreSQL and SQLite. A soft-deleted product deliberately releases its barcode;
+this differs from the lifetime SKU rule. Product-variant barcodes remain
+tenant-wide unique by RUL-2.
+
+The product census keeps barcode grouping parallel to the existing placement-key
+ladder. It never folds a barcode into that ladder, so a blank-SKU barcode-only
+row keeps the established resolution behaviour. Each nonblank barcode group is
+classified as one of:
+
+- `multi_location`: the same identity is repeated at different locations. The
+  preview lists and counts the group, and execution is blocked until the operator
+  confirms it. Once confirmed, every location line succeeds under either duplicate
+  policy; later lines use `merged_line`, so opening stock reaches every location.
+- `barcode_identity_conflict`: the barcode is attached to contradictory SKUs or
+  names. The preview subtracts those rows from valid rows and adds them to failed
+  rows. During execution each row raises a coded row exception before duplicate
+  policy is evaluated, producing `failed` with the barcode, row numbers and
+  differing fields in its detail.
+
+The named preview/execution honesty mechanism is
+`duplicate_census.barcode_groups.counts.barcode_identity_conflict_rows`:
+`ImportController` uses it to adjust the preview summary, while final counts are
+recounted from durable row outcomes. Tests pin that preview conflict count to the
+execution failed-row count.
+
+Every product create/update, including imports, checks barcode availability through
+the injected product service before writing. The check is company-scoped, excludes
+the current product, and permits editing a pre-existing twin without extending the
+collision. A conflict returns a same-company holder `{id, sku, name}` so the form
+can link to the record. The tenant migration repairs historical twins in place:
+the oldest product keeps the barcode, later products keep their rows and lose only
+the barcode. `products:census-barcode-twins --dry-run` previews that repair.
+
+Spreadsheet-shaped barcodes containing `.` or `e`/`E` whose integer portion ends
+in `00000` receive the non-blocking
+`barcode_float_corruption_suspected` warning. Barcode input is limited to 100
+characters, matching the database column.
+
+Numeric spreadsheet cells are normalized before validation only when their excess
+digits are float noise within the precision contract's relative epsilon. Money,
+quantity, and percentage columns are rounded once to scales 3, 4, and 2
+respectively. Each affected row receives the non-blocking `numeric_normalized`
+warning. Genuine extra precision and malformed values are refused as
+`invalid_number`, with the source column and raw value retained for correction.
+
+Result workbooks always contain three honest sheets: `Imported` (`imported` and
+`merged_line`), `Skipped` (the two duplicate-skip outcomes), and `Rejected`
+(`failed` and validation failures), with coded reasons retained.
+
+#### Industry baseline (benchmark-first — convention 10)
+
+Flow: importing a product catalogue with repeated barcodes and multi-location
+opening stock. The competitor documentation does not specify every collision edge;
+`?` is therefore an explicit unverified hypothesis, never evidence for a decision.
+
+| # | Guarantee the user gets | Odoo | ERPNext | Dolibarr | AutoERP implementation (`path:line`) | Decision |
+|---|---|---|---|---|---|---|
+| B1 | Re-import uses a stable identity rather than silently creating a second catalogue | External/Database ID updates imported records [1] | The ID column selects insert vs update [2] | Added rows carry an import key; matching updates are not documented [3][4] | Product resolution and guarded writes (`apps/api/app/Modules/Product/Application/Services/ProductService.php:126,268`) | MATCH |
+| B2 | Contradictory barcode identities are visible per row before and after execution | Exact duplicate-barcode rule ? | Exact duplicate-barcode rule ? | Exact duplicate-barcode rule ? | Parallel census plus coded pre-policy refusal (`apps/api/app/Modules/Import/Services/DuplicateCensusService.php:27-50`; `ImportService.php:589-600`) | DIVERGE upward: never merge contradictory identities |
+| B3 | One product may carry opening stock at several locations without losing a line | Inventory adjustments are product/location records; import collision semantics ? | Stock Reconciliation is the documented opening-stock mechanism [5]; duplicate-line semantics ? | Multi-warehouse import semantics ? | Confirmed lines apply under either policy and use `merged_line` (`ImportService.php:602-667`) | MATCH the user guarantee; explicit confirmation is AutoERP policy |
+| B4 | The active product barcode has a declared business scope and deleted rows do not reserve it | Products may be company-specific or shared; barcode uniqueness scope ? [6] | Barcode uniqueness scope ? | Barcode uniqueness scope ? | Both-driver partial unique by company (`database/migrations/tenant/2026_09_01_120000_enforce_company_scoped_product_barcodes.php:12`) | DIVERGE, owner-ruled: product/company; variant/tenant |
+| B5 | Failed, skipped and imported rows remain distinguishable in the downloadable result | Preview/testing is documented; three-sheet export ? [1] | Row/column warnings are documented; three-sheet export ? [2] | Simulation produces an error report [3] | Outcome-specific sheets (`apps/api/app/Modules/Import/Services/ResultWorkbookService.php:21-37`) | MATCH & EXCEED |
+| B6 | Re-running and using a sibling company cannot extend a collision | Multi-company records can be scoped [6]; exact barcode rule ? | Site/company collision rule ? | Entity collision rule ? | Company-scoped guard and self exclusion (`ProductService.php:268-304`) | MATCH the scope guarantee; pinned by re-run and second-company tests |
+
+Sources (vendor documentation, verified for the cited guarantee; `?` remains
+unverified): [1] Odoo, *Export and import data*,
+https://www.odoo.com/documentation/18.0/applications/essentials/export_import_data.html;
+[2] ERPNext, *Data Import*, https://docs.frappe.io/erpnext/user/manual/en/data-import;
+[3] Dolibarr, *Module Imports*,
+https://wiki.dolibarr.org/index.php?title=Module_Imports_En; [4] Dolibarr,
+*Field Import key*, https://wiki.dolibarr.org/index.php/Field_Import_key; [5]
+ERPNext, *Stock Reconciliation*,
+https://docs.frappe.io/erpnext/v13/user/manual/en/stock/stock-reconciliation;
+[6] Odoo, *Multi-company*,
+https://www.odoo.com/documentation/18.0/applications/general/companies/multi_company.html.
+
+Second-of-everything (convention 09): K-11 pins a second location under `skip`,
+a second company reusing the barcode, a second full import pass, and editing a
+pre-existing twin without extending the duplicate set.
 
 **Validation Rules:**
 - Category must exist if provided
@@ -383,7 +470,10 @@ class ImportProcessor
                     $decision = $this->applyRow($job, $row);
                     $row->update([
                         'outcome' => $decision->value,
-                        'is_imported' => $decision === ImportRowOutcome::Imported,
+                        'is_imported' => in_array($decision, [
+                            ImportRowOutcome::Imported,
+                            ImportRowOutcome::MergedLine,
+                        ], true),
                     ]);
                 });
             } catch (Throwable $error) {

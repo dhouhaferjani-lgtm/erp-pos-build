@@ -186,6 +186,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'uom.create',
             'uom.edit',
             'uom.delete',
+            'units.manage',
 
             // Stock Transfer (document-based, lifecycle-tracked)
             'inventory.transfers.view',
@@ -576,7 +577,7 @@ class RolesAndPermissionsSeeder extends Seeder
                 'invoices.view', 'invoices.create', 'invoices.update', 'invoices.post', 'invoices.print',
                 'credit-notes.view', 'credit-notes.create', 'credit-notes.post',
                 'inventory.view', 'inventory.adjust', 'inventory.transfer', 'inventory.receive',
-                'uom.view', 'uom.create', 'uom.edit', 'uom.delete',
+                'uom.view', 'uom.create', 'uom.edit', 'uom.delete', 'units.manage',
                 'inventory.transfers.view', 'inventory.transfers.create', 'inventory.transfers.complete', 'inventory.transfers.cancel',
                 'inventory.adjustments.view', 'inventory.adjustments.create', 'inventory.adjustments.post', 'inventory.adjustments.cancel',
                 'deliveries.view', 'deliveries.create', 'deliveries.edit', 'deliveries.delete', 'deliveries.confirm',

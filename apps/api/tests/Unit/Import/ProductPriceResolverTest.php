@@ -6,11 +6,13 @@ namespace Tests\Unit\Import;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Import\Domain\Enums\ImportWarningCode;
+use App\Modules\Import\Domain\Exceptions\CodedImportRowException;
 use App\Modules\Import\Services\ProductPriceResolver;
 use App\Shared\Contracts\TaxDefaultResolverInterface;
 use App\Shared\DTOs\ProductTaxDefaultDTO;
 use App\Shared\Enums\ProductTaxDefaultSource;
 use PHPUnit\Framework\TestCase;
+use Throwable;
 
 final class ProductPriceResolverTest extends TestCase
 {
@@ -109,6 +111,25 @@ final class ProductPriceResolverTest extends TestCase
 
         $this->assertNull($result['sale_price']);
         $this->assertSame([], $result['warnings']);
+    }
+
+    public function test_raw_scientific_purchase_price_is_coded_before_it_can_reach_bcmath(): void
+    {
+        try {
+            $this->resolver()->resolve([
+                'purchase_price' => '6.0999999999999999E-2',
+                'margin' => '30',
+            ], 'margin', '19.00');
+            self::fail('A raw exponent must not reach bcmath.');
+        } catch (Throwable $exception) {
+            $this->assertInstanceOf(CodedImportRowException::class, $exception);
+            if (! $exception instanceof CodedImportRowException) {
+                return;
+            }
+
+            $this->assertSame('invalid_number', $exception->errorCode->value);
+            $this->assertSame('purchase_price', $exception->detail['column'] ?? null);
+        }
     }
 
     private function resolver(): ProductPriceResolver

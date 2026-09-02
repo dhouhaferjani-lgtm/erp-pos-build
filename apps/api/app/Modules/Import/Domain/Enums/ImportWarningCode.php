@@ -31,6 +31,9 @@ enum ImportWarningCode: string
     case LocationCodeUnknown = 'location_code_unknown';
     case LocationUnresolved = 'location_unresolved';
     case OpeningExists = 'opening_exists';
+    case MultiLocation = 'multi_location';
+    case BarcodeFloatCorruptionSuspected = 'barcode_float_corruption_suspected';
+    case NumericNormalized = 'numeric_normalized';
     case EnrichmentNotFound = 'enrichment_not_found';
     case EnrichmentUnavailable = 'enrichment_unavailable';
     case EnrichmentInvalidBarcode = 'enrichment_invalid_barcode';

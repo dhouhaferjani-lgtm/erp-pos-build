@@ -7,13 +7,17 @@
     "unit_ambiguous": "Le code unité correspond à plusieurs unités.",
     "unit_default_missing": "L'unité par défaut pc n'est pas disponible.",
     "barcode_ambiguous": "Le code-barres appartient à plusieurs produits.",
+    "barcode_identity_conflict": "Le code-barres est réutilisé pour des identités produit contradictoires. Corrigez les lignes indiquées avant l'import.",
+    "multi_location_confirmation_required": "Confirmez les lignes produit répétées sur plusieurs sites avant l'import.",
     "product_not_found": "Produit introuvable.",
     "partner_not_found": "Partenaire commercial introuvable.",
     "sku_held_by_deleted_product": "La référence est détenue par un produit supprimé.",
     "vat_held_by_deleted_partner": "Le numéro de TVA est détenu par un partenaire supprimé.",
     "duplicate_sku_in_company": "Un produit de cette société utilise déjà cette référence.",
+    "invalid_number": "Une valeur numérique est incorrecte ou comporte trop de décimales.",
     "validation_failed": "La ligne n'a pas passé la validation.",
     "internal_error": "La ligne n'a pas pu être importée à cause d'une erreur interne.",
+    "worker_lost": "Le processus d'import s'est arrêté avant la fin de la tâche.",
     "unknown": "Cette ancienne erreur d'import n'a pas de code actuel."
   },
   "upload": {
@@ -143,7 +147,8 @@
     "validation": {
       "title": "Vérifiez les résultats de validation",
       "description": "Examinez les erreurs trouvées lors de la validation. Vous pouvez corriger les erreurs directement dans la grille ci-dessous ou continuer avec les lignes valides uniquement.",
-      "proceed": "Procéder à l'import"
+      "proceed": "Procéder à l'import",
+      "noValidRows": "Aucune ligne valide ne peut être importée. Corrigez le fichier ou mappez le libellé d’unité inconnu dans Paramètres → Unités."
     },
     "execute": {
       "title": "Importez vos données",
@@ -180,11 +185,17 @@
     "confirmPartialImport": "Import avec erreurs",
     "partialImportDescription": "{{valid}} lignes sont valides et seront importées. {{failed}} lignes ont des erreurs et seront ignorées. Vous pouvez télécharger les lignes échouées après l'import.",
     "proceedWithValid": "Importer les lignes valides",
+    "proceedWithValidCounts": "Importer {{valid}} lignes valides et ignorer {{failed}} lignes",
     "retired": {
       "title": "Cet import n'est plus disponible",
       "description": "L'import des niveaux de stock a été retiré : il fixait les quantités directement, sans mouvement de stock ni document justificatif. Importez votre stock d'ouverture avec l'import Produits — il accepte une quantité, un prix d'achat et un emplacement, et enregistre un véritable mouvement de stock d'ouverture.",
       "goToProducts": "Aller à l'import Produits"
     }
+  },
+  "unitErrors": {
+    "title": "Unités inconnues",
+    "line_one": "{{count}} ligne utilise l’unité inconnue « {{unit}} » — mappez-la dans Paramètres → Unités ou corrigez le fichier",
+    "line_other": "{{count}} lignes utilisent l’unité inconnue « {{unit}} » — mappez-la dans Paramètres → Unités ou corrigez le fichier"
   },
   "options": {
     "stockLocation": {
@@ -228,9 +239,10 @@
     "skipColumn": "-- Ignorer cette colonne --",
     "requiredFields": "Champs obligatoires",
     "optionalFields": "Champs optionnels",
-    "alreadyMapped": "déjà mappé",
-    "missingRequired": "Champs obligatoires manquants",
-    "legendMapped": "Mappé",
+  "alreadyMapped": "déjà mappé",
+  "missingRequired": "Champs obligatoires manquants",
+  "automaticMatchingFailed": "La correspondance automatique des colonnes a échoué — mappez les colonnes manuellement.",
+  "legendMapped": "Mappé",
     "legendSkipped": "Ignoré",
     "legendRequired": "Obligatoire",
     "suggested": "(suggéré)",
@@ -265,6 +277,9 @@
     "unit_defaulted": "{{count}} lignes ont utilisé l'unité pc par défaut.",
     "location_not_supplied": "{{count}} lignes n'indiquaient pas de site de stock.",
     "location_code_unknown": "{{count}} lignes indiquaient un code de site inconnu.",
+    "multi_location": "{{count}} groupes de codes-barres couvrent plusieurs sites de stock.",
+    "barcode_float_corruption_suspected": "{{count}} codes-barres ressemblent à des conversions décimales de tableur et doivent être vérifiés.",
+    "numeric_normalized": "Le bruit d'arrondi du tableur a été normalisé à l'échelle de la colonne pour {{count}} lignes.",
     "opening_exists": "{{count}} lignes avaient déjà un stock d'ouverture ; aucun doublon n'a été comptabilisé.",
     "enrichment_not_found": "Aucune correspondance n'a été trouvée dans le catalogue de la plateforme pour {{count}} lignes.",
     "enrichment_unavailable": "L'enrichissement par la plateforme était indisponible pour {{count}} lignes ; l'import reste terminé.",
@@ -299,6 +314,15 @@
       "skip": { "label": "Ignorer", "description": "Ne pas modifier les enregistrements existants correspondants." },
       "cancel": { "label": "Annuler", "description": "Quitter cet assistant et supprimer l'import depuis l'historique." },
       "persistenceError": "La règle de doublons n'a pas pu être enregistrée. Réessayez avant de continuer."
+    },
+    "barcode": {
+      "multiLocation": "{{count}} produits sont répétés sur plusieurs sites de stock. Chaque ligne de site créera un stock d'ouverture après confirmation.",
+      "identityConflict": "{{count}} lignes réutilisent un code-barres pour des identités produit contradictoires et seront rejetées."
+    },
+    "multiLocationConfirm": {
+      "title": "Importer le stock dans tous les sites indiqués ?",
+      "message": "{{count}} produits sont répétés entre plusieurs sites. Confirmez pour fusionner chaque produit une fois et créer le stock d'ouverture de chaque ligne de site.",
+      "confirm": "Confirmer tous les sites"
     },
     "discard": {
       "title": "Supprimer cet import ?",
@@ -345,6 +369,12 @@
       "progress": "Progression",
       "date": "Date",
       "actions": "Actions"
+    },
+    "counts": {
+      "imported": "{{count}} importées",
+      "skipped": "{{count}} ignorées",
+      "failed": "{{count}} échouées",
+      "total": "{{count}} au total"
     },
     "viewDetails": "Voir détails",
     "noJobs": "Aucun travail d'importation trouvé",

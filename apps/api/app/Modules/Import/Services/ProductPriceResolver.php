@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Import\Services;
 
+use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportWarningCode;
+use App\Modules\Import\Domain\Exceptions\CodedImportRowException;
 use App\Shared\Domain\CurrencyScale;
 
 final class ProductPriceResolver
@@ -28,7 +30,7 @@ final class ProductPriceResolver
         if ($ttcField !== null) {
             $candidates['ttc'] = [
                 'field' => $ttcField,
-                'ttc' => $this->formatMoney((string) $row[$ttcField]),
+                'ttc' => $this->formatMoney((string) $row[$ttcField], $ttcField),
             ];
         }
 
@@ -104,7 +106,10 @@ final class ProductPriceResolver
      */
     private function ttcFromHt(string $ht, string $taxRate): string
     {
-        return $this->formatMoney(bcmul($this->numeric($ht), $this->taxFactor($taxRate), 4));
+        return $this->formatMoney(
+            bcmul($this->numeric($ht, 'sale_price_excl_tax'), $this->taxFactor($taxRate), 4),
+            'sale_price',
+        );
     }
 
     /**
@@ -112,9 +117,9 @@ final class ProductPriceResolver
      */
     private function ttcFromMargin(string $purchasePrice, string $margin, string $taxRate): string
     {
-        $ht = bcmul($this->numeric($purchasePrice), $this->marginFactor($margin), 4);
+        $ht = bcmul($this->numeric($purchasePrice, 'purchase_price'), $this->marginFactor($margin), 4);
 
-        return $this->formatMoney(bcmul($ht, $this->taxFactor($taxRate), 4));
+        return $this->formatMoney(bcmul($ht, $this->taxFactor($taxRate), 4), 'sale_price');
     }
 
     /**
@@ -122,7 +127,7 @@ final class ProductPriceResolver
      */
     private function taxFactor(string $taxRate): string
     {
-        return bcadd('1', bcdiv($this->numeric($taxRate), '100', 4), 4);
+        return bcadd('1', bcdiv($this->numeric($taxRate, 'tax_rate'), '100', 4), 4);
     }
 
     /**
@@ -130,23 +135,41 @@ final class ProductPriceResolver
      */
     private function marginFactor(string $margin): string
     {
-        return bcadd('1', bcdiv($this->numeric($margin), '100', 4), 4);
+        return bcadd('1', bcdiv($this->numeric($margin, 'margin'), '100', 4), 4);
     }
 
     /**
      * @return numeric-string
      */
-    private function formatMoney(string $value): string
+    private function formatMoney(string $value, string $column): string
     {
-        return CurrencyScale::bcformatStrict($value, 3);
+        return CurrencyScale::bcformatStrict($this->plainDecimal($value, $column), 3);
     }
 
     /**
      * @return numeric-string
      */
-    private function numeric(string $value): string
+    private function numeric(string $value, string $column): string
     {
-        return CurrencyScale::bcformatStrict($value, 4);
+        return CurrencyScale::bcformatStrict($this->plainDecimal($value, $column), 4);
+    }
+
+    private function plainDecimal(string $value, string $column): string
+    {
+        $trimmed = trim($value);
+        if (preg_match('/^-?\d+(?:\.\d+)?$/D', $trimmed) === 1) {
+            return $trimmed;
+        }
+
+        throw new CodedImportRowException(
+            ImportErrorCode::InvalidNumber,
+            "Invalid numeric value in {$column}.",
+            [
+                'column' => $column,
+                'raw' => $value,
+                'remedy' => 'Provide a plain decimal value within the column scale.',
+            ],
+        );
     }
 
     /**

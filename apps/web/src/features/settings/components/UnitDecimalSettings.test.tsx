@@ -105,41 +105,31 @@ vi.mock('../../uom/hooks/useUnits', async (importOriginal) => {
 const mockUnits: Unit[] = [
   {
     id: 'unit-kg-1',
-    category_id: 'cat-weight-1',
     categoryId: 'cat-weight-1',
     code: 'kg',
     name: 'Kilogram',
     symbol: 'kg',
-    conversion_factor: '1000',
     conversionFactor: '1000',
-    decimal_places: 2,
     decimalPlaces: 2,
-    rounding_method: 'half_up',
     roundingMethod: 'half_up',
-    is_base_unit: false,
     isBaseUnit: false,
-    is_active: true,
-    is_system: true,
+    isActive: true,
     isSystem: true,
+    category: null,
   },
   {
     id: 'unit-liter-1',
-    category_id: 'cat-volume-1',
     categoryId: 'cat-volume-1',
     code: 'l',
     name: 'Liter',
     symbol: 'L',
-    conversion_factor: '1',
     conversionFactor: '1',
-    decimal_places: 3,
     decimalPlaces: 3,
-    rounding_method: 'floor',
     roundingMethod: 'floor',
-    is_base_unit: true,
     isBaseUnit: true,
-    is_active: true,
-    is_system: true,
+    isActive: true,
     isSystem: true,
+    category: null,
   },
 ]
 
@@ -154,7 +144,7 @@ function renderComponent() {
 describe('UnitDecimalSettings', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockUpdateUnitPrecision.mockResolvedValue({ ...mockUnits[0], decimal_places: 4 })
+    mockUpdateUnitPrecision.mockResolvedValue({ ...mockUnits[0], decimalPlaces: 4 })
   })
 
   it('renders the table with unit rows', () => {

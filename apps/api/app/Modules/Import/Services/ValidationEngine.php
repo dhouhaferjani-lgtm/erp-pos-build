@@ -18,7 +18,7 @@ final class ValidationEngine
      *                                           no separate code channel, so a type that needs a
      *                                           machine-readable refusal code carries it as the
      *                                           message's leading token (W4-1: `expiry_unparseable`).
-     * @return array{is_valid: bool, errors: array<string, array<string>>}
+     * @return array{is_valid: bool, errors: array<string, array<string>>, failed_rules: array<string, list<string>>}
      */
     public function validate(array $data, array $rules, ?string $tenantId = null, array $messages = []): array
     {
@@ -28,15 +28,22 @@ final class ValidationEngine
         $validator = Validator::make($data, $processedRules, $messages);
 
         if ($validator->fails()) {
+            $failedRules = [];
+            foreach ($validator->failed() as $field => $rules) {
+                $failedRules[$field] = array_values(array_filter(array_keys($rules), 'is_string'));
+            }
+
             return [
                 'is_valid' => false,
                 'errors' => $validator->errors()->toArray(),
+                'failed_rules' => $failedRules,
             ];
         }
 
         return [
             'is_valid' => true,
             'errors' => [],
+            'failed_rules' => [],
         ];
     }
 

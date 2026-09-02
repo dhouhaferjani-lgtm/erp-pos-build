@@ -17,6 +17,7 @@ final readonly class ImportJobOptionsData
         public ?string $placementMode,
         public ?array $placementNodeTypes,
         public ?bool $enrichmentEnabled,
+        public ?bool $multiLocationConfirmed,
     ) {}
 
     /**
@@ -39,15 +40,30 @@ final readonly class ImportJobOptionsData
                 ? array_values(array_filter($rawNodeTypes, static fn (mixed $value): bool => is_string($value)))
                 : null,
             is_bool($payload['enrichment_enabled'] ?? null) ? $payload['enrichment_enabled'] : null,
+            is_bool($payload['multi_location_confirmed'] ?? null) ? $payload['multi_location_confirmed'] : null,
         );
     }
 
     /**
-     * @return array<string, bool|string|list<string>|array{
+     * @return array{
+     *   duplicate_census?: array{
      *     counts: array<string, int>,
      *     matched_by_name: list<int>,
-     *     refused: list<array{row_number: int, code: string}>
-     * }>
+     *     refused: list<array{row_number: int, code: string}>,
+     *     barcode_groups: array{
+     *       counts: array{multi_location_products: int, barcode_identity_conflict_groups: int, barcode_identity_conflict_rows: int},
+     *       groups: list<array{barcode: string, classification: string, row_numbers: list<int>, location_codes: list<string>, differing_fields: list<string>}>,
+     *       rows: array<int, int>
+     *     }
+     *   },
+     *   duplicate_policy?: string,
+     *   location_code?: string,
+     *   price_authority?: string,
+     *   placement_mode?: string,
+     *   placement_node_types?: list<string>,
+     *   enrichment_enabled?: bool,
+     *   multi_location_confirmed?: bool
+     * }
      */
     public function toStorage(): array
     {
@@ -72,6 +88,9 @@ final readonly class ImportJobOptionsData
         }
         if ($this->enrichmentEnabled !== null) {
             $options['enrichment_enabled'] = $this->enrichmentEnabled;
+        }
+        if ($this->multiLocationConfirmed !== null) {
+            $options['multi_location_confirmed'] = $this->multiLocationConfirmed;
         }
 
         return $options;

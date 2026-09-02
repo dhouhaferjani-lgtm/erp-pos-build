@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Product\Domain\Category;
 use App\Modules\Product\Domain\Enums\BrandSource;
 use App\Modules\Product\Domain\Enums\ProductType;
+use App\Modules\Product\Domain\Exceptions\ProductBarcodeConflictException;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Services\TaxResolutionService;
 use App\Shared\Contracts\CoalescingAttributeMergerInterface;
@@ -115,6 +116,19 @@ final class ProductService implements ProductServiceInterface
                 'barcode_ambiguous: barcode matches multiple products: '.implode(', ', $resolution->candidateSkus)
             );
         }
+        $writeTargetId = $fileSku === null
+            ? $resolution->productId
+            : Product::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('sku', $fileSku)
+                ->value('id');
+        $this->assertBarcodeAvailable(
+            $tenantId,
+            $companyId,
+            $barcode,
+            is_string($writeTargetId) ? $writeTargetId : null,
+        );
         $existing = $resolution->productId === null
             ? null
             : Product::query()->where('company_id', $companyId)->find($resolution->productId);
@@ -249,6 +263,47 @@ final class ProductService implements ProductServiceInterface
             sku: $product->sku,
             skuWasGenerated: false,
         );
+    }
+
+    public function assertBarcodeAvailable(
+        string $tenantId,
+        string $companyId,
+        ?string $barcode,
+        ?string $targetProductId,
+    ): void {
+        $barcode = $this->emptyToNull($barcode);
+        if ($barcode === null) {
+            return;
+        }
+
+        if ($targetProductId !== null) {
+            $targetBarcode = Product::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('id', $targetProductId)
+                ->value('barcode');
+            if ($targetBarcode === $barcode) {
+                return;
+            }
+        }
+
+        $holder = Product::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('barcode', $barcode)
+            ->when($targetProductId !== null, static fn ($query) => $query->where('id', '!=', $targetProductId))
+            ->oldest('created_at')
+            ->oldest('id')
+            ->first(['id', 'sku', 'name']);
+
+        if ($holder !== null) {
+            throw new ProductBarcodeConflictException(
+                $barcode,
+                $holder->id,
+                $holder->sku,
+                $holder->name,
+            );
+        }
     }
 
     /**

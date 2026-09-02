@@ -8,10 +8,11 @@ import type { UnitCategory } from '../api/uomApi'
 import { makeUnit, makeUnitCategory } from '../__fixtures__/unit'
 
 // Mock the API - must use vi.hoisted for variables used in vi.mock factory
-const { mockApiGet, mockApiPost, mockApiDelete } = vi.hoisted(() => ({
+const { mockApiGet, mockApiPost, mockApiDelete, mockHasPermission } = vi.hoisted(() => ({
   mockApiGet: vi.fn(),
   mockApiPost: vi.fn(),
   mockApiDelete: vi.fn(),
+  mockHasPermission: vi.fn(),
 }))
 
 vi.mock('../../../lib/api', () => ({
@@ -65,6 +66,14 @@ vi.mock('sonner', () => ({
   },
 }))
 
+vi.mock('@/hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasPermission: mockHasPermission }),
+}))
+
+vi.mock('../components/UnmappedUnitTextsPanel', () => ({
+  UnmappedUnitTextsPanel: () => <div data-testid="unmapped-unit-texts-panel" />,
+}))
+
 /**
  * Mock data matching the backend DTO structure
  */
@@ -78,23 +87,23 @@ const mockCategories: UnitCategory[] = [
     units: [
       makeUnit({
         id: 'unit-gram-1',
-        category_id: 'cat-weight-1',
+        categoryId: 'cat-weight-1',
         code: 'g',
         name: 'Gram',
         symbol: 'g',
-        conversion_factor: '1',
-        is_base_unit: true,
-        is_system: true,
+        conversionFactor: '1',
+        isBaseUnit: true,
+        isSystem: true,
       }),
       makeUnit({
         id: 'unit-kg-1',
-        category_id: 'cat-weight-1',
+        categoryId: 'cat-weight-1',
         code: 'kg',
         name: 'Kilogram',
         symbol: 'kg',
-        conversion_factor: '1000',
-        is_base_unit: false,
-        is_system: true,
+        conversionFactor: '1000',
+        isBaseUnit: false,
+        isSystem: true,
       }),
     ],
   }),
@@ -107,13 +116,13 @@ const mockCategories: UnitCategory[] = [
     units: [
       makeUnit({
         id: 'unit-liter-1',
-        category_id: 'cat-volume-1',
+        categoryId: 'cat-volume-1',
         code: 'l',
         name: 'Liter',
         symbol: 'L',
-        conversion_factor: '1',
-        is_base_unit: true,
-        is_system: true,
+        conversionFactor: '1',
+        isBaseUnit: true,
+        isSystem: true,
       }),
     ],
   }),
@@ -122,11 +131,25 @@ const mockCategories: UnitCategory[] = [
 describe('UnitsSettingsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockHasPermission.mockReturnValue(true)
     seedAuth()
   })
 
   afterEach(() => {
     resetAuth()
+  })
+
+  it('shows the mapping panel only with units.manage', async () => {
+    mockApiGet.mockResolvedValue(mockCategories)
+    const { rerender } = renderWithProviders(<UnitsSettingsPage />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('unmapped-unit-texts-panel')).toBeInTheDocument()
+    })
+
+    mockHasPermission.mockReturnValue(false)
+    rerender(<UnitsSettingsPage />)
+    expect(screen.queryByTestId('unmapped-unit-texts-panel')).not.toBeInTheDocument()
   })
 
   /**
@@ -287,13 +310,13 @@ describe('UnitsSettingsPage', () => {
             ...(mockCategories[1].units ?? []),
             makeUnit({
               id: 'unit-custom-1',
-              category_id: 'cat-volume-1',
+              categoryId: 'cat-volume-1',
               code: 'tbsp',
               name: 'Tablespoon',
               symbol: 'tbsp',
-              conversion_factor: '0.015',
-              is_base_unit: false,
-              is_system: false, // CUSTOM UNIT
+              conversionFactor: '0.015',
+              isBaseUnit: false,
+              isSystem: false, // CUSTOM UNIT
             }),
           ],
         }),
@@ -327,13 +350,13 @@ describe('UnitsSettingsPage', () => {
           units: [
             makeUnit({
               id: 'unit-custom-1',
-              category_id: 'cat-volume-1',
+              categoryId: 'cat-volume-1',
               code: 'tbsp',
               name: 'Tablespoon',
               symbol: 'tbsp',
-              conversion_factor: '0.015',
-              is_base_unit: false,
-              is_system: false,
+              conversionFactor: '0.015',
+              isBaseUnit: false,
+              isSystem: false,
             }),
           ],
         }),

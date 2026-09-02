@@ -12,6 +12,7 @@ use App\Modules\Product\Application\Services\ProductResolver;
 use App\Modules\Product\Domain\Events\EnrichmentWebhookReceived;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Product\Infrastructure\Persistence\EloquentProductRepository;
+use App\Modules\Product\Presentation\Console\CensusProductBarcodeTwinsCommand;
 use App\Modules\Product\Presentation\Console\RunEnrichmentCommand;
 use App\Shared\Contracts\DiscountPolicySubjectProviderInterface;
 use App\Shared\Contracts\ProductResolverInterface;
@@ -43,6 +44,7 @@ class ProductServiceProvider extends ServiceProvider
 
         if ($this->app->runningInConsole()) {
             $this->commands([
+                CensusProductBarcodeTwinsCommand::class,
                 RunEnrichmentCommand::class,
             ]);
         }

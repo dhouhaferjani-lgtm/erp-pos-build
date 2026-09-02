@@ -10,30 +10,7 @@ export interface UnitCategory {
   units?: Unit[]
 }
 
-export interface Unit {
-  id: string
-  category_id: string
-  categoryId?: string
-  code: string
-  name: string
-  symbol: string
-  conversion_factor: string
-  conversionFactor?: string
-  decimal_places: number
-  decimalPlaces?: number
-  rounding_method: 'half_up' | 'floor' | 'ceil'
-  roundingMethod?: 'half_up' | 'floor' | 'ceil'
-  is_base_unit: boolean
-  isBaseUnit?: boolean
-  is_active: boolean
-  is_system: boolean
-  isSystem?: boolean
-  category?: {
-    id: string
-    name: string
-    code: string
-  }
-}
+export type Unit = App.Modules.Uom.Application.DTOs.UnitData
 
 export interface ConversionResult {
   from_unit_id: string
@@ -43,6 +20,14 @@ export interface ConversionResult {
   convertedQuantity?: string
   conversion_factor: string
   conversionFactor?: string
+}
+
+export type UnmappedUnitText = App.Modules.Uom.Application.DTOs.UnmappedUnitTextData
+export type UnitTextMappingResult = App.Modules.Uom.Application.DTOs.UnitTextMappingResultData
+
+export interface ApplyUnitTextMappingInput {
+  sourceText: string | null
+  targetUnitId: string
 }
 
 /**
@@ -131,6 +116,19 @@ export async function convertUnits(
   })
 }
 
+export async function fetchUnmappedUnitTexts(): Promise<UnmappedUnitText[]> {
+  return apiGet<UnmappedUnitText[]>('/uom/unit-text-mappings/unmapped')
+}
+
+export async function applyUnitTextMapping(
+  input: ApplyUnitTextMappingInput,
+): Promise<UnitTextMappingResult> {
+  return apiPost<UnitTextMappingResult>('/uom/unit-text-mappings', {
+    source_text: input.sourceText,
+    target_unit_id: input.targetUnitId,
+  })
+}
+
 /**
  * Rounding method values used by the precision-settings endpoint.
  * The UI works in PascalCase identifiers ('HalfUp' | 'Floor' | 'Ceil') for
@@ -140,7 +138,7 @@ export async function convertUnits(
  */
 export type RoundingMethod = 'HalfUp' | 'Floor' | 'Ceil'
 
-const ROUNDING_METHOD_WIRE: Record<RoundingMethod, Unit['rounding_method']> = {
+const ROUNDING_METHOD_WIRE: Record<RoundingMethod, Unit['roundingMethod']> = {
   HalfUp: 'half_up',
   Floor: 'floor',
   Ceil: 'ceil',

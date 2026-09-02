@@ -254,6 +254,61 @@ class MigrationWizardTest extends TestCase
             ]);
     }
 
+    public function test_api_skips_blank_and_null_headers_without_discarding_named_suggestions(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/migration-wizard/suggest-mapping', [
+                'type' => 'products',
+                'headers' => ['name', '', null, 'sku'],
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.suggestions.name', 'name')
+            ->assertJsonPath('data.suggestions.sku', 'sku');
+
+        $nonNullSuggestions = array_filter(
+            $response->json('data.suggestions'),
+            static fn (?string $source): bool => $source !== null,
+        );
+
+        $this->assertFalse(in_array('', $nonNullSuggestions, true));
+    }
+
+    public function test_real_product_headers_reserve_every_exact_match_before_fuzzy_matching(): void
+    {
+        /** @var MigrationWizardService $wizard */
+        $wizard = app(MigrationWizardService::class);
+
+        $headers = [
+            'name',
+            'sku',
+            'description',
+            'sale_price',
+            'sale_price_incl_tax',
+            'sale_price_excl_tax',
+            'purchase_price',
+            'margin',
+            'quantity',
+            'location_code',
+            'placement_path',
+            'category_name',
+            'brand',
+            'tax_rate',
+            'unit',
+            'barcode',
+        ];
+
+        $suggestions = $wizard->suggestColumnMapping(ImportType::Products, $headers);
+
+        foreach ($headers as $header) {
+            $this->assertSame($header, $suggestions[$header] ?? null, "Expected exact suggestion for {$header}");
+        }
+        $this->assertNull($suggestions['type']);
+
+        $nonNullSuggestions = array_values(array_filter($suggestions));
+        $this->assertCount(count(array_unique($nonNullSuggestions)), $nonNullSuggestions);
+    }
+
     public function test_api_generates_template(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')

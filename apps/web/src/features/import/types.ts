@@ -46,6 +46,16 @@ export type ImportStatus =
   | 'completed'
   | 'failed'
 
+export interface UnknownUnitErrorSummary {
+  text: string
+  count: number
+  accepted: string[]
+}
+
+export interface UnitErrorSummary {
+  unknown_units: UnknownUnitErrorSummary[]
+}
+
 export interface ImportJob {
   id: string
   type: ImportType
@@ -58,6 +68,9 @@ export interface ImportJob {
   failed_rows: number
   warning_rows: number
   warning_summary: Record<string, number> | null
+  multi_location_products?: number
+  barcode_identity_conflict_rows?: number
+  error_summary: UnitErrorSummary
   progress_percentage: number
   options?: ImportJobOptions | null
   error_message: string | null
@@ -73,9 +86,11 @@ export interface ImportJobOptions {
   placement_mode?: 'strict' | 'auto_create'
   placement_node_types?: LocationNodeType[]
   duplicate_policy?: DuplicatePolicy
+  multi_location_confirmed?: boolean
 }
 
-export type DuplicateBucket = 'new' | 'existing_sku' | 'existing_barcode' | 'existing_name' | 'in_file' | 'refused'
+export type DuplicateBucket = App.Modules.Import.Domain.Enums.DuplicateBucket
+export const DUPLICATE_BUCKETS = ['new', 'existing_sku', 'existing_barcode', 'existing_name', 'in_file', 'refused'] as const satisfies readonly DuplicateBucket[]
 export type DuplicatePolicy = 'override' | 'skip'
 export type ImportErrorCode = App.Modules.Import.Domain.Enums.ImportErrorCode
 
@@ -138,6 +153,7 @@ export interface ImportErrorsResponse {
   data: ImportRow[]
   meta?: Partial<OffsetPaginationMeta> & {
     job_error_message: string | null
+    error_summary: UnitErrorSummary
     validation_errors: number
     execution_errors: number
   }
@@ -149,6 +165,7 @@ export interface ImportErrorSummary {
   execution_errors: number
   has_errors: boolean
   job_error_message: string | null
+  error_summary: UnitErrorSummary
 }
 
 export interface ImportErrorSummaryResponse {
@@ -188,11 +205,29 @@ export interface ImportPreview {
     total_rows: number
     valid_rows: number
     invalid_rows: number
+    multi_location_products?: number
+    barcode_identity_conflict_rows?: number
   }
+  error_summary: UnitErrorSummary
   duplicates?: {
     counts: Record<DuplicateBucket, number>
     matched_by_name: number[]
     refused: { row_number: number; code: ImportErrorCode }[]
+    barcode_groups?: {
+      counts: {
+        multi_location_products: number
+        barcode_identity_conflict_groups: number
+        barcode_identity_conflict_rows: number
+      }
+      groups: {
+        barcode: string
+        classification: 'multi_location' | 'barcode_identity_conflict'
+        row_numbers: number[]
+        location_codes: string[]
+        differing_fields: string[]
+      }[]
+      rows: Record<number, number>
+    }
   }
   placement?: {
     max_depth: number

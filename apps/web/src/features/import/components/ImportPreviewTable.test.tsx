@@ -21,6 +21,7 @@ const preview: ImportPreview = {
     errors: {},
   }],
   summary: { total_rows: 1, valid_rows: 1, invalid_rows: 0 },
+  error_summary: { unknown_units: [] },
   placement: {
     max_depth: 2,
     nodes_to_create: [{ path: 'A1/R2', node_type: 'rack' }],
@@ -42,6 +43,7 @@ describe('ImportPreviewTable placement dry run', () => {
       headers: preview.headers,
       rows: preview.rows,
       summary: preview.summary,
+      error_summary: { unknown_units: [] },
     }
 
     render(<ImportPreviewTable preview={legacyPreview} />)

@@ -5,8 +5,9 @@ import type { ReactNode } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import realProductsPreviewResponse from '../__fixtures__/real-products-preview-response.json'
 import { ImportWizardPage } from '../pages/ImportWizardPage'
-import type { ImportJob, ImportResult } from '../types'
+import type { ImportJob, ImportPreview, ImportResult } from '../types'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { useImportProgressStore } from '@/stores/importProgressStore'
@@ -20,21 +21,13 @@ const mockPreview = vi.hoisted(() => ({
   current: {
     headers: ['name'], rows: [],
     summary: { total_rows: 7, valid_rows: 7, invalid_rows: 0 },
+    error_summary: { unknown_units: [] },
     duplicates: {
       counts: { new: 1, existing_sku: 2, existing_barcode: 1, existing_name: 1, in_file: 1, refused: 1 },
       matched_by_name: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
       refused: [{ row_number: 7, code: 'sku_held_by_deleted_product' }],
     },
-  } as {
-    headers: string[]
-    rows: never[]
-    summary: { total_rows: number; valid_rows: number; invalid_rows: number }
-    duplicates?: {
-      counts: { new: number; existing_sku: number; existing_barcode: number; existing_name: number; in_file: number; refused: number }
-      matched_by_name: number[]
-      refused: { row_number: number; code: string }[]
-    }
-  },
+  } as ImportPreview,
 }))
 
 vi.mock('react-i18next', () => ({
@@ -64,7 +57,7 @@ vi.mock('../api/queries', () => ({
     data: {
       id: 'job-1', type: 'products', status: 'validated', original_filename: 'products.csv',
       total_rows: 7, processed_rows: 0, successful_rows: 0, skipped_rows: 0, failed_rows: 0,
-      warning_rows: 0, warning_summary: null, progress_percentage: 0, error_message: null,
+      warning_rows: 0, warning_summary: null, error_summary: { unknown_units: [] }, progress_percentage: 0, error_message: null,
       started_at: null, completed_at: null, created_at: '2026-08-31T00:00:00Z',
     },
     refetch: vi.fn(),
@@ -107,6 +100,7 @@ describe('ImportWizardPage duplicate policy', () => {
     mockPreview.current = {
       headers: ['name'], rows: [],
       summary: { total_rows: 7, valid_rows: 7, invalid_rows: 0 },
+      error_summary: { unknown_units: [] },
       duplicates: {
         counts: { new: 1, existing_sku: 2, existing_barcode: 1, existing_name: 1, in_file: 1, refused: 1 },
         matched_by_name: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
@@ -157,6 +151,73 @@ describe('ImportWizardPage duplicate policy', () => {
     expect(mockExecuteMutate).toHaveBeenCalledWith('job-1', expect.any(Object))
   })
 
+  it('shows the parallel barcode census and persists explicit multi-location confirmation', async () => {
+    if (mockPreview.current.duplicates) {
+      mockPreview.current.duplicates.barcode_groups = {
+        counts: { multi_location_products: 1, barcode_identity_conflict_groups: 1, barcode_identity_conflict_rows: 2 },
+        groups: [
+          { barcode: '6191000000000', classification: 'multi_location', row_numbers: [2, 3], location_codes: ['MAIN', 'ANNEX'], differing_fields: [] },
+          { barcode: '6192000000000', classification: 'barcode_identity_conflict', row_numbers: [5, 6], location_codes: ['MAIN'], differing_fields: ['name', 'sku'] },
+        ],
+        rows: { 2: 0, 3: 0, 5: 1, 6: 1 },
+      }
+    }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    const Wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/settings/import/products']}>
+        <Routes><Route path="/settings/import/:type" element={<ImportWizardPage />} /></Routes>
+      </MemoryRouter>,
+      { wrapper: Wrapper },
+    )
+
+    await user.click(screen.getByRole('button', { name: 'choose' }))
+    await user.click(await screen.findByTestId('import-wizard-next'))
+    await user.click(screen.getByRole('button', { name: 'map' }))
+    await user.click(screen.getByTestId('import-wizard-validate'))
+
+    expect(await screen.findByTestId('import-preview-multi-location-summary')).toHaveTextContent('duplicates.barcode.multiLocation')
+    expect(screen.getByTestId('import-preview-barcode-conflict-summary')).toHaveTextContent('6192000000000')
+    expect(screen.getByTestId('import-preview-barcode-conflict-summary')).toHaveTextContent('name, sku')
+    await user.click(screen.getByTestId('import-wizard-next'))
+    expect(await screen.findByText('duplicates.multiLocationConfirm.title')).toBeInTheDocument()
+    expect(mockUpdateOptions).not.toHaveBeenCalled()
+    await user.click(screen.getByTestId('confirm-dialog-confirm'))
+
+    await waitFor(() => {
+      expect(mockUpdateOptions).toHaveBeenCalledWith('job-1', {
+        duplicate_policy: 'override',
+        multi_location_confirmed: true,
+      })
+    })
+    expect(await screen.findByTestId('import-wizard-step-execute')).toBeInTheDocument()
+  })
+
+  it('renders the conflict summary from the captured real XLSX preview response', async () => {
+    mockPreview.current = realProductsPreviewResponse as ImportPreview
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    const Wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/settings/import/products']}>
+        <Routes><Route path="/settings/import/:type" element={<ImportWizardPage />} /></Routes>
+      </MemoryRouter>,
+      { wrapper: Wrapper },
+    )
+
+    await user.click(screen.getByRole('button', { name: 'choose' }))
+    await user.click(await screen.findByTestId('import-wizard-next'))
+    await user.click(screen.getByRole('button', { name: 'map' }))
+    await user.click(screen.getByTestId('import-wizard-validate'))
+
+    const conflictSummary = await screen.findByTestId('import-preview-barcode-conflict-summary')
+    expect(conflictSummary).toHaveTextContent('duplicates.barcode.identityConflict')
+    expect(conflictSummary).toHaveTextContent('6192430000000')
+    expect(conflictSummary).toHaveTextContent('description, margin, name, purchase_price, sale_price_excl_tax, sku')
+    expect(screen.queryByTestId('import-preview-multi-location-summary')).not.toBeInTheDocument()
+  })
+
   it('keeps Next disabled and stays on preview until the policy PATCH resolves', async () => {
     if (mockPreview.current.duplicates) {
       mockPreview.current.duplicates.counts.refused = 0
@@ -201,6 +262,7 @@ describe('ImportWizardPage duplicate policy', () => {
       failed_rows: 0,
       warning_rows: 0,
       warning_summary: null,
+      error_summary: { unknown_units: [] },
       progress_percentage: 100,
       error_message: null,
       started_at: '2026-08-31T00:00:00Z',
@@ -249,6 +311,7 @@ describe('ImportWizardPage duplicate policy', () => {
     mockPreview.current = {
       headers: ['name'], rows: [],
       summary: { total_rows: 7, valid_rows: 7, invalid_rows: 0 },
+      error_summary: { unknown_units: [] },
     }
     const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
     const Wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>

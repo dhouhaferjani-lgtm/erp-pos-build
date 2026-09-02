@@ -27,7 +27,7 @@ const ROUNDING_METHODS: RoundingMethod[] = ['HalfUp', 'Floor', 'Ceil']
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
- * Map the legacy snake_case rounding method stored on the Unit to the
+ * Map the API rounding method stored on the Unit to the
  * PascalCase variant required by the precision endpoint.
  */
 function toRoundingMethod(raw: string): RoundingMethod {
@@ -40,8 +40,8 @@ function toRoundingMethod(raw: string): RoundingMethod {
 
 function initDraft(unit: Unit): RowDraft {
   return {
-    decimal_places: unit.decimal_places,
-    rounding_method: toRoundingMethod(unit.rounding_method),
+    decimal_places: unit.decimalPlaces,
+    rounding_method: toRoundingMethod(unit.roundingMethod),
   }
 }
 
@@ -325,7 +325,7 @@ export function UnitDecimalSettings() {
                     key={unit.id}
                     unit={unit}
                     draft={draft}
-                    originalDecimalPlaces={unit.decimal_places}
+                    originalDecimalPlaces={unit.decimalPlaces}
                     onDraftChange={(d) => { handleDraftChange(unit.id, d) }}
                     onSave={() => { void handleSave(unit) }}
                     isSaving={savingIds.has(unit.id)}

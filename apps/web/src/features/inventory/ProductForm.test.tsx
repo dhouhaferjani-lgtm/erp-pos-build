@@ -192,6 +192,7 @@ beforeEach(() => {
   mockSectionGates.hasLoyalty = false
   mockParams = {}
   mockNavigate.mockReset()
+  mockToastError.mockReset()
   mockMutateAsync.mockReset()
   mockApiPost.mockClear()
   mockApiPatch.mockClear()
@@ -322,6 +323,30 @@ describe('ProductForm (canonical layout)', () => {
     fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-9' } })
     fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/inventory/products/prod-9'))
+  })
+
+  it('shows the barcode holder and offers to open it when create is refused', async () => {
+    mockMutateAsync.mockRejectedValueOnce({
+      response: {
+        status: 409,
+        data: {
+          error: {
+            code: 'barcode_identity_conflict',
+            details: { existing_product: { id: 'holder-9', sku: 'HOLDER-SKU', name: 'Held Product' } },
+          },
+        },
+      },
+    })
+    render(<ProductForm />)
+    fireEvent.change(screen.getByLabelText('inventory:products.name', { exact: false }), { target: { value: 'New Product' } })
+    fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'NEW-SKU' } })
+    fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
+
+    await waitFor(() => expect(mockToastError).toHaveBeenCalled())
+    const [, options] = mockToastError.mock.calls[0] as [string, { action: { onClick: () => void } }]
+    expect(mockToastError.mock.calls[0]?.[0]).toBe('inventory:products.barcodeConflict')
+    options.action.onClick()
+    expect(mockNavigate).toHaveBeenCalledWith('/inventory/products/holder-9')
   })
 
   it('Save & Close navigates to the product list after create', async () => {

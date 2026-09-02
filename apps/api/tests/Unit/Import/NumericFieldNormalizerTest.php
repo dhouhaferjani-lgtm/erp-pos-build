@@ -15,8 +15,10 @@ class NumericFieldNormalizerTest extends TestCase
     private array $rules = [
         'name' => ['required', 'string'],
         'description' => ['nullable', 'string'],
-        'sale_price' => ['nullable', 'numeric', 'min:0'],
-        'purchase_price' => ['nullable', 'numeric', 'min:0'],
+        'sale_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+        'purchase_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+        'quantity' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
+        'margin' => ['nullable', 'numeric', 'regex:/^-?\d+(\.\d{1,2})?$/'],
     ];
 
     protected function setUp(): void
@@ -125,5 +127,51 @@ class NumericFieldNormalizerTest extends TestCase
         );
 
         $this->assertSame(15.5, $result['sale_price']);
+    }
+
+    public function test_normalizes_money_float_noise_to_scale_three_without_float_round_trip(): void
+    {
+        $result = $this->normalizer->normalize([
+            'sale_price' => '71.162000000000006',
+            'purchase_price' => '9.6150000000000002',
+        ], $this->rules);
+
+        $this->assertSame('71.162', $result['sale_price']);
+        $this->assertSame('9.615', $result['purchase_price']);
+    }
+
+    public function test_normalizes_scientific_notation_value_from_real_row_376(): void
+    {
+        $result = $this->normalizer->normalize([
+            'purchase_price' => '6.0999999999999999E-2',
+        ], $this->rules);
+
+        $this->assertSame('0.061', $result['purchase_price']);
+    }
+
+    public function test_normalizes_quantity_and_percent_float_noise_at_their_own_scales(): void
+    {
+        $result = $this->normalizer->normalize([
+            'quantity' => '1.2340000000000002',
+            'margin' => '30.000000000000004',
+        ], $this->rules);
+
+        $this->assertSame('1.2340', $result['quantity']);
+        $this->assertSame('30.00', $result['margin']);
+    }
+
+    public function test_genuinely_over_precise_values_remain_for_regex_validation_to_reject(): void
+    {
+        $result = $this->normalizer->normalize([
+            'sale_price' => '71.1624',
+            'purchase_price' => '5000.1234',
+            'quantity' => '1.23445',
+            'margin' => '19.125',
+        ], $this->rules);
+
+        $this->assertSame('71.1624', $result['sale_price']);
+        $this->assertSame('5000.1234', $result['purchase_price']);
+        $this->assertSame('1.23445', $result['quantity']);
+        $this->assertSame('19.125', $result['margin']);
     }
 }

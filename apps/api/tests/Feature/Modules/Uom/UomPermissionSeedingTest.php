@@ -23,8 +23,8 @@ use Tests\TestCase;
 
 /**
  * The canonical RolesAndPermissionsSeeder (run on tenant provisioning) must grant
- * uom.view to the read roles, so a freshly-provisioned tenant never hits a bare
- * 403 when product/document/stock editors fetch units.
+ * uom.view to the read roles and units.manage only to operators allowed to
+ * create explicit company unit-text mappings.
  */
 final class UomPermissionSeedingTest extends TestCase
 {
@@ -102,5 +102,17 @@ final class UomPermissionSeedingTest extends TestCase
         $this->actingAs($manager, 'sanctum')
             ->getJson('/api/v1/uom/units')
             ->assertOk();
+    }
+
+    #[Test]
+    public function seeded_admin_and_manager_roles_can_manage_unit_text_mappings(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+        $manager = $this->makeUserWithRole('manager');
+        $cashier = $this->makeUserWithRole('cashier');
+
+        self::assertTrue($admin->hasPermissionTo('units.manage'));
+        self::assertTrue($manager->hasPermissionTo('units.manage'));
+        self::assertFalse($cashier->hasPermissionTo('units.manage'));
     }
 }

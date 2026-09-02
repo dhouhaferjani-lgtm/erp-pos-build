@@ -417,6 +417,8 @@
     "fastPathAcceptError": "تعذر تطبيق الإثراء."
   },
   "products": {
+    "barcodeConflict": "هذا الرمز الشريطي مسند بالفعل إلى {{name}} ({{sku}}).",
+    "barcodeConflictUnknown": "هذا الرمز الشريطي مسند بالفعل إلى منتج آخر في هذه الشركة.",
     "validationBlocked": "بعض الحقول المطلوبة ناقصة أو غير صالحة. تم إبراز أول حقل منها أدناه.",
     "typePlaceholder": "اختر النوع…",
     "typeOptions": {

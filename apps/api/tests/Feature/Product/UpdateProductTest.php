@@ -22,6 +22,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 use Tests\Traits\AssertsApiValidation;
@@ -262,6 +263,57 @@ class UpdateProductTest extends TestCase
             ]);
 
         $response->assertOk();
+    }
+
+    public function test_cannot_update_to_another_products_barcode_and_receives_holder_payload(): void
+    {
+        $holder = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Update Barcode Holder',
+            'sku' => 'UPDATE-HOLDER',
+            'barcode' => '6196666666666',
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/products/{$this->product->id}", [
+                'barcode' => '6196666666666',
+            ])
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'barcode_identity_conflict')
+            ->assertJsonPath('error.details.existing_product.id', $holder->id)
+            ->assertJsonPath('error.details.existing_product.sku', 'UPDATE-HOLDER')
+            ->assertJsonPath('error.details.existing_product.name', 'Update Barcode Holder');
+
+        $this->assertNull($this->product->refresh()->barcode);
+    }
+
+    public function test_saving_a_pre_existing_barcode_twin_without_changing_its_barcode_succeeds(): void
+    {
+        DB::statement('DROP INDEX IF EXISTS products_company_barcode_live_unique');
+        $this->beforeApplicationDestroyed(function (): void {
+            $paths = glob(database_path('migrations/tenant/*_enforce_company_scoped_product_barcodes.php'));
+            if (is_array($paths) && count($paths) === 1) {
+                $migration = require $paths[0];
+                $migration->up();
+            }
+        });
+        $this->product->update(['barcode' => 'LEGACY-TWIN']);
+        Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Legacy Twin',
+            'sku' => 'LEGACY-TWIN-2',
+            'barcode' => 'LEGACY-TWIN',
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/products/{$this->product->id}", [
+                'name' => 'Legacy Twin Edited',
+                'barcode' => 'LEGACY-TWIN',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.name', 'Legacy Twin Edited');
     }
 
     public function test_can_update_oem_numbers(): void

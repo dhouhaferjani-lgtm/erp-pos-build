@@ -390,6 +390,68 @@ class CreateProductTest extends TestCase
         $response->assertUnauthorized();
     }
 
+    public function test_taken_barcode_returns_coded_holder_payload_without_creating_or_overwriting(): void
+    {
+        $holder = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Existing Barcode Holder',
+            'sku' => 'HOLDER-001',
+            'barcode' => '6194444444444',
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/products', [
+                'name' => 'Conflicting Product',
+                'sku' => 'CONFLICT-001',
+                'barcode' => '6194444444444',
+            ])
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'barcode_identity_conflict')
+            ->assertJsonPath('error.details.existing_product.id', $holder->id)
+            ->assertJsonPath('error.details.existing_product.sku', 'HOLDER-001')
+            ->assertJsonPath('error.details.existing_product.name', 'Existing Barcode Holder');
+
+        $this->assertSame(1, Product::query()->where('company_id', $this->company->id)->where('barcode', '6194444444444')->count());
+        $this->assertSame('Existing Barcode Holder', $holder->refresh()->name);
+    }
+
+    public function test_same_barcode_in_a_second_real_company_is_legal_and_never_leaks_the_first_company_holder(): void
+    {
+        $holder = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Company A Holder',
+            'sku' => 'COMPANY-A-SKU',
+            'barcode' => '6195555555555',
+        ]);
+        $secondCompanyId = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/companies', [
+                'name' => 'Second Barcode Company',
+                'country_code' => 'FR',
+                'currency' => 'EUR',
+                'locale' => 'fr_FR',
+                'timezone' => 'Europe/Paris',
+            ])
+            ->assertCreated()
+            ->json('data.id');
+        $this->assertIsString($secondCompanyId);
+        app(CompanyContext::class)->setCompanyId($secondCompanyId);
+
+        $response = $this->withHeader('X-Company-Id', $secondCompanyId)
+            ->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/products', [
+                'name' => 'Company B Product',
+                'sku' => 'COMPANY-B-SKU',
+                'barcode' => '6195555555555',
+            ])
+            ->assertCreated();
+
+        $this->assertNotSame($holder->id, $response->json('data.id'));
+        $this->assertSame(2, Product::query()->where('barcode', '6195555555555')->count());
+        $this->assertSame(1, Product::query()->where('company_id', $secondCompanyId)->where('barcode', '6195555555555')->count());
+    }
+
     public function test_user_without_permission_cannot_create_product(): void
     {
         $viewerUser = User::create([

@@ -150,6 +150,7 @@ import arSettings from '../locales/ar/settings.json'
 import arReplenishment from '../locales/ar/replenishment.json'
 import arSupportAccess from '../locales/ar/support-access.json'
 import arCompliance from '../locales/ar/compliance.json'
+import arUom from '../locales/ar/uom.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -384,7 +385,7 @@ const resources = {
       company: { ...enSettings.company, ...arSettings.company },
       locations: { ...enSettings.locations, ...arSettings.locations },
     },
-    uom: enUom,
+    uom: { ...enUom, ...arUom, unmapped: { ...enUom.unmapped, ...arUom.unmapped } },
     products: { ...enProducts, ...arProducts },
     parapharmacy: enParapharmacy,
     batches: enBatches,

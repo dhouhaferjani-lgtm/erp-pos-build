@@ -1041,6 +1041,9 @@ raw?: string | null;
 remedy?: string | null;
 held_quantity?: string | null;
 held_at?: string | null;
+barcode?: string | null;
+row_numbers?: Array<any> | null;
+differing_fields?: Array<string> | null;
 };
 export type UnitCandidateData = {
 id: string;
@@ -1051,13 +1054,14 @@ tier: string;
 };
 }
 declare namespace App.Modules.Import.Domain.Enums {
+export type BarcodeGroupClassification = 'multi_location' | 'barcode_identity_conflict';
 export type DuplicateBucket = 'new' | 'existing_sku' | 'existing_barcode' | 'existing_name' | 'in_file' | 'refused';
 export type DuplicatePolicy = 'override' | 'skip';
-export type ImportErrorCode = 'units_not_seeded' | 'unit_unknown' | 'unit_ambiguous' | 'unit_default_missing' | 'barcode_ambiguous' | 'product_not_found' | 'partner_not_found' | 'sku_held_by_deleted_product' | 'vat_held_by_deleted_partner' | 'duplicate_sku_in_company' | 'validation_failed' | 'internal_error' | 'worker_lost';
-export type ImportRowOutcome = 'pending' | 'imported' | 'duplicate_skipped' | 'duplicate_loser' | 'failed' | 'opening_locked';
+export type ImportErrorCode = 'units_not_seeded' | 'unit_unknown' | 'unit_ambiguous' | 'unit_default_missing' | 'barcode_ambiguous' | 'barcode_identity_conflict' | 'product_not_found' | 'partner_not_found' | 'sku_held_by_deleted_product' | 'vat_held_by_deleted_partner' | 'duplicate_sku_in_company' | 'invalid_number' | 'validation_failed' | 'internal_error' | 'worker_lost';
+export type ImportRowOutcome = 'pending' | 'imported' | 'merged_line' | 'duplicate_skipped' | 'duplicate_loser' | 'failed' | 'opening_locked';
 export type ImportStatus = 'pending' | 'validating' | 'validated' | 'importing' | 'completed' | 'failed';
 export type ImportType = 'parties' | 'partners' | 'products' | 'stock_levels' | 'opening_balances' | 'product_images' | 'composite_items';
-export type ImportWarningCode = 'price_conflict' | 'margin_without_cost' | 'balance_not_posted' | 'opening_failed' | 'quantity_ignored_service' | 'qty_without_cost' | 'expiry_in_past' | 'expiry_conflict_existing_lot' | 'expiry_ignored_not_batch_tracked' | 'expiry_ignored_no_default_lot' | 'category_matched_by_slug' | 'category_created' | 'category_restored' | 'sku_generated' | 'code_generated' | 'matched_by_name' | 'duplicate_in_file' | 'preview_drift' | 'opening_skipped_existing' | 'opening_corrected' | 'unit_defaulted' | 'location_not_supplied' | 'location_code_unknown' | 'location_unresolved' | 'opening_exists' | 'enrichment_not_found' | 'enrichment_unavailable' | 'enrichment_invalid_barcode' | 'enrichment_cap_exceeded' | 'enrichment_vertical_not_supported' | 'enrichment_barcode_missing';
+export type ImportWarningCode = 'price_conflict' | 'margin_without_cost' | 'balance_not_posted' | 'opening_failed' | 'quantity_ignored_service' | 'qty_without_cost' | 'expiry_in_past' | 'expiry_conflict_existing_lot' | 'expiry_ignored_not_batch_tracked' | 'expiry_ignored_no_default_lot' | 'category_matched_by_slug' | 'category_created' | 'category_restored' | 'sku_generated' | 'code_generated' | 'matched_by_name' | 'duplicate_in_file' | 'preview_drift' | 'opening_skipped_existing' | 'opening_corrected' | 'unit_defaulted' | 'location_not_supplied' | 'location_code_unknown' | 'location_unresolved' | 'opening_exists' | 'multi_location' | 'barcode_float_corruption_suspected' | 'numeric_normalized' | 'enrichment_not_found' | 'enrichment_unavailable' | 'enrichment_invalid_barcode' | 'enrichment_cap_exceeded' | 'enrichment_vertical_not_supported' | 'enrichment_barcode_missing';
 }
 declare namespace App.Modules.Inventory.Application.DTOs {
 export type GoodsReceiptData = {
@@ -1215,6 +1219,7 @@ export type CountingExecutionMode = 'parallel' | 'sequential';
 export type CountingItemFlagReason = 'basket_window' | 'negative_at_apply' | 'clock_skew' | 'pending_opening_cost' | 'normalized_agreement' | 'missing_boundary_marker';
 export type CountingScopeType = 'product_location' | 'product' | 'location' | 'category' | 'full_inventory' | 'zone';
 export type CountingStatus = 'draft' | 'scheduled' | 'count_1_in_progress' | 'count_1_completed' | 'count_2_in_progress' | 'count_2_completed' | 'count_3_in_progress' | 'count_3_completed' | 'pending_review' | 'finalized' | 'cancelled';
+export type GoodsReceiptFailureReason = 'OVER_RECEIPT' | 'OVER_RECEIPT_FREE' | 'BATCH_DATA_REQUIRED' | 'VARIANT_REQUIRED' | 'BATCH_EXPIRY_CONFLICT' | 'EXPIRED_LOT_REFUSED' | 'RECEIVED_PRICE_INVALID' | 'NOTHING_TO_RECEIVE';
 export type GoodsReceiptStatus = 'draft' | 'posted';
 export type InventoryValuationMode = 'perpetual' | 'periodic';
 export type ItemResolutionMethod = 'pending' | 'auto_all_match' | 'auto_counters_agree' | 'third_count_decisive' | 'manual_override';
@@ -2610,6 +2615,9 @@ export type ReconciliationStatus = 'draft' | 'completed' | 'cancelled';
 export type RemittanceLineStatus = 'pending' | 'cleared' | 'bounced';
 export type RemittanceStatus = 'draft' | 'remitted' | 'closed';
 export type RemittanceType = 'collection' | 'discount';
+export type RepositoryCensusCode = 'repo.cash.location_null' | 'repo.safe.count_ne_1' | 'repo.safe.gl_unlinked' | 'repo.safe.duplicate_clean' | 'repo.duplicate.money_bearing' | 'repo.duplicate.per_location_type';
+export type RepositoryLocationAttributionVerdict = 'ambiguous' | 'attributable';
+export type RepositoryNormalisationAction = 'deactivate_surplus_safe' | 'link_canonical_safe';
 export type RepositoryType = 'cash_register' | 'safe' | 'bank_account' | 'virtual';
 export type RepositoryWriteRefusal = 'LOCATION_DRAWER_ALREADY_EXISTS';
 export type ReversalSupport = 'cash_reversal' | 'no_cash_leg' | 'unsupported';
@@ -2651,9 +2659,26 @@ isSystem: boolean;
 isActive: boolean;
 category: App.Modules.Uom.Application.DTOs.UnitCategoryData | null;
 };
+export type UnitTextMappingResultData = {
+sourceText: string | null;
+targetUnitId: string;
+targetUnitCode: string;
+productCount: number;
+importRowCount: number;
+applied: boolean;
+aliasStored: boolean;
+};
+export type UnmappedUnitTextData = {
+sourceText: string | null;
+productCount: number;
+importRowCount: number;
+pendingImportCount: number;
+totalCount: number;
+};
 }
 declare namespace App.Modules.Uom.Domain.Enums {
 export type RoundingMethod = 'half_up' | 'floor' | 'ceil';
+export type UnitTextMappingErrorCode = 'UNIT_TEXT_MAPPING_BLANK_REQUIRES_PC' | 'UNIT_TEXT_MAPPING_CONFLICT' | 'UNIT_TEXT_MAPPING_TARGET_NOT_VISIBLE';
 }
 declare namespace App.Modules.Vehicle.Application.DTOs {
 export type VehicleData = {

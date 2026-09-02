@@ -216,6 +216,14 @@ final class DuplicateCensusTest extends TestCase
 
     public function test_census_and_execution_share_the_product_resolution_ladder_for_every_outcome(): void
     {
+        DB::statement('DROP INDEX IF EXISTS products_company_barcode_live_unique');
+        $this->beforeApplicationDestroyed(function (): void {
+            $paths = glob(database_path('migrations/tenant/*_enforce_company_scoped_product_barcodes.php'));
+            if (is_array($paths) && count($paths) === 1) {
+                $migration = require $paths[0];
+                $migration->up();
+            }
+        });
         $this->product('SKU-HOLDER', 'SKU holder', null);
         $this->product('BARCODE-HOLDER', 'Barcode holder', 'ONE-BARCODE');
         $this->product('NAME-HOLDER', 'Name holder', null);
@@ -304,6 +312,181 @@ final class DuplicateCensusTest extends TestCase
             $this->assertSame($case['execute_code'], $row->import_error_code);
             $this->assertSame($case['preview_code'], $row->import_error_code);
         }
+    }
+
+    public function test_barcode_groups_are_a_parallel_dimension_that_refuses_every_contradictory_row(): void
+    {
+        foreach (['override', 'skip'] as $policy) {
+            $job = $this->job(2);
+            $job->update(['options' => ['duplicate_policy' => $policy]]);
+            app(ImportService::class)->addRowsBatch($job, [
+                11 => [
+                    'name' => 'First identity',
+                    'sku' => 'FIRST-SKU',
+                    'barcode' => '6190000000000',
+                    'location_code' => 'MAIN',
+                ],
+                12 => [
+                    'name' => 'Second identity',
+                    'sku' => 'SECOND-SKU',
+                    'barcode' => '6190000000000',
+                    'location_code' => 'ANNEX',
+                ],
+            ]);
+            DB::table('import_rows')->where('import_job_id', $job->id)->update(['is_valid' => true]);
+
+            $census = app(DuplicateCensusService::class)->census($job->refresh(), $this->company->id);
+            $storage = $census->toStorage();
+
+            $this->assertSame(2, $storage['barcode_groups']['counts']['barcode_identity_conflict_rows'] ?? null);
+            $this->assertSame(1, $storage['barcode_groups']['counts']['barcode_identity_conflict_groups'] ?? null);
+            $this->assertSame(0, $storage['barcode_groups']['counts']['multi_location_products'] ?? null);
+            $this->assertSame([11, 12], $storage['barcode_groups']['groups'][0]['row_numbers'] ?? null);
+            $this->assertSame(['name', 'sku'], $storage['barcode_groups']['groups'][0]['differing_fields'] ?? null);
+            $this->assertSame(2, $census->counts[DuplicateBucket::New->value]);
+            $persistedOptions = $job->refresh()->options;
+            $this->assertIsArray($persistedOptions);
+            $persistedCensus = $persistedOptions['duplicate_census'] ?? null;
+            $this->assertIsArray($persistedCensus);
+            $this->assertSame($storage['barcode_groups'], $persistedCensus['barcode_groups'] ?? null);
+            $this->assertNotNull(DuplicateCensusData::fromStorage($persistedCensus)->barcodeGroupForRow(11));
+
+            foreach ($job->rows()->orderBy('row_number')->get() as $row) {
+                $this->assertSame(
+                    ImportRowOutcome::Failed,
+                    app(ImportService::class)->processPendingRow($job->refresh(), $row),
+                );
+                $this->assertSame('barcode_identity_conflict', $row->refresh()->import_error_code?->value);
+            }
+
+            $this->assertSame(0, Product::query()->where('company_id', $this->company->id)->count());
+            $this->assertSame(
+                $storage['barcode_groups']['counts']['barcode_identity_conflict_rows'],
+                $job->rows()->where('outcome', ImportRowOutcome::Failed)->count(),
+                'Preview conflict rows and execution failures must be the same set.',
+            );
+        }
+    }
+
+    public function test_consistent_barcode_group_reports_one_multi_location_product_without_replacing_sku_buckets(): void
+    {
+        $job = $this->job(2);
+        app(ImportService::class)->addRowsBatch($job, [
+            21 => [
+                'name' => 'Shared product',
+                'sku' => 'SHARED-SKU',
+                'barcode' => '6191111111111',
+                'purchase_price' => '2.000',
+                'quantity' => '3.0000',
+                'location_code' => 'MAIN',
+                'placement_path' => 'A/1',
+            ],
+            22 => [
+                'name' => 'Shared product',
+                'sku' => 'SHARED-SKU',
+                'barcode' => '6191111111111',
+                'purchase_price' => '2.000',
+                'quantity' => '4.0000',
+                'location_code' => 'ANNEX',
+                'placement_path' => 'B/2',
+            ],
+        ]);
+        DB::table('import_rows')->where('import_job_id', $job->id)->update(['is_valid' => true]);
+
+        $storage = app(DuplicateCensusService::class)
+            ->census($job->refresh(), $this->company->id)
+            ->toStorage();
+
+        $this->assertSame(1, $storage['barcode_groups']['counts']['multi_location_products'] ?? null);
+        $this->assertSame(0, $storage['barcode_groups']['counts']['barcode_identity_conflict_rows'] ?? null);
+        $this->assertSame('multi_location', $storage['barcode_groups']['groups'][0]['classification'] ?? null);
+        $this->assertSame(['ANNEX', 'MAIN'], $storage['barcode_groups']['groups'][0]['location_codes'] ?? null);
+        $this->assertSame([], $storage['barcode_groups']['groups'][0]['differing_fields'] ?? null);
+        $this->assertSame(2, $job->rows()->where('duplicate_bucket', DuplicateBucket::New)->count());
+    }
+
+    public function test_blank_sku_rows_still_use_barcode_for_the_existing_in_file_placement_key(): void
+    {
+        $job = $this->job(2);
+        app(ImportService::class)->addRowsBatch($job, [
+            31 => ['name' => 'Same product', 'sku' => '', 'barcode' => 'BLANK-SKU-CODE', 'location_code' => 'MAIN'],
+            32 => ['name' => 'Same product', 'sku' => '', 'barcode' => 'BLANK-SKU-CODE', 'location_code' => 'MAIN'],
+        ]);
+        DB::table('import_rows')->where('import_job_id', $job->id)->update(['is_valid' => true]);
+
+        $census = app(DuplicateCensusService::class)->census($job->refresh(), $this->company->id);
+
+        $this->assertSame(1, $census->counts[DuplicateBucket::InFile->value]);
+        $this->assertSame(1, $census->counts[DuplicateBucket::New->value]);
+    }
+
+    public function test_barcode_census_canonicalizes_numeric_cell_artifacts_without_rewriting_alphanumeric_identifiers(): void
+    {
+        $job = $this->job(5);
+        app(ImportService::class)->addRowsBatch($job, [
+            41 => ['name' => 'Numeric plain', 'sku' => 'NUM-PLAIN', 'barcode' => '6192430000000'],
+            42 => ['name' => 'Numeric decimal', 'sku' => 'NUM-DECIMAL', 'barcode' => '6192430000000.0'],
+            43 => ['name' => 'Numeric exponent', 'sku' => 'NUM-EXPONENT', 'barcode' => '6.19243E+12'],
+            44 => ['name' => 'Alpha upper', 'sku' => 'ALPHA-UPPER', 'barcode' => 'OF-10G'],
+            45 => ['name' => 'Alpha lower', 'sku' => 'ALPHA-LOWER', 'barcode' => 'of-10g'],
+        ]);
+        DB::table('import_rows')->where('import_job_id', $job->id)->update(['is_valid' => true]);
+
+        $storage = app(DuplicateCensusService::class)
+            ->census($job->refresh(), $this->company->id)
+            ->toStorage();
+
+        $this->assertSame(1, $storage['barcode_groups']['counts']['barcode_identity_conflict_groups'] ?? null);
+        $this->assertSame(3, $storage['barcode_groups']['counts']['barcode_identity_conflict_rows'] ?? null);
+        $this->assertSame('6192430000000', $storage['barcode_groups']['groups'][0]['barcode'] ?? null);
+        $this->assertSame([41, 42, 43], $storage['barcode_groups']['groups'][0]['row_numbers'] ?? null);
+    }
+
+    public function test_real_file_shape_is_grouped_linearly_and_accounts_for_the_180_to_179_arithmetic(): void
+    {
+        $rows = [];
+        for ($row = 1; $row <= 859; $row++) {
+            $barcodeNumber = $row === 160 ? 180 : (($row - 1) % 179) + 1;
+            $rows[$row] = [
+                'name' => 'Product '.$row,
+                'sku' => 'SKU-'.$row,
+                'barcode' => str_pad((string) $barcodeNumber, 13, '0', STR_PAD_LEFT).'.000',
+                'quantity' => in_array($row, [141, 160, 827], true) ? '-1' : '1',
+                'location_code' => 'MAIN',
+            ];
+        }
+        $job = $this->job(859);
+        app(ImportService::class)->addRowsBatch($job, $rows);
+        DB::table('import_rows')->where('import_job_id', $job->id)->update([
+            'is_valid' => true,
+            'outcome' => ImportRowOutcome::Pending->value,
+        ]);
+        DB::table('import_rows')->where('import_job_id', $job->id)->whereIn('row_number', [141, 160, 827])->update([
+            'is_valid' => false,
+            'outcome' => ImportRowOutcome::Failed->value,
+        ]);
+
+        $queries = 0;
+        DB::listen(static function () use (&$queries): void {
+            $queries++;
+        });
+        $startedAt = microtime(true);
+        $storage = app(DuplicateCensusService::class)
+            ->census($job->refresh(), $this->company->id)
+            ->toStorage();
+        $elapsed = microtime(true) - $startedAt;
+
+        $this->assertLessThan(2.0, $elapsed, 'The 859-row barcode census must remain a single linear pass.');
+        $this->assertLessThan(80, $queries, 'The barcode dimension must not add a per-row query.');
+        $this->assertSame(856, array_sum($storage['counts']));
+        $this->assertSame(179, count(array_unique(array_map(
+            static fn (array $row): string => (string) $row['barcode'],
+            array_filter($rows, static fn (int $number): bool => ! in_array($number, [141, 160, 827], true), ARRAY_FILTER_USE_KEY),
+        ))));
+        $this->assertSame(180, count(array_unique(array_column($rows, 'barcode'))));
+        $this->assertSame(856, 859 - 3, 'Three invalid quantities leave 856 valid rows.');
+        $this->assertSame(179, 180 - 1, 'Barcode 180 occurs only on invalid row 160, leaving 179 valid barcode values.');
+        $this->assertGreaterThan(0, $storage['barcode_groups']['counts']['barcode_identity_conflict_rows'] ?? 0);
     }
 
     private function job(int $totalRows): ImportJob
