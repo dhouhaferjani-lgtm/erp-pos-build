@@ -224,3 +224,16 @@ Local and staging exposure are both nil. Re-run on production before the guards 
   fails loudly (500) instead of answering 201 with `serverId`s for rows the silent
   COMMIT-as-ROLLBACK discards. A real deadlock needs two racing sessions, so this arm is asserted
   by construction (docblock + inline comment naming the vendor method), not by a unit test.
+
+## Staging verification (post-merge, 2026-09-02 16:05, coordinator)
+
+Merge `de31017e0` (lane N-1, gates r1–r4) deployed to staging: API build done 14:56Z, web build done 14:58Z (served bundle `index-CdNqm5xl.js`). Live probes on `https://api.erp.otospex.dev` as `owner@pharmabio.tn` (PharmaBio demo tenant), no data created:
+
+| # | Probe | Result |
+|---|---|---|
+| 1 | `POST /inventory/countings/drafts` `scope_type=product_location`, no `scope_filters.location_id` | **422** `VALIDATION_ERROR` "A location is required for this scope." (A-3) |
+| 2 | `GET /inventory/countings/my-drafts` | `{"data":[]}` — tenant holds no drafts; ISO shape (A-11) not observable on staging until a draft exists |
+| 3 | `POST /inventory/countings/drafts/batch` two rows: `count1UserId=not-a-uuid` (full_inventory) + `product_location` without location | **201** `success:[]`, `errors:[{probe-bad-uuid: "Draft could not be created"},{probe-no-loc: "A location must be selected for this scope"}]` — per-row refusals, no phantom `serverId` (gate r2 BLOCKER-1 shape closed on the PG build) |
+| — | `my-drafts` after probe 3 | still `[]` — nothing persisted |
+
+Not exercised on staging (needs a live counting): scale-4 ceiling on submit (A-1, covered by `SubmitCountQuantityScaleTest`), zone / zero-item activation guards, web mode display (A-8, covered by `CountingDetailSalesMode.test.tsx`). These are in Dhouha's A-to-Z handover.
