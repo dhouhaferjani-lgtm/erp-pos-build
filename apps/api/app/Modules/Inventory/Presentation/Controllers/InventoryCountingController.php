@@ -32,6 +32,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class InventoryCountingController extends Controller
 {
@@ -992,6 +993,17 @@ class InventoryCountingController extends Controller
                     'error' => 'At least one zone must be selected before activation',
                 ], 422);
             }
+
+            // Gate r1 IMPORTANT-4: zone carried the identical hole.
+            // `InventoryCountingService::zoneItemSeeds` returns [] when
+            // location_id is empty, so such a draft activated into a live
+            // counting with nothing to count. CreateCountingRequest has always
+            // required it for this scope.
+            if (empty($counting->scope_filters['location_id'])) {
+                return response()->json([
+                    'error' => 'A location must be selected before activation',
+                ], 422);
+            }
         }
 
         if (! $counting->count_1_user_id) {
@@ -1033,18 +1045,25 @@ class InventoryCountingController extends Controller
             'drafts' => 'required|array|max:50',
             'drafts.*.localId' => 'required|string',
             'drafts.*.title' => 'nullable|string|max:255',
-            'drafts.*.scopeType' => 'required|string',
+            // Gate r1 IMPORTANT-5: an unknown scope string used to reach the
+            // enum-cast attribute at :scope_type and throw a ValueError, which
+            // `catch (\Exception)` below does NOT catch (ValueError extends
+            // Error) — an uncaught 500 that rolled back every already-persisted
+            // draft in the batch. Refused at the boundary instead.
+            'drafts.*.scopeType' => ['required', Rule::enum(CountingScopeType::class)],
             'drafts.*.instructions' => 'nullable|string',
             'drafts.*.executionMode' => 'nullable|string|in:parallel,sequential',
             'drafts.*.requiresCount2' => 'nullable|boolean',
             'drafts.*.requiresCount3' => 'nullable|boolean',
             'drafts.*.allowUnexpectedItems' => 'nullable|boolean',
             'drafts.*.scopeFilters' => 'nullable|array',
-            // N-1/A-3: a product_location draft without a location silently
-            // widens to every location at activation. Required here so an
-            // offline-synced draft can never be born unscoped; persisted
-            // verbatim inside scope_filters below.
-            'drafts.*.scopeFilters.location_id' => 'required_if:drafts.*.scopeType,product_location|nullable|string',
+            // Gate r1 IMPORTANT-2 (RULED): the location requirement is NOT a
+            // whole-batch rule. A single legacy/malformed offline draft must not
+            // 422 the other 49 and become a permanent sync poison pill — this
+            // endpoint advertises a per-row `errors[]` channel, so the check
+            // lives in the loop below and the batch still answers 201 with
+            // partial success.
+            'drafts.*.scopeFilters.location_id' => 'nullable|string',
             'drafts.*.count1UserId' => 'nullable|string',
             'drafts.*.count2UserId' => 'nullable|string',
             'drafts.*.count3UserId' => 'nullable|string',
@@ -1058,6 +1077,39 @@ class InventoryCountingController extends Controller
         \DB::transaction(function () use ($request, $companyId, $userId, &$results, &$errors): void {
             foreach ($request->input('drafts') as $draftData) {
                 try {
+                    // Gate r1 IMPORTANT-1 + IMPORTANT-2 (RULED). Per-ROW refusal,
+                    // never a whole-batch 422: a product_location draft with no
+                    // location silently widens to every location at activation
+                    // (InventoryCountingService::getStockLevelsForScope only
+                    // applies the filter when it is set), and a foreign/stale
+                    // location id survives into an activation that generates
+                    // ZERO items with no error anywhere — the same silent-wrong
+                    // outcome, reshaped. The single-draft twin
+                    // (CreateDraftCountingRequest) refuses both at validation.
+                    $scopeFilters = $draftData['scopeFilters'] ?? [];
+                    $scopeLocationId = is_array($scopeFilters) ? ($scopeFilters['location_id'] ?? null) : null;
+                    $scopeLocationId = is_string($scopeLocationId) ? trim($scopeLocationId) : null;
+
+                    if ($draftData['scopeType'] === CountingScopeType::ProductLocation->value
+                        && ($scopeLocationId === null || $scopeLocationId === '')) {
+                        $errors[] = [
+                            'localId' => $draftData['localId'],
+                            'error' => 'A location must be selected for this scope',
+                        ];
+
+                        continue;
+                    }
+
+                    if ($scopeLocationId !== null && $scopeLocationId !== ''
+                        && ! Location::query()->forCompany($companyId)->whereKey($scopeLocationId)->exists()) {
+                        $errors[] = [
+                            'localId' => $draftData['localId'],
+                            'error' => 'Location not found for the current company',
+                        ];
+
+                        continue;
+                    }
+
                     $counting = new InventoryCounting;
                     $counting->id = (string) Str::uuid();
                     $counting->company_id = $companyId;

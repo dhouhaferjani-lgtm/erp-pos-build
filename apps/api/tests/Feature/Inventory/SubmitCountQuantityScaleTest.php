@@ -178,7 +178,17 @@ class SubmitCountQuantityScaleTest extends TestCase
      */
     public function test_submit_count_still_accepts_quantities_at_or_below_scale_4(): void
     {
-        foreach (['12.5', '12.0000', '12', 6.75] as $index => $quantity) {
+        // Gate r1 MINOR-3: expectations are hardcoded, NOT recomputed with the
+        // same bcadd() call the production `quantity()` makes — otherwise a
+        // wrong normalisation would produce a wrong expectation identically.
+        $cases = [
+            ['12.5', '12.5000'],
+            ['12.0000', '12.0000'],
+            ['12', '12.0000'],
+            [6.75, '6.7500'],
+        ];
+
+        foreach ($cases as $index => [$quantity, $expected]) {
             $item = $this->createCountingItem();
 
             $response = $this->actingAs($this->counterUser)
@@ -188,11 +198,38 @@ class SubmitCountQuantityScaleTest extends TestCase
 
             $response->assertStatus(200);
             $this->assertSame(
-                bcadd((string) $quantity, '0', 4),
+                $expected,
                 $item->fresh()?->count_1_qty,
                 "Case {$index}: a within-scale quantity must still be stored verbatim at 4 d.p.",
             );
         }
+    }
+
+    /**
+     * Gate r1 MINOR-4 — pin the ceiling exactly at the boundary: `0.0001` is the
+     * last accepted value, `0.00001` the first refused one.
+     */
+    public function test_submit_count_pins_the_scale_4_boundary(): void
+    {
+        $accepted = $this->createCountingItem();
+
+        $this->actingAs($this->counterUser)
+            ->postJson("/api/v1/inventory/countings/{$accepted->counting_id}/items/{$accepted->id}/count", [
+                'quantity' => '0.0001',
+            ])
+            ->assertStatus(200);
+
+        $this->assertSame('0.0001', $accepted->fresh()?->count_1_qty);
+
+        $refused = $this->createCountingItem();
+
+        $response = $this->actingAs($this->counterUser)
+            ->postJson("/api/v1/inventory/countings/{$refused->counting_id}/items/{$refused->id}/count", [
+                'quantity' => '0.00001',
+            ]);
+
+        $this->assertApiValidationErrors($response, ['quantity']);
+        $this->assertNull($refused->fresh()?->count_1_qty);
     }
 
     // --- Helpers ---

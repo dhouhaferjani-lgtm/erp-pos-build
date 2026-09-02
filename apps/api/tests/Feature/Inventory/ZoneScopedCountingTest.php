@@ -625,6 +625,77 @@ final class ZoneScopedCountingTest extends TestCase
         $response->assertStatus(422);
     }
 
+    /**
+     * Gate r1 (FE IMPORTANT-1, RULED at the API).
+     *
+     * Sales blocking is ENFORCED for exactly three scopes — CountingBlockService
+     * ::activeBlockFor queries `whereIn('scope_type', [location, full_inventory,
+     * product_location])` and scopeCoversLocation() returns false by default for
+     * everything else. Accepting block_sales:true for `product` / `category`
+     * persisted a guarantee no terminal ever received: the till kept selling the
+     * counted items AND no late sale was flagged (flagging is gated on an active
+     * block), while every operator surface said "sales blocked".
+     */
+    public function test_product_scope_rejects_block_sales(): void
+    {
+        $product = $this->makeProduct('BLOCK-PROD');
+        $this->setStock($product, '5.0000');
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/inventory/countings', [
+            'scope_type' => CountingScopeType::Product->value,
+            'scope_filters' => ['product_ids' => [$product->id]],
+            'block_sales' => true,
+            'count_1_user_id' => (string) $this->user->id,
+            'requires_count_2' => false,
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertSame(
+            'Sales blocking is only available for location, full-inventory and product-at-location counts',
+            $response->json('error.errors.block_sales.0'),
+        );
+        $this->assertSame(0, InventoryCounting::query()->where('block_sales', true)->count());
+    }
+
+    public function test_category_scope_rejects_block_sales(): void
+    {
+        $response = $this->actingAs($this->user)->postJson('/api/v1/inventory/countings', [
+            'scope_type' => CountingScopeType::Category->value,
+            'scope_filters' => ['category_ids' => ['7f8b0a2c-0f1e-4a3b-9c6d-2b1e5f0a7c31']],
+            'block_sales' => true,
+            'count_1_user_id' => (string) $this->user->id,
+            'requires_count_2' => false,
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertSame(
+            'Sales blocking is only available for location, full-inventory and product-at-location counts',
+            $response->json('error.errors.block_sales.0'),
+        );
+    }
+
+    /**
+     * The refusal must not narrow the three scopes the engine DOES enforce.
+     */
+    public function test_product_location_scope_still_accepts_block_sales(): void
+    {
+        $product = $this->makeProduct('BLOCK-PL');
+        $this->setStock($product, '5.0000');
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/inventory/countings', [
+            'scope_type' => CountingScopeType::ProductLocation->value,
+            'scope_filters' => ['product_ids' => [$product->id], 'location_id' => $this->location->id],
+            'block_sales' => true,
+            'count_1_user_id' => (string) $this->user->id,
+            'requires_count_2' => false,
+        ]);
+
+        $response->assertStatus(201);
+        $created = InventoryCounting::query()->where('id', $response->json('data.id'))->firstOrFail();
+        $this->assertTrue($created->block_sales);
+    }
+
     public function test_zone_scope_rejects_zone_from_a_different_location_same_company(): void
     {
         $otherLocation = Location::create([

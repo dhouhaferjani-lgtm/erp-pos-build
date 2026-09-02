@@ -355,18 +355,121 @@ class ActivateDraftCountingTest extends TestCase
     }
 
     /**
-     * The guard must not narrow the other scopes: `product` (deliberately
-     * multi-location), `location` and `zone` still activate without a
-     * `scope_filters.location_id`.
+     * The guard must not narrow `product` (deliberately multi-location) or
+     * `location`, both of which still activate with no
+     * `scope_filters.location_id`. `zone` is NOT in this list — gate r1
+     * IMPORTANT-4 added the same requirement there; see the zone cases below.
      */
-    public function test_activate_draft_leaves_other_scopes_unaffected(): void
+    public function test_activate_draft_leaves_product_scope_unaffected(): void
     {
-        $draft = $this->createDraft($this->counterUser);
+        $productDraft = $this->createDraft($this->counterUser);
+
+        $this->actingAs($this->counterUser)
+            ->postJson("/api/v1/inventory/countings/{$productDraft->id}/activate-draft")
+            ->assertStatus(200);
+    }
+
+    public function test_activate_draft_leaves_location_scope_unaffected(): void
+    {
+        // Separate test on purpose: activating both in one test trips the
+        // (pre-existing, correct) overlapping-counting guard, since the two
+        // scopes cover the same product/location pairs.
+        $locationDraft = $this->createDraft($this->counterUser, [
+            'scope_type' => CountingScopeType::Location,
+            'scope_filters' => ['location_ids' => [$this->warehouse->id]],
+        ]);
+
+        $this->actingAs($this->counterUser)
+            ->postJson("/api/v1/inventory/countings/{$locationDraft->id}/activate-draft")
+            ->assertStatus(200);
+
+        $this->assertGreaterThan(
+            0,
+            $locationDraft->fresh()?->items()->count(),
+            'A location-scoped activation must still generate its items.',
+        );
+    }
+
+    /**
+     * Gate r1 IMPORTANT-4 — zone carried the identical hole.
+     * `InventoryCountingService::zoneItemSeeds` returns [] with no location, so
+     * such a draft activated into a live counting with nothing to count.
+     */
+    public function test_activate_draft_rejects_zone_scope_without_a_location(): void
+    {
+        $draft = $this->createDraft($this->counterUser, [
+            'scope_type' => CountingScopeType::Zone,
+            'scope_filters' => ['zone_ids' => ['4b4e0a9c-1f5f-4b60-9a3f-9f0f3f6d2a11']],
+        ]);
 
         $response = $this->actingAs($this->counterUser)
             ->postJson("/api/v1/inventory/countings/{$draft->id}/activate-draft");
 
-        $response->assertStatus(200);
+        $response->assertStatus(422);
+        $this->assertSame(
+            'A location must be selected before activation',
+            $response->json('error'),
+        );
+        $this->assertSame(CountingStatus::Draft, $draft->fresh()?->status);
+        $this->assertSame(0, $draft->items()->count());
+    }
+
+    public function test_create_draft_rejects_zone_scope_without_a_location(): void
+    {
+        $response = $this->actingAs($this->adminUser)
+            ->postJson('/api/v1/inventory/countings/drafts', [
+                'scope_type' => 'zone',
+                'scope_filters' => [
+                    'zone_ids' => ['4b4e0a9c-1f5f-4b60-9a3f-9f0f3f6d2a11'],
+                ],
+            ]);
+
+        $this->assertApiValidationErrors($response, ['scope_filters.location_id']);
+        $response->assertJsonPath('error.code', 'VALIDATION_ERROR');
+    }
+
+    /**
+     * Gate r1 IMPORTANT-4 — activation never asserted the scope resolved to
+     * anything. A draft whose location holds no stock for the chosen products
+     * became a LIVE counting with zero items, assignments stamped
+     * total_items = 0 and a COUNTING_ACTIVATED event recording items_count: 0.
+     * The refusal must roll back inside activateDraft's transaction.
+     */
+    public function test_activate_draft_refuses_a_scope_that_resolves_to_zero_items(): void
+    {
+        $emptyWarehouse = Location::create([
+            'company_id' => $this->company->id,
+            'code' => 'WH-AD-EMPTY',
+            'name' => 'AD Empty Warehouse',
+            'type' => 'warehouse',
+            'is_active' => true,
+            'is_default' => false,
+        ]);
+
+        $draft = $this->createDraft($this->counterUser, [
+            'scope_type' => CountingScopeType::ProductLocation,
+            'scope_filters' => [
+                'product_ids' => array_map(fn (Product $p) => $p->id, $this->products),
+                'location_id' => $emptyWarehouse->id,
+            ],
+        ]);
+
+        $response = $this->actingAs($this->counterUser)
+            ->postJson("/api/v1/inventory/countings/{$draft->id}/activate-draft");
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'BUSINESS_ERROR');
+        $this->assertStringContainsString(
+            'Nothing to count in this scope',
+            (string) $response->json('error.message'),
+        );
+
+        $fresh = $draft->fresh();
+        $this->assertNotNull($fresh);
+        $this->assertSame(CountingStatus::Draft, $fresh->status, 'The transaction must have rolled the status back.');
+        $this->assertNull($fresh->counting_number, 'The reserved counting number must have rolled back too.');
+        $this->assertSame(0, $draft->items()->count());
+        $this->assertSame(0, $draft->assignments()->count());
     }
 
     public function test_create_draft_rejects_product_location_scope_without_a_location(): void
@@ -400,24 +503,119 @@ class ActivateDraftCountingTest extends TestCase
         $this->assertSame($this->warehouse->id, $counting->scope_filters['location_id'] ?? null);
     }
 
-    public function test_batch_create_drafts_rejects_product_location_scope_without_a_location(): void
+    /**
+     * Gate r1 IMPORTANT-2 (RULED): per-ROW refusal, not a whole-batch 422.
+     *
+     * A single legacy/malformed offline draft must never block the other 49 from
+     * syncing — the client would retry the identical payload forever and the
+     * operator would see no per-draft explanation. This endpoint advertises an
+     * `errors[]` channel; the location check uses it.
+     */
+    public function test_batch_create_drafts_reports_a_missing_location_per_row_and_keeps_the_rest(): void
+    {
+        $response = $this->actingAs($this->adminUser)
+            ->postJson('/api/v1/inventory/countings/drafts/batch', [
+                'drafts' => [
+                    [
+                        'localId' => 'local-bad',
+                        'scopeType' => 'product_location',
+                        'scopeFilters' => [
+                            'product_ids' => [$this->products[0]->id],
+                        ],
+                    ],
+                    [
+                        'localId' => 'local-good',
+                        'scopeType' => 'product',
+                        'scopeFilters' => [
+                            'product_ids' => [$this->products[1]->id],
+                        ],
+                    ],
+                ],
+            ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('data.errors.0.localId', 'local-bad');
+        $response->assertJsonPath('data.errors.0.error', 'A location must be selected for this scope');
+        $response->assertJsonPath('data.success.0.localId', 'local-good');
+
+        $countings = InventoryCounting::query()->where('company_id', $this->company->id)->get();
+        $this->assertCount(1, $countings, 'Only the offending draft may be dropped.');
+        $this->assertSame(
+            CountingScopeType::Product,
+            $countings->first()?->scope_type,
+            'The healthy sibling draft must have persisted.',
+        );
+    }
+
+    /**
+     * Gate r1 IMPORTANT-1: the batch path accepted an unvalidated location id,
+     * so a stale/foreign/garbage uuid survived into an activation that generated
+     * ZERO items with no error anywhere.
+     */
+    public function test_batch_create_drafts_reports_a_foreign_location_per_row(): void
+    {
+        $otherCompany = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Other Company AD',
+            'legal_name' => 'Other Company AD LLC',
+            'tax_id' => 'TAXAD2',
+            'country_code' => 'TN',
+            'currency' => 'TND',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'status' => CompanyStatus::Active,
+        ]);
+        $foreignLocation = Location::create([
+            'company_id' => $otherCompany->id,
+            'code' => 'WH-OTHER',
+            'name' => 'Other Company Warehouse',
+            'type' => 'warehouse',
+            'is_active' => true,
+            'is_default' => true,
+        ]);
+
+        $response = $this->actingAs($this->adminUser)
+            ->postJson('/api/v1/inventory/countings/drafts/batch', [
+                'drafts' => [[
+                    'localId' => 'local-foreign',
+                    'scopeType' => 'product_location',
+                    'scopeFilters' => [
+                        'product_ids' => [$this->products[0]->id],
+                        'location_id' => $foreignLocation->id,
+                    ],
+                ]],
+            ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('data.errors.0.localId', 'local-foreign');
+        $response->assertJsonPath('data.errors.0.error', 'Location not found for the current company');
+        $this->assertSame(
+            0,
+            InventoryCounting::query()->where('company_id', $this->company->id)->count(),
+        );
+    }
+
+    /**
+     * Gate r1 IMPORTANT-5: an unknown scopeType reached the enum-cast attribute
+     * and threw a ValueError, which `catch (\Exception)` does not catch — an
+     * uncaught 500 that rolled back every already-persisted draft in the batch.
+     */
+    public function test_batch_create_drafts_rejects_an_unknown_scope_type(): void
     {
         $response = $this->actingAs($this->adminUser)
             ->postJson('/api/v1/inventory/countings/drafts/batch', [
                 'drafts' => [[
                     'localId' => 'local-1',
-                    'scopeType' => 'product_location',
-                    'scopeFilters' => [
-                        'product_ids' => [$this->products[0]->id],
-                    ],
+                    'scopeType' => 'productLocation',
+                    'scopeFilters' => ['product_ids' => [$this->products[0]->id]],
                 ]],
             ]);
 
-        $this->assertApiValidationErrors($response, ['drafts.0.scopeFilters.location_id']);
+        $this->assertApiValidationErrors($response, ['drafts.0.scopeType']);
         $this->assertSame(
             0,
             InventoryCounting::query()->where('company_id', $this->company->id)->count(),
-            'A refused batch must not have persisted a draft.',
+            'Nothing may be persisted for an unknown scope type.',
         );
     }
 
@@ -449,11 +647,12 @@ class ActivateDraftCountingTest extends TestCase
      * `Y-m-d H:i:s+00` string the writers store, while every neighbouring
      * timestamp on the same payload (`created_at`) is ISO-8601. The mobile
      * client parses one shape, so the odd one out is a silent contract break.
+     * Writes `now()` exactly as the seven production writers do.
      */
     public function test_my_drafts_emits_last_modified_at_as_iso_8601(): void
     {
         $draft = $this->createDraft($this->counterUser);
-        $draft->last_modified_at = now()->toDateTimeString();
+        $draft->last_modified_at = now();
         $draft->last_modified_by_user_id = $this->counterUser->id;
         $draft->save();
 

@@ -650,6 +650,18 @@ class InventoryCountingService
             // Generate counting items from scope
             $this->generateCountingItems($counting, $companyId);
 
+            // Gate r1 IMPORTANT-4: activation never asserted that the scope
+            // resolved to anything. A draft whose scope matches no stock row
+            // (a foreign/stale location, an emptied location, a zone with no
+            // placements) became a LIVE counting with zero items, assignments
+            // stamped total_items = 0 and a COUNTING_ACTIVATED event recording
+            // items_count: 0 — a count the operator cannot perform and cannot
+            // fix. We are inside DB::transaction, so the counting_number,
+            // items and status transition all roll back with this throw.
+            if ($counting->items()->count() === 0) {
+                throw new \DomainException('Nothing to count in this scope — no stock rows matched');
+            }
+
             // Create assignments
             $this->createAssignments($counting);
 
