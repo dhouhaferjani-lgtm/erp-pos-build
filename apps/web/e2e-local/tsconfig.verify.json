@@ -1,0 +1,5 @@
+{
+  "extends": "../e2e/tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "include": ["./*.ts", "../e2e/campaign/*.ts"]
+}
