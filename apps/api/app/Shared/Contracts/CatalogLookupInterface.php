@@ -9,6 +9,12 @@ use App\Shared\Exceptions\PlatformCatalogUnavailableException;
 
 interface CatalogLookupInterface
 {
+    public function normalizeBarcode(string $barcode): ?string;
+
+    public function lookup(string $barcode, ?string $vertical = null): CatalogLookupResultInterface;
+
+    public function isCircuitOpen(): bool;
+
     /**
      * Normalizing lookup (cache-first). Null on a genuine miss or permanent
      * error (invalid barcode, unsupported vertical).

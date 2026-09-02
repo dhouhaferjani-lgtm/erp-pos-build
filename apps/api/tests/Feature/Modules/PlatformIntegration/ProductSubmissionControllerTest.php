@@ -102,7 +102,7 @@ class ProductSubmissionControllerTest extends TestCase
     public function test_submit_accepts_null_brand(): void
     {
         $product = $this->makeProduct();
-        $this->fakeSubmitResponse('trk-null-brand');
+        $this->fakeSubmitResponse('20000000-0000-4000-8000-000000000001');
 
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/platform/submit-for-enrichment', [
@@ -119,7 +119,7 @@ class ProductSubmissionControllerTest extends TestCase
     public function test_submit_normalizes_barcode_before_platform_submit(): void
     {
         $product = $this->makeProduct();
-        $this->fakeSubmitResponse('trk-normalized-barcode');
+        $this->fakeSubmitResponse('20000000-0000-4000-8000-000000000002');
 
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/platform/submit-for-enrichment', [
@@ -157,7 +157,7 @@ class ProductSubmissionControllerTest extends TestCase
     {
         $product = $this->makeProduct();
         $photoIds = [(string) Str::uuid(), (string) Str::uuid()];
-        $this->fakeSubmitResponse('trk-photo-attributes');
+        $this->fakeSubmitResponse('20000000-0000-4000-8000-000000000003');
 
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/platform/submit-for-enrichment', [
@@ -196,6 +196,40 @@ class ProductSubmissionControllerTest extends TestCase
             ]);
 
         $response->assertStatus(422);
+        Http::assertNothingSent();
+    }
+
+    public function test_disabled_submission_returns_honest_422_without_platform_call(): void
+    {
+        $product = $this->makeProduct();
+        config(['services.platform.push_enabled' => false]);
+        Http::fake();
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/platform/submit-for-enrichment', [
+                'product_id' => $product->id,
+                'name' => 'Disabled Product',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'enrichment_submission_disabled');
+
+        Http::assertNothingSent();
+    }
+
+    public function test_disabled_photo_upload_url_returns_honest_422_without_platform_call(): void
+    {
+        config(['services.platform.push_enabled' => false]);
+        Http::fake();
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/platform/upload-url', [
+                'filename' => 'product.jpg',
+                'content_type' => 'image/jpeg',
+                'size_bytes' => 1024,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'enrichment_submission_disabled');
+
         Http::assertNothingSent();
     }
 

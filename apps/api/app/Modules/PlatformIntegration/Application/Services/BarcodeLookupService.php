@@ -99,6 +99,16 @@ final class BarcodeLookupService implements CatalogLookupInterface
         }
     }
 
+    public function normalizeBarcode(string $barcode): ?string
+    {
+        return $this->barcodeNormalizer->normalize($barcode);
+    }
+
+    public function isCircuitOpen(): bool
+    {
+        return $this->platformClient->isCircuitOpen();
+    }
+
     private function withLocalBrand(BarcodeLookupResultData $result): BarcodeLookupResultData
     {
         $product = $result->product;

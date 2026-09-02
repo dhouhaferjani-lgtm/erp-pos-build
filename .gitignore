@@ -38,6 +38,7 @@ coverage/
 .phpunit.result.cache
 **/playwright-report/
 **/test-results/
+apps/test-results-local/
 
 # Laravel specific
 storage/*.key

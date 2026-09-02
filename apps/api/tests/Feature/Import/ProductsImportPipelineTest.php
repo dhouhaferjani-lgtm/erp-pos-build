@@ -15,6 +15,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Application\Jobs\EnrichImportedProductsJob;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Domain\ImportRow;
@@ -36,6 +37,8 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Spatie\Permission\PermissionRegistrar;
@@ -212,6 +215,33 @@ final class ProductsImportPipelineTest extends TestCase
         $this->assertSame(1, StockMovement::where('product_id', $duplicate->id)->where('movement_type', MovementType::Opening)->count());
     }
 
+    public function test_sync_product_import_dispatches_enrichment_after_terminal_finalization(): void
+    {
+        Queue::fake();
+        $file = UploadedFile::fake()->createWithContent('products-enrichment.csv', implode("\n", [
+            'name,sku,type,barcode',
+            'Enrichment Product,ENRICH-SYNC,part,3017620422003',
+        ]));
+
+        $jobId = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/imports', [
+            'file' => $file,
+            'type' => 'products',
+            'options' => ['enrichment_enabled' => true],
+        ])->assertCreated()->json('data.id');
+        $this->assertIsString($jobId);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'completed');
+
+        Queue::assertPushedOn('enrichment', EnrichImportedProductsJob::class, function (EnrichImportedProductsJob $queued) use ($jobId): bool {
+            return $queued->importJobId === $jobId
+                && $queued->companyId === $this->company->id
+                && $queued->tenantId === $this->tenant->id;
+        });
+    }
+
     public function test_override_reimport_recomputes_sale_price_from_ht_without_erasing_blank_purchase_price(): void
     {
         $product = Product::factory()->create([
@@ -343,7 +373,7 @@ final class ProductsImportPipelineTest extends TestCase
             ->assertJsonPath('data.warning_summary.location_unresolved', 2);
     }
 
-    public function test_import_list_and_processing_show_omit_warning_summary_while_terminal_show_counts_valid_codes_per_row(): void
+    public function test_import_list_never_hydrates_rows_while_terminal_show_counts_valid_codes_per_row(): void
     {
         $file = UploadedFile::fake()->createWithContent('products-warning-summary.csv', implode("\n", [
             'name,sku,type',
@@ -381,13 +411,43 @@ final class ProductsImportPipelineTest extends TestCase
             ->assertJsonPath('data.warning_rows', 1)
             ->assertJsonPath('data.warning_summary', null);
 
-        ImportJob::query()->findOrFail($jobId)->update(['status' => ImportStatus::Completed]);
+        ImportJob::query()->findOrFail($jobId)->update([
+            'status' => ImportStatus::Completed,
+            'enrichment_summary' => [
+                'enriched' => 2,
+                'enrichment_not_found' => 1,
+                'enrichment_barcode_missing' => 3,
+            ],
+        ]);
 
         $this->actingAs($this->user, 'sanctum')
             ->getJson("/api/v1/imports/{$jobId}")
             ->assertOk()
             ->assertJsonPath('data.warning_rows', 1)
-            ->assertJsonPath('data.warning_summary', ['price_conflict' => 1]);
+            ->assertJsonPath('data.warning_summary', [
+                'enriched' => 2,
+                'enrichment_barcode_missing' => 3,
+                'enrichment_not_found' => 1,
+                'price_conflict' => 1,
+            ]);
+
+        $hydratedImportRows = 0;
+        $retrievedEvent = 'eloquent.retrieved: '.ImportRow::class;
+        Event::listen($retrievedEvent, static function () use (&$hydratedImportRows): void {
+            $hydratedImportRows++;
+        });
+
+        $listResponse = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/imports')
+            ->assertOk()
+            ->assertJsonPath('data.0.warning_rows', 1)
+            ->assertJsonPath('data.0.warning_summary.enriched', 2)
+            ->assertJsonPath('data.0.warning_summary.enrichment_barcode_missing', 3)
+            ->assertJsonPath('data.0.warning_summary.enrichment_not_found', 1)
+            ->assertJsonMissingPath('data.0.warning_summary.price_conflict');
+
+        Event::forget($retrievedEvent);
+        $this->assertSame(0, $hydratedImportRows, $listResponse->getContent());
     }
 
     public function test_products_import_uses_job_location_option_when_rows_have_no_location_code(): void

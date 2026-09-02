@@ -15,6 +15,7 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\CatalogLookupInterface;
+use App\Shared\Contracts\CatalogLookupResultInterface;
 use App\Shared\DTOs\CatalogProductDTO;
 use App\Shared\Enums\EnrichmentStatus;
 use App\Shared\Exceptions\PlatformCatalogUnavailableException;
@@ -27,6 +28,10 @@ use Tests\TestCase;
 final class ApplyCatalogEnrichmentJobTest extends TestCase
 {
     use RefreshDatabase;
+
+    private const PLATFORM_PRODUCT_ID = '11111111-1111-4111-8111-111111111111';
+
+    private const OTHER_PLATFORM_PRODUCT_ID = '22222222-2222-4222-8222-222222222222';
 
     private Tenant $tenant;
 
@@ -61,25 +66,25 @@ final class ApplyCatalogEnrichmentJobTest extends TestCase
 
     public function test_handle_applies_matching_catalog_hit(): void
     {
-        $product = $this->makeProduct('platform-product-001');
-        $this->bindLookup($this->makeCatalogProduct('platform-product-001'));
+        $product = $this->makeProduct(self::PLATFORM_PRODUCT_ID);
+        $this->bindLookup($this->makeCatalogProduct(self::PLATFORM_PRODUCT_ID));
 
-        $this->runJob($product, 'platform-product-001');
+        $this->runJob($product, self::PLATFORM_PRODUCT_ID);
 
         $product->refresh();
         $this->assertSame(EnrichmentStatus::Completed, $product->enrichment_status);
         // The apply never overwrites the user's own name (form edits win).
         $this->assertSame('Local Product', $product->name);
-        $this->assertSame('platform-product-001', $product->platform_product_id);
+        $this->assertSame(self::PLATFORM_PRODUCT_ID, $product->platform_product_id);
         $this->assertSame(1, EnrichmentResult::query()->where('product_id', $product->id)->count());
     }
 
     public function test_handle_clears_backlink_when_lookup_misses(): void
     {
-        $product = $this->makeProduct('platform-product-001');
+        $product = $this->makeProduct(self::PLATFORM_PRODUCT_ID);
         $this->bindLookup(null);
 
-        $this->runJob($product, 'platform-product-001');
+        $this->runJob($product, self::PLATFORM_PRODUCT_ID);
 
         $product->refresh();
         $this->assertNull($product->platform_product_id);
@@ -89,10 +94,10 @@ final class ApplyCatalogEnrichmentJobTest extends TestCase
 
     public function test_handle_clears_backlink_when_lookup_returns_different_platform_product(): void
     {
-        $product = $this->makeProduct('platform-product-001');
-        $this->bindLookup($this->makeCatalogProduct('platform-product-999'));
+        $product = $this->makeProduct(self::PLATFORM_PRODUCT_ID);
+        $this->bindLookup($this->makeCatalogProduct(self::OTHER_PLATFORM_PRODUCT_ID));
 
-        $this->runJob($product, 'platform-product-001');
+        $this->runJob($product, self::PLATFORM_PRODUCT_ID);
 
         $product->refresh();
         $this->assertNull($product->platform_product_id);
@@ -102,11 +107,11 @@ final class ApplyCatalogEnrichmentJobTest extends TestCase
 
     public function test_handle_preserves_backlink_when_platform_unavailable(): void
     {
-        $product = $this->makeProduct('platform-product-001');
+        $product = $this->makeProduct(self::PLATFORM_PRODUCT_ID);
         $this->app->instance(CatalogLookupInterface::class, new ThrowingCatalogLookup);
 
         try {
-            $this->runJob($product, 'platform-product-001');
+            $this->runJob($product, self::PLATFORM_PRODUCT_ID);
             $this->fail('Expected PlatformCatalogUnavailableException to bubble for queue retry.');
         } catch (PlatformCatalogUnavailableException) {
             // rethrown so the queue's retry/backoff owns the transient outage
@@ -115,7 +120,7 @@ final class ApplyCatalogEnrichmentJobTest extends TestCase
         $product->refresh();
         // A transient platform outage must NOT be treated as not_found:
         // the verified backlink survives and no enrichment state is touched.
-        $this->assertSame('platform-product-001', $product->platform_product_id);
+        $this->assertSame(self::PLATFORM_PRODUCT_ID, $product->platform_product_id);
         $this->assertSame(0, EnrichmentResult::query()->where('product_id', $product->id)->count());
     }
 
@@ -135,7 +140,7 @@ final class ApplyCatalogEnrichmentJobTest extends TestCase
             'platform.test/api/v1/products/lookup' => Http::response([
                 'status' => 'found',
                 'product' => [
-                    'id' => 'platform-product-001',
+                    'id' => self::PLATFORM_PRODUCT_ID,
                     'barcode' => '3017620422003',
                     'name' => 'Catalog Cream',
                     'brand' => 'La Roche-Posay',
@@ -149,22 +154,41 @@ final class ApplyCatalogEnrichmentJobTest extends TestCase
             ], 200),
         ]);
 
-        $product = $this->makeProduct('platform-product-001');
+        $product = $this->makeProduct(self::PLATFORM_PRODUCT_ID);
 
         app(CompanyContext::class)->clear();
 
         ApplyCatalogEnrichmentJob::dispatch(
             productId: $product->id,
-            expectedPlatformProductId: 'platform-product-001',
+            expectedPlatformProductId: self::PLATFORM_PRODUCT_ID,
             barcode: '3017620422003',
             vertical: 'parapharmacy',
+            tenantId: $this->tenant->id,
         );
 
         $product->refresh();
         $this->assertSame(EnrichmentStatus::Completed, $product->enrichment_status);
-        $this->assertSame('platform-product-001', $product->platform_product_id);
+        $this->assertSame(self::PLATFORM_PRODUCT_ID, $product->platform_product_id);
         $this->assertSame(1, EnrichmentResult::query()->where('product_id', $product->id)->count());
         // The job must not leak its bound context into subsequent jobs on the worker.
+        $this->assertNull(app(CompanyContext::class)->getCompanyId());
+    }
+
+    public function test_pre_deploy_payload_without_tenant_id_derives_it_from_the_product(): void
+    {
+        $product = $this->makeProduct(self::PLATFORM_PRODUCT_ID);
+        $this->bindLookup($this->makeCatalogProduct(self::PLATFORM_PRODUCT_ID));
+
+        $job = new ApplyCatalogEnrichmentJob(
+            productId: $product->id,
+            expectedPlatformProductId: self::PLATFORM_PRODUCT_ID,
+            barcode: '3017620422003',
+            vertical: 'parapharmacy',
+        );
+        $this->app->call([$job, 'handle']);
+
+        $this->assertSame($this->tenant->id, $job->tenantId);
+        $this->assertSame(EnrichmentStatus::Completed, $product->refresh()->enrichment_status);
         $this->assertNull(app(CompanyContext::class)->getCompanyId());
     }
 
@@ -207,6 +231,7 @@ final class ApplyCatalogEnrichmentJobTest extends TestCase
             expectedPlatformProductId: $expectedPlatformProductId,
             barcode: '3017620422003',
             vertical: 'parapharmacy',
+            tenantId: $this->tenant->id,
         );
 
         $this->app->call([$job, 'handle']);
@@ -219,6 +244,21 @@ final readonly class FakeCatalogLookup implements CatalogLookupInterface
         private ?CatalogProductDTO $catalog,
     ) {}
 
+    public function normalizeBarcode(string $barcode): ?string
+    {
+        return $barcode;
+    }
+
+    public function lookup(string $barcode, ?string $vertical = null): CatalogLookupResultInterface
+    {
+        throw new \LogicException('ApplyCatalogEnrichmentJob uses lookupCatalogProduct().');
+    }
+
+    public function isCircuitOpen(): bool
+    {
+        return false;
+    }
+
     public function lookupCatalogProduct(string $barcode, string $vertical): ?CatalogProductDTO
     {
         return $this->catalog;
@@ -227,6 +267,21 @@ final readonly class FakeCatalogLookup implements CatalogLookupInterface
 
 final readonly class ThrowingCatalogLookup implements CatalogLookupInterface
 {
+    public function normalizeBarcode(string $barcode): ?string
+    {
+        return $barcode;
+    }
+
+    public function lookup(string $barcode, ?string $vertical = null): CatalogLookupResultInterface
+    {
+        throw new \LogicException('ApplyCatalogEnrichmentJob uses lookupCatalogProduct().');
+    }
+
+    public function isCircuitOpen(): bool
+    {
+        return false;
+    }
+
     public function lookupCatalogProduct(string $barcode, string $vertical): ?CatalogProductDTO
     {
         throw new PlatformCatalogUnavailableException('platform_error');

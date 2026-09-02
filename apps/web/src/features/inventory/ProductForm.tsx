@@ -592,19 +592,21 @@ export function ProductForm() {
         if (Object.keys(attributes).length > 0) {
           payload.attributes = attributes
         }
-        submissionMutation.mutate(payload, {
-          onError: (error: unknown) => {
-            if (!isApiError(error)) {
-              return
-            }
-
+        try {
+          await submissionMutation.mutateAsync(payload)
+          toast.success(t('inventory:barcodeLookup.toastSavedWithEnrichment'))
+        } catch (error: unknown) {
+          if (!isApiError(error)) {
+            toast.error(t('inventory:barcodeLookup.toastEnrichmentFailed'))
+          } else {
             const code = error.response?.data.error.code
             if (code === 'invalid_barcode') {
               toast.error(t('inventory:barcodeLookup.invalidBarcode'))
-              return
-            }
-
-            if (code === 'enrichment_tracking_conflict') {
+            } else if (code === 'enrichment_submission_disabled') {
+              toast.error(t('inventory:barcodeLookup.submissionDisabled'))
+            } else if (code === 'platform_unavailable') {
+              toast.error(t('inventory:barcodeLookup.platformUnavailable'))
+            } else if (code === 'enrichment_tracking_conflict') {
               const details = error.response?.data.error.details ?? {}
               const holderName = typeof details['holder_product_name'] === 'string'
                 ? details['holder_product_name']
@@ -617,14 +619,15 @@ export function ProductForm() {
                 ? {
                     action: {
                       label: t('actions.view'),
-                      onClick: () => navigate(`/inventory/products/${holderId}`),
+                      onClick: () => { void navigate(`/inventory/products/${holderId}`) },
                     },
                   }
                 : undefined)
+            } else {
+              toast.error(t('inventory:barcodeLookup.toastEnrichmentFailed'))
             }
-          },
-        })
-        toast.success(t('inventory:barcodeLookup.toastSavedWithEnrichment'))
+          }
+        }
       } else if (lookupState === 'found') {
         toast.success(t('inventory:barcodeLookup.toastSavedWithCatalog'))
       } else {

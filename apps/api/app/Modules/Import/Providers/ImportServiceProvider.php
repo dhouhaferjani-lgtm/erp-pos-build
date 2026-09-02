@@ -96,16 +96,18 @@ class ImportServiceProvider extends ServiceProvider
                 // Import routes
                 Route::get('/imports', [ImportController::class, 'index']);
                 Route::post('/imports', [ImportController::class, 'store']);
-                Route::get('/imports/{id}', [ImportController::class, 'show']);
-                Route::delete('/imports/{id}', [ImportController::class, 'destroy']);
-                Route::patch('/imports/{id}/options', [ImportController::class, 'updateOptions']);
-                Route::get('/imports/{id}/preview', [ImportController::class, 'preview']);
-                Route::get('/imports/{id}/errors', [ImportController::class, 'errors']);
-                Route::get('/imports/{id}/error-summary', [ImportController::class, 'errorSummary']);
-                Route::post('/imports/{id}/execute', [ImportController::class, 'execute']);
-                Route::get('/imports/{id}/failed-rows.csv', [ImportController::class, 'downloadFailedRows']);
-                Route::get('/imports/{id}/source-file', [ImportController::class, 'downloadSourceFile']);
-                Route::get('/imports/{id}/result-workbook', [ImportController::class, 'downloadResultWorkbook']);
+                Route::whereUuid('id')->group(function (): void {
+                    Route::get('/imports/{id}', [ImportController::class, 'show']);
+                    Route::delete('/imports/{id}', [ImportController::class, 'destroy']);
+                    Route::patch('/imports/{id}/options', [ImportController::class, 'updateOptions']);
+                    Route::get('/imports/{id}/preview', [ImportController::class, 'preview']);
+                    Route::get('/imports/{id}/errors', [ImportController::class, 'errors']);
+                    Route::get('/imports/{id}/error-summary', [ImportController::class, 'errorSummary']);
+                    Route::post('/imports/{id}/execute', [ImportController::class, 'execute']);
+                    Route::get('/imports/{id}/failed-rows.csv', [ImportController::class, 'downloadFailedRows']);
+                    Route::get('/imports/{id}/source-file', [ImportController::class, 'downloadSourceFile']);
+                    Route::get('/imports/{id}/result-workbook', [ImportController::class, 'downloadResultWorkbook']);
+                });
 
                 // Migration wizard routes
                 Route::get('/migration-wizard/order', [MigrationWizardController::class, 'order']);

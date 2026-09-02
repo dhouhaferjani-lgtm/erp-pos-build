@@ -14,7 +14,9 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Application\Jobs\EnrichImportedProductsJob;
 use App\Modules\Import\Application\Jobs\ProcessImportJob;
+use App\Modules\Import\Application\Services\ImportEnrichmentDispatcher;
 use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportRowOutcome;
 use App\Modules\Import\Domain\Enums\ImportStatus;
@@ -30,6 +32,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -142,6 +145,8 @@ class ProcessImportJobStatusTest extends TestCase
             ->handle(
                 $this->app->make(ImportService::class),
                 $this->app->make(UnitsProvisioningService::class),
+                null,
+                $this->app->make(ImportEnrichmentDispatcher::class),
             );
     }
 
@@ -231,6 +236,26 @@ class ProcessImportJobStatusTest extends TestCase
         $this->assertSame(1, $job->successful_rows);
         $this->assertSame(1, $job->skipped_rows);
         $this->assertSame(0, $job->failed_rows);
+    }
+
+    public function test_async_worker_dispatches_enrichment_after_it_wins_terminal_finalization(): void
+    {
+        Queue::fake();
+        $rows = [];
+        for ($index = 1; $index <= 100; $index++) {
+            $rows[] = $this->validProductRow(sprintf('ASYNC-ENRICH-%03d', $index));
+        }
+        $job = $this->seedJob($rows);
+        $job->update(['options' => ['enrichment_enabled' => true]]);
+
+        $this->runJob($job->refresh());
+
+        $this->assertSame(ImportStatus::Completed, $job->refresh()->status);
+        Queue::assertPushedOn('enrichment', EnrichImportedProductsJob::class, function (EnrichImportedProductsJob $queued) use ($job): bool {
+            return $queued->importJobId === $job->id
+                && $queued->companyId === $this->company->id
+                && $queued->tenantId === $this->tenant->id;
+        });
     }
 
     public function test_parties_job_posts_ar_opening_batch_after_async_row_loop(): void

@@ -44,17 +44,16 @@ interface RequireAuthProps {
  * AuthProvider checks for existing session on mount
  * and maintains auth state throughout the app.
  *
- * SECURITY: Authentication is handled via httpOnly cookies set by Laravel Sanctum.
- * We always check the session on mount - if a valid session cookie exists,
- * the /auth/me endpoint will return the user data.
+ * Authentication is bootstrapped only when the persisted auth store contains
+ * a bearer token. Public routes must not probe /auth/me without credentials.
  *
  * GUARD: clearAllAppState is only called when a previously authenticated session
- * becomes invalid (wasAuthenticated ref). An initial 401 on page load (before
- * login/registration) will NOT clear app state, preventing a race condition
- * that could wipe tokens set during registration.
+ * becomes invalid (wasAuthenticated ref). A cold-load 401 clears only the stale
+ * auth session, and an in-flight response cannot clear a newer token.
  */
 export function AuthProvider({ children }: AuthProviderProps) {
   const user = useAuthStore((state) => state.user)
+  const token = useAuthStore((state) => state.token)
   const setUser = useAuthStore((state) => state.setUser)
   const setLoading = useAuthStore((state) => state.setLoading)
   const queryClient = useQueryClient()
@@ -68,12 +67,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
     },
     retry: false,
     staleTime: 1000 * 60 * 5, // 5 minutes
-    // Always check session on mount - cookie-based auth doesn't require stored token
-    enabled: true,
+    enabled: token !== null,
   })
 
   useEffect(() => {
-    if (isLoading) {
+    if (token === null) {
+      if (wasAuthenticated.current) {
+        // api.ts owns the token-identity-guarded logout. This effect clears
+        // only the now-ended session's cached tenant state.
+        clearAllAppState(queryClient, { authAlreadyCleared: true })
+        wasAuthenticated.current = false
+      }
+      setLoading(false)
+    } else if (isLoading) {
       setLoading(true)
     } else if (data) {
       wasAuthenticated.current = true
@@ -90,14 +96,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
       setUser(userData)
     } else if (isError) {
-      if (wasAuthenticated.current) {
-        // Session was valid but is now expired — clear all app state
-        clearAllAppState(queryClient)
-        wasAuthenticated.current = false
-      }
       setLoading(false)
     }
-  }, [data, isLoading, isError, setUser, setLoading, queryClient])
+  }, [data, isLoading, isError, token, setUser, setLoading, queryClient])
 
   // Show loading only while checking session
   if (isLoading && !user) {
@@ -105,7 +106,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       <div className={`min-h-screen flex items-center justify-center ${colorTokens.surface.page}`}>
         <div className="flex flex-col items-center gap-4">
           <Loader2 className={`h-8 w-8 animate-spin ${colorTokens.intent.primary.text}`} />
-          <p className={`${colorTokens.text.subtle}`}>Loading...</p>
+          <p className={colorTokens.text.subtle}>Loading...</p>
         </div>
       </div>
     )
@@ -128,7 +129,7 @@ export function RequireAuth({ children }: RequireAuthProps) {
       <div className={`min-h-screen flex items-center justify-center ${colorTokens.surface.page}`}>
         <div className="flex flex-col items-center gap-4">
           <Loader2 className={`h-8 w-8 animate-spin ${colorTokens.intent.primary.text}`} />
-          <p className={`${colorTokens.text.subtle}`}>Loading...</p>
+          <p className={colorTokens.text.subtle}>Loading...</p>
         </div>
       </div>
     )

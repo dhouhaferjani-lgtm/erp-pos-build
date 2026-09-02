@@ -170,6 +170,7 @@
       "imported": "Importés avec succès",
       "skipped": "Ignorés",
       "failed": "Échec d'importation",
+      "enriched": "{{count}} produits enrichis depuis le catalogue de la plateforme",
       "warnings": "{{count}} lignes importées avec des avertissements",
       "backToDashboard": "Retour au tableau de bord",
       "importMore": "Importer plus de données",
@@ -201,6 +202,9 @@
       "autoCreate": "Créer automatiquement les nœuds manquants"
     },
     "placementDepth": "Type de nœud au niveau {{depth}}",
+    "enrichmentTitle": "Enrichir les produits importés",
+    "enrichmentLabel": "Rechercher les codes-barres importés dans le catalogue de la plateforme",
+    "enrichmentHelp": "Après l'import, jusqu'à 500 codes-barres distincts sont recherchés. La création des produits réussit même si le catalogue est indisponible.",
     "nodeTypes": {
       "zone": "Zone",
       "aisle": "Allée",
@@ -262,6 +266,12 @@
     "location_not_supplied": "{{count}} lignes n'indiquaient pas de site de stock.",
     "location_code_unknown": "{{count}} lignes indiquaient un code de site inconnu.",
     "opening_exists": "{{count}} lignes avaient déjà un stock d'ouverture ; aucun doublon n'a été comptabilisé.",
+    "enrichment_not_found": "Aucune correspondance n'a été trouvée dans le catalogue de la plateforme pour {{count}} lignes.",
+    "enrichment_unavailable": "L'enrichissement par la plateforme était indisponible pour {{count}} lignes ; l'import reste terminé.",
+    "enrichment_invalid_barcode": "{{count}} lignes avaient un code-barres impossible à normaliser pour la recherche plateforme.",
+    "enrichment_cap_exceeded": "{{count}} lignes dépassaient la limite d'enrichissement de 500 codes-barres distincts.",
+    "enrichment_vertical_not_supported": "L'enrichissement par la plateforme n'est pas pris en charge pour ce secteur d'activité.",
+    "enrichment_barcode_missing": "{{count}} lignes n'ont pas pu être enrichies car elles ne contenaient aucun code-barres.",
     "unknown": "{{count}} lignes contiennent un ancien avertissement non reconnu par cette version.",
     "other": "{{count}} lignes ont signalé l'avertissement {{code}}."
   },
@@ -327,6 +337,7 @@
     "description": "Consultez tous les travaux d'importation passés et leurs résultats",
     "filterByStatus": "Filtrer par statut",
     "all": "Tous",
+    "enriched": "{{count}} enrichis",
     "columns": {
       "type": "Type",
       "file": "Fichier",

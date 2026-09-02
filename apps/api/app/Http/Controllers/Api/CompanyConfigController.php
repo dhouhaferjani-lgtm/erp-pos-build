@@ -9,6 +9,7 @@ use App\Modules\Procurement\Application\PurchaseBonusGate;
 use App\Modules\SmartPrompts\Domain\Enums\SmartPromptsVariant;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Services\CompanyConfigService;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -23,6 +24,7 @@ class CompanyConfigController
     public function __construct(
         private readonly CompanyConfigService $configService,
         private readonly PurchaseBonusGate $purchaseBonusGate,
+        private readonly ConfigRepository $configuration,
     ) {}
 
     /**
@@ -68,6 +70,10 @@ class CompanyConfigController
         $currency = $company->currency ?? 'USD';
         $locale = $company->locale ?? 'en';
         $countryCode = $company->country_code ?? null;
+        $platformApiKey = $this->configuration->get('services.platform.api_key');
+        $platformImportEnrichmentAvailable = is_string($platformApiKey)
+            && trim($platformApiKey) !== ''
+            && $tenant->vertical->platformVertical() !== null;
 
         // Return configuration as array
         return response()->json([
@@ -78,6 +84,7 @@ class CompanyConfigController
                 'compatible_extras' => $config->compatibleExtras,
                 'all_enabled_modules' => $config->allEnabledModules,
                 'purchase_bonus_enabled' => $company !== null && $this->purchaseBonusGate->enabledFor($company),
+                'platform_import_enrichment_available' => $platformImportEnrichmentAvailable,
                 'currency' => $currency,
                 'locale' => $locale,
                 'country_code' => $countryCode,

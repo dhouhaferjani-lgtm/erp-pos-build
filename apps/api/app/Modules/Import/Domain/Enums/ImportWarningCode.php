@@ -31,4 +31,10 @@ enum ImportWarningCode: string
     case LocationCodeUnknown = 'location_code_unknown';
     case LocationUnresolved = 'location_unresolved';
     case OpeningExists = 'opening_exists';
+    case EnrichmentNotFound = 'enrichment_not_found';
+    case EnrichmentUnavailable = 'enrichment_unavailable';
+    case EnrichmentInvalidBarcode = 'enrichment_invalid_barcode';
+    case EnrichmentCapExceeded = 'enrichment_cap_exceeded';
+    case EnrichmentVerticalNotSupported = 'enrichment_vertical_not_supported';
+    case EnrichmentBarcodeMissing = 'enrichment_barcode_missing';
 }

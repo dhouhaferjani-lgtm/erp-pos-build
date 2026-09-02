@@ -111,6 +111,37 @@ final class EnrichmentImagePersisterTest extends TestCase
         self::assertSame(1, MediaAsset::query()->where('tenant_id', $tenantId)->count());
     }
 
+    public function test_source_reference_is_reused_within_tenant_but_isolated_across_tenants(): void
+    {
+        $tenantA = (string) Str::uuid();
+        $tenantB = (string) Str::uuid();
+        $productA = (string) Str::uuid();
+        $productB = (string) Str::uuid();
+        $productC = (string) Str::uuid();
+        $url = 'https://pharma-shop.tn/shared.png';
+        $images = [['url' => $url, 'thumbnail' => null, 'type' => null]];
+
+        $this->downloader->register($url, $this->png(4, 6));
+
+        $this->persister()->persist($productA, $tenantA, $images, null);
+        $this->persister()->persist($productB, $tenantA, $images, null);
+
+        self::assertSame(1, MediaAsset::query()->where('tenant_id', $tenantA)->count());
+        self::assertSame(2, MediaAttachment::query()->where('tenant_id', $tenantA)->count());
+        self::assertSame(2, MediaAttachment::query()->where('tenant_id', $tenantA)->where('role', MediaRole::Primary->value)->count());
+
+        $this->persister()->persist($productA, $tenantA, $images, null);
+
+        self::assertSame(1, MediaAsset::query()->where('tenant_id', $tenantA)->count());
+        self::assertSame(2, MediaAttachment::query()->where('tenant_id', $tenantA)->count());
+
+        $this->persister()->persist($productC, $tenantB, $images, null);
+
+        self::assertSame(2, MediaAsset::query()->count());
+        self::assertSame(3, MediaAttachment::query()->count());
+        self::assertSame(1, MediaAsset::query()->where('tenant_id', $tenantB)->count());
+    }
+
     public function test_one_bad_url_does_not_abort_the_rest(): void
     {
         $tenantId = (string) Str::uuid();

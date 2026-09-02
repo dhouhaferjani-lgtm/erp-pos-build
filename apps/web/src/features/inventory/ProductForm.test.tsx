@@ -31,7 +31,7 @@ vi.mock('react-router-dom', () => ({
 }))
 
 // Shared mutateAsync handle so tests can configure per-test resolution.
-const { mockMutateAsync, mockApiPost, mockApiPatch, mockSubmitForEnrichment, mockUploadEnrichmentPhoto } = vi.hoisted(() => {
+const { mockMutateAsync, mockApiPost, mockApiPatch, mockSubmitForEnrichment, mockToastError, mockToastSuccess, mockUploadEnrichmentPhoto } = vi.hoisted(() => {
   const mutateAsync = vi.fn()
 
   return {
@@ -39,14 +39,28 @@ const { mockMutateAsync, mockApiPost, mockApiPatch, mockSubmitForEnrichment, moc
     mockApiPost: vi.fn((_: string, payload: unknown) => mutateAsync(payload)),
     mockApiPatch: vi.fn((_: string, payload: unknown) => mutateAsync(payload)),
     mockSubmitForEnrichment: vi.fn(),
+    mockToastError: vi.fn(),
+    mockToastSuccess: vi.fn(),
     mockUploadEnrichmentPhoto: vi.fn(),
   }
 })
+
+vi.mock('sonner', () => ({
+  toast: {
+    error: mockToastError,
+    success: mockToastSuccess,
+  },
+}))
 
 vi.mock('../../lib/api', () => ({
   api: {},
   apiPost: mockApiPost,
   apiPatch: mockApiPatch,
+  isApiError: (error: unknown) => (
+    typeof error === 'object'
+    && error !== null
+    && 'response' in error
+  ),
 }))
 
 // decouple from network
@@ -106,7 +120,7 @@ vi.mock('../../hooks/useCurrency', () => ({
   getDecimals: () => 2,
 }))
 vi.mock('./api/platformQueries', () => ({
-  useProductSubmission: () => ({ mutate: mockSubmitForEnrichment }),
+  useProductSubmission: () => ({ mutateAsync: mockSubmitForEnrichment }),
   useEnrichmentRefresh: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 vi.mock('./api/enrichmentPhotos', () => ({
@@ -182,6 +196,8 @@ beforeEach(() => {
   mockApiPost.mockClear()
   mockApiPatch.mockClear()
   mockSubmitForEnrichment.mockClear()
+  mockToastError.mockClear()
+  mockToastSuccess.mockClear()
   mockUploadEnrichmentPhoto.mockReset()
   vi.mocked(useCatalogBarcodeLookup).mockImplementation(() => ({ isSearching: false }))
 })
@@ -486,7 +502,6 @@ describe('ProductForm (canonical layout)', () => {
           brand: 'BrandX',
           photo_ids: ['ph_1'],
         }),
-        expect.objectContaining({ onError: expect.any(Function) }),
       )
     })
   })
@@ -508,9 +523,34 @@ describe('ProductForm (canonical layout)', () => {
           brand: null,
           photo_ids: [],
         }),
-        expect.objectContaining({ onError: expect.any(Function) }),
       )
     })
+  })
+
+  it.each([
+    ['enrichment_submission_disabled', 'inventory:barcodeLookup.submissionDisabled'],
+    ['platform_unavailable', 'inventory:barcodeLookup.platformUnavailable'],
+  ])('does not show enrichment success when submission fails with %s', async (code, messageKey) => {
+    mockNotFoundLookup()
+    mockMutateAsync.mockResolvedValueOnce({ id: 'prod-submit-failure' })
+    mockSubmitForEnrichment.mockRejectedValueOnce({
+      isAxiosError: true,
+      response: {
+        data: {
+          error: { code, message: code },
+          meta: { timestamp: '2026-09-01T00:00:00Z', request_id: 'request-1' },
+        },
+      },
+    })
+
+    render(<ProductForm />)
+
+    fireEvent.change(screen.getByLabelText('inventory:products.name', { exact: false }), { target: { value: 'Manual Product' } })
+    fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-FAIL' } })
+    fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
+
+    await waitFor(() => { expect(mockToastError).toHaveBeenCalledWith(messageKey) })
+    expect(mockToastSuccess).not.toHaveBeenCalledWith('inventory:barcodeLookup.toastSavedWithEnrichment')
   })
 
   it('does not render the capture panel in idle or found lookup states', async () => {

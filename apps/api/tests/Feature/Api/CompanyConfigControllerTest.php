@@ -162,6 +162,27 @@ class CompanyConfigControllerTest extends TestCase
         $this->assertNotContains('Vehicle', $data['all_enabled_modules']);
     }
 
+    public function test_platform_import_enrichment_capability_requires_key_and_supported_vertical(): void
+    {
+        Sanctum::actingAs($this->mechanicUser);
+        config(['services.platform.api_key' => 'platform-key']);
+
+        $this->getJson('/api/v1/company/config')
+            ->assertOk()
+            ->assertJsonPath('data.platform_import_enrichment_available', true);
+
+        config(['services.platform.api_key' => '   ']);
+        $this->getJson('/api/v1/company/config')
+            ->assertOk()
+            ->assertJsonPath('data.platform_import_enrichment_available', false);
+
+        config(['services.platform.api_key' => 'platform-key']);
+        $this->mechanicTenant->update(['vertical' => 'retail']);
+        $this->getJson('/api/v1/company/config')
+            ->assertOk()
+            ->assertJsonPath('data.platform_import_enrichment_available', false);
+    }
+
     public function test_includes_enabled_extras_in_config(): void
     {
         // Update mechanic tenant to have Fleet extra enabled

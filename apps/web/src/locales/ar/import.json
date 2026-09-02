@@ -18,6 +18,7 @@
     "complete": {
       "noChanges": "لم يتم تغيير أي سجلات.",
       "skipped": "تم التخطي",
+      "enriched": "تم إثراء {{count}} منتجات من كتالوج المنصة",
       "warnings": "اكتملت {{count}} صفوف مع تحذيرات"
     }
   },
@@ -37,6 +38,9 @@
       "autoCreate": "إنشاء العقد الناقصة تلقائيًا"
     },
     "placementDepth": "نوع العقدة في المستوى {{depth}}",
+    "enrichmentTitle": "إثراء المنتجات المستوردة",
+    "enrichmentLabel": "البحث عن الرموز الشريطية المستوردة في كتالوج المنصة",
+    "enrichmentHelp": "بعد اكتمال الاستيراد، يُبحث عن ما يصل إلى 500 رمز شريطي مختلف. يظل إنشاء المنتجات ناجحًا عند تعذر الوصول إلى الكتالوج.",
     "nodeTypes": {
       "zone": "منطقة",
       "aisle": "ممر",
@@ -83,8 +87,17 @@
     "location_not_supplied": "لم تحدد {{count}} صفوف موقع المخزون.",
     "location_code_unknown": "تضمنت {{count}} صفوف رمز موقع غير معروف.",
     "opening_exists": "كان لدى {{count}} صفوف مخزون افتتاحي موجود؛ لم يُنشأ قيد ثانٍ.",
+    "enrichment_not_found": "لم يُعثر على تطابق في كتالوج المنصة لـ {{count}} صفوف.",
+    "enrichment_unavailable": "تعذر إثراء {{count}} صفوف عبر المنصة، لكن الاستيراد نفسه اكتمل.",
+    "enrichment_invalid_barcode": "تضمنت {{count}} صفوف رمزًا شريطيًا تعذر توحيده للبحث في المنصة.",
+    "enrichment_cap_exceeded": "تجاوزت {{count}} صفوف حد الإثراء البالغ 500 رمز شريطي مختلف.",
+    "enrichment_vertical_not_supported": "إثراء المنصة غير مدعوم لقطاع النشاط هذا.",
+    "enrichment_barcode_missing": "تعذر إثراء {{count}} صفوف لأنها لا تحتوي على قيمة رمز شريطي.",
     "unknown": "تحتوي {{count}} صفوف على تحذير قديم غير معروف في هذا الإصدار.",
     "other": "أبلغت {{count}} صفوف عن التحذير {{code}}."
+  },
+  "history": {
+    "enriched": "تم إثراء {{count}}"
   },
   "duplicates": {
     "title": "مراجعة التكرارات",

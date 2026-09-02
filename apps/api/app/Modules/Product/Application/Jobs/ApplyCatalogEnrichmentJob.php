@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Product\Application\Jobs;
 
+use App\Jobs\Concerns\BindsTenantContext;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Product\Application\Services\CatalogEnrichmentService;
 use App\Modules\Product\Domain\Product;
@@ -20,6 +21,7 @@ use Illuminate\Support\Facades\Log;
  */
 final class ApplyCatalogEnrichmentJob implements ShouldQueue
 {
+    use BindsTenantContext;
     use Dispatchable;
     use InteractsWithQueue;
     use Queueable;
@@ -34,56 +36,79 @@ final class ApplyCatalogEnrichmentJob implements ShouldQueue
     /** @var array<int, int> */
     public array $backoff = [60, 300];
 
+    /**
+     * Nullable for payloads serialized before this tenant anchor was added.
+     * QueueTenancyBootstrapper has already selected their tenant database, so
+     * handle() can recover the anchor from the queued product.
+     */
+    public ?string $tenantId = null;
+
     public function __construct(
         public readonly string $productId,
         public readonly string $expectedPlatformProductId,
         public readonly string $barcode,
         public readonly string $vertical,
-    ) {}
+        ?string $tenantId = null,
+    ) {
+        $this->tenantId = $tenantId;
+    }
 
     public function handle(CompanyContext $companyContext, CatalogLookupInterface $lookup, CatalogEnrichmentService $enricher): void
     {
-        $product = Product::query()->find($this->productId);
-
-        if ($product === null) {
-            return;
-        }
-
-        // Queue workers bind no CompanyContext, but the lookup's outbound
-        // platform call requires one (PlatformHttpClient::tenantHeaders()).
-        // Bind it from the product being enriched and clear it so nothing
-        // leaks into the next job on this worker.
-        $companyContext->setCompanyId($product->company_id);
-
-        try {
-            $catalog = $lookup->lookupCatalogProduct($this->barcode, $this->vertical);
-
-            if ($catalog === null) {
-                $product->update(['platform_product_id' => null]);
-
-                Log::info('Cleared platform backlink: catalog lookup returned a genuine miss', [
-                    'product_id' => $this->productId,
-                    'expected_platform_product_id' => $this->expectedPlatformProductId,
-                ]);
-
+        if ($this->tenantId === null) {
+            $tenantId = Product::query()->whereKey($this->productId)->value('tenant_id');
+            if (! is_string($tenantId)) {
                 return;
             }
 
-            if ($catalog->platformProductId !== $this->expectedPlatformProductId) {
-                $product->update(['platform_product_id' => null]);
+            $this->tenantId = $tenantId;
+        }
 
-                Log::warning('Skipping catalog enrichment apply due to platform product mismatch', [
-                    'product_id' => $this->productId,
-                    'expected_platform_product_id' => $this->expectedPlatformProductId,
-                    'actual_platform_product_id' => $catalog->platformProductId,
-                ]);
+        $this->withTenantContext(function () use ($companyContext, $lookup, $enricher): void {
+            $product = Product::query()
+                ->where('tenant_id', $this->tenantId)
+                ->find($this->productId);
 
+            if ($product === null) {
                 return;
             }
 
-            $enricher->applyCatalogHit($product, $catalog);
-        } finally {
-            $companyContext->clear();
-        }
+            // Queue workers bind no CompanyContext, but the lookup's outbound
+            // platform call requires one (PlatformHttpClient::tenantHeaders()).
+            // Bind it from the product being enriched and clear it so nothing
+            // leaks into the next job on this worker.
+            $companyContext->setCompanyId($product->company_id);
+
+            try {
+                $catalog = $lookup->lookupCatalogProduct($this->barcode, $this->vertical);
+
+                if ($catalog === null) {
+                    $product->update(['platform_product_id' => null]);
+
+                    Log::info('Cleared platform backlink: catalog lookup returned a genuine miss', [
+                        'product_id' => $this->productId,
+                        'expected_platform_product_id' => $this->expectedPlatformProductId,
+                    ]);
+
+                    return;
+                }
+
+                if ($catalog->platformProductId !== $this->expectedPlatformProductId) {
+                    $product->update(['platform_product_id' => null]);
+
+                    Log::warning('Skipping catalog enrichment apply due to platform product mismatch', [
+                        'product_id' => $this->productId,
+                        'expected_platform_product_id' => $this->expectedPlatformProductId,
+                        'actual_platform_product_id' => $catalog->platformProductId,
+                    ]);
+
+                    return;
+                }
+
+                $enricher->applyCatalogHit($product, $catalog);
+            } finally {
+                $companyContext->clear();
+            }
+        });
     }
 }
