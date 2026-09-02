@@ -1057,7 +1057,7 @@ export type ImportErrorCode = 'units_not_seeded' | 'unit_unknown' | 'unit_ambigu
 export type ImportRowOutcome = 'pending' | 'imported' | 'duplicate_skipped' | 'duplicate_loser' | 'failed' | 'opening_locked';
 export type ImportStatus = 'pending' | 'validating' | 'validated' | 'importing' | 'completed' | 'failed';
 export type ImportType = 'parties' | 'partners' | 'products' | 'stock_levels' | 'opening_balances' | 'product_images' | 'composite_items';
-export type ImportWarningCode = 'price_conflict' | 'margin_without_cost' | 'balance_not_posted' | 'opening_failed' | 'quantity_ignored_service' | 'qty_without_cost' | 'expiry_in_past' | 'expiry_conflict_existing_lot' | 'expiry_ignored_not_batch_tracked' | 'expiry_ignored_no_default_lot' | 'category_matched_by_slug' | 'category_created' | 'category_restored' | 'sku_generated' | 'code_generated' | 'matched_by_name' | 'duplicate_in_file' | 'preview_drift' | 'opening_skipped_existing' | 'opening_corrected' | 'unit_defaulted' | 'location_not_supplied' | 'location_code_unknown' | 'location_unresolved' | 'opening_exists';
+export type ImportWarningCode = 'price_conflict' | 'margin_without_cost' | 'balance_not_posted' | 'opening_failed' | 'quantity_ignored_service' | 'qty_without_cost' | 'expiry_in_past' | 'expiry_conflict_existing_lot' | 'expiry_ignored_not_batch_tracked' | 'expiry_ignored_no_default_lot' | 'category_matched_by_slug' | 'category_created' | 'category_restored' | 'sku_generated' | 'code_generated' | 'matched_by_name' | 'duplicate_in_file' | 'preview_drift' | 'opening_skipped_existing' | 'opening_corrected' | 'unit_defaulted' | 'location_not_supplied' | 'location_code_unknown' | 'location_unresolved' | 'opening_exists' | 'enrichment_not_found' | 'enrichment_unavailable' | 'enrichment_invalid_barcode' | 'enrichment_cap_exceeded' | 'enrichment_vertical_not_supported' | 'enrichment_barcode_missing';
 }
 declare namespace App.Modules.Inventory.Application.DTOs {
 export type GoodsReceiptData = {
@@ -3170,6 +3170,7 @@ export type VarianceSeverity = 'info' | 'warning' | 'critical';
 }
 declare namespace App.Shared.Enums {
 export type BrandMappingPushResult = 'mapped' | 'conflict' | 'not_found' | 'failed';
+export type CatalogLookupOutcome = 'found' | 'not_found' | 'platform_unavailable' | 'platform_error' | 'invalid_barcode' | 'vertical_not_supported';
 export type CategoryResolutionOutcome = 'matched' | 'matched_by_slug' | 'created' | 'restored';
 export type EnrichmentFeedbackAction = 'confirmed' | 'rejected';
 export type EnrichmentFeedbackReason = 'wrong_product' | 'bad_data';

@@ -223,8 +223,8 @@ describe('Authentication', () => {
   })
 
   describe('AuthProvider', () => {
-    it('checks for existing session on mount', async () => {
-      // With cookie-based auth, session is always checked on mount
+    it('checks a stored session token on mount', async () => {
+      useAuthStore.setState({ token: 'persisted-token', isLoading: true })
       mockApiGet.mockResolvedValue({
         data: {
           data: {
@@ -249,15 +249,7 @@ describe('Authentication', () => {
       })
     })
 
-    // FLAGGED: AuthProvider uses a `wasAuthenticated` ref that is only
-    // toggled when a successful `/auth/me` response arrives during this
-    // mount. Pre-seeding the Zustand store via `setAuth` does not flip
-    // the ref, so an initial 401 is treated as "user never logged in"
-    // and clearAllAppState is intentionally skipped (see SECURITY
-    // comment in AuthProvider.tsx). A full session-expiry flow would
-    // need a successful mount first then a subsequent 401 — not
-    // something this test harness currently simulates.
-    it.skip('logs out when session is invalid', async () => {
+    it('logs out when a stored session token is invalid', async () => {
       useAuthStore.getState().setAuth({
         id: '123',
         name: 'Test User',
@@ -265,10 +257,12 @@ describe('Authentication', () => {
         tenant_id: 'tenant-1',
         roles: ['admin'],
         email_verified_at: null,
-      })
+      }, 'stale-token')
 
-      mockApiGet.mockRejectedValue({
-        response: { status: 401 },
+      mockApiGet.mockImplementation(async () => {
+        // Mirror the canonical API interceptor, which owns 401 logout.
+        useAuthStore.getState().logout()
+        throw { response: { status: 401 } }
       })
 
       renderWithProviders(

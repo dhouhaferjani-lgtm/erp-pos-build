@@ -26,6 +26,12 @@ export const WARNING_TRANSLATION_KEYS = {
   location_code_unknown: true,
   location_unresolved: true,
   opening_exists: true,
+  enrichment_not_found: true,
+  enrichment_unavailable: true,
+  enrichment_invalid_barcode: true,
+  enrichment_cap_exceeded: true,
+  enrichment_vertical_not_supported: true,
+  enrichment_barcode_missing: true,
 } as const satisfies Record<ImportWarningCode, true>
 
 export const KNOWN_WARNING_CODES: ReadonlySet<string> = new Set(Object.keys(WARNING_TRANSLATION_KEYS))

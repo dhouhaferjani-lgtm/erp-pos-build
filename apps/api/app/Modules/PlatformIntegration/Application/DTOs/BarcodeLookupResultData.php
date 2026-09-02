@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace App\Modules\PlatformIntegration\Application\DTOs;
 
 use App\Modules\PlatformIntegration\Domain\ValueObjects\PlatformProductData;
+use App\Shared\Contracts\CatalogLookupResultInterface;
+use App\Shared\Enums\CatalogLookupOutcome;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 #[TypeScript]
-class BarcodeLookupResultData extends Data
+class BarcodeLookupResultData extends Data implements CatalogLookupResultInterface
 {
     /**
      * @param  array<string, mixed>|null  $suggestedProduct
@@ -57,6 +59,25 @@ class BarcodeLookupResultData extends Data
             suggestedProduct: null,
             errorReason: $reason,
         );
+    }
+
+    public function outcome(): CatalogLookupOutcome
+    {
+        if ($this->status === 'found') {
+            return CatalogLookupOutcome::Found;
+        }
+
+        if ($this->status === 'not_found') {
+            return CatalogLookupOutcome::NotFound;
+        }
+
+        return CatalogLookupOutcome::tryFrom($this->errorReason ?? '')
+            ?? CatalogLookupOutcome::PlatformError;
+    }
+
+    public function platformProductId(): ?string
+    {
+        return $this->product?->id;
     }
 
     /**

@@ -12,6 +12,7 @@ use App\Shared\DTOs\SubmissionStatusDTO;
 use App\Shared\Enums\BrandMappingPushResult;
 use App\Shared\Enums\EnrichmentFeedbackAction;
 use App\Shared\Enums\EnrichmentFeedbackReason;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -20,7 +21,13 @@ final class ProductSubmissionService implements PlatformSubmissionInterface
 {
     public function __construct(
         private readonly PlatformHttpClient $platformClient,
+        private readonly ConfigRepository $configuration,
     ) {}
+
+    public function submissionEnabled(): bool
+    {
+        return $this->configuration->get('services.platform.push_enabled', true) !== false;
+    }
 
     /**
      * Request a pre-signed upload URL for a product photo.
@@ -288,7 +295,7 @@ final class ProductSubmissionService implements PlatformSubmissionInterface
 
     private function pushDisabled(string $method): bool
     {
-        if (config('services.platform.push_enabled', true) !== false) {
+        if ($this->submissionEnabled()) {
             return false;
         }
 

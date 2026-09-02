@@ -262,6 +262,12 @@ Row warnings you may see in the result workbook:
 | `expiry_in_past` | Accepted; the lot opens EXPIRED |
 | `expiry_conflict_existing_lot` | The product's `DEFAULT` lot already carried a **different** expiry. The existing date is kept — edit the lot directly to change it. There is one `DEFAULT` lot per product across **all** locations, so this is what a second row for the same SKU at another location meets. |
 | `expiry_ignored_not_batch_tracked` | The product is not batch-tracked, so its stock is not held in a lot and there is nothing to date. |
+| `enrichment_not_found` | The import completed, but the barcode had no platform catalogue match. |
+| `enrichment_unavailable` | The platform lookup was unavailable or returned an unusable platform identifier; the import completed without a backlink. |
+| `enrichment_invalid_barcode` | The barcode could not be normalized for catalogue lookup. |
+| `enrichment_cap_exceeded` | The row fell beyond the per-import budget of 500 distinct normalized barcode lookups. |
+| `enrichment_vertical_not_supported` | Job-level note: the tenant vertical has no platform catalogue mapping, so no row lookups ran. |
+| `enrichment_barcode_missing` | The imported product row had no barcode value, so no platform catalogue lookup could run. |
 
 Behaviour — `ProductOpeningStockPhase` → `OpeningBalancePostingService`:
 - Posts a real **Opening** `stock_movement` (a document-backed action).

@@ -13,6 +13,7 @@ use App\Shared\DTOs\SubmissionStatusDTO;
 use App\Shared\Enums\BrandMappingPushResult;
 use App\Shared\Enums\EnrichmentFeedbackAction;
 use App\Shared\Enums\EnrichmentFeedbackReason;
+use Illuminate\Contracts\Config\Repository;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
@@ -34,6 +35,7 @@ class ProductSubmissionServiceTest extends TestCase
 
         $this->service = new ProductSubmissionService(
             new PlatformHttpClient(new ProductSubmissionTestCompanyContext),
+            $this->app->make(Repository::class),
         );
     }
 

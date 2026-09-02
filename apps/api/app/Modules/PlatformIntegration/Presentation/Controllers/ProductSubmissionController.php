@@ -34,6 +34,15 @@ final class ProductSubmissionController extends Controller
             abort(403);
         }
 
+        if (! $this->submissionService->submissionEnabled()) {
+            return response()->json([
+                'error' => [
+                    'code' => 'enrichment_submission_disabled',
+                    'message' => 'Catalog enrichment submission is disabled in this environment.',
+                ],
+            ], 422);
+        }
+
         $validated = $request->validate([
             'product_id' => ['required', 'uuid'],
             'barcode' => ['nullable', 'string', 'max:100'],

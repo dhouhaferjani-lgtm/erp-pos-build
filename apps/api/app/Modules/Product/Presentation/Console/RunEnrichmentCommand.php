@@ -96,6 +96,7 @@ final class RunEnrichmentCommand extends Command
                     $product->platform_product_id,
                     $product->barcode,
                     $vertical,
+                    $product->tenant_id,
                 )->onQueue('enrichment');
 
                 $dispatched++;

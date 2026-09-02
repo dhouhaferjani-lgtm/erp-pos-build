@@ -6,6 +6,21 @@ import fr from '@/locales/fr/import.json'
 import { WARNING_TRANSLATION_KEYS } from '../warningCodes'
 
 describe('import warning locale parity', () => {
+  const enrichmentCodes = [
+    'enrichment_not_found',
+    'enrichment_unavailable',
+    'enrichment_invalid_barcode',
+    'enrichment_cap_exceeded',
+    'enrichment_vertical_not_supported',
+    'enrichment_barcode_missing',
+  ] as const
+
+  it('registers every import-enrichment warning code', () => {
+    for (const code of enrichmentCodes) {
+      expect(WARNING_TRANSLATION_KEYS).toHaveProperty(code, true)
+    }
+  })
+
   it.each([
     ['en', en],
     ['fr', fr],

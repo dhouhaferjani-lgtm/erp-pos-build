@@ -9,6 +9,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Import\Application\Jobs\ProcessImportJob;
 use App\Modules\Import\Application\Jobs\ProcessProductImageImport;
+use App\Modules\Import\Application\Services\ImportEnrichmentDispatcher;
 use App\Modules\Import\Application\Services\ModuleEntitlementCheck;
 use App\Modules\Import\Domain\Data\ImportCountersData;
 use App\Modules\Import\Domain\Enums\ImportErrorCode;
@@ -57,6 +58,7 @@ class ImportController extends Controller
         private readonly ResultWorkbookService $resultWorkbookService,
         private readonly UnitCatalogQueryInterface $unitCatalog,
         private readonly ModuleEntitlementCheck $moduleEntitlement,
+        private readonly ImportEnrichmentDispatcher $importEnrichmentDispatcher,
     ) {}
 
     /**
@@ -89,7 +91,15 @@ class ImportController extends Controller
         return response()->json([
             'data' => $jobs->map(fn (ImportJob $job) => array_merge(
                 $this->formatJob($job, false),
-                ['unattributed' => $job->company_id === null],
+                [
+                    // History gets only the already-persisted enrichment
+                    // counters. Row-derived summaries remain a single-job
+                    // payload concern so this endpoint never hydrates rows.
+                    'warning_summary' => $job->status->isTerminal()
+                        ? ($job->enrichment_summary ?? [])
+                        : null,
+                    'unattributed' => $job->company_id === null,
+                ],
             )),
             'meta' => [
                 'current_page' => $jobs->currentPage(),
@@ -687,6 +697,7 @@ class ImportController extends Controller
 
             /** @var ImportJob $freshJob */
             $freshJob = $job->fresh();
+            $this->importEnrichmentDispatcher->dispatchIfEnabled($freshJob, $companyId, $tenantId);
 
             // Generate failed rows CSV if there are any skipped/failed rows
             $failedRowsCsvUrl = null;
@@ -1013,6 +1024,7 @@ class ImportController extends Controller
             }
         }
 
+        $summary = array_replace($summary, $job->enrichment_summary ?? []);
         ksort($summary);
 
         return $summary;

@@ -6,22 +6,25 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ImportWizardPage } from '../pages/ImportWizardPage'
-import type { ImportJob } from '../types'
+import type { ImportJob, ImportPreview } from '../types'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { useImportProgressStore } from '@/stores/importProgressStore'
 
 let nextMapping: Record<string, string> = {}
 let nextJobData: ImportJob | undefined
+let createdJobId = 'job-1'
+const companyConfigState = vi.hoisted(() => ({ enrichmentAvailable: false }))
 
 const mockParseHeaders = vi.hoisted(() => vi.fn())
 const mockUpdateOptions = vi.hoisted(() => vi.fn())
 const mockCreateMutate = vi.hoisted(() => vi.fn())
 const mockExecuteMutate = vi.hoisted(() => vi.fn())
 const mockSuggestMutate = vi.hoisted(() => vi.fn())
-const mockRefetchPreview = vi.hoisted(() => vi.fn())
+const mockPreviewRequest = vi.hoisted(() => vi.fn<(jobId: string) => Promise<ImportPreview>>())
 const mockRefetchJob = vi.hoisted(() => vi.fn())
 const mockApiGet = vi.hoisted(() => vi.fn())
+const mockToastError = vi.hoisted(() => vi.fn())
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -31,7 +34,7 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('sonner', () => ({
   toast: {
-    error: vi.fn(),
+    error: mockToastError,
     success: vi.fn(),
   },
 }))
@@ -41,41 +44,44 @@ vi.mock('@/lib/api', () => ({
   apiGet: mockApiGet,
 }))
 
+vi.mock('@/contexts/CompanyConfigContext', () => ({
+  useCompanyConfigOptional: () => ({
+    config: {
+      platform_import_enrichment_available: companyConfigState.enrichmentAvailable,
+    },
+  }),
+}))
+
 vi.mock('../api/importApi', () => ({
   importApi: {
     parseHeaders: mockParseHeaders,
     updateOptions: mockUpdateOptions,
+    getPreview: mockPreviewRequest,
     downloadTemplateUrl: (type: string) => `/migration-wizard/template/${type}`,
   },
 }))
 
-vi.mock('../api/queries', () => ({
-  useCreateImport: () => ({
-    mutate: mockCreateMutate,
-    isPending: false,
-  }),
-  useExecuteImport: () => ({
-    mutate: mockExecuteMutate,
-    isSuccess: false,
-    isPending: false,
-  }),
-  useSuggestMapping: () => ({
-    mutate: mockSuggestMutate,
-  }),
-  useImportJob: () => ({ data: nextJobData, refetch: mockRefetchJob }),
-  useImportErrors: () => ({ data: { data: [] } }),
-  useImportPreview: () => ({
-    data: {
-      headers: [],
-      rows: [],
-      summary: { total_rows: 1, valid_rows: 0, invalid_rows: 1 },
-      placement: { max_depth: 3, nodes_to_create: [], placements_to_set: [] },
-    },
-    isLoading: false,
-    isError: false,
-    refetch: mockRefetchPreview,
-  }),
-}))
+vi.mock('../api/queries', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/queries')>()
+
+  return {
+    ...actual,
+    useCreateImport: () => ({
+      mutate: mockCreateMutate,
+      isPending: false,
+    }),
+    useExecuteImport: () => ({
+      mutate: mockExecuteMutate,
+      isSuccess: false,
+      isPending: false,
+    }),
+    useSuggestMapping: () => ({
+      mutate: mockSuggestMutate,
+    }),
+    useImportJob: () => ({ data: nextJobData, refetch: mockRefetchJob }),
+    useImportErrors: () => ({ data: { data: [] } }),
+  }
+})
 
 vi.mock('../components/FileUpload', () => ({
   FileUpload: ({ onFileSelect }: { onFileSelect: (file: File) => Promise<void> }) => (
@@ -151,6 +157,8 @@ describe('ImportWizardPage product options step', () => {
     vi.clearAllMocks()
     nextMapping = {}
     nextJobData = undefined
+    createdJobId = 'job-1'
+    companyConfigState.enrichmentAvailable = false
     useAuthStore.setState({
       user: {
         id: 'user-1',
@@ -182,10 +190,15 @@ describe('ImportWizardPage product options step', () => {
       options?.onSuccess?.({ suggestions: {} })
     })
     mockCreateMutate.mockImplementation((_variables: unknown, options?: { onSuccess?: (data: { data: { id: string } }) => void }) => {
-      options?.onSuccess?.({ data: { id: 'job-1' } })
+      options?.onSuccess?.({ data: { id: createdJobId } })
     })
     mockUpdateOptions.mockResolvedValue({ data: { id: 'job-1' } })
-    mockRefetchPreview.mockResolvedValue({ data: undefined })
+    mockPreviewRequest.mockResolvedValue({
+      headers: [],
+      rows: [],
+      summary: { total_rows: 1, valid_rows: 0, invalid_rows: 1 },
+      placement: { max_depth: 3, nodes_to_create: [], placements_to_set: [] },
+    })
     mockRefetchJob.mockResolvedValue({ data: nextJobData })
   })
 
@@ -216,6 +229,117 @@ describe('ImportWizardPage product options step', () => {
     expect(screen.queryByRole('heading', { name: 'options.priceAuthorityTitle' })).not.toBeInTheDocument()
   })
 
+  it('shows import enrichment for a capable company and persists an explicit opt-in', async () => {
+    companyConfigState.enrichmentAvailable = true
+    nextMapping = {
+      name: 'name',
+      barcode: 'barcode',
+    }
+
+    await uploadAndMap()
+
+    expect(await screen.findByRole('heading', { name: 'options.enrichmentTitle' })).toBeInTheDocument()
+    const enrichmentToggle = screen.getByRole('checkbox', { name: 'options.enrichmentLabel' })
+    expect(enrichmentToggle).not.toBeChecked()
+
+    await userEvent.setup().click(enrichmentToggle)
+    await userEvent.setup().click(screen.getByRole('button', { name: 'common:actions.next' }))
+
+    await waitFor(() => {
+      expect(mockUpdateOptions).toHaveBeenCalledWith('job-1', {
+        enrichment_enabled: true,
+      })
+    })
+  })
+
+  it('hides import enrichment when the company capability is unavailable', async () => {
+    nextMapping = {
+      name: 'name',
+      barcode: 'barcode',
+    }
+
+    await uploadAndMap()
+
+    expect(await screen.findByRole('heading', { name: 'wizard.validation.title' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'options.enrichmentTitle' })).not.toBeInTheDocument()
+  })
+
+  it('hides import enrichment when barcode is not mapped for a capable company', async () => {
+    companyConfigState.enrichmentAvailable = true
+    nextMapping = {
+      name: 'name',
+    }
+
+    await uploadAndMap()
+
+    expect(await screen.findByRole('heading', { name: 'wizard.validation.title' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'options.enrichmentTitle' })).not.toBeInTheDocument()
+  })
+
+  it('requests one preview with the job id and shows no error toast during a green import', async () => {
+    const completedJob: ImportJob = {
+      id: 'job-1',
+      type: 'products',
+      status: 'completed',
+      original_filename: 'products.csv',
+      total_rows: 1,
+      processed_rows: 1,
+      successful_rows: 1,
+      skipped_rows: 0,
+      failed_rows: 0,
+      warning_rows: 0,
+      warning_summary: {},
+      progress_percentage: 100,
+      options: null,
+      error_message: null,
+      started_at: '2026-08-31T10:00:00Z',
+      completed_at: '2026-08-31T10:00:01Z',
+      created_at: '2026-08-31T09:59:59Z',
+    }
+    mockExecuteMutate.mockImplementation((_jobId: string, options?: { onSuccess?: (data: ImportJob) => void }) => {
+      options?.onSuccess?.(completedJob)
+    })
+    nextMapping = {
+      name: 'name',
+      price_ttc: 'sale_price_incl_tax',
+      price_ht: 'sale_price_excl_tax',
+    }
+
+    await uploadAndMap()
+    expect(await screen.findByRole('heading', { name: 'options.priceAuthorityTitle' })).toBeInTheDocument()
+    expect(mockPreviewRequest).not.toHaveBeenCalled()
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'common:actions.next' }))
+
+    expect(await screen.findByRole('heading', { name: 'wizard.validation.title' })).toBeInTheDocument()
+    expect(mockPreviewRequest).toHaveBeenCalledOnce()
+    expect(mockPreviewRequest).toHaveBeenCalledWith('job-1')
+
+    await user.click(screen.getByRole('button', { name: 'wizard.validation.proceed' }))
+    await user.click(screen.getByRole('button', { name: 'wizard.execute.start' }))
+
+    expect(await screen.findByRole('heading', { name: 'wizard.complete.title' })).toBeInTheDocument()
+    expect(mockToastError).not.toHaveBeenCalled()
+  })
+
+  it('does not request a preview when the import job id is empty', async () => {
+    createdJobId = ''
+    nextMapping = {
+      name: 'name',
+      price_ttc: 'sale_price_incl_tax',
+      price_ht: 'sale_price_excl_tax',
+    }
+
+    await uploadAndMap()
+    expect(await screen.findByRole('heading', { name: 'options.priceAuthorityTitle' })).toBeInTheDocument()
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'common:actions.next' }))
+
+    expect(mockUpdateOptions).not.toHaveBeenCalled()
+    expect(mockPreviewRequest).not.toHaveBeenCalled()
+  })
+
   it('configures strict or auto-create placement planning when placement_path is mapped', async () => {
     const user = userEvent.setup()
     nextMapping = {
@@ -237,7 +361,9 @@ describe('ImportWizardPage product options step', () => {
         placement_node_types: ['aisle', 'rack', 'shelf'],
       }))
     })
-    expect(mockRefetchPreview).toHaveBeenCalledOnce()
+    expect(mockPreviewRequest).toHaveBeenCalledTimes(2)
+    expect(mockPreviewRequest).toHaveBeenNthCalledWith(1, 'job-1')
+    expect(mockPreviewRequest).toHaveBeenNthCalledWith(2, 'job-1')
   })
 
   it('defaults opening stock to the default coded location and patches its code', async () => {
@@ -525,5 +651,38 @@ describe('ImportWizardPage product options step', () => {
 
     expect(await screen.findByRole('heading', { name: 'wizard.complete.warnings' })).toBeInTheDocument()
     expect(screen.getByText('warnings.location_unresolved')).toBeInTheDocument()
+  })
+
+  it('renders enriched products separately from durable enrichment warnings', async () => {
+    nextMapping = { name: 'name' }
+    nextJobData = {
+      id: 'job-1',
+      type: 'products',
+      status: 'completed',
+      original_filename: 'products.csv',
+      total_rows: 2,
+      processed_rows: 2,
+      successful_rows: 2,
+      skipped_rows: 0,
+      failed_rows: 0,
+      warning_rows: 0,
+      warning_summary: { enriched: 1, enrichment_not_found: 1, enrichment_barcode_missing: 1 },
+      progress_percentage: 100,
+      options: null,
+      error_message: null,
+      started_at: '2026-08-29T10:00:00Z',
+      completed_at: '2026-08-29T10:00:01Z',
+      created_at: '2026-08-29T09:59:59Z',
+    }
+
+    await uploadAndMap()
+    await userEvent.setup().click(await screen.findByRole('button', {
+      name: 'wizard.validation.proceed',
+    }))
+
+    expect(await screen.findByText('wizard.complete.enriched')).toBeInTheDocument()
+    expect(screen.getByText('warnings.enrichment_not_found')).toBeInTheDocument()
+    expect(screen.getByText('warnings.enrichment_barcode_missing')).toBeInTheDocument()
+    expect(screen.queryByText('warnings.enriched')).not.toBeInTheDocument()
   })
 })

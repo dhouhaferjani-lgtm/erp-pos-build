@@ -96,6 +96,28 @@ final class ImportCompanyPinTest extends TestCase
         ];
     }
 
+    public function test_every_import_job_route_returns_the_standard_json_404_for_malformed_ids(): void
+    {
+        foreach (self::pinnedEndpoints() as $label => [$method, $suffix]) {
+            $this->assertMalformedImportRouteReturnsStandardNotFound(
+                $method,
+                '/api/v1/imports/not-a-uuid'.$suffix,
+                $label.' with a non-UUID id',
+            );
+
+            // GET /imports/ is the collection index, so an empty show id has no
+            // distinct URI to exercise. Every suffix-bearing route still has a
+            // concrete double-slash form matching the staging regression.
+            if ($suffix !== '') {
+                $this->assertMalformedImportRouteReturnsStandardNotFound(
+                    $method,
+                    '/api/v1/imports/'.$suffix,
+                    $label.' with an empty id',
+                );
+            }
+        }
+    }
+
     #[DataProvider('pinnedEndpoints')]
     public function test_every_job_surface_refuses_a_sibling_company(string $method, string $suffix): void
     {
@@ -412,6 +434,23 @@ final class ImportCompanyPinTest extends TestCase
             'DELETE' => $this->deleteJson($uri),
             default => throw new \LogicException('Unsupported test endpoint method: '.$method),
         };
+    }
+
+    private function assertMalformedImportRouteReturnsStandardNotFound(
+        string $method,
+        string $uri,
+        string $case,
+    ): void {
+        $response = $this->callEndpoint($method, $uri);
+
+        $response->assertNotFound()
+            ->assertHeader('content-type', 'application/json')
+            ->assertJsonStructure(['message']);
+        $this->assertNotSame(
+            'INTERNAL_ERROR',
+            $response->json('error.code'),
+            $case.' must never be rendered as a 500. Body: '.$response->getContent(),
+        );
     }
 
     /**

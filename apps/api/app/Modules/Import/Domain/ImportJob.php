@@ -6,6 +6,7 @@ namespace App\Modules\Import\Domain;
 
 use App\Modules\Identity\Domain\User;
 use App\Modules\Import\Domain\Casts\ColumnMappingCast;
+use App\Modules\Import\Domain\Casts\ImportEnrichmentSummaryCast;
 use App\Modules\Import\Domain\Casts\ImportJobOptionsCast;
 use App\Modules\Import\Domain\Data\ImportErrorDetailData;
 use App\Modules\Import\Domain\Enums\ImportErrorCode;
@@ -37,6 +38,7 @@ use Illuminate\Support\Carbon;
  * @property int $failed_rows
  * @property array<string, string>|null $column_mapping
  * @property array<string, mixed>|null $options
+ * @property array<string, int>|null $enrichment_summary
  * @property string|null $error_message
  * @property ImportErrorCode|null $error_code
  * @property ImportErrorDetailData|null $error_detail
@@ -79,6 +81,7 @@ class ImportJob extends Model
         'failed_rows',
         'column_mapping',
         'options',
+        'enrichment_summary',
         'error_message',
         'error_code',
         'error_detail',
@@ -109,6 +112,7 @@ class ImportJob extends Model
             'status' => ImportStatus::class,
             'column_mapping' => ColumnMappingCast::class,
             'options' => ImportJobOptionsCast::class,
+            'enrichment_summary' => ImportEnrichmentSummaryCast::class,
             'error_code' => ImportErrorCode::class,
             'error_detail' => ImportErrorDetailData::class,
             'started_at' => 'datetime',

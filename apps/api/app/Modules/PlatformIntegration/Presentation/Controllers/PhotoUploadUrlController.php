@@ -22,6 +22,15 @@ final class PhotoUploadUrlController extends Controller
             abort(403);
         }
 
+        if (! $this->submissionService->submissionEnabled()) {
+            return response()->json([
+                'error' => [
+                    'code' => 'enrichment_submission_disabled',
+                    'message' => 'Catalog enrichment submission is disabled in this environment.',
+                ],
+            ], 422);
+        }
+
         $validated = $request->validate([
             'filename' => ['required', 'string', 'max:255'],
             'content_type' => ['required', 'string', 'in:image/jpeg,image/png,image/webp,image/heic'],

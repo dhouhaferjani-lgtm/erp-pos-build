@@ -63,13 +63,14 @@ export function useImportErrors(jobId: string) {
   })
 }
 
-export function useImportPreview(jobId: string) {
+export function useImportPreview(jobId: string, options?: { enabled?: boolean }) {
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
   const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
+  const baseEnabled = options?.enabled ?? jobId.length > 0
   return useQuery({
     queryKey: tenantScopedKey([...importKeys.preview(jobId)]),
     queryFn: () => importApi.getPreview(jobId),
-    enabled: jobId.length > 0 && !!tenantId && !!companyId,
+    enabled: baseEnabled && jobId.length > 0 && !!tenantId && !!companyId,
   })
 }
 
