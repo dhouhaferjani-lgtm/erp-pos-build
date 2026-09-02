@@ -711,6 +711,20 @@ class InventoryCountingService
             $lockedCounting = $this->lockCounting($counting->id);
             $this->assertNotTerminal($lockedCounting, CountingStatus::Count1InProgress);
 
+            // Gate r2 IMPORTANT-2 — the same refusal activateDraft() carries,
+            // on the surface most operators actually use. `create()` generates
+            // the items and this method never regenerates or counts them, so a
+            // scope that resolved to nothing (products all at zero on-hand at
+            // the chosen location, a zone with no placements) became a LIVE
+            // counting with 0 items, assignments stamped total_items = 0 and a
+            // COUNTING_ACTIVATED event recording an empty count — one guarded
+            // activation surface and one unguarded one (convention 11).
+            // Inside this transaction, so the status transition, the started
+            // assignment and the event all roll back with the throw.
+            if ($counting->items()->count() === 0) {
+                throw new \DomainException('Nothing to count in this scope — no stock rows matched');
+            }
+
             $this->assertNoOverlappingActiveCounting($counting);
 
             $counting->transitionTo(CountingStatus::Count1InProgress);

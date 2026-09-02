@@ -596,6 +596,138 @@ class ActivateDraftCountingTest extends TestCase
     }
 
     /**
+     * Gate r2 BLOCKER-1 — a malformed (non-uuid) location_id used to reach a
+     * uuid column. Under PostgreSQL that raises 22P02, which ABORTS the batch
+     * transaction: every later draft fails with 25P02, COMMIT degrades silently
+     * to ROLLBACK, and the endpoint still answered 201 with serverIds for drafts
+     * that were never persisted — phantom ids the device records as synced.
+     *
+     * The healthy sibling MUST be in the database afterwards; asserting the
+     * response alone is exactly what hid this (the response was always 201).
+     */
+    public function test_batch_create_drafts_refuses_a_malformed_location_id_without_losing_the_batch(): void
+    {
+        $response = $this->actingAs($this->adminUser)
+            ->postJson('/api/v1/inventory/countings/drafts/batch', [
+                'drafts' => [
+                    [
+                        'localId' => 'local-garbage',
+                        'scopeType' => 'product_location',
+                        'scopeFilters' => [
+                            'product_ids' => [$this->products[0]->id],
+                            'location_id' => 'undefined',
+                        ],
+                    ],
+                    [
+                        'localId' => 'local-after',
+                        'scopeType' => 'product_location',
+                        'scopeFilters' => [
+                            'product_ids' => [$this->products[1]->id],
+                            'location_id' => $this->warehouse->id,
+                        ],
+                    ],
+                ],
+            ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('data.errors.0.localId', 'local-garbage');
+        $response->assertJsonPath('data.errors.0.error', 'Location not found for the current company');
+        $response->assertJsonPath('data.success.0.localId', 'local-after');
+
+        $serverId = $response->json('data.success.0.serverId');
+        $this->assertNotNull($serverId);
+
+        // The claim under test: the id handed back is a row that really exists.
+        $this->assertDatabaseHas('inventory_countings', [
+            'id' => $serverId,
+            'company_id' => $this->company->id,
+        ]);
+        $this->assertSame(
+            1,
+            InventoryCounting::query()->where('company_id', $this->company->id)->count(),
+            'Exactly the healthy sibling must survive the batch.',
+        );
+    }
+
+    /**
+     * Gate r2 BLOCKER-1 (b) — a row whose INSERT fails for an unrelated reason
+     * (here a garbage count1UserId against a uuid FK column) must roll back to
+     * its own savepoint, not abort the batch. The generic message also proves
+     * MINOR-1: no raw driver text reaches the device.
+     */
+    public function test_batch_create_drafts_isolates_a_failing_row_in_its_own_savepoint(): void
+    {
+        $response = $this->actingAs($this->adminUser)
+            ->postJson('/api/v1/inventory/countings/drafts/batch', [
+                'drafts' => [
+                    [
+                        'localId' => 'local-broken',
+                        'scopeType' => 'product',
+                        'scopeFilters' => ['product_ids' => [$this->products[0]->id]],
+                        'count1UserId' => 'not-a-uuid',
+                    ],
+                    [
+                        'localId' => 'local-healthy',
+                        'scopeType' => 'product',
+                        'scopeFilters' => ['product_ids' => [$this->products[1]->id]],
+                    ],
+                ],
+            ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('data.success.0.localId', 'local-healthy');
+
+        $serverId = $response->json('data.success.0.serverId');
+        $this->assertDatabaseHas('inventory_countings', ['id' => $serverId]);
+
+        foreach ($response->json('data.errors') ?? [] as $error) {
+            $this->assertSame(
+                'Draft could not be created',
+                $error['error'],
+                'Raw driver text must never reach the device.',
+            );
+        }
+    }
+
+    /**
+     * Gate r2 IMPORTANT-1 — zone joins product_location in the per-row check.
+     * A zone draft born without a location is refused forever by activateDraft
+     * and no endpoint can repair its scope_filters, so it must never be minted.
+     */
+    public function test_batch_create_drafts_reports_a_zone_draft_without_a_location_per_row(): void
+    {
+        $response = $this->actingAs($this->adminUser)
+            ->postJson('/api/v1/inventory/countings/drafts/batch', [
+                'drafts' => [
+                    [
+                        'localId' => 'local-zone',
+                        'scopeType' => 'zone',
+                        'scopeFilters' => ['zone_ids' => ['4b4e0a9c-1f5f-4b60-9a3f-9f0f3f6d2a11']],
+                    ],
+                    [
+                        'localId' => 'local-product',
+                        'scopeType' => 'product',
+                        'scopeFilters' => ['product_ids' => [$this->products[0]->id]],
+                    ],
+                ],
+            ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('data.errors.0.localId', 'local-zone');
+        $response->assertJsonPath('data.errors.0.error', 'A location must be selected for this scope');
+        $response->assertJsonPath('data.success.0.localId', 'local-product');
+
+        $this->assertSame(
+            0,
+            InventoryCounting::query()
+                ->where('company_id', $this->company->id)
+                ->where('scope_type', CountingScopeType::Zone)
+                ->count(),
+            'No location-less zone draft may be minted.',
+        );
+    }
+
+    /**
      * Gate r1 IMPORTANT-5: an unknown scopeType reached the enum-cast attribute
      * and threw a ValueError, which `catch (\Exception)` does not catch — an
      * uncaught 500 that rolled back every already-persisted draft in the batch.

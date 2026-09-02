@@ -30,6 +30,7 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -1076,32 +1077,95 @@ class InventoryCountingController extends Controller
 
         \DB::transaction(function () use ($request, $companyId, $userId, &$results, &$errors): void {
             foreach ($request->input('drafts') as $draftData) {
+                // Gate r1 IMPORTANT-1 + IMPORTANT-2 (RULED). Per-ROW refusal,
+                // never a whole-batch 422: a product_location (or zone) draft
+                // with no location silently widens to every location at
+                // activation (InventoryCountingService::getStockLevelsForScope
+                // only applies the filter when it is set; zoneItemSeeds returns
+                // [] without one), and a foreign/stale location id survives into
+                // an activation that generates ZERO items with no error anywhere
+                // — the same silent-wrong outcome, reshaped. The single-draft
+                // twin (CreateDraftCountingRequest) refuses both at validation.
+                $scopeFilters = $draftData['scopeFilters'] ?? [];
+                $scopeLocationId = is_array($scopeFilters) ? ($scopeFilters['location_id'] ?? null) : null;
+                $scopeLocationId = is_string($scopeLocationId) ? trim($scopeLocationId) : null;
+                $scopeLocationId = $scopeLocationId === '' ? null : $scopeLocationId;
+
+                // Gate r2 IMPORTANT-1: zone needs a location exactly as
+                // product_location does — activateDraft refuses both, and NO
+                // endpoint can add scope_filters.location_id to an existing
+                // draft, so minting one here strands it permanently.
+                if (in_array($draftData['scopeType'], [
+                    CountingScopeType::ProductLocation->value,
+                    CountingScopeType::Zone->value,
+                ], true) && $scopeLocationId === null) {
+                    $errors[] = [
+                        'localId' => $draftData['localId'],
+                        'error' => 'A location must be selected for this scope',
+                    ];
+
+                    continue;
+                }
+
+                // Gate r2 BLOCKER-1 (a): NEVER hand a device-supplied string to a
+                // uuid column. `locations.id` is uuid, so a value like
+                // "undefined" makes PG raise 22P02 — and under PG that ABORTS the
+                // enclosing transaction: every later draft then fails with 25P02,
+                // COMMIT silently degrades to ROLLBACK, and this endpoint still
+                // answers 201 with serverIds for drafts that no longer exist
+                // (phantom ids the device records as synced). SQLite cannot
+                // reproduce it — it just compares the text. Same idiom as
+                // onboardingWorklist() and batchAddProducts() in this controller.
+                if ($scopeLocationId !== null && ! Str::isUuid($scopeLocationId)) {
+                    $errors[] = [
+                        'localId' => $draftData['localId'],
+                        'error' => 'Location not found for the current company',
+                    ];
+
+                    continue;
+                }
+
                 try {
-                    // Gate r1 IMPORTANT-1 + IMPORTANT-2 (RULED). Per-ROW refusal,
-                    // never a whole-batch 422: a product_location draft with no
-                    // location silently widens to every location at activation
-                    // (InventoryCountingService::getStockLevelsForScope only
-                    // applies the filter when it is set), and a foreign/stale
-                    // location id survives into an activation that generates
-                    // ZERO items with no error anywhere — the same silent-wrong
-                    // outcome, reshaped. The single-draft twin
-                    // (CreateDraftCountingRequest) refuses both at validation.
-                    $scopeFilters = $draftData['scopeFilters'] ?? [];
-                    $scopeLocationId = is_array($scopeFilters) ? ($scopeFilters['location_id'] ?? null) : null;
-                    $scopeLocationId = is_string($scopeLocationId) ? trim($scopeLocationId) : null;
+                    // Gate r2 BLOCKER-1 (b): each row body is its OWN transaction.
+                    // Laravel nests as a SAVEPOINT, so any statement error inside
+                    // a row (a garbage count1UserId against a uuid FK, a
+                    // constraint violation, …) rolls back just that row instead
+                    // of poisoning the outer transaction and silently discarding
+                    // every sibling that already succeeded.
+                    $serverId = \DB::transaction(function () use ($draftData, $companyId, $userId, $scopeLocationId): ?string {
+                        if ($scopeLocationId !== null
+                            && ! Location::query()->forCompany($companyId)->whereKey($scopeLocationId)->exists()) {
+                            return null;
+                        }
 
-                    if ($draftData['scopeType'] === CountingScopeType::ProductLocation->value
-                        && ($scopeLocationId === null || $scopeLocationId === '')) {
-                        $errors[] = [
-                            'localId' => $draftData['localId'],
-                            'error' => 'A location must be selected for this scope',
-                        ];
+                        $counting = new InventoryCounting;
+                        $counting->id = (string) Str::uuid();
+                        $counting->company_id = $companyId;
+                        $counting->created_by_user_id = $userId;
+                        $counting->created_on_mobile = true;
+                        $counting->title = $draftData['title'] ?? null;
+                        $counting->scope_type = $draftData['scopeType'];
+                        $counting->status = CountingStatus::Draft;
+                        $counting->execution_mode = $draftData['executionMode'] ?? 'sequential';
+                        $counting->requires_count_2 = $draftData['requiresCount2'] ?? false;
+                        $counting->requires_count_3 = $draftData['requiresCount3'] ?? false;
+                        $counting->allow_unexpected_items = $draftData['allowUnexpectedItems'] ?? true;
+                        $counting->instructions = $draftData['instructions'] ?? null;
+                        $counting->scope_filters = $draftData['scopeFilters'] ?? [];
+                        $counting->count_1_user_id = $draftData['count1UserId'] ?? null;
+                        $counting->count_2_user_id = $draftData['count2UserId'] ?? null;
+                        $counting->count_3_user_id = $draftData['count3UserId'] ?? null;
+                        $counting->scheduled_start = isset($draftData['scheduledStart']) ? Carbon::parse($draftData['scheduledStart']) : null;
+                        $counting->scheduled_end = isset($draftData['scheduledEnd']) ? Carbon::parse($draftData['scheduledEnd']) : null;
+                        $counting->last_modified_at = now();
+                        $counting->last_modified_by_user_id = $userId;
 
-                        continue;
-                    }
+                        $counting->save();
 
-                    if ($scopeLocationId !== null && $scopeLocationId !== ''
-                        && ! Location::query()->forCompany($companyId)->whereKey($scopeLocationId)->exists()) {
+                        return $counting->id;
+                    });
+
+                    if ($serverId === null) {
                         $errors[] = [
                             'localId' => $draftData['localId'],
                             'error' => 'Location not found for the current company',
@@ -1110,39 +1174,23 @@ class InventoryCountingController extends Controller
                         continue;
                     }
 
-                    $counting = new InventoryCounting;
-                    $counting->id = (string) Str::uuid();
-                    $counting->company_id = $companyId;
-                    $counting->created_by_user_id = $userId;
-                    $counting->created_on_mobile = true;
-                    $counting->title = $draftData['title'] ?? null;
-                    $counting->scope_type = $draftData['scopeType'];
-                    $counting->status = CountingStatus::Draft;
-                    $counting->execution_mode = $draftData['executionMode'] ?? 'sequential';
-                    $counting->requires_count_2 = $draftData['requiresCount2'] ?? false;
-                    $counting->requires_count_3 = $draftData['requiresCount3'] ?? false;
-                    $counting->allow_unexpected_items = $draftData['allowUnexpectedItems'] ?? true;
-                    $counting->instructions = $draftData['instructions'] ?? null;
-                    $counting->scope_filters = $draftData['scopeFilters'] ?? [];
-                    $counting->count_1_user_id = $draftData['count1UserId'] ?? null;
-                    $counting->count_2_user_id = $draftData['count2UserId'] ?? null;
-                    $counting->count_3_user_id = $draftData['count3UserId'] ?? null;
-                    $counting->scheduled_start = isset($draftData['scheduledStart']) ? Carbon::parse($draftData['scheduledStart']) : null;
-                    $counting->scheduled_end = isset($draftData['scheduledEnd']) ? Carbon::parse($draftData['scheduledEnd']) : null;
-                    $counting->last_modified_at = now();
-                    $counting->last_modified_by_user_id = $userId;
-
-                    $counting->save();
-
                     $results[] = [
                         'localId' => $draftData['localId'],
-                        'serverId' => $counting->id,
+                        'serverId' => $serverId,
                         'status' => 'success',
                     ];
-                } catch (\Exception $e) {
+                } catch (\Throwable $e) {
+                    // Gate r2 MINOR-1: never echo raw driver text (table/column
+                    // names, the offending value) back to the device.
+                    Log::warning('Batch draft counting creation failed', [
+                        'company_id' => $companyId,
+                        'local_id' => $draftData['localId'] ?? null,
+                        'exception' => $e->getMessage(),
+                    ]);
+
                     $errors[] = [
                         'localId' => $draftData['localId'],
-                        'error' => $e->getMessage(),
+                        'error' => 'Draft could not be created',
                     ];
                 }
             }
