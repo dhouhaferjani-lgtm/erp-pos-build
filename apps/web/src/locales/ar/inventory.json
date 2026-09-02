@@ -179,7 +179,6 @@
       "countsRequired": "عمليات العدّ المطلوبة",
       "allowUnexpected": "السماح بغير المتوقع",
       "salesMode": "المبيعات أثناء الجرد",
-      "salesModeBlocked": "محظورة",
       "salesModeLive": "مستمرة (نافذة ±{{minutes}} دقيقة)",
       "salesModeBlockedWithWindow": "محظورة · نافذة إعادة التشغيل ±{{minutes}} دقيقة",
       "timeline": "الخط الزمني",

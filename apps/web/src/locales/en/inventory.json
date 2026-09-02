@@ -774,7 +774,6 @@
       "countsRequired": "Counts Required",
       "allowUnexpected": "Allow Unexpected",
       "salesMode": "Sales during count",
-      "salesModeBlocked": "Blocked",
       "salesModeLive": "Live (±{{minutes}} min window)",
       "salesModeBlockedWithWindow": "Blocked · ±{{minutes}} min replay window",
       "timeline": "Timeline",

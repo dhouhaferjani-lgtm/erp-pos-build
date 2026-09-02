@@ -774,7 +774,6 @@
       "countsRequired": "Comptages requis",
       "allowUnexpected": "Autoriser les imprévus",
       "salesMode": "Ventes pendant le comptage",
-      "salesModeBlocked": "Bloquées",
       "salesModeLive": "En cours (fenêtre ±{{minutes}} min)",
       "salesModeBlockedWithWindow": "Bloquées · fenêtre de rejeu ±{{minutes}} min",
       "timeline": "Chronologie",

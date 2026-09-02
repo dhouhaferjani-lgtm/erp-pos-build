@@ -325,10 +325,33 @@ describe('CreateCountingPage - zone scope', () => {
     expect(payload.ambiguity_window_minutes).toBe(30)
   })
 
-  it('coerces block_sales to false in the payload for an unenforced scope', async () => {
+  /**
+   * Gate r2 NEW-2 — the coercion is load-bearing on ONE path, and it is the path
+   * a test must drive: the scope button writes `{...formData, scope_type}` and
+   * does NOT reset `block_sales`. So ticking the toggle under an enforced scope
+   * and then switching to an unenforced one leaves `block_sales: true` in state,
+   * and only the coercion at createCountingSession() stops a payload the API now
+   * 422s — on the last click of a five-step wizard.
+   *
+   * Reaching the category step with the toggle already ticked is the whole
+   * point: a test that merely picks category (where the toggle is disabled)
+   * stays green if the coercion is deleted.
+   */
+  it('coerces block_sales to false after switching from an enforced scope to an unenforced one', async () => {
     const user = userEvent.setup()
     renderPage()
 
+    // location scope: the toggle is enabled here — tick it.
+    await user.click(screen.getByText('counting.scopeTypes.location'))
+    await user.click(screen.getByText('next'))
+    await user.click(screen.getByText('Select Location'))
+    await user.click(screen.getByText('next'))
+    await user.click(screen.getByRole('checkbox', { name: 'counting.create.blockSales' }))
+    expect(screen.getByRole('checkbox', { name: 'counting.create.blockSales' })).toBeChecked()
+
+    // back to step 1 and switch to category — block_sales stays true in state.
+    await user.click(screen.getByText('previous'))
+    await user.click(screen.getByText('previous'))
     await user.click(screen.getByText('counting.scopeTypes.category'))
     await user.click(screen.getByText('next'))
     await user.click(screen.getByText('Select Category'))
@@ -341,6 +364,8 @@ describe('CreateCountingPage - zone scope', () => {
 
     await user.click(screen.getByText('counting.create.submit'))
 
+    expect(mockMutate).toHaveBeenCalledTimes(1)
+    expect(mockMutate.mock.calls[0][0].scope_type).toBe('category')
     expect(mockMutate.mock.calls[0][0].block_sales).toBe(false)
   })
 

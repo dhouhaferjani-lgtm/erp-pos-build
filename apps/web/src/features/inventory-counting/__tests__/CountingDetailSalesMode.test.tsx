@@ -146,6 +146,9 @@ describe('CountingDetailPage - sales mode', () => {
 
       const row = screen.getByTestId('counting-sales-mode')
       expect(row).toHaveTextContent('counting.detail.salesModeLive:{"minutes":15}')
+      // Substring guard, not a live key: `counting.detail.salesModeBlocked` was
+      // deleted from the bundles (gate r2 NEW-3) and `salesModeBlockedWithWindow`
+      // starts with it, so this one assertion refuses BOTH blocked variants.
       expect(row.textContent).not.toContain('counting.detail.salesModeBlocked')
     },
   )

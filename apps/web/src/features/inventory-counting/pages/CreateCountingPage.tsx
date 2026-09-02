@@ -893,9 +893,11 @@ function ReviewStep({ data }: ReviewStepProps) {
               {data.allow_unexpected_items ? t('yes') : t('no')}
             </dd>
             {/* N-1/A-8: the two fields that decide how the shop keeps trading
-                during the count were summarised nowhere. Zone scope forces
-                block_sales to false (the backend 422s otherwise), so the review
-                must report the value that will actually be submitted. */}
+                during the count were summarised nowhere. zone / product /
+                category all force block_sales to false — the block engine never
+                enforces them and the backend 422s otherwise (see
+                isBlockSalesEnforced) — so the review reports the value that will
+                actually be SUBMITTED, not the raw toggle state. */}
             <dt className={colorTokens.text.subtle}>{t('counting.create.blockSales')}</dt>
             <dd data-testid="review-block-sales">
               {isBlockSalesEnforced(data.scope_type) && data.block_sales ? t('yes') : t('no')}
