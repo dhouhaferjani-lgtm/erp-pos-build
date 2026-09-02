@@ -81,6 +81,13 @@ export interface InventoryCounting {
   allow_unexpected_items: boolean
   instructions: string | null
 
+  // Counting MODE — how the shop keeps trading while the count runs.
+  // Both are always emitted by InventoryCountingController::transformCounting
+  // (show + index); `includes_zero_stock` only exists once items are generated.
+  block_sales: boolean
+  ambiguity_window_minutes: number
+  includes_zero_stock?: boolean
+
   // Mobile-initiated fields
   created_on_mobile: boolean
   title: string | null

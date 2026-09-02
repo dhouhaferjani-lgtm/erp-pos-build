@@ -287,6 +287,22 @@ export function CountingDetailPage() {
                     : t('no')}
                 </dd>
               </div>
+              {/* N-1/A-8: the counting mode decided in the wizard was invisible
+                  afterwards — an operator could not tell whether sales are
+                  blocked at the counted location or running live under an
+                  ambiguity window. */}
+              <div className="flex justify-between">
+                <dt className={colorTokens.text.subtle}>
+                  {t('counting.detail.salesMode')}
+                </dt>
+                <dd className="font-medium text-right" data-testid="counting-sales-mode">
+                  {counting.block_sales
+                    ? t('counting.detail.salesModeBlocked')
+                    : t('counting.detail.salesModeLive', {
+                        minutes: counting.ambiguity_window_minutes,
+                      })}
+                </dd>
+              </div>
             </dl>
           </div>
 

@@ -77,6 +77,10 @@ describe('countingApi.getReport', () => {
         requires_count_3: false,
         allow_unexpected_items: true,
         instructions: null,
+        // Counting mode — always present on the report/show/index payloads
+        // (InventoryCountingController::transformCounting).
+        block_sales: true,
+        ambiguity_window_minutes: 15,
         created_on_mobile: false,
         title: null,
         last_modified_at: null,

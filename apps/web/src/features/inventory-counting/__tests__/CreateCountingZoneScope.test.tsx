@@ -216,6 +216,32 @@ describe('CreateCountingPage - zone scope', () => {
     expect(input.value).toBe('15')
   })
 
+  /**
+   * N-1 / A-8: the review step summarised execution mode / counts / unexpected
+   * items but not the two fields that decide how the shop keeps trading during
+   * the count. Under zone scope block_sales is forced to false, so the review
+   * must say so rather than echo an untouched toggle.
+   */
+  it('summarises block sales and the ambiguity window on the review step', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(screen.getByText('counting.scopeTypes.zone'))
+    await user.click(screen.getByText('next'))
+    await user.click(screen.getByText('Select Location'))
+    await waitFor(() => { expect(screen.getByText('Aisle 1')).toBeInTheDocument() })
+    await user.click(screen.getByText('Aisle 1'))
+    await user.click(screen.getByText('next'))
+    await user.click(screen.getByText('next'))
+
+    const selectButtons = screen.getAllByText('Select User')
+    await user.click(selectButtons[0])
+    await user.click(screen.getByText('next'))
+
+    expect(screen.getByTestId('review-block-sales')).toHaveTextContent('no')
+    expect(screen.getByTestId('review-ambiguity-window')).toHaveTextContent('15')
+  })
+
   it('carries zone_ids, block_sales:false and ambiguity_window_minutes in the create payload', async () => {
     const user = userEvent.setup()
     renderPage()
