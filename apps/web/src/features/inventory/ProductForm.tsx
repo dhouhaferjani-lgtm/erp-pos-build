@@ -342,7 +342,7 @@ export function ProductForm() {
   const { data: unitOptions } = useUnits()
   const selectedUnit = unitOptions?.find((u) => u.id === watchedUnitId)
   const reorderDecimals = getQuantityDecimals({
-    quantity_decimals: selectedUnit?.decimalPlaces ?? selectedUnit?.decimal_places ?? null,
+    quantity_decimals: selectedUnit?.decimalPlaces ?? null,
   })
 
   const { fields: crossRefFields, append: appendCrossRef, remove: removeCrossRef } = useFieldArray({
@@ -526,6 +526,35 @@ export function ProductForm() {
     }
   }
 
+  const reportBarcodeConflict = (error: unknown): boolean => {
+    if (!isApiError(error) || error.response?.data.error.code !== 'barcode_identity_conflict') {
+      return false
+    }
+
+    const details = error.response.data.error.details
+    const holder = details?.['existing_product']
+    if (typeof holder !== 'object' || holder === null) {
+      toast.error(t('inventory:products.barcodeConflictUnknown'))
+      return true
+    }
+
+    const holderId = 'id' in holder && typeof holder.id === 'string' ? holder.id : null
+    const holderSku = 'sku' in holder && typeof holder.sku === 'string' ? holder.sku : ''
+    const holderName = 'name' in holder && typeof holder.name === 'string'
+      ? holder.name
+      : t('inventory:products.singular')
+    toast.error(t('inventory:products.barcodeConflict', { name: holderName, sku: holderSku }), holderId
+      ? {
+          action: {
+            label: t('actions.view'),
+            onClick: () => navigate(`/inventory/products/${holderId}`),
+          },
+        }
+      : undefined)
+
+    return true
+  }
+
   const onSubmit = async (data: ProductFormData) => {
     const shouldClose = closeIntentRef.current
     closeIntentRef.current = false
@@ -553,8 +582,8 @@ export function ProductForm() {
             return
           }
         }
-      } catch {
-        // updateMutation error already displayed by react-query
+      } catch (error) {
+        reportBarcodeConflict(error)
         return
       }
       if (shouldClose) nav.goToList()
@@ -633,8 +662,8 @@ export function ProductForm() {
 
       if (shouldClose) nav.goToList()
       else nav.goToRecord(created.id)
-    } catch {
-      // Error handling via react-query
+    } catch (error) {
+      reportBarcodeConflict(error)
     }
   }
 

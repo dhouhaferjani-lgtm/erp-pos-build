@@ -13,11 +13,14 @@ import type { Unit } from '../api/uomApi'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { usePermissions } from '@/hooks/usePermissions'
+import { UnmappedUnitTextsPanel } from '../components/UnmappedUnitTextsPanel'
 
 export function UnitsSettingsPage() {
   const { t } = useTranslation(['common', 'uom'])
   const { data: categories, isLoading, error } = useCategories()
   const deleteMutation = useDeleteUnit()
+  const { hasPermission } = usePermissions()
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [editingUnit, setEditingUnit] = useState<Unit | undefined>(undefined)
@@ -93,6 +96,8 @@ export function UnitsSettingsPage() {
           {t('uom:addUnit')}
         </Button>
       </div>
+
+      {hasPermission('units.manage') && <UnmappedUnitTextsPanel />}
 
       {/* Categories and Units */}
       <div className="space-y-6">

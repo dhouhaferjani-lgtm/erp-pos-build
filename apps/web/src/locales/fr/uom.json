@@ -47,6 +47,29 @@
   "systemUnitInfo": "Les unités système sont disponibles pour tous les locataires et ne peuvent pas être modifiées",
   "selectUnit": "Sélectionner une unité",
 
+  "unmapped": {
+    "title": "Textes d’unité non associés",
+    "description": "Associez les textes d’unité des anciens produits et des aperçus d’import validés pour cette société. Les associations utilisent des codes exacts et s’appliquent aux validations futures.",
+    "blank": "(vide)",
+    "columns": {
+      "source": "Texte source",
+      "count": "Occurrences",
+      "target": "Associer à"
+    },
+    "products": "{{count}} produits",
+    "importRows": "{{count}} lignes d’aperçu",
+    "pendingImports": "sur {{count}} imports en attente",
+    "selectTarget": "Sélectionner le code exact",
+    "targetLabel": "Unité cible pour {{source}}",
+    "map": "Associer",
+    "confirmTitle": "Confirmer l’association d’unité",
+    "confirm": "Associer {{source}} au code d’unité exact {{code}} ? Cette action met à jour les produits correspondants et les validations futures de cette société.",
+    "success": "Texte d’unité associé.",
+    "successAliasStored": "Association d’unité enregistrée pour les prochains imports.",
+    "empty": "Aucun texte d’unité non associé.",
+    "loadError": "Impossible de charger les textes d’unité non associés."
+  },
+
   "conversionCalculator": "Calculateur de conversion d'unités",
   "conversionCalculatorHelp": "Convertir des quantités entre unités compatibles",
   "quantity": "Quantité",

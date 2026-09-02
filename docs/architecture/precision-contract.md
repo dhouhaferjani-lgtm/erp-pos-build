@@ -39,6 +39,18 @@ Every validator field whose destination is `decimal(N,S)` keeps `numeric` and AD
 
 Add a `<field>.regex` message ("… must have at most N decimal places"). **Normalize-on-write fields** (e.g. Scheduling `estimated_price`) intentionally omit the ceiling and canonicalize any precision via `bcformatStrict` in the service.
 
+**Spreadsheet import exception (ruled 2026-09-01).** Before the regex ceiling is
+evaluated, an import numeric string may be rounded to that column's scale only when
+both `|value − rounded| < 0.000001` and
+`|value − rounded| / |value| < 0.000001`. The absolute guard prevents a deliberate
+extra digit on a large value from being misclassified as representation noise. The
+comparison, scientific-notation expansion, and rounding are digit-string/bcmath
+operations; a PHP float must never participate. A normalized row keeps the
+non-blocking `numeric_normalized` warning.
+Values outside the epsilon remain unchanged so validation refuses them as
+`invalid_number` with the source column and raw value. This narrow boundary repair
+does not license extra precision at any storage or computation boundary.
+
 ## JSONB tier
 
 JSONB columns bypass Eloquent casts, so producers must pre-canonicalize numeric values to numeric-strings (at the storage scale — opening-balance staging uses fixed scale 3 to match the `decimal(N,3)` journal target) **before** `json_encode` (with `JSON_PRESERVE_ZERO_FRACTION`). Device-supplied JSONB (POS held-order snapshot, Z-report receipt_snapshots) is validated per-key with the same regex ceilings.

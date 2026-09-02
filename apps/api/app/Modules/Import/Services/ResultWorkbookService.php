@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Import\Services;
 
+use App\Modules\Import\Domain\Enums\ImportErrorCode;
+use App\Modules\Import\Domain\Enums\ImportRowOutcome;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Domain\ImportRow;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -20,19 +22,31 @@ final class ResultWorkbookService
         $spreadsheet = new Spreadsheet;
 
         $importedRows = $job->rows()
-            ->where('is_valid', true)
-            ->whereNull('import_error')
+            ->whereIn('outcome', [ImportRowOutcome::Imported, ImportRowOutcome::MergedLine])
+            ->get();
+        $skippedRows = $job->rows()
+            ->where(function ($query): void {
+                $query->whereIn('outcome', [ImportRowOutcome::DuplicateSkipped, ImportRowOutcome::DuplicateLoser])
+                    ->orWhere(function ($pending): void {
+                        $pending->where('is_valid', true)
+                            ->where('outcome', ImportRowOutcome::Pending);
+                    });
+            })
             ->get();
         $rejectedRows = $job->rows()
             ->where(function ($query): void {
                 $query->where('is_valid', false)
-                    ->orWhereNotNull('import_error');
+                    ->orWhereIn('outcome', [ImportRowOutcome::Failed, ImportRowOutcome::OpeningLocked]);
             })
             ->get();
 
         $importedSheet = $spreadsheet->getActiveSheet();
         $importedSheet->setTitle('Imported');
         $this->writeRows($importedSheet, array_values($importedRows->all()), false);
+
+        $skippedSheet = new Worksheet($spreadsheet, 'Skipped');
+        $spreadsheet->addSheet($skippedSheet);
+        $this->writeRows($skippedSheet, array_values($skippedRows->all()), true);
 
         $rejectedSheet = new Worksheet($spreadsheet, 'Rejected');
         $spreadsheet->addSheet($rejectedSheet);
@@ -126,8 +140,13 @@ final class ResultWorkbookService
     private function formatReasons(ImportRow $row): string
     {
         $messages = $row->getErrorMessages();
+        if ($row->is_valid && $row->outcome === ImportRowOutcome::Pending) {
+            $messages[] = 'not_processed: This row was not processed.';
+        }
         if ($row->import_error !== null) {
-            $messages[] = 'import: '.$row->import_error;
+            $errorCode = $row->import_error_code;
+            $code = $errorCode instanceof ImportErrorCode ? $errorCode->value : 'import';
+            $messages[] = $code.': '.$row->import_error;
         }
 
         return implode('; ', $messages);

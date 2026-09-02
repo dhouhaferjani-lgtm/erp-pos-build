@@ -7,13 +7,17 @@
     "unit_ambiguous": "The unit code matches more than one unit.",
     "unit_default_missing": "The default unit pc is not available.",
     "barcode_ambiguous": "The barcode belongs to more than one product.",
+    "barcode_identity_conflict": "The barcode is reused by contradictory product identities. Fix the listed rows before importing.",
+    "multi_location_confirmation_required": "Confirm the repeated multi-location product lines before importing.",
     "product_not_found": "The product could not be found.",
     "partner_not_found": "The business partner could not be found.",
     "sku_held_by_deleted_product": "The SKU is held by a deleted product.",
     "vat_held_by_deleted_partner": "The VAT number is held by a deleted partner.",
     "duplicate_sku_in_company": "This company already has a product with that SKU.",
+    "invalid_number": "A numeric value is malformed or has more decimal places than allowed.",
     "validation_failed": "The row did not pass validation.",
     "internal_error": "The row could not be imported because of an internal error.",
+    "worker_lost": "The import worker stopped before the job finished.",
     "unknown": "This historical import error has no current code."
   },
   "upload": {
@@ -143,7 +147,8 @@
     "validation": {
       "title": "Review validation results",
       "description": "Review any errors found during validation. You can fix errors directly in the grid below or proceed with valid rows only.",
-      "proceed": "Proceed to Import"
+      "proceed": "Proceed to Import",
+      "noValidRows": "No valid rows are available to import. Correct the file or map the unknown unit text in Settings → Units."
     },
     "execute": {
       "title": "Import your data",
@@ -179,11 +184,17 @@
     "confirmPartialImport": "Import with Errors",
     "partialImportDescription": "{{valid}} rows are valid and will be imported. {{failed}} rows have errors and will be skipped. You can download the failed rows after import.",
     "proceedWithValid": "Import Valid Rows",
+    "proceedWithValidCounts": "Import {{valid}} valid rows and skip {{failed}}",
     "retired": {
       "title": "This import is no longer available",
       "description": "The stock levels import has been retired: it set stock quantities directly, with no stock movement and no justifying document behind them. Import your opening stock with the Products import instead — it accepts a quantity, a purchase price and a location, and records a proper opening stock movement.",
       "goToProducts": "Go to the Products import"
     }
+  },
+  "unitErrors": {
+    "title": "Unknown units",
+    "line_one": "{{count}} row uses unknown unit '{{unit}}' — map it in Settings → Units or correct the file",
+    "line_other": "{{count}} rows use unknown unit '{{unit}}' — map it in Settings → Units or correct the file"
   },
   "options": {
     "stockLocation": {
@@ -224,9 +235,10 @@
     "skipColumn": "-- Skip this column --",
     "requiredFields": "Required Fields",
     "optionalFields": "Optional Fields",
-    "alreadyMapped": "already mapped",
-    "missingRequired": "Missing required fields",
-    "legendMapped": "Mapped",
+  "alreadyMapped": "already mapped",
+  "missingRequired": "Missing required fields",
+  "automaticMatchingFailed": "Automatic column matching failed — map the columns manually.",
+  "legendMapped": "Mapped",
     "legendSkipped": "Skipped",
     "legendRequired": "Required",
     "suggested": "(suggested)",
@@ -261,6 +273,9 @@
     "unit_defaulted": "{{count}} rows defaulted to the pc unit.",
     "location_not_supplied": "{{count}} rows did not supply a stock location.",
     "location_code_unknown": "{{count}} rows supplied an unknown location code.",
+    "multi_location": "{{count}} product barcode groups span multiple stock locations.",
+    "barcode_float_corruption_suspected": "{{count}} barcodes look like spreadsheet float conversions and need verification.",
+    "numeric_normalized": "{{count}} rows had spreadsheet float noise normalized to the column scale.",
     "opening_exists": "{{count}} rows already had opening stock; no second opening was posted.",
     "unknown": "{{count}} rows contain a historical warning that is not recognised by this version.",
     "other": "{{count}} rows reported warning {{code}}."
@@ -289,6 +304,15 @@
       "skip": { "label": "Skip", "description": "Leave matched existing records unchanged." },
       "cancel": { "label": "Cancel", "description": "Leave this wizard and discard the import from import history." },
       "persistenceError": "The duplicate policy could not be saved. Try again before continuing."
+    },
+    "barcode": {
+      "multiLocation": "{{count}} products repeat across multiple stock locations. Every location line will create opening stock after confirmation.",
+      "identityConflict": "{{count}} rows reuse a barcode for contradictory product identities and will be rejected."
+    },
+    "multiLocationConfirm": {
+      "title": "Import stock into every listed location?",
+      "message": "{{count}} products repeat across locations. Confirm to merge each product once and create opening stock from every location line.",
+      "confirm": "Confirm all locations"
     },
     "discard": {
       "title": "Discard this import?",
@@ -334,6 +358,12 @@
       "progress": "Progress",
       "date": "Date",
       "actions": "Actions"
+    },
+    "counts": {
+      "imported": "{{count}} imported",
+      "skipped": "{{count}} skipped",
+      "failed": "{{count}} failed",
+      "total": "{{count}} total"
     },
     "viewDetails": "View Details",
     "noJobs": "No import jobs found",

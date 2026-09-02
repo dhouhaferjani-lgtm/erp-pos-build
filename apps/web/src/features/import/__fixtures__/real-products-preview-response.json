@@ -1,0 +1,215 @@
+{
+  "headers": [
+    "name",
+    "sku",
+    "description",
+    "sale_price",
+    "sale_price_incl_tax",
+    "sale_price_excl_tax",
+    "purchase_price",
+    "margin",
+    "quantity",
+    "location_code",
+    "placement_path",
+    "category_name",
+    "brand",
+    "tax_rate",
+    "unit",
+    "barcode"
+  ],
+  "rows": [
+    {
+      "row_number": 1,
+      "data": {
+        "name": "K REINE HUILE DE MASSAGE ABRICOT 200ML",
+        "sku": "SKU01",
+        "description": "L'huile de massage à l'abricot de la marque K-Reine (format 200ml) est un soin polyvalent très apprécié pour sa texture légère et ses propriétés régénérantes L'huile d'abricot est naturellement riche en vitamines A et E, ainsi qu'en acides gras essentiels (oméga 6 et 9), Revitalisante et Éclat : Elle redonne du \"peps\" aux peaux ternes et fatiguées, Elle est souvent appelée l'huile \"effet bonne mine\", Nourrissante et Adoucissante : Elle hydrate en profondeur et rend la peau extrêmement douce au toucher, Anti-âge : Grâce à ses antioxydants, elle aide à protéger la peau du vieillissement cutané et améliore la souplesse de l'épiderme, Versez une petite quantité d'huile dans le creux de vos mains et frottez-les ensemble pour tiédir l'huile avant de l'appliquer sur le corps, Cela rend le soin plus relaxant, Effectuez des mouvements circulaires et des pressions douces sur les zones tendues (épaules, dos, jambes),",
+        "sale_price": "",
+        "sale_price_incl_tax": "",
+        "sale_price_excl_tax": "12.98",
+        "purchase_price": "9.615",
+        "margin": "35",
+        "quantity": "0",
+        "location_code": "ZF501",
+        "placement_path": "",
+        "category_name": "",
+        "brand": "",
+        "tax_rate": "19",
+        "unit": "piece",
+        "barcode": "6192430000000"
+      },
+      "is_valid": false,
+      "errors": {
+        "unit": [
+          "unit_unknown: Unknown unit \"piece\"; enter a code exactly as spelled."
+        ]
+      },
+      "duplicate_bucket": null,
+      "duplicate_advisory": {
+        "row_number": 1,
+        "code": "barcode_identity_conflict"
+      }
+    }
+  ],
+  "summary": {
+    "total_rows": 859,
+    "valid_rows": 0,
+    "invalid_rows": 859,
+    "multi_location_products": 0,
+    "barcode_identity_conflict_rows": 754
+  },
+  "error_summary": {
+    "unknown_units": [
+      {
+        "text": "piece",
+        "count": 859,
+        "accepted": [
+          "cl",
+          "cm",
+          "day",
+          "doz",
+          "floz",
+          "g",
+          "hr",
+          "in",
+          "kg",
+          "l",
+          "lb",
+          "m",
+          "mg",
+          "min",
+          "ml",
+          "mm",
+          "oz",
+          "pair",
+          "pc"
+        ]
+      }
+    ]
+  },
+  "duplicates": {
+    "counts": {
+      "new": 0,
+      "existing_sku": 0,
+      "existing_barcode": 0,
+      "existing_name": 0,
+      "in_file": 0,
+      "refused": 0
+    },
+    "matched_by_name": [],
+    "refused": [
+      {
+        "row_number": 1,
+        "code": "barcode_identity_conflict"
+      },
+      {
+        "row_number": 2,
+        "code": "barcode_identity_conflict"
+      },
+      {
+        "row_number": 3,
+        "code": "barcode_identity_conflict"
+      }
+    ],
+    "barcode_groups": {
+      "counts": {
+        "multi_location_products": 0,
+        "barcode_identity_conflict_groups": 77,
+        "barcode_identity_conflict_rows": 754
+      },
+      "groups": [
+        {
+          "barcode": "6192430000000",
+          "classification": "barcode_identity_conflict",
+          "row_numbers": [
+            1,
+            52,
+            65,
+            152,
+            153,
+            154,
+            212,
+            213,
+            229,
+            243,
+            330,
+            558,
+            675,
+            677,
+            680,
+            681,
+            682,
+            683,
+            687,
+            688,
+            689,
+            690,
+            691
+          ],
+          "location_codes": [
+            "ZF1058",
+            "ZF1175",
+            "ZF1177",
+            "ZF1180",
+            "ZF1181",
+            "ZF1182",
+            "ZF1183",
+            "ZF1187",
+            "ZF1188",
+            "ZF1189",
+            "ZF1190",
+            "ZF1191",
+            "ZF501",
+            "ZF552",
+            "ZF565",
+            "ZF652",
+            "ZF653",
+            "ZF654",
+            "ZF712",
+            "ZF713",
+            "ZF729",
+            "ZF743",
+            "ZF830"
+          ],
+          "differing_fields": [
+            "description",
+            "margin",
+            "name",
+            "purchase_price",
+            "sale_price_excl_tax",
+            "sku"
+          ]
+        },
+        {
+          "barcode": "3701130000000",
+          "classification": "barcode_identity_conflict",
+          "row_numbers": [
+            2,
+            67,
+            274,
+            608
+          ],
+          "location_codes": [
+            "ZF1108",
+            "ZF502",
+            "ZF567",
+            "ZF774"
+          ],
+          "differing_fields": [
+            "description",
+            "margin",
+            "name",
+            "purchase_price",
+            "sale_price_excl_tax",
+            "sku"
+          ]
+        }
+      ],
+      "rows": {
+        "1": 0,
+        "2": 1,
+        "9": 5
+      }
+    }
+  }
+}

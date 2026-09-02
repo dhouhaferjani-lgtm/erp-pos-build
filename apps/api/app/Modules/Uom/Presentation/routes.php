@@ -18,6 +18,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::put('uom/units/{id}', [UomController::class, 'updateUnit']);
     Route::delete('uom/units/{id}', [UomController::class, 'destroyUnit']);
 
+    // Explicit, audited company mapping for legacy/import unit text.
+    Route::get('uom/unit-text-mappings/unmapped', [UomController::class, 'unmappedUnitTexts']);
+    Route::post('uom/unit-text-mappings', [UomController::class, 'applyUnitTextMapping']);
+
     // Conversion
     Route::post('uom/convert', [UomController::class, 'convert']);
 });

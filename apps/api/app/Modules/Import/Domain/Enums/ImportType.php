@@ -202,11 +202,12 @@ enum ImportType: string
             self::Products => [
                 'name' => ['required', 'string', 'max:255'],
                 'sku' => ['nullable', 'string', 'max:100'],
+                'barcode' => ['nullable', 'string', 'max:100'],
                 'type' => ['nullable', 'in:part,service,consumable'],
-                'sale_price' => ['nullable', 'numeric', 'min:0'],
+                'sale_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
                 'sale_price_incl_tax' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
                 'sale_price_excl_tax' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
-                'purchase_price' => ['nullable', 'numeric', 'min:0'],
+                'purchase_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
                 'margin' => ['nullable', 'numeric', 'regex:/^-?\d+(\.\d{1,2})?$/'],
                 'quantity' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
                 'location_code' => ['nullable', 'string', 'max:100'],
@@ -224,14 +225,14 @@ enum ImportType: string
                 // over-long cell must be rejected HERE, with its row number,
                 // not mid-import as a raw SQLSTATE (gate r1 finding 2).
                 'category_name' => ['nullable', 'string', 'max:255'],
-                'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+                'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
                 'unit' => ['nullable', 'string', 'max:50'],
                 'is_active' => ['nullable', 'in:true,false,1,0,yes,no'],
             ],
             self::StockLevels => [
                 'product_sku' => ['required', 'string'],
                 'location_code' => ['required', 'string'],
-                'quantity' => ['required', 'numeric', 'min:0'],
+                'quantity' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
             ],
             self::OpeningBalances => [
                 'account_code' => ['required', 'string'],
@@ -247,12 +248,12 @@ enum ImportType: string
             self::CompositeItems => [
                 'code' => ['required', 'string', 'max:100'],
                 'name' => ['required', 'string', 'max:255'],
-                'base_price' => ['required', 'numeric', 'min:0'],
+                'base_price' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
                 'vertical_type' => ['nullable', 'in:fnb,manufacturing,sewing,bakery,generic'],
                 'production_type' => ['nullable', 'in:made_to_order,batch,stock'],
                 'pricing_mode' => ['nullable', 'in:standard,fixed_bundle'],
-                'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
-                'manual_cost' => ['nullable', 'numeric', 'min:0'],
+                'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
+                'manual_cost' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
                 'is_active' => ['nullable', 'in:true,false,1,0,yes,no'],
             ],
         };

@@ -25,6 +25,8 @@ final class ImportErrorDetailData extends Data
      * @param  list<string>|Optional|null  $accepted
      * @param  list<UnitCandidateData>|Optional|null  $candidates
      * @param  list<string>|Optional|null  $candidate_skus
+     * @param  list<int>|Optional|null  $row_numbers
+     * @param  list<string>|Optional|null  $differing_fields
      */
     public function __construct(
         public readonly string|Optional|null $supplied,
@@ -43,5 +45,10 @@ final class ImportErrorDetailData extends Data
         public readonly string|Optional|null $remedy,
         public readonly string|Optional|null $held_quantity,
         public readonly string|Optional|null $held_at,
+        public readonly string|Optional|null $barcode,
+        #[TypeScriptType('number[]|null')]
+        public readonly array|Optional|null $row_numbers,
+        #[TypeScriptType('string[]|null')]
+        public readonly array|Optional|null $differing_fields,
     ) {}
 }

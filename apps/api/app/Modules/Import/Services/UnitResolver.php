@@ -13,12 +13,33 @@ use App\Shared\DTOs\UnitCatalogEntryData;
 
 final readonly class UnitResolver
 {
+    /**
+     * @param  list<UnitCatalogEntryData>|null  $runVisibleUnits
+     * @param  array<string, string>|null  $runMappingTargetIds
+     */
     public function __construct(
         private UnitCatalogQueryInterface $catalog,
+        private ?string $runCompanyId = null,
+        private ?array $runVisibleUnits = null,
+        private ?array $runMappingTargetIds = null,
     ) {}
+
+    public function forRun(string $companyId): self
+    {
+        return new self(
+            $this->catalog,
+            $companyId,
+            $this->catalog->visibleUnits($companyId),
+            $this->catalog->explicitMappingTargetIds($companyId),
+        );
+    }
 
     public function resolve(string $companyId, ?string $supplied, bool $isUpdate): UnitResolutionData
     {
+        if ($this->runCompanyId !== null && $this->runCompanyId !== $companyId) {
+            throw new \InvalidArgumentException('A unit-resolution run cannot be reused for another company.');
+        }
+
         $code = trim($supplied ?? '');
         if ($code === '' && $isUpdate) {
             return new UnitResolutionData(null, null, null);
@@ -26,10 +47,21 @@ final readonly class UnitResolver
 
         $defaulted = $code === '';
         $code = $defaulted ? 'pc' : $code;
-        $visible = $this->catalog->visibleUnits($companyId);
+        $visible = $this->runVisibleUnits ?? $this->catalog->visibleUnits($companyId);
         $matches = UnitCatalogEntryData::exactCodeMatchesAtWinningTier($visible, $code);
 
         if ($matches === []) {
+            $explicitMapping = $defaulted
+                ? null
+                : $this->explicitMappingTarget($companyId, $code, $visible);
+            if ($explicitMapping !== null) {
+                return new UnitResolutionData(
+                    $explicitMapping->id,
+                    $explicitMapping->code,
+                    null,
+                );
+            }
+
             $accepted = array_map(
                 static fn (UnitCatalogEntryData $unit): string => $unit->code,
                 $visible,
@@ -74,5 +106,29 @@ final readonly class UnitResolver
             $match->code,
             $defaulted ? ImportWarningCode::UnitDefaulted : null,
         );
+    }
+
+    /** @param list<UnitCatalogEntryData> $visible */
+    private function explicitMappingTarget(
+        string $companyId,
+        string $sourceText,
+        array $visible,
+    ): ?UnitCatalogEntryData {
+        if ($this->runMappingTargetIds === null) {
+            return $this->catalog->explicitMappingTarget($companyId, $sourceText);
+        }
+
+        $targetId = $this->runMappingTargetIds[$sourceText] ?? null;
+        if ($targetId === null) {
+            return null;
+        }
+
+        foreach ($visible as $unit) {
+            if ($unit->id === $targetId) {
+                return $unit;
+            }
+        }
+
+        return null;
     }
 }

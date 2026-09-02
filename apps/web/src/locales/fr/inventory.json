@@ -81,6 +81,8 @@
     "title": "Produits",
     "singular": "produit",
     "plural": "produits",
+    "barcodeConflict": "Ce code-barres appartient déjà à {{name}} ({{sku}}).",
+    "barcodeConflictUnknown": "Ce code-barres appartient déjà à un autre produit de cette société.",
     "new": "Ajouter un produit",
     "searchPlaceholder": "Rechercher des produits…",
     "addQuick": "Ajouter un produit (rapide)",

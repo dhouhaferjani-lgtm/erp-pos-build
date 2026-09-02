@@ -16,7 +16,13 @@ final class CodedImportRowException extends RuntimeException
      *   candidates?: list<array{id: string, code: string, name: string, category: string, tier: string}>,
      *   candidate_skus?: list<string>,
      *   sku?: string,
-     *   existing_product_id?: string
+     *   existing_product_id?: string,
+     *   barcode?: string,
+     *   row_numbers?: list<int>,
+     *   differing_fields?: list<string>,
+     *   column?: string,
+     *   raw?: string,
+     *   remedy?: string
      * } $detail
      */
     public function __construct(

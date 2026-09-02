@@ -6,7 +6,7 @@
     "deferred": "CAN run, but no lane runs it yet. Requires `reason`. Counted loudly on every CI run. After O-29 exactly one group is left here — `(root files)`, which no whole-directory selector can address."
   },
   "debt_ceiling": 1,
-  "gated_ceiling": 1236,
+  "gated_ceiling": 1237,
   "lanes": {
     "security-regression": {
       "job": "security-regression",
@@ -926,7 +926,8 @@
     },
     "Product": {
       "lane": "feature-lane-catalog/Product",
-      "classes": 58,
+      "classes": 59,
+      "raise_note": "DELIBERATE UNION RAISE 58 -> 59 (2026-09-01, lane K-11): ProductBarcodeUniquenessTest adds the company-scoped live-barcode partial unique, oldest-wins twin cleanup, idempotence, and read-only dry-run census proof. Current-worktree union arithmetic: Product 58 + 1 new Feature class = 59; gated_ceiling 1236 + 1 = 1237.",
       "note": "DELIBERATE RAISE 57 -> 58 (2026-08-25, Session A lane fix/campaign-w26-po-price-default, gate r1 finding 2): ResolveLineEntryCodeCostRedactionTest — the only guard that `line-entry/resolve-code` redacts cost fields (purchase_price / cost_price / last_purchase_cost, plus the variant's cost_override) for callers lacking `pricing.view_cost_prices`, the way ProductController::index/show already do. Both endpoints sit behind the same `can:products.view` route middleware and both feed the document line editor, so before this fix a typed product search redacted and a barcode scan did not. W2-6 raised the impact from a JSON-payload leak to an on-screen one (the scanned purchase_price pre-fills the PO price cell and is announced by the new price-provenance hint). Red captured on PostgreSQL 16 (throwaway autoerp_test_w26, port 5433): 3 of 4 failed with '10.000' / '8.000' returned where null was required; green after LineEntryController::productPayload. Because this lane is PARKED, the class is ALSO named in the backend-test-pgsql --filter allowlist in .github/workflows/ci.yml — same reason CorrectingEntryEndpointTest and SupplierGoodsReturnNoteTest are: an authz regression pin that executes on no event is not a pin. Remove the allowlist entry when this lane's gate is flipped, not before. gated_ceiling 1167 -> 1168 at merge (UNION arithmetic, gate r2 finding 3: dev's 1167 after N-6 raised Document 80 -> 82 / gated 1164 -> 1167, plus this one Product class; every other group's entry taken from dev verbatim. The lane authored 1164 -> 1165 on its earlier base — do NOT resolve this line to 1165). Gate record docs/superpowers/reviews/2026-08-24-w26-po-price-gate-r1.md. DELIBERATE RAISE 55 -> 57 (2026-08-24, Session A merge 77610a8bb): ProductTaxRateDerivationTest + Migrations/BackfillProductsTaxRateN1MigrationTest — lane fix/campaign-n1-vat-resolution (N-1; MIGRATION-BEARING products-only backfill + worklist census); gate records docs/superpowers/reviews/2026-08-24-n1-vat-gate-r{1,2,3}-fiscal.md. Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Progression": {

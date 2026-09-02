@@ -110,7 +110,7 @@ class MigrationWizardController extends Controller
         $request->validate([
             'type' => ['required', 'string'],
             'headers' => ['required', 'array'],
-            'headers.*' => ['string'],
+            'headers.*' => ['nullable', 'string'],
         ]);
 
         try {
@@ -119,19 +119,26 @@ class MigrationWizardController extends Controller
             return response()->json(['error' => 'Invalid import type'], 400);
         }
 
-        /** @var array<string> $headers */
+        /** @var list<string|null> $headers */
         $headers = $request->input('headers');
-        $suggestions = $this->wizardService->suggestColumnMapping($importType, $headers);
+        $namedHeaders = array_values(array_filter(
+            $headers,
+            static fn (?string $header): bool => $header !== null && trim($header) !== '',
+        ));
+        $suggestions = $this->wizardService->suggestColumnMapping($importType, $namedHeaders);
 
         // Determine unmapped columns
         $mappedSource = array_filter($suggestions);
-        $unmappedSource = array_diff($headers, $mappedSource);
+        $unmappedSource = array_values(array_filter(
+            $headers,
+            static fn (?string $header): bool => $header === null || ! in_array($header, $mappedSource, true),
+        ));
         $unmappedTarget = array_keys(array_filter($suggestions, fn ($v) => $v === null));
 
         return response()->json([
             'data' => [
                 'suggestions' => $suggestions,
-                'unmapped_source' => array_values($unmappedSource),
+                'unmapped_source' => $unmappedSource,
                 'unmapped_target' => $unmappedTarget,
             ],
         ]);

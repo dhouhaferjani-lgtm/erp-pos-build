@@ -13,11 +13,16 @@ use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Domain\Enums\ImportErrorCode;
+use App\Modules\Import\Domain\Enums\ImportRowOutcome;
 use App\Modules\Import\Domain\Enums\ImportStatus;
+use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Domain\ImportRow;
+use App\Modules\Import\Services\ImportService;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
@@ -30,6 +35,8 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Uom\Application\Services\UnitsProvisioningService;
+use App\Modules\Uom\Domain\Entities\Unit;
+use App\Modules\Uom\Domain\Entities\UnitCategory;
 use Carbon\CarbonImmutable;
 use Database\Seeders\CountriesSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -212,6 +219,142 @@ final class ProductsImportPipelineTest extends TestCase
         $this->assertSame(1, StockMovement::where('product_id', $duplicate->id)->where('movement_type', MovementType::Opening)->count());
     }
 
+    public function test_numeric_boundary_warns_on_float_noise_and_codes_rejected_numbers_by_column(): void
+    {
+        $file = UploadedFile::fake()->createWithContent('numeric-boundary.csv', implode("\n", [
+            'name,sku,sale_price_excl_tax,purchase_price,margin,quantity,tax_rate,unit',
+            'Noise Product,NOISE-1,71.162000000000006,6.0999999999999999E-2,30.000000000000004,1.2340000000000002,19.000000000000004,pc',
+            'Over Precision Product,OVER-1,71.1624,1.000,30,1,19,pc',
+            'Malformed Product,BAD-1,10,not-a-number,30,1,19,pc',
+        ]));
+
+        $create = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/imports', [
+            'file' => $file,
+            'type' => 'products',
+            'options' => ['price_authority' => 'ht'],
+        ])->assertCreated();
+
+        $jobId = (string) $create->json('data.id');
+        $job = ImportJob::query()->findOrFail($jobId);
+        $rows = $job->rows()->orderBy('row_number')->get()->keyBy('row_number');
+        $normalizedRow = $rows->get(1);
+        $overPrecisionRow = $rows->get(2);
+        $malformedRow = $rows->get(3);
+        $this->assertInstanceOf(ImportRow::class, $normalizedRow);
+        $this->assertInstanceOf(ImportRow::class, $overPrecisionRow);
+        $this->assertInstanceOf(ImportRow::class, $malformedRow);
+
+        $this->assertSame('71.162', $normalizedRow->data['sale_price_excl_tax'] ?? null);
+        $this->assertSame('0.061', $normalizedRow->data['purchase_price'] ?? null);
+        $this->assertSame('30.00', $normalizedRow->data['margin'] ?? null);
+        $this->assertSame('1.2340', $normalizedRow->data['quantity'] ?? null);
+        $this->assertSame('19.00', $normalizedRow->data['tax_rate'] ?? null);
+        $this->assertSame('numeric_normalized', $normalizedRow->warnings[0]['code'] ?? null);
+        $this->assertTrue($normalizedRow->is_valid);
+
+        $this->assertSame('71.1624', $overPrecisionRow->data['sale_price_excl_tax'] ?? null);
+        $this->assertSame('invalid_number', $overPrecisionRow->import_error_code?->value);
+        $this->assertSame('sale_price_excl_tax', $overPrecisionRow->import_error_detail['column'] ?? null);
+        $this->assertSame('71.1624', $overPrecisionRow->import_error_detail['raw'] ?? null);
+
+        $this->assertSame('invalid_number', $malformedRow->import_error_code?->value);
+        $this->assertSame('purchase_price', $malformedRow->import_error_detail['column'] ?? null);
+        $this->assertSame('not-a-number', $malformedRow->import_error_detail['raw'] ?? null);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('import_result.imported_count', 1)
+            ->assertJsonPath('data.failed_rows', 2);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/imports/{$jobId}")
+            ->assertOk()
+            ->assertJsonPath('data.warning_summary.numeric_normalized', 1);
+    }
+
+    public function test_real_no_barcode_fixture_imports_856_rows_and_refuses_only_three_negative_quantities(): void
+    {
+        $path = realpath(__DIR__.'/../../../../web/e2e-local/real-produits-nobarcode.csv');
+        $this->assertIsString($path, 'The 859-row real-file-derived fixture must remain available.');
+        $this->assertStringContainsString(
+            '6.0999999999999999E-2',
+            (string) file_get_contents($path),
+            'The row-376 scientific-notation value must remain verbatim in the acceptance fixture.',
+        );
+
+        $pc = Unit::query()->where('code', 'pc')->firstOrFail();
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/uom/unit-text-mappings', [
+                'source_text' => 'piece',
+                'target_unit_id' => $pc->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.productCount', 0)
+            ->assertJsonPath('data.importRowCount', 0)
+            ->assertJsonPath('data.applied', false)
+            ->assertJsonPath('data.aliasStored', true);
+        $this->assertSame(1, DB::table('unit_text_mappings')->where('source_text', 'piece')->count());
+        $this->assertSame(1, AuditEvent::query()
+            ->where('company_id', $this->company->id)
+            ->where('event_type', 'uom.unit_text_mapping_applied')
+            ->count());
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/uom/unit-text-mappings', [
+                'source_text' => 'piece',
+                'target_unit_id' => $pc->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.applied', false)
+            ->assertJsonPath('data.aliasStored', true);
+        $this->assertSame(1, DB::table('unit_text_mappings')->where('source_text', 'piece')->count());
+        $this->assertSame(1, AuditEvent::query()
+            ->where('company_id', $this->company->id)
+            ->where('event_type', 'uom.unit_text_mapping_applied')
+            ->count());
+
+        $file = new UploadedFile($path, 'real-produits-nobarcode.csv', 'text/csv', null, true);
+        $create = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/imports', [
+            'file' => $file,
+            'type' => 'products',
+            'options' => [
+                'price_authority' => 'ht',
+                'duplicate_policy' => 'override',
+            ],
+        ]);
+
+        $create->assertCreated()
+            ->assertJsonPath('data.total_rows', 859)
+            ->assertJsonPath('data.failed_rows', 3);
+
+        $jobId = (string) $create->json('data.id');
+        $job = ImportJob::query()->findOrFail($jobId);
+        $this->assertSame(0, $job->rows()->where('import_error_code', ImportErrorCode::UnitUnknown)->count());
+        $this->assertSame('0.061', $job->rows()->where('row_number', 376)->firstOrFail()->data['purchase_price'] ?? null);
+        foreach ([141, 160, 827] as $rowNumber) {
+            $row = $job->rows()->where('row_number', $rowNumber)->firstOrFail();
+            $this->assertSame('-1', $row->data['quantity'] ?? null);
+            $this->assertArrayHasKey('quantity', $row->errors ?? []);
+            $this->assertSame(ImportErrorCode::ValidationFailed, $row->import_error_code);
+        }
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertAccepted();
+
+        $job->refresh();
+        $this->assertSame(856, $job->successful_rows);
+        $this->assertSame(3, $job->failed_rows);
+        $this->assertSame(856, Product::query()->count());
+        $this->assertSame(0, $job->rows()->where('import_error_code', ImportErrorCode::InternalError)->count());
+
+        $detail = $this->actingAs($this->user, 'sanctum')->getJson("/api/v1/imports/{$jobId}")->assertOk();
+        $normalizedCount = $detail->json('data.warning_summary.numeric_normalized');
+        $this->assertIsInt($normalizedCount);
+        $this->assertSame(626, $normalizedCount);
+    }
+
     public function test_override_reimport_recomputes_sale_price_from_ht_without_erasing_blank_purchase_price(): void
     {
         $product = Product::factory()->create([
@@ -357,6 +500,9 @@ final class ProductsImportPipelineTest extends TestCase
         $this->assertIsString($jobId);
 
         $this->onlyRowOf($jobId)->update([
+            'is_valid' => false,
+            'import_error_code' => ImportErrorCode::UnitUnknown,
+            'import_error_detail' => ['supplied' => 'piece', 'accepted' => ['pc', 'kg']],
             'warnings' => [
                 ['code' => 'price_conflict', 'detail' => 'TTC conflicts with HT'],
                 ['code' => 'price_conflict', 'detail' => 'Margin conflicts with HT'],
@@ -369,17 +515,52 @@ final class ProductsImportPipelineTest extends TestCase
 
         ImportJob::query()->findOrFail($jobId)->update(['status' => ImportStatus::Importing]);
 
-        $this->actingAs($this->user, 'sanctum')
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $list = $this->actingAs($this->user, 'sanctum')
             ->getJson('/api/v1/imports')
             ->assertOk()
             ->assertJsonPath('data.0.warning_rows', 1)
-            ->assertJsonPath('data.0.warning_summary', null);
+            ->assertJsonPath('data.0.warning_summary', null)
+            ->assertJsonPath('data.0.error_summary', null);
+        unset($list);
 
+        $listRowQueries = array_values(array_filter(
+            DB::getQueryLog(),
+            static fn (array $query): bool => str_contains($query['query'], 'import_rows'),
+        ));
+        DB::disableQueryLog();
+        foreach ($listRowQueries as $query) {
+            $this->assertStringNotContainsString(
+                'import_error_detail',
+                $query['query'],
+                'The paginated import list must never build a row-derived unit error summary.',
+            );
+            $this->assertDoesNotMatchRegularExpression(
+                '/select\s+["`]?data["`]?/i',
+                $query['query'],
+                'The paginated import list must never hydrate staged row payloads.',
+            );
+        }
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
         $this->actingAs($this->user, 'sanctum')
             ->getJson("/api/v1/imports/{$jobId}")
             ->assertOk()
             ->assertJsonPath('data.warning_rows', 1)
-            ->assertJsonPath('data.warning_summary', null);
+            ->assertJsonPath('data.warning_summary', null)
+            ->assertJsonPath('data.error_summary.unknown_units.0.text', 'piece')
+            ->assertJsonPath('data.error_summary.unknown_units.0.count', 1);
+
+        $detailQueries = array_values(array_filter(
+            DB::getQueryLog(),
+            static fn (array $query): bool => str_contains($query['query'], 'import_error_detail'),
+        ));
+        DB::disableQueryLog();
+        $this->assertCount(1, $detailQueries, 'A single-job payload must summarize unit errors with one aggregate query.');
+        $this->assertMatchesRegularExpression('/count\(\*\).*group by.*import_error_detail/is', $detailQueries[0]['query']);
+        $this->assertDoesNotMatchRegularExpression('/select\s+["`]?data["`]?/i', $detailQueries[0]['query']);
 
         ImportJob::query()->findOrFail($jobId)->update(['status' => ImportStatus::Completed]);
 
@@ -1519,9 +1700,515 @@ final class ProductsImportPipelineTest extends TestCase
         $this->assertNull($rows[1]->warnings[1] ?? null);
     }
 
+    public function test_unit_resolution_is_identical_during_validation_execution_and_revalidation(): void
+    {
+        $file = UploadedFile::fake()->createWithContent('unit-honesty.csv', implode("\n", [
+            'name,sku,type,unit',
+            'Unknown piece,UNIT-HONEST-1,part,piece',
+            'Unknown pcs,UNIT-HONEST-2,part,pcs',
+            'Default piece,UNIT-HONEST-3,part,',
+            'Exact kilogram,UNIT-HONEST-4,part,kg',
+        ]));
+
+        $create = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/imports', [
+            'file' => $file,
+            'type' => 'products',
+        ]);
+
+        $create->assertCreated()
+            ->assertJsonPath('data.status', ImportStatus::Validated->value)
+            ->assertJsonPath('data.total_rows', 4)
+            ->assertJsonPath('data.failed_rows', 2)
+            ->assertJsonPath('data.error_summary.unknown_units.0.text', 'pcs')
+            ->assertJsonPath('data.error_summary.unknown_units.0.count', 1)
+            ->assertJsonPath('data.error_summary.unknown_units.1.text', 'piece')
+            ->assertJsonPath('data.error_summary.unknown_units.1.count', 1);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/imports/'.(string) $create->json('data.id').'/error-summary')
+            ->assertOk()
+            ->assertJsonPath('data.error_summary.unknown_units.0.text', 'pcs')
+            ->assertJsonPath('data.error_summary.unknown_units.1.text', 'piece');
+
+        $job = ImportJob::query()->findOrFail((string) $create->json('data.id'));
+        foreach ([1 => 'piece', 2 => 'pcs'] as $rowNumber => $supplied) {
+            $row = $job->rows()->where('row_number', $rowNumber)->firstOrFail();
+            $this->assertFalse($row->is_valid);
+            $this->assertSame(ImportErrorCode::UnitUnknown, $row->import_error_code);
+            $this->assertSame($supplied, $row->import_error_detail['supplied'] ?? null);
+            $accepted = $row->import_error_detail['accepted'] ?? null;
+            $this->assertIsArray($accepted);
+            $this->assertLessThanOrEqual(20, count($accepted));
+            $this->assertContains('pc', $accepted);
+            $this->assertContains('kg', $accepted);
+            $this->assertStringStartsWith(
+                ImportErrorCode::UnitUnknown->value.':',
+                $row->errors['unit'][0] ?? '',
+            );
+        }
+        $this->assertTrue(
+            $job->rows()->where('row_number', 3)->firstOrFail()->is_valid,
+            'blank create must validate through the pc default',
+        );
+        $this->assertTrue(
+            $job->rows()->where('row_number', 4)->firstOrFail()->is_valid,
+            'an exact visible code must validate',
+        );
+
+        app(ImportService::class)->validateJob($job->refresh());
+        $this->assertSame(2, $job->rows()->where('is_valid', false)->count());
+        $this->assertSame(2, $job->rows()->where('is_valid', true)->count());
+
+        $execute = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$job->id}/execute");
+        $execute->assertOk()
+            ->assertJsonPath('import_result.imported_count', 2)
+            ->assertJsonPath('import_result.skipped_count', 0)
+            ->assertJsonPath('import_result.execution_error_count', 0)
+            ->assertJsonPath('import_result.preview_drift_count', 0);
+
+        $this->assertSame(2, $job->refresh()->failed_rows);
+        $this->assertSame(0, $job->rows()->whereNotNull('import_error')->count());
+        $this->assertSame('pc', Product::query()->where('sku', 'UNIT-HONEST-3')->value('unit'));
+        $this->assertSame('kg', Product::query()->where('sku', 'UNIT-HONEST-4')->value('unit'));
+    }
+
+    public function test_validation_uses_each_company_visible_unit_catalog_and_is_idempotent(): void
+    {
+        $category = UnitCategory::query()->firstOrFail();
+        Unit::factory()
+            ->for($category, 'category')
+            ->tenant($this->tenant->id)
+            ->create([
+                'code' => 'tenant-only',
+                'name' => 'Tenant-only unit',
+                'symbol' => 'to',
+            ]);
+
+        $firstJob = app(ImportService::class)->createJob(
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            userId: $this->user->id,
+            type: ImportType::Products,
+            filename: 'first-company.csv',
+            filePath: 'imports/first-company.csv',
+            totalRows: 1,
+        );
+        app(ImportService::class)->addRow($firstJob, 1, [
+            'name' => 'First company product',
+            'sku' => 'FIRST-COMPANY-UNIT',
+            'unit' => 'tenant-only',
+        ]);
+        app(ImportService::class)->validateJob($firstJob);
+        $this->assertSame(1, $firstJob->rows()->where('is_valid', true)->count());
+
+        $secondTenant = Tenant::create([
+            'name' => 'Second Unit Catalog Tenant',
+            'slug' => 'second-unit-catalog-'.uniqid(),
+            'status' => TenantStatus::Active,
+            'plan' => SubscriptionPlan::Professional,
+        ]);
+        $secondCompany = Company::create([
+            'tenant_id' => $secondTenant->id,
+            'name' => 'Second Unit Catalog Company',
+            'legal_name' => 'Second Unit Catalog Company LLC',
+            'tax_id' => 'TAX-PROD-SECOND',
+            'country_code' => 'TN',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'currency' => 'TND',
+            'status' => CompanyStatus::Active,
+            'default_tax_rate' => '19.00',
+        ]);
+        $secondUser = User::create([
+            'tenant_id' => $secondTenant->id,
+            'name' => 'Second Import User',
+            'email' => 'second-products-import@example.com',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+        ]);
+
+        app(CompanyContext::class)->setCompanyId($secondCompany->id);
+        $secondJob = app(ImportService::class)->createJob(
+            tenantId: $secondTenant->id,
+            companyId: $secondCompany->id,
+            userId: $secondUser->id,
+            type: ImportType::Products,
+            filename: 'second-company.csv',
+            filePath: 'imports/second-company.csv',
+            totalRows: 1,
+        );
+        app(ImportService::class)->addRow($secondJob, 1, [
+            'name' => 'Second company product',
+            'sku' => 'SECOND-COMPANY-UNIT',
+            'unit' => 'tenant-only',
+        ]);
+
+        app(ImportService::class)->validateJob($secondJob);
+        $row = $secondJob->rows()->firstOrFail();
+        $this->assertFalse($row->is_valid);
+        $this->assertSame(ImportErrorCode::UnitUnknown, $row->import_error_code);
+        $this->assertNotContains('tenant-only', $row->import_error_detail['accepted'] ?? []);
+
+        app(ImportService::class)->validateJob($secondJob->refresh());
+        $row->refresh();
+        $this->assertFalse($row->is_valid);
+        $this->assertSame(ImportErrorCode::UnitUnknown, $row->import_error_code);
+        $this->assertSame(1, $secondJob->rows()->where('is_valid', false)->count());
+
+        app(CompanyContext::class)->setCompanyId($this->company->id);
+    }
+
+    public function test_real_xlsx_upload_census_reports_the_77_conflict_groups_across_754_rows(): void
+    {
+        $path = realpath(__DIR__.'/../../Fixtures/Import/real-produits.xlsx');
+        $this->assertIsString($path, 'The real products workbook fixture must remain available in tests/fixtures.');
+
+        $file = new UploadedFile(
+            $path,
+            'real-produits.xlsx',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            null,
+            true,
+        );
+        $create = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/imports', [
+            'file' => $file,
+            'type' => 'products',
+        ]);
+
+        $create->assertCreated()
+            ->assertJsonPath('data.total_rows', 859)
+            ->assertJsonPath('data.failed_rows', 859)
+            ->assertJsonPath('data.options.duplicate_census.barcode_groups.counts.multi_location_products', 0)
+            ->assertJsonPath('data.options.duplicate_census.barcode_groups.counts.barcode_identity_conflict_groups', 77)
+            ->assertJsonPath('data.options.duplicate_census.barcode_groups.counts.barcode_identity_conflict_rows', 754);
+
+        $jobId = $create->json('data.id');
+        $this->assertIsString($jobId);
+        $preview = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/imports/{$jobId}/preview");
+        $preview->assertOk()
+            ->assertJsonPath('data.summary.valid_rows', 0)
+            ->assertJsonPath('data.summary.invalid_rows', 859)
+            ->assertJsonPath('data.duplicates.barcode_groups.counts.barcode_identity_conflict_groups', 77)
+            ->assertJsonPath('data.duplicates.barcode_groups.counts.barcode_identity_conflict_rows', 754);
+    }
+
+    public function test_preview_counts_a_unit_invalid_barcode_conflict_row_only_once(): void
+    {
+        $file = UploadedFile::fake()->createWithContent('mixed-barcode-conflict.csv', implode("\n", [
+            'name,sku,barcode,type,unit',
+            'Valid conflict identity,MIXED-CONFLICT-A,123,part,pc',
+            'Unit-invalid conflict identity,MIXED-CONFLICT-B,123,part,piece',
+            'Independent valid product,MIXED-VALID,456,part,pc',
+        ]));
+
+        $create = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/imports', [
+            'file' => $file,
+            'type' => 'products',
+        ])->assertCreated();
+        $jobId = (string) $create->json('data.id');
+
+        $job = ImportJob::query()->findOrFail($jobId);
+        $this->assertTrue($job->rows()->where('row_number', 1)->firstOrFail()->is_valid);
+        $this->assertFalse($job->rows()->where('row_number', 2)->firstOrFail()->is_valid);
+        $this->assertSame(ImportErrorCode::UnitUnknown, $job->rows()->where('row_number', 2)->firstOrFail()->import_error_code);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/imports/{$jobId}/preview")
+            ->assertOk()
+            ->assertJsonPath('data.summary.total_rows', 3)
+            ->assertJsonPath('data.summary.barcode_identity_conflict_rows', 2)
+            ->assertJsonPath('data.summary.valid_rows', 1)
+            ->assertJsonPath('data.summary.invalid_rows', 2);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.successful_rows', 1)
+            ->assertJsonPath('data.failed_rows', 2);
+
+        $this->assertSame(1, Product::query()->where('company_id', $this->company->id)->count());
+        $this->assertNotNull(Product::query()->where('sku', 'MIXED-VALID')->first());
+    }
+
+    public function test_numeric_barcode_variants_stage_and_import_as_one_multi_location_product(): void
+    {
+        Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'Annex Warehouse',
+            'code' => 'ANNEX',
+            'type' => 'warehouse',
+            'is_default' => false,
+            'is_active' => true,
+        ]);
+        $file = UploadedFile::fake()->createWithContent('canonical-barcodes.csv', implode("\n", [
+            'name,barcode,type,location_code',
+            'Canonical barcode product,123,part,MAIN',
+            'Canonical barcode product,123.0,part,ANNEX',
+        ]));
+
+        $create = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/imports', [
+            'file' => $file,
+            'type' => 'products',
+            'options' => [
+                'duplicate_policy' => 'skip',
+                'multi_location_confirmed' => true,
+            ],
+        ])->assertCreated()
+            ->assertJsonPath('data.options.duplicate_census.barcode_groups.counts.multi_location_products', 1);
+        $jobId = (string) $create->json('data.id');
+
+        $job = ImportJob::query()->findOrFail($jobId);
+        $this->assertSame(
+            ['123', '123'],
+            $job->rows()->orderBy('row_number')->get()->map(
+                static fn (ImportRow $row): mixed => $row->data['barcode'] ?? null,
+            )->all(),
+            'The staging boundary must persist the same canonical barcode used by the census.',
+        );
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.successful_rows', 2)
+            ->assertJsonPath('data.failed_rows', 0);
+
+        $this->assertSame(1, Product::query()->where('company_id', $this->company->id)->count());
+        $product = Product::query()->where('company_id', $this->company->id)->sole();
+        $this->assertSame('123', $product->barcode);
+        $this->assertSame(
+            [ImportRowOutcome::Imported, ImportRowOutcome::MergedLine],
+            $job->rows()->orderBy('row_number')->pluck('outcome')->all(),
+        );
+    }
+
+    public function test_real_products_workbook_reports_all_859_piece_rows_and_preserves_the_three_quantity_errors(): void
+    {
+        $path = realpath(__DIR__.'/../../../../web/e2e-local/real-produits.xlsx');
+        $this->assertIsString($path, 'The owner-provided real products workbook must remain available.');
+        $file = new UploadedFile(
+            $path,
+            'real-produits.xlsx',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            null,
+            true,
+        );
+
+        $unitQueryCount = 0;
+        DB::listen(static function ($query) use (&$unitQueryCount): void {
+            if (preg_match('/\b(?:from|join)\s+["`]?units?["`]?|\bfrom\s+["`]?unit_text_mappings["`]?/i', $query->sql) === 1) {
+                $unitQueryCount++;
+            }
+        });
+
+        $createStartedAt = hrtime(true);
+        $create = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/imports', [
+            'file' => $file,
+            'type' => 'products',
+        ]);
+        $createDurationSeconds = (hrtime(true) - $createStartedAt) / 1_000_000_000;
+        $createUnitQueryCount = $unitQueryCount;
+
+        $create->assertCreated()
+            ->assertJsonPath('data.status', ImportStatus::Validated->value)
+            ->assertJsonPath('data.total_rows', 859)
+            ->assertJsonPath('data.failed_rows', 859)
+            ->assertJsonPath('data.error_summary.unknown_units.0.text', 'piece')
+            ->assertJsonPath('data.error_summary.unknown_units.0.count', 859);
+
+        $jobId = (string) $create->json('data.id');
+        $unitQueryCount = 0;
+        $patchStartedAt = hrtime(true);
+        $patch = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/imports/{$jobId}/options", [
+                'options' => ['duplicate_policy' => 'override'],
+            ]);
+        $patchDurationSeconds = (hrtime(true) - $patchStartedAt) / 1_000_000_000;
+        $patchUnitQueryCount = $unitQueryCount;
+
+        fwrite(STDERR, sprintf(
+            "\nreal-produits.xlsx timings: POST /imports %.3f s (%d unit queries); PATCH /imports/{id}/options %.3f s (%d unit queries)\n",
+            $createDurationSeconds,
+            $createUnitQueryCount,
+            $patchDurationSeconds,
+            $patchUnitQueryCount,
+        ));
+
+        $patch->assertOk()
+            ->assertJsonPath('data.status', ImportStatus::Validated->value)
+            ->assertJsonPath('data.total_rows', 859)
+            ->assertJsonPath('data.failed_rows', 859)
+            ->assertJsonPath('data.error_summary.unknown_units.0.text', 'piece')
+            ->assertJsonPath('data.error_summary.unknown_units.0.count', 859);
+        $this->assertLessThanOrEqual(
+            3,
+            $createUnitQueryCount,
+            'POST /imports must load unit resolution data a bounded number of times.',
+        );
+        $this->assertLessThanOrEqual(
+            3,
+            $patchUnitQueryCount,
+            'PATCH /imports/{id}/options must load unit resolution data a bounded number of times.',
+        );
+
+        $preview = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/imports/{$jobId}/preview");
+        $preview->assertOk()
+            ->assertJsonPath('data.summary.total_rows', 859)
+            ->assertJsonPath('data.summary.valid_rows', 0)
+            ->assertJsonPath('data.summary.invalid_rows', 859)
+            ->assertJsonPath('data.error_summary.unknown_units.0.text', 'piece')
+            ->assertJsonPath('data.error_summary.unknown_units.0.count', 859);
+
+        $job = ImportJob::query()->findOrFail($jobId);
+        foreach ([141, 160, 827] as $rowNumber) {
+            $row = $job->rows()->where('row_number', $rowNumber)->firstOrFail();
+            $this->assertSame('-1', $row->data['quantity'] ?? null);
+            $this->assertArrayHasKey('quantity', $row->errors ?? []);
+            $this->assertArrayHasKey('unit', $row->errors ?? []);
+            $this->assertSame(ImportErrorCode::UnitUnknown, $row->import_error_code);
+        }
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertStatus(422)
+            ->assertJsonPath('valid_rows', 0)
+            ->assertJsonPath('failed_rows', 859);
+        $this->assertSame(0, Product::query()->count());
+    }
+
     // ──────────────────────────────────────────────────────────────────
     // Helpers
     // ──────────────────────────────────────────────────────────────────
+
+    public function test_confirmed_multi_location_group_under_skip_lands_each_line_once_and_reruns_idempotently(): void
+    {
+        $annex = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'Annex Warehouse',
+            'code' => 'ANNEX',
+            'type' => 'warehouse',
+            'is_default' => false,
+            'is_active' => true,
+        ]);
+        $csv = implode("\n", [
+            'name,sku,type,barcode,quantity,location_code,purchase_price',
+            'Shared Product,SHARED-MULTI,part,6192222222222,3.0000,MAIN,2.000',
+            'Shared Product,SHARED-MULTI,part,6192222222222,4.0000,ANNEX,2.000',
+        ]);
+
+        $run = function () use ($csv): string {
+            $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/imports', [
+                'file' => UploadedFile::fake()->createWithContent('multi-location.csv', $csv),
+                'type' => 'products',
+                'options' => [
+                    'duplicate_policy' => 'skip',
+                    'multi_location_confirmed' => true,
+                ],
+            ])->assertCreated();
+            $jobId = $response->json('data.id');
+            $this->assertIsString($jobId);
+
+            $this->actingAs($this->user, 'sanctum')
+                ->getJson("/api/v1/imports/{$jobId}/preview")
+                ->assertOk()
+                ->assertJsonPath('data.duplicates.barcode_groups.counts.multi_location_products', 1)
+                ->assertJsonPath('data.summary.barcode_identity_conflict_rows', 0);
+
+            $this->actingAs($this->user, 'sanctum')
+                ->postJson("/api/v1/imports/{$jobId}/execute")
+                ->assertOk()
+                ->assertJsonPath('data.successful_rows', 2)
+                ->assertJsonPath('data.multi_location_products', 1);
+
+            return $jobId;
+        };
+
+        $firstJobId = $run();
+        $product = Product::query()->where('company_id', $this->company->id)->where('sku', 'SHARED-MULTI')->sole();
+        $this->assertSame(1, Product::query()->where('company_id', $this->company->id)->where('barcode', '6192222222222')->count());
+        $this->assertSame('3.0000', StockLevel::query()->where('product_id', $product->id)->where('location_id', $this->location->id)->sole()->quantity);
+        $this->assertSame('4.0000', StockLevel::query()->where('product_id', $product->id)->where('location_id', $annex->id)->sole()->quantity);
+        $this->assertSame(
+            ['imported', 'merged_line'],
+            DB::table('import_rows')->where('import_job_id', $firstJobId)->orderBy('row_number')->pluck('outcome')->all(),
+        );
+
+        $secondJobId = $run();
+        $this->assertSame(1, Product::query()->where('company_id', $this->company->id)->where('sku', 'SHARED-MULTI')->count());
+        $this->assertSame('3.0000', StockLevel::query()->where('product_id', $product->id)->where('location_id', $this->location->id)->sole()->quantity);
+        $this->assertSame('4.0000', StockLevel::query()->where('product_id', $product->id)->where('location_id', $annex->id)->sole()->quantity);
+        $this->assertSame(
+            ['merged_line', 'merged_line'],
+            DB::table('import_rows')->where('import_job_id', $secondJobId)->orderBy('row_number')->pluck('outcome')->all(),
+        );
+    }
+
+    public function test_multi_location_group_cannot_execute_until_confirmation_is_persisted(): void
+    {
+        Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'Second Warehouse',
+            'code' => 'SECOND',
+            'type' => 'warehouse',
+            'is_active' => true,
+        ]);
+        $file = UploadedFile::fake()->createWithContent('multi-location-unconfirmed.csv', implode("\n", [
+            'name,sku,barcode,location_code',
+            'Confirmation Product,CONFIRM-MULTI,6193333333333,MAIN',
+            'Confirmation Product,CONFIRM-MULTI,6193333333333,SECOND',
+        ]));
+        $jobId = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/imports', [
+            'file' => $file,
+            'type' => 'products',
+            'options' => ['duplicate_policy' => 'skip'],
+        ])->assertCreated()->json('data.id');
+        $this->assertIsString($jobId);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'MULTI_LOCATION_CONFIRMATION_REQUIRED');
+
+        $this->assertSame(0, Product::query()->where('company_id', $this->company->id)->where('sku', 'CONFIRM-MULTI')->count());
+    }
+
+    public function test_import_never_rewrites_a_sku_matched_product_with_another_products_barcode(): void
+    {
+        $target = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Target',
+            'sku' => 'TARGET-SKU',
+            'barcode' => 'TARGET-BARCODE',
+        ]);
+        $holder = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Holder',
+            'sku' => 'HOLDER-SKU',
+            'barcode' => 'HOLDER-BARCODE',
+        ]);
+        $jobId = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/imports', [
+            'file' => UploadedFile::fake()->createWithContent('collision.csv', implode("\n", [
+                'name,sku,barcode',
+                'Target,TARGET-SKU,HOLDER-BARCODE',
+            ])),
+            'type' => 'products',
+            'options' => ['duplicate_policy' => 'override'],
+        ])->assertCreated()->json('data.id');
+        $this->assertIsString($jobId);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.failed_rows', 1);
+
+        $this->assertSame('TARGET-BARCODE', $target->refresh()->barcode);
+        $this->assertSame('HOLDER-BARCODE', $holder->refresh()->barcode);
+        $this->assertSame('barcode_identity_conflict', ImportJob::query()->findOrFail($jobId)->rows()->sole()->import_error_code?->value);
+    }
 
     /**
      * Execute an override import for one existing product through the real HTTP

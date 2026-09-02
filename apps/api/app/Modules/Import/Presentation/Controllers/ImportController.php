@@ -11,6 +11,7 @@ use App\Modules\Import\Application\Jobs\ProcessImportJob;
 use App\Modules\Import\Application\Jobs\ProcessProductImageImport;
 use App\Modules\Import\Application\Services\ModuleEntitlementCheck;
 use App\Modules\Import\Domain\Data\ImportCountersData;
+use App\Modules\Import\Domain\Enums\BarcodeGroupClassification;
 use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
@@ -18,6 +19,7 @@ use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Services\FailedRowsExportService;
 use App\Modules\Import\Services\ImportJobClaimService;
 use App\Modules\Import\Services\ImportService;
+use App\Modules\Import\Services\ImportUnitErrorSummaryService;
 use App\Modules\Import\Services\ResultWorkbookService;
 use App\Modules\Import\Services\SpreadsheetParserService;
 use App\Modules\Import\Services\ValidationEngine;
@@ -50,6 +52,7 @@ class ImportController extends Controller
     public function __construct(
         private readonly ImportService $importService,
         private readonly ImportJobClaimService $importJobClaimService,
+        private readonly ImportUnitErrorSummaryService $unitErrorSummary,
         private readonly ValidationEngine $validationEngine,
         private readonly CompanyContext $companyContext,
         private readonly SpreadsheetParserService $spreadsheetParser,
@@ -125,6 +128,7 @@ class ImportController extends Controller
             'options.placement_node_types' => ['sometimes', 'array'],
             'options.placement_node_types.*' => ['required', new Enum(LocationNodeType::class)],
             'options.duplicate_policy' => ['sometimes', 'in:override,skip'],
+            'options.multi_location_confirmed' => ['sometimes', 'boolean'],
         ]);
 
         /** @var User $user */
@@ -362,6 +366,9 @@ class ImportController extends Controller
             }
         }
 
+        $validRowCount = $job->rows()->where('is_valid', true)->count();
+        $invalidRowCount = $job->rows()->where('is_valid', false)->count();
+        $barcodeConflictValidRows = $this->validBarcodeConflictRowCount($job, $duplicateCensus);
         $preview = [
             'headers' => $headers,
             'rows' => $sampleRows->map(fn ($row) => [
@@ -378,10 +385,13 @@ class ImportController extends Controller
             ]),
             'summary' => [
                 'total_rows' => $job->total_rows,
-                'valid_rows' => $job->rows()->where('is_valid', true)->count(),
-                'invalid_rows' => $job->rows()->where('is_valid', false)->count(),
+                'valid_rows' => $validRowCount - $barcodeConflictValidRows,
+                'invalid_rows' => $invalidRowCount + $barcodeConflictValidRows,
+                'multi_location_products' => $this->barcodeCensusCount($duplicateCensus, 'multi_location_products'),
+                'barcode_identity_conflict_rows' => $this->barcodeCensusCount($duplicateCensus, 'barcode_identity_conflict_rows'),
             ],
             'placement' => $this->importService->productPlacementPreview($job),
+            'error_summary' => $this->unitErrorSummary->summarize($job),
         ];
         if (is_array($duplicateCensus)) {
             $preview['duplicates'] = $duplicateCensus;
@@ -454,6 +464,7 @@ class ImportController extends Controller
                 'per_page' => $errorRows->perPage(),
                 'total' => $errorRows->total(),
                 'job_error_message' => $job->error_message,
+                'error_summary' => $this->unitErrorSummary->summarize($job),
                 'validation_errors' => $validationErrorCount,
                 'execution_errors' => $executionErrorCount,
             ],
@@ -495,6 +506,7 @@ class ImportController extends Controller
             'options.placement_node_types' => ['sometimes', 'array'],
             'options.placement_node_types.*' => ['required', new Enum(LocationNodeType::class)],
             'options.duplicate_policy' => ['sometimes', 'in:override,skip'],
+            'options.multi_location_confirmed' => ['sometimes', 'boolean'],
         ]);
 
         $requestOptions = $this->optionsFromRequest($request) ?? [];
@@ -558,6 +570,7 @@ class ImportController extends Controller
                 'execution_errors' => $executionErrorCount,
                 'has_errors' => $totalErrorCount > 0,
                 'job_error_message' => $job->error_message,
+                'error_summary' => $this->unitErrorSummary->summarize($job),
             ],
         ]);
     }
@@ -646,6 +659,23 @@ class ImportController extends Controller
                     'message' => 'This import has already been executed or is currently running, and cannot be executed again.',
                     'details' => [
                         'status' => $job->status->value,
+                    ],
+                ],
+            ], 422);
+        }
+
+        $duplicateCensus = $job->options['duplicate_census'] ?? null;
+        if ($this->barcodeCensusCount($duplicateCensus, 'multi_location_products') > 0
+            && ($job->options['multi_location_confirmed'] ?? null) !== true) {
+            return response()->json([
+                'error' => [
+                    'code' => 'MULTI_LOCATION_CONFIRMATION_REQUIRED',
+                    'message' => 'Confirm that repeated product barcodes should open stock in every listed location.',
+                    'details' => [
+                        'multi_location_products' => $this->barcodeCensusCount(
+                            $duplicateCensus,
+                            'multi_location_products',
+                        ),
                     ],
                 ],
             ], 422);
@@ -957,7 +987,18 @@ class ImportController extends Controller
             'warning_summary' => $withWarningSummary && $job->status->isTerminal()
                 ? $this->warningSummary($job)
                 : null,
+            'error_summary' => $withWarningSummary
+                ? $this->unitErrorSummary->summarize($job)
+                : null,
             'options' => $job->options,
+            'multi_location_products' => $this->barcodeCensusCount(
+                $job->options['duplicate_census'] ?? null,
+                'multi_location_products',
+            ),
+            'barcode_identity_conflict_rows' => $this->barcodeCensusCount(
+                $job->options['duplicate_census'] ?? null,
+                'barcode_identity_conflict_rows',
+            ),
             'progress_percentage' => $job->getProgressPercentage(),
             'error_message' => $job->error_message,
             'started_at' => $job->started_at?->toIso8601String(),
@@ -1058,7 +1099,58 @@ class ImportController extends Controller
             $options['duplicate_policy'] = $duplicatePolicy;
         }
 
+        if ($request->has('options.multi_location_confirmed')) {
+            $options['multi_location_confirmed'] = $request->boolean('options.multi_location_confirmed');
+        }
+
         return $options;
+    }
+
+    private function barcodeCensusCount(mixed $duplicateCensus, string $key): int
+    {
+        if (! is_array($duplicateCensus)
+            || ! is_array($duplicateCensus['barcode_groups'] ?? null)
+            || ! is_array($duplicateCensus['barcode_groups']['counts'] ?? null)) {
+            return 0;
+        }
+
+        $value = $duplicateCensus['barcode_groups']['counts'][$key] ?? 0;
+
+        return is_int($value) ? $value : 0;
+    }
+
+    private function validBarcodeConflictRowCount(ImportJob $job, mixed $duplicateCensus): int
+    {
+        if (! is_array($duplicateCensus)
+            || ! is_array($duplicateCensus['barcode_groups'] ?? null)
+            || ! is_array($duplicateCensus['barcode_groups']['groups'] ?? null)) {
+            return 0;
+        }
+
+        $rowNumbers = [];
+        foreach ($duplicateCensus['barcode_groups']['groups'] as $group) {
+            if (! is_array($group)
+                || ($group['classification'] ?? null) !== BarcodeGroupClassification::BarcodeIdentityConflict->value
+                || ! is_array($group['row_numbers'] ?? null)) {
+                continue;
+            }
+
+            foreach ($group['row_numbers'] as $rowNumber) {
+                if (is_int($rowNumber)) {
+                    $rowNumbers[$rowNumber] = true;
+                }
+            }
+        }
+
+        $validConflictRows = 0;
+        foreach (array_chunk(array_keys($rowNumbers), 500) as $chunk) {
+            $validConflictRows += $job->rows()
+                ->where('is_valid', true)
+                ->whereIn('row_number', $chunk)
+                ->count();
+        }
+
+        return $validConflictRows;
     }
 
     /**

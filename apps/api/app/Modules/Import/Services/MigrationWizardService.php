@@ -117,41 +117,63 @@ final class MigrationWizardService
             $type->getOptionalColumns()
         );
 
-        $suggestions = [];
+        /** @var array<string, string|null> $suggestions */
+        $suggestions = array_fill_keys($targetColumns, null);
+        /** @var array<string, true> $claimedSources */
+        $claimedSources = [];
+
+        // Reserve exact target-name matches before aliases. Otherwise a broad
+        // alias such as type => category can steal category_name before the
+        // category_name target is visited.
+        foreach ($targetColumns as $target) {
+            foreach ($sourceHeaders as $source) {
+                if (isset($claimedSources[$source])) {
+                    continue;
+                }
+
+                if ($this->normalizeHeader($source) === $this->normalizeHeader($target)) {
+                    $suggestions[$target] = $source;
+                    $claimedSources[$source] = true;
+                    break;
+                }
+            }
+        }
 
         foreach ($targetColumns as $target) {
-            $suggestions[$target] = $this->findBestMatch($target, $sourceHeaders);
+            if ($suggestions[$target] !== null) {
+                continue;
+            }
+
+            $match = $this->findFuzzyMatch($target, $sourceHeaders, $claimedSources);
+            if ($match !== null) {
+                $suggestions[$target] = $match;
+                $claimedSources[$match] = true;
+            }
         }
 
         return $suggestions;
     }
 
     /**
-     * Find the best matching source column for a target column
+     * Find an alias match among source columns that no exact or fuzzy match has claimed.
      *
      * @param  array<string>  $sourceHeaders
+     * @param  array<string, true>  $claimedSources
      */
-    private function findBestMatch(string $target, array $sourceHeaders): ?string
+    private function findFuzzyMatch(string $target, array $sourceHeaders, array $claimedSources): ?string
     {
-        $normalizedTarget = strtolower(str_replace(['_', '-'], '', $target));
-
-        // Direct match
-        foreach ($sourceHeaders as $source) {
-            $normalizedSource = strtolower(str_replace(['_', '-'], '', $source));
-            if ($normalizedSource === $normalizedTarget) {
-                return $source;
-            }
-        }
-
-        // Partial match or common aliases
         $aliases = $this->getColumnAliases();
         $targetAliases = $aliases[$target] ?? [$target];
 
         foreach ($sourceHeaders as $source) {
-            $normalizedSource = strtolower(str_replace(['_', '-'], '', $source));
+            if (isset($claimedSources[$source])) {
+                continue;
+            }
+
+            $normalizedSource = $this->normalizeHeader($source);
 
             foreach ($targetAliases as $alias) {
-                $normalizedAlias = strtolower(str_replace(['_', '-'], '', $alias));
+                $normalizedAlias = $this->normalizeHeader($alias);
                 if (str_contains($normalizedSource, $normalizedAlias)) {
                     return $source;
                 }
@@ -159,6 +181,11 @@ final class MigrationWizardService
         }
 
         return null;
+    }
+
+    private function normalizeHeader(string $header): string
+    {
+        return strtolower(str_replace(['_', '-'], '', $header));
     }
 
     /**

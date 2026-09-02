@@ -58,6 +58,7 @@ use App\Modules\Treasury\Domain\Events\PaymentRefunded;
 use App\Modules\Treasury\Domain\Events\PaymentReversed;
 use App\Modules\Treasury\Domain\Events\ReconciliationCompleted;
 use App\Modules\Treasury\Domain\Events\RepositoryMovementRecorded;
+use App\Modules\Uom\Domain\Events\UnitTextMappingApplied;
 use App\Shared\Contracts\SupportAccess\ImpersonationContextProvider;
 use App\Shared\Domain\Events\DomainEvent;
 use Illuminate\Events\Dispatcher;
@@ -310,6 +311,18 @@ final class DomainEventSubscriber
             companyId: $event->companyId,
             aggregateType: 'User',
             aggregateId: $event->targetUserId,
+            eventType: $event->getEventName(),
+            payload: $event->getAuditPayload(),
+        );
+    }
+
+    public function handleUnitTextMappingApplied(UnitTextMappingApplied $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'UnitTextMapping',
+            aggregateId: $event->mappingId,
             eventType: $event->getEventName(),
             payload: $event->getAuditPayload(),
         );
@@ -1246,6 +1259,7 @@ final class DomainEventSubscriber
             // Identity events (privileged-action audit trail)
             RoleAssigned::class => 'handleRoleAssigned',
             RoleRemoved::class => 'handleRoleRemoved',
+            UnitTextMappingApplied::class => 'handleUnitTextMappingApplied',
 
             // Sales order events (fraud detection)
             SalesOrderConfirmed::class => 'handleSalesOrderConfirmed',

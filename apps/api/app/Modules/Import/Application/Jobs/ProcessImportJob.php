@@ -175,7 +175,7 @@ final class ProcessImportJob implements ShouldQueue
 
         foreach ($validRows as $row) {
             $outcome = $importService->processPendingRow($job, $row, $this->companyId);
-            if ($outcome === ImportRowOutcome::Imported) {
+            if (in_array($outcome, [ImportRowOutcome::Imported, ImportRowOutcome::MergedLine], true)) {
                 $successCount++;
             } elseif (in_array($outcome, [ImportRowOutcome::DuplicateSkipped, ImportRowOutcome::DuplicateLoser], true)) {
                 $skippedCount++;

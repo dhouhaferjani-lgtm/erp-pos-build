@@ -68,7 +68,14 @@ vi.mock('../api/queries', () => ({
     data: {
       headers: [],
       rows: [],
-      summary: { total_rows: 1, valid_rows: 0, invalid_rows: 1 },
+      summary: {
+        total_rows: nextJobData?.total_rows ?? 1,
+        valid_rows: nextJobData
+          ? nextJobData.total_rows - nextJobData.failed_rows
+          : 1,
+        invalid_rows: nextJobData?.failed_rows ?? 0,
+      },
+      error_summary: nextJobData?.error_summary ?? { unknown_units: [] },
       placement: { max_depth: 3, nodes_to_create: [], placements_to_set: [] },
     },
     isLoading: false,
@@ -216,6 +223,64 @@ describe('ImportWizardPage product options step', () => {
     expect(screen.queryByRole('heading', { name: 'options.priceAuthorityTitle' })).not.toBeInTheDocument()
   })
 
+  it('states both counts on the partial-import confirmation action', async () => {
+    nextMapping = { name: 'name' }
+    nextJobData = {
+      id: 'job-1',
+      type: 'products',
+      status: 'validated',
+      original_filename: 'products.csv',
+      total_rows: 4,
+      processed_rows: 2,
+      successful_rows: 0,
+      skipped_rows: 0,
+      failed_rows: 2,
+      warning_rows: 0,
+      warning_summary: null,
+      error_summary: { unknown_units: [] },
+      progress_percentage: 50,
+      options: null,
+      error_message: null,
+      started_at: null,
+      completed_at: null,
+      created_at: '2026-08-31T10:00:00Z',
+    }
+
+    await uploadAndMap()
+    await userEvent.setup().click(screen.getByRole('button', { name: 'wizard.validation.proceed' }))
+
+    expect(screen.getByTestId('confirm-dialog-confirm')).toHaveTextContent('wizard.proceedWithValidCounts')
+  })
+
+  it('keeps the validation action disabled when no row can be imported', async () => {
+    nextMapping = { name: 'name' }
+    nextJobData = {
+      id: 'job-1',
+      type: 'products',
+      status: 'validated',
+      original_filename: 'real-produits.xlsx',
+      total_rows: 859,
+      processed_rows: 859,
+      successful_rows: 0,
+      skipped_rows: 0,
+      failed_rows: 859,
+      warning_rows: 0,
+      warning_summary: null,
+      error_summary: { unknown_units: [] },
+      progress_percentage: 100,
+      options: null,
+      error_message: null,
+      started_at: null,
+      completed_at: null,
+      created_at: '2026-08-31T10:00:00Z',
+    }
+
+    await uploadAndMap()
+
+    expect(screen.getByRole('button', { name: 'wizard.validation.proceed' })).toBeDisabled()
+    expect(screen.getByText('wizard.validation.noValidRows')).toBeInTheDocument()
+  })
+
   it('configures strict or auto-create placement planning when placement_path is mapped', async () => {
     const user = userEvent.setup()
     nextMapping = {
@@ -300,6 +365,7 @@ describe('ImportWizardPage product options step', () => {
       failed_rows: 0,
       warning_rows: 0,
       warning_summary: {},
+      error_summary: { unknown_units: [] },
       progress_percentage: 0,
       options: null,
       error_message: null,
@@ -373,6 +439,7 @@ describe('ImportWizardPage product options step', () => {
       failed_rows: 0,
       warning_rows: 0,
       warning_summary: {},
+      error_summary: { unknown_units: [] },
       progress_percentage: 0,
       options: null,
       error_message: null,
@@ -437,6 +504,7 @@ describe('ImportWizardPage product options step', () => {
       failed_rows: 0,
       warning_rows: 0,
       warning_summary: {},
+      error_summary: { unknown_units: [] },
       progress_percentage: 0,
       options: null,
       error_message: null,
@@ -510,6 +578,7 @@ describe('ImportWizardPage product options step', () => {
       failed_rows: 0,
       warning_rows: 2,
       warning_summary: { location_unresolved: 2 },
+      error_summary: { unknown_units: [] },
       progress_percentage: 100,
       options: null,
       error_message: null,

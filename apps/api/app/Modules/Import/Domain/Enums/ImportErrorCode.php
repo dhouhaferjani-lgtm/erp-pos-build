@@ -19,11 +19,13 @@ enum ImportErrorCode: string
     case UnitAmbiguous = 'unit_ambiguous';
     case UnitDefaultMissing = 'unit_default_missing';
     case BarcodeAmbiguous = 'barcode_ambiguous';
+    case BarcodeIdentityConflict = 'barcode_identity_conflict';
     case ProductNotFound = 'product_not_found';
     case PartnerNotFound = 'partner_not_found';
     case SkuHeldByDeletedProduct = 'sku_held_by_deleted_product';
     case VatHeldByDeletedPartner = 'vat_held_by_deleted_partner';
     case DuplicateSkuInCompany = 'duplicate_sku_in_company';
+    case InvalidNumber = 'invalid_number';
     case ValidationFailed = 'validation_failed';
     case InternalError = 'internal_error';
     case WorkerLost = 'worker_lost';
@@ -37,11 +39,13 @@ enum ImportErrorCode: string
             self::UnitAmbiguous,
             self::UnitDefaultMissing,
             self::BarcodeAmbiguous,
+            self::BarcodeIdentityConflict,
             self::ProductNotFound,
             self::PartnerNotFound,
             self::SkuHeldByDeletedProduct,
             self::VatHeldByDeletedPartner,
             self::DuplicateSkuInCompany,
+            self::InvalidNumber,
             self::ValidationFailed,
             self::InternalError => false,
         };

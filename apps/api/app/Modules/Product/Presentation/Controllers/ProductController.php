@@ -34,6 +34,7 @@ use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Events\ProductCreated;
 use App\Modules\Product\Domain\Events\ProductDeleted;
 use App\Modules\Product\Domain\Events\ProductUpdated;
+use App\Modules\Product\Domain\Exceptions\ProductBarcodeConflictException;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Product\Presentation\Requests\CreateProductRequest;
 use App\Modules\Product\Presentation\Requests\PostOpeningBalanceRequest;
@@ -43,6 +44,7 @@ use App\Modules\Uom\Domain\Entities\Unit;
 use App\Shared\Contracts\CatalogMediaQueryInterface;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\InventoryServiceInterface;
+use App\Shared\Contracts\ProductServiceInterface;
 use App\Shared\Domain\QuantityScale;
 use App\Support\Traits\FiltersAndSorts;
 use App\Support\Traits\PaginatesResults;
@@ -74,6 +76,7 @@ class ProductController extends Controller
         private readonly ProductPricingIntentService $pricingIntent,
         private readonly MarginService $marginService,
         private readonly MarginResolver $marginResolver,
+        private readonly ProductServiceInterface $productService,
     ) {}
 
     /**
@@ -390,6 +393,16 @@ class ProductController extends Controller
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
         $validated = $this->resolveUnitId($validated, $tenantId);
+        try {
+            $this->productService->assertBarcodeAvailable(
+                $tenantId,
+                $companyId,
+                is_string($validated['barcode'] ?? null) ? $validated['barcode'] : null,
+                null,
+            );
+        } catch (ProductBarcodeConflictException $exception) {
+            return $this->barcodeConflictResponse($exception);
+        }
 
         // Extract opening balance fields before mass-assignment so they are not
         // passed to Product::create (the columns do not exist on the products table).
@@ -756,6 +769,16 @@ class ProductController extends Controller
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
         $validated = $this->resolveUnitId($validated, $company->tenant_id);
+        try {
+            $this->productService->assertBarcodeAvailable(
+                $company->tenant_id,
+                $company->id,
+                is_string($validated['barcode'] ?? null) ? $validated['barcode'] : null,
+                $productModel->id,
+            );
+        } catch (ProductBarcodeConflictException $exception) {
+            return $this->barcodeConflictResponse($exception);
+        }
 
         // Campaign defect N-1: `::update()` had NO tax handling whatsoever, so
         // a product whose `tax_rate` drifted from its configuration could never
@@ -909,6 +932,24 @@ class ProductController extends Controller
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
             ],
         ]);
+    }
+
+    private function barcodeConflictResponse(ProductBarcodeConflictException $exception): JsonResponse
+    {
+        return response()->json([
+            'error' => [
+                'code' => 'barcode_identity_conflict',
+                'message' => 'This barcode is already assigned to another product in this company.',
+                'details' => [
+                    'barcode' => $exception->barcode,
+                    'existing_product' => [
+                        'id' => $exception->existingProductId,
+                        'sku' => $exception->existingProductSku,
+                        'name' => $exception->existingProductName,
+                    ],
+                ],
+            ],
+        ], 409);
     }
 
     private function backfillDefaultBatchesForExistingStock(Product $product, string $tenantId): void

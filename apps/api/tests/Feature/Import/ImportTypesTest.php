@@ -16,8 +16,10 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
+use App\Modules\Import\Domain\Enums\ImportWarningCode;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Partner\Domain\Partner;
@@ -191,6 +193,19 @@ class ImportTypesTest extends TestCase
     }
 
     // === Product Import Tests ===
+
+    public function test_product_barcode_validation_and_k11_vocabularies_are_pinned(): void
+    {
+        $rules = ImportType::Products->getValidationRules();
+
+        $this->assertSame(['nullable', 'string', 'max:100'], $rules['barcode'] ?? null);
+        $this->assertSame('barcode_identity_conflict', ImportErrorCode::tryFrom('barcode_identity_conflict')?->value);
+        $this->assertSame('multi_location', ImportWarningCode::tryFrom('multi_location')?->value);
+        $this->assertSame(
+            'barcode_float_corruption_suspected',
+            ImportWarningCode::tryFrom('barcode_float_corruption_suspected')?->value,
+        );
+    }
 
     public function test_can_import_products_from_csv(): void
     {

@@ -5,7 +5,14 @@ declare(strict_types=1);
 namespace Tests\Feature\Uom;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Domain\Enums\ImportErrorCode;
+use App\Modules\Import\Domain\Enums\ImportStatus;
+use App\Modules\Import\Domain\Enums\ImportType;
+use App\Modules\Import\Domain\ImportJob;
+use App\Modules\Import\Domain\ImportRow;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Uom\Domain\Entities\Unit;
 use App\Modules\Uom\Domain\Entities\UnitCategory;
@@ -43,7 +50,7 @@ class UomApiTest extends TestCase
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
 
         // Create permissions for UoM module (will be scoped to tenant via context)
-        $permissions = ['uom.view', 'uom.create', 'uom.edit', 'uom.delete'];
+        $permissions = ['uom.view', 'uom.create', 'uom.edit', 'uom.delete', 'units.manage'];
         foreach ($permissions as $permission) {
             Permission::create([
                 'name' => $permission,
@@ -547,6 +554,7 @@ class UomApiTest extends TestCase
 
         // Verify the units data is correct
         $responseData = $response->json('data.0.units');
+        self::assertIsArray($responseData);
         $this->assertCount(2, $responseData);
 
         $unitCodes = collect($responseData)->pluck('code')->toArray();
@@ -620,10 +628,12 @@ class UomApiTest extends TestCase
 
         // Find the volume category in response
         $categories = $categoriesResponse->json('data');
+        self::assertIsArray($categories);
         $volumeCategory = collect($categories)->firstWhere('code', 'volume');
 
-        $this->assertNotNull($volumeCategory, 'Volume category should exist');
+        self::assertIsArray($volumeCategory, 'Volume category should exist');
         $this->assertArrayHasKey('units', $volumeCategory, 'Category must have units array');
+        self::assertIsArray($volumeCategory['units']);
         $this->assertCount(1, $volumeCategory['units'], 'Should have 1 unit');
         $this->assertEquals('tbsp', $volumeCategory['units'][0]['code']);
 
@@ -643,8 +653,11 @@ class UomApiTest extends TestCase
         // Fetch again - should now have 2 units
         $categoriesResponse2 = $this->getJson('/api/v1/uom/categories');
         $categories2 = $categoriesResponse2->json('data');
+        self::assertIsArray($categories2);
         $volumeCategory2 = collect($categories2)->firstWhere('code', 'volume');
 
+        self::assertIsArray($volumeCategory2);
+        self::assertIsArray($volumeCategory2['units']);
         $this->assertCount(2, $volumeCategory2['units'], 'Should now have 2 units');
 
         $unitCodes = collect($volumeCategory2['units'])->pluck('code')->toArray();
@@ -701,12 +714,16 @@ class UomApiTest extends TestCase
         // Get units from /units endpoint
         $unitsResponse = $this->getJson("/api/v1/uom/units?category_id={$category->id}");
         $unitsFromUnitsEndpoint = $unitsResponse->json('data');
+        self::assertIsArray($unitsFromUnitsEndpoint);
 
         // Get units from /categories endpoint
         $categoriesResponse = $this->getJson('/api/v1/uom/categories');
         $categories = $categoriesResponse->json('data');
+        self::assertIsArray($categories);
         $lengthCategory = collect($categories)->firstWhere('code', 'length');
+        self::assertIsArray($lengthCategory);
         $unitsFromCategoriesEndpoint = $lengthCategory['units'];
+        self::assertIsArray($unitsFromCategoriesEndpoint);
 
         // Both should return the same number of units
         $this->assertCount(3, $unitsFromUnitsEndpoint);
@@ -717,5 +734,225 @@ class UomApiTest extends TestCase
         $idsFromCategories = collect($unitsFromCategoriesEndpoint)->pluck('id')->sort()->values()->toArray();
 
         $this->assertEquals($idsFromUnits, $idsFromCategories);
+    }
+
+    public function test_unmapped_texts_are_company_scoped_and_mapping_is_idempotent_and_audited(): void
+    {
+        $category = UnitCategory::factory()->create(['tenant_id' => null]);
+        $piece = Unit::factory()->create([
+            'tenant_id' => null,
+            'category_id' => $category->id,
+            'code' => 'pc',
+            'name' => 'Piece',
+            'symbol' => 'pc',
+            'is_system' => true,
+        ]);
+        $kilogram = Unit::factory()->create([
+            'tenant_id' => null,
+            'category_id' => $category->id,
+            'code' => 'kg',
+            'name' => 'Kilogram',
+            'symbol' => 'kg',
+            'is_system' => true,
+        ]);
+        Product::factory()->count(2)->sequence(
+            ['sku' => 'K9-PIECE-1'],
+            ['sku' => 'K9-PIECE-2'],
+        )->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'unit_id' => null,
+            'unit' => 'piece',
+        ]);
+        Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'K9-BLANK-1',
+            'unit_id' => null,
+            'unit' => null,
+        ]);
+        $this->createValidatedUnknownRows($this->company, 'piece', 2);
+        $this->createValidatedUnknownRows($this->company, 'piece', 1);
+
+        $secondCompany = Company::factory()->create(['tenant_id' => $this->tenant->id]);
+        $this->user->companyMemberships()->create([
+            'company_id' => $secondCompany->id,
+            'status' => 'active',
+            'role' => 'admin',
+        ]);
+        Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $secondCompany->id,
+            'sku' => 'K9-SECOND-PIECE',
+            'unit_id' => null,
+            'unit' => 'piece',
+        ]);
+
+        $this->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/uom/unit-text-mappings/unmapped')
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('data.0.sourceText', null)
+            ->assertJsonPath('data.0.productCount', 1)
+            ->assertJsonPath('data.1.sourceText', 'piece')
+            ->assertJsonPath('data.1.productCount', 2)
+            ->assertJsonPath('data.1.importRowCount', 3)
+            ->assertJsonPath('data.1.pendingImportCount', 2)
+            ->assertJsonPath('data.1.totalCount', 5);
+
+        $map = $this->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/uom/unit-text-mappings', [
+                'source_text' => 'piece',
+                'target_unit_id' => $piece->id,
+            ]);
+
+        $map->assertOk()
+            ->assertJsonPath('data.sourceText', 'piece')
+            ->assertJsonPath('data.targetUnitCode', 'pc')
+            ->assertJsonPath('data.productCount', 2)
+            ->assertJsonPath('data.importRowCount', 3)
+            ->assertJsonPath('data.applied', true);
+        $this->assertSame(2, Product::query()
+            ->where('company_id', $this->company->id)
+            ->where('unit_id', $piece->id)
+            ->where('unit', 'pc')
+            ->count());
+        $this->assertSame(1, Product::query()
+            ->where('company_id', $secondCompany->id)
+            ->whereNull('unit_id')
+            ->where('unit', 'piece')
+            ->count());
+        $this->assertSame(1, AuditEvent::query()
+            ->where('company_id', $this->company->id)
+            ->where('event_type', 'uom.unit_text_mapping_applied')
+            ->count());
+
+        $this->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/uom/unit-text-mappings', [
+                'source_text' => 'piece',
+                'target_unit_id' => $kilogram->id,
+            ])
+            ->assertConflict()
+            ->assertJsonPath('error.code', 'UNIT_TEXT_MAPPING_CONFLICT');
+
+        $this->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/uom/unit-text-mappings', [
+                'source_text' => 'piece',
+                'target_unit_id' => $piece->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.productCount', 0)
+            ->assertJsonPath('data.importRowCount', 0)
+            ->assertJsonPath('data.applied', false);
+        $this->assertSame(1, AuditEvent::query()
+            ->where('company_id', $this->company->id)
+            ->where('event_type', 'uom.unit_text_mapping_applied')
+            ->count());
+
+        $this->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/uom/unit-text-mappings/unmapped')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.sourceText', null);
+        $this->withHeader('X-Company-Id', $secondCompany->id)
+            ->getJson('/api/v1/uom/unit-text-mappings/unmapped')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.sourceText', 'piece')
+            ->assertJsonPath('data.0.productCount', 1);
+    }
+
+    public function test_blank_mapping_requires_visible_pc_and_manage_permission(): void
+    {
+        $category = UnitCategory::factory()->create(['tenant_id' => null]);
+        $piece = Unit::factory()->create([
+            'tenant_id' => null,
+            'category_id' => $category->id,
+            'code' => 'pc',
+            'name' => 'Piece',
+            'symbol' => 'pc',
+            'is_system' => true,
+        ]);
+        $kilogram = Unit::factory()->create([
+            'tenant_id' => null,
+            'category_id' => $category->id,
+            'code' => 'kg',
+            'name' => 'Kilogram',
+            'symbol' => 'kg',
+            'is_system' => true,
+        ]);
+        Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'K9-BLANK-PERMISSION',
+            'unit_id' => null,
+            'unit' => null,
+        ]);
+
+        $this->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/uom/unit-text-mappings', [
+                'source_text' => null,
+                'target_unit_id' => $kilogram->id,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'UNIT_TEXT_MAPPING_BLANK_REQUIRES_PC');
+
+        $this->user->revokePermissionTo('units.manage');
+        $this->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/uom/unit-text-mappings/unmapped')
+            ->assertForbidden();
+        $this->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/uom/unit-text-mappings', [
+                'source_text' => null,
+                'target_unit_id' => $piece->id,
+            ])
+            ->assertForbidden();
+    }
+
+    public function test_mapping_rejects_a_target_outside_the_company_visible_catalog(): void
+    {
+        $foreignTenant = Tenant::factory()->create();
+        $category = UnitCategory::factory()->create(['tenant_id' => $foreignTenant->id]);
+        $foreignUnit = Unit::factory()->create([
+            'tenant_id' => $foreignTenant->id,
+            'category_id' => $category->id,
+            'code' => 'foreign',
+            'name' => 'Foreign',
+            'symbol' => 'f',
+        ]);
+
+        $this->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/uom/unit-text-mappings', [
+                'source_text' => 'piece',
+                'target_unit_id' => $foreignUnit->id,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'UNIT_TEXT_MAPPING_TARGET_NOT_VISIBLE');
+    }
+
+    private function createValidatedUnknownRows(Company $company, string $text, int $count): void
+    {
+        $job = ImportJob::create([
+            'tenant_id' => $company->tenant_id,
+            'company_id' => $company->id,
+            'user_id' => $this->user->id,
+            'type' => ImportType::Products,
+            'status' => ImportStatus::Validated,
+            'original_filename' => 'k9-preview.csv',
+            'file_path' => 'imports/k9-preview.csv',
+            'total_rows' => $count,
+            'failed_rows' => $count,
+        ]);
+
+        foreach (range(1, $count) as $rowNumber) {
+            ImportRow::create([
+                'import_job_id' => $job->id,
+                'row_number' => $rowNumber,
+                'data' => ['name' => "K9 preview {$rowNumber}", 'unit' => $text],
+                'is_valid' => false,
+                'errors' => ['unit' => ['Unknown unit.']],
+                'import_error_code' => ImportErrorCode::UnitUnknown,
+            ]);
+        }
     }
 }

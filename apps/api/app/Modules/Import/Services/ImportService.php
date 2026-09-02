@@ -7,9 +7,11 @@ namespace App\Modules\Import\Services;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Import\Domain\Data\ClaimResult;
+use App\Modules\Import\Domain\Data\DuplicateCensusData;
 use App\Modules\Import\Domain\Data\ImportCountersData;
 use App\Modules\Import\Domain\Data\ImportErrorDetailData;
 use App\Modules\Import\Domain\Data\ImportRowResultsData;
+use App\Modules\Import\Domain\Enums\BarcodeGroupClassification;
 use App\Modules\Import\Domain\Enums\DuplicateBucket;
 use App\Modules\Import\Domain\Enums\DuplicatePolicy;
 use App\Modules\Import\Domain\Enums\ImportErrorCode;
@@ -21,6 +23,7 @@ use App\Modules\Import\Domain\Exceptions\CodedImportRowException;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Domain\ImportRow;
 use App\Modules\Product\Domain\Enums\ProductType;
+use App\Modules\Product\Domain\Exceptions\ProductBarcodeConflictException;
 use App\Shared\Contracts\CompositeItemServiceInterface;
 use App\Shared\Contracts\PartnerResolverInterface;
 use App\Shared\Contracts\PartnerServiceInterface;
@@ -41,6 +44,8 @@ use RuntimeException;
 
 final class ImportService
 {
+    private const UNIT_ACCEPTED_CODE_LIMIT = 20;
+
     public function __construct(
         private readonly ValidationEngine $validationEngine,
         private readonly CompanyContext $companyContext,
@@ -118,10 +123,13 @@ final class ImportService
      */
     public function addRow(ImportJob $job, int $rowNumber, array $data): ImportRow
     {
+        $staged = $this->normalizeStagedRow($job, $data);
+
         return ImportRow::create([
             'import_job_id' => $job->id,
             'row_number' => $rowNumber,
-            'data' => $this->numericNormalizer->normalize($data, $job->type->getValidationRules()),
+            'data' => $staged['data'],
+            'warnings' => $staged['warnings'],
             'is_valid' => false,
         ]);
     }
@@ -155,11 +163,15 @@ final class ImportService
         foreach ($batches as $batch) {
             $insertData = [];
             foreach ($batch as $rowNumber => $data) {
+                $staged = $this->normalizeStagedRow($job, $data, $rules);
                 $insertData[] = [
                     'id' => (string) Str::uuid(),
                     'import_job_id' => $job->id,
                     'row_number' => $rowNumber,
-                    'data' => json_encode($this->numericNormalizer->normalize($data, $rules)),
+                    'data' => json_encode($staged['data'], JSON_THROW_ON_ERROR),
+                    'warnings' => $staged['warnings'] === null
+                        ? null
+                        : json_encode($staged['warnings'], JSON_THROW_ON_ERROR),
                     'is_valid' => false,
                     'is_imported' => false,
                     'created_at' => $now,
@@ -184,11 +196,14 @@ final class ImportService
         $messages = $job->type->getValidationMessages();
         $validCount = 0;
         $invalidCount = 0;
+        $unitResolver = $job->type === ImportType::Products
+            ? $this->unitResolver->forRun((string) $job->company_id)
+            : $this->unitResolver;
 
         // Process in chunks to avoid loading all rows into memory
         $job->rows()
             ->orderBy('row_number')
-            ->chunk(500, function ($rows) use ($rules, $messages, $job, &$validCount, &$invalidCount): void {
+            ->chunk(500, function ($rows) use ($rules, $messages, $job, $unitResolver, &$validCount, &$invalidCount): void {
                 $updates = [];
 
                 foreach ($rows as $row) {
@@ -197,6 +212,22 @@ final class ImportService
                         $rules,
                         $job->tenant_id,
                         $messages,
+                    );
+                    $unitFailure = $job->type === ImportType::Products
+                        ? $this->validateProductUnit($job, $row->data, $unitResolver)
+                        : null;
+                    if ($unitFailure !== null) {
+                        $result['is_valid'] = false;
+                        $result['errors']['unit'] = array_values(array_merge(
+                            $result['errors']['unit'] ?? [],
+                            [$unitFailure['message']],
+                        ));
+                    }
+
+                    $numericFailure = $this->numericValidationFailure(
+                        $result['failed_rules'],
+                        $rules,
+                        $row->data,
                     );
 
                     $updates[] = [
@@ -208,7 +239,8 @@ final class ImportService
                             : ImportRowOutcome::Failed,
                         'import_error_code' => $result['is_valid']
                             ? null
-                            : ImportErrorCode::ValidationFailed,
+                            : ($unitFailure['code'] ?? $numericFailure['code'] ?? ImportErrorCode::ValidationFailed),
+                        'import_error_detail' => $unitFailure['detail'] ?? $numericFailure['detail'] ?? null,
                     ];
 
                     if ($result['is_valid']) {
@@ -223,7 +255,10 @@ final class ImportService
             });
 
         $job->update([
-            'status' => $validCount === 0 ? ImportStatus::Failed : ImportStatus::Validated,
+            'status' => $validCount === 0
+                && ! ($job->type === ImportType::Products && $invalidCount > 0)
+                    ? ImportStatus::Failed
+                    : ImportStatus::Validated,
             'processed_rows' => $invalidCount,
             'successful_rows' => 0,
             'failed_rows' => $invalidCount,
@@ -236,6 +271,88 @@ final class ImportService
         if ($job->type === ImportType::Products && $job->total_rows > 0) {
             $this->duplicateCensus->census($job->refresh(), $this->companyContext->requireCompanyId());
         }
+    }
+
+    /**
+     * @param  list<string>  $fields
+     * @return list<array{code: string, detail: string}>|null
+     */
+    private function numericNormalizationWarnings(array $fields): ?array
+    {
+        if ($fields === []) {
+            return null;
+        }
+
+        return [[
+            'code' => ImportWarningCode::NumericNormalized->value,
+            'detail' => 'Normalized spreadsheet float noise in columns: '.implode(', ', $fields).'.',
+        ]];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<string, array<string>>|null  $rules
+     * @return array{data: array<string, mixed>, warnings: list<array{code: string, detail: string}>|null}
+     */
+    private function normalizeStagedRow(ImportJob $job, array $data, ?array $rules = null): array
+    {
+        $normalized = $this->numericNormalizer->normalizeWithReport(
+            $data,
+            $rules ?? $job->type->getValidationRules(),
+        );
+        $warnings = $this->numericNormalizationWarnings($normalized['normalized_fields']) ?? [];
+
+        if ($job->type === ImportType::Products) {
+            $barcodeWarning = $this->barcodeFormatWarning($normalized['data']['barcode'] ?? null);
+            if ($barcodeWarning !== null) {
+                $warnings[] = $barcodeWarning;
+            }
+
+            $barcode = $this->canonicalBarcode($normalized['data']['barcode'] ?? null);
+            if ($barcode !== null) {
+                $normalized['data']['barcode'] = $barcode;
+            }
+        }
+
+        return [
+            'data' => $normalized['data'],
+            'warnings' => $warnings === [] ? null : $warnings,
+        ];
+    }
+
+    /**
+     * @param  array<string, list<string>>  $failedRules
+     * @param  array<string, array<string>>  $rules
+     * @param  array<string, mixed>  $data
+     * @return array{code: ImportErrorCode, detail: array{column: string, raw: string, remedy: string}}|null
+     */
+    private function numericValidationFailure(array $failedRules, array $rules, array $data): ?array
+    {
+        foreach ($failedRules as $field => $fieldFailures) {
+            if (! in_array('numeric', $rules[$field] ?? [], true)) {
+                continue;
+            }
+
+            $numericSyntaxFailed = in_array('Numeric', $fieldFailures, true);
+            $scaleFailed = in_array('Regex', $fieldFailures, true);
+            $rangeFailed = array_intersect($fieldFailures, ['Min', 'Max']) !== [];
+            if (! $numericSyntaxFailed && (! $scaleFailed || $rangeFailed)) {
+                continue;
+            }
+
+            $raw = $data[$field] ?? null;
+
+            return [
+                'code' => ImportErrorCode::InvalidNumber,
+                'detail' => [
+                    'column' => $field,
+                    'raw' => is_scalar($raw) ? (string) $raw : '',
+                    'remedy' => 'Provide a plain decimal value within the column scale.',
+                ],
+            ];
+        }
+
+        return null;
     }
 
     public function prepareProductPlacements(ImportJob $job, string $companyId): void
@@ -302,7 +419,7 @@ final class ImportService
     /**
      * Batch update validation results using raw SQL for efficiency.
      *
-     * @param  array<array{id: string, is_valid: bool, errors: array<string, array<string>>|null, outcome: ImportRowOutcome, import_error_code: ImportErrorCode|null}>  $updates
+     * @param  array<array{id: string, is_valid: bool, errors: array<string, array<string>>|null, outcome: ImportRowOutcome, import_error_code: ImportErrorCode|null, import_error_detail: array<string, mixed>|null}>  $updates
      */
     private function batchUpdateValidation(array $updates): void
     {
@@ -318,9 +435,52 @@ final class ImportService
                     'errors' => $update['errors'] ? json_encode($update['errors']) : null,
                     'outcome' => $update['outcome']->value,
                     'import_error_code' => $update['import_error_code']?->value,
+                    'import_error_detail' => $update['import_error_detail'] === null
+                        ? null
+                        : json_encode($update['import_error_detail'], JSON_THROW_ON_ERROR),
                     'updated_at' => now(),
                 ]);
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{code: ImportErrorCode, message: string, detail: array<string, mixed>}|null
+     */
+    private function validateProductUnit(ImportJob $job, array $data, UnitResolver $unitResolver): ?array
+    {
+        $identity = $this->productResolver->resolve(
+            $job->tenant_id,
+            (string) $job->company_id,
+            is_string($data['sku'] ?? null) ? $data['sku'] : null,
+            is_string($data['barcode'] ?? null) ? $data['barcode'] : null,
+            (string) ($data['name'] ?? ''),
+        );
+
+        try {
+            $unitResolver->resolve(
+                (string) $job->company_id,
+                is_string($data['unit'] ?? null) ? $data['unit'] : null,
+                $identity->productId !== null,
+            );
+        } catch (CodedImportRowException $exception) {
+            $detail = $exception->detail;
+            if (is_array($detail['accepted'] ?? null)) {
+                $detail['accepted'] = array_slice(
+                    array_values(array_filter($detail['accepted'], is_string(...))),
+                    0,
+                    self::UNIT_ACCEPTED_CODE_LIMIT,
+                );
+            }
+
+            return [
+                'code' => $exception->errorCode,
+                'message' => $exception->errorCode->value.': '.$exception->getMessage(),
+                'detail' => $detail,
+            ];
+        }
+
+        return null;
     }
 
     /**
@@ -511,6 +671,26 @@ final class ImportService
         try {
             return DB::transaction(function () use ($job, $row, $companyId): ImportRowOutcome {
                 $companyId ??= $this->companyContext->requireCompanyId();
+                $census = DuplicateCensusData::fromStorage(
+                    is_array($job->options['duplicate_census'] ?? null)
+                        ? $job->options['duplicate_census']
+                        : [],
+                );
+                $barcodeGroup = $census->barcodeGroupForRow($row->row_number);
+                if (($barcodeGroup['classification'] ?? null) === BarcodeGroupClassification::BarcodeIdentityConflict->value) {
+                    throw new CodedImportRowException(
+                        ImportErrorCode::BarcodeIdentityConflict,
+                        'Rows sharing this barcode disagree on product identity.',
+                        [
+                            'barcode' => $barcodeGroup['barcode'],
+                            'row_numbers' => $barcodeGroup['row_numbers'],
+                            'differing_fields' => $barcodeGroup['differing_fields'],
+                        ],
+                    );
+                }
+                $isConfirmedMultiLocation = ($barcodeGroup['classification'] ?? null)
+                    === BarcodeGroupClassification::MultiLocation->value
+                    && ($job->options['multi_location_confirmed'] ?? null) === true;
                 $decision = $this->duplicateCensus->decide($job, $row, $companyId);
                 $currentBucket = $decision->bucket;
                 $warnings = $row->warnings ?? [];
@@ -536,7 +716,7 @@ final class ImportService
                     ];
                 }
 
-                $winnerRow = $decision->winnerRowNumber;
+                $winnerRow = $isConfirmedMultiLocation ? null : $decision->winnerRowNumber;
                 if ($winnerRow !== null) {
                     $decisionWarnings[] = [
                         'code' => ImportWarningCode::DuplicateInFile->value,
@@ -556,7 +736,9 @@ final class ImportService
 
                 $policy = DuplicatePolicy::tryFrom((string) ($job->options['duplicate_policy'] ?? ''))
                     ?? DuplicatePolicy::Override;
-                if ($policy === DuplicatePolicy::Skip && $this->isExistingBucket($currentBucket)) {
+                if (! $isConfirmedMultiLocation
+                    && $policy === DuplicatePolicy::Skip
+                    && $this->isExistingBucket($currentBucket)) {
                     $row->update([
                         'is_imported' => false,
                         'outcome' => ImportRowOutcome::DuplicateSkipped,
@@ -571,17 +753,20 @@ final class ImportService
 
                 $entityId = $this->importRow($job, $row, $companyId);
                 $warnings = array_merge($row->refresh()->warnings ?? [], $decisionWarnings);
+                $outcome = $isConfirmedMultiLocation && $this->isExistingBucket($currentBucket)
+                    ? ImportRowOutcome::MergedLine
+                    : ImportRowOutcome::Imported;
                 $row->update([
                     'is_imported' => true,
                     'imported_entity_id' => $entityId,
-                    'outcome' => ImportRowOutcome::Imported,
+                    'outcome' => $outcome,
                     'warnings' => $warnings === [] ? null : $warnings,
                     'import_error' => null,
                     'import_error_code' => null,
                     'import_error_detail' => null,
                 ]);
 
-                return ImportRowOutcome::Imported;
+                return $outcome;
             });
         } catch (\Throwable $exception) {
             $coded = $this->codedFailure($exception);
@@ -622,7 +807,8 @@ final class ImportService
             ->toBase()
             ->pluck('aggregate', 'outcome');
 
-        $imported = (int) ($counts[ImportRowOutcome::Imported->value] ?? 0);
+        $imported = (int) ($counts[ImportRowOutcome::Imported->value] ?? 0)
+            + (int) ($counts[ImportRowOutcome::MergedLine->value] ?? 0);
         $skipped = (int) ($counts[ImportRowOutcome::DuplicateSkipped->value] ?? 0)
             + (int) ($counts[ImportRowOutcome::DuplicateLoser->value] ?? 0);
         $failed = (int) ($counts[ImportRowOutcome::Failed->value] ?? 0)
@@ -643,13 +829,25 @@ final class ImportService
      *   candidates?: list<array{id: string, code: string, name: string, category: string, tier: string}>,
      *   candidate_skus?: list<string>,
      *   sku?: string,
-     *   existing_product_id?: string
+     *   existing_product_id?: string,
+     *   barcode?: string,
+     *   row_numbers?: list<int>,
+     *   differing_fields?: list<string>
      * }}
      */
     private function codedFailure(\Throwable $exception): array
     {
         if ($exception instanceof CodedImportRowException) {
             return ['code' => $exception->errorCode, 'detail' => $exception->detail];
+        }
+        if ($exception instanceof ProductBarcodeConflictException) {
+            return [
+                'code' => ImportErrorCode::BarcodeIdentityConflict,
+                'detail' => [
+                    'barcode' => $exception->barcode,
+                    'existing_product_id' => $exception->existingProductId,
+                ],
+            ];
         }
 
         $message = $exception->getMessage();
@@ -666,6 +864,76 @@ final class ImportService
         }
 
         return ['code' => ImportErrorCode::InternalError, 'detail' => []];
+    }
+
+    /** @return array{code: string, detail: string}|null */
+    private function barcodeFormatWarning(mixed $value): ?array
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $barcode = trim($value);
+        $integerPart = preg_replace('/\.0+$/', '', $barcode);
+        $looksNumericExport = str_contains($barcode, '.') || preg_match('/[eE][+-]?\d+$/', $barcode) === 1;
+        if (! $looksNumericExport || ! is_string($integerPart) || preg_match('/0{5}$/', $integerPart) !== 1) {
+            return null;
+        }
+
+        return [
+            'code' => ImportWarningCode::BarcodeFloatCorruptionSuspected->value,
+            'detail' => 'This barcode looks like a spreadsheet float conversion and ends in 00000; verify it against the source label.',
+        ];
+    }
+
+    private function canonicalBarcode(mixed $value): ?string
+    {
+        if (! is_string($value) && ! is_int($value) && ! is_float($value)) {
+            return null;
+        }
+        if (is_float($value) && ! is_finite($value)) {
+            return null;
+        }
+
+        $barcode = trim((string) $value);
+        if ($barcode === '') {
+            return null;
+        }
+
+        if (preg_match('/^(\d+)\.0+$/D', $barcode, $decimalMatch) === 1) {
+            return $decimalMatch[1];
+        }
+
+        if (preg_match('/^(\d+)(?:\.(\d*))?[eE]([+-]?\d+)$/D', $barcode, $exponentMatch) !== 1) {
+            return $barcode;
+        }
+
+        $exponentText = $exponentMatch[3];
+        if (strlen(ltrim($exponentText, '+-')) > 3) {
+            return $barcode;
+        }
+        $exponent = (int) $exponentText;
+        if (abs($exponent) > 100) {
+            return $barcode;
+        }
+
+        $integer = $exponentMatch[1];
+        $fraction = $exponentMatch[2];
+        $digits = $integer.$fraction;
+        $decimalPosition = strlen($integer) + $exponent;
+        if ($decimalPosition <= 0) {
+            return trim($digits, '0') === '' ? '0' : $barcode;
+        }
+        if ($decimalPosition < strlen($digits)) {
+            $remainingFraction = substr($digits, $decimalPosition);
+            if (trim($remainingFraction, '0') !== '') {
+                return $barcode;
+            }
+
+            return substr($digits, 0, $decimalPosition);
+        }
+
+        return $digits.str_repeat('0', $decimalPosition - strlen($digits));
     }
 
     /**

@@ -47,6 +47,29 @@
   "systemUnitInfo": "System units are available to all tenants and cannot be modified",
   "selectUnit": "Select a unit",
 
+  "unmapped": {
+    "title": "Unmapped unit texts",
+    "description": "Resolve legacy product and validated import-preview unit texts for this company. Mappings use exact codes and apply to future validations.",
+    "blank": "(blank)",
+    "columns": {
+      "source": "Source text",
+      "count": "Occurrences",
+      "target": "Map to"
+    },
+    "products": "{{count}} products",
+    "importRows": "{{count}} preview rows",
+    "pendingImports": "across {{count}} pending imports",
+    "selectTarget": "Select exact code",
+    "targetLabel": "Target unit for {{source}}",
+    "map": "Map",
+    "confirmTitle": "Confirm unit mapping",
+    "confirm": "Map {{source}} to exact unit code {{code}}? This updates matching products and future validations for this company.",
+    "success": "Unit text mapped.",
+    "successAliasStored": "Unit text mapping saved for future imports.",
+    "empty": "No unmapped unit texts.",
+    "loadError": "Unmapped unit texts could not be loaded."
+  },
+
   "conversionCalculator": "Unit Conversion Calculator",
   "conversionCalculatorHelp": "Convert quantities between compatible units",
   "quantity": "Quantity",

@@ -10,13 +10,18 @@ use App\Modules\Uom\Application\DTOs\ConversionResultData;
 use App\Modules\Uom\Application\DTOs\UnitCategoryData;
 use App\Modules\Uom\Application\DTOs\UnitData;
 use App\Modules\Uom\Application\Jobs\RevalidateUnitQuantityScaleJob;
+use App\Modules\Uom\Application\Services\UnitTextMappingService;
 use App\Modules\Uom\Domain\Entities\Unit;
 use App\Modules\Uom\Domain\Entities\UnitCategory;
 use App\Modules\Uom\Domain\Exceptions\IncompatibleUnitsException;
+use App\Modules\Uom\Domain\Exceptions\UnitTextMappingException;
 use App\Modules\Uom\Domain\Services\UnitConversionService;
+use App\Modules\Uom\Presentation\Requests\ApplyUnitTextMappingRequest;
 use App\Modules\Uom\Presentation\Requests\CreateUnitRequest;
 use App\Modules\Uom\Presentation\Requests\UpdateUnitRequest;
 use App\Shared\Authorization\AuthorizesAbility;
+use App\Shared\Contracts\UnitCatalogQueryInterface;
+use App\Shared\DTOs\UnitCatalogEntryData;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -28,7 +33,48 @@ class UomController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly UnitConversionService $conversionService,
+        private readonly UnitCatalogQueryInterface $unitCatalog,
+        private readonly UnitTextMappingService $unitTextMappings,
     ) {}
+
+    public function unmappedUnitTexts(Request $request): JsonResponse
+    {
+        $this->authorizeAbility('units.manage');
+
+        return response()->json([
+            'data' => $this->unitTextMappings->unmapped($this->companyContext->requireCompany()),
+            'meta' => $this->responseMeta($request),
+        ]);
+    }
+
+    public function applyUnitTextMapping(ApplyUnitTextMappingRequest $request): JsonResponse
+    {
+        $this->authorizeAbility('units.manage');
+
+        /** @var array{source_text: string|null, target_unit_id: string} $validated */
+        $validated = $request->validated();
+
+        try {
+            $result = $this->unitTextMappings->apply(
+                $this->companyContext->requireCompany(),
+                $validated['source_text'],
+                $validated['target_unit_id'],
+            );
+        } catch (UnitTextMappingException $exception) {
+            return response()->json([
+                'error' => [
+                    'code' => $exception->errorCode->value,
+                    'message' => $exception->getMessage(),
+                ],
+                'meta' => $this->responseMeta($request),
+            ], $exception->status);
+        }
+
+        return response()->json([
+            'data' => $result,
+            'meta' => $this->responseMeta($request),
+        ]);
+    }
 
     /**
      * List all categories with their units
@@ -69,14 +115,15 @@ class UomController extends Controller
     {
         $this->authorizeAbility('uom.view');
 
-        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+        $company = $this->companyContext->requireCompany();
         $categoryId = $request->query('category_id');
+        $visibleUnitIds = array_map(
+            static fn (UnitCatalogEntryData $unit): string => $unit->id,
+            $this->unitCatalog->visibleUnits($company->id),
+        );
 
         $query = Unit::query()
-            ->where(function ($q) use ($tenantId) {
-                $q->whereNull('tenant_id')
-                    ->orWhere('tenant_id', $tenantId);
-            })
+            ->whereIn('id', $visibleUnitIds)
             ->where('is_active', true)
             ->with('category');
 
@@ -307,5 +354,14 @@ class UomController extends Controller
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
             ],
         ]);
+    }
+
+    /** @return array{timestamp: string, request_id: string} */
+    private function responseMeta(Request $request): array
+    {
+        return [
+            'timestamp' => now()->toIso8601String(),
+            'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
+        ];
     }
 }

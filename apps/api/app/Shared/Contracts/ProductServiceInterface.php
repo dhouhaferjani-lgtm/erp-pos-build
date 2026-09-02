@@ -14,6 +14,13 @@ use App\Shared\DTOs\ProductUpsertResultData;
  */
 interface ProductServiceInterface
 {
+    public function assertBarcodeAvailable(
+        string $tenantId,
+        string $companyId,
+        ?string $barcode,
+        ?string $targetProductId,
+    ): void;
+
     /**
      * Find a product by SKU.
      *

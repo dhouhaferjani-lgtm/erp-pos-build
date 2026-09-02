@@ -39,7 +39,7 @@ final class ProductOpeningStockPhase
         $results = [];
 
         $job->rows()
-            ->where('outcome', ImportRowOutcome::Imported)
+            ->whereIn('outcome', [ImportRowOutcome::Imported, ImportRowOutcome::MergedLine])
             ->whereNotNull('imported_entity_id')
             ->orderBy('row_number')
             ->chunk(100, function ($rows) use ($job, $companyId, $scale, &$results): void {

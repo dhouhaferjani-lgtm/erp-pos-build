@@ -10,6 +10,8 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Domain\Enums\ImportErrorCode;
+use App\Modules\Import\Domain\Enums\ImportRowOutcome;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\Enums\ImportWarningCode;
 use App\Modules\Import\Services\ImportService;
@@ -81,7 +83,7 @@ final class ResultWorkbookTest extends TestCase
             type: ImportType::Products,
             filename: 'products.csv',
             filePath: 'imports/test/products.csv',
-            totalRows: 2
+            totalRows: 4
         );
 
         $importedRow = $service->addRow($job, 1, [
@@ -92,6 +94,7 @@ final class ResultWorkbookTest extends TestCase
         $importedRow->update([
             'is_valid' => true,
             'is_imported' => true,
+            'outcome' => ImportRowOutcome::Imported,
             // C-10: this column is `uuid` in PostgreSQL — a non-UUID literal
             // ('product-1') is silently accepted by SQLite but raises 22P02 on
             // PG. Bind a real UUID so the class is driver-agnostic.
@@ -109,7 +112,33 @@ final class ResultWorkbookTest extends TestCase
         ]);
         $rejectedRow->update([
             'is_valid' => false,
+            'outcome' => ImportRowOutcome::Failed,
             'errors' => ['name' => ['The name field is required.']],
+            'import_error_code' => ImportErrorCode::BarcodeIdentityConflict,
+            'import_error' => 'The barcode is reused by contradictory product identities.',
+        ]);
+
+        $skippedRow = $service->addRow($job, 3, [
+            'sku' => 'SKU-3',
+            'name' => 'Skipped Product',
+            'sale_price_incl_tax' => '9.000',
+        ]);
+        $skippedRow->update([
+            'is_valid' => true,
+            'is_imported' => false,
+            'outcome' => ImportRowOutcome::DuplicateSkipped,
+            'warnings' => [['code' => 'duplicate_in_file', 'detail' => 'Existing product kept.']],
+        ]);
+
+        $pendingRow = $service->addRow($job, 4, [
+            'sku' => 'SKU-4',
+            'name' => 'Pending Product',
+            'sale_price_incl_tax' => '7.000',
+        ]);
+        $pendingRow->update([
+            'is_valid' => true,
+            'is_imported' => false,
+            'outcome' => ImportRowOutcome::Pending,
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
@@ -125,19 +154,50 @@ final class ResultWorkbookTest extends TestCase
         $spreadsheet = IOFactory::load($path);
         unlink($path);
 
-        $this->assertSame(['Imported', 'Rejected'], $spreadsheet->getSheetNames());
+        $this->assertSame(['Imported', 'Skipped', 'Rejected'], $spreadsheet->getSheetNames());
 
         $importedSheet = $spreadsheet->getSheetByName('Imported');
         $this->assertNotNull($importedSheet);
         $this->assertSame('warnings', $importedSheet->getCell('D1')->getValue());
         $this->assertSame('Imported Product', $importedSheet->getCell('B2')->getValue());
         $this->assertSame('price_conflict: provided 12.000 vs derived 11.900', $importedSheet->getCell('D2')->getValue());
+        $this->assertSame(2, $importedSheet->getHighestDataRow(), 'A duplicate_skipped row must never appear as imported.');
+
+        $skippedSheet = $spreadsheet->getSheetByName('Skipped');
+        $this->assertNotNull($skippedSheet);
+        $this->assertSame('Skipped Product', $skippedSheet->getCell('B2')->getValue());
+        $this->assertSame('duplicate_in_file: Existing product kept.', $skippedSheet->getCell('D2')->getValue());
+        $this->assertSame('Pending Product', $skippedSheet->getCell('B3')->getValue());
+        $this->assertSame(
+            'not_processed: This row was not processed.',
+            $skippedSheet->getCell('E3')->getValue(),
+        );
 
         $rejectedSheet = $spreadsheet->getSheetByName('Rejected');
         $this->assertNotNull($rejectedSheet);
+        $this->assertStringContainsString(
+            'barcode_identity_conflict: The barcode is reused by contradictory product identities.',
+            (string) $rejectedSheet->getCell('E2')->getValue()
+        );
         $this->assertSame('warnings', $rejectedSheet->getCell('D1')->getValue());
         $this->assertSame('reasons', $rejectedSheet->getCell('E1')->getValue());
-        $this->assertSame('name: The name field is required.', $rejectedSheet->getCell('E2')->getValue());
+        $this->assertSame(
+            'name: The name field is required.; barcode_identity_conflict: The barcode is reused by contradictory product identities.',
+            $rejectedSheet->getCell('E2')->getValue()
+        );
+
+        $reportedSkus = [];
+        foreach ($spreadsheet->getAllSheets() as $sheet) {
+            for ($rowNumber = 2; $rowNumber <= $sheet->getHighestDataRow(); $rowNumber++) {
+                $sku = $sheet->getCell("A{$rowNumber}")->getValue();
+                if (is_string($sku) && $sku !== '') {
+                    $reportedSkus[] = $sku;
+                }
+            }
+        }
+        sort($reportedSkus);
+        $this->assertSame(['SKU-1', 'SKU-2', 'SKU-3', 'SKU-4'], $reportedSkus);
+        $this->assertCount(4, array_unique($reportedSkus), 'Every staged row must appear on exactly one result sheet.');
     }
 
     public function test_result_workbook_route_requires_import_permission(): void

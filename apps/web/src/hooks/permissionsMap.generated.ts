@@ -1,6 +1,6 @@
 // This file is generated. Do not edit it by hand.
 // Source: apps/api/database/seeders/RolesAndPermissionsSeeder.php
-// Source hash: sha256:1fb08ab1663da2fbf385c4ac7469d810fc5c7c10c3e59a130c3ed1b26f0d7270
+// Source hash: sha256:d126b0d004691f15a61e5dc1d71c261f5370da2065803d7f1df0f2b02eff5801
 
 export const PERMISSIONS = {
   'accounts.manage': ['accountant', 'admin', 'manager'],
@@ -261,6 +261,7 @@ export const PERMISSIONS = {
   'treasury.manage': ['accountant', 'admin'],
   'treasury.transfer': ['accountant', 'admin', 'manager'],
   'treasury.view': ['accountant', 'admin', 'manager'],
+  'units.manage': ['admin', 'manager'],
   'uom.create': ['admin', 'manager'],
   'uom.delete': ['admin', 'manager'],
   'uom.edit': ['admin', 'manager'],
