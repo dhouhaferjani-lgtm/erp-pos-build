@@ -143,6 +143,33 @@ runs the only location-less row anywhere is a single `product_location` counting
 is stranded; no backfill or repair endpoint is required for promotion.** Re-run on production
 before the guards ship there.
 
+### Second census — countings with ZERO items (exposed by the zero-item activation guard)
+
+Lane N-1 also refuses activation when the scope resolved to nothing
+(`InventoryCountingService::activateDraft` and `::activate`, both throwing
+`Nothing to count in this scope — no stock rows matched`). That strands a DIFFERENT legacy
+class from the location-less one: any existing `draft`/`scheduled` counting that already has
+**zero** `inventory_counting_items` becomes permanently un-activatable (exit = cancel +
+re-create, same as above). Run this alongside the query above, per tenant database:
+
+```sql
+-- Exposed rows: draft/scheduled countings that hold no items at all (any scope).
+SELECT current_database() AS tenant_db, status, count(*) AS zero_item_countings
+FROM inventory_countings c
+WHERE c.status IN ('draft', 'scheduled')
+  AND NOT EXISTS (
+      SELECT 1 FROM inventory_counting_items i WHERE i.counting_id = c.id
+  )
+GROUP BY 1, 2;
+```
+
+| Run | Date | DBs reached | Zero-item draft/scheduled countings (exposed) |
+|---|---|---|---|
+| Local (gate r3 reviewer, every non-template DB with the table) | 2026-09-02 | 304 | **0** |
+| **Staging** (coordinator) | 2026-09-02 | 16 | **0** — the staging tenants hold no countings at all |
+
+Local and staging exposure are both nil. Re-run on production before the guards ship there.
+
 ### Documented residuals (not fixed in N-1)
 
 - **Two error envelopes on the activation route.** `activate-draft` answers the controller
@@ -163,3 +190,37 @@ before the guards ship there.
   whole batch (ruled that way in r1). `CountingScopeType::tryFrom(...) === null → errors[] +
   continue` would make the endpoint's contract uniform; the mobile brief mitigates it by
   contract ("never enqueue an unknown scope type").
+- **`ZoneScopedCountingTest` has never been green on the PG lane** (pre-existing, gate r3 NEW-3).
+  Four tests build `'counting_number' => 'CNT-ZON-'.uniqid()` — 8 + 13 = 21 characters against
+  `counting_number character varying(20)` — so they ERROR with SQLSTATE[22001] on PostgreSQL and
+  pass on SQLite, which ignores varchar length. All four exist verbatim at base `3615cab8f`
+  (`git show 3615cab8f:…ZoneScopedCountingTest.php`), so this is not the lane's defect, but it
+  keeps the file out of the PG lane — and this is precisely the area where PG-only behaviour
+  matters (BLOCKER-1 existed only because SQLite could not see it). One-line fix when someone
+  owns that file: `substr(uniqid(), -8)`. Separately, its
+  `test_location_hierarchy_counting_flow_keeps_variant_stock_at_location_grain` fails on BOTH
+  drivers at base — the single pre-existing failure this lane has carried since r0.
+- **The malformed-uuid row reuses the foreign-location message** (gate r3 NEW-4).
+  `InventoryCountingController` answers both a non-uuid `location_id` and a well-formed but
+  foreign one with `'Location not found for the current company'` — deliberate (nothing leaks),
+  but the sibling offline-sync endpoint distinguishes them (`batchAddProducts` emits
+  `'Invalid product ID; expected a UUID'`). The mobile team therefore cannot tell a client bug
+  from data staleness out of `errors[]`. Align the two endpoints' wording in the same follow-up
+  as the concurrency bail-out below.
+- **A new English-only server string reaches FR/AR operators** (gate r3 NEW-5).
+  `'Nothing to count in this scope — no stock rows matched'` is rendered verbatim by
+  `apps/web/src/features/inventory-counting/api/queries.ts:135`
+  (`toast.error(t('counting.messages.activateFailed', { error: getErrorMessage(error) }))`).
+  Same class as the pre-existing bare-envelope guards on this route (`'A location must be
+  selected before activation'`), so it is consistent rather than a regression — but the existing
+  pattern for a translated refusal is a `DomainException` subclass with its own renderer
+  (`CountingUnresolvedItemsException`, `bootstrap/app.php:1010-1018`). Worth converting both
+  strings together.
+- **Concurrency errors bypass the per-row savepoint** (gate r3 NEW-1) — **handled in r3, noted
+  here for the record.** `ManagesTransactions::handleTransactionException()` decrements the
+  transaction counter and throws `DeadlockException` WITHOUT emitting `ROLLBACK TO SAVEPOINT`,
+  so a deadlock/serialization failure inside a row leaves a PostgreSQL transaction aborted while
+  the level still looks balanced. The controller now rethrows in that case, so the whole batch
+  fails loudly (500) instead of answering 201 with `serverId`s for rows the silent
+  COMMIT-as-ROLLBACK discards. A real deadlock needs two racing sessions, so this arm is asserted
+  by construction (docblock + inline comment naming the vendor method), not by a unit test.
