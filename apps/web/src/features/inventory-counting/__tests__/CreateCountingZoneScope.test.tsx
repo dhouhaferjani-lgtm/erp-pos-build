@@ -44,7 +44,13 @@ vi.mock('@/features/users/hooks/useUsers', () => ({
 }))
 
 vi.mock('@/components/molecules/line-items', () => ({
-  LineItemEntryBar: () => <div data-testid="counting-line-entry-bar" />,
+  LineItemEntryBar: ({ onAddProduct }: { onAddProduct: (product: { id: string; name: string; sku: string }) => void }) => (
+    <div data-testid="counting-line-entry-bar">
+      <button type="button" onClick={() => { onAddProduct({ id: 'p-1', name: 'Product 1', sku: 'SKU-1' }); }}>
+        Add Product
+      </button>
+    </div>
+  ),
   ProductCell: () => <div data-testid="counting-product-cell" />,
 }))
 
@@ -58,7 +64,11 @@ vi.mock('@/features/locations/components/LocationSelectorMulti', () => ({
 }))
 
 vi.mock('@/features/categories/components/CategorySelector', () => ({
-  CategorySelector: () => <div data-testid="category-selector" />,
+  CategorySelector: ({ onChange }: { onChange: (ids: number[]) => void }) => (
+    <div data-testid="category-selector">
+      <button type="button" onClick={() => { onChange([7]); }}>Select Category</button>
+    </div>
+  ),
 }))
 
 vi.mock('@/features/users/components/UserSelector', () => ({
@@ -217,6 +227,44 @@ describe('CreateCountingPage - zone scope', () => {
   })
 
   /**
+   * Gate r1 FE IMPORTANT-1: sales blocking is enforced for
+   * [location, full_inventory, product_location] only, so the toggle is
+   * disabled — with a hint — for product and category exactly as it is for zone.
+   */
+  it.each([
+    ['product', 'Add Product'],
+    ['category', 'Select Category'],
+  ] as const)(
+    'disables the block-sales toggle under %s scope with an explanatory hint',
+    async (scopeType, selectLabel) => {
+      const user = userEvent.setup()
+      renderPage()
+
+      await user.click(screen.getByText(`counting.scopeTypes.${scopeType}`))
+      await user.click(screen.getByText('next'))
+      await user.click(screen.getByText(selectLabel))
+      await user.click(screen.getByText('next'))
+
+      const toggle = screen.getByRole('checkbox', { name: 'counting.create.blockSales' })
+      expect(toggle).toBeDisabled()
+      expect(toggle).not.toBeChecked()
+      expect(screen.getByText('counting.create.blockSalesScopeDisabledHint')).toBeInTheDocument()
+    },
+  )
+
+  it('leaves the block-sales toggle enabled under location scope', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(screen.getByText('counting.scopeTypes.location'))
+    await user.click(screen.getByText('next'))
+    await user.click(screen.getByText('Select Location'))
+    await user.click(screen.getByText('next'))
+
+    expect(screen.getByRole('checkbox', { name: 'counting.create.blockSales' })).toBeEnabled()
+  })
+
+  /**
    * N-1 / A-8: the review step summarised execution mode / counts / unexpected
    * items but not the two fields that decide how the shop keeps trading during
    * the count. Under zone scope block_sales is forced to false, so the review
@@ -240,6 +288,60 @@ describe('CreateCountingPage - zone scope', () => {
 
     expect(screen.getByTestId('review-block-sales')).toHaveTextContent('no')
     expect(screen.getByTestId('review-ambiguity-window')).toHaveTextContent('15')
+  })
+
+  /**
+   * Gate r1 FE IMPORTANT-2: the zone case above can never fail on the value
+   * that actually varies — under zone the answer is hardcoded `no` and the
+   * window is left at its default. Pin the ticked/non-default branch on a
+   * scope where blocking IS enforced.
+   */
+  it('reports a ticked block-sales toggle and a non-default window on the review step', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(screen.getByText('counting.scopeTypes.location'))
+    await user.click(screen.getByText('next'))
+    await user.click(screen.getByText('Select Location'))
+    await user.click(screen.getByText('next'))
+
+    await user.click(screen.getByRole('checkbox', { name: 'counting.create.blockSales' }))
+
+    const windowInput = screen.getByLabelText<HTMLInputElement>('counting.create.ambiguityWindowMinutes')
+    await user.clear(windowInput)
+    await user.type(windowInput, '30')
+
+    await user.click(screen.getByText('next'))
+    await user.click(screen.getAllByText('Select User')[0])
+    await user.click(screen.getByText('next'))
+
+    expect(screen.getByTestId('review-block-sales')).toHaveTextContent('yes')
+    expect(screen.getByTestId('review-ambiguity-window')).toHaveTextContent('30')
+
+    await user.click(screen.getByText('counting.create.submit'))
+
+    const payload = mockMutate.mock.calls[0][0]
+    expect(payload.block_sales).toBe(true)
+    expect(payload.ambiguity_window_minutes).toBe(30)
+  })
+
+  it('coerces block_sales to false in the payload for an unenforced scope', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(screen.getByText('counting.scopeTypes.category'))
+    await user.click(screen.getByText('next'))
+    await user.click(screen.getByText('Select Category'))
+    await user.click(screen.getByText('next'))
+    await user.click(screen.getByText('next'))
+    await user.click(screen.getAllByText('Select User')[0])
+    await user.click(screen.getByText('next'))
+
+    expect(screen.getByTestId('review-block-sales')).toHaveTextContent('no')
+
+    await user.click(screen.getByText('counting.create.submit'))
+
+    expect(mockMutate.mock.calls[0][0].block_sales).toBe(false)
   })
 
   it('carries zone_ids, block_sales:false and ambiguity_window_minutes in the create payload', async () => {

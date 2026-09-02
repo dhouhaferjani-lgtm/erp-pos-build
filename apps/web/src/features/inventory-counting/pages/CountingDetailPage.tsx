@@ -12,6 +12,7 @@ import {
   Users,
   Settings,
 } from 'lucide-react'
+import { isBlockSalesEnforced } from '../blockSales'
 import { CountingStatusBadge } from '../components/CountingStatusBadge'
 import { CancelCountingDialog } from '../components/CancelCountingDialog'
 import {
@@ -295,9 +296,16 @@ export function CountingDetailPage() {
                 <dt className={colorTokens.text.subtle}>
                   {t('counting.detail.salesMode')}
                 </dt>
-                <dd className="font-medium text-right" data-testid="counting-sales-mode">
-                  {counting.block_sales
-                    ? t('counting.detail.salesModeBlocked')
+                <dd className="font-medium text-end" data-testid="counting-sales-mode">
+                  {/* Gate r1 FE IMPORTANT-1: "Blocked" is only true for the
+                      scopes CountingBlockService actually enforces. MINOR-2: the
+                      ±window still drives finalisation replay while blocking is
+                      on, so it is shown in both branches — the wizard review
+                      shows it in both too. */}
+                  {counting.block_sales && isBlockSalesEnforced(counting.scope_type)
+                    ? t('counting.detail.salesModeBlockedWithWindow', {
+                        minutes: counting.ambiguity_window_minutes,
+                      })
                     : t('counting.detail.salesModeLive', {
                         minutes: counting.ambiguity_window_minutes,
                       })}

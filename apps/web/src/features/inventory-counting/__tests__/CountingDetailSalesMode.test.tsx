@@ -15,6 +15,13 @@ import type { InventoryCounting } from '../types'
  * could not tell whether sales were blocked at the counted location or running
  * live under an ambiguity window — the single most consequential choice made in
  * the wizard.
+ *
+ * Gate r1 FE IMPORTANT-1 + MINOR-2: "Blocked" is a guarantee, and the engine
+ * enforces it for three scopes only — CountingBlockService::activeBlockFor
+ * queries [location, full_inventory, product_location] and scopeCoversLocation()
+ * returns false by default. For every other scope the row must show the live
+ * window instead. When blocking IS in force the ±window still governs
+ * finalisation replay, so it is shown in both branches.
  */
 
 vi.mock('react-i18next', () => ({
@@ -102,9 +109,63 @@ describe('CountingDetailPage - sales mode', () => {
 
     expect(screen.getByText('counting.detail.salesMode')).toBeInTheDocument()
     expect(screen.getByTestId('counting-sales-mode')).toHaveTextContent(
-      'counting.detail.salesModeBlocked',
+      'counting.detail.salesModeBlockedWithWindow:{"minutes":15}',
     )
   })
+
+  it('keeps showing the replay window while sales are blocked', () => {
+    mockUseCountingDetail.mockReturnValue({
+      data: counting({ block_sales: true, ambiguity_window_minutes: 5 }),
+      isLoading: false,
+      error: null,
+    })
+
+    renderPage()
+
+    expect(screen.getByTestId('counting-sales-mode')).toHaveTextContent(
+      'counting.detail.salesModeBlockedWithWindow:{"minutes":5}',
+    )
+  })
+
+  /**
+   * Gate r1 FE IMPORTANT-1: the backend now refuses block_sales:true for
+   * product/category, but rows persisted before that rule (and any future
+   * scope the engine does not cover) must never be labelled "Blocked" —
+   * the till keeps selling and no late sale is even flagged.
+   */
+  it.each(['category', 'product', 'zone'] as const)(
+    'never claims Blocked for the unenforced %s scope',
+    (scopeType) => {
+      mockUseCountingDetail.mockReturnValue({
+        data: counting({ scope_type: scopeType, block_sales: true, ambiguity_window_minutes: 15 }),
+        isLoading: false,
+        error: null,
+      })
+
+      renderPage()
+
+      const row = screen.getByTestId('counting-sales-mode')
+      expect(row).toHaveTextContent('counting.detail.salesModeLive:{"minutes":15}')
+      expect(row.textContent).not.toContain('counting.detail.salesModeBlocked')
+    },
+  )
+
+  it.each(['location', 'full_inventory', 'product_location'] as const)(
+    'claims Blocked for the enforced %s scope',
+    (scopeType) => {
+      mockUseCountingDetail.mockReturnValue({
+        data: counting({ scope_type: scopeType, block_sales: true, ambiguity_window_minutes: 15 }),
+        isLoading: false,
+        error: null,
+      })
+
+      renderPage()
+
+      expect(screen.getByTestId('counting-sales-mode')).toHaveTextContent(
+        'counting.detail.salesModeBlockedWithWindow:{"minutes":15}',
+      )
+    },
+  )
 
   it('shows the live ambiguity window when block_sales is false', () => {
     mockUseCountingDetail.mockReturnValue({

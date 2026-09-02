@@ -82,8 +82,12 @@ export interface InventoryCounting {
   instructions: string | null
 
   // Counting MODE — how the shop keeps trading while the count runs.
-  // Both are always emitted by InventoryCountingController::transformCounting
-  // (show + index); `includes_zero_stock` only exists once items are generated.
+  // All three are always emitted by
+  // InventoryCountingController::transformCounting (show + index); the columns
+  // are NOT NULL with defaults. `includes_zero_stock` is optional here only
+  // because no consumer reads it yet — the KEY is always present, it is its
+  // VALUE that is decided at item generation, so never write a `??` fallback
+  // against a missing key (gate r1 FE MINOR-3).
   block_sales: boolean
   ambiguity_window_minutes: number
   includes_zero_stock?: boolean
