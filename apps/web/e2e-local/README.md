@@ -1,0 +1,3 @@
+# e2e-local — scripted local evidence harnesses (manual runs only, never CI)
+
+Wave-2 purchase-order suite (Session L, 2026-09-01): `wave2-support.ts` (guards, named tolerances, sql oracle), `wave2-shared.ts` (harness/state/SETUP legs), `wave2-po.part1.spec.ts` (50 rows), `wave2-po.part2.spec.ts` (112 rows). Contract: `docs/superpowers/audits/2026-09-01-wave2-po-flow/02-scenario-matrix.md`; run instructions + pitfalls: `docs/handoff/HANDOVER-SESSION-M-DHOUHA-WAVE2-2026-09-02.md`. Run with `CAMPAIGN_API_URL=http://localhost:<your vite port>` against your own worktree stack; adjust `pw.config.ts` baseURL. Requires local psql access to `127.0.0.1:5433`.
