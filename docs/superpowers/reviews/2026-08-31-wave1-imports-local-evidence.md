@@ -80,3 +80,13 @@ Local wave-1 truth for the tester's real file, end-to-end in the UI: **with barc
 ## 2026-09-02 (final) — WAVE 1 LOCAL: CLOSED
 k89 gate fix round landed (5/5 findings; 48/48 both drivers) → sanity trio green → branch committed `5edc719a9` → dev (k67) merged INTO the branch with union resolution (9 collision files; `merge-k89-summary.md` logs every decision; migration re-timestamped `100300`; manifest recomputed 1506 classes; merged battery 314/1 both drivers — the 1 = pre-existing K-14) → **combined browser smoke on the merged tree 13/13: zero 5xx, zero console errors** (K-6 happy paths, K-7 enrichment 4/4, clients 257/257, suppliers 11/11, produits refused-at-preview with unit honesty, conflict flow 102/757 with real panel content, full operator journey 856/3) → merged to local dev.
 **Local dev now carries all of wave 1 (K-6..K-13 + 9 fix rounds). NOT pushed.** Remaining for wave close: staging round (push window = owner call), K-14 lane, second-upload UX polish already fixed (K-12 FR1). Behavior note for the gate log: the partial-import dialog no longer appears for files whose invalid rows were already counted at preview (post gate-FR arithmetic) — flagged deliberately, tiles remain honest.
+
+## 2026-09-02 — STAGING CLOSE: 5/5, WAVE 1 COMPLETE
+Build `index-DAqsgXL1.js` / `fbe59fbbe` (spec `apps/web/e2e-local/staging-wave1-close.spec.ts`, run log scratchpad `staging-w1b.log`), fresh tenant `w1close-…@test.otospex.dev`, **TOTAL 5xx=0 consoleErrors=0**:
+- S0 registration 201 in ~15 s — all 4 new tenant migrations (enrichment_summary, unit_text_mappings@100300, barcode partial unique + twin cleanup, K-13) ran clean on provisioning.
+- S1 clients **257/257**, suppliers **11/11** through the wizard.
+- S2 intact produits xlsx: preview shows BOTH honesty panels (859 unknown `piece`; "754 rows reuse a barcode for contradictory product identities… `6192430000000`: fields + row numbers"), Proceed disabled — nothing silently lost.
+- S3 proactive `piece→pc` mapping (aliasStored) → cleaned CSV → **856 imported / 3 failed** (negative quantities only), products total 856.
+- S4 enrichment toggle (offered on barcode-mapped products import) → 2/2 imported → **both EANs (5903407024073, 6199106101538) adopted REAL production-platform images** (signed media URLs, variant renditions) → renders **400×420** on the product page.
+Permission sync verified automatic on existing tenants (owner@pharmabio.tn: `units.manage` + `goods-receipt.receive-expired` present post-deploy; `SYNC_PERMISSIONS_ON_BOOT`). Cross-session coordination with Session L complete (their handover pairs folded in this push).
+**WAVE 1: CLOSED.** Open follow-ups: K-14 lane (pre-existing opening-balance silent no-post), platform image DATA coverage (own wave), team POS day.
