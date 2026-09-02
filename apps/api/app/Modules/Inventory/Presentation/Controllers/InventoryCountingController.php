@@ -24,6 +24,7 @@ use App\Modules\Inventory\Presentation\Requests\UpdateDraftCountingRequest;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\POS\TerminalSyncHealthSource;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\DeadlockException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -1034,6 +1035,19 @@ class InventoryCountingController extends Controller
      *
      * Allows mobile app to sync multiple drafts created offline.
      * Maximum 50 drafts per request to prevent memory issues.
+     *
+     * Transaction contract (gate r2 BLOCKER-1, gate r3 NEW-1): the batch runs in
+     * ONE outer transaction and every row body in its own nested one, i.e. a
+     * SAVEPOINT, so a bad row is dropped into `errors[]` while its siblings
+     * commit (partial success, HTTP 201). The one case a savepoint cannot
+     * absorb is a CONCURRENCY error: `ManagesTransactions::handleTransactionException()`
+     * decrements the transaction counter and throws `DeadlockException` without
+     * emitting `ROLLBACK TO SAVEPOINT`, leaving a PostgreSQL transaction aborted.
+     * That is rethrown so the whole request fails loudly rather than reporting
+     * `serverId`s for rows the silent COMMIT-as-ROLLBACK would discard. A real
+     * deadlock needs two racing sessions, so that arm is not unit-tested; the
+     * savepoint and uuid-guard arms are covered on the PG lane by
+     * ActivateDraftCountingTest.
      */
     public function batchCreateDrafts(Request $request): JsonResponse
     {
@@ -1125,6 +1139,8 @@ class InventoryCountingController extends Controller
                     continue;
                 }
 
+                $transactionLevelBeforeRow = \DB::transactionLevel();
+
                 try {
                     // Gate r2 BLOCKER-1 (b): each row body is its OWN transaction.
                     // Laravel nests as a SAVEPOINT, so any statement error inside
@@ -1187,6 +1203,32 @@ class InventoryCountingController extends Controller
                         'local_id' => $draftData['localId'] ?? null,
                         'exception' => $e->getMessage(),
                     ]);
+
+                    // Gate r3 NEW-1: the savepoint is NOT a universal safety net.
+                    // `ManagesTransactions::handleTransactionException()`
+                    // short-circuits on a CONCURRENCY error (deadlock detected /
+                    // SQLSTATE 40001 / "database is locked" — see
+                    // Illuminate\Database\ConcurrencyErrorDetector): it decrements
+                    // $this->transactions and throws DeadlockException WITHOUT
+                    // calling rollBack(), so `ROLLBACK TO SAVEPOINT` is never
+                    // emitted and a PG transaction stays ABORTED. Swallowing that
+                    // would resume the loop on a dead transaction: every later row
+                    // fails with 25P02, the outer COMMIT silently degrades to
+                    // ROLLBACK, and we would answer 201 with serverIds for rows
+                    // that do not exist — the BLOCKER-1 shape all over again.
+                    //
+                    // Note the level alone cannot detect it (the short-circuit
+                    // decrements too), hence the explicit DeadlockException arm;
+                    // the level check stays as a guard for any other path that
+                    // leaves the stack unbalanced. Either way the batch is
+                    // unsalvageable: rethrow so the OUTER transaction rolls back
+                    // and the request fails loudly (500) instead of lying to the
+                    // device. Not unit-testable — a real deadlock needs two
+                    // racing sessions — so it is asserted by construction here.
+                    if ($e instanceof DeadlockException
+                        || \DB::transactionLevel() !== $transactionLevelBeforeRow) {
+                        throw $e;
+                    }
 
                     $errors[] = [
                         'localId' => $draftData['localId'],
