@@ -105,6 +105,23 @@ class CreateCountingRequest extends FormRequest
         $scopeType = $this->input('scope_type');
         $filters = $this->input('scope_filters', []);
 
+        // Gate r1 (FE IMPORTANT-1, RULED at the API). Sales blocking is only
+        // ENFORCED for the three scopes CountingBlockService::activeBlockFor
+        // queries (`location`, `full_inventory`, `product_location`) — its
+        // scopeCoversLocation() returns false by default for anything else.
+        // Accepting block_sales:true for `product`/`category` persisted a
+        // guarantee no terminal ever received: the till kept selling the counted
+        // items AND no late sale was flagged (flagging is gated on an active
+        // block), while every surface told the operator sales were blocked.
+        // `zone` keeps its own dedicated message below (advisories, not blocks).
+        if ($this->boolean('block_sales')
+            && in_array($scopeType, [CountingScopeType::Product->value, CountingScopeType::Category->value], true)) {
+            $validator->errors()->add(
+                'block_sales',
+                'Sales blocking is only available for location, full-inventory and product-at-location counts'
+            );
+        }
+
         switch ($scopeType) {
             case 'product_location':
                 if (empty($filters['product_ids'])) {

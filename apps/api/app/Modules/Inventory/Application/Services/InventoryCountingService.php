@@ -513,6 +513,11 @@ class InventoryCountingService
 
         switch ($scopeType) {
             case CountingScopeType::ProductLocation:
+                // `location_id` is enforced at the boundary — CreateCountingRequest,
+                // CreateDraftCountingRequest, the batch-draft rules and
+                // InventoryCountingController::activateDraft all refuse a
+                // product_location scope without one (N-1/A-3). It stays optional
+                // here so legacy rows still resolve rather than throwing.
                 $productIds = $filters['product_ids'] ?? [];
                 if (! empty($productIds)) {
                     $query->whereIn('product_id', $productIds);
@@ -645,6 +650,18 @@ class InventoryCountingService
             // Generate counting items from scope
             $this->generateCountingItems($counting, $companyId);
 
+            // Gate r1 IMPORTANT-4: activation never asserted that the scope
+            // resolved to anything. A draft whose scope matches no stock row
+            // (a foreign/stale location, an emptied location, a zone with no
+            // placements) became a LIVE counting with zero items, assignments
+            // stamped total_items = 0 and a COUNTING_ACTIVATED event recording
+            // items_count: 0 — a count the operator cannot perform and cannot
+            // fix. We are inside DB::transaction, so the counting_number,
+            // items and status transition all roll back with this throw.
+            if ($counting->items()->count() === 0) {
+                throw new \DomainException('Nothing to count in this scope — no stock rows matched');
+            }
+
             // Create assignments
             $this->createAssignments($counting);
 
@@ -693,6 +710,20 @@ class InventoryCountingService
             // Terminal-only: Draft/Scheduled -> Active is a legal edge.
             $lockedCounting = $this->lockCounting($counting->id);
             $this->assertNotTerminal($lockedCounting, CountingStatus::Count1InProgress);
+
+            // Gate r2 IMPORTANT-2 — the same refusal activateDraft() carries,
+            // on the surface most operators actually use. `create()` generates
+            // the items and this method never regenerates or counts them, so a
+            // scope that resolved to nothing (products all at zero on-hand at
+            // the chosen location, a zone with no placements) became a LIVE
+            // counting with 0 items, assignments stamped total_items = 0 and a
+            // COUNTING_ACTIVATED event recording an empty count — one guarded
+            // activation surface and one unguarded one (convention 11).
+            // Inside this transaction, so the status transition, the started
+            // assignment and the event all roll back with the throw.
+            if ($counting->items()->count() === 0) {
+                throw new \DomainException('Nothing to count in this scope — no stock rows matched');
+            }
 
             $this->assertNoOverlappingActiveCounting($counting);
 

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, ArrowRight, Check, Trash2 } from 'lucide-react'
 import { useCreateCounting } from '../api/queries'
+import { isBlockSalesEnforced } from '../blockSales'
 import type {
   CountingScopeType,
   CountingExecutionMode,
@@ -132,12 +133,14 @@ export function CreateCountingPage() {
   const createCountingSession = () => {
     if (!formData.count_1_user_id) return
 
-    // Zone-scoped countings cannot block sales (backend rejects
-    // block_sales:true with a 422 for scope_type:'zone') — enforce this at
-    // submit time too, defense-in-depth alongside the disabled toggle.
+    // Sales blocking is only ENFORCED for location / full_inventory /
+    // product_location (CountingBlockService::activeBlockFor); the backend
+    // rejects block_sales:true for zone, product and category with a 422.
+    // Coerced at submit time too, defense-in-depth alongside the disabled
+    // toggle (gate r1 FE IMPORTANT-1).
     const payload: CreateCountingFormData = {
       ...(formData as CreateCountingFormData),
-      block_sales: formData.scope_type === 'zone' ? false : !!formData.block_sales,
+      block_sales: isBlockSalesEnforced(formData.scope_type) && !!formData.block_sales,
     }
 
     createCounting.mutate(payload, {
@@ -677,17 +680,23 @@ function ConfigurationStep({ data, onChange }: ConfigurationStepProps) {
           <label className="flex items-center">
             <input
               type="checkbox"
-              checked={data.scope_type === 'zone' ? false : !!data.block_sales}
-              disabled={data.scope_type === 'zone'}
+              checked={isBlockSalesEnforced(data.scope_type) && !!data.block_sales}
+              disabled={!isBlockSalesEnforced(data.scope_type)}
               onChange={(e) => { onChange({ block_sales: e.target.checked }); }}
               className="me-2 rounded disabled:cursor-not-allowed disabled:opacity-50"
             />
             <span>{t('counting.create.blockSales')}</span>
           </label>
           <p className={cn('text-sm ms-6', textColors.tertiary)}>
+            {/* Gate r1 FE IMPORTANT-1: product and category join zone as scopes
+                the block engine never enforces. Zone keeps its own hint (it
+                explains the timestamp-replay reconciliation specific to node
+                counts); the others get the generic scope hint. */}
             {data.scope_type === 'zone'
               ? t('counting.create.blockSalesZoneDisabledHint')
-              : t('counting.create.blockSalesHelp')}
+              : isBlockSalesEnforced(data.scope_type)
+                ? t('counting.create.blockSalesHelp')
+                : t('counting.create.blockSalesScopeDisabledHint')}
           </p>
         </div>
 
@@ -882,6 +891,22 @@ function ReviewStep({ data }: ReviewStepProps) {
             <dt className={colorTokens.text.subtle}>{t('counting.create.allowUnexpectedItems')}</dt>
             <dd>
               {data.allow_unexpected_items ? t('yes') : t('no')}
+            </dd>
+            {/* N-1/A-8: the two fields that decide how the shop keeps trading
+                during the count were summarised nowhere. zone / product /
+                category all force block_sales to false — the block engine never
+                enforces them and the backend 422s otherwise (see
+                isBlockSalesEnforced) — so the review reports the value that will
+                actually be SUBMITTED, not the raw toggle state. */}
+            <dt className={colorTokens.text.subtle}>{t('counting.create.blockSales')}</dt>
+            <dd data-testid="review-block-sales">
+              {isBlockSalesEnforced(data.scope_type) && data.block_sales ? t('yes') : t('no')}
+            </dd>
+            <dt className={colorTokens.text.subtle}>
+              {t('counting.create.ambiguityWindowMinutes')}
+            </dt>
+            <dd data-testid="review-ambiguity-window">
+              {data.ambiguity_window_minutes ?? DEFAULT_AMBIGUITY_WINDOW_MINUTES}
             </dd>
           </dl>
         </div>

@@ -24,14 +24,17 @@ use App\Modules\Inventory\Presentation\Requests\UpdateDraftCountingRequest;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\POS\TerminalSyncHealthSource;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\DeadlockException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class InventoryCountingController extends Controller
 {
@@ -696,7 +699,7 @@ class InventoryCountingController extends Controller
         $counting->count_3_user_id = $request->input('count_3_user_id');
         $counting->scheduled_start = $request->input('scheduled_start');
         $counting->scheduled_end = $request->input('scheduled_end');
-        $counting->last_modified_at = now()->toDateTimeString();
+        $counting->last_modified_at = now();
         $counting->last_modified_by_user_id = $userId;
 
         $counting->save();
@@ -732,7 +735,7 @@ class InventoryCountingController extends Controller
                 'scope_type' => $counting->scope_type->value,
                 'product_count' => count($counting->scope_filters['product_ids'] ?? []),
                 'created_at' => $counting->created_at?->toIso8601String(),
-                'last_modified_at' => $counting->last_modified_at,
+                'last_modified_at' => $counting->last_modified_at?->toIso8601String(),
             ])->all(),
         ]);
     }
@@ -795,7 +798,7 @@ class InventoryCountingController extends Controller
         $productIds[] = $productId;
         $scopeFilters['product_ids'] = $productIds;
         $counting->scope_filters = $scopeFilters;
-        $counting->last_modified_at = now()->toDateTimeString();
+        $counting->last_modified_at = now();
         $counting->last_modified_by_user_id = (string) $authUser->id;
         $counting->save();
 
@@ -854,7 +857,7 @@ class InventoryCountingController extends Controller
         $productIds = array_values(array_filter($productIds, fn ($id) => $id !== $productId));
         $scopeFilters['product_ids'] = $productIds;
         $counting->scope_filters = $scopeFilters;
-        $counting->last_modified_at = now()->toDateTimeString();
+        $counting->last_modified_at = now();
         $counting->last_modified_by_user_id = (string) $authUser->id;
         $counting->save();
 
@@ -922,7 +925,7 @@ class InventoryCountingController extends Controller
             $counting->scheduled_end = $request->input('scheduled_end');
         }
 
-        $counting->last_modified_at = now()->toDateTimeString();
+        $counting->last_modified_at = now();
         $counting->last_modified_by_user_id = (string) $authUser->id;
         $counting->save();
 
@@ -971,12 +974,36 @@ class InventoryCountingController extends Controller
                     'error' => 'At least one product must be added before activation',
                 ], 422);
             }
+
+            // N-1/A-3: a product_location draft with no location_id silently
+            // counted EVERY location — getStockLevelsForScope() only applies the
+            // location filter when it is set, and the location-scoped guards
+            // (CountingBlockService::scopeCoversLocation, terminal sync health)
+            // resolve nothing for a null. Mirrors CreateCountingRequest's
+            // product_location rule, which has always required it.
+            if ($counting->scope_type === CountingScopeType::ProductLocation
+                && empty($counting->scope_filters['location_id'])) {
+                return response()->json([
+                    'error' => 'A location must be selected before activation',
+                ], 422);
+            }
         } elseif ($counting->scope_type === CountingScopeType::Zone) {
             // Mirrors CreateCountingRequest's zone scope rule: zone_ids required.
             $zoneIds = $counting->scope_filters['zone_ids'] ?? [];
             if (count($zoneIds) === 0) {
                 return response()->json([
                     'error' => 'At least one zone must be selected before activation',
+                ], 422);
+            }
+
+            // Gate r1 IMPORTANT-4: zone carried the identical hole.
+            // `InventoryCountingService::zoneItemSeeds` returns [] when
+            // location_id is empty, so such a draft activated into a live
+            // counting with nothing to count. CreateCountingRequest has always
+            // required it for this scope.
+            if (empty($counting->scope_filters['location_id'])) {
+                return response()->json([
+                    'error' => 'A location must be selected before activation',
                 ], 422);
             }
         }
@@ -1008,6 +1035,19 @@ class InventoryCountingController extends Controller
      *
      * Allows mobile app to sync multiple drafts created offline.
      * Maximum 50 drafts per request to prevent memory issues.
+     *
+     * Transaction contract (gate r2 BLOCKER-1, gate r3 NEW-1): the batch runs in
+     * ONE outer transaction and every row body in its own nested one, i.e. a
+     * SAVEPOINT, so a bad row is dropped into `errors[]` while its siblings
+     * commit (partial success, HTTP 201). The one case a savepoint cannot
+     * absorb is a CONCURRENCY error: `ManagesTransactions::handleTransactionException()`
+     * decrements the transaction counter and throws `DeadlockException` without
+     * emitting `ROLLBACK TO SAVEPOINT`, leaving a PostgreSQL transaction aborted.
+     * That is rethrown so the whole request fails loudly rather than reporting
+     * `serverId`s for rows the silent COMMIT-as-ROLLBACK would discard. A real
+     * deadlock needs two racing sessions, so that arm is not unit-tested; the
+     * savepoint and uuid-guard arms are covered on the PG lane by
+     * ActivateDraftCountingTest.
      */
     public function batchCreateDrafts(Request $request): JsonResponse
     {
@@ -1020,13 +1060,25 @@ class InventoryCountingController extends Controller
             'drafts' => 'required|array|max:50',
             'drafts.*.localId' => 'required|string',
             'drafts.*.title' => 'nullable|string|max:255',
-            'drafts.*.scopeType' => 'required|string',
+            // Gate r1 IMPORTANT-5: an unknown scope string used to reach the
+            // enum-cast attribute at :scope_type and throw a ValueError, which
+            // `catch (\Exception)` below does NOT catch (ValueError extends
+            // Error) — an uncaught 500 that rolled back every already-persisted
+            // draft in the batch. Refused at the boundary instead.
+            'drafts.*.scopeType' => ['required', Rule::enum(CountingScopeType::class)],
             'drafts.*.instructions' => 'nullable|string',
             'drafts.*.executionMode' => 'nullable|string|in:parallel,sequential',
             'drafts.*.requiresCount2' => 'nullable|boolean',
             'drafts.*.requiresCount3' => 'nullable|boolean',
             'drafts.*.allowUnexpectedItems' => 'nullable|boolean',
             'drafts.*.scopeFilters' => 'nullable|array',
+            // Gate r1 IMPORTANT-2 (RULED): the location requirement is NOT a
+            // whole-batch rule. A single legacy/malformed offline draft must not
+            // 422 the other 49 and become a permanent sync poison pill — this
+            // endpoint advertises a per-row `errors[]` channel, so the check
+            // lives in the loop below and the batch still answers 201 with
+            // partial success.
+            'drafts.*.scopeFilters.location_id' => 'nullable|string',
             'drafts.*.count1UserId' => 'nullable|string',
             'drafts.*.count2UserId' => 'nullable|string',
             'drafts.*.count3UserId' => 'nullable|string',
@@ -1039,40 +1091,148 @@ class InventoryCountingController extends Controller
 
         \DB::transaction(function () use ($request, $companyId, $userId, &$results, &$errors): void {
             foreach ($request->input('drafts') as $draftData) {
-                try {
-                    $counting = new InventoryCounting;
-                    $counting->id = (string) Str::uuid();
-                    $counting->company_id = $companyId;
-                    $counting->created_by_user_id = $userId;
-                    $counting->created_on_mobile = true;
-                    $counting->title = $draftData['title'] ?? null;
-                    $counting->scope_type = $draftData['scopeType'];
-                    $counting->status = CountingStatus::Draft;
-                    $counting->execution_mode = $draftData['executionMode'] ?? 'sequential';
-                    $counting->requires_count_2 = $draftData['requiresCount2'] ?? false;
-                    $counting->requires_count_3 = $draftData['requiresCount3'] ?? false;
-                    $counting->allow_unexpected_items = $draftData['allowUnexpectedItems'] ?? true;
-                    $counting->instructions = $draftData['instructions'] ?? null;
-                    $counting->scope_filters = $draftData['scopeFilters'] ?? [];
-                    $counting->count_1_user_id = $draftData['count1UserId'] ?? null;
-                    $counting->count_2_user_id = $draftData['count2UserId'] ?? null;
-                    $counting->count_3_user_id = $draftData['count3UserId'] ?? null;
-                    $counting->scheduled_start = isset($draftData['scheduledStart']) ? Carbon::parse($draftData['scheduledStart']) : null;
-                    $counting->scheduled_end = isset($draftData['scheduledEnd']) ? Carbon::parse($draftData['scheduledEnd']) : null;
-                    $counting->last_modified_at = now()->toDateTimeString();
-                    $counting->last_modified_by_user_id = $userId;
+                // Gate r1 IMPORTANT-1 + IMPORTANT-2 (RULED). Per-ROW refusal,
+                // never a whole-batch 422: a product_location (or zone) draft
+                // with no location silently widens to every location at
+                // activation (InventoryCountingService::getStockLevelsForScope
+                // only applies the filter when it is set; zoneItemSeeds returns
+                // [] without one), and a foreign/stale location id survives into
+                // an activation that generates ZERO items with no error anywhere
+                // — the same silent-wrong outcome, reshaped. The single-draft
+                // twin (CreateDraftCountingRequest) refuses both at validation.
+                $scopeFilters = $draftData['scopeFilters'] ?? [];
+                $scopeLocationId = is_array($scopeFilters) ? ($scopeFilters['location_id'] ?? null) : null;
+                $scopeLocationId = is_string($scopeLocationId) ? trim($scopeLocationId) : null;
+                $scopeLocationId = $scopeLocationId === '' ? null : $scopeLocationId;
 
-                    $counting->save();
+                // Gate r2 IMPORTANT-1: zone needs a location exactly as
+                // product_location does — activateDraft refuses both, and NO
+                // endpoint can add scope_filters.location_id to an existing
+                // draft, so minting one here strands it permanently.
+                if (in_array($draftData['scopeType'], [
+                    CountingScopeType::ProductLocation->value,
+                    CountingScopeType::Zone->value,
+                ], true) && $scopeLocationId === null) {
+                    $errors[] = [
+                        'localId' => $draftData['localId'],
+                        'error' => 'A location must be selected for this scope',
+                    ];
+
+                    continue;
+                }
+
+                // Gate r2 BLOCKER-1 (a): NEVER hand a device-supplied string to a
+                // uuid column. `locations.id` is uuid, so a value like
+                // "undefined" makes PG raise 22P02 — and under PG that ABORTS the
+                // enclosing transaction: every later draft then fails with 25P02,
+                // COMMIT silently degrades to ROLLBACK, and this endpoint still
+                // answers 201 with serverIds for drafts that no longer exist
+                // (phantom ids the device records as synced). SQLite cannot
+                // reproduce it — it just compares the text. Same idiom as
+                // onboardingWorklist() and batchAddProducts() in this controller.
+                if ($scopeLocationId !== null && ! Str::isUuid($scopeLocationId)) {
+                    $errors[] = [
+                        'localId' => $draftData['localId'],
+                        'error' => 'Location not found for the current company',
+                    ];
+
+                    continue;
+                }
+
+                $transactionLevelBeforeRow = \DB::transactionLevel();
+
+                try {
+                    // Gate r2 BLOCKER-1 (b): each row body is its OWN transaction.
+                    // Laravel nests as a SAVEPOINT, so any statement error inside
+                    // a row (a garbage count1UserId against a uuid FK, a
+                    // constraint violation, …) rolls back just that row instead
+                    // of poisoning the outer transaction and silently discarding
+                    // every sibling that already succeeded.
+                    $serverId = \DB::transaction(function () use ($draftData, $companyId, $userId, $scopeLocationId): ?string {
+                        if ($scopeLocationId !== null
+                            && ! Location::query()->forCompany($companyId)->whereKey($scopeLocationId)->exists()) {
+                            return null;
+                        }
+
+                        $counting = new InventoryCounting;
+                        $counting->id = (string) Str::uuid();
+                        $counting->company_id = $companyId;
+                        $counting->created_by_user_id = $userId;
+                        $counting->created_on_mobile = true;
+                        $counting->title = $draftData['title'] ?? null;
+                        $counting->scope_type = $draftData['scopeType'];
+                        $counting->status = CountingStatus::Draft;
+                        $counting->execution_mode = $draftData['executionMode'] ?? 'sequential';
+                        $counting->requires_count_2 = $draftData['requiresCount2'] ?? false;
+                        $counting->requires_count_3 = $draftData['requiresCount3'] ?? false;
+                        $counting->allow_unexpected_items = $draftData['allowUnexpectedItems'] ?? true;
+                        $counting->instructions = $draftData['instructions'] ?? null;
+                        $counting->scope_filters = $draftData['scopeFilters'] ?? [];
+                        $counting->count_1_user_id = $draftData['count1UserId'] ?? null;
+                        $counting->count_2_user_id = $draftData['count2UserId'] ?? null;
+                        $counting->count_3_user_id = $draftData['count3UserId'] ?? null;
+                        $counting->scheduled_start = isset($draftData['scheduledStart']) ? Carbon::parse($draftData['scheduledStart']) : null;
+                        $counting->scheduled_end = isset($draftData['scheduledEnd']) ? Carbon::parse($draftData['scheduledEnd']) : null;
+                        $counting->last_modified_at = now();
+                        $counting->last_modified_by_user_id = $userId;
+
+                        $counting->save();
+
+                        return $counting->id;
+                    });
+
+                    if ($serverId === null) {
+                        $errors[] = [
+                            'localId' => $draftData['localId'],
+                            'error' => 'Location not found for the current company',
+                        ];
+
+                        continue;
+                    }
 
                     $results[] = [
                         'localId' => $draftData['localId'],
-                        'serverId' => $counting->id,
+                        'serverId' => $serverId,
                         'status' => 'success',
                     ];
-                } catch (\Exception $e) {
+                } catch (\Throwable $e) {
+                    // Gate r2 MINOR-1: never echo raw driver text (table/column
+                    // names, the offending value) back to the device.
+                    Log::warning('Batch draft counting creation failed', [
+                        'company_id' => $companyId,
+                        'local_id' => $draftData['localId'] ?? null,
+                        'exception' => $e->getMessage(),
+                    ]);
+
+                    // Gate r3 NEW-1: the savepoint is NOT a universal safety net.
+                    // `ManagesTransactions::handleTransactionException()`
+                    // short-circuits on a CONCURRENCY error (deadlock detected /
+                    // SQLSTATE 40001 / "database is locked" — see
+                    // Illuminate\Database\ConcurrencyErrorDetector): it decrements
+                    // $this->transactions and throws DeadlockException WITHOUT
+                    // calling rollBack(), so `ROLLBACK TO SAVEPOINT` is never
+                    // emitted and a PG transaction stays ABORTED. Swallowing that
+                    // would resume the loop on a dead transaction: every later row
+                    // fails with 25P02, the outer COMMIT silently degrades to
+                    // ROLLBACK, and we would answer 201 with serverIds for rows
+                    // that do not exist — the BLOCKER-1 shape all over again.
+                    //
+                    // Note the level alone cannot detect it (the short-circuit
+                    // decrements too), hence the explicit DeadlockException arm;
+                    // the level check stays as a guard for any other path that
+                    // leaves the stack unbalanced. Either way the batch is
+                    // unsalvageable: rethrow so the OUTER transaction rolls back
+                    // and the request fails loudly (500) instead of lying to the
+                    // device. Not unit-testable — a real deadlock needs two
+                    // racing sessions — so it is asserted by construction here.
+                    if ($e instanceof DeadlockException
+                        || \DB::transactionLevel() !== $transactionLevelBeforeRow) {
+                        throw $e;
+                    }
+
                     $errors[] = [
                         'localId' => $draftData['localId'],
-                        'error' => $e->getMessage(),
+                        'error' => 'Draft could not be created',
                     ];
                 }
             }
@@ -1248,7 +1408,7 @@ class InventoryCountingController extends Controller
         // Update counting with new product list
         $scopeFilters['product_ids'] = $productIds;
         $counting->scope_filters = $scopeFilters;
-        $counting->last_modified_at = now()->toDateTimeString();
+        $counting->last_modified_at = now();
         $counting->last_modified_by_user_id = $userId;
         $counting->save();
 
@@ -1360,7 +1520,7 @@ class InventoryCountingController extends Controller
                         $counting->scheduled_end = Carbon::parse($data['scheduledEnd']);
                     }
 
-                    $counting->last_modified_at = now()->toDateTimeString();
+                    $counting->last_modified_at = now();
                     $counting->last_modified_by_user_id = $userId;
                     $counting->save();
 

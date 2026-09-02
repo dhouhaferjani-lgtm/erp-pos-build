@@ -21,6 +21,7 @@ use App\Modules\Inventory\Domain\Enums\LocationNodeType;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
 use App\Modules\Inventory\Domain\InventoryCounting;
+use App\Modules\Inventory\Domain\InventoryCountingEvent;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
 use App\Modules\Inventory\Domain\LocationNode;
 use App\Modules\Inventory\Domain\ProductPlacement;
@@ -623,6 +624,158 @@ final class ZoneScopedCountingTest extends TestCase
         ]);
 
         $response->assertStatus(422);
+    }
+
+    /**
+     * Gate r1 (FE IMPORTANT-1, RULED at the API).
+     *
+     * Sales blocking is ENFORCED for exactly three scopes — CountingBlockService
+     * ::activeBlockFor queries `whereIn('scope_type', [location, full_inventory,
+     * product_location])` and scopeCoversLocation() returns false by default for
+     * everything else. Accepting block_sales:true for `product` / `category`
+     * persisted a guarantee no terminal ever received: the till kept selling the
+     * counted items AND no late sale was flagged (flagging is gated on an active
+     * block), while every operator surface said "sales blocked".
+     */
+    public function test_product_scope_rejects_block_sales(): void
+    {
+        $product = $this->makeProduct('BLOCK-PROD');
+        $this->setStock($product, '5.0000');
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/inventory/countings', [
+            'scope_type' => CountingScopeType::Product->value,
+            'scope_filters' => ['product_ids' => [$product->id]],
+            'block_sales' => true,
+            'count_1_user_id' => (string) $this->user->id,
+            'requires_count_2' => false,
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertSame(
+            'Sales blocking is only available for location, full-inventory and product-at-location counts',
+            $response->json('error.errors.block_sales.0'),
+        );
+        $this->assertSame(0, InventoryCounting::query()->where('block_sales', true)->count());
+    }
+
+    public function test_category_scope_rejects_block_sales(): void
+    {
+        $response = $this->actingAs($this->user)->postJson('/api/v1/inventory/countings', [
+            'scope_type' => CountingScopeType::Category->value,
+            'scope_filters' => ['category_ids' => ['7f8b0a2c-0f1e-4a3b-9c6d-2b1e5f0a7c31']],
+            'block_sales' => true,
+            'count_1_user_id' => (string) $this->user->id,
+            'requires_count_2' => false,
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertSame(
+            'Sales blocking is only available for location, full-inventory and product-at-location counts',
+            $response->json('error.errors.block_sales.0'),
+        );
+    }
+
+    /**
+     * The refusal must not narrow the three scopes the engine DOES enforce.
+     */
+    public function test_product_location_scope_still_accepts_block_sales(): void
+    {
+        $product = $this->makeProduct('BLOCK-PL');
+        $this->setStock($product, '5.0000');
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/inventory/countings', [
+            'scope_type' => CountingScopeType::ProductLocation->value,
+            'scope_filters' => ['product_ids' => [$product->id], 'location_id' => $this->location->id],
+            'block_sales' => true,
+            'count_1_user_id' => (string) $this->user->id,
+            'requires_count_2' => false,
+        ]);
+
+        $response->assertStatus(201);
+        $created = InventoryCounting::query()->where('id', $response->json('data.id'))->firstOrFail();
+        $this->assertTrue($created->block_sales);
+    }
+
+    /**
+     * Gate r2 IMPORTANT-2 — the zero-item refusal must exist on the WEB path too.
+     *
+     * `create()` generates the items and `activate()` never regenerated or
+     * counted them, so a scope that resolved to nothing (products all at zero
+     * on-hand at the chosen location, a zone with no placements) became a LIVE
+     * counting with 0 items, assignments stamped total_items = 0 and a
+     * COUNTING_ACTIVATED event recording an empty count. The mobile path
+     * (activateDraft) was guarded in r1; this was the unguarded twin.
+     */
+    public function test_activate_refuses_a_web_created_counting_that_resolved_to_zero_items(): void
+    {
+        // A product that exists but holds no stock at the counted location:
+        // getStockLevelsForScope ends in `where('quantity','>',0)`.
+        $product = $this->makeProduct('EMPTY-SCOPE');
+
+        $created = $this->actingAs($this->user)->postJson('/api/v1/inventory/countings', [
+            'scope_type' => CountingScopeType::ProductLocation->value,
+            'scope_filters' => ['product_ids' => [$product->id], 'location_id' => $this->location->id],
+            'count_1_user_id' => (string) $this->user->id,
+            'requires_count_2' => false,
+        ]);
+
+        $created->assertStatus(201);
+        $countingId = $created->json('data.id');
+
+        $counting = InventoryCounting::query()->where('id', $countingId)->firstOrFail();
+        $statusBefore = $counting->status;
+        $this->assertSame(0, $counting->items()->count(), 'Precondition: the scope resolved to nothing.');
+
+        $response = $this->actingAs($this->user)
+            ->postJson("/api/v1/inventory/countings/{$countingId}/activate");
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'BUSINESS_ERROR');
+        $this->assertStringContainsString(
+            'Nothing to count in this scope',
+            (string) $response->json('error.message'),
+        );
+
+        $fresh = InventoryCounting::query()->where('id', $countingId)->firstOrFail();
+        $this->assertSame($statusBefore, $fresh->status, 'The refused activation must roll the status back.');
+        $this->assertSame(0, $fresh->items()->count());
+        $this->assertSame(
+            0,
+            $fresh->assignments()->where('count_number', 1)->whereNotNull('started_at')->count(),
+            'No assignment may have been started by a refused activation.',
+        );
+        $this->assertDatabaseMissing('inventory_counting_events', [
+            'counting_id' => $countingId,
+            'event_type' => InventoryCountingEvent::COUNTING_ACTIVATED,
+        ]);
+    }
+
+    /**
+     * The guard must not refuse a legitimate activation: same shape, but the
+     * product actually holds stock at the location.
+     */
+    public function test_activate_still_accepts_a_counting_with_items(): void
+    {
+        $product = $this->makeProduct('FULL-SCOPE');
+        $this->setStock($product, '4.0000');
+
+        $created = $this->actingAs($this->user)->postJson('/api/v1/inventory/countings', [
+            'scope_type' => CountingScopeType::ProductLocation->value,
+            'scope_filters' => ['product_ids' => [$product->id], 'location_id' => $this->location->id],
+            'count_1_user_id' => (string) $this->user->id,
+            'requires_count_2' => false,
+        ]);
+        $created->assertStatus(201);
+        $countingId = $created->json('data.id');
+
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/inventory/countings/{$countingId}/activate")
+            ->assertStatus(200);
+
+        $fresh = InventoryCounting::query()->where('id', $countingId)->firstOrFail();
+        $this->assertSame(CountingStatus::Count1InProgress, $fresh->status);
+        $this->assertGreaterThan(0, $fresh->items()->count());
     }
 
     public function test_zone_scope_rejects_zone_from_a_different_location_same_company(): void

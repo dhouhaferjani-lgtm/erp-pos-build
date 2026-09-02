@@ -316,6 +316,84 @@ final class InventoryTenantIsolationTest extends TestCase
         $this->assertArrayHasKey('scope_filters.product_ids.0', $cross->json('error.errors') ?? []);
     }
 
+    /**
+     * Gate r1 IMPORTANT-3 (convention 09, second-of-everything — second COMPANY).
+     *
+     * `CreateDraftCountingRequest` scopes `scope_filters.location_id` with
+     * `ScopedExists::company('locations', …)`; nothing tested that boundary. A
+     * foreign location id is not a leak (getStockLevelsForScope is still
+     * forCompany-scoped) but it activates into a counting with ZERO items and no
+     * error — the silent-wrong outcome the location requirement exists to close.
+     */
+    public function test_create_draft_counting_rejects_another_companys_location_id(): void
+    {
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/inventory/countings/drafts', [
+                'scope_type' => 'product_location',
+                'scope_filters' => [
+                    'product_ids' => [$this->productA->id],
+                    'location_id' => $this->locationB->id,
+                ],
+            ]);
+
+        $cross->assertStatus(422);
+        $cross->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertArrayHasKey('scope_filters.location_id', $cross->json('error.errors') ?? []);
+        // The fixture's own `product`-scoped draft (setUp) is excluded; nothing
+        // product_location-shaped may have been born from this request.
+        $this->assertSame(
+            0,
+            InventoryCounting::query()
+                ->where('company_id', $this->companyA->id)
+                ->where('scope_type', 'product_location')
+                ->count(),
+        );
+    }
+
+    /**
+     * The batch (offline-sync) twin refuses the same id, but per ROW — gate r1
+     * IMPORTANT-2 ruling: one malformed draft must never 422 the other 49.
+     */
+    public function test_batch_create_draft_countings_reject_another_companys_location_id_per_row(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/inventory/countings/drafts/batch', [
+                'drafts' => [
+                    [
+                        'localId' => 'cross-1',
+                        'scopeType' => 'product_location',
+                        'scopeFilters' => [
+                            'product_ids' => [$this->productA->id],
+                            'location_id' => $this->locationB->id,
+                        ],
+                    ],
+                    [
+                        'localId' => 'own-1',
+                        'scopeType' => 'product_location',
+                        'scopeFilters' => [
+                            'product_ids' => [$this->productA->id],
+                            'location_id' => $this->locationA->id,
+                        ],
+                    ],
+                ],
+            ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('data.errors.0.localId', 'cross-1');
+        $response->assertJsonPath('data.errors.0.error', 'Location not found for the current company');
+        $response->assertJsonPath('data.success.0.localId', 'own-1');
+
+        $countings = InventoryCounting::query()
+            ->where('company_id', $this->companyA->id)
+            ->where('scope_type', 'product_location')
+            ->get();
+        $this->assertCount(1, $countings, 'Only the own-company draft may persist.');
+        $this->assertSame(
+            $this->locationA->id,
+            $countings->first()?->scope_filters['location_id'] ?? null,
+        );
+    }
+
     public function test_create_draft_counting_rejects_cross_tenant_count_user_id(): void
     {
         $cross = $this->actingAsForTenant($this->userA, $this->companyA)

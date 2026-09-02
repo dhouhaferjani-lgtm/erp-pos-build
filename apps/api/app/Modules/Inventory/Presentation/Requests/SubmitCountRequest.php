@@ -27,7 +27,16 @@ class SubmitCountRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'quantity' => ['required', 'numeric', 'min:0'],
+            // House rule 19 (precision contract): `numeric` is kept and the regex
+            // is the SCALE CEILING — quantity is 4 d.p. Mirrors the sibling
+            // `ManualOverrideRequest:36` (commit 1706e0877). Without it two live
+            // defects on this endpoint: `'1e3'` passes `numeric` and then blows up
+            // inside `quantity()`'s `bcadd` ("not well-formed") for a catch-all 500,
+            // and `'12.99999'` is accepted and silently TRUNCATED to `12.9999` at
+            // rest — bcadd truncates, it does not round — and that altered number is
+            // what reconciliation and finalize() then consume. `bail` stops at the
+            // first failure so the 500 can never be reached.
+            'quantity' => ['bail', 'required', 'numeric', 'regex:/^-?\d+(\.\d{1,4})?$/', 'min:0'],
             'notes' => ['nullable', 'string', 'max:500'],
             // Device-authored claims for skew correction (mobile offline queue).
             // Both are optional; older mobile builds omit them and submissions
@@ -35,6 +44,18 @@ class SubmitCountRequest extends FormRequest
             // Enforce strict ISO-8601 format: accept UTC (Z) or offset (+/-HH:MM) forms.
             'counted_at_device' => ['nullable', 'bail', $this->iso8601TimestampRule()],
             'device_now' => ['nullable', 'bail', $this->iso8601TimestampRule()],
+        ];
+    }
+
+    /**
+     * Get custom messages for validator errors.
+     *
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'quantity.regex' => 'Quantity must have at most 4 decimal places.',
         ];
     }
 
@@ -70,7 +91,11 @@ class SubmitCountRequest extends FormRequest
 
     /**
      * Return the validated quantity as a canonical numeric string at quantity scale (4 d.p.).
-     * The 'numeric' validation rule guarantees the value is a valid numeric string.
+     *
+     * `bcadd` here is a NORMALISER, not a rounder: the scale-4 regex ceiling in
+     * rules() has already refused anything with more precision (and anything
+     * `numeric` accepts but bcmath cannot parse, such as `1e3`), so this only
+     * pads `7` to `7.0000`. It must never be reached by a value it would alter.
      *
      * @return numeric-string
      */

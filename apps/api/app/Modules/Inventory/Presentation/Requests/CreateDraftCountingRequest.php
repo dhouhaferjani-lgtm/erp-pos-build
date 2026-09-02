@@ -64,6 +64,25 @@ class CreateDraftCountingRequest extends FormRequest
             'scope_filters' => ['sometimes', 'array'],
             'scope_filters.product_ids' => ['sometimes', 'array'],
             'scope_filters.product_ids.*' => ['string', ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id)],
+            // N-1/A-3: product_location is the ONE draft scope whose item
+            // generation needs a location — without it
+            // InventoryCountingService::getStockLevelsForScope() drops the
+            // location filter and the counting sweeps every location, which in
+            // turn defeats CountingBlockService::scopeCoversLocation() and the
+            // terminal-sync-health gate (both keyed on scope_filters.location_id).
+            // Products stay incremental; the location does not.
+            // Gate r1 IMPORTANT-4 adds `zone` beside product_location: a zone
+            // draft with zone_ids but no location activates into ZERO items
+            // (InventoryCountingService::zoneItemSeeds returns [] without it),
+            // i.e. a live count with nothing to count. Both scopes match
+            // CreateCountingRequest, which has always required a location here.
+            'scope_filters.location_id' => [
+                'required_if:scope_type,product_location',
+                'required_if:scope_type,zone',
+                'nullable',
+                'string',
+                ScopedExists::company('locations', $company->id),
+            ],
         ];
     }
 
@@ -74,6 +93,7 @@ class CreateDraftCountingRequest extends FormRequest
             'count_1_user_id.exists' => 'The selected user does not exist.',
             'count_2_user_id.exists' => 'The selected user does not exist.',
             'count_3_user_id.exists' => 'The selected user does not exist.',
+            'scope_filters.location_id.required_if' => 'A location is required for this scope.',
         ];
     }
 }
