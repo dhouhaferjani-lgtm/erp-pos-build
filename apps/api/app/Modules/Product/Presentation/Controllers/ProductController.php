@@ -23,7 +23,7 @@ use App\Modules\Inventory\Domain\Exceptions\OpeningLockedException;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Application\DTOs\OpeningStateData;
 use App\Modules\Product\Application\DTOs\ProductData;
-use App\Modules\Product\Application\Jobs\ApplyCatalogEnrichmentJob;
+use App\Modules\Product\Application\Services\CatalogBacklinkDispatcher;
 use App\Modules\Product\Application\Services\MarginResolver;
 use App\Modules\Product\Application\Services\MarginService;
 use App\Modules\Product\Application\Services\ProductPricingIntentService;
@@ -77,6 +77,7 @@ class ProductController extends Controller
         private readonly MarginService $marginService,
         private readonly MarginResolver $marginResolver,
         private readonly ProductServiceInterface $productService,
+        private readonly CatalogBacklinkDispatcher $catalogBacklinkDispatcher,
     ) {}
 
     /**
@@ -580,12 +581,14 @@ class ProductController extends Controller
         $backlinkBarcode = $validated['barcode'] ?? null;
 
         if (is_string($platformProductId) && is_string($backlinkBarcode) && $platformVertical !== null) {
-            ApplyCatalogEnrichmentJob::dispatch(
-                $product->id,
-                $platformProductId,
-                $backlinkBarcode,
-                $platformVertical,
-            )->onQueue('enrichment');
+            $this->catalogBacklinkDispatcher->linkAndApply(
+                productId: $product->id,
+                companyId: $companyId,
+                tenantId: $tenantId,
+                platformProductId: $platformProductId,
+                barcode: $backlinkBarcode,
+                vertical: $platformVertical,
+            );
         }
 
         // Load metadata for response if Parapharmacy vertical

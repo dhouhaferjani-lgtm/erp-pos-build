@@ -26,6 +26,7 @@ use App\Modules\Inventory\Application\Services\InventoryService;
 use App\Modules\Partner\Application\Services\PartnerService;
 use App\Modules\PlatformIntegration\Application\Services\BarcodeLookupService;
 use App\Modules\PlatformIntegration\Application\Services\ProductSubmissionService;
+use App\Modules\PlatformIntegration\Infrastructure\DevelopmentCatalogLookupStub;
 use App\Modules\Product\Application\Services\ProductService;
 use App\Modules\Product\Infrastructure\Services\ProductEnrichmentCorrelationService;
 use App\Modules\Product\Infrastructure\Services\ProductEnrichmentQueryService;
@@ -63,6 +64,7 @@ use App\Shared\Contracts\ProductServiceInterface;
 use App\Shared\Infrastructure\CurrencyScaleResolver;
 use App\Shared\Infrastructure\GateAbilityAuthorizer;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
@@ -122,7 +124,11 @@ class AppServiceProvider extends ServiceProvider
         // Shared contract only (rule 6) — never through an Accounting model.
         $this->app->bind(HistoricalOpeningSideReaderInterface::class, HistoricalOpeningSideReader::class);
         $this->app->bind(PlatformSubmissionInterface::class, ProductSubmissionService::class);
-        $this->app->bind(CatalogLookupInterface::class, BarcodeLookupService::class);
+        $catalogLookup = $this->app->environment('local')
+            && (bool) $this->app->make(ConfigRepository::class)->get('services.platform.dev_lookup_stub_enabled', false)
+                ? DevelopmentCatalogLookupStub::class
+                : BarcodeLookupService::class;
+        $this->app->bind(CatalogLookupInterface::class, $catalogLookup);
         $this->app->bind(EnrichmentQueryInterface::class, ProductEnrichmentQueryService::class);
         $this->app->bind(EnrichmentSubmissionCorrelatorInterface::class, ProductEnrichmentCorrelationService::class);
         $this->app->bind(ProductInventoryQueryInterface::class, ProductInventoryQueryService::class);

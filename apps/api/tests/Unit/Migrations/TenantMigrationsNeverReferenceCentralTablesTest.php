@@ -76,7 +76,7 @@ final class TenantMigrationsNeverReferenceCentralTablesTest extends TestCase
 
         try {
             $migration = require database_path(
-                'migrations/tenant/2026_09_01_100000_create_unit_text_mappings_table.php',
+                'migrations/tenant/2026_09_01_100300_create_unit_text_mappings_table.php',
             );
 
             self::assertInstanceOf(Migration::class, $migration);

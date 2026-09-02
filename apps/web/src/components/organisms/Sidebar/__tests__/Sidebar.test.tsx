@@ -239,6 +239,7 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       smart_prompts_variant: 'off',
       line_designation_override_enabled: false,
       purchase_bonus_enabled: false,
+      platform_import_enrichment_available: false,
     }
 
     it('hides Vehicle module for pharmacy vertical', async () => {
@@ -285,6 +286,7 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       smart_prompts_variant: 'off',
       line_designation_override_enabled: false,
       purchase_bonus_enabled: false,
+      platform_import_enrichment_available: false,
     }
 
     it('hides Vehicle module for restaurant vertical', async () => {
@@ -433,6 +435,7 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       smart_prompts_variant: 'off',
       line_designation_override_enabled: false,
       purchase_bonus_enabled: false,
+      platform_import_enrichment_available: false,
     }
 
     it('hides Vehicles entry for retail vertical', async () => {
@@ -530,6 +533,7 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       smart_prompts_variant: 'off',
       line_designation_override_enabled: false,
       purchase_bonus_enabled: false,
+      platform_import_enrichment_available: false,
     }
 
     it('always shows Dashboard regardless of vertical', async () => {
@@ -592,6 +596,7 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       smart_prompts_variant: 'off',
       line_designation_override_enabled: false,
       purchase_bonus_enabled: false,
+      platform_import_enrichment_available: false,
     }
 
     const restaurantConfig: TestCompanyConfig = {

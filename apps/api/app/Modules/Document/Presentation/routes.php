@@ -302,6 +302,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 
     Route::post('/purchase-orders/{purchaseOrder}/receive', [PurchaseOrderController::class, 'receive'])
         ->middleware('can:purchase-orders.receive')
+        ->whereUuid('purchaseOrder')
         ->name('purchase-orders.receive');
 
     Route::get('/purchase-orders/{purchaseOrder}/receipt-status', [PurchaseOrderController::class, 'receiptStatus'])

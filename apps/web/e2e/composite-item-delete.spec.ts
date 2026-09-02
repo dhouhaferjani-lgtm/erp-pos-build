@@ -95,7 +95,7 @@ test.describe('Composite item delete — UI-only (cancel flow)', () => {
 
     // Open the dialog
     await firstRow.getByRole('button', { name: /delete/i }).click()
-    const confirmDialog = page.locator('[role="dialog"], .fixed.inset-0')
+    const confirmDialog = page.getByRole('dialog')
     await expect(confirmDialog).toBeVisible()
 
     // Cancel
@@ -161,7 +161,7 @@ test.describe('Composite item delete — live backend required (BG7 + UB3)', () 
     await targetRow.getByRole('button', { name: /delete/i }).click()
 
     // ConfirmDialog must appear — click the confirm button
-    const confirmDialog = page.locator('[role="dialog"], .fixed.inset-0')
+    const confirmDialog = page.getByRole('dialog')
     await expect(confirmDialog).toBeVisible()
     await page.getByRole('button', { name: /confirm/i }).click()
 

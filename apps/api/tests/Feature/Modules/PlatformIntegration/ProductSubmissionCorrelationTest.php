@@ -35,6 +35,22 @@ class ProductSubmissionCorrelationTest extends TestCase
 {
     use RefreshDatabase;
 
+    private const TRACKING_CORRELATION = '10000000-0000-4000-8000-000000000001';
+
+    private const TRACKING_EXISTING = '10000000-0000-4000-8000-000000000002';
+
+    private const TRACKING_UNUSED = '10000000-0000-4000-8000-000000000003';
+
+    private const TRACKING_HOLDER = '10000000-0000-4000-8000-000000000004';
+
+    private const TRACKING_UNBOUND = '10000000-0000-4000-8000-000000000005';
+
+    private const TRACKING_OTHER = '10000000-0000-4000-8000-000000000006';
+
+    private const TRACKING_SAME_PRODUCT = '10000000-0000-4000-8000-000000000007';
+
+    private const TRACKING_ROUNDTRIP = '10000000-0000-4000-8000-000000000008';
+
     private Tenant $tenant;
 
     private Company $company;
@@ -105,9 +121,9 @@ class ProductSubmissionCorrelationTest extends TestCase
 
         Http::fake([
             'platform.test/api/v1/products/submit' => Http::response([
-                'tracking_id' => 'trk-corr-001',
+                'tracking_id' => self::TRACKING_CORRELATION,
                 'status' => 'submitted',
-                'status_url' => 'https://platform.test/status/trk-corr-001',
+                'status_url' => 'https://platform.test/status/'.self::TRACKING_CORRELATION,
             ], 200),
         ]);
 
@@ -119,23 +135,23 @@ class ProductSubmissionCorrelationTest extends TestCase
             ]);
 
         $response->assertOk();
-        $response->assertJsonPath('data.trackingId', 'trk-corr-001');
+        $response->assertJsonPath('data.trackingId', self::TRACKING_CORRELATION);
 
         $product->refresh();
-        $this->assertSame('trk-corr-001', $product->platform_submission_id);
+        $this->assertSame(self::TRACKING_CORRELATION, $product->platform_submission_id);
         $this->assertSame(EnrichmentStatus::Pending, $product->enrichment_status);
     }
 
     public function test_submit_rejects_when_product_already_pending(): void
     {
         $product = $this->makeProduct([
-            'platform_submission_id' => 'trk-existing-001',
+            'platform_submission_id' => self::TRACKING_EXISTING,
             'enrichment_status' => EnrichmentStatus::Pending,
         ]);
 
         Http::fake([
             'platform.test/api/v1/products/submit' => Http::response([
-                'tracking_id' => 'trk-should-not-be-used',
+                'tracking_id' => self::TRACKING_UNUSED,
                 'status' => 'submitted',
                 'status_url' => 'https://platform.test/status/x',
             ], 200),
@@ -154,12 +170,12 @@ class ProductSubmissionCorrelationTest extends TestCase
         // Platform must NOT be called and the existing tracking id preserved.
         Http::assertNothingSent();
         $product->refresh();
-        $this->assertSame('trk-existing-001', $product->platform_submission_id);
+        $this->assertSame(self::TRACKING_EXISTING, $product->platform_submission_id);
     }
 
     public function test_find_tracking_id_holder_returns_holder(): void
     {
-        $trackingId = 'trk-holder-001';
+        $trackingId = self::TRACKING_HOLDER;
         $holder = $this->makeProduct([
             'name' => 'Holder Product',
             'platform_submission_id' => $trackingId,
@@ -177,14 +193,14 @@ class ProductSubmissionCorrelationTest extends TestCase
     public function test_find_tracking_id_holder_returns_null_when_unbound(): void
     {
         $holderDto = app(ProductEnrichmentCorrelationService::class)
-            ->findTrackingIdHolder('trk-unbound-001', $this->company->id);
+            ->findTrackingIdHolder(self::TRACKING_UNBOUND, $this->company->id);
 
         $this->assertNull($holderDto);
     }
 
     public function test_submit_conflict_when_tracking_id_held_by_other_product(): void
     {
-        $trackingId = 'trk-held-by-other';
+        $trackingId = self::TRACKING_OTHER;
         $holder = $this->makeProduct([
             'name' => 'Holder Product',
             'platform_submission_id' => $trackingId,
@@ -220,7 +236,7 @@ class ProductSubmissionCorrelationTest extends TestCase
     public function test_submit_for_same_pending_product_keeps_current_already_pending_response(): void
     {
         $product = $this->makeProduct([
-            'platform_submission_id' => 'trk-same-product',
+            'platform_submission_id' => self::TRACKING_SAME_PRODUCT,
             'enrichment_status' => EnrichmentStatus::Pending,
         ]);
 
@@ -324,9 +340,9 @@ class ProductSubmissionCorrelationTest extends TestCase
 
         Http::fake([
             'platform.test/api/v1/products/submit' => Http::response([
-                'tracking_id' => 'trk-roundtrip-001',
+                'tracking_id' => self::TRACKING_ROUNDTRIP,
                 'status' => 'submitted',
-                'status_url' => 'https://platform.test/status/trk-roundtrip-001',
+                'status_url' => 'https://platform.test/status/'.self::TRACKING_ROUNDTRIP,
             ], 200),
         ]);
 
@@ -340,7 +356,7 @@ class ProductSubmissionCorrelationTest extends TestCase
         // An inbound webhook (status change, not yet completed) now finds
         // the product by tracking id and updates enrichment_status.
         EnrichmentWebhookReceived::dispatch(
-            'trk-roundtrip-001',
+            self::TRACKING_ROUNDTRIP,
             'enriching',
             null,
             false,

@@ -22,12 +22,14 @@ export function seedAuth(overrides?: {
   userId?: string
   email?: string
   roles?: string[]
+  permissions?: string[]
 }): void {
   const tenantId = overrides?.tenantId ?? 'test-tenant-id'
   const companyId = overrides?.companyId ?? 'test-company-id'
   const userId = overrides?.userId ?? 'test-user-id'
   const email = overrides?.email ?? 'test@example.com'
   const roles = overrides?.roles ?? []
+  const permissions = overrides?.permissions
 
   useAuthStore.setState({
     user: {
@@ -36,6 +38,7 @@ export function seedAuth(overrides?: {
       email,
       tenant_id: tenantId,
       roles,
+      ...(permissions === undefined ? {} : { permissions }),
       email_verified_at: null,
     },
     token: 'test-token',

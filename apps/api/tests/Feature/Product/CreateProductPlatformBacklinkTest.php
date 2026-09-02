@@ -107,7 +107,8 @@ class CreateProductPlatformBacklinkTest extends TestCase
             return $job->productId === $productId
                 && $job->expectedPlatformProductId === $platformProductId
                 && $job->barcode === '3017620422003'
-                && $job->vertical === 'parapharmacy';
+                && $job->vertical === 'parapharmacy'
+                && $job->tenantId === $this->tenant->id;
         });
     }
 

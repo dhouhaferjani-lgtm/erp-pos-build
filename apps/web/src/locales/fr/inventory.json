@@ -12,6 +12,8 @@
     "toastSavedWithCatalog": "Produit enregistré avec les données du catalogue.",
     "toastSavedWithEnrichment": "Produit enregistré. Soumis pour enrichissement catalogue.",
     "toastEnrichmentFailed": "Produit enregistré mais la soumission d'enrichissement a échoué.",
+    "submissionDisabled": "Produit enregistré. Les soumissions d'enrichissement du catalogue sont désactivées dans cet environnement.",
+    "platformUnavailable": "Produit enregistré. Le service de catalogue est actuellement indisponible.",
     "trackingConflict": "L'enrichissement est déjà lié à {{name}}.",
     "clearBarcode": "Effacer le code-barres",
     "toastProductSaved": "Produit enregistré avec succès.",

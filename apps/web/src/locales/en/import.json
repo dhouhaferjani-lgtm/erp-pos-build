@@ -175,6 +175,7 @@
       "imported": "Successfully imported",
       "skipped": "Skipped",
       "failed": "Failed to import",
+      "enriched": "{{count}} products enriched from the platform catalogue",
       "warnings": "{{count}} rows completed with warnings",
       "backToDashboard": "Back to Import Dashboard",
       "importMore": "Import More Data",
@@ -212,6 +213,9 @@
       "autoCreate": "Auto-create missing nodes"
     },
     "placementDepth": "Depth {{depth}} node type",
+    "enrichmentTitle": "Enrich imported products",
+    "enrichmentLabel": "Look up imported barcodes in the platform catalogue",
+    "enrichmentHelp": "After the import completes, up to 500 distinct barcodes are matched. Product creation still succeeds when the catalogue is unavailable.",
     "nodeTypes": {
       "zone": "Zone",
       "aisle": "Aisle",
@@ -277,6 +281,12 @@
     "barcode_float_corruption_suspected": "{{count}} barcodes look like spreadsheet float conversions and need verification.",
     "numeric_normalized": "{{count}} rows had spreadsheet float noise normalized to the column scale.",
     "opening_exists": "{{count}} rows already had opening stock; no second opening was posted.",
+    "enrichment_not_found": "No platform catalogue match was found for {{count}} rows.",
+    "enrichment_unavailable": "Platform enrichment was unavailable for {{count}} rows; the import itself completed.",
+    "enrichment_invalid_barcode": "{{count}} rows had a barcode that could not be normalized for platform lookup.",
+    "enrichment_cap_exceeded": "{{count}} rows were beyond the 500 distinct-barcode enrichment limit.",
+    "enrichment_vertical_not_supported": "Platform enrichment is not supported for this business vertical.",
+    "enrichment_barcode_missing": "{{count}} rows could not be enriched because they had no barcode value.",
     "unknown": "{{count}} rows contain a historical warning that is not recognised by this version.",
     "other": "{{count}} rows reported warning {{code}}."
   },
@@ -351,6 +361,7 @@
     "description": "View all past import jobs and their results",
     "filterByStatus": "Filter by status",
     "all": "All",
+    "enriched": "{{count}} enriched",
     "columns": {
       "type": "Type",
       "file": "File",

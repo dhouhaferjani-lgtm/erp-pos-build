@@ -32,6 +32,7 @@ import { Select } from '@/components/atoms/Select/Select'
 import { useScopedLocations } from '@/features/locations/hooks/useScopedLocations'
 import type { ScopedLocation } from '@/features/locations/api/scopedLocations'
 import { KNOWN_WARNING_CODES } from '../warningCodes'
+import { useCompanyConfigOptional } from '@/contexts/CompanyConfigContext'
 
 type WizardStep = 'upload' | 'mapping' | 'options' | 'validation' | 'execute' | 'complete'
 
@@ -270,6 +271,7 @@ export function ImportWizardPage() {
   const navigate = useNavigate()
   const { t } = useTranslation('import')
   const { data: scopedLocations = [] } = useScopedLocations()
+  const companyConfig = useCompanyConfigOptional()
   const locations = useMemo(
     () => scopedLocations.filter((location) => location.isActive),
     [scopedLocations],
@@ -291,6 +293,7 @@ export function ImportWizardPage() {
   const [placementNodeTypeOverrides, setPlacementNodeTypeOverrides] = useState<Record<number, LocationNodeType>>({})
   const [duplicatePolicy, setDuplicatePolicy] = useState<DuplicatePolicy>('override')
   const [selectedLocationCode, setSelectedLocationCode] = useState('')
+  const [enrichmentEnabled, setEnrichmentEnabled] = useState(false)
 
   const stockLocationCode = useMemo(() => {
     const codedLocations = locations.filter((location) => location.code.trim() !== '')
@@ -378,13 +381,14 @@ export function ImportWizardPage() {
   const completedImportedCount = importResults?.imported_count ?? jobData?.successful_rows ?? 0
   const completedSkippedCount = importResults?.skipped_count ?? jobData?.skipped_rows ?? 0
   const completedFailedCount = importResults?.execution_error_count ?? jobData?.failed_rows ?? 0
+  const completedEnrichedCount = jobData?.warning_summary?.['enriched'] ?? 0
   const isSkipOnlyCompletion = completedImportedCount === 0
     && completedSkippedCount > 0
     && completedFailedCount === 0
 
   const optionVisibility = useMemo(() => {
     if (importType !== 'products') {
-      return { prices: false, placement: false, stock: false }
+      return { enrichment: false, prices: false, placement: false, stock: false }
     }
 
     const mappedPriceColumns = new Set(
@@ -392,13 +396,15 @@ export function ImportWizardPage() {
     )
 
     return {
+      enrichment: companyConfig?.config?.platform_import_enrichment_available === true
+        && Object.values(columnMapping).includes('barcode'),
       prices: mappedPriceColumns.size >= 2,
       placement: Object.values(columnMapping).includes('placement_path'),
       stock: Object.values(columnMapping).includes('quantity'),
     }
-  }, [columnMapping, importType])
+  }, [columnMapping, companyConfig?.config?.platform_import_enrichment_available, importType])
 
-  const shouldShowOptionsStep = optionVisibility.prices || optionVisibility.placement || optionVisibility.stock
+  const shouldShowOptionsStep = optionVisibility.enrichment || optionVisibility.prices || optionVisibility.placement || optionVisibility.stock
 
   const visibleSteps = useMemo(() => {
     return STEPS.filter((step) => step.key !== 'options' || shouldShowOptionsStep)
@@ -523,17 +529,17 @@ export function ImportWizardPage() {
   const validationRows = errorsData?.data ?? []
 
   // Fetch preview data when on validation step
+  const previewJobId = jobId ?? ''
+  const shouldFetchPreview = previewJobId !== '' && (
+    currentStep === 'validation'
+    || (currentStep === 'options' && optionVisibility.placement)
+  )
   const {
     data: previewData,
     isLoading: isPreviewLoading,
     isError: isPreviewError,
     refetch: refetchPreview,
-  } = useImportPreview(
-    jobId && (
-      currentStep === 'validation'
-      || (currentStep === 'options' && optionVisibility.placement)
-    ) ? jobId : ''
-  )
+  } = useImportPreview(previewJobId, { enabled: shouldFetchPreview })
   const validationValidRows = previewData?.summary.valid_rows
     ?? Math.max((jobData?.total_rows ?? 0) - (jobData?.failed_rows ?? 0), 0)
   const placementDepthCount = Math.max(previewData?.placement?.max_depth ?? 1, 1)
@@ -647,9 +653,9 @@ export function ImportWizardPage() {
   }, [selectedFile, importType, columnMapping, createImport, markStepCompleted, shouldShowOptionsStep])
 
   const handleOptionsComplete = useCallback(async () => {
-    if (!jobId) return
+    if (!previewJobId) return
 
-    await importApi.updateOptions(jobId, {
+    await importApi.updateOptions(previewJobId, {
       ...(optionVisibility.prices ? { price_authority: priceAuthority } : {}),
       ...(optionVisibility.placement ? {
         placement_mode: placementMode,
@@ -658,11 +664,14 @@ export function ImportWizardPage() {
       ...(optionVisibility.stock && stockLocationCode !== ''
         ? { location_code: stockLocationCode }
         : {}),
+      ...(optionVisibility.enrichment ? { enrichment_enabled: enrichmentEnabled } : {}),
     })
-    await refetchPreview()
+    if (shouldFetchPreview) {
+      await refetchPreview()
+    }
     markStepCompleted('options')
     setCurrentStep('validation')
-  }, [jobId, markStepCompleted, optionVisibility, placementMode, placementNodeTypes, priceAuthority, refetchPreview, stockLocationCode])
+  }, [enrichmentEnabled, markStepCompleted, optionVisibility, placementMode, placementNodeTypes, previewJobId, priceAuthority, refetchPreview, shouldFetchPreview, stockLocationCode])
 
   // Handle validation step completion
   const handleDuplicatePolicyChange = useCallback((policy: DuplicatePolicy | 'cancel') => {
@@ -1021,6 +1030,31 @@ export function ImportWizardPage() {
                 value={stockLocationCode}
                 onChange={setSelectedLocationCode}
               />
+            )}
+
+            {optionVisibility.enrichment && (
+              <section className="space-y-2" aria-labelledby="import-enrichment-options">
+                <h2 id="import-enrichment-options" className={`text-lg font-semibold ${colorTokens.text.primary}`}>
+                  {t('options.enrichmentTitle')}
+                </h2>
+                <label className={`flex cursor-pointer items-start gap-3 rounded-lg border ${colorTokens.border.subtle} p-3`}>
+                  <input
+                    type="checkbox"
+                    aria-label={t('options.enrichmentLabel')}
+                    checked={enrichmentEnabled}
+                    onChange={(event) => { setEnrichmentEnabled(event.target.checked) }}
+                    className={`mt-0.5 h-4 w-4 ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.focus.primaryRing}`}
+                  />
+                  <span>
+                    <span className={`block text-sm font-medium ${colorTokens.text.strong}`}>
+                      {t('options.enrichmentLabel')}
+                    </span>
+                    <span className={`mt-1 block text-sm ${colorTokens.text.muted}`}>
+                      {t('options.enrichmentHelp')}
+                    </span>
+                  </span>
+                </label>
+              </section>
             )}
 
             <div className={`flex items-center justify-between border-t ${colorTokens.border.subtle} pt-4`}>
@@ -1429,7 +1463,13 @@ export function ImportWizardPage() {
                   </div>
                 </dl>
 
-                {(jobData?.warning_rows ?? 0) > 0 && (
+                {completedEnrichedCount > 0 && (
+                  <p className={`mt-4 text-sm font-medium ${colorTokens.intent.success.textStrong}`}>
+                    {t('wizard.complete.enriched', { count: completedEnrichedCount })}
+                  </p>
+                )}
+
+                {Object.entries(jobData?.warning_summary ?? {}).some(([code, count]) => code !== 'enriched' && count > 0) && (
                   <section
                     className={`mt-4 rounded-lg border ${colorTokens.intent.warning.borderSubtle} ${colorTokens.intent.warning.bgSubtle} p-4`}
                     aria-labelledby="import-warning-summary"
@@ -1439,7 +1479,7 @@ export function ImportWizardPage() {
                     </h4>
                     <ul className={`mt-2 space-y-1 text-sm ${colorTokens.intent.warning.textStronger}`}>
                       {Object.entries(jobData?.warning_summary ?? {})
-                        .filter(([, count]) => count > 0)
+                        .filter(([code, count]) => code !== 'enriched' && count > 0)
                         .map(([code, count]) => (
                           <li key={code}>
                             {KNOWN_WARNING_CODES.has(code)

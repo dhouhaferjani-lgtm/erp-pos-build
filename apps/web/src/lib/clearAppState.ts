@@ -39,12 +39,17 @@ export function clearScopeForNewSession(queryClient: QueryClient): void {
  * This prevents stale data from a previous account leaking into a new session.
  * Must be called on every logout and 401 session expiry.
  */
-export function clearAllAppState(queryClient: QueryClient): void {
+export function clearAllAppState(
+  queryClient: QueryClient,
+  options: { authAlreadyCleared?: boolean } = {},
+): void {
   // Clear all React Query cached data (products, config, documents, etc.)
   queryClient.clear()
 
   // Reset all Zustand stores to initial state
-  useAuthStore.getState().logout()
+  if (options.authAlreadyCleared !== true) {
+    useAuthStore.getState().logout()
+  }
   useCompanyStore.getState().reset()
   useLocationStore.getState().reset()
   clearDeniedCompanyIds()

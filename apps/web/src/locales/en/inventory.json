@@ -12,6 +12,8 @@
     "toastSavedWithCatalog": "Product saved with catalog data.",
     "toastSavedWithEnrichment": "Product saved. Submitted for catalog enrichment.",
     "toastEnrichmentFailed": "Product saved but enrichment submission failed.",
+    "submissionDisabled": "Product saved. Catalogue enrichment submissions are disabled in this environment.",
+    "platformUnavailable": "Product saved. The catalogue service is currently unavailable.",
     "trackingConflict": "Enrichment is already linked to {{name}}.",
     "clearBarcode": "Clear barcode",
     "toastProductSaved": "Product saved successfully.",

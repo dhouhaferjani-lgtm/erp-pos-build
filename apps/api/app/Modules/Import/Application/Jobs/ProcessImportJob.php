@@ -6,6 +6,7 @@ namespace App\Modules\Import\Application\Jobs;
 
 use App\Jobs\Concerns\BindsTenantContext;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Import\Application\Services\ImportEnrichmentDispatcher;
 use App\Modules\Import\Domain\Data\ImportCountersData;
 use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportRowOutcome;
@@ -78,8 +79,9 @@ final class ProcessImportJob implements ShouldQueue
         ImportService $importService,
         UnitsProvisioningService $unitsProvisioning,
         ?UnitCatalogQueryInterface $unitCatalog = null,
+        ?ImportEnrichmentDispatcher $importEnrichmentDispatcher = null,
     ): void {
-        $this->withTenantContext(function () use ($importService, $unitsProvisioning, $unitCatalog): void {
+        $this->withTenantContext(function () use ($importService, $unitsProvisioning, $unitCatalog, $importEnrichmentDispatcher): void {
             $job = $this->findImportJob();
 
             if ($job === null) {
@@ -150,15 +152,19 @@ final class ProcessImportJob implements ShouldQueue
                 return;
             }
 
-            $this->processImport($job, $importService, $company);
+            $this->processImport($job, $importService, $company, $importEnrichmentDispatcher);
         });
     }
 
     /**
      * Process all valid rows in the import job.
      */
-    private function processImport(ImportJob $job, ImportService $importService, Company $company): void
-    {
+    private function processImport(
+        ImportJob $job,
+        ImportService $importService,
+        Company $company,
+        ?ImportEnrichmentDispatcher $importEnrichmentDispatcher,
+    ): void {
         // Rows that failed validation are skipped at execution but still count as
         // failed in the final tally (sync-path parity) — they never reach
         // is_imported=true, so the row-state tally below already includes them.
@@ -210,6 +216,8 @@ final class ProcessImportJob implements ShouldQueue
         if ($job === null) {
             return;
         }
+
+        $importEnrichmentDispatcher?->dispatchIfEnabled($job, $this->companyId, $this->tenantId);
 
         // Broadcast completion
         $this->broadcastCompleted(

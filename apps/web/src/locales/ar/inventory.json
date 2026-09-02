@@ -387,6 +387,8 @@
     "toastSavedWithCatalog": "تم حفظ المنتج ببيانات الكتالوج.",
     "toastSavedWithEnrichment": "تم حفظ المنتج وإرساله لإثراء الكتالوج.",
     "toastEnrichmentFailed": "تم حفظ المنتج لكن فشل إرسال طلب الإثراء.",
+    "submissionDisabled": "تم حفظ المنتج. إرسال طلبات إثراء الكتالوج معطّل في هذه البيئة.",
+    "platformUnavailable": "تم حفظ المنتج. خدمة الكتالوج غير متاحة حاليًا.",
     "trackingConflict": "الإثراء مرتبط بالفعل بـ {{name}}.",
     "clearBarcode": "مسح الرمز الشريطي",
     "toastProductSaved": "تم حفظ المنتج بنجاح.",

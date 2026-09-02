@@ -12,6 +12,7 @@ import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import { UnknownUnitSummary } from '../components/UnknownUnitSummary'
+import { KNOWN_WARNING_CODES } from '../warningCodes'
 
 const importStateGlyphs: Record<ImportStatus, ReactNode> = {
   pending: <Clock className={`h-4 w-4 ${colorTokens.text.disabled}`} />,
@@ -156,24 +157,40 @@ export function ImportHistoryPage() {
                   <td className="whitespace-nowrap px-6 py-4">
                     {renderImportStatePill(job.status)}
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4">
+                  <td className="px-6 py-4">
                     {job.status === 'completed' || job.status === 'failed' ? (
-                      <div className="text-sm">
-                        <span data-testid={`import-history-count-imported-${job.id}`} className={colorTokens.intent.success.text}>
-                          {t('history.counts.imported', { count: job.successful_rows })}
-                        </span>
-                        <span className={colorTokens.text.disabled}> / </span>
-                        <span data-testid={`import-history-count-skipped-${job.id}`} className={colorTokens.intent.warning.textStronger}>
-                          {t('history.counts.skipped', { count: job.skipped_rows })}
-                        </span>
-                        <span className={colorTokens.text.disabled}> / </span>
-                        <span data-testid={`import-history-count-failed-${job.id}`} className={colorTokens.intent.danger.text}>
-                          {t('history.counts.failed', { count: job.failed_rows })}
-                        </span>
-                        <span className={colorTokens.text.disabled}> / </span>
-                        <span data-testid={`import-history-count-total-${job.id}`} className={colorTokens.text.muted}>
-                          {t('history.counts.total', { count: job.total_rows })}
-                        </span>
+                      <div className="space-y-1 text-sm">
+                        <div className="whitespace-nowrap">
+                          <span data-testid={`import-history-count-imported-${job.id}`} className={colorTokens.intent.success.text}>
+                            {t('history.counts.imported', { count: job.successful_rows })}
+                          </span>
+                          <span className={colorTokens.text.disabled}> / </span>
+                          <span data-testid={`import-history-count-skipped-${job.id}`} className={colorTokens.intent.warning.textStronger}>
+                            {t('history.counts.skipped', { count: job.skipped_rows })}
+                          </span>
+                          <span className={colorTokens.text.disabled}> / </span>
+                          <span data-testid={`import-history-count-failed-${job.id}`} className={colorTokens.intent.danger.text}>
+                            {t('history.counts.failed', { count: job.failed_rows })}
+                          </span>
+                          <span className={colorTokens.text.disabled}> / </span>
+                          <span data-testid={`import-history-count-total-${job.id}`} className={colorTokens.text.muted}>
+                            {t('history.counts.total', { count: job.total_rows })}
+                          </span>
+                        </div>
+                        {(job.warning_summary?.['enriched'] ?? 0) > 0 && (
+                          <div className={colorTokens.intent.success.text}>
+                            {t('history.enriched', { count: job.warning_summary?.['enriched'] ?? 0 })}
+                          </div>
+                        )}
+                        {Object.entries(job.warning_summary ?? {})
+                          .filter(([code, count]) => code !== 'enriched' && count > 0)
+                          .map(([code, count]) => (
+                            <div key={code} className={colorTokens.intent.warning.textStronger}>
+                              {KNOWN_WARNING_CODES.has(code)
+                                ? t(`warnings.${code}`, { count })
+                                : t('warnings.other', { code, count })}
+                            </div>
+                          ))}
                       </div>
                     ) : job.status === 'importing' ? (
                       <div className="flex items-center gap-2">

@@ -164,6 +164,17 @@ export function SupplierInvoiceDetailPage() {
       cellClassName: 'font-medium',
     },
   ]
+  const matchRowsByPoLine = new Map<string, PerLineMatch>()
+  for (const row of invoice.match.per_line) {
+    const existingRow = matchRowsByPoLine.get(row.po_line_id)
+    matchRowsByPoLine.set(
+      row.po_line_id,
+      existingRow
+        ? { ...existingRow, price_variance: existingRow.price_variance || row.price_variance }
+        : row
+    )
+  }
+  const matchRows = [...matchRowsByPoLine.values()]
   const matchColumns: DataTableColumn<PerLineMatch>[] = [
     {
       key: 'ordered',
@@ -199,9 +210,17 @@ export function SupplierInvoiceDetailPage() {
       numeric: true,
       render: (row) =>
         row.price_variance ? (
-          <AlertTriangle className={`inline h-4 w-4 ${textColors.warningDark}`} />
+          <AlertTriangle
+            data-testid={`match-variance-${row.po_line_id}`}
+            data-variance={String(row.price_variance)}
+            className={`inline h-4 w-4 ${textColors.warningDark}`}
+          />
         ) : (
-          <CheckCircle2 className={`inline h-4 w-4 ${textColors.success}`} />
+          <CheckCircle2
+            data-testid={`match-variance-${row.po_line_id}`}
+            data-variance={String(row.price_variance)}
+            className={`inline h-4 w-4 ${textColors.success}`}
+          />
         ),
     },
   ]
@@ -592,7 +611,7 @@ export function SupplierInvoiceDetailPage() {
         </div>
         <DataTable
           columns={matchColumns}
-          data={invoice.match.per_line}
+          data={matchRows}
           keyExtractor={(row) => row.po_line_id}
           className="mt-4"
         />

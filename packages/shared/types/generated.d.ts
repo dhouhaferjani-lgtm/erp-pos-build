@@ -1061,7 +1061,7 @@ export type ImportErrorCode = 'units_not_seeded' | 'unit_unknown' | 'unit_ambigu
 export type ImportRowOutcome = 'pending' | 'imported' | 'merged_line' | 'duplicate_skipped' | 'duplicate_loser' | 'failed' | 'opening_locked';
 export type ImportStatus = 'pending' | 'validating' | 'validated' | 'importing' | 'completed' | 'failed';
 export type ImportType = 'parties' | 'partners' | 'products' | 'stock_levels' | 'opening_balances' | 'product_images' | 'composite_items';
-export type ImportWarningCode = 'price_conflict' | 'margin_without_cost' | 'balance_not_posted' | 'opening_failed' | 'quantity_ignored_service' | 'qty_without_cost' | 'expiry_in_past' | 'expiry_conflict_existing_lot' | 'expiry_ignored_not_batch_tracked' | 'expiry_ignored_no_default_lot' | 'category_matched_by_slug' | 'category_created' | 'category_restored' | 'sku_generated' | 'code_generated' | 'matched_by_name' | 'duplicate_in_file' | 'preview_drift' | 'opening_skipped_existing' | 'opening_corrected' | 'unit_defaulted' | 'location_not_supplied' | 'location_code_unknown' | 'location_unresolved' | 'opening_exists' | 'multi_location' | 'barcode_float_corruption_suspected' | 'numeric_normalized';
+export type ImportWarningCode = 'price_conflict' | 'margin_without_cost' | 'balance_not_posted' | 'opening_failed' | 'quantity_ignored_service' | 'qty_without_cost' | 'expiry_in_past' | 'expiry_conflict_existing_lot' | 'expiry_ignored_not_batch_tracked' | 'expiry_ignored_no_default_lot' | 'category_matched_by_slug' | 'category_created' | 'category_restored' | 'sku_generated' | 'code_generated' | 'matched_by_name' | 'duplicate_in_file' | 'preview_drift' | 'opening_skipped_existing' | 'opening_corrected' | 'unit_defaulted' | 'location_not_supplied' | 'location_code_unknown' | 'location_unresolved' | 'opening_exists' | 'multi_location' | 'barcode_float_corruption_suspected' | 'numeric_normalized' | 'enrichment_not_found' | 'enrichment_unavailable' | 'enrichment_invalid_barcode' | 'enrichment_cap_exceeded' | 'enrichment_vertical_not_supported' | 'enrichment_barcode_missing';
 }
 declare namespace App.Modules.Inventory.Application.DTOs {
 export type GoodsReceiptData = {
@@ -1219,6 +1219,7 @@ export type CountingExecutionMode = 'parallel' | 'sequential';
 export type CountingItemFlagReason = 'basket_window' | 'negative_at_apply' | 'clock_skew' | 'pending_opening_cost' | 'normalized_agreement' | 'missing_boundary_marker';
 export type CountingScopeType = 'product_location' | 'product' | 'location' | 'category' | 'full_inventory' | 'zone';
 export type CountingStatus = 'draft' | 'scheduled' | 'count_1_in_progress' | 'count_1_completed' | 'count_2_in_progress' | 'count_2_completed' | 'count_3_in_progress' | 'count_3_completed' | 'pending_review' | 'finalized' | 'cancelled';
+export type GoodsReceiptFailureReason = 'OVER_RECEIPT' | 'OVER_RECEIPT_FREE' | 'BATCH_DATA_REQUIRED' | 'VARIANT_REQUIRED' | 'BATCH_EXPIRY_CONFLICT' | 'EXPIRED_LOT_REFUSED' | 'RECEIVED_PRICE_INVALID' | 'NOTHING_TO_RECEIVE';
 export type GoodsReceiptStatus = 'draft' | 'posted';
 export type InventoryValuationMode = 'perpetual' | 'periodic';
 export type ItemResolutionMethod = 'pending' | 'auto_all_match' | 'auto_counters_agree' | 'third_count_decisive' | 'manual_override';
@@ -3194,6 +3195,7 @@ export type VarianceSeverity = 'info' | 'warning' | 'critical';
 }
 declare namespace App.Shared.Enums {
 export type BrandMappingPushResult = 'mapped' | 'conflict' | 'not_found' | 'failed';
+export type CatalogLookupOutcome = 'found' | 'not_found' | 'platform_unavailable' | 'platform_error' | 'invalid_barcode' | 'vertical_not_supported';
 export type CategoryResolutionOutcome = 'matched' | 'matched_by_slug' | 'created' | 'restored';
 export type EnrichmentFeedbackAction = 'confirmed' | 'rejected';
 export type EnrichmentFeedbackReason = 'wrong_product' | 'bad_data';

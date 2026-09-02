@@ -1,0 +1,53 @@
+# Wave 2 PO — part 1 evidence
+
+- W2-SETUP-1 | measured: tenant=01a05f24-814f-7172-9701-1c3a926ac56d units=19 VAT={19,13,7,0} purposes=7 | expected [derived] fresh tenant census | PASS
+- W2-SETUP-2 | measured: suppliers=11 SUP-A=ADEM COMMERCE SUP-B=ARAMEX | expected 11 suppliers, 0 failures | PASS
+- W2-SETUP-3 | measured: products=47 P-HP-1.tracked=true P-OVER-1.tracked=false P-UNDER-4.physical=false | expected full fixture table created once | PASS
+- W2-SETUP-4 | measured: active_locations=2 MAIN.default=true WH=01a05f25-3812-7353-8810-dba8969e5b16 | expected 2 active locations; MAIN remains default | PASS
+- W2-SETUP-5 | measured: c2=01a05f25-4b42-70ad-8be5-73d673e407c7 MAIN=01a05f25-4c56-7186-ba3f-fce7dd5c6514 products=7 | expected real company path provisioned units, methods, repositories, accounts | PASS
+- W2-SETUP-6 | measured: cashier=wave2-cashier-122433997l@test.otospex.dev context=isolated membership=c1 UPDATE=UPDATE users SET password='$2y$12$7gCU.6nwC1TNZ7Xvei3hH.zodB1znt76QEBZmqILOxsvbVbM9ufMm', status='active' WHERE email='wave2-cashier-122433997l@test.otospex.dev' RETURNING id | expected cashier role authenticated in second context | PASS
+- W2-SETUP-7 | measured: role=wave2-receiver guard=sanctum permissions=receive/view/no-price-edit UPDATE=UPDATE users SET password='$2y$12$RmY7fna0aodSve.YR89vQ.x55vlKMp8xoKdi3SVDj0N6gD44V7mTu', status='active' WHERE email='wave2-receiver-122433997l@test.otospex.dev' RETURNING id | expected third isolated context authenticated | PASS
+- W2-SETUP-8 | measured: c2.tax_status=non_registered | expected 200 and persisted; deliberately not restored | PASS
+- W2-HP-1 | measured: status=draft number=NULL subtotal=96.000 tax=12.880 total=108.880 currency=TND | expected [derived] same | PASS
+- W2-HP-2 | measured: number=PO-2026-0001 landed={10.500000,3.250000,4.000000} allocated=0.000000×3 | expected [derived] PO-2026-0001 and exact allocations | PASS
+- W2-HP-3 | measured: status=received fully_received=true GRN=GRN-2026-0001 quantities={6,4,5} | expected [derived] same; pc inputs displayed 6/4/5 | PASS
+- W2-HP-4 | measured: stock={6.0000,4.0000,5.0000} WAC={10.500000,3.250000,4.000000} movements=3 batches=3/3 | expected [derived] same | PASS
+- W2-HP-5 | measured: entries=3 Dr37/Cr408={63.000,13.000,20.000} imbalance=0 partner=NULL VAT_legs=0 | expected [derived] same | PASS
+- W2-HP-6 | measured: sale_price before=10.500 after=10.500 | expected [RULING] recorded, not asserted | PASS
+- W2-TOT-1 | measured: toggle visible aria-pressed=true typed_total=100.000 net_unit=10.000 gross_display=119.000 | expected [derived] same | PASS
+- W2-TOT-2 | measured: line_total=119.000 unit_price=11.900 landed=11.900000 header=119.000/22.610/141.610 | expected [derived bug] 119.000/11.900/11.900000 and 119.000/22.610/141.610 | PASS
+- W2-TOT-3 | measured: header=119.000/22.610/141.610 WAC=11.900000 GR-IR=119.000 operator_typed=100.000 | expected [derived bug] VAT capitalised by 19.000 | PASS
+- W2-TOT-4 | measured: before=100.000/14.285/100.000/0.000/100.000 after=100.000/0.000/99.995 | expected [derived] header 100.000 + 0.000 != total 99.995 | PASS
+- W2-TOT-5 | measured: four_dp=422 missing=422 persisted_delta=0 | expected both 422 with per-field messages | PASS
+- W2-PART-1 | measured: number=PO-2026-0004 landed_unit_cost=10.500000 | expected confirmed PO-C at 10.500000 | PASS
+- W2-PART-2 | measured: received=4.0000 status=confirmed stock=4.0000 WAC=10.500000 GR-IR=42.000 accrual=10.500000 | expected [derived] same | PASS
+- W2-PART-3 | measured: status=partially_received received=4.0000 ordered=10.0000 percentage=40 | expected partially_received / 4 / 10 / 40 | PASS
+- W2-PART-4 | measured: status=received stock=10.0000 WAC=10.500000 Σ408=105.000 lots=LOT-T1:4.0000,LOT-T2:6.0000 | expected [derived] two-lot FEFO fixture | PASS
+- W2-PART-5 | measured: number=SI-2026-0001 lines=2 (4.0000+6.0000, receipt-line grain) price=10.500 vat=19 net=105.000 tax=19.950 stamp=0.000 total=124.950 match=matched snapshot=stamped | expected [derived] same | PASS
+- W2-PART-6 | measured: status=posted balance=124.950 entries=1 Dr408=105.000 Dr4456=19.950 Cr401=124.950 balanced=124.950/124.950 invoiced=4.0000+6.0000 | expected [derived] same; no PPV/inventory plug | PASS
+- W2-PART-7 | fixture: CASH-01 funded 200.000 via ACCOUNTING opening batch (Dr 53) before the first supplier payment
+- W2-PART-7 | measured: balance=74.950 status=posted Dr401=50.000 CrRepository=50.000 movement=out/50.000 payable=74.950 | expected [derived] same | PASS
+- W2-PART-8 | measured: balance=0.000 status=paid ΣCr401=124.950 ΣDr401=124.950 payable=0.000 | expected [derived] same | PASS
+- W2-LOT-1 | measured: qty_display=6 batch_input=visible expiry_input=visible both_actions=disabled | expected tracked dialog contract | PASS
+- W2-LOT-2 | measured: batch=LOT-1 expiry=2027-06-30 batch_stock=6.0000 stock=6.0000 line.batch_id=set | expected [derived] same | PASS
+- W2-LOT-3 | measured: fresh_expiry_value="" | expected no default offered despite shelf-life metadata | PASS
+- W2-LOT-4 | measured: status=200 product_batches=0 inventory_batch_stock=0 warning=none | expected batch payload silently dropped | PASS
+- W2-LOT-5 | measured: api=422/GOODS_RECEIPT_FAILED UI.quantities[01a05f27-4f8a-70a1-acd9-e0ac59d945d8]=1 | expected F-SOE-2 is API-only | PASS
+- W2-LOT-6 | measured: refusal=422/EXPIRED_LOT_REFUSED override=200 expiry=2020-01-01 is_expired=t stock=6.0000 | expected [post-L1] refuse by default; permissioned override stores truthful is_expired | PASS
+- W2-LOT-7 | measured: conflict=422/BATCH_EXPIRY_CONFLICT same_expiry=200 rows=1 quantity=6.0000 | expected [post-L1] conflicting re-declaration refused; same expiry sums | PASS
+- W2-LOT-8 | measured: status=422 reason=VARIANT_REQUIRED receipts_delta=0 movements_delta=0 label=SKU-based | expected [post-L1] typed variant refusal, UUID-free | PASS
+- W2-LOT-9 | measured: LOT-T1=0.0000 LOT-T2=5.0000 aggregate=5.0000 lot_sum=5.0000 negative=0 exit_GL=1 movement=01a05f27-7b2e-71b8-8b54-3d91bc0ef890 | expected [derived] earliest-expiry-first and posted exit entry | PASS
+- W2-LOT-10 | measured: status=422 code=INVALID_STATUS_TRANSITION shortfall=3.0000 negative_lots=0 stock=6.0000→6.0000 | expected [derived] lot-shortfall rollback | PASS
+- W2-LOT-10b | measured: status=422 code=INSUFFICIENT_STOCK stock_unchanged=5.0000 | expected aggregate guard precedes batch draw | PASS
+- W2-LOT-11 | measured: missing_expiry=422 null_expiry=422 receipts=0 | expected both 422 at validation | PASS
+- W2-LOT-12 | measured: real_plus_stray=200 stray_only=422 batches=LOT-REAL | expected stray ignored with real key; missing real key rejected | PASS
+- W2-LOT-13 | measured: status=200 manufacturing=2028-01-01 expiry=2027-01-01 | expected [derived] validation gap persists | PASS
+- W2-OVER-1 | measured: status=422 code=GOODS_RECEIPT_FAILED leaked_line=01a05f27-9e32-73e3-b3fa-8a04b7e45903 counts=0/0/23→0/0/23 | expected hard ceiling and full rollback | PASS
+- W2-OVER-2 | measured: typed=10.0001 save_draft=disabled save_post=disabled requests=0 | expected client-side refusal; no request | PASS
+- W2-OVER-3 | measured: free_requested=2.0001 free_ordered=2.0000 status=422 receipts=0 | expected free ceiling independent; PO-H untouched | PASS
+- W2-OVER-4 | measured: quantity=10.00005 status=422 phase=validation receipts=0 | expected bccomp truncation window unreachable over HTTP | PASS
+- W2-OVER-5 | measured: negative_only=422/wrong-cause mixed=200 A=4.0000/1movement B=0/0movement | expected [derived] minus admitted then skipped | PASS
+- W2-UNDER-1 | measured: status=confirmed receipt_status=partially_received remaining=4.0000 stock=6.0000 WAC=10.000000 | expected [derived] same | PASS
+- W2-UNDER-2 | measured: close_controls=0 revert=422/PURCHASE_ORDER_HAS_RECEIPTS delete=422/DOCUMENT_NOT_DELETABLE | expected permanently outstanding F-W2-05 | PASS
+- W2-UNDER-3 | measured: status=confirmed goods=5.0000/5.0000 service=0.0000/1.0000 | expected [derived] service line makes received unreachable | PASS
+- W2-UNDER-4 | measured: received=1.0000 movement_id=NULL landed_unit_cost=NULL invoiced=0.0000 visible_to_matcher=true | expected [derived] orphan exists; matcher visibility recorded | PASS

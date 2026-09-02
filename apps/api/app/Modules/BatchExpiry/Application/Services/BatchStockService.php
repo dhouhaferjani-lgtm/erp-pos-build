@@ -325,7 +325,24 @@ final class BatchStockService
     }
 
     /**
-     * Find an existing batch or create a new one (for goods receipt).
+     * Read-only lookup for an explicitly named product lot.
+     */
+    public function findByBatchNumber(
+        string $companyId,
+        string $productId,
+        string $batchNumber,
+        ?string $variantId = null,
+    ): ?Batch {
+        return $this->batchRepository->findByBatchNumberAndVariant(
+            $companyId,
+            $productId,
+            $batchNumber,
+            $variantId,
+        );
+    }
+
+    /**
+     * Find an existing batch or create a new one.
      *
      * @param  ?string  $expiryDate  Y-m-d, or null for a lot whose expiry is genuinely
      *                               unknown (W4-1). Null is a FACT about the stock, never
@@ -334,6 +351,9 @@ final class BatchStockService
      *                              When null and the product has active variants,
      *                              throws MissingVariantException — a variant-bearing
      *                              product must never receive a product-level batch.
+     * @param  bool  $isExpired  Whether the creating caller has explicitly applied
+     *                           its own expiry policy. Non-receipt callers preserve
+     *                           the historical false-at-mint behavior.
      *
      * @throws MissingVariantException when variantId is null and the product has active variants.
      */
@@ -345,6 +365,7 @@ final class BatchStockService
         ?string $expiryDate,
         ?string $manufacturingDate = null,
         ?string $variantId = null,
+        bool $isExpired = false,
     ): Batch {
         // Guard: reject product-level batch for variant-bearing products.
         if ($variantId === null) {
@@ -375,7 +396,7 @@ final class BatchStockService
             'expiry_date' => $expiryDate,
             'manufacturing_date' => $manufacturingDate,
             'is_active' => true,
-            'is_expired' => false,
+            'is_expired' => $isExpired,
             'is_recalled' => false,
         ];
 
