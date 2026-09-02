@@ -69,3 +69,10 @@ Post-fix-round regression: wave-1 6/6 + K-7 4/4, `5xx=0 consoleErrors=0`. Gate c
 - **F-W1-10 (P1, K-9 FR3):** a PROACTIVE unit-text mapping (Settings → Units before any products/pending import exist) returns 200 `{"applied": false}` and stores nothing — the wizard's own hint ("map it in Settings → Units") leads to a silent no-op for a first-time user. Fix dispatched: alias persists regardless of current usage counts.
 - **F-W1-11 (P1, K-12 FR1):** the operator's return trip (upload → see hint → map → re-enter wizard → upload again) gets ZERO column suggestions on the second upload although suggest-mapping is called and 200s — response not applied on repeat passes. Fix dispatched (real two-upload Vitest).
 - Combined, these two broke the exact journey the UI instructs; both were invisible to every fixture-based test and to single-upload API proofs.
+
+## 2026-09-02 (cont. 3) — k89 BROWSER LEGS ALL GREEN; local wave-1 empirical checklist COMPLETE
+- Units honesty leg ✓ (859 aggregated at preview, intact xlsx).
+- **Conflict leg ✓ (52 s):** intact xlsx → conflict panel renders real groups ("754 rows reuse a barcode for contradictory product identities… `6192430000000`: description, margin, name… + row numbers") → Import Valid Rows → **102 imported / 757 failed** (754 conflicts + 3 negative quantities).
+- **Full operator journey ✓ (63 s):** fresh tenant → proactive `piece → pc` mapping (now `aliasStored: true` — F-W1-10 fixed) → single CSV upload auto-mapped → preview honest (3 negative-qty errors only) → counted partial dialog → **856 imported / 3 failed** → products API total 856.
+- Fix rounds this closing day: K-9 FR3 (proactive alias persisted) + K-12 FR1 (second-upload suggestion lifecycle) — both with real-flow TDD (two-upload Vitest through the real mutation; real endpoint → 859-row upload feature test).
+Local wave-1 truth for the tester's real file, end-to-end in the UI: **with barcodes intact 102/757 with actionable coded reasons; with units mapped once and barcodes cleaned 856/3 (only the 3 genuine data errors).** Remaining: k89 code gate → merge → staging legs.
