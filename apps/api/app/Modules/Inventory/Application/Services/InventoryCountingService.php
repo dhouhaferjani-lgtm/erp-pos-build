@@ -513,6 +513,11 @@ class InventoryCountingService
 
         switch ($scopeType) {
             case CountingScopeType::ProductLocation:
+                // `location_id` is enforced at the boundary — CreateCountingRequest,
+                // CreateDraftCountingRequest, the batch-draft rules and
+                // InventoryCountingController::activateDraft all refuse a
+                // product_location scope without one (N-1/A-3). It stays optional
+                // here so legacy rows still resolve rather than throwing.
                 $productIds = $filters['product_ids'] ?? [];
                 if (! empty($productIds)) {
                     $query->whereIn('product_id', $productIds);

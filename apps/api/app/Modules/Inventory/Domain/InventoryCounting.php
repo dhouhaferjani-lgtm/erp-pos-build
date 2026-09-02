@@ -41,6 +41,8 @@ use Illuminate\Support\Carbon;
  * @property int $ambiguity_window_minutes
  * @property array<int, array{receipt_id: string, occurred_at: string}>|null $late_sales_flags
  * @property bool $includes_zero_stock
+ * @property Carbon|null $last_modified_at
+ * @property string|null $last_modified_by_user_id
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $activated_at
@@ -105,6 +107,11 @@ class InventoryCounting extends Model
             'activated_at' => 'datetime',
             'finalized_at' => 'datetime',
             'cancelled_at' => 'datetime',
+            // Column is timestampTz (2025_12_16_120000). Cast so every reader
+            // gets a Carbon and the API emits ISO-8601 like its neighbours
+            // (N-1/A-11); the `now()->toDateTimeString()` writers still work —
+            // Eloquent parses the string on set.
+            'last_modified_at' => 'datetime',
             'requires_count_2' => 'boolean',
             'requires_count_3' => 'boolean',
             'allow_unexpected_items' => 'boolean',

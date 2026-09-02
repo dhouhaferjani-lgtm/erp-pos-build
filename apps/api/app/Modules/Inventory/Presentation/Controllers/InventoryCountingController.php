@@ -696,7 +696,7 @@ class InventoryCountingController extends Controller
         $counting->count_3_user_id = $request->input('count_3_user_id');
         $counting->scheduled_start = $request->input('scheduled_start');
         $counting->scheduled_end = $request->input('scheduled_end');
-        $counting->last_modified_at = now()->toDateTimeString();
+        $counting->last_modified_at = now();
         $counting->last_modified_by_user_id = $userId;
 
         $counting->save();
@@ -732,7 +732,7 @@ class InventoryCountingController extends Controller
                 'scope_type' => $counting->scope_type->value,
                 'product_count' => count($counting->scope_filters['product_ids'] ?? []),
                 'created_at' => $counting->created_at?->toIso8601String(),
-                'last_modified_at' => $counting->last_modified_at,
+                'last_modified_at' => $counting->last_modified_at?->toIso8601String(),
             ])->all(),
         ]);
     }
@@ -795,7 +795,7 @@ class InventoryCountingController extends Controller
         $productIds[] = $productId;
         $scopeFilters['product_ids'] = $productIds;
         $counting->scope_filters = $scopeFilters;
-        $counting->last_modified_at = now()->toDateTimeString();
+        $counting->last_modified_at = now();
         $counting->last_modified_by_user_id = (string) $authUser->id;
         $counting->save();
 
@@ -854,7 +854,7 @@ class InventoryCountingController extends Controller
         $productIds = array_values(array_filter($productIds, fn ($id) => $id !== $productId));
         $scopeFilters['product_ids'] = $productIds;
         $counting->scope_filters = $scopeFilters;
-        $counting->last_modified_at = now()->toDateTimeString();
+        $counting->last_modified_at = now();
         $counting->last_modified_by_user_id = (string) $authUser->id;
         $counting->save();
 
@@ -922,7 +922,7 @@ class InventoryCountingController extends Controller
             $counting->scheduled_end = $request->input('scheduled_end');
         }
 
-        $counting->last_modified_at = now()->toDateTimeString();
+        $counting->last_modified_at = now();
         $counting->last_modified_by_user_id = (string) $authUser->id;
         $counting->save();
 
@@ -969,6 +969,19 @@ class InventoryCountingController extends Controller
             if (count($productIds) === 0) {
                 return response()->json([
                     'error' => 'At least one product must be added before activation',
+                ], 422);
+            }
+
+            // N-1/A-3: a product_location draft with no location_id silently
+            // counted EVERY location — getStockLevelsForScope() only applies the
+            // location filter when it is set, and the location-scoped guards
+            // (CountingBlockService::scopeCoversLocation, terminal sync health)
+            // resolve nothing for a null. Mirrors CreateCountingRequest's
+            // product_location rule, which has always required it.
+            if ($counting->scope_type === CountingScopeType::ProductLocation
+                && empty($counting->scope_filters['location_id'])) {
+                return response()->json([
+                    'error' => 'A location must be selected before activation',
                 ], 422);
             }
         } elseif ($counting->scope_type === CountingScopeType::Zone) {
@@ -1027,6 +1040,11 @@ class InventoryCountingController extends Controller
             'drafts.*.requiresCount3' => 'nullable|boolean',
             'drafts.*.allowUnexpectedItems' => 'nullable|boolean',
             'drafts.*.scopeFilters' => 'nullable|array',
+            // N-1/A-3: a product_location draft without a location silently
+            // widens to every location at activation. Required here so an
+            // offline-synced draft can never be born unscoped; persisted
+            // verbatim inside scope_filters below.
+            'drafts.*.scopeFilters.location_id' => 'required_if:drafts.*.scopeType,product_location|nullable|string',
             'drafts.*.count1UserId' => 'nullable|string',
             'drafts.*.count2UserId' => 'nullable|string',
             'drafts.*.count3UserId' => 'nullable|string',
@@ -1059,7 +1077,7 @@ class InventoryCountingController extends Controller
                     $counting->count_3_user_id = $draftData['count3UserId'] ?? null;
                     $counting->scheduled_start = isset($draftData['scheduledStart']) ? Carbon::parse($draftData['scheduledStart']) : null;
                     $counting->scheduled_end = isset($draftData['scheduledEnd']) ? Carbon::parse($draftData['scheduledEnd']) : null;
-                    $counting->last_modified_at = now()->toDateTimeString();
+                    $counting->last_modified_at = now();
                     $counting->last_modified_by_user_id = $userId;
 
                     $counting->save();
@@ -1248,7 +1266,7 @@ class InventoryCountingController extends Controller
         // Update counting with new product list
         $scopeFilters['product_ids'] = $productIds;
         $counting->scope_filters = $scopeFilters;
-        $counting->last_modified_at = now()->toDateTimeString();
+        $counting->last_modified_at = now();
         $counting->last_modified_by_user_id = $userId;
         $counting->save();
 
@@ -1360,7 +1378,7 @@ class InventoryCountingController extends Controller
                         $counting->scheduled_end = Carbon::parse($data['scheduledEnd']);
                     }
 
-                    $counting->last_modified_at = now()->toDateTimeString();
+                    $counting->last_modified_at = now();
                     $counting->last_modified_by_user_id = $userId;
                     $counting->save();
 
