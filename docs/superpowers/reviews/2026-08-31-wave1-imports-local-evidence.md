@@ -63,3 +63,9 @@ K-12 + K-13 dispatched (one sequential Codex run, same branch).
 
 ## 2026-09-02 (cont.) — k67 MERGED to local dev
 Post-fix-round regression: wave-1 6/6 + K-7 4/4, `5xx=0 consoleErrors=0`. Gate conditions verified in the FR summary (COUNT-based list warnings; 50 s job timeout with the 60 s Horizon / 90 s retry_after math in-source; `enrichment_barcode_missing` counted warning + toggle predicate; minors incl. backward-compatible job payloads). Branch commit `447659d36`, merge `8f8eca958` (local dev only — NO push). k89 sync + gate next.
+
+## 2026-09-02 (cont. 2) — conflict panel browser-verified; two round-trip defects found and dispatched
+- **K-11 conflict panel PROVEN in the browser** (fresh tenant, intact xlsx): renders "754 rows reuse a barcode for contradictory product identities and will be rejected. 6192430000000: description, margin, name, purchase_price, sale_price_excl_tax, sku (rows…)" — real groups, real differing fields, real row numbers.
+- **F-W1-10 (P1, K-9 FR3):** a PROACTIVE unit-text mapping (Settings → Units before any products/pending import exist) returns 200 `{"applied": false}` and stores nothing — the wizard's own hint ("map it in Settings → Units") leads to a silent no-op for a first-time user. Fix dispatched: alias persists regardless of current usage counts.
+- **F-W1-11 (P1, K-12 FR1):** the operator's return trip (upload → see hint → map → re-enter wizard → upload again) gets ZERO column suggestions on the second upload although suggest-mapping is called and 200s — response not applied on repeat passes. Fix dispatched (real two-upload Vitest).
+- Combined, these two broke the exact journey the UI instructs; both were invisible to every fixture-based test and to single-upload API proofs.
