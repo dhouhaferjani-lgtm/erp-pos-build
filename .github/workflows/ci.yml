@@ -2623,6 +2623,10 @@ jobs:
     # service-provider graph but never opens a DB/Redis connection. If this
     # job ever fails with a connection error, audit recent service-provider
     # changes for lazy-boot paths that hit infrastructure.
+    # CACHE_STORE is pinned so this infrastructure-free job never inherits the
+    # fail-closed `redis` fallback in config/cache.php (Task 9 / S-16).
+    env:
+      CACHE_STORE: array
     defaults:
       run:
         working-directory: apps/api
