@@ -3,13 +3,14 @@
 - **Plan:** `docs/superpowers/plans/2026-09-03-request-hygiene-phase-a.md` → `## Task 11: Shared idempotency-key hook (ID-1..ID-4 foundation)`
 - **Worktree:** `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/rh-t11`
 - **Branch:** `lane/rh-t11-idempotency-hook` (based on `dev`, base commit `6f16fd8f7`)
-- **Commit:** `d7cc53d53` — code + test + this handback, path-scoped. (A doc-only follow-up commit fills this line in with the hash, since a commit cannot contain its own hash; the branch tip is that follow-up.)
-- **Result:** all four checks passed (red run red for the stated reason, green run green, typecheck exit 0, eslint exit 0).
+- **Commits:** `d7cc53d53` (initial hook + test + handback) → `a5b4cc443` (hash fill-in) → **`c2c9cf2c7` (gate r1 CHANGES applied — relocation + test additions)**. A doc-only follow-up commits this updated handback, since a commit cannot contain its own hash.
+- **Final paths:** `apps/web/src/hooks/useIdempotencyKey.ts` and `apps/web/src/hooks/__tests__/useIdempotencyKey.test.tsx`. **Consumers must import `@/hooks/useIdempotencyKey`** (not `@/lib/hooks/...`).
+- **Result:** all checks passed, at the original round and again after the gate r1 changes. See the **Gate r1** section at the bottom for the post-change command output.
 
 ## Files
 
-- Create `apps/web/src/lib/hooks/useIdempotencyKey.ts`
-- Create `apps/web/src/lib/hooks/useIdempotencyKey.test.tsx`
+- Create `apps/web/src/hooks/useIdempotencyKey.ts` (originally `src/lib/hooks/`, relocated in gate r1)
+- Create `apps/web/src/hooks/__tests__/useIdempotencyKey.test.tsx` (originally `src/lib/hooks/`, relocated in gate r1)
 
 Nothing else was touched. Task 11's gate-r2/r3 verdict is "Yes — isolated hook with no pre-existing consumer"; this lane adds no consumer (that is Task 12).
 
@@ -95,6 +96,110 @@ No harness adaptation was needed otherwise: `apps/web/vitest.config.ts` sets `gl
 ## For the reviewer
 
 - **`crypto.randomUUID()` availability.** It resolves against the jsdom/Node global in tests (green run proves it) and against the browser global at runtime. `crypto` is used unguarded, matching the plan; the app targets secure contexts only (`crypto.randomUUID` is unavailable on plain-HTTP non-localhost origins). If any deployment surface is served over plain HTTP, this hook will throw there — worth confirming against the staging/production origin scheme before Task 12 wires it into payment surfaces.
-- **`src/lib/hooks/` is a new directory.** `apps/web/src/hooks/` already exists. The plan explicitly specifies `apps/web/src/lib/hooks/useIdempotencyKey.ts`, so I followed the plan rather than the pre-existing directory. Flagging it in case the reviewer prefers consolidation before consumers land.
+- ~~**`src/lib/hooks/` is a new directory.**~~ **RESOLVED in gate r1** — the reviewer ruled for `src/hooks/`, and the flagged risk turned out to be real (see Gate r1 below). This is a deliberate, recorded deviation from the plan's stated path; the plan file itself was not edited.
 - **No i18n surface.** The hook has no user-facing strings, as expected for this task.
 - **No consumer yet.** Nothing imports the hook; Task 12 (PaymentForm / SplitPaymentForm / RecordPaymentModal) is its gate, per the plan's Step 3 ("Gate with Task 12").
+
+---
+
+# Gate r1 — verdict CHANGES, applied in commit `c2c9cf2c7`
+
+All four requested items applied on `lane/rh-t11-idempotency-hook`, one path-scoped commit. The plan file was not touched.
+
+## 1. Relocation
+
+```
+git mv apps/web/src/lib/hooks/useIdempotencyKey.ts      apps/web/src/hooks/useIdempotencyKey.ts
+git mv apps/web/src/lib/hooks/useIdempotencyKey.test.tsx apps/web/src/hooks/__tests__/useIdempotencyKey.test.tsx
+rmdir apps/web/src/lib/hooks
+```
+
+The import in the test became `../useIdempotencyKey`. `apps/web/src/lib/` now contains `hooks.ts` and no `hooks/` directory. Git recorded the implementation as a pure rename — `rename apps/web/src/{lib => }/hooks/useIdempotencyKey.ts (100%)` — so the hook body is byte-identical to the reviewed version.
+
+**The reviewer's stated risk was real, not hypothetical.** `apps/web/src/lib/hooks.ts` is an existing module exporting `useDebouncedValue`, and eight modules import it as `@/lib/hooks`:
+
+```
+src/features/documents/to-bill/ToBillPage.tsx:21
+src/features/treasury/statements/ReconciliationWorkspacePage.tsx:15
+src/components/molecules/pickers/{Bank,Partner,User,Product,Vehicle,Service}Picker.tsx
+```
+
+A `hooks.ts` file and a `hooks/` directory as siblings is exactly the ambiguity worth removing.
+
+## 2. Test additions
+
+`src/hooks/__tests__/useIdempotencyKey.test.tsx` now has three cases: the original retain-until-reset case, `gives every mount its own key` (two independent `renderHook` mounts, keys must differ), and `keeps a stable reset identity across a rerender` (`toBe` on the function reference). The regex is hoisted to a `UUID_V4` const pinned to the v4 shape `/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/` and is also applied to the post-reset key.
+
+**Mutation check** — I did not take the new per-mount test on trust. Temporarily hoisting the UUID to module scope (`const SHARED = crypto.randomUUID()`, `useState(SHARED)`) produced:
+
+```
+   ✓ useIdempotencyKey > keeps one UUID until reset 8ms
+   × useIdempotencyKey > gives every mount its own key 4ms
+     → expected '0199c4cd-…-7eecacc3ac0d' not to be '0199c4cd-…-7eecacc3ac0d' // Object.is equality
+   ✓ useIdempotencyKey > keeps a stable reset identity across a rerender 1ms
+      Tests  1 failed | 2 passed (3)
+```
+
+Exactly the module-scope failure the gate asked for, caught by exactly the intended assertion and no other. The implementation was then restored and re-verified green.
+
+## 3. Verification output
+
+**a. Moved suite** — `cd apps/web && pnpm vitest run src/hooks/__tests__/useIdempotencyKey.test.tsx`
+
+```
+ ✓ src/hooks/__tests__/useIdempotencyKey.test.tsx (3 tests) 23ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Duration  3.63s (transform 770ms, setup 1.65s, collect 357ms, tests 23ms, environment 855ms, prepare 135ms)
+```
+
+**b. Typecheck** — `cd apps/web && pnpm typecheck`
+
+```
+> @autoerp/web@0.1.0 typecheck
+> tsc --noEmit
+TYPECHECK_EXIT=0
+```
+
+Whole-project, zero diagnostics. This is itself a resolution proof: `tsc` resolves `@/lib/hooks` for all eight consumers.
+
+**c. Lint** — `cd apps/web && pnpm eslint src/hooks/useIdempotencyKey.ts src/hooks/__tests__/useIdempotencyKey.test.tsx`
+
+```
+ESLINT_EXIT=0
+```
+
+No output = zero errors, zero warnings.
+
+**d. `@/lib/hooks` still resolves** — `cd apps/web && pnpm vitest run src/features/purchases/quote-requests/QuoteRequestCreatePage.test.tsx`
+
+```
+ ✓ src/features/purchases/quote-requests/QuoteRequestCreatePage.test.tsx (6 tests) 324ms
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+```
+
+**Caveat the reviewer should know:** this suite is a WEAK proof of that specific claim. It mocks the only picker the page imports — `vi.mock('@/components/molecules/pickers/PartnerPicker', …)` at line 35 of the test — so the real `PartnerPicker`, and therefore its `@/lib/hooks` import, is never loaded on this path. It passes, but it would also pass if resolution were broken.
+
+So I added a proof that actually exercises the import:
+
+`cd apps/web && pnpm vitest run src/components/molecules/pickers/PartnerPicker.test.tsx src/components/molecules/pickers/ProductPicker.test.tsx`
+
+```
+ ✓ src/components/molecules/pickers/PartnerPicker.test.tsx (13 tests) 658ms
+   ✓ PartnerPicker > debounces the search and issues a request after the user types  302ms
+ ✓ src/components/molecules/pickers/ProductPicker.test.tsx (17 tests) 1052ms
+
+ Test Files  2 passed (2)
+      Tests  30 passed (30)
+```
+
+These load the real pickers, and the named debounce test exercises `useDebouncedValue` from `@/lib/hooks` end to end. Together with the green whole-project `tsc`, `@/lib/hooks` is proven intact after the directory removal.
+
+## 4. Residual notes for the reviewer
+
+- The `crypto.randomUUID()` secure-context caveat from the original handback still stands and is still unaddressed by this lane.
+- Still no consumer; Task 12 remains the gate. Any consumer must import `@/hooks/useIdempotencyKey`.
+- Final path deviates from the plan text (`apps/web/src/lib/hooks/useIdempotencyKey.ts`) on the reviewer's instruction. The plan file was deliberately left unedited, so it and the tree now disagree on this path — worth a plan erratum if Task 12 is dispatched from the plan text verbatim.
