@@ -16,8 +16,11 @@ use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\Enums\MovementReason;
+use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -25,6 +28,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Uom\Domain\Entities\Unit;
 use App\Modules\Uom\Domain\Entities\UnitCategory;
+use Carbon\CarbonImmutable;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
@@ -396,5 +400,166 @@ class StockMovementTest extends TestCase
 
         // The user holds inventory.adjust but NOT inventory.adjustments.create.
         $response->assertStatus(403);
+    }
+
+    private function ledgerRow(
+        int $index,
+        MovementType $type = MovementType::Receipt,
+        ?MovementReason $reason = null,
+    ): StockMovement {
+        return StockMovement::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'location_id' => $this->warehouse->id,
+            'movement_type' => $type,
+            'reason' => $reason,
+            'quantity' => '1.0000',
+            'quantity_before' => (string) $index.'.0000',
+            'quantity_after' => (string) ($index + 1).'.0000',
+            'reference' => 'CAP-'.$index,
+            'user_id' => $this->user->id,
+            'occurred_at' => now()->addSeconds($index),
+        ]);
+    }
+
+    public function test_index_without_page_is_bounded_to_25(): void
+    {
+        foreach (range(1, 30) as $index) {
+            $this->ledgerRow($index);
+        }
+
+        $response = $this->actingAs($this->user)->getJson('/api/v1/stock-movements');
+        $response->assertOk()
+            ->assertJsonCount(25, 'data')
+            ->assertJsonPath('meta.current_page', 1)
+            ->assertJsonPath('meta.per_page', 25)
+            ->assertJsonPath('meta.total', 30);
+    }
+
+    public function test_transfer_alias_is_server_side_across_pages(): void
+    {
+        foreach (range(1, 26) as $index) {
+            $this->ledgerRow($index, $index % 2 === 0 ? MovementType::TransferIn : MovementType::TransferOut);
+        }
+        $this->ledgerRow(99, MovementType::Receipt);
+
+        $response = $this->actingAs($this->user)
+            ->getJson('/api/v1/stock-movements?movement_type=transfer&page=1&per_page=25');
+
+        $response->assertOk()->assertJsonCount(25, 'data')->assertJsonPath('meta.total', 26);
+    }
+
+    public function test_write_off_alias_is_server_side_across_pages(): void
+    {
+        $reasons = [MovementReason::WriteOff, MovementReason::Expiry, MovementReason::Damage];
+        foreach (range(1, 26) as $index) {
+            $this->ledgerRow($index, MovementType::Issue, $reasons[$index % 3]);
+        }
+        $this->ledgerRow(99, MovementType::Issue, MovementReason::Delivery);
+
+        $response = $this->actingAs($this->user)
+            ->getJson('/api/v1/stock-movements?reason=write_off&page=1&per_page=25');
+
+        $response->assertOk()->assertJsonCount(25, 'data')->assertJsonPath('meta.total', 26);
+    }
+
+    public function test_search_matches_product_name_sku_and_movement_reference(): void
+    {
+        $match = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'SKU-BETA',
+            'name' => 'Alpha Needle',
+            'type' => ProductType::Part,
+            'is_active' => true,
+        ]);
+        $service = app(StockAdjustmentService::class);
+        $service->receive($match->id, $this->warehouse->id, '1.0000', 'REF-GAMMA', $this->user->id);
+        $service->receive($this->product->id, $this->warehouse->id, '1.0000', 'NO-MATCH', $this->user->id);
+
+        foreach (['alpha', 'sku-beta', 'ref-gamma'] as $search) {
+            $response = $this->actingAs($this->user)->getJson(
+                '/api/v1/stock-movements?search='.rawurlencode($search),
+            );
+            $response->assertOk()->assertJsonCount(1, 'data');
+            self::assertSame($match->id, $response->json('data.0.product_id'));
+        }
+    }
+
+    public function test_search_treats_percent_and_underscore_as_literals(): void
+    {
+        $percent = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'LITERAL-PERCENT',
+            'name' => 'Percent%Product',
+            'type' => ProductType::Part,
+            'is_active' => true,
+        ]);
+        $underscore = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'LITERAL_UNDERSCORE',
+            'name' => 'Underscore_Product',
+            'type' => ProductType::Part,
+            'is_active' => true,
+        ]);
+        $service = app(StockAdjustmentService::class);
+        $service->receive($percent->id, $this->warehouse->id, '1.0000', 'LITERAL-PERCENT', $this->user->id);
+        $service->receive($underscore->id, $this->warehouse->id, '1.0000', 'LITERAL-UNDERSCORE', $this->user->id);
+        $service->receive($this->product->id, $this->warehouse->id, '1.0000', 'ORDINARY', $this->user->id);
+
+        $this->actingAs($this->user)
+            ->getJson('/api/v1/stock-movements?search=%25')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.product_id', $percent->id);
+        $this->actingAs($this->user)
+            ->getJson('/api/v1/stock-movements?search=_')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.product_id', $underscore->id);
+    }
+
+    public function test_search_rejects_121_characters(): void
+    {
+        $this->actingAs($this->user)
+            ->getJson('/api/v1/stock-movements?search='.str_repeat('x', 121))
+            ->assertUnprocessable();
+    }
+
+    public function test_tied_created_at_rows_cross_two_pages_without_duplicates_or_omissions(): void
+    {
+        $createdAt = CarbonImmutable::parse('2026-09-03 12:00:00');
+        /** @var list<array{id: string, created_at: string}> $seededRows */
+        $seededRows = [];
+        foreach (range(1, 30) as $index) {
+            $movement = $this->ledgerRow($index);
+            $movement->forceFill(['created_at' => $createdAt, 'updated_at' => $createdAt])->save();
+            $seededRows[] = [
+                'id' => $movement->id,
+                'created_at' => (string) $movement->getRawOriginal('created_at'),
+            ];
+        }
+
+        usort($seededRows, static function (array $left, array $right): int {
+            $createdAtOrder = strcmp($right['created_at'], $left['created_at']);
+
+            return $createdAtOrder !== 0
+                ? $createdAtOrder
+                : strcmp($right['id'], $left['id']);
+        });
+        $expectedIds = array_column($seededRows, 'id');
+
+        $pageOne = $this->actingAs($this->user)
+            ->getJson('/api/v1/stock-movements?page=1&per_page=15')->assertOk()->json('data');
+        $pageTwo = $this->actingAs($this->user)
+            ->getJson('/api/v1/stock-movements?page=2&per_page=15')->assertOk()->json('data');
+        $actualIds = array_column([...$pageOne, ...$pageTwo], 'id');
+
+        self::assertCount(30, $actualIds);
+        self::assertCount(30, array_unique($actualIds));
+        self::assertSame($expectedIds, $actualIds);
     }
 }
