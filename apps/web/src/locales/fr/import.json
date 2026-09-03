@@ -195,6 +195,7 @@
   "unitErrors": {
     "title": "Unités inconnues",
     "line_one": "{{count}} ligne utilise l’unité inconnue « {{unit}} » — mappez-la dans Paramètres → Unités ou corrigez le fichier",
+    "line_many": "{{count}} lignes utilisent l’unité inconnue « {{unit}} » — mappez-la dans Paramètres → Unités ou corrigez le fichier",
     "line_other": "{{count}} lignes utilisent l’unité inconnue « {{unit}} » — mappez-la dans Paramètres → Unités ou corrigez le fichier"
   },
   "options": {

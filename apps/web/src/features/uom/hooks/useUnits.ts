@@ -44,13 +44,15 @@ export function useUnmappedUnitTexts() {
 }
 
 export function useApplyUnitTextMapping() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: (input: ApplyUnitTextMappingInput) => applyUnitTextMapping(input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: tenantScopedKey([...uomKeys.unmappedUnitTexts()]),
+        predicate: uomUnmappedUnitTextsInvalidationPredicate(tenantId, companyId),
       })
     },
   })
@@ -58,14 +60,33 @@ export function useApplyUnitTextMapping() {
 
 /**
  * Predicate factories for tenant-scoped invalidation across the
- * `[uom, units, ...]` and `[uom, categories, ...]` namespaces.
+ * `[uom, units, ...]`, `[uom, categories, ...]` and
+ * `[uom, unmapped-unit-texts, ...]` namespaces.
  *
- * tenantScopedKey() puts t/c at the SUFFIX of leaf keys. A wrapped
- * `tenantScopedKey([...uomKeys.units()])` resolves to `[uom, units, t, c]`
- * which is NOT a prefix of leaf `[uom, units, { categoryId }, t, c]`
- * because position 2 mismatches. Predicate-based invalidation sidesteps
- * the positional issue.
+ * `invalidateQueries({ queryKey })` matches by positional PREFIX, but
+ * `tenantScopedKey()` appends tenant/company as a SUFFIX — wrapping a
+ * filter key in `tenantScopedKey(...)` is a proven no-op for any leaf
+ * key shape with intervening segments (e.g. `{ categoryId }`) and is
+ * flagged by the audit-tanstack-keys gate for every invalidation-style
+ * factory. Predicate-based invalidation sidesteps the positional issue.
  */
+export function uomUnmappedUnitTextsInvalidationPredicate(
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k.length >= 4 &&
+      k[0] === 'uom' &&
+      k[1] === 'unmapped-unit-texts' &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 export function uomUnitsInvalidationPredicate(
   tenantId: string | null,
   companyId: string | null,
