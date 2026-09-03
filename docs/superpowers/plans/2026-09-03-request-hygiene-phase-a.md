@@ -1,6 +1,6 @@
 # Request Hygiene Phase A Implementation Plan
 
-Revision 8 (2026-09-03) — addresses plan gates r1..r7; reconciled with lanes T9/T11 merged on local dev
+Revision 9 (2026-09-03) — addresses plan gates r1..r8; Tasks 9/11 landed; Tasks 2/3/4 dispatch-ready per gate r8
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development or superpowers:executing-plans. Execute each checkbox in order; every task starts red, ends with its named focused checks, and goes through its reviewer gate.
 
@@ -1584,12 +1584,12 @@ public function test_legacy_limit_5000_returns_exactly_100_of_101_documents(): v
 }
 ~~~
 
+- [ ] **Step 4b (rev 8, gate r7 B2): positive HTTP regression for string aggregate keys.** Record two events for `aggregate_type=Document`, `aggregate_id=doc-123` via `AuditService` (as `AuditTrailTest.php:199` does), then `GET /api/v1/audit/events?aggregate_type=Document&aggregate_id=doc-123` and assert both rows come back with `meta.total === 2`. Keep the UUID-keyed cross-tenant test separately. This test is red if `aggregate_id` is narrowed to `uuid` (422) and green with `string|max:100`.
+
 - [ ] **Step 6: Verify by path and gate.** Run `cd apps/api && ./vendor/bin/phpunit tests/Feature/Compliance/AuditTrailTest.php tests/Feature/Compliance/ComplianceCrossTenantHardeningTest.php tests/Feature/Document/ListDocumentsTest.php`; expand every other existing Compliance feature file from `rg --files tests/Feature/Compliance | sort` into explicit file paths rather than invoking the whole backend suite. Run PHPStan on the request, audit controller/service, document controller, and all three validation locale files. The four half-pair tests must each fail red before the rules change, then return `VALIDATION_ERROR` at the exact counterpart path; the existing aggregate/range/company-scope tests must remain green after validation to prove controller branch selection. The English max-span assertion proves translation resolution and `:max` substitution; review fr/ar keys during locale QA. Run the Dashboard document-list tests by path, then use the live onboarding campaign to exercise its `limit=100` request at `onboarding.campaign.ts:293` and browser-check Dashboard’s `limit=5` request at `Dashboard.tsx:140`; both must remain within the 1..100 clamp. Gate: general Opus; add fiscal-pos-reviewer only if audit-chain behavior changes.
 
 ---
 
-
-- [ ] **Step 4b (rev 8, gate r7 B2): positive HTTP regression for string aggregate keys.** Record two events for `aggregate_type=Document`, `aggregate_id=doc-123` via `AuditService` (as `AuditTrailTest.php:199` does), then `GET /api/v1/audit/events?aggregate_type=Document&aggregate_id=doc-123` and assert both rows come back with `meta.total === 2`. Keep the UUID-keyed cross-tenant test separately. This test is red if `aggregate_id` is narrowed to `uuid` (422) and green with `string|max:100`.
 
 ## Task 5: Debounce LineItemEntryBar product search (S-4)
 
@@ -1995,7 +1995,7 @@ useEffect(() => {
 
 **Implementation status (superseded by the rev 8 banner above):** Task 9 through Revision 6 was implemented on `lane/rh-t9-cache-store` at commit `489d9fbc6`; the websocket follow-up landed as `9381de4d5`; both are merged on local dev as `097e17a59`. Execute the Revision 7 WebSocket coverage and the four-role consistency changes below as a follow-up commit on that same lane; do not restart or re-run Task 9 as a fresh lane.
 
-- [ ] **Step 1: Add the executable command tests.**
+- [x] **Step (LANDED, history only) 1: Add the executable command tests.**
 
 ~~~php
 <?php
@@ -2056,7 +2056,7 @@ final class VerifyCacheStoreCommandTest extends TestCase
 }
 ~~~
 
-- [ ] **Step 2: Implement VerifyCacheStoreCommand with the exact imports and body.**
+- [x] **Step (LANDED, history only) 2: Implement VerifyCacheStoreCommand with the exact imports and body.**
 
 ~~~php
 <?php
@@ -2094,8 +2094,8 @@ final class VerifyCacheStoreCommand extends Command
     }
 }
 ~~~
-- [ ] **Step 3: Run the isolated config test red, then change `config/cache.php` default fallback from `database` to `redis`.** `phpunit.xml` pins `CACHE_STORE=array`, so ordinary booted config assertions cannot prove this change; the direct `require` above removes/restores the process, `$_ENV`, and `$_SERVER` values around the assertion. `ArrayStore` supports tags, so the capability test remains valid.
-- [ ] **Step 4: Pin the infrastructure-free artisan CI job explicitly.** In `.github/workflows/ci.yml`, give the `types-drift` job—which intentionally has no Redis or database—this job-level environment before `defaults`. Its `php artisan typescript:transform` invocation must never inherit the new Redis fallback:
+- [x] **Step (LANDED, history only) 3: Run the isolated config test red, then change `config/cache.php` default fallback from `database` to `redis`.** `phpunit.xml` pins `CACHE_STORE=array`, so ordinary booted config assertions cannot prove this change; the direct `require` above removes/restores the process, `$_ENV`, and `$_SERVER` values around the assertion. `ArrayStore` supports tags, so the capability test remains valid.
+- [x] **Step (LANDED, history only) 4: Pin the infrastructure-free artisan CI job explicitly.** In `.github/workflows/ci.yml`, give the `types-drift` job—which intentionally has no Redis or database—this job-level environment before `defaults`. Its `php artisan typescript:transform` invocation must never inherit the new Redis fallback:
 
 ~~~yaml
   types-drift:
@@ -2108,7 +2108,7 @@ final class VerifyCacheStoreCommand extends Command
         working-directory: apps/api
 ~~~
 
-- [ ] **Step 5: Create one fail-closed helper and source it after a fatal `config:cache` in every runtime entrypoint.** Create `apps/api/docker/verify-cache-store.sh` with the exact body below. It checks store capability only; it does not prove Redis connectivity.
+- [x] **Step (LANDED, history only) 5: Create one fail-closed helper and source it after a fatal `config:cache` in every runtime entrypoint.** Create `apps/api/docker/verify-cache-store.sh` with the exact body below. It checks store capability only; it does not prove Redis connectivity.
 
 ~~~bash
 #!/bin/sh
@@ -2143,7 +2143,7 @@ fi
 
 No role may treat either `config:cache` or this helper as `|| true`; `exit 1` is the permanent fail-closed boot behavior. In `entrypoint-websocket.sh`, this block replaces the tolerated command currently near line 28 and runs after the Redis TCP wait but before `reverb:start`.
 
-- [ ] **Step 6: Exercise the real validation-only branch for all four roles.** Run this shell harness from the repository. The first loop proves every role exits non-zero with the forbidden database store; the second proves the same entrypoint path reaches a taggable infrastructure-free store. The trap removes the generated config cache even on failure.
+- [x] **Step (LANDED, history only) 6: Exercise the real validation-only branch for all four roles.** Run this shell harness from the repository. The first loop proves every role exits non-zero with the forbidden database store; the second proves the same entrypoint path reaches a taggable infrastructure-free store. The trap removes the generated config cache even on failure.
 
 ~~~bash
 cd apps/api
@@ -2199,7 +2199,7 @@ sh -n docker/verify-cache-store.sh
 
 Expected: all four `CACHE_STORE=database` commands reach `cache:verify-store` and exit non-zero; all four `CACHE_STORE=array` commands exit zero; every `sh -n` exits zero.
 
-- [ ] **Step 7: Verify by path and enforce the environment gate.** Run `cd apps/api && ./vendor/bin/phpunit tests/Unit/Console/VerifyCacheStoreCommandTest.php` and PHPStan on `app/Console/Commands/VerifyCacheStoreCommand.php`; run the Step 6 shell harness and inspect the `types-drift` job YAML. Promotion is forbidden until **each environment independently**—web, worker, scheduler, WebSocket, and CLI—shows `CACHE_STORE=redis`, boots `cache:verify-store` successfully, and completes a real Redis write/read/delete probe from that environment. The WebSocket probe must run inside the dedicated Reverb container rather than borrowing evidence from the web/bundled role. Evidence from one environment cannot stand in for another. The command proves tag capability, not network reachability. Gate: general Opus.
+- [x] **Step (LANDED, history only) 7: Verify by path and enforce the environment gate.** Run `cd apps/api && ./vendor/bin/phpunit tests/Unit/Console/VerifyCacheStoreCommandTest.php` and PHPStan on `app/Console/Commands/VerifyCacheStoreCommand.php`; run the Step 6 shell harness and inspect the `types-drift` job YAML. Promotion is forbidden until **each environment independently**—web, worker, scheduler, WebSocket, and CLI—shows `CACHE_STORE=redis`, boots `cache:verify-store` successfully, and completes a real Redis write/read/delete probe from that environment. The WebSocket probe must run inside the dedicated Reverb container rather than borrowing evidence from the web/bundled role. Evidence from one environment cannot stand in for another. The command proves tag capability, not network reachability. Gate: general Opus.
 
 ---
 
@@ -2374,7 +2374,7 @@ Model::preventLazyLoading(! $this->app->isProduction());
 - Created (landed in T11): apps/web/src/hooks/useIdempotencyKey.ts
 - Created (landed in T11): apps/web/src/hooks/__tests__/useIdempotencyKey.test.tsx
 
-- [ ] **Step 1: Add the module-not-found red test.**
+- [x] **Step (LANDED, history only) 1: Add the module-not-found red test.**
 
 ~~~tsx
 import { act, renderHook } from '@testing-library/react'
@@ -2392,7 +2392,7 @@ it('keeps one UUID until reset', () => {
 })
 ~~~
 
-- [ ] **Step 2: Implement the stable API.**
+- [x] **Step (LANDED, history only) 2: Implement the stable API.**
 
 ~~~ts
 import { useCallback, useState } from 'react'
@@ -2404,7 +2404,7 @@ export function useIdempotencyKey(): { key: string; reset: () => void } {
 }
 ~~~
 
-- [ ] **Step 3: Verify by path.** Run `apps/web/src/hooks/__tests__/useIdempotencyKey.test.tsx` by path and typecheck. The key deliberately survives failed submits; only consumers call reset after success. Gate with Task 12.
+- [x] **Step (LANDED, history only) 3: Verify by path.** Run `apps/web/src/hooks/__tests__/useIdempotencyKey.test.tsx` by path and typecheck. The key deliberately survives failed submits; only consumers call reset after success. Gate with Task 12.
 
 ---
 
@@ -2554,6 +2554,8 @@ async function fillTwoSplits(amounts: readonly [string, string]) {
   }
 }
 
+// Rev 9: SplitPaymentForm's remaining-amount element must carry data-testid="split-payment-remaining"
+// (add it in the implementation step if absent) and must render via the string formatter, never String(number).
 it('accepts 0.100 plus 0.200 against the exact decimal-string total 0.300', async () => {
   renderForm({ totalAmount: '0.300' })
   await fillTwoSplits(['0.100', '0.200'])
@@ -2568,6 +2570,11 @@ it('accepts 0.100 plus 0.200 against the exact decimal-string total 0.300', asyn
     ],
     idempotency_key: expect.stringMatching(/^[0-9a-f-]{36}$/),
   })
+  // Rev 9 (gate r8 B1): the POST alone also passes under the OLD float path
+  // (0.1+0.2 error ≈ 5.55e-17 sits inside its 0.01 tolerance). The falsifier is
+  // the rendered remaining amount: the bcmath path renders exactly "0.000",
+  // the float path renders the IEEE-754 residue.
+  expect(screen.getByTestId('split-payment-remaining')).toHaveTextContent('0.000')
 })
 
 it('rejects a three-decimal split total that is short by 0.001', async () => {
@@ -2912,6 +2919,13 @@ final class StockTransferIdempotencyCollisionPostgresTest extends TestCase
         if (DB::getDriverName() !== 'pgsql') {
             $this->markTestSkipped('The real unique-collision harness is PostgreSQL-only.');
         }
+
+        // Rev 9 (gate r8 B2): the reserved per-session database is EMPTY on first use and
+        // this class deliberately avoids RefreshDatabase. Bootstrap the schema exactly as
+        // tests/Feature/Tenant/TenantStanclFlipTest.php does in its setUp() (schema check on
+        // the central connection + migrate --force when `tenants` is missing) BEFORE any
+        // fixture is created. Copy that bootstrap verbatim; do not invent a new one.
+        $this->ensureCentralSchemaMigrated();
 
         $suffix = Str::lower(Str::random(10));
         $this->tenant = Tenant::create([
@@ -3310,7 +3324,7 @@ beforeEach(() => {
 })
 ~~~
 
-- [ ] **Step 6: Verify the PG collision, replenishment consumer, and all named paths, then gate.** Run both top-level and nested-transaction collision methods together and serially with `DB_DATABASE=autoerp_test_<letter> DB_CENTRAL_DATABASE=autoerp_test_<letter> php artisan test -c phpunit-pgsql.xml tests/Feature/Inventory/StockTransferIdempotencyCollisionPostgresTest.php`. `ReplenishmentFulfillmentService.php:102` calls the refactored `StockTransferService::initiate()` inside its grouped fulfillment transaction, so run its coverage explicitly. Backend paths: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Inventory/InventoryTransferServiceTest.php tests/Feature/Inventory/StockTransferAutoAllocateFefoTest.php tests/Feature/Inventory/StockTransferLocationAccessRuleTest.php tests/Feature/Inventory/StockTransferLocationScopeTest.php tests/Feature/Inventory/StockTransferRestrictedMembershipTest.php tests/Feature/Inventory/StockTransferShowBatchAllocationsTest.php tests/Feature/Inventory/StockTransferVariantTest.php tests/Feature/Replenishment/ReplenishmentActionsTest.php`; run PHPStan on the service, new PG test, and replenishment service. Frontend paths: `apps/web/src/features/stock-transfers/__tests__/CreateStockTransferPage.lineEntry.test.tsx`, `apps/web/src/features/stock-adjustments/__tests__/CreateStockAdjustmentPage.test.tsx`, and `apps/web/src/features/stock-transfers/__tests__/queries.test.tsx`; then typecheck and lint. Browser double-click both forms. Gate: inventory-costing-reviewer plus frontend-conventions-reviewer.
+- [ ] **Step 6: Verify the PG collision, replenishment consumer, and all named paths, then gate.** First-use of the reserved database: `createdb autoerp_test_<letter>` (if missing) and rely on the class's `ensureCentralSchemaMigrated()` bootstrap (copied from `TenantStanclFlipTest`) — the command below must be self-contained on an empty database. Run both top-level and nested-transaction collision methods together and serially with `DB_DATABASE=autoerp_test_<letter> DB_CENTRAL_DATABASE=autoerp_test_<letter> php artisan test -c phpunit-pgsql.xml tests/Feature/Inventory/StockTransferIdempotencyCollisionPostgresTest.php`. `ReplenishmentFulfillmentService.php:102` calls the refactored `StockTransferService::initiate()` inside its grouped fulfillment transaction, so run its coverage explicitly. Backend paths: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Inventory/InventoryTransferServiceTest.php tests/Feature/Inventory/StockTransferAutoAllocateFefoTest.php tests/Feature/Inventory/StockTransferLocationAccessRuleTest.php tests/Feature/Inventory/StockTransferLocationScopeTest.php tests/Feature/Inventory/StockTransferRestrictedMembershipTest.php tests/Feature/Inventory/StockTransferShowBatchAllocationsTest.php tests/Feature/Inventory/StockTransferVariantTest.php tests/Feature/Replenishment/ReplenishmentActionsTest.php`; run PHPStan on the service, new PG test, and replenishment service. Frontend paths: `apps/web/src/features/stock-transfers/__tests__/CreateStockTransferPage.lineEntry.test.tsx`, `apps/web/src/features/stock-adjustments/__tests__/CreateStockAdjustmentPage.test.tsx`, and `apps/web/src/features/stock-transfers/__tests__/queries.test.tsx`; then typecheck and lint. Browser double-click both forms. Gate: inventory-costing-reviewer plus frontend-conventions-reviewer.
 
 ---
 
@@ -3772,3 +3786,13 @@ Do not replace tailRef on reset: new work must still queue behind the physical i
 | NB Task 9 live state | Banner records the merge `097e17a59`, the four-entrypoint guard, and the ruling that `config:cache` stays non-fatal; the "make config:cache fatal" instructions are marked superseded; backlog item for `2>/dev/null`. |
 | NB Task 14 in-flight debounce | Carried as an optional regression in Task 14's verification (one queued latest snapshot) — not required for merge. |
 | NB Task 6 sibling suites | Task 6 verification must also run `DocumentLineEditor.purchasePriceDefault.test.tsx` and the component tenant-scope suite. |
+
+## Gate r8 disposition
+
+| Finding | What changed in revision 9 |
+|---|---|
+| B1 Task 12 positive decimal test passes under the float path | Test now also asserts the rendered remaining amount is exactly `"0.000"` via `data-testid="split-payment-remaining"` (float path renders the residue); implementation step adds the testid and renders via the string formatter. |
+| B2 Task 13 PG harness not self-contained on a fresh reserved DB | `setUp()` calls `ensureCentralSchemaMigrated()` copied from `TenantStanclFlipTest` before any fixture; Step 6 states the empty-database precondition. |
+| NB Task 9/11 unchecked steps | All steps in Tasks 9 and 11 are now `[x] (LANDED, history only)`; banners remain the executable truth. |
+| NB Step 4b placement | Moved before Task 4 Step 6 so the verification runs it. |
+| NB stale migration filename | The `2025_12_15_100000` name appears only in gate r7's own report; the plan cites `create_audit_events_table.php:19` by basename. |
