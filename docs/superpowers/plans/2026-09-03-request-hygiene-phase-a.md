@@ -1,6 +1,6 @@
 # Request Hygiene Phase A Implementation Plan
 
-Revision 6 (2026-09-03) — addresses plan gates r1..r5
+Revision 8 (2026-09-03) — addresses plan gates r1..r7; reconciled with lanes T9/T11 merged on local dev
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development or superpowers:executing-plans. Execute each checkbox in order; every task starts red, ends with its named focused checks, and goes through its reviewer gate.
 
@@ -22,36 +22,36 @@ Revision 6 (2026-09-03) — addresses plan gates r1..r5
 - [ ] Rebase a lane before review, path-scope its commit, merge only after the named reviewer returns MERGE, and never promote on a manual test day.
 - [ ] Phase A adds no migrations. Task 13 relies on the existing stock_transfers_idempotency_unique constraint.
 
-### Onboarding safety after gate r1..r5 mitigations
+### Onboarding safety after gate r1..r6 mitigations
 
-| Task | Gate r2 verdict | Revision 3 verdict and carried mitigation |
+| Task | Gate r2 verdict | Revision 7 verdict and carried mitigation |
 |---|---|---|
 | 1 | Conditional | Yes after this task, for the production topology only. Production sets `TENANCY_DB_PER_TENANT=true`; staging topology and its tenant-database count remain deployment-preflight facts that must be confirmed before promotion. Resolver-driven PG tests use two real provisioned tenant databases for HTTP and queued-worker lifecycles. Single-schema compatibility deliberately retains the shared base key because all tenants share one permissions table there. |
 | 2 | No as written | Yes after this task. Dedicated request validation, portable `ESCAPE '!'` search, deterministic ordering, a PHP-computed `created_at DESC, id DESC` expected sequence asserted exactly across pages on both drivers, one parse-valid `mockReturn` declaration retaining both movement rows and all six meta fields, current query-key fixtures, and an executable W4 last-page assertion remove the gate gaps. |
-| 3 | No as written | Yes after this task. Dedicated request validation, deterministic ordering and tied-page coverage accompany the required list pagination, exact keys, six-field fixtures, and complete page iteration. |
+| 3 | No as written | Yes after this task. Dedicated request validation, deterministic ordering and tied-page coverage accompany the required list pagination, exact keys, six-field unit and older Playwright payment fixtures, a rendered pagination assertion, and complete W5c page iteration. W8 `per_page=100` reads remain bounded campaign fixtures, not whole-set helpers. |
 | 4 | Conditional | Conditional. Coordinate with document lanes; update every payload contract, reject each half-specified aggregate/date pair under the global `VALIDATION_ERROR` envelope, retain aggregate/range ascending order for complete validated pairs, localize the max-span error in en/fr/ar, prove the default-50 audit cap and page-2 traversal, reject `per_page=101`, and prove the legacy limit clamps 0/-5/5000 into 1..100. |
 | 5 | Conditional | Conditional. Run the LineItemEntryBar suite and browser-check counting, transfer, replenishment, and document consumers before promotion. |
 | 6 | No alongside PO lane | **WAIT.** Start only after the wave-2 PO lane merges; rebase, run the shared DocumentLineEditor suite, and browser-check PO plus credit-note pricing. |
 | 7 | Conditional | Conditional. Phase A only partially closes S-6 by deduplicating the two component consumers for the same product/variant. The shared hook subscribes to and gates on tenant/company stores itself, the key remains rooted at stock-levels, and feature tests count only stock-level URLs; one request per distinct product remains until B-8. |
 | 8 | No | Yes after this task. Reconnect invalidates all active queries with only a tested 30-second cooldown; CompanySelector global invalidation is intentionally unchanged. |
-| 9 | Conditional | Conditional. An isolated config require proves the unset fallback is redis; all three runtime entrypoints fail closed after `config:cache`, their check-only branches prove `database` exits non-zero, and the infrastructure-free type-drift job pins `CACHE_STORE=array`. Promotion is still forbidden until each web, worker, scheduler, and CLI environment independently proves a reachable taggable Redis store because the command proves capability, not connectivity. |
+| 9 | Conditional | Conditional. An isolated config require proves the unset fallback is redis; all four runtime entrypoints (web/bundled, worker, scheduler, and WebSocket) make `config:cache` fatal, fail closed through the helper, and prove through check-only branches that `database` exits non-zero; the infrastructure-free type-drift job pins `CACHE_STORE=array`. Revision 6 is already implemented at `489d9fbc6`, so WebSocket coverage lands as a same-lane follow-up. Promotion remains forbidden until web, worker, scheduler, WebSocket, and CLI independently prove a reachable taggable Redis store because the command proves capability, not connectivity. |
 | 10 | Conditional | Conditional. Production remains unchanged; a red handler test proves log-and-continue, distinct movement timestamps plus proportional linked-document fixtures prove flat queries, all four identified exact-log tests run locally, and the lane cannot merge until the CI-only full backend suite is green. |
 | 11 | Yes | Yes. It is an isolated hook with no pre-existing consumer. |
 | 12 | No as written | Yes after this task. PaymentForm, SplitPaymentForm, and active RecordPaymentModal use the same key/ref-lock contract; `SplitPaymentFormProps.totalAmount` and deprecated `SplitPaymentModalProps.totalAmount` are decimal strings at every local caller, SplitPaymentForm passes the required-total string directly to `bcsub`/`bccomp` while `bcadd` sums split strings, and the real harness proves exact `"0.100" + "0.200" = "0.300"` acceptance plus a one-millime rejection. Consumed `@ts-expect-error` directives lock out numeric props; tests submit twice inside one act boundary, and PaymentForm exposes pending in both disabled and loading state. |
-| 13 | Conditional | Conditional. A real PostgreSQL two-connection collision test proves the pre-check miss, one colliding insert, clean post-rollback reread at transaction level 0 and after savepoint rollback at level 1, and winner replay; both non-idempotency rethrow cases remain. |
+| 13 | Conditional | Conditional. A real PostgreSQL two-connection test omits the transfer number and makes the winner use the exact same generated number and idempotency key, forcing the loser to collide on both unique indexes at transaction levels 0 and 1. After rollback, any unique violation with a non-null key triggers the scoped reread; a winner is replayed, while no-key and different-index/no-row cases rethrow the original. Different-key `COUNT()+1` races remain S-19 debt in Phase B-4. |
 | 14 | No | Yes after this task. The promise tail strictly serializes N callers, always chains from a swallowed predecessor rejection, survives a throwing `onError`, covers StrictMode replay, and still coalesces rapid data changes into one debounced request. |
 
 ---
 
 ## Phase 0: Pre-flight (orchestrator, 10 minutes)
 
-- [ ] Record this revision as the response to docs/superpowers/reviews/2026-09-03-request-hygiene-phase-a-plan-gate-r1.md, r2.md, r3.md, r4.md, and r5.md.
+- [ ] Record this revision as the response to docs/superpowers/reviews/2026-09-03-request-hygiene-phase-a-plan-gate-r1.md, r2.md, r3.md, r4.md, r5.md, and r6.md.
 - [ ] Confirm no manual test day overlaps the promotion window.
 - [ ] Run git worktree list and git status in every live lane; record ownership of the protected files.
 - [ ] Confirm Task 6 remains WAIT until the wave-2 PO lane is merged.
 - [ ] Confirm the production fact used by Task 1: `.env.example` line 56 sets `TENANCY_DB_PER_TENANT=true`. The staging topology and staging tenant-DB count are **to be confirmed in the deployment preflight**: enumerate every active staging tenant, prove each expected physical database exists and is migrated, and block Task 1 promotion if staging is not database-per-tenant or any tenant database is absent. Task 1 does not change compatibility-mode cache semantics.
 - [ ] Reserve a private PostgreSQL database matching `autoerp_test_<letter>` for Tasks 1, 2, 3, and 13; set both `DB_DATABASE` and `DB_CENTRAL_DATABASE`, run PG legs serially, and never use a shared default database.
-- [ ] Confirm each web, worker, scheduler, and CLI environment explicitly sets `CACHE_STORE=redis` and reaches Redis before Task 9 can promote.
+- [ ] Confirm each web, worker, scheduler, WebSocket, and CLI environment explicitly sets `CACHE_STORE=redis` and reaches Redis before Task 9 can promote; land the WebSocket entrypoint correction as a follow-up commit on `lane/rh-t9-cache-store` after existing commit `489d9fbc6`, not as a Task 9 re-run.
 - [ ] Reserve the Task 10 lane’s CI-only full-backend-suite leg; never substitute a laptop run, and do not merge that lane without the green CI result.
 - [ ] Inventory external POS/mobile consumers before promoting Tasks 2 or 3. None are present in this checkout, so obtain each external owner’s contract-test evidence for mandatory pagination and stable traversal, or block that consumer’s rollout until it is upgraded; repository tests cannot substitute for absent client code.
 
@@ -138,7 +138,7 @@ protected function provisionTenantDatabaseWithSchema(Tenant $tenant): Tenant
 
 The Task 1 test must not use `RefreshDatabase`: PostgreSQL forbids `CREATE DATABASE` inside the transaction it opens. Follow the existing `TenantStanclFlipTest`/`TreasuryAlertRecipientsTest` pattern: ensure central migrations exist in `setUp()`, create unique tenant slugs, track central tenant rows, and let the helper drop physical databases during application teardown.
 
-- [ ] **Step 2: Add the two real resolver/worker tests.** Use the installed PHPUnit PG marker, `#[Group('pg')]`, on both methods. The compatibility assertion, the two provisioned HTTP-context transitions, and both queue jobs all go through `TenancyResolver::initializeIfProvisioned()`; never call `tenancy()->initialize()` in this test.
+- [ ] **Step 2: Add the two real resolver/worker tests.** Use the installed PHPUnit PG marker, `#[Group('pg')]`, on both methods. The compatibility assertion and the two provisioned HTTP-context transitions go through `TenancyResolver::initializeIfProvisioned()`; the two queue jobs are initialized by Stancl's `QueueTenancyBootstrapper` (which calls `tenancy()->initialize()` directly, `QueueTenancyBootstrapper.php:82`, and fires the same `TenancyInitialized`/`TenancyEnded` events); never call `tenancy()->initialize()` in this test.
 
 ~~~php
 <?php
@@ -707,7 +707,16 @@ $sourceDocumentsById = Document::query()
 
 Pass `$sourceDocumentsById` into every `formatMovement()` call. Change its signature to `private function formatMovement(StockMovement $movement, Collection $sourceDocumentsById): array`, resolve the document with `$sourceDocumentsById->get($movement->reference_id)` only for the two accepted document reference types, and delete `resolveSourceDocument()`. Return the existing six-field meta object: `current_page`, `last_page`, `per_page`, `total`, `from`, and `to`.
 
-- [ ] **Step 5: Adapt the existing mocked-useQuery page harness instead of inventing a wrapper.** Add `waitFor`/`fireEvent`/`beforeEach`, hoist `apiGetMock` and `queryCapture`, preserve the real API exports, and make `useQuery` capture options while returning `mockReturn`.
+- [ ] **Step 5: Adapt the existing mocked-useQuery page harness instead of inventing a wrapper.** Add `waitFor`/`fireEvent`/`beforeEach`, hoist `apiGetMock` and `queryCapture`, preserve the real API exports, and make `useQuery` capture options while returning `mockReturn`. **Rev 8 (gate r7 B3): the imported `beforeEach` MUST be used** — `tsconfig.json:28` has `noUnusedLocals`, so an unused import fails `pnpm typecheck`. Immediately after the hoisted `apiGetMock`/`queryCapture` declarations add:
+
+~~~tsx
+beforeEach(() => {
+  apiGetMock.mockReset()
+  queryCapture.current = null
+})
+~~~
+
+This also removes test-order leakage of the shared hoisted mock state.
 
 ~~~tsx
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
@@ -892,6 +901,7 @@ If a W4 scenario legitimately grows past 100 matching rows, replace this asserti
 - Modify: apps/web/src/features/treasury/PaymentListPage.test.tsx
 - Modify: apps/web/src/features/treasury/__tests__/TreasuryTenantScope.test.tsx
 - Modify: apps/web/src/features/dashboard/Dashboard.tsx
+- Modify: apps/web/e2e/payments.spec.ts
 - Modify: apps/web/e2e/money-campaign/w5c-support.ts
 - Modify: apps/web/e2e/money-campaign/expenses-lifecycle.spec.ts
 - Verify existing search consumer: apps/api/tests/Feature/Treasury/TreasuryCompanyIsolationTest.php:415
@@ -1108,7 +1118,34 @@ expect(apiGet).toHaveBeenCalledWith('/payments?search=Alice&page=1&per_page=25')
 expect(screen.getByText('pagination.page 1 pagination.of 1')).toBeInTheDocument()
 ~~~
 
-- [ ] **Step 7: Update both existing list-contract fixtures.** In `apps/web/src/features/treasury/PaymentListPage.test.tsx`, replace the optional `{ total: number }` meta type and line-53 fixture with the required six fields: `{ current_page: 1, last_page: 1, per_page: 25, total: 2, from: 1, to: 2 }`. In `apps/web/src/features/treasury/__tests__/TreasuryTenantScope.test.tsx`, update the line-181 comment and assertion to `['payments', '', 1, 25, 'tenant-A', 'company-1']`.
+- [ ] **Step 7: Update the existing list-contract fixtures and every older Playwright payment-list meta mock.** In `apps/web/src/features/treasury/PaymentListPage.test.tsx`, replace the optional `{ total: number }` meta type and line-53 fixture with the required six fields: `{ current_page: 1, last_page: 1, per_page: 25, total: 2, from: 1, to: 2 }`. In `apps/web/src/features/treasury/__tests__/TreasuryTenantScope.test.tsx`, update the line-181 comment and assertion to `['payments', '', 1, 25, 'tenant-A', 'company-1']`. In `apps/web/e2e/payments.spec.ts`, define these complete fixtures after the import and use them in all four `/api/v1/payments` GET responses that currently inline only `meta: { total: ... }` (the populated list, empty list, navigation setup, and the GET arm of the record-payment route):
+
+~~~ts
+const populatedPaymentsMeta = {
+  current_page: 1,
+  last_page: 1,
+  per_page: 25,
+  total: 1,
+  from: 1,
+  to: 1,
+}
+
+const emptyPaymentsMeta = {
+  current_page: 1,
+  last_page: 1,
+  per_page: 25,
+  total: 0,
+  from: null,
+  to: null,
+}
+~~~
+
+The populated response uses `meta: populatedPaymentsMeta`; each empty response uses `meta: emptyPaymentsMeta`. In `should display payment list`, retain all row assertions and add the rendered pagination regression:
+
+~~~ts
+await expect(page.getByText(/Page 1 of 1/i)).toBeVisible()
+~~~
+
 - [ ] **Step 8: Make `allPaymentIds()` actually read all pages.** Replace the single call in `apps/web/e2e/money-campaign/w5c-support.ts` with this direct raw-response loop; `get()` cannot be used because `asJsonResult()` deliberately unwraps `data` and discards sibling `meta`.
 
 ~~~ts
@@ -1141,7 +1178,7 @@ export async function allPaymentIds(
 ~~~
 
 - [ ] **Step 9: Remove the stale consumer comment and fix Dashboard.** Delete the obsolete comment at `apps/web/e2e/money-campaign/expenses-lifecycle.spec.ts:245` claiming payment IDs intentionally omit page parameters; `allPaymentIds()` now proves complete pagination. Replace Dashboard’s `/payments?limit=5&sort=-created_at` with `/payments?page=1&per_page=5`; the controller’s mandatory `payment_date DESC, id DESC` order supplies newest first.
-- [ ] **Step 10: Verify by path and gate.** Run `PaymentTest.php`, `PaymentCompanyScopeTest.php`, and `TreasuryCompanyIsolationTest.php` on both SQLite and PostgreSQL with the commands from Step 3; the three search calls around `TreasuryCompanyIsolationTest.php:415` must remain bounded page-one reads with metadata. Frontend: run `apps/web/src/features/treasury/PaymentListPage.search.test.tsx`, `apps/web/src/features/treasury/PaymentListPage.test.tsx`, `apps/web/src/features/treasury/__tests__/TreasuryTenantScope.test.tsx`, `apps/web/src/features/dashboard/dashboard.test.tsx`, and `apps/web/src/features/dashboard/__tests__/Dashboard.tenantScope.test.tsx` by path, then typecheck and lint. With the live W5c stack, run `apps/web/e2e/money-campaign/expenses-lifecycle.spec.ts` and `apps/web/e2e/money-campaign/w8-isolation.spec.ts` by path. `PartnerDetailPage.tsx` already sends page/per_page and remains unchanged. Browser-check the five-row dashboard and payment list page 2. Gate: treasury-reviewer plus frontend-conventions-reviewer.
+- [ ] **Step 10: Verify by path and gate.** Run `PaymentTest.php`, `PaymentCompanyScopeTest.php`, and `TreasuryCompanyIsolationTest.php` on both SQLite and PostgreSQL with the commands from Step 3; the three search calls around `TreasuryCompanyIsolationTest.php:415` must remain bounded page-one reads with metadata. Frontend: run `apps/web/src/features/treasury/PaymentListPage.search.test.tsx`, `apps/web/src/features/treasury/PaymentListPage.test.tsx`, `apps/web/src/features/treasury/__tests__/TreasuryTenantScope.test.tsx`, `apps/web/src/features/dashboard/dashboard.test.tsx`, and `apps/web/src/features/dashboard/__tests__/Dashboard.tenantScope.test.tsx` by path, then typecheck and lint. With the live W5c stack, run `apps/web/e2e/payments.spec.ts`, `apps/web/e2e/money-campaign/expenses-lifecycle.spec.ts`, and `apps/web/e2e/money-campaign/w8-isolation.spec.ts` by path. The W8 `per_page=100` calls are intentionally bounded campaign fixtures whose seeded cardinality stays below 100; they are not whole-set helpers and must not be reused where completeness across arbitrary result sizes is required. `PartnerDetailPage.tsx` already sends page/per_page and remains unchanged. Browser-check the five-row dashboard and payment list page 2. Gate: treasury-reviewer plus frontend-conventions-reviewer.
 
 ---
 
@@ -1192,7 +1229,7 @@ final class ListAuditEventsRequest extends FormRequest
         return [
             'event_type' => ['sometimes', 'string', 'max:120'],
             'aggregate_type' => ['required_with:aggregate_id', 'string', 'max:120'],
-            'aggregate_id' => ['required_with:aggregate_type', 'uuid'],
+            'aggregate_id' => ['required_with:aggregate_type', 'string', 'max:100'], // storage contract is a 100-char string (create_audit_events_table.php:19); domain keys such as `doc-123` must stay valid
             'from' => ['required_with:to', 'date_format:Y-m-d'],
             'to' => ['required_with:from', 'date_format:Y-m-d', 'after_or_equal:from'],
             'page' => ['sometimes', 'integer', 'min:1'],
@@ -1551,6 +1588,9 @@ public function test_legacy_limit_5000_returns_exactly_100_of_101_documents(): v
 
 ---
 
+
+- [ ] **Step 4b (rev 8, gate r7 B2): positive HTTP regression for string aggregate keys.** Record two events for `aggregate_type=Document`, `aggregate_id=doc-123` via `AuditService` (as `AuditTrailTest.php:199` does), then `GET /api/v1/audit/events?aggregate_type=Document&aggregate_id=doc-123` and assert both rows come back with `meta.total === 2`. Keep the UUID-keyed cross-tenant test separately. This test is red if `aggregate_id` is narrowed to `uuid` (422) and green with `string|max:100`.
+
 ## Task 5: Debounce LineItemEntryBar product search (S-4)
 
 **Files**
@@ -1699,6 +1739,8 @@ placeholderData: keepPreviousData,
 - [ ] **Step 4: Verify by path and gate.** Run `apps/web/src/features/documents/components/__tests__/DocumentLineEditor.test.tsx` by path, then typecheck, lint, and browser-check purchase-order plus `apps/web/src/features/documents/CreateCreditNotePage.tsx` pricing. Gate: frontend-conventions-reviewer. WAIT remains binding until Step 1.
 
 ---
+
+- [ ] **Rev 8 (gate r7 NB): also run the sibling suites** `pnpm vitest run src/features/documents/components/__tests__/` (incl. `DocumentLineEditor.purchasePriceDefault.test.tsx`) and the documents tenant-scope suite, not only the primary test file.
 
 ## Task 7: Deduplicate stock-level requests between transfer components (S-6 partial)
 
@@ -1937,16 +1979,21 @@ useEffect(() => {
 
 ## Task 9: Cache store fail-closed default and boot validation (S-16)
 
+> **STATUS (rev 8): LANDED on local dev — merge `097e17a59` (lane/rh-t9-cache-store: `489d9fbc6` + websocket follow-up `9381de4d5`; gate MERGE, re-gate MERGE).** Landed: `config/cache.php` default `redis`; `cache:verify-store` command + tests; `docker/verify-cache-store.sh` sourced after `config:cache` in ALL FOUR runtime entrypoints (web, worker, scheduler, websocket) with a `--check-only` branch whose `config:clear` runs as an EXIT trap; CI `types-drift` pinned to `array`. **RULING (lane + reviewer, orchestrator agrees): `config:cache` stays NON-fatal in all four entrypoints** — a fatal `config:cache` under `set -e` would abort before the guard runs and replace its precise `FATAL: cache store cannot serve tenant-tagged operations` message with an opaque config error; fail-closed behaviour is identical either way. Any instruction below to make `config:cache` fatal is SUPERSEDED. Backlog (own lane, not Task 9): drop `2>/dev/null` on `config:cache` so a broken config is visible in container logs. Remaining Task 9 work: none in code; the per-container promotion probes (web, worker, scheduler, websocket, CLI: `printenv CACHE_STORE`=redis, `cache:verify-store` exit 0, real Redis write/read/delete) stay binding.
+
 **Files**
 
 - Modify: apps/api/config/cache.php
 - Modify: apps/api/docker/entrypoint.sh
 - Modify: apps/api/docker/entrypoint-worker.sh
 - Modify: apps/api/docker/entrypoint-scheduler.sh
+- Modify: apps/api/docker/entrypoint-websocket.sh
 - Create: apps/api/docker/verify-cache-store.sh
 - Create: apps/api/app/Console/Commands/VerifyCacheStoreCommand.php
 - Create: apps/api/tests/Unit/Console/VerifyCacheStoreCommandTest.php
 - Modify: .github/workflows/ci.yml
+
+**Implementation status (superseded by the rev 8 banner above):** Task 9 through Revision 6 was implemented on `lane/rh-t9-cache-store` at commit `489d9fbc6`; the websocket follow-up landed as `9381de4d5`; both are merged on local dev as `097e17a59`. Execute the Revision 7 WebSocket coverage and the four-role consistency changes below as a follow-up commit on that same lane; do not restart or re-run Task 9 as a fresh lane.
 
 - [ ] **Step 1: Add the executable command tests.**
 
@@ -2061,7 +2108,7 @@ final class VerifyCacheStoreCommand extends Command
         working-directory: apps/api
 ~~~
 
-- [ ] **Step 5: Create one fail-closed helper and source it after `config:cache` in every runtime entrypoint.** Create `apps/api/docker/verify-cache-store.sh` with the exact body below. It checks store capability only; it does not prove Redis connectivity.
+- [ ] **Step 5: Create one fail-closed helper and source it after a fatal `config:cache` in every runtime entrypoint.** Create `apps/api/docker/verify-cache-store.sh` with the exact body below. It checks store capability only; it does not prove Redis connectivity.
 
 ~~~bash
 #!/bin/sh
@@ -2072,7 +2119,7 @@ if ! php artisan cache:verify-store; then
 fi
 ~~~
 
-Add this validation-only branch immediately after `set -e` in **each** of `docker/entrypoint.sh`, `docker/entrypoint-worker.sh`, and `docker/entrypoint-scheduler.sh`. Deriving the directory from `$0` makes the real entrypoint executable both from the source checkout and from `/var/www/html` in the image:
+Add this validation-only branch immediately after `set -e` in **each** of `docker/entrypoint.sh`, `docker/entrypoint-worker.sh`, `docker/entrypoint-scheduler.sh`, and `docker/entrypoint-websocket.sh`. Deriving the directory from `$0` makes the real entrypoint executable both from the source checkout and from `/var/www/html` in the image:
 
 ~~~bash
 if [ "${1:-}" = "--check-only" ]; then
@@ -2084,15 +2131,19 @@ if [ "${1:-}" = "--check-only" ]; then
 fi
 ~~~
 
-For normal boot, source the helper immediately after each entrypoint's existing `config:cache` command/block and before any runtime process starts. The web/bundled entrypoint adds it after the `if ! php artisan config:cache; then ... fi` block near current line 214; the worker adds it after `php artisan config:cache 2>/dev/null || true` near current line 39; the scheduler adds it after the same command near current line 29:
+For normal boot, make `config:cache` itself fatal and source the helper immediately afterward, before any runtime process starts. Replace the web/bundled entrypoint's current "continuing without config cache" branch and each `php artisan config:cache 2>/dev/null || true` in worker, scheduler, and WebSocket with this exact block; a stale or absent configuration cache must not let any role validate a different effective configuration than the one it will run:
 
 ~~~bash
+if ! php artisan config:cache; then
+    echo "FATAL: config:cache failed; refusing to start runtime role" >&2
+    exit 1
+fi
 . /var/www/html/docker/verify-cache-store.sh
 ~~~
 
-No role may treat this helper as `|| true`; `exit 1` is the permanent fail-closed boot behavior.
+No role may treat either `config:cache` or this helper as `|| true`; `exit 1` is the permanent fail-closed boot behavior. In `entrypoint-websocket.sh`, this block replaces the tolerated command currently near line 28 and runs after the Redis TCP wait but before `reverb:start`.
 
-- [ ] **Step 6: Exercise the real validation-only branch for all three roles.** Run this shell harness from the repository. The first loop proves every role exits non-zero with the forbidden database store; the second proves the same entrypoint path reaches a taggable infrastructure-free store. The trap removes the generated config cache even on failure.
+- [ ] **Step 6: Exercise the real validation-only branch for all four roles.** Run this shell harness from the repository. The first loop proves every role exits non-zero with the forbidden database store; the second proves the same entrypoint path reaches a taggable infrastructure-free store. The trap removes the generated config cache even on failure.
 
 ~~~bash
 cd apps/api
@@ -2105,7 +2156,8 @@ trap cleanup_cache_config EXIT
 for entrypoint in \
     docker/entrypoint.sh \
     docker/entrypoint-worker.sh \
-    docker/entrypoint-scheduler.sh
+    docker/entrypoint-scheduler.sh \
+    docker/entrypoint-websocket.sh
 do
     if output="$(CACHE_STORE=database sh "$entrypoint" --check-only 2>&1)"; then
         echo "ERROR: $entrypoint accepted CACHE_STORE=database" >&2
@@ -2124,7 +2176,8 @@ done
 for entrypoint in \
     docker/entrypoint.sh \
     docker/entrypoint-worker.sh \
-    docker/entrypoint-scheduler.sh
+    docker/entrypoint-scheduler.sh \
+    docker/entrypoint-websocket.sh
 do
     output="$(CACHE_STORE=array sh "$entrypoint" --check-only 2>&1)"
     case "$output" in
@@ -2140,12 +2193,13 @@ done
 sh -n docker/entrypoint.sh
 sh -n docker/entrypoint-worker.sh
 sh -n docker/entrypoint-scheduler.sh
+sh -n docker/entrypoint-websocket.sh
 sh -n docker/verify-cache-store.sh
 ~~~
 
-Expected: all three `CACHE_STORE=database` commands reach `cache:verify-store` and exit non-zero; all three `CACHE_STORE=array` commands exit zero; every `sh -n` exits zero.
+Expected: all four `CACHE_STORE=database` commands reach `cache:verify-store` and exit non-zero; all four `CACHE_STORE=array` commands exit zero; every `sh -n` exits zero.
 
-- [ ] **Step 7: Verify by path and enforce the environment gate.** Run `cd apps/api && ./vendor/bin/phpunit tests/Unit/Console/VerifyCacheStoreCommandTest.php` and PHPStan on `app/Console/Commands/VerifyCacheStoreCommand.php`; run the Step 6 shell harness and inspect the `types-drift` job YAML. Promotion is forbidden until **each environment independently**—web, worker, scheduler, and CLI—shows `CACHE_STORE=redis`, boots `cache:verify-store` successfully, and completes a real Redis write/read/delete probe from that environment. Evidence from one environment cannot stand in for another. The command proves tag capability, not network reachability. Gate: general Opus.
+- [ ] **Step 7: Verify by path and enforce the environment gate.** Run `cd apps/api && ./vendor/bin/phpunit tests/Unit/Console/VerifyCacheStoreCommandTest.php` and PHPStan on `app/Console/Commands/VerifyCacheStoreCommand.php`; run the Step 6 shell harness and inspect the `types-drift` job YAML. Promotion is forbidden until **each environment independently**—web, worker, scheduler, WebSocket, and CLI—shows `CACHE_STORE=redis`, boots `cache:verify-store` successfully, and completes a real Redis write/read/delete probe from that environment. The WebSocket probe must run inside the dedicated Reverb container rather than borrowing evidence from the web/bundled role. Evidence from one environment cannot stand in for another. The command proves tag capability, not network reachability. Gate: general Opus.
 
 ---
 
@@ -2313,17 +2367,19 @@ Model::preventLazyLoading(! $this->app->isProduction());
 
 ## Task 11: Shared idempotency-key hook (ID-1..ID-4 foundation)
 
+> **STATUS (rev 8): LANDED on local dev — merge `19753c018` (lane/rh-t11-idempotency-hook, gate r1 CHANGES → r2 MERGE).** The hook lives at `apps/web/src/hooks/useIdempotencyKey.ts` with its three-test suite at `apps/web/src/hooks/__tests__/useIdempotencyKey.test.tsx` (per-mount uniqueness, v4 regex, stable `reset` identity). This task is now **verification-only**: do NOT create any file; run the existing test by path and `pnpm typecheck`. Consumers (Tasks 12, 13) import `@/hooks/useIdempotencyKey`. The original steps below are kept as the historical brief.
+
 **Files**
 
-- Create: apps/web/src/lib/hooks/useIdempotencyKey.ts
-- Create: apps/web/src/lib/hooks/useIdempotencyKey.test.tsx
+- Created (landed in T11): apps/web/src/hooks/useIdempotencyKey.ts
+- Created (landed in T11): apps/web/src/hooks/__tests__/useIdempotencyKey.test.tsx
 
 - [ ] **Step 1: Add the module-not-found red test.**
 
 ~~~tsx
 import { act, renderHook } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { useIdempotencyKey } from './useIdempotencyKey'
+import { useIdempotencyKey } from '../useIdempotencyKey'
 
 it('keeps one UUID until reset', () => {
   const hook = renderHook(() => useIdempotencyKey())
@@ -2348,7 +2404,7 @@ export function useIdempotencyKey(): { key: string; reset: () => void } {
 }
 ~~~
 
-- [ ] **Step 3: Verify by path.** Run `apps/web/src/lib/hooks/useIdempotencyKey.test.tsx` by path and typecheck. The key deliberately survives failed submits; only consumers call reset after success. Gate with Task 12.
+- [ ] **Step 3: Verify by path.** Run `apps/web/src/hooks/__tests__/useIdempotencyKey.test.tsx` by path and typecheck. The key deliberately survives failed submits; only consumers call reset after success. Gate with Task 12.
 
 ---
 
@@ -2362,7 +2418,7 @@ export function useIdempotencyKey(): { key: string; reset: () => void } {
 - Modify: apps/web/src/features/treasury/SplitPaymentForm.test.tsx:81,132
 - Modify: apps/web/src/features/treasury/treasury.test.tsx:1205,1225,1247,1274,1297,1332,1378
 - Modify: apps/web/src/features/treasury/__tests__/TreasuryTenantScope.test.tsx:170,213
-- Modify: apps/web/src/components/organisms/SplitPaymentModal/SplitPaymentModal.tsx:18,65,120
+- Modify: apps/web/src/components/organisms/SplitPaymentModal/SplitPaymentModal.tsx:42,73,122
 - Modify: apps/web/src/components/organisms/RecordPaymentModal/RecordPaymentModal.tsx
 - Modify: apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx
 - Verify active RecordPaymentModal host: apps/web/src/features/documents/invoices/InvoiceDetailPage.tsx:895
@@ -2528,7 +2584,7 @@ it('rejects a three-decimal split total that is short by 0.001', async () => {
 - [ ] **Step 3: Implement PaymentForm.** It already imports `useRef`. Add `useIdempotencyKey`, keep the key across failures, and enforce the invariant before `mutate()` can trigger a React rerender:
 
 ~~~tsx
-import { useIdempotencyKey } from '@/lib/hooks/useIdempotencyKey'
+import { useIdempotencyKey } from '@/hooks/useIdempotencyKey'
 
 const { key: idempotencyKey, reset: resetIdempotencyKey } = useIdempotencyKey()
 const submitLockRef = useRef<boolean>(false)
@@ -2670,7 +2726,7 @@ it('adds a key and synchronously locks duplicate payment recording', async () =>
 })
 ~~~
 
-- [ ] **Step 6: Verify by path, type boundary, caller inventory, and gate.** Run `apps/web/src/lib/hooks/useIdempotencyKey.test.tsx`, `apps/web/src/features/treasury/PaymentForm.test.tsx`, `apps/web/src/features/treasury/SplitPaymentForm.test.tsx`, `apps/web/src/features/treasury/treasury.test.tsx`, `apps/web/src/features/treasury/__tests__/TreasuryTenantScope.test.tsx`, and `apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx` by path, then run `pnpm typecheck` and lint from `apps/web`. Expected typecheck result: PASS with both numeric-prop `@ts-expect-error` directives consumed; changing either split-payment `totalAmount` prop back to `number` must make typecheck FAIL with an unused-directive diagnostic. Re-run `rg -n '<SplitPayment(Form|Modal)' apps/web/src` and reconcile every hit with the file:line Modify inventory above. Run `rg -n 'parseFloat|Math\\.abs' apps/web/src/features/treasury/SplitPaymentForm.tsx` and require no matches. Run `rg -n 'totalAmount\\s*:\\s*number|Number\\(' apps/web/src/features/treasury/PaymentForm.tsx apps/web/src/features/treasury/SplitPaymentForm.tsx apps/web/src/features/treasury/PaymentForm.test.tsx apps/web/src/features/treasury/SplitPaymentForm.test.tsx apps/web/src/features/treasury/treasury.test.tsx apps/web/src/features/treasury/__tests__/TreasuryTenantScope.test.tsx apps/web/src/components/organisms/SplitPaymentModal/SplitPaymentModal.tsx apps/web/src/components/organisms/RecordPaymentModal/RecordPaymentModal.tsx apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx` and require no matches across every Task 12 Modify file. Run throttled-network browser double-submit probes on all three active surfaces; prove the `"0.300"` total accepts `"0.100" + "0.200"` and rejects `"0.100" + "0.199"`. Open payments from InvoiceDetailPage, SalesOrderDetailPage, and PurchaseOrderDetailPage to verify the active RecordPaymentModal key lifecycle remains intact. Gate: treasury-reviewer plus frontend-conventions-reviewer.
+- [ ] **Step 6: Verify by path, type boundary, caller inventory, and gate.** Run `apps/web/src/hooks/__tests__/useIdempotencyKey.test.tsx`, `apps/web/src/features/treasury/PaymentForm.test.tsx`, `apps/web/src/features/treasury/SplitPaymentForm.test.tsx`, `apps/web/src/features/treasury/treasury.test.tsx`, `apps/web/src/features/treasury/__tests__/TreasuryTenantScope.test.tsx`, and `apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx` by path, then run `pnpm typecheck` and lint from `apps/web`. Expected typecheck result: PASS with both numeric-prop `@ts-expect-error` directives consumed; changing either split-payment `totalAmount` prop back to `number` must make typecheck FAIL with an unused-directive diagnostic. Re-run `rg -n '<SplitPayment(Form|Modal)' apps/web/src` and reconcile every hit with the file:line Modify inventory above. Run `rg -n 'parseFloat|Math\\.abs' apps/web/src/features/treasury/SplitPaymentForm.tsx` and require no matches. Run `rg -n 'totalAmount\\s*:\\s*number|Number\\(' apps/web/src/features/treasury/PaymentForm.tsx apps/web/src/features/treasury/SplitPaymentForm.tsx apps/web/src/features/treasury/PaymentForm.test.tsx apps/web/src/features/treasury/SplitPaymentForm.test.tsx apps/web/src/features/treasury/treasury.test.tsx apps/web/src/features/treasury/__tests__/TreasuryTenantScope.test.tsx apps/web/src/components/organisms/SplitPaymentModal/SplitPaymentModal.tsx apps/web/src/components/organisms/RecordPaymentModal/RecordPaymentModal.tsx apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx` and require no matches across every Task 12 Modify file. Run throttled-network browser double-submit probes on all three active surfaces; prove the `"0.300"` total accepts `"0.100" + "0.200"` and rejects `"0.100" + "0.199"`. Open payments from InvoiceDetailPage, SalesOrderDetailPage, and PurchaseOrderDetailPage to verify the active RecordPaymentModal key lifecycle remains intact. Gate: treasury-reviewer plus frontend-conventions-reviewer.
 
 ---
 
@@ -2688,14 +2744,12 @@ it('adds a key and synchronously locks duplicate payment recording', async () =>
 - Verify consumer (no edit): apps/api/app/Modules/Replenishment/Application/Services/ReplenishmentFulfillmentService.php
 - Verify consumer test: apps/api/tests/Feature/Replenishment/ReplenishmentActionsTest.php
 
-**Exact names:** backend DTO is InitiateTransferData. Existing database index is stock_transfers_idempotency_unique; stock_transfers_company_number_unique is the required different-index rethrow case. CreateStockTransferInput and CreateStockAdjustmentInput already contain idempotency_key, so no DTO/type generation change is allowed.
+**Exact names:** backend DTO is InitiateTransferData. The schema has both `stock_transfers_idempotency_unique` and `stock_transfers_company_number_unique`, but collision recovery must not inspect either constraint name: a real generated-number race can violate both. The committed row at `(tenant_id, company_id, idempotency_key)` is the sole replay discriminator. CreateStockTransferInput and CreateStockAdjustmentInput already contain idempotency_key, so no DTO/type generation change is allowed. Different-key `COUNT()+1` transfer-number races remain S-19 debt in Phase B lane B-4; this task only makes same-key retries replay their committed winner.
 
 - [ ] **Step 1: Refactor the service behind two protected test seams and catch only after rollback.**
 
 ~~~php
 use Illuminate\Database\UniqueConstraintViolationException;
-
-private const IDEMPOTENCY_CONSTRAINT = 'stock_transfers_idempotency_unique';
 
 public function initiate(InitiateTransferData $data): StockTransfer
 {
@@ -2764,10 +2818,7 @@ public function initiate(InitiateTransferData $data): StockTransfer
             return $this->moveSourceToInTransit($transfer->id, $data->initiatedByUserId);
         }, attempts: 3);
     } catch (UniqueConstraintViolationException $exception) {
-        if (
-            $data->idempotencyKey === null
-            || ! str_contains($exception->getMessage(), self::IDEMPOTENCY_CONSTRAINT)
-        ) {
+        if ($data->idempotencyKey === null) {
             throw $exception;
         }
         $existing = $this->findExistingTransfer($data);
@@ -2954,7 +3005,7 @@ final class StockTransferIdempotencyCollisionPostgresTest extends TestCase
     }
 
     #[Group('pg')]
-    public function test_initiate_rereads_committed_winner_after_real_insert_collision(): void
+    public function test_initiate_rereads_committed_winner_after_dual_generated_number_and_key_collision(): void
     {
         $data = new InitiateTransferData(
             tenantId: $this->tenant->id,
@@ -2963,7 +3014,6 @@ final class StockTransferIdempotencyCollisionPostgresTest extends TestCase
             destinationLocationId: $this->destination->id,
             initiatedByUserId: $this->user->id,
             lines: [new InitiateTransferLineData($this->product->id, '5.0000')],
-            transferNumber: 'TR-COLLISION-LOSER',
             idempotencyKey: 'race-key-'.$this->tenant->id,
         );
         $service = new InsertCollidingStockTransferService(
@@ -2988,7 +3038,7 @@ final class StockTransferIdempotencyCollisionPostgresTest extends TestCase
     }
 
     #[Group('pg')]
-    public function test_initiate_inside_outer_transaction_rereads_after_savepoint_rollback(): void
+    public function test_initiate_inside_outer_transaction_rereads_dual_collision_after_savepoint_rollback(): void
     {
         $data = new InitiateTransferData(
             tenantId: $this->tenant->id,
@@ -2997,7 +3047,6 @@ final class StockTransferIdempotencyCollisionPostgresTest extends TestCase
             destinationLocationId: $this->destination->id,
             initiatedByUserId: $this->user->id,
             lines: [new InitiateTransferLineData($this->product->id, '5.0000')],
-            transferNumber: 'TR-COLLISION-NESTED-LOSER',
             idempotencyKey: 'nested-race-key-'.$this->tenant->id,
         );
         $service = new InsertCollidingStockTransferService(
@@ -3065,7 +3114,7 @@ final class InsertCollidingStockTransferService extends StockTransferService
             'id' => $this->winnerId,
             'tenant_id' => $data->tenantId,
             'company_id' => $data->companyId,
-            'transfer_number' => $transferNumber.'-WINNER',
+            'transfer_number' => $transferNumber,
             'transfer_type' => $data->transferType->value,
             'status' => TransferStatus::Draft->value,
             'source_location_id' => $data->sourceLocationId,
@@ -3085,7 +3134,7 @@ final class InsertCollidingStockTransferService extends StockTransferService
 }
 ~~~
 
-The first override call deliberately returns `null`, simulating the pre-check miss. The second calls the real lookup and records the transaction level after rollback. The top-level case requires level 0; the outer-transaction case requires level 1, proving the failed inner `DB::transaction()` rolled back its savepoint without discarding the caller's transaction. The insert override commits the winner immediately before the parent’s real insert hits `stock_transfers_idempotency_unique`. Before seam extraction, this file parses but its assertions fail because production never calls the seams. After seam extraction it reaches a real failing INSERT, so it cannot pass by faking an exception or pre-seeding the winner.
+The first override call deliberately returns `null`, simulating the pre-check miss. Both request DTOs omit `transferNumber`, so production executes `generateTransferNumber()` and its `COUNT()+1` path. The writer commits the winner with the **exact same** generated `$transferNumber` and the same idempotency key immediately before the parent's real insert; the loser therefore collides on both company-number and idempotency unique indexes, and the test makes no assumption about which constraint PostgreSQL reports. The second lookup calls the real `(tenant_id, company_id, idempotency_key)` query and records its transaction level after rollback. The top-level case requires level 0; the outer-transaction case requires level 1, proving the failed inner `DB::transaction()` rolled back its savepoint without discarding the caller's transaction. Before seam extraction, this file parses but its assertions fail because production never calls the seams. After seam extraction it reaches a real dual-constraint failing INSERT, so it cannot pass by faking an exception or pre-seeding the winner.
 
 - [ ] **Step 3: Keep both rethrow cases in InventoryTransferServiceTest.** Add the service dependencies, `UniqueConstraintViolationException`, and `PDOException` imports used below. Each test calls `initiate()`; neither may be replaced by testing a helper directly.
 
@@ -3125,7 +3174,7 @@ public function test_initiate_rethrows_unique_violation_when_no_key_was_supplied
     ));
 }
 
-public function test_initiate_rethrows_collision_on_different_unique_index(): void
+public function test_initiate_rethrows_collision_on_different_unique_index_when_idempotency_reread_finds_no_row(): void
 {
     $this->seedStock($this->productA, $this->warehouse, '50.0000');
     $collision = $this->uniqueViolation('stock_transfers_company_number_unique');
@@ -3162,6 +3211,8 @@ final class ThrowingStockTransferService extends StockTransferService
     }
 }
 ~~~
+
+The second test deliberately supplies an idempotency key but leaves `findExistingTransfer()` returning `null`. It proves that catching any `UniqueConstraintViolationException` does not swallow an unrelated company-number collision: after rollback and the scoped no-row reread, the exact original exception object is rethrown. Do not restore constraint-name matching.
 
 - [ ] **Step 4: Add keys at page scope, not mutation-hook scope.** Both pages import useIdempotencyKey. Add idempotency_key to their existing typed payloads. Immediately after the awaited mutateAsync resolves, call resetIdempotencyKey(), then toast/navigate. Failed calls do not reset.
 
@@ -3218,7 +3269,7 @@ features/stock-transfers/api/queries.ts and features/stock-adjustments/api/queri
 ~~~tsx
 const mockResetIdempotencyKey = vi.hoisted(() => vi.fn())
 
-vi.mock('@/lib/hooks/useIdempotencyKey', () => ({
+vi.mock('@/hooks/useIdempotencyKey', () => ({
   useIdempotencyKey: () => ({
     key: 'transfer-key',
     reset: mockResetIdempotencyKey,
@@ -3535,6 +3586,8 @@ Do not replace tailRef on reset: new work must still queue behind the physical i
 
 ---
 
+- [ ] **Task 14, optional (gate r7 NB):** in-flight debounce regression — while one request is physically in flight, change `data` three times; assert exactly one follow-up request carrying the latest snapshot (one queued latest snapshot), not three.
+
 ## Dispatch order and calendar
 
 | Order | Task | Dependency / onboarding gate | Estimate |
@@ -3549,11 +3602,11 @@ Do not replace tailRef on reset: new work must still queue behind the physical i
 | 8 | T5 product search | shared-consumer browser gate | 0.25 d |
 | 9 | T7 stock dedupe | none | 0.5 d |
 | 10 | T8 reconnect | authenticated-layout gate | 0.25 d |
-| 11 | T9 cache store | staging env proof first | 0.25 d |
+| 11 | T9 cache store | Revision 6 implementation exists at `489d9fbc6`; add Revision 7 WebSocket follow-up on the same lane, then staging env proof | 0.25 d + follow-up |
 | 12 | T14 autosave | rebase after PO lane | 0.5 d |
 | 13 | T6 pricing debounce | **WAIT for wave-2 PO merge** | 0.25 d |
 
-- [ ] Promotion batch 1: T1, T9, T11/T12, T13; do not promote T1 before the staging database-per-tenant topology/database/migration preflight, and do not promote T9 before independent web/worker/scheduler/CLI Redis capability plus write/read/delete probes. Then run permission:cache-reset and idempotency double-click staging probes.
+- [ ] Promotion batch 1: T1, T9, T11/T12, T13; do not promote T1 before the staging database-per-tenant topology/database/migration preflight, and do not promote T9 before its same-lane WebSocket follow-up plus independent web/worker/scheduler/WebSocket/CLI Redis capability and write/read/delete probes. Then run permission:cache-reset and idempotency double-click staging probes.
 - [ ] Promotion batch 2: T2, then rebased T10, plus T3 and T4; do not promote T2/T3 before every absent external POS/mobile owner supplies pagination/stable-traversal contract evidence or that consumer rollout is blocked; require T10’s CI-only whole-suite green, then verify movement filters/totals/search, payment page 2, dashboard 5, audit include behavior, and the 1..100 document clamp.
 - [ ] Promotion batch 3: T5, T7, T8, T14; add T6 only after its WAIT gate clears.
 
@@ -3561,10 +3614,10 @@ Do not replace tailRef on reset: new work must still queue behind the physical i
 
 | Lane | Findings | Reviewer | Precondition |
 |---|---|---|---|
-| B-1 rate limiting | S-9 | tenancy-authz | one week of staging POS traffic |
+| **B-0 Edge protection (Cloudflare) + app-layer rate limiting** | S-9, RH-16, RH-17. App layer: attach the existing `api` limiter; add per-surface `auth`, `reports`, `exports`, `imports`, `sync`, and `webhook` limiters keyed by tenant + user with a real-client-IP fallback; restrict Laravel `TrustProxies` and Traefik `forwardedHeaders.trustedIPs` to Cloudflare CIDRs supplied through configuration; cap RH-16 request bodies and array cardinalities; add feature-flagged Turnstile to login and register; exempt POS/mobile sync from the general edge budget through a path-scoped higher-budget rule sized from staging traffic. Infrastructure: stage Cloudflare proxying for both SPA and API first; lock Hetzner firewall/Traefik origin access to Cloudflare IPs; require TLS Full (strict); proxy Reverb WebSockets through Cloudflare and verify heartbeat/reconnect behavior; configure Cloudflare cache rules for hashed SPA assets; execute the DNS/firewall/TrustProxies cutover and rollback checklist from `docs/superpowers/audits/2026-09-02-request-hygiene/09-dos-edge-protection.md`. Estimate: **2–3 d app, 1–2 d staging infra, 0.5 d production cutover**. | tenancy-authz + general | one week of staging traffic to size POS budgets |
 | B-2 request memoisation + Sanctum last_used debounce | S-10, S-13 | tenancy-authz | T10 staging logs |
 | B-3 list projections | S-11, S-12, S-14 | inventory-costing + treasury | no live DocumentData/ProductController lane |
-| B-4 posting/conversion locks | S-8, S-19, ID-8..ID-11, ID-14, ID-15 | fiscal-pos + treasury + inventory-costing | duplicate census before indexes |
+| B-4 posting/conversion locks | S-8, S-19 (including different-key `COUNT()+1` transfer-number allocation races), ID-8..ID-11, ID-14, ID-15 | fiscal-pos + treasury + inventory-costing | duplicate census before indexes |
 | B-5 POS sync batching/jitter | S-20 | fiscal-pos | POS release slot |
 | B-6 cache topology/ETags/route cache | S-17, S-25 | general | B-2 |
 | B-7 remaining frontend hygiene | S-22, S-27..S-29; convert the pre-existing float-based totals, remaining amount, positivity checks, and excess comparisons around `apps/web/src/components/organisms/RecordPaymentModal/RecordPaymentModal.tsx:210` to decimal-string arithmetic | frontend-conventions + treasury | none |
@@ -3576,16 +3629,16 @@ Do not replace tailRef on reset: new work must still queue behind the physical i
 ## Self-review
 
 - [ ] Structure retained: header, Global Constraints, Phase 0, Tasks 1–14, Dispatch order, Phase B roster, Self-review.
-- [ ] Gate blockers mapped: T1 database-per-tenant resolver plus real central database worker and compatibility shared-key proof; T2 portable wildcard search, dedicated request, PHP-computed exact `created_at DESC, id DESC` traversal on both drivers, one valid two-row/six-meta fixture declaration, harness/keys/W4 cap; T3 dedicated request, stable order on both drivers, required pagination/exact key/six-field fixture/page iterator; T4 validation/types/all payload contracts/four missing-counterpart errors/validated-pair branch selection/translated global envelope/default-50 pagination and page-2 traversal/per-page rejection/1..100 document clamp; T5/T6 real debounce harnesses; T7 reactive scope gate/root/URL-filtered component dedupe with remaining distinct-product fan-out deferred to B-8; T8 full cooldown; T9 isolated fallback, `types-drift` array pin, all three fail-closed runtime entrypoints, role-by-role shell proof, plus four-environment Redis proof; T10 restorable logging/red handler/distinct timestamps/proportional flat guard/four exact-log tests/CI suite; T12 three real surfaces, pre-rerender ref locks, decimal-string props across every local split caller and deprecated wrapper, direct bcmath input, IEEE-754 regression, numeric-prop type guard, and forbidden-pattern greps; T13 real PG collision at transaction levels 0 and 1/exact DTO/index/initiate seams/reset spy/replenishment line 102; T14 swallowed predecessor tail/throwing-onError recovery/StrictMode/lifecycle/debounce tests.
+- [ ] Gate blockers mapped: T1 database-per-tenant resolver plus real central database worker and compatibility shared-key proof; T2 portable wildcard search, dedicated request, PHP-computed exact `created_at DESC, id DESC` traversal on both drivers, one valid two-row/six-meta fixture declaration, harness/keys/W4 cap; T3 dedicated request, stable order on both drivers, required pagination/exact key/six-field unit and older Playwright fixtures/page iterator, one rendered Playwright pagination assertion, and bounded-only W8 fixture note; T4 validation/types/all payload contracts/four missing-counterpart errors/validated-pair branch selection/translated global envelope/default-50 pagination and page-2 traversal/per-page rejection/1..100 document clamp; T5/T6 real debounce harnesses; T7 reactive scope gate/root/URL-filtered component dedupe with remaining distinct-product fan-out deferred to B-8; T8 full cooldown; T9 isolated fallback, `types-drift` array pin, all four fail-closed runtime entrypoints, role-by-role shell proof, plus five-environment Redis proof; T10 restorable logging/red handler/distinct timestamps/proportional flat guard/four named exact-log tests plus mandatory CI-only whole-backend suite; T12 three real surfaces, corrected SplitPaymentModal anchors, pre-rerender ref locks, decimal-string props across every local split caller and deprecated wrapper, direct bcmath input, IEEE-754 regression, numeric-prop type guard, and forbidden-pattern greps; T13 any-unique catch after rollback, scoped idempotency reread, real dual-index PG collision at transaction levels 0 and 1, different-index/no-row rethrow, exact DTO/initiate seams/reset spy/replenishment line 102, and different-key `COUNT()+1` races deferred as S-19/B-4; T14 swallowed predecessor tail/throwing-onError recovery/StrictMode/lifecycle/debounce tests.
 - [ ] No placeholder helpers remain. Every test snippet is a complete method using named existing fixtures/wrappers/mocks; each new file has its import list.
 - [ ] Exact signatures checked: PaymentForm has no props; useDraftAutoSave(data, config); DraftData.type; MoneyInput emits decimal strings; both SplitPaymentForm and deprecated SplitPaymentModal require `totalAmount: string`; SplitPaymentForm passes that string directly to `bcsub`/`bccomp` while split sums use `bcadd`; pricing response is items.
-- [ ] Exact backend names checked: InitiateTransferData, stock_transfers_idempotency_unique, stock_transfers_company_number_unique, CarbonInterface, LengthAwarePaginator.
+- [ ] Exact backend names checked: InitiateTransferData, stock_transfers_idempotency_unique, stock_transfers_company_number_unique, CarbonInterface, LengthAwarePaginator. T13 deliberately does not branch on either unique-constraint name.
 - [ ] Query invalidation checked: T7 retains the stock-levels root; T8 intentionally invalidates all active queries; CompanySelector remains globally invalidating.
-- [ ] Existing consumers checked: ProductMovementsTab, both InventoryTenantIsolation unpaged reads, PartnerDetailPage, and TreasuryCompanyIsolation search reads remain compatible; W4 is bounded; W5c iterates; Dashboard loses ignored payment sort while its document `limit=5` remains clamped; onboarding `limit=100` remains valid; GoodsReceiptListPage’s stock-level prefix invalidation still matches; RecordPaymentModal and all three document-detail hosts are protected; Replenishment line 102 and its outer transaction are verified; QuickStockAdjustmentModal and both mutation-hook files remain untouched; external POS/mobile owner evidence or rollout block remains binding.
+- [ ] Existing consumers checked: ProductMovementsTab, both InventoryTenantIsolation unpaged reads, PartnerDetailPage, and TreasuryCompanyIsolation search reads remain compatible; W4 is bounded; W5c iterates; W8's `per_page=100` reads are bounded fixtures rather than whole-set helpers; Dashboard loses ignored payment sort while its document `limit=5` remains clamped; onboarding `limit=100` remains valid; GoodsReceiptListPage’s stock-level prefix invalidation still matches; RecordPaymentModal and all three document-detail hosts are protected; Replenishment line 102 and its outer transaction are verified; QuickStockAdjustmentModal and both mutation-hook files remain untouched; external POS/mobile owner evidence or rollout block remains binding.
 - [ ] Behavior checked: audit aggregate/range order remains ascending; each missing half of aggregate and date pairs returns `VALIDATION_ERROR` at the counterpart field path; every payload-reading test opts in; audit default 50, page 2, total/current/last metadata, and `per_page=101` envelope are proven; document limit proves 0/-5 -> 1 and 5000 -> 100; movement search covers name/SKU/reference and escaped wildcard; split payment accepts exact string `"0.300"` from `"0.100" + "0.200"` and rejects `"0.100" + "0.199"` without a numeric money boundary.
 - [ ] Locale disposition checked for en/fr/ar: T2 uses existing common:pagination keys and creates no page-local-warning key; T4 adds `validation.audit_date_range_max` in all three backend locales with `:max` substitution and an exact English assertion.
 - [ ] No migration is introduced.
-- [ ] Deployment and promotion conditions remain binding: staging topology and tenant-DB count must pass the database-per-tenant preflight; web, worker, scheduler, and CLI must each independently pass Redis configuration/capability/connectivity write-read-delete probes; T10 requires the CI-only full backend suite; and absent POS/mobile clients require external-owner pagination evidence or a blocked rollout.
+- [ ] Deployment and promotion conditions remain binding: staging topology and tenant-DB count must pass the database-per-tenant preflight; web, worker, scheduler, WebSocket, and CLI must each independently pass Redis configuration/capability/connectivity write-read-delete probes; T9's WebSocket correction is a follow-up commit on `lane/rh-t9-cache-store`, not a lane re-run; T10 requires the CI-only full backend suite because its four named log contracts are not exhaustive; and absent POS/mobile clients require external-owner pagination evidence or a blocked rollout.
 
 ## Gate r1 disposition
 
@@ -3688,3 +3741,34 @@ Do not replace tailRef on reset: new work must still queue behind the physical i
 | NB5 — Task 10 global log-spy risk | Added `ReceiptReturnServiceTest.php:292` to the identified exact-log contracts and focused local command. The CI-only full backend suite remains a mandatory non-mergeable gate because other global log spies may exist; the laptop whole-suite prohibition remains. |
 | NB6 — external deployment facts | The staging topology/database enumeration and migration preflight remains binding for Task 1. External POS/mobile pagination and stable-traversal contract evidence—or a blocked consumer rollout—remains binding before Tasks 2/3 promote. |
 | Blast radius — existing consumers | Added focused verification for InventoryTenantIsolationTest’s two unpaged stock reads, TreasuryCompanyIsolationTest’s three search reads, onboarding/Dashboard legacy document limits, GoodsReceiptListPage invalidation, ReceiptReturnService exact logging, and all three active RecordPaymentModal document-detail hosts. |
+
+## Gate r6 disposition
+
+| Finding | What changed in revision 7 |
+|---|---|
+| B1 — Task 9 WebSocket runtime bypass | Added `apps/api/docker/entrypoint-websocket.sh` to Task 9's Modify list, gave all four runtime entrypoints the same `--check-only` branch, made normal-boot `config:cache` fatal before sourcing `verify-cache-store.sh`, added WebSocket to both shell-harness loops and `sh -n`, and expanded promotion to independent web, worker, scheduler, WebSocket, and CLI Redis configuration/capability/write-read-delete probes. Task 9 was already implemented against Revision 6 on `lane/rh-t9-cache-store` at `489d9fbc6`; these WebSocket and role-consistency edits are explicitly a follow-up commit on that lane, not a Task 9 re-run. |
+| B2 — Task 13 real dual-constraint collision | Removed constraint-name filtering. When `idempotencyKey !== null`, the outer post-rollback catch now handles any `UniqueConstraintViolationException`, rereads by tenant/company/idempotency key, returns the committed row when present, and otherwise rethrows the original exception. Both PostgreSQL cases omit `transferNumber`; the writer inserts the exact same generated number and key, forcing a real collision on both unique indexes and exercising post-rollback rereads at transaction levels 0 and 1. The different-index/no-row test remains and asserts the exact original exception is rethrown. |
+| NB1 — Task 2 r5 fixture retention | Retained the single parse-valid two-row stock-movement fixture with exactly six metadata fields; no Task 2 regression was introduced. |
+| NB2 — Task 4 r5 paired validation retention | Retained `required_with` first on all four paired fields and the four counterpart-error envelope tests; no Task 4 regression was introduced. |
+| NB3 — Task 12 r5 decimal boundary retention | Retained string-only required totals, direct bcmath operations, precision tests, caller inventory, and consumed type guards. Corrected the SplitPaymentModal Modify anchors to the actual property, example, and pass-through lines 42, 73, and 122. |
+| NB4 — older Playwright payment fixtures | Added `apps/web/e2e/payments.spec.ts` to Task 3. All four `/payments` GET fixtures that used `meta: { total }` now receive `current_page`, `last_page`, `per_page`, `total`, `from`, and `to`; the populated-list test also asserts the rendered `Page 1 of 1` pagination label, and the spec runs by path. |
+| NB5 — W8 `per_page=100` semantics | Task 3 now states that W8's `per_page=100` reads are bounded campaign fixtures with cardinality below 100, not whole-set helpers. W5c remains the reusable complete-set path because it traverses `last_page`. |
+| NB6 — Task 10 global log spies | Retained all four named exact-log checks while explicitly stating they are not exhaustive; the CI-only whole-backend suite remains a mandatory, non-substitutable merge gate. |
+| NB7 — RecordPaymentModal precision debt | Retained Task 12's idempotency-only scope for RecordPaymentModal and Phase B B-7's explicit float-total/remaining/validation/excess conversion debt around line 210. |
+| NB8 — Task 7 partial scope | Retained the honest partial closure: Phase A removes duplicate same-product/component reads, while one request per distinct product/variant remains deferred to the B-8 bulk endpoint. |
+| NB9 — Task 9 ad-hoc Artisan behavior | Retained the intentional Redis fail-closed default for ad-hoc Artisan/bootstrap jobs. PHPUnit remains pinned to `array`, the infrastructure-free `types-drift` job is explicitly pinned to `array`, and every deployable runtime role must provide Redis; no silent database fallback is restored. |
+| NB10 — Task 12 line anchors | Replaced the approximate `SplitPaymentModal.tsx:18,65,120` anchors with exact lines `42,73,122` in the file inventory. |
+| NB11 — different-key transfer-number races | Task 13 now says explicitly that same-key replay does not solve different-key `COUNT()+1` races. That sequence-allocation work remains S-19 debt in Phase B-4, whose roster entry now names it. |
+| Phase B roster — DoS recommendation | Replaced the narrow B-1 row with B-0 **Edge protection (Cloudflare) + app-layer rate limiting**, merging the audit recommendation: app-layer API/per-surface limiters, Cloudflare-only real-IP trust, RH-16 caps, Turnstile, and POS/mobile path budgeting; plus staging-first Cloudflare proxying for SPA/API/Reverb, origin lockdown, TLS Full (strict), SPA cache rules, and cutover/rollback. Reviewer is tenancy-authz + general; the precondition is one week of staging traffic to size POS budgets; estimates remain 2–3 d app, 1–2 d staging infra, and 0.5 d production cutover. |
+
+## Gate r7 disposition
+
+| Finding | What changed in revision 8 |
+|---|---|
+| B1 Tasks 11-13 obsolete hook path | Task 11 marked LANDED (`19753c018`) and verification-only; all `@/lib/hooks/useIdempotencyKey` imports/mocks and test paths replaced with `@/hooks/useIdempotencyKey` and `src/hooks/__tests__/…`; "Create" lines now "Created (landed in T11)". |
+| B2 Task 4 `aggregate_id` narrowed to uuid | Rule is now `['required_with:aggregate_type', 'string', 'max:100']` matching `create_audit_events_table.php:19`; new Step 4b positive HTTP regression with `aggregate_id=doc-123`; UUID cross-tenant test retained. |
+| B3 Task 2 unused `beforeEach` import | Step 5 now prescribes the `beforeEach` body (`apiGetMock.mockReset()`, `queryCapture.current = null`) immediately after the hoisted mocks. |
+| NB Task 1 wording | Queue jobs are initialized by `QueueTenancyBootstrapper` (`tenancy()->initialize()`), not the resolver; text corrected. |
+| NB Task 9 live state | Banner records the merge `097e17a59`, the four-entrypoint guard, and the ruling that `config:cache` stays non-fatal; the "make config:cache fatal" instructions are marked superseded; backlog item for `2>/dev/null`. |
+| NB Task 14 in-flight debounce | Carried as an optional regression in Task 14's verification (one queued latest snapshot) — not required for merge. |
+| NB Task 6 sibling suites | Task 6 verification must also run `DocumentLineEditor.purchasePriceDefault.test.tsx` and the component tenant-scope suite. |
