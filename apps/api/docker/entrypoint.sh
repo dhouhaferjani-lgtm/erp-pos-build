@@ -1,6 +1,14 @@
 #!/bin/sh
 set -e
 
+if [ "${1:-}" = "--check-only" ]; then
+    SCRIPT_DIR="$(CDPATH= cd "$(dirname "$0")" && pwd)"
+    cd "$SCRIPT_DIR/.."
+    php artisan config:cache
+    . "$SCRIPT_DIR/verify-cache-store.sh"
+    exit 0
+fi
+
 echo "========================================"
 echo "Starting AutoERP API..."
 echo "========================================"
@@ -215,6 +223,9 @@ if ! php artisan config:cache; then
     echo "ERROR: config:cache failed! Check your environment variables."
     echo "Continuing without config cache..."
 fi
+
+# Fail closed: the default cache store must serve tenant-tagged operations.
+. /var/www/html/docker/verify-cache-store.sh
 
 if ! php artisan route:cache; then
     echo "WARNING: route:cache failed, continuing without route cache..."
