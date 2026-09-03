@@ -265,3 +265,254 @@ file this lane changed.
    fixtures, not whole-set helpers).
 3. External POS/mobile owner pagination evidence, or a blocked rollout for that consumer.
 4. Both named reviewer gates returning MERGE, and a rebase on `dev` before review.
+
+---
+
+## Fix round 1 (2026-09-04) — treasury-reviewer gate r1
+
+Commit: `cbbdad9c0` — `fix(request-hygiene t3): gate r1 fixes — falsifying tie-break fixture, nullable filters, 422 boundaries`
+(2 files, +104 / −14: `ListPaymentsRequest.php`, `tests/Feature/Treasury/PaymentTest.php`).
+`PaymentController.php` is **byte-identical to `4bdbebe24`** — the removal in §R1.1 below was temporary
+and reverted (`git diff --stat` on that path is empty).
+
+### R1.0 — Environment note (PG port conflict)
+
+`autoerp_postgres` was **down** at the start of this round and `locaplex-postgres` (another project,
+started ~3 min earlier) had taken host port **5433**; `docker start autoerp_postgres` fails with
+`Bind for 0.0.0.0:5433 failed: port is already allocated`. Rather than stop another session's
+container, this round ran its PG legs against a **throwaway lane-private instance** with the same
+image and init scripts:
+
+```
+docker run -d --name autoerp_pg_t3 \
+  -e POSTGRES_DB=autoerp_test_t3 -e POSTGRES_USER=autoerp -e POSTGRES_PASSWORD=autoerp_secret \
+  -p 127.0.0.1:5453:5432 \
+  -v <repo>/apps/erp/docker/postgres/init:/docker-entrypoint-initdb.d:ro \
+  timescale/timescaledb:latest-pg16
+→ extensions present: pg_trgm 1.6, plpgsql, timescaledb 2.23.1, unaccent 1.1, uuid-ossp 1.1
+```
+
+Every PG command below is therefore prefixed with
+`DB_HOST=127.0.0.1 DB_PORT=5453 DB_USERNAME=autoerp DB_PASSWORD=autoerp_secret DB_DATABASE=autoerp_test_t3 DB_CENTRAL_DATABASE=autoerp_test_t3`.
+The database name and credentials are the ones the lane brief reserved; only the host port differs.
+**Container `autoerp_pg_t3` is left running** — remove it with `docker rm -f autoerp_pg_t3` once
+`autoerp_postgres` can reclaim 5433.
+
+### R1.1 — Gate item 1: the tie-break test is now genuinely falsifying (closes D1)
+
+`test_tied_payment_dates_cross_two_pages_without_duplicates_or_omissions`
+(`apps/api/tests/Feature/Treasury/PaymentTest.php:1181-1239`) was rewritten:
+
+- 30 **explicit** ids `7f000000-0000-4000-8000-%012x` for `x = 1..30`, set through
+  `(new Payment)->forceFill([...])->save()` (the model's `HasUuids` only mints a key when none is
+  set, and `id` is not `$fillable`). Ordered `HasUuids` keys are therefore out of the picture.
+- Insertion order is the fixed permutation `1, 3, 5, …, 29, 30, 28, …, 2`: the **first** row inserted
+  carries the **lowest** id and the **last** row inserted carries the **second-lowest**, so `id DESC`
+  matches neither natural/insertion order nor reverse-insertion order.
+- `$expectedIds` is now computed **from the ids themselves** — `rsort($ids, SORT_STRING)` — not from a
+  database query. The shared prefix plus a zero-padded lowercase-hex suffix makes a descending string
+  sort exactly `id DESC`.
+- The assertion is unchanged in shape: `assertCount(30)`, `assertCount(30, array_unique(...))`,
+  `assertSame($expectedIds, $actualIds)` across `page=1` and `page=2` at `per_page=15`.
+
+**Proof — RED with `->orderByDesc('id')` temporarily removed from `PaymentController.php:299`:**
+
+```
+$ grep -n "orderByDesc" app/Modules/Treasury/Presentation/Controllers/PaymentController.php
+298:            ->orderByDesc('payment_date')          ← the id tie-break line is gone
+```
+
+SQLite — `php artisan test tests/Feature/Treasury/PaymentTest.php --filter='tied_payment_dates'`:
+```
+  ⨯ tied payment dates cross two pages without duplicates or omissions
+  …
+  +    25 => '7f000000-0000-4000-8000-000000000009',
+  +    26 => '7f000000-0000-4000-8000-000000000007',
+  +    27 => '7f000000-0000-4000-8000-000000000005',
+  +    28 => '7f000000-0000-4000-8000-000000000003',
+       29 => '7f000000-0000-4000-8000-000000000001',
+   ]
+  at tests/Feature/Treasury/PaymentTest.php:1238
+  ➜ 1238▕         self::assertSame($expectedIds, $actualIds);
+  1   tests/Feature/Treasury/PaymentTest.php:1238
+  Tests:    1 failed (6 assertions)
+  Duration: 3.54s
+```
+
+PostgreSQL — `… php artisan test -c phpunit-pgsql.xml tests/Feature/Treasury/PaymentTest.php --filter='tied_payment_dates'`:
+```
+  ⨯ tied payment dates cross two pages without duplicates or omissions
+  …
+  +    25 => '7f000000-0000-4000-8000-000000000009',
+  +    26 => '7f000000-0000-4000-8000-000000000007',
+  +    27 => '7f000000-0000-4000-8000-000000000005',
+  +    28 => '7f000000-0000-4000-8000-000000000003',
+       29 => '7f000000-0000-4000-8000-000000000001',
+   ]
+  at tests/Feature/Treasury/PaymentTest.php:1238
+  ➜ 1238▕         self::assertSame($expectedIds, $actualIds);
+  1   tests/Feature/Treasury/PaymentTest.php:1238
+  Tests:    1 failed (6 assertions)
+  Duration: 16.18s
+```
+
+The tie-break line was then restored (`grep -n "orderByDesc"` → `298` *and* `299`; `git diff` on the
+controller path is empty), and the test is **green on both drivers** inside the full Step 10 runs in
+§R1.4 below (`✓ tied payment dates cross two pages without duplicates or omissions`).
+
+**Deviation D1 in §2 is now closed.**
+
+### R1.2 — Gate item 2: `nullable` on `status` and `search` (RED first)
+
+`ListPaymentsRequest.php:23-27`:
+```php
+// `nullable` on both filters: the web list page sends `status=` /
+// `search=` when the operator clears a filter, and the global
+// ConvertEmptyStringsToNull middleware turns those into null.
+'status' => ['sometimes', 'nullable', 'string', Rule::enum(PaymentStatus::class)],
+'search' => ['sometimes', 'nullable', 'string', 'max:120'],
+```
+
+New test `test_index_accepts_cleared_filters_sent_as_empty_strings`
+(`PaymentTest.php:1241-1272`): `GET /api/v1/payments?status=&search=` must return 200 with the six-field
+meta envelope.
+
+**RED — before adding `nullable`** (`php artisan test tests/Feature/Treasury/PaymentTest.php --filter='cleared_filters|per_page_above_100|page_zero|search_longer_than_120'`):
+```
+  ⨯ index accepts cleared filters sent as empty strings                  3.71s
+  ✓ index rejects per page above 100 with validation envelope            0.63s
+  ✓ index rejects page zero with validation envelope                     0.64s
+  ✓ index rejects search longer than 120 characters                      0.64s
+  ────────────────────────────────────────────────────────────────────────────
+   FAILED  Tests\Feature\Treasury\PaymentTest > index accepts cleared filter…
+  Expected response status code [200] but received 422.
+  Failed asserting that 422 is identical to 200.
+  at tests/Feature/Treasury/PaymentTest.php:1260
+  Tests:    1 failed, 3 passed (10 assertions)
+```
+
+**GREEN — same command after adding `nullable`:**
+```
+   PASS  Tests\Feature\Treasury\PaymentTest
+  ✓ index accepts cleared filters sent as empty strings                  3.51s
+  ✓ index rejects per page above 100 with validation envelope            0.64s
+  ✓ index rejects page zero with validation envelope                     0.61s
+  ✓ index rejects search longer than 120 characters                      0.62s
+  Tests:    4 passed (20 assertions)
+```
+
+The controller needed no change: `is_string($validated['status'] ?? null)` and
+`is_string($search) && $search !== ''` already skip a `null` filter.
+
+### R1.3 — Gate item 3: 422 boundary tests (honest status: NOT TDD reds)
+
+Three tests added, each with `app()->setLocale('en')` and each asserting both
+`error.code === 'VALIDATION_ERROR'` and the exact `error.errors.<field>.0` string, matching the global
+renderer at `apps/api/bootstrap/app.php:323-333`:
+
+| Test (`PaymentTest.php`) | Request | Asserted message |
+|---|---|---|
+| `test_index_rejects_per_page_above_100_with_validation_envelope` (`:1274`) | `?per_page=101` | `The per page field must not be greater than 100.` |
+| `test_index_rejects_page_zero_with_validation_envelope` (`:1288`) | `?page=0` | `The page field must be at least 1.` |
+| `test_index_rejects_search_longer_than_120_characters` (`:1302`) | `?search=` + 121 × `x` | `The search field must not be greater than 120 characters.` |
+
+**Stated plainly, as the gate asked:** these three **passed on their very first run** (see the RED block
+in §R1.2, where all three are already `✓` before any production change). They are **boundary proofs of
+the caps shipped in `4bdbebe24`, not test-first reds.** They would only have been red against a
+`ListPaymentsRequest` without `max:100` / `min:1` / `max:120`, which never existed on this branch.
+
+### R1.4 — Gate item 4: cap at 120 and validated-only reads (grep proof)
+
+```
+$ grep -n "max:120" app/Modules/Treasury/Presentation/Requests/ListPaymentsRequest.php
+27:            'search' => ['sometimes', 'nullable', 'string', 'max:120'],
+
+$ awk 'NR>=260 && NR<=320' app/Modules/Treasury/Presentation/Controllers/PaymentController.php \
+    | grep -nE '\$request->(input|query|has|all|get|integer|string|boolean)'
+(no output — exit 1)
+
+$ awk 'NR>=260 && NR<=320' app/Modules/Treasury/Presentation/Controllers/PaymentController.php \
+    | grep -n '\$request->'
+5:        $validated = $request->validated();
+```
+
+`index()` reads the request exactly once, through `validated()`.
+
+### R1.5 — Step 10 verification (path-scoped, both drivers)
+
+**SQLite** — `php artisan test tests/Feature/Treasury/PaymentTest.php tests/Feature/Treasury/PaymentCompanyScopeTest.php tests/Feature/Treasury/TreasuryCompanyIsolationTest.php`:
+```
+   FAILED  Tests\Feature\Treasury\PaymentTest > supplier invoice payment cle…
+   Failed asserting that two values of enumeration …PaymentType are equal,
+   SupplierPayment does not match expected DocumentPayment.
+   at tests/Feature/Treasury/PaymentTest.php:578
+  Tests:    1 failed, 46 passed (152 assertions)
+  Duration: 38.51s
+```
+
+**PostgreSQL** (`autoerp_test_t3` on the §R1.0 instance) — same three paths with `-c phpunit-pgsql.xml`:
+```
+   FAILED  Tests\Feature\Treasury\PaymentTest > supplier invoice payment cle…
+   … SupplierPayment does not match expected DocumentPayment.
+   at tests/Feature/Treasury/PaymentTest.php:578
+  Tests:    1 failed, 46 passed (152 assertions)
+  Duration: 131.38s
+```
+
+**Counts: 1 failed / 46 passed on each driver.** The single failure on each is the pre-existing
+baseline red **D2** (`test_supplier_invoice_payment_clears…`), untouched by this lane and proven
+pre-existing on `b133caf21` in §Step 3. The previous round reported 1 failed / 42 passed; the delta of
++4 is exactly the four tests added in this round (the tie-break test was rewritten, not duplicated).
+
+**PHPStan level 8:**
+```
+./vendor/bin/phpstan analyse app/Modules/Treasury/Presentation/Requests/ListPaymentsRequest.php \
+  app/Modules/Treasury/Presentation/Controllers/PaymentController.php --memory-limit=2G
+→  [OK] No errors
+```
+
+**Pint:**
+```
+./vendor/bin/pint --test app/Modules/Treasury/Presentation/Requests/ListPaymentsRequest.php \
+  app/Modules/Treasury/Presentation/Controllers/PaymentController.php \
+  tests/Feature/Treasury/PaymentTest.php
+→ {"result":"pass"}
+```
+
+**Frontend:** untouched this round — no `apps/web` file changed (`git status` in §R1.6), so no vitest
+or typecheck leg was re-run.
+
+### R1.6 — Follow-ups explicitly deferred out of this round (gate instruction)
+
+1. **LIKE wildcard escaping in the payment search.** `PaymentController.php:283` builds
+   `'%'.$search.'%'` and binds it straight into `like` on `reference` and `partners.name`; a `%` or `_`
+   typed by the operator is still a wildcard, and no `ESCAPE` clause is set. Task 2 solved the same
+   problem for stock-movement search with bound `LOWER(...) LIKE ? ESCAPE '!'` predicates (plan rev 9,
+   B2 fold row). Payments should adopt that shape in a follow-up lane, with literal-percent and
+   literal-underscore tests on both drivers.
+2. **FE `status` union drift vs `PaymentStatus` — verified, and already wrong today.**
+   `apps/web/src/features/treasury/PaymentListPage.tsx:34` hand-writes
+   `status: 'pending' | 'completed' | 'cancelled'`, but
+   `apps/api/app/Modules/Treasury/Domain/Enums/PaymentStatus.php:7` is
+   `pending | completed | failed | reversed`. So `cancelled` does not exist on the backend, and
+   `failed` / `reversed` are missing from the frontend; the same file's mock fixture
+   (`PaymentListPage.test.tsx:50`) repeats the wrong union, while
+   `PaymentDetailPage.tsx:70` independently declares the *correct* four cases. Because the type is
+   hand-rolled rather than the generated DTO, none of this is a TypeScript error — and now that an
+   unknown `status` is a hard 422 (this lane's behaviour change), a status filter wired to
+   `cancelled` would fail at runtime instead of returning a silent empty list. Fix belongs in a
+   frontend lane under the "no hand-rolled FE type beside a generated DTO" rule (conventions 11).
+   Not touched here: this round shipped no `apps/web` change.
+
+### R1.7 — Gate items status
+
+| Gate item | Status |
+|---|---|
+| 1 — falsifying tie-break fixture, red on both drivers with the tie-break removed | **Done** (§R1.1) — D1 closed |
+| 2 — `nullable` on `status`/`search` + red-first empty-string test | **Done** (§R1.2) |
+| 3 — three 422 boundary tests with exact messages | **Done** (§R1.3), declared as boundary proofs, not reds |
+| 4 — `max:120` confirmed, `index()` reads only `validated()` | **Done** (§R1.4) |
+| Out of scope this round | LIKE escaping, FE status union — recorded in §R1.6 |
+
+Everything still owed at the bottom of §3 (browser check, live Playwright run, external-consumer
+pagination evidence, both reviewer gates, rebase on `dev`) is unchanged by this round.
