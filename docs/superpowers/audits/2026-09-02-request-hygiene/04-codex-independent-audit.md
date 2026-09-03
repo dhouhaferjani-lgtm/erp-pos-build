@@ -1,0 +1,209 @@
+# Codex independent audit — request hygiene & scale
+
+## Method
+
+This was a static, read-only audit. I used `rg`, `sed`, and numbered source views to inspect:
+
+- Laravel middleware, module routes, controllers, FormRequests, DTOs, models, services, migrations, cache/Sanctum/permission configuration, deployment entrypoint, and relevant vendor internals.
+- React Query setup, list/form pages, pickers, query hooks, polling, invalidations, pagination state, and response consumption.
+- Tauri POS checkout, offline persistence, scheduler, sync orchestration, and server ingestion.
+- Searches for `get()`, `all()`, `paginate()`, `useQueries`, `invalidateQueries`, polling, `Cache::*`, `request->all()`, `orderBy`, `LIKE`, upload validation, `$guarded = []`, throttles, ETags, and cache headers.
+
+I used the React Doctor static-triage guidance, the Superpowers skill-selection workflow, and verification-before-completion discipline. I did not run React Doctor’s npm workflow or any tests because the audit was explicitly read-only.
+
+### Representative request counts
+
+Counts exclude initial authentication/company-bootstrap traffic unless noted. Browser image requests are shown separately from API calls.
+
+| Flow | Count and endpoints | Evidence |
+|---|---|---|
+| Quote create | Cold mount: **0 page-specific API calls**. A normal first-line workflow reaches **5 calls**: `GET /partners?per_page=20`, `GET /products?per_page=20`, `GET /taxation/configurations` after the line renders, `POST /line-entry/pricing-context/bulk` on price focus, and debounced `POST /documents/auto-save`. Workshop service search adds `GET /services?per_page=20`. Final manual submission adds `POST /quotes`. | `apps/web/src/features/documents/DocumentForm.tsx:97-106`, `apps/web/src/features/documents/DocumentForm.tsx:276-285`, `apps/web/src/components/molecules/pickers/PartnerPicker.tsx:119-150`, `apps/web/src/components/molecules/line-items/LineItemEntryBar.tsx:69-82`, `apps/web/src/components/molecules/pickers/ServicePicker.tsx:94-110`, `apps/web/src/features/documents/components/DocumentLineEditor.tsx:385-400`, `apps/web/src/hooks/useDraftAutoSave.ts:146-169` |
+| Purchase-order create | Same **5-call first-line workflow** as quote, plus `GET /documents/{draftId}/additional-costs` after the first autosave creates a draft: **6 calls**. Final submission adds `POST /purchase-orders`. | `apps/web/src/features/documents/DocumentForm.tsx:102`, `apps/web/src/features/documents/DocumentForm.tsx:390-409`, `apps/web/src/features/documents/DocumentForm.tsx:497`, `apps/web/src/features/documents/DocumentForm.tsx:716-723`, `apps/web/src/features/documents/hooks/useAdditionalCosts.ts:43-56` |
+| Product create | **3 fixed calls**: `GET /categories/tree`, `GET /uom/units`, `GET /taxation/configurations`. Loyalty-enabled tenants add `GET /loyalty/earn-rate`. A cold app shell separately adds `GET /company/config`. | `apps/web/src/features/inventory/ProductForm.tsx:191-193`, `apps/web/src/features/inventory/ProductForm.tsx:338-346`, `apps/web/src/features/products/sections/ProductPricingSection.tsx:198-206`, `apps/web/src/features/catalog/api/categories.ts:40-45`, `apps/web/src/features/uom/api/uomApi.ts:53-59`, `apps/web/src/features/inventory/useLoyaltyEarnRate.ts:18-29` |
+| Product edit | **6 base calls**: categories, units, tax configurations, `GET /products/{id}`, `GET /products/{id}/variants`, and `GET /products/{id}/images`. A physical Inventory product adds `GET /locations`, `GET /inventory/products/{id}/placements`, and **one `GET /inventory/locations/{locationId}/nodes` per active location L**, making **8+L**. Existing variants add `GET /product-attributes`; Loyalty adds one more call. | `apps/web/src/features/inventory/ProductForm.tsx:353-386`, `apps/web/src/features/inventory/ProductForm.tsx:935-999`, `apps/web/src/features/inventory/ProductForm.tsx:1102-1129`, `apps/web/src/features/products/components/ProductImageSection.tsx:28-32`, `apps/web/src/features/placement/components/ProductPlacementFields.tsx:41-50`, `apps/web/src/features/placement/components/ProductPlacementFields.tsx:84-95`, `apps/web/src/features/placement/components/ProductPlacementFields.tsx:121-125`, `apps/web/src/features/catalog/components/ProductVariantMatrixEditor.tsx:156-164` |
+| Stock-transfer create | Cold mount: **2 calls**, `GET /locations` and `GET /company/locations/transaction-destinations`. Selecting the first product and source reaches **7 total**: product search, variants, batch stock, two separately keyed requests to `/products/{id}/stock-levels`, plus the two location calls. For N distinct lines, the line-dependent cost is approximately **4N plus product-search calls**. | `apps/web/src/features/stock-transfers/pages/CreateStockTransferPage.tsx:522-531`, `apps/web/src/features/stock-transfers/pages/CreateStockTransferPage.tsx:318-340`, `apps/web/src/features/stock-transfers/pages/CreateStockTransferPage.tsx:425-432`, `apps/web/src/features/stock-transfers/pages/CreateStockTransferPage.tsx:472-477`, `apps/web/src/features/stock-transfers/pages/CreateStockTransferPage.tsx:736-786`, `apps/web/src/features/stock-transfers/components/TransferSourceSuggestion.tsx:13-20`, `apps/web/src/features/batches/api/batches.ts:146-156` |
+| POS sale flow | Tender/fiscalization makes **0 HTTP requests**: receipt, fiscal event, chain advance, and voucher mutations commit locally, then sync is scheduled. Each periodic full sync performs **17 baseline pull calls**, or **18 with an open shift**, before pagination and pending pushes: `/products`, `/payment-methods`, `/payment-repositories`, `/pos/payment-policy`, `/pos/auth/pin-data`, `/pos/terminals/{id}`, `/pos/terminals/{id}/z-chain-state`, `/pos/floors`, `/active-menu`, `/pos/vouchers/sync`, `/pos/voucher-ledger/sync`, `/pos/receipts/qr-index`, `/pos/customers/sync`, `/pos/variants`, `/pos/stock-levels`, `/pos/replenishment-requests`, `/company/config`, and conditionally `/pos/shifts/{id}`. Every pending fiscal event adds a separate POST. | `apps/pos/src/lib/offline/receiptService.ts:558-570`, `apps/pos/src/lib/offline/receiptService.ts:584-735`, `apps/pos/src/lib/offline/receiptService.ts:751-759`, `apps/pos/src/lib/sync/syncScheduler.ts:11-35`, `apps/pos/src/lib/sync/syncService.ts:428-440`, `apps/pos/src/lib/sync/syncService.ts:2318-2329`, `apps/pos/src/lib/sync/syncService.ts:2394-2448`, `apps/pos/src/lib/sync/shiftReconcile.ts:67-89` |
+
+The product pickers request 20 products and render signed images for every result that has one, so a single dropdown opening can add up to **20 media GETs** beyond the API counts above: `apps/web/src/components/molecules/line-items/LineItemEntryBar.tsx:70-82`, `apps/web/src/components/molecules/line-items/ProductCell.tsx:33-40`.
+
+## Findings table
+
+| ID | Severity (P0/P1/P2/P3) | Dimension | Evidence path:line | What breaks at scale |
+|---|---|---|---|---|
+| RH-01 | P0 | Transaction/lock discipline | `apps/api/app/Modules/Document/Domain/Services/DocumentPostingService.php:110-124`; `apps/api/app/Modules/Document/Domain/Services/DocumentPostingService.php:658-678`; `apps/api/app/Modules/Document/Domain/Services/DocumentPostingService.php:680-685` | Posting refreshes the target without locking it. The predecessor is locked, but concurrent genesis postings have no predecessor row to lock. The code also records that no `(company_id,type,chain_sequence)` uniqueness constraint exists. Concurrent posting can fork the fiscal chain or double-process one document. |
+| RH-02 | P1 | Backend N+1 | `apps/api/app/Modules/Document/Presentation/Controllers/InvoiceController.php:205-211`; `apps/api/app/Modules/Document/Presentation/Controllers/PurchaseOrderController.php:256-264`; `apps/api/app/Modules/Document/Application/DTOs/DocumentData.php:150-152`; `apps/api/app/Modules/Document/Application/DTOs/DocumentData.php:201-246`; `apps/api/app/Modules/Document/Domain/Document.php:955-993`; `apps/api/app/Modules/Document/Domain/Document.php:1026-1060` | A payable document row incurs five aggregate queries for outstanding/payment status, one partner query, and fulfillment queries. A PO is at least **6 queries per row**; an invoice is at least **8**, with fulfillment growing toward `lines × delivery_notes`. |
+| RH-03 | P1 | Hot-write concurrency | `apps/api/app/Modules/Inventory/Application/Services/StockTransferService.php:1095-1104`; `apps/api/database/migrations/tenant/2026_05_28_120000_create_stock_transfers_table.php:64-69` | Transfer numbers use `COUNT()+1` while a unique constraint enforces the result. Concurrent transfer creation can compute the same number and fail with a uniqueness error. |
+| RH-04 | P1 | Long transactions and locks | `apps/api/app/Modules/Inventory/Application/Services/StockTransferService.php:103-187`; `apps/api/app/Modules/Inventory/Application/Services/StockTransferService.php:480-556`; `apps/api/app/Modules/Inventory/Application/Services/StockTransferService.php:949-979`; `apps/api/app/Modules/Inventory/Presentation/Requests/StoreStockTransferRequest.php:83-107` | One transaction inserts every line/allocation and then processes every product, stock row, batch, movement, and save. Stock locks are held across all later lines. The request has no maximum line or allocation count, so latency and lock duration are client-controlled. |
+| RH-05 | P1 | POS request fan-out | `apps/pos/src/lib/sync/syncScheduler.ts:27-35`; `apps/pos/src/lib/sync/syncService.ts:428-440`; `apps/pos/src/lib/sync/syncService.ts:2268-2448`; `apps/api/app/Modules/Fiscal/Presentation/Controllers/FiscalEventIngestionController.php:125-141`; `apps/api/app/Modules/Fiscal/Application/Services/OutboxIngestor.php:241-275` | Every terminal runs a broad sync each minute. Fiscal events are sent one per HTTP request even though the server accepts 100, and the controller opens one ingest transaction per envelope. Terminal count and offline backlog multiply API, DB, and queue traffic. |
+| RH-06 | P1 | Rate limiting | `apps/api/app/Providers/AppServiceProvider.php:358-364`; `apps/api/bootstrap/app.php:132-152`; `apps/api/app/Modules/Accounting/Presentation/routes.php:161-237`; `apps/api/app/Modules/Expense/routes.php:24-30`; `apps/api/app/Modules/Taxation/routes.php:115-120`; `apps/api/app/Modules/Fiscal/routes.php:42-53` | A named `api` limiter exists but is not attached to the API group. Financial reports, owner reports, exports, and POS fiscal ingestion have permission checks but no throttle. Concurrent refreshes or scripted clients can saturate tenant DBs and workers. |
+| RH-07 | P1 | Cache topology | `apps/api/config/cache.php:18-18`; `apps/api/config/cache.php:42-47`; `apps/api/config/tenancy.php:38-44`; `apps/api/vendor/stancl/tenancy/src/CacheManager.php:18-35`; `apps/api/vendor/laravel/framework/src/Illuminate/Cache/Repository.php:768-780`; `apps/api/database/migrations/0001_01_01_000001_create_cache_table.php:12-24` | The fallback store is `database`, but Stancl automatically applies cache tags and Laravel’s database store does not support tags. Additionally, its connection is unset and the cache table is only in the central migration set; after tenant DB switching, a direct database-store resolution would target a tenant DB without that table. |
+| RH-08 | P1 | Unpaginated tenant collections | `apps/api/app/Modules/Inventory/Presentation/Controllers/StockMovementController.php:70-80`; `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:295-305`; `apps/api/app/Modules/Document/Presentation/Controllers/CreditNoteController.php:45-60`; `apps/api/app/Modules/Channel/Presentation/Controllers/ChannelOrderController.php:75-81`; `apps/api/app/Modules/Channel/Presentation/Controllers/ChannelSyncOperationController.php:21-31` | Omitting `page` returns the entire stock-movement or payment history; credit notes and channel data are always unpaginated. Memory, serialization time, and response size grow without bound. |
+| RH-09 | P1 | Audit/fiscal payload size | `apps/api/app/Modules/Compliance/Presentation/Controllers/AuditController.php:42-78`; `apps/api/app/Modules/Compliance/Services/AuditService.php:117-145`; `apps/api/database/migrations/tenant/2025_11_30_140000_create_audit_events_table.php:14-23`; `apps/api/app/Modules/Fiscal/Presentation/Controllers/DeadLetteredProjectionsController.php:94-171` | Audit aggregate/range queries are unpaginated and return both JSONB payloads. The fiscal dead-letter page executes three unpaginated queries and reads full fiscal payloads merely to extract a few fields. Incident spikes can exhaust PHP memory. |
+| RH-10 | P1 | Validation/sorting/pagination | `apps/api/app/Modules/Inventory/Presentation/Controllers/InventoryCountingController.php:229-245`; `apps/api/app/Support/Traits/FiltersAndSorts.php:22-44` | Inventory counting accepts arbitrary `sort_by`, `sort_dir`, and `per_page`. Laravel quotes column identifiers, limiting direct SQL injection, but invalid directions/columns produce database errors and unbounded `per_page` permits memory/CPU abuse. |
+| RH-11 | P1 | Product over-fetching | `apps/api/app/Modules/Product/Presentation/Controllers/ProductController.php:104-143`; `apps/api/app/Modules/Product/Presentation/Controllers/ProductController.php:145-170`; `apps/api/app/Modules/Product/Application/DTOs/ProductData.php:24-70`; `apps/api/app/Modules/Product/Application/DTOs/ProductData.php:73-134`; `apps/web/src/features/inventory/ProductListPage.tsx:39-64` | `/products` permits 2,000 rows, selects full models, loads up to eight parapharmacy or three automotive relation families, and serializes a large detail DTO. The list client declares only a small subset of those fields. |
+| RH-12 | P1 | Form request fan-out | Request-count table above; particularly `apps/web/src/features/inventory/ProductForm.tsx:353-386`, `apps/web/src/features/placement/components/ProductPlacementFields.tsx:41-50`, `apps/web/src/features/placement/components/ProductPlacementFields.tsx:84-95`, `apps/web/src/features/stock-transfers/pages/CreateStockTransferPage.tsx:522-531` | Product edit grows with location count; stock-transfer creation grows with line count; document creation adds lazy picker, tax, pricing, autosave, and additional-cost calls. Tenant concurrency multiplies many small queries and middleware traversals. |
+| RH-13 | P1 | Browser asset fan-out | `apps/web/src/components/molecules/line-items/LineItemEntryBar.tsx:70-82`; `apps/web/src/components/molecules/pickers/ProductPicker.tsx:145-159`; `apps/web/src/components/molecules/line-items/ProductCell.tsx:33-40`; `apps/api/app/Providers/AppServiceProvider.php:384-394` | A 20-row product picker can trigger 20 signed media GETs. The backend’s own limiter comment acknowledges 60–100-image grids. Shared NATs and many users amplify media traffic even when JSON-query count looks modest. |
+| RH-14 | P2 | `useQueries` fan-out | `apps/web/src/features/purchases/supplier-invoices/api.ts:221-245`; `apps/web/src/features/purchases/supplier-invoices/api.ts:277-298`; `apps/web/src/features/purchases/supplier-invoices/SupplierInvoiceCreatePage.tsx:231-232`; `apps/web/src/features/replenishment/components/CreateTransferDialog.tsx:37-49` | Selecting K purchase orders makes **2K detail/receipt-line calls**. The replenishment dialog makes one stock request per distinct selected product instead of using a bulk endpoint. |
+| RH-15 | P2 | Backend lookup N+1 | `apps/api/app/Modules/Document/Domain/Services/DraftPersistenceService.php:694-715`; `apps/api/app/Modules/Document/Domain/Services/DraftPersistenceService.php:717-732` | Draft autosave batches products and services but resolves each distinct variant separately. Large drafts turn every 3-second autosave into N variant queries. |
+| RH-16 | P1 | JSON body bounds | `apps/api/docker/nginx/nginx.conf:47-49`; `apps/api/docker/php/php.ini:7-14`; `apps/api/app/Modules/Document/Presentation/Requests/AutoSaveDraftRequest.php:194-218`; `apps/api/app/Modules/Document/Presentation/Requests/CreateDocumentRequest.php:100-100`; `apps/api/app/Modules/Inventory/Presentation/Requests/StoreStockTransferRequest.php:83-107`; `apps/api/app/Modules/Fiscal/Presentation/Requests/IngestFiscalEventsRequest.php:45-55` | The proxy accepts 64 MB bodies. Document and transfer line arrays have no maximum item count; fiscal sync caps envelopes at 100 but not payload bytes/depth/string lengths. A valid-shaped body can cause extreme validation, query, insertion, and serialization work. |
+| RH-17 | P1 | Raw request/external amplification | `apps/api/app/Modules/PlatformIntegration/Presentation/Controllers/EnrichmentWebhookController.php:47-69`; `apps/api/app/Modules/PlatformIntegration/Presentation/routes.php:16-21`; `apps/api/app/Modules/PlatformIntegration/Presentation/Controllers/CatalogBrowseController.php:93-101`; `apps/api/app/Modules/PlatformIntegration/Application/Services/CatalogBrowseService.php:155-161` | The HMAC webhook accepts `$request->all()` and dispatches one job per unbounded item without throttling. Catalog criteria forwards the entire request body into a synchronous external POST, also without a FormRequest or route throttle. |
+| RH-18 | P2 | Search hygiene | `apps/web/src/features/documents/DocumentListPage.tsx:125-139`; `apps/web/src/features/documents/DocumentListPage.tsx:171-184`; `apps/web/src/features/inventory/ProductListPage.tsx:147-156`; `apps/web/src/components/ui/filters/SearchFilter.tsx:23-42`; `apps/api/app/Modules/Document/Presentation/Controllers/Concerns/HandlesDocuments.php:175-217`; `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:283-292` | List search fires on every keystroke. Backend patterns use leading/trailing wildcards and do not escape user `%` or `_`; this is parameter-bound rather than SQL injection, but it enables match-all inputs and index-hostile scans. |
+| RH-19 | P2 | Missing reference-data/request memoization | `apps/api/app/Modules/Taxation/Presentation/Controllers/TaxConfigurationController.php:29-48`; `apps/api/app/Modules/Company/Presentation/Controllers/LocationController.php:65-99`; `apps/api/app/Modules/Uom/Presentation/Controllers/UomController.php:114-143`; `apps/api/app/Modules/Company/Services/CompanyContext.php:87-110`; `apps/api/app/Shared/Infrastructure/CurrencyScaleResolver.php:36-70` | Taxes, locations, and units are re-queried on each cache miss. `CompanyContext` does not memoize the model, and the currency resolver can query company plus country repeatedly in one request. |
+| RH-20 | P2 | HTTP caching | `apps/api/app/Modules/Company/Presentation/Controllers/LocationController.php:87-99`; `apps/api/app/Modules/Uom/Presentation/Controllers/UomController.php:125-143`; `apps/api/app/Modules/Media/Infrastructure/Storage/MediaStorageAdapter.php:93-100` | JSON reference endpoints set no ETag/Last-Modified/Cache-Control and include a fresh timestamp, defeating conditional reuse. Media is the only audited path with an explicit reusable cache policy. |
+| RH-21 | P1 | Per-request middleware overhead | `apps/api/app/Modules/Identity/Presentation/Middleware/ResolveTenancy.php:56-78`; `apps/api/app/Modules/Identity/Presentation/Middleware/ResolveTenancy.php:96-134`; `apps/api/vendor/laravel/sanctum/src/Guard.php:40-60`; `apps/api/app/Http/Middleware/CompanyContextMiddleware.php:93-145`; `apps/api/app/Modules/Company/Services/CompanyContext.php:127-163`; `apps/api/app/Http/Middleware/RequireModule.php:38-66` | A bearer request performs a token lookup for tenancy, tenant lookup, another Sanctum token lookup plus user resolution, and one or two company-membership queries before authorization. A trivial explicit-company GET has a static lower bound of roughly **5 reads before its controller**; permission/module routes commonly reach **7–8**. |
+| RH-22 | P2 | Broad invalidation | `apps/web/src/providers/WebSocketReconnectProvider.tsx:9-15`; `apps/web/src/providers/WebSocketReconnectProvider.tsx:21-31`; `apps/web/src/components/organisms/CompanySelector/CompanySelector.tsx:45` | A WebSocket reconnect calls `invalidateQueries()` without a key, refetching every active query. Network flaps across many clients can create synchronized DB bursts. |
+| RH-23 | P2 | Polling | `apps/web/src/features/pos/layouts/POSLayout.tsx:46-60`; `apps/web/src/features/pos/hooks/useOrders.ts:57-65`; `apps/web/src/features/pos/hooks/useKitchenOrders.ts:22-30`; `apps/web/src/features/inventory-counting/api/queries.ts:41-49`; `apps/web/src/features/owner-dashboard/hooks/useOwnerReports.ts:126-136` | Active POS/order pages poll at 10–30 seconds even with WebSockets; counting polls twice per minute and live owner sales four times per minute. Fleet size creates constant background traffic independent of user actions. |
+| RH-24 | P2 | Duplicate query identities/guards | `apps/web/src/features/catalog/hooks/useProductVariants.ts:10-15`; `apps/web/src/features/catalog/hooks/useVariants.ts:136-142`; `apps/web/src/features/stock-transfers/components/TransferSourceSuggestion.tsx:13-20`; `apps/web/src/features/stock-transfers/pages/CreateStockTransferPage.tsx:425-432` | The same variants endpoint uses incompatible keys (`product-variants` versus catalog variant keys). Stock transfer calls the same stock-level endpoint under two keys on the same row. The first variant hook also lacks tenant/company readiness guards. |
+| RH-25 | P3 | Pagination UI/query continuity | `apps/web/src/hooks/useTableState.ts:97-108`; `apps/web/src/hooks/useTableState.ts:199-202`; `apps/web/src/hooks/useTableState.ts:226-230`; `apps/web/src/features/inventory/ProductListPage.tsx:147-156`; `apps/web/src/features/documents/DocumentListPage.tsx:171-184` | URL and setter `per_page` values are not client-bounded. Product/document list queries do not retain previous data while page/filter keys change, producing blank/loading churn and overlapping in-flight requests. |
+| RH-26 | P2 | Sanctum lifetime/abilities | `apps/api/config/sanctum.php:43-53`; `apps/api/app/Modules/Identity/Presentation/Controllers/AuthController.php:98-125`; `apps/api/app/Modules/Identity/Presentation/Controllers/AuthController.php:154-175`; `apps/api/app/Modules/Identity/Presentation/Controllers/AuthController.php:294-310` | Back-office tokens carry `*` for 30 days. POS tokens last 12 months and are classified using client-controlled headers/body fields. They carry `pos:*`, but most routes use `auth:sanctum` plus policies, not Sanctum ability middleware; the code itself notes back-office ability checks are not yet consistent. |
+| RH-27 | P3 | Mass assignment | `apps/api/app/Modules/Treasury/Domain/BankStatement.php:34-43`; `apps/api/app/Modules/Treasury/Domain/InstrumentRemittance.php:38-47`; `apps/api/app/Modules/Product/Domain/Product.php:92-131`; `apps/api/app/Modules/Document/Domain/Document.php:125-169` | Multiple Treasury models disable mass-assignment protection entirely, while Product and Document allow tenant/company, fiscal, cost, and status fields. No audited hot route directly mass-assigned `$request->all()`, so this is latent blast radius rather than a confirmed exploit. |
+| RH-28 | P2 | Document payload over-fetching | `apps/api/app/Modules/Document/Presentation/Controllers/DocumentController.php:117-148`; `apps/api/app/Modules/Document/Application/DTOs/DocumentData.php:24-101`; `apps/web/src/features/documents/DocumentListPage.tsx:312-420` | List queries select `*`, including JSON payload and wide fiscal/detail columns, then serialize a roughly 50-field DTO. The grid consumes number, type/status, partner, date, total, balance, and ID. |
+
+## Top 10 findings expanded
+
+### 1. RH-01 — fiscal document posting is not safely serialized
+
+Evidence: the transaction refreshes the document but does not use `lockForUpdate()` on it (`DocumentPostingService.php:110-124`). The predecessor query is locked (`DocumentPostingService.php:673-678`), but the code explicitly records that there is no unique chain-sequence index (`DocumentPostingService.php:658-660`).
+
+Mechanism under load: two requests can both observe a confirmed, unposted document. For the first fiscal document of a company/type, both see no predecessor, so neither locks anything and both calculate sequence 1. Later-chain posting is partly serialized by the predecessor row, but the target document itself remains vulnerable to stale-state processing.
+
+Good Laravel ERP behavior means one database serialization point per fiscal chain and one per target document, backed by a database uniqueness invariant. Idempotence must hold under simultaneous requests, not only sequential retries.
+
+### 2. RH-02 — document lists contain multiplicative N+1 work
+
+Evidence: invoice and PO indexes eager-load only narrow relations and then map every row through `DocumentData` (`InvoiceController.php:205-211`, `PurchaseOrderController.php:256-264`). The mapper queries partner, source/invoicing documents, outstanding amounts, payment state, and fulfillment (`DocumentData.php:150-152`, `DocumentData.php:201-246`).
+
+Mechanism under load:
+
+- PO row: partner 1 + outstanding 2 + payment-status outstanding 2 + pending-payment existence 1 = at least **6 queries per row**.
+- Invoice row: the same six plus delivery-note query and physical-product/line query = at least **8 per row**.
+- With delivery notes, fulfillment queries each delivery note’s lines for each order line (`Document.php:1044-1060`).
+
+A 25-row invoice page can therefore exceed 200 DB statements before middleware overhead.
+
+Good behavior means list-specific projections: joined partner display fields, precomputed/batched payment aggregates, batched fulfillment summaries, and a compact list DTO. Detail-only computation belongs on detail endpoints.
+
+### 3. RH-05 — POS sync scales by terminals × endpoints × backlog
+
+Evidence: the scheduler runs immediately and every minute (`syncScheduler.ts:27-35`); `runFullSync` sequentially invokes the entire push/pull suite (`syncService.ts:2268-2448`). Pending fiscal events are posted one at a time (`syncService.ts:428-440`), while the API accepts up to 100 (`IngestFiscalEventsRequest.php:45-55`). The controller still ingests each envelope separately (`FiscalEventIngestionController.php:125-141`).
+
+Mechanism under load: 500 online terminals imply about 8,500 baseline pull requests per minute before product/customer pagination and pending pushes. A reconnect after an outage produces both a full pull and one HTTP request/transaction per pending event. Projection rows then generate queued jobs after every ingest.
+
+Good offline POS design preserves the current zero-network checkout path while using true delta manifests, batched ordered event uploads, jittered scheduling, conditional pulls, and explicit server-side fleet rate budgets.
+
+### 4. RH-03/RH-04 — stock-transfer creation has both a race and a lock-duration problem
+
+Evidence: numbering is `COUNT()+1` (`StockTransferService.php:1095-1104`) despite a unique company-number index (`create_stock_transfers_table.php:66`). The transaction then inserts rows and processes every stock/batch movement before commit (`StockTransferService.php:103-187`, `StockTransferService.php:480-556`). Request arrays are not capped (`StoreStockTransferRequest.php:83-107`).
+
+Mechanism under load: simultaneous creates can collide on the display number. Large transfers acquire stock and batch locks line by line and retain early locks while later products, allocations, movements, and saves execute. Transfers involving common SKUs become a deadlock/queueing hotspot.
+
+Good behavior means sequence allocation with a concurrency-safe counter and predictable lock ordering, plus bounded request size and a transaction whose work is proportional to a controlled batch ceiling.
+
+### 5. RH-06 — the general API rate limiter is defined but effectively unused
+
+Evidence: `RateLimiter::for('api')` defines 100/minute (`AppServiceProvider.php:358-364`), but the API group only adds tenancy/security/company middleware (`bootstrap/app.php:132-152`). Static route inspection found only 32 explicit throttle references; reports, VAT exports, expense exports, and fiscal ingest have none.
+
+Mechanism under load: permissions limit who may invoke work, not how often. Dashboard polling, repeated export downloads, POS retry loops, or authenticated automation can continuously consume DB connections and PHP workers.
+
+Good behavior means cost-aware route classes: cheap reads, search, heavy reports/exports, imports, and device sync each have separate tenant/user/device budgets. Expensive report/export work should have concurrency limits independent of request-per-minute limits.
+
+### 6. RH-07 — the default cache configuration is incompatible with tenant cache tagging
+
+Evidence: `CACHE_STORE` falls back to `database`, with no cache connection pinned (`cache.php:18`, `cache.php:42-47`). Database tenancy runs before cache tenancy (`tenancy.php:38-44`). Stancl applies tenant tags to every cache operation (`vendor/stancl/.../CacheManager.php:18-35`), while Laravel throws when the store lacks tag support (`vendor/laravel/.../Repository.php:768-780`). The cache-table migration is central-only (`database/migrations/0001_01_01_000001_create_cache_table.php:12-24`).
+
+Mechanism under load: if `CACHE_STORE` is absent/misconfigured, normal tenant `Cache::*` calls—including locks and Spatie permission caching—can fail immediately. Without the tag wrapper, an unpinned database cache would follow the active tenant connection, whose migration set has no cache table.
+
+The supplied production environment correctly selects Redis (`apps/api/.env.production.example:52-70`), but this remains a dangerous fail-open configuration default.
+
+Good behavior means a tag-capable, explicitly configured shared store for tenant cache operations, startup validation of the driver, and central/tenant key ownership documented independently of whichever DB connection is currently default.
+
+### 7. RH-08/RH-09/RH-16 — multiple read and write surfaces have caller-controlled work
+
+Evidence:
+
+- Stock movements and payments switch to unbounded `get()` when `page` is omitted (`StockMovementController.php:70-80`, `PaymentController.php:295-305`).
+- Audit range/aggregate queries are unbounded and return JSONB payloads (`AuditService.php:117-145`, `AuditController.php:67-78`).
+- Document, transfer, and fiscal bodies accept large nested structures without byte- or item-level ceilings (`AutoSaveDraftRequest.php:194-218`, `StoreStockTransferRequest.php:83-107`, `IngestFiscalEventsRequest.php:45-55`).
+- Nginx allows 64 MB (`nginx.conf:47-49`).
+
+Mechanism under load: these paths convert a single authorized request into arbitrary DB scans, object hydration, validation loops, inserts, JSON decoding, and serialization. Per-tenant databases contain blast radius, but they do not prevent a large tenant from monopolizing shared PHP and PostgreSQL capacity.
+
+Good behavior means pagination mandatory on growing history, compact projections, bounded date ranges, and explicit maxima for line counts, allocation counts, envelope bytes, nesting depth, and exported row ranges.
+
+### 8. RH-12/RH-13/RH-14 — frontend request fan-out is distributed across components
+
+Evidence: product edit mounts independent tax/category/unit/media/placement/variant queries, and placement creates one hook per location. Stock transfer mounts variant, batch, and two differently keyed stock queries per line. Supplier invoicing explicitly maps IDs into two `useQueries` collections.
+
+Mechanism under load: each hook is locally reasonable, but there is no page-level request budget. A tenant with 30 locations makes a product edit page exceed 38 JSON requests; product pickers can add 20 image requests; K selected supplier POs create 2K requests.
+
+Good React ERP behavior means pages consume composed bootstrap/view-model endpoints for stable reference data and bulk endpoints for line-dependent state. Lazy pickers remain appropriate, but row-level data should be batched and deduplicated by a canonical query key.
+
+### 9. RH-11/RH-28 — list endpoints return detail-grade payloads
+
+Evidence: `/products` accepts 2,000 rows and loads vertical-specific relation families (`ProductController.php:104-143`), then serializes the full `ProductData` (`ProductController.php:158-170`, `ProductData.php:24-70`). Document lists use `select *` and the same large DTO used by details (`DocumentController.php:117-148`, `DocumentData.php:24-101`).
+
+Mechanism under load: DB I/O reads wide JSON/text/fiscal columns, Eloquent allocates nested objects, and PHP serializes data the grid never reads. Compression reduces network bytes but not DB, hydration, or encoding cost.
+
+Good behavior means explicit list projections and list resources whose fields match visible columns. Detail resources, nested relations, signed media arrays, metadata, and audit/fiscal projections should be opt-in.
+
+### 10. RH-21 — every business request pays a substantial fixed query tax
+
+Evidence: pre-auth tenancy looks up the PAT and tenant (`ResolveTenancy.php:56-78`, `ResolveTenancy.php:116-134`). Sanctum separately resolves the PAT and tokenable user (`vendor/laravel/sanctum/src/Guard.php:40-60`). Company selection performs membership reads (`CompanyContextMiddleware.php:122-145`, `CompanyContext.php:127-163`). Module gating may lazily query the tenant (`RequireModule.php:51-59`).
+
+Mechanism under load: the fixed cost is paid once for every API call generated by the frontend fan-out. An explicit-company bearer request has about five reads before controller work; `can:` and module-gated routes commonly add permission-role and tenant reads, reaching roughly seven or eight.
+
+Good behavior means request-scoped identity/tenant/company objects resolved once and reused, with permission catalogs cached and user membership/role state retrieved in bounded queries. A trivial authenticated endpoint should have a measured, enforced query budget.
+
+## Things that are already done well
+
+- The actual POS checkout is offline-first and atomic. Caller idempotency keys are checked before mutation, receipt/fiscal-chain/voucher changes share one SQLite transaction, and sync is triggered only after commit: `apps/pos/src/lib/offline/receiptService.ts:338-359`, `apps/pos/src/lib/offline/receiptService.ts:558-570`, `apps/pos/src/lib/offline/receiptService.ts:584-735`, `apps/pos/src/lib/offline/receiptService.ts:751-759`.
+
+- Server fiscal ingestion has database conflict handling and dispatches projection jobs after commit: `apps/api/app/Modules/Fiscal/Application/Services/OutboxIngestor.php:241-275`, `apps/api/app/Modules/Fiscal/Application/Services/OutboxIngestor.php:1025-1046`.
+
+- Stock transfers have an idempotency key, tenant/company uniqueness, location/product validation, and after-commit domain events: `apps/api/app/Modules/Inventory/Application/Services/StockTransferService.php:103-116`, `apps/api/database/migrations/tenant/2026_05_28_120000_create_stock_transfers_table.php:53-69`, `apps/api/app/Modules/Inventory/Application/Services/StockTransferService.php:562-575`.
+
+- Product sorting uses an allow-list, unlike inventory counting: `apps/api/app/Support/Traits/FiltersAndSorts.php:22-44`, `apps/api/app/Modules/Product/Presentation/Controllers/ProductController.php:91-97`, `apps/api/app/Modules/Product/Presentation/Controllers/ProductController.php:208-225`.
+
+- Product media is batch-resolved for a list page, preventing a backend media N+1: `apps/api/app/Modules/Product/Presentation/Controllers/ProductController.php:145-170`.
+
+- Journal entries are always paginated to 20 and eager-load `lines.account`: `apps/api/app/Modules/Accounting/Presentation/Controllers/JournalEntryController.php:32-61`.
+
+- File uploads have explicit MIME/type and size rules. Document ingestion derives its limit from configuration; product media is restricted to JPEG/PNG/WebP/GIF and 5 MB: `apps/api/app/Modules/DocumentIngestion/Presentation/Requests/StoreDocumentIngestionRequest.php:21-33`, `apps/api/app/Modules/Catalog/Presentation/Requests/UploadMediaRequest.php:29-33`.
+
+- Autosave now has a dedicated FormRequest with document-type authorization, scoped IDs, string limits, and decimal constraints: `apps/api/app/Modules/Document/Presentation/Requests/AutoSaveDraftRequest.php:154-170`, `apps/api/app/Modules/Document/Presentation/Requests/AutoSaveDraftRequest.php:176-235`.
+
+- Sensitive endpoints do have targeted throttles: login/register/password reset, document extraction, document email, image uploads, public/signed media, channel webhooks, and POS terminal activation: `apps/api/app/Modules/Identity/routes.php:21-45`, `apps/api/app/Modules/DocumentIngestion/Presentation/routes.php:29-31`, `apps/api/app/Modules/Product/routes.php:143-183`, `apps/api/app/Modules/POS/routes.php:57-82`.
+
+- The production example explicitly uses Redis for cache, sessions, and queues, and deployment attempts config/route/view caching: `apps/api/.env.production.example:52-70`, `apps/api/docker/entrypoint.sh:209-225`.
+
+- Module and vertical configuration use a tenancy-neutral `GlobalCache` for 24 hours with explicit invalidation: `apps/api/app/Services/CompanyConfigService.php:18-34`, `apps/api/app/Services/CompanyConfigService.php:48-92`, `apps/api/app/Services/VerticalConfigService.php:17-34`, `apps/api/app/Services/VerticalConfigService.php:82-104`.
+
+- Other meaningful caches exist for fleet totals, purchase-hub offers, platform catalog/barcode lookups, channel stock coalescing, cart abuse counters, enrichment locks, and monitoring metrics: `apps/api/app/Services/TenantFleetStatsService.php:31-50`, `apps/api/app/Modules/PurchaseHub/Application/Services/PurchaseHubService.php:34-48`, `apps/api/app/Modules/PlatformIntegration/Application/Services/BarcodeLookupService.php:49-88`, `apps/api/app/Modules/PlatformIntegration/Application/Services/CatalogBrowseService.php:313-328`, `apps/api/app/Modules/Channel/Application/Listeners/DispatchStockChangeToChannels.php:30-44`, `apps/api/app/Modules/Cart/Application/Services/CartService.php:145-158`, `apps/api/app/Modules/Product/Application/Services/EnrichmentImagePersister.php:242-245`.
+
+- Spatie’s permission catalog is configured for a 24-hour cache with automatic invalidation: `apps/api/config/permission.php:177-200`.
+
+- The React Query defaults are broadly sensible: five-minute freshness, one retry, no focus refetch, and no mutation retry: `apps/web/src/lib/queryClient.ts:3-14`.
+
+- Most scope-dependent hooks use `enabled` guards. Partner and product pickers debounce at 250 ms, and POS discount preview combines debounce, tenant gating, prior-data retention, and a short explicit freshness period: `apps/web/src/components/molecules/pickers/PartnerPicker.tsx:111-128`, `apps/web/src/components/molecules/pickers/ProductPicker.tsx:99-110`, `apps/web/src/components/molecules/pickers/ProductPicker.tsx:137-159`, `apps/web/src/features/pos/hooks/useDiscountPreview.ts:72-89`.
+
+- No reference-data query with accidental `staleTime: 0` was found. The sole explicit zero-freshness query is documented as a correctness requirement for stock-adjustment concurrency: `apps/web/src/features/stock-adjustments/api/queries.ts:83-97`.
+
+- Media payloads use signed URLs rather than embedding base64 in normal JSON, and served media is browser-cacheable for one hour: `apps/api/app/Modules/Media/Infrastructure/Storage/MediaStorageAdapter.php:93-100`. The barcode renderer’s base64 data URI remains internal to PDF rendering rather than a list response: `apps/api/app/Modules/Catalog/Application/Services/VariantLabelBarcodeRenderer.php:14-21`, `apps/api/app/Modules/Catalog/Presentation/Controllers/VariantLabelController.php:169-181`.
+
+## Blind spots
+
+- This was static analysis. I did not run a browser waterfall, Laravel Telescope, query logging, PostgreSQL `EXPLAIN`, or load tests. Query counts are source-derived lower bounds and branch-dependent formulas.
+
+- I could not verify the live `CACHE_STORE`, Redis topology, connection-pool sizing, queue concurrency, PHP-FPM worker count, reverse-proxy throttling, CDN behavior, or whether production actually runs the supplied entrypoint. The Redis production example mitigates RH-07 if faithfully deployed.
+
+- External WAF/API-gateway rate limits are not represented in this repository. They could mitigate RH-06/RH-17 but cannot be credited from local evidence.
+
+- POS’s 17/18-call count assumes applicable modules and one page per feed. Product, customer, variant, and stock pagination; pending fiscal/Z/cash/voucher/audit/customer/replenishment rows; and image-download queues increase it.
+
+- I did not dynamically confirm whether every route middleware stack resolves permissions in exactly one or two SQL statements. The stated five-query pre-controller baseline follows the explicit duplicate token, tenant, user, and membership paths; the seven-to-eight range is the expected branch when `can:` and module middleware load uncached user roles/tenant relations.
+
+- Absence findings—no general throttle attachment, no ETag/Last-Modified implementation, no tenant cache-table migration, and no array maxima—were verified by repository-wide search, but infrastructure or generated configuration outside this checkout could alter runtime behavior.
+
+- No current hot controller was found directly passing `$request->all()` into an Eloquent `create`, `update`, or `fill`. Therefore RH-27 is intentionally P3, not presented as an exploitable mass-assignment defect.
+
+- The workspace contained untracked files when final status was checked, including `docs/superpowers/audits/2026-09-02-request-hygiene/`. This audit did not create, edit, or delete any repository file.
