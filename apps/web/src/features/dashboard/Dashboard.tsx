@@ -146,7 +146,10 @@ export function Dashboard() {
   const { data: paymentsData, isLoading: paymentsLoading } = useQuery({
     queryKey: tenantScopedKey(['dashboard', 'payments']),
     queryFn: async () => {
-      const response = await api.get<PaymentsResponse>('/payments?limit=5&sort=-created_at')
+      // The payment index is always paginated and orders by
+      // `payment_date DESC, id DESC` server-side, so page 1 at 5 rows IS the
+      // five newest payments. `limit`/`sort` were never accepted parameters.
+      const response = await api.get<PaymentsResponse>('/payments?page=1&per_page=5')
       return response.data
     },
     enabled: tenantId !== null && companyId !== null && hasPermission('payments.view'),

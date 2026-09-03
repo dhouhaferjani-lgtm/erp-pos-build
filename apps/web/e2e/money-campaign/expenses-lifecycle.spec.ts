@@ -242,9 +242,9 @@ test.describe('MTP-TRE — expense lifecycle (W-5c §B.5 row 71)', () => {
     // The plan's "**No** `Payment` entity created" caveat (§B.5 row 71): the whole
     // post -> pay -> replay chain moved 119.000 of real money without producing a
     // single `payments` row, so any report that counts payments under-counts
-    // expense spend. `allPaymentIds` omits `page`, which puts
-    // PaymentController::index on its `->get()` branch: this is a comparison of
-    // the COMPLETE company payment set, sorted, not a page-1 heuristic.
+    // expense spend. `allPaymentIds` iterates every page, so this is a
+    // comparison of the COMPLETE company payment set, sorted, not a page-1
+    // heuristic.
     expect(
       await allPaymentIds(request, owner),
       'post + pay + replay created NO Payment entity — the whole payment set is unchanged',

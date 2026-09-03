@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, CreditCard, Calendar } from 'lucide-react'
 import { SearchInput } from '../../components/molecules/SearchInput/SearchInput'
@@ -17,6 +17,8 @@ import { statusTone } from '../../components/atoms/StatusBadge/statusTone'
 import { DataTable, type DataTableColumn } from '../../components/molecules/DataTable/DataTable'
 import { EmptyState } from '../../components/molecules/EmptyState/EmptyState'
 import { ListPageLayout } from '../../components/molecules/ListPageLayout/ListPageLayout'
+import { OffsetPagination } from '../../components/ui/OffsetPagination'
+import type { OffsetPaginationMeta } from '../../types/pagination'
 
 interface Payment {
   id: string
@@ -36,7 +38,7 @@ interface Payment {
 
 interface PaymentsResponse {
   data: Payment[]
-  meta?: { total: number }
+  meta: OffsetPaginationMeta
 }
 
 /**
@@ -53,6 +55,14 @@ export function PaymentListPage() {
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(25)
+
+  // A new search term always restarts traversal at page one; keeping the old
+  // page number would ask the server for a page the filtered set may not have.
+  useEffect(() => {
+    setPage(1)
+  }, [search])
 
   // Get translated status label
   const getStatusLabel = (status: Payment['status']) => {
@@ -64,21 +74,23 @@ export function PaymentListPage() {
   const companyLocale = currentCompany?.locale?.replace('_', '-') ?? 'en-US'
 
   const { data, isLoading, error } = useQuery({
-    queryKey: tenantScopedKey(['payments', search]),
+    queryKey: tenantScopedKey(['payments', search, page, perPage]),
     queryFn: async () => {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
-      const queryString = params.toString()
-      const response = await api.get<PaymentsResponse>(
-        `/payments${queryString ? `?${queryString}` : ''}`,
-      )
+      params.set('page', String(page))
+      params.set('per_page', String(perPage))
+      const response = await api.get<PaymentsResponse>('/payments?' + params.toString())
       return response.data
     },
     enabled: tenantId !== null && companyId !== null,
+    // Keep the previous page rendered while the next one loads so paging does
+    // not flash an empty table.
+    placeholderData: keepPreviousData,
   })
 
   const payments = data?.data ?? []
-  const total = data?.meta?.total ?? payments.length
+  const total = data?.meta.total ?? payments.length
 
   // Format currency using company settings
   const formatAmount = (amount: number) => {
@@ -219,6 +231,21 @@ export function PaymentListPage() {
           }
         />
       )}
+      {!error && data?.meta ? (
+        <OffsetPagination
+          currentPage={data.meta.current_page}
+          lastPage={data.meta.last_page}
+          total={data.meta.total}
+          perPage={data.meta.per_page}
+          from={data.meta.from}
+          to={data.meta.to}
+          onPageChange={setPage}
+          onPerPageChange={(next) => {
+            setPerPage(next)
+            setPage(1)
+          }}
+        />
+      ) : null}
     </ListPageLayout>
   )
 }

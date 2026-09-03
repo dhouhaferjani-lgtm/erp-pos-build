@@ -35,7 +35,12 @@ vi.mock('../../stores/companyStore', () => {
 })
 
 // Capture every URL the list page asks the server for.
-const apiGet = vi.fn((_url: string) => Promise.resolve({ data: [], meta: { total: 0 } }))
+const apiGet = vi.fn((_url: string) => Promise.resolve({
+  data: {
+    data: [],
+    meta: { current_page: 1, last_page: 1, per_page: 25, total: 0, from: null, to: null },
+  },
+}))
 vi.mock('../../lib/api', () => ({
   api: {
     get: (url: string) => apiGet(url),
@@ -54,10 +59,15 @@ describe('PaymentListPage server-side search', () => {
     apiGet.mockClear()
   })
 
-  it('requests /payments with no search param on first load', async () => {
+  it('requests a bounded first page with no search param on first load', async () => {
     renderWithClient(<PaymentListPage />)
     await waitFor(() => {
-      expect(apiGet).toHaveBeenCalledWith('/payments')
+      expect(apiGet).toHaveBeenCalledWith('/payments?page=1&per_page=25')
+    })
+    // The pagination bar only mounts once the first page's meta has landed, so
+    // this waits for the committed render rather than the request alone.
+    await waitFor(() => {
+      expect(screen.getByText('pagination.page 1 pagination.of 1')).toBeInTheDocument()
     })
   })
 
@@ -66,7 +76,7 @@ describe('PaymentListPage server-side search', () => {
     renderWithClient(<PaymentListPage />)
 
     await waitFor(() => {
-      expect(apiGet).toHaveBeenCalledWith('/payments')
+      expect(apiGet).toHaveBeenCalledWith('/payments?page=1&per_page=25')
     })
 
     const input = screen.getByPlaceholderText('common:actions.search')
@@ -76,7 +86,7 @@ describe('PaymentListPage server-side search', () => {
     // with the search param appended.
     await waitFor(
       () => {
-        expect(apiGet).toHaveBeenCalledWith('/payments?search=Alice')
+        expect(apiGet).toHaveBeenCalledWith('/payments?search=Alice&page=1&per_page=25')
       },
       { timeout: 2000 },
     )

@@ -1,5 +1,26 @@
 import { test, expect, mockPayments, mockPartners, mockPaymentMethods } from './fixtures'
 
+// The payment list is always paginated (request-hygiene T3), so every mocked
+// list response has to carry the full offset-pagination meta object the page
+// renders its pagination bar from.
+const populatedPaymentsMeta = {
+  current_page: 1,
+  last_page: 1,
+  per_page: 25,
+  total: 1,
+  from: 1,
+  to: 1,
+}
+
+const emptyPaymentsMeta = {
+  current_page: 1,
+  last_page: 1,
+  per_page: 25,
+  total: 0,
+  from: null,
+  to: null,
+}
+
 test.describe('Payment Management', () => {
   test.beforeEach(async ({ authenticatedPage: page }) => {
     // Common mocks for payment tests
@@ -17,7 +38,7 @@ test.describe('Payment Management', () => {
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: mockPayments, meta: { total: 1 } }),
+        body: JSON.stringify({ data: mockPayments, meta: populatedPaymentsMeta }),
       })
     })
 
@@ -27,6 +48,7 @@ test.describe('Payment Management', () => {
     await expect(page.getByText('PAY-2025-0001')).toBeVisible()
     await expect(page.getByText('Acme Corp')).toBeVisible()
     await expect(page.getByText('Cash')).toBeVisible()
+    await expect(page.getByText(/Page 1 of 1/i)).toBeVisible()
   })
 
   test('should show empty state when no payments', async ({ authenticatedPage: page }) => {
@@ -34,7 +56,7 @@ test.describe('Payment Management', () => {
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: [], meta: { total: 0 } }),
+        body: JSON.stringify({ data: [], meta: emptyPaymentsMeta }),
       })
     })
 
@@ -48,7 +70,7 @@ test.describe('Payment Management', () => {
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: [], meta: { total: 0 } }),
+        body: JSON.stringify({ data: [], meta: emptyPaymentsMeta }),
       })
     })
 
@@ -99,7 +121,7 @@ test.describe('Payment Management', () => {
         route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ data: [], meta: { total: 0 } }),
+          body: JSON.stringify({ data: [], meta: emptyPaymentsMeta }),
         })
       }
     })

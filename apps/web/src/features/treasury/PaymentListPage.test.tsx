@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { PaymentListPage } from './PaymentListPage'
+import type { OffsetPaginationMeta } from '../../types/pagination'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -52,7 +53,7 @@ interface Payment {
 
 interface PaymentsResponse {
   data: Payment[]
-  meta?: { total: number }
+  meta: OffsetPaginationMeta
 }
 
 function makePayment(overrides: Partial<Payment>): Payment {
@@ -83,7 +84,7 @@ const mockUseQueryReturn: {
       makePayment({ id: '1', payment_number: 'PAY-1001', status: 'pending', amount: 120.5 }),
       makePayment({ id: '2', payment_number: 'PAY-1002', status: 'completed', amount: 90 }),
     ],
-    meta: { total: 2 },
+    meta: { current_page: 1, last_page: 1, per_page: 25, total: 2, from: 1, to: 2 },
   },
   isLoading: false,
   error: null,
