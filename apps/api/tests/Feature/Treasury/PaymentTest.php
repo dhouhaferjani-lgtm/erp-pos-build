@@ -26,11 +26,13 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use Carbon\CarbonImmutable;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -1155,5 +1157,67 @@ class PaymentTest extends TestCase
 
         $response->assertStatus(422);
         $response->assertJsonPath('error.code', 'ALLOCATION_EXCEEDS_PAYMENT');
+    }
+
+    public function test_index_without_page_is_bounded_to_25(): void
+    {
+        foreach (range(1, 30) as $index) {
+            Payment::create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'partner_id' => $this->customer->id,
+                'payment_method_id' => $this->cashMethod->id,
+                'amount' => '1.000',
+                'currency' => 'TND',
+                'payment_date' => now()->subMinutes($index),
+                'status' => 'completed',
+                'reference' => 'CAP-'.$index,
+                'created_by' => $this->user->id,
+            ]);
+        }
+
+        $response = $this->actingAs($this->user)->getJson('/api/v1/payments');
+        $response->assertOk()
+            ->assertJsonCount(25, 'data')
+            ->assertJsonPath('meta.current_page', 1)
+            ->assertJsonPath('meta.per_page', 25)
+            ->assertJsonPath('meta.total', 30);
+    }
+
+    public function test_tied_payment_dates_cross_two_pages_without_duplicates_or_omissions(): void
+    {
+        $paymentDate = CarbonImmutable::parse('2026-09-03 12:00:00');
+        foreach (range(1, 30) as $index) {
+            Payment::create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'partner_id' => $this->customer->id,
+                'payment_method_id' => $this->cashMethod->id,
+                'amount' => '1.000',
+                'currency' => 'TND',
+                'payment_date' => $paymentDate,
+                'status' => PaymentStatus::Completed,
+                'reference' => 'TIED-'.$index,
+                'created_by' => $this->user->id,
+            ]);
+        }
+
+        $expectedIds = Payment::query()
+            ->where('tenant_id', $this->tenant->id)
+            ->where('company_id', $this->company->id)
+            ->where('reference', 'like', 'TIED-%')
+            ->orderByDesc('payment_date')
+            ->orderByDesc('id')
+            ->pluck('id')
+            ->all();
+        $pageOne = $this->actingAs($this->user)
+            ->getJson('/api/v1/payments?search=TIED-&page=1&per_page=15')->assertOk()->json('data');
+        $pageTwo = $this->actingAs($this->user)
+            ->getJson('/api/v1/payments?search=TIED-&page=2&per_page=15')->assertOk()->json('data');
+        $actualIds = array_column([...$pageOne, ...$pageTwo], 'id');
+
+        self::assertCount(30, $actualIds);
+        self::assertCount(30, array_unique($actualIds));
+        self::assertSame($expectedIds, $actualIds);
     }
 }
