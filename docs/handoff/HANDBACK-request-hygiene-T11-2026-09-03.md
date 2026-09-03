@@ -3,7 +3,7 @@
 - **Plan:** `docs/superpowers/plans/2026-09-03-request-hygiene-phase-a.md` → `## Task 11: Shared idempotency-key hook (ID-1..ID-4 foundation)`
 - **Worktree:** `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/rh-t11`
 - **Branch:** `lane/rh-t11-idempotency-hook` (based on `dev`, base commit `6f16fd8f7`)
-- **Commit:** `__COMMIT__`
+- **Commit:** `d7cc53d53` — code + test + this handback, path-scoped. (A doc-only follow-up commit fills this line in with the hash, since a commit cannot contain its own hash; the branch tip is that follow-up.)
 - **Result:** all four checks passed (red run red for the stated reason, green run green, typecheck exit 0, eslint exit 0).
 
 ## Files
