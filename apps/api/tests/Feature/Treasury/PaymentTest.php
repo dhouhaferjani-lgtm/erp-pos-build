@@ -1187,8 +1187,27 @@ class PaymentTest extends TestCase
     public function test_tied_payment_dates_cross_two_pages_without_duplicates_or_omissions(): void
     {
         $paymentDate = CarbonImmutable::parse('2026-09-03 12:00:00');
-        foreach (range(1, 30) as $index) {
-            Payment::create([
+
+        // Explicit ids, inserted in a deliberately shuffled (non-monotonic)
+        // order so that neither natural/insertion order nor reverse-insertion
+        // order coincides with `id DESC`. Without this the model's ordered
+        // `HasUuids` keys make insertion order and `id DESC` agree, and the
+        // assertion below would pass even with no tie-break at all (gate r1).
+        /** @var list<string> $ids */
+        $ids = array_map(
+            static fn (int $sequence): string => sprintf('7f000000-0000-4000-8000-%012x', $sequence),
+            range(1, 30),
+        );
+
+        // 1, 3, 5, ..., 29, 30, 28, ..., 2 — first inserted is the LOWEST id and
+        // last inserted is the SECOND-lowest, so `id DESC` matches neither end.
+        $insertionOrder = [...range(1, 29, 2), ...range(30, 2, -2)];
+        self::assertCount(30, $insertionOrder);
+
+        foreach ($insertionOrder as $sequence) {
+            $payment = new Payment;
+            $payment->forceFill([
+                'id' => $ids[$sequence - 1],
                 'tenant_id' => $this->tenant->id,
                 'company_id' => $this->company->id,
                 'partner_id' => $this->customer->id,
@@ -1197,19 +1216,17 @@ class PaymentTest extends TestCase
                 'currency' => 'TND',
                 'payment_date' => $paymentDate,
                 'status' => PaymentStatus::Completed,
-                'reference' => 'TIED-'.$index,
+                'reference' => 'TIED-'.$sequence,
                 'created_by' => $this->user->id,
-            ]);
+            ])->save();
         }
 
-        $expectedIds = Payment::query()
-            ->where('tenant_id', $this->tenant->id)
-            ->where('company_id', $this->company->id)
-            ->where('reference', 'like', 'TIED-%')
-            ->orderByDesc('payment_date')
-            ->orderByDesc('id')
-            ->pluck('id')
-            ->all();
+        // Expected sequence computed from the ids themselves, not from a query:
+        // the ids share a fixed prefix and a zero-padded hex suffix, so a string
+        // sort descending is exactly `id DESC`.
+        $expectedIds = $ids;
+        rsort($expectedIds, SORT_STRING);
+
         $pageOne = $this->actingAs($this->user)
             ->getJson('/api/v1/payments?search=TIED-&page=1&per_page=15')->assertOk()->json('data');
         $pageTwo = $this->actingAs($this->user)
@@ -1219,5 +1236,75 @@ class PaymentTest extends TestCase
         self::assertCount(30, $actualIds);
         self::assertCount(30, array_unique($actualIds));
         self::assertSame($expectedIds, $actualIds);
+    }
+
+    public function test_index_accepts_cleared_filters_sent_as_empty_strings(): void
+    {
+        Payment::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'amount' => '1.000',
+            'currency' => 'TND',
+            'payment_date' => now(),
+            'status' => PaymentStatus::Completed,
+            'reference' => 'CLEARED-1',
+            'created_by' => $this->user->id,
+        ]);
+
+        // The web list page sends `status=` / `search=` when the operator clears
+        // a filter; those must read as "no filter", not as a 422.
+        $this->actingAs($this->user)
+            ->getJson('/api/v1/payments?status=&search=')
+            ->assertOk()
+            ->assertJsonStructure([
+                'data',
+                'meta' => ['current_page', 'last_page', 'per_page', 'total', 'from', 'to'],
+            ])
+            ->assertJsonPath('meta.current_page', 1)
+            ->assertJsonPath('meta.per_page', 25);
+    }
+
+    public function test_index_rejects_per_page_above_100_with_validation_envelope(): void
+    {
+        app()->setLocale('en');
+
+        $this->actingAs($this->user)
+            ->getJson('/api/v1/payments?per_page=101')
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonPath(
+                'error.errors.per_page.0',
+                'The per page field must not be greater than 100.',
+            );
+    }
+
+    public function test_index_rejects_page_zero_with_validation_envelope(): void
+    {
+        app()->setLocale('en');
+
+        $this->actingAs($this->user)
+            ->getJson('/api/v1/payments?page=0')
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonPath(
+                'error.errors.page.0',
+                'The page field must be at least 1.',
+            );
+    }
+
+    public function test_index_rejects_search_longer_than_120_characters(): void
+    {
+        app()->setLocale('en');
+
+        $this->actingAs($this->user)
+            ->getJson('/api/v1/payments?search='.str_repeat('x', 121))
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonPath(
+                'error.errors.search.0',
+                'The search field must not be greater than 120 characters.',
+            );
     }
 }
