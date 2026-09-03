@@ -4,6 +4,7 @@ set -e
 if [ "${1:-}" = "--check-only" ]; then
     SCRIPT_DIR="$(CDPATH= cd "$(dirname "$0")" && pwd)"
     cd "$SCRIPT_DIR/.."
+    trap 'php artisan config:clear >/dev/null 2>&1 || true' EXIT
     php artisan config:cache
     . "$SCRIPT_DIR/verify-cache-store.sh"
     exit 0
