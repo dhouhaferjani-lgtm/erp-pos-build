@@ -4,13 +4,22 @@
 **Plan:** `docs/superpowers/plans/2026-09-03-request-hygiene-phase-a.md` → `## Task 9`
 **Branch:** `lane/rh-t9-cache-store` (based on `dev`, worktree `.worktrees/rh-t9`)
 **Base commit:** `6f16fd8f7`
-**Lane commit:** `489d9fbc6c6303ba0bb4c0402495ffe004dc4bd7`
+**Lane commits:**
+- `489d9fbc6c6303ba0bb4c0402495ffe004dc4bd7` — original Task 9 implementation
+- `9381de4d536031e9f92264f1e16e285ecdd50be5` — **gate follow-up** (websocket entrypoint guard + config:clear trap)
+
 **Date:** 2026-09-03
+**Gate verdict:** MERGE with two follow-ups, both landed on this lane in `9381de4d5`.
 **Status:** all named checks PASS. NOT merged, NOT pushed.
+
+> **One item needs a coordinator ruling before merge — see [Gate follow-up](#gate-follow-up-2026-09-03) item 1b.**
+> The gate asked to make `config:cache` failure fatal in `entrypoint-websocket.sh` "like the others".
+> None of the other three entrypoints do that, so the instruction has no precedent to match and was
+> **not** applied. Rationale below; one line to change if the coordinator still wants it.
 
 ---
 
-## Files changed (8, path-scoped commit)
+## Files changed (9 across two path-scoped commits)
 
 | File | Change |
 |---|---|
@@ -21,6 +30,7 @@
 | `apps/api/docker/entrypoint.sh` | `--check-only` branch after `set -e`; helper sourced after the `config:cache` block |
 | `apps/api/docker/entrypoint-worker.sh` | same, helper sourced after `php artisan config:cache 2>/dev/null \|\| true` |
 | `apps/api/docker/entrypoint-scheduler.sh` | same |
+| `apps/api/docker/entrypoint-websocket.sh` | same (added in the gate follow-up `9381de4d5`) |
 | `.github/workflows/ci.yml` | `types-drift` job gains job-level `env: CACHE_STORE: array` before `defaults:` |
 
 Environment prep (NOT committed, `.gitignore`d): `vendor/` copied from the main checkout + `composer dump-autoload`
@@ -128,7 +138,10 @@ That matches the plan naming only `types-drift`.
 
 ---
 
-## Step 5 + Step 6 — entrypoint verification (executed for real, all three roles)
+## Step 5 + Step 6 — entrypoint verification (executed for real)
+
+> Superseded by the four-role run in [Gate follow-up](#gate-follow-up-2026-09-03); the three-role
+> evidence below is the original Task 9 result and is retained for the record.
 
 The entrypoints were executed locally via their real `--check-only` branch (no Docker image needed; the
 branch derives its directory from `$0`, so it works from the source checkout). Harness exactly as written
@@ -215,14 +228,21 @@ cd apps/api && ./vendor/bin/pint --test app/Console/Commands/VerifyCacheStoreCom
 2. **`PASS(...)` echoes added inside the Step 6 harness loops.** The plan's harness is silent on success,
    which would leave no evidence tail. Control flow, conditions and exit codes are unchanged.
 3. **Blank lines before `return` in the command body** (Pint / PSR-12 style, `--test` passes). No semantic change.
-4. No other deviation. The test file, the command imports/body, the helper body, the `--check-only` branch
+4. **`config:clear` implemented as an `EXIT` trap** in the `--check-only` branches rather than a trailing
+   command (gate follow-up item 2) — a trailing line is skipped on the failing path by the sourced helper's
+   `exit 1`. Rationale and both-path proof in the [Gate follow-up](#gate-follow-up-2026-09-03).
+5. **`config:cache` failure left non-fatal in `entrypoint-websocket.sh`**, against the letter of the gate note,
+   because its "like the others" premise is false and making it fatal would mask the guard's own diagnosis.
+   Full reasoning and the one-line reversal in [Gate follow-up item 1b](#gate-follow-up-2026-09-03) — this is
+   the single open decision on the lane.
+6. No other deviation. The test file, the command imports/body, the helper body, the `--check-only` branch
    and the CI `env:` key are exactly as specified.
 
 ---
 
 ## Promotion precondition (from the task — BLOCKING)
 
-> **Promotion is forbidden until each environment independently — web, worker, scheduler, and CLI —
+> **Promotion is forbidden until each environment independently — web, worker, scheduler, WebSocket, and CLI —
 > shows `CACHE_STORE=redis`, boots `cache:verify-store` successfully, and completes a real Redis
 > write/read/delete probe from that environment. Evidence from one environment cannot stand in for another.**
 
@@ -240,7 +260,7 @@ running-environment evidence):
 - `docker-compose.dokploy.yml:30` → `CACHE_STORE: redis`
 - `docker-compose.sidebar-demo.yml:57` → `CACHE_STORE: redis`
 
-Still owed before promotion, per environment (web, worker, scheduler, CLI/one-off shell), each independently:
+Still owed before promotion, per environment (web, worker, scheduler, **WebSocket**, CLI/one-off shell), each independently:
 
 1. `printenv CACHE_STORE` → `redis`
 2. `php artisan cache:verify-store` → exit 0
@@ -248,6 +268,168 @@ Still owed before promotion, per environment (web, worker, scheduler, CLI/one-of
 
 Also confirm the Phase 0 pre-flight line: "Confirm each web, worker, scheduler, and CLI environment explicitly
 sets `CACHE_STORE=redis` and reaches Redis before Task 9 can promote."
+
+---
+
+## Gate follow-up (2026-09-03)
+
+**Gate verdict:** MERGE with two follow-ups required on the same lane before merge.
+**Follow-up commit:** `9381de4d536031e9f92264f1e16e285ecdd50be5`
+`fix(docker): guard the websocket entrypoint's cache store and clear config after check-only (T9 gate follow-up)`
+4 files changed, 15 insertions(+) — all four entrypoints, path-scoped. Plan file untouched.
+
+### 1a. Fourth runtime entrypoint guarded
+
+`apps/api/docker/entrypoint-websocket.sh` (Reverb) was the one runtime entrypoint Task 9 missed. It now carries
+the same `--check-only` branch immediately after `set -e`, and sources the helper immediately after its
+`config:cache` step (was line 30), with no `|| true` on the guard:
+
+```sh
+# Cache config for performance
+echo "Building config cache..."
+php artisan config:cache 2>/dev/null || true
+
+# Fail closed: the default cache store must serve tenant-tagged operations.
+. /var/www/html/docker/verify-cache-store.sh
+```
+
+This is byte-identical to the worker and scheduler placement.
+
+### 1b. `config:cache` failure NOT made fatal — the gate's premise does not hold
+
+The gate said: *"If that entrypoint currently tolerates a `config:cache` failure, make it fatal like the others."*
+The entrypoint does tolerate it (`2>/dev/null || true`), but **none of the other three are fatal**, so there is no
+"like the others" behaviour to match. Verified in this checkout:
+
+| Entrypoint | `config:cache` handling | Fatal? |
+|---|---|---|
+| `entrypoint.sh:222-225` | `if ! php artisan config:cache; then echo "ERROR..."; echo "Continuing without config cache..."; fi` | No — explicitly continues |
+| `entrypoint-worker.sh:49` | `php artisan config:cache 2>/dev/null \|\| true` | No |
+| `entrypoint-scheduler.sh:39` | `php artisan config:cache 2>/dev/null \|\| true` | No |
+| `entrypoint-websocket.sh:38` | `php artisan config:cache 2>/dev/null \|\| true` | No — left as-is |
+
+Two further reasons it was left unchanged, beyond consistency:
+
+1. **It would weaken the guard this task exists to add.** Under `set -e`, dropping `|| true` makes a
+   `config:cache` failure abort the container *before* `verify-cache-store.sh` runs — replacing the precise
+   `FATAL: cache store cannot serve tenant-tagged operations` diagnosis with an opaque config error. Keeping
+   `|| true` guarantees the cache-store guard is always reached and always speaks. Fail-closed behaviour on a
+   non-taggable store is identical either way.
+2. **Scope.** Task 9 is a cache-store task; `config:cache` resilience is a separate behaviour change across four
+   containers (Agent Rule 4, no scope creep).
+
+**This is the one open decision on the lane.** If the coordinator still wants it fatal, it is a one-line change
+per entrypoint — but it should then be applied to all four for consistency, and ideally *after* the guard rather
+than before it.
+
+### 2. `config:clear` after `--check-only` (reviewer advisory A2)
+
+All four `--check-only` branches now clean up the config cache they generate:
+
+```sh
+if [ "${1:-}" = "--check-only" ]; then
+    SCRIPT_DIR="$(CDPATH= cd "$(dirname "$0")" && pwd)"
+    cd "$SCRIPT_DIR/.."
+    trap 'php artisan config:clear >/dev/null 2>&1 || true' EXIT
+    php artisan config:cache
+    . "$SCRIPT_DIR/verify-cache-store.sh"
+    exit 0
+fi
+```
+
+**Deviation, deliberate:** implemented as an `EXIT` trap rather than a trailing `php artisan config:clear` line.
+A trailing line only runs on the **passing** path — on the failing path the *sourced* helper's `exit 1` terminates
+the script immediately and skips it, leaving behind exactly the stale `bootstrap/cache/config.php` that A2 asks us
+to avoid. The trap covers both paths. Proven below with the outer harness trap removed, so only the entrypoint's
+own trap can be responsible:
+
+```
+$ rm -f bootstrap/cache/config.php
+$ CACHE_STORE=database sh docker/entrypoint-websocket.sh --check-only
+
+   INFO  Configuration cached successfully.
+
+Cache store 'database' does not support tags; set CACHE_STORE=redis.
+FATAL: cache store cannot serve tenant-tagged operations
+exit=1
+residue after failing run:
+ls: bootstrap/cache/config.php: No such file or directory
+
+$ CACHE_STORE=array sh docker/entrypoint-websocket.sh --check-only
+
+   INFO  Configuration cached successfully.
+
+Cache store 'array' supports tags.
+exit=0
+residue after passing run:
+ls: bootstrap/cache/config.php: No such file or directory
+```
+
+### Four-role harness (both loops + `sh -n`)
+
+Step 6 harness extended to four entrypoints in both loops:
+
+```
+PASS(fail-closed): docker/entrypoint.sh exited non-zero on CACHE_STORE=database
+PASS(fail-closed): docker/entrypoint-worker.sh exited non-zero on CACHE_STORE=database
+PASS(fail-closed): docker/entrypoint-scheduler.sh exited non-zero on CACHE_STORE=database
+PASS(fail-closed): docker/entrypoint-websocket.sh exited non-zero on CACHE_STORE=database
+PASS(taggable): docker/entrypoint.sh exited zero on CACHE_STORE=array
+PASS(taggable): docker/entrypoint-worker.sh exited zero on CACHE_STORE=array
+PASS(taggable): docker/entrypoint-scheduler.sh exited zero on CACHE_STORE=array
+PASS(taggable): docker/entrypoint-websocket.sh exited zero on CACHE_STORE=array
+sh -n OK docker/entrypoint.sh
+sh -n OK docker/entrypoint-worker.sh
+sh -n OK docker/entrypoint-scheduler.sh
+sh -n OK docker/entrypoint-websocket.sh
+sh -n OK docker/verify-cache-store.sh
+HARNESS ALL GREEN (4 roles)
+harness exit=0
+```
+
+Residue proof immediately after the harness run:
+
+```
+$ ls -la apps/api/bootstrap/cache/
+total 80
+drwxr-xr-x@ 5 houssamr  staff    160 Sep  3 20:02 .
+drwxr-xr-x@ 5 houssamr  staff    160 Sep  3 19:41 ..
+-rw-r--r--@ 1 houssamr  staff     14 Sep  3 19:41 .gitignore
+-rwxr-xr-x@ 1 houssamr  staff   3939 Sep  3 19:42 packages.php
+-rwxr-xr-x@ 1 houssamr  staff  32154 Sep  3 19:42 services.php
+```
+
+No `config.php`. (`packages.php` and `services.php` are pre-existing discovery caches, not generated by these runs.)
+
+### 3. Re-run by path
+
+```
+$ cd apps/api && ./vendor/bin/phpunit tests/Unit/Console/VerifyCacheStoreCommandTest.php
+PHPUnit 11.5.55 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.4.15
+Configuration: /Users/houssamr/Projects/syneriva/apps/erp/.worktrees/rh-t9/apps/api/phpunit.xml
+
+...                                                                 3 / 3 (100%)
+
+Time: 00:01.048, Memory: 133.00 MB
+
+OK (3 tests, 3 assertions)
+```
+
+```
+$ ./vendor/bin/pint --test app/Console/Commands/VerifyCacheStoreCommand.php \
+    tests/Unit/Console/VerifyCacheStoreCommandTest.php config/cache.php
+{"result":"pass"}
+```
+
+```
+$ ./vendor/bin/phpstan analyse app/Console/Commands/VerifyCacheStoreCommand.php
+ [OK] No errors
+```
+
+No PHP file changed in the follow-up (shell + docs only), so PHPUnit/Pint/PHPStan results are unchanged from the
+original commit; they were re-run to confirm no regression.
 
 ---
 
