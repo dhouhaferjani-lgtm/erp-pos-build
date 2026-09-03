@@ -26,6 +26,7 @@
  * "the relevant DB row" as evidence for fiscal cases; used here for exactly that,
  * never as a substitute for an available API assertion.
  */
+import { expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { execSync } from 'node:child_process'
 import { apiRequest, type ApiResult } from './helpers'
@@ -649,7 +650,14 @@ function subtractQuantity(a: string, b: string): string {
 }
 
 export async function stockMovements(page: Page, query = ''): Promise<ApiResult> {
-  return apiRequest(page, 'GET', `/stock-movements${query}`)
+  const params = new URLSearchParams(query.startsWith('?') ? query.slice(1) : query)
+  params.set('page', '1')
+  params.set('per_page', '100')
+  const result = await apiRequest(page, 'GET', `/stock-movements?${params.toString()}`)
+  const body = result.body as { meta?: { last_page?: number } }
+  expect(body.meta?.last_page, 'W4 stock-movement helper must remain a complete one-page read').toBe(1)
+
+  return result
 }
 
 export async function entryExitNotes(page: Page, query = ''): Promise<ApiResult> {

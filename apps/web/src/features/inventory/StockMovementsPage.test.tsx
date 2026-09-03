@@ -1,6 +1,23 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { StockMovementsPage } from './StockMovementsPage'
+
+interface CapturedQuery {
+  queryFn: () => Promise<unknown>
+}
+
+const apiGetMock = vi.hoisted(() => vi.fn())
+const queryCapture = vi.hoisted(() => ({ current: null as CapturedQuery | null }))
+
+beforeEach(() => {
+  apiGetMock.mockReset()
+  queryCapture.current = null
+})
+
+vi.mock('../../lib/api', async () => {
+  const actual = await vi.importActual<typeof import('../../lib/api')>('../../lib/api')
+  return { ...actual, api: { ...actual.api, get: apiGetMock } }
+})
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -71,8 +88,20 @@ function makeMovement(overrides: Partial<StockMovement>): StockMovement {
   }
 }
 
+interface StockMovementsResponse {
+  data: StockMovement[]
+  meta: {
+    current_page: number
+    last_page: number
+    per_page: number
+    total: number
+    from: number | null
+    to: number | null
+  }
+}
+
 const mockReturn: {
-  data: { data: StockMovement[] } | undefined
+  data: StockMovementsResponse | undefined
   isLoading: boolean
   error: unknown
 } = {
@@ -81,6 +110,7 @@ const mockReturn: {
       makeMovement({ id: '1', product_name: 'Alpha', movement_type: 'receipt', quantity: '5.0000' }),
       makeMovement({ id: '2', product_name: 'Beta', movement_type: 'issue', quantity: '-3.0000', quantity_after: '2.0000' }),
     ],
+    meta: { current_page: 1, last_page: 3, per_page: 25, total: 60, from: 1, to: 25 },
   },
   isLoading: false,
   error: null,
@@ -98,7 +128,10 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-query')>()
   return {
     ...actual,
-    useQuery: () => mockReturn,
+    useQuery: (options: CapturedQuery) => {
+      queryCapture.current = options
+      return mockReturn
+    },
     useMutation: () => ({ mutate: vi.fn(), isPending: false }),
     useQueryClient: () => ({ invalidateQueries: vi.fn() }),
   }
@@ -136,5 +169,25 @@ describe('StockMovementsPage (canonical list)', () => {
 
     expect(within(alphaRow).getByText('0.000')).toBeInTheDocument()
     expect(within(alphaRow).getByText('5.000')).toBeInTheDocument()
+  })
+
+  it('requests bounded server filters and renders the real OffsetPagination DOM', async () => {
+    apiGetMock.mockResolvedValue({ data: mockReturn.data })
+    render(<StockMovementsPage />)
+
+    const firstQuery = queryCapture.current
+    if (firstQuery === null) throw new Error('StockMovementsPage did not register its query')
+    await firstQuery.queryFn()
+    expect(apiGetMock).toHaveBeenLastCalledWith('/stock-movements?page=1&per_page=25')
+    expect(screen.getByText('pagination.page 1 pagination.of 3')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'pagination.next' })).toBeEnabled()
+    expect(screen.getByDisplayValue('25')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'pagination.next' }))
+    await waitFor(() => { expect(queryCapture.current).not.toBe(firstQuery) })
+    const secondQuery = queryCapture.current
+    if (secondQuery === null) throw new Error('Page 2 did not register its query')
+    await secondQuery.queryFn()
+    expect(apiGetMock).toHaveBeenLastCalledWith('/stock-movements?page=2&per_page=25')
   })
 })

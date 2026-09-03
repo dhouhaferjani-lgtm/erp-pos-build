@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, ArrowDownCircle, ArrowUpCircle, RefreshCw, ArrowRightLeft, Package } from 'lucide-react'
 import { toast } from 'sonner'
@@ -21,6 +21,8 @@ import { EntityLink } from '../../components/molecules/EntityLink'
 import { documentRouteTypeFromSource } from '../../lib/entityRoutes'
 import { PageHeader } from '../../components/molecules/PageHeader'
 import { DataTable, type DataTableColumn } from '../../components/molecules/DataTable/DataTable'
+import { OffsetPagination } from '../../components/ui/OffsetPagination'
+import type { OffsetPaginationMeta } from '../../types/pagination'
 import { EmptyState } from '../../components/molecules/EmptyState/EmptyState'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { reverseWriteOff } from '../batches/api/batches'
@@ -60,6 +62,7 @@ interface StockMovement {
 
 interface StockMovementsResponse {
   data: StockMovement[]
+  meta: OffsetPaginationMeta
 }
 
 type MovementFilter = 'all' | 'receipt' | 'issue' | 'adjustment' | 'transfer' | 'write_off'
@@ -118,6 +121,20 @@ export function StockMovementsPage() {
   // The id of the write-off movement currently pending reversal confirmation,
   // or null when the dialog is closed.
   const [reverseTargetId, setReverseTargetId] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(25)
+
+  // Any change to a server-side filter invalidates the current offset: page 4 of
+  // the previous result set is meaningless for the new one. Adjusted DURING
+  // render (React's documented derived-state pattern) rather than in an effect,
+  // so the reset happens before the query key is read — an effect would let one
+  // request for the stale page escape first.
+  const filterSignature = JSON.stringify([searchQuery, movementFilter, scope])
+  const [appliedFilterSignature, setAppliedFilterSignature] = useState(filterSignature)
+  if (appliedFilterSignature !== filterSignature) {
+    setAppliedFilterSignature(filterSignature)
+    setPage(1)
+  }
 
   const { hasPermission } = usePermissions()
   const canReverseWriteOff = hasPermission('batches.write-off')
@@ -125,23 +142,28 @@ export function StockMovementsPage() {
   const queryClient = useQueryClient()
 
   const { data, isLoading, error } = useQuery({
-    queryKey: locationScopedKey(['stock-movements', searchQuery, movementFilter], scope),
+    queryKey: locationScopedKey(['stock-movements', searchQuery, movementFilter, page, perPage], scope),
     queryFn: async () => {
       const params = new URLSearchParams()
       if (searchQuery) params.append('search', searchQuery)
       effectiveLocationIds.forEach((id) => { params.append('location_ids[]', id) })
-      if (movementFilter !== 'all' && movementFilter !== 'transfer' && movementFilter !== 'write_off') {
-        params.append('movement_type', movementFilter)
+      // Every filter is resolved server-side: the browser never narrows a page
+      // it has already received, because a page is a slice of the WHOLE result
+      // set and client filtering would silently drop matching rows on page 2+.
+      if (movementFilter === 'transfer') {
+        params.append('movement_type', 'transfer')
       } else if (movementFilter === 'write_off') {
-        // Write-offs are always movement_type=issue; narrow the backend scan
-        // to issue movements and let the client-side reason filter do the rest.
-        params.append('movement_type', 'issue')
+        params.append('reason', 'write_off')
+      } else if (movementFilter !== 'all') {
+        params.append('movement_type', movementFilter)
       }
-      const queryString = params.toString()
-      const response = await api.get<StockMovementsResponse>(`/stock-movements${queryString ? `?${queryString}` : ''}`)
+      params.append('page', String(page))
+      params.append('per_page', String(perPage))
+      const response = await api.get<StockMovementsResponse>(`/stock-movements?${params.toString()}`)
       return response.data
     },
     enabled: !!tenantId && !!companyId,
+    placeholderData: keepPreviousData,
   })
 
   const reverseWriteOffMutation = useMutation({
@@ -169,27 +191,19 @@ export function StockMovementsPage() {
     },
   })
 
-  const movements = useMemo(() => {
-    let items = data?.data ?? []
-    if (movementFilter === 'transfer') {
-      items = items.filter(m => m.movement_type === 'transfer_in' || m.movement_type === 'transfer_out')
-    } else if (movementFilter === 'write_off') {
-      items = items.filter(m => isReversibleWriteOff(m.reason))
-    }
-    return items
-  }, [data?.data, movementFilter])
+  // The server already applied every filter; the page is rendered verbatim.
+  const movements = data?.data ?? []
 
-  const filterTabs = useMemo(() => {
-    const allMovements = data?.data ?? []
-    return [
-      { value: 'all' as MovementFilter, label: t('common:filters.all'), count: allMovements.length },
-      { value: 'receipt' as MovementFilter, label: t('movements.filters.receipts'), count: allMovements.filter(m => m.movement_type === 'receipt').length },
-      { value: 'issue' as MovementFilter, label: t('movements.filters.issues'), count: allMovements.filter(m => m.movement_type === 'issue').length },
-      { value: 'adjustment' as MovementFilter, label: t('movements.filters.adjustments'), count: allMovements.filter(m => m.movement_type === 'adjustment').length },
-      { value: 'transfer' as MovementFilter, label: t('movements.filters.transfers'), count: allMovements.filter(m => m.movement_type.startsWith('transfer')).length },
-      { value: 'write_off' as MovementFilter, label: t('movements.filters.writeOffs'), count: allMovements.filter(m => isReversibleWriteOff(m.reason)).length },
-    ]
-  }, [t, data?.data])
+  // No counts: a single page cannot supply the GLOBAL total for the other tabs,
+  // and a per-page count would understate every filter the user has not selected.
+  const filterTabs = useMemo(() => [
+    { value: 'all' as MovementFilter, label: t('common:filters.all') },
+    { value: 'receipt' as MovementFilter, label: t('movements.filters.receipts') },
+    { value: 'issue' as MovementFilter, label: t('movements.filters.issues') },
+    { value: 'adjustment' as MovementFilter, label: t('movements.filters.adjustments') },
+    { value: 'transfer' as MovementFilter, label: t('movements.filters.transfers') },
+    { value: 'write_off' as MovementFilter, label: t('movements.filters.writeOffs') },
+  ], [t])
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString('en-US', {
@@ -348,7 +362,7 @@ export function StockMovementsPage() {
     <div className="space-y-6">
       <PageHeader
         title={t('movements.title')}
-        subtitle={t('movements.subtitle', { count: movements.length })}
+        subtitle={t('movements.subtitle', { count: data?.meta.total ?? 0 })}
         breadcrumb={
           <Link
             to="/inventory/stock"
@@ -378,32 +392,49 @@ export function StockMovementsPage() {
           {t('common:errors.operationFailed')}
         </div>
       ) : (
-        <DataTable
-          columns={columns}
-          data={movements}
-          keyExtractor={(movement) => movement.id}
-          isLoading={isLoading}
-          className={cn('rounded-lg border bg-white', borderColors.light)}
-          emptyState={
-            <div className="py-6">
-              <EmptyState
-                icon={<RefreshCw className={cn('mx-auto h-12 w-12', textColors.disabled)} />}
-                title={
-                  searchQuery || movementFilter !== 'all'
-                    ? t('common:status.noResults')
-                    : t('movements.noMovements')
-                }
-                description={
-                  searchQuery
-                    ? t('common:status.tryDifferentSearch')
-                    : movementFilter !== 'all'
-                      ? t('movements.noMatchFilter')
-                      : t('movements.emptyDescription')
-                }
-              />
-            </div>
-          }
-        />
+        <div>
+          <DataTable
+            columns={columns}
+            data={movements}
+            keyExtractor={(movement) => movement.id}
+            isLoading={isLoading}
+            className={cn('rounded-lg border bg-white', borderColors.light)}
+            emptyState={
+              <div className="py-6">
+                <EmptyState
+                  icon={<RefreshCw className={cn('mx-auto h-12 w-12', textColors.disabled)} />}
+                  title={
+                    searchQuery || movementFilter !== 'all'
+                      ? t('common:status.noResults')
+                      : t('movements.noMovements')
+                  }
+                  description={
+                    searchQuery
+                      ? t('common:status.tryDifferentSearch')
+                      : movementFilter !== 'all'
+                        ? t('movements.noMatchFilter')
+                        : t('movements.emptyDescription')
+                  }
+                />
+              </div>
+            }
+          />
+          {data?.meta ? (
+            <OffsetPagination
+              currentPage={data.meta.current_page}
+              lastPage={data.meta.last_page}
+              total={data.meta.total}
+              perPage={data.meta.per_page}
+              from={data.meta.from}
+              to={data.meta.to}
+              onPageChange={setPage}
+              onPerPageChange={(next) => {
+                setPerPage(next)
+                setPage(1)
+              }}
+            />
+          ) : null}
+        </div>
       )}
 
       {/* Reverse write-off confirmation dialog */}

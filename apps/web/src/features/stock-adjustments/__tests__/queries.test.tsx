@@ -71,7 +71,7 @@ describe('invalidation predicates', () => {
     ).toBe(true)
     expect(
       stockMovementsInvalidationPredicate(tenant, company)({
-        queryKey: ['stock-movements', '', 'all', { locScope: 'all' }, tenant, company],
+        queryKey: ['stock-movements', '', 'all', 1, 25, { locScope: 'all' }, tenant, company],
       }),
     ).toBe(true)
   })
