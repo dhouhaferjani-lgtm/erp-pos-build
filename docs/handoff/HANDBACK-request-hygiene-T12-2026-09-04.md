@@ -622,3 +622,200 @@ No vitest worker left behind (`ps aux | grep -c '[n]ode (vitest'` → 0).
 - **The browser legs remain UN-RUN and promotion-blocking** — FR1-C stands verbatim and is not weakened by this round. In particular probe (iii), the open/fail/close/reopen cycle on the three `RecordPaymentModal` hosts, is now joined by a fourth case worth driving by hand: **fail → edit → resubmit**, on `PaymentForm` and `RecordPaymentModal`, confirming a *second, visible* payment (the ruling's intended outcome) rather than a replayed success panel.
 - Frontend-conventions minors **m1** (base lint debt), **m3** (glossary row for "idempotency key" + the four hand-rolled producers), **m4** (typecheck flip-1 transcript completeness), **m5**, **m6** — not addressed; m3 is a Phase B convergence item.
 - Treasury **NB-1..NB-7** — not addressed. NB-7's count is superseded by the accurate table above; NB-3 overlaps m3.
+
+---
+
+# Fix round 3 (2026-09-04) — treasury r2 F1/F2/F3, frontend-conventions r2 B1'/M1'
+
+Both re-gates returned CHANGES on the same two defects (rotation keyed on an unstable
+dependency; `watch` unable to tell an operator edit from a programmatic write) plus a
+missing falsifier for the pre-attempt guard. Web only. Base for the lint table is still
+`a97631051`; this round starts from `04b34cdcc`.
+
+## FR3-A (treasury F1 / conventions B1') — the per-open rotation now fires on the open TRANSITION
+
+`RecordPaymentModal.tsx:150` adds `wasOpenRef`, and the rotation moves OUT of the
+form-reset effect into its own effect at `RecordPaymentModal.tsx:193-202` with deps
+`[isOpen, resetIdempotencyKey]` — both stable. The form-reset effect
+(`RecordPaymentModal.tsx:166-178`) is otherwise byte-unchanged and keeps its
+`[isOpen, prefill, resetIdempotencyKey]` deps, exactly as directed: the three hosts are
+NOT touched.
+
+Both gates' probes are landed as a permanent regression test, using the production shape:
+the module-level `PREFILL` constant is gone and every render/rerender in
+`idempotencyKeyLifecycle.test.tsx` now passes `makePrefill()` — a FRESH object literal,
+what `InvoiceDetailPage.tsx:899` / `SalesOrderDetailPage.tsx:784` /
+`PurchaseOrderDetailPage.tsx:713` actually pass. The fixture comment that previously
+justified the hoisted constant is replaced by one explaining why a fresh object is
+mandatory (`idempotencyKeyLifecycle.test.tsx:84-91`).
+
+**Observation channel — why the new test counts uuid mints instead of comparing two posted keys.**
+A key rotation is only visible through a POST, and this surface WIPES its form whenever
+`prefill` changes identity (pre-existing behaviour, see the follow-up below). After the
+re-render the operator must re-enter the line either way, and that re-entry legitimately
+rotates the key — so with the fix and with the defect the second POST carries *the same
+ordinal uuid*, and no comparison of posted keys can tell them apart. Enumerated:
+
+| step | with the fix | with the defect |
+|---|---|---|
+| mount | key `u0`, line `u1`, rotate `u2` | key `u0`, line `u1`, rotate `u2` |
+| POST #1 | `u2` | `u2` |
+| parent re-render (fresh prefill) | line `u3` only | line `u3`, **rotate `u4`** |
+| operator re-entry | rotate `u4` (flag still set) | no rotation (flag was cleared) |
+| POST #2 | `u4` | `u4` |
+
+`installUuidRecorder` (`idempotencyKeyLifecycle.test.tsx:107-125`) therefore stubs
+`crypto.randomUUID` with a deterministic sequence and the test asserts (a) the re-render
+window minted **exactly one** uuid — the replacement payment-line id — and (b) the key the
+retry carries was NOT minted inside that window.
+
+## FR3-B (treasury F2 / conventions M1') — programmatic RHF writes no longer rotate the key
+
+**The gate's prescribed discriminator does not work on this RHF version — measured, not argued.**
+Instrumenting the subscription with `watch((_v, { name, type }) => console.log(...))` and
+driving the real RIB-derived `setValue('bank_iban', …)`:
+
+```
+WATCH_EVENT {"name":"bank_account","type":"change"}   <- operator keystroke
+PHASE rerender-TN                                      <- company config resolves, NO operator input
+WATCH_EVENT {"name":"bank_iban","type":"change"}       <- setValue, reported as a CHANGE
+WATCH_EVENT {"name":"bank_iban"}                       <- setValue, values-only notification
+```
+
+react-hook-form 7.67.0 reports a programmatic `setValue` as `type: 'change'`, byte-identical
+to a keystroke, so `if (type === 'change')` alone leaves M1' open. (Proven again as mutation
+D below.) The gate's own alternative — "set a `suppressRotationRef` around the prefill
+`reset`" — is what is implemented, generalised to every write the component performs itself:
+
+- `PaymentForm.tsx:330-352` — `programmaticWriteRef` + `writeProgrammatically(write)`
+  (sets the ref, runs the write, clears it in a `finally`; RHF's notifications are emitted
+  synchronously inside the write).
+- Routed through it: the RIB-derived IBAN set/clear (`PaymentForm.tsx:357`, `:361`), all four
+  document-prefill `reset()` branches (`PaymentForm.tsx:415-465`), and the
+  method-compatibility repository clear (`PaymentForm.tsx:540`).
+- Deliberately NOT routed through it: the picker callbacks (`PaymentForm.tsx:1113-1126`,
+  `:1479`) — a bank/partner pick IS an operator payload edit and must rotate.
+- The subscription at `PaymentForm.tsx:648-653` keeps `type !== 'change'` as directed and adds
+  the programmatic guard. Honest note: mutation E shows the `type` narrowing carries no
+  unique coverage under the current tests (a blur does not notify this subscription at all —
+  probed), so it is a cheap correctness narrowing, not the load-bearing filter.
+
+**Non-RHF setters re-checked, as asked.** The withholding trio and the allocation handlers
+(`PaymentForm.tsx:694-712`) are reachable only from operator controls. The one
+preview-driven write, `setWithholdingRateState` at `PaymentForm.tsx:609-612`, uses the RAW
+setter and is deliberately left un-wrapped — that is treasury NB-9 and it stays as it was.
+
+**`SplitPaymentForm` and `RecordPaymentModal` need no equivalent:** neither uses
+react-hook-form at all (`grep -n "useForm\|watch(" ` on both files returns nothing). Their
+payload state is plain `useState` written only from event handlers, all of which already call
+`startNewIntentOnPayloadEdit`.
+
+The new test drives the real production path rather than poking RHF directly: the company
+config query resolves while the form is mounted, `country_code` flips `'' -> 'TN'`, the RIB
+the operator already typed becomes valid and the form writes `bank_iban` through `setValue`.
+`bank_iban` does not ride in the POST body, so the two requests are byte-identical — a genuine
+unchanged retry, which must replay.
+
+## FR3-C (treasury F3) — the pre-attempt guard now has a falsifier on all three surfaces
+
+One test per surface, each asserting that the FIRST submit still carries the key minted at
+mount even though the operator filled several payload fields first:
+
+- `PaymentForm.test.tsx` — "carries the MOUNT key on the first submit even though the payload was edited"
+- `SplitPaymentForm.test.tsx` — same name
+- `idempotencyKeyLifecycle.test.tsx` — "does NOT rotate the key when the payload is edited BEFORE any submit attempt"
+
+`SplitPaymentForm.tsx:65` passes an EAGER array literal to `useState`, so it mints a fresh
+line-id uuid on every render; only `minted[0]` (from `useIdempotencyKey`, `:59`) is meaningful
+there and the test asserts against that one value. The other two surfaces mint nothing per
+render, so they additionally assert that the pre-attempt edit window minted no uuid at all.
+
+## Fix-round-3 mutation table (each mutation applied from a byte copy, then restored; tree verified clean)
+
+| # | mutation | result |
+|---|---|---|
+| C | revert `RecordPaymentModal.tsx` to `04b34cdcc` (rotation back inside the `prefill`-dependent effect) | **1 failed** — only "does NOT rotate the key when the PARENT re-renders…"; the other 4 stay green |
+| D | delete `if (programmaticWriteRef.current) return`, keeping `type !== 'change'` | **1 failed** — only "keeps the SAME idempotency_key when a PROGRAMMATIC RHF write lands after a failed submit" (18 pass). This is the measurement that the gate's prescribed discriminator is insufficient. |
+| E | delete `if (type !== 'change') return`, keeping the programmatic guard | **19 passed** — the `type` narrowing has no unique coverage; disclosed above rather than dressed up |
+| F | delete `if (!hadFailedAttemptRef.current) return` from all three surfaces | **3 failed** — exactly the three new pre-attempt tests, 33 pass |
+
+Pre-fix red transcripts (tests written first, production files at `04b34cdcc`):
+`idempotencyKeyLifecycle` → `expected [ …(2) ] to have a length of 1 but got 2`;
+`PaymentForm` → `expected '1b08f3f4-…' to be 'c9fe1a89-…'`.
+
+## Fix-round-3 verification
+
+```
+$ cd apps/web && pnpm vitest run \
+    src/hooks/__tests__/useIdempotencyKey.test.tsx \
+    src/features/treasury/PaymentForm.test.tsx \
+    src/features/treasury/SplitPaymentForm.test.tsx \
+    src/features/treasury/treasury.test.tsx \
+    src/features/treasury/__tests__/TreasuryTenantScope.test.tsx \
+    src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx \
+    src/components/organisms/RecordPaymentModal/__tests__/idempotencyKeyLifecycle.test.tsx
+
+ Test Files  7 passed (7)
+      Tests  99 passed (99)          # 94 -> 99: +2 RecordPaymentModal, +2 PaymentForm, +1 SplitPaymentForm
+```
+
+```
+$ pnpm vitest run src/features/treasury src/components/organisms/RecordPaymentModal \
+    src/components/organisms/SplitPaymentModal src/hooks
+ Test Files  62 passed (62)
+      Tests  392 passed (392)        # was 387
+
+$ pnpm typecheck            -> exit 0, no output
+$ pnpm audit:design-system  -> 796 acknowledged, 15 new, 11 stale   (base numbers, unchanged)
+$ pnpm audit:keys           -> 0 acknowledged, 1 new                (base debt: features/uom/hooks/useUnits.ts:53)
+$ ps aux | grep -c '[n]ode (vitest'  -> 0
+```
+
+**eslint per file, base `a97631051` vs fix round 3** (baselines via `git show a97631051:<path>`
+into `zzbase_`-prefixed sibling copies inside `src/`, linted in one invocation, deleted; tree
+verified clean afterwards):
+
+| file | base `a97631051` | fix round 3 | Δ |
+|---|---|---|---|
+| `components/organisms/RecordPaymentModal/RecordPaymentModal.tsx` | E0 W25 | E0 W25 | 0 |
+| `components/organisms/RecordPaymentModal/__tests__/idempotencyKeyLifecycle.test.tsx` | (new) | E0 W0 | 0 |
+| `components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx` | E0 W13 | E0 W13 | 0 |
+| `components/organisms/SplitPaymentModal/SplitPaymentModal.tsx` | E0 W1 | E0 W1 | 0 |
+| `features/treasury/PaymentForm.test.tsx` | E0 W4 | E0 W4 | 0 |
+| `features/treasury/PaymentForm.tsx` | E0 W13 | E0 W12 | **−1** |
+| `features/treasury/SplitPaymentForm.test.tsx` | E0 W1 | E0 W2 | **+1** |
+| `features/treasury/SplitPaymentForm.tsx` | E0 W3 | E0 W1 | **−2** |
+| `features/treasury/__tests__/TreasuryTenantScope.test.tsx` | E0 W0 | E0 W0 | 0 |
+| `features/treasury/treasury.test.tsx` | E0 W15 | E0 W15 | 0 |
+| `hooks/useIdempotencyKey.ts` | E0 W0 | E0 W0 | 0 |
+| **total** | **E0 W75** | **E0 W73** | **−2** |
+
+W74 → W73. The single new removal is `react-hooks/incompatible-library` on
+`PaymentForm.tsx` (rule-id diff measured, not inferred): reshaping the `watch` callback
+retired it. No suppression comment, no `eslint.config` change, no baseline write — the diff
+contains no `eslint-disable`, no `@ts-ignore`, and no new `as` cast (the deterministic-uuid
+helpers are typed with the template-literal return type instead). The one kept warning is
+still the deliberate `@typescript-eslint/no-deprecated` at `SplitPaymentForm.test.tsx:211`,
+already accepted by the conventions gate.
+
+## Follow-up recorded, NOT fixed in this round (deliberately not widened)
+
+- **`RecordPaymentModal` wipes the operator's in-progress form on every parent re-render.**
+  The form-reset effect still depends on `prefill`, which the three hosts pass as an inline
+  literal, so a reconnect refetch clears the confirmed payment lines, the date and the notes
+  mid-intent. That is pre-existing behaviour, outside this lane, and it is NOT cured by the
+  rotation fix — with the key now retained the operator's re-entry becomes a real payload edit
+  and rotates the key legitimately, so **the reconnect-during-a-lost-response scenario can still
+  end in a second payment**. The real cure is `useMemo` on `prefill` in
+  `InvoiceDetailPage.tsx:899`, `SalesOrderDetailPage.tsx:784` and
+  `PurchaseOrderDetailPage.tsx:713` (the gate named it as the "equally valid, additionally
+  cures the wipe" option). Worth its own small lane; it touches three feature files.
+- Treasury NB-8 (`notes` typed into the modal is never sent), NB-9, NB-10, NB-11 and
+  conventions m1/m3/m4/m5/m6 are unchanged from round 2.
+
+## Still owed after this round
+
+Unchanged and still promotion-blocking: the four browser legs of FR1-C plus the fifth the
+r2 gates added (**fail → leave the surface untouched → let the network return → retry**,
+confirming the retry carries the same key and books nothing new). Nothing in this round was
+browser-verified.
