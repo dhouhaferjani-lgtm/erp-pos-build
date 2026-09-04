@@ -486,12 +486,18 @@ describe('useDraftAutoSave strict serialization', () => {
   /**
    * Gate r1 B-1, recorded behaviour on unmount: the occupied slot is DISCARDED
    * (the body was never transmitted, and there is no component left to report a
-   * failure to). That is only safe because the guard is armed while the slot is
-   * occupied — `autosavePending` is true here, so DocumentForm's `shouldWarn`
-   * blocks the navigation that would reach this cleanup. This test locks both
-   * halves: guard armed before unmount, no network work after it.
+   * failure to). What this test actually measures is the pair the UNMOUNT
+   * CLEANUP is responsible for — `autosavePending` true while the slot holds an
+   * unsent body, and no POST issued once the in-flight save settles after
+   * teardown. It is not a lock on any branch of the settle handler: gate r2
+   * NB-r2-2 proved the handler can never observe an unmounted hook, because the
+   * cleanup clears `pendingRef` before the settle runs.
+   *
+   * The guard the armed flag feeds is narrower than "blocks navigation": it
+   * warns on tab close/refresh and at the two explicit in-app discard points
+   * only (`useUnsavedChangesGuard.ts:9-12`, gate r2 NB-r2-1).
    */
-  it('arms the pending guard before unmount and discards the unsent body after it', async () => {
+  it('keeps the pending guard armed over an unsent body, and the unmount cleanup drops it without a POST', async () => {
     let resolveFirst: ((value: {
       data: { draft_id: string | null; saved_at: string }
     }) => void) = () => {}
