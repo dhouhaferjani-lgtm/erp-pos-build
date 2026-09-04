@@ -101,6 +101,28 @@ interface DraftData {
 }
 
 /**
+ * The newest requested save: body plus the callbacks that go with it. The single
+ * trailing job re-reads this at EXECUTION time, so a save that waited behind an
+ * in-flight request always carries the latest edit rather than the snapshot that
+ * happened to schedule it.
+ */
+interface SaveRequest {
+  data: DraftData
+  existingDraftId: string | undefined
+  onSuccess: ((draftId: string) => void) | undefined
+  onError: ((error: Error) => void) | undefined
+}
+
+/**
+ * The promise every caller collapsed into the current trailing slot awaits.
+ */
+interface PendingSlot {
+  promise: Promise<void>
+  resolve: () => void
+  reject: (reason: unknown) => void
+}
+
+/**
  * Custom hook for auto-saving draft documents.
  *
  * Features:
@@ -140,64 +162,201 @@ export function useDraftAutoSave(
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
   const isUnmountedRef = useRef(false)
 
+  // ID-12 (Task 14, gate r1 B-1). Strict serialization state — ONE in-flight
+  // request and ONE trailing slot, never a FIFO of N:
+  // - draftIdRef mirrors `draftId` SYNCHRONOUSLY so a queued save reads the id
+  //   the save before it just obtained, instead of the stale render closure.
+  // - inFlightRef holds the job physically on the wire (null when idle): a save
+  //   requested while it is set does not start a second POST.
+  // - pendingRef is a single boolean SLOT. Any number of saves requested during
+  //   one flight collapse into it, and latestRequestRef keeps only the newest
+  //   body, so the follow-up is exactly one POST carrying the latest edit.
+  //   A FIFO would instead replay every intermediate body, and each of those
+  //   successes would clear the consumer's dirty baseline while later bodies
+  //   were still un-transmitted (DocumentForm's `shouldWarn`).
+  // - generationRef invalidates in-flight work on reset and on unmount without
+  //   discarding inFlightRef (the physical request is still out there and later
+  //   work must still queue behind it).
+  const draftIdRef = useRef<string | null>(null)
+  const inFlightRef = useRef<Promise<void> | null>(null)
+  const pendingRef = useRef(false)
+  const pendingSlotRef = useRef<PendingSlot | null>(null)
+  const latestRequestRef = useRef<SaveRequest | null>(null)
+  const generationRef = useRef(0)
+
   /**
-   * Perform the actual save operation
+   * Start ONE physical save now and own the wire until it settles.
+   *
+   * Stable (no dependencies): everything it needs is read from refs at
+   * execution time, so the trailing job it launches from its own settle
+   * handler is never a stale closure and always carries the newest body.
    */
-  const performSave = useCallback(async () => {
-    if (!data || !enabled) return
+  const startSave = useCallback((): Promise<void> => {
+    const launch: () => Promise<void> = () => {
+      const generation = generationRef.current
 
-    setIsSaving(true)
+      // Read through a call rather than the ref property directly: the property
+      // is re-checked after every await, and a direct read would be narrowed
+      // away by an earlier guard in this same function scope.
+      const isCancelled = (): boolean =>
+        isUnmountedRef.current || generation !== generationRef.current
 
-    try {
-      // NOTE: /documents/auto-save returns an UNWRAPPED body
-      // ({ draft_id, saved_at, line_count }) — it does NOT use the standard
-      // { data: ... } envelope. So we must use `api.post` and read
-      // `response.data` directly; `apiPost` (which unwraps `response.data.data`)
-      // yields `undefined` here and crashes on `.draft_id` (every auto-save,
-      // even server-side successful ones).
-      // N-14: `draft_id` is NULLABLE. A payload with no line authors no
-      // document — the server refuses to spend a number on a form nobody has
-      // put a line in — and answers 200 with `draft_id: null`. The debounced
-      // effect below never produces that payload, but `saveNow()` is callable
-      // directly and has no line guard of its own, so the type has to be honest.
-      const { data: body } = await api.post<{ draft_id: string | null; saved_at: string }>(
-        '/documents/auto-save',
-        {
-          draft_id: existingDraftId || draftId,
-          ...data,
-        },
-      )
+      const run = async (): Promise<void> => {
+        // The request is read HERE, not when the save was requested: a save
+        // that waited in the trailing slot sends the latest edit.
+        const request = latestRequestRef.current
+        if (request === null || isCancelled()) return
+        setIsSaving(true)
+        // Nothing is persisted until this settles, so the consumer's
+        // unsaved-changes guard stays armed for the whole flight.
+        setAutosavePending(true)
+        try {
+          // NOTE: /documents/auto-save returns an UNWRAPPED body
+          // ({ draft_id, saved_at, line_count }) — it does NOT use the standard
+          // { data: ... } envelope. So we must use `api.post` and read
+          // `response.data` directly; `apiPost` (which unwraps `response.data.data`)
+          // yields `undefined` here and crashes on `.draft_id` (every auto-save,
+          // even server-side successful ones).
+          // N-14: `draft_id` is NULLABLE. A payload with no line authors no
+          // document — the server refuses to spend a number on a form nobody has
+          // put a line in — and answers 200 with `draft_id: null`. The debounced
+          // effect below never produces that payload, but `saveNow()` is callable
+          // directly and has no line guard of its own, so the type has to be honest.
+          const { data: body } = await api.post<{ draft_id: string | null; saved_at: string }>(
+            '/documents/auto-save',
+            {
+              draft_id: request.existingDraftId || draftIdRef.current,
+              ...request.data,
+            },
+          )
 
-      if (!isUnmountedRef.current) {
-        setDraftId(body.draft_id)
-        setIsSaving(false)
-        setAutosavePending(false)
-        setAutosaveFailed(false)
-        setLastError(null)
+          if (isCancelled()) return
 
-        // Gate r1 F-5: a lineless call authored NOTHING, so there is nothing to
-        // have saved. Stamping `lastSavedAt` would put a "Saved at 14:03" under
-        // an editor whose content the server never took — the indicator has to
-        // stay honest about that, and the next save (the one carrying a line) is
-        // the first one entitled to a timestamp.
-        if (body.draft_id !== null) {
-          setLastSavedAt(new Date(body.saved_at))
-          onSuccess?.(body.draft_id)
+          draftIdRef.current = body.draft_id
+          setDraftId(body.draft_id)
+          setAutosaveFailed(false)
+          setLastError(null)
+
+          // Gate r1 B-1: only the save that carries the LAST unsent body may
+          // disarm the guard. DocumentForm clears its dirty baseline on every
+          // success, so clearing `autosavePending` here while the slot still
+          // holds a newer body would leave `shouldWarn` false over work that
+          // has never been transmitted. The trailing job re-arms the flag one
+          // microtask later, so this guard closes a sub-commit dip rather than
+          // a visible state: it is not separately falsifiable in the act
+          // harness (no render commits in that window). The observable half —
+          // the flag staying true from slot-fill until the trailing save
+          // settles — is pinned by 'keeps autosavePending true until the
+          // trailing save has been issued and settled'.
+          if (!pendingRef.current) {
+            setAutosavePending(false)
+          }
+
+          // Gate r1 F-5: a lineless call authored NOTHING, so there is nothing to
+          // have saved. Stamping `lastSavedAt` would put a "Saved at 14:03" under
+          // an editor whose content the server never took — the indicator has to
+          // stay honest about that, and the next save (the one carrying a line) is
+          // the first one entitled to a timestamp.
+          if (body.draft_id !== null) {
+            setLastSavedAt(new Date(body.saved_at))
+            request.onSuccess?.(body.draft_id)
+          }
+        } catch (error) {
+          if (isCancelled()) return
+          const surfacedError = new Error(getErrorMessage(error))
+          setAutosaveFailed(true)
+          setLastError(surfacedError)
+          if (!pendingRef.current) {
+            setAutosavePending(false)
+          }
+          request.onError?.(surfacedError)
+          console.error('Auto-save failed:', error)
         }
       }
-    } catch (error) {
-      const surfacedError = new Error(getErrorMessage(error))
 
-      if (!isUnmountedRef.current) {
-        setIsSaving(false)
-        setAutosaveFailed(true)
-        setLastError(surfacedError)
-        setAutosavePending(false)
-        onError?.(surfacedError)
-      }
-      console.error('Auto-save failed:', error)
+      const job = run()
+      inFlightRef.current = job
+      return job.finally(() => {
+        // NOTE: this settle handler deliberately lives on the promise rather
+        // than in a statement-level `finally` inside `run` — a `try/finally`
+        // makes the React Compiler bail out, which silently disables every
+        // compiler-backed `react-hooks` ESLint rule for this whole hook.
+        if (inFlightRef.current === job) {
+          inFlightRef.current = null
+        }
+
+        if (!pendingRef.current) {
+          if (!isCancelled()) {
+            setIsSaving(false)
+          }
+          return
+        }
+
+        // Exactly ONE trailing save, and it re-reads latestRequestRef.
+        pendingRef.current = false
+        const slot = pendingSlotRef.current
+        pendingSlotRef.current = null
+
+        if (isUnmountedRef.current) {
+          // Recorded behaviour: an unsent body is DISCARDED on unmount. There is
+          // no component left to report a failure to, and the request was never
+          // transmitted. This is only safe because the slot keeps
+          // `autosavePending` true, so the consumer's guard (DocumentForm's
+          // `shouldWarn`) blocks the navigation that would reach this cleanup.
+          slot?.resolve()
+          return
+        }
+
+        const trailing = launch()
+        if (slot) {
+          void trailing.then(slot.resolve, slot.reject)
+        } else {
+          void trailing.catch(() => undefined)
+        }
+      })
     }
-  }, [data, draftId, enabled, existingDraftId, onSuccess, onError])
+
+    return launch()
+  }, [])
+
+  /**
+   * Request a save.
+   *
+   * ID-12: at most one request is ever physically in flight. A save requested
+   * while one is in flight does NOT start a second POST and does NOT append to a
+   * queue — it fills a single trailing slot (collapsing with any other save
+   * requested during the same flight) that is issued once the in-flight request
+   * SETTLES, success or failure, carrying the newest body.
+   */
+  const performSave = useCallback((): Promise<void> => {
+    if (!data || !enabled || isUnmountedRef.current) return Promise.resolve()
+
+    // Record the newest requested body+callbacks BEFORE deciding what to do with
+    // it: whether it starts now or waits in the slot, this is what gets sent.
+    latestRequestRef.current = { data, existingDraftId, onSuccess, onError }
+
+    if (inFlightRef.current !== null) {
+      pendingRef.current = true
+      setAutosavePending(true)
+
+      let slot = pendingSlotRef.current
+      if (slot === null) {
+        let resolve: () => void = () => {}
+        let reject: (reason: unknown) => void = () => {}
+        const promise = new Promise<void>((res, rej) => { resolve = res; reject = rej })
+        // A collapsed save is not necessarily awaited (the debounce timer calls
+        // performSave un-awaited), so keep a handler attached: a trailing job
+        // rejected by a throwing consumer callback must not surface as an
+        // unhandled rejection. Callers awaiting `promise` still see it reject.
+        void promise.catch(() => undefined)
+        slot = { promise, resolve, reject }
+        pendingSlotRef.current = slot
+      }
+      return slot.promise
+    }
+
+    return startSave()
+  }, [data, enabled, existingDraftId, onError, onSuccess, startSave])
 
   /**
    * Save immediately without debounce
@@ -217,6 +376,18 @@ export function useDraftAutoSave(
    * Reset the auto-save state
    */
   const reset = useCallback(() => {
+    // Do NOT clear inFlightRef: new work must still queue behind the physical
+    // in-flight request. The generation bump makes in-flight work a no-op and
+    // stops the response repopulating state or the id ref.
+    generationRef.current += 1
+    // The trailing slot belongs to the document that was just cleared: empty it
+    // and settle anyone awaiting it, rather than sending its body afterwards.
+    pendingRef.current = false
+    const abandoned = pendingSlotRef.current
+    pendingSlotRef.current = null
+    abandoned?.resolve()
+    latestRequestRef.current = null
+    draftIdRef.current = null
     setDraftId(null)
     setLastSavedAt(null)
     setIsSaving(false)
@@ -264,8 +435,20 @@ export function useDraftAutoSave(
    * Cleanup on unmount
    */
   useEffect(() => {
+    // Required for React StrictMode's development setup -> cleanup -> setup
+    // replay: without this the replayed cleanup would leave the hook
+    // permanently marked unmounted and every later save would no-op.
+    isUnmountedRef.current = false
+
     return () => {
       isUnmountedRef.current = true
+      generationRef.current += 1
+      // An occupied trailing slot is discarded here (see the settle handler):
+      // settle its awaiters so nothing hangs on a save that will never be sent.
+      pendingRef.current = false
+      const abandoned = pendingSlotRef.current
+      pendingSlotRef.current = null
+      abandoned?.resolve()
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current)
       }
