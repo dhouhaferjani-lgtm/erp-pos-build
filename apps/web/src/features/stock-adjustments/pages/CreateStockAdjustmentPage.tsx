@@ -6,6 +6,7 @@ import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/atoms/Button'
 import { FormField } from '@/components/atoms/FormField'
 import { Select } from '@/components/atoms/Select/Select'
@@ -314,7 +315,15 @@ export function CreateStockAdjustmentPage() {
       setRefusal(null)
       void navigate(entityRoutes.stockAdjustment(created.id))
     } catch (error) {
-      setRefusal(extractRefusal(error))
+      const envelope = extractRefusal(error)
+      setRefusal(envelope)
+      // A network failure, a timeout, a 500 or a lost response carries no
+      // `{code,message}` envelope, so the inline refusal surface below stays
+      // empty. Without this toast the operator would see an unchanged form and
+      // no way to tell whether the server committed (FE gate T13 r1 MAJOR-4).
+      if (envelope === null) {
+        toast.error(t('create.error'))
+      }
     } finally {
       submitLockRef.current = false
     }
