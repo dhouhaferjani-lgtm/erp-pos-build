@@ -327,3 +327,180 @@ No other deviation. Steps 1, 3, 4, 4b and 5 are the plan's bodies verbatim.
 - **Watch item:** `include=payload` is a breaking response-shape change for any consumer that read `payload`/`metadata` from `GET /api/v1/audit/events` without opting in. Three in-repo test call sites were updated. A grep across `apps/web/src`, `apps/pos/src` and `apps/web/e2e` finds **no client that calls the read endpoint at all** — every `audit_events` hit in `apps/pos` is the client-side `queued_audit_events` write outbox (`apps/pos/src/lib/db/repositories/queuedAuditEventRepository.ts`), not this GET. A consumer outside this repo (mobile, platform) would still silently lose the two fields.
 - **Second watch item:** the five campaign call sites now sit exactly at the 100 ceiling (see Step 6 item 5).
 - **Gate recommendation:** general Opus. `fiscal-pos-reviewer` not required — hash chain untouched, argued with file:line in Step 6 item 6.
+
+---
+
+# Fix round 1 (2026-09-04) — gate r1 CHANGES
+
+- **Gate report:** `docs/superpowers/reviews/2026-09-04-request-hygiene-t4-gate-general.md` (VERDICT: CHANGES — B1 blocking, N1 boundary-coverage gap)
+- **Commit:** `3bbb7814b` (app + tests) on `lane/rh-t4-audit-bounds`, on top of `4cbb4d48e`
+- **Scope:** exactly B1 + N1. No other finding was touched (N2–N6 stay as the gate ruled them).
+- **Result:** SQLite **55 passed / 210 assertions**, PG **55 passed / 210 assertions** (same three files, both drivers), PHPStan level 8 `[OK] No errors`, Pint `{"result":"pass"}`.
+
+## Empty-string semantics — the ruling (gate's "round 2 must show" item 2)
+
+**A present-but-blank optional query parameter means ABSENT, not a filter value of `''`.** `?event_type=&from=&to=&aggregate_type=&aggregate_id=&per_page=&page=&include=` is a **200** with the full company list at `meta.per_page = 50`, `meta.current_page = 1` — byte-identical to the bare `GET`. A **half-pair with a blank half is still a 422** (`?aggregate_type=Document&aggregate_id=` → `error.errors.aggregate_id.0`; `?from=2026-09-01&to=` → `error.errors.to.0`), because `required_with` is an *implicit* rule and therefore still runs against a `null` value. A fully blank pair is two absent values and validates, exactly as omitting both would.
+
+Two mechanisms, deliberately both:
+
+1. **`nullable` on all eight optional params** (`event_type`, `aggregate_type`, `aggregate_id`, `from`, `to`, `page`, `per_page`, `include`). This is what makes the HTTP path work, and it is a real behaviour change — see the measurement correction below.
+2. **`prepareForValidation()` normalizes any present optional param whose value is a blank string (`trim($v) === ''`) to `null`**, before any rule runs. This makes the contract self-contained rather than dependent on global middleware.
+
+### Measurement correction to the gate's B1 (important)
+
+The gate measured B1 with a bare `Validator::make()` and the shipped rules array. That is accurate for the validator in isolation, but **not** for the endpoint: Laravel's default global middleware stack (`vendor/laravel/framework/src/Illuminate/Foundation/Configuration/Middleware.php:461-462`, `TrimStrings` then `ConvertEmptyStringsToNull`, not overridden in `bootstrap/app.php`) rewrites every blank query parameter to `null` **before** the FormRequest validates. So over HTTP the pre-fix behaviour was not the four silent-wrong-answer cases the gate describes — it was a **422 with a misleading message**, measured in-worktree against `4cbb4d48e`:
+
+```
+GET /api/v1/audit/events?event_type=&aggregate_type=&aggregate_id=&from=&to=&per_page=&page=&include=
+=> 422 VALIDATION_ERROR, "The event type field must be a string. (and 11 more errors)"
+   event_type: The event type field must be a string.
+   aggregate_type: The aggregate type field must be a string.
+   aggregate_id: The aggregate id field must be a string.
+   from: The from field must match the format Y-m-d.
+   to: The to field must match the format Y-m-d. / must be a date after or equal to from.
+   page: must be an integer / must be at least 1.
+   per_page: must be an integer / must be at least 1.
+   include: must be a string / the selected include is invalid.
+```
+
+B1's *conclusion* still stands (the contract was wrong for blank input, and the controller docblock's invariant was false), and the fix is the one the gate asked for. What changes is the severity story: the pre-fix live failure mode was a spurious 422 on a browser form's default submission, not a silently-narrowed 200. The gate's tinker probe measured the request class with the middleware stripped — which is precisely the state `prepareForValidation()` now covers, so mechanism 2 above is not redundant: it is the guard for the state the gate actually measured.
+
+### Files
+
+| File | Change |
+|---|---|
+| `apps/api/app/Modules/Compliance/Presentation/Requests/ListAuditEventsRequest.php` | `nullable` on all 8 optional rules; new `OPTIONAL_PARAMS` const + `prepareForValidation()`; class docblock documents the empty-parameter semantics and restates the span contract as "at most 92 days between `from` and `to`" |
+| `apps/api/app/Modules/Compliance/Presentation/Controllers/AuditController.php` | `perPage`/`page` derived from `validated()` (`is_numeric(...) ? (int) ... : 50 / 1`) instead of `$request->integer('per_page', 50)` / `$request->integer('page', 1)`; docblock invariant corrected |
+| `apps/api/tests/Feature/Compliance/AuditTrailTest.php` | +6 tests (150 lines) |
+
+Deliberately **not** changed: `MAX_SPAN_DAYS` (N1 asked for tests only), `AuditService`, `DocumentController`, the locale files, and the plan file (a plan rev is the orchestrator's, per the gate's item 1).
+
+## New tests
+
+| Test | Pins |
+|---|---|
+| `test_empty_query_parameters_are_treated_as_absent` | all-blank query string → 200, `data` count 4, `meta.total` 4, `meta.per_page` **50**, `meta.current_page` 1, `meta.last_page` 1, and no `payload`/`metadata` key (blank `include=`) |
+| `test_form_request_normalizes_blank_parameters_without_the_global_middleware` | `prepareForValidation()` itself — builds the FormRequest directly and asserts all 8 params normalize to `null` |
+| `test_aggregate_type_with_empty_aggregate_id_still_returns_validation_error` | blank half-pair still 422 at `error.errors.aggregate_id.0` |
+| `test_from_with_empty_to_still_returns_validation_error` | blank half-pair still 422 at `error.errors.to.0` |
+| `test_audit_date_range_accepts_the_92_day_span_boundary` | `from=2026-01-01&to=2026-04-03` (diff 92) → 200 |
+| `test_audit_date_range_rejects_the_93_day_span_boundary` | `from=2026-01-01&to=2026-04-04` (diff 93) → 422, `'The date range may not exceed 92 days.'` |
+
+`test_empty_query_parameters_are_treated_as_absent` seeds a **10-day-old** event via `travelTo(now()->subDays(10))` plus three current ones. That is what makes the `from=&to=` leg individually falsifying: under the gate's no-middleware reading, `CarbonImmutable::parse('')` is *now*, so the read would scope to today and drop the old event (3 of 4), while the assertion demands all 4.
+
+## Red-first evidence
+
+### Red 1 — HTTP, all-blank query string, against the pre-fix request (`nullable` absent)
+
+```
+$ php artisan test tests/Feature/Compliance/AuditTrailTest.php --filter '/(…the 5 new HTTP tests…)/'
+
+ FAIL  Tests\Feature\Compliance\AuditTrailTest
+  ⨯ empty query parameters are treated as absent                         3.41s
+  ✓ aggregate type with empty aggregate id still returns validation err… 0.60s
+  ✓ from with empty to still returns validation error                    0.59s
+  ✓ audit date range accepts the 92 day span boundary                    0.60s
+  ✓ audit date range rejects the 93 day span boundary                    0.59s
+
+  FAILED  … > empty query parameters are treated as absent
+  Expected response status code [200] but received 422.
+
+  Tests:    1 failed, 4 passed (12 assertions)
+```
+
+The 422 body is the eight-key dump quoted in the measurement correction above.
+
+**Stated plainly:** the other four were **green before the fix**, and that is the honest result, not a weak test.
+- The two half-pair tests are *regression guards* for the fix, not reproductions of a defect: `required_with` already rejected a blank half (the middleware nulls it, `required_with` is implicit). Their job is to fail if `nullable`/`prepareForValidation` had been implemented in a way that let a blank half through — which is the actual risk the brief flagged. Verified they do that job: with `nullable` added but the `required_with` rules dropped, both flip to 200.
+- The two boundary tests are N1's *coverage* gap, not a behaviour bug. The gate explicitly asked for tests only and no change to the constant, so they are green from the first run by design. Verified falsifying against the boundary: changing `> self::MAX_SPAN_DAYS` to `>= self::MAX_SPAN_DAYS` turns `…accepts_the_92_day_span_boundary` red; changing it to `> self::MAX_SPAN_DAYS + 1` turns `…rejects_the_93_day_span_boundary` red. Before this round neither mutation was caught by any test.
+
+### Red 1b — mutation evidence for the four tests that were green from the first run
+
+Each mutation was applied to `ListAuditEventsRequest.php` alone and reverted immediately; `shasum` after every revert = `8f730946fc276c3e60c4ddd01f80efb086c53b3a`, matching the pre-mutation backup.
+
+```
+# mutation: drop all four `required_with:` rules (keep `nullable`)
+$ php artisan test … --filter '/(…the two blank-half-pair tests…)/'
+  ⨯ aggregate type with empty aggregate id still returns validation error
+  ⨯ from with empty to still returns validation error
+  Expected response status code [422] but received 200.   (x2)
+  Tests:    2 failed (2 assertions)
+
+# mutation: `diffInDays(...) > MAX_SPAN_DAYS`  ->  `>= MAX_SPAN_DAYS`
+  ⨯ audit date range accepts the 92 day span boundary
+  ✓ audit date range rejects the 93 day span boundary
+  Tests:    1 failed, 1 passed (4 assertions)
+
+# mutation: `diffInDays(...) > MAX_SPAN_DAYS`  ->  `> MAX_SPAN_DAYS + 1`
+  ✓ audit date range accepts the 92 day span boundary
+  ⨯ audit date range rejects the 93 day span boundary
+  Tests:    1 failed, 1 passed (3 assertions)
+```
+
+Before this round, none of those three mutations turned a single test red (the only span test in the suite used a 151-day range).
+
+### Red 2 — `prepareForValidation()` removed (middleware-independence leg)
+
+```
+$ perl -0pi -e 's/prepareForValidation\(\): void/prepareForValidationDISABLED(): void/' <the request>
+$ php artisan test tests/Feature/Compliance/AuditTrailTest.php \
+    --filter '/test_form_request_normalizes_blank_parameters_without_the_global_middleware/'
+
+  ➜ 671▕  self::assertNull($request->validated($key), "blank {$key} must normalize to null");
+  Tests:    1 failed (1 assertions)
+```
+
+Restored and verified by hash: `shasum` of the request file = `8f730946fc276c3e60c4ddd01f80efb086c53b3a`, identical to the pre-mutation backup.
+
+## Green — commands and outputs
+
+### SQLite, by path
+```
+$ cd apps/api && php artisan test \
+    tests/Feature/Compliance/AuditTrailTest.php \
+    tests/Feature/Compliance/ComplianceCrossTenantHardeningTest.php \
+    tests/Feature/Document/ListDocumentsTest.php
+  ✓ empty query parameters are treated as absent
+  ✓ form request normalizes blank parameters without the global middleware
+  ✓ aggregate type with empty aggregate id still returns validation error
+  ✓ from with empty to still returns validation error
+  ✓ audit date range accepts the 92 day span boundary
+  ✓ audit date range rejects the 93 day span boundary
+  …
+  Tests:    55 passed (210 assertions)
+  Duration: 42.39s
+```
+(49 → 55: the six new tests. No pre-existing test changed.)
+
+### PostgreSQL, by path (lane container `autoerp_pg_t4` on 127.0.0.1:5454)
+```
+$ DB_HOST=127.0.0.1 DB_PORT=5454 DB_DATABASE=autoerp_test_t4 DB_CENTRAL_DATABASE=autoerp_test_t4 \
+    php artisan test -c phpunit-pgsql.xml \
+    tests/Feature/Compliance/AuditTrailTest.php \
+    tests/Feature/Compliance/ComplianceCrossTenantHardeningTest.php \
+    tests/Feature/Document/ListDocumentsTest.php
+  Tests:    55 passed (210 assertions)
+  Duration: 136.01s
+```
+The shared PG on 5433 is still down (held by another project); the lane container is left running, `docker rm -f autoerp_pg_t4` to clean up.
+
+### PHPStan level 8
+```
+$ ./vendor/bin/phpstan analyse --memory-limit=2G --no-progress \
+    app/Modules/Compliance/Presentation/Requests/ListAuditEventsRequest.php \
+    app/Modules/Compliance/Presentation/Controllers/AuditController.php
+ [OK] No errors
+```
+
+### Pint
+```
+$ ./vendor/bin/pint --test <the 2 app files + AuditTrailTest.php>
+{"result":"pass"}
+```
+(`ordered_imports` fixed once on the test file — the two new imports, `ListAuditEventsRequest` and `Illuminate\Routing\Redirector`.)
+
+## Still open after this round
+
+- **Gate item 1's plan rev** (amend the plan's Step 1/Step 3 snippets at `docs/superpowers/plans/2026-09-03-request-hygiene-phase-a.md:1213-1246` and `:1305`, plus the "92 days" vs "93-day window" wording) is **not** done here — the plan file is the orchestrator's, and editing it from a lane worktree would collide with the other in-flight lanes. The exact text this lane shipped is above and is ready to paste in.
+- **Gate item 5** (N4 campaign `limit=100` sites, N5 dead service methods) — tickets, no code, unchanged by this round.
+- N2, N3, N6 — ruled acceptable / out of scope by the gate; untouched.
