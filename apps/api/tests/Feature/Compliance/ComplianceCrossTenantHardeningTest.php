@@ -262,7 +262,7 @@ final class ComplianceCrossTenantHardeningTest extends TestCase
         // Pre-fix the query was unscoped and returned BOTH events;
         // post-fix it must return only the tenant-A row.
         $response = $this->actingAsForTenant($this->adminA, $this->companyA)
-            ->getJson('/api/v1/audit/events?aggregate_type=Document&aggregate_id='.$sharedAggregateId);
+            ->getJson('/api/v1/audit/events?include=payload&aggregate_type=Document&aggregate_id='.$sharedAggregateId);
 
         $response->assertStatus(200);
         $events = $response->json('data');
@@ -307,7 +307,7 @@ final class ComplianceCrossTenantHardeningTest extends TestCase
 
         // Same-tenant request (admin A with company A header).
         $sameTenant = $this->actingAsForTenant($this->adminA, $this->companyA)
-            ->getJson('/api/v1/audit/events');
+            ->getJson('/api/v1/audit/events?include=payload');
         $sameTenant->assertStatus(200);
         $events = $sameTenant->json('data');
         $this->assertIsArray($events);

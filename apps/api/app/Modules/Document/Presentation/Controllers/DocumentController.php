@@ -101,15 +101,22 @@ class DocumentController extends Controller
             });
         }
 
-        // Handle limit parameter for backwards compatibility
+        // Handle limit parameter for backwards compatibility.
+        // Plan Task 4 (S-33): the raw `(int) $limit` was unbounded in both
+        // directions — `limit=0`/`limit=-5` returned an empty or full set and
+        // `limit=5000` materialized every document of the company. The value
+        // is now clamped into 1..100, matching the `page` branch ceiling, and
+        // `meta.per_page` reports the clamp the caller actually received.
         $limit = $request->query('limit');
         if (is_string($limit) && is_numeric($limit)) {
-            $documents = $query->with('vehicleContext')->orderBy('created_at', 'desc')->take((int) $limit)->get();
+            $cappedLimit = max(1, min((int) $limit, 100));
+            $documents = $query->with('vehicleContext')->orderBy('created_at', 'desc')->take($cappedLimit)->get();
 
             return response()->json([
                 'data' => $documents->map(fn (Document $doc): DocumentData => DocumentData::fromModel($doc, false)),
                 'meta' => [
                     'total' => $documents->count(),
+                    'per_page' => $cappedLimit,
                 ],
             ]);
         }

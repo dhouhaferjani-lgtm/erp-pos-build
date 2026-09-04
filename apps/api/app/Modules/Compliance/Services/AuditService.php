@@ -12,7 +12,8 @@ use App\Shared\Contracts\SupportAccess\ImpersonationContextProvider;
 use App\Shared\Contracts\SupportAccess\TenantImpersonationAuditWriter;
 use App\Shared\DTOs\SupportAccess\GrantAuditMirrorData;
 use App\Shared\DTOs\SupportAccess\ImpersonationAuditMirrorData;
-use Illuminate\Support\Carbon;
+use Carbon\CarbonInterface;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 
@@ -130,8 +131,8 @@ final class AuditService implements TenantImpersonationAuditWriter
      */
     public function getEventsInRange(
         string $companyId,
-        Carbon $from,
-        Carbon $to,
+        CarbonInterface $from,
+        CarbonInterface $to,
         ?string $eventType = null
     ): Collection {
         $query = AuditEvent::where('company_id', $companyId)
@@ -164,13 +165,60 @@ final class AuditService implements TenantImpersonationAuditWriter
     public function countEventsByType(
         string $companyId,
         string $eventType,
-        Carbon $from,
-        Carbon $to
+        CarbonInterface $from,
+        CarbonInterface $to
     ): int {
         return AuditEvent::where('company_id', $companyId)
             ->where('event_type', $eventType)
             ->whereBetween('occurred_at', [$from, $to])
             ->count();
+    }
+
+    /**
+     * Bounded, ordered page of audit events for the current company.
+     *
+     * Plan Task 4 (S-3): the controller previously fanned out to four
+     * unbounded/limit-100 collection reads and serialized every payload.
+     * This single paginator keeps the company predicate on every branch,
+     * preserves the ascending `occurred_at` order the aggregate and range
+     * branches contract for, keeps descending order elsewhere, and breaks
+     * ties on `id` so page traversal is stable.
+     *
+     * Typed against the concrete \Illuminate\Pagination\LengthAwarePaginator
+     * (what Eloquent Builder::paginate() actually returns, Builder.php:1112)
+     * rather than the contract, because the contract has no getCollection().
+     *
+     * @return LengthAwarePaginator<int, AuditEvent>
+     */
+    public function paginateEvents(
+        string $companyId,
+        ?string $eventType,
+        ?string $aggregateType,
+        ?string $aggregateId,
+        ?CarbonInterface $from,
+        ?CarbonInterface $to,
+        int $perPage,
+        int $page,
+        bool $oldestFirst,
+    ): LengthAwarePaginator {
+        $query = AuditEvent::query()->where('company_id', $companyId);
+        if ($eventType !== null) {
+            $query->where('event_type', $eventType);
+        }
+        if ($aggregateType !== null && $aggregateId !== null) {
+            $query->where('aggregate_type', $aggregateType)->where('aggregate_id', $aggregateId);
+        }
+        if ($from !== null && $to !== null) {
+            $query->whereBetween('occurred_at', [$from, $to]);
+        }
+
+        if ($oldestFirst) {
+            $query->orderBy('occurred_at');
+        } else {
+            $query->orderByDesc('occurred_at');
+        }
+
+        return $query->orderBy('id')->paginate($perPage, ['*'], 'page', $page);
     }
 
     /**
