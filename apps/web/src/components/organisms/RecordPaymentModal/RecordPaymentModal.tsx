@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Loader2, Plus, CheckCircle, Trash2, Check } from 'lucide-react'
@@ -11,6 +11,7 @@ import { Button } from '../../atoms/Button'
 import { api, apiPost } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useCurrency } from '../../../hooks/useCurrency'
+import { useIdempotencyKey } from '../../../hooks/useIdempotencyKey'
 import { AddRepositoryModal } from '../AddRepositoryModal'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
@@ -143,6 +144,8 @@ export function RecordPaymentModal({
   const [validationError, setValidationError] = useState<string | null>(null)
   const [showSuccess, setShowSuccess] = useState(false)
   const [successData, setSuccessData] = useState<MultiPaymentResponseData | null>(null)
+  const { key: idempotencyKey, reset: resetIdempotencyKey } = useIdempotencyKey()
+  const submitLockRef = useRef<boolean>(false)
 
   // Reset form when modal opens
   useEffect(() => {
@@ -322,6 +325,7 @@ export function RecordPaymentModal({
 
       // apiPost already unwraps the ApiResponse wrapper, so we get MultiPaymentResponseData directly
       return apiPost<MultiPaymentResponseData>('/payments', {
+        idempotency_key: idempotencyKey,
         partner_id: prefill.partner_id,
         document_id: prefill.document_id,
         currency,
@@ -332,6 +336,7 @@ export function RecordPaymentModal({
       })
     },
     onSuccess: async (response) => {
+      resetIdempotencyKey()
       await Promise.all([
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('payments', tenantId, companyId),
@@ -360,6 +365,8 @@ export function RecordPaymentModal({
   })
 
   const handleSubmit = () => {
+    if (submitLockRef.current) return
+
     // Validate at least one confirmed payment
     const confirmedLines = paymentLines.filter(l => l.confirmed)
     if (confirmedLines.length === 0) {
@@ -367,7 +374,10 @@ export function RecordPaymentModal({
       return
     }
 
-    mutation.mutate()
+    submitLockRef.current = true
+    mutation.mutate(undefined, {
+      onSettled: () => { submitLockRef.current = false },
+    })
   }
 
   const handleFinalClose = () => {

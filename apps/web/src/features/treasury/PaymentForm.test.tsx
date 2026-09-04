@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -440,5 +440,43 @@ describe('PaymentForm check payment persistence', () => {
         }),
       }))
     })
+  })
+})
+
+
+describe('PaymentForm idempotency and double-submit lock', () => {
+  it('adds a key and a ref lock rejects a second synchronous submit', async () => {
+    let resolvePost: ((value: unknown) => void) | null = null
+    mockApiPost.mockImplementation(() => new Promise((resolve) => { resolvePost = resolve }))
+    mockLookups([CARD_METHOD], [BANK_REPO])
+    render(<PaymentForm />, { wrapper: wrapper(createClient()) })
+
+    await selectMethod(CARD_METHOD.id)
+    fireEvent.change(await screen.findByLabelText('treasury:payments.form.amount *'), {
+      target: { value: '100' },
+    })
+    fireEvent.change(await screen.findByLabelText('treasury:payments.form.repository *'), {
+      target: { value: BANK_REPO.id },
+    })
+    fireEvent.change(await screen.findByLabelText('treasury:payments.partner *'), {
+      target: { value: 'partner-1' },
+    })
+    const save = screen.getByRole('button', { name: 'common:save' })
+    const form = save.closest('form')
+    if (form === null) throw new Error('PaymentForm submit button has no form')
+    act(() => {
+      fireEvent.submit(form)
+      fireEvent.submit(form)
+    })
+
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+    expect(mockApiPost.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
+      idempotency_key: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      amount: '100',
+      payment_method_id: CARD_METHOD.id,
+      repository_id: BANK_REPO.id,
+      partner_id: 'partner-1',
+    }))
+    await act(async () => { resolvePost?.({ id: 'payment-1' }); await Promise.resolve() })
   })
 })

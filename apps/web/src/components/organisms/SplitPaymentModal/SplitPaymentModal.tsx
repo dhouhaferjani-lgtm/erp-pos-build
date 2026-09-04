@@ -39,7 +39,7 @@ export interface SplitPaymentModalProps {
   /**
    * Total amount to pay (balance_due of the document)
    */
-  totalAmount: number
+  totalAmount: string
 
   /**
    * Currency code (e.g., 'EUR', 'USD', 'TND')
@@ -70,7 +70,7 @@ export interface SplitPaymentModalProps {
  *     toast.success('Split payment recorded')
  *   }}
  *   documentId={document.id}
- *   totalAmount={parseFloat(document.balance_due)}
+ *   totalAmount={document.balance_due}
  *   currency={document.currency}
  *   documentReference={document.document_number}
  * />

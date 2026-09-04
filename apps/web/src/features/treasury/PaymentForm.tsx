@@ -24,6 +24,7 @@ import { AllocationMethod, type ManualAllocation, type OpenInvoice } from '../..
 import { useWithholdingPreview } from '../withholding/hooks/useWithholding'
 import type { TransactionType } from '../withholding/types'
 import { useCurrency } from '../../hooks/useCurrency'
+import { useIdempotencyKey } from '@/hooks/useIdempotencyKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { usePaymentAllocationPreview } from './hooks/useSmartPayment'
@@ -661,6 +662,9 @@ export function PaymentForm() {
     required: t('treasury:payments.form.paymentMethodRequired'),
   })
 
+  const { key: idempotencyKey, reset: resetIdempotencyKey } = useIdempotencyKey()
+  const submitLockRef = useRef<boolean>(false)
+
   const createMutation = useMutation({
     mutationFn: async (data: PaymentFormData) => {
       // Prepare allocations array
@@ -677,6 +681,7 @@ export function PaymentForm() {
           : data.notes
 
       return apiPost<Payment>('/payments', {
+        idempotency_key: idempotencyKey,
         amount: data.amount,
         payment_method_id: data.payment_method_id,
         repository_id: data.repository_id,
@@ -703,6 +708,7 @@ export function PaymentForm() {
       })
     },
     onSuccess: async () => {
+      resetIdempotencyKey()
       await Promise.all([
         queryClient.invalidateQueries({ predicate: scopedNamespacePredicate('payments', tenantId, companyId) }),
         invoiceId
@@ -744,8 +750,12 @@ export function PaymentForm() {
     }
   }
 
-  const onSubmit = (data: PaymentFormData) => {
-    createMutation.mutate(data)
+  const onSubmit = (data: PaymentFormData): void => {
+    if (submitLockRef.current) return
+    submitLockRef.current = true
+    createMutation.mutate(data, {
+      onSettled: () => { submitLockRef.current = false },
+    })
   }
 
   const backTo = invoiceId
@@ -1350,8 +1360,8 @@ export function PaymentForm() {
           >
             {t('common:cancel')}
           </Button>
-          <Button type="submit" variant="primary" disabled={isSubmitting}>
-            {isSubmitting ? t('common:saving') : t('common:save')}
+          <Button type="submit" variant="primary" disabled={isSubmitting || createMutation.isPending}>
+            {(isSubmitting || createMutation.isPending) ? t('common:saving') : t('common:save')}
           </Button>
         </div>
       </form>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2 } from 'lucide-react'
@@ -6,7 +6,9 @@ import { api } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { cn } from '../../lib/utils'
 import { tokens, textColors, borderColors, colors } from '../../lib/designTokens'
+import { bcadd, bccomp, bcsub } from '../../lib/decimal'
 import { useCurrency } from '../../hooks/useCurrency'
+import { useIdempotencyKey } from '../../hooks/useIdempotencyKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { Button } from '../../components/atoms/Button/Button'
@@ -39,7 +41,7 @@ interface PaymentLine {
 
 interface SplitPaymentFormProps {
   documentId: string
-  totalAmount: number
+  totalAmount: string
   currency?: string
   onSuccess: () => void
   onCancel: () => void
@@ -54,6 +56,8 @@ export function SplitPaymentForm({
 }: SplitPaymentFormProps) {
   const { t } = useTranslation(['treasury', 'common'])
   const { currency, format: formatCurrencyHook } = useCurrency()
+  const { key: idempotencyKey, reset: resetIdempotencyKey } = useIdempotencyKey()
+  const submitLockRef = useRef<boolean>(false)
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
@@ -87,10 +91,19 @@ export function SplitPaymentForm({
   })
 
   const submitMutation = useMutation({
-    mutationFn: async (splits: Array<{ payment_method_id: string; amount: string; repository_id?: string; reference?: string }>) => {
-      return api.post(`/documents/${documentId}/split-payment`, { splits })
-    },
+    mutationFn: async (
+      splits: Array<{
+        payment_method_id: string
+        amount: string
+        repository_id?: string
+        reference?: string
+      }>,
+    ) => api.post(`/documents/${documentId}/split-payment`, {
+      splits,
+      idempotency_key: idempotencyKey,
+    }),
     onSuccess: () => {
+      resetIdempotencyKey()
       onSuccess()
     },
   })
@@ -98,12 +111,11 @@ export function SplitPaymentForm({
   const paymentMethods = paymentMethodsData?.data ?? []
   const repositories = repositoriesData?.data ?? []
 
-  const currentTotal = paymentLines.reduce((sum, line) => {
-    const amount = parseFloat(line.amount) || 0
-    return sum + amount
-  }, 0)
-
-  const remaining = totalAmount - currentTotal
+  const currentTotal = paymentLines.reduce(
+    (sum, line) => bcadd(sum, line.amount === '' ? '0' : line.amount, 3),
+    '0.000',
+  )
+  const remaining = bcsub(totalAmount, currentTotal, 3)
 
   const addPaymentLine = () => {
     setPaymentLines([
@@ -135,42 +147,32 @@ export function SplitPaymentForm({
     setValidationError(null)
   }
 
-  const handleSubmit = () => {
-    // Validate amounts match
-    if (Math.abs(currentTotal - totalAmount) > 0.01) {
+  const handleSubmit = (): void => {
+    if (submitLockRef.current) return
+    if (bccomp(currentTotal, totalAmount) !== 0) {
       setValidationError(t('treasury:splitPayment.amountDoesNotMatch'))
       return
     }
-
-    // Validate all lines have required fields
     const invalidLines = paymentLines.filter(
-      (line) => !line.payment_method_id || !line.amount || parseFloat(line.amount) <= 0
+      (line) => !line.payment_method_id || line.amount === '' || bccomp(line.amount, '0') <= 0,
     )
     if (invalidLines.length > 0) {
       setValidationError(t('treasury:splitPayment.incompleteLines'))
       return
     }
-
-    const splits = paymentLines.map((line) => {
-      const split: { payment_method_id: string; amount: string; repository_id?: string; reference?: string } = {
-        payment_method_id: line.payment_method_id,
-        amount: line.amount,
-      }
-      if (line.repository_id) {
-        split.repository_id = line.repository_id
-      }
-      if (line.reference) {
-        split.reference = line.reference
-      }
-      return split
+    const splits = paymentLines.map((line) => ({
+      payment_method_id: line.payment_method_id,
+      amount: line.amount,
+      ...(line.repository_id ? { repository_id: line.repository_id } : {}),
+      ...(line.reference ? { reference: line.reference } : {}),
+    }))
+    submitLockRef.current = true
+    submitMutation.mutate(splits, {
+      onSettled: () => { submitLockRef.current = false },
     })
-
-    submitMutation.mutate(splits)
   }
 
-  const formatCurrency = (amount: number) => {
-    return formatCurrencyHook(amount)
-  }
+  const formatCurrency = (amount: string): string => formatCurrencyHook(amount)
 
   return (
     <div className="space-y-6">
@@ -189,11 +191,12 @@ export function SplitPaymentForm({
               {t('treasury:splitPayment.remaining')}
             </span>
             <div
+              data-testid="split-payment-remaining"
               className={cn(
                 'text-xl font-bold',
-                Math.abs(remaining) < 0.01
+                bccomp(remaining, '0') === 0
                   ? textColors.success
-                  : remaining > 0
+                  : bccomp(remaining, '0') > 0
                   ? textColors.warningDark
                   : textColors.error,
               )}

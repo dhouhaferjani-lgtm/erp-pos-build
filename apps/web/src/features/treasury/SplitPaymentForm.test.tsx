@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactNode } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { SplitPaymentModalProps } from '@/components/organisms/SplitPaymentModal'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 
@@ -34,7 +35,7 @@ vi.mock('@/hooks/useCurrency', async (importOriginal) => {
     useCurrency: () => ({
       currency: 'TND',
       decimals: 2,
-      format: (value: number) => value.toFixed(2),
+      format: (value: string | number) => String(value),
       symbol: 'TND',
     }),
   }
@@ -80,7 +81,7 @@ function renderForm(overrides: Partial<Parameters<typeof SplitPaymentForm>[0]> =
   render(
     <SplitPaymentForm
       documentId="doc-1"
-      totalAmount={100}
+      totalAmount="100"
       onSuccess={onSuccess}
       onCancel={onCancel}
       {...overrides}
@@ -88,6 +89,26 @@ function renderForm(overrides: Partial<Parameters<typeof SplitPaymentForm>[0]> =
     { wrapper: wrapper(createClient()) },
   )
   return { onSuccess, onCancel }
+}
+
+async function fillTwoSplits(amounts: readonly [string, string]) {
+  await screen.findByRole('option', { name: 'Cash' })
+  const addLine = screen.getByRole('button', { name: 'treasury:splitPayment.addPayment' })
+  await userEvent.click(addLine)
+
+  const methodInputs = screen.getAllByLabelText('treasury:payments.method')
+  const amountInputs = screen.getAllByLabelText('treasury:payments.amount')
+  expect(methodInputs).toHaveLength(2)
+  expect(amountInputs).toHaveLength(2)
+  for (const [index, amount] of amounts.entries()) {
+    await userEvent.selectOptions(methodInputs[index]!, 'method-1')
+    // Deviation (T12 D1): userEvent.type cannot express trailing zeros on an
+    // input[type=number] harness — typing "0.100" emits only "0.1" (probed).
+    // fireEvent.change delivers the verbatim decimal string the operator's
+    // keyboard produces in a real browser, so the three-decimal contract is
+    // exercised end to end.
+    fireEvent.change(amountInputs[index]!, { target: { value: amount } })
+  }
 }
 
 beforeEach(() => {
@@ -129,7 +150,7 @@ describe('SplitPaymentForm shared form primitives', () => {
   })
 
   it('submits matching split amount as a canonical string and calls onSuccess', async () => {
-    const { onSuccess } = renderForm({ totalAmount: 100 })
+    const { onSuccess } = renderForm({ totalAmount: '100' })
 
     // Wait for the async payment-methods query to populate the select options.
     await screen.findByRole('option', { name: 'Cash' })
@@ -146,6 +167,7 @@ describe('SplitPaymentForm shared form primitives', () => {
     await screen.findByRole('button', { name: 'common:actions.submit' })
     expect(mockApiPost).toHaveBeenCalledWith('/documents/doc-1/split-payment', {
       splits: [{ payment_method_id: 'method-1', amount: '100' }],
+      idempotency_key: expect.stringMatching(/^[0-9a-f-]{36}$/),
     })
     expect(onSuccess).toHaveBeenCalledTimes(1)
   })
@@ -159,5 +181,86 @@ describe('SplitPaymentForm shared form primitives', () => {
 
     await userEvent.click(cancel)
     expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+})
+
+
+describe('SplitPaymentForm money boundary and double-submit lock', () => {
+  it('rejects number-typed split-payment totalAmount props at compile time', () => {
+    const numericTotalAmount = 0.3
+    const invalidFormProps: ComponentProps<typeof SplitPaymentForm> = {
+      documentId: 'doc-1',
+      // @ts-expect-error Monetary totals must enter SplitPaymentForm as decimal strings.
+      totalAmount: numericTotalAmount,
+      onSuccess: vi.fn(),
+      onCancel: vi.fn(),
+    }
+    const invalidModalProps: SplitPaymentModalProps = {
+      isOpen: false,
+      onClose: vi.fn(),
+      documentId: 'doc-1',
+      // @ts-expect-error Monetary totals must enter SplitPaymentModal as decimal strings.
+      totalAmount: numericTotalAmount,
+      currency: 'TND',
+    }
+
+    expect(invalidFormProps.totalAmount).toBe(numericTotalAmount)
+    expect(invalidModalProps.totalAmount).toBe(numericTotalAmount)
+  })
+
+  it('uses the synchronous ref lock before React can rerender pending state', async () => {
+    let resolvePost: ((value: { data: { ok: boolean } }) => void) | null = null
+    mockApiPost.mockImplementation(() => new Promise((resolve) => { resolvePost = resolve }))
+    renderForm({ totalAmount: '100' })
+
+    await screen.findByRole('option', { name: 'Cash' })
+    await userEvent.selectOptions(screen.getByLabelText('treasury:payments.method'), 'method-1')
+    await userEvent.type(screen.getByLabelText('treasury:payments.amount'), '100')
+    const submit = screen.getByRole('button', { name: 'common:actions.submit' })
+    act(() => {
+      fireEvent.click(submit)
+      fireEvent.click(submit)
+    })
+
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+    expect(mockApiPost).toHaveBeenCalledWith('/documents/doc-1/split-payment', {
+      splits: [{ payment_method_id: 'method-1', amount: '100' }],
+      idempotency_key: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    })
+    await act(async () => {
+      resolvePost?.({ data: { ok: true } })
+      await Promise.resolve()
+    })
+  })
+
+  it('accepts 0.100 plus 0.200 against the exact decimal-string total 0.300', async () => {
+    renderForm({ totalAmount: '0.300' })
+    await fillTwoSplits(['0.100', '0.200'])
+
+    await userEvent.click(screen.getByRole('button', { name: 'common:actions.submit' }))
+
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+    expect(mockApiPost).toHaveBeenCalledWith('/documents/doc-1/split-payment', {
+      splits: [
+        { payment_method_id: 'method-1', amount: '0.100' },
+        { payment_method_id: 'method-1', amount: '0.200' },
+      ],
+      idempotency_key: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    })
+    // Rev 9 (gate r8 B1): the POST alone also passes under the OLD float path
+    // (0.1+0.2 error is about 5.55e-17, inside its 0.01 tolerance). The falsifier is
+    // the rendered remaining amount: the bcmath path renders exactly "0.000",
+    // the float path renders the IEEE-754 residue.
+    expect(screen.getByTestId('split-payment-remaining')).toHaveTextContent(/^0\.000$/)
+  })
+
+  it('rejects a three-decimal split total that is short by 0.001', async () => {
+    renderForm({ totalAmount: '0.300' })
+    await fillTwoSplits(['0.100', '0.199'])
+
+    await userEvent.click(screen.getByRole('button', { name: 'common:actions.submit' }))
+
+    expect(screen.getByText('treasury:splitPayment.amountDoesNotMatch')).toBeInTheDocument()
+    expect(mockApiPost).not.toHaveBeenCalled()
   })
 })
