@@ -18,6 +18,7 @@ const mockApiGet = vi.hoisted(() => vi.fn<(...args: unknown[]) => unknown>())
 const mockApiClientGet = vi.hoisted(() => vi.fn<(...args: unknown[]) => unknown>())
 const mockUseProductBatches = vi.hoisted(() => vi.fn())
 const mockUseProductVariants = vi.hoisted(() => vi.fn())
+const mockResetIdempotencyKey = vi.hoisted(() => vi.fn())
 
 const BATCH_PRODUCT_ID = '11111111-1111-4111-8111-111111111111'
 const PLAIN_PRODUCT_ID = '22222222-2222-4222-8222-222222222222'
@@ -42,6 +43,13 @@ vi.mock('../api/queries', () => ({
   useCreateStockTransfer: () => ({
     mutateAsync: mockCreate,
     isPending: false,
+  }),
+}))
+
+vi.mock('@/hooks/useIdempotencyKey', () => ({
+  useIdempotencyKey: () => ({
+    key: 'transfer-key',
+    reset: mockResetIdempotencyKey,
   }),
 }))
 
@@ -338,6 +346,7 @@ describe('CreateStockTransferPage line entry bar', () => {
 
     await waitFor(() => {
       expect(mockCreate).toHaveBeenCalledWith({
+        idempotency_key: 'transfer-key',
         source_location_id: 'source-location',
         destination_location_id: 'destination-location',
         notes: 'Cold chain handoff',
@@ -352,6 +361,11 @@ describe('CreateStockTransferPage line entry bar', () => {
           },
         ],
       })
+    })
+
+    // ID-3: the key rotates only after the awaited success resolves.
+    await waitFor(() => {
+      expect(mockResetIdempotencyKey).toHaveBeenCalledTimes(1)
     })
   })
 

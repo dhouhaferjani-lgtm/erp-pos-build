@@ -22,6 +22,7 @@ import {
 } from '@/components/molecules/line-items'
 import { textColors, borderColors, tokens, colors } from '@/lib/designTokens'
 import { useCurrency } from '@/hooks/useCurrency'
+import { useIdempotencyKey } from '@/hooks/useIdempotencyKey'
 import { bcadd, bccomp, bcsub } from '@/lib/decimal'
 import { getQuantityDecimals } from '@/lib/quantityScale'
 import { useProductBatches } from '@/features/batches/hooks/useBatches'
@@ -548,6 +549,11 @@ export function CreateStockTransferPage() {
 
   const createMutation = useCreateStockTransfer()
 
+  // ID-3: one key per logical submit attempt, held at PAGE scope so it survives
+  // a failed request and every re-render in between. Rotated only after an
+  // awaited success (see submitTransfer).
+  const { key: idempotencyKey, reset: resetIdempotencyKey } = useIdempotencyKey()
+
   // Stable handler identities so the memoized line columns below don't change
   // every render — otherwise each cell remounts and the inputs lose focus.
   const addLine = useCallback(() => {
@@ -692,6 +698,7 @@ export function CreateStockTransferPage() {
     }
 
     const payload: CreateStockTransferInput = {
+      idempotency_key: idempotencyKey,
       source_location_id: sourceLocationId,
       destination_location_id: destinationLocationId,
       notes: notes.trim() === '' ? null : notes.trim(),
@@ -715,6 +722,9 @@ export function CreateStockTransferPage() {
 
     try {
       const result: { id: string } = await createMutation.mutateAsync(payload)
+      // ID-3: only an AWAITED success starts a new logical attempt. A failed
+      // submit deliberately keeps the same key so the retry is deduplicated.
+      resetIdempotencyKey()
       toast.success(t('create.success'))
       void navigate(`/inventory/stock-transfers/${result.id}`)
     } catch {

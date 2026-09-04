@@ -24,6 +24,7 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
+import { useIdempotencyKey } from '@/hooks/useIdempotencyKey'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useCreateStockAdjustment } from '../api/queries'
 import { stockAdjustmentApi } from '../api/stockAdjustmentApi'
@@ -103,6 +104,11 @@ export function CreateStockAdjustmentPage() {
   const navigate = useNavigate()
   const { hasPermission } = usePermissions()
   const createMutation = useCreateStockAdjustment()
+
+  // ID-3: one key per logical submit attempt, held at PAGE scope so it survives
+  // a failed request (including a refusal the operator then acknowledges and
+  // resubmits). Rotated only after an awaited success (see submit).
+  const { key: idempotencyKey, reset: resetIdempotencyKey } = useIdempotencyKey()
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
   const companyId = useCompanyStore((s) => s.currentCompanyId)
 
@@ -264,6 +270,7 @@ export function CreateStockAdjustmentPage() {
   ): Promise<void> => {
     try {
       const created = await createMutation.mutateAsync({
+        idempotency_key: idempotencyKey,
         location_id: values.locationId,
         note: values.note === '' ? null : values.note,
         post_immediately: postImmediately,
@@ -278,6 +285,7 @@ export function CreateStockAdjustmentPage() {
           line_note: line.note === '' ? null : line.note,
         })),
       })
+      resetIdempotencyKey()
       setRefusal(null)
       void navigate(entityRoutes.stockAdjustment(created.id))
     } catch (error) {

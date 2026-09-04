@@ -66,6 +66,14 @@ vi.mock('../api/queries', () => ({
   useCreateStockAdjustment: () => ({ mutateAsync: createMutate, isPending: false }),
 }))
 
+const mockResetIdempotencyKey = vi.hoisted(() => vi.fn())
+vi.mock('@/hooks/useIdempotencyKey', () => ({
+  useIdempotencyKey: () => ({
+    key: 'adjustment-key',
+    reset: mockResetIdempotencyKey,
+  }),
+}))
+
 const stockLevel = vi.fn<(productId: string, locationId: string) => Promise<unknown>>()
 vi.mock('../api/stockAdjustmentApi', () => ({
   stockAdjustmentApi: {
@@ -81,6 +89,8 @@ const freshLevel = {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks()
+  mockResetIdempotencyKey.mockReset()
   createMutate.mockReset()
   createMutate.mockResolvedValue({ id: 'adj-1' })
   stockLevel.mockReset()
@@ -221,18 +231,25 @@ describe('CreateStockAdjustmentPage — payload', () => {
     })
 
     const payload = createMutate.mock.calls[0]?.[0] as {
+      idempotency_key: string
       post_immediately: boolean
       acknowledge_stale?: boolean
       ignore_reservations?: boolean
       lines: { delta_quantity: string; observed_before: string }[]
     }
 
+    expect(payload.idempotency_key).toBe('adjustment-key')
     expect(payload.post_immediately).toBe(true)
     expect(payload.lines[0]?.delta_quantity).toBe('-2.5')
     expect(typeof payload.lines[0]?.delta_quantity).toBe('string')
     expect(payload.lines[0]?.observed_before).toBe('50.0000')
     expect(payload.acknowledge_stale).toBeUndefined()
     expect(payload.ignore_reservations).toBeUndefined()
+
+    // ID-3: the key rotates only after the awaited success resolves.
+    await waitFor(() => {
+      expect(mockResetIdempotencyKey).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('saves a DRAFT without posting', async () => {
