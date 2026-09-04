@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { CreateStockAdjustmentPage } from '../pages/CreateStockAdjustmentPage'
+import type { CreateStockAdjustmentInput } from '../types'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -61,18 +62,58 @@ vi.mock('@/components/molecules/pickers/ProductPicker', () => ({
   ),
 }))
 
-const createMutate = vi.fn()
+// Typed, so the payload assertions below read the real shape instead of casting
+// `any` back into one (which is also what keeps this file's lint warnings down).
+const createMutate = vi.fn<(input: CreateStockAdjustmentInput) => Promise<{ id: string }>>()
 vi.mock('../api/queries', () => ({
   useCreateStockAdjustment: () => ({ mutateAsync: createMutate, isPending: false }),
 }))
 
+/** The key the Nth create call carried, or undefined if it never happened. */
+function submittedKey(index: number): string | null | undefined {
+  return createMutate.mock.calls[index]?.[0].idempotency_key
+}
+
+
+/** An axios-shaped refusal, the only error the page can actually surface. */
+function refusalError(code: string): unknown {
+  return { response: { data: { error: { code, message: 'refused', details: null } } } }
+}
+
 const mockResetIdempotencyKey = vi.hoisted(() => vi.fn())
-vi.mock('@/hooks/useIdempotencyKey', () => ({
-  useIdempotencyKey: () => ({
-    key: 'adjustment-key',
-    reset: mockResetIdempotencyKey,
-  }),
-}))
+// How many keys the fake hook below has minted in this test. Reset per test.
+const mintedKeys = vi.hoisted(() => ({ count: 0 }))
+
+/**
+ * A STATEFUL fake of the real hook, not a frozen literal.
+ *
+ * A constant key cannot tell "the refused submit kept its key" apart from "the
+ * page rotated it", nor one page-scope key apart from one key PER INTENT — the
+ * two things these tests exist to pin. Each mounted instance mints its own
+ * `adjustment-key-<n>` and rotates it only on its own `reset()`, exactly like
+ * `useIdempotencyKey.ts`, with deterministic values instead of UUIDs.
+ *
+ * Mint order follows the page's hook order: 1 = draft intent, 2 = post intent.
+ */
+vi.mock('@/hooks/useIdempotencyKey', async () => {
+  const { useCallback, useState } = await vi.importActual<typeof import('react')>('react')
+
+  return {
+    useIdempotencyKey: (): { key: string; reset: () => void } => {
+      const mint = (): string => {
+        mintedKeys.count += 1
+        return `adjustment-key-${String(mintedKeys.count)}`
+      }
+      const [key, setKey] = useState(mint)
+      const reset = useCallback(() => {
+        mockResetIdempotencyKey()
+        setKey(mint())
+      }, [])
+
+      return { key, reset }
+    },
+  }
+})
 
 const stockLevel = vi.fn<(productId: string, locationId: string) => Promise<unknown>>()
 vi.mock('../api/stockAdjustmentApi', () => ({
@@ -90,6 +131,7 @@ const freshLevel = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mintedKeys.count = 0
   mockResetIdempotencyKey.mockReset()
   createMutate.mockReset()
   createMutate.mockResolvedValue({ id: 'adj-1' })
@@ -230,15 +272,11 @@ describe('CreateStockAdjustmentPage — payload', () => {
       expect(createMutate).toHaveBeenCalledTimes(1)
     })
 
-    const payload = createMutate.mock.calls[0]?.[0] as {
-      idempotency_key: string
-      post_immediately: boolean
-      acknowledge_stale?: boolean
-      ignore_reservations?: boolean
-      lines: { delta_quantity: string; observed_before: string }[]
-    }
+    const payload = createMutate.mock.calls[0][0]
 
-    expect(payload.idempotency_key).toBe('adjustment-key')
+    // The POST intent's own key (mint #2), not the draft's — see the
+    // intent-scoping test below.
+    expect(payload.idempotency_key).toBe('adjustment-key-2')
     expect(payload.post_immediately).toBe(true)
     expect(payload.lines[0]?.delta_quantity).toBe('-2.5')
     expect(typeof payload.lines[0]?.delta_quantity).toBe('string')
@@ -263,8 +301,10 @@ describe('CreateStockAdjustmentPage — payload', () => {
     await waitFor(() => {
       expect(createMutate).toHaveBeenCalledTimes(1)
     })
-    const payload = createMutate.mock.calls[0]?.[0] as { post_immediately: boolean }
+    const payload = createMutate.mock.calls[0][0]
     expect(payload.post_immediately).toBe(false)
+    // The DRAFT intent's own key (mint #1).
+    expect(payload.idempotency_key).toBe('adjustment-key-1')
     expect(navigate).toHaveBeenCalledWith('/inventory/stock-adjustments/adj-1')
   })
 
@@ -276,5 +316,126 @@ describe('CreateStockAdjustmentPage — payload', () => {
 
     expect(screen.queryByRole('button', { name: 'create.post' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'create.saveDraft' })).toBeInTheDocument()
+  })
+})
+
+describe('CreateStockAdjustmentPage — idempotency key lifecycle', () => {
+  /**
+   * FE gate r1 MAJOR-1 — the invariant ID-3 exists for.
+   *
+   * The key must SURVIVE a refused submit so the retry is deduplicated
+   * server-side, and rotate ONLY after an awaited success. A success-path
+   * `toHaveBeenCalledTimes(1)` cannot see `reset()` moving into a `finally`,
+   * into the `catch`, or above the `await`; this test can.
+   */
+  it('keeps the SAME key after a refused submit and rotates it only after a success', async () => {
+    const user = userEvent.setup()
+    createMutate.mockRejectedValueOnce(refusalError('INVALID_ADJUSTMENT_STATE'))
+    render(<CreateStockAdjustmentPage />)
+    await addLine(user)
+
+    await user.type(screen.getByLabelText('line.quantity'), '2')
+    await user.click(screen.getByRole('button', { name: 'create.post' }))
+
+    // The refusal reaches the operator...
+    await waitFor(() => {
+      expect(screen.getByText('refusal.INVALID_ADJUSTMENT_STATE')).toBeInTheDocument()
+    })
+    // ...and the attempt is NOT over, so the key must not have rotated.
+    expect(mockResetIdempotencyKey).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'create.post' }))
+
+    await waitFor(() => {
+      expect(createMutate).toHaveBeenCalledTimes(2)
+    })
+    expect(submittedKey(0)).toBe('adjustment-key-2')
+    expect(submittedKey(1)).toBe(submittedKey(0))
+
+    // The retry succeeded: this logical attempt is done, so the key rotates once.
+    await waitFor(() => {
+      expect(mockResetIdempotencyKey).toHaveBeenCalledTimes(1)
+    })
+
+    await user.click(screen.getByRole('button', { name: 'create.post' }))
+
+    await waitFor(() => {
+      expect(createMutate).toHaveBeenCalledTimes(3)
+    })
+    expect(submittedKey(2)).not.toBe(submittedKey(0))
+  })
+
+  /**
+   * FE gate r1 MAJOR-2 — `disabled={createMutation.isPending}` is async state:
+   * it flips on a render that happens AFTER the click handler returns, so two
+   * clicks dispatched in one task both get through. The adjustment backend has
+   * no collision replay (gate M-6 debt), so the loser is a 500, not a replay —
+   * the synchronous ref latch is what stops it being sent at all.
+   */
+  it('issues exactly ONE create request when Save & post is double-clicked', async () => {
+    const user = userEvent.setup()
+    // Held open: the first request is still in flight when the second click lands.
+    createMutate.mockReturnValue(new Promise<{ id: string }>(() => undefined))
+    render(<CreateStockAdjustmentPage />)
+    await addLine(user)
+
+    await user.type(screen.getByLabelText('line.quantity'), '2')
+
+    const postButton = screen.getByRole('button', { name: 'create.post' })
+    await act(async () => {
+      fireEvent.click(postButton)
+      fireEvent.click(postButton)
+      // Let both submit handlers run up to their awaited request.
+      await Promise.resolve()
+    })
+    // Give a second submit that slipped past the latch every chance to land.
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(createMutate).toHaveBeenCalledTimes(1)
+  })
+
+  /**
+   * FE gate r1 MAJOR-3 — save-draft and save-and-post are DIFFERENT intents and
+   * must not share one key.
+   *
+   * The server replays on `(tenant, company, idempotency_key)` ALONE and never
+   * compares the body. With one page-scope key: the operator saves a draft, the
+   * response is lost (a network error yields no envelope, so nothing is shown),
+   * they click "Save & post", the pre-check finds the committed DRAFT and
+   * returns it 200 — the page navigates as if it posted, and nothing ever moved.
+   */
+  it('mints a key PER INTENT so a lost draft response cannot be replayed as a post', async () => {
+    const user = userEvent.setup()
+    // The draft commits server-side but the response never arrives.
+    createMutate.mockRejectedValueOnce(new Error('network'))
+    render(<CreateStockAdjustmentPage />)
+    await addLine(user)
+
+    await user.type(screen.getByLabelText('line.quantity'), '2')
+
+    await user.click(screen.getByRole('button', { name: 'create.saveDraft' }))
+    await waitFor(() => {
+      expect(createMutate).toHaveBeenCalledTimes(1)
+    })
+
+    await user.click(screen.getByRole('button', { name: 'create.post' }))
+    await waitFor(() => {
+      expect(createMutate).toHaveBeenCalledTimes(2)
+    })
+
+    expect(createMutate.mock.calls[0][0].post_immediately).toBe(false)
+    expect(createMutate.mock.calls[1][0].post_immediately).toBe(true)
+    expect(submittedKey(1)).not.toBe(submittedKey(0))
+
+    // ...and this is intent SCOPING, not blanket rotation: the draft intent's
+    // own key is unchanged, so a genuine draft retry is still deduplicated.
+    await user.click(screen.getByRole('button', { name: 'create.saveDraft' }))
+    await waitFor(() => {
+      expect(createMutate).toHaveBeenCalledTimes(3)
+    })
+    expect(submittedKey(2)).toBe(submittedKey(0))
   })
 })

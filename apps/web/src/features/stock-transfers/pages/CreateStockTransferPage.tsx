@@ -554,6 +554,12 @@ export function CreateStockTransferPage() {
   // awaited success (see submitTransfer).
   const { key: idempotencyKey, reset: resetIdempotencyKey } = useIdempotencyKey()
 
+  // FE gate r1 MAJOR-2: `createMutation.isPending` is async state — it only
+  // disables the button on a render that happens AFTER the click handler
+  // returns, so two clicks in one task both reach mutateAsync. This ref is set
+  // SYNCHRONOUSLY before the awaited call, so the second submit sees it.
+  const submitLockRef = useRef<boolean>(false)
+
   // Stable handler identities so the memoized line columns below don't change
   // every render — otherwise each cell remounts and the inputs lose focus.
   const addLine = useCallback(() => {
@@ -657,6 +663,9 @@ export function CreateStockTransferPage() {
   }, [t])
 
   const submitTransfer = async (): Promise<void> => {
+    if (submitLockRef.current) {
+      return
+    }
     if (!sourceLocationId || !destinationLocationId) {
       toast.error(t('create.field.selectLocation'))
       return
@@ -721,6 +730,7 @@ export function CreateStockTransferPage() {
     }
 
     try {
+      submitLockRef.current = true
       const result: { id: string } = await createMutation.mutateAsync(payload)
       // ID-3: only an AWAITED success starts a new logical attempt. A failed
       // submit deliberately keeps the same key so the retry is deduplicated.
@@ -729,6 +739,8 @@ export function CreateStockTransferPage() {
       void navigate(`/inventory/stock-transfers/${result.id}`)
     } catch {
       toast.error(t('create.error'))
+    } finally {
+      submitLockRef.current = false
     }
   }
 

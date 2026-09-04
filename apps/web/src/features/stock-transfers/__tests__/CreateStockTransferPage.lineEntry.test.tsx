@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -19,6 +19,8 @@ const mockApiClientGet = vi.hoisted(() => vi.fn<(...args: unknown[]) => unknown>
 const mockUseProductBatches = vi.hoisted(() => vi.fn())
 const mockUseProductVariants = vi.hoisted(() => vi.fn())
 const mockResetIdempotencyKey = vi.hoisted(() => vi.fn())
+// How many keys the fake hook below has minted in this test. Reset per test.
+const mintedKeys = vi.hoisted(() => ({ count: 0 }))
 
 const BATCH_PRODUCT_ID = '11111111-1111-4111-8111-111111111111'
 const PLAIN_PRODUCT_ID = '22222222-2222-4222-8222-222222222222'
@@ -46,12 +48,34 @@ vi.mock('../api/queries', () => ({
   }),
 }))
 
-vi.mock('@/hooks/useIdempotencyKey', () => ({
-  useIdempotencyKey: () => ({
-    key: 'transfer-key',
-    reset: mockResetIdempotencyKey,
-  }),
-}))
+/**
+ * A STATEFUL fake of the real hook, not a frozen literal.
+ *
+ * A constant key cannot tell "the failed submit kept its key" apart from "the
+ * page rotated it", which is the one invariant ID-3 exists for. This fake mints
+ * `transfer-key-<n>` per mounted instance and rotates it only when the page
+ * calls `reset()` — exactly the real hook's contract (`useIdempotencyKey.ts`),
+ * with deterministic values instead of UUIDs so payloads stay exact-matchable.
+ */
+vi.mock('@/hooks/useIdempotencyKey', async () => {
+  const { useCallback, useState } = await vi.importActual<typeof import('react')>('react')
+
+  return {
+    useIdempotencyKey: (): { key: string; reset: () => void } => {
+      const mint = (): string => {
+        mintedKeys.count += 1
+        return `transfer-key-${String(mintedKeys.count)}`
+      }
+      const [key, setKey] = useState(mint)
+      const reset = useCallback(() => {
+        mockResetIdempotencyKey()
+        setKey(mint())
+      }, [])
+
+      return { key, reset }
+    },
+  }
+})
 
 vi.mock('@/features/batches/hooks/useBatches', () => ({
   useProductBatches: mockUseProductBatches,
@@ -167,6 +191,7 @@ function scan(code: string): void {
 describe('CreateStockTransferPage line entry bar', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mintedKeys.count = 0
     // The entry-bar product search is tenant/company gated (non-negotiable
     // tenant scoping); seed both stores so the search dropdown can open.
     useAuthStore.setState({
@@ -346,7 +371,7 @@ describe('CreateStockTransferPage line entry bar', () => {
 
     await waitFor(() => {
       expect(mockCreate).toHaveBeenCalledWith({
-        idempotency_key: 'transfer-key',
+        idempotency_key: 'transfer-key-1',
         source_location_id: 'source-location',
         destination_location_id: 'destination-location',
         notes: 'Cold chain handoff',
@@ -520,6 +545,92 @@ describe('CreateStockTransferPage line entry bar', () => {
     await waitFor(() => {
       expect(screen.getByRole('spinbutton', { name: 'Quantity' })).toHaveValue(2)
     })
+  })
+
+  /**
+   * FE gate r1 MAJOR-1 — the invariant ID-3 exists for.
+   *
+   * The key must SURVIVE a failed submit so the retry is deduplicated
+   * server-side, and rotate ONLY after an awaited success. A success-path
+   * `toHaveBeenCalledTimes(1)` cannot see `reset()` moving into a `finally`,
+   * into the `catch`, or above the `await`; this test can.
+   */
+  it('keeps the SAME idempotency key after a failed submit and rotates it only after a success', async () => {
+    const user = userEvent.setup()
+    mockCreate.mockRejectedValueOnce(new Error('network'))
+
+    renderPage()
+    await selectLocations(user)
+
+    // A plain (non batch-tracked) line: this test is about the KEY, and the
+    // FEFO allocation dance would only add timing noise.
+    await user.click(screen.getByRole('button', { name: /select manual product/i }))
+    expect(screen.getByText('MANUAL-1 Manual add product')).toBeInTheDocument()
+
+    const submitButton = screen.getByRole('button', { name: /create transfer/i })
+
+    await user.click(submitButton)
+
+    // The failure reaches the operator...
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Could not create the transfer.')
+    })
+    // ...and the attempt is NOT over, so the key must not have rotated.
+    expect(mockResetIdempotencyKey).not.toHaveBeenCalled()
+
+    await user.click(submitButton)
+
+    await waitFor(() => {
+      expect(mockCreate).toHaveBeenCalledTimes(2)
+    })
+    const firstKey = mockCreate.mock.calls[0]?.[0].idempotency_key
+    expect(firstKey).toBe('transfer-key-1')
+    expect(mockCreate.mock.calls[1]?.[0].idempotency_key).toBe(firstKey)
+
+    // The retry succeeded: this logical attempt is done, so the key rotates once.
+    await waitFor(() => {
+      expect(mockResetIdempotencyKey).toHaveBeenCalledTimes(1)
+    })
+
+    await user.click(submitButton)
+
+    await waitFor(() => {
+      expect(mockCreate).toHaveBeenCalledTimes(3)
+    })
+    expect(mockCreate.mock.calls[2]?.[0].idempotency_key).not.toBe(firstKey)
+  })
+
+  /**
+   * FE gate r1 MAJOR-2 — `disabled={createMutation.isPending}` is async state:
+   * it flips on a render that happens AFTER the click handler returns, so two
+   * clicks dispatched in one task both get through. The synchronous ref latch
+   * is what makes the second one a no-op.
+   */
+  it('issues exactly ONE create request when the submit button is double-clicked', async () => {
+    const user = userEvent.setup()
+    // Held open: the first request is still in flight when the second click lands.
+    mockCreate.mockReturnValue(new Promise<{ id: string }>(() => undefined))
+
+    renderPage()
+    await selectLocations(user)
+
+    await user.click(screen.getByRole('button', { name: /select manual product/i }))
+    expect(screen.getByText('MANUAL-1 Manual add product')).toBeInTheDocument()
+
+    const submitButton = screen.getByRole('button', { name: /create transfer/i })
+
+    await act(async () => {
+      fireEvent.click(submitButton)
+      fireEvent.click(submitButton)
+      // Let both submit handlers run up to their awaited request.
+      await Promise.resolve()
+    })
+    // Give a second submit that slipped past the latch every chance to land.
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(mockCreate).toHaveBeenCalledTimes(1)
   })
 
   it('keeps the existing manual add-line flow working', async () => {
