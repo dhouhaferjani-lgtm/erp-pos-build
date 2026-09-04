@@ -4,7 +4,7 @@ Orchestrator: Fable (this session). Implementation lanes: Opus agents in `.workt
 
 ## 1. What is on LOCAL `dev` (NOT pushed — `origin/dev` unchanged)
 
-`dev` = `ec9e71cc3` + (placeholder-data lane pending its independent gate). 108 commits ahead of `origin/dev`.
+`dev` = `190f38109` (placeholder-data lane merged after its independent gate). 115 commits ahead of `origin/dev`.
 
 | Lane | Merge | Gates (rounds) | Promotion-owed |
 |---|---|---|---|
@@ -21,7 +21,7 @@ Orchestrator: Fable (this session). Implementation lanes: Opus agents in `.workt
 | T12 payment idempotency keys | `f21510ce6` | treasury r1→r3 MERGE; FE r1 REJECT → r3 MERGE | five browser legs; **P1 pre-production**: RecordPaymentModal form wipe on prefill identity (reconnect refetch forces re-entry); `crypto.randomUUID` needs HTTPS origins |
 | T6 pricing debounce | `f57d6b307` | lane self-gate r3 MERGE + independent APPROVE-WITH-FIXES | PO + credit-note browser checks incl. company switch |
 | T14 serialized autosave | `ec9e71cc3` | FE r1 CHANGES (FIFO tail) → r2 MERGE | throttled-typing race check, forced-500 repeat |
-| placeholder-data audit (follow-up) | pending | lane self-gate MERGE-WITH-FOLLOW-UPS; independent gate in flight | browser company-switch checks on the three surfaces |
+| placeholder-data audit (follow-up) | `190f38109` | lane self-gate MERGE-WITH-FOLLOW-UPS; independent gate MERGE | browser company-switch checks; follow-ups: Gate C false-negative classes, POS debounce-window busy flag, header counts during switch |
 | Docs | `451e444b6` rev 10, `a97631051` rev 11, `c872427cb` rev 12, `60f87a5a1` rev 13; Codex gates r9/r10 filed; teammate audit filed | | |
 
 **Not done:** T1 permission cache — owner's Codex Desktop lane (`docs/handoff/HANDOVER-request-hygiene-T1-permission-cache-2026-09-03.md`).
