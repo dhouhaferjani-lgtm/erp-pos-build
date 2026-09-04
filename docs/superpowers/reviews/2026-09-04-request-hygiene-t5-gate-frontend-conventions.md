@@ -254,3 +254,223 @@ stock transfer, replenishment capture and counting remain **promotion preconditi
 performed here. They must be re-scoped after the B1/B2 fix to include, on every one of the four
 surfaces: (a) a real wedge scan into the focused bar → the *scanned* product is added, and (b) type
 3 characters and press Enter within 250 ms → nothing wrong is added.
+
+---
+
+## Re-gate r2 (2026-09-04)
+
+- Fix round reviewed: `6fd67f232` (code+tests) + `feb08ee5f` (docs) on `lane/rh-t5-product-search` @ `feb08ee5f`
+- Handback: `docs/handoff/HANDBACK-request-hygiene-T5-2026-09-04.md` → `## 7. Fix round 1`
+- Read-only gate. Probe files created inside `src/components/molecules/line-items/`, run, deleted;
+  `git status --short` prints nothing afterwards (verified).
+
+### VERDICT: **MERGE**
+
+Both r1 findings are fixed at the single derivation point, the option chosen for B2 (drop
+`placeholderData`) is the stronger one, the three new tests are independently re-verified as
+falsifying against the round-0 component, and the fake-timer helper is proven unable to move the
+250 ms clock. No blocking findings. Browser probes remain promotion-owed (§r2.6).
+
+---
+
+### r2.1 — B1/B2 fix: single gate, all consumers covered (VERIFIED)
+
+`placeholderData` is **gone**: `LineItemEntryBar.tsx:2` imports only `useQuery` (the
+`keepPreviousData` import is removed), and `:89-95` is a comment block recording *why* it must not
+come back. `grep -rn "keepPreviousData\|placeholderData" src/components/molecules/pickers/
+src/components/molecules/line-items/` → only those two comment lines; the six sibling pickers still
+use none. Option (b) of the r1 fix directive, and the better one: a `keepPreviousData` whose rows may
+never render nor commit is dead configuration.
+
+The gate is derived once at `LineItemEntryBar.tsx:105-106`:
+
+```
+const suggestionsSettled = debouncedQuery === trimmedQuery && !isPlaceholderData
+const products = suggestionsSettled ? productsData?.data ?? [] : []
+```
+
+Because `products` itself is `[]` when unsettled, every downstream consumer of the list is closed at
+once — re-walked line by line:
+
+| Path | file:line | Covered by |
+|---|---|---|
+| Render branch | `LineItemEntryBar.tsx:299` | explicit `isLoading \|\| !suggestionsSettled` → loading |
+| `ArrowDown` upper bound | `:205` `Math.min(current + 1, Math.max(products.length - 1, 0))` | `products` |
+| Enter/Tab commit fork | `:223` `isOpen && products.length > 0 && …` | `products` → falls through to `:238 resolveScan(trimmedQuery)` |
+| Highlighted pick | `:226` `products[highlightedIndex] ?? products[0]` | `products` |
+| Mouse rows + `onClick` | `:305`, `:316-318` `commitSearchAdd(product)` | rows only exist inside the settled branch of `:299` |
+
+`commitSearchAdd` has exactly two callers (`:226`, `:317`) — both above. No path can commit a row
+from a previous query: `products` is empty while `debouncedQuery !== trimmedQuery`, and once they
+agree the data belongs to that exact key. No path can commit a previous **company**'s row: with
+`placeholderData` dropped, a company change produces a fresh key whose `productsData` is `undefined`
+(→ `products = []`, `isLoading` true → "Loading"), and any cached hit under a company-suffixed key is
+by construction that company's data. The `!isPlaceholderData` conjunct is inert today (always
+`false`) and is a deliberate trap for a future lane that reintroduces the option — accepted.
+
+**Scan path still undebounced** — `:238 resolveScan(trimmedQuery)` (not `debouncedQuery`) and
+`:196-200 useBarcodeScanner({ onScan: resolveScan })`. Unchanged from base.
+
+### r2.2 — The three new tests are falsifying, and the flush helper is inert (RE-VERIFIED, not taken on trust)
+
+**Non-empty fixture.** `LineItemEntryBar.test.tsx:57-69` `firstPageProduct` (`ADH-1 / Adhesif
+carrosserie`) is returned **only** by the unfiltered read: `:84-90
+mockFirstPageLoadedAndSearchInFlight()` answers `hasSearchParam(config) === false` with
+`[firstPageProduct]` and leaves every `search` read in flight (`new Promise(() => {})`). A commit of
+`ADH-1` after the operator has typed is therefore unambiguous proof of a stale suggestion. The
+existing scanner test's empty `{ data: { data: [] } }` fixture is not reused by any of the three.
+
+**Falsification replayed independently.** I materialised the round-0 component
+(`git show 368119f40:…/LineItemEntryBar.tsx` → `ProbeR0EntryBar.tsx`) and ran the **shipped** test
+text against it (import rewritten only):
+
+```
+$ pnpm vitest run src/components/molecules/line-items/ProbeR0EntryBar.test.tsx --reporter=basic
+   ✓ … 12 passed (all pre-existing + the round-0 debounce test)
+   × resolves a fast-typed code as a scan instead of committing the stale first-page suggestion 19ms
+     → expected "spy" to be called with arguments: [ '/line-entry/resolve-code', …(1) ]
+   × resolves as a scan when Enter arrives after the debounce but while the search read is in flight 20ms
+     → expected document not to contain element, found <button …ADH-1 Adhesif carrosserie…>
+   × never shows or commits the previous company rows while the new company read is in flight 1023ms
+     → expected document not to contain element, found <button …ADH-1 Adhesif carrosserie…>
+ Tests  3 failed | 12 passed (15)
+```
+
+Three-for-three red on the **falsifying** assertion (resolver never called / stale row present /
+company-1 row present), matching the handback's §7.3 RED block exactly. Handback evidence confirmed.
+
+**`flushFakeTimerQueries()` (`:98-105`) cannot advance the debounce.** Probe (verbatim copy of the
+helper, then deleted):
+
+```
+   ✓ flushFakeTimerQueries > fires zero-delay timers but never advances the clock past 0 ms 2ms
+     // timers at 0/1/249/250 ms armed → only 't0' fired; Date.now() delta 0; vi.getTimerCount() === 3
+```
+
+`vi.advanceTimersByTime(0)` × 8 fires the pending zero-delay `notifyManager` batch and moves the
+clock by exactly 0 ms; the 1 ms, 249 ms and 250 ms timers all survive. So neither the 250 ms debounce
+nor anything else can be smuggled forward by the flush. A second probe showed the helper drains a
+*single* zero-delay batch rather than a cascade while the clock is frozen — sufficient here because
+tests 1 and 2 carry **positive** assertions (`getByRole('option', {name:/ADH-1…/})` before typing,
+`resolve-code` called, `onAddProduct(product, {source:'scan'})` after) that only pass if the render
+actually flushed; the `not.toHaveBeenCalledWith` negatives never stand alone. No masking.
+
+**The round-0 debounce test still proves the cadence** — `LineItemEntryBar.test.tsx:446-489`:
+`advanceTimersByTime(249)` → `expect(searchCalls()).toHaveLength(0)`; `+1` → `toHaveLength(1)` with
+`{ params: { per_page: 20, search: 'abc' } }`. Unchanged by the fix round except that
+`hasSearchParam` was hoisted to module scope (`:73-77`) and is now shared with the new mock — same
+predicate, no weakening.
+
+### r2.3 — UX ruling: "Loading" during every unsettled term
+
+**ACCEPTABLE — and it is not a regression against production.** The handback (§7.2) frames the cost
+against round-0 (which had `keepPreviousData`), but the shipped baseline `7f86dbf0c` has **no**
+`placeholderData` either (`git show 7f86dbf0c:…/LineItemEntryBar.tsx:70-84`): today every keystroke
+already changes the key, so `data` is `undefined` and the dropdown already renders the loading
+branch while typing. Net dropdown behaviour vs production is unchanged; the only delta is *when* the
+request fires. The six sibling pickers behave identically. For tenant #1 a momentary "Loading" is
+strictly better than a committable wrong product on a blind-count sheet (owner rule A-9). Ruled:
+ship it.
+
+### r2.4 — Focus read: still immediate, NOT gated (VERIFIED)
+
+`useDebouncedValue` (`src/lib/hooks.ts:8-22`) initialises its state to the incoming value, so at
+mount `debouncedQuery === trimmedQuery === ''` → `suggestionsSettled` true → the empty-query focus
+read fires on `onFocus` (`:261-263` → `enabled` at `:87`) and its rows render as soon as they land.
+Proven twice: the pre-existing `shows first-page product suggestions when focused with an empty
+query` still passes, and both new fake-timer tests assert `getByRole('option', {name:/ADH-1 Adhesif
+carrosserie/})` **before** any typing. The first page is not hidden behind the debounce.
+
+### r2.5 — Non-blocking findings (r2)
+
+- **MINOR — 250 ms dead window in the scan-add-scan loop.** `resetAfterAdd` (`:127-132`) clears the
+  query, so `trimmedQuery` becomes `''` immediately while `debouncedQuery` still holds the last term
+  for 250 ms → `suggestionsSettled` false → the re-opened dropdown shows "Loading" for 250 ms before
+  the (cached) first page appears, where base showed it instantly. Nothing wrong can be committed in
+  that window (`:230` returns early on an empty query), so this is cosmetic. Optional follow-up if a
+  tester notices: short-circuit the debounce when the value is `''`.
+- **MINOR — widened "Enter is a scan" window.** A human who types a search term and presses Enter
+  before the list settles now always falls through to `resolveScan`, which for a non-code term ends
+  in `productNotFound` → `onCreateFromCode` (in `DocumentLineEditor.tsx:1172-1174` that opens the
+  create-product modal). Base already did this for the request RTT; the debounce adds a deterministic
+  250 ms to that window. Not lane-introduced, but it is exactly what the "3 chars + Enter < 250 ms"
+  browser probe must characterise before promotion.
+- **MINOR — `act(...)` warning volume grew.** `src/components/molecules/line-items` now emits 42
+  "not wrapped in act" warnings (r1 measured 24 on the same directory basis); the increase comes from
+  the three new `fireEvent` + fake-timer tests. Noise, no failures.
+- **MINOR (unchanged, inherited) — stale base.** `pnpm audit:keys` still reports 1 new
+  (`src/features/uom/hooks/useUnits.ts:53`, already fixed on `dev`); `pnpm audit:design-system` still
+  reports 811/15-new, none in `line-items` (grep for `line-items|LineItemEntryBar` → empty). Re-run
+  the full `pnpm lint` after the merge onto `dev`, not before.
+- **NOTE — post-merge suite.** `dev` rewrote
+  `features/stock-transfers/__tests__/CreateStockTransferPage.lineEntry.test.tsx` (8 → 11 tests) and
+  `pages/CreateStockTransferPage.tsx` for the idempotency lane. The three added tests
+  (`:558`, `:609`, `:636` on `dev`) do not touch the combobox; the one entry-bar test (`:242`) is
+  byte-identical to the version that passed here. Re-run that path once after the merge — low risk,
+  not a finding.
+
+### r2.6 — Commands and outputs
+
+```
+$ pnpm vitest run src/components/molecules/line-items \
+                  src/features/stock-transfers/__tests__/CreateStockTransferPage.lineEntry.test.tsx
+ ✓ src/features/stock-transfers/__tests__/CreateStockTransferPage.lineEntry.test.tsx (8 tests) 1564ms
+ Test Files  6 passed (6)
+      Tests  35 passed (35)
+   Duration  2.91s
+
+$ pnpm vitest run src/components/molecules/line-items --reporter=basic
+ Test Files  5 passed (5)
+      Tests  27 passed (27)          # 15 in LineItemEntryBar.test.tsx (11 + debounce + 3 new)
+
+$ pnpm typecheck
+> tsc --noEmit
+(no output)          EXIT: 0
+
+$ npx eslint <round-0 copies of both files>      # git show 368119f40:…
+  ProbeR0EntryBar.tsx  96:75  warning  Unsafe type assertion … @typescript-eslint/no-unsafe-type-assertion
+  ✖ 1 problem (0 errors, 1 warning)              EXIT: 0
+
+$ npx eslint src/components/molecules/line-items/LineItemEntryBar.tsx \
+             src/components/molecules/line-items/LineItemEntryBar.test.tsx
+  LineItemEntryBar.tsx  110:75  warning  Unsafe type assertion … @typescript-eslint/no-unsafe-type-assertion
+  ✖ 1 problem (0 errors, 1 warning)              EXIT: 0
+```
+
+**Per-file lint delta vs `368119f40`: 0 errors → 0 errors, 1 warning → 1 warning (the same
+pre-existing `event.target as Node`, line 96 → 110 from the added comment block). Test file 0
+problems in both. No new warnings.** Handback §7.4 confirmed.
+
+Baseline honesty: `git diff --stat 7f86dbf0c..lane/rh-t5-product-search -- 'apps/web/tools/*baseline*'`
+is **empty** — no baseline rewritten in either round. Diff touches exactly four files (two `src`, two
+docs). Mechanism audit: no alias table, no suppression comment, no renamed literal, no detector-facing
+indirection; the metric that improved (requests per burst) improved by an actual debounce.
+
+Cross-cutting: no catalogue entity, no new unique key, no new noun/surface, no generated-DTO shadow,
+no new user-facing string (reuses `sales:lineItems.loading`), no token/colour/money/quantity change.
+Owner rulings unaffected — and the fix strictly helps blind counting (A-9) on
+`CreateCountingPage.tsx:407`, where a silently wrong line had no expected-quantity cue to expose it.
+
+Vitest workers: `ps aux | grep '[v]itest'` → empty after the runs.
+
+### merge-tree (read-only, from the main checkout `/Users/houssamr/Projects/syneriva/apps/erp`)
+
+```
+$ git rev-parse --short dev                       -> 6292cf235
+$ git rev-parse --short lane/rh-t5-product-search -> feb08ee5f
+$ git merge-tree --write-tree dev lane/rh-t5-product-search
+d29647b11408d29a133c5f524f6fd1a2848622f1
+EXIT: 0
+```
+**No conflicts.** `dev` has moved 25 files since the lane's base `7f86dbf0c` (CI workflow, inventory
+API, stock-adjustment/stock-transfer FE + tests, uom, two locale files, docs) — none overlaps the two
+`src` files this lane touches.
+
+### Browser probes — STILL NOT RUN, promotion-owed
+
+No stack was up for this re-gate. On each of the four consumers (`DocumentLineEditor.tsx:1168`,
+`CreateStockTransferPage.tsx:935`, `ReplenishmentCapturePage.tsx:97`, `CreateCountingPage.tsx:407`):
+(a) real wedge scan into the focused bar adds the **scanned** product; (b) type 3 characters and press
+Enter within 250 ms — nothing wrong is added (and characterise the `productNotFound` /
+create-product-modal consequence noted in r2.5); (c) switch company with the dropdown open — the
+previous company's rows never appear. These remain **promotion preconditions**, not merge blockers.
