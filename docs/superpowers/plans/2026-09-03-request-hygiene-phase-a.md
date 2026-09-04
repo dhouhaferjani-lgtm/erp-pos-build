@@ -1,6 +1,6 @@
 # Request Hygiene Phase A Implementation Plan
 
-Revision 11 (2026-09-04) — addresses plan gates r1..r10 (r10: Task 13 dispatch-ready; Task 12 exact-regex assertion fixed); Tasks 9/11 landed; Tasks 2/3/4 dispatched (lanes rh-t2/t3/t4); Tasks 12/13 fixed per gate r9 (test id, inline migration bootstrap, self-contained PG command)
+Revision 12 (2026-09-04) — Tasks 2/3/4 LANDED on local dev (banners below record the as-shipped deviations; their step bodies are history); Tasks 12/13 implemented on lanes, gates in flight; addresses plan gates r1..r10; Tasks 9/11 landed; Tasks 2/3/4 dispatched (lanes rh-t2/t3/t4); Tasks 12/13 fixed per gate r9 (test id, inline migration bootstrap, self-contained PG command)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development or superpowers:executing-plans. Execute each checkbox in order; every task starts red, ends with its named focused checks, and goes through its reviewer gate.
 
@@ -383,6 +383,8 @@ Event::listen(TenancyEnded::class, RestoreCentralPermissionCache::class);
 ---
 
 ## Task 2: Bounded, server-filtered stock-movement reads (S-2 inventory half)
+
+> **LANDED (rev 12, 2026-09-04) — lane `lane/rh-t2-stock-movements`, gates: inventory-costing r1 CHANGES → r2 MERGE; frontend-conventions r1 CHANGES → r2 CHANGES → r3 (fold-ins) pending.** As-shipped deviations from the steps below: (1) `ListStockMovementsRequest` has `nullable` on every optional filter (`movement_type`, `reason`, `search`, `location_id`, `product_id`) so a cleared web filter sent as `''` is a 200, not a 422; `page`/`per_page` deliberately stay non-nullable (controller reads only `validated()` behind `DEFAULT_PER_PAGE`, no in-repo client sends a blank). (2) The tie-break test inserts explicit shuffled v4 UUIDs via `forceFill` (ordered `HasUuids` ids made the plan's fixture non-falsifying). (3) Step 6's `useEffect(() => setPage(1), …)` is REPLACED by the render-phase derived-state reset (`filterSignature`/`appliedFilterSignature`, StrictMode-safe, no stale-page request, covers store-driven `scope`) — this is the canonical pattern for the repo; a shared hook extraction is a post-merge follow-up shared with Task 3. (4) `isReversibleMovement` requires `movement_type === 'issue'` AND `reverses_movement_id === null` (reversal receipts and damage adjustments must not show Reverse). (5) `meta` is hoisted once (`const meta = data?.meta`) to stay lint-clean under the strict response type. Promotion-owed: Step 11 browser probe + four W4 Playwright specs (never run — no local stack).
 
 **Files**
 
@@ -891,6 +893,8 @@ If a W4 scenario legitimately grows past 100 matching rows, replace this asserti
 
 ## Task 3: Bounded payment reads and required list pagination (S-2 treasury half)
 
+> **LANDED (rev 12, 2026-09-04) — merged to local dev `451f8b62e` from `lane/rh-t3-payments-list`; gates: treasury r1 CHANGES → r2 MERGE; frontend-conventions r1 CHANGES (baseline re-key, pre-authorised) → closed.** As-shipped deviations: (1) `ListPaymentsRequest` has `nullable` on `status`/`search`; `page`/`per_page` not (follow-up: align with Task 4's blank-normalisation). (2) Tie-break test uses explicit shuffled ids via `forceFill` (see Task 2 note 2). (3) Step 5's `useEffect` reset REPLACED by the render-phase derived-state reset (same as Task 2). (4) `Payment.status` aliases the generated `App.Modules.Treasury.Domain.Enums.PaymentStatus` (`pending|completed|failed|reversed`; the old hand-rolled union carried a non-existent `cancelled`); `paymentStatusTones` is `Record<PaymentStatus, StatusTone>`, and the design-system baseline entry was re-keyed accordingly. (5) Dashboard sends `/payments?page=1&per_page=5` (old `limit`/`sort` were dead params). Follow-ups: LIKE wildcard escaping in the payment search (adopt Task 2's `ESCAPE '!'`), `PaymentDetailPage.tsx:70` should alias the generated enum, newest-first assertion in the default-cap test. Promotion-owed: dashboard/page-2 browser check, `payments.spec.ts` + W5c/W8 Playwright legs.
+
 **Files**
 
 - Create: apps/api/app/Modules/Treasury/Presentation/Requests/ListPaymentsRequest.php
@@ -1183,6 +1187,8 @@ export async function allPaymentIds(
 ---
 
 ## Task 4: Bounded audit trail and legacy document limit (S-3, S-33)
+
+> **LANDED (rev 12, 2026-09-04) — merged to local dev `fbae84cb3` from `lane/rh-t4-audit-bounds`; gate r1 CHANGES → r2 MERGE.** As-shipped deviations from Steps 1–3 below: (1) every optional rule carries `nullable` and a `prepareForValidation()` normalises blank (trim-empty) optional params to `null` from an `OPTIONAL_PARAMS` list — a blank half-pair still 422s via `required_with`, a fully blank pair validates as absent, `?per_page=0` still 422s. **Corrected narrative (gate r2 adjudication):** over HTTP Laravel's global `TrimStrings` + `ConvertEmptyStringsToNull` already null blank query params, so the plan's Step 1 rules as written turned a browser form's blank default submission into a spurious 422 (not the silent wrong answers gate r1 measured with a bare Validator); once `nullable` lands, `perPage`/`page` MUST come from `validated()` with defaults 50/1 (reading the raw request gives Eloquent's 15). (2) Span contract wording: "at most 92 days between `from` and `to`" (`diffInDays > 92` rejects; the inclusive calendar window is 93 days) with exact 92-accept / 93-reject boundary tests. (3) The paginator is typed as the concrete `Illuminate\Pagination\LengthAwarePaginator` (`Builder::paginate()` returns it; the contract lacks `getCollection()`). (4) Campaign `limit=100` appears at five sites (:293, :300, :347, :527, :530), all exactly at the ceiling — ticket owed. (5) Four PG reds in the Compliance family are pre-existing (`tests/Traits/ProvisionsTenantDatabases.php:71` hardcodes `sqlite_master`) — ticket owed. Promotion-owed: live campaign `limit=100` run + Dashboard `limit=5` browser check.
 
 **Files**
 
