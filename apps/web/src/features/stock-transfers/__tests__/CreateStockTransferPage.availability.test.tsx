@@ -160,5 +160,17 @@ describe('CreateStockTransferPage available-at-source column', () => {
         '/products/prod-2/stock-levels',
       ])
     })
+
+    // Plan Step 5 arm (a): a THIRD row repeating the FIRST product must add no
+    // request at all — same product/variant, so it reuses row 1's cache entry.
+    await user.click(screen.getByRole('button', { name: 'Add line' }))
+    await user.click(screen.getByRole('button', { name: 'Select Test item' }))
+    await waitFor(() => {
+      expect(screen.getAllByText('SKU-1 Test item')).toHaveLength(2)
+    })
+    expect(stockLevelUrls()).toEqual([
+      '/products/prod-1/stock-levels',
+      '/products/prod-2/stock-levels',
+    ])
   })
 })

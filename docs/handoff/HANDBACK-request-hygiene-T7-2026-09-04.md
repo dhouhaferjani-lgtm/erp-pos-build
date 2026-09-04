@@ -326,3 +326,66 @@ Quantity-display debt on the transfer surface — `CreateStockTransferPage.tsx` 
 ### Status after this round
 
 MAJOR-1 fixed (automated, falsified). MAJOR-2 fixed. MINOR-3 fixed (rebased, audit clean). MINOR-4 fixed. MINOR-5 corrected. The §7 browser check remains genuinely promotion-owed, but it is no longer load-bearing for the over-deduplication criterion — that is now covered in CI.
+
+---
+
+## Fix round 2 (2026-09-04) — FE gate r2 = MERGE, optional MINOR-1 closed
+
+Gate r2 verdict: **MERGE**. No BLOCKER, no MAJOR. All five r1 findings confirmed RESOLVED by independent re-verification, including the reviewer re-running the MAJOR-1 falsification probe and adding a second probe of their own (a per-mount unique key segment, which fails availability `:126`, `:148` **and** the hook unit test `:61` — so both over- and under-deduplication are guarded). Availability suite run 3× consecutively: no ordering flake.
+
+Two MINORs were raised as optional/not-attributable. Disposition:
+
+### r2 MINOR-1 — plan Step 5 arm (a) now asserted (CLOSED, though optional-before-merge)
+
+The reviewer was right that what shipped covered *one row / two component consumers* and *two rows / two distinct products*, but not the plan's literal arm (a): "two rows of the **same** product/variant must produce **one** stock-level request" (`docs/superpowers/plans/2026-09-03-request-hygiene-phase-a.md:1881`). It was implied by key identity, not asserted at page level. Closed rather than deferred — it is four lines:
+
+```tsx
+// Plan Step 5 arm (a): a THIRD row repeating the FIRST product must add no
+// request at all — same product/variant, so it reuses row 1's cache entry.
+await user.click(screen.getByRole('button', { name: 'Add line' }))
+await user.click(screen.getByRole('button', { name: 'Select Test item' }))
+await waitFor(() => { expect(screen.getAllByText('SKU-1 Test item')).toHaveLength(2) })
+expect(stockLevelUrls()).toEqual([
+  '/products/prod-1/stock-levels',
+  '/products/prod-2/stock-levels',
+])
+```
+
+The `getAllByText(...).toHaveLength(2)` wait is load-bearing: it proves the third row really mounted with product 1 before the URL list is asserted, so the assertion cannot pass by running before the row exists.
+
+**Falsification** — row 3 temporarily pointed at a genuinely third product (`prod-3`):
+```
+× still issues one stock-level request per DISTINCT product …
+AssertionError: expected [ …(3) ] to deeply equal [ …(2) ]
++   "/products/prod-3/stock-levels",
+```
+The final assertion is reached and does catch an extra request from a third row. Probe reverted.
+
+All three arms of the plan's Step 5 network criterion are now automated:
+
+| Plan arm | Assertion |
+|---|---|
+| 2 component consumers, same product → **1** request | availability test 1, exact URL list |
+| +1 row, same product → **still 1** for that product | availability test 2, third-row arm (this round) |
+| +1 row, distinct product → **2** requests total | availability test 2, exact 2-URL list |
+
+### r2 MINOR-2 — `pnpm lint` red on dev (NOT this lane; orchestrator-owed)
+
+The reviewer proved inheritance rather than assuming it: `audit:design-system` (14 new + 11 stale, all `src/features/import/pages/ImportWizardPage.tsx`) and `audit:i18n:local` (`ar|uom` burn-down needing a baseline re-pin) are red at `dev` `f85b7c0e9` itself, and `ImportWizardPage.tsx`, `tools/audit-design-system-baseline.json` and `tools/audit-design-system.mjs` are byte-identical between dev and lane HEAD. **Raise as a dev-branch hygiene item; do not hold T7 for it.** This lane's own gates (`audit:keys`, `audit:quantity`, `test:eslint-rules`, `test:tools`, eslint on touched files) are all green.
+
+### r2 INFORMATIONAL (recorded, no action)
+
+- The docstring lists `ProductInfoModal.tsx:162` as a sibling `['product-stock', …]` consumer; it is exported from `pos/organisms/index.ts:6` but has **zero render sites**. Still a genuine key-root consumer, so the claim stands; noted so nobody counts it as a live surface.
+- `waitFor(() => expect(...).toEqual([...]))` stops at first success, so a stray *later* request would not fail the test. Acceptable given `staleTime: 15_000` and `refetchOnWindowFocus: false`, and the third-row arm's assertion is a bare `expect` (not wrapped in `waitFor`), which does bound the steady state at that point. Noted so a future reader does not over-trust the two `waitFor` assertions as steady-state bounds.
+
+### Re-verification after this round
+
+| Check | Result |
+|---|---|
+| `pnpm vitest run src/features/stock-transfers src/features/products` | 37 files / **149 tests passed** |
+| `pnpm typecheck` | exit 0 |
+| ESLint, availability test | 0 errors, **1 warning** (`:26:55`, pre-existing) — baseline unchanged |
+
+### Final status
+
+Gate r2 = **MERGE**, with r2 MINOR-1 additionally closed in this round. Remaining promotion-owed item is unchanged and unchanged in nature: the §7 browser network-panel observation, now purely **confirmatory** — every arm of the plan's network criterion is asserted in CI. This lane is still **not** full S-6 closure; the per-distinct-product fan-out is B-8 and is now actively enforced as a boundary rather than merely documented.
