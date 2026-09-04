@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { Search, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../../../lib/api'
@@ -73,7 +73,7 @@ export function LineItemEntryBar({
   // S-4: the search read is debounced so a burst of keystrokes issues one
   // request for the settled term instead of one per committed character.
   const debouncedQuery = useDebouncedValue(trimmedQuery, PRODUCT_SEARCH_DEBOUNCE_MS)
-  const { data: productsData, isLoading } = useQuery({
+  const { data: productsData, isLoading, isPlaceholderData } = useQuery({
     queryKey: tenantScopedKey(['line-entry-products', debouncedQuery]),
     queryFn: async () => {
       const response = await api.get<ProductsResponse>('/products', {
@@ -86,10 +86,24 @@ export function LineItemEntryBar({
     },
     enabled: !disabled && isOpen && tenantId !== null && companyId !== null,
     staleTime: 30000,
-    placeholderData: keepPreviousData,
+    // NO `placeholderData: keepPreviousData` here, deliberately (gate r1 B2).
+    // TanStack v5 feeds the placeholder from the observer's last query that had
+    // data with NO key-lineage check (`queryObserver.js` #lastQueryWithDefinedData),
+    // so it happily hands the PREVIOUS company's products back across the
+    // tenant/company suffix of `tenantScopedKey` — `CompanySelector` only
+    // invalidates, it never unmounts this bar. The six sibling pickers in
+    // `components/molecules/pickers/` use no placeholder either.
   })
 
-  const products = productsData?.data ?? []
+  // The suggestion list is only trustworthy when it is the list for the text
+  // currently in the input. During the debounce window `productsData` still
+  // holds the previous term's rows (after a focus/auto-refocus read: the
+  // unfiltered first page), and the Enter fork below would otherwise commit one
+  // of those instead of resolving the typed code as a scan (gate r1 B1).
+  // `isPlaceholderData` is belt-and-braces: it keeps the guard correct if any
+  // future lane reintroduces `placeholderData`.
+  const suggestionsSettled = debouncedQuery === trimmedQuery && !isPlaceholderData
+  const products = suggestionsSettled ? productsData?.data ?? [] : []
 
   useEffect(() => {
     function handlePointerDown(event: PointerEvent) {
@@ -282,7 +296,7 @@ export function LineItemEntryBar({
           role="listbox"
           className={`absolute start-0 top-full z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-md border ${borderColors.light} ${colors.white} shadow-lg`}
         >
-          {isLoading ? (
+          {isLoading || !suggestionsSettled ? (
             <div className={`p-3 text-sm ${textColors.disabled}`}>{t('sales:lineItems.loading')}</div>
           ) : products.length === 0 ? (
             <div className={`p-3 text-sm ${textColors.disabled}`}>{t('sales:lineItems.noProductsFound')}</div>
