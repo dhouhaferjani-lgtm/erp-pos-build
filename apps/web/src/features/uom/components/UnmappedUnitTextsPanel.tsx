@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Link2 } from 'lucide-react'
 import { Button } from '@/components/atoms/Button/Button'
+import { Select } from '@/components/atoms/Select/Select'
 import { Spinner } from '@/components/atoms/Spinner/Spinner'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
@@ -135,9 +136,9 @@ export function UnmappedUnitTextsPanel() {
                       </div>
                     </td>
                     <td className="min-w-64 px-6 py-4">
-                      <select
+                      <Select
                         aria-label={t('uom:unmapped.targetLabel', { source: source.sourceText ?? t('uom:unmapped.blank') })}
-                        className={`w-full rounded-md border px-3 py-2 text-sm ${colorTokens.border.default} ${colorTokens.surface.base} ${colorTokens.text.primary}`}
+                        className="w-full"
                         disabled={source.sourceText === null}
                         onChange={(event) => {
                           const sourceText = source.sourceText
@@ -151,7 +152,7 @@ export function UnmappedUnitTextsPanel() {
                         {activeUnits.map((unit) => (
                           <option key={unit.id} value={unit.id}>{unit.code} — {unit.name}</option>
                         ))}
-                      </select>
+                      </Select>
                     </td>
                     <td className="px-6 py-4 text-end">
                       <Button
