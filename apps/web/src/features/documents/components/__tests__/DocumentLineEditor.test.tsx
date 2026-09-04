@@ -1280,9 +1280,16 @@ describe('DocumentLineEditor — designation cells', () => {
   // the debounced array is non-empty, so `enabled` cannot suppress the read
   // that is already in flight for the old line set, and the new set follows
   // 250 ms later. Both are internally coherent (key ⟺ body), which is what M1
-  // was about; the extra round trip is the price of keeping the first read on
+  // was about; the second round trip is the price of keeping the first read on
   // focus immediate. Pinned here so nobody reads the empty-document test as a
   // general guarantee.
+  //
+  // NB (gate r3 MINOR-13): this is a behaviour pin for the CURRENT component,
+  // NOT a delta against the pre-debounce base — under the sequence below (focus
+  // fetch dispatches, THEN the line is added) the base costs two as well. The
+  // extra request that gate r2's PROBE E measured against the base is
+  // timing-dependent: it needs the add to land before the focus fetch
+  // dispatches. Do not cite this test as proof of a regression either way.
   it('costs one extra settling request when a line is added to a document that already has priced lines', async () => {
     vi.useFakeTimers()
     vi.mocked(apiPost).mockResolvedValue({ items: {} })
