@@ -121,25 +121,31 @@ export function ChainVerificationPanel() {
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm">
                       <StatusBadge isValid={result.receipt_chain.is_valid} />
-                      {!result.receipt_chain.is_valid && result.receipt_chain.broken_at_sequence !== null && (
+                      {!result.receipt_chain.is_valid && (
                         <span className={`ms-2 text-xs ${colorTokens.intent.danger.text}`}>
-                          {t('chainVerification.brokenAt')} #{result.receipt_chain.broken_at_sequence}
+                          {result.receipt_chain.failed_at_sequence !== null && (
+                            <>{t('chainVerification.brokenAt')} #{result.receipt_chain.failed_at_sequence}</>
+                          )}
+                          {result.receipt_chain.error !== null && <> {result.receipt_chain.error}</>}
                         </span>
                       )}
                     </td>
                     <td className={`px-4 py-3 whitespace-nowrap text-sm ${colorTokens.text.subtle}`}>
-                      {result.receipt_chain.chain_length}
+                      {result.receipt_chain.total_receipts}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm">
                       <StatusBadge isValid={result.z_report_chain.is_valid} />
-                      {!result.z_report_chain.is_valid && result.z_report_chain.broken_at_z_number !== null && (
+                      {!result.z_report_chain.is_valid && (
                         <span className={`ms-2 text-xs ${colorTokens.intent.danger.text}`}>
-                          {t('chainVerification.brokenAt')} Z-{result.z_report_chain.broken_at_z_number}
+                          {result.z_report_chain.failed_at_z_number !== null && (
+                            <>{t('chainVerification.brokenAt')} Z-{result.z_report_chain.failed_at_z_number}</>
+                          )}
+                          {result.z_report_chain.error !== null && <> {result.z_report_chain.error}</>}
                         </span>
                       )}
                     </td>
                     <td className={`px-4 py-3 whitespace-nowrap text-sm ${colorTokens.text.subtle}`}>
-                      {result.z_report_chain.chain_length}
+                      {result.z_report_chain.total_reports}
                     </td>
                   </tr>
                 ))}
