@@ -27,16 +27,32 @@ const RECONNECT_INVALIDATION_COOLDOWN_MS = 30_000
  * recovery must not silently skip any query. CompanySelector's own
  * `queryClient.invalidateQueries()` on company switch is a separate, intentional
  * behaviour and is untouched by this provider.
+ *
+ * The *first* connect after mount is not a reconnect. `useWebSocketConnection`
+ * starts at `isConnected: false`, so without `hasEverConnected` the initial
+ * connect (~1s after login) would look like a transition: it would sweep queries
+ * that had just been fetched and — worse — arm the cooldown, suppressing a
+ * genuine drop/reconnect in the following 30 seconds and never recovering that
+ * gap. The initial connect therefore neither invalidates nor arms the cooldown.
  */
 export function WebSocketReconnectProvider({ children }: WebSocketReconnectProviderProps) {
   const { isConnected } = useWebSocketConnection()
   const queryClient = useQueryClient()
   const wasDisconnected = useRef(false)
+  const hasEverConnected = useRef(false)
   const lastInvalidationAt = useRef<number | null>(null)
 
   useEffect(() => {
     if (!isConnected) {
       wasDisconnected.current = true
+      return
+    }
+
+    // First successful connect after mount: not a reconnect. Consume the edge
+    // without sweeping and without arming the cooldown.
+    if (!hasEverConnected.current) {
+      hasEverConnected.current = true
+      wasDisconnected.current = false
       return
     }
 
