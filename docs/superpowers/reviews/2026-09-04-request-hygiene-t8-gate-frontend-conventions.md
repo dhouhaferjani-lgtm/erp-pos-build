@@ -266,3 +266,190 @@ Because the initial connect no longer arms the cooldown, §6 step 0 of this
 report ("observe a full active-query burst ~1 s after login — expected today")
 no longer describes shipped behaviour; the handback's amended step 0 supersedes
 it. Evidence: `docs/handoff/HANDBACK-request-hygiene-T8-2026-09-04.md` §4b.
+
+---
+
+# Re-gate r2 (2026-09-04)
+
+- **Scope:** targeted re-gate of fix round 1 — `f5b8eafb9` (code+test) and `f634e13cb` (docs) on `lane/rh-t8-reconnect`, on top of the r1-gated `26d971bb4` / `a81235540`.
+- **Fix-round diff:** 2 source files, +64 / −1 — `apps/web/src/providers/WebSocketReconnectProvider.tsx` (+16), `apps/web/src/providers/WebSocketReconnectProvider.test.tsx` (+49/−1). Docs commit adds the r1 report and handback §4b.
+- **Method:** read-only. No tracked file modified by this review; mutants built as throwaway `__gate_r2_*` copies inside `src/providers/` and deleted (`git status --porcelain` empty, `ls src/providers/` shows only the two lane files).
+
+## VERDICT: **MERGE**
+
+**Zero blocking findings.** N-1 is genuinely fixed at the mechanism level (not by weakening a test), N-2 and N-3 are fixed as claimed, the original three-edge test is **not** redundant (proven by a mutant only it kills), and the lane still contributes zero new lint/type/audit findings. Two new MINOR non-blocking residuals are recorded below.
+
+---
+
+## R2.1 — `hasEverConnected` semantics (checklist item 1)
+
+`apps/web/src/providers/WebSocketReconnectProvider.tsx:42` `const hasEverConnected = useRef(false)`; the guard is `:51-57`, **before** the `wasDisconnected` check at `:59` and before the cooldown block at `:62-68`.
+
+```
+:53    if (!hasEverConnected.current) {
+:54      hasEverConnected.current = true
+:55      wasDisconnected.current = false
+:56      return
+:57    }
+```
+
+| Property | Verdict |
+|---|---|
+| First observed `isConnected === true` sets the ref | HOLDS — `:54` |
+| …consumes the disconnected edge | HOLDS — `:55` clears `wasDisconnected` inside the guard, so the (real) first-run `:47` arming cannot re-fire later |
+| …does NOT invalidate | HOLDS — `:56` returns before `:71` |
+| …does NOT write `lastInvalidationAt` | HOLDS — `:70` is unreachable from the guard path; `lastInvalidationAt` stays `null`, so the *next* genuine edge passes the `!== null` check at `:64` unconditionally |
+| Later edges invalidate under the 30 s cooldown | HOLDS — `:59-71` unchanged from `26d971bb4` |
+| Hook rules | HOLD — `:39-43` are five unconditional hook calls; every `return` is inside the effect body |
+
+### Edge cases
+
+**(a) mount while already connected** (the original test's setup) — **no sweep.** First effect run sees `isConnected === true`, `hasEverConnected` false → consumed at `:53-57`; `wasDisconnected` was already `false`, so nothing changes. Not merely reasoned: mutant **A** (below) kills the *original* test at `:47` precisely because it perturbs this mount-connected path, so (a) is under assertion.
+
+**(b) mount disconnected → connect → disconnect → reconnect within 30 s of the initial connect** — **sweeps.** This is exactly the new test (`WebSocketReconnectProvider.test.tsx:65-103`): connect at t=1 s → 0 calls; drop t=15 s / reconnect t=17 s → 1 call with `{ refetchType: 'active' }`. The cooldown is unarmed at t=17 s (`lastInvalidationAt === null`), so the r1 falsifying scenario is closed. Note the first effect run at mount genuinely sets `wasDisconnected = true` at `:47` (the hook's `useState` initial `isConnected: false` at `useWebSocketConnection.ts:52-58` is what the provider's first effect observes); the guard is therefore load-bearing on the real hook, not only on the mock.
+
+**(c) logout/login remount** — refs reset (`RequireAuth` unmounts the subtree, `AuthProvider.tsx:138-141`), so the new session's first connect is again ignored. **Acceptable**, as the orchestrator scoped: the queries also remount and fetch on the new session, so there is nothing to recover at that instant.
+
+**(d) `hasGivenUp` → later reconnect — RULING: it depends on whether the socket had *ever* connected, and only the never-connected sub-case changes behaviour.**
+
+The provider destructures only `isConnected` (`:39`); `hasGivenUp` is a UI-only flag. `useWebSocketConnection.ts:75-83` `giveUp()` sets `isConnecting: false, hasGivenUp: true` and explicitly returns `prev` untouched when `prev.isConnected` — it never calls `disconnect()`, and the `connected` binding at `:97-109` stays live, so pusher can still connect later and flip `isConnected` back to `true`.
+
+- **(d1) connected → dropped → gave up (3 `unavailable`/`failed`) → later reconnects:** `hasEverConnected` is already `true` and `wasDisconnected` is `true` → **treated as a genuine reconnect, sweeps** (subject to the cooldown vs the last sweep). This is the important sub-case and it is correct.
+- **(d2) never connected (give-up at `CONNECTION_GIVE_UP_MS = 15000` or after 3 failures) → socket finally connects at, say, t=40 s:** still the **first** observed connect → classified as initial → **no sweep**. Real-time events emitted between page load and that late connect are not recovered by this provider (they fall back to `staleTime`). Pre-fix, this case *did* sweep. Recorded as finding **R2-N5** below — MINOR, not a blocker: it is the direct, contract-consistent consequence of the orchestrator's ruling ("the initial connect is not a reconnect"), and the alternative (keeping the login sweep) is the N-1 defect that was just fixed.
+
+---
+
+## R2.2 — New test and mutants (checklist item 2)
+
+`WebSocketReconnectProvider.test.tsx:65-103` reproduces the r1 measured scenario **exactly**: `connected = false` at mount (`:66`), t=1 s connect → `toHaveBeenCalledTimes(0)` (`:76`); t=15 s drop / t=17 s reconnect → `1` + `toHaveBeenLastCalledWith({ refetchType: 'active' })` (`:85-86`); t=20 s edge → still `1` (`:94`); t=47 s = exactly 30 000 ms after the t=17 s sweep → `2` (`:102`). Boundary is exercised inclusively in **both** tests.
+
+Mutants re-run by me (not taken from the handback), each as a copy of the shipped provider with the shipped test body pointed at it:
+
+| Mutant | Result | Evidence |
+|---|---|---|
+| **A** — guard present, but the initial connect also writes `lastInvalidationAt = Date.now()` | **KILLED by BOTH tests** | new test `:85` `expected "invalidateQueries" to be called 1 times, but got 0 times`; original test `:47` same. Confirms the "does not arm the cooldown" half is independently asserted. |
+| **B** — guard deleted entirely (= behaviour at `a81235540`) | **KILLED by the new test only** | `:76` `expected "invalidateQueries" to be called +0 times, but got 1 times`. Original test passes → the fix could not have been "proven" by the pre-existing test. |
+| **E** (my addition, redundancy probe — see R2.3) | **KILLED by the ORIGINAL test only** | see below |
+
+```
+$ pnpm vitest run src/providers/__gate_r2_mutantA.test.tsx src/providers/__gate_r2_mutantB.test.tsx
+ ❯ __gate_r2_mutantA.test.tsx (2 tests | 2 failed)
+   × invalidates all active queries on first reconnect and applies a 30 second cooldown
+     → expected "invalidateQueries" to be called 1 times, but got 0 times
+   × ignores the initial connect: only a genuine reconnect invalidates and arms the cooldown
+     → expected "invalidateQueries" to be called 1 times, but got 0 times
+ ❯ __gate_r2_mutantB.test.tsx (2 tests | 1 failed)
+   ✓ invalidates all active queries on first reconnect and applies a 30 second cooldown
+   × ignores the initial connect: only a genuine reconnect invalidates and arms the cooldown
+     → expected "invalidateQueries" to be called +0 times, but got 1 times
+ Test Files  2 failed (2) / Tests  3 failed | 1 passed (4)
+```
+
+Both mutants **restored** (deleted); `git status --porcelain` empty afterwards.
+
+---
+
+## R2.3 — Is the original three-edge test now redundant? (checklist item 3) — **NO**
+
+The handback's claim that the original test needed no setup change is **correct**: it mounts `connected = true` (`:31` `beforeEach`), so its first effect run is the initial connect (consumed by the guard, never a sweep before or after the fix) and its first *edge* at `:43-46` is a genuine reconnect. It passes unchanged.
+
+Redundancy is not merely argued — it is falsified. **Mutant E**: the guard moved *after* the `wasDisconnected` check, i.e. "the first *reconnect edge* is the initial connect" instead of "the first *connected observation* is the initial connect":
+
+```
+    if (!wasDisconnected.current) return
+    wasDisconnected.current = false
+    if (!hasEverConnected.current) { hasEverConnected.current = true; return }
+```
+
+```
+$ pnpm vitest run src/providers/__gate_r2_mutantE.test.tsx
+ ❯ __gate_r2_mutantE.test.tsx (2 tests | 1 failed)
+   × invalidates all active queries on first reconnect and applies a 30 second cooldown
+     → expected "invalidateQueries" to be called 1 times, but got 0 times   (:47)
+   ✓ ignores the initial connect: only a genuine reconnect invalidates and arms the cooldown
+```
+
+The **new** test passes mutant E (it mounts disconnected, so both placements behave identically); only the **original** test catches it. The original test is the sole guard on the mount-already-connected path (case (a)) — a user who loads the page with the socket already up would, under mutant E, lose their first genuine reconnect sweep. **Keep both tests.** The two are complementary: original = mount-connected; new = mount-disconnected. Mutant A is the only one both catch.
+
+---
+
+## R2.4 — N-2 and N-3 (checklist item 4) — both FIXED as claimed
+
+- **N-3:** `WebSocketReconnectProvider.test.tsx:5` `import type { WebSocketConnectionState }`, `:10-16` the factory is typed `(): WebSocketConnectionState` and supplies all five fields (`echo`, `isConnected`, `isConnecting`, `error`, `hasGivenUp`) matching `useWebSocketConnection.ts:5-21`. Adding a field to the interface now breaks the mock at compile time. Verified by `pnpm typecheck` exit 0.
+- **N-2:** `docs/handoff/HANDBACK-request-hygiene-T8-2026-09-04.md` §3 "Not run: browser reconnect probe" now carries a **step 0** that expects **NO** burst on the initial connect ("A burst here means the `hasEverConnected` guard has regressed") plus steps 1-3 unchanged, and explicitly labels the `> 30 s idle` wait in step 1 as a safety margin rather than a correctness requirement. This is the correct amendment for the *fixed* behaviour — stronger than the r1 directive (which was written for the unfixed code and expected a burst at step 0). The r1 report §6 step-0 wording is superseded by the handback; the appendix already says so.
+- **Promotion-owed is unchanged:** the authenticated-layout browser reconnect probe is still NOT performed (no stack for this worktree). S-7 remains unverified end-to-end by this gate.
+
+---
+
+## R2.5 — Guardrails (checklist item 5), all re-run by me
+
+Run in `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/rh-t8/apps/web`.
+
+```
+$ pnpm vitest run src/providers src/components/templates/DashboardLayout
+ ✓ src/providers/WebSocketReconnectProvider.test.tsx (2 tests) 14ms
+ ✓ src/components/templates/DashboardLayout/__tests__/DashboardLayout.switcher.test.tsx (2 tests) 18ms
+ Test Files  2 passed (2)
+      Tests  4 passed (4)
+exit=0
+```
+
+```
+$ pnpm typecheck            # tsc --noEmit, whole apps/web
+(no diagnostics)
+exit=0
+```
+
+**ESLint per file, before = `a81235540` (temp copies inside `src/providers/`, linted, deleted) vs after = `f5b8eafb9`:**
+
+| File | Before (`a81235540`) | After (`f5b8eafb9`) |
+|---|---|---|
+| `src/providers/WebSocketReconnectProvider.tsx` | errors=0 warnings=0 | errors=0 warnings=0 |
+| `src/providers/WebSocketReconnectProvider.test.tsx` | errors=0 warnings=0 | errors=0 warnings=0 |
+
+**0 new errors, 0 new warnings.**
+
+**Audits (repo-wide, both red on `dev` as well; zero attribution to T8):**
+
+| Stage | Result | Attribution |
+|---|---|---|
+| `audit:keys` | `0 acknowledged, 1 new` — `src/features/uom/hooks/useUnits.ts:53:9` | **Not T8**, and it disappears on merge: `git diff --stat 7f86dbf0c dev -- apps/web/src/features/uom/hooks/useUnits.ts` → 28+/7−, and the merged tree already carries the fixed `predicate: uomUnmappedUnitTextsInvalidationPredicate(...)` form. Verified by `git cat-file -p 38eb2e560:apps/web/src/features/uom/hooks/useUnits.ts`. |
+| `audit:design-system` | red, all hits in `src/features/import/**` etc. | **Not T8** — `pnpm audit:design-system \| grep -c WebSocketReconnect` → **0**. The fix-round diff adds no `className`, no token reference, no string literal. |
+
+**Mechanism audit:** the fix is one `useRef` and a four-line guard in the provider itself — no alias table, no suppression comment, no detector-defeating indirection, no baseline file touched (`git diff --name-only a81235540..f634e13cb -- 'apps/web/tools/*baseline*'` → empty). The improvement in the metric that mattered (the N-1 scenario) was achieved by changing behaviour, and the new test fails against the old behaviour (mutant B) — no evasion.
+
+**Hygiene:** `ps aux | grep -c '[n]ode (vitest'` → `0`; worktree `git status --porcelain` → empty; `ls src/providers/` → only the two lane files.
+
+---
+
+## R2.6 — New non-blocking findings
+
+### R2-N5 (MINOR) — a socket that never connects until well after page load no longer gets a recovery sweep
+
+`apps/web/src/providers/WebSocketReconnectProvider.tsx:53-57` classifies the first observed connect as "initial" regardless of *when* it happens. With `useWebSocketConnection.ts:34` `CONNECTION_GIVE_UP_MS = 15000` and `:27` `MAX_CONNECTION_ATTEMPTS = 3`, a client can sit disconnected for tens of seconds after mount and then connect; events published in that window are missed and are **not** swept (pre-fix they were). Bounded in practice by `staleTime` refetching, and strictly better than the N-1 behaviour it replaces.
+
+Fix directive (follow-up, not this lane): if wanted, only treat the first connect as "initial" when it lands within a short grace window of mount (e.g. `mountedAt` ref + 5 s), otherwise treat it as a reconnect.
+
+### R2-N6 (MINOR, docs) — handback §1 net-diff line is stale
+
+`docs/handoff/HANDBACK-request-hygiene-T8-2026-09-04.md` §1 still reads "Net diff: 2 files, +85 / −3", which describes `26d971bb4` only; the lane is now +149 / −4 across the two source files. §4b documents the fix round correctly, so this is cosmetic.
+
+Fix directive: update the §1 net-diff line, or annotate it "as of `26d971bb4`".
+
+---
+
+## R2.7 — Merge-tree (read-only, from the main checkout)
+
+```
+$ git rev-parse dev
+6292cf235890b106cb589b668465248bb22f9a05
+$ git merge-tree --write-tree dev lane/rh-t8-reconnect
+38eb2e560868c8f9ea472a418f59227a86d6174c
+exit=0
+```
+
+**Clean — no conflicts** (bare tree OID, no `CONFLICT`/`Auto-merging` block). Drift check on the touched paths: `git log --oneline 7f86dbf0c..dev -- apps/web/src/providers apps/web/src/hooks/useWebSocketConnection.ts` → **empty**; no other lane touched the provider or the hook. The merged tree carries the change intact — `git cat-file -p 38eb2e560:apps/web/src/providers/WebSocketReconnectProvider.tsx` shows `const hasEverConnected = useRef(false)` at `:42`, the guard at `:53-54`, `RECONNECT_INVALIDATION_COOLDOWN_MS = 30_000` at `:15` and `invalidateQueries({ refetchType: 'active' })` at `:71`.
+
+---
+
+*Re-gated read-only. No tracked file on `lane/rh-t8-reconnect` was modified by this review beyond this appended report section; nothing was merged or pushed. The browser reconnect probe (amended steps 0-3 in the handback §3) remains a promotion precondition.*
