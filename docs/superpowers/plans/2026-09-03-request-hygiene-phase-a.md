@@ -1,6 +1,6 @@
 # Request Hygiene Phase A Implementation Plan
 
-Revision 10 (2026-09-04) — addresses plan gates r1..r9; Tasks 9/11 landed; Tasks 2/3/4 dispatched (lanes rh-t2/t3/t4); Tasks 12/13 fixed per gate r9 (test id, inline migration bootstrap, self-contained PG command)
+Revision 11 (2026-09-04) — addresses plan gates r1..r10 (r10: Task 13 dispatch-ready; Task 12 exact-regex assertion fixed); Tasks 9/11 landed; Tasks 2/3/4 dispatched (lanes rh-t2/t3/t4); Tasks 12/13 fixed per gate r9 (test id, inline migration bootstrap, self-contained PG command)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development or superpowers:executing-plans. Execute each checkbox in order; every task starts red, ends with its named focused checks, and goes through its reviewer gate.
 
@@ -2574,7 +2574,7 @@ it('accepts 0.100 plus 0.200 against the exact decimal-string total 0.300', asyn
   // (0.1+0.2 error ≈ 5.55e-17 sits inside its 0.01 tolerance). The falsifier is
   // the rendered remaining amount: the bcmath path renders exactly "0.000",
   // the float path renders the IEEE-754 residue.
-  expect(screen.getByTestId('split-payment-remaining')).toHaveTextContent('0.000')
+  expect(screen.getByTestId('split-payment-remaining')).toHaveTextContent(/^0\.000$/) // rev 11: exact match — jest-dom string form is substring (`-0.000`, `10.000` would pass)
 })
 
 it('rejects a three-decimal split total that is short by 0.001', async () => {
@@ -3822,4 +3822,11 @@ Do not replace tailRef on reset: new work must still queue behind the physical i
 | NB stale anchor `SplitPaymentForm.tsx:39` | Corrected to `:42`. |
 | NB `SupplierInvoiceDetailPage` is a fourth keyless `/payments` writer | Recorded in Task 12 as out-of-lane (Phase B B-7 sibling); no scope widening. |
 | NB `QuickStockAdjustmentModal`, e2e helpers post without keys | Unchanged: plan already leaves them out; e2e helpers are test fixtures. |
+
+## Gate r10 disposition (targeted, Tasks 12/13)
+
+| Finding | What changed in revision 11 |
+|---|---|
+| B1 Task 12 Step 2 test used `toHaveTextContent('0.000')` (substring match) while Step 4 promised the exact regex | Step 2 assertion is now `toHaveTextContent(/^0\.000$/)`. |
+| Task 13 | Dispatch-ready per r10; no change. |
 
