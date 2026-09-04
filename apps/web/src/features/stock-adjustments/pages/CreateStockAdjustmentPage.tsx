@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
@@ -24,6 +24,7 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
+import { useIdempotencyKey } from '@/hooks/useIdempotencyKey'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useCreateStockAdjustment } from '../api/queries'
 import { stockAdjustmentApi } from '../api/stockAdjustmentApi'
@@ -103,6 +104,26 @@ export function CreateStockAdjustmentPage() {
   const navigate = useNavigate()
   const { hasPermission } = usePermissions()
   const createMutation = useCreateStockAdjustment()
+
+  // ID-3: one key per logical submit attempt, held at PAGE scope so it survives
+  // a failed request (including a refusal the operator then acknowledges and
+  // resubmits). Rotated only after an awaited success (see submit).
+  //
+  // FE gate r1 MAJOR-3: ONE KEY PER INTENT, because the server replays on
+  // `(tenant, company, idempotency_key)` alone and never compares the body. A
+  // shared key would let a lost draft response be replayed as "Save & post":
+  // the pre-check would find the committed DRAFT and return it 200, and the
+  // page would navigate as if it had posted while nothing moved.
+  const { key: draftIdempotencyKey, reset: resetDraftIdempotencyKey } = useIdempotencyKey()
+  const { key: postIdempotencyKey, reset: resetPostIdempotencyKey } = useIdempotencyKey()
+
+  // FE gate r1 MAJOR-2: `createMutation.isPending` is async state — it only
+  // disables the buttons on a render that happens AFTER the click handler
+  // returns, so two clicks in one task both reach mutateAsync. This ref is set
+  // SYNCHRONOUSLY before the awaited call, so the second submit sees it. It
+  // matters more here than on the transfer page: the adjustment backend has no
+  // collision replay, so the losing duplicate is a 500, not a replay.
+  const submitLockRef = useRef<boolean>(false)
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
   const companyId = useCompanyStore((s) => s.currentCompanyId)
 
@@ -262,8 +283,14 @@ export function CreateStockAdjustmentPage() {
     postImmediately: boolean,
     acknowledgeCode: AcknowledgeableRefusalCode | null = null,
   ): Promise<void> => {
+    if (submitLockRef.current) {
+      return
+    }
+
     try {
+      submitLockRef.current = true
       const created = await createMutation.mutateAsync({
+        idempotency_key: postImmediately ? postIdempotencyKey : draftIdempotencyKey,
         location_id: values.locationId,
         note: values.note === '' ? null : values.note,
         post_immediately: postImmediately,
@@ -278,10 +305,18 @@ export function CreateStockAdjustmentPage() {
           line_note: line.note === '' ? null : line.note,
         })),
       })
+      // Only THIS intent's attempt is over; the other intent keeps its key.
+      if (postImmediately) {
+        resetPostIdempotencyKey()
+      } else {
+        resetDraftIdempotencyKey()
+      }
       setRefusal(null)
       void navigate(entityRoutes.stockAdjustment(created.id))
     } catch (error) {
       setRefusal(extractRefusal(error))
+    } finally {
+      submitLockRef.current = false
     }
   }
 

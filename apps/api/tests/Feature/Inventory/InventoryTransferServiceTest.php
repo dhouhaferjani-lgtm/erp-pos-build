@@ -17,6 +17,7 @@ use App\Modules\Inventory\Application\DTOs\InitiateTransferBatchAllocationData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferLineData;
 use App\Modules\Inventory\Application\Services\StockTransferService;
+use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Enums\TransferCostDistribution;
 use App\Modules\Inventory\Domain\Enums\TransferStatus;
@@ -26,6 +27,7 @@ use App\Modules\Inventory\Domain\Events\StockTransferCompleted;
 use App\Modules\Inventory\Domain\Events\StockTransferInitiated;
 use App\Modules\Inventory\Domain\Exceptions\InsufficientStockException;
 use App\Modules\Inventory\Domain\Exceptions\TransferStateException;
+use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
@@ -35,9 +37,12 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Contracts\ProductVariantLookup;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use PDOException;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -804,5 +809,82 @@ class InventoryTransferServiceTest extends TestCase
             bcadd($sumAllocated, '0', 4),
             'Seven equal-line allocations must sum to the total transfer cost at the persisted 4-dp scale.'
         );
+    }
+
+    private function uniqueViolation(string $constraint): UniqueConstraintViolationException
+    {
+        return new UniqueConstraintViolationException(
+            'testing',
+            'insert into stock_transfers',
+            [],
+            new PDOException('duplicate key value violates unique constraint "'.$constraint.'"'),
+        );
+    }
+
+    private function throwingService(
+        UniqueConstraintViolationException $collision,
+    ): ThrowingStockTransferService {
+        return new ThrowingStockTransferService(
+            app(StockAdjustmentService::class),
+            app(WeightedAverageCostService::class),
+            app(ProductCostLock::class),
+            app(ProductVariantLookup::class),
+            $collision,
+        );
+    }
+
+    public function test_initiate_rethrows_unique_violation_when_no_key_was_supplied(): void
+    {
+        $this->seedStock($this->productA, $this->warehouse, '50.0000');
+        $collision = $this->uniqueViolation('stock_transfers_idempotency_unique');
+
+        $this->expectExceptionObject($collision);
+        $this->throwingService($collision)->initiate($this->initiateData(
+            $this->warehouse->id,
+            $this->shop->id,
+            [new InitiateTransferLineData($this->productA->id, '5.0000')],
+        ));
+    }
+
+    public function test_initiate_rethrows_collision_on_different_unique_index_when_idempotency_reread_finds_no_row(): void
+    {
+        $this->seedStock($this->productA, $this->warehouse, '50.0000');
+        $collision = $this->uniqueViolation('stock_transfers_company_number_unique');
+
+        $this->expectExceptionObject($collision);
+        $this->throwingService($collision)->initiate($this->initiateData(
+            $this->warehouse->id,
+            $this->shop->id,
+            [new InitiateTransferLineData($this->productA->id, '5.0000')],
+            idempotencyKey: 'different-index',
+        ));
+    }
+}
+
+/**
+ * ID-4 negative harness: the header INSERT always raises a unique violation and
+ * the scoped idempotency reread always misses, so `initiate()` must rethrow the
+ * exact original exception in both the no-key and different-index cases.
+ */
+final class ThrowingStockTransferService extends StockTransferService
+{
+    public function __construct(
+        StockAdjustmentService $stockAdjustmentService,
+        WeightedAverageCostService $wacService,
+        ProductCostLock $costLock,
+        ProductVariantLookup $variantLookup,
+        private readonly UniqueConstraintViolationException $collision,
+    ) {
+        parent::__construct($stockAdjustmentService, $wacService, $costLock, $variantLookup);
+    }
+
+    protected function findExistingTransfer(InitiateTransferData $data): ?StockTransfer
+    {
+        return null;
+    }
+
+    protected function insertTransfer(InitiateTransferData $data, string $transferNumber): StockTransfer
+    {
+        throw $this->collision;
     }
 }
