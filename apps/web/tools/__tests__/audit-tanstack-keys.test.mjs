@@ -724,4 +724,223 @@ describe('Gate C — TanStack queryKey scanner', () => {
       expect(v).toEqual([]);
     });
   });
+
+  /**
+   * Independent gate 2026-09-04, FIX ROUND 1. MAJOR-1/MAJOR-2 are residual
+   * FALSE NEGATIVES of the first hardening cut; MINOR-2/MINOR-4 are residual
+   * FALSE POSITIVES (a correctly guarded read that the scanner still reported).
+   */
+  describe('placeholderData pairing — gate fix round 1', () => {
+    it('MAJOR-1: an identifier-bound useQueries guarded only at entry 0 still reports entry 1', () => {
+      const v = scanFixture('use-queries-identifier-partial-guard.ts');
+      expect(v).toHaveLength(1);
+      expect(v[0].factory).toBe('useQueries.queries[]');
+      expect(v[0].statement_fingerprint).toContain('receipts');
+    });
+
+    it('MAJOR-1: an identifier-bound useQueries guarded at BOTH indices stays silent', () => {
+      const v = scanCode(`
+        function Page() {
+          const results = useQueries({
+            queries: [
+              { queryKey: tenantScopedKey(['a', page]), queryFn: fa, placeholderData: keepPreviousData },
+              { queryKey: tenantScopedKey(['b', page]), queryFn: fb, placeholderData: keepPreviousData },
+            ],
+          });
+          const staleA = usePlaceholderScopeGuard(results[0].isPlaceholderData, results[0].data !== undefined);
+          const staleB = usePlaceholderScopeGuard(results[1].isPlaceholderData, results[1].data !== undefined);
+          return [staleA, staleB];
+        }
+      `, 'inline.tsx');
+      expect(v).toEqual([]);
+    });
+
+    it('MAJOR-1: honours `results.at(index)` as the per-entry element access', () => {
+      const v = scanCode(`
+        function Page() {
+          const results = useQueries({
+            queries: [
+              { queryKey: tenantScopedKey(['a', page]), queryFn: fa, placeholderData: keepPreviousData },
+            ],
+          });
+          const stale = usePlaceholderScopeGuard(results.at(0).isPlaceholderData, results.at(0).data !== undefined);
+          return stale;
+        }
+      `, 'inline.tsx');
+      expect(v).toEqual([]);
+    });
+
+    it('MAJOR-1: a whole-array reference without an element access does NOT pair (fails closed)', () => {
+      const v = scanCode(`
+        function Page() {
+          const results = useQueries({
+            queries: [
+              { queryKey: tenantScopedKey(['a', page]), queryFn: fa, placeholderData: keepPreviousData },
+            ],
+          });
+          const stale = usePlaceholderScopeGuard(results, true);
+          return stale;
+        }
+      `, 'inline.tsx');
+      expect(v).toHaveLength(1);
+    });
+
+    it('MAJOR-2: reports a scoped read whose placeholderData arrives through a spread', () => {
+      const v = scanFixture('spread-options-unpaired.ts');
+      expect(v).toHaveLength(1);
+      expect(v[0].reason).toContain('spread options');
+      expect(v[0].factory).toBe('useQuery');
+    });
+
+    it('MAJOR-2: a spread-borne placeholderData paired with a guard stays silent', () => {
+      const v = scanCode(`
+        const listOptions = { placeholderData: keepPreviousData };
+        function Page() {
+          const { data, isPlaceholderData } = useQuery({
+            queryKey: tenantScopedKey(['a', page]),
+            queryFn: fa,
+            ...listOptions,
+          });
+          const stale = usePlaceholderScopeGuard(isPlaceholderData, data !== undefined);
+          return stale ? [] : data;
+        }
+      `, 'inline.tsx');
+      expect(v).toEqual([]);
+    });
+
+    it('MAJOR-2: resolves an inline / conditional / local-function spread that carries no placeholderData', () => {
+      const v = scanCode(`
+        function buildRefresh(params) {
+          return params.live ? { refetchInterval: 60000 } : {};
+        }
+        function Page() {
+          const { data } = useQuery({
+            queryKey: tenantScopedKey(['a', page]),
+            queryFn: fa,
+            ...buildRefresh(params),
+            ...(params.poll !== undefined && { refetchInterval: params.poll }),
+            ...{ staleTime: 1000 },
+          });
+          return data;
+        }
+      `, 'inline.tsx');
+      expect(v).toEqual([]);
+    });
+
+    it('MAJOR-2: resolves placeholderData nested in a conditional spread payload', () => {
+      const v = scanCode(`
+        function Page() {
+          const { data } = useQuery({
+            queryKey: tenantScopedKey(['a', page]),
+            queryFn: fa,
+            ...(keepPrevious ? { placeholderData: keepPreviousData } : {}),
+          });
+          return data;
+        }
+      `, 'inline.tsx');
+      expect(v).toHaveLength(1);
+      expect(v[0].reason).toContain('spread options');
+    });
+
+    it('MINOR-2: an aliased guard import pairs the read (no false positive)', () => {
+      const v = scanCode(`
+        import { usePlaceholderScopeGuard as useScopeGuard } from '@/hooks/usePlaceholderScopeGuard';
+        function Page() {
+          const { data, isPlaceholderData } = useQuery({
+            queryKey: tenantScopedKey(['a', page]),
+            queryFn: fa,
+            placeholderData: keepPreviousData,
+          });
+          const stale = useScopeGuard(isPlaceholderData, data !== undefined);
+          return stale ? [] : data;
+        }
+      `, 'inline.tsx');
+      expect(v).toEqual([]);
+    });
+
+    it('MINOR-2: an unrelated local hook of the same alias shape does NOT pair', () => {
+      const v = scanCode(`
+        function Page() {
+          const { data, isPlaceholderData } = useQuery({
+            queryKey: tenantScopedKey(['a', page]),
+            queryFn: fa,
+            placeholderData: keepPreviousData,
+          });
+          const stale = useScopeGuard(isPlaceholderData, data !== undefined);
+          return stale ? [] : data;
+        }
+      `, 'inline.tsx');
+      expect(v).toHaveLength(1);
+    });
+
+    it('MINOR-4: an assignment-expression binding pairs the read (no false positive)', () => {
+      const v = scanCode(`
+        function Page() {
+          let result;
+          result = useQuery({
+            queryKey: tenantScopedKey(['a', page]),
+            queryFn: fa,
+            placeholderData: keepPreviousData,
+          });
+          const stale = usePlaceholderScopeGuard(result.isPlaceholderData, result.data !== undefined);
+          return stale ? [] : result.data;
+        }
+      `, 'inline.tsx');
+      expect(v).toEqual([]);
+    });
+
+    it('MINOR-4: an assignment-expression binding with NO guard is still reported', () => {
+      const v = scanCode(`
+        function Page() {
+          let result;
+          result = useQuery({
+            queryKey: tenantScopedKey(['a', page]),
+            queryFn: fa,
+            placeholderData: keepPreviousData,
+          });
+          return result.data;
+        }
+      `, 'inline.tsx');
+      expect(v).toHaveLength(1);
+    });
+
+    /**
+     * KNOWN LIMITATION (documented in the tool header and in
+     * docs/conventions/05-REACT-QUERY.md): a spread whose payload cannot be
+     * resolved in this file — a caller-supplied options parameter, an imported
+     * options object — is NOT reported. Pinned here so the boundary is visible
+     * and a future lane that closes it fails this test on purpose.
+     */
+    it('known limitation: an unresolvable spread payload is not reported', () => {
+      const v = scanCode(`
+        function useCategories(params, options) {
+          return useQuery({
+            queryKey: tenantScopedKey(['categories', params]),
+            queryFn: fa,
+            ...options,
+          });
+        }
+      `, 'inline.tsx');
+      expect(v).toEqual([]);
+    });
+
+    /**
+     * KNOWN LIMITATION (MINOR-3): a guard CALL whose verdict is discarded still
+     * pairs. The scanner checks the linkage, not the consumption of the verdict.
+     */
+    it('known limitation: a guard call whose verdict is discarded still pairs', () => {
+      const v = scanCode(`
+        function Page() {
+          const { data, isPlaceholderData } = useQuery({
+            queryKey: tenantScopedKey(['a', page]),
+            queryFn: fa,
+            placeholderData: keepPreviousData,
+          });
+          usePlaceholderScopeGuard(isPlaceholderData, data !== undefined);
+          return data;
+        }
+      `, 'inline.tsx');
+      expect(v).toEqual([]);
+    });
+  });
 });

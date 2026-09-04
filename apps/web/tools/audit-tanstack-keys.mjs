@@ -31,7 +31,8 @@
  *     over-approves.
  *
  * ---------------------------------------------------------------------------
- * Rule 2 — `placeholderData` pairing (Gate C, hardened 2026-09-04)
+ * Rule 2 — `placeholderData` pairing (Gate C, hardened 2026-09-04,
+ * gate fix round 1 2026-09-04)
  * ---------------------------------------------------------------------------
  * A read that carries `placeholderData` on a TENANT-SCOPED key must be paired
  * with a `usePlaceholderScopeGuard(...)` call at the SAME call site. Exactly:
@@ -40,8 +41,10 @@
  *     a. the factory is a read that can serve a placeholder:
  *        {@link PLACEHOLDER_BEARING_FACTORIES} (useQuery, useInfiniteQuery,
  *        useSuspenseQuery, and each `useQueries({ queries: [...] })` entry);
- *     b. the options object has a `placeholderData` property (any value —
- *        `keepPreviousData` or an inline `(prev) => prev`);
+ *     b. the options object declares `placeholderData` (any value —
+ *        `keepPreviousData` or an inline `(prev) => prev`) — inline, OR
+ *        through a SPREAD whose payload resolves, inside this file, to an
+ *        object that declares it (see {@link spreadPayloadPlaceholderVerdict});
  *     c. the `queryKey` CARRIES A TENANT SCOPE, i.e. it is a
  *        {@link APPROVED_FACTORY_CALLS} call (`tenantScopedKey(...)` /
  *        `locationScopedKey(...)`) OR an array literal containing an approved
@@ -49,18 +52,25 @@
  *        or `companyStore.<id>`). The `'admin'`/`'super-admin'` namespace
  *        prefix is NOT a tenant scope and does not trigger the rule.
  *
- *   PAIRING (what clears the trigger) — a real CALL EXPRESSION named
- *   `usePlaceholderScopeGuard`, not a mention of the name:
- *     1. the read's result must be BOUND: `const { …, isPlaceholderData } = …`
- *        (renames honoured: `isPlaceholderData: isFooPending`), `const r = …`
- *        (whole result), or, for `useQueries`, the array-destructured element
- *        AT THIS ENTRY'S INDEX. An unbound read can never be paired and is
- *        always reported.
+ *   PAIRING (what clears the trigger) — a real CALL EXPRESSION of the guard
+ *   (its canonical name or a named-import ALIAS of it,
+ *   {@link guardLocalNames}), not a mention of the name:
+ *     1. the read's result must be BOUND — by a `const`/`let` declaration or by
+ *        an assignment to an identifier (`let r; r = useQuery(…)`):
+ *        `const { …, isPlaceholderData } = …` (renames honoured:
+ *        `isPlaceholderData: isFooPending`), or `const r = …` (whole result),
+ *        or, for `useQueries`, the array-destructured element AT THIS ENTRY'S
+ *        INDEX. An unbound read can never be paired and is always reported.
  *     2. somewhere inside the read's nearest enclosing function (the component
  *        or hook body — nested callbacks and render/`enabled` gates included;
- *        the whole file when the read is at module scope) there must be a
- *        `usePlaceholderScopeGuard(...)` call ONE OF WHOSE ARGUMENTS references
- *        one of those bound names.
+ *        the whole file when the read is at module scope) there must be a guard
+ *        call ONE OF WHOSE ARGUMENTS references one of those bound names.
+ *     2b. PER ENTRY for an identifier-bound `useQueries`
+ *        (`const results = useQueries({ queries: [A, B] })`): the guard argument
+ *        must contain an element access AT THIS ENTRY'S INDEX — `results[1]` or
+ *        `results.at(1)`. The bare array handle does not pair, because
+ *        accepting it let one `usePlaceholderScopeGuard(results[0]…)` clear the
+ *        unguarded sibling entry (gate fix round 1, MAJOR-1).
  *
  *   Consequences, each pinned by a fixture in
  *   `tools/__fixtures__/audit-tanstack-keys/placeholder-pairing/`:
@@ -69,7 +79,32 @@
  *     - two scoped placeholder reads in one file with one guard yields exactly
  *       one finding — pairing is per call site, not per file;
  *     - a guard wired to a DIFFERENT read in the same function does not clear
- *       this one, because the name linkage fails.
+ *       this one, because the name linkage fails;
+ *     - inside ONE identifier-bound `useQueries`, a guard on `results[0]` does
+ *       not clear entry 1 — pairing is per ENTRY, not per call;
+ *     - `placeholderData` arriving through `...localOptions` is reported like an
+ *       inline one.
+ *
+ *   KNOWN LIMITATIONS (deliberate, all fail in the SAFE direction except where
+ *   noted; each is pinned by a test in
+ *   `tools/__tests__/audit-tanstack-keys.test.mjs`):
+ *     - a read inside a CUSTOM HOOK must be guarded INSIDE that hook. The
+ *       scanner cannot follow `isPlaceholderData` across a module boundary, so
+ *       a consumer-side guard is not seen and the hook is reported. Fails
+ *       CLOSED: return blanked rows, or the verdict, from the hook.
+ *     - a spread payload that cannot be resolved in this file — a
+ *       caller-supplied `options` parameter, an imported options object — is
+ *       NOT reported (fails OPEN). Declare `placeholderData` inline, or guard
+ *       inside the hook, when a pass-through hook may receive it. Open sites on
+ *       `dev` at the time of writing: `src/features/catalog/api/queries.ts`
+ *       `useCategories` / `useCategoryTree` / `useCategory` (gate fix round 1,
+ *       MAJOR-2 residual — closing it needs a `src/` change, out of this lane's
+ *       scope).
+ *     - a guard CALL whose verdict is DISCARDED still pairs (fails OPEN): the
+ *       scanner checks the linkage, not the consumption. Reviewer duty: the
+ *       verdict must actually blank the rows and every derived value.
+ *     - a same-named LOCAL helper does not pair — only the canonical guard name
+ *       or a named-import alias of it counts.
  *
  * Run via: pnpm audit:keys (also chained from lint/preflight/CI).
  * Use --json only for inventory generation; JSON mode emits raw findings and
@@ -534,17 +569,33 @@ function collectFromBindingElement(element, out) {
 }
 
 /**
- * Walk up from the factory call to the variable declaration that binds its
- * result, stopping at any function/block/statement boundary so an unbound call
+ * Walk up from the factory call to the binding NAME that receives its result,
+ * stopping at any function/block/statement boundary so an unbound call
  * (`useQuery({...});` as an expression statement) resolves to null.
  *
+ * Two shapes bind a result (gate fix round 1, MINOR-4 — the second was a false
+ * positive on a correctly guarded read):
+ *   - a variable declaration: `const r = useQuery(...)`, including the object /
+ *     array destructuring patterns;
+ *   - an assignment expression to an already-declared identifier:
+ *     `let r; r = useQuery(...)`.
+ * A destructuring ASSIGNMENT (`({ data } = useQuery(...))`) is not a
+ * `BindingName` and stays unbound — rare, and it fails CLOSED (reported).
+ *
  * @param {ts.CallExpression} call
- * @returns {ts.VariableDeclaration | null}
+ * @returns {ts.BindingName | null}
  */
-function findResultBindingDeclaration(call) {
+function findResultBindingName(call) {
   let current = call.parent;
   while (current) {
-    if (ts.isVariableDeclaration(current)) return current;
+    if (ts.isVariableDeclaration(current)) return current.name;
+    if (
+      ts.isBinaryExpression(current) &&
+      current.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isIdentifier(current.left)
+    ) {
+      return current.left;
+    }
     if (
       ts.isFunctionLike(current) ||
       ts.isBlock(current) ||
@@ -560,40 +611,53 @@ function findResultBindingDeclaration(call) {
 }
 
 /**
- * The local names that stand for THIS read's result — the handles a
- * `usePlaceholderScopeGuard(...)` call has to mention to be paired with it.
+ * How THIS read's result can be referenced by a paired guard call.
+ *
+ * `names` are handles that stand for the read on their own (a destructured
+ * `isPlaceholderData`, a whole-result identifier, the `useQueries` element
+ * destructured at this entry's index).
+ *
+ * `indexedHolder` is the gate fix round 1, MAJOR-1 case: a `useQueries` call
+ * whose whole results ARRAY is bound to one identifier
+ * (`const results = useQueries({ queries: [A, B] })`). That identifier is NOT a
+ * per-entry handle — accepting it let a single `usePlaceholderScopeGuard(
+ * results[0]…)` clear the unguarded sibling `results[1]`, i.e. the class-4
+ * defect surviving inside one call. When it is set, pairing additionally
+ * requires an element access AT THIS ENTRY'S INDEX (`results[1]`, `results.at(1)`).
  *
  * @param {ts.CallExpression} call the factory call (`useQuery` / `useQueries` / …)
  * @param {number | null} entryIndex index into `queries: [...]` for useQueries, else null
- * @returns {Set<string>}
+ * @returns {{names: Set<string>, indexedHolder: string | null}}
  */
-function readResultBindingNames(call, entryIndex) {
+function readResultBinding(call, entryIndex) {
   /** @type {Set<string>} */
   const names = new Set();
-  const declaration = findResultBindingDeclaration(call);
-  if (!declaration) return names;
+  const bound = findResultBindingName(call);
+  if (!bound) return { names, indexedHolder: null };
 
-  const bound = declaration.name;
   if (ts.isIdentifier(bound)) {
+    if (entryIndex !== null) {
+      // `const results = useQueries(...)` — per-entry access required.
+      return { names, indexedHolder: bound.text };
+    }
     // `const result = useQuery(...)` — the guard reads `result.isPlaceholderData`.
-    // For useQueries this is the whole results array, indexed at the call site.
     names.add(bound.text);
-    return names;
+    return { names, indexedHolder: null };
   }
   if (ts.isObjectBindingPattern(bound)) {
     collectPlaceholderFlagNames(bound, names);
-    return names;
+    return { names, indexedHolder: null };
   }
   if (ts.isArrayBindingPattern(bound)) {
     if (entryIndex === null) {
       for (const element of bound.elements) collectFromBindingElement(element, names);
-      return names;
+      return { names, indexedHolder: null };
     }
     const element = bound.elements[entryIndex];
     if (element) collectFromBindingElement(element, names);
-    return names;
+    return { names, indexedHolder: null };
   }
-  return names;
+  return { names, indexedHolder: null };
 }
 
 /**
@@ -635,6 +699,86 @@ function referencesAnyName(node, names) {
 }
 
 /**
+ * Does this expression read `<holder>[<index>]` or `<holder>.at(<index>)`
+ * anywhere inside it? See {@link readResultBinding} `indexedHolder`.
+ *
+ * @param {ts.Node} node
+ * @param {string} holder
+ * @param {number} index
+ * @returns {boolean}
+ */
+function referencesIndexedEntry(node, holder, index) {
+  const wanted = String(index);
+  let found = false;
+  /** @param {ts.Node} current */
+  function visit(current) {
+    if (found) return;
+    if (
+      ts.isElementAccessExpression(current) &&
+      ts.isIdentifier(current.expression) &&
+      current.expression.text === holder &&
+      ts.isNumericLiteral(current.argumentExpression) &&
+      current.argumentExpression.text === wanted
+    ) {
+      found = true;
+      return;
+    }
+    if (
+      ts.isCallExpression(current) &&
+      ts.isPropertyAccessExpression(current.expression) &&
+      current.expression.name.text === 'at' &&
+      ts.isIdentifier(current.expression.expression) &&
+      current.expression.expression.text === holder &&
+      current.arguments.length === 1 &&
+      current.arguments[0] &&
+      ts.isNumericLiteral(current.arguments[0]) &&
+      current.arguments[0].text === wanted
+    ) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(current, visit);
+  }
+  visit(node);
+  return found;
+}
+
+/** @type {WeakMap<ts.SourceFile, Set<string>>} */
+const guardLocalNameCache = new WeakMap();
+
+/**
+ * The local names under which {@link PLACEHOLDER_SCOPE_GUARD} is callable in
+ * this file: its canonical name, plus every alias introduced by a named import
+ * (`import { usePlaceholderScopeGuard as useScopeGuard } from '…'`).
+ *
+ * Gate fix round 1, MINOR-2: matching the call name literally reported a
+ * correctly guarded read whenever the import was aliased, and the message
+ * ("a comment or import naming the guard does not count") actively misled.
+ * Only an ALIAS OF THE REAL IMPORT counts — a same-named local helper does not
+ * pair, so the check stays fail-closed.
+ *
+ * @param {ts.SourceFile} sourceFile
+ * @returns {Set<string>}
+ */
+function guardLocalNames(sourceFile) {
+  const cached = guardLocalNameCache.get(sourceFile);
+  if (cached) return cached;
+  const names = new Set([PLACEHOLDER_SCOPE_GUARD]);
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement)) continue;
+    const bindings = statement.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings)) continue;
+    for (const specifier of bindings.elements) {
+      if (specifier.propertyName?.text === PLACEHOLDER_SCOPE_GUARD) {
+        names.add(specifier.name.text);
+      }
+    }
+  }
+  guardLocalNameCache.set(sourceFile, names);
+  return names;
+}
+
+/**
  * Is this placeholder-bearing read paired with a real
  * `usePlaceholderScopeGuard(...)` CALL at its own call site?
  *
@@ -644,18 +788,22 @@ function referencesAnyName(node, names) {
  * single guard cleared every read in the file. Both classes are now fixtured.
  *
  * Pairing requires BOTH:
- *   1. the read's result is bound to a name (see {@link readResultBindingNames});
- *   2. a `usePlaceholderScopeGuard(...)` call inside the read's enclosing
- *      function passes one of those names as an argument.
+ *   1. the read's result is bound (see {@link readResultBinding}) — as a name
+ *      the guard can mention, or, for an identifier-bound `useQueries`, as an
+ *      element access at this entry's index;
+ *   2. a guard call (canonical name or an import alias of it, see
+ *      {@link guardLocalNames}) inside the read's enclosing function passes one
+ *      of those references as an argument.
  *
  * @param {ts.CallExpression} call
  * @param {number | null} entryIndex
  * @returns {boolean}
  */
 function readHasPairedScopeGuard(call, entryIndex) {
-  const names = readResultBindingNames(call, entryIndex);
-  if (names.size === 0) return false;
+  const { names, indexedHolder } = readResultBinding(call, entryIndex);
+  if (names.size === 0 && indexedHolder === null) return false;
 
+  const guardNames = guardLocalNames(call.getSourceFile());
   const scope = enclosingGuardSearchScope(call);
   let paired = false;
   /** @param {ts.Node} node */
@@ -664,8 +812,12 @@ function readHasPairedScopeGuard(call, entryIndex) {
     if (
       ts.isCallExpression(node) &&
       ts.isIdentifier(node.expression) &&
-      node.expression.text === PLACEHOLDER_SCOPE_GUARD &&
-      node.arguments.some((argument) => referencesAnyName(argument, names))
+      guardNames.has(node.expression.text) &&
+      node.arguments.some((argument) =>
+        indexedHolder !== null
+          ? referencesIndexedEntry(argument, indexedHolder, /** @type {number} */ (entryIndex))
+          : referencesAnyName(argument, names),
+      )
     ) {
       paired = true;
       return;
@@ -674,6 +826,156 @@ function readHasPairedScopeGuard(call, entryIndex) {
   }
   visit(scope);
   return paired;
+}
+
+/**
+ * Does an options SPREAD payload declare `placeholderData`?
+ *
+ * Gate fix round 1, MAJOR-2: `placeholderData` reaching the read through
+ * `...spreadOptions` was invisible, because the property lookup matched on
+ * `p.name.text` and a `SpreadAssignment` has no `name`. This resolves the
+ * payload within the file — object literals, parenthesized / `as` wrappers,
+ * conditional and `&&` / `||` / `??` combinations, an identifier bound to a
+ * local object literal, and a call to a locally declared function whose
+ * returns are such literals.
+ *
+ * @param {ts.Expression} expr
+ * @param {ts.SourceFile} sourceFile
+ * @param {number} [depth]
+ * @returns {'yes' | 'no' | 'unknown'}
+ */
+function spreadPayloadPlaceholderVerdict(expr, sourceFile, depth = 0) {
+  if (depth > 6) return 'unknown';
+  /** @param {Array<'yes' | 'no' | 'unknown'>} verdicts */
+  const combine = (verdicts) => {
+    if (verdicts.includes('yes')) return 'yes';
+    if (verdicts.includes('unknown')) return 'unknown';
+    return verdicts.length > 0 ? 'no' : 'unknown';
+  };
+  const recurse = (/** @type {ts.Expression} */ next) =>
+    spreadPayloadPlaceholderVerdict(next, sourceFile, depth + 1);
+
+  if (ts.isParenthesizedExpression(expr) || ts.isAsExpression(expr) || ts.isSatisfiesExpression(expr)) {
+    return recurse(expr.expression);
+  }
+  if (ts.isObjectLiteralExpression(expr)) {
+    /** @type {Array<'yes' | 'no' | 'unknown'>} */
+    const nested = [];
+    for (const property of expr.properties) {
+      if (
+        (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property)) &&
+        property.name &&
+        ts.isIdentifier(property.name) &&
+        property.name.text === 'placeholderData'
+      ) {
+        return 'yes';
+      }
+      if (ts.isSpreadAssignment(property)) nested.push(recurse(property.expression));
+    }
+    return nested.length > 0 ? combine(nested) : 'no';
+  }
+  if (ts.isConditionalExpression(expr)) {
+    return combine([recurse(expr.whenTrue), recurse(expr.whenFalse)]);
+  }
+  if (ts.isBinaryExpression(expr)) {
+    // `cond && { … }` — only the right operand can be the payload.
+    if (expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) return recurse(expr.right);
+    if (
+      expr.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+      expr.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+    ) {
+      return combine([recurse(expr.left), recurse(expr.right)]);
+    }
+    return 'unknown';
+  }
+  if (ts.isIdentifier(expr)) {
+    const initializer = findLocalConstInitializer(sourceFile, expr.text);
+    return initializer ? recurse(initializer) : 'unknown';
+  }
+  if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression)) {
+    const returns = findLocalFunctionReturnExpressions(sourceFile, expr.expression.text);
+    if (returns === null) return 'unknown';
+    return combine(returns.map((value) => recurse(value)));
+  }
+  return 'unknown';
+}
+
+/**
+ * First initializer of a top-level-or-nested `const`/`let` declaration of
+ * `name` in this file. Deliberately name-based, not scope-aware: a spread
+ * payload that cannot be resolved returns 'unknown' and is left alone.
+ *
+ * @param {ts.SourceFile} sourceFile
+ * @param {string} name
+ * @returns {ts.Expression | null}
+ */
+function findLocalConstInitializer(sourceFile, name) {
+  /** @type {ts.Expression | null} */
+  let found = null;
+  /** @param {ts.Node} node */
+  function visit(node) {
+    if (found) return;
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === name &&
+      node.initializer
+    ) {
+      found = node.initializer;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  return found;
+}
+
+/**
+ * The expressions a locally declared `name` function can return — a concise
+ * arrow body counts as one. `null` means the function is not declared in this
+ * file (imported, a parameter, …), i.e. unresolvable.
+ *
+ * @param {ts.SourceFile} sourceFile
+ * @param {string} name
+ * @returns {ts.Expression[] | null}
+ */
+function findLocalFunctionReturnExpressions(sourceFile, name) {
+  /** @type {ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction | null} */
+  let fn = null;
+  /** @param {ts.Node} node */
+  function findFn(node) {
+    if (fn) return;
+    if (ts.isFunctionDeclaration(node) && node.name?.text === name) {
+      fn = node;
+      return;
+    }
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === name &&
+      node.initializer &&
+      (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
+    ) {
+      fn = node.initializer;
+      return;
+    }
+    ts.forEachChild(node, findFn);
+  }
+  findFn(sourceFile);
+  if (!fn) return null;
+  const body = /** @type {ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction} */ (fn).body;
+  if (!body) return null;
+  if (!ts.isBlock(body)) return [body];
+  /** @type {ts.Expression[]} */
+  const returns = [];
+  /** @param {ts.Node} node */
+  function collect(node) {
+    if (ts.isFunctionLike(node) && node !== fn) return;
+    if (ts.isReturnStatement(node) && node.expression) returns.push(node.expression);
+    ts.forEachChild(node, collect);
+  }
+  collect(body);
+  return returns;
 }
 
 /**
@@ -726,9 +1028,21 @@ function checkOptionsObject(options, factoryName, sourceFile, relPath, out, call
           ts.isIdentifier(p.name) &&
           p.name.text === 'placeholderData',
       );
+      // Gate fix round 1, MAJOR-2: `placeholderData` can also arrive through a
+      // SPREAD, which the property lookup above cannot see (a SpreadAssignment
+      // has no `name`). Resolve each spread payload inside this file; a payload
+      // that carries `placeholderData` triggers the rule exactly like an inline
+      // property does. A payload that cannot be resolved here — a caller-supplied
+      // options parameter, an imported options object — is a KNOWN LIMITATION
+      // recorded in the "Rule 2" header and in docs/conventions/05-REACT-QUERY.md.
+      const spreadProp = options.properties.find(
+        (p) => ts.isSpreadAssignment(p) && spreadPayloadPlaceholderVerdict(p.expression, sourceFile) === 'yes',
+      );
+      const trigger = placeholderProp ?? spreadProp ?? null;
       const paired = callSite !== null && readHasPairedScopeGuard(callSite, entryIndex);
-      if (placeholderProp && !paired) {
-        const startPos = placeholderProp.getStart(sourceFile);
+      if (trigger && !paired) {
+        const viaSpread = placeholderProp === undefined;
+        const startPos = trigger.getStart(sourceFile);
         const { line, character } = sourceFile.getLineAndCharacterOfPosition(startPos);
         // The key label and the `resource` field must work for BOTH scoped
         // shapes: a `tenantScopedKey([...])` call and an array literal whose
@@ -740,20 +1054,25 @@ function checkOptionsObject(options, factoryName, sourceFile, relPath, out, call
         const scopedResource = isScopeFactoryCall
           ? (innerKey.arguments[0] ? extractQueryKeyResource(innerKey.arguments[0]) : null)
           : extractQueryKeyResource(innerKey);
+        const optionsLabel = viaSpread ? '...options' : 'placeholderData';
+        const spreadNote = viaSpread
+          ? 'unpaired-unknown (spread options — declare placeholderData inline or guard). '
+          : '';
         out.push({
           file: relPath,
           line: line + 1,
           column: character + 1,
           reason:
-            `${factoryName}({ queryKey: ${keyLabel}, placeholderData }) ` +
+            `${factoryName}({ queryKey: ${keyLabel}, ${optionsLabel} }) ` +
             'renders the PREVIOUS tenant/company payload after a scope switch: TanStack picks the ' +
             'placeholder from the observer\'s last query that had data with no key-lineage check. ' +
+            spreadNote +
             `Gate the rows on ${PLACEHOLDER_SCOPE_GUARD}(isPlaceholderData, data !== undefined) ` +
             'at THIS call site (bind the read\'s result and pass its isPlaceholderData flag to the ' +
             'guard — a comment or import naming the guard does not count), ' +
             'or drop placeholderData when there is no same-scope win to keep.',
           factory: factoryName,
-          enclosing_symbol: findEnclosingSymbol(placeholderProp),
+          enclosing_symbol: findEnclosingSymbol(trigger),
           resource: scopedResource,
           statement_fingerprint: `${fingerprintExpression(sourceFile, initializer)}@${startPos}`,
           ast_kind: classifyQueryKeyAstKind(initializer),
