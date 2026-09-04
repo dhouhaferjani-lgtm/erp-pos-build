@@ -30,6 +30,7 @@ use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\ProductVariantLookup;
 use App\Shared\Domain\CurrencyScale;
 use App\Shared\Domain\QuantityScale;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -100,91 +101,134 @@ class StockTransferService
             );
         }
 
-        return DB::transaction(function () use ($data): StockTransfer {
-            // Idempotency check FIRST — if the same key was used, return the
-            // existing transfer. Retry-safe by design.
-            if ($data->idempotencyKey !== null) {
-                $existing = StockTransfer::query()
-                    ->where('tenant_id', $data->tenantId)
-                    ->where('company_id', $data->companyId)
-                    ->where('idempotency_key', $data->idempotencyKey)
-                    ->first();
+        try {
+            return DB::transaction(function () use ($data): StockTransfer {
+                // Idempotency check FIRST — if the same key was used, return the
+                // existing transfer. Retry-safe by design.
+                if ($data->idempotencyKey !== null) {
+                    $existing = $this->findExistingTransfer($data);
 
-                if ($existing !== null) {
-                    return $existing->loadMissing('lines');
-                }
-            }
-
-            $source = $this->loadLocationOrFail($data->sourceLocationId, $data->companyId, 'source');
-            $destination = $this->loadLocationOrFail($data->destinationLocationId, $data->companyId, 'destination');
-
-            if ($source->company_id !== $destination->company_id) {
-                throw new InvalidArgumentException('Source and destination locations must belong to the same company.');
-            }
-
-            $productIds = $this->collectProductIds($data->lines);
-            $this->loadAndVerifyProducts($productIds, $data->tenantId, $data->companyId);
-
-            // When the caller opts in, fill in the batch allocations for any
-            // batch-tracked line that arrived without them, earliest-expiry
-            // first (FEFO). Batch knowledge stays inside this module; callers
-            // like replenishment fulfilment never query batch tables.
-            $lines = $data->autoAllocateBatchesFefo
-                ? $this->resolveFefoAllocations($data)
-                : $data->lines;
-
-            $transferNumber = $data->transferNumber ?? $this->generateTransferNumber($data->tenantId, $data->companyId);
-
-            /** @var StockTransfer $transfer */
-            $transfer = StockTransfer::create([
-                'id' => Str::uuid()->toString(),
-                'tenant_id' => $data->tenantId,
-                'company_id' => $data->companyId,
-                'transfer_number' => $transferNumber,
-                'transfer_type' => $data->transferType,
-                'status' => TransferStatus::Draft,
-                'source_location_id' => $data->sourceLocationId,
-                'destination_location_id' => $data->destinationLocationId,
-                'notes' => $data->notes,
-                'transfer_cost' => $data->transferCost,
-                'transfer_cost_label' => $data->transferCostLabel,
-                'transfer_cost_distribution' => $data->transferCostDistribution,
-                'idempotency_key' => $data->idempotencyKey,
-                'initiated_by_user_id' => $data->initiatedByUserId,
-            ]);
-
-            foreach ($lines as $line) {
-                if (bccomp($line->quantity, '0', self::QTY_SCALE) <= 0) {
-                    throw new InvalidArgumentException('Each transfer line must have quantity greater than zero.');
+                    if ($existing !== null) {
+                        return $existing->loadMissing('lines');
+                    }
                 }
 
-                $this->assertVariantValidForProduct($line->productId, $line->variantId);
+                $source = $this->loadLocationOrFail($data->sourceLocationId, $data->companyId, 'source');
+                $destination = $this->loadLocationOrFail($data->destinationLocationId, $data->companyId, 'destination');
 
-                $transferLine = StockTransferLine::create([
-                    'id' => Str::uuid()->toString(),
-                    'transfer_id' => $transfer->id,
-                    'tenant_id' => $data->tenantId,
-                    'company_id' => $data->companyId,
-                    'product_id' => $line->productId,
-                    'variant_id' => $line->variantId,
-                    'quantity' => $line->quantity,
-                ]);
+                if ($source->company_id !== $destination->company_id) {
+                    throw new InvalidArgumentException('Source and destination locations must belong to the same company.');
+                }
 
-                foreach ($line->batchAllocations as $allocation) {
-                    StockTransferLineBatchAllocation::create([
+                $productIds = $this->collectProductIds($data->lines);
+                $this->loadAndVerifyProducts($productIds, $data->tenantId, $data->companyId);
+
+                // When the caller opts in, fill in the batch allocations for any
+                // batch-tracked line that arrived without them, earliest-expiry
+                // first (FEFO). Batch knowledge stays inside this module; callers
+                // like replenishment fulfilment never query batch tables.
+                $lines = $data->autoAllocateBatchesFefo
+                    ? $this->resolveFefoAllocations($data)
+                    : $data->lines;
+
+                $transferNumber = $data->transferNumber ?? $this->generateTransferNumber($data->tenantId, $data->companyId);
+
+                $transfer = $this->insertTransfer($data, $transferNumber);
+
+                foreach ($lines as $line) {
+                    if (bccomp($line->quantity, '0', self::QTY_SCALE) <= 0) {
+                        throw new InvalidArgumentException('Each transfer line must have quantity greater than zero.');
+                    }
+
+                    $this->assertVariantValidForProduct($line->productId, $line->variantId);
+
+                    $transferLine = StockTransferLine::create([
                         'id' => Str::uuid()->toString(),
-                        'stock_transfer_line_id' => $transferLine->id,
+                        'transfer_id' => $transfer->id,
                         'tenant_id' => $data->tenantId,
                         'company_id' => $data->companyId,
-                        'batch_id' => $allocation->batchId,
-                        'quantity' => $allocation->quantity,
+                        'product_id' => $line->productId,
+                        'variant_id' => $line->variantId,
+                        'quantity' => $line->quantity,
                     ]);
+
+                    foreach ($line->batchAllocations as $allocation) {
+                        StockTransferLineBatchAllocation::create([
+                            'id' => Str::uuid()->toString(),
+                            'stock_transfer_line_id' => $transferLine->id,
+                            'tenant_id' => $data->tenantId,
+                            'company_id' => $data->companyId,
+                            'batch_id' => $allocation->batchId,
+                            'quantity' => $allocation->quantity,
+                        ]);
+                    }
                 }
+
+                // Move stock into in_transit immediately.
+                return $this->moveSourceToInTransit($transfer->id, $data->initiatedByUserId);
+            }, attempts: 3);
+        } catch (UniqueConstraintViolationException $exception) {
+            // ID-4: a concurrent caller committed the same logical transfer while
+            // this attempt was in flight. The failed attempt (or its savepoint)
+            // has already rolled back here, so the scoped reread below runs on a
+            // usable connection and can see the winner's committed row.
+            //
+            // The constraint NAME is deliberately not inspected: a same-key race
+            // also collides on stock_transfers_company_number_unique because both
+            // callers generate the same COUNT()+1 number. The committed row at
+            // (tenant_id, company_id, idempotency_key) is the sole replay
+            // discriminator; anything else rethrows untouched.
+            if ($data->idempotencyKey === null) {
+                throw $exception;
             }
 
-            // Move stock into in_transit immediately.
-            return $this->moveSourceToInTransit($transfer->id, $data->initiatedByUserId);
-        }, attempts: 3);
+            $existing = $this->findExistingTransfer($data);
+            if ($existing === null) {
+                throw $exception;
+            }
+
+            return $existing->loadMissing('lines');
+        }
+    }
+
+    /**
+     * Scoped idempotency lookup. Protected so the collision harness can count
+     * calls and observe the post-rollback transaction level.
+     */
+    protected function findExistingTransfer(InitiateTransferData $data): ?StockTransfer
+    {
+        return StockTransfer::query()
+            ->where('tenant_id', $data->tenantId)
+            ->where('company_id', $data->companyId)
+            ->where('idempotency_key', $data->idempotencyKey)
+            ->first();
+    }
+
+    /**
+     * The transfer header INSERT. Protected so the collision harness can commit
+     * a rival row on a second connection immediately before it runs.
+     */
+    protected function insertTransfer(InitiateTransferData $data, string $transferNumber): StockTransfer
+    {
+        /** @var StockTransfer $transfer */
+        $transfer = StockTransfer::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $data->tenantId,
+            'company_id' => $data->companyId,
+            'transfer_number' => $transferNumber,
+            'transfer_type' => $data->transferType,
+            'status' => TransferStatus::Draft,
+            'source_location_id' => $data->sourceLocationId,
+            'destination_location_id' => $data->destinationLocationId,
+            'notes' => $data->notes,
+            'transfer_cost' => $data->transferCost,
+            'transfer_cost_label' => $data->transferCostLabel,
+            'transfer_cost_distribution' => $data->transferCostDistribution,
+            'idempotency_key' => $data->idempotencyKey,
+            'initiated_by_user_id' => $data->initiatedByUserId,
+        ]);
+
+        return $transfer;
     }
 
     /**
