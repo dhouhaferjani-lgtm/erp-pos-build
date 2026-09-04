@@ -299,3 +299,118 @@ Re-key the open-transition guard on the intent identity (`prefill.document_id`),
 same-doc-keeps / different-doc-resets test — otherwise a route-param swap on the two
 non-`KeyedByRouteId` order hosts posts the operator's stale line against the wrong document and
 partner.
+
+---
+
+## Re-gate r2 (2026-09-04)
+
+- Fix round reviewed: `5a7557180` (code + tests + 3 locales) and `92b144499` (docs). Branch head `92b144499`, base `0187a56d1`, dev `f9acdad0e`.
+- Handback section consumed: `docs/handoff/HANDBACK-request-hygiene-T12b-2026-09-04.md` "Fix round 1" (`:146-186`).
+- Read-only review. Two temporary mutations for falsification, both restored from a byte copy; `git status --porcelain` empty afterwards. No vitest workers left (`ps aux | grep '[v]itest'` → empty).
+
+### VERDICT
+
+**spec ✅ + quality APPROVED — MERGE.** BLOCKER-1 is cured, by the mandated mechanism, and the cure is falsifiable. 0 blocking findings. Four non-blocking items below (one Important, NB-7), plus the two promotion-owed legs that were already owed at r1.
+
+### 1. `lastIntentRef` — verified
+
+- `RecordPaymentModal.tsx:151` — `const lastIntentRef = useRef<string | null>(null)`.
+- `RecordPaymentModal.tsx:201` — `const intent = \`${prefill.partner_id}|${prefill.document_id}\``.
+- `RecordPaymentModal.tsx:202` — `if (wasOpenRef.current && lastIntentRef.current === intent) return` — the body (re-seed at `:206-213` **and** `hadFailedAttemptRef = false` + `resetIdempotencyKey()` at `:221-222`) therefore runs on `!wasOpen` **OR** an intent change. Exactly the mandated shape.
+- `RecordPaymentModal.tsx:196-200` — closed branch clears **both** refs, so a close→reopen on the same document still re-seeds and rotates (locked by the existing `close -> reopen` test).
+- Same-document churn is a no-op: `prefill.amount` / `reference` are not in the intent string, and the effect deps at `:223` still carry `prefill`, so the guard — not the deps — is what makes the refetch inert. Locked by `__tests__/idempotencyKeyLifecycle.test.tsx:435-467`, which now installs a uuid recorder and asserts `uuids.minted.slice(mintedBeforeRerender)).toHaveLength(0)` — i.e. **neither a replacement line id nor a new key**. That is a strictly stronger assertion than r1's, and it is the assertion that proves the fix did not over-reach.
+- **Partner change with the same document also resets** — intent folds `partner_id`. Correct and deliberately wider than the gate snippet: the POST body reads `prefill.partner_id` at submit time (`:395`), so a partner move is a different money destination even at a constant `document_id`. Accepted.
+- Collision safety: `|` cannot occur inside either uuid, so the composite key cannot alias two distinct intents.
+- Hosts re-checked — `partner_id` can never be empty/transient under a mounted modal: all three render the modal behind `{<doc>.partner_id && …}` (`InvoiceDetailPage.tsx:894`, `SalesOrderDetailPage.tsx:779`, `PurchaseOrderDetailPage.tsx:708`), and the prefill fields are direct reads (`InvoiceDetailPage.tsx:899-906`, `SalesOrderDetailPage.tsx:784-791`, `PurchaseOrderDetailPage.tsx:713-720`). So the intent string cannot flicker during a background refetch and re-open the T12 wipe.
+
+**Falsification (mandated).** Reverted only `:202` to `if (wasOpenRef.current) return` (the intent half removed, `:201`/`:204` left in place):
+
+```
+$ pnpm vitest run src/components/organisms/RecordPaymentModal
+  ✓ … keeps the operator's confirmed line, notes and date … (SAME values)
+  ✓ … keeps the in-progress line and shows the NEW outstanding amount …
+  × … resets the form and rotates the key when prefill switches to a DIFFERENT document …
+  × … warns that the payment may already have been recorded …
+  ✓ … DOES reset the form on the next open transition (close -> reopen)
+ Tests  2 failed | 12 passed (14)
+```
+
+The **document-swap test is genuinely red**, as required. The second red is an artefact, not evidence: run in isolation with the same broken guard,
+
+```
+$ pnpm vitest run …/idempotencyKeyLifecycle.test.tsx -t "warns that the payment may already have been recorded"
+ Tests  1 passed | 9 skipped (10)
+```
+
+— it passes. Cause is mock-bleed (NB-9). Restored; tree clean.
+
+### 2. POST body after a swap — verified
+
+- `RecordPaymentModal.tsx:394-396` — `idempotency_key: idempotencyKey`, `partner_id: prefill.partner_id`, `document_id: prefill.document_id`, all read at **submit** time; `:385-390` builds `payments` from the confirmed lines only.
+- `__tests__/idempotencyKeyLifecycle.test.tsx:449-568` — after a lost POST on doc A (400) and a swap to `{partner-2, doc-2}`: the confirmed badge is gone, the amount input is `null`, notes are re-derived as `Payment for invoice INV-2`, Record is disabled; then `postedField(1,'document_id') === 'doc-2'`, `postedField(1,'partner_id') === 'partner-2'`, `postedField(1,'payments')` is **exactly** `[{method-1, repo-1, '50'}]` (doc A's 1000/400 line is absent), and `postedIdempotencyKey(1) !== postedIdempotencyKey(0)`. The old key is never reused, so document A's possibly-committed batch cannot be replayed under document B's submit. The helper `postedField` (`:174-181`) reads via `Reflect.get` — no `as any`, consistent with rule 3.
+
+### 3. NB-1 banner — ruling
+
+Implementation: `RecordPaymentModal.tsx:906-919`, gated `mutation.isError && confirmedCount > 0 && balanceDue === 0`, rendered inside the non-success branch (`:487` `showSuccess && successData ? … : …`) immediately above the raw-error banner (`:921`). Key `treasury:unifiedPayment.possiblyRecorded` present in `locales/en/treasury.json:283`, `fr/treasury.json:283`, `ar/treasury.json:694`. Copy steers to "Press Record without changing anything to confirm; editing the amount would create a second payment" — correct advice for the protected path. Not shown before a failure — asserted at `__tests__/idempotencyKeyLifecycle.test.tsx:~553` (`queryByText(...).not.toBeInTheDocument()` between the failed POST and the refetch).
+
+**Ruling — `mutation.isError` is the right *reactive* half but an incomplete gate; keep `=== 0`, do not widen to "decreased".**
+
+- *Reactive vs ref*: a ref cannot bring the banner into view — the banner must appear when the refetch lands, and only a render-visible signal can do that. `hadFailedAttemptRef` is additionally cleared by the first payload edit (`:161-165`), i.e. it goes false exactly when the warning becomes most relevant. So gating on the ref would be worse. `mutation.isError` is correct in kind.
+- *But it is not scoped to the intent* — see **NB-7**. It must be conjoined with "the idempotency key has not rotated since that failure".
+- *Decrease vs zero*: keep `=== 0`. A partial commit is self-correcting — `remaining` (`:283`) is recomputed off the NEW `balanceDue`, so topping up to `remaining` posts (stale line + top-up) = the new outstanding, and committed + posted = the original total; no surplus. `=== 0` is also the only state where the excess panel opens (`:762`) and a rotated retry lands as an **advance on a settled document** — the actual money loss. Widening to any decrease would raise the banner in the ordinary partial-payment flow and train operators to dismiss it. Exact float equality is safe here: `outstandingAmount` is a single `parseFloat` of a server decimal string (`InvoiceDetailPage.tsx:458`, `SalesOrderDetailPage.tsx:373`), not derived arithmetic, so `"0.000" → 0` exactly (NB-11).
+
+### 4. Money walk-through — unchanged from r1
+
+The component diff is exactly two additions (the `:201-204` guard and the `:906-919` banner) plus comment; every line in the r1 walk-through is byte-identical. Same-document lost response → the intent string is unchanged (both halves are read off the same document) → `:202` returns early → no re-seed, no key rotation → the unchanged retry replays server-side as HTTP 200 and exactly one payment / one treasury movement stands. Now additionally locked by the uuid recorder at `:435-467`. The edited path still rotates (`:161-165`) and the backend still accepts the over-payment as a customer advance — pre-existing, re-recorded for the owner, and now at least *warned* in the `balanceDue === 0` case.
+
+### 5. Commands and outputs
+
+```
+$ cd apps/web && pnpm vitest run src/components/organisms/RecordPaymentModal \
+    src/features/documents/invoices src/features/documents/sales-orders \
+    src/features/documents/purchase-orders
+ Test Files  11 passed (11)
+      Tests  109 passed (109)        # 107 at r1 + the 2 new tests
+
+$ pnpm typecheck                      # tsc --noEmit
+TYPECHECK_EXIT=0
+
+$ npx eslint RecordPaymentModal.tsx idempotencyKeyLifecycle.test.tsx -f json
+HEAD errors 0 warnings 25
+  @typescript-eslint/array-type 2 · no-misused-promises 1 · no-unnecessary-template-expression 11
+  restrict-template-expressions 1 · precision/no-parsefloat-on-money 6
+  react-hooks/exhaustive-deps 3 · react-hooks/immutability 1
+# identical count AND identical multiset to the base (0187a56d1) measurement recorded at r1 —
+# no warning traded for another, no new float-on-money warning from the banner.
+
+$ pnpm audit:i18n:local | grep -i treasury
+(empty)                               # the new key is complete in en/fr/ar
+# the audit exits 1 on pre-existing `ar|uom|missing|*` only; uom.json is untouched by this lane.
+
+$ ps aux | grep '[v]itest'
+(empty)
+```
+
+### merge-tree
+
+```
+$ git merge-tree --write-tree dev lane/rh-t12b-modal-prefill-wipe    # from /Users/houssamr/Projects/syneriva/apps/erp
+1dd09364b4f2215fd2459f73e78643351beea52f   (exit 0, no conflict section)   dev = f9acdad0e
+```
+
+**Clean — no conflicts.**
+
+### Non-blocking findings (new in r2)
+
+- **NB-7 [Important, new-in-round]** `RecordPaymentModal.tsx:914` — the banner gate is not scoped to the *failed attempt's* intent. `mutation.reset()` is never called (grep on the file returns only `:433` comment, `:914`, `:921`), so `mutation.isError` survives (a) a key rotation caused by any still-available payload edit on a confirmed batch — add a line `:753`, change the date `:453`, change the excess method `:458` (the confirmed line itself is locked by `<fieldset disabled>` at `:657`) — and (b) the new intent-change reset at `:195-223`, and (c) a close→reopen. Consequences: after a rotation the copy "press Record without changing anything to confirm" is affirmatively wrong (Record now books a **second** payment); and a stale error from document A can raise the banner on a zero-balance document B once the operator confirms a line there. Not a merge blocker — in every one of these states the set of reachable actions and the money outcome are identical to the pre-lane baseline, so the banner fails to warn rather than causing a new loss. **Fix before promotion:** call `mutation.reset()` in the intent-change branch of the effect (also clears the stale red banner across a swap), and gate the banner on the key being unchanged since the failure (`failedKeyRef.current === idempotencyKey`) instead of `mutation.isError` alone.
+- **NB-9 [Minor, test hygiene]** `__tests__/idempotencyKeyLifecycle.test.tsx:~184` — `beforeEach` uses `vi.clearAllMocks()`, which clears calls but does **not** drain the `mockRejectedValueOnce` / `mockResolvedValueOnce` queues. Measured above: when the swap test fails mid-way, its unconsumed `mockResolvedValueOnce` bleeds into the NB-1 banner test and reds it for the wrong reason. Harmless while green, but it corrupts exactly the falsification signal a gate depends on. Use `mockApiPost.mockReset()` (plus re-install the default) in `beforeEach`.
+- **NB-10 [Minor]** `RecordPaymentModal.tsx:195` — `useEffect` runs after paint, so on a swap the stale line is painted once against document B with Record enabled before the reset lands. Not reachable by a human at one frame, and `KeyedByRouteId` on the two order routes closes it structurally. Noted so it is not rediscovered.
+- **NB-11 [Info]** the `balanceDue === 0` exact float comparison is sound because `outstandingAmount` is a single `parseFloat` of a server decimal string, not derived arithmetic (`InvoiceDetailPage.tsx:458`, `SalesOrderDetailPage.tsx:373`). The `parseFloat`-on-money itself is the pre-existing B-7 class, unchanged by this lane.
+- NB-2 / NB-3 / NB-4 (= r2 NB-8, `notes` never posted) / NB-6 from r1 stand unchanged.
+
+### Promotion-owed (not merge-blocking, re-stated)
+
+1. Wrap the two `orders/:id` routes in `KeyedByRouteId` — sales `apps/web/src/routes/index.tsx:697-706`, purchases `:946-955` (invoices already are, `:741-750`). **Re-verified still absent at this head.** Closes the carry-over class structurally on all three hosts; the modal-side guard is the money fix, this is the belt.
+2. Browser legs, on a real tenant: (a) submit → drop the response → let the reconnect refetch fire → press Record untouched → assert exactly ONE `payments` row and ONE treasury movement; (b) route swap with the modal open on a sales order / purchase order → the form re-seeds and the POST carries the new document. `apps/web` unit tests cannot observe the treasury movement.
+
+**What to fix before merge:** nothing. Before promotion: NB-7 (`mutation.reset()` + key-scoped banner gate), then the two legs above.
