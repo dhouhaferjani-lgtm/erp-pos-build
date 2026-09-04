@@ -244,6 +244,38 @@ describe('import navigation targets resolve against the route table', () => {
   })
 })
 
+/**
+ * T12b gate (2026-09-04), promotion-owed item 1. A detail page that keeps an
+ * overlay mounted — RecordPaymentModal, CancelInvoiceModal — survives a change
+ * of the `:id` route param (browser Back/Forward, macOS swipe-back) with its
+ * state intact, so an entry made for document A can be submitted against
+ * document B. `KeyedByRouteId` is the structural cure the team already chose
+ * for the invoice host; the two order hosts carry the same overlays and must
+ * carry the same wrapper. Source-text assertions, matching this file's harness
+ * — the remount SEMANTICS of the wrapper are covered behaviourally in
+ * `__tests__/KeyedByRouteId.test.tsx`.
+ */
+describe('document detail hosts remount on a route-param change', () => {
+  function wrapperFragmentBefore(element: string): string {
+    const idx = routesSource.indexOf(element)
+    expect(idx).toBeGreaterThanOrEqual(0)
+
+    return routesSource.slice(Math.max(0, idx - 200), idx)
+  }
+
+  it('wraps the invoice detail host in KeyedByRouteId', () => {
+    expect(wrapperFragmentBefore('<InvoiceDetailPage />')).toContain('<KeyedByRouteId>')
+  })
+
+  it('wraps the sales order detail host in KeyedByRouteId', () => {
+    expect(wrapperFragmentBefore('<SalesOrderDetailPage />')).toContain('<KeyedByRouteId>')
+  })
+
+  it('wraps the purchase order detail host in KeyedByRouteId', () => {
+    expect(wrapperFragmentBefore('<PurchaseOrderDetailPage />')).toContain('<KeyedByRouteId>')
+  })
+})
+
 function sourceFilesUnder(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = join(dir, entry.name)
