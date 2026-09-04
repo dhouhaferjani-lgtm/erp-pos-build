@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -20,7 +20,23 @@ import { ListPageLayout } from '../../components/molecules/ListPageLayout/ListPa
 import { OffsetPagination } from '../../components/ui/OffsetPagination'
 import type { OffsetPaginationMeta } from '../../types/pagination'
 
-interface Payment {
+/**
+ * The backend lifecycle enum, aliased rather than hand-listed: the local union
+ * had drifted (it carried a `cancelled` the backend never emits and was missing
+ * `failed`/`reversed`), and since this lane makes an unknown `status` a hard 422
+ * that drift is a runtime fault, not just a type smell. Rule 7 makes
+ * `packages/shared/types` the source of truth — regenerate with
+ * `php artisan typescript:transform`, never re-hand-list here.
+ * Mirrors `App\Modules\Treasury\Domain\Enums\PaymentStatus`.
+ */
+type PaymentStatus = App.Modules.Treasury.Domain.Enums.PaymentStatus
+
+/**
+ * One row of `GET /api/v1/payments`. Exported so the page's own tests bind to
+ * this shape instead of re-declaring it (a second hand-rolled copy is how the
+ * `status` union drifted away from the backend enum in the first place).
+ */
+export interface Payment {
   id: string
   payment_number: string
   amount: number
@@ -31,7 +47,7 @@ interface Payment {
   partner_name: string
   partner_type: 'customer' | 'supplier' | 'both' | null
   payment_type: string | null
-  status: 'pending' | 'completed' | 'cancelled'
+  status: PaymentStatus
   dishonored_at: string | null
   created_at: string
 }
@@ -43,10 +59,16 @@ interface PaymentsResponse {
 
 /**
  * Payment lifecycle statuses routed through the one sanctioned StatusBadge
- * palette. `pending`/`completed`/`cancelled` are already in the built-in tone
- * map, so no overrides are needed — kept here for parity/documentation.
+ * palette. `pending`/`completed`/`failed` are already in the built-in tone map;
+ * `reversed` is not, so it is mapped explicitly here — same override the
+ * detail page carries, so a payment reads identically on both surfaces.
  */
-const paymentStatusTones: Record<string, StatusTone> = {}
+const paymentStatusTones: Record<PaymentStatus, StatusTone> = {
+  pending: 'pending',
+  completed: 'success',
+  failed: 'danger',
+  reversed: 'neutral',
+}
 
 export function PaymentListPage() {
   const { t } = useTranslation(['common', 'treasury'])
@@ -58,11 +80,17 @@ export function PaymentListPage() {
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(25)
 
-  // A new search term always restarts traversal at page one; keeping the old
-  // page number would ask the server for a page the filtered set may not have.
-  useEffect(() => {
+  // A new search term invalidates the current offset: page 4 of the previous
+  // result set is meaningless for the filtered one. Adjusted DURING render
+  // (React's documented derived-state pattern) rather than in an effect, so the
+  // reset lands before the query key is read — an effect would let one request
+  // for the stale page escape to the server first.
+  const filterSignature = JSON.stringify([search])
+  const [appliedFilterSignature, setAppliedFilterSignature] = useState(filterSignature)
+  if (appliedFilterSignature !== filterSignature) {
+    setAppliedFilterSignature(filterSignature)
     setPage(1)
-  }, [search])
+  }
 
   // Get translated status label
   const getStatusLabel = (status: Payment['status']) => {
