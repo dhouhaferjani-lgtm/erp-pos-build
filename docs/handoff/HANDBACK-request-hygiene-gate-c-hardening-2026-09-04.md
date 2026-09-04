@@ -75,3 +75,76 @@ hardened scanner finds nothing on `dev`, so there was nothing to absorb.
   the guard would now be flagged (the guard search stops at the read's enclosing
   function). No such shape exists today; if one lands, the options are to move the
   guard into the hook or to widen the search scope deliberately.
+
+---
+
+# Fix round 1 (2026-09-04) — response to the independent gate
+
+Gate report: `docs/superpowers/reviews/2026-09-04-request-hygiene-gate-c-hardening-gate-frontend-conventions.md`
+(verdict APPROVE-WITH-FIXES, no BLOCKER). Closed here: MAJOR-1, MAJOR-2 (with one
+scoped deviation, below), MINOR-1, MINOR-2, MINOR-4. MINOR-3 documented.
+
+## What changed in the tool
+
+| Finding | Status | Change |
+|---|---|---|
+| MAJOR-1 — one guard cleared ALL entries of an identifier-bound `useQueries` | **FIXED** | `readResultBinding` now returns an `indexedHolder` instead of the bare array name when `entryIndex !== null`. Pairing then requires an element access AT THAT INDEX inside a guard argument — `results[1]` or `results.at(1)`. The bare `results` handle pairs nothing (fails closed). |
+| MAJOR-2 — `placeholderData` through `...spreadOptions` invisible | **FIXED for resolvable payloads** (see deviation) | `spreadPayloadPlaceholderVerdict` resolves a spread payload inside the file — object literals, `()`/`as`/`satisfies` wrappers, conditional and `&&`/`\|\|`/`??` combinations, an identifier bound to a local object literal, and a call to a locally declared function's returns. A payload that declares `placeholderData` triggers the rule and is reported as `unpaired-unknown (spread options — declare placeholderData inline or guard)`. |
+| MINOR-1 — custom-hook constraint not in the convention | **FIXED** | New "Where the gate stops" block in `docs/conventions/05-REACT-QUERY.md`: guard INSIDE the hook, a consumer-side guard is not followed across a module boundary, the rule fails closed. |
+| MINOR-2 — aliased guard import = false positive | **FIXED** | `guardLocalNames` resolves aliases from the file's named imports (`import { usePlaceholderScopeGuard as useScopeGuard }`). A same-named LOCAL helper still does not pair. |
+| MINOR-3 — discarded guard verdict pairs | **DOCUMENTED** | Recorded as a known limitation (fails open) in the tool header, the convention doc, and pinned by a test. |
+| MINOR-4 — `let r; r = useQuery(...)` = false positive | **FIXED** | `findResultBindingName` accepts an assignment-expression binding to an identifier as well as a variable declaration. |
+
+## Deviation on MAJOR-2 — measured, deliberate
+
+The directive was "ANY `SpreadAssignment` … reported unless a guard is paired".
+Implemented as directed for spreads whose payload can be resolved; an
+**unresolvable** payload (a caller-supplied `options` parameter, an imported
+options object) is a documented known limitation instead. Reason, measured, not
+assumed:
+
+- 8 scoped reads on `dev` spread into their options object
+  (`catalog/api/queries.ts` ×3, `import/api/queries.ts` ×1,
+  `owner-dashboard/hooks/useOwnerReports.ts` ×4).
+- The resolver proves 5 of them free of `placeholderData`
+  (`...buildOwnerReportRefreshOptions(params)` → a conditional of two object
+  literals; `...(cond && { refetchInterval })`).
+- The remaining 3 — `useCategories` / `useCategoryTree` / `useCategory`, which
+  spread a caller-supplied `Omit<UseQueryOptions, 'queryKey' | 'queryFn'>` —
+  are unresolvable. Firing on them was verified to produce **3 findings on the
+  real tree** (run with the rule widened to `!== 'no'`), i.e. a red gate on `dev`.
+- Closing that hole needs a `src/` change (guard inside the hook, or drop
+  `placeholderData` from the accepted options type). This lane must not touch
+  `src/`, and the baseline escape hatch is unusable: `violationBaselineKey`
+  embeds a byte offset, so baselined entries go stale on any edit above them.
+
+**Follow-up owed (new, P2):** an `src/` lane for
+`src/features/catalog/api/queries.ts` — those three hooks accept a pass-through
+options object on a tenant-scoped key. Once they are fixed, widen the rule from
+"resolvable payload declares `placeholderData`" to "any unresolvable spread"
+(one-line change: `=== 'yes'` → `!== 'no'`).
+
+## New fixtures / tests
+
+| Fixture | Finding | Expected |
+|---|---|---|
+| `use-queries-identifier-partial-guard.ts` | MAJOR-1 — identifier-bound `useQueries`, guard on entry 0 only | exactly 1 (entry 1, `receipts`) |
+| `spread-options-unpaired.ts` | MAJOR-2 — `placeholderData` via `...listOptions` | 1 |
+
+Plus 12 inline tests in `tools/__tests__/audit-tanstack-keys.test.mjs`
+(`placeholderData pairing — gate fix round 1`), including three that PIN the
+known limitations (unresolvable spread, discarded verdict, local same-named
+helper) so a future lane that closes one fails the test on purpose.
+
+## Verification
+
+```
+red first (new tests, pre-fix tool)   6 failed | 71 passed (77)
+pnpm vitest run tools/__tests__       8 files / 189 tests passed
+pnpm test:tools                       8 files / 189 tests passed
+node tools/audit-tanstack-keys.mjs    0 violations, 0 new, 0 stale, exit 0
+  falsification (guard call renamed)  2 findings, exit 1; restored -> 0, exit 0; git status clean
+eslint (tool + test)                  0 errors, 0 warnings
+tsc --checkJs on the tool             15 errors, error classes byte-identical to ceb46e4e0
+pnpm typecheck                        clean
+```
