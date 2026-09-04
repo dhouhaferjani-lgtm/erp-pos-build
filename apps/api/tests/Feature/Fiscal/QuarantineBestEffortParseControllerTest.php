@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
+use Psr\Log\LoggerInterface;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -436,7 +437,7 @@ final class QuarantineBestEffortParseControllerTest extends TestCase
     }
 }
 
-final class CapturingFiscalLog
+final class CapturingFiscalLog implements LoggerInterface
 {
     /**
      * @var list<array{message: string, context: array<string, mixed>}>
@@ -446,10 +447,83 @@ final class CapturingFiscalLog
     /**
      * @param  array<string, mixed>  $context
      */
-    public function info(string $message, array $context = []): void
+    public function emergency(string|\Stringable $message, array $context = []): void
+    {
+        $this->capture($message, $context);
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    public function alert(string|\Stringable $message, array $context = []): void
+    {
+        $this->capture($message, $context);
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    public function critical(string|\Stringable $message, array $context = []): void
+    {
+        $this->capture($message, $context);
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    public function error(string|\Stringable $message, array $context = []): void
+    {
+        $this->capture($message, $context);
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    public function warning(string|\Stringable $message, array $context = []): void
+    {
+        $this->capture($message, $context);
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    public function notice(string|\Stringable $message, array $context = []): void
+    {
+        $this->capture($message, $context);
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    public function info(string|\Stringable $message, array $context = []): void
+    {
+        $this->capture($message, $context);
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    public function debug(string|\Stringable $message, array $context = []): void
+    {
+        $this->capture($message, $context);
+    }
+
+    /**
+     * @param  mixed  $level
+     * @param  array<string, mixed>  $context
+     */
+    public function log($level, string|\Stringable $message, array $context = []): void
+    {
+        $this->capture($message, $context);
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    private function capture(string|\Stringable $message, array $context): void
     {
         $this->entries[] = [
-            'message' => $message,
+            'message' => (string) $message,
             'context' => $context,
         ];
     }
