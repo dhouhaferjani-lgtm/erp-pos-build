@@ -30,8 +30,13 @@ final class ListStockMovementsRequest extends FormRequest
             'location_ids' => ['sometimes', 'array', 'list'],
             'location_ids.*' => ['uuid'],
             'product_id' => ['sometimes', 'nullable', 'uuid'],
+            // `nullable` on the three scalar filters: the web list page sends
+            // `movement_type=` / `reason=` / `search=` when the operator clears
+            // a filter, and the global ConvertEmptyStringsToNull middleware
+            // turns those into a present null, which `sometimes` does not skip.
             'movement_type' => [
                 'sometimes',
+                'nullable',
                 'string',
                 Rule::in([
                     ...array_map(static fn (MovementType $type): string => $type->value, MovementType::cases()),
@@ -40,13 +45,14 @@ final class ListStockMovementsRequest extends FormRequest
             ],
             'reason' => [
                 'sometimes',
+                'nullable',
                 'string',
                 Rule::in([
                     ...array_map(static fn (MovementReason $reason): string => $reason->value, MovementReason::cases()),
                     'write_off',
                 ]),
             ],
-            'search' => ['sometimes', 'string', 'max:120'],
+            'search' => ['sometimes', 'nullable', 'string', 'max:120'],
             'page' => ['sometimes', 'integer', 'min:1'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
         ];

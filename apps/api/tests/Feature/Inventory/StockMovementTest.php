@@ -532,25 +532,52 @@ class StockMovementTest extends TestCase
     public function test_tied_created_at_rows_cross_two_pages_without_duplicates_or_omissions(): void
     {
         $createdAt = CarbonImmutable::parse('2026-09-03 12:00:00');
-        /** @var list<array{id: string, created_at: string}> $seededRows */
-        $seededRows = [];
-        foreach (range(1, 30) as $index) {
-            $movement = $this->ledgerRow($index);
-            $movement->forceFill(['created_at' => $createdAt, 'updated_at' => $createdAt])->save();
-            $seededRows[] = [
-                'id' => $movement->id,
-                'created_at' => (string) $movement->getRawOriginal('created_at'),
-            ];
+
+        // Explicit v4-shaped ids, inserted in a deliberately shuffled
+        // (non-monotonic) order so that neither insertion order nor
+        // reverse-insertion order coincides with `id DESC`. Without this the
+        // model's ORDERED `HasUuids` keys (Laravel 12 emits uuid7) make
+        // insertion order and `id DESC` agree, and the assertion below passes
+        // even with the `orderByDesc('id')` tie-break removed (gate r1, B1).
+        /** @var list<string> $ids */
+        $ids = array_map(
+            static fn (int $sequence): string => sprintf('7f000000-0000-4000-8000-%012x', $sequence),
+            range(1, 30),
+        );
+
+        // 1, 3, 5, ..., 29, 30, 28, ..., 2 — the first row inserted holds the
+        // LOWEST id and the last holds the SECOND-lowest, so `id DESC` matches
+        // neither the insertion order nor its reverse.
+        $insertionOrder = [...range(1, 29, 2), ...range(30, 2, -2)];
+        self::assertCount(30, $insertionOrder);
+
+        foreach ($insertionOrder as $sequence) {
+            $movement = new StockMovement;
+            $movement->forceFill([
+                'id' => $ids[$sequence - 1],
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'product_id' => $this->product->id,
+                'location_id' => $this->warehouse->id,
+                'movement_type' => MovementType::Receipt,
+                'reason' => null,
+                'quantity' => '1.0000',
+                'quantity_before' => $sequence.'.0000',
+                'quantity_after' => ($sequence + 1).'.0000',
+                'reference' => 'TIED-'.$sequence,
+                'user_id' => $this->user->id,
+                'occurred_at' => $createdAt,
+                'created_at' => $createdAt,
+                'updated_at' => $createdAt,
+            ])->save();
         }
 
-        usort($seededRows, static function (array $left, array $right): int {
-            $createdAtOrder = strcmp($right['created_at'], $left['created_at']);
-
-            return $createdAtOrder !== 0
-                ? $createdAtOrder
-                : strcmp($right['id'], $left['id']);
-        });
-        $expectedIds = array_column($seededRows, 'id');
+        // Expected sequence computed from the ids themselves, never from a
+        // query: the ids share a fixed prefix and a zero-padded hex suffix, so a
+        // descending string sort is exactly `id DESC` on both drivers (PG's
+        // `uuid` type orders by the same canonical lowercase byte sequence).
+        $expectedIds = $ids;
+        rsort($expectedIds, SORT_STRING);
 
         $pageOne = $this->actingAs($this->user)
             ->getJson('/api/v1/stock-movements?page=1&per_page=15')->assertOk()->json('data');
@@ -561,5 +588,22 @@ class StockMovementTest extends TestCase
         self::assertCount(30, $actualIds);
         self::assertCount(30, array_unique($actualIds));
         self::assertSame($expectedIds, $actualIds);
+    }
+
+    public function test_index_accepts_cleared_filters_sent_as_empty_strings(): void
+    {
+        $this->ledgerRow(1);
+
+        // The web list page sends `search=` / `movement_type=` / `reason=` when
+        // the operator clears a filter; the global ConvertEmptyStringsToNull
+        // middleware turns those into a present null, which must read as "no
+        // filter", not as a 422 (gate r1, B2).
+        $this->actingAs($this->user)
+            ->getJson('/api/v1/stock-movements?search=&movement_type=&reason=&location_id=&product_id=')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('meta.current_page', 1)
+            ->assertJsonPath('meta.per_page', 25)
+            ->assertJsonPath('meta.total', 1);
     }
 }
