@@ -13,6 +13,7 @@ import { locationScopedKey, normalizeViewScope } from '../../lib/locationScopedK
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { usePermissions } from '../../hooks/usePermissions'
+import { usePlaceholderScopeGuard } from '../../hooks/usePlaceholderScopeGuard'
 import { SearchInput } from '../../components/molecules/SearchInput'
 import { FilterTabs } from '../../components/molecules/FilterTabs'
 import { useViewScope } from '../locations/hooks/useViewScope'
@@ -165,7 +166,7 @@ export function StockMovementsPage() {
 
   const queryClient = useQueryClient()
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, isPlaceholderData, error } = useQuery({
     queryKey: locationScopedKey(['stock-movements', searchQuery, movementFilter, page, perPage], scope),
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -187,8 +188,17 @@ export function StockMovementsPage() {
       return response.data
     },
     enabled: !!tenantId && !!companyId,
+    // Keep the previous page rendered while the next one loads so paging does
+    // not flash an empty table. Scoped to ONE tenant/company by
+    // `usePlaceholderScopeGuard` below — TanStack picks its placeholder with no
+    // key-lineage check, so unguarded it would also survive a company switch.
     placeholderData: keepPreviousData,
   })
+
+  // A placeholder fetched for the PREVIOUS company must never reach the table
+  // or the pagination bar: those rows link into products and documents this
+  // company cannot see, and the reverse-write-off action would target them.
+  const isStaleScopeData = usePlaceholderScopeGuard(isPlaceholderData, data !== undefined)
 
   const reverseWriteOffMutation = useMutation({
     mutationFn: (movementId: string) => reverseWriteOff(movementId),
@@ -216,12 +226,12 @@ export function StockMovementsPage() {
   })
 
   // The server already applied every filter; the page is rendered verbatim.
-  const movements = data?.data ?? []
+  const movements = isStaleScopeData ? [] : data?.data ?? []
   // Hoisted once: `api.get<StockMovementsResponse>` is an unchecked cast, so a
   // rolling deploy / error envelope can still hand us a meta-less body. Binding
   // it to a variable keeps the runtime guard AND keeps the declared response
   // type strict, without the inline-chain `no-unnecessary-condition` warning.
-  const meta = data?.meta
+  const meta = isStaleScopeData ? undefined : data?.meta
 
   // No counts: a single page cannot supply the GLOBAL total for the other tabs,
   // and a per-page count would understate every filter the user has not selected.
@@ -426,7 +436,7 @@ export function StockMovementsPage() {
             columns={columns}
             data={movements}
             keyExtractor={(movement) => movement.id}
-            isLoading={isLoading}
+            isLoading={isLoading || isStaleScopeData}
             className={cn('rounded-lg border bg-white', borderColors.light)}
             emptyState={
               <div className="py-6">

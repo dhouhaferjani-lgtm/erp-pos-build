@@ -1,4 +1,4 @@
-import { useQuery, keepPreviousData } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useMemo, useRef, useState, useEffect } from 'react'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import {
@@ -84,7 +84,17 @@ export function useDiscountPreview(input: DiscountPreviewInput): DiscountPreview
     queryKey: tenantScopedKey(['pos', 'discount-preview', debouncedRequest]),
     queryFn: () => previewDiscounts(debouncedRequest!),
     enabled: !!debouncedRequest && hasTenantScope,
-    placeholderData: keepPreviousData,
+    // NO `placeholderData: keepPreviousData` here, deliberately. TanStack v5
+    // picks the placeholder from the observer's last query that had data with NO
+    // key-lineage check (`queryObserver.js` #lastQueryWithDefinedData), so it
+    // hands the result back across the tenant/company suffix `tenantScopedKey`
+    // appends — a promotion/coupon/loyalty amount priced under ANOTHER company's
+    // rules would be shown as this cart's savings and carried into the total the
+    // cashier reads. Unlike a paginated list there is no same-scope win to trade
+    // for that: the key also changes on every cart edit, so a placeholder is a
+    // discount computed for a DIFFERENT cart even within one company. The 500ms
+    // debounce plus `staleTime` already keep the request rate down; a repeated
+    // cart shape is served from cache without a flash.
     staleTime: 10_000,
   })
 

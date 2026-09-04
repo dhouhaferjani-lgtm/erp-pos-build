@@ -10,6 +10,7 @@ import { cn } from '../../lib/utils'
 import { tokens, textColors } from '../../lib/designTokens'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
+import { usePlaceholderScopeGuard } from '../../hooks/usePlaceholderScopeGuard'
 import { formatCurrency } from '../../lib/format'
 import { Button } from '../../components/atoms/Button/Button'
 import { StatusBadge, type StatusTone } from '../../components/atoms/StatusBadge/StatusBadge'
@@ -101,7 +102,7 @@ export function PaymentListPage() {
   const companyCurrency = currentCompany?.currency ?? 'EUR'
   const companyLocale = currentCompany?.locale?.replace('_', '-') ?? 'en-US'
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, isPlaceholderData, error } = useQuery({
     queryKey: tenantScopedKey(['payments', search, page, perPage]),
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -113,12 +114,19 @@ export function PaymentListPage() {
     },
     enabled: tenantId !== null && companyId !== null,
     // Keep the previous page rendered while the next one loads so paging does
-    // not flash an empty table.
+    // not flash an empty table. Scoped to ONE tenant/company by
+    // `usePlaceholderScopeGuard` below — TanStack picks its placeholder with no
+    // key-lineage check, so unguarded it would also survive a company switch.
     placeholderData: keepPreviousData,
   })
 
-  const payments = data?.data ?? []
-  const total = data?.meta.total ?? payments.length
+  // A placeholder fetched for the PREVIOUS company must never reach the table,
+  // the header count or the pagination bar: those rows link into records this
+  // company cannot see.
+  const isStaleScopeData = usePlaceholderScopeGuard(isPlaceholderData, data !== undefined)
+  const meta = isStaleScopeData ? undefined : data?.meta
+  const payments = isStaleScopeData ? [] : data?.data ?? []
+  const total = meta?.total ?? payments.length
 
   // Format currency using company settings
   const formatAmount = (amount: number) => {
@@ -241,7 +249,7 @@ export function PaymentListPage() {
           columns={columns}
           data={payments}
           keyExtractor={(payment) => payment.id}
-          isLoading={isLoading}
+          isLoading={isLoading || isStaleScopeData}
           emptyState={
             <div className="py-6">
               <EmptyState
@@ -259,14 +267,14 @@ export function PaymentListPage() {
           }
         />
       )}
-      {!error && data?.meta ? (
+      {!error && meta ? (
         <OffsetPagination
-          currentPage={data.meta.current_page}
-          lastPage={data.meta.last_page}
-          total={data.meta.total}
-          perPage={data.meta.per_page}
-          from={data.meta.from}
-          to={data.meta.to}
+          currentPage={meta.current_page}
+          lastPage={meta.last_page}
+          total={meta.total}
+          perPage={meta.per_page}
+          from={meta.from}
+          to={meta.to}
           onPageChange={setPage}
           onPerPageChange={(next) => {
             setPerPage(next)
