@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -47,6 +47,61 @@ const product = {
   primary_image_url: null,
   has_variants: false,
   requires_batch_tracking: false,
+}
+
+/**
+ * A second product that only ever comes back from the UNFILTERED first-page
+ * read (`GET /products` with no `search`). Any test that sees this row commit
+ * after the operator has typed something is watching a stale suggestion win.
+ */
+const firstPageProduct = {
+  id: 'product-first-page',
+  name: 'Adhesif carrosserie',
+  sku: 'ADH-1',
+  barcode: null,
+  sale_price: '5.000',
+  tax_rate: '19.00',
+  default_tax_configuration_id: null,
+  quantity_decimals: 0,
+  primary_image_url: null,
+  has_variants: false,
+  requires_batch_tracking: false,
+}
+
+// Type guard instead of an `as { params?: { search?: string } }` assertion:
+// @typescript-eslint/no-unsafe-type-assertion warns on the latter.
+function hasSearchParam(config: unknown): boolean {
+  if (typeof config !== 'object' || config === null || !('params' in config)) return false
+  const params: unknown = config.params
+  return typeof params === 'object' && params !== null && 'search' in params
+}
+
+/**
+ * Focus (unfiltered) reads answer with a populated first page; every `search`
+ * read stays in flight for ever. Models the operator pressing Enter before the
+ * server has answered the term they just typed.
+ */
+function mockFirstPageLoadedAndSearchInFlight() {
+  apiClientGetMock.mockImplementation((_url: unknown, config: unknown) =>
+    hasSearchParam(config)
+      ? new Promise(() => {})
+      : Promise.resolve({ data: { data: [firstPageProduct] } }),
+  )
+}
+
+/**
+ * Fake-timer flush: TanStack's notifyManager batches renders through a
+ * `setTimeout(..., 0)`, so microtask ticks alone never paint a resolved read
+ * while `vi.useFakeTimers()` is installed. Advancing by 0 fires that batch
+ * without touching the 250 ms debounce.
+ */
+async function flushFakeTimerQueries() {
+  await act(async () => {
+    for (let tick = 0; tick < 8; tick += 1) {
+      vi.advanceTimersByTime(0)
+      await Promise.resolve()
+    }
+  })
 }
 
 function setTenant(tenantId: string, companyId: string) {
@@ -104,6 +159,7 @@ describe('LineItemEntryBar', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     resetTenant()
   })
 
@@ -385,5 +441,173 @@ describe('LineItemEntryBar', () => {
       }),
     )
     expect(apiGetMock).toHaveBeenCalledWith('/line-entry/resolve-code', expect.objectContaining({ code: '999' }))
+  })
+
+  it('waits 250 ms and sends exactly the final product search', async () => {
+    vi.useFakeTimers()
+    apiClientGetMock.mockResolvedValue({ data: { data: [] } })
+
+    render(<LineItemEntryBar onAddProduct={vi.fn()} />, { wrapper: wrapper() })
+
+    const input = screen.getByRole('combobox', { name: 'Search or scan a product' })
+
+    await act(async () => {
+      fireEvent.focus(input)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(apiClientGetMock).toHaveBeenCalledWith('/products', { params: { per_page: 20 } })
+    apiClientGetMock.mockClear()
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'a' } })
+      await Promise.resolve()
+    })
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'ab' } })
+      await Promise.resolve()
+    })
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'abc' } })
+      await Promise.resolve()
+    })
+
+    const searchCalls = () => apiClientGetMock.mock.calls.filter(([, config]) => hasSearchParam(config))
+
+    await act(async () => {
+      vi.advanceTimersByTime(249)
+      await Promise.resolve()
+    })
+    expect(searchCalls()).toHaveLength(0)
+
+    await act(async () => {
+      vi.advanceTimersByTime(1)
+      await Promise.resolve()
+    })
+    expect(searchCalls()).toHaveLength(1)
+    expect(searchCalls()[0]?.[1]).toEqual({ params: { per_page: 20, search: 'abc' } })
+  })
+
+  it('resolves a fast-typed code as a scan instead of committing the stale first-page suggestion', async () => {
+    vi.useFakeTimers()
+    const onAddProduct = vi.fn()
+    mockFirstPageLoadedAndSearchInFlight()
+    apiGetMock.mockResolvedValue({
+      kind: 'product',
+      matched_code_type: 'product_barcode',
+      product,
+    })
+
+    render(<LineItemEntryBar onAddProduct={onAddProduct} />, { wrapper: wrapper() })
+
+    const input = screen.getByRole('combobox', { name: 'Search or scan a product' })
+
+    await act(async () => {
+      fireEvent.focus(input)
+      await Promise.resolve()
+    })
+    await flushFakeTimerQueries()
+    // The unfiltered first page is loaded and visible — this is the state the
+    // post-add auto-refocus leaves the bar in during a scan-add-scan loop.
+    expect(screen.getByRole('option', { name: /ADH-1 Adhesif carrosserie/i })).toBeInTheDocument()
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: '6' } })
+      await Promise.resolve()
+    })
+    await act(async () => {
+      fireEvent.change(input, { target: { value: '61' } })
+      await Promise.resolve()
+    })
+    await act(async () => {
+      fireEvent.change(input, { target: { value: '619' } })
+      await Promise.resolve()
+    })
+
+    // Enter INSIDE the debounce window: the suggestion list still belongs to
+    // the empty query, so it must not win the fork.
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' })
+      await Promise.resolve()
+    })
+    await flushFakeTimerQueries()
+
+    expect(apiGetMock).toHaveBeenCalledWith('/line-entry/resolve-code', expect.objectContaining({ code: '619' }))
+    expect(onAddProduct).not.toHaveBeenCalledWith(firstPageProduct, expect.anything())
+    expect(onAddProduct).toHaveBeenCalledWith(product, expect.objectContaining({ source: 'scan' }))
+  })
+
+  it('resolves as a scan when Enter arrives after the debounce but while the search read is in flight', async () => {
+    vi.useFakeTimers()
+    const onAddProduct = vi.fn()
+    mockFirstPageLoadedAndSearchInFlight()
+    apiGetMock.mockResolvedValue({
+      kind: 'product',
+      matched_code_type: 'product_barcode',
+      product,
+    })
+
+    render(<LineItemEntryBar onAddProduct={onAddProduct} />, { wrapper: wrapper() })
+
+    const input = screen.getByRole('combobox', { name: 'Search or scan a product' })
+
+    await act(async () => {
+      fireEvent.focus(input)
+      await Promise.resolve()
+    })
+    await flushFakeTimerQueries()
+    expect(screen.getByRole('option', { name: /ADH-1 Adhesif carrosserie/i })).toBeInTheDocument()
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: '619' } })
+      await Promise.resolve()
+    })
+
+    // 300 ms: the debounce has elapsed, the search request is issued and still
+    // in flight. Previous-page rows must not stand in for the answer.
+    await act(async () => {
+      vi.advanceTimersByTime(300)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(screen.queryByRole('option', { name: /ADH-1 Adhesif carrosserie/i })).not.toBeInTheDocument()
+
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' })
+      await Promise.resolve()
+    })
+    await flushFakeTimerQueries()
+
+    expect(apiGetMock).toHaveBeenCalledWith('/line-entry/resolve-code', expect.objectContaining({ code: '619' }))
+    expect(onAddProduct).not.toHaveBeenCalledWith(firstPageProduct, expect.anything())
+    expect(onAddProduct).toHaveBeenCalledWith(product, expect.objectContaining({ source: 'scan' }))
+  })
+
+  it('never shows or commits the previous company rows while the new company read is in flight', async () => {
+    const user = userEvent.setup()
+    const onAddProduct = vi.fn()
+    apiClientGetMock.mockResolvedValue({ data: { data: [firstPageProduct] } })
+
+    render(<LineItemEntryBar onAddProduct={onAddProduct} />, { wrapper: wrapper() })
+
+    const input = screen.getByRole('combobox', { name: 'Search or scan a product' })
+    await user.click(input)
+    expect(await screen.findByRole('option', { name: /ADH-1 Adhesif carrosserie/i })).toBeInTheDocument()
+
+    // Company-2's read never answers. CompanySelector only invalidates — the
+    // bar stays mounted across the switch, so nothing may survive the key change.
+    apiClientGetMock.mockImplementation(() => new Promise(() => {}))
+    act(() => {
+      useCompanyStore.setState({ currentCompanyId: 'company-2' })
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('option', { name: /ADH-1 Adhesif carrosserie/i })).not.toBeInTheDocument()
+    })
+    expect(screen.getByText('Loading')).toBeInTheDocument()
+
+    await user.keyboard('{Enter}')
+    expect(onAddProduct).not.toHaveBeenCalled()
   })
 })
