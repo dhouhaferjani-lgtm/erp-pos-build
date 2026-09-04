@@ -140,3 +140,159 @@ Not just the totals — the **rule multiset is byte-identical** on the component
 - **Host `useMemo` on `prefill`** is still not done and, per the r3 item-2 ruling, is **not** the cure. It remains a legitimate small hygiene follow-up (it would stop useless re-renders), never to be recorded as fixing the double-payment path.
 - **NB-8 (gate r2, pre-existing)** stands untouched: `notes` is typed by the operator but never sent in the POST body (`RecordPaymentModal.tsx:377-390`). This lane now *preserves* those notes across a re-render — they are still silently discarded on submit. Own lane.
 - **Server-side request fingerprint** (Phase B convergence item, treasury gate §4): same key + different body still returns the original payment with HTTP 200 and no warning. The web-side intent scoping remains the only protection.
+
+---
+
+# Fix round 1 — gate r1 BLOCKER-1 (+ NB-1)
+
+- Date: 2026-09-04
+- Gate consumed: `docs/superpowers/reviews/2026-09-04-request-hygiene-t12b-gate-treasury.md` (treasury + frontend-conventions, **spec ✅ + quality CHANGES-REQUESTED**, 1 blocker)
+- Commit: `5a7557180` (fix + tests + locales), plus the doc-only commit carrying this section.
+- Scope unchanged: **WEB ONLY**, inside web only `RecordPaymentModal` + its test + the three `treasury.json` locales. No host page, no `routes/index.tsx`, no `apps/api` file.
+
+## 1. BLOCKER-1 — a `prefill` swap to a DIFFERENT document posted the operator's stale line against it
+
+**Cure (as mandated, inside the modal).** The single open-transition effect now keys on the
+**intent identity** as well as the open flag
+(`apps/web/src/components/organisms/RecordPaymentModal/RecordPaymentModal.tsx:195-204`):
+
+```ts
+const lastIntentRef = useRef<string | null>(null)          // :151
+…
+if (!isOpen) { wasOpenRef.current = false; lastIntentRef.current = null; return }
+const intent = `${prefill.partner_id}|${prefill.document_id}`
+if (wasOpenRef.current && lastIntentRef.current === intent) return
+wasOpenRef.current = true
+lastIntentRef.current = intent
+```
+
+- **Same document, new `prefill` object** (a reconnect refetch moving only `amount`/`reference`) →
+  body is a no-op: lines, notes, date and the idempotency key all survive. The T12b cure is intact.
+- **Different `document_id` (or `partner_id`) while open** → a new intent by definition: the form
+  re-seeds (`notes` re-derived from the NEW reference) and `resetIdempotencyKey()` rotates the key,
+  so document A's committed batch can never be replayed under document B's submit.
+
+`partner_id` is folded into the key alongside `document_id` because the POST body reads **both** at
+submit time (`:379-388`); either moving is a different money destination.
+
+**Deviation from the gate's suggested snippet:** the gate proposed `intentDocRef` holding
+`prefill.document_id`. The shipped ref holds `` `${partner_id}|${document_id}` `` — strictly wider,
+same shape, closes the partner half of the same hole. Named `lastIntentRef` because it is the intent,
+not the document.
+
+**Follow-up recorded, NOT done (host files, out of this lane's scope):** wrap the two `orders/:id`
+routes — sales-orders `apps/web/src/routes/index.tsx:699-706` and purchase-orders `:948-955` — in
+`KeyedByRouteId`, as invoices already are (`:739-750`), so the whole carry-over class is closed
+structurally on all three hosts. The modal-side guard above is the money fix; the route wrapper is
+the structural one and is still owed.
+
+### RED first
+
+New test `resets the form and rotates the key when prefill switches to a DIFFERENT document while
+the modal stays open` (`__tests__/idempotencyKeyLifecycle.test.tsx:471-536`), written before the
+component changed:
+
+```
+ × RecordPaymentModal prefill identity does not wipe in-progress entry >
+   resets the form and rotates the key when prefill switches to a DIFFERENT document while the modal stays open
+   → expect(element).not.toBeInTheDocument()   (the doc-A confirmed badge was still rendered)
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 12 passed (13)
+```
+
+It reproduces the gate's measured scenario end to end: confirm 400 on `doc-1`/`partner-1`, the
+response is lost (`mockApiPost.mockRejectedValueOnce`), then re-render with
+`{document_id: 'doc-2', partner_id: 'partner-2', reference: 'INV-2', amount: 50}` and assert
+
+- the confirmed badge is gone, the amount input is empty, `notes` re-seeded to `Payment for invoice INV-2`;
+- the **Record button is disabled** (`confirmedCount === 0`) — the gate's `RECORD_DISABLED` probe;
+- after re-entering 50 and pressing Record, the POST carries `document_id: 'doc-2'`,
+  `partner_id: 'partner-2'` and **exactly one line of `50`** — doc-A's 400 line can never reach the
+  server — and `postedIdempotencyKey(1) !== postedIdempotencyKey(0)`, i.e. no replay of the batch
+  that may already have committed against doc-A.
+
+The inverse half of the pair is the pre-existing test `keeps the in-progress line and shows the NEW
+outstanding amount when prefill.amount changes mid-entry` (`:433-469`), which now also wraps the
+re-render in an `installUuidRecorder()` window and asserts `toHaveLength(0)` — proof the fix did not
+over-reach into "any prefill change resets".
+
+### Falsification (the mandated one, restored)
+
+Removing only the document-id half of the guard —
+`if (wasOpenRef.current && lastIntentRef.current === intent)` → `if (wasOpenRef.current)`:
+
+```
+ × … resets the form and rotates the key when prefill switches to a DIFFERENT document …
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 12 passed (13)
+```
+
+Exactly the new test, and only it. Restored from a byte copy; `git status --porcelain` clean.
+
+## 2. NB-1 — "may already have been recorded" banner (DONE, 9 lines + 3 locale keys)
+
+`RecordPaymentModal.tsx:908-918`: when `mutation.isError && confirmedCount > 0 && balanceDue === 0`
+an inline info banner (`colorTokens.intent.info`) renders
+`t('treasury:unifiedPayment.possiblyRecorded')` above the raw error banner —
+*"This payment may already have been recorded — the outstanding is now zero. Press Record without
+changing anything to confirm; editing the amount would create a second payment."*
+Keys added to `src/locales/{en,fr,ar}/treasury.json`.
+
+**Deviation from the NB-1 wording:** the gate suggested gating on `hadFailedAttemptRef.current`.
+That is a ref and reading it during render is both non-reactive (the banner would appear only on an
+unrelated re-render) and a `react-hooks/immutability` smell. `mutation.isError` is the reactive
+state carrying the same fact — true from the failed attempt until the next `mutate()` — so the
+banner is driven off it. The gate's optional second half (disabling the amount inputs) was **not**
+done: it exceeds "a banner", and disabling inputs after an error can trap an operator whose failure
+was genuine (validation, offline) with no way to correct the entry. Recorded as a deliberate skip.
+
+Covered by `warns that the payment may already have been recorded when the outstanding drops to 0
+after a failed attempt` (`:538-565`), red first
+(`→ Unable to find an element with the text: treasury:unifiedPayment.possiblyRecorded`), which also
+asserts the banner is **absent** before the refetch, so it cannot degrade into an always-on warning.
+
+## 3. Verification (fix round 1)
+
+```
+$ cd apps/web && npx vitest run src/components/organisms/RecordPaymentModal \
+    src/features/documents/invoices src/features/documents/sales-orders \
+    src/features/documents/purchase-orders
+ Test Files  11 passed (11)
+      Tests  109 passed (109)          # 107 at gate r1 + 2 new
+   Duration  5.33s
+
+$ npx tsc --noEmit ; echo TYPECHECK_EXIT=$?
+TYPECHECK_EXIT=0
+
+$ pnpm audit:i18n:local | grep -i treasury      => (empty, treasury clean)
+   The audit's non-zero exit is the PRE-EXISTING `ar|uom|*` / `ar|import|*` baseline —
+   byte-identical output with the three treasury.json files restored to base, so this
+   lane neither adds nor clears an entry there.
+
+$ # eslint, per file, base 0187a56d1 (git show > sibling in the same directory), removed after
+  RecordPaymentModal.tsx                    BASE E0 W25  |  HEAD E0 W25   rule multiset identical
+  __tests__/idempotencyKeyLifecycle.test.tsx BASE E0 W0  |  HEAD E0 W0
+  (multiset: array-type ×2, no-misused-promises ×1, no-unnecessary-template-expression ×11,
+   restrict-template-expressions ×1, precision/no-parsefloat-on-money ×6,
+   react-hooks/exhaustive-deps ×3, react-hooks/immutability ×1 — both sides)
+
+$ npx react-doctor <file>, base vs HEAD  =>  identical profile (score 87, w=17, f=1)
+   The pre-commit "staged regressions" notice is the same pre-existing
+   `no-adjust-state-on-prop-change` class flagged in §3e above, now on changed lines.
+
+$ ps aux | grep -c '[v]itest'   => 0
+$ git status --porcelain        => clean
+```
+
+## 4. Still owed after this round
+
+- **`KeyedByRouteId` on the two `orders/:id` routes** (`routes/index.tsx:699-706`, `:948-955`) —
+  host-file follow-up, recorded above.
+- **Browser leg (gate NB-5)** undischarged: open payment → submit → drop the response → let the
+  reconnect refetch fire → press Record untouched → exactly ONE `payments` row and ONE treasury
+  movement, on a real tenant. Worth adding a second leg now: swap the route param to another order
+  with the modal open and confirm the form re-seeds.
+- Unchanged from the first handback: host `useMemo` on `prefill` (hygiene, never the cure), NB-4
+  (`notes` never sent in the POST body, pre-existing), and the Phase-B server-side request
+  fingerprint.
