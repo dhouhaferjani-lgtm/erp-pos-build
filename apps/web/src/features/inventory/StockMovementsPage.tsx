@@ -9,7 +9,7 @@ import { cn } from '../../lib/utils'
 import { tokens, textColors, borderColors } from '../../lib/designTokens'
 import { bccomp, formatQuantity } from '../../lib/decimal'
 import { getQuantityDecimals } from '../../lib/quantityScale'
-import { locationScopedKey } from '../../lib/locationScopedKey'
+import { locationScopedKey, normalizeViewScope } from '../../lib/locationScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { usePermissions } from '../../hooks/usePermissions'
@@ -32,7 +32,13 @@ import {
   stockMovementsInvalidationPredicate,
 } from './_invalidation'
 
-interface StockMovement {
+/**
+ * A `GET /api/v1/stock-movements` row, exactly as the controller emits it.
+ * EXPORTED so tests bind their fixtures to this shape instead of re-declaring a
+ * narrower copy — a fixture missing a field the page reads is how a green suite
+ * hides a runtime break (gate r2, N7).
+ */
+export interface StockMovement {
   id: string
   product_id: string
   product_name: string
@@ -60,7 +66,8 @@ interface StockMovement {
   created_at: string
 }
 
-interface StockMovementsResponse {
+/** The endpoint's unconditionally paginated envelope. Exported with {@link StockMovement}. */
+export interface StockMovementsResponse {
   data: StockMovement[]
   meta: OffsetPaginationMeta
 }
@@ -143,7 +150,10 @@ export function StockMovementsPage() {
   // render (React's documented derived-state pattern) rather than in an effect,
   // so the reset happens before the query key is read — an effect would let one
   // request for the stale page escape first.
-  const filterSignature = JSON.stringify([searchQuery, movementFilter, scope])
+  // `scope` is normalised through the SAME helper the query key uses, so a
+  // permuted-but-equal location selection cannot reset the offset without the
+  // query key changing (gate r1, N2).
+  const filterSignature = JSON.stringify([searchQuery, movementFilter, normalizeViewScope(scope)])
   const [appliedFilterSignature, setAppliedFilterSignature] = useState(filterSignature)
   if (appliedFilterSignature !== filterSignature) {
     setAppliedFilterSignature(filterSignature)

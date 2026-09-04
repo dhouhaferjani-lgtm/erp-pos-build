@@ -445,8 +445,7 @@ GET /api/v1/stock-movements
 > `POST /api/v1/stock-movements/{receive,issue,transfer,adjust}` no longer exist.
 > They wrote unjustified signed stock deltas — no `reason`, no document — and
 > `adjust` took an ABSOLUTE `new_quantity` that silently overwrote anything
-> committed between the browser read and the POST. `GET /api/v1/stock-movements`
-> is unchanged. Replacements:
+> committed between the browser read and the POST. Replacements:
 >
 > | Removed | Use instead |
 > |---|---|
@@ -454,6 +453,19 @@ GET /api/v1/stock-movements
 > | `POST /stock-movements/issue` | the delivery note when partner-bound, `POST /batches/{uuid}/write-off` when lot-identified; otherwise a negative `stock_adjustments` line |
 > | `POST /stock-movements/transfer` | `POST /stock-transfers` |
 > | `POST /stock-movements/adjust` | `POST /stock-adjustments` |
+
+**`GET /api/v1/stock-movements` is now unconditionally paginated** (request-hygiene
+S-2) — it no longer returns an unbounded array:
+
+- `page` (default `1`) and `per_page` (default `25`, max `100`).
+- The response always carries the six-field meta envelope:
+  `{ data: [...], meta: { current_page, last_page, per_page, total, from, to } }`.
+- `search` is resolved SERVER-side (product name / SKU / reference), so a client
+  must not filter a page it has already received.
+- Filters: `movement_type` accepts `transfer` as an alias matching both
+  `transfer_in` and `transfer_out`; `reason=write_off` matches every write-off
+  reason (`write_off`, `expiry`, `damage`) across movement types.
+- Ordering is fixed and deterministic: `created_at DESC, id DESC`.
 
 ### Stock Adjustments
 

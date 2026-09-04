@@ -175,9 +175,6 @@ beforeEach(() => {
     if (url.startsWith('/stock-levels')) {
       return { data: { data: [], meta: { total: 0 } } }
     }
-    if (url.startsWith('/stock-movements')) {
-      return { data: { data: [] } }
-    }
     if (url.startsWith('/documents')) {
       return { data: { data: [] } }
     }

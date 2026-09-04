@@ -11,7 +11,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { StockMovementsPage } from './StockMovementsPage'
+import { StockMovementsPage, type StockMovement } from './StockMovementsPage'
 
 // ── Permissions ─────────────────────────────────────────────────────────────
 const mockHasPermission = vi.fn<(p: string) => boolean>()
@@ -93,26 +93,9 @@ const capturedCallbacks: {
 const mockMutate = vi.fn()
 const mockInvalidateQueries = vi.fn()
 
-interface StockMovement {
-  id: string
-  product_id: string
-  product_name: string
-  location_id: string
-  location_name: string
-  movement_type: string
-  reason: string | null
-  quantity: string
-  quantity_before: string
-  quantity_after: string
-  reference: string
-  notes: string | null
-  user_id: string
-  user_name: string | null
-  reverses_movement_id: string | null
-  is_reversed: boolean
-  created_at: string
-}
-
+// Fixtures are typed by the page's own exported row type (gate r2, N7). The old
+// local copy omitted `quantity_decimals`, so getQuantityDecimals() ran on
+// undefined here while the suite stayed green.
 function makeMovement(overrides: Partial<StockMovement>): StockMovement {
   return {
     id: 'id-1',
@@ -123,9 +106,13 @@ function makeMovement(overrides: Partial<StockMovement>): StockMovement {
     movement_type: 'issue',
     reason: null,
     quantity: '-5.0000',
+    quantity_decimals: 3,
     quantity_before: '10.0000',
     quantity_after: '5.0000',
     reference: 'REF-001',
+    reference_type: null,
+    source_document_id: null,
+    source_document_type: null,
     notes: null,
     user_id: 'u-1',
     user_name: 'Alice',

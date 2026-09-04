@@ -1,6 +1,6 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { StockMovementsPage } from './StockMovementsPage'
+import { StockMovementsPage, type StockMovement, type StockMovementsResponse } from './StockMovementsPage'
 
 interface CapturedQuery {
   queryFn: () => Promise<unknown>
@@ -12,6 +12,7 @@ const queryCapture = vi.hoisted(() => ({ current: null as CapturedQuery | null }
 beforeEach(() => {
   apiGetMock.mockReset()
   queryCapture.current = null
+  scopeRef.current = 'all'
 })
 
 vi.mock('../../lib/api', async () => {
@@ -32,6 +33,20 @@ vi.mock('react-router-dom', () => ({
   ),
 }))
 
+// The view scope is a store value the page cannot see change through a handler,
+// so drive it directly. `effectiveLocationIds` stays empty on purpose: these
+// tests pin the URL exactly, and the scope only reaches the request through the
+// query key and the filter signature.
+const scopeRef = vi.hoisted(() => ({ current: 'all' as 'all' | string[] }))
+vi.mock('../locations/hooks/useViewScope', () => ({
+  useViewScope: () => ({
+    scope: scopeRef.current,
+    effectiveLocationIds: [] as string[],
+    isAll: scopeRef.current === 'all',
+    setScope: vi.fn(),
+  }),
+}))
+
 vi.mock('../../hooks/useLocation', () => ({ useLocation: () => ({ currentLocationId: null }) }))
 vi.mock('../locations/LocationSelector', () => ({ LocationSelector: () => <div data-testid="location-selector" /> }))
 
@@ -49,24 +64,8 @@ vi.mock('../../stores/authStore', () => {
   return { useAuthStore }
 })
 
-interface StockMovement {
-  id: string
-  product_id: string
-  product_name: string
-  location_id: string
-  location_name: string
-  movement_type: string
-  quantity: string
-  quantity_decimals: number
-  quantity_before: string
-  quantity_after: string
-  reference: string
-  notes: string | null
-  user_id: string
-  user_name: string | null
-  created_at: string
-}
-
+// Fixtures are typed by the page's own exported row type (gate r2, N7): a field
+// the page reads can no longer be missing from a fixture without a type error.
 function makeMovement(overrides: Partial<StockMovement>): StockMovement {
   return {
     id: 'id',
@@ -75,28 +74,22 @@ function makeMovement(overrides: Partial<StockMovement>): StockMovement {
     location_id: 'loc-1',
     location_name: 'Main',
     movement_type: 'receipt',
+    reason: null,
     quantity: '5.0000',
     quantity_decimals: 3,
     quantity_before: '0.0000',
     quantity_after: '5.0000',
     reference: 'REF-0',
+    reference_type: null,
+    source_document_id: null,
+    source_document_type: null,
     notes: null,
     user_id: 'u-1',
     user_name: 'Alice',
+    reverses_movement_id: null,
+    is_reversed: false,
     created_at: '2026-06-14T10:00:00Z',
     ...overrides,
-  }
-}
-
-interface StockMovementsResponse {
-  data: StockMovement[]
-  meta: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-    from: number | null
-    to: number | null
   }
 }
 
@@ -219,5 +212,41 @@ describe('StockMovementsPage (canonical list)', () => {
     const url = await urlForTab('movements.filters.writeOffs')
     expect(url).toContain('reason=write_off')
     expect(url).not.toContain('movement_type=')
+  })
+
+  // The render-phase offset reset keys off a signature of the server-side
+  // filters. `scope` must be normalised there exactly as `locationScopedKey`
+  // normalises it (sorted), or a permuted-but-equal selection throws the user
+  // back to page 1 while the query key — and therefore the data — is unchanged
+  // (gate r1, N2).
+  it('keeps the current page when the view scope is permuted into the same set', async () => {
+    apiGetMock.mockResolvedValue({ data: mockReturn.data })
+    scopeRef.current = ['loc-b', 'loc-a']
+    const { rerender } = render(<StockMovementsPage />)
+
+    const firstQuery = queryCapture.current
+    fireEvent.click(screen.getByRole('button', { name: 'pagination.next' }))
+    await waitFor(() => { expect(queryCapture.current).not.toBe(firstQuery) })
+    const pagedQuery = queryCapture.current
+    if (pagedQuery === null) throw new Error('Page 2 did not register its query')
+    await pagedQuery.queryFn()
+    expect(apiGetMock).toHaveBeenLastCalledWith('/stock-movements?page=2&per_page=25')
+
+    // Same set, different order → no reset.
+    scopeRef.current = ['loc-a', 'loc-b']
+    rerender(<StockMovementsPage />)
+    const permutedQuery = queryCapture.current
+    if (permutedQuery === null) throw new Error('Permuted scope did not register a query')
+    await permutedQuery.queryFn()
+    expect(apiGetMock).toHaveBeenLastCalledWith('/stock-movements?page=2&per_page=25')
+
+    // A genuinely different set still resets — the guard above is a
+    // normalisation, not a disabled reset.
+    scopeRef.current = ['loc-c']
+    rerender(<StockMovementsPage />)
+    const changedQuery = queryCapture.current
+    if (changedQuery === null) throw new Error('Changed scope did not register a query')
+    await changedQuery.queryFn()
+    expect(apiGetMock).toHaveBeenLastCalledWith('/stock-movements?page=1&per_page=25')
   })
 })
