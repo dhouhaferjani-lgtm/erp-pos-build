@@ -230,3 +230,101 @@ Gates: **frontend-conventions-reviewer** (all four files) and **fiscal-pos-revie
 |---|---|
 | `b58229472` | `fix(web request-hygiene): never render previous-company placeholder data on tenant-scoped reads` — 7 files changed, 583 insertions(+), 18 deletions(-) |
 | (this file) | `docs(request-hygiene): placeholder-data handback` |
+
+---
+
+## 9. Fix round 1 — gate r1 (2026-09-04)
+
+Both gates returned **MERGE-WITH-FOLLOW-UPS**, **no blockers**, and both independently re-ran the verification and falsified the tests themselves (the FE gate additionally falsified in the *over-broad* direction — `return … || isPlaceholderData` fails exactly the 2 paging positive-controls, so the tests are non-vacuous both ways).
+
+Everything below was fixed in commit `90c4c424a`. Scope stayed web-only; `apps/api` untouched.
+
+### 9.1 What changed
+
+| Finding | Gate | File | Fix |
+|---|---|---|---|
+| **MAJOR-1** location dimension unguarded | FE | `hooks/usePlaceholderScopeGuard.ts`, `features/inventory/StockMovementsPage.tsx` | The guard takes a third argument `additionalScope: readonly unknown[]`, folded into the signature. StockMovementsPage passes `[normalizeViewScope(scope)]`. This also answers **MINOR-2** (the name over-promising): "scope" is now explicitly tenant + company **plus whatever the caller declares**, and the docblock says which key segments belong there (dimensions where showing another value's data is *wrong*) and which do not (page/offset/sort — the reason `keepPreviousData` exists). |
+| **MAJOR-2** no detector | FE | `tools/audit-tanstack-keys.mjs`, `tools/__tests__/audit-tanstack-keys.test.mjs`, `docs/conventions/05-REACT-QUERY.md` | Gate C now fails on `placeholderData` over a `tenantScopedKey`/`locationScopedKey` read in a file that does not use `usePlaceholderScopeGuard`. Pairing is per-file — the granularity a reviewer can check at a glance. 6 new scanner unit tests. Conventions doc gains a full section plus a checklist line. |
+| **MAJOR-3** offset survives a scope change | FE | `features/treasury/PaymentListPage.tsx:89`, `features/inventory/StockMovementsPage.tsx:157` | `filterSignature` now carries `tenantId, companyId`, so the existing render-phase offset reset fires on a switch. |
+| **MAJOR** (fiscal-pos) / **MINOR-4** (FE) discount block unmounts | both | `features/pos/organisms/TransactionCart/TransactionCart.tsx`, `features/pos/pages/POSPage/POSPage.tsx` | New `isDiscountPreviewLoading` prop holds the applied-discounts block with an `aria-busy`/`aria-live` skeleton instead of unmounting it. POSPage feeds it `discountPreview.isLoading` — a value the hook already returned and **nothing consumed**. |
+| **MINOR-1** no unit test for the primitive | FE | `hooks/__tests__/usePlaceholderScopeGuard.test.tsx` (new) | 6 cases, listed in §9.3. |
+| **MINOR-3** comment claims coverage the test does not establish | FE | `StockMovementsPage.tsx:198-200`, its suite | The suite now grants `batches.write-off` instead of denying it, so the action column actually renders; the comment is trimmed from "the reverse-write-off action would target them" to "their action column would offer a reverse-write-off against them". |
+| **MINOR-6** test mock asymmetry | FE | `PaymentListPage.companyScope.test.tsx` | Aligned on `importActual` + spread. |
+
+**Accepted, not fixed:** **MINOR-5** / fiscal-pos MINOR-2 (`parseFloat` on `discount_amount` at `useDiscountPreview.ts:120` and `TransactionCart.tsx:321,328`) — pre-existing `precision/no-parsefloat-on-money` warnings outside this diff; fixing them is a precision-contract lane, not a request-hygiene one. And fiscal-pos MINOR-3 (POSPage never resets the cart on a company switch, so company-1 lines are still previewed under company-2 rules) — a genuine defect, but in cart lifecycle, not placeholder scope; recorded in §10.
+
+### 9.2 The invariant the unit test surfaced
+
+Writing MINOR-1's test exposed that the guard depends on `useQuery` reporting the placeholder in the **same render** that changes the key. It does — TanStack takes the placeholder branch only when `data === undefined` for the current key (`queryObserver.js:266`), so a render can never show settled data sitting under a scope it was not fetched for, which is exactly what makes `!isPlaceholderData && hasData` safe to treat as proof of scope. The first draft of the test violated this by changing the store and the props in two separate commits — an impossible state — and the guard duly mis-stamped. The invariant is now written on the hook, and the test harness batches the store update with the prop change in one `act` to model reality. The FE gate reached the same conclusion independently from the library source.
+
+### 9.3 Evidence
+
+**RED before each fix** (`pnpm vitest run src/features/inventory/StockMovementsPage.companyScope.test.tsx src/features/treasury/PaymentListPage.companyScope.test.tsx`):
+
+```
+   × StockMovementsPage … renders no location-one movement while location two is still loading
+   × StockMovementsPage … restarts traversal at page one when the company changes, without requesting the stale offset
+   × PaymentListPage    … restarts traversal at page one when the company changes, without requesting the stale offset
+ Tests  3 failed | 6 passed (9)
+```
+
+TransactionCart (`× holds the block with a busy placeholder while a preview is in flight`, 1 failed | 15 passed) and the scanner (`3 failed | 51 passed`) were red the same way before their fixes.
+
+**Detector falsified against the real tree** — renaming the guard's identifier in `PaymentListPage.tsx` and re-running `pnpm audit:keys`:
+
+```
+[sweep-progress] Gate C — … : 1
+  src/features/treasury/PaymentListPage.tsx:124:5 useQuery({ queryKey: tenantScopedKey([...]), placeholderData })
+  renders the PREVIOUS tenant/company payload after a scope switch: … Gate the rows on
+  usePlaceholderScopeGuard(isPlaceholderData, data !== undefined), or drop placeholderData when
+  there is no same-scope win to keep. (factory=useQuery, symbol=PaymentListPage, …)
+```
+
+Restored → back to 0. So the detector is live on real code, not only on scanner fixtures.
+
+**One test bug caught by the falsification loop:** the offset assertions first used `expect.stringContaining('page=2')`, which the URL `…&per_page=25` satisfies as a substring — the negative assertion failed for the wrong reason. Anchored to `expect.stringMatching(/[?&]page=2&/)`, with a comment saying why.
+
+**GREEN:**
+
+```
+$ pnpm vitest run src/features/treasury src/features/inventory src/hooks src/features/pos tools/__tests__
+ Test Files  170 passed (170)
+      Tests  1345 passed (1345)
+
+$ pnpm typecheck        →  tsc --noEmit, no output, exit 0
+$ pnpm audit:keys       →  Gate C: 0 violations, 0 new, 0 stale
+$ pnpm vitest run tools/__tests__/audit-tanstack-keys.test.mjs
+      Tests  54 passed (54)     (48 pre-existing + 6 new)
+```
+
+New-test tally for the lane: 8 (round 0) → **20** — 5 payments, 6 stock movements, 2 POS preview, 6 guard unit, 3 TransactionCart, 6 scanner (the scanner ones are in `tools/`).
+
+**eslint — before vs after, all 11 touched files, measured in place** (`git show 9c28b430a:<path> > <path>`, lint, restore):
+
+| Group | Before | After |
+|---|---|---|
+| `TransactionCart.tsx` + `POSPage.tsx` | 13 warnings | **13 — per-rule counts byte-identical** (compared as JSON, `diff` → IDENTICAL) |
+| `PaymentListPage.tsx` + `StockMovementsPage.tsx` + `useDiscountPreview.ts` | 7 warnings | 7 — same rules, line shifts only |
+| `TransactionCart.test.tsx` | 1 warning (`203:18 no-unsafe-type-assertion`, `container.firstChild as HTMLElement`) | 1 — **the identical pre-existing line**, verified by linting the base version of that file in place |
+| new files (guard, guard test, 3 scope tests, scanner test) | — | 0 |
+
+**0 errors, 0 new warnings** across the whole lane.
+
+`pnpm --filter @autoerp/web lint` remains red on `audit:design-system` and `audit:i18n:local` — the FE gate proved this is **identical on base** (`git archive 9c28b430a` → byte-identical `810/796/14/11`, all 14 new + 11 stale in `ImportWizardPage.tsx`, untouched here). Record this lane as **"lint no-worse-than-base"**, not "lint green".
+
+### 9.4 Commits added this round
+
+| Hash | Subject |
+|---|---|
+| `90c4c424a` | `fix(web request-hygiene): gate every scope dimension, reset the offset on a switch, and detect unpaired placeholderData` — 12 files, +560 / −23 |
+| (this file) | `docs(request-hygiene): gate r1 fold into the placeholder-data handback` |
+
+---
+
+## 10. Open residuals after fix round 1
+
+1. **POSPage never resets the cart on a company switch** (fiscal-pos MINOR-3) — the only `setCartItems([])` is the manual Clear Cart button at `POSPage.tsx:448`. The *preview* is now scope-correct, but the cart it previews is not: company-1 lines are still POSTed and priced under company-2's rules. Pre-existing, separate lane. Mitigating fact verified here: `POSPage` has **zero references outside `features/pos`** — it is not routed in `src/routes/`, and `apps/pos/src` has no `previewDiscounts`, so today's blast radius is nil.
+2. **`parseFloat` on money** at `useDiscountPreview.ts:120` and `TransactionCart.tsx:321,328` — pre-existing `precision/no-parsefloat-on-money` warnings; `totalSavings` is exactly the value this lane is about, so it is a natural pickup for a precision lane.
+3. **The plan text is still stale** — `docs/superpowers/plans/2026-09-03-request-hygiene-phase-a.md:1657,1742` prescribe `placeholderData` on tenant-scoped keys. The new Gate C rule now catches a lane that follows them literally, but the plan should be revised so it does not send anyone down that path in the first place.
+4. **Browser checks still owed at promotion** — the three surfaces from §7.3, plus (new this round) confirm on a company switch from page 2+ that the list lands on page 1 rather than an empty page 2, that a location switch on stock movements blanks the table, and that the POS applied-discounts row shows the skeleton rather than vanishing while a preview is in flight.
+5. **`react-doctor` pre-existing warning** at `StockMovementsPage.tsx` `formatDate` — untouched code, whole-file scan artefact.
