@@ -124,15 +124,39 @@ function installUuidRecorder(): { minted: string[]; restore: () => void } {
   return { minted, restore: () => { spy.mockRestore() } }
 }
 
+function lookupPayload(url: string): { data: { data: unknown[] } } {
+  if (url === '/payment-methods') {
+    return { data: { data: [{ id: 'method-1', code: 'CASH', name: 'Cash', is_physical: false, has_maturity: false }] } }
+  }
+  if (url === '/payment-repositories') {
+    return { data: { data: [{ id: 'repo-1', code: 'CASH', name: 'Cash Register', type: 'cash_register' }] } }
+  }
+  return { data: { data: [] } }
+}
+
 function mockLookupResponses() {
-  mockApiGet.mockImplementation((url: string) => {
-    if (url === '/payment-methods') {
-      return Promise.resolve({ data: { data: [{ id: 'method-1', code: 'CASH', name: 'Cash', is_physical: false, has_maturity: false }] } })
-    }
-    if (url === '/payment-repositories') {
-      return Promise.resolve({ data: { data: [{ id: 'repo-1', code: 'CASH', name: 'Cash Register', type: 'cash_register' }] } })
-    }
-    return Promise.resolve({ data: { data: [] } })
+  mockApiGet.mockImplementation((url: string) => Promise.resolve(lookupPayload(url)))
+}
+
+/**
+ * Same payloads, but resolved on a MACROTASK — i.e. with the latency a real
+ * HTTP refetch has. `onSuccess` awaits `Promise.all([...invalidateQueries])`,
+ * and the modal's own `open-invoices` query (`RecordPaymentModal.tsx:259-266`)
+ * matches one of those predicates, so the awaited window is exactly as long as
+ * this delay. The default microtask mocks close that window before React can
+ * flush a render, which is what hides the `isError` guard from every other test
+ * in this file.
+ */
+function mockLookupResponsesWithLatency(delayMs: number) {
+  mockApiGet.mockImplementation((url: string) => new Promise<{ data: { data: unknown[] } }>((resolve) => {
+    setTimeout(() => { resolve(lookupPayload(url)) }, delayMs)
+  }))
+}
+
+/** Let real timers and React's passive effects run for `ms`. */
+async function settleFor(ms: number) {
+  await act(async () => {
+    await new Promise<void>((resolve) => { setTimeout(resolve, ms) })
   })
 }
 
@@ -716,5 +740,69 @@ describe('RecordPaymentModal prefill identity does not wipe in-progress entry', 
 
     expect(screen.getByText('treasury:unifiedPayment.possiblyRecorded')).toBeInTheDocument()
     expect(screen.getByText('network error')).toBeInTheDocument()
+  })
+
+  it('keeps later submits working after a successful submit (reset only on error — a bare mutation.reset() on rotation would drop onSettled and wedge submitLockRef)', async () => {
+    // Gate B1. The `if (mutation.isError)` guard on the rotation reset
+    // (`RecordPaymentModal.tsx:456`) is load-bearing, and nothing else in this
+    // suite reds when it is dropped. Mechanism, in @tanstack/query-core:
+    //  - `Mutation.execute()` awaits `options.onSuccess(...)` BEFORE dispatching
+    //    the success action, and `onSuccess` here rotates the key as its FIRST
+    //    statement (`:406`) and only THEN awaits
+    //    `Promise.all([...invalidateQueries])` (`:407-422`). The whole await
+    //    window therefore runs while the mutation is still `pending` and the
+    //    per-`mutate` `onSettled` has not fired.
+    //  - `MutationObserver.reset()` does `removeObserver(this)`, and the
+    //    per-`mutate` `onSuccess`/`onError`/`onSettled` are only invoked through
+    //    `#notify()` while the observer is still attached.
+    // So an UNGUARDED `mutation.reset()` on that rotation DROPS the `onSettled`
+    // that releases `submitLockRef` (`:469-472`): `handleSubmit` early-returns
+    // forever after, and every later submit from the same mounted modal is
+    // silently swallowed while the operator sees the success panel.
+    //
+    // The window only exists at production latency: the file's default mocks
+    // resolve the invalidation refetches on a MICROTASK, so React never flushes
+    // the rotation's render + passive effect before the success dispatch and the
+    // probe passes either way. Here they resolve on a MACROTASK.
+    mockLookupResponsesWithLatency(20)
+    mockApiPost.mockResolvedValue({
+      payments: [{ id: 'payment-1', payment_number: 'PAY-1', amount: '400.00' }],
+      document: { id: 'doc-1', document_number: 'INV-1', balance_due: '600.00', status: 'partially_paid' },
+      excess_handling: { excess_amount: '0.00', allocation_method: 'advance', allocations: [] },
+    })
+
+    const onClose = vi.fn()
+    const { rerender } = render(
+      <RecordPaymentModal isOpen onClose={onClose} prefill={makePrefill()} />,
+      { wrapper: wrapper(createClient()) },
+    )
+
+    await confirmLineAndRecord('400')
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+
+    // The awaited invalidation refetches are still in flight: give React the
+    // whole window so the rotation commits while the mutation is pending.
+    await settleFor(80)
+    expect(await screen.findByText('treasury:payments.recordedSuccess')).toBeInTheDocument()
+
+    // Close and reopen the STILL-MOUNTED modal (the hosts gate on partner_id, so
+    // closing only flips isOpen) — a second, unrelated payment intent.
+    await act(async () => {
+      rerender(<RecordPaymentModal isOpen={false} onClose={onClose} prefill={makePrefill()} />)
+      await Promise.resolve()
+    })
+    await act(async () => {
+      rerender(<RecordPaymentModal isOpen onClose={onClose} prefill={makePrefill()} />)
+      await Promise.resolve()
+    })
+
+    // The money assertion: the second submit must actually POST. With a bare
+    // reset() this waitFor reds with "expected 2 times, but got 1 times".
+    await confirmLineAndRecord('200')
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(2) })
+    expect(postedIdempotencyKey(1)).not.toBe(postedIdempotencyKey(0))
+
+    // Drain the second submit's own invalidation window inside act().
+    await settleFor(80)
   })
 })
