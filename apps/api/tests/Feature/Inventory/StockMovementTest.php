@@ -702,4 +702,77 @@ class StockMovementTest extends TestCase
             'relation' => 'product',
         ]);
     }
+
+    /**
+     * Request hygiene Task 10b — the guard DEDUPES per process: the same
+     * (model, relation) pair logs exactly once no matter how many rows trip
+     * it, so one N+1 over a 1000-row page is one warning line, not 1000.
+     */
+    public function test_repeated_lazy_load_of_same_pair_logs_only_once(): void
+    {
+        $this->seedTwoMovements();
+        Log::spy();
+
+        // Two DISTINCT hydrated instances, same (model, relation) pair: the
+        // per-instance relation cache cannot be what suppresses the second
+        // log line — only the process-level dedupe can.
+        $movements = StockMovement::query()->orderBy('created_at')->get();
+        self::assertCount(2, $movements);
+
+        foreach ($movements as $movement) {
+            self::assertFalse($movement->relationLoaded('product'));
+            self::assertSame($this->product->name, $movement->product->name);
+        }
+
+        Log::shouldHaveReceived('warning')->once()->with('lazy-load', [
+            'model' => StockMovement::class,
+            'relation' => 'product',
+        ]);
+    }
+
+    /**
+     * Request hygiene Task 10b — dedupe is keyed on the PAIR, so a second,
+     * different relation on the same model still logs.
+     */
+    public function test_distinct_relations_on_the_same_model_each_log(): void
+    {
+        $this->seedTwoMovements();
+        Log::spy();
+
+        $movement = StockMovement::query()->orderBy('created_at')->get()->firstOrFail();
+        self::assertSame($this->product->name, $movement->product->name);
+        self::assertSame($this->warehouse->name, $movement->location->name);
+
+        // `with()` BEFORE the count: Mockery's verification director verifies as
+        // soon as it sees `once()`, so `once()->with(...)` would assert "exactly
+        // one warning of ANY shape" — which is the opposite of this test.
+        Log::shouldHaveReceived('warning')->with('lazy-load', [
+            'model' => StockMovement::class,
+            'relation' => 'product',
+        ])->once();
+        Log::shouldHaveReceived('warning')->with('lazy-load', [
+            'model' => StockMovement::class,
+            'relation' => 'location',
+        ])->once();
+        Log::shouldHaveReceived('warning')->twice();
+    }
+
+    /**
+     * Two movements are the minimum: Eloquent stamps `preventsLazyLoading`
+     * only onto models hydrated from a multi-row result.
+     */
+    private function seedTwoMovements(): void
+    {
+        $service = app(StockAdjustmentService::class);
+
+        foreach (['LAZY-A', 'LAZY-B'] as $reference) {
+            $service->receive(
+                productId: $this->product->id,
+                locationId: $this->warehouse->id,
+                quantity: '1.0000',
+                reference: $reference,
+                userId: $this->user->id,
+            );
+        }
+    }
 }

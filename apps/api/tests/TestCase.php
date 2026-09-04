@@ -2,6 +2,7 @@
 
 namespace Tests;
 
+use App\Support\LazyLoadViolationLog;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Tests\Support\QuarantinedTests;
 
@@ -23,6 +24,13 @@ abstract class TestCase extends BaseTestCase
     protected function setUp(): void
     {
         set_time_limit(0);
+
+        // Request hygiene Task 10b. The lazy-load guard dedupes each
+        // (model, relation) pair once per PHP PROCESS, and one phpunit run is
+        // one process — so without this reset the first test to trip a pair
+        // would swallow the log line every later test in the same run expects
+        // from `Log::spy()` / `Log::shouldReceive('warning')`.
+        LazyLoadViolationLog::reset();
 
         // O-29 first-execution quarantine. A no-op unless AUTOERP_QUARANTINE=1
         // (the eight Feature-lane jobs and scripts/run-feature-lane-local.sh set
