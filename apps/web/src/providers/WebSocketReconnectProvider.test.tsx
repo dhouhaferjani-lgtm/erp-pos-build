@@ -101,4 +101,38 @@ describe('WebSocketReconnectProvider', () => {
     view.rerender(tree(client))
     expect(spy).toHaveBeenCalledTimes(2)
   })
+
+  /**
+   * T8 re-gate r2, R2-N5. "First connect" is only a startup handshake while it
+   * lands near mount. `useWebSocketConnection` gives up at
+   * CONNECTION_GIVE_UP_MS = 15s without disconnecting the socket, so a client
+   * can sit disconnected for tens of seconds and then connect for the first
+   * time — everything published in that window was missed, and pre-fix that
+   * case DID sweep. Classifying it as "initial" (the r1 fix) silently dropped
+   * the recovery; the grace window restores it without bringing back the
+   * login-time sweep the r1 fix removed.
+   */
+  it('sweeps a FIRST connect that lands after the grace window: a give-up gap is not a handshake', () => {
+    connected = false
+    const client = new QueryClient()
+    const spy = vi.spyOn(client, 'invalidateQueries').mockResolvedValue(undefined)
+    const view = render(tree(client))
+
+    // t=20s — past the 5s grace and past the 15s give-up: the first connect
+    // this client ever sees, over a gap that must be recovered.
+    act(() => { vi.advanceTimersByTime(20_000) })
+    connected = true
+    view.rerender(tree(client))
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(spy).toHaveBeenLastCalledWith({ refetchType: 'active' })
+
+    // ...and it ARMS the cooldown like any other sweep: a flap 3s later is
+    // suppressed rather than replaying a second full refetch.
+    act(() => { vi.advanceTimersByTime(3_000) })
+    connected = false
+    view.rerender(tree(client))
+    connected = true
+    view.rerender(tree(client))
+    expect(spy).toHaveBeenCalledTimes(1)
+  })
 })

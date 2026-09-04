@@ -22,7 +22,8 @@
     "openingBalanceHint": "Vous saisissez un solde d'ouverture ? Utilisez la quantité et le coût d'ouverture dans la fiche produit — une régularisation enregistre une correction, pas un solde d'ouverture.",
     "openingBalanceLink": "Ouvrir les paramètres d'inventaire du produit",
     "duplicateLine": "Ce produit figure déjà sur cette régularisation. Modifiez la ligne existante.",
-    "loadFailed": "Impossible de lire la quantité actuelle de ce produit à cet emplacement."
+    "loadFailed": "Impossible de lire la quantité actuelle de ce produit à cet emplacement.",
+    "error": "Impossible d'enregistrer la régularisation. Vérifiez si elle a bien été créée avant de réessayer."
   },
   "line": {
     "reason": "Motif",

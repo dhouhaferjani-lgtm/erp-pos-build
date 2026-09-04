@@ -51,7 +51,13 @@ interface AutoSaveState {
   lastSavedAt: Date | null
 
   /**
-   * Whether a debounced save is scheduled but has not yet fired
+   * Whether unsaved work is still owed to the server.
+   *
+   * True for the WHOLE window, not just the debounce: a save is scheduled, or
+   * it is in flight, or the trailing slot holds a newer body that has not been
+   * transmitted yet. It is cleared only when a save settles with nothing left
+   * queued. `DocumentForm` feeds it straight into `shouldWarn`, so the flag
+   * must not dip while any authored body is still unsent.
    */
   autosavePending: boolean
 
@@ -297,16 +303,6 @@ export function useDraftAutoSave(
         const slot = pendingSlotRef.current
         pendingSlotRef.current = null
 
-        if (isUnmountedRef.current) {
-          // Recorded behaviour: an unsent body is DISCARDED on unmount. There is
-          // no component left to report a failure to, and the request was never
-          // transmitted. This is only safe because the slot keeps
-          // `autosavePending` true, so the consumer's guard (DocumentForm's
-          // `shouldWarn`) blocks the navigation that would reach this cleanup.
-          slot?.resolve()
-          return
-        }
-
         const trailing = launch()
         if (slot) {
           void trailing.then(slot.resolve, slot.reject)
@@ -443,8 +439,20 @@ export function useDraftAutoSave(
     return () => {
       isUnmountedRef.current = true
       generationRef.current += 1
-      // An occupied trailing slot is discarded here (see the settle handler):
-      // settle its awaiters so nothing hangs on a save that will never be sent.
+      // THIS is where an unsent trailing body is discarded (gate r2 NB-r2-2:
+      // the settle handler can never see an unmounted hook, because clearing
+      // `pendingRef` here makes it return at its own `!pendingRef.current`
+      // guard, and `performSave` refuses to refill after unmount). Awaiters are
+      // settled so nothing hangs on a save that will never be sent.
+      //
+      // What makes the discard tolerable is narrower than it once claimed
+      // (gate r2 NB-r2-1): `autosavePending` stays true while the slot is
+      // occupied, and the consumer's guard warns on tab close/refresh and at
+      // the two explicit in-app discard points — it does NOT block in-app
+      // navigation. `useUnsavedChangesGuard.ts:9-12` defers full route blocking
+      // (`useBlocker`) to a data-router migration, so a sidebar/breadcrumb
+      // navigation still drops the unsent body silently. That migration is the
+      // registered residual which closes the remaining window.
       pendingRef.current = false
       const abandoned = pendingSlotRef.current
       pendingSlotRef.current = null

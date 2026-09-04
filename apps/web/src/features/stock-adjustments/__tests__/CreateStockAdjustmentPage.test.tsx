@@ -13,6 +13,9 @@ vi.mock('react-i18next', () => ({
 const navigate = vi.fn()
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }))
 
+const toastError = vi.hoisted(() => vi.fn())
+vi.mock('sonner', () => ({ toast: { error: toastError, success: vi.fn() } }))
+
 const grantedPermissions = new Set<string>(['inventory.adjustments.post'])
 vi.mock('@/hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => grantedPermissions.has(p) }),
@@ -138,6 +141,7 @@ beforeEach(() => {
   stockLevel.mockReset()
   stockLevel.mockResolvedValue(freshLevel)
   navigate.mockReset()
+  toastError.mockReset()
   grantedPermissions.clear()
   grantedPermissions.add('inventory.adjustments.post')
 })
@@ -437,5 +441,47 @@ describe('CreateStockAdjustmentPage — idempotency key lifecycle', () => {
       expect(createMutate).toHaveBeenCalledTimes(3)
     })
     expect(submittedKey(2)).toBe(submittedKey(0))
+  })
+})
+
+/**
+ * FE gate r1 MAJOR-4 / r2 item 1 — the page's ONLY error handling is
+ * `setRefusal(extractRefusal(error))`, and `extractRefusal` returns null for
+ * anything without a `{data:{error:{…}}}` envelope. A network failure, a
+ * timeout, a 500 or a lost response therefore rendered nothing at all: an
+ * unchanged form, and no way for the operator to tell whether the server
+ * committed. These two tests pin the generic surface AND its boundary — a
+ * typed refusal must still use the inline message, not a toast.
+ */
+describe('CreateStockAdjustmentPage — the generic error surface', () => {
+  it('toasts a generic error when the failure carries no refusal envelope', async () => {
+    const user = userEvent.setup()
+    createMutate.mockRejectedValueOnce(new Error('Network Error'))
+    render(<CreateStockAdjustmentPage />)
+    await addLine(user)
+
+    await user.type(screen.getByLabelText('line.quantity'), '2')
+    await user.click(screen.getByRole('button', { name: 'create.post' }))
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledTimes(1)
+    })
+    expect(toastError).toHaveBeenCalledWith('create.error')
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('leaves a typed refusal on the inline surface and does NOT toast it', async () => {
+    const user = userEvent.setup()
+    createMutate.mockRejectedValueOnce(refusalError('INVALID_ADJUSTMENT_STATE'))
+    render(<CreateStockAdjustmentPage />)
+    await addLine(user)
+
+    await user.type(screen.getByLabelText('line.quantity'), '2')
+    await user.click(screen.getByRole('button', { name: 'create.post' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('refusal.INVALID_ADJUSTMENT_STATE')).toBeInTheDocument()
+    })
+    expect(toastError).not.toHaveBeenCalled()
   })
 })

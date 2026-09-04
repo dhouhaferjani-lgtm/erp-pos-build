@@ -22,7 +22,8 @@
     "openingBalanceHint": "Setting a product's opening balance? Use the product editor's opening quantity and cost — an adjustment records a correction, not an opening balance.",
     "openingBalanceLink": "Open the product's inventory settings",
     "duplicateLine": "That product is already on this adjustment. Edit the existing line instead.",
-    "loadFailed": "Could not read the current quantity for that product at this location."
+    "loadFailed": "Could not read the current quantity for that product at this location.",
+    "error": "Could not save the adjustment. Check whether it was created before trying again."
   },
   "line": {
     "reason": "Reason",
