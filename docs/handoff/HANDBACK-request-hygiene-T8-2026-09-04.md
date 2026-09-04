@@ -152,11 +152,24 @@ No new errors, no new warnings.
 The plan's Step 4 asks for an authenticated-layout browser reconnect probe
 through `DashboardLayout`. **Not performed in this lane — no stack is running
 for this worktree** (no API, no Reverb/WSS, no vite server). It is recorded as
-**promotion-owed**: before promotion, on a running stack, log in, open the
-network panel, kill and restore the WebSocket, and confirm (a) one burst of
-refetches for mounted queries on the first reconnect, (b) no burst for a second
-reconnect inside 30 s, (c) a burst again after 30 s. Nothing in this lane can
-substitute for that.
+**promotion-owed**. Nothing in this lane can substitute for that.
+
+**Probe steps (amended in fix round 1 — gate finding N-2).** On a running
+stack, with the browser network panel open:
+
+0. Log in and land on the dashboard. Watch the initial socket connect (~1 s
+   after `DashboardLayout` mounts): expect **NO** refetch burst. The initial
+   connect is not a reconnect and does not arm the cooldown (fix round 1, N-1).
+   A burst here means the `hasEverConnected` guard has regressed.
+1. **Wait > 30 s idle after login**, then kill the WebSocket and restore it →
+   exactly **one** burst of refetches for the mounted queries.
+2. Kill/restore again **within 30 s** of that burst → **no** burst.
+3. Wait past 30 s from the last burst, kill/restore → burst again.
+
+The `> 30 s idle` wait in step 1 is a leftover safety margin, not a
+correctness requirement: after the N-1 fix the cooldown is unarmed at login, so
+step 1 would also pass immediately. Keeping the wait makes step 1 independent of
+whether step 0 held.
 
 ---
 
@@ -188,12 +201,112 @@ the first attempt.
 
 ---
 
+## 4b. Fix round 1 (2026-09-04) — gate findings N-1, N-2, N-3
+
+Gate report: `docs/superpowers/reviews/2026-09-04-request-hygiene-t8-gate-frontend-conventions.md`
+(verdict MERGE, zero blockers). The orchestrator ruled N-1 must be fixed before
+merge: the contract's "disconnected→connected transition" means a **re**-connect,
+and the initial connect is not one.
+
+### N-1 (MAJOR) — FIXED
+
+`apps/web/src/providers/WebSocketReconnectProvider.tsx` gains a
+`hasEverConnected = useRef(false)`. The first observed `isConnected === true`
+sets the ref, consumes the `wasDisconnected` edge, and returns **without**
+invalidating and **without** writing `lastInvalidationAt`. Only later
+disconnected→connected edges invalidate, under the unchanged 30 s cooldown.
+
+Consequence: the redundant full sweep on every login is gone, and the cooldown
+is no longer burnt at t≈1 s, so a genuine drop at t=15 s / reconnect at t=17 s
+is now recovered instead of suppressed.
+
+**Red first.** New test
+`ignores the initial connect: only a genuine reconnect invalidates and arms the cooldown`
+reproduces the gate's measured scenario exactly — mount at `isConnected: false`,
+connect at t=1 s (expect **0** sweeps), genuine drop t=15 s / reconnect t=17 s
+(expect **1**), reconnect t=20 s inside the cooldown (still **1**), reconnect at
+t=47 s = exactly 30 s after the sweep (expect **2**).
+
+```
+$ pnpm vitest run src/providers          # RED, before the provider change
+ ❯ src/providers/WebSocketReconnectProvider.test.tsx (2 tests | 1 failed) 16ms
+   ✓ … invalidates all active queries on first reconnect and applies a 30 second cooldown 11ms
+   × … ignores the initial connect: only a genuine reconnect invalidates and arms the cooldown 4ms
+AssertionError: expected "invalidateQueries" to be called +0 times, but got 1 times
+ ❯ src/providers/WebSocketReconnectProvider.test.tsx:76:17
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+```
+
+```
+$ pnpm vitest run src/providers src/components/templates/DashboardLayout   # GREEN, after
+ ✓ src/providers/WebSocketReconnectProvider.test.tsx (2 tests) 14ms
+ ✓ src/components/templates/DashboardLayout/__tests__/DashboardLayout.switcher.test.tsx (2 tests) 20ms
+ Test Files  2 passed (2)
+      Tests  4 passed (4)
+```
+
+**The pre-existing three-edge test needed no setup change.** It mounts with
+`connected = true`, so its very first effect run *is* the initial connect (which
+never invalidated, before or after this fix) and its first *edge* — the
+`false → true` after the deliberate dip — is already a genuine reconnect. It
+passes unchanged, in the red run and in the green run.
+
+**Mutation check on the new assertions** (both mutants applied to the shipped
+provider, run, reverted; `src/providers/` contains only the two lane files):
+
+| Mutant | Result |
+|---|---|
+| **A** — `hasEverConnected` guard present but the initial connect still writes `lastInvalidationAt` | **KILLED, both tests** — `expected "invalidateQueries" to be called 1 times, but got 0 times`. Proves the "does NOT arm the cooldown" half is load-bearing, not just the "does not invalidate" half. |
+| **B** — `hasEverConnected` guard deleted (= behaviour at `a81235540`) | **KILLED, new test only** — `expected "invalidateQueries" to be called +0 times, but got 1 times`. The old test cannot see the bug; the new one does. |
+
+### N-2 (MAJOR) — FIXED
+
+The promotion probe in section 3 is amended: a new step 0 (no burst on the
+initial connect) and the `> 30 s idle after login` wait before step 1.
+
+### N-3 (MINOR) — FIXED
+
+`WebSocketReconnectProvider.test.tsx` now types the mock factory as
+`(): WebSocketConnectionState => ({ echo: null, isConnected: connected, isConnecting: false, error: null, hasGivenUp: false })`
+with a `import type { WebSocketConnectionState }`. A future provider read of
+`hasGivenUp` / `error` / `isConnecting` can no longer silently resolve to
+`undefined`, and adding a field to the interface now breaks the mock at compile
+time.
+
+### N-4 — not actioned (correctly)
+
+Untracked `apps/web/e2e-local/*` parse errors are off-lane housekeeping, as the
+gate ruled. Untouched.
+
+### Fix-round verification
+
+| Command | Result |
+|---|---|
+| `pnpm vitest run src/providers src/components/templates/DashboardLayout` | **2 files / 4 tests passed**, 0 failed |
+| `pnpm typecheck` (`tsc --noEmit`, whole `apps/web`) | clean, no output, exit 0 |
+| `pnpm exec eslint` on both lane files, before (`a81235540`, temp copies inside `src/providers/`, deleted) vs after | before `errors=0 warnings=0` / `errors=0 warnings=0`; after `errors=0 warnings=0` / `errors=0 warnings=0` — **0 new errors, 0 new warnings** |
+| `ps aux \| grep -c '[n]ode (vitest'` | `0` — no leftover workers |
+
+### Fix-round deviations
+
+- **The existing three-edge test was NOT adjusted.** The fix-round brief
+  anticipated its first edge might be the initial connect; it is not (see
+  above), so changing its setup would have removed coverage for no reason. Both
+  tests pass as written.
+- Two mutants were run against the provider to prove the new assertions
+  falsify; both files were restored from a copy and `git status` is clean.
+
+---
+
 ## 5. Commits
 
 | Hash | Subject |
 |---|---|
 | `26d971bb4` | `fix(web request-hygiene t8): cooldown-only reconnect invalidation (S-7)` |
-| (this file) | `docs(request-hygiene t8): handback` |
+| `a81235540` | `docs(request-hygiene t8): handback` |
+| fix round 1 | `fix(web request-hygiene t8): ignore the initial connect — only true reconnects invalidate and arm the cooldown` |
+| fix round 1 | `docs(request-hygiene t8): gate r1 report + handback fix round 1 (probe steps amended)` (this edit) |
 
 Both commits are path-scoped (`git commit … -- <paths>`), per the shared-checkout
 rule. `git status` is clean after the second.
