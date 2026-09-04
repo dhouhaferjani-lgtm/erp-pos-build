@@ -10,6 +10,8 @@ import { useCompanyStore } from '@/stores/companyStore'
 
 import { SplitPaymentForm } from './SplitPaymentForm'
 
+const UUID_REGEX = /^[0-9a-f-]{36}$/
+
 const mockApiGet = vi.hoisted(() => vi.fn())
 const mockApiPost = vi.hoisted(() => vi.fn())
 
@@ -28,6 +30,12 @@ vi.mock('react-i18next', () => ({
   }),
 }))
 
+// LOAD-BEARING MOCK (gate m2). `format` is relaxed to the identity `String(value)`
+// so the rendered remaining amount is the raw bcmath string. That is what makes
+// the /^0\.000$/ assertion in "accepts 0.100 plus 0.200" a FALSIFIER: under the
+// real formatter the float residue -5.55e-17 would round to "0,000 TND" and the
+// assertion would pass on the old float path too. Do not make this mock faithful
+// without replacing that regression guard.
 vi.mock('@/hooks/useCurrency', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/hooks/useCurrency')>()
   return {
@@ -101,13 +109,13 @@ async function fillTwoSplits(amounts: readonly [string, string]) {
   expect(methodInputs).toHaveLength(2)
   expect(amountInputs).toHaveLength(2)
   for (const [index, amount] of amounts.entries()) {
-    await userEvent.selectOptions(methodInputs[index]!, 'method-1')
+    await userEvent.selectOptions(methodInputs[index], 'method-1')
     // Deviation (T12 D1): userEvent.type cannot express trailing zeros on an
     // input[type=number] harness — typing "0.100" emits only "0.1" (probed).
     // fireEvent.change delivers the verbatim decimal string the operator's
     // keyboard produces in a real browser, so the three-decimal contract is
     // exercised end to end.
-    fireEvent.change(amountInputs[index]!, { target: { value: amount } })
+    fireEvent.change(amountInputs[index], { target: { value: amount } })
   }
 }
 
@@ -165,10 +173,15 @@ describe('SplitPaymentForm shared form primitives', () => {
     )
 
     await screen.findByRole('button', { name: 'common:actions.submit' })
+    // The key is read back through a typed narrowing helper rather than an
+    // `expect.stringMatching` matcher (which is typed `any`); the exact-object
+    // assertion still proves no extra field rides along, and the UUID shape is
+    // asserted on the next line.
     expect(mockApiPost).toHaveBeenCalledWith('/documents/doc-1/split-payment', {
       splits: [{ payment_method_id: 'method-1', amount: '100' }],
-      idempotency_key: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      idempotency_key: postedIdempotencyKey(0),
     })
+    expect(postedIdempotencyKey(0)).toMatch(UUID_REGEX)
     expect(onSuccess).toHaveBeenCalledTimes(1)
   })
 
@@ -225,8 +238,9 @@ describe('SplitPaymentForm money boundary and double-submit lock', () => {
     await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
     expect(mockApiPost).toHaveBeenCalledWith('/documents/doc-1/split-payment', {
       splits: [{ payment_method_id: 'method-1', amount: '100' }],
-      idempotency_key: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      idempotency_key: postedIdempotencyKey(0),
     })
+    expect(postedIdempotencyKey(0)).toMatch(UUID_REGEX)
     await act(async () => {
       resolvePost?.({ data: { ok: true } })
       await Promise.resolve()
@@ -245,8 +259,9 @@ describe('SplitPaymentForm money boundary and double-submit lock', () => {
         { payment_method_id: 'method-1', amount: '0.100' },
         { payment_method_id: 'method-1', amount: '0.200' },
       ],
-      idempotency_key: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      idempotency_key: postedIdempotencyKey(0),
     })
+    expect(postedIdempotencyKey(0)).toMatch(UUID_REGEX)
     // Rev 9 (gate r8 B1): the POST alone also passes under the OLD float path
     // (0.1+0.2 error is about 5.55e-17, inside its 0.01 tolerance). The falsifier is
     // the rendered remaining amount: the bcmath path renders exactly "0.000",
@@ -302,5 +317,66 @@ describe('SplitPaymentForm idempotency key survives a failed request', () => {
     const retryKey = postedIdempotencyKey(1)
     expect(firstKey).toMatch(/^[0-9a-f-]{36}$/)
     expect(retryKey).toBe(firstKey)
+  })
+})
+
+describe('SplitPaymentForm idempotency key is scoped to ONE submit intent', () => {
+  it('mints a DIFFERENT idempotency_key once the payload is edited after a failed submit', async () => {
+    // Ruling: one key = one submit intent. An UNCHANGED retry replays (previous
+    // test). An EDITED payload is a NEW intent: reusing the key would make the
+    // server replay the first (possibly committed) batch and report HTTP 200,
+    // so the operator's edit would silently never be booked.
+    mockApiPost.mockRejectedValueOnce(new Error('network error'))
+    mockApiPost.mockResolvedValueOnce({ data: { ok: true } })
+    renderForm({ totalAmount: '100' })
+
+    await screen.findByRole('option', { name: 'Cash' })
+    await userEvent.selectOptions(screen.getByLabelText('treasury:payments.method'), 'method-1')
+    await userEvent.type(screen.getByLabelText('treasury:payments.amount'), '100')
+    const submit = screen.getByRole('button', { name: 'common:actions.submit' })
+
+    await act(async () => { fireEvent.click(submit); await Promise.resolve() })
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+
+    // Edit a payload-bearing field. `reference` rides in the splits body and
+    // keeps the exact-total check satisfied, so the second POST really goes out.
+    await userEvent.type(screen.getByLabelText('treasury:payments.reference'), 'RETRY-1')
+
+    await act(async () => { fireEvent.click(submit); await Promise.resolve() })
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(2) })
+
+    const firstKey = postedIdempotencyKey(0)
+    const secondKey = postedIdempotencyKey(1)
+    expect(firstKey).toMatch(UUID_REGEX)
+    expect(secondKey).toMatch(UUID_REGEX)
+    expect(secondKey).not.toBe(firstKey)
+    expect(mockApiPost).toHaveBeenLastCalledWith('/documents/doc-1/split-payment', {
+      splits: [{ payment_method_id: 'method-1', amount: '100', reference: 'RETRY-1' }],
+      idempotency_key: secondKey,
+    })
+  })
+})
+
+describe('SplitPaymentForm surfaces a failed submission', () => {
+  it('renders an error message when the split POST rejects and keeps the key', async () => {
+    mockApiPost.mockRejectedValueOnce(new Error('network error'))
+    mockApiPost.mockResolvedValueOnce({ data: { ok: true } })
+    renderForm({ totalAmount: '100' })
+
+    await screen.findByRole('option', { name: 'Cash' })
+    await userEvent.selectOptions(screen.getByLabelText('treasury:payments.method'), 'method-1')
+    await userEvent.type(screen.getByLabelText('treasury:payments.amount'), '100')
+    const submit = screen.getByRole('button', { name: 'common:actions.submit' })
+
+    await act(async () => { fireEvent.click(submit); await Promise.resolve() })
+    await waitFor(() => {
+      expect(screen.getByText('treasury:splitPayment.submitFailed')).toBeInTheDocument()
+    })
+
+    // The error surface must not rotate the key: an unchanged retry of a batch
+    // that may already have committed has to replay, not double-book.
+    await act(async () => { fireEvent.click(submit); await Promise.resolve() })
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(2) })
+    expect(postedIdempotencyKey(1)).toBe(postedIdempotencyKey(0))
   })
 })

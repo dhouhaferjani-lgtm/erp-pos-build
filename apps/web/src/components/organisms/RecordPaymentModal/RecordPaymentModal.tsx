@@ -146,6 +146,21 @@ export function RecordPaymentModal({
   const [successData, setSuccessData] = useState<MultiPaymentResponseData | null>(null)
   const { key: idempotencyKey, reset: resetIdempotencyKey } = useIdempotencyKey()
   const submitLockRef = useRef<boolean>(false)
+  const hadFailedAttemptRef = useRef<boolean>(false)
+
+  /**
+   * One idempotency key = ONE submit intent. After a failed attempt the key is
+   * kept so an unchanged retry replays server-side; the first edit to a
+   * payload-bearing field (date, lines, excess allocation) starts a NEW intent,
+   * so the key must rotate — otherwise the server would replay the earlier
+   * (possibly committed) batch as HTTP 200 and the success panel would show
+   * figures the operator never submitted.
+   */
+  const startNewIntentOnPayloadEdit = useCallback(() => {
+    if (!hadFailedAttemptRef.current) return
+    hadFailedAttemptRef.current = false
+    resetIdempotencyKey()
+  }, [resetIdempotencyKey])
 
   // Reset form when modal opens
   useEffect(() => {
@@ -164,6 +179,7 @@ export function RecordPaymentModal({
       // from the page — and a retry after a lost response would replay the
       // earlier payment as HTTP 200 while the operator sees a success panel.
       // Mirrors PaymentDetailPage's per-dialog-open refund_request_id.
+      hadFailedAttemptRef.current = false
       resetIdempotencyKey()
     }
   }, [isOpen, prefill, resetIdempotencyKey])
@@ -259,18 +275,21 @@ export function RecordPaymentModal({
 
   // Payment line handlers
   const addPaymentLine = () => {
+    startNewIntentOnPayloadEdit()
     setPaymentLines([...paymentLines, createNewPaymentLine()])
     setValidationError(null)
   }
 
   const removePaymentLine = (id: string) => {
     if (paymentLines.length > 1) {
+      startNewIntentOnPayloadEdit()
       setPaymentLines(paymentLines.filter(line => line.id !== id))
       setValidationError(null)
     }
   }
 
   const updatePaymentLine = (id: string, field: keyof PaymentLineData, value: string | boolean) => {
+    startNewIntentOnPayloadEdit()
     setPaymentLines(prev => prev.map(line =>
       line.id === id ? { ...line, [field]: value } : line
     ))
@@ -279,6 +298,7 @@ export function RecordPaymentModal({
 
   // Update multiple fields at once (avoids race conditions)
   const updatePaymentLineMultiple = (id: string, updates: Partial<PaymentLineData>) => {
+    startNewIntentOnPayloadEdit()
     setPaymentLines(prev => prev.map(line =>
       line.id === id ? { ...line, ...updates } : line
     ))
@@ -305,6 +325,7 @@ export function RecordPaymentModal({
 
   // Manual allocation handlers
   const updateManualAllocation = (documentId: string, amount: string) => {
+    startNewIntentOnPayloadEdit()
     setManualAllocations(prev => {
       const existing = prev.find(a => a.document_id === documentId)
       if (existing) {
@@ -343,6 +364,7 @@ export function RecordPaymentModal({
       })
     },
     onSuccess: async (response) => {
+      hadFailedAttemptRef.current = false
       resetIdempotencyKey()
       await Promise.all([
         queryClient.invalidateQueries({
@@ -366,6 +388,9 @@ export function RecordPaymentModal({
       setShowSuccess(true)
     },
     onError: (error) => {
+      // The key is deliberately NOT rotated here: an unchanged retry of a batch
+      // that may already have committed must replay server-side.
+      hadFailedAttemptRef.current = true
       console.error('Payment recording failed:', error)
       // Error is shown via mutation.isError in the UI
     },
@@ -385,6 +410,16 @@ export function RecordPaymentModal({
     mutation.mutate(undefined, {
       onSettled: () => { submitLockRef.current = false },
     })
+  }
+
+  const changePaymentDate = (nextDate: string) => {
+    startNewIntentOnPayloadEdit()
+    setPaymentDate(nextDate)
+  }
+
+  const changeExcessAllocationMethod = (method: ExcessAllocationMethod) => {
+    startNewIntentOnPayloadEdit()
+    setExcessAllocationMethod(method)
   }
 
   const handleFinalClose = () => {
@@ -529,7 +564,7 @@ export function RecordPaymentModal({
                     id="payment-date"
                     type="date"
                     value={paymentDate}
-                    onChange={e => { setPaymentDate(e.target.value); }}
+                    onChange={e => { changePaymentDate(e.target.value); }}
                   />
                 </FormField>
               </div>
@@ -704,7 +739,7 @@ export function RecordPaymentModal({
                           name="excessMethod"
                           value="advance"
                           checked={excessAllocationMethod === 'advance'}
-                          onChange={() => { setExcessAllocationMethod('advance'); }}
+                          onChange={() => { changeExcessAllocationMethod('advance'); }}
                           className={`${colorTokens.intent.primary.text}`}
                         />
                         <span className={`text-sm ${colorTokens.text.secondary}`}>
@@ -720,7 +755,7 @@ export function RecordPaymentModal({
                               name="excessMethod"
                               value="fifo"
                               checked={excessAllocationMethod === 'fifo'}
-                              onChange={() => { setExcessAllocationMethod('fifo'); }}
+                              onChange={() => { changeExcessAllocationMethod('fifo'); }}
                               className={`${colorTokens.intent.primary.text}`}
                             />
                             <span className={`text-sm ${colorTokens.text.secondary}`}>
@@ -734,7 +769,7 @@ export function RecordPaymentModal({
                               name="excessMethod"
                               value="due_date"
                               checked={excessAllocationMethod === 'due_date'}
-                              onChange={() => { setExcessAllocationMethod('due_date'); }}
+                              onChange={() => { changeExcessAllocationMethod('due_date'); }}
                               className={`${colorTokens.intent.primary.text}`}
                             />
                             <span className={`text-sm ${colorTokens.text.secondary}`}>
@@ -748,7 +783,7 @@ export function RecordPaymentModal({
                               name="excessMethod"
                               value="manual"
                               checked={excessAllocationMethod === 'manual'}
-                              onChange={() => { setExcessAllocationMethod('manual'); }}
+                              onChange={() => { changeExcessAllocationMethod('manual'); }}
                               className={`${colorTokens.intent.primary.text}`}
                             />
                             <span className={`text-sm ${colorTokens.text.secondary}`}>

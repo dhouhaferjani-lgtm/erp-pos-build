@@ -260,9 +260,13 @@ describe('RecordPaymentModal tenant scope', () => {
     })
 
     await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+    // The key is read back through a typed narrowing helper rather than an
+    // `expect.stringMatching` matcher (which is typed `any`); the UUID shape is
+    // asserted separately.
     expect(mockApiPost).toHaveBeenCalledWith('/payments', expect.objectContaining({
-      idempotency_key: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      idempotency_key: postedIdempotencyKey(0),
     }))
+    expect(postedIdempotencyKey(0)).toMatch(/^[0-9a-f-]{36}$/)
     await act(async () => {
       resolvePost({
         payments: [{ id: 'payment-1', payment_number: 'PAY-1', amount: '100.00' }],
@@ -273,3 +277,16 @@ describe('RecordPaymentModal tenant scope', () => {
     })
   })
 })
+
+/** Read the idempotency_key off a recorded POST body without an unsafe cast. */
+function postedIdempotencyKey(callIndex: number): string {
+  const body: unknown = mockApiPost.mock.calls[callIndex]?.[1]
+  if (typeof body !== 'object' || body === null || !('idempotency_key' in body)) {
+    throw new Error(`POST #${String(callIndex)} carried no request body`)
+  }
+  const key: unknown = body.idempotency_key
+  if (typeof key !== 'string') {
+    throw new Error(`POST #${String(callIndex)} carried no idempotency_key`)
+  }
+  return key
+}

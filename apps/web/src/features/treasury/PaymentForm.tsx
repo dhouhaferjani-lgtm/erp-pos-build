@@ -1,7 +1,7 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, Controller } from 'react-hook-form'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertCircle, ArrowLeft, CheckCircle2, CircleAlert, Plus, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
@@ -280,9 +280,9 @@ export function PaymentForm() {
   const supplierInvoiceId = searchParams.get('supplier_invoice')
   const [showPartnerModal, setShowPartnerModal] = useState(false)
   const [showRepositoryModal, setShowRepositoryModal] = useState(false)
-  const [withholdingEnabled, setWithholdingEnabled] = useState(false)
-  const [withholdingTransactionType, setWithholdingTransactionType] = useState<TransactionType | ''>('')
-  const [withholdingRate, setWithholdingRate] = useState('')
+  const [withholdingEnabled, setWithholdingEnabledState] = useState(false)
+  const [withholdingTransactionType, setWithholdingTransactionTypeState] = useState<TransactionType | ''>('')
+  const [withholdingRate, setWithholdingRateState] = useState('')
   const [allocationMethod, setAllocationMethod] = useState<AllocationMethod>(AllocationMethod.FIFO)
   const [manualAllocations, setManualAllocations] = useState<ManualAllocation[]>([])
 
@@ -581,9 +581,35 @@ export function PaymentForm() {
   // Update withholding rate when preview changes
   useEffect(() => {
     if (withholdingPreview?.calculation && !withholdingRate) {
-      setWithholdingRate(withholdingPreview.calculation.rate_percentage.toString())
+      setWithholdingRateState(withholdingPreview.calculation.rate_percentage.toString())
     }
   }, [withholdingPreview])
+
+  const { key: idempotencyKey, reset: resetIdempotencyKey } = useIdempotencyKey()
+  const submitLockRef = useRef<boolean>(false)
+  const hadFailedAttemptRef = useRef<boolean>(false)
+
+  /**
+   * One idempotency key = ONE submit intent. After a failed attempt the key is
+   * kept so an unchanged retry replays server-side; the first edit to a
+   * payload-bearing field starts a NEW intent, so the key must rotate —
+   * otherwise the server would replay the earlier (possibly committed) payment
+   * as HTTP 200 and the operator's edit would silently never be booked.
+   */
+  const startNewIntentOnPayloadEdit = useCallback(() => {
+    if (!hadFailedAttemptRef.current) return
+    hadFailedAttemptRef.current = false
+    resetIdempotencyKey()
+  }, [resetIdempotencyKey])
+
+  // Covers every react-hook-form field in the POST body (amount, method,
+  // repository, partner, date, reference, notes, instrument…). The non-RHF
+  // payload state (withholding, allocations) calls the same helper at its own
+  // change handlers.
+  useEffect(() => {
+    const subscription = watch(() => { startNewIntentOnPayloadEdit() })
+    return () => { subscription.unsubscribe() }
+  }, [watch, startNewIntentOnPayloadEdit])
 
   const buildPaymentAllocations = (paymentAmountValue: string): PaymentAllocationPayload[] => {
     if (invoiceId && invoiceData) {
@@ -614,9 +640,33 @@ export function PaymentForm() {
   }
 
   const handleAllocationMethodChange = (method: AllocationMethod) => {
+    startNewIntentOnPayloadEdit()
     setAllocationMethod(method)
     setManualAllocations([])
     allocationPreviewMutation.reset()
+  }
+
+  // Withholding fields ride in the POST body, so an operator edit to any of
+  // them is a payload edit. Wrapping the setters (rather than each call site)
+  // keeps every existing call — and the JSX around it — byte-identical.
+  const setWithholdingEnabled = (enabled: boolean) => {
+    startNewIntentOnPayloadEdit()
+    setWithholdingEnabledState(enabled)
+  }
+
+  const setWithholdingTransactionType = (type: TransactionType | '') => {
+    startNewIntentOnPayloadEdit()
+    setWithholdingTransactionTypeState(type)
+  }
+
+  const setWithholdingRate = (rate: string) => {
+    startNewIntentOnPayloadEdit()
+    setWithholdingRateState(rate)
+  }
+
+  const handleManualAllocationsChange = (allocations: ManualAllocation[]) => {
+    startNewIntentOnPayloadEdit()
+    setManualAllocations(allocations)
   }
 
   const handlePreviewAllocation = () => {
@@ -662,9 +712,6 @@ export function PaymentForm() {
     required: t('treasury:payments.form.paymentMethodRequired'),
   })
 
-  const { key: idempotencyKey, reset: resetIdempotencyKey } = useIdempotencyKey()
-  const submitLockRef = useRef<boolean>(false)
-
   const createMutation = useMutation({
     mutationFn: async (data: PaymentFormData) => {
       // Prepare allocations array
@@ -708,6 +755,7 @@ export function PaymentForm() {
       })
     },
     onSuccess: async () => {
+      hadFailedAttemptRef.current = false
       resetIdempotencyKey()
       await Promise.all([
         queryClient.invalidateQueries({ predicate: scopedNamespacePredicate('payments', tenantId, companyId) }),
@@ -731,6 +779,9 @@ export function PaymentForm() {
       handleNavigateAway()
     },
     onError: (error) => {
+      // The key is deliberately NOT rotated here: an unchanged retry of a
+      // request that may already have committed must replay server-side.
+      hadFailedAttemptRef.current = true
       toast.error(getErrorMessage(error))
     },
   })
@@ -1323,7 +1374,7 @@ export function PaymentForm() {
                 invoices={openInvoices}
                 allocationMethod={allocationMethod}
                 selectedAllocations={manualAllocations}
-                onAllocationChange={setManualAllocations}
+                onAllocationChange={handleManualAllocationsChange}
               />
 
               {allocationPreviewMutation.data && (

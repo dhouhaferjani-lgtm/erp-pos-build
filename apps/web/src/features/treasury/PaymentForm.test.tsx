@@ -470,8 +470,12 @@ describe('PaymentForm idempotency and double-submit lock', () => {
     })
 
     await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+    // The key is read back through the typed narrowing helper below rather than
+    // an `expect.stringMatching` matcher (which is typed `any`); its UUID shape
+    // is asserted separately.
+    expect(postedIdempotencyKey(0)).toMatch(/^[0-9a-f-]{36}$/)
     expect(mockApiPost.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
-      idempotency_key: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      idempotency_key: postedIdempotencyKey(0),
       amount: '100',
       payment_method_id: CARD_METHOD.id,
       repository_id: BANK_REPO.id,
@@ -528,5 +532,51 @@ describe('PaymentForm idempotency key survives a failed request', () => {
     const retryKey = postedIdempotencyKey(1)
     expect(firstKey).toMatch(/^[0-9a-f-]{36}$/)
     expect(retryKey).toBe(firstKey)
+  })
+})
+
+describe('PaymentForm idempotency key is scoped to ONE submit intent', () => {
+  it('mints a DIFFERENT idempotency_key once the payload is edited after a failed submit', async () => {
+    // Ruling: one key = one submit intent. An UNCHANGED retry replays (previous
+    // test). An EDITED payload is a NEW intent: reusing the key would make the
+    // server return the FIRST (possibly committed) payment as HTTP 200, so
+    // onSuccess would navigate away announcing a payment of 250 that never
+    // existed while the 100 stayed booked.
+    mockApiPost.mockRejectedValueOnce(new Error('network error'))
+    mockApiPost.mockResolvedValueOnce({ id: 'payment-1', payment_number: 'PAY-1', amount: 250 })
+    mockLookups([CARD_METHOD], [BANK_REPO])
+    render(<PaymentForm />, { wrapper: wrapper(createClient()) })
+
+    await selectMethod(CARD_METHOD.id)
+    const amount = await screen.findByLabelText('treasury:payments.form.amount *')
+    fireEvent.change(amount, { target: { value: '100' } })
+    fireEvent.change(await screen.findByLabelText('treasury:payments.form.repository *'), {
+      target: { value: BANK_REPO.id },
+    })
+    fireEvent.change(await screen.findByLabelText('treasury:payments.partner *'), {
+      target: { value: 'partner-1' },
+    })
+    const save = screen.getByRole('button', { name: 'common:save' })
+    const form = save.closest('form')
+    if (form === null) throw new Error('PaymentForm submit button has no form')
+
+    await act(async () => { fireEvent.submit(form); await Promise.resolve() })
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+
+    // Payload edit -> new intent.
+    await act(async () => { fireEvent.change(amount, { target: { value: '250' } }); await Promise.resolve() })
+
+    await act(async () => { fireEvent.submit(form); await Promise.resolve() })
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(2) })
+
+    const firstKey = postedIdempotencyKey(0)
+    const secondKey = postedIdempotencyKey(1)
+    expect(firstKey).toMatch(/^[0-9a-f-]{36}$/)
+    expect(secondKey).toMatch(/^[0-9a-f-]{36}$/)
+    expect(secondKey).not.toBe(firstKey)
+    expect(mockApiPost).toHaveBeenLastCalledWith('/payments', expect.objectContaining({
+      amount: '250',
+      idempotency_key: secondKey,
+    }))
   })
 })

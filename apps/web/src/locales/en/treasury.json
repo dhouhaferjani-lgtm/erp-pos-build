@@ -276,7 +276,8 @@
     "addPayment": "Add Payment",
     "amountDoesNotMatch": "Total amount does not match the required amount",
     "incompleteLines": "Please complete all payment lines",
-    "success": "Split payment recorded successfully"
+    "success": "Split payment recorded successfully",
+    "submitFailed": "The split payment could not be recorded. Please try again."
   },
   "unifiedPayment": {
     "balanceDue": "Balance Due",

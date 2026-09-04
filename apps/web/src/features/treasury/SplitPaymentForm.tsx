@@ -58,6 +58,7 @@ export function SplitPaymentForm({
   const { currency, format: formatCurrencyHook } = useCurrency()
   const { key: idempotencyKey, reset: resetIdempotencyKey } = useIdempotencyKey()
   const submitLockRef = useRef<boolean>(false)
+  const hadFailedAttemptRef = useRef<boolean>(false)
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
@@ -103,8 +104,15 @@ export function SplitPaymentForm({
       idempotency_key: idempotencyKey,
     }),
     onSuccess: () => {
+      hadFailedAttemptRef.current = false
       resetIdempotencyKey()
       onSuccess()
+    },
+    onError: () => {
+      // The key is deliberately NOT rotated here: an unchanged retry of a batch
+      // that may already have committed must replay server-side.
+      hadFailedAttemptRef.current = true
+      setValidationError(t('treasury:splitPayment.submitFailed'))
     },
   })
 
@@ -117,7 +125,20 @@ export function SplitPaymentForm({
   )
   const remaining = bcsub(totalAmount, currentTotal, 3)
 
+  /**
+   * One idempotency key = ONE submit intent. After a failed attempt the key is
+   * kept so an unchanged retry replays; the first edit to a payload-bearing
+   * field starts a NEW intent, so the key must rotate — otherwise the server
+   * would replay the earlier batch as HTTP 200 and the edit would vanish.
+   */
+  const startNewIntentOnPayloadEdit = () => {
+    if (!hadFailedAttemptRef.current) return
+    hadFailedAttemptRef.current = false
+    resetIdempotencyKey()
+  }
+
   const addPaymentLine = () => {
+    startNewIntentOnPayloadEdit()
     setPaymentLines([
       ...paymentLines,
       {
@@ -133,12 +154,14 @@ export function SplitPaymentForm({
 
   const removePaymentLine = (id: string) => {
     if (paymentLines.length > 1) {
+      startNewIntentOnPayloadEdit()
       setPaymentLines(paymentLines.filter((line) => line.id !== id))
       setValidationError(null)
     }
   }
 
   const updatePaymentLine = (id: string, field: keyof PaymentLine, value: string) => {
+    startNewIntentOnPayloadEdit()
     setPaymentLines(
       paymentLines.map((line) =>
         line.id === id ? { ...line, [field]: value } : line

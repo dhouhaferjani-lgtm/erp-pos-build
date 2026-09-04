@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -202,5 +202,46 @@ describe('RecordPaymentModal idempotency key lifetime', () => {
     await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(2) })
 
     expect(postedIdempotencyKey(1)).toBe(postedIdempotencyKey(0))
+  })
+
+  it('mints a DIFFERENT idempotency_key once the payload is edited after a failed submit', async () => {
+    // Ruling: one key = one submit intent. An UNCHANGED retry replays (test
+    // above). An EDITED payload is a NEW intent: reusing the key would make the
+    // server return the FIRST (possibly committed) batch as HTTP 200 and the
+    // success panel would show figures the operator never submitted.
+    mockApiPost.mockRejectedValueOnce(new Error('network error'))
+    mockApiPost.mockResolvedValueOnce({
+      payments: [{ id: 'payment-1', payment_number: 'PAY-1', amount: '400.00' }],
+      document: { id: 'doc-1', document_number: 'INV-1', balance_due: '600.00', status: 'partially_paid' },
+      excess_handling: { excess_amount: '0.00', allocation_method: 'advance', allocations: [] },
+    })
+
+    render(<RecordPaymentModal isOpen onClose={vi.fn()} prefill={PREFILL} />, {
+      wrapper: wrapper(createClient()),
+    })
+
+    await confirmLineAndRecord('400')
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+
+    // payment_date rides in the POST body, and unlike a confirmed line's amount
+    // it stays editable after the line is locked — so it is the payload edit an
+    // operator can actually make on this surface after a failure.
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('treasury:payments.date *'), {
+        target: { value: '2026-09-01' },
+      })
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: /treasury:payments.record/ }))
+    })
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(2) })
+
+    const firstKey = postedIdempotencyKey(0)
+    const secondKey = postedIdempotencyKey(1)
+    expect(firstKey).toMatch(UUID_REGEX)
+    expect(secondKey).toMatch(UUID_REGEX)
+    expect(secondKey).not.toBe(firstKey)
   })
 })
