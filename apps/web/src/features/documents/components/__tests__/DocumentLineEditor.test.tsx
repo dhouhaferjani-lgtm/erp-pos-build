@@ -3,8 +3,8 @@
  * TDD: Tests written FIRST; must fail until DesignationCell + NotesCell are wired in.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
@@ -208,6 +208,10 @@ describe('DocumentLineEditor — designation cells', () => {
     companyConfigMock.enabledModules = ['Workshop']
     companyConfigMock.purchaseBonusEnabled = false
     vi.mocked(apiPost).mockReset()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('shows overridden indicator when description differs from snapshot', () => {
@@ -1042,5 +1046,56 @@ describe('DocumentLineEditor — designation cells', () => {
         line_total: '16.250',
       }),
     ])
+  })
+
+  // S-5 (request-hygiene Task 6): typing in the unit-price cell must not fire
+  // one /line-entry/pricing-context/bulk POST per keystroke. The signature that
+  // feeds the query key is debounced by 250 ms, so only the FINAL price reaches
+  // the server. The payload stays a canonical decimal STRING (rule 19).
+  //
+  // The price input is RE-QUERIED before every interaction on purpose: this
+  // suite's `t` mock is a fresh closure per render (see the note at the top of
+  // this file), so `lineColumns` recomputes and LineItemsTable receives a new
+  // `Cell` component identity, which remounts the cell subtree on every render.
+  // A node captured before the previous render is already detached.
+  it('waits 250 ms and sends only the final unit price to bulk pricing', async () => {
+    vi.useFakeTimers()
+    vi.mocked(apiPost).mockResolvedValue({ items: {} })
+
+    function ControlledEditor() {
+      const [currentLines, setCurrentLines] = useState<DocumentLine[]>([
+        makeLine({ product_id: 'prod-1', unit_price: '0', line_total: '0' }),
+      ])
+      return (
+        <DocumentLineEditor
+          partnerId="partner-1"
+          lines={currentLines}
+          onChange={setCurrentLines}
+        />
+      )
+    }
+
+    render(<ControlledEditor />, { wrapper: createWrapper() })
+    const priceInput = () => screen.getByRole('spinbutton', { name: 'Unit Price' })
+    await act(async () => {
+      fireEvent.focus(priceInput())
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(apiPost).toHaveBeenCalledTimes(1)
+    vi.mocked(apiPost).mockClear()
+
+    await act(async () => { fireEvent.change(priceInput(), { target: { value: '1' } }); await Promise.resolve() })
+    await act(async () => { fireEvent.change(priceInput(), { target: { value: '12' } }); await Promise.resolve() })
+    await act(async () => { fireEvent.change(priceInput(), { target: { value: '125' } }); await Promise.resolve() })
+
+    await act(async () => { vi.advanceTimersByTime(249); await Promise.resolve() })
+    expect(apiPost).not.toHaveBeenCalled()
+    await act(async () => { vi.advanceTimersByTime(1); await Promise.resolve() })
+    expect(apiPost).toHaveBeenCalledTimes(1)
+    expect(apiPost).toHaveBeenCalledWith('/line-entry/pricing-context/bulk', {
+      partner_id: 'partner-1',
+      lines: [{ product_id: 'prod-1', variant_id: null, unit_price: '125' }],
+    })
   })
 })

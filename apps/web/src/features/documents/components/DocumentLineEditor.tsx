@@ -1,11 +1,12 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Info, Plus, Trash2 } from 'lucide-react'
 import { formatCurrency, formatPercent } from '../../../lib/format'
 import { bcadd, bccomp, bcdiv, bcmul, bcsub } from '../../../lib/decimal'
 import { apiPost } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
+import { useDebouncedValue } from '../../../lib/hooks'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 import { AddQuickProductModal } from '../../../components/organisms/AddQuickProductModal/AddQuickProductModal'
@@ -382,6 +383,17 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
       .join('|'),
     [pricingContextLines],
   )
+  // S-5: the signature is what moves the query key, so debouncing it (and only
+  // it) collapses a burst of unit-price keystrokes into ONE bulk pricing POST
+  // 250 ms after the operator stops typing. The debounced hook seeds its state
+  // with the current value, so the first read on focus is still immediate.
+  const debouncedPricingSignature = useDebouncedValue(pricingContextSignature, 250)
+  // The request body must match the signature that FIRED the query, not the
+  // signature the operator has typed since. Reading the lines through a ref
+  // written during render keeps the payload out of the query key while still
+  // sending the price the debounce settled on.
+  const pricingContextLinesRef = useRef(pricingContextLines)
+  pricingContextLinesRef.current = pricingContextLines
   const pricingContextEnabled =
     !readonly &&
     focusedPriceLineId !== null &&
@@ -390,12 +402,19 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
     companyId !== null
 
   const { data: pricingContext } = useQuery({
-    queryKey: tenantScopedKey(['line-entry-pricing-context', partnerId ?? null, pricingContextSignature]),
+    queryKey: tenantScopedKey([
+      'line-entry-pricing-context',
+      partnerId ?? null,
+      debouncedPricingSignature,
+    ]),
     queryFn: () => apiPost<PricingContextResponse>('/line-entry/pricing-context/bulk', {
       partner_id: partnerId ?? null,
-      lines: pricingContextLines,
+      lines: pricingContextLinesRef.current,
     }),
     enabled: pricingContextEnabled,
+    // Keep the previous answer on screen while the debounced key settles, so
+    // the cost/margin hint does not blink out between keystrokes.
+    placeholderData: keepPreviousData,
     staleTime: 30000,
   })
 
