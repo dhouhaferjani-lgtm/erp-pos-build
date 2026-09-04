@@ -76,8 +76,12 @@ class UpdateDocumentRequest extends FormRequest
             'vehicle_context.additional_data' => ['nullable', 'array'],
             'document_date' => ['sometimes', 'date'],
             'issue_date' => ['sometimes', 'date'],
-            'due_date' => ['nullable', 'date'],
-            'valid_until' => ['nullable', 'date'],
+            // DEV-QA-008/057 — the guard was ABSENT on update, so a draft could
+            // be patched to a due/valid date preceding its issue date. Mirror
+            // the create rules now that `prepareForValidation()` guarantees
+            // `document_date` is populated from the FE `issue_date` alias.
+            'due_date' => ['nullable', 'date', 'after_or_equal:document_date'],
+            'valid_until' => ['nullable', 'date', 'after_or_equal:document_date'],
             'notes' => ['nullable', 'string', 'max:5000'],
             'internal_notes' => ['nullable', 'string', 'max:5000'],
             'reference' => ['nullable', 'string', 'max:100'],
@@ -153,6 +157,14 @@ class UpdateDocumentRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        // DEV-QA-008/057 — normalize the FE `issue_date` alias to the canonical
+        // `document_date` BEFORE validation so the `after_or_equal:document_date`
+        // guards on `due_date` / `valid_until` fire on the update path too.
+        if ($this->has('issue_date') && ! $this->has('document_date')) {
+            $this->merge(['document_date' => $this->input('issue_date')]);
+        }
+        $this->replace($this->except('issue_date'));
+
         if ($this->has('lines') && is_array($this->input('lines'))) {
             $lines = array_map(function (array $line): array {
                 if (isset($line['description']) && is_string($line['description'])) {
