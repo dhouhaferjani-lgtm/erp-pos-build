@@ -414,9 +414,18 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
     // mirroring the same gate's B2 ruling on LineItemEntryBar). TanStack hands
     // back the observer's last query WITH DATA regardless of key lineage, and a
     // company switch neither unmounts this editor nor clears the cache — so a
-    // placeholder here would keep the PREVIOUS company's WAC cost, margin
-    // verdict and suggested price on screen, and `Use suggested` would commit
-    // it into the line. A blink while the key settles is the honest behaviour.
+    // placeholder here would hand the PREVIOUS company's WAC cost, margin
+    // verdict and suggested price back as this query's own data, and
+    // `Use suggested` would commit it. A blink while the key settles is the
+    // honest behaviour.
+    //
+    // Scope of the guarantee: this removes the QUERY's own cross-key carry-over.
+    // It does NOT by itself prove nothing stale can be on screen — `lineColumns`
+    // (below) omits `pricingContext` from its dep array while LineItemsTable
+    // renders each cell as a component type, so a rendered hint can lag the
+    // query. That is pre-existing and tracked with the LineItemsTable remount
+    // ticket (FE gate r2 M2 + MINOR-3); the remount must be fixed BEFORE the
+    // deps are added, or every pricing answer drops focus mid-typing.
     staleTime: 30000,
   })
 

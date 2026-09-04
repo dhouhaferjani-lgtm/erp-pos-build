@@ -1157,12 +1157,21 @@ describe('DocumentLineEditor — designation cells', () => {
     })
   })
 
-  // FE gate r1 B1. Switching company does NOT unmount this editor (the real
-  // CompanyProvider renders a bare fragment and CompanySelector only
-  // invalidates), so a `placeholderData: keepPreviousData` on the pricing query
-  // would keep the PREVIOUS company's WAC cost, margin verdict and suggested
-  // price on screen — and `Use suggested` would commit it into the line.
-  it('never shows the previous company pricing while the new company read is in flight', async () => {
+  // FE gate r1 B1 / rule 22 second-company leg. Switching company does NOT
+  // unmount this editor (the real CompanyProvider renders a bare fragment and
+  // CompanySelector only invalidates), so a `placeholderData: keepPreviousData`
+  // on the pricing query would hand the PREVIOUS company's WAC cost, margin
+  // verdict and suggested price back as this query's own data, and
+  // `Use suggested` would commit it into the line.
+  //
+  // What this test proves is exactly that: the QUERY does not carry data across
+  // a company key change. It does NOT prove "nothing stale can ever be on
+  // screen" — `lineColumns` omits `pricingContext` from its deps and
+  // LineItemsTable renders cells as component types, so a rendered hint can lag
+  // the query in production. That residual is pre-existing and out of this
+  // lane (FE gate r2 M2 + MINOR-3); this suite cannot see it because its `t`
+  // mock is a fresh closure per render, which forces the memo to recompute.
+  it('does not carry the previous company pricing across the company key change', async () => {
     const user = userEvent.setup()
     vi.mocked(apiPost).mockResolvedValue({
       items: {
@@ -1211,10 +1220,17 @@ describe('DocumentLineEditor — designation cells', () => {
     expect(screen.queryByRole('button', { name: 'Pricing details' })).toBeNull()
   })
 
-  // FE gate r1 M1. Adding a product and clicking its price inside the debounce
-  // window used to cost TWO requests: one fired at focus while the debounced
-  // signature still said "no lines", then the real one after the settle.
-  it('sends exactly one bulk pricing request when a line is added and its price is focused inside the window', async () => {
+  // FE gate r1 M1. Adding the FIRST product and clicking its price inside the
+  // debounce window used to cost TWO requests: one fired at focus while the
+  // debounced signature still said "no lines" — and that first answer was
+  // cached under a key claiming the document had none — then the real one
+  // after the settle. On an empty document the settling guard is `enabled`
+  // (`debouncedPricingLines.length > 0`), so it is now exactly one.
+  //
+  // NB (gate r2 MINOR-7): this is NOT a general "add-then-focus = 1 request"
+  // guarantee. Adding a line to a document that ALREADY has priced lines costs
+  // one extra settling request — see the companion test below.
+  it('sends exactly one bulk pricing request when the first line is added and its price is focused inside the window', async () => {
     vi.useFakeTimers()
     vi.mocked(apiPost).mockResolvedValue({ items: {} })
 
@@ -1257,6 +1273,64 @@ describe('DocumentLineEditor — designation cells', () => {
       partner_id: 'partner-1',
       lines: [{ product_id: 'prod-1', variant_id: null, unit_price: '10.000' }],
     })
+  })
+
+  // FE gate r2 MINOR-7, the honest companion to the test above. Adding a line
+  // to a document that ALREADY has priced lines costs TWO requests, not one:
+  // the debounced array is non-empty, so `enabled` cannot suppress the read
+  // that is already in flight for the old line set, and the new set follows
+  // 250 ms later. Both are internally coherent (key ⟺ body), which is what M1
+  // was about; the extra round trip is the price of keeping the first read on
+  // focus immediate. Pinned here so nobody reads the empty-document test as a
+  // general guarantee.
+  it('costs one extra settling request when a line is added to a document that already has priced lines', async () => {
+    vi.useFakeTimers()
+    vi.mocked(apiPost).mockResolvedValue({ items: {} })
+
+    function ControlledEditor() {
+      const [currentLines, setCurrentLines] = useState<DocumentLine[]>([
+        makeLine({ id: 'line-a', product_id: 'prod-A', unit_price: '5.000', line_total: '5.000' }),
+      ])
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              setCurrentLines((current) => [
+                ...current,
+                makeLine({ id: 'line-b', product_id: 'prod-B', unit_price: '10.000', line_total: '10.000' }),
+              ])
+            }}
+          >
+            harness-add-line
+          </button>
+          <DocumentLineEditor
+            partnerId="partner-1"
+            lines={currentLines}
+            onChange={setCurrentLines}
+          />
+        </>
+      )
+    }
+
+    render(<ControlledEditor />, { wrapper: createWrapper() })
+    await act(async () => {
+      fireEvent.focus(screen.getByRole('spinbutton', { name: 'Unit Price' }))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(apiPost).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'harness-add-line' }))
+      await Promise.resolve()
+    })
+    await act(async () => { vi.advanceTimersByTime(250); await Promise.resolve() })
+
+    expect(vi.mocked(apiPost).mock.calls.map(([, body]) => signatureOfRequestBody(body))).toEqual([
+      'prod-A::5.000',
+      'prod-A::5.000|prod-B::10.000',
+    ])
   })
 
   // FE gate r1 M1, the durable half: a cached pricing verdict must be filed
