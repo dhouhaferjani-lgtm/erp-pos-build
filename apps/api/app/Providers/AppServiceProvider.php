@@ -63,6 +63,7 @@ use App\Shared\Contracts\ProductInventoryQueryInterface;
 use App\Shared\Contracts\ProductServiceInterface;
 use App\Shared\Infrastructure\CurrencyScaleResolver;
 use App\Shared\Infrastructure\GateAbilityAuthorizer;
+use App\Support\LazyLoadViolationLog;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Database\Eloquent\Model;
@@ -219,7 +220,8 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
-     * Request hygiene Phase A, Task 10 — LOG-ONLY lazy-loading guard.
+     * Request hygiene Phase A, Task 10 — LOG-ONLY lazy-loading guard,
+     * Task 10b — deduped per process.
      *
      * Outside production every lazy load from a multi-row hydration is recorded
      * as `lazy-load` with the model class and relation name, and then RESOLVES
@@ -228,10 +230,37 @@ class AppServiceProvider extends ServiceProvider
      * the log of local, testing and staging runs without any chance of breaking
      * a request. Production keeps the framework default (guard off), so its
      * behaviour is unchanged by this provider.
+     *
+     * DEDUPE (Task 10b, gate finding NB-1). The handler fires once per violating
+     * ROW, so one N+1 over a 1000-row page would write 1000 identical lines into
+     * the `stack` channel. `LazyLoadViolationLog` lets each distinct
+     * (model class, relation) pair through exactly ONCE PER PHP PROCESS and
+     * counts the rest, which is all the diagnostic signal there ever was.
+     *
+     * PROCESS SEMANTICS — read before reading the logs:
+     * - FPM worker: the pair is logged on the first request that trips it and
+     *   stays silent for every later request that worker serves, so absence of a
+     *   line does NOT mean the N+1 is gone.
+     * - Queue worker (Horizon): a long-lived process, so a pair is logged once
+     *   per WORKER LIFETIME, not once per job. Accepted deliberately — the pair
+     *   is what a reader acts on, and a restarted/scaled worker re-logs it.
+     * - CLI/artisan run and phpunit: one process, so once per run.
+     *   `Tests\TestCase::setUp()` calls `LazyLoadViolationLog::reset()` so a
+     *   pair tripped by one test still logs for the next.
+     *
+     * COVERAGE CAVEAT (gate finding NB-4). Eloquent stamps `preventsLazyLoading`
+     * onto a model only when it was hydrated from a MULTI-ROW result
+     * (`Builder::hydrate()`, `count($items) > 1`). Lazy loads off `first()`,
+     * `find()` or `firstOrFail()` results are invisible to this guard forever —
+     * a silent log is not proof of "no N+1".
      */
     private function configureLazyLoadingGuard(): void
     {
         Model::handleLazyLoadingViolationUsing(static function (Model $model, string $relation): void {
+            if (! LazyLoadViolationLog::record($model::class, $relation)) {
+                return;
+            }
+
             Log::warning('lazy-load', ['model' => $model::class, 'relation' => $relation]);
         });
 
