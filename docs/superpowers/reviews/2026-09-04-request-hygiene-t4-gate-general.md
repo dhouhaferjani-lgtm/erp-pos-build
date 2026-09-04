@@ -413,3 +413,341 @@ plan's trigger ("only if audit-chain behavior changes") is not met.
 3. N1's boundary test (92 → 200, 93 → 422) and the plan wording fixed.
 4. Re-run of the same three files on both drivers, PHPStan and Pint.
 5. N4 and N5 filed as tickets (no code needed in this lane).
+
+---
+
+## Re-gate r2 (2026-09-04)
+
+- **Reviewer:** general adversarial merge gate (Opus), round 2 — targeted re-gate of B1 + N1
+- **Date:** 2026-09-04
+- **Worktree:** `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/rh-t4`, branch `lane/rh-t4-audit-bounds`
+- **Commits reviewed:** `3bbb7814b` (fix round 1, app + tests) + `884760358` (docs only)
+- **Handback section:** `docs/handoff/HANDBACK-request-hygiene-T4-2026-09-04.md` → `# Fix round 1 (2026-09-04) — gate r1 CHANGES`
+
+### VERDICT: MERGE
+
+B1 is fixed on both mechanisms and both halves (request + controller). N1's boundary is now pinned
+on both sides and both cases are mutation-falsifying (measured, not asserted). The diff is confined
+to the three files the fix required. Both drivers green, PHPStan level 8 clean, Pint clean.
+
+No blocking findings.
+
+---
+
+### 1. Adjudication of the measurement dispute — the handback is RIGHT, r1 was wrong on the failure mode
+
+**Verdict: r1's B1 *conclusion* stands (the contract was wrong for blank input and the controller
+docblock's invariant was false), but all four of its stated consequences (a)–(d) were UNREACHABLE
+over HTTP. Over HTTP on `817ac93e2` every blank optional parameter produced a spurious 422, not a
+silently-narrowed 200. r1's probe measured a bare `Validator::make()` with the global middleware
+stripped — a state that is real only for a directly-constructed FormRequest, which is precisely the
+state `prepareForValidation()` now covers.**
+
+**Static proof.** `bootstrap/app.php:87` opens `->withMiddleware(...)` and only ever calls
+`prependToGroup('api', …)` (`:132`), `appendToGroup('api', …)` (`:143`), `appendToGroup('web', …)`
+(`:157`) and the priority-list helpers (`:173-197`). There is no `->use(`, `->remove(`,
+`->replace(`, `->convertEmptyStringsToNull(` or `->trimStrings(` anywhere in the file, so the
+framework default global stack applies unchanged:
+`vendor/laravel/framework/src/Illuminate/Foundation/Configuration/Middleware.php:461-462`
+(`TrimStrings` then `ConvertEmptyStringsToNull`, in that order — so a whitespace-only value is
+trimmed to `''` and then nulled). `TransformsRequest::clean()`
+(`vendor/laravel/framework/src/Illuminate/Foundation/Http/Middleware/TransformsRequest.php:30-39`)
+cleans `$request->query` **and** `$request->json()`, so this applies to GET query strings and to a
+JSON body alike. `ConvertEmptyStringsToNull::transform()` (`…/ConvertEmptyStringsToNull.php:41-44`)
+is `$value === '' ? null : $value`. No `skipWhen`/`except` is registered anywhere
+(`grep -rn "ConvertEmptyStringsToNull::skipWhen\|TrimStrings::skipWhen\|convertEmptyStringsToNull\|trimStrings(" app/ bootstrap/ config/` → **zero hits**).
+
+Consequence: over HTTP the value reaching the validator is `null`, not `''`. `null` is *present*
+(`Arr::has` / `array_key_exists` → true), so `presentOrRuleIsImplicit()` takes the
+`validatePresent()` branch, **all** non-implicit rules run, and `string` / `integer` /
+`date_format` / `in` all fail on `null` when `nullable` is absent.
+
+**Runtime proof (independent of the handback).** Global stack dumped from the live kernel inside the
+test harness:
+
+```
+GLOBAL=[ValidatePathEncoding, InvokeDeferredCallbacks, TrustProxies, HandleCors,
+        PreventRequestsDuringMaintenance, ValidatePostSize,
+        Illuminate\Foundation\Http\Middleware\TrimStrings,
+        Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull,
+        Barryvdh\Debugbar\Middleware\InjectDebugbar]
+```
+
+And the actual endpoint response on the pre-fix code (`git show 817ac93e2:…` restored for the
+request **and** the controller, authenticated, real route, real middleware):
+
+```
+GET /api/v1/audit/events?event_type=&aggregate_type=&aggregate_id=&from=&to=&per_page=&page=&include=
+STATUS=422
+error.code = VALIDATION_ERROR
+error.message = "The event type field must be a string. (and 11 more errors)"
+  event_type     : The event type field must be a string.
+  aggregate_type : The aggregate type field must be a string.
+  aggregate_id   : The aggregate id field must be a string.
+  from           : The from field must match the format Y-m-d.
+  to             : The to field must match the format Y-m-d. / must be a date after or equal to from.
+  page           : must be an integer / must be at least 1.
+  per_page       : must be an integer / must be at least 1.
+  include        : must be a string / the selected include is invalid.
+```
+
+**Per-consequence ruling:**
+
+| r1 B1 sub-case | Reachable over HTTP on `817ac93e2`? | What actually happened |
+|---|---|---|
+| (a) `?from=&to=` silently scoped to *today* | **NO** | 422 (`from`/`to` fail `date_format` on `null`) |
+| (b) `?aggregate_type=&aggregate_id=` → always 0 rows | **NO** | 422 (both fail `string` on `null`) |
+| (c) `?event_type=` → 0 rows | **NO** | 422 (fails `string` on `null`) |
+| (d) `?per_page=` → `meta.per_page` 15 instead of 50 | **NO on `817ac93e2`** (422 first) — **YES the moment `nullable` is added** | measured below (mutation M3) |
+
+All four were reachable only via a bare `Validator`/directly-constructed FormRequest, i.e. with the
+middleware absent.
+
+**What the real pre-fix severity was, stated for the plan amendment.** At `b133caf21` (pre-lane)
+there was no FormRequest, the middleware nulled the blanks, and `if ($from && $to)` fell through, so
+`GET …?from=&to=` returned **200 with the full company list**. Commit `817ac93e2` turned that same
+URL into a **422**. So the lane's first commit shipped a live behaviour regression for the ordinary
+browser-form default submission (every empty input posted as a blank param) — a *spurious 422*, not
+a silent wrong answer. That is the correct severity story for the plan rev; B1 remains correctly
+blocking, and the fix the gate asked for is exactly the fix that removes it.
+
+**And (d) is now a live, measured hazard that the second half of the fix prevents**, which is why
+the controller change is not cosmetic: with `nullable` present but the controller reading the raw
+request again, `?per_page=` yields `meta.per_page = 15` (mutation M3 below,
+`Failed asserting that 15 is identical to 50`).
+
+**Two honest corrections to the handback's own wording** (neither blocking):
+- The handback cites `Middleware.php:461-462` — correct in this vendor tree, verified.
+- The handback says the gate's probe state "is precisely the state `prepareForValidation()` now
+  covers". True, and `test_form_request_normalizes_blank_parameters_without_the_global_middleware`
+  (`tests/Feature/Compliance/AuditTrailTest.php:659`) is the only test that exercises it — verified
+  falsifying (mutation M4).
+
+---
+
+### 2. B1 fix — verified
+
+- **`prepareForValidation()`** — `ListAuditEventsRequest.php:65-77`. Iterates **only**
+  `self::OPTIONAL_PARAMS` (`:49-58`: `event_type`, `aggregate_type`, `aggregate_id`, `from`, `to`,
+  `page`, `per_page`, `include`) and merges **only** keys whose current value satisfies
+  `is_string($value) && trim($value) === ''` (`:70`). Answering the gate question directly:
+  - **It does touch `include`** — `include` is in `OPTIONAL_PARAMS` (`:57`), deliberately, so
+    `?include=` and `?include=%20` mean "no payload" rather than 422. That is the correct
+    reading of the ruling; nothing depends on `include` staying raw.
+  - **It touches no non-listed input.** No other key is read or written; `$this->merge($blanks)`
+    (`:75`) is guarded by `$blanks !== []` (`:74`).
+  - **It never *creates* an absent key.** `$this->input($key)` returns `null` for an absent
+    parameter, `is_string(null)` is false, so the key is not added to `$blanks`. This matters: if
+    it merged `from => null` when `from` was absent, `Arr::has` would report it present and could
+    perturb `required_with`. It does not.
+  - `trim($value) === ''` rather than `empty($value)` — so `?per_page=0` and `?from=0` are **kept**
+    and 422 on their own rules, not silently swallowed. Correct choice.
+  - `$this->merge()` writes to `getInputSource()`, which for a real GET is the **query bag**
+    (`Illuminate\Http\Concerns\InteractsWithInput::getInputSource()`), so `withValidator`'s
+    `$this->input('from')` (`:107-108`) sees the normalized `null`.
+- **`nullable` on every optional rule** — `ListAuditEventsRequest.php:83, 88, 92, 93, 94, 95, 96, 97`
+  (all eight).
+- **`required_with` still fires on a blank half** — `:88, 92, 93, 94`. `required_with` is implicit,
+  so `nullable` does not disarm it. Pinned by
+  `test_aggregate_type_with_empty_aggregate_id_still_returns_validation_error` (`:679`, asserts
+  `error.errors.aggregate_id.0`) and `test_from_with_empty_to_still_returns_validation_error`
+  (`:693`, asserts `error.errors.to.0`). Both are **green pre-fix as well** (the middleware already
+  nulled the blank half) — the handback states this plainly rather than claiming a red, which is the
+  honest reporting the gate wanted; their falsifying power is against the *fix* (drop the four
+  `required_with:` rules → both flip to 200, re-verified in the handback's Red 1b).
+- **Fully-blank pairs = absent** — `test_empty_query_parameters_are_treated_as_absent` (`:603`):
+  all eight blank → 200, `data` count 4, `meta.total` 4, `meta.per_page` **50**,
+  `meta.current_page` 1, `meta.last_page` 1, and no `payload`/`metadata` key. Falsifying: **red on
+  `817ac93e2`** (measured above, `Expected response status code [200] but received 422`).
+- **`perPage`/`page` from `validated()` with defaults 50/1** — `AuditController.php:67-70`
+  (`$request->validated('per_page')` / `('page')`, then `is_numeric(...) ? (int) ... : 50 / 1`),
+  consumed at `:82-83`. `?per_page=` ⇒ `meta.per_page` **50**, confirmed green and confirmed
+  falsifying by mutation M3 (revert to `$request->integer('per_page', 50)` ⇒ **15**).
+- **No `null`/`''` leak into `CarbonImmutable::parse()`** — `AuditController.php:65-66` guards both
+  with `is_string(...)`, and the only other `parse()` call, `ListAuditEventsRequest.php:112`, is
+  guarded by the `! is_string($from) || ! is_string($to)` early return at `:109-111` plus the
+  error-presence early return at `:104-106`. Post-fix `validated('from')` is either a
+  `Y-m-d`-shaped non-blank string or `null` — a blank can no longer survive (two independent
+  mechanisms), and a malformed one 422s.
+- **No `''` leak into the aggregate branch** — `AuditController.php:71`
+  `$hasAggregate = $aggregateType !== null && $aggregateId !== null`, where both operands come from
+  `is_string(...) ? … : null` (`:63-64`). A blank is `null` before this line, and `required_with`
+  makes a one-sided pair a 422, so `where('aggregate_type','')` is unreachable. The controller
+  docblock invariant (`:37-53`) is now true as written.
+- **Behaviour-change note (not a defect):** `?per_page=`, `?include=`, `?event_type=` etc. went
+  422 → 200 relative to `817ac93e2`, and back to the pre-lane (`b133caf21`) 200. No in-repo consumer
+  calls this endpoint (r1 §5, unchanged), so nothing regresses.
+
+---
+
+### 3. N1 — both boundary tests exist and are falsifying (mutation-measured)
+
+`test_audit_date_range_accepts_the_92_day_span_boundary` (`AuditTrailTest.php:714`,
+`from=2026-01-01&to=2026-04-03` → 200 + `meta.per_page` 50) and
+`test_audit_date_range_rejects_the_93_day_span_boundary` (`:722`, `from=2026-01-01&to=2026-04-04`
+→ 422 + `error.errors.to.0 === 'The date range may not exceed 92 days.'`).
+
+Verified by two temporary mutations of `ListAuditEventsRequest.php:112`, each reverted immediately
+and hash-verified (`shasum` = `8f730946fc276c3e60c4ddd01f80efb086c53b3a` after every revert,
+identical to the pre-mutation backup; `git status --short` empty afterwards):
+
+```
+M1  `) > self::MAX_SPAN_DAYS)`  ->  `) >= self::MAX_SPAN_DAYS)`
+    ⨯ audit date range accepts the 92 day span boundary
+    ✓ audit date range rejects the 93 day span boundary
+    Tests:    1 failed, 1 passed (4 assertions)
+
+M2  `) > self::MAX_SPAN_DAYS)`  ->  `) > self::MAX_SPAN_DAYS + 1)`
+    ✓ audit date range accepts the 92 day span boundary
+    ⨯ audit date range rejects the 93 day span boundary
+    Tests:    1 failed, 1 passed (3 assertions)
+```
+
+Both sides of the ceiling are now pinned; before this round neither mutation turned a test red.
+`MAX_SPAN_DAYS` itself is unchanged (`:42`), as the gate asked. The class docblock (`:36-38`) now
+states the contract precisely as `diffInDays(from, to) <= 92`.
+
+---
+
+### 4. Nothing else changed
+
+```
+$ git diff --stat 4cbb4d48e..3bbb7814b
+ .../Compliance/Presentation/Controllers/AuditController.php   |  17 ++-
+ .../Compliance/Presentation/Requests/ListAuditEventsRequest.php | 68 ++++++++--
+ apps/api/tests/Feature/Compliance/AuditTrailTest.php            | 150 +++++++++++++++++++++
+ 3 files changed, 224 insertions(+), 11 deletions(-)
+
+$ git diff --stat 3bbb7814b..884760358
+ docs/handoff/HANDBACK-request-hygiene-T4-2026-09-04.md      | 177 +++++++++
+ docs/superpowers/reviews/2026-09-04-…-t4-gate-general.md    | 415 +++++++++++++++++++++
+ 2 files changed, 592 insertions(+)   (docs only)
+```
+
+- **No locale drift** — `apps/api/lang/{en,fr,ar}/validation.php` are **not** in the fix-round diff;
+  they stand exactly as r1 §8 verified them.
+- **Hash chain untouched** — `AuditService.php` and `Compliance/Domain/AuditEvent.php` are not in
+  the fix-round diff at all; `AuditService::record()` and `event_hash` computation are byte-identical
+  to r1. `event_hash` is still emitted unconditionally (`AuditController.php:96`). The r1 ruling that
+  `fiscal-pos-reviewer` is not required still holds.
+- `AuditService.php`, `DocumentController.php`, `ListDocumentsTest.php`,
+  `ComplianceCrossTenantHardeningTest.php` — unchanged by the fix round; r1's verification of them
+  carries forward. Tenancy posture unchanged: `companyId: $this->companyContext->requireCompanyId()`
+  (`AuditController.php:76`) is the only company source, and the fix touched no scope predicate.
+- The controller's only non-docblock edits are the four added lines at `:67-70` and the two
+  substitutions at `:82-83` — no change to branch selection (`:71-73`), ordering, serialization or
+  the meta block.
+
+---
+
+### 5. Commands and outputs
+
+**SQLite, by path**
+```
+$ cd .worktrees/rh-t4/apps/api && php artisan test \
+    tests/Feature/Compliance/AuditTrailTest.php \
+    tests/Feature/Compliance/ComplianceCrossTenantHardeningTest.php \
+    tests/Feature/Document/ListDocumentsTest.php
+  ✓ audit date range accepts the 92 day span boundary
+  ✓ audit date range rejects the 93 day span boundary
+  …
+  Tests:    55 passed (210 assertions)
+  Duration: 77.35s
+```
+
+**PostgreSQL, by path (lane container `autoerp_pg_t4`, 127.0.0.1:5454; shared 5433 left untouched)**
+```
+$ DB_HOST=127.0.0.1 DB_PORT=5454 DB_DATABASE=autoerp_test_t4 DB_CENTRAL_DATABASE=autoerp_test_t4 \
+    php artisan test -c phpunit-pgsql.xml \
+    tests/Feature/Compliance/AuditTrailTest.php \
+    tests/Feature/Compliance/ComplianceCrossTenantHardeningTest.php \
+    tests/Feature/Document/ListDocumentsTest.php
+  Tests:    55 passed (210 assertions)
+  Duration: 129.83s
+```
+(Container left running, as instructed. `docker ps` also shows `autoerp_pg_t2:5452` and
+`autoerp_pg_t13:5463` — other lanes', not touched.)
+
+**PHPStan level 8**
+```
+$ DB_HOST=127.0.0.1 DB_PORT=5454 DB_DATABASE=autoerp_test_t4 DB_CENTRAL_DATABASE=autoerp_test_t4 \
+  ./vendor/bin/phpstan analyse --memory-limit=2G --no-progress \
+    app/Modules/Compliance/Presentation/Requests/ListAuditEventsRequest.php \
+    app/Modules/Compliance/Presentation/Controllers/AuditController.php \
+    app/Modules/Compliance/Services/AuditService.php \
+    app/Modules/Document/Presentation/Controllers/DocumentController.php
+Note: Using configuration file …/apps/api/phpstan.neon.
+ [OK] No errors
+```
+
+**Pint**
+```
+$ ./vendor/bin/pint --test \
+    app/Modules/Compliance/Presentation/Requests/ListAuditEventsRequest.php \
+    app/Modules/Compliance/Presentation/Controllers/AuditController.php \
+    tests/Feature/Compliance/AuditTrailTest.php
+{"result":"pass"}
+```
+
+**Temporary probes and mutations — all reverted, worktree verified clean**
+
+```
+# pre-fix HTTP repro: request + controller restored from `git show 817ac93e2:…`
+$ php artisan test tests/Feature/Compliance/AuditTrailTest.php --filter '/(the 5 new HTTP tests)/'
+  ⨯ empty query parameters are treated as absent   (Expected 200, received 422)
+  ✓ aggregate type with empty aggregate id still returns validation error
+  ✓ from with empty to still returns validation error
+  ✓ audit date range accepts the 92 day span boundary
+  ✓ audit date range rejects the 93 day span boundary
+  Tests:    1 failed, 4 passed (12 assertions)
+
+# temporary probe test (TmpGateR2ProbeTest.php) — dumped the 422 body and the live global
+# middleware stack quoted in §1; file DELETED after the run.
+
+M3  AuditController.php:82-83  `perPage: $perPage` -> `$request->integer('per_page', 50)`
+    ⨯ empty query parameters are treated as absent
+      Failed asserting that 15 is identical to 50.   (line 637, meta.per_page)
+
+M4  ListAuditEventsRequest.php:65  prepareForValidation() -> prepareForValidationDISABLED()
+    ✓ empty query parameters are treated as absent            (middleware still nulls them)
+    ⨯ form request normalizes blank parameters without the global middleware
+      blank event_type must normalize to null / Failed asserting that '' is null.
+
+$ shasum app/Modules/Compliance/Presentation/Requests/ListAuditEventsRequest.php
+  8f730946fc276c3e60c4ddd01f80efb086c53b3a      (= pre-mutation backup)
+$ shasum app/Modules/Compliance/Presentation/Controllers/AuditController.php
+  6268486a5444038e9c919851e004a85410e61646      (= pre-mutation backup)
+$ git status --short
+  (empty)
+```
+
+No file in the worktree was left modified by this review; this report append is the only addition.
+
+---
+
+### Non-blocking notes for r2
+
+- **NB-1 (for the plan rev — supersedes r1's B1 narrative).** The plan amendment must carry the
+  corrected severity: pre-fix over HTTP the failure was a **spurious 422** on a browser form's
+  default blank submission (a regression `817ac93e2` introduced against `b133caf21`'s 200), not a
+  silently-narrowed 200. The silent-wrong-answer cases exist only where the global middleware is
+  absent (a directly-constructed FormRequest, a console/queue-built request), which `nullable` +
+  `prepareForValidation()` together now cover. The plan's Step 1 snippet still needs `nullable` on
+  all eight optional rules, and Step 3 still needs `validated()`-derived `per_page`/`page`.
+- **NB-2.** The blank half-pair is pinned in the `to`-blank direction only
+  (`AuditTrailTest.php:693`, `?from=2026-09-01&to=`). The mirror `?from=&to=2026-09-03` is not
+  pinned; only its *absent* form is (`:370`, `?to=2026-09-03`). Same implicit-rule mechanism, so
+  coverage is adequate — one extra case would be tidier.
+- **NB-3.** `test_empty_query_parameters_are_treated_as_absent`'s `travelTo(now()->subDays(10))`
+  seed adds no falsification power **over HTTP** (the middleware nulls `from`, so `parse()` is never
+  reached); it only bites under r1's no-middleware reading. Harmless — the test is falsifying via
+  `nullable` (red on `817ac93e2`) and via the controller change (M3). Worth one honest sentence if
+  the handback is reused as a template.
+- **NB-4.** N1's documentation residue is still owed in the plan rev: the shipped ceiling is a
+  92-day `diffInDays`, i.e. a **93-calendar-day** queried window after
+  `startOfDay(from)..endOfDay(to)` (`AuditController.php:65-66`). The request's class docblock
+  (`ListAuditEventsRequest.php:36-38`) now states the diff contract precisely; the plan's "≤ 92
+  days" wording does not.
+- **NB-5.** r1 items 5 (N4 campaign `limit=100` sites, N5 dead `AuditService` methods) remain
+  tickets for the programme's cleanup pass — correctly untouched by this round. N2, N3, N6 stand as
+  ruled in r1.
