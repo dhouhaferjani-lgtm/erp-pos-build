@@ -436,3 +436,195 @@ Not run (outside this gate's remit / no stack): browser probes, `apps/api` PHPUn
 ## What to fix before merge
 
 Move `RecordPaymentModal`'s key rotation out of the `prefill`-dependent effect onto a real open *transition* (F1) and land the inline-literal regression probe; rule on the `reset()`-driven rotation in `PaymentForm` (F2); add the missing falsifier for the pre-attempt guard (F3). The browser legs and NB-10's one-line election remain promotion-blocking on top of that.
+
+---
+
+# Re-gate r3 (2026-09-04)
+
+- **Range re-reviewed:** `04b34cdcc..eec7e7f44` (fix round 3 `5d75a7873`, docs `eec7e7f44`)
+- **Worktree:** `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/rh-t12`, HEAD `eec7e7f44`; tracked tree verified clean before, between every mutation, and after
+- **Read-only** except five mutations (C, D, D2, E, F) and one temporary test relaxation, each applied from a byte copy and restored; `git status --porcelain` empty afterwards each time
+
+## VERDICT: spec ✅ + quality **APPROVED** (MERGE)
+
+All three r2 blockers are closed and each is now locked by a falsifier I re-ran and reproduced. The money path is byte-unchanged since r2. Lint improves. Merge-tree is clean. The one residual money scenario (item 2 below) is pre-existing base behaviour, is not made worse by this lane, and is disclosed in the right place in the handback.
+
+---
+
+## 1. F1 — CLOSED. The observation channel is sound, not tautological (two independent falsifying assertions)
+
+**Code, read at HEAD:**
+- `RecordPaymentModal.tsx:150` — `const wasOpenRef = useRef<boolean>(false)`
+- `RecordPaymentModal.tsx:193-202` — separate effect, deps `[isOpen, resetIdempotencyKey]` (both stable: `isOpen` is a boolean, `resetIdempotencyKey` is `useCallback([])` at `useIdempotencyKey.ts:15-18`). Body: `if (wasOpenRef.current) return` → set flag → `hadFailedAttemptRef.current = false` → `resetIdempotencyKey()`; `else wasOpenRef.current = false`.
+- `RecordPaymentModal.tsx:166-178` — the form-reset effect keeps deps `[isOpen, prefill, resetIdempotencyKey]` and no longer touches either ref. Directed shape, implemented exactly.
+- **Hosts untouched, verified not assumed:** `git diff a97631051..HEAD --name-only -- 'apps/web/src/features/documents/**'` → empty. `InvoiceDetailPage.tsx:894-905`, `SalesOrderDetailPage.tsx:780-791`, `PurchaseOrderDetailPage.tsx:709-720` still pass `prefill` as an inline literal.
+
+**Judging the observation channel.** The lane's argument for counting `crypto.randomUUID()` mints instead of comparing two posted keys is CORRECT and I verified its premise: the form-reset effect at `:166-178` still fires on the fresh-`prefill` re-render and wipes `paymentLines`, so the operator must re-enter — and with the fix `hadFailedAttemptRef` survives that effect (it moved to `:197`), so the re-entry rotates legitimately. Both worlds therefore post the same *ordinal* uuid on the retry; a naive two-key comparison genuinely cannot separate them.
+
+The channel is **not tautological**, on three grounds measured here:
+1. It is a *count in a bounded window*, and the two uuid consumers in that window are enumerable from the code: `createNewPaymentLine` (`RecordPaymentModal.tsx:204-205`) and `useIdempotencyKey`'s `reset` (`useIdempotencyKey.ts:16`). `PaymentLineData.id` is the only other uuid on the surface. So "exactly 1" is a claim about which of two known producers fired, not a magic number.
+2. The test carries a **second, independent assertion that reads the money path** — `idempotencyKeyLifecycle.test.tsx:326` `expect(mintedDuringRerender).not.toContain(postedIdempotencyKey(1))`. I proved this assertion falsifies on its own: with mutation C applied I relaxed the length assertion to `toBeGreaterThan(0)` and re-ran — the test still failed, on line 326, `expected [ …(2) ] to not include '00000000-0000-4000-8000-000000000005'`. So the count is belt and the POST-body read is braces.
+3. The fixture uses `makePrefill()` (`idempotencyKeyLifecycle.test.tsx:92-101`) at every `render`/`rerender` — the production shape. r2's complaint that the old hoisted `PREFILL` constant calibrated the test away from the hosts is fixed at `:84-91`.
+
+**Mutation C re-run by this gate** (revert F1: rotation back inside the `prefill`-dependent effect, transition effect neutered to a bare `wasOpenRef` bookkeeper):
+```
+   ✓ mints a DIFFERENT idempotency_key for two separate modal opens
+   ✓ keeps the SAME idempotency_key when retrying after a failed submission from the same open
+   ✓ mints a DIFFERENT idempotency_key once the payload is edited after a failed submit
+   × does NOT rotate the key when the PARENT re-renders with a fresh prefill object while the modal stays open
+     → AssertionError: expected [ …(2) ] to have a length of 1 but got 2
+   ✓ does NOT rotate the key when the payload is edited BEFORE any submit attempt
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 8 passed (9)
+```
+Exactly the one test, exactly the predicted diagnostic. Restored from byte copy; tree clean.
+
+## 2. RULING on the uncured end-to-end reconnect scenario — **YES, merge Task 12 with the host `useMemo` as a follow-up**
+
+**The premise is confirmed, and the wipe is PRE-EXISTING.** `git show a97631051:.../RecordPaymentModal.tsx` line 159 already reads `}, [isOpen, prefill])` — the form-reset effect depended on `prefill` before this lane existed. T12 did not introduce the wipe and does not widen it.
+
+**Why merge is the right call:**
+
+1. **Strictly better than base, on the same scenario.** On `a97631051` this modal sent **no idempotency key at all**: *every* retry after a lost response booked a second payment, re-render or not. Post-T12 the dominant retry — see the error, click Record again from the same open, nothing re-renders — is deduplicated server-side (`PaymentController.php:1427-1433`), locked by `idempotencyKeyLifecycle.test.tsx:213-236`. The residual is the compound case *commit + lost response + a host re-render before the retry*, which is exactly as bad as base and no worse. There is no regression to gate on.
+2. **`useMemo` is a partial cure, so gating on it would buy less than it looks.** The three hosts build `prefill.amount` from `outstandingAmount`. A memo keyed on those primitives stops the wipe only when the refetch returns the SAME payload values — the WebSocket-reconnect "invalidate everything, nothing changed" case (`WebSocketReconnectProvider.tsx:10-13`, `queryClient.ts:9`), which is the common one and worth fixing. But in the precise money scenario, the 400 *did* commit, so `outstandingAmount` moves 1000 → 600, the memo deps change, the wipe fires anyway and the re-entry still rotates. Making three one-line edits a merge gate would let the lane claim "cured" for a case that is not cured.
+3. **The real defect is the wipe, not the identity.** A modal that discards confirmed payment lines, the date, the notes AND `validationError` (`RecordPaymentModal.tsx:168-175`) out from under an operator who has a failed attempt pending is a data-loss/UX defect in its own right, and it is the actual root cause. That is a design change to `RecordPaymentModal` (do not wipe while an intent is pending; re-hydrate rather than clear), not a `useMemo`, and it is plainly outside T12's ID-1/ID-2 scope (rule 4).
+4. **It is disclosed in the right place, in the right words.** Handback `## Follow-up recorded, NOT fixed in this round` lines 803-812 says the scenario "can still end in a second payment" and names the hosts. Nothing is hidden.
+
+**Two-line ruling for the orchestrator:**
+> **YES — merge T12 now.** The uncured leg is pre-existing base behaviour that T12 leaves no worse (base sent no key at all, so every retry double-paid); T12's own defect, the re-render rotation, is fixed and locked.
+> Raise the follow-up as **P1 pre-production**, scoped as *"RecordPaymentModal must not wipe an intent that has a failed attempt pending"* — `useMemo` on the three hosts is the cheap half (it cures the unchanged-refetch case only) and must not be recorded as the full cure.
+
+## 3. F2 — CLOSED. Every programmatic write is wrapped; no operator path is
+
+`grep -n 'setValue(\|reset(\|writeProgrammatically' apps/web/src/features/treasury/PaymentForm.tsx`, every hit classified by reading the enclosing scope:
+
+| site | `setValue`/`reset` | wrapped? | correct? |
+|---|---|---|---|
+| `PaymentForm.tsx:357` RIB-derived IBAN set | `setValue('bank_iban', nextIban)` | ✅ `writeProgrammatically` | yes — effect on query-derived `countryCode`/RIB validation |
+| `PaymentForm.tsx:361` RIB-derived IBAN clear | `setValue('bank_iban','')` | ✅ | yes |
+| `PaymentForm.tsx:415-465` four document-prefill branches | `reset({...})` ×4 | ✅ (single wrap at `:415`, closed at `:466`) | yes — driven by `invoiceData`/`purchaseOrderData`/`deliveryNoteData`/`supplierInvoiceData` |
+| `PaymentForm.tsx:540` method-compat repository clear | `setValue('repository_id','')` | ✅ | yes — effect on `compatibleRepositories` |
+| `PaymentForm.tsx:1115,1118-1120,1123-1125` BankPicker `onFallbackValueChange`/`onFallbackChange`/`onChange` | `setValue` ×7 | ❌ unwrapped | **correct** — JSX picker callbacks, an operator pick IS a payload edit |
+| `PaymentForm.tsx:1467` `AddPartnerModal.onSuccess` | `setValue('partner_id', …)` | ❌ unwrapped | **correct** — operator created the partner |
+| `PaymentForm.tsx:1479` `AddRepositoryModal.onSuccess` | `setValue('repository_id', …)` | ❌ unwrapped | **correct** |
+| `PaymentForm.tsx:688` | `allocationPreviewMutation.reset()` | n/a | TanStack mutation reset, not RHF |
+
+No programmatic write is left unwrapped and no operator write is wrapped. The suppression is a synchronous `try/finally` (`PaymentForm.tsx:344-351`), which is sound only because RHF emits the notification inside the write — that assumption is itself pinned by the shipped test (a future RHF that defers would turn it red).
+
+**Mutation D re-run** (delete `if (programmaticWriteRef.current) return` at `:650`, keep the `type` filter):
+```
+   × PaymentForm idempotency key ignores programmatic form writes > keeps the SAME idempotency_key when a PROGRAMMATIC RHF write lands after a failed submit
+     → AssertionError: expected '8a20ba59-…' to be '7f051fd6-…'
+ Test Files  1 failed | 3 passed (4)
+      Tests  1 failed | 89 passed (90)
+```
+Exactly one test, and it independently **confirms the lane's RHF measurement over my r2 prescription**: if `setValue` reported anything but `type: 'change'`, the surviving `type !== 'change'` filter would have caught it and the test would have stayed green. My r2 F2 discriminator was wrong; the lane measured it and said so.
+
+**Mutation E re-run** (delete `if (type !== 'change') return` at `:649`, reshape the callback to `watch(() => {…})`):
+```
+ Test Files  4 passed (4)
+      Tests  90 passed (90)
+```
+No unique coverage — the lane's disclosure is accurate. **Acceptable.** The narrowing can only make the mechanism rotate *less* often, and the notifications it drops are RHF's values-only ones which never accompany an operator keystroke without a paired `type:'change'`; every operator write on this form reaches the subscription as `type:'change'` (proven transitively by mutation D). Keeping an honestly-labelled belt with no test is better than deleting a correct narrowing to chase a coverage number.
+
+## 4. F3 — CLOSED. Mutation F: exactly the three new tests
+
+Guard present at `PaymentForm.tsx:627`, `SplitPaymentForm.tsx:135`, `RecordPaymentModal.tsx:161`. Deleting all three:
+```
+   × SplitPaymentForm idempotency key is not rotated before the first attempt > carries the MOUNT key on the first submit even though the payload was edited
+   × PaymentForm idempotency key is not rotated before the first attempt > carries the MOUNT key on the first submit even though the payload was edited
+   × RecordPaymentModal idempotency key lifetime > does NOT rotate the key when the payload is edited BEFORE any submit attempt
+ Test Files  3 failed | 4 passed (7)
+      Tests  3 failed | 96 passed (99)
+```
+Exactly three, one per surface. All three assert the POSTED key equals a key minted at mount (`postedIdempotencyKey(0)` vs `mintedAtMount`) — data-meaning, not a status code. Restored; tree clean.
+
+## 5. Money path since r2 — UNTOUCHED
+
+```
+$ git diff 04b34cdcc HEAD -- 'apps/web/src/**/*.ts' 'apps/web/src/**/*.tsx' \
+    | grep -E '^\+' | grep -E 'parseFloat|Number\(|toFixed|Math\.(abs|round|floor|ceil)'
++    const value = deterministicUuid(minted.length + 1)      (×3, test-only uuid counters)
+```
+`SplitPaymentForm.tsx` at HEAD is byte-identical to r2 on the bcmath boundary: `:123` `bcadd(sum, line.amount === '' ? '0' : line.amount, 3)`, `:126` `bcsub(totalAmount, currentTotal, 3)`, `:175` `bccomp(currentTotal, totalAmount) !== 0`, `:180`/`:220`/`:222` `bccomp`. No float, no new arithmetic anywhere in round 3.
+
+## 6. Commands run by this gate
+
+```
+$ npx vitest run src/hooks/__tests__/useIdempotencyKey.test.tsx \
+    src/features/treasury/PaymentForm.test.tsx \
+    src/features/treasury/SplitPaymentForm.test.tsx \
+    src/features/treasury/treasury.test.tsx \
+    src/features/treasury/__tests__/TreasuryTenantScope.test.tsx \
+    src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx \
+    src/components/organisms/RecordPaymentModal/__tests__/idempotencyKeyLifecycle.test.tsx
+
+ Test Files  7 passed (7)
+      Tests  99 passed (99)
+   Duration  8.24s
+```
+(act(…) warnings from the pre-existing `treasury.test.tsx` SplitPaymentForm cases; no failures. 94 → 99 = +2 RecordPaymentModal, +2 PaymentForm, +1 SplitPaymentForm, as claimed.)
+
+```
+$ npx tsc --noEmit
+TYPECHECK_EXIT=0   (no output)
+```
+
+**eslint per file, base `a97631051` vs HEAD — REPRODUCED EXACTLY.** Base copies via `git show a97631051:<path>` into `zzt3_`-prefixed **siblings in the same directory** (path matters: the design-token rules are path-scoped — copying into a scratch subdirectory inflated the totals to W741 and is not a valid baseline), linted in one invocation, deleted; tree verified clean.
+
+| file | base `a97631051` | HEAD `eec7e7f44` | Δ |
+|---|---|---|---|
+| `components/organisms/RecordPaymentModal/RecordPaymentModal.tsx` | E0 W25 | E0 W25 | 0 |
+| `components/organisms/RecordPaymentModal/__tests__/idempotencyKeyLifecycle.test.tsx` | (new) | E0 W0 | 0 |
+| `components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx` | E0 W13 | E0 W13 | 0 |
+| `components/organisms/SplitPaymentModal/SplitPaymentModal.tsx` | E0 W1 | E0 W1 | 0 |
+| `features/treasury/PaymentForm.test.tsx` | E0 W4 | E0 W4 | 0 |
+| `features/treasury/PaymentForm.tsx` | E0 W13 | E0 W12 | **−1** |
+| `features/treasury/SplitPaymentForm.test.tsx` | E0 W1 | E0 W2 | **+1** |
+| `features/treasury/SplitPaymentForm.tsx` | E0 W3 | E0 W1 | **−2** |
+| `features/treasury/__tests__/TreasuryTenantScope.test.tsx` | E0 W0 | E0 W0 | 0 |
+| `features/treasury/treasury.test.tsx` | E0 W15 | E0 W15 | 0 |
+| `hooks/useIdempotencyKey.ts` | E0 W0 | E0 W0 | 0 |
+| **total** | **E0 W75** | **E0 W73** | **−2** |
+
+```
+$ npm run audit:design-system
+[sweep-progress] Design-system audit C1-C6 violations: 811
+[gate-summary] Design-system baseline: 796 acknowledged, 15 new, 11 stale baseline entries
+EXIT=1
+```
+796/15/11 reproduced. **All 15 new and all 11 stale entries are in `src/features/import/pages/ImportWizardPage.tsx` and `src/features/uom/components/UnmappedUnitTextsPanel.tsx` — zero in any T12-touched file.** Inherited from the lane base; `dev` already carries a newer `UnmappedUnitTextsPanel.tsx` and a newer `audit-design-system-baseline.json` (both appear in `git diff dev lane --name-only`), so this resolves on merge, not in this lane. See NB-14.
+
+```
+$ git rev-parse dev                     -> 9c28b430acdebe8234a1f4a1ae1f8a3c8482e28a
+$ git merge-base --is-ancestor a97631051 dev  -> yes
+$ git merge-tree --write-tree dev lane/rh-t12-payment-idempotency
+d0e460d626a910277c82c9b2cf6c8da2219bd0f8    (exit 0, tree oid only — NO CONFLICTS)
+```
+
+**Worker hygiene:** `ps aux | grep '[v]itest'` → no vitest process (only the grep's own shell). `pgrep -fl vitest` → empty.
+
+Not run (outside this gate's remit / no stack): browser probes, `apps/api` PHPUnit, preflight.
+
+---
+
+## FINDINGS (r3)
+
+**Blocking: none.**
+
+- **NB-12 [Minor] `PaymentForm.tsx:415-466` and `:540` — two of the three `writeProgrammatically` wraps have no falsifier.** Measured: unwrapping ONLY the document-prefill `reset()` (keeping the ref and the IBAN wrap) leaves `PaymentForm.test.tsx` + `treasury.test.tsx` 73/73 green. Only the RIB→IBAN path is locked. Kept Minor rather than repeating r2's F3 ruling because the prefill wrap is provably **inert on this surface**: all four `reset()` branches write `payment_method_id: ''` (`:422,:431,:443,:456`), the field is `required` (`:753-755`), so after any prefill reset the operator MUST re-pick the method through the un-wrapped registered select — which rotates the key regardless of whether the reset itself was suppressed. The missing falsifier therefore guards nothing today. Worth one test if the required-ness of `payment_method_id` ever changes.
+- **NB-13 [Minor] `PaymentForm.test.tsx:596` contradicts the measurement it documents.** The comment reads "`setValue` reports `type` as undefined", while the production comment (`PaymentForm.tsx:640-641`) and the handback's transcript (line 681) both record `{"name":"bank_iban","type":"change"}` — and my mutation D confirms the `'change'` reading. A future reader of the test would conclude the `type` filter suffices and delete the ref. One-line correction.
+- **NB-14 [Minor, process] `pnpm audit:design-system` exits 1 on this lane (796/15/11).** Not a T12 defect (§6), but the lane cannot produce a green `pnpm lint` in isolation. Merge `dev` in (or land on top of it) before quoting a web-lint result.
+- **NB-10 (r2) still unelected.** Handback `## FR1-C` item 3 still offers (A) or (B) without choosing. One line, promotion-scoped.
+- r1/r2 NB-1, NB-2, NB-4, NB-5, NB-6, NB-8, NB-9, NB-11 stand unchanged. **NB-3 remains the Phase B convergence item** (server-side request fingerprint + `docs/glossary.md` row for "idempotency key" + converge `PaymentDetailPage.tsx:164,231,399` onto `useIdempotencyKey`).
+
+## Still promotion-blocking (unchanged, correctly disclosed by the lane)
+
+1. The four Step-6 browser legs plus the fifth the r2 gates added (fail → touch nothing → let the network return → retry, confirming the same key and no new payment).
+2. Elect (A) or (B) for the split-surface three-decimal claim (NB-10).
+3. HTTPS origin confirmation for `crypto.randomUUID()` (r1 §5).
+4. **New:** the `RecordPaymentModal` mid-intent form wipe (§2) — P1 pre-production, scoped as the wipe, not as the `useMemo`.
+
+## What to fix before merge
+
+Nothing. Merge `lane/rh-t12-payment-idempotency` into `dev` (clean merge-tree `d0e460d62`), open the wipe follow-up lane as P1 pre-production, and carry the four promotion items forward.
