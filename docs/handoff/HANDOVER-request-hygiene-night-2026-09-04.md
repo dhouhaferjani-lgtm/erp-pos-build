@@ -65,3 +65,15 @@ No pushes since 2026-08-05. Chain #201–#206: 3223 commits behind, 17 conflicti
 - Worktrees removed after merge; remaining `.worktrees/`: g2-sku, g5-opening, h2-party-kind, k67-import (WIP kept per keep-list), rh-placeholder (pending). `erp.fix-r2d`/`erp.fix-r2l` kept (uncommitted money WIP).
 - Swap peaked ~6.4 GB with RAM free never below ~45%; no IDE freeze.
 - Process lesson recorded in memory: `git merge` must be issued from the main checkout with an absolute `cd` first — a merge from inside a lane worktree is a silent no-op (bit this session repeatedly; every affected merge was redone and verified via `git rev-list --count origin/dev..dev`).
+
+## 7. Daytime addendum (2026-09-04, after the owner reconnected)
+
+| Lane | Merge | Gate | Closes |
+|---|---|---|---|
+| T10b lazy-load guard per-process dedupe (`app/Support/LazyLoadViolationLog`) | `f9acdad0e` | general MERGE | §3 item 3 (staging log volume) — `suppressedCount()` consumer is a follow-up |
+| T12b RecordPaymentModal resets only on open transition / intent change (partner\|document); "possibly recorded" banner | `c38bf5977` | treasury r1 CHANGES (route-change stale line) → r2 MERGE | §4 P1 (form wipe on prefill identity) |
+| T12c intent-scoped failure banner (`mutation.reset()` on rotation, guarded on `isError`, regression-tested); `KeyedByRouteId` on sales/purchase order detail routes | `e741dbada` | frontend APPROVE-WITH-FIXES → test added | T12b promotion-owed items |
+
+`dev` = `e741dbada`, 134 ahead of `origin/dev`, unpushed. Remaining promotion blockers: whole-backend CI run (push + `workflow_dispatch`/PR), the browser/Playwright legs (need a local stack; port 5433 held by locaplex), and the pre-existing `lint:ratchet` / `audit:design-system` reds on `dev`. Owner note from the T12b gate: the backend books an over-payment on a zero-balance document as a customer advance without refusal — confirm this is intended.
+
+Mobile: ERP-side gate of `codex/inventory-alignment-2026-09` = CHANGES then merge (2 small fixes; relay message in `docs/superpowers/reviews/2026-09-04-erp-mobile-inventory-alignment-erp-side-gate.md` §9). Dhouha test kit: `docs/qa/testkit/` (mobile-first; she builds the package from `erp-mobile` `main` once Codex merges).
