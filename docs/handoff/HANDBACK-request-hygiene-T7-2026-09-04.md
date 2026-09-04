@@ -235,3 +235,94 @@ Both path-scoped (`git commit … -- <paths>`), per the shared-checkout rule. `g
 3. Dropping `useViewScope` from `TransferSourceSuggestion`. Claim: `GET /products/:id/stock-levels` returns every company location regardless of the client's view scope, so the scope segment only fragmented the cache. Please confirm against the backend controller — if the endpoint ever becomes scope-filtered, this hook's key must carry the scope again.
 4. `AvailabilityCell`'s `enabled` argument now also gates on `sourceLocationId !== ''` while `TransferSourceSuggestion` passes `true`. On a row where no source is selected, the suggestion component alone drives the request — this is the pre-existing behaviour of both components preserved, not a new fetch.
 5. D1: harness store seeding — is faking `tenant-1` / `company-1` in `beforeEach` acceptable, or should the harness use a provider?
+
+---
+
+## Fix round 1 (2026-09-04) — response to FE gate r1 = CHANGES
+
+Gate r1 verdict: **CHANGES**, no BLOCKER. 2 MAJOR + 3 MINOR. All five addressed below.
+Lane rebased onto `dev` `f85b7c0e9` in this round, so every hash and every command output above §Fix round 1 refers to the pre-rebase base `7f86dbf0c`. Post-rebase commits: `7a41bc2d5` (code) and `7f80e1b0f` (handback), plus this round's commits.
+
+### MINOR-3 — rebase (done first, so the rest is verified on the new base)
+
+```
+$ git rebase dev
+Successfully rebased and updated refs/heads/lane/rh-t7-stock-dedupe
+```
+New base `f85b7c0e9` (`Merge branch 'lane/rh-t13-transfer-idempotency' into dev`) — **Task 13 is now merged into dev**, so the merge-tree prediction in §4 is confirmed empirically: the rebase over T13's `CreateStockTransferPage.tsx` changes was conflict-free with no manual resolution.
+
+`pnpm audit:keys` on the rebased lane:
+```
+[sweep-progress] Gate C … : 0
+[gate-summary] Gate C baseline: 0 acknowledged, 0 new, 0 stale baseline entries
+exit 0
+```
+**Clean.** `lane/rh-web-lint-debt` fixed `src/features/uom/hooks/useUnits.ts:53` on dev. The §3 `audit:keys` paragraph above is therefore superseded — that inherited violation no longer exists and the audit now passes outright.
+
+### MAJOR-1 — distinct-product assertion added (criterion discharged in CI, not deferred to a browser)
+
+The reviewer is right that converting a plan acceptance criterion into a promotion note was a unilateral downgrade. Fixed properly: the over-deduplication guard is now automated and needs no stack.
+
+`__tests__/CreateStockTransferPage.availability.test.tsx` gains a **second distinct product** (`prod-2` / `SKU-2` / "Second item") and a second test that adds a second line and asserts the **exact URL list**:
+
+```tsx
+await waitFor(() => {
+  expect(stockLevelUrls()).toEqual([
+    '/products/prod-1/stock-levels',
+    '/products/prod-2/stock-levels',
+  ])
+})
+```
+
+Both assertions switched from `toHaveLength(n)` to `toEqual([...exact urls])`, which pins identity as well as count — a bare length check cannot distinguish "two products, one request each" from "one product, two requests".
+
+**Falsification probe** — the hook key was temporarily narrowed to `['stock-levels', 'product', variantId]` (dropping `productId`, i.e. simulating exactly the over-deduplication this test exists to catch):
+```
+✓ shows available stock at the source and warns when the quantity exceeds it 260ms
+× still issues one stock-level request per DISTINCT product (fan-out is B-8, not Task 7) 1202ms
+  Tests  1 failed | 1 passed (2)
+```
+The original test passes under the bug; **only the new test catches it**. Key restored, both green.
+
+### MAJOR-2 — docstring corrected; sibling root declared
+
+The claim "Every consumer … must go through this hook" was false. Verified the reviewer's four consumers:
+```
+$ grep -rn "'product-stock'" src
+features/replenishment/components/RequestContextPanel.tsx:20
+features/replenishment/components/CreateTransferDialog.tsx:46
+features/pos/organisms/ProductInfoModal/ProductInfoModal.tsx:162
+features/inventory/components/ProductStockLevels.tsx:68
+features/inventory/components/ThresholdEditCell.tsx:15   ← invalidates ['product-stock', …] only
+```
+The docstring in `useProductStockLevels.ts` now (a) scopes the claim to the stock-transfer surface, (b) names all four `['product-stock', …]` consumers as a not-yet-migrated sibling root, (c) states explicitly that the two roots do **not** cross-invalidate and that no screen mounts both today, and (d) carries root unification as B-8 debt alongside the bulk endpoint.
+
+### MINOR-4 — test-location pointer
+
+The hook docstring now ends with `Tests: features/stock-transfers/__tests__/useProductStockLevels.test.tsx (co-located with its only consumer surface, not under features/products)`, so a products-lane `vitest src/features/products` run cannot silently miss it. Also added a line warning the next reader not to "fix" the per-distinct-product fan-out by widening the key — it is asserted.
+
+### MINOR-5 — §9 question 1 answered correctly
+
+`staleTime: 15_000` is a **tightening**, not a loosening: the global default is `staleTime: 300_000` with `refetchOnWindowFocus: false` (`src/lib/queryClient.ts:6-8`), which `AvailabilityCell` previously inherited. Availability data is now 20× fresher than before this lane. No action; §9 item 1 above should be read with that correction.
+
+### Self-inflicted regression caught during this round
+
+The first draft of the hoisted `stockLevelUrls()` helper used `.map(([url]) => url)`, which added a **new** `@typescript-eslint/no-unsafe-return` warning (2 vs the baseline 1) because `mockApiGet` is an untyped `vi.fn()`. Rewritten as an explicit loop with `const url: unknown = call[0]`. Back to baseline.
+
+### Re-verification (all on rebased base `f85b7c0e9`)
+
+| Check | Result |
+|---|---|
+| `pnpm vitest run src/features/stock-transfers src/features/products` | **37 files / 149 tests passed** (146 → 149: +1 this lane's distinct-product test, +2 inherited from the merged T13 lane) |
+| `pnpm vitest run src/features/purchases` | 12 files / 113 tests passed |
+| `pnpm typecheck` | exit 0, no output |
+| `pnpm audit:keys` | **exit 0, 0 violations** |
+| ESLint, 5 touched files | 0 errors; warnings `useProductStockLevels.ts` 0, `useProductStockLevels.test.tsx` 0, availability test 1, `TransferSourceSuggestion.tsx` 5, `CreateStockTransferPage.tsx` 1 — identical to the baseline table in §3 |
+
+### Accepted as-is (reviewer's INFORMATIONAL, rule 4)
+
+Quantity-display debt on the transfer surface — `CreateStockTransferPage.tsx` renders the raw scale-4 `available` string, and `TransferSourceSuggestion.tsx:26` uses the deprecated locale `formatQuantity` rather than the unit-precision variant from `@/lib/decimal`. Both are untouched pre-existing lines, `audit:quantity` reports 0, and fixing them here would be scope creep. **Logged here so it is not re-discovered as new**: transfer-surface quantity display should move to `formatQuantity` from `@/lib/decimal` + `getQuantityDecimals` in a dedicated lane.
+
+### Status after this round
+
+MAJOR-1 fixed (automated, falsified). MAJOR-2 fixed. MINOR-3 fixed (rebased, audit clean). MINOR-4 fixed. MINOR-5 corrected. The §7 browser check remains genuinely promotion-owed, but it is no longer load-bearing for the over-deduplication criterion — that is now covered in CI.
