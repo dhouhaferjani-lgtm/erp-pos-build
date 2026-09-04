@@ -180,6 +180,7 @@ return [
     'opening_cost_format' => 'Opening unit cost must have at most 3 decimal places.',
     'bonus_line_unit_price_must_be_zero' => 'A bonus/free-goods line must be billed at a zero unit price.',
     'bonus_line_not_supported_on_invoice_first' => 'Bonus/free-goods lines are not supported on an invoice-first (delivery-note or pending-receipt) supplier invoice.',
+    'audit_date_range_max' => 'The date range may not exceed :max days.',
 
     'custom' => [
         'attribute-name' => [

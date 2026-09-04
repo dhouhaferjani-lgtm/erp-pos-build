@@ -747,4 +747,55 @@ class ListDocumentsTest extends TestCase
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.type', 'invoice');
     }
+
+    /**
+     * Legacy `?limit=` branch fixture (plan Task 4, Step 5).
+     */
+    private function seedLegacyLimitDocuments(int $count): void
+    {
+        foreach (range(1, $count) as $index) {
+            Document::create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'partner_id' => $this->customer->id,
+                'type' => DocumentType::Quote,
+                'status' => DocumentStatus::Draft,
+                'document_number' => 'LIMIT-'.$index,
+                'document_date' => now(),
+                'currency' => 'EUR',
+            ]);
+        }
+    }
+
+    public function test_legacy_limit_zero_clamps_to_one(): void
+    {
+        $this->seedLegacyLimitDocuments(3);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/documents?limit=0')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('meta.per_page', 1);
+    }
+
+    public function test_legacy_limit_negative_five_clamps_to_one(): void
+    {
+        $this->seedLegacyLimitDocuments(3);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/documents?limit=-5')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('meta.per_page', 1);
+    }
+
+    public function test_legacy_limit_5000_returns_exactly_100_of_101_documents(): void
+    {
+        $this->seedLegacyLimitDocuments(101);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/documents?limit=5000');
+        $response->assertOk()->assertJsonCount(100, 'data')->assertJsonPath('meta.per_page', 100);
+        self::assertCount(100, $response->json('data'));
+    }
 }

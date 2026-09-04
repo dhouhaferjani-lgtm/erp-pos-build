@@ -261,7 +261,7 @@ class AuditTrailTest extends TestCase
         );
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/v1/audit/events');
+            ->getJson('/api/v1/audit/events?include=payload');
 
         $response->assertOk()
             ->assertJsonStructure([
@@ -276,6 +276,206 @@ class AuditTrailTest extends TestCase
                     ],
                 ],
             ]);
+    }
+
+    public function test_audit_api_omits_payload_by_default(): void
+    {
+        /** @var AuditService $auditService */
+        $auditService = app(AuditService::class);
+
+        $auditService->record(
+            companyId: $this->company->id,
+            userId: $this->user->id,
+            eventType: 'document.created',
+            aggregateType: 'Document',
+            aggregateId: 'doc-red',
+            payload: ['secret' => 'red'],
+            metadata: ['ip' => '127.0.0.1'],
+        );
+
+        $event = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/audit/events')
+            ->assertOk()
+            ->json('data.0');
+
+        self::assertIsArray($event);
+        self::assertArrayNotHasKey('payload', $event);
+        self::assertArrayNotHasKey('metadata', $event);
+    }
+
+    public function test_malformed_or_oversized_date_range_returns_422_not_500(): void
+    {
+        app()->setLocale('en');
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/audit/events?from=not-a-date&to=2026-09-03')
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonPath('error.errors.from.0', 'The from field must match the format Y-m-d.');
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/audit/events?from=2026-01-01&to=2026-06-01')
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonPath('error.errors.to.0', 'The date range may not exceed 92 days.');
+    }
+
+    public function test_aggregate_type_without_aggregate_id_returns_validation_error(): void
+    {
+        app()->setLocale('en');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/audit/events?aggregate_type=Document')
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonPath(
+                'error.errors.aggregate_id.0',
+                'The aggregate id field is required when aggregate type is present.',
+            );
+    }
+
+    public function test_aggregate_id_without_aggregate_type_returns_validation_error(): void
+    {
+        app()->setLocale('en');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/audit/events?aggregate_id=00000000-0000-4000-8000-000000000001')
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonPath(
+                'error.errors.aggregate_type.0',
+                'The aggregate type field is required when aggregate id is present.',
+            );
+    }
+
+    public function test_from_without_to_returns_validation_error(): void
+    {
+        app()->setLocale('en');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/audit/events?from=2026-09-01')
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonPath(
+                'error.errors.to.0',
+                'The to field is required when from is present.',
+            );
+    }
+
+    public function test_to_without_from_returns_validation_error(): void
+    {
+        app()->setLocale('en');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/audit/events?to=2026-09-03')
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonPath(
+                'error.errors.from.0',
+                'The from field is required when to is present.',
+            );
+    }
+
+    public function test_audit_api_defaults_to_50_and_page_two_contains_the_remaining_event(): void
+    {
+        /** @var AuditService $auditService */
+        $auditService = app(AuditService::class);
+        $seededIds = [];
+        foreach (range(1, 51) as $index) {
+            $seededIds[] = $auditService->record(
+                companyId: $this->company->id,
+                userId: $this->user->id,
+                eventType: 'audit.pagination.probe',
+                aggregateType: 'Document',
+                aggregateId: 'page-'.$index,
+                payload: ['index' => $index],
+            )->id;
+        }
+
+        $pageOne = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/audit/events?event_type=audit.pagination.probe');
+        $pageOne->assertOk()
+            ->assertJsonCount(50, 'data')
+            ->assertJsonPath('meta.total', 51)
+            ->assertJsonPath('meta.current_page', 1)
+            ->assertJsonPath('meta.last_page', 2)
+            ->assertJsonPath('meta.per_page', 50);
+
+        $pageTwo = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/audit/events?event_type=audit.pagination.probe&page=2');
+        $pageTwo->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('meta.total', 51)
+            ->assertJsonPath('meta.current_page', 2)
+            ->assertJsonPath('meta.last_page', 2)
+            ->assertJsonPath('meta.per_page', 50);
+
+        $actualIds = array_column([
+            ...$pageOne->json('data'),
+            ...$pageTwo->json('data'),
+        ], 'id');
+        self::assertCount(51, $actualIds);
+        self::assertCount(51, array_unique($actualIds));
+        self::assertEqualsCanonicalizing($seededIds, $actualIds);
+    }
+
+    public function test_audit_api_rejects_per_page_above_100_with_validation_envelope(): void
+    {
+        app()->setLocale('en');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/audit/events?per_page=101')
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonPath(
+                'error.errors.per_page.0',
+                'The per page field must not be greater than 100.',
+            );
+    }
+
+    /**
+     * Step 4b (plan rev 9, gate r7 finding B2): the storage contract for
+     * `aggregate_id` is `string(100)` (create_audit_events_table.php:19), and
+     * real domain keys such as `doc-123` are NOT uuids. This positive HTTP
+     * regression is red (422) the moment the rule is narrowed to `uuid`, and
+     * green with `string|max:100`. The UUID-keyed cross-tenant scoping test
+     * lives separately in ComplianceCrossTenantHardeningTest.
+     */
+    public function test_audit_api_aggregate_branch_accepts_non_uuid_string_aggregate_id(): void
+    {
+        /** @var AuditService $auditService */
+        $auditService = app(AuditService::class);
+
+        $auditService->record(
+            companyId: $this->company->id,
+            userId: $this->user->id,
+            eventType: 'document.created',
+            aggregateType: 'Document',
+            aggregateId: 'doc-123',
+            payload: [],
+        );
+        $auditService->record(
+            companyId: $this->company->id,
+            userId: $this->user->id,
+            eventType: 'document.posted',
+            aggregateType: 'Document',
+            aggregateId: 'doc-123',
+            payload: [],
+        );
+        $auditService->record(
+            companyId: $this->company->id,
+            userId: $this->user->id,
+            eventType: 'document.created',
+            aggregateType: 'Document',
+            aggregateId: 'doc-456',
+            payload: [],
+        );
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/audit/events?aggregate_type=Document&aggregate_id=doc-123')
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('meta.total', 2)
+            ->assertJsonPath('data.0.aggregate_id', 'doc-123')
+            ->assertJsonPath('data.1.aggregate_id', 'doc-123');
     }
 
     public function test_audit_api_can_filter_by_event_type(): void
