@@ -30,6 +30,47 @@
  *     LHS; bare property access ending in `companyId` etc. no longer
  *     over-approves.
  *
+ * ---------------------------------------------------------------------------
+ * Rule 2 — `placeholderData` pairing (Gate C, hardened 2026-09-04)
+ * ---------------------------------------------------------------------------
+ * A read that carries `placeholderData` on a TENANT-SCOPED key must be paired
+ * with a `usePlaceholderScopeGuard(...)` call at the SAME call site. Exactly:
+ *
+ *   TRIGGER — all three must hold:
+ *     a. the factory is a read that can serve a placeholder:
+ *        {@link PLACEHOLDER_BEARING_FACTORIES} (useQuery, useInfiniteQuery,
+ *        useSuspenseQuery, and each `useQueries({ queries: [...] })` entry);
+ *     b. the options object has a `placeholderData` property (any value —
+ *        `keepPreviousData` or an inline `(prev) => prev`);
+ *     c. the `queryKey` CARRIES A TENANT SCOPE, i.e. it is a
+ *        {@link APPROVED_FACTORY_CALLS} call (`tenantScopedKey(...)` /
+ *        `locationScopedKey(...)`) OR an array literal containing an approved
+ *        scope expression ({@link APPROVED_SCOPE_IDENTIFIERS} bare identifier,
+ *        or `companyStore.<id>`). The `'admin'`/`'super-admin'` namespace
+ *        prefix is NOT a tenant scope and does not trigger the rule.
+ *
+ *   PAIRING (what clears the trigger) — a real CALL EXPRESSION named
+ *   `usePlaceholderScopeGuard`, not a mention of the name:
+ *     1. the read's result must be BOUND: `const { …, isPlaceholderData } = …`
+ *        (renames honoured: `isPlaceholderData: isFooPending`), `const r = …`
+ *        (whole result), or, for `useQueries`, the array-destructured element
+ *        AT THIS ENTRY'S INDEX. An unbound read can never be paired and is
+ *        always reported.
+ *     2. somewhere inside the read's nearest enclosing function (the component
+ *        or hook body — nested callbacks and render/`enabled` gates included;
+ *        the whole file when the read is at module scope) there must be a
+ *        `usePlaceholderScopeGuard(...)` call ONE OF WHOSE ARGUMENTS references
+ *        one of those bound names.
+ *
+ *   Consequences, each pinned by a fixture in
+ *   `tools/__fixtures__/audit-tanstack-keys/placeholder-pairing/`:
+ *     - a comment, string or dead import naming the guard does NOT pair
+ *       (the pre-hardening check was `sourceFile.text.includes(...)`);
+ *     - two scoped placeholder reads in one file with one guard yields exactly
+ *       one finding — pairing is per call site, not per file;
+ *     - a guard wired to a DIFFERENT read in the same function does not clear
+ *       this one, because the name linkage fails.
+ *
  * Run via: pnpm audit:keys (also chained from lint/preflight/CI).
  * Use --json only for inventory generation; JSON mode emits raw findings and
  * preserves the historical exit-0 behavior for scanner consumers.
@@ -113,14 +154,20 @@ const APPROVED_FACTORY_CALLS = new Set([
  * It stays legitimate WITHIN one scope (paging 1 -> 2 must not flash an empty
  * table), so this is a PAIRING rule, not a ban: the reader must gate its rows on
  * `usePlaceholderScopeGuard`, which blanks them when the placeholder predates a
- * scope change. Pairing is checked per FILE, which is the granularity a reviewer
- * can verify at a glance; a lane that legitimately has no same-scope win should
- * drop `placeholderData` instead (see `features/pos/hooks/useDiscountPreview.ts`).
+ * scope change. A lane that legitimately has no same-scope win should drop
+ * `placeholderData` instead (see `features/pos/hooks/useDiscountPreview.ts`).
+ *
+ * See {@link readHasPairedScopeGuard} for the exact, per-call-site pairing rule.
  */
 const PLACEHOLDER_BEARING_FACTORIES = new Set([
   'useQuery',
   'useInfiniteQuery',
   'useSuspenseQuery',
+  // A `useQueries({ queries: [...] })` entry is a read like any other and its
+  // options object reaches checkOptionsObject under this synthetic factory
+  // name. Gate-C-hardening lane (independent gate 2026-09-04, MAJOR-A class 2):
+  // its absence here silently exempted every multi-read page.
+  'useQueries.queries[]',
 ]);
 
 /** The guard that makes `placeholderData` safe on a scoped key. */
@@ -427,13 +474,218 @@ function resolveShorthandQueryKeyInitializer(sourceFile, shorthand) {
 }
 
 /**
+ * Does this queryKey carry a TENANT scope (as opposed to merely being an
+ * approved key)?
+ *
+ * {@link queryKeyExpressionIsApproved} also green-lights the `'admin'` /
+ * `'super-admin'` namespace prefix, which is a super-admin namespace and not a
+ * tenant/company suffix — a placeholder cannot cross a company boundary there.
+ * The `placeholderData` pairing rule keys off THIS predicate instead, so it
+ * covers the two shapes the pre-hardening version missed: a bare approved
+ * identifier (`['payments', page, currentCompanyId]`) and the approved store
+ * object (`companyStore.currentCompanyId`) — both legal per
+ * {@link APPROVED_SCOPE_IDENTIFIERS} / {@link APPROVED_STORE_OBJECTS}, both
+ * carrying the company suffix that the placeholder survives across.
+ *
+ * @param {ts.Expression} expr
+ * @returns {boolean}
+ */
+function queryKeyCarriesTenantScope(expr) {
+  const inner = unwrapKeyExpression(expr);
+  if (ts.isCallExpression(inner) && ts.isIdentifier(inner.expression)) {
+    return APPROVED_FACTORY_CALLS.has(inner.expression.text);
+  }
+  if (ts.isArrayLiteralExpression(inner)) {
+    return inner.elements.some((element) => isApprovedScopeExpression(element));
+  }
+  return false;
+}
+
+/**
+ * Collect the local names introduced by an object binding pattern for the
+ * `isPlaceholderData` result field, honouring renames
+ * (`{ isPlaceholderData: isFooPending }`).
+ *
+ * @param {ts.ObjectBindingPattern} pattern
+ * @param {Set<string>} out
+ */
+function collectPlaceholderFlagNames(pattern, out) {
+  for (const element of pattern.elements) {
+    const source = element.propertyName ?? element.name;
+    if (ts.isIdentifier(source) && source.text === 'isPlaceholderData' && ts.isIdentifier(element.name)) {
+      out.add(element.name.text);
+    }
+  }
+}
+
+/**
+ * @param {ts.ArrayBindingElement} element
+ * @param {Set<string>} out
+ */
+function collectFromBindingElement(element, out) {
+  if (ts.isOmittedExpression(element)) return;
+  if (ts.isIdentifier(element.name)) {
+    out.add(element.name.text);
+    return;
+  }
+  if (ts.isObjectBindingPattern(element.name)) {
+    collectPlaceholderFlagNames(element.name, out);
+  }
+}
+
+/**
+ * Walk up from the factory call to the variable declaration that binds its
+ * result, stopping at any function/block/statement boundary so an unbound call
+ * (`useQuery({...});` as an expression statement) resolves to null.
+ *
+ * @param {ts.CallExpression} call
+ * @returns {ts.VariableDeclaration | null}
+ */
+function findResultBindingDeclaration(call) {
+  let current = call.parent;
+  while (current) {
+    if (ts.isVariableDeclaration(current)) return current;
+    if (
+      ts.isFunctionLike(current) ||
+      ts.isBlock(current) ||
+      ts.isSourceFile(current) ||
+      ts.isExpressionStatement(current) ||
+      ts.isReturnStatement(current)
+    ) {
+      return null;
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
+/**
+ * The local names that stand for THIS read's result — the handles a
+ * `usePlaceholderScopeGuard(...)` call has to mention to be paired with it.
+ *
+ * @param {ts.CallExpression} call the factory call (`useQuery` / `useQueries` / …)
+ * @param {number | null} entryIndex index into `queries: [...]` for useQueries, else null
+ * @returns {Set<string>}
+ */
+function readResultBindingNames(call, entryIndex) {
+  /** @type {Set<string>} */
+  const names = new Set();
+  const declaration = findResultBindingDeclaration(call);
+  if (!declaration) return names;
+
+  const bound = declaration.name;
+  if (ts.isIdentifier(bound)) {
+    // `const result = useQuery(...)` — the guard reads `result.isPlaceholderData`.
+    // For useQueries this is the whole results array, indexed at the call site.
+    names.add(bound.text);
+    return names;
+  }
+  if (ts.isObjectBindingPattern(bound)) {
+    collectPlaceholderFlagNames(bound, names);
+    return names;
+  }
+  if (ts.isArrayBindingPattern(bound)) {
+    if (entryIndex === null) {
+      for (const element of bound.elements) collectFromBindingElement(element, names);
+      return names;
+    }
+    const element = bound.elements[entryIndex];
+    if (element) collectFromBindingElement(element, names);
+    return names;
+  }
+  return names;
+}
+
+/**
+ * Nearest enclosing function-like body, or the source file for a module-scope
+ * read. This is the region searched for the paired guard call: a component or
+ * hook body, including any nested callback (`useMemo`, a render gate, an
+ * `enabled` expression) inside it.
+ *
+ * @param {ts.Node} node
+ * @returns {ts.Node}
+ */
+function enclosingGuardSearchScope(node) {
+  let current = node.parent;
+  while (current) {
+    if (ts.isFunctionLike(current)) return current;
+    current = current.parent;
+  }
+  return node.getSourceFile();
+}
+
+/**
+ * @param {ts.Node} node
+ * @param {Set<string>} names
+ * @returns {boolean}
+ */
+function referencesAnyName(node, names) {
+  let found = false;
+  /** @param {ts.Node} current */
+  function visit(current) {
+    if (found) return;
+    if (ts.isIdentifier(current) && names.has(current.text)) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(current, visit);
+  }
+  visit(node);
+  return found;
+}
+
+/**
+ * Is this placeholder-bearing read paired with a real
+ * `usePlaceholderScopeGuard(...)` CALL at its own call site?
+ *
+ * AST check, deliberately not a text search: the pre-hardening version used
+ * `sourceFile.text.includes('usePlaceholderScopeGuard')`, so a comment, a
+ * string literal or a dead import bearing the name cleared the rule, and a
+ * single guard cleared every read in the file. Both classes are now fixtured.
+ *
+ * Pairing requires BOTH:
+ *   1. the read's result is bound to a name (see {@link readResultBindingNames});
+ *   2. a `usePlaceholderScopeGuard(...)` call inside the read's enclosing
+ *      function passes one of those names as an argument.
+ *
+ * @param {ts.CallExpression} call
+ * @param {number | null} entryIndex
+ * @returns {boolean}
+ */
+function readHasPairedScopeGuard(call, entryIndex) {
+  const names = readResultBindingNames(call, entryIndex);
+  if (names.size === 0) return false;
+
+  const scope = enclosingGuardSearchScope(call);
+  let paired = false;
+  /** @param {ts.Node} node */
+  function visit(node) {
+    if (paired) return;
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === PLACEHOLDER_SCOPE_GUARD &&
+      node.arguments.some((argument) => referencesAnyName(argument, names))
+    ) {
+      paired = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(scope);
+  return paired;
+}
+
+/**
  * @param {ts.ObjectLiteralExpression} options
  * @param {string} factoryName
  * @param {ts.SourceFile} sourceFile
  * @param {string} relPath
  * @param {Array<{file: string, line: number, column: number, reason: string, factory: string, enclosing_symbol: string | null, resource: string | null, statement_fingerprint: string, ast_kind: string}>} out
+ * @param {ts.CallExpression | null} [callSite] the factory call, for per-call-site guard pairing
+ * @param {number | null} [entryIndex] index into `queries: [...]` for a useQueries entry
  */
-function checkOptionsObject(options, factoryName, sourceFile, relPath, out) {
+function checkOptionsObject(options, factoryName, sourceFile, relPath, out, callSite = null, entryIndex = null) {
   const queryKeyProp = options.properties.find(
     (p) =>
       (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) &&
@@ -458,11 +710,15 @@ function checkOptionsObject(options, factoryName, sourceFile, relPath, out) {
       ts.isCallExpression(innerKey) &&
       ts.isIdentifier(innerKey.expression) &&
       APPROVED_FACTORY_CALLS.has(innerKey.expression.text);
-    // Pairing rule: a scoped key + `placeholderData` + no guard in this file.
-    // Checked before the approval verdict below because the key here is, by
-    // construction, an APPROVED one — an unscoped key is already reported by
-    // that verdict and must not be reported twice.
-    if (isTenantScopedFactoryCall && PLACEHOLDER_BEARING_FACTORIES.has(factoryName)) {
+    // Pairing rule (see the "Rule 2" header section for the exact contract):
+    // a key that CARRIES A TENANT SCOPE + `placeholderData` + no guard call
+    // paired with THIS call site. Checked before the approval verdict below
+    // because a tenant-scoped key is, by construction, an APPROVED one — an
+    // unscoped key is already reported by that verdict and must not be
+    // reported twice.
+    // `innerKey` (already unwrapped) rather than `initializer`: same verdict,
+    // and it keeps the @ts-check narrowing clean.
+    if (queryKeyCarriesTenantScope(innerKey) && PLACEHOLDER_BEARING_FACTORIES.has(factoryName)) {
       const placeholderProp = options.properties.find(
         (p) =>
           (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) &&
@@ -470,22 +726,35 @@ function checkOptionsObject(options, factoryName, sourceFile, relPath, out) {
           ts.isIdentifier(p.name) &&
           p.name.text === 'placeholderData',
       );
-      if (placeholderProp && !sourceFile.text.includes(PLACEHOLDER_SCOPE_GUARD)) {
+      const paired = callSite !== null && readHasPairedScopeGuard(callSite, entryIndex);
+      if (placeholderProp && !paired) {
         const startPos = placeholderProp.getStart(sourceFile);
         const { line, character } = sourceFile.getLineAndCharacterOfPosition(startPos);
+        // The key label and the `resource` field must work for BOTH scoped
+        // shapes: a `tenantScopedKey([...])` call and an array literal whose
+        // scope is a bare identifier / `companyStore.<id>` member access.
+        const isScopeFactoryCall = ts.isCallExpression(innerKey) && ts.isIdentifier(innerKey.expression);
+        const keyLabel = isScopeFactoryCall
+          ? `${innerKey.expression.text}([...])`
+          : '[..., <tenant scope>]';
+        const scopedResource = isScopeFactoryCall
+          ? (innerKey.arguments[0] ? extractQueryKeyResource(innerKey.arguments[0]) : null)
+          : extractQueryKeyResource(innerKey);
         out.push({
           file: relPath,
           line: line + 1,
           column: character + 1,
           reason:
-            `${factoryName}({ queryKey: ${innerKey.expression.text}([...]), placeholderData }) ` +
+            `${factoryName}({ queryKey: ${keyLabel}, placeholderData }) ` +
             'renders the PREVIOUS tenant/company payload after a scope switch: TanStack picks the ' +
             'placeholder from the observer\'s last query that had data with no key-lineage check. ' +
-            `Gate the rows on ${PLACEHOLDER_SCOPE_GUARD}(isPlaceholderData, data !== undefined), ` +
+            `Gate the rows on ${PLACEHOLDER_SCOPE_GUARD}(isPlaceholderData, data !== undefined) ` +
+            'at THIS call site (bind the read\'s result and pass its isPlaceholderData flag to the ' +
+            'guard — a comment or import naming the guard does not count), ' +
             'or drop placeholderData when there is no same-scope win to keep.',
           factory: factoryName,
           enclosing_symbol: findEnclosingSymbol(placeholderProp),
-          resource: innerKey.arguments[0] ? extractQueryKeyResource(innerKey.arguments[0]) : null,
+          resource: scopedResource,
           statement_fingerprint: `${fingerprintExpression(sourceFile, initializer)}@${startPos}`,
           ast_kind: classifyQueryKeyAstKind(initializer),
         });
@@ -568,8 +837,9 @@ function classifyQueryKeyAstKind(expr) {
  * @param {ts.SourceFile} sourceFile
  * @param {string} relPath
  * @param {Array<{file: string, line: number, column: number, reason: string}>} out
+ * @param {ts.CallExpression} callSite the `useQueries(...)` call itself
  */
-function checkUseQueriesOptions(options, sourceFile, relPath, out) {
+function checkUseQueriesOptions(options, sourceFile, relPath, out, callSite) {
   const queriesProp = options.properties.find(
     (p) =>
       ts.isPropertyAssignment(p) &&
@@ -580,11 +850,11 @@ function checkUseQueriesOptions(options, sourceFile, relPath, out) {
   if (!queriesProp || !ts.isPropertyAssignment(queriesProp)) return;
   const arr = queriesProp.initializer;
   if (!ts.isArrayLiteralExpression(arr)) return;
-  for (const element of arr.elements) {
+  arr.elements.forEach((element, entryIndex) => {
     if (ts.isObjectLiteralExpression(element)) {
-      checkOptionsObject(element, 'useQueries.queries[]', sourceFile, relPath, out);
+      checkOptionsObject(element, 'useQueries.queries[]', sourceFile, relPath, out, callSite, entryIndex);
     }
-  }
+  });
 }
 
 /**
@@ -609,9 +879,9 @@ export function scanSource(sourceFile, filePath) {
 
       const arg = node.arguments[0];
       if (name === 'useQueries' && arg && ts.isObjectLiteralExpression(arg)) {
-        checkUseQueriesOptions(arg, sourceFile, relPath, violations);
+        checkUseQueriesOptions(arg, sourceFile, relPath, violations, node);
       } else if (name && QUERY_FACTORY_NAMES.has(name) && arg && ts.isObjectLiteralExpression(arg)) {
-        checkOptionsObject(arg, name, sourceFile, relPath, violations);
+        checkOptionsObject(arg, name, sourceFile, relPath, violations, node, null);
       }
     }
     ts.forEachChild(node, inner);

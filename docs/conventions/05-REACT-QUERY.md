@@ -132,9 +132,44 @@ There is no same-scope win to preserve, so **drop `placeholderData`** instead of
 guarding it; `apps/web/src/features/pos/hooks/useDiscountPreview.ts` is the
 worked example.
 
-Enforced by `apps/web/tools/audit-tanstack-keys.mjs`: `placeholderData` on a
-`tenantScopedKey`/`locationScopedKey` read in a file that does not use
-`usePlaceholderScopeGuard` fails Gate C.
+### What Gate C actually checks (hardened 2026-09-04)
+
+Enforced by `apps/web/tools/audit-tanstack-keys.mjs`. The rule is **per call
+site**, not per file, and the guard must be a real **call**:
+
+**It fires when all three hold**
+
+1. the factory can serve a placeholder — `useQuery`, `useInfiniteQuery`,
+   `useSuspenseQuery`, **or an entry of `useQueries({ queries: [...] })`**;
+2. the options object has a `placeholderData` property (any value —
+   `keepPreviousData` or an inline `(prev) => prev`);
+3. the `queryKey` **carries a tenant scope**: a `tenantScopedKey(...)` /
+   `locationScopedKey(...)` call, **or** an array literal containing an approved
+   scope — a bare `tenantId` / `currentCompanyId` / `companyId`, or
+   `companyStore.<one of those>`. (`['admin', …]` / `['super-admin', …]` is a
+   super-admin namespace, not a tenant scope, and does not trigger the rule.)
+
+**It clears only on a paired guard call**
+
+1. bind the read's result — `const { …, isPlaceholderData } = useQuery(…)`
+   (renames are honoured: `isPlaceholderData: isPaymentsPending`), or
+   `const result = useQuery(…)`, or, for `useQueries`, the array-destructured
+   element **at that entry's index**. A read whose result is never bound can
+   never be paired and is always reported; and
+2. call `usePlaceholderScopeGuard(...)` somewhere inside the read's nearest
+   enclosing function (component/hook body — nested callbacks and render or
+   `enabled` gates count) passing **one of those bound names** as an argument.
+
+Consequences worth knowing before you argue with the gate:
+
+- naming the guard in a **comment, a string or an unused import does not pair** —
+  the check is an AST call lookup, not a text search;
+- **two scoped placeholder reads in one file with one guard = one finding**;
+- a guard wired to a *different* read in the same component does not clear
+  yours — the name linkage has to match.
+
+Fixtures for each of those live in
+`apps/web/tools/__fixtures__/audit-tanstack-keys/placeholder-pairing/`.
 
 ## Query Hook Pattern
 
