@@ -449,3 +449,176 @@ Per-rule tallies are identical before and after on every file — not merely the
 **Not addressed in this round (out of the fix brief's scope, flagged for the orchestrator):**
 - frontend-conventions **M1** (PaymentForm reuses the key across an *edited* payload after a failed submit) and **M2** (same on SplitPaymentForm, which additionally renders no error at all on a failed split). Both are MAJOR, both are real, and both are a different fix from FR1-A: they ask the key to be scoped to the *submit intent* (rotate on first field mutation after a failed attempt, or derive from the payload) rather than to the dialog-open. That is a design decision affecting all four idempotency producers, not a one-line effect change, and it needs an explicit ruling. FR1-A does not close them.
 - frontend-conventions **M3** (lint delta disclosure vs the pre-lane base) and the minors m1-m6, and treasury **NB-1..NB-7**.
+
+---
+
+# Fix round 2 (2026-09-04)
+
+Response to `docs/superpowers/reviews/2026-09-04-request-hygiene-t12-gate-frontend-conventions.md` (**REJECT**) — its BLOCKER B1 was closed by fix round 1; this round closes the three MAJORs **M1**, **M2**, **M3** and folds the minor **m2**. Nothing above this line was rewritten. Web only; no `apps/api` file was touched.
+
+**Orchestrator ruling implemented (all three surfaces):** *an idempotency key belongs to ONE submit intent.*
+- Same payload retried after a failure → **same key** (replay is correct).
+- Payload **edited** after a failed attempt → new intent → **new key**. A visible second payment is the correct outcome if the first actually committed; a silent replay presented as success is not.
+
+## FR2-A (M1 / M2) — the key now rotates on the first payload edit after a failed attempt
+
+One mechanism, three surfaces. Each component gets a `hadFailedAttemptRef` set in `onError` and a `startNewIntentOnPayloadEdit()` helper that, **only while the flag is set**, clears it and calls `resetIdempotencyKey()`. `onSuccess` clears the flag before its existing `reset()`; `RecordPaymentModal`'s `isOpen` effect clears it alongside its existing per-open rotation.
+
+| surface | file | payload-edit seams wired |
+|---|---|---|
+| `PaymentForm` | `features/treasury/PaymentForm.tsx` | **all RHF fields** via a `watch(cb)` subscription effect (amount, method, repository, partner, date, reference, notes, instrument…), plus the non-RHF payload state: withholding enabled / rate / transaction-type (wrapped setters) and allocation method / manual allocations (wrapped handlers) |
+| `SplitPaymentForm` | `features/treasury/SplitPaymentForm.tsx` | `addPaymentLine`, `removePaymentLine`, `updatePaymentLine` — the only writers of `paymentLines`, which is the whole `splits` body |
+| `RecordPaymentModal` | `components/organisms/RecordPaymentModal/RecordPaymentModal.tsx` | `addPaymentLine`, `removePaymentLine`, `updatePaymentLine`, `updatePaymentLineMultiple` (so `confirmPaymentLine` too), `updateManualAllocation`, `changePaymentDate`, `changeExcessAllocationMethod` |
+
+Deliberate non-rotations (derived values, not operator edits): `PaymentForm`'s withholding-preview auto-fill keeps the raw `setWithholdingRateState`; `RecordPaymentModal`'s `isOpen` reset effect writes state directly, not through the wrapped handlers.
+
+Invariants preserved and still locked by test: unchanged retry keeps the key; success rotates; `RecordPaymentModal` open rotates. The `useIdempotencyKey` doc block already describes reset-at-an-intent-boundary (amended in fix round 1), so no hook change was needed and none was made.
+
+### Red-first, per surface
+
+Each rotation test was written and run **before** its implementation:
+
+```
+× SplitPaymentForm … > mints a DIFFERENT idempotency_key once the payload is edited after a failed submit
+  → expected '69e1ea35-…' not to be '69e1ea35-…'
+× SplitPaymentForm surfaces a failed submission > renders an error message when the split POST rejects and keeps the key
+  → Unable to find an element with the text: treasury:splitPayment.submitFailed
+ Tests  2 failed | 9 passed (11)
+
+× PaymentForm … > mints a DIFFERENT idempotency_key once the payload is edited after a failed submit
+  → expected '08b8f6db-…' not to be '08b8f6db-…'
+ Tests  1 failed | 16 passed (17)
+
+× RecordPaymentModal … > mints a DIFFERENT idempotency_key once the payload is edited after a failed submit
+  → expected '98c2886d-…' not to be '98c2886d-…'
+ Tests  1 failed | 2 passed (3)
+```
+
+The payload edit each test performs is one an operator can really make on that surface after a failure:
+- `PaymentForm` — the amount `100` → `250` (and the second POST is asserted to carry `amount: '250'`).
+- `SplitPaymentForm` — the line `reference` (a `splits[]` field that keeps the exact-total check satisfied, so the second POST actually goes out; the second POST is asserted to carry `reference: 'RETRY-1'`).
+- `RecordPaymentModal` — `payment_date`. A confirmed line's amount sits inside `<fieldset disabled={line.confirmed}>` (`RecordPaymentModal.tsx:584`) and there is no un-confirm control, so the date is the edit the surface actually offers.
+
+### Mutation proofs (applied, run, restored from a byte-copy backup)
+
+**Mutation A — never flag a failed attempt** (delete `hadFailedAttemptRef.current = true` from all three `onError`s), i.e. the key can never rotate on an edit:
+
+```
+× SplitPaymentForm … mints a DIFFERENT idempotency_key once the payload is edited after a failed submit
+× RecordPaymentModal … mints a DIFFERENT idempotency_key once the payload is edited after a failed submit
+× PaymentForm … mints a DIFFERENT idempotency_key once the payload is edited after a failed submit
+ Tests  3 failed | 28 passed (31)
+```
+Exactly the three new rotation tests bite; the three unchanged-retry falsifiers stay green (the two invariants are independent).
+
+**Mutation B — rotate from the error path** (add `resetIdempotencyKey()` beside the flag in all three `onError`s), re-run because the production files changed since fix round 1:
+
+```
+× SplitPaymentForm idempotency key survives a failed request > reuses the SAME idempotency_key …
+× SplitPaymentForm surfaces a failed submission > renders an error message … and keeps the key
+× RecordPaymentModal idempotency key lifetime > keeps the SAME idempotency_key …
+× PaymentForm idempotency key survives a failed request > reuses the SAME idempotency_key …
+ Tests  4 failed | 27 passed (31)
+```
+All four replay falsifiers still bite. Restores verified by `git diff --stat` and a green re-run.
+
+## FR2-B (M3) — `SplitPaymentForm` now surfaces a failed submission
+
+`SplitPaymentForm.tsx:109-116` — the mutation gains an `onError` that sets the existing `validationError` banner (`:301-305`, already `tokens.alert.error`) to a new key. No existing key fit: `treasury:splitPayment` had only `amountDoesNotMatch` / `incompleteLines` (client-side validation) and `success`; the nearest generic siblings (`smartPayment.errors.*`) are allocation-specific.
+
+New key `treasury:splitPayment.submitFailed`, added to **en / fr / ar** (inserted in place; the rest of each file is byte-unchanged):
+
+| locale | value |
+|---|---|
+| en | The split payment could not be recorded. Please try again. |
+| fr | Le paiement fractionné n’a pas pu être enregistré. Veuillez réessayer. |
+| ar | تعذّر تسجيل الدفعة المقسّمة. يرجى المحاولة مرة أخرى. |
+
+The `onError` sets the banner **and** the failed-attempt flag but does **not** reset the key — locked by the new test `renders an error message when the split POST rejects and keeps the key`, which asserts the message is visible *and* that the unchanged retry reuses the key. (Mutation B above shows it goes red if a reset is added there.)
+
+## FR2-C (M3, lint) — accurate per-file delta vs the lane base `a97631051`, and net **−1**
+
+Baselines produced exactly as the gate did: `git show a97631051:<path>` into a sibling temp copy **inside `src/`** preserving the directory and the `.test.tsx` suffix (so the same eslint overrides apply), linted, then deleted. Tracked tree verified clean afterwards.
+
+| file | at `a97631051` | after fix round 2 | Δ |
+|---|---|---|---|
+| `src/components/organisms/RecordPaymentModal/RecordPaymentModal.tsx` | W25 | W25 | 0 |
+| `src/components/organisms/RecordPaymentModal/__tests__/idempotencyKeyLifecycle.test.tsx` | (new file) | W0 | 0 |
+| `src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx` | W13 | W13 | 0 |
+| `src/components/organisms/SplitPaymentModal/SplitPaymentModal.tsx` | W1 | W1 | 0 |
+| `src/features/treasury/PaymentForm.test.tsx` | W4 | W4 | 0 |
+| `src/features/treasury/PaymentForm.tsx` | W13 | W13 | 0 |
+| `src/features/treasury/SplitPaymentForm.test.tsx` | W1 | W2 | **+1** |
+| `src/features/treasury/SplitPaymentForm.tsx` | W3 | W1 | **−2** |
+| `src/features/treasury/__tests__/TreasuryTenantScope.test.tsx` | W0 | W0 | 0 |
+| `src/features/treasury/treasury.test.tsx` | W15 | W15 | 0 |
+| `src/hooks/useIdempotencyKey.ts` | W0 | W0 | 0 |
+| **total** | **E0 W75** | **E0 W74** | **−1** |
+
+The gate measured 75 → 83 (+8 net, 10 new, 2 removed). Nine of the ten new warnings are gone; the tenth is kept deliberately. No suppression comment, no `eslint.config` change, no baseline write anywhere in the diff.
+
+How each was retired:
+- `SplitPaymentForm.test.tsx:104,110` — `no-non-null-assertion` ×2 + `no-unnecessary-type-assertion` ×2: the `!` on `methodInputs[index]` / `amountInputs[index]` was genuinely unnecessary (that is what the paired rule was saying — `noUncheckedIndexedAccess` is off), so it is simply dropped. No guard needed, no behaviour change.
+- `SplitPaymentForm.test.tsx:170,228,248`, `PaymentForm.test.tsx:474`, `RecordPaymentModal/__tests__/tenantScope.test.tsx:264` — `no-unsafe-assignment` ×5: `expect.stringMatching()` is typed `any`. Replaced with the already-present typed narrowing helper `postedIdempotencyKey(callIndex)` (added to `tenantScope.test.tsx` too), so the object literal stays exactly-typed, plus a separate `expect(postedIdempotencyKey(0)).toMatch(UUID_REGEX)` line. Assertion strength is unchanged: the exact-object comparison still proves no extra field rides along, and the UUID shape is still asserted — it just moved to its own line.
+- `SplitPaymentForm.test.tsx:198→211` — `no-deprecated`: **KEPT, deliberately, one warning.** The rule fires on every *reference* to the deprecated `SplitPaymentModalProps` (probed: a direct annotation, a `type X = …` alias, an `import('…').SplitPaymentModalProps` qualified reference and a `Pick<…>` each warn once; the *uses* of the alias do not). The test's whole purpose is to lock the deprecated wrapper's `totalAmount: string` contract — the plan requires it and its `@ts-expect-error` is consumed (gate flip 2 → `TS2578`). There is no way to name the symbol without the warning, and a suppression comment is out of bounds. So the lane keeps exactly one intentional warning and still lands **below** the base total.
+
+**No new warning was introduced by this round's own code** — the two production helpers, the wrapped setters, the `watch` subscription effect and all four new tests lint at zero.
+
+### Also checked (unchanged from base, no lane attribution)
+
+- `pnpm audit:design-system` → `796 acknowledged, 15 new, 11 stale`, identical to the gate's m1 base debt (`ImportWizardPage` ×14, `UnmappedUnitTextsPanel` ×1). **Note for the reviewer:** the baseline fingerprints a raw control by its JSX text, so an earlier draft that added `startNewIntentOnPayloadEdit()` *inside* the withholding-disable `<button>`'s inline `onClick` moved a baselined entry and reported `16 new / 12 stale` for the same pre-existing button. That is why the withholding rotation is wired through **wrapped setters** (`setWithholdingEnabled` → `setWithholdingEnabledState`, etc.) instead of edited call sites: every existing call and the JSX around it stays byte-identical, and the audit returns to its base numbers. `tools/audit-design-system-baseline.json` is **not** in the diff.
+- `pnpm audit:keys` → `0 acknowledged, 1 new` (`src/features/uom/hooks/useUnits.ts:53`) — base debt, not a Task 12 file.
+- `pnpm audit:i18n:local` → 64 NEW gaps, **none in `treasury`** (`uom` and one `fr|import` plural). The three new keys are complete in en / fr / ar.
+
+### react-doctor (gate m5) — no regression, and the count went DOWN
+
+The repo's non-blocking `pre-commit` hook runs `react-doctor --staged --fail-on warning`, which fails on **any** warning, so it prints its notice on every commit touching these long-standing components. Measured absolutely on the three production files, lane base `a97631051` vs this round:
+
+```
+base a97631051 : Score 87/100 — 24 issues (Maintainability 10, Bugs 10, Performance 4)
+fix round 2    : Score 88/100 — 19 issues (Maintainability  5, Bugs 10, Performance 4)
+```
+
+Every remaining finding is a pre-existing category the gate already ruled out of scope under m5 (`no-high-complexity-react-function` / `no-giant-component` on `RecordPaymentModal.tsx` and `PaymentForm.tsx`, `prefer-useReducer`, `rerender-lazy-state-init`, `no-adjust-state-on-prop-change` ×5 in the modal's pre-existing `isOpen` effect, `js-set-map-lookups`, `exhaustive-deps` ×4, `js-combine-iterations`). **None points at code this round added** — the `watch` subscription effect (`PaymentForm.tsx:609-612`) is not among the four `exhaustive-deps` hits, and neither helper nor any wrapped setter is flagged.
+
+## FR2-D (m2) — the load-bearing relaxed `useCurrency` mock is now labelled
+
+`SplitPaymentForm.test.tsx:31-36` carries a comment saying the identity `format` is what makes the `/^0\.000$/` assertion a falsifier rather than a tautology, that the real formatter would round the `-5.55e-17` float residue to `0,000 TND` and let the old float path pass, and that the mock must not be made faithful without replacing that regression guard.
+
+## Fix-round-2 verification
+
+```
+$ cd apps/web && pnpm vitest run \
+    src/hooks/__tests__/useIdempotencyKey.test.tsx \
+    src/features/treasury/PaymentForm.test.tsx \
+    src/features/treasury/SplitPaymentForm.test.tsx \
+    src/features/treasury/treasury.test.tsx \
+    src/features/treasury/__tests__/TreasuryTenantScope.test.tsx \
+    src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx \
+    src/components/organisms/RecordPaymentModal/__tests__/idempotencyKeyLifecycle.test.tsx
+
+ Test Files  7 passed (7)
+      Tests  94 passed (94)
+```
+90 → 94: +2 `SplitPaymentForm` (rotation-on-edit, error surface), +1 `PaymentForm` (rotation-on-edit), +1 `RecordPaymentModal` (rotation-on-edit).
+
+```
+$ pnpm vitest run src/features/treasury src/components/organisms/RecordPaymentModal \
+    src/components/organisms/SplitPaymentModal src/hooks
+ Test Files  62 passed (62)
+      Tests  387 passed (387)
+```
+
+```
+$ pnpm typecheck
+> tsc --noEmit
+(no output — exit 0)
+```
+
+No vitest worker left behind (`ps aux | grep -c '[n]ode (vitest'` → 0).
+
+## Still owed after this round
+
+- **The browser legs remain UN-RUN and promotion-blocking** — FR1-C stands verbatim and is not weakened by this round. In particular probe (iii), the open/fail/close/reopen cycle on the three `RecordPaymentModal` hosts, is now joined by a fourth case worth driving by hand: **fail → edit → resubmit**, on `PaymentForm` and `RecordPaymentModal`, confirming a *second, visible* payment (the ruling's intended outcome) rather than a replayed success panel.
+- Frontend-conventions minors **m1** (base lint debt), **m3** (glossary row for "idempotency key" + the four hand-rolled producers), **m4** (typecheck flip-1 transcript completeness), **m5**, **m6** — not addressed; m3 is a Phase B convergence item.
+- Treasury **NB-1..NB-7** — not addressed. NB-7's count is superseded by the accurate table above; NB-3 overlaps m3.
