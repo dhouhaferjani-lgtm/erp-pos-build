@@ -151,3 +151,52 @@ No new i18n key, no new Tailwind class, no new float on money, no `any`/`as any`
   order → the host remounts and the POST carries the new document.
 - T12b NB-1 residual, NB-4 (`notes` never posted), NB-9 (`mockReset` in `beforeEach`),
   NB-6 (host `useMemo` on `prefill`) — all out of this lane's scope.
+
+---
+
+## Gate round 1 fold — B1 closed (2026-09-04)
+
+Gate: `docs/superpowers/reviews/2026-09-04-request-hygiene-t12c-gate-frontend-conventions.md`
+(VERDICT APPROVE-WITH-FIXES; one blocking finding, B1).
+
+**B1 (regression test for the load-bearing `isError` guard) — DONE**, commit `72ce0c338`,
+test-only (`git diff` on `RecordPaymentModal.tsx` is EMPTY).
+
+New test in `__tests__/idempotencyKeyLifecycle.test.tsx`:
+`keeps later submits working after a successful submit (reset only on error — a bare
+mutation.reset() on rotation would drop onSettled and wedge submitLockRef)`.
+It resolves the awaited invalidation refetches on a MACROTASK
+(`mockLookupResponsesWithLatency(20)` + `settleFor(80)` — the modal's own `open-invoices`
+query matches one of the `onSuccess` predicates, so that delay IS the awaited window),
+which is the production ordering the file's default microtask mocks close too fast to
+reproduce. Then it reopens the still-mounted modal and submits again, asserting TWO POSTs
+with different keys.
+
+```
+$ pnpm vitest run src/components/organisms/RecordPaymentModal
+ Test Files  2 passed (2)      Tests  18 passed (18)          # was 17
+
+$ pnpm vitest run src/components/organisms/RecordPaymentModal src/routes \
+    src/features/documents/sales-orders src/features/documents/purchase-orders
+ Test Files  13 passed (13)    Tests  110 passed (110)        # was 109
+
+$ # falsification — replace `if (mutation.isError) mutation.reset()` with `mutation.reset()`
+ × … keeps later submits working after a successful submit (…)
+   → expected "spy" to be called 2 times, but got 1 times
+ Tests  1 failed | 17 passed (18)     # ONLY the new test reds
+ # component restored from a byte copy; `git diff -- RecordPaymentModal.tsx` => empty
+
+$ pnpm typecheck                                        exit 0
+$ npx eslint __tests__/idempotencyKeyLifecycle.test.tsx  0 errors, 0 warnings
+$ ps aux | grep '[v]itest'                              empty
+```
+
+`act(...)` console noise in this file: 44 lines on the pre-fix file, 46 with the new test —
+the same per-test rate as the existing 13 tests, no new class of warning.
+
+**N2 (MINOR, effect deps) — NOT taken.** It is a production-code edit and the gate already
+ruled it harmless; leaving it keeps the B1 falsification's "component diff is empty" claim
+exact. Carry it with the N1/N3/N4/N5/N7 follow-up brief.
+
+Remaining gate items are non-blocking: N1 (rotated-intent warning), N3, N4, N5, N6, N7,
+plus N8 (pre-existing red `pnpm lint` on base `dev`). Browser legs still owed.
