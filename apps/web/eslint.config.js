@@ -44,6 +44,8 @@ export default tseslint.config(
       'dist',
       'e2e/*',
       '!e2e/campaign',
+      // e2e-local/ is a manual-only harness, never run in CI (docs/handoff/HANDOVER-SESSION-M-DHOUHA-WAVE2-2026-09-02.md:12).
+      'e2e-local/**',
       '*.d.ts',
       '*.config.ts',
       '!playwright.campaign.config.ts',

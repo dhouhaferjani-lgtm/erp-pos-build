@@ -9,10 +9,13 @@ import {
   uomCategoriesInvalidationPredicate,
   uomKeys,
   uomUnitsInvalidationPredicate,
+  uomUnmappedUnitTextsInvalidationPredicate,
+  useApplyUnitTextMapping,
   useCategories,
   useCreateUnit,
   useDeleteUnit,
   useUnits,
+  useUnmappedUnitTexts,
   useUpdateUnit,
 } from '../hooks/useUnits'
 
@@ -171,6 +174,20 @@ describe('uomCategoriesInvalidationPredicate (callsites .743, .745, .747)', () =
   })
 })
 
+describe('uomUnmappedUnitTextsInvalidationPredicate', () => {
+  it('matches the [uom, unmapped-unit-texts, ...] tenant-scoped key', () => {
+    const pred = uomUnmappedUnitTextsInvalidationPredicate('tenant-A', 'company-1')
+    expect(pred({ queryKey: ['uom', 'unmapped-unit-texts', 'tenant-A', 'company-1'] })).toBe(true)
+  })
+
+  it('rejects [uom, units, ...] and wrong tenant/company', () => {
+    const pred = uomUnmappedUnitTextsInvalidationPredicate('tenant-A', 'company-1')
+    expect(pred({ queryKey: ['uom', 'units', null, 'tenant-A', 'company-1'] })).toBe(false)
+    expect(pred({ queryKey: ['uom', 'unmapped-unit-texts', 'tenant-B', 'company-1'] })).toBe(false)
+    expect(pred({ queryKey: ['uom', 'unmapped-unit-texts', 'tenant-A', 'company-2'] })).toBe(false)
+  })
+})
+
 // ─── Cascade tests for the 3 mutations (callsites .742-.747) ─────────────────
 // These tests use per-call counters in queryFn so an always-false predicate
 // would leave the counters at 1, deterministically failing the test (lesson
@@ -180,7 +197,8 @@ describe('uom mutation cascades — fetch-count signals', () => {
   function CascadeProbe() {
     let categoriesCalls = 0
     let unitsCalls = 0
-    ;(globalThis as Record<string, unknown>)['__uomCounters'] = { c: () => categoriesCalls, u: () => unitsCalls }
+    let unmappedCalls = 0
+    ;(globalThis as Record<string, unknown>)['__uomCounters'] = { c: () => categoriesCalls, u: () => unitsCalls, m: () => unmappedCalls }
     mockApiGet.mockImplementation(async (url: string) => {
       if (url === '/uom/categories') {
         categoriesCalls += 1
@@ -190,25 +208,32 @@ describe('uom mutation cascades — fetch-count signals', () => {
         unitsCalls += 1
         return [{ id: `unit-${unitsCalls}` }]
       }
+      if (url === '/uom/unit-text-mappings/unmapped') {
+        unmappedCalls += 1
+        return [{ sourceText: `text-${unmappedCalls}`, productCount: 1, importRowCount: 0, pendingImportCount: 0, totalCount: 1 }]
+      }
       return []
     })
     useCategories()
     useUnits('cat-1')
+    useUnmappedUnitTexts()
     const create = useCreateUnit()
     const update = useUpdateUnit()
     const del = useDeleteUnit()
-    ;(globalThis as Record<string, unknown>)['__uomMutations'] = { create, update, del }
+    const applyMapping = useApplyUnitTextMapping()
+    ;(globalThis as Record<string, unknown>)['__uomMutations'] = { create, update, del, applyMapping }
     return null
   }
 
   function getCounters() {
-    return (globalThis as Record<string, unknown>)['__uomCounters'] as { c: () => number; u: () => number }
+    return (globalThis as Record<string, unknown>)['__uomCounters'] as { c: () => number; u: () => number; m: () => number }
   }
   function getMutations() {
     return (globalThis as Record<string, unknown>)['__uomMutations'] as {
       create: { mutateAsync: (input: unknown) => Promise<unknown> }
       update: { mutateAsync: (input: unknown) => Promise<unknown> }
       del: { mutateAsync: (input: unknown) => Promise<unknown> }
+      applyMapping: { mutateAsync: (input: unknown) => Promise<unknown> }
     }
   }
 
@@ -285,5 +310,30 @@ describe('uom mutation cascades — fetch-count signals', () => {
     const tBQuery = queryClient.getQueryCache().find({ queryKey: tenantBKey, exact: true })
     expect(tBQuery?.state.data).toEqual([{ id: 'unit-tenant-b' }])
     expect(tBQuery?.state.isInvalidated).toBe(false)
+  })
+
+  it('useApplyUnitTextMapping refetches unmapped-unit-texts for its own company only (cross-company isolation)', async () => {
+    setTenant('tenant-A', 'company-1')
+    const queryClient = createTestQueryClient()
+    renderWithProviders(<CascadeProbe />, { queryClient })
+
+    await waitFor(() => {
+      expect(getCounters().m()).toBe(1)
+    })
+
+    // Seed a different company's unmapped-unit-texts cache entry directly
+    // (no observer, but the predicate should reject it on the tail-segment
+    // match — same tenant, different company).
+    const companyTwoKey = ['uom', 'unmapped-unit-texts', 'tenant-A', 'company-2']
+    queryClient.setQueryData(companyTwoKey, [{ sourceText: 'other-company-text', productCount: 1, importRowCount: 0, pendingImportCount: 0, totalCount: 1 }])
+
+    await getMutations().applyMapping.mutateAsync({ sourceText: 'kg', targetUnitId: 'unit-1' })
+
+    // Own company's unmapped-unit-texts cache refetched (cascade fired).
+    expect(getCounters().m()).toBe(2)
+    // company-2 cache untouched.
+    const c2Query = queryClient.getQueryCache().find({ queryKey: companyTwoKey, exact: true })
+    expect(c2Query?.state.data).toEqual([{ sourceText: 'other-company-text', productCount: 1, importRowCount: 0, pendingImportCount: 0, totalCount: 1 }])
+    expect(c2Query?.state.isInvalidated).toBe(false)
   })
 })
