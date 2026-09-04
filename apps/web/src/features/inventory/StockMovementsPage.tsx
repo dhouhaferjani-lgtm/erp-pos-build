@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, ArrowDownCircle, ArrowUpCircle, RefreshCw, ArrowRightLeft, Package } from 'lucide-react'
 import { toast } from 'sonner'
@@ -9,7 +9,7 @@ import { cn } from '../../lib/utils'
 import { tokens, textColors, borderColors } from '../../lib/designTokens'
 import { bccomp, formatQuantity } from '../../lib/decimal'
 import { getQuantityDecimals } from '../../lib/quantityScale'
-import { locationScopedKey } from '../../lib/locationScopedKey'
+import { locationScopedKey, normalizeViewScope } from '../../lib/locationScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { usePermissions } from '../../hooks/usePermissions'
@@ -21,6 +21,8 @@ import { EntityLink } from '../../components/molecules/EntityLink'
 import { documentRouteTypeFromSource } from '../../lib/entityRoutes'
 import { PageHeader } from '../../components/molecules/PageHeader'
 import { DataTable, type DataTableColumn } from '../../components/molecules/DataTable/DataTable'
+import { OffsetPagination } from '../../components/ui/OffsetPagination'
+import type { OffsetPaginationMeta } from '../../types/pagination'
 import { EmptyState } from '../../components/molecules/EmptyState/EmptyState'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { reverseWriteOff } from '../batches/api/batches'
@@ -30,7 +32,13 @@ import {
   stockMovementsInvalidationPredicate,
 } from './_invalidation'
 
-interface StockMovement {
+/**
+ * A `GET /api/v1/stock-movements` row, exactly as the controller emits it.
+ * EXPORTED so tests bind their fixtures to this shape instead of re-declaring a
+ * narrower copy — a fixture missing a field the page reads is how a green suite
+ * hides a runtime break (gate r2, N7).
+ */
+export interface StockMovement {
   id: string
   product_id: string
   product_name: string
@@ -58,8 +66,10 @@ interface StockMovement {
   created_at: string
 }
 
-interface StockMovementsResponse {
+/** The endpoint's unconditionally paginated envelope. Exported with {@link StockMovement}. */
+export interface StockMovementsResponse {
   data: StockMovement[]
+  meta: OffsetPaginationMeta
 }
 
 type MovementFilter = 'all' | 'receipt' | 'issue' | 'adjustment' | 'transfer' | 'write_off'
@@ -90,6 +100,20 @@ const NON_REVERSIBLE_REFERENCE_TYPES = ['pos_receipt_return_scrap'] as const
 function isReversibleMovement(movement: StockMovement): boolean {
   if (!isReversibleWriteOff(movement.reason)) return false
 
+  // A write-off REVERSAL is a receipt that inherits the original's reason, so it
+  // is indistinguishable from a genuine write-off by reason alone — and the
+  // Write-Offs tab (reason-only server filter) now surfaces it. The backend
+  // refuses it unconditionally (ReverseWriteOffService: "is itself a reversal
+  // and cannot be reversed"), so never offer the control (gate r1, B2).
+  if (movement.reverses_movement_id !== null) return false
+
+  // A stock ADJUSTMENT line can carry reason_code 'damage'/'write_off' on a
+  // non-batch-tracked product, so the reason-only Write-Offs tab surfaces it —
+  // but ReverseWriteOffService refuses anything that is not an ISSUE ("Only
+  // write-off issue movements can be reversed"), so never offer the control
+  // (gate r2, F1).
+  if (movement.movement_type !== 'issue') return false
+
   return movement.reference_type === null
     || !(NON_REVERSIBLE_REFERENCE_TYPES as readonly string[]).includes(movement.reference_type)
 }
@@ -118,6 +142,23 @@ export function StockMovementsPage() {
   // The id of the write-off movement currently pending reversal confirmation,
   // or null when the dialog is closed.
   const [reverseTargetId, setReverseTargetId] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(25)
+
+  // Any change to a server-side filter invalidates the current offset: page 4 of
+  // the previous result set is meaningless for the new one. Adjusted DURING
+  // render (React's documented derived-state pattern) rather than in an effect,
+  // so the reset happens before the query key is read — an effect would let one
+  // request for the stale page escape first.
+  // `scope` is normalised through the SAME helper the query key uses, so a
+  // permuted-but-equal location selection cannot reset the offset without the
+  // query key changing (gate r1, N2).
+  const filterSignature = JSON.stringify([searchQuery, movementFilter, normalizeViewScope(scope)])
+  const [appliedFilterSignature, setAppliedFilterSignature] = useState(filterSignature)
+  if (appliedFilterSignature !== filterSignature) {
+    setAppliedFilterSignature(filterSignature)
+    setPage(1)
+  }
 
   const { hasPermission } = usePermissions()
   const canReverseWriteOff = hasPermission('batches.write-off')
@@ -125,23 +166,28 @@ export function StockMovementsPage() {
   const queryClient = useQueryClient()
 
   const { data, isLoading, error } = useQuery({
-    queryKey: locationScopedKey(['stock-movements', searchQuery, movementFilter], scope),
+    queryKey: locationScopedKey(['stock-movements', searchQuery, movementFilter, page, perPage], scope),
     queryFn: async () => {
       const params = new URLSearchParams()
       if (searchQuery) params.append('search', searchQuery)
       effectiveLocationIds.forEach((id) => { params.append('location_ids[]', id) })
-      if (movementFilter !== 'all' && movementFilter !== 'transfer' && movementFilter !== 'write_off') {
-        params.append('movement_type', movementFilter)
+      // Every filter is resolved server-side: the browser never narrows a page
+      // it has already received, because a page is a slice of the WHOLE result
+      // set and client filtering would silently drop matching rows on page 2+.
+      if (movementFilter === 'transfer') {
+        params.append('movement_type', 'transfer')
       } else if (movementFilter === 'write_off') {
-        // Write-offs are always movement_type=issue; narrow the backend scan
-        // to issue movements and let the client-side reason filter do the rest.
-        params.append('movement_type', 'issue')
+        params.append('reason', 'write_off')
+      } else if (movementFilter !== 'all') {
+        params.append('movement_type', movementFilter)
       }
-      const queryString = params.toString()
-      const response = await api.get<StockMovementsResponse>(`/stock-movements${queryString ? `?${queryString}` : ''}`)
+      params.append('page', String(page))
+      params.append('per_page', String(perPage))
+      const response = await api.get<StockMovementsResponse>(`/stock-movements?${params.toString()}`)
       return response.data
     },
     enabled: !!tenantId && !!companyId,
+    placeholderData: keepPreviousData,
   })
 
   const reverseWriteOffMutation = useMutation({
@@ -169,27 +215,24 @@ export function StockMovementsPage() {
     },
   })
 
-  const movements = useMemo(() => {
-    let items = data?.data ?? []
-    if (movementFilter === 'transfer') {
-      items = items.filter(m => m.movement_type === 'transfer_in' || m.movement_type === 'transfer_out')
-    } else if (movementFilter === 'write_off') {
-      items = items.filter(m => isReversibleWriteOff(m.reason))
-    }
-    return items
-  }, [data?.data, movementFilter])
+  // The server already applied every filter; the page is rendered verbatim.
+  const movements = data?.data ?? []
+  // Hoisted once: `api.get<StockMovementsResponse>` is an unchecked cast, so a
+  // rolling deploy / error envelope can still hand us a meta-less body. Binding
+  // it to a variable keeps the runtime guard AND keeps the declared response
+  // type strict, without the inline-chain `no-unnecessary-condition` warning.
+  const meta = data?.meta
 
-  const filterTabs = useMemo(() => {
-    const allMovements = data?.data ?? []
-    return [
-      { value: 'all' as MovementFilter, label: t('common:filters.all'), count: allMovements.length },
-      { value: 'receipt' as MovementFilter, label: t('movements.filters.receipts'), count: allMovements.filter(m => m.movement_type === 'receipt').length },
-      { value: 'issue' as MovementFilter, label: t('movements.filters.issues'), count: allMovements.filter(m => m.movement_type === 'issue').length },
-      { value: 'adjustment' as MovementFilter, label: t('movements.filters.adjustments'), count: allMovements.filter(m => m.movement_type === 'adjustment').length },
-      { value: 'transfer' as MovementFilter, label: t('movements.filters.transfers'), count: allMovements.filter(m => m.movement_type.startsWith('transfer')).length },
-      { value: 'write_off' as MovementFilter, label: t('movements.filters.writeOffs'), count: allMovements.filter(m => isReversibleWriteOff(m.reason)).length },
-    ]
-  }, [t, data?.data])
+  // No counts: a single page cannot supply the GLOBAL total for the other tabs,
+  // and a per-page count would understate every filter the user has not selected.
+  const filterTabs = useMemo(() => [
+    { value: 'all' as MovementFilter, label: t('common:filters.all') },
+    { value: 'receipt' as MovementFilter, label: t('movements.filters.receipts') },
+    { value: 'issue' as MovementFilter, label: t('movements.filters.issues') },
+    { value: 'adjustment' as MovementFilter, label: t('movements.filters.adjustments') },
+    { value: 'transfer' as MovementFilter, label: t('movements.filters.transfers') },
+    { value: 'write_off' as MovementFilter, label: t('movements.filters.writeOffs') },
+  ], [t])
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString('en-US', {
@@ -348,7 +391,7 @@ export function StockMovementsPage() {
     <div className="space-y-6">
       <PageHeader
         title={t('movements.title')}
-        subtitle={t('movements.subtitle', { count: movements.length })}
+        subtitle={t('movements.subtitle', { count: meta?.total ?? 0 })}
         breadcrumb={
           <Link
             to="/inventory/stock"
@@ -378,32 +421,49 @@ export function StockMovementsPage() {
           {t('common:errors.operationFailed')}
         </div>
       ) : (
-        <DataTable
-          columns={columns}
-          data={movements}
-          keyExtractor={(movement) => movement.id}
-          isLoading={isLoading}
-          className={cn('rounded-lg border bg-white', borderColors.light)}
-          emptyState={
-            <div className="py-6">
-              <EmptyState
-                icon={<RefreshCw className={cn('mx-auto h-12 w-12', textColors.disabled)} />}
-                title={
-                  searchQuery || movementFilter !== 'all'
-                    ? t('common:status.noResults')
-                    : t('movements.noMovements')
-                }
-                description={
-                  searchQuery
-                    ? t('common:status.tryDifferentSearch')
-                    : movementFilter !== 'all'
-                      ? t('movements.noMatchFilter')
-                      : t('movements.emptyDescription')
-                }
-              />
-            </div>
-          }
-        />
+        <div>
+          <DataTable
+            columns={columns}
+            data={movements}
+            keyExtractor={(movement) => movement.id}
+            isLoading={isLoading}
+            className={cn('rounded-lg border bg-white', borderColors.light)}
+            emptyState={
+              <div className="py-6">
+                <EmptyState
+                  icon={<RefreshCw className={cn('mx-auto h-12 w-12', textColors.disabled)} />}
+                  title={
+                    searchQuery || movementFilter !== 'all'
+                      ? t('common:status.noResults')
+                      : t('movements.noMovements')
+                  }
+                  description={
+                    searchQuery
+                      ? t('common:status.tryDifferentSearch')
+                      : movementFilter !== 'all'
+                        ? t('movements.noMatchFilter')
+                        : t('movements.emptyDescription')
+                  }
+                />
+              </div>
+            }
+          />
+          {meta ? (
+            <OffsetPagination
+              currentPage={meta.current_page}
+              lastPage={meta.last_page}
+              total={meta.total}
+              perPage={meta.per_page}
+              from={meta.from}
+              to={meta.to}
+              onPageChange={setPage}
+              onPerPageChange={(next) => {
+                setPerPage(next)
+                setPage(1)
+              }}
+            />
+          ) : null}
+        </div>
       )}
 
       {/* Reverse write-off confirmation dialog */}

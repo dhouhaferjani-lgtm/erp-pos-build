@@ -126,6 +126,16 @@ beforeEach(() => {
   setTenant('tenant-A', 'company-1')
   mockApiGet.mockReset()
   mockApiGet.mockImplementation(async (url: string) => {
+    if (url.startsWith('/stock-movements')) {
+      // The endpoint is unconditionally paginated (request-hygiene S-2), so the
+      // fixture must carry the same six-field meta the server always returns.
+      return {
+        data: {
+          data: [],
+          meta: { current_page: 1, last_page: 1, per_page: 25, total: 0, from: null, to: null },
+        },
+      }
+    }
     if (url.startsWith('/products?')) {
       return {
         data: {
@@ -164,9 +174,6 @@ beforeEach(() => {
     }
     if (url.startsWith('/stock-levels')) {
       return { data: { data: [], meta: { total: 0 } } }
-    }
-    if (url.startsWith('/stock-movements')) {
-      return { data: { data: [] } }
     }
     if (url.startsWith('/documents')) {
       return { data: { data: [] } }
@@ -270,7 +277,7 @@ describe('inventory queryKey shapes', () => {
     // any more, so asserting the key would pin a query that must not exist.
     expect(keys.some((k) => k[0] === 'locations')).toBe(false)
     expectScoped(keys.find((k) => k[0] === 'stock-levels'), ['stock-levels', '', { locScope: 'all' }])
-    expectScoped(keys.find((k) => k[0] === 'stock-movements'), ['stock-movements', '', 'all', { locScope: 'all' }])
+    expectScoped(keys.find((k) => k[0] === 'stock-movements'), ['stock-movements', '', 'all', 1, 25, { locScope: 'all' }])
   })
 
   it('wraps platform and product subcomponent keys (.314-.318)', async () => {

@@ -11,7 +11,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { StockMovementsPage } from './StockMovementsPage'
+import { StockMovementsPage, type StockMovement } from './StockMovementsPage'
 
 // ── Permissions ─────────────────────────────────────────────────────────────
 const mockHasPermission = vi.fn<(p: string) => boolean>()
@@ -93,26 +93,9 @@ const capturedCallbacks: {
 const mockMutate = vi.fn()
 const mockInvalidateQueries = vi.fn()
 
-interface StockMovement {
-  id: string
-  product_id: string
-  product_name: string
-  location_id: string
-  location_name: string
-  movement_type: string
-  reason: string | null
-  quantity: string
-  quantity_before: string
-  quantity_after: string
-  reference: string
-  notes: string | null
-  user_id: string
-  user_name: string | null
-  reverses_movement_id: string | null
-  is_reversed: boolean
-  created_at: string
-}
-
+// Fixtures are typed by the page's own exported row type (gate r2, N7). The old
+// local copy omitted `quantity_decimals`, so getQuantityDecimals() ran on
+// undefined here while the suite stayed green.
 function makeMovement(overrides: Partial<StockMovement>): StockMovement {
   return {
     id: 'id-1',
@@ -123,9 +106,13 @@ function makeMovement(overrides: Partial<StockMovement>): StockMovement {
     movement_type: 'issue',
     reason: null,
     quantity: '-5.0000',
+    quantity_decimals: 3,
     quantity_before: '10.0000',
     quantity_after: '5.0000',
     reference: 'REF-001',
+    reference_type: null,
+    source_document_id: null,
+    source_document_type: null,
     notes: null,
     user_id: 'u-1',
     user_name: 'Alice',
@@ -176,6 +163,34 @@ const damageWriteOffMovement = makeMovement({
   is_reversed: false,
 })
 
+// A write-off REVERSAL is a RECEIPT that inherits the original's reason, so it
+// looks like a write-off by reason alone and lands in the Write-Offs tab. The
+// backend refuses to reverse it (ReverseWriteOffService: "is itself a reversal
+// and cannot be reversed"), so the button must not be offered (gate r1, B2).
+const reversalReceiptMovement = makeMovement({
+  id: 'wo-rev-receipt-1',
+  product_name: 'ReversalReceipt',
+  movement_type: 'receipt',
+  reason: 'write_off',
+  reverses_movement_id: 'wo-1',
+  is_reversed: false,
+})
+
+// A STOCK ADJUSTMENT line may carry reason_code `damage`/`write_off` on a
+// non-batch-tracked product (StockAdjustmentDocumentService), and posts as
+// movement_type='adjustment' with that reason and reverses_movement_id=null.
+// The reason-only Write-Offs tab surfaces it, but ReverseWriteOffService refuses
+// anything that is not an ISSUE ("Only write-off issue movements can be
+// reversed"), so the control must not be offered (gate r2, F1).
+const adjustmentDamageMovement = makeMovement({
+  id: 'adj-damage-1',
+  product_name: 'AdjustedDamagedWidget',
+  movement_type: 'adjustment',
+  reason: 'damage',
+  reverses_movement_id: null,
+  is_reversed: false,
+})
+
 const alreadyReversedExpiryMovement = makeMovement({
   id: 'wo-expiry-rev',
   product_name: 'ReversedExpiryWidget',
@@ -184,9 +199,19 @@ const alreadyReversedExpiryMovement = makeMovement({
   is_reversed: true,
 })
 
+// The bounded endpoint ALWAYS emits `meta` now (gate r1, B1) — the fixture has
+// to carry the same six fields the server does.
 const mockQueryReturn = {
   data: {
     data: [writeOffMovement, alreadyReversedMovement, normalIssueMovement],
+    meta: {
+      current_page: 1,
+      last_page: 1,
+      per_page: 25,
+      total: 3,
+      from: 1,
+      to: 3,
+    },
   },
   isLoading: false,
   error: null,
@@ -390,6 +415,40 @@ describe('StockMovementsPage — reverse write-off action for expiry/damage reas
     const confirmBtn = screen.getByTestId('confirm-dialog-confirm')
     await user.click(confirmBtn)
     expect(mockMutate).toHaveBeenCalledWith('wo-expiry-1')
+  })
+
+  it('does NOT show a Reverse button for a write-off REVERSAL receipt', () => {
+    mockQueryReturn.data.data = [reversalReceiptMovement]
+    setup()
+    expect(
+      screen.queryByRole('button', { name: 'movements.actions.reverse' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows Reverse for the genuine write-off but not for its reversal receipt', () => {
+    mockQueryReturn.data.data = [writeOffMovement, reversalReceiptMovement]
+    setup()
+    const reverseButtons = screen.queryAllByRole('button', {
+      name: 'movements.actions.reverse',
+    })
+    expect(reverseButtons).toHaveLength(1)
+  })
+
+  it('does NOT show a Reverse button for an adjustment-sourced damage write-off', () => {
+    mockQueryReturn.data.data = [adjustmentDamageMovement]
+    setup()
+    expect(
+      screen.queryByRole('button', { name: 'movements.actions.reverse' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows Reverse for the issue write-off but not for the adjustment-sourced one', () => {
+    mockQueryReturn.data.data = [writeOffMovement, adjustmentDamageMovement]
+    setup()
+    const reverseButtons = screen.queryAllByRole('button', {
+      name: 'movements.actions.reverse',
+    })
+    expect(reverseButtons).toHaveLength(1)
   })
 
   afterEach(() => {
