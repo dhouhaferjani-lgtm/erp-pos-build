@@ -132,9 +132,80 @@ There is no same-scope win to preserve, so **drop `placeholderData`** instead of
 guarding it; `apps/web/src/features/pos/hooks/useDiscountPreview.ts` is the
 worked example.
 
-Enforced by `apps/web/tools/audit-tanstack-keys.mjs`: `placeholderData` on a
-`tenantScopedKey`/`locationScopedKey` read in a file that does not use
-`usePlaceholderScopeGuard` fails Gate C.
+### What Gate C actually checks (hardened 2026-09-04, fix round 1)
+
+Enforced by `apps/web/tools/audit-tanstack-keys.mjs`. The rule is **per call
+site**, not per file, and the guard must be a real **call**:
+
+**It fires when all three hold**
+
+1. the factory can serve a placeholder — `useQuery`, `useInfiniteQuery`,
+   `useSuspenseQuery`, **or an entry of `useQueries({ queries: [...] })`**;
+2. the options object declares `placeholderData` (any value —
+   `keepPreviousData` or an inline `(prev) => prev`) — **inline, or through a
+   spread** (`...listOptions`) whose payload resolves, inside the same file, to
+   an object that declares it;
+3. the `queryKey` **carries a tenant scope**: a `tenantScopedKey(...)` /
+   `locationScopedKey(...)` call, **or** an array literal containing an approved
+   scope — a bare `tenantId` / `currentCompanyId` / `companyId`, or
+   `companyStore.<one of those>`. (`['admin', …]` / `['super-admin', …]` is a
+   super-admin namespace, not a tenant scope, and does not trigger the rule.)
+
+**It clears only on a paired guard call**
+
+1. bind the read's result — `const { …, isPlaceholderData } = useQuery(…)`
+   (renames are honoured: `isPlaceholderData: isPaymentsPending`), or
+   `const result = useQuery(…)`, or, for `useQueries`, the array-destructured
+   element **at that entry's index**. A `let r; r = useQuery(…)` assignment
+   binds too. A read whose result is never bound can never be paired and is
+   always reported; and
+2. call `usePlaceholderScopeGuard(...)` somewhere inside the read's nearest
+   enclosing function (component/hook body — nested callbacks and render or
+   `enabled` gates count) passing **one of those bound names** as an argument.
+   Importing the guard under an alias
+   (`import { usePlaceholderScopeGuard as useScopeGuard }`) is fine — the alias
+   is resolved from the import; a same-named *local* helper is not.
+3. for a `useQueries` whose whole results array is bound to ONE identifier
+   (`const results = useQueries({ queries: [A, B] })`), the guard argument must
+   reach **that entry's index** — `results[1]` / `results.at(1)`. A guard on
+   `results[0]` does **not** clear entry 1, and the bare `results` handle clears
+   nothing.
+
+Consequences worth knowing before you argue with the gate:
+
+- naming the guard in a **comment, a string or an unused import does not pair** —
+  the check is an AST call lookup, not a text search;
+- **two scoped placeholder reads in one file with one guard = one finding**;
+- a guard wired to a *different* read in the same component does not clear
+  yours — the name linkage has to match;
+- inside one identifier-bound `useQueries`, **one guard clears one entry**, not
+  its siblings;
+- `placeholderData` smuggled in through a resolvable spread is reported exactly
+  like an inline one.
+
+Fixtures for each of those live in
+`apps/web/tools/__fixtures__/audit-tanstack-keys/placeholder-pairing/`.
+
+**Where the gate stops — read this before you argue it is silent, therefore
+safe.** Each limitation is pinned by a test in
+`apps/web/tools/__tests__/audit-tanstack-keys.test.mjs`:
+
+- **A read inside a custom hook must be guarded INSIDE that hook.** The scanner
+  does not follow `isPlaceholderData` across a module boundary, so a
+  consumer-side guard is not seen and the hook is reported anyway — the rule
+  fails **closed**. Do the guarding in the hook: return rows already blanked, or
+  return the verdict alongside them. Do not push the obligation onto every
+  caller.
+- **A spread payload the scanner cannot resolve in the file is NOT reported**
+  (fails **open**): a caller-supplied `options` parameter
+  (`useCategories(params, options)`) or an imported options object can smuggle
+  `placeholderData` past the gate. If your hook accepts pass-through query
+  options on a tenant-scoped key, guard inside the hook or drop the option from
+  the accepted type. Open today: `src/features/catalog/api/queries.ts`
+  (`useCategories`, `useCategoryTree`, `useCategory`).
+- **A guard call whose verdict is discarded still pairs** (fails **open**): the
+  gate checks the linkage, not that the verdict blanks anything. Gating every
+  derived value stays a reviewer duty.
 
 ## Query Hook Pattern
 
