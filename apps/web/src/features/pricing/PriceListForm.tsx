@@ -8,8 +8,18 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { fetchPriceList, createPriceList, updatePriceList } from './api'
+import { getErrorMessage, getFieldErrors } from '@/lib/api'
 import { priceListsInvalidationPredicate } from './_invalidation'
 import type { PriceListFormData } from './types'
+
+// Server validation errors we can attach to a matching form field.
+const PRICE_LIST_FIELDS: readonly (keyof PriceListFormData)[] = [
+  'code', 'name', 'description', 'currency', 'is_active', 'is_default', 'valid_from', 'valid_until',
+]
+
+function isPriceListField(field: string): field is keyof PriceListFormData {
+  return (PRICE_LIST_FIELDS as readonly string[]).includes(field)
+}
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
@@ -26,6 +36,7 @@ export function PriceListForm() {
     register,
     handleSubmit,
     reset,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<PriceListFormData>({
     defaultValues: {
@@ -64,14 +75,27 @@ export function PriceListForm() {
     }
   }, [existingPriceList, reset])
 
+  // Map backend 422 validation errors onto the matching form fields so they
+  // surface inline instead of failing silently (DEV-QA-015).
+  const applyServerErrors = (error: Error) => {
+    const fieldErrors = getFieldErrors(error)
+    if (!fieldErrors) return
+    for (const [field, message] of Object.entries(fieldErrors)) {
+      if (isPriceListField(field)) {
+        setError(field, { type: 'server', message })
+      }
+    }
+  }
+
   const createMutation = useMutation({
     mutationFn: createPriceList,
     onSuccess: async (response) => {
       await queryClient.invalidateQueries({
         predicate: priceListsInvalidationPredicate(tenantId, companyId),
       })
-      navigate(`/pricing/price-lists/${response.data.id}`)
+      navigate(`/pricing/price-lists/${response.id}`)
     },
+    onError: applyServerErrors,
   })
 
   const updateMutation = useMutation({
@@ -85,6 +109,7 @@ export function PriceListForm() {
       ])
       navigate(`/pricing/price-lists/${id}`)
     },
+    onError: applyServerErrors,
   })
 
   const onSubmit = (data: PriceListFormData) => {
@@ -216,9 +241,21 @@ export function PriceListForm() {
             <input
               type="date"
               id="valid_until"
-              {...register('valid_until')}
+              {...register('valid_until', {
+                validate: (value, formValues) =>
+                  !value ||
+                  !formValues.valid_from ||
+                  value > formValues.valid_from ||
+                  t(
+                    'pricing:validation.validUntilAfterValidFrom',
+                    'Valid Until must be after Valid From',
+                  ),
+              })}
               className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
             />
+            {errors.valid_until && (
+              <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.valid_until.message}</p>
+            )}
           </div>
 
           {/* Toggles */}
@@ -254,9 +291,7 @@ export function PriceListForm() {
         {/* Error message */}
         {mutation.error && (
           <div className={`rounded-lg ${colorTokens.intent.danger.bgSubtle} p-3 text-sm ${colorTokens.intent.danger.textStrong}`}>
-            {mutation.error instanceof Error
-              ? mutation.error.message
-              : t('common:status.error')}
+            {getErrorMessage(mutation.error)}
           </div>
         )}
 

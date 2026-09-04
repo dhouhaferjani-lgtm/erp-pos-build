@@ -41,8 +41,10 @@ export async function fetchPriceList(id: string): Promise<PriceListResponse> {
 /**
  * Create a new price list
  */
-export async function createPriceList(data: PriceListFormData): Promise<{ data: PriceList }> {
-  return apiPost<{ data: PriceList }>('/price-lists', {
+export async function createPriceList(data: PriceListFormData): Promise<PriceList> {
+  // apiPost already unwraps the `{ data: ... }` envelope, so this resolves the
+  // PriceList directly (id at the top level) — NOT a `{ data: PriceList }` wrapper.
+  return apiPost<PriceList>('/price-lists', {
     code: data.code,
     name: data.name,
     description: data.description ?? null,
@@ -60,7 +62,7 @@ export async function createPriceList(data: PriceListFormData): Promise<{ data: 
 export async function updatePriceList(
   id: string,
   data: Partial<PriceListFormData>
-): Promise<{ data: PriceList }> {
+): Promise<PriceList> {
   const payload: Partial<{
     code: string
     name: string
@@ -81,7 +83,7 @@ export async function updatePriceList(
   if (data.valid_from !== undefined) payload.valid_from = data.valid_from ?? null
   if (data.valid_until !== undefined) payload.valid_until = data.valid_until ?? null
 
-  return apiPatch<{ data: PriceList }>(`/price-lists/${id}`, payload)
+  return apiPatch<PriceList>(`/price-lists/${id}`, payload)
 }
 
 /**

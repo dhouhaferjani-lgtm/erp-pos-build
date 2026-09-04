@@ -7,7 +7,7 @@ import { useForm, useFieldArray, type FieldErrors } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { Plus, X, Layers } from 'lucide-react'
 import { toast } from 'sonner'
-import { api, apiPost, apiPatch, isApiError } from '../../lib/api'
+import { api, apiPost, apiPatch, isApiError, getFieldErrors, getErrorMessage } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { focusFirstInvalidField } from '../../lib/formErrors'
 import { cn } from '../../lib/utils'
@@ -199,6 +199,7 @@ export function ProductForm() {
     reset,
     watch,
     setValue,
+    setError,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<ProductFormData>({
     // BUG-003 / gate m2: react-hook-form's own `_focusError` runs AFTER
@@ -555,6 +556,32 @@ export function ProductForm() {
     return true
   }
 
+  // Fields the backend can reject and the form renders inline (keyof ProductFormData).
+  const SERVER_ERROR_FIELDS: readonly (keyof ProductFormData)[] = [
+    'name', 'sku', 'unit_id', 'category_id', 'sale_price', 'purchase_price',
+    'tax_rate', 'tax_configuration_id', 'barcode', 'description', 'unit',
+  ]
+
+  // Surface backend 422 validation errors (e.g. duplicate SKU, invalid UOM)
+  // on the matching field instead of silently swallowing them.
+  // DEV-QA-026 (duplicate SKU) / DEV-QA-056 (invalid UOM).
+  const reportValidationErrors = (error: unknown): void => {
+    const fieldErrors = getFieldErrors(error)
+    if (!fieldErrors) {
+      toast.error(getErrorMessage(error))
+      return
+    }
+    let mappedAny = false
+    for (const [field, message] of Object.entries(fieldErrors)) {
+      if ((SERVER_ERROR_FIELDS as readonly string[]).includes(field)) {
+        setError(field as keyof ProductFormData, { type: 'server', message })
+        mappedAny = true
+      }
+    }
+    // Always give visible feedback — even for a field we cannot render inline.
+    toast.error(mappedAny ? t('inventory:products.validationBlocked') : Object.values(fieldErrors)[0])
+  }
+
   const onSubmit = async (data: ProductFormData) => {
     const shouldClose = closeIntentRef.current
     closeIntentRef.current = false
@@ -583,7 +610,7 @@ export function ProductForm() {
           }
         }
       } catch (error) {
-        reportBarcodeConflict(error)
+        if (!reportBarcodeConflict(error)) reportValidationErrors(error)
         return
       }
       if (shouldClose) nav.goToList()
@@ -666,7 +693,7 @@ export function ProductForm() {
       if (shouldClose) nav.goToList()
       else nav.goToRecord(created.id)
     } catch (error) {
-      reportBarcodeConflict(error)
+      if (!reportBarcodeConflict(error)) reportValidationErrors(error)
     }
   }
 

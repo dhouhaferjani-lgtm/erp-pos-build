@@ -50,6 +50,7 @@
   },
   "validation": {
     "codeRequired": "Le code est requis",
-    "nameRequired": "Le nom est requis"
+    "nameRequired": "Le nom est requis",
+    "validUntilAfterValidFrom": "La date de fin doit être postérieure à la date de début"
   }
 }
