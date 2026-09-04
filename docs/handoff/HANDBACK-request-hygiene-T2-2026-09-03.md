@@ -589,3 +589,105 @@ Scope was held to the three frontend blockers plus the documentation correction,
 - Frontend merge condition 4 — **N1** (dead duplicate `/stock-movements` mock branch, `__tests__/tenantScope.test.tsx:178-180`), the `docs/api/README.md:447` "unchanged" line that is now false, **N2** (`filterSignature` vs `locationScopedKey` scope normalisation) and **N7** (export the page's `StockMovement`/`StockMovementsResponse` so the two test files stop re-declaring narrower copies, as T3 did for `Payment`). None were in this round's dispatch; they remain open as either a fold-in for r3 or named follow-up tickets.
 - Shared `useResetOnChange` / `usePagedFilters` extraction with T3 — already downgraded by r2 to a post-merge follow-up.
 - **N6 / inventory-costing B3 — unchanged promotion preconditions:** the Step 11 browser probe and the four W4 Playwright specs are still unrun. This lane must not be promoted on the current evidence set.
+
+---
+
+## Fix round 3 (2026-09-04)
+
+Closes the four gate items the previous two rounds explicitly carried (frontend gate r1 N1/N2/N7 and the `docs/api/README.md` line, all classified NOT merge-blocking but "fold in before merge"). Nothing else was touched; `apps/api` is untouched.
+
+### 1. N1 — dead duplicate mock branch (`__tests__/tenantScope.test.tsx`)
+
+Deleted the shadowed `if (url.startsWith('/stock-movements')) { return { data: { data: [] } } }` branch. The live branch at `:129` (six-field `meta`, matching the contract) is the only `/stock-movements` handler left. The file's tenant-isolation assertions were not touched and are green: `expectScoped(...)` on the `stock-movements` key (`:277`), the predicate cases (`:210-214`), and the `stock-movements` presence check (`:265`).
+
+### 2. N2 — one scope normalisation for the key and the reset
+
+`src/lib/locationScopedKey.ts` now exports the normalisation it always applied internally:
+
+```ts
+export function normalizeViewScope(scope: 'all' | readonly string[]): 'all' | string[] {
+  return scope === 'all' ? 'all' : [...scope].sort()
+}
+```
+
+`locationScopedKey` calls it, and `StockMovementsPage.tsx` calls it in the render-phase reset:
+
+```ts
+const filterSignature = JSON.stringify([searchQuery, movementFilter, normalizeViewScope(scope)])
+```
+
+There is now exactly one answer to "are these two scopes the same?", so a permuted-but-equal location selection can no longer reset the offset while the query key — and therefore the data on screen — is unchanged.
+
+**New test** (`StockMovementsPage.test.tsx`, "keeps the current page when the view scope is permuted into the same set"). `useViewScope` is mocked with a hoisted, mutable `scopeRef` so the scope can be driven directly — it is a store value the page cannot observe through any handler, which is precisely why the reset has to be render-derived. The test pages to 2 with `scope = ['loc-b','loc-a']`, permutes to `['loc-a','loc-b']` and asserts the request is still `page=2`, then switches to a genuinely different set `['loc-c']` and asserts `page=1`. The second half keeps the test honest: it fails if the reset is disabled rather than normalised.
+
+**Falsification run.** Reverting the signature to the raw `scope` makes only this test fail (`1 failed | 7 passed`) with `expected last "spy" call to have been called with [ Array(1) ]`. The other seven tests in the file stay green, i.e. the assertion is specific to the normalisation. The page was restored immediately afterwards.
+
+The shared `useResetOnChange` / `usePagedFilters` extraction with T3 remains a post-merge follow-up (r2 downgraded it); this round only unifies the normalisation.
+
+### 3. N7 — the page's row types are exported; the hand-rolled copies are gone
+
+`StockMovementsPage.tsx` now exports `StockMovement` and `StockMovementsResponse` (both with a docblock naming the reason). The two test files import them and their local, narrower re-declarations were deleted:
+
+- `StockMovementsPage.test.tsx` — its copy omitted `reason`, `reference_type`, `source_document_id/type`, `reverses_movement_id`, `is_reversed`, and re-typed the meta inline. `makeMovement` now supplies all of them.
+- `StockMovementsPage.reverseWriteOff.test.tsx` — its copy additionally omitted `quantity_decimals`, so `getQuantityDecimals(movement)` was running on `undefined` in every one of that file's eight fixtures. `makeMovement` now sets `quantity_decimals: 3`.
+
+`tenantScope.test.tsx` had no local copy (verified by grep), so nothing to delete there. `components/ProductMovementsTab.tsx` has its own `StockMovement`/`StockMovementsResponse` for a *different* endpoint shape (`/products/{id}/movements`) and was deliberately left alone — out of scope, and not the same contract.
+
+A fixture can no longer omit a field the page reads without a type error, which is the structural cause of r1-B1.
+
+### 4. `docs/api/README.md` — the "unchanged" claim is gone
+
+Removed `` `GET /api/v1/stock-movements` is unchanged. `` from the DPA V7 removal note and added a short contract block after the replacement table. Every clause was verified against the code before writing it:
+
+| Claim | Verified at |
+|---|---|
+| `per_page` default 25, max 100; `page` min 1 | `StockMovementController.php:44` (`DEFAULT_PER_PAGE = 25`), `ListStockMovementsRequest.php:55-56` |
+| six-field `meta` envelope | `StockMovementController.php:143-150` |
+| `search` resolved server-side over reference / product name / SKU | `StockMovementController.php:78-92` |
+| `movement_type=transfer` matches `transfer_in` + `transfer_out` | `StockMovementController.php:95-101`, alias allowed at `ListStockMovementsRequest.php:37-45` |
+| `reason=write_off` matches `write_off`, `expiry`, `damage` | `StockMovementController.php:105-112` |
+| ordering `created_at DESC, id DESC` | `StockMovementController.php:120-121` |
+
+### Verification (fix round 3)
+
+```
+$ pnpm vitest run src/features/inventory
+  Test Files  46 passed (46)
+  Tests       328 passed (328)
+
+$ pnpm vitest run src/lib                     # locationScopedKey is shared
+  Test Files  22 passed (22)
+  Tests       151 passed (151)
+
+$ pnpm typecheck
+  (no output — clean)   exit 0
+```
+
+ESLint, per touched file, current vs `git show 16e599285:<path>` (measured by swapping the baseline files in, running `eslint -f json`, and swapping back — outputs are byte-identical):
+
+| File | errors before → after | warnings before → after |
+|---|---|---|
+| `src/features/inventory/StockMovementsPage.tsx` | 0 → 0 | 0 → 0 |
+| `src/features/inventory/StockMovementsPage.test.tsx` | 0 → 0 | 0 → 0 |
+| `src/features/inventory/StockMovementsPage.reverseWriteOff.test.tsx` | 0 → 0 | 0 → 0 |
+| `src/features/inventory/__tests__/tenantScope.test.tsx` | 0 → 0 | 15 → 15 (all pre-existing) |
+| `src/lib/locationScopedKey.ts` | 0 → 0 | 1 → 1 (pre-existing `no-unsafe-type-assertion` on the `QueryKey` cast) |
+
+**Zero errors, zero new warnings.**
+
+**React Doctor.** The `pre-commit` hook printed its generic "staged regressions" line again. Re-scanned the page file at the baseline commit and after: the same two maintainability findings, `no-giant-component` and `prefer-module-scope-pure-function`, at `:128`/`:227` before and `:135`/`:237` after — the same two rules on the same two constructs, shifted only by the docblocks this round added. No regression.
+
+No vitest worker processes left behind (`ps aux | grep -c 'node (vitest'` → 0).
+
+### Commits (fix round 3)
+
+| Hash | Message | Paths |
+|---|---|---|
+| `8c2ea02f4` | `fix(rh-t2 web): gate fold-ins — dead mock branch, scope-normalised reset, exported row types, API README note` | `apps/web/src/features/inventory/StockMovementsPage.tsx`, `…/StockMovementsPage.test.tsx`, `…/StockMovementsPage.reverseWriteOff.test.tsx`, `…/__tests__/tenantScope.test.tsx`, `apps/web/src/lib/locationScopedKey.ts`, `docs/api/README.md` |
+| `<this commit>` | `docs(rh-t2): handback fix round 3` | this section |
+
+### Still owed after round 3
+
+- **N6 / inventory-costing B3 — promotion preconditions, unchanged:** the Step 11 browser probe and the four W4 Playwright specs remain unrun. This lane must not be promoted on the current evidence set.
+- Shared `useResetOnChange` / `usePagedFilters` extraction, together with T3 — post-merge follow-up (r2 ruling).
+- N4 (`page > last_page` after a shrink) and N5 (`ar` has no `inventory.movements.*`) — pre-existing, not this lane's debt.
