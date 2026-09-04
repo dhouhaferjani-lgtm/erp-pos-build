@@ -20,6 +20,7 @@
     "campaign:fiscal-test": "vitest run --config e2e/campaign/vitest.config.ts",
     "typecheck": "tsc --noEmit",
     "typecheck:e2e": "tsc --noEmit -p e2e/tsconfig.json",
+    "typecheck:e2e-local": "tsc --noEmit -p e2e-local/tsconfig.verify.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:arch": "pnpm audit:keys && pnpm audit:design-system",

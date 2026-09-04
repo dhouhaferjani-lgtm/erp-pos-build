@@ -249,3 +249,14 @@ Unchanged from round 1, re-confirmed this round (`pnpm audit:i18n:local` → sam
 - `apps/web/src/features/uom/__tests__/tenantScope.test.tsx`
 - `apps/web/src/locales/ar/uom.json`
 - `apps/web/src/locales/fr/import.json`
+
+## Re-gate r2 corrections (2026-09-04) — supersede the numbers above
+
+Gate r2 (`docs/superpowers/reviews/2026-09-04-web-lint-debt-gate-r2.md`) = **MERGE**, with documentation corrections:
+
+- **Ratchet:** commit `ec5810b2f` (landed after §2b/§7 were written) removed the lane's one new warning. Measured at the lane tip and on a real merge with current `dev` (`7f86dbf0c`): `@autoerp/web` **0 errors, 6454 warnings** (base `6f16fd8f7`: 5 errors, 6454 warnings). **Lane net contribution: 0 warnings, −5 errors.** The ratchet stays FAIL 6448→6454 (+6) purely from pre-lane `dev` drift — owner re-baseline decision (LEDGER D-J0-10 precedent). Wherever §2b/§7 say `6455` / `+1`, read `6454` / `0`.
+- **Files changed:** `apps/web/e2e/tsconfig.json` is net-unchanged versus base (touched in r1, reverted in r2); drop it from the changed-files list.
+- **i18n count:** §6's "61 entries `ar|uom|missing|*`" is 58 (58 + 4 = the stated 62 total).
+- **MINOR-5 applied:** `apps/web/package.json` gains `typecheck:e2e-local` (`tsc --noEmit -p e2e-local/tsconfig.verify.json`) so the ignored manual harness keeps a manual typecheck entry point (not wired into CI by design).
+- **Owner items (not this lane):** CI `frontend-lint` stays red until the 14 `ImportWizardPage.tsx` design-system entries are routed to the import lane and the 6448→6454 drift is re-baselined or fixed.
+
