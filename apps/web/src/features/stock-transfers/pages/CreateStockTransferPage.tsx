@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft, PackageSearch, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
-import { apiGet } from '@/lib/api'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { fetchLocations, fetchTransactionLocations, type LocationApiResponse, type TransactionLocationApiResponse } from '@/features/locations/api'
 import { Button } from '@/components/atoms/Button/Button'
@@ -34,6 +33,7 @@ import type { CreateStockTransferInput, TransferCostDistribution } from '../type
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import { Input, Select, Textarea } from '@/components/atoms'
 import { TransferSourceSuggestion } from '../components/TransferSourceSuggestion'
+import { useProductStockLevels } from '@/features/products/api/useProductStockLevels'
 
 interface DraftBatchAllocation {
   batch_id: number
@@ -403,15 +403,6 @@ function BatchDetailRow({ line, sourceLocationId, onChange }: BatchDetailRowProp
   )
 }
 
-interface ProductStockLevelLocation {
-  location_id: string
-  available: string
-}
-
-interface ProductStockLevelsResponse {
-  locations: ProductStockLevelLocation[]
-}
-
 interface AvailabilityCellProps {
   line: DraftLine
   sourceLocationId: string
@@ -423,14 +414,9 @@ function AvailabilityCell({ line, sourceLocationId }: AvailabilityCellProps) {
   const product = line.product
   const productId = product?.id ?? ''
   const variantId = line.variantId
-  const stockQuery = useQuery({
-    queryKey: tenantScopedKey(['stock-levels', productId, variantId]),
-    queryFn: () => apiGet<ProductStockLevelsResponse>(
-      `/products/${productId}/stock-levels`,
-      variantId !== null ? { variant_id: variantId } : undefined,
-    ),
-    enabled: productId !== '' && sourceLocationId !== '',
-  })
+  // Shared with TransferSourceSuggestion on the same row: one request per
+  // product/variant, not one per component (S-6 partial, Task 7).
+  const stockQuery = useProductStockLevels(productId, variantId, sourceLocationId !== '')
 
   if (product === null) {
     return <span className={`text-sm ${textColors.disabled}`}>—</span>
