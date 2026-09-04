@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Search, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../../../lib/api'
+import { useDebouncedValue } from '../../../lib/hooks'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
@@ -14,6 +15,8 @@ import { useProductLineLookup, type ProductLineLookupOutcome, type ProductLinePr
 interface ProductsResponse {
   data: ProductLineProduct[]
 }
+
+const PRODUCT_SEARCH_DEBOUNCE_MS = 250
 
 export type LineEntryMatchedCodeType = 'product_barcode' | 'product_sku' | 'variant_barcode' | 'variant_sku'
 
@@ -67,19 +70,23 @@ export function LineItemEntryBar({
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const trimmedQuery = query.trim()
+  // S-4: the search read is debounced so a burst of keystrokes issues one
+  // request for the settled term instead of one per committed character.
+  const debouncedQuery = useDebouncedValue(trimmedQuery, PRODUCT_SEARCH_DEBOUNCE_MS)
   const { data: productsData, isLoading } = useQuery({
-    queryKey: tenantScopedKey(['line-entry-products', trimmedQuery]),
+    queryKey: tenantScopedKey(['line-entry-products', debouncedQuery]),
     queryFn: async () => {
       const response = await api.get<ProductsResponse>('/products', {
         params: {
           per_page: 20,
-          ...(trimmedQuery !== '' ? { search: trimmedQuery } : {}),
+          ...(debouncedQuery !== '' ? { search: debouncedQuery } : {}),
         },
       })
       return response.data
     },
     enabled: !disabled && isOpen && tenantId !== null && companyId !== null,
     staleTime: 30000,
+    placeholderData: keepPreviousData,
   })
 
   const products = productsData?.data ?? []

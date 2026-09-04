@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -104,6 +104,7 @@ describe('LineItemEntryBar', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     resetTenant()
   })
 
@@ -385,5 +386,58 @@ describe('LineItemEntryBar', () => {
       }),
     )
     expect(apiGetMock).toHaveBeenCalledWith('/line-entry/resolve-code', expect.objectContaining({ code: '999' }))
+  })
+
+  it('waits 250 ms and sends exactly the final product search', async () => {
+    vi.useFakeTimers()
+    apiClientGetMock.mockResolvedValue({ data: { data: [] } })
+
+    render(<LineItemEntryBar onAddProduct={vi.fn()} />, { wrapper: wrapper() })
+
+    const input = screen.getByRole('combobox', { name: 'Search or scan a product' })
+
+    await act(async () => {
+      fireEvent.focus(input)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(apiClientGetMock).toHaveBeenCalledWith('/products', { params: { per_page: 20 } })
+    apiClientGetMock.mockClear()
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'a' } })
+      await Promise.resolve()
+    })
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'ab' } })
+      await Promise.resolve()
+    })
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'abc' } })
+      await Promise.resolve()
+    })
+
+    // Type guard instead of the plan's `as { params?: { search?: string } }`
+    // assertion: @typescript-eslint/no-unsafe-type-assertion warns on it.
+    function hasSearchParam(config: unknown): boolean {
+      if (typeof config !== 'object' || config === null || !('params' in config)) return false
+      const params: unknown = config.params
+      return typeof params === 'object' && params !== null && 'search' in params
+    }
+
+    const searchCalls = () => apiClientGetMock.mock.calls.filter(([, config]) => hasSearchParam(config))
+
+    await act(async () => {
+      vi.advanceTimersByTime(249)
+      await Promise.resolve()
+    })
+    expect(searchCalls()).toHaveLength(0)
+
+    await act(async () => {
+      vi.advanceTimersByTime(1)
+      await Promise.resolve()
+    })
+    expect(searchCalls()).toHaveLength(1)
+    expect(searchCalls()[0]?.[1]).toEqual({ params: { per_page: 20, search: 'abc' } })
   })
 })
