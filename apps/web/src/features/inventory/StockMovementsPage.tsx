@@ -154,7 +154,16 @@ export function StockMovementsPage() {
   // `scope` is normalised through the SAME helper the query key uses, so a
   // permuted-but-equal location selection cannot reset the offset without the
   // query key changing (gate r1, N2).
-  const filterSignature = JSON.stringify([searchQuery, movementFilter, normalizeViewScope(scope)])
+  // Tenant/company are part of the signature too (gate r1, MAJOR-3): page 4 of
+  // company one's movements is as meaningless for company two as it is for a new
+  // filter, and without them the operator lands on an empty page-4 table.
+  const filterSignature = JSON.stringify([
+    searchQuery,
+    movementFilter,
+    normalizeViewScope(scope),
+    tenantId,
+    companyId,
+  ])
   const [appliedFilterSignature, setAppliedFilterSignature] = useState(filterSignature)
   if (appliedFilterSignature !== filterSignature) {
     setAppliedFilterSignature(filterSignature)
@@ -195,10 +204,15 @@ export function StockMovementsPage() {
     placeholderData: keepPreviousData,
   })
 
-  // A placeholder fetched for the PREVIOUS company must never reach the table
-  // or the pagination bar: those rows link into products and documents this
-  // company cannot see, and the reverse-write-off action would target them.
-  const isStaleScopeData = usePlaceholderScopeGuard(isPlaceholderData, data !== undefined)
+  // A placeholder fetched for the PREVIOUS company must never reach the table or
+  // the pagination bar: those rows link into products and documents this company
+  // cannot see, and their action column would offer a reverse-write-off against
+  // them. `locationScopedKey` also carries the location scope, so that dimension
+  // is signed too (gate r1, MAJOR-1) — attributing one location's movements to
+  // another is a wrong read on a stock-reconciliation screen.
+  const isStaleScopeData = usePlaceholderScopeGuard(isPlaceholderData, data !== undefined, [
+    normalizeViewScope(scope),
+  ])
 
   const reverseWriteOffMutation = useMutation({
     mutationFn: (movementId: string) => reverseWriteOff(movementId),

@@ -86,7 +86,11 @@ export function PaymentListPage() {
   // (React's documented derived-state pattern) rather than in an effect, so the
   // reset lands before the query key is read — an effect would let one request
   // for the stale page escape to the server first.
-  const filterSignature = JSON.stringify([search])
+  // Tenant/company are part of the signature too: page 4 of company one's
+  // payments is as meaningless for company two as it is for a new search term,
+  // and without them the operator lands on an empty page-4 table and reads it as
+  // "this company has no payments" (gate r1, MAJOR-3).
+  const filterSignature = JSON.stringify([search, tenantId, companyId])
   const [appliedFilterSignature, setAppliedFilterSignature] = useState(filterSignature)
   if (appliedFilterSignature !== filterSignature) {
     setAppliedFilterSignature(filterSignature)

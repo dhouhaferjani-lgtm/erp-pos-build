@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
+import { useViewScopeStore } from '../../stores/viewScopeStore'
 import { resetAuth, seedAuth } from '../../test/seedAuth'
 import {
   StockMovementsPage,
@@ -28,20 +29,34 @@ vi.mock('react-router-dom', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-vi.mock('../locations/hooks/useViewScope', () => ({
-  useViewScope: () => ({
-    scope: 'all' as const,
-    effectiveLocationIds: [] as string[],
-    isAll: true,
-    setScope: vi.fn(),
-  }),
-}))
+// Bound to the REAL `viewScopeStore` (only `useScopedLocations`' network path and
+// the clamping effect are cut away), so `useViewScopeStore.setState` in a test
+// re-renders the page exactly as the location selector would.
+vi.mock('../locations/hooks/useViewScope', async () => {
+  const { useViewScopeStore } = await vi.importActual<
+    typeof import('../../stores/viewScopeStore')
+  >('../../stores/viewScopeStore')
+  return {
+    useViewScope: () => {
+      const scope = useViewScopeStore((state) => state.scope)
+      return {
+        scope,
+        effectiveLocationIds: scope === 'all' ? [] : scope,
+        isAll: scope === 'all',
+        setScope: useViewScopeStore.getState().setScope,
+      }
+    },
+  }
+})
 vi.mock('../../hooks/useLocation', () => ({ useLocation: () => ({ currentLocationId: null }) }))
 vi.mock('../locations/LocationSelector', () => ({
   LocationSelector: () => <div data-testid="location-selector" />,
 }))
+// Granted, not denied: the guard's stated purpose includes keeping the
+// reverse-write-off action off foreign rows, so the action column must actually
+// render for these tests to mean what the page comment claims.
 vi.mock('../../hooks/usePermissions', () => ({
-  usePermissions: () => ({ hasPermission: () => false }),
+  usePermissions: () => ({ hasPermission: () => true }),
 }))
 vi.mock('../batches/api/batches', () => ({ reverseWriteOff: vi.fn() }))
 
@@ -121,6 +136,7 @@ describe('StockMovementsPage scope-change placeholder', () => {
   beforeEach(() => {
     apiGet.mockReset()
     seedAuth({ tenantId: 'tenant-1', companyId: 'company-1' })
+    useViewScopeStore.setState({ scope: ['location-1'] })
   })
 
   afterEach(() => {
@@ -129,6 +145,7 @@ describe('StockMovementsPage scope-change placeholder', () => {
     // still-mounted tree outside `act`.
     cleanup()
     resetAuth()
+    useViewScopeStore.setState({ scope: 'all' })
   })
 
   it('renders no company-one movement while company two is still loading', async () => {
@@ -165,6 +182,53 @@ describe('StockMovementsPage scope-change placeholder', () => {
     await waitFor(() => { expect(apiGet).toHaveBeenCalledTimes(2) })
 
     expect(screen.queryByText('COMPANY-ONE-WIDGET')).not.toBeInTheDocument()
+  })
+
+  it('renders no location-one movement while location two is still loading', async () => {
+    apiGet
+      .mockImplementationOnce(() => Promise.resolve(body([companyOneMovement], 1, 1)))
+      .mockImplementationOnce(neverSettles)
+
+    renderPage()
+    await screen.findByText('COMPANY-ONE-WIDGET')
+
+    act(() => {
+      useViewScopeStore.setState({ scope: ['location-2'] })
+    })
+
+    await waitFor(() => { expect(apiGet).toHaveBeenCalledTimes(2) })
+
+    // `locationScopedKey` carries the location scope, so the placeholder crosses
+    // that boundary too — a stock reconciliation screen must not attribute one
+    // location's movements to another.
+    expect(screen.queryByText('COMPANY-ONE-WIDGET')).not.toBeInTheDocument()
+  })
+
+  it('restarts traversal at page one when the company changes, without requesting the stale offset', async () => {
+    const user = userEvent.setup()
+    apiGet.mockImplementation(() => Promise.resolve(body([companyOneMovement], 1, 3)))
+
+    renderPage()
+    await screen.findByText('COMPANY-ONE-WIDGET')
+    await user.click(screen.getByRole('button', { name: 'pagination.next' }))
+    await waitFor(() => {
+      expect(apiGet).toHaveBeenCalledWith(expect.stringMatching(/[?&]page=2&/))
+    })
+
+    apiGet.mockClear()
+    act(() => {
+      useCompanyStore.setState({ currentCompanyId: 'company-2' })
+    })
+
+    // Page 2 of company one's result set is meaningless for company two: left
+    // uncorrected the operator lands on an empty table and reads it as "this
+    // company has no movements".
+    await waitFor(() => { expect(apiGet).toHaveBeenCalled() })
+    // Anchored on a `?`/`&` delimiter, not a bare `page=`: `per_page=25`
+    // contains the substring `page=2`, which would satisfy a plain
+    // `stringContaining` for the wrong reason.
+    expect(apiGet).not.toHaveBeenCalledWith(expect.stringMatching(/[?&]page=2&/))
+    expect(apiGet).toHaveBeenCalledWith(expect.stringMatching(/[?&]page=1&/))
   })
 
   it('keeps the previous page visible while the next page of the SAME company loads', async () => {

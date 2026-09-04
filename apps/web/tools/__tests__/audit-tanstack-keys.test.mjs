@@ -521,4 +521,83 @@ describe('Gate C — TanStack queryKey scanner', () => {
       ]);
     });
   });
+
+  /**
+   * `placeholderData: keepPreviousData` on a tenant-scoped key hands the
+   * PREVIOUS company's payload back across the tenant/company suffix:
+   * TanStack picks the placeholder from the observer's last query that had
+   * data with no key-lineage check (`queryObserver.js` #lastQueryWithDefinedData),
+   * and a company switch only invalidates, it never unmounts the page. It is
+   * legitimate WITHIN one scope (paging), so the rule is pairing, not a ban:
+   * the reader must be gated by `usePlaceholderScopeGuard`.
+   */
+  describe('placeholderData on a scoped key', () => {
+    it('flags placeholderData on a tenantScopedKey read with no scope guard in the file', () => {
+      const v = scanCode(`
+        useQuery({
+          queryKey: tenantScopedKey(['payments', page]),
+          queryFn: () => fetch('/payments'),
+          placeholderData: keepPreviousData,
+        });
+      `, 'inline.ts');
+      expect(v).toHaveLength(1);
+      expect(v[0].reason).toContain('usePlaceholderScopeGuard');
+    });
+
+    it('flags it on a locationScopedKey read too', () => {
+      const v = scanCode(`
+        useQuery({
+          queryKey: locationScopedKey(['stock-movements', page], scope),
+          queryFn: () => fetch('/stock-movements'),
+          placeholderData: keepPreviousData,
+        });
+      `, 'inline.ts');
+      expect(v).toHaveLength(1);
+    });
+
+    it('approves it when the file pairs the read with usePlaceholderScopeGuard', () => {
+      const v = scanCode(`
+        const { data, isPlaceholderData } = useQuery({
+          queryKey: tenantScopedKey(['payments', page]),
+          queryFn: () => fetch('/payments'),
+          placeholderData: keepPreviousData,
+        });
+        const isStaleScopeData = usePlaceholderScopeGuard(isPlaceholderData, data !== undefined);
+      `, 'inline.ts');
+      expect(v).toEqual([]);
+    });
+
+    it('flags an inline placeholder function the same way as keepPreviousData', () => {
+      const v = scanCode(`
+        useQuery({
+          queryKey: tenantScopedKey(['payments', page]),
+          queryFn: () => fetch('/payments'),
+          placeholderData: (previous) => previous,
+        });
+      `, 'inline.ts');
+      expect(v).toHaveLength(1);
+    });
+
+    it('does not flag a scoped read without placeholderData', () => {
+      const v = scanCode(`
+        useQuery({
+          queryKey: tenantScopedKey(['payments', page]),
+          queryFn: () => fetch('/payments'),
+        });
+      `, 'inline.ts');
+      expect(v).toEqual([]);
+    });
+
+    it('does not double-report when the key itself is already unscoped', () => {
+      const v = scanCode(`
+        useQuery({
+          queryKey: ['payments', page],
+          queryFn: () => fetch('/payments'),
+          placeholderData: keepPreviousData,
+        });
+      `, 'inline.ts');
+      expect(v).toHaveLength(1);
+      expect(v[0].reason).not.toContain('usePlaceholderScopeGuard');
+    });
+  });
 });

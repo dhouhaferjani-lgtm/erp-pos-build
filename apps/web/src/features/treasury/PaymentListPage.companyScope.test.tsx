@@ -23,9 +23,15 @@ vi.mock('react-router-dom', () => ({
 }))
 
 const apiGet = vi.hoisted(() => vi.fn<(url: string) => Promise<PaymentsBody>>())
-vi.mock('../../lib/api', () => ({
-  api: { get: (url: string): Promise<PaymentsBody> => apiGet(url) },
-}))
+// `importActual` + spread rather than a bare literal: replacing the whole module
+// with only `api.get` breaks opaquely the day the page imports `isApiError`.
+vi.mock('../../lib/api', async () => {
+  const actual = await vi.importActual<typeof import('../../lib/api')>('../../lib/api')
+  return {
+    ...actual,
+    api: { ...actual.api, get: (url: string): Promise<PaymentsBody> => apiGet(url) },
+  }
+})
 
 interface PaymentsBody {
   data: {
@@ -140,6 +146,30 @@ describe('PaymentListPage scope-change placeholder', () => {
     await waitFor(() => { expect(apiGet).toHaveBeenCalledTimes(2) })
 
     expect(screen.queryByText('PAY-COMPANY-ONE')).not.toBeInTheDocument()
+  })
+
+  it('restarts traversal at page one when the company changes, without requesting the stale offset', async () => {
+    const user = userEvent.setup()
+    apiGet.mockImplementation(() => Promise.resolve(body([companyOnePayment], 1, 3)))
+
+    renderPage()
+    await screen.findByText('PAY-COMPANY-ONE')
+    await user.click(screen.getByRole('button', { name: 'pagination.next' }))
+    await waitFor(() => {
+      expect(apiGet).toHaveBeenCalledWith('/payments?page=2&per_page=25')
+    })
+
+    apiGet.mockClear()
+    act(() => {
+      useCompanyStore.setState({ currentCompanyId: 'company-2' })
+    })
+
+    // Page 2 of company one's result set is meaningless for company two: left
+    // uncorrected the operator lands on an empty table and reads it as "this
+    // company has no payments".
+    await waitFor(() => { expect(apiGet).toHaveBeenCalled() })
+    expect(apiGet).not.toHaveBeenCalledWith('/payments?page=2&per_page=25')
+    expect(apiGet).toHaveBeenCalledWith('/payments?page=1&per_page=25')
   })
 
   it('keeps the previous page visible while the next page of the SAME company loads', async () => {

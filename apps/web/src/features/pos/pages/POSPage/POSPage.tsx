@@ -571,6 +571,7 @@ export function POSPage({
             loyaltyEnrollment={loyaltyEnrollment}
             {...(discountPreview.breakdown ? { discountBreakdown: discountPreview.breakdown } : {})}
             discountSavings={discountPreview.totalSavings}
+            isDiscountPreviewLoading={discountPreview.isLoading}
             {...(couponCode != null ? { couponCode } : {})}
             {...(onCouponApplied ? { onCouponApplied } : {})}
             {...(onCouponRemoved ? { onCouponRemoved } : {})}

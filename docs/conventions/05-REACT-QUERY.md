@@ -88,6 +88,54 @@ The architecture gate `apps/web/tools/audit-tanstack-keys.mjs` scans production 
 
 `tenantScopedKey()` appends tenant/company at the **suffix**, so naive prefix invalidation can miss filtered leaf keys. For list cascades, use a `predicate` that checks the resource prefix and the final two tenant/company entries; see `apps/web/src/features/inventory/_invalidation.ts` for the inventory predicate pattern.
 
+## `placeholderData` on a scoped key MUST be paired with the scope guard
+
+`placeholderData: keepPreviousData` **survives a company switch** and renders the
+previous company's rows. TanStack v5 picks the placeholder from the *observer's*
+last query that had data, with **no key-lineage check**
+(`query-core` `queryObserver.js` `#lastQueryWithDefinedData`), so the
+tenant/company suffix `tenantScopedKey` appends does not stop it — and
+`CompanySelector` only invalidates the cache, it never unmounts the page. Until
+the new fetch settles, the operator reads, links into and acts on another
+company's records.
+
+It is still legitimate **within** one scope — paging 1 → 2 must not flash an
+empty table — so the rule is pairing, not a ban:
+
+```typescript
+const { data, isLoading, isPlaceholderData } = useQuery({
+  queryKey: tenantScopedKey(['payments', search, page, perPage]),
+  queryFn: fetchPayments,
+  placeholderData: keepPreviousData,
+})
+
+// Blanks the rows only when the placeholder predates a scope change.
+const isStaleScopeData = usePlaceholderScopeGuard(isPlaceholderData, data !== undefined)
+const rows = isStaleScopeData ? [] : data?.data ?? []
+const meta = isStaleScopeData ? undefined : data?.meta
+
+<DataTable data={rows} isLoading={isLoading || isStaleScopeData} />
+```
+
+Gate **every** derived value on `isStaleScopeData`, not just the rows: header
+counts, pagination meta and any action target read the same `data`.
+
+If the key carries a dimension beyond tenant/company — `locationScopedKey`
+appends a location scope — pass it as the third argument
+(`usePlaceholderScopeGuard(isPlaceholderData, data !== undefined, [normalizeViewScope(scope)])`),
+or the placeholder crosses that dimension unguarded. Page/offset/sort segments
+stay out: keeping the previous slice of the same result set is the whole point.
+
+**When the key varies per input rather than per page** — e.g. a preview keyed on
+the whole cart shape — every placeholder is an answer to a different question.
+There is no same-scope win to preserve, so **drop `placeholderData`** instead of
+guarding it; `apps/web/src/features/pos/hooks/useDiscountPreview.ts` is the
+worked example.
+
+Enforced by `apps/web/tools/audit-tanstack-keys.mjs`: `placeholderData` on a
+`tenantScopedKey`/`locationScopedKey` read in a file that does not use
+`usePlaceholderScopeGuard` fails Gate C.
+
 ## Query Hook Pattern
 
 ```typescript
@@ -240,5 +288,6 @@ function ProductsPage() {
 - [ ] Set `enabled: Boolean(id)` to prevent premature fetches
 - [ ] NO `retry` for mutations (prevents duplicates)
 - [ ] Invalidate related queries in `onSuccess`
+- [ ] Pair any `placeholderData` on a scoped key with `usePlaceholderScopeGuard` (or drop it)
 - [ ] Use pessimistic UI for financial operations
 - [ ] Show toast notifications for user feedback
