@@ -303,3 +303,187 @@ Gate: **inventory-costing-reviewer** + **frontend-conventions-reviewer** (plan S
 6. **Removed `FilterTabs` counts.** Deliberate: a single page cannot supply global counts for the unselected tabs. Confirm this is acceptable UX for tenant #1 or raise it.
 7. **Deviation D3** (derived-state reset) and **D2** (fixture meta) are the two judgement calls in this lane.
 8. **Owed before promotion:** the Step 11 browser probe and the four W4 Playwright specs — neither could run (no local stack).
+
+---
+
+## Fix round 1 (2026-09-04)
+
+Both gates returned **CHANGES**:
+
+- `docs/superpowers/reviews/2026-09-04-request-hygiene-t2-gate-inventory-costing.md` (B1, B2, B3)
+- `docs/superpowers/reviews/2026-09-04-request-hygiene-t2-gate-frontend-conventions.md` (B1, B2)
+
+This round implements the **four code items** from those two reports. Scope was held to exactly those four; §"Not done in this round" below lists what the gates asked for that is deliberately still open.
+
+### Environment deviation (disclosed)
+
+The reserved PG at `127.0.0.1:5433` is still held by an unrelated container (`locaplex-postgres`), and the reviewer's throwaway `rht2-review-pg` was already removed. This round ran its PG leg against a lane-private `timescale/timescaledb:latest-pg16` container `autoerp_pg_t2` on `127.0.0.1:5452`, database `autoerp_test_t2`, user `autoerp`. Never the shared default DB. Left running for the next round.
+
+```
+docker run -d --name autoerp_pg_t2 --shm-size=1g -p 127.0.0.1:5452:5432 \
+  -e POSTGRES_USER=autoerp -e POSTGRES_PASSWORD=autoerp_secret \
+  -e POSTGRES_DB=autoerp_test_t2 timescale/timescaledb:latest-pg16
+```
+
+---
+
+### Item 1 — B1 (backend): the tie-break test is now falsifying
+
+**Diagnosis stands.** `StockMovement` uses `HasUuids`, Laravel 12's `newUniqueId()` returns `Str::uuid7()`, so model-generated ids are **time-ordered**: insertion order already encoded `id` order and the old fixture could not distinguish a working tie-break from the engine's incidental row order.
+
+**Change (test only —** `tests/Feature/Inventory/StockMovementTest.php`**).** 30 explicit v4-shaped ids `7f000000-0000-4000-8000-%012x` (sequence 1..30) assigned via `forceFill(['id' => …])`, with `created_at`/`updated_at` pinned to a single tied instant. Insertion permutation `1,3,5,…,29,30,28,…,2` — the first row inserted holds the **lowest** id and the last holds the **second-lowest**, so `id DESC` matches neither insertion order nor its reverse. `$expectedIds` is computed from the ids themselves with `rsort($ids, SORT_STRING)`, never from a query.
+
+**Proof it now falsifies.** `->orderByDesc('id')` deleted from `StockMovementController.php:121`, both drivers:
+
+```
+# SQLite — tie-break REMOVED
+$ php artisan test tests/Feature/Inventory/StockMovementTest.php \
+    --filter test_tied_created_at_rows_cross_two_pages_without_duplicates_or_omissions
+  at tests/Feature/Inventory/StockMovementTest.php:590
+  ➜ 590▕         self::assertSame($expectedIds, $actualIds);
+  Tests:    1 failed (6 assertions)
+  Duration: 3.43s
+
+# PostgreSQL — tie-break REMOVED
+$ DB_HOST=127.0.0.1 DB_PORT=5452 DB_DATABASE=autoerp_test_t2 DB_CENTRAL_DATABASE=autoerp_test_t2 \
+    php artisan test -c phpunit-pgsql.xml tests/Feature/Inventory/StockMovementTest.php --filter …
+  ➜ 590▕         self::assertSame($expectedIds, $actualIds);
+  Tests:    1 failed (6 assertions)
+  Duration: 11.18s
+```
+
+Both diffs showed the same shape — the actual sequence came back in odd-then-even insertion order (`…13, 11, 0f, 0d, 0b, 09, 07, 05, 03, 01`) instead of `id DESC`. Contrast the gate's measurement of the OLD fixture, which **passed** on both drivers with the same mutation.
+
+**Restored and re-verified.** `git checkout --` on the controller; `git diff` on `StockMovementController.php` is **empty** (0 lines) — the controller is byte-identical to `ae0921a2c`, item 2 touched only the FormRequest. Green on both drivers in the full run below.
+
+### Item 2 — B2 (backend): `nullable` on the optional scalar filters
+
+`ConvertEmptyStringsToNull` turns `?search=` into a **present null**, which `sometimes` does not skip and `string` rejects — a 422 where the pre-lane endpoint returned 200.
+
+**RED first**, new test `test_index_accepts_cleared_filters_sent_as_empty_strings` against the unfixed FormRequest:
+
+```
+$ php artisan test tests/Feature/Inventory/StockMovementTest.php \
+    --filter test_index_accepts_cleared_filters_sent_as_empty_strings
+   FAILED  … > index accepts cleared filters sent as empty strings
+  Expected response status code [200] but received 422.
+  Tests:    1 failed (1 assertions)
+```
+
+**Fix** (`ListStockMovementsRequest.php`): `nullable` added to `movement_type`, `reason`, `search`. `location_id` and `product_id` already carried it (the gate matrix confirmed both were already 200 on empty). `page`/`per_page` deliberately left **without** `nullable` — they are not filters, `(int) null` would degrade to `paginate(0)`, and T3's `ListPaymentsRequest` makes the same call, so the two lanes stay consistent. The test asserts the full normal envelope: 200, one row, `meta.current_page=1`, `meta.per_page=25`, `meta.total=1`.
+
+### Item 3 — B1 (web): `meta` crash + the un-run test file
+
+**RED first.** `StockMovementsPage.reverseWriteOff.test.tsx` re-measured on `ae0921a2c`:
+
+```
+$ pnpm vitest run src/features/inventory/StockMovementsPage.reverseWriteOff.test.tsx
+ Test Files  1 failed (1)
+      Tests  15 failed (15)
+```
+
+**Fix, both halves as directed:** `StockMovementsPage.tsx:372` → `data?.meta?.total ?? 0` (matching the defensive `data?.meta ?` at the pager, now :429), and the six-field `meta` added to that file's fixture. → `Tests 15 passed (15)`.
+
+### Item 4 — B2 (web): no Reverse button on write-off reversal receipts
+
+**RED first.** Two tests added before the code change — a lone reversal receipt (`movement_type: 'receipt'`, `reason: 'write_off'`, `reverses_movement_id: 'wo-1'`) must show no Reverse button, and a genuine write-off beside its reversal must show exactly one:
+
+```
+ × … does NOT show a Reverse button for a write-off REVERSAL receipt
+   → expected document not to contain element, found <button
+ × … shows Reverse for the genuine write-off but not for its reversal receipt
+   → expected [ <button …(3)></button>, …(1) ] to have a length of 1 but got 2
+ Tests  2 failed | 15 passed (17)
+```
+
+**Fix.** `isReversibleMovement` (`StockMovementsPage.tsx:93-110`) now short-circuits on `movement.reverses_movement_id !== null` before the reference-type check. The backend refuses these unconditionally (`ReverseWriteOffService.php:91`), so the control is never offered. → `Tests 17 passed (17)`.
+
+---
+
+### Verification (by path, this round)
+
+**Backend — SQLite**
+```
+$ php artisan test tests/Feature/Inventory/StockMovementTest.php \
+    tests/Feature/Inventory/StockMovementLocationFilterTest.php \
+    tests/Feature/BatchExpiry/ReverseWriteOffRouteTest.php \
+    tests/Feature/Inventory/InventoryTenantIsolationTest.php
+  Tests:    60 passed (191 assertions)
+  Duration: 61.36s
+```
+
+**Backend — PostgreSQL**
+```
+$ DB_HOST=127.0.0.1 DB_PORT=5452 DB_DATABASE=autoerp_test_t2 DB_CENTRAL_DATABASE=autoerp_test_t2 \
+    php artisan test -c phpunit-pgsql.xml <same four paths>
+  Tests:    60 passed (191 assertions)
+  Duration: 139.21s
+```
+59 → 60 tests, 185 → 191 assertions: exactly the one new empty-filter test, on both drivers.
+
+**PHPStan level 8** (controller + FormRequest): `[OK] No errors`
+**Pint** `--test` (controller, FormRequest, StockMovementTest): `{"result":"pass"}`
+
+**Web — whole directory, as the gate directed**
+```
+$ pnpm vitest run src/features/inventory src/features/stock-adjustments/__tests__/queries.test.tsx
+ Test Files  47 passed (47)
+      Tests  328 passed (328)
+   Duration  9.83s
+```
+
+**typecheck**
+```
+$ pnpm typecheck        # tsc --noEmit
+(no output — clean)
+```
+
+**ESLint, the two touched src files**
+```
+$ pnpm exec eslint src/features/inventory/StockMovementsPage.tsx \
+    src/features/inventory/StockMovementsPage.reverseWriteOff.test.tsx
+  372:62  warning  Unnecessary optional chain on a non-nullish value
+                   @typescript-eslint/no-unnecessary-condition
+✖ 1 problem (0 errors, 1 warning)
+```
+**Judgement call, flagged for gate r2.** The warning is the direct consequence of the gate's own fix directive: `StockMovementsResponse.meta` is typed **non-optional** (`StockMovementsPage.tsx:65`), so TypeScript considers the new `?.` redundant. Three options were available — (a) widen the type to `meta?:`, (b) suppress the rule inline, (c) keep the runtime guard and accept the warning. Chose **(c)**: (a) would make the page tolerate a shape the server can no longer emit, which is the direction the frontend gate explicitly praised D2 for *not* taking; (b) is the suppression-comment evasion that gate watches for. The guard is defence-in-depth against a stale or third-party server, and the declared contract stays honest.
+
+**React Doctor.** The `pre-commit` hook printed "React Doctor found staged regressions" on the web commit (non-blocking). Scanned authoritatively:
+```
+$ npx react-doctor src/features/inventory/StockMovementsPage.tsx \
+    src/features/inventory/StockMovementsPage.reverseWriteOff.test.tsx --blocking warning
+Score: 93 / 100 Great
+2 issues — react-doctor/no-giant-component (StockMovementsPage.tsx:121)
+           react-doctor/prefer-module-scope-pure-function (StockMovementsPage.tsx:215)
+```
+Both are **pre-existing**: the same two warnings reproduce verbatim on `git show ae0921a2c:…/StockMovementsPage.tsx` (the exact state the gate reviewed). This round introduced zero React Doctor regressions.
+
+No vitest worker processes left behind.
+
+---
+
+### Commits (fix round 1)
+
+| Hash | Message | Paths |
+|---|---|---|
+| `e17506511` | `fix(rh-t2): gate r1 fixes — falsifying tie-break fixture, nullable filters` | `apps/api/app/Modules/Inventory/Presentation/Requests/ListStockMovementsRequest.php`, `apps/api/tests/Feature/Inventory/StockMovementTest.php` |
+| `18fbcbe01` | `fix(rh-t2 web): guard missing meta, hide Reverse on reversal receipts` | `apps/web/src/features/inventory/StockMovementsPage.tsx`, `apps/web/src/features/inventory/StockMovementsPage.reverseWriteOff.test.tsx` |
+| `<this commit>` | `docs(rh-t2): gate r1 reports + handback fix round 1` | the two gate reports + this section |
+
+---
+
+### Not done in this round — still owed
+
+**Promotion preconditions (both gates, unchanged):**
+
+1. **Step 11 browser probe — NOT RUN.** Product-name / SKU / reference / literal `%` / literal `_` / transfer / write-off searches; global totals on page 2; pager changes requests. No local stack available in this worktree.
+2. **The four W4 Playwright specs — NOT RUN** (`inventory-opening`, `inventory-stock`, `inventory-counting`, `inventory-costing`). The new bound `expect(body.meta?.last_page …).toBe(1)` at `apps/web/e2e/money-campaign/w4-support.ts:657` has still never executed.
+
+Both remain **promotion preconditions**. This lane must not be promoted on the current evidence set.
+
+**Gate merge conditions deliberately out of this round's scope** (the dispatch brief scoped it to the four code items; each needs an explicit decision before r2 closes):
+
+- inventory-costing **B3** — same as items 1–2 above.
+- inventory-costing non-blocking: `docs/api/README.md:448-449` still says the endpoint is "unchanged" (now false); second-company search case for `InventoryTenantIsolationTest`; `reason=write_off` tab-widening unasserted; search indexability; empty-`whereIn` short-circuit.
+- frontend **N1** (dead duplicate `/stock-movements` mock branch, `tenantScope.test.tsx:178-180`), **N2** (`filterSignature` vs `locationScopedKey` scope normalisation), **N3** (two assertions pinning the transfer/write-off param mapping).
+- frontend **merge condition 4 / D3** — reconcile the render-phase reset with T3's `useEffect` variant into **one shared hook** before either lane merges. This is cross-lane and needs an orchestrator decision, not a unilateral edit in this worktree.
