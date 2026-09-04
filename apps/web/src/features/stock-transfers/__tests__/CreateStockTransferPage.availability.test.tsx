@@ -36,11 +36,18 @@ vi.mock('../api/queries', () => ({
 }))
 
 const product: ProductPickerValue = { id: 'prod-1', sku: 'SKU-1', name: 'Test item', quantity_decimals: 0 }
+// A SECOND DISTINCT product: Task 7 only dedupes consumers of the SAME
+// product/variant. The distinct-product fan-out must survive (one request each)
+// or the shared hook has over-deduplicated.
+const secondProduct: ProductPickerValue = { id: 'prod-2', sku: 'SKU-2', name: 'Second item', quantity_decimals: 0 }
 
 vi.mock('@/components/molecules/pickers/ProductPicker', () => ({
   ProductPicker: ({ value, onChange }: { value: ProductPickerValue | null; onChange: (v: ProductPickerValue | null) => void }) =>
     value ? <span>{`${value.sku} ${value.name}`}</span> : (
-      <button type="button" onClick={() => { onChange(product) }}>Select Test item</button>
+      <>
+        <button type="button" onClick={() => { onChange(product) }}>Select Test item</button>
+        <button type="button" onClick={() => { onChange(secondProduct) }}>Select Second item</button>
+      </>
     ),
 }))
 
@@ -53,6 +60,20 @@ function loc(id: string, name: string): LocationApiResponse {
     onboarding_mode: false, pos_stock_policy_override: null,
     created_at: '2026-06-08T00:00:00Z', updated_at: '2026-06-08T00:00:00Z',
   }
+}
+
+/**
+ * Only stock-level URLs. Selecting a product also hits /products/:id/variants and
+ * /products/:id/batch-stock, so counting all apiGet traffic would be meaningless —
+ * and a bare count could pass by SUPPRESSING traffic, hence the exact URL list.
+ */
+function stockLevelUrls(): string[] {
+  const urls: string[] = []
+  for (const call of mockApiGet.mock.calls) {
+    const url: unknown = call[0]
+    if (typeof url === 'string' && /^\/products\/[^/]+\/stock-levels$/.test(url)) urls.push(url)
+  }
+  return urls
 }
 
 function renderPage() {
@@ -101,12 +122,8 @@ describe('CreateStockTransferPage available-at-source column', () => {
     })
 
     // S-6 partial (Task 7): AvailabilityCell and TransferSourceSuggestion request the
-    // same product/variant and must share ONE stock-level query. Count only
-    // stock-level URLs — selecting a product also hits /products/:id/variants.
-    const stockLevelCalls = () => mockApiGet.mock.calls.filter(
-      ([url]) => typeof url === 'string' && /^\/products\/[^/]+\/stock-levels$/.test(url),
-    )
-    expect(stockLevelCalls()).toHaveLength(1)
+    // same product/variant and must share ONE stock-level query.
+    expect(stockLevelUrls()).toEqual(['/products/prod-1/stock-levels'])
 
     const quantity = screen.getByRole('spinbutton', { name: 'Quantity' })
     await user.clear(quantity)
@@ -114,6 +131,34 @@ describe('CreateStockTransferPage available-at-source column', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Exceeds source availability')).toBeInTheDocument()
+    })
+  })
+
+  it('still issues one stock-level request per DISTINCT product (fan-out is B-8, not Task 7)', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('option', { name: 'Source WH' }).length).toBeGreaterThan(0)
+    })
+    await user.selectOptions(screen.getByRole('combobox', { name: /source location/i }), 'loc-source')
+
+    await user.click(screen.getByRole('button', { name: 'Select Test item' }))
+    await waitFor(() => {
+      expect(stockLevelUrls()).toEqual(['/products/prod-1/stock-levels'])
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Add line' }))
+    await user.click(screen.getByRole('button', { name: 'Select Second item' }))
+
+    // Two rows, two distinct products, two AvailabilityCell + two
+    // TransferSourceSuggestion mounts => exactly TWO requests, not one and not four.
+    // One request short would mean the hook over-deduplicated across products.
+    await waitFor(() => {
+      expect(stockLevelUrls()).toEqual([
+        '/products/prod-1/stock-levels',
+        '/products/prod-2/stock-levels',
+      ])
     })
   })
 })
