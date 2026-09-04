@@ -210,7 +210,7 @@ describe('uom mutation cascades — fetch-count signals', () => {
       }
       if (url === '/uom/unit-text-mappings/unmapped') {
         unmappedCalls += 1
-        return [{ sourceText: `text-${unmappedCalls}`, productCount: 1, importRowCount: 0, pendingImportCount: 0, totalCount: 1 }]
+        return [{ sourceText: `text-${String(unmappedCalls)}`, productCount: 1, importRowCount: 0, pendingImportCount: 0, totalCount: 1 }]
       }
       return []
     })
