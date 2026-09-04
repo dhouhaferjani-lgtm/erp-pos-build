@@ -304,3 +304,113 @@ The first pass of edits was written into the **main `apps/erp` checkout** rather
 
 - The browser race check under the app's real StrictMode root (§3.9). No stack was available to this lane.
 - Promotion batch 3 (T5, T7, T8, T14) per the plan's dispatch order.
+
+---
+
+# FIX ROUND 1 — gate r1 blocker B-1 (single trailing slot)
+
+- Date: 2026-09-04
+- Gate report: `docs/superpowers/reviews/2026-09-04-request-hygiene-t14-gate-frontend-conventions.md` (**VERDICT: CHANGES**, one blocker)
+- Scope: **B-1 only.** The non-blocking findings NB-1 (pre-existing `ImportWizardPage` design-system debt on `dev`), NB-3 (`saveNow`/`reset` have no production caller), NB-4 (floating `performSave()` in the debounce timer) and NB-5 (`||` vs `??` on `existingDraftId`) are **NOT** addressed here — they were out of the fix-round brief. D-4 was **accepted** by the gate (§5) and the promise `.finally` shape is kept; §3.7's evidence that `react-hooks/set-state-in-effect` still fires (below) re-confirms the React Compiler is not bailing out.
+- Files: `apps/web/src/hooks/useDraftAutoSave.ts`, `apps/web/src/hooks/__tests__/useDraftAutoSave.state.test.tsx`. Nothing else. `DocumentForm.tsx` still untouched.
+
+## F1. What B-1 was
+
+`tailRef.current = tailRef.current.catch(() => undefined).then(run)` appended a NEW job per call, each carrying its own frozen `data`. Measured by the gate: one request held in flight plus three edits a full debounce window apart produced **4 POSTs** replaying `v0..v3`, and the FIRST trailing success cleared `autosavePending` (and, through `handleAutoSaveSuccess`, DocumentForm's RHF dirty baseline) while newer bodies were still un-transmitted — so `shouldWarn` went false and an unmount dropped the newest edit silently.
+
+## F2. What now ships — one in-flight job, one boolean slot
+
+| Ref | Role |
+|---|---|
+| `inFlightRef: Promise<void> \| null` | The job physically on the wire; `null` when idle. Non-null ⇒ no second POST is started. |
+| `pendingRef: boolean` | The **single trailing slot**. Every save requested during one flight collapses into it — the slot is a boolean, so N requests cannot become N jobs. |
+| `latestRequestRef: SaveRequest \| null` | Newest body **+ its callbacks**, overwritten on every request and **re-read by the trailing job at execution time**, so the follow-up carries the latest edit rather than the snapshot that scheduled it. |
+| `pendingSlotRef: PendingSlot \| null` | One deferred shared by every caller collapsed into the slot, so each still gets a promise that settles with the trailing save. |
+| `generationRef` | Unchanged — cancellation, orthogonal to serialization. |
+
+`startSave()` is a zero-dependency `useCallback` whose inner `launch()` relaunches **itself** from its own settle handler, so the trailing job can never be a stale closure: everything it needs comes from refs.
+
+Contract now met literally: **a change made while a save is in flight collapses into exactly ONE trailing save, issued after the in-flight one settles (success or failure), carrying the LATEST body.**
+
+**Guard semantics (the second harm).** `autosavePending` is now set true at the start of every job and cleared **only** by the save that carries the last unsent body (`if (!pendingRef.current)` in both the success and the failure branch). It is therefore true continuously from "slot filled" through "trailing save settled", so DocumentForm's `shouldWarn = isDirty || autosavePending || autosaveFailed` stays armed across an intermediate success that resets `isDirty`.
+
+**Unmount — recorded behaviour.** An occupied slot is **DISCARDED** on unmount (and on `reset()`): the body was never transmitted, and there is no component left to report to. Its deferred is **resolved** (not left dangling) so no awaiting caller hangs. This is only safe because the slot keeps `autosavePending` true, so the consumer's guard blocks the navigation that would reach the cleanup in the first place — that is exactly what B-1's second harm was about, and it is now locked by a test. The in-flight request itself is still allowed to complete on the server; only the *un-issued* trailing body is dropped.
+
+`inFlightRef` is still **not** cleared by `reset()`/unmount (same reasoning as the original `tailRef`): a save requested after a reset, while the old request is physically out, still waits for the wire instead of racing it.
+
+## F3. Tests — 13 → 16 in the file
+
+**RED first**, three tests added against the unchanged (FIFO) hook:
+
+```
+$ npx vitest run src/hooks/__tests__/useDraftAutoSave.state.test.tsx
+ × collapses edits spanning several debounce windows into one trailing save carrying the latest body
+   → expected "spy" to be called 2 times, but got 4 times
+ × keeps autosavePending true until the trailing save has been issued and settled
+   → expected false to be true // Object.is equality
+ ✓ arms the pending guard before unmount and discards the unsent body after it
+      Tests  2 failed | 14 passed (16)
+```
+
+The 4-POST line is the gate's probe reproduced verbatim as a permanent test (`debounceMs: 100`, request 1 held, three edits each a FULL debounce window apart). The unmount test was green at RED and is disclosed as a **lock, not a driver** — the FIFO also dropped queued work at unmount; what it pins is that the guard is armed *before* the drop.
+
+**GREEN:** `Tests 16 passed (16)`.
+
+### Falsification (each mutation applied to the shipped hook, then reverted)
+
+| # | Mutation | Result |
+|---|---|---|
+| **F1** | Whole hook restored to the FIFO tail (`git checkout` of `242ea6a67`'s version, final test file) | **3 failed / 13 passed** — the 4-POST probe (`got 4 times`), the pending-guard test, and `collapses three concurrent callers…` (`got 3 times`). |
+| **F2** | `latestRequestRef.current = {…}` → `??=` (trailing job keeps the FIRST body) | **2 failed / 14 passed** — both "carries the latest body" assertions (`notes` v0 instead of v3). |
+
+Restored to `16 passed (16)` after each.
+
+### Renamed / rewritten existing tests
+
+- **Renamed** `queues exactly one trailing save for edits made while a request is in flight` → **`coalesces edits made within one debounce window during an in-flight request`** (gate B-1: its three edits are 100 ms apart under a 250 ms debounce, so it measures DEBOUNCE coalescing, not the slot). Kept, with a comment pointing at the test that actually measures the slot.
+- **Rewritten** `strictly serializes three callers and forwards the first draft id` → **`collapses three concurrent callers into one in-flight save plus one trailing save`**, asserting **2** POSTs instead of 3. This is a *contract change*, not a weakening: under the single-slot contract three concurrent callers must produce one in-flight save plus one trailing save. Every caller's promise still settles with the trailing save (`Promise.all(saves)` still awaited).
+
+### Unrelated-looking test edit, disclosed
+
+Five pre-existing tests called `result.current.saveNow()` **outside** `act(...)`. Because a job now also sets `autosavePending` at its start, those bare calls multiplied React's "update not wrapped in act" stderr from **5 → 21** for the file. The calls are now wrapped in `act(() => { … })` (the returned promises are still captured), which takes the file to **0** act warnings — below the 5 it had at base. No assertion was changed by this.
+
+### Not shipped — a test that did not falsify
+
+A `never renders autosavePending=false while the trailing slot holds an unsent body` test was written and **deleted**: with the `if (!pendingRef.current)` guard removed it still passed, because the false→true dip lives between two microtasks and the `act` harness never commits a render inside that window. Shipping it would have been precisely the "test asserts a guarantee it doesn't measure" pattern the gate flagged. The guard is kept (it closes the dip) and the code comment says plainly that it is not separately falsifiable here; the observable half is pinned by `keeps autosavePending true until the trailing save has been issued and settled`.
+
+## F4. Verification (all from `<worktree>/apps/web`, in place)
+
+```
+$ npx vitest run src/hooks/__tests__/useDraftAutoSave.state.test.tsx
+ Test Files  1 passed (1)      Tests  16 passed (16)      (0 act warnings)
+
+$ npx vitest run src/hooks src/features/documents
+ Test Files  68 passed (68)    Tests  532 passed (532)     (gate measured 529 at r1 HEAD; +3 = the three new tests)
+
+$ npx tsc --noEmit
+typecheck exit=0
+
+$ ps aux | grep -c '[n]ode (vitest'   →  0   (before and after)
+```
+
+Per-file eslint, base `5e1e54f69` written to the real paths, linted, restored (`git status` clean after):
+
+| File | base `5e1e54f69` | fix round 1 | delta |
+|---|---|---|---|
+| `src/hooks/useDraftAutoSave.ts` | 0 err / 4 warn — `array-type` 85, `prefer-nullish-coalescing` 166, `react-hooks/set-state-in-effect` 249, `no-floating-promises` 251 | 0 err / 4 warn — **same four rules**, at 85 / 228 / 420 / 422 | **0 / 0** |
+| `src/hooks/__tests__/useDraftAutoSave.state.test.tsx` | 0 err / 1 warn — `unbound-method` 13 | 0 err / 1 warn — `unbound-method` 14 | **0 / 0** |
+
+`react-hooks/set-state-in-effect` still being reported is the standing proof that the React Compiler has **not** bailed out on the hook — the D-4 property the gate accepted survives the rewrite.
+
+`pnpm lint` as a whole is still red at `audit:design-system` for the reasons in gate NB-1 (14 new violations, all in the untouched `src/features/import/pages/ImportWizardPage.tsx`, byte-identical to `dev`). Not this lane's.
+
+## F5. Still promotion-owed
+
+The browser race check (§3.9) remains **NOT RUN**, plus the gate's added step (e): after a long in-flight request spanning several 3 s pauses, exactly **ONE** follow-up POST is issued and it carries the newest body.
+
+## F6. Fix-round commits
+
+| Hash | Message | Paths |
+|---|---|---|
+| `8dcc12be5` | `fix(web request-hygiene t14): single trailing autosave slot with latest body; pending state true until issued` | `apps/web/src/hooks/useDraftAutoSave.ts`, `apps/web/src/hooks/__tests__/useDraftAutoSave.state.test.tsx` |
+| _(this commit)_ | `docs(request-hygiene t14): gate r1 report + handback fix round 1` | `docs/superpowers/reviews/2026-09-04-request-hygiene-t14-gate-frontend-conventions.md`, `docs/handoff/HANDBACK-request-hygiene-T14-2026-09-04.md` |
