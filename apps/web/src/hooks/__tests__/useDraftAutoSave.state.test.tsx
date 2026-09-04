@@ -518,7 +518,7 @@ describe('useDraftAutoSave strict serialization', () => {
     hook.rerender({ data: { ...draft, notes: 'v1' } })
     await act(async () => { vi.advanceTimersByTime(100); await Promise.resolve() })
 
-    // Unsent edit queued -> the beforeunload/navigation guard must be armed.
+    // Unsent edit queued -> the beforeunload guard must be armed.
     expect(hook.result.current.autosavePending).toBe(true)
 
     hook.unmount()

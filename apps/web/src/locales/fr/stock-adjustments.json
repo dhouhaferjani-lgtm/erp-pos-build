@@ -23,7 +23,7 @@
     "openingBalanceLink": "Ouvrir les paramètres d'inventaire du produit",
     "duplicateLine": "Ce produit figure déjà sur cette régularisation. Modifiez la ligne existante.",
     "loadFailed": "Impossible de lire la quantité actuelle de ce produit à cet emplacement.",
-    "error": "Impossible d'enregistrer l'ajustement. Vérifiez s'il a bien été créé avant de réessayer."
+    "error": "Impossible d'enregistrer la régularisation. Vérifiez si elle a bien été créée avant de réessayer."
   },
   "line": {
     "reason": "Motif",
