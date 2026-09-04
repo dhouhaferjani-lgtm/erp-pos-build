@@ -1663,6 +1663,13 @@ placeholderData: keepPreviousData,
 
 ## Task 6: Debounce bulk pricing context (S-5) — **WAIT for wave-2 PO lane merge**
 
+> **AS-SHIPPED BANNER (2026-09-04, T6 FE gate r1 = CHANGES → fixed on `lane/rh-t6-pricing-debounce`).** Two mechanisms the original Step 3 prescribed were rejected and **must not be copied by Tasks 7 or 14**:
+>
+> 1. **No `placeholderData: keepPreviousData` on a tenant/company-scoped read.** TanStack v5 hands back the observer's last query *with data* regardless of key lineage (`@tanstack/query-core@5.90.11 build/modern/queryObserver.js:265-281` → `utils.js:198`). A company switch neither unmounts the document editor (`CompanyProvider.tsx:143` renders a bare fragment; `CompanySelector.tsx:39-47` only invalidates; there is no `key={currentCompanyId}` anywhere in `apps/web/src`) nor clears the cache, so the placeholder shows — and `Use suggested` *commits* — the previous company's WAC cost, margin verdict and suggested price. This is the identical defect gate r1 removed from `LineItemEntryBar` on 2026-09-04 (see the standing comment at `LineItemEntryBar.tsx:89-96`).
+> 2. **Debounce the VALUE the request body is built from, not just its signature.** Debouncing the signature while `enabled` and the body stayed live made the query key lag the body: an answer computed for one price got cached under another price's key for a whole `staleTime` (30 s), and the common add-product-then-click-price path cost two requests instead of one. Derive the key, the body and `enabled` from a single debounced value; the current-body ref then disappears.
+>
+> Handback: `docs/handoff/HANDBACK-request-hygiene-T6-2026-09-04.md` §7. Gate report: `docs/superpowers/reviews/2026-09-04-request-hygiene-t6-gate-frontend-conventions.md`.
+
 **Files**
 
 - Modify after WAIT clears: apps/web/src/features/documents/components/DocumentLineEditor.tsx
@@ -1720,7 +1727,33 @@ it('waits 250 ms and sends only the final unit price to bulk pricing', async () 
 })
 ~~~
 
-- [ ] **Step 3: Implement with exact imports and current-body ref.**
+- [ ] **Step 3: Implement with exact imports and current-body ref.** ~~As written below~~ — **SUPERSEDED by the T6 FE gate r1 (2026-09-04), see the banner under the Task 6 heading. Do NOT copy this snippet.** Debounce the LINES and derive key, body and `enabled` from that one value; ship no `placeholderData`.
+
+~~~tsx
+// AS-SHIPPED (gate r1 B1 + M1). The struck-through original is kept below for history.
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useDebouncedValue } from '../../../lib/hooks'
+
+const debouncedPricingLines = useDebouncedValue(pricingContextLines, 250)
+const pricingContextSignature = useMemo(
+  () => debouncedPricingLines.map((l) => `${l.product_id}:${l.variant_id ?? ''}:${l.unit_price}`).join('|'),
+  [debouncedPricingLines],
+)
+// enabled: … && debouncedPricingLines.length > 0 && …
+
+queryKey: tenantScopedKey([
+  'line-entry-pricing-context',
+  partnerId ?? null,
+  pricingContextSignature,
+]),
+queryFn: () => apiPost<PricingContextResponse>('/line-entry/pricing-context/bulk', {
+  partner_id: partnerId ?? null,
+  lines: debouncedPricingLines,
+}),
+// NO placeholderData — see the banner.
+~~~
+
+<details><summary>Original Step 3 snippet (rejected by gate r1 — kept for history)</summary>
 
 ~~~tsx
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -1741,6 +1774,8 @@ queryFn: () => apiPost<PricingContextResponse>('/line-entry/pricing-context/bulk
 }),
 placeholderData: keepPreviousData,
 ~~~
+
+</details>
 
 - [ ] **Step 4: Verify by path and gate.** Run `apps/web/src/features/documents/components/__tests__/DocumentLineEditor.test.tsx` by path, then typecheck, lint, and browser-check purchase-order plus `apps/web/src/features/documents/CreateCreditNotePage.tsx` pricing. Gate: frontend-conventions-reviewer. WAIT remains binding until Step 1.
 
