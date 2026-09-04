@@ -1,6 +1,6 @@
 # Request Hygiene Phase A Implementation Plan
 
-Revision 9 (2026-09-03) — addresses plan gates r1..r8; Tasks 9/11 landed; Tasks 2/3/4 dispatch-ready per gate r8
+Revision 10 (2026-09-04) — addresses plan gates r1..r9; Tasks 9/11 landed; Tasks 2/3/4 dispatched (lanes rh-t2/t3/t4); Tasks 12/13 fixed per gate r9 (test id, inline migration bootstrap, self-contained PG command)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development or superpowers:executing-plans. Execute each checkbox in order; every task starts red, ends with its named focused checks, and goes through its reviewer gate.
 
@@ -2413,7 +2413,7 @@ export function useIdempotencyKey(): { key: string; reset: () => void } {
 **Files**
 
 - Modify: apps/web/src/features/treasury/PaymentForm.tsx
-- Modify: apps/web/src/features/treasury/SplitPaymentForm.tsx:39
+- Modify: apps/web/src/features/treasury/SplitPaymentForm.tsx:42
 - Modify: apps/web/src/features/treasury/PaymentForm.test.tsx
 - Modify: apps/web/src/features/treasury/SplitPaymentForm.test.tsx:81,132
 - Modify: apps/web/src/features/treasury/treasury.test.tsx:1205,1225,1247,1274,1297,1332,1378
@@ -2695,7 +2695,7 @@ const handleSubmit = (): void => {
 }
 ~~~
 
-Delete the old numeric `currentTotal`/`remaining` declarations; do not introduce `String(totalAmount)` or `Number(...)`. Change the local formatter to `(amount: string): string => formatCurrencyHook(amount)`, render `formatCurrency(totalAmount)` for the required total, and drive the remaining color only with `bccomp(remaining, '0') === 0` / `bccomp(remaining, '0') > 0`. `totalAmount` must flow directly into `bcsub` and `bccomp` as shown, preserving all caller-provided decimal digits.
+Delete the old numeric `currentTotal`/`remaining` declarations; do not introduce `String(totalAmount)` or `Number(...)`. Change the local formatter to `(amount: string): string => formatCurrencyHook(amount)`, render `formatCurrency(totalAmount)` for the required total, and drive the remaining color only with `bccomp(remaining, '0') === 0` / `bccomp(remaining, '0') > 0`. `totalAmount` must flow directly into `bcsub` and `bccomp` as shown, preserving all caller-provided decimal digits. **Rev 10 (gate r9 B1):** add `data-testid="split-payment-remaining"` to the existing remaining-amount `<div>` and keep its child exactly `{formatCurrency(remaining)}`; the Step 2 assertion `expect(screen.getByTestId('split-payment-remaining')).toHaveTextContent(/^0\.000$/)` is the executable proof that the float residue (`-5.551115123125783e-17` today) is gone. Known additional keyless `/payments` writer NOT in Task 12 scope (gate r9 non-blocking): `apps/web/src/features/purchases/supplier-invoices/SupplierInvoiceDetailPage.tsx:302` via `supplier-invoices/api.ts:478` — tracked as Phase B B-7 sibling; do not widen this lane.
 - [ ] **Step 5: Add the same red proof to active RecordPaymentModal.** In `RecordPaymentModal.tsx`, add `useRef`, `useIdempotencyKey`, `submitLockRef`, and `idempotency_key: idempotencyKey` to the existing `/payments` body. Set the lock after validation and before `mutation.mutate(undefined, { onSettled: () => { submitLockRef.current = false } })`; call `resetIdempotencyKey()` first in the existing `onSuccess`, never on error. This idempotency edit does not authorize refactoring the modal’s pre-existing float-based total/remaining/validation block around line 210; that precision debt is explicitly tracked in Phase B B-7. In its existing `__tests__/tenantScope.test.tsx` harness, add `fireEvent`, hold `mockApiPost` unresolved, populate and confirm one line with the existing labels, then invoke both `fireEvent.click(recordButton)` calls inside **one** `act()` and assert exactly one `/payments` call whose body contains the UUID key before resolving the request:
 
 ~~~tsx
@@ -2897,7 +2897,9 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\ProductVariantLookup;
 use Illuminate\Database\Connection;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
@@ -2920,11 +2922,11 @@ final class StockTransferIdempotencyCollisionPostgresTest extends TestCase
             $this->markTestSkipped('The real unique-collision harness is PostgreSQL-only.');
         }
 
-        // Rev 9 (gate r8 B2): the reserved per-session database is EMPTY on first use and
-        // this class deliberately avoids RefreshDatabase. Bootstrap the schema exactly as
-        // tests/Feature/Tenant/TenantStanclFlipTest.php does in its setUp() (schema check on
-        // the central connection + migrate --force when `tenants` is missing) BEFORE any
-        // fixture is created. Copy that bootstrap verbatim; do not invent a new one.
+        // Rev 9/10 (gate r8 B2, r9 B2): the reserved per-session database is EMPTY on first
+        // use and this class deliberately avoids RefreshDatabase. Bootstrap the schema BEFORE
+        // any fixture is created, using the same idempotent check + `migrate --force` that
+        // tests/Feature/Tenant/TenantStanclFlipTest.php:47-49 performs inline in its setUp()
+        // (extracted here into a private helper; that source has no helper of its own).
         $this->ensureCentralSchemaMigrated();
 
         $suffix = Str::lower(Str::random(10));
@@ -2985,6 +2987,19 @@ final class StockTransferIdempotencyCollisionPostgresTest extends TestCase
             reference: 'COLLISION-SEED',
             userId: $this->user->id,
         );
+    }
+
+    /**
+     * Rev 10 (gate r9 B2): extracted from the inline bootstrap in TenantStanclFlipTest::setUp().
+     * The plan's private PG database is empty on first use; `migrate --force` runs the central
+     * migrations and, under the testing environment, the tenant migrations that
+     * AppServiceProvider (lines 227-245) loads for single-connection test runs.
+     */
+    private function ensureCentralSchemaMigrated(): void
+    {
+        if (! Schema::connection('central')->hasTable('tenants')) {
+            Artisan::call('migrate', ['--force' => true]);
+        }
     }
 
     protected function tearDown(): void
@@ -3324,7 +3339,7 @@ beforeEach(() => {
 })
 ~~~
 
-- [ ] **Step 6: Verify the PG collision, replenishment consumer, and all named paths, then gate.** First-use of the reserved database: `createdb autoerp_test_<letter>` (if missing) and rely on the class's `ensureCentralSchemaMigrated()` bootstrap (copied from `TenantStanclFlipTest`) — the command below must be self-contained on an empty database. Run both top-level and nested-transaction collision methods together and serially with `DB_DATABASE=autoerp_test_<letter> DB_CENTRAL_DATABASE=autoerp_test_<letter> php artisan test -c phpunit-pgsql.xml tests/Feature/Inventory/StockTransferIdempotencyCollisionPostgresTest.php`. `ReplenishmentFulfillmentService.php:102` calls the refactored `StockTransferService::initiate()` inside its grouped fulfillment transaction, so run its coverage explicitly. Backend paths: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Inventory/InventoryTransferServiceTest.php tests/Feature/Inventory/StockTransferAutoAllocateFefoTest.php tests/Feature/Inventory/StockTransferLocationAccessRuleTest.php tests/Feature/Inventory/StockTransferLocationScopeTest.php tests/Feature/Inventory/StockTransferRestrictedMembershipTest.php tests/Feature/Inventory/StockTransferShowBatchAllocationsTest.php tests/Feature/Inventory/StockTransferVariantTest.php tests/Feature/Replenishment/ReplenishmentActionsTest.php`; run PHPStan on the service, new PG test, and replenishment service. Frontend paths: `apps/web/src/features/stock-transfers/__tests__/CreateStockTransferPage.lineEntry.test.tsx`, `apps/web/src/features/stock-adjustments/__tests__/CreateStockAdjustmentPage.test.tsx`, and `apps/web/src/features/stock-transfers/__tests__/queries.test.tsx`; then typecheck and lint. Browser double-click both forms. Gate: inventory-costing-reviewer plus frontend-conventions-reviewer.
+- [ ] **Step 6: Verify the PG collision, replenishment consumer, and all named paths, then gate.** First-use of the reserved database: `createdb autoerp_test_<letter>` (if missing) and rely on the class's `ensureCentralSchemaMigrated()` bootstrap (extracted from `TenantStanclFlipTest`'s inline setUp logic) — the command below must be self-contained on an empty database. Run both top-level and nested-transaction collision methods together and serially with `cd apps/api && DB_DATABASE=autoerp_test_<letter> DB_CENTRAL_DATABASE=autoerp_test_<letter> php artisan test -c phpunit-pgsql.xml tests/Feature/Inventory/StockTransferIdempotencyCollisionPostgresTest.php` (rev 10: the working directory is part of the command). `ReplenishmentFulfillmentService.php:102` calls the refactored `StockTransferService::initiate()` inside its grouped fulfillment transaction, so run its coverage explicitly. Backend paths: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Inventory/InventoryTransferServiceTest.php tests/Feature/Inventory/StockTransferAutoAllocateFefoTest.php tests/Feature/Inventory/StockTransferLocationAccessRuleTest.php tests/Feature/Inventory/StockTransferLocationScopeTest.php tests/Feature/Inventory/StockTransferRestrictedMembershipTest.php tests/Feature/Inventory/StockTransferShowBatchAllocationsTest.php tests/Feature/Inventory/StockTransferVariantTest.php tests/Feature/Replenishment/ReplenishmentActionsTest.php`; run PHPStan on the service, new PG test, and replenishment service. Frontend paths: `apps/web/src/features/stock-transfers/__tests__/CreateStockTransferPage.lineEntry.test.tsx`, `apps/web/src/features/stock-adjustments/__tests__/CreateStockAdjustmentPage.test.tsx`, and `apps/web/src/features/stock-transfers/__tests__/queries.test.tsx`; then typecheck and lint. Browser double-click both forms. Gate: inventory-costing-reviewer plus frontend-conventions-reviewer.
 
 ---
 
@@ -3796,3 +3811,15 @@ Do not replace tailRef on reset: new work must still queue behind the physical i
 | NB Task 9/11 unchecked steps | All steps in Tasks 9 and 11 are now `[x] (LANDED, history only)`; banners remain the executable truth. |
 | NB Step 4b placement | Moved before Task 4 Step 6 so the verification runs it. |
 | NB stale migration filename | The `2025_12_15_100000` name appears only in gate r7's own report; the plan cites `create_audit_events_table.php:19` by basename. |
+
+## Gate r9 disposition (targeted, Tasks 12/13)
+
+| Finding | What changed in revision 10 |
+|---|---|
+| B1 Task 12 Step 4 never adds `data-testid="split-payment-remaining"` | Step 4 now prescribes the test id on the remaining-amount `<div>` and the exact `toHaveTextContent(/^0\.000$/)` proof. |
+| B2 Task 13 calls an undefined `ensureCentralSchemaMigrated()` ("copied from TenantStanclFlipTest", which has only inline logic) | Helper body added to the test class (Schema check on `central` + `migrate --force`), `Artisan`/`Schema` imports added, prose corrected to "extracted from its inline bootstrap". |
+| B3 Task 13 Step 6 PG command fails from repo root | Command now starts with `cd apps/api &&`. |
+| NB stale anchor `SplitPaymentForm.tsx:39` | Corrected to `:42`. |
+| NB `SupplierInvoiceDetailPage` is a fourth keyless `/payments` writer | Recorded in Task 12 as out-of-lane (Phase B B-7 sibling); no scope widening. |
+| NB `QuickStockAdjustmentModal`, e2e helpers post without keys | Unchanged: plan already leaves them out; e2e helpers are test fixtures. |
+
