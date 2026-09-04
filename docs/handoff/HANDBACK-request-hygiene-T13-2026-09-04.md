@@ -254,3 +254,106 @@ cd apps/web && pnpm exec eslint \
 ## Fix round 1 (2026-09-04, orchestrator)
 
 Inventory-costing gate r1 (`docs/superpowers/reviews/2026-09-04-request-hygiene-t13-gate-inventory-costing.md`) found one merge-gating item: `StockTransferIdempotencyCollisionPostgresTest` skips on SQLite and was absent from the PostgreSQL class allowlist in `.github/workflows/ci.yml` (`backend-test-pgsql` job), so the ID-4 collision proof ran in zero automated lanes. Fix: the class name is appended to that `--filter` alternation. Standing caveat (ci.yml ~:1016-1020): `backend-test-pgsql` does not run on `push -> dev`, so this arms PRs and `main` pushes only. Non-blocking N-1..N-8 from the gate are recorded as follow-ups (notably N-1: add a stock-conservation assertion on the replay path; N-2: second-company key-reuse test; N-6: adjustments still lack collision replay — declared residual).
+
+## Fix round 2 (2026-09-04, web lane) — FE gate r1 MAJOR-1/2/3
+
+Frontend gate r1 (`docs/superpowers/reviews/2026-09-04-request-hygiene-t13-gate-frontend-conventions.md`, verdict APPROVE-WITH-FIXES, zero blockers) owed three MAJORs before promotion. All three are landed. `apps/api` was **not** touched in this round.
+
+### MAJOR-1 — failure-path tests (the invariant ID-3 exists for)
+
+One test per page, both written red-first:
+
+| Page | Test | Asserts |
+|---|---|---|
+| transfer | `CreateStockTransferPage.lineEntry.test.tsx` → *keeps the SAME idempotency key after a failed submit and rotates it only after a success* | `mockCreate.mockRejectedValueOnce` → `toast.error('Could not create the transfer.')` fires, `reset` **not** called; retry carries the **same** `idempotency_key` (`transfer-key-1`); after that success `reset` fires exactly once and a third submit carries a **different** key |
+| adjustment | `CreateStockAdjustmentPage.test.tsx` → *keeps the SAME key after a refused submit and rotates it only after a success* | `createMutate.mockRejectedValueOnce(refusalError('INVALID_ADJUSTMENT_STATE'))` → the refusal message renders and `navigate` is not called, `reset` **not** called; retry carries the same key; success rotates once; third submit carries a different key |
+
+**The prescribed literal hook mock could not express this**, so both files now mock `@/hooks/useIdempotencyKey` with a **stateful fake** (`useState` + `useCallback` via `vi.importActual('react')`) that mints `transfer-key-<n>` / `adjustment-key-<n>` per mounted instance and rotates only on its own `reset()` — the real hook's contract with deterministic values instead of UUIDs, so the transfer test's exact-object payload assertion stays exact (`idempotency_key: 'transfer-key-1'`). A frozen literal makes "kept the key" and "rotated the key" indistinguishable, which is precisely the gate's point. Deviation from plan rev 11 Step 5, recorded below.
+
+**Red proof (mutation, reverted immediately).** Moving `resetIdempotencyKey()` out of the success path into `finally` on each page:
+
+```
+transfer   × keeps the SAME idempotency key after a failed submit and rotates it only after a success
+             → expected "spy" to not be called at all, but actually been called 1 times
+adjustment × keeps the SAME key after a refused submit and rotates it only after a success
+             → expected "spy" to not be called at all, but actually been called 1 times
+           × mints a key PER INTENT so a lost draft response cannot be replayed as a post
+             → expected 'adjustment-key-3' to be 'adjustment-key-1'
+```
+
+### MAJOR-2 — synchronous submit latch on both pages
+
+`const submitLockRef = useRef<boolean>(false)` on each page, mirroring T12's `submitLockRef` in `.worktrees/rh-t12/apps/web/src/features/treasury/PaymentForm.tsx:666,754-758`:
+
+- `CreateStockTransferPage.tsx` — early `if (submitLockRef.current) return` at the top of `submitTransfer()`, `submitLockRef.current = true` as the first statement inside `try` (synchronously before the awaited `mutateAsync`), released in a new `finally`.
+- `CreateStockAdjustmentPage.tsx` — same shape on `submit()`, which covers **both** intents and the acknowledge/re-submit path, since all three route through that one function.
+
+Red test first, one per page ("issues exactly ONE create request when the submit button is double-clicked" / "…when Save & post is double-clicked"): the create mutation returns a never-resolving promise, two `fireEvent.click`s inside one `act()`, then a second `act()` flush.
+
+```
+before the latch:  → expected "spy" to be called 1 times, but got 2 times   (both pages)
+after  the latch:  green
+```
+Re-falsified after landing by deleting the transfer page's guard → back to `got 2 times`.
+
+Both new tests drive a **plain (non batch-tracked) line** via the manual ProductPicker rather than a scanned batch line: with `fireEvent` the FEFO reconciliation effect has not settled, and the batch-coverage guard vetoes the submit before it reaches `mutateAsync` (observed as `0 calls`). That is test-harness timing, not a product defect — the same flow with `user.click` allocates and submits normally.
+
+### MAJOR-3 — intent-scoped keys on the adjustment page (option 1 chosen)
+
+**Chosen: two independent `useIdempotencyKey()` instances**, one per intent, each reset only on its own success — the gate's first option, taken because the code made it cheap and unambiguous:
+
+```ts
+const { key: draftIdempotencyKey, reset: resetDraftIdempotencyKey } = useIdempotencyKey()
+const { key: postIdempotencyKey,  reset: resetPostIdempotencyKey  } = useIdempotencyKey()
+...
+idempotency_key: postImmediately ? postIdempotencyKey : draftIdempotencyKey,
+...
+if (postImmediately) { resetPostIdempotencyKey() } else { resetDraftIdempotencyKey() }
+```
+
+Why not option 2 (one key + a returned-status assertion): it needs a new user-facing error string (i18n), a new refusal-shaped surface on a page whose only error channel is the typed `ApiErrorEnvelope`, and it still leaves the operator holding a committed draft they were never told about. Option 1 removes the failure mode instead of reporting it, in 6 lines, with no new string and no new surface. Both intents keep full retry-dedup: a draft retry still replays the draft, a post retry still replays the post. The acknowledge/"Apply anyway" path always posts, so it now carries the post key — still the same key across that refusal loop, and the refusal writes no row (`StockAdjustmentController.php:148-169`, one transaction), so the resubmit proceeds as before.
+
+Red test first — *mints a key PER INTENT so a lost draft response cannot be replayed as a post*: a draft submit rejects with a bare `Error` (a lost response — `extractRefusal` returns `null`, the operator sees nothing), then "Save & post" must carry a **different** key; and a subsequent draft retry must carry the **same** key as the first draft (intent scoping, not blanket rotation).
+
+```
+before: → expected 'adjustment-key-1' not to be 'adjustment-key-1'
+after:  green
+```
+
+### Verification (this round, all re-run on the final tree)
+
+```
+cd apps/web && pnpm vitest run src/features/stock-transfers src/features/stock-adjustments src/hooks/__tests__
+ Test Files  32 passed (32)
+      Tests  165 passed (165)
+```
+(transfer lineEntry 10/10 — 8 pre-existing + 2 new; adjustment page 13/13 — 10 pre-existing + 3 new. No leftover vitest workers: `ps aux | grep 'node (vitest'` → 0.)
+
+```
+cd apps/web && pnpm typecheck        → exit 0, no output
+```
+
+ESLint, four touched files, HEAD vs base `ae3ac05ca` (base contents copied to `ZZBase*` siblings **inside `src/`**, linted, deleted; `git status` clean afterwards):
+
+| File | base | now |
+|---|---|---|
+| `stock-transfers/pages/CreateStockTransferPage.tsx` | 0 errors / 1 warning | 0 / 1 |
+| `stock-adjustments/pages/CreateStockAdjustmentPage.tsx` | 0 / 3 | 0 / 3 |
+| `stock-transfers/__tests__/CreateStockTransferPage.lineEntry.test.tsx` | 0 / 1 | 0 / 1 |
+| `stock-adjustments/__tests__/CreateStockAdjustmentPage.test.tsx` | 0 / 2 | **0 / 0** |
+| **total** | **0 / 7** | **0 / 5** |
+
+Zero errors, **no new warnings, two fewer**: typing `createMutate` as `vi.fn<(input: CreateStockAdjustmentInput) => Promise<{ id: string }>>()` removed both `no-unsafe-type-assertion` casts in the adjustment test. (Two warnings this round's first draft introduced — `no-unnecessary-condition` from over-defensive `payload?.` and `require-await` on an `act(async …)` with no `await` — were removed before commit, not baselined.)
+
+### Deviations from the gate's fix directives
+
+1. **Stateful hook fake instead of the plan's literal mock** (both feature test files). Required by MAJOR-1: a constant key cannot falsify the reset placement. UUID-ness is still proven only in `src/hooks/__tests__/useIdempotencyKey.test.tsx` (gate MINOR-1 stands unchanged).
+2. **Existing key assertions re-pinned**: `idempotency_key: 'transfer-key'` → `'transfer-key-1'`; the adjustment post-payload test now expects `'adjustment-key-2'` (post intent, mint #2) and the draft test now also pins `'adjustment-key-1'` (draft intent, mint #1) — a new assertion that makes the intent scoping visible in the payload tests themselves.
+3. **The two new double-click tests use a plain line, not a scanned batch line** (see MAJOR-2 above).
+4. MAJOR-2's second half — *the owed browser probe must assert zero 5xx in the network log* — is a **promotion-owed** instruction to whoever runs the probe, not something this round can land. Recorded again below.
+
+### Still promotion-owed after this round
+
+- **Browser double-click probe on both forms**, asserting (a) exactly one document per form and (b) **no 5xx in the network log** (gate MAJOR-2). The latch makes a second request unlikely to be issued at all; the probe is what proves it in a real browser.
+- Gate MINOR-3 (converge `ExpenseFormPage` / `IncomeFormPage` / `ExpiryWriteOffPage` on `useIdempotencyKey`) and MINOR-4 (repo web lint is red on base) remain open and out of T13's scope.
+- Backend residual N-6 is unchanged: the adjustment endpoint still has no collision replay, so a duplicate that *does* reach it loses with a 500. The latch reduces the exposure; it does not close it.
