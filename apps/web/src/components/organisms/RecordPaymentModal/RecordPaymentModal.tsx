@@ -163,43 +163,50 @@ export function RecordPaymentModal({
     resetIdempotencyKey()
   }, [resetIdempotencyKey])
 
-  // Reset form when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      setPaymentDate(new Date().toISOString().split('T')[0])
-      setNotes(`Payment for ${prefill.document_type} ${prefill.reference}`)
-      setPaymentLines([createNewPaymentLine()])
-      setExcessAllocationMethod('advance')
-      setManualAllocations([])
-      setValidationError(null)
-      setShowSuccess(false)
-      setSuccessData(null)
-    }
-  }, [isOpen, prefill, resetIdempotencyKey])
-
-  // Each open is a NEW payment intent. The hosts keep this modal mounted (they
-  // gate it on partner_id, not on the open flag), so without this the key
-  // minted at mount would span every payment the operator ever records from the
-  // page — and a retry after a lost response would replay the earlier payment
-  // as HTTP 200 while the operator sees a success panel. Mirrors
-  // PaymentDetailPage's per-dialog-open refund_request_id.
+  // Open the modal = start a payment intent: seed the form AND mint a fresh
+  // idempotency key, both exactly once, on the closed -> open TRANSITION.
   //
-  // This MUST stay out of the form-reset effect above: that effect also depends
-  // on `prefill`, which all three hosts build as an inline object literal, so it
-  // re-runs on every parent re-render while the modal is open. A reconnect
-  // refetch — the very thing a lost response causes — would then rotate the key
-  // mid-intent and let an unchanged retry book a SECOND payment. `wasOpenRef`
-  // narrows the rotation to the closed -> open TRANSITION.
+  // `wasOpenRef` is load-bearing, not defensive. All three hosts
+  // (InvoiceDetailPage / SalesOrderDetailPage / PurchaseOrderDetailPage) build
+  // `prefill` as an inline object literal, so its identity changes on EVERY
+  // parent re-render — and `refetchOnReconnect` (lib/queryClient.ts) plus
+  // WebSocketReconnectProvider invalidating every active query mean the host
+  // re-renders precisely when a payment response was lost. Without the
+  // transition guard that re-render would (a) discard the operator's confirmed
+  // lines, date and notes and (b) rotate the key, so the forced re-entry would
+  // book a SECOND payment for a batch the server had already committed.
+  //
+  // While the modal stays open a `prefill` change therefore touches NO entry
+  // state. It still flows into read-only display — `balanceDue` below reads
+  // `prefill.amount` straight off the prop at render — so a smaller outstanding
+  // shows immediately; entered lines are never silently clamped, over-allocation
+  // stays the existing excess-allocation / validation path's job.
   useEffect(() => {
-    if (isOpen) {
-      if (wasOpenRef.current) return
-      wasOpenRef.current = true
-      hadFailedAttemptRef.current = false
-      resetIdempotencyKey()
-    } else {
+    if (!isOpen) {
       wasOpenRef.current = false
+      return
     }
-  }, [isOpen, resetIdempotencyKey])
+    if (wasOpenRef.current) return
+    wasOpenRef.current = true
+
+    setPaymentDate(new Date().toISOString().split('T')[0])
+    setNotes(`Payment for ${prefill.document_type} ${prefill.reference}`)
+    setPaymentLines([createNewPaymentLine()])
+    setExcessAllocationMethod('advance')
+    setManualAllocations([])
+    setValidationError(null)
+    setShowSuccess(false)
+    setSuccessData(null)
+
+    // Each open is a NEW payment intent. The hosts keep this modal mounted
+    // (they gate it on partner_id, not on the open flag), so without this the
+    // key minted at mount would span every payment the operator ever records
+    // from the page — and a retry after a lost response would replay the
+    // earlier payment as HTTP 200 while the operator sees a success panel.
+    // Mirrors PaymentDetailPage's per-dialog-open refund_request_id.
+    hadFailedAttemptRef.current = false
+    resetIdempotencyKey()
+  }, [isOpen, prefill, resetIdempotencyKey])
 
   const createNewPaymentLine = useCallback((): PaymentLineData => ({
     id: crypto.randomUUID(),

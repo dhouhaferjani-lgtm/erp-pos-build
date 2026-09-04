@@ -136,16 +136,26 @@ function mockLookupResponses() {
   })
 }
 
-/** Fill the single payment line, confirm it, then press Record. */
-async function confirmLineAndRecord(amount: string) {
+/** Fill the single payment line and confirm it. No submit. */
+async function confirmLine(amount: string) {
   await screen.findByRole('option', { name: 'Cash' })
   await userEvent.selectOptions(screen.getByLabelText('treasury:payments.method *'), 'method-1')
   await userEvent.type(screen.getByLabelText('treasury:payments.amount *'), amount)
   await userEvent.selectOptions(screen.getByLabelText('treasury:repositories.title'), 'repo-1')
   await userEvent.click(screen.getByRole('button', { name: 'common:actions.confirm' }))
+}
+
+/** Press Record. */
+async function pressRecord() {
   await act(async () => {
     await userEvent.click(screen.getByRole('button', { name: /treasury:payments.record/ }))
   })
+}
+
+/** Fill the single payment line, confirm it, then press Record. */
+async function confirmLineAndRecord(amount: string) {
+  await confirmLine(amount)
+  await pressRecord()
 }
 
 /** Read the idempotency_key off a recorded POST body without an unsafe cast. */
@@ -313,16 +323,19 @@ describe('RecordPaymentModal idempotency key lifetime', () => {
       })
       const mintedDuringRerender = uuids.minted.slice(mintedBeforeRerender)
 
-      // The form-reset effect legitimately mints exactly ONE uuid on re-entry:
-      // the id of the replacement payment line. A SECOND mint in this window is
-      // the idempotency key rotating — the defect.
-      expect(mintedDuringRerender).toHaveLength(1)
+      // T12b: the reset effect now fires on the closed -> open TRANSITION only,
+      // so a fresh `prefill` identity while the modal stays open is a complete
+      // no-op for the form. Nothing is minted in this window — neither a
+      // replacement payment-line id (the old wipe, gate r3 m8) nor a rotated
+      // idempotency key (the r2 F1 defect).
+      expect(mintedDuringRerender).toHaveLength(0)
 
-      // Same invariant read from the money path: the key the retry carries must
-      // have been minted by the operator's re-entry (a real new intent), never
-      // by the re-render itself.
-      await confirmLineAndRecord('400')
+      // Money path, now readable directly because the line SURVIVES the
+      // re-render: the operator retries the literally unchanged batch, so the
+      // POST must carry the key of the first attempt and replay server-side.
+      await pressRecord()
       await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(2) })
+      expect(postedIdempotencyKey(1)).toBe(postedIdempotencyKey(0))
       expect(mintedDuringRerender).not.toContain(postedIdempotencyKey(1))
     } finally {
       uuids.restore()
@@ -365,5 +378,105 @@ describe('RecordPaymentModal idempotency key lifetime', () => {
     } finally {
       uuids.restore()
     }
+  })
+})
+
+describe('RecordPaymentModal prefill identity does not wipe in-progress entry', () => {
+  // Gate r3 item 2 (treasury), raised P1 pre-production: the form-reset effect
+  // used to depend on `prefill`, which all three hosts build as an inline
+  // object literal (`InvoiceDetailPage.tsx:899`, `SalesOrderDetailPage.tsx:784`,
+  // `PurchaseOrderDetailPage.tsx:713`). A reconnect refetch
+  // (`lib/queryClient.ts:9` refetchOnReconnect + WebSocketReconnectProvider
+  // invalidating every active query) therefore discarded the operator's
+  // confirmed payment lines, date and notes mid-intent and forced a re-entry —
+  // and that re-entry legitimately rotates the idempotency key, so a payment
+  // that had already committed behind a lost response was booked a SECOND time.
+  // The fix is to the WIPE, not to the host prop identity.
+
+  it("keeps the operator's confirmed line, notes and date when the parent re-renders with a NEW prefill object of the SAME values", async () => {
+    const onClose = vi.fn()
+    const { rerender } = render(
+      <RecordPaymentModal isOpen onClose={onClose} prefill={makePrefill()} />,
+      { wrapper: wrapper(createClient()) },
+    )
+
+    await confirmLine('400')
+    await userEvent.clear(screen.getByLabelText('treasury:payments.notes'))
+    await userEvent.type(screen.getByLabelText('treasury:payments.notes'), 'cheque 88213')
+    fireEvent.change(screen.getByLabelText('treasury:payments.date *'), {
+      target: { value: '2026-09-01' },
+    })
+
+    expect(screen.getByText('treasury:unifiedPayment.lineConfirmed')).toBeInTheDocument()
+
+    await act(async () => {
+      rerender(<RecordPaymentModal isOpen onClose={onClose} prefill={makePrefill()} />)
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText('treasury:unifiedPayment.lineConfirmed')).toBeInTheDocument()
+    expect(screen.getByLabelText('treasury:payments.amount *')).toHaveValue(400)
+    expect(screen.getByLabelText('treasury:payments.notes')).toHaveValue('cheque 88213')
+    expect(screen.getByLabelText('treasury:payments.date *')).toHaveValue('2026-09-01')
+    expect(mockApiPost).not.toHaveBeenCalled()
+  })
+
+  it('keeps the in-progress line and shows the NEW outstanding amount when prefill.amount changes mid-entry', async () => {
+    // The first payment committed, so the refetch brings back a smaller
+    // outstanding. The read-only balance display must follow the server; the
+    // operator's entry must NOT be touched and must NOT be silently clamped —
+    // over-allocation stays the existing excess/validation path's job.
+    const onClose = vi.fn()
+    const { rerender } = render(
+      <RecordPaymentModal isOpen onClose={onClose} prefill={makePrefill()} />,
+      { wrapper: wrapper(createClient()) },
+    )
+
+    await confirmLine('400')
+    expect(screen.getByText('100')).toBeInTheDocument()
+
+    await act(async () => {
+      rerender(
+        <RecordPaymentModal isOpen onClose={onClose} prefill={{ ...makePrefill(), amount: 600 }} />,
+      )
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText('treasury:unifiedPayment.lineConfirmed')).toBeInTheDocument()
+    expect(screen.getByLabelText('treasury:payments.amount *')).toHaveValue(400)
+    expect(screen.getByText('600')).toBeInTheDocument()
+    expect(screen.queryByText('100')).not.toBeInTheDocument()
+  })
+
+  it('DOES reset the form on the next open transition (close -> reopen)', async () => {
+    const onClose = vi.fn()
+    const { rerender } = render(
+      <RecordPaymentModal isOpen onClose={onClose} prefill={makePrefill()} />,
+      { wrapper: wrapper(createClient()) },
+    )
+
+    await confirmLine('400')
+    await userEvent.clear(screen.getByLabelText('treasury:payments.notes'))
+    await userEvent.type(screen.getByLabelText('treasury:payments.notes'), 'cheque 88213')
+    expect(screen.getByText('treasury:unifiedPayment.lineConfirmed')).toBeInTheDocument()
+
+    // Two separate commits: React batches everything inside one act(), which
+    // would collapse the close and the reopen into a single effect run and
+    // never exercise the transition.
+    await act(async () => {
+      rerender(<RecordPaymentModal isOpen={false} onClose={onClose} prefill={makePrefill()} />)
+      await Promise.resolve()
+    })
+    await act(async () => {
+      rerender(<RecordPaymentModal isOpen onClose={onClose} prefill={makePrefill()} />)
+      await Promise.resolve()
+    })
+
+    await screen.findByRole('option', { name: 'Cash' })
+    expect(screen.queryByText('treasury:unifiedPayment.lineConfirmed')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('treasury:payments.amount *')).toHaveValue(null)
+    expect(screen.getByLabelText('treasury:payments.notes')).toHaveValue(
+      'Payment for invoice INV-1',
+    )
   })
 })
