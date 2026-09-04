@@ -42,6 +42,15 @@ class AuditController extends Controller
      * runs, so each validated pair is either complete or absent and no
      * half-specified input can fall through to the broader event-type or
      * company branches. Payload/metadata are opt-in via `include=payload`.
+     *
+     * Gate r1 (B1): "complete or absent" now also holds for present-but-blank
+     * parameters. The request normalizes them to null before validating (and
+     * `required_with` is implicit, so a blank half of a pair is still a 422),
+     * so no `''` can reach a `where()` predicate or `CarbonImmutable::parse()`
+     * here. `per_page`/`page` are read from the VALIDATED set with the
+     * documented defaults 50/1 — never from the raw request, where
+     * `$request->integer('per_page', 50)` casts a blank value to 0 and lets
+     * Eloquent silently substitute its own default page size of 15.
      */
     public function index(ListAuditEventsRequest $request): JsonResponse
     {
@@ -55,6 +64,10 @@ class AuditController extends Controller
         $aggregateId = is_string($aggregateIdInput) ? $aggregateIdInput : null;
         $from = is_string($fromInput) ? CarbonImmutable::parse($fromInput)->startOfDay() : null;
         $to = is_string($toInput) ? CarbonImmutable::parse($toInput)->endOfDay() : null;
+        $perPageInput = $request->validated('per_page');
+        $pageInput = $request->validated('page');
+        $perPage = is_numeric($perPageInput) ? (int) $perPageInput : 50;
+        $page = is_numeric($pageInput) ? (int) $pageInput : 1;
         $hasAggregate = $aggregateType !== null && $aggregateId !== null;
         $hasRange = ! $hasAggregate && $from !== null && $to !== null;
         $oldestFirst = $hasAggregate || $hasRange;
@@ -66,8 +79,8 @@ class AuditController extends Controller
             aggregateId: $hasAggregate ? $aggregateId : null,
             from: $hasRange ? $from : null,
             to: $hasRange ? $to : null,
-            perPage: $request->integer('per_page', 50),
-            page: $request->integer('page', 1),
+            perPage: $perPage,
+            page: $page,
             oldestFirst: $oldestFirst,
         );
 
