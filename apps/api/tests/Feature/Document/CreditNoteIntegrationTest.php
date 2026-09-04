@@ -311,7 +311,7 @@ class CreditNoteIntegrationTest extends TestCase
             ->assertJson([
                 'error' => [
                     'code' => 'VALIDATION_ERROR',
-                    'message' => 'Credit notes can only be created for posted invoices',
+                    'message' => 'Credit notes can only be created for posted or paid invoices',
                 ],
             ]);
     }

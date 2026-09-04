@@ -201,6 +201,14 @@ class InvoiceController extends Controller
         // Apply common filters from the trait
         $query = $this->applyFilters($query, $request);
 
+        // F-STG-4: the credit-note source picker requests `creditable=true` to
+        // surface every invoice a credit note can be raised against — Posted
+        // (still owing) AND Paid (settled → the credit becomes a customer
+        // refund). Draft/Confirmed/Cancelled invoices are excluded.
+        if ($request->query('creditable') === 'true') {
+            $query->whereIn('status', [DocumentStatus::Posted->value, DocumentStatus::Paid->value]);
+        }
+
         // Order by created_at desc and id for consistent cursor pagination (in case created_at is the same)
         $query->orderBy('created_at', 'desc')->orderBy('id', 'desc');
 

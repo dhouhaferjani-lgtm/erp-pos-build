@@ -71,8 +71,12 @@ export function InvoiceSearchSelect(props: InvoiceSearchSelectProps) {
       config={{
         endpoint: '/invoices',
         queryKey: 'invoices-search',
-        statusFilter: 'posted',
-        additionalFilters: { has_balance: 'true' },
+        // F-STG-4: a credit note may be raised against any sealed invoice —
+        // Posted (still owing) OR Paid (settled → the credit becomes a customer
+        // refund). The backend `creditable=true` filter returns exactly that set
+        // (see InvoiceController::index), replacing the old status=posted +
+        // has_balance filter that hid fully-paid invoices.
+        additionalFilters: { creditable: 'true' },
         icon: Receipt,
         searchPlaceholder: t('sales:invoices.searchPlaceholder', 'Search by invoice number or partner...'),
         noResultsMessage: t('sales:invoices.noInvoicesFound', 'No invoices found'),

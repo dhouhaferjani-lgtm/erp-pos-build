@@ -532,7 +532,12 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
       product_name: '',
       description: '',
       quantity: 1,
-      unit_price: 0,
+      // F-STG-4: money fields are strings on the wire (precision contract,
+      // rule 19). A blank line starts as an empty string, not the number 0, so
+      // the standalone credit-note payload never sends a numeric unit_price
+      // (which the backend's `string` rule rejects). Total-mode logic below is
+      // untouched.
+      unit_price: '',
       discount_percent: null,
       discount_amount: null,
       tax_rate: 0,
