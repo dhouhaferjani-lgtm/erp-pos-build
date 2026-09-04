@@ -157,3 +157,124 @@ The compiler-backed `react-hooks` rules vanish for the whole hook under a statem
 ## 6. Promotion-owed (not a finding, but must not be forgotten)
 
 The browser race check is **NOT RUN** and is promotion-owed, exactly as the handback declares in §3.9: real dev build under the StrictMode root at `main.tsx:20`, DevTools Slow 3G, continuous typing across several debounce windows, asserting (a) never two `POST /documents/auto-save` in flight simultaneously, (b) later requests carry the first response's `draft_id` rather than `null`, (c) the document list shows ONE draft, (d) repeat with the first call forced to 500 and confirm the trailing save still fires. If B-1 is resolved by option 1, add (e): after a long in-flight request spanning several 3 s pauses, exactly ONE follow-up POST is issued and it carries the newest body.
+
+---
+
+# Re-gate r2 (2026-09-04)
+
+- Reviewer: frontend-conventions-reviewer (adversarial merge gate), read-only re-gate
+- Branch: `lane/rh-t14-autosave-serial` — fix round `8dcc12be5` (code+tests) + `b0771f32c` (docs)
+- Diff scope vs base `5e1e54f69` (re-verified): `apps/web/src/hooks/useDraftAutoSave.ts`, `apps/web/src/hooks/__tests__/useDraftAutoSave.state.test.tsx`, `docs/handoff/HANDBACK-request-hygiene-T14-2026-09-04.md`, `docs/superpowers/reviews/2026-09-04-request-hygiene-t14-gate-frontend-conventions.md`. Nothing else. `apps/web/tools/audit-design-system-baseline.json` **0 lines** — no baseline evasion. `apps/web/src/features/documents/` **0 lines** — consumer untouched.
+
+## VERDICT: MERGE
+
+B-1 is resolved by construction and, more importantly, by falsification: the three added tests genuinely go red when the FIFO is restored. Three non-blocking findings, all documentation-accuracy or dead-code, none a regression against base. Four r1 non-blocking findings remain open by design (out of the fix-round brief).
+
+---
+
+## R2-1. Mechanism verification — one in-flight job, one boolean slot
+
+Read at `useDraftAutoSave.ts:180-185, 194-320, 331-359, 378-402, 437-456`. Every element the fix-round brief claims is present and does what it says:
+
+| Claim | Verified at | Result |
+|---|---|---|
+| `inFlightRef` = the job physically on the wire | `:181` set `:278`, cleared only by its own settle handler `:284-286` | OK — ownership-checked (`inFlightRef.current === job`), so a stale settle cannot null a newer job |
+| `pendingRef` = ONE boolean slot | `:182`, filled `:339`, drained `:296` | OK — a boolean cannot become N jobs |
+| `latestRequestRef` = newest body AND callbacks, re-read at EXECUTION | written `:336` (before the in-flight decision, so it is set on every path), read `:207` inside `run()` | OK — the read is inside `run`, not captured at schedule time |
+| `pendingSlotRef` = one deferred shared by collapsed callers | `:183`, created once under `if (slot === null)` `:343-354`, handed to every collapsed caller `:355` | OK — plus a `void promise.catch(() => undefined)` at `:351` so an un-awaited collapsed save cannot surface as an unhandled rejection |
+| `startSave` = zero-dep `useCallback`, `launch()` relaunches from its own settle handler | `:194`, `:320` (`[]`), relaunch `:310` | OK — no stale closure is possible; `launch()` re-reads `generationRef.current` at `:196` on every relaunch, so a trailing job runs under the CURRENT generation |
+| `autosavePending` set at job start, cleared ONLY by the save carrying the last unsent body | set `:212` and `:340`; cleared under `if (!pendingRef.current)` at `:251-253` (success) and `:269-271` (failure) | OK on both branches |
+| `reset()` empties the slot and resolves its deferred | `:385-389` | OK |
+| unmount empties the slot and resolves its deferred | `:448-451` | OK |
+| `inFlightRef` deliberately NOT cleared on reset/unmount | no write in `reset()` `:378-402`, none in the unmount cleanup `:443-455` | OK |
+
+**No leak across remount** (the specific question). Refs are per-hook-instance, so a real unmount→remount gets fresh refs; there is nothing to leak. The only path where the refs survive a cleanup is StrictMode's `setup → cleanup → setup` replay on the same fiber, and there `isUnmountedRef.current = false` at `:441` restores the hook while the surviving `inFlightRef` still points at the one real physical request — which is the intended behaviour (later work queues behind the wire). The settle handler then clears it at `:284-286`. **Falsified**: removing `:441` turns `still saves after StrictMode replays mount cleanup and setup` (`useDraftAutoSave.state.test.tsx:233`) red — see probe B below. The guard survives the rewrite; there is no leak and no dead-hook state.
+
+**Return-promise semantics are sound.** `launch()` returns `job.finally(handler)`; the handler returns `undefined` on all three paths (`:292`, `:307`, fall-through at `:315`), so it never chains the trailing job onto the starter's promise — the starting caller settles with its own request, collapsed callers settle with the trailing one via `slot.resolve/reject` at `:312`. A trailing rejection is always handled (`:312` two-arm `.then`, `:314` `.catch`); measured: **0 unhandled rejections** across the 68-file run.
+
+## R2-2. Ported probe + falsifications (re-run by me, not taken on report)
+
+All from `<worktree>/apps/web`. `git status` verified clean and `git diff HEAD --stat` verified empty after EVERY mutation.
+
+```
+$ npx vitest run src/hooks/__tests__/useDraftAutoSave.state.test.tsx
+ Test Files  1 passed (1)      Tests  16 passed (16)
+```
+
+The gate's r1 probe is present verbatim as a permanent test — `useDraftAutoSave.state.test.tsx:381` `collapses edits spanning several debounce windows into one trailing save carrying the latest body`: `debounceMs: 100` (`:392`), request 1 held (`:386-388`), three edits each a FULL debounce window apart (`:401-404`), asserting exactly 2 POSTs (`:414`) with the second carrying `notes: 'v3'` (`:415-418`). Pending-state test at `:430`. Guard-armed-before-unmount test at `:494`.
+
+| Probe | Mutation | Result |
+|---|---|---|
+| **F1** | `git checkout 242ea6a67 -- src/hooks/useDraftAutoSave.ts` (FIFO hook, new test file) | **3 failed / 13 passed** — `collapses three concurrent callers…` → `expected "spy" to be called 2 times, but got 3 times`; `collapses edits spanning several debounce windows…` → `got 4 times`; `keeps autosavePending true until the trailing save has been issued and settled`. Exactly the handback's F1 claim. |
+| **F2** | `latestRequestRef.current = {…}` → `??=` (`:336`) | **2 failed / 14 passed** — both "latest body" assertions, diff showing `+ "notes": "v0"`. Exactly the handback's F2 claim. |
+| **B** | `isUnmountedRef.current = false` removed (`:441`) | **1 failed / 15 passed** — `still saves after StrictMode replays mount cleanup and setup`. |
+| **A** | both `if (!pendingRef.current)` guards removed (`:251`, `:269`) | **16 passed** — see the D-4 ruling. |
+| **C** | `throw new Error('REACHED-UNMOUNT-BRANCH')` at `:306` | **16 passed** — the branch is never reached; see NB-r2-2. |
+
+Note on F1 mechanics: `git checkout <commit> -- <path>` **stages** the mutation, so `git checkout -- <path>` restores from the contaminated index. Restored with `git checkout HEAD -- <path>` and re-verified (`git status` empty, `git diff HEAD --stat` empty, `grep -c pendingSlotRef` = 9).
+
+## R2-3. Deviation rulings
+
+- **Deviation 1 — `collapses three concurrent callers…` now asserts 2 POSTs (was 3): ACCEPT, contract consequence, not a weakening.** Three concurrent `saveNow()` with nothing in flight must produce one in-flight save plus one collapsed trailing save under the single-slot contract. The changed assertion is itself a live falsifier: under the restored FIFO it goes red with `got 3 times` (F1). Assertion-level diff `242ea6a67..HEAD` on the test file shows exactly two changed assertion lines — `toHaveBeenCalledTimes(3)` → `(2)` and `mock.calls[2]` → `mock.calls[1]` — everything else is additions. No pre-existing test was deleted (two renamed, three added; 13 → 16 `it(`, base `5e1e54f69` had 5).
+- **Deviation 2 — rename to `coalesces edits made within one debounce window during an in-flight request`: ACCEPT.** Verified accurate: the three edits at `:350-355` are 100 ms apart under a 250 ms debounce (`:342`), so the debounce is the coalescer. This was my r1 fix directive and it is honoured, with `:322-330` pointing at the test that actually measures the slot.
+- **Deviation 3 — `act()` wrapping of five pre-existing bare `saveNow()` calls: ACCEPT.** Measured **0** `not wrapped in act` warnings across the full 68-file run (base had 5, unfixed r1 would have had 21). The assertion diff above proves no assertion changed as a side effect.
+- **Deviation 4 — deleted non-falsifiable `autosavePending` dip test: ACCEPT the deletion; no falsifier is required, because none can exist.** I did not take this on report. Two-arm probe: with BOTH guards at `:251` and `:269` removed, the full 16-test suite stays **green**, and a temporary render-logging probe (`renderHook` pushing `autosavePending` on every render commit, log cleared immediately before `resolveFirst`, then 10 drained microtasks) recorded `DIP-PROBE renders after settle = [true]` under **both** arms — React never commits a render inside the false→true window, because the two `setState`s are in consecutive microtasks while a DefaultLane render is scheduled on the macrotask queue. The `DocumentForm` `shouldWarn` route cannot help: `shouldWarn` (`DocumentForm.tsx:306`) is derived at render and `useUnsavedChangesGuard`'s listener churn (`useUnsavedChangesGuard.ts:15-20`) is keyed on it, so both observe the same never-committed render. Demanding a falsifier here would force exactly the fake test the r1 gate flagged. Keeping the guard as documented defensive code (`:240-250`) is the right call; the observable half is pinned by `:430`. Probe files deleted, `git status` clean.
+- **Deviation D-4 from r1 (promise `.finally` vs statement `try/finally`) — re-confirmed after the rewrite.** `react-hooks/set-state-in-effect` still fires at `useDraftAutoSave.ts:420`, so the React Compiler has not bailed out on the hook. The r1 ACCEPT stands.
+
+## R2-4. Ruling on the discard of the unsent body at reset/unmount
+
+**ACCEPTED as shipped behaviour — but the stated justification is wrong, and that is finding NB-r2-1.**
+
+Accepted because it is a strict improvement on both predecessors and drops nothing that was previously kept:
+- vs base `5e1e54f69`: the debounce cleanup at `:426-431` already dropped an un-issued body at unmount, with `autosavePending` cleared. The drop class pre-exists; the lane widens the window by the in-flight duration.
+- vs r1 `242ea6a67`: the FIFO also no-op'd its queued jobs at unmount (generation bump), and additionally let `autosavePending` go false while bodies were unsent — which was B-1's second harm. The fix keeps the flag true for the whole unsent window (`:212`, `:251`, `:269`, `:340`), pinned by `:430` and `:494`.
+- The deferred is resolved rather than left dangling (`:388`, `:451`), so no awaiting caller hangs.
+
+## R2-5. Non-blocking findings (new in r2)
+
+- **NB-r2-1 (MAJOR, non-blocking) — `useDraftAutoSave.ts:302-305` and handback §F2 overstate the guarantee that makes the discard safe.** Both say the consumer's `shouldWarn` "**blocks the navigation** that would reach this cleanup". It does not. `useUnsavedChangesGuard.ts:9-12` states plainly that it warns on `beforeunload` only and that "Full in-app route blocking (useBlocker) is deferred — it needs a data-router migration"; `DocumentForm.tsx:307` installs only that listener, and `confirmDiscard` is wired at just two explicit call sites (`DocumentForm.tsx:527`, `DocumentForm.tsx:749`). A sidebar/breadcrumb/browser-back in-app navigation unmounts `DocumentForm` with no prompt at all, and the unsent trailing body dies silently. The behaviour is still accepted (R2-4), but the safety argument written into the code must not claim a guarantee the app does not enforce. **Fix directive:** reword `:302-305` and handback §F2 to "the guard warns on tab close/refresh and at the two explicit in-app discard points; full in-app route blocking is deferred (`useUnsavedChangesGuard.ts:9-12`)", and register the `useBlocker` migration as the residual that closes the remaining silent-drop window.
+- **NB-r2-2 (MINOR) — `useDraftAutoSave.ts:300-308` is a dead branch, and the test named after it locks a different code path.** `isUnmountedRef.current` cannot be true at `:300` while `pendingRef.current` is true: the unmount cleanup sets `pendingRef.current = false` at `:448`, and `performSave` refuses to refill after unmount at `:332`, so the handler always returns at `:292` first. Proven: replacing `:306` with `throw new Error('REACHED-UNMOUNT-BRANCH')` leaves the suite at **16 passed**. The actual discard is performed by the unmount cleanup at `:448-451`, not here. **Fix directive:** delete `:300-308` and move its (corrected, per NB-r2-1) comment to `:446`; retitle `useDraftAutoSave.state.test.tsx:494` so it does not read as a lock on the settle-handler branch.
+- **NB-r2-3 (MINOR) — `AutoSaveState.autosavePending` doc comment `:53-56` is now inaccurate.** It still reads "Whether a debounced save is scheduled but has not yet fired". Since `:212` the flag is also true for the entire in-flight window and for the whole time the trailing slot is occupied — a genuine widening (base `5e1e54f69` only ever *cleared* it inside a save at its `:174`/`:195`, never set it at job start). `DocumentForm.tsx:301,306` feeds it straight into `shouldWarn`, so the widened contract is load-bearing. **Fix directive:** update the doc comment to "a save is scheduled, in flight, or holds an unsent body in the trailing slot".
+
+**Carried over from r1, still open and out of the fix-round brief (correctly disclosed):** NB-1 (pre-existing `ImportWizardPage` design-system debt — re-measured at r2 and **identical**: 810 violations, 796 acknowledged, **14 new**, 11 stale, all 14 in `src/features/import/pages/ImportWizardPage.tsx`, a file this lane does not touch; it blocks the promotion batch, not this lane, and must not be absorbed via `--write-baseline`), NB-3 (`saveNow`/`reset` have no production caller), NB-4 (floating `performSave()` at `:422`), NB-5 (`||` at `:228`).
+
+## R2-6. Cross-cutting checks
+
+No design-token, `t()`, `tenantScopedKey`, `PageHeader`, form-atom, `DataTable`, `StickyFormFooter` or picker surface in the diff. No catalogue entity, no unique key, no new noun (second-of-everything / one-surface-per-concept: N/A). No owner-ruled UI principle in scope. Rule 19 (money/quantity): no parse/format/sum/compare/round of any money or quantity value — `data` is spread verbatim at `:229`; the r1 treasury-waiver finding stands as not required. Rule 14 (`apiGet`/`apiPost` single-unwrap): the hook correctly uses `api.post` + `response.data` because `/documents/auto-save` returns an unwrapped body, documented at `:214-219`. **Request body shape unchanged**: base `{ draft_id: existingDraftId || draftId, ...data }` → HEAD `{ draft_id: request.existingDraftId || draftIdRef.current, ...request.data }` (`:225-231`) — same endpoint, same keys; only the id *source* moved from stale state to the synchronous ref, which is the ID-12 fix itself.
+
+## R2-7. Commands and outputs
+
+All from `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/rh-t14/apps/web` unless stated. `ps aux | grep -c '[n]ode (vitest'` = **0** before and after (no leftover workers; DEFAULT pool, no `--singleFork`).
+
+```
+$ npx vitest run src/hooks/__tests__/useDraftAutoSave.state.test.tsx
+ Test Files  1 passed (1)      Tests  16 passed (16)
+
+$ npx vitest run src/hooks src/features/documents
+ Test Files  68 passed (68)    Tests  532 passed (532)
+ act warnings: 0        unhandled rejections: 0
+ (r1 HEAD measured 529; +3 = the three added tests — handback F4 accurate)
+
+$ npx tsc --noEmit
+typecheck exit=0
+
+$ node tools/audit-design-system.mjs
+[sweep-progress] Design-system audit C1-C6 violations: 810
+[gate-summary] Design-system baseline: 796 acknowledged, 14 new, 11 stale baseline entries
+exit=1   -- all 14 new in src/features/import/pages/ImportWizardPage.tsx (untouched by this lane). NB-1, unchanged from r1.
+```
+
+**Per-file lint delta, measured IN PLACE** (`git show 5e1e54f69:<path> > <path>`, lint, `git checkout HEAD -- <path>`; `git status` verified empty after):
+
+| File | base `5e1e54f69` | fix round `8dcc12be5` | delta |
+|---|---|---|---|
+| `src/hooks/useDraftAutoSave.ts` | 0 err / 4 warn — `array-type` 85:11, `prefer-nullish-coalescing` 166:37, `react-hooks/set-state-in-effect` 249:5, `no-floating-promises` 251:7 | 0 err / 4 warn — **same four rules**, at 85:11 / 228:49 / 420:5 / 422:7 | **0 / 0** |
+| `src/hooks/__tests__/useDraftAutoSave.state.test.tsx` | 0 err / 1 warn — `unbound-method` 13:27 | 0 err / 1 warn — `unbound-method` 14:27 | **0 / 0** |
+
+Handback §F4's lint table is accurate.
+
+**merge-tree** (from the main checkout `/Users/houssamr/Projects/syneriva/apps/erp`): `git merge-tree --write-tree dev lane/rh-t14-autosave-serial` with `dev = f57d6b307` (T6 `lane/rh-t6-pricing-debounce` merged; T12 `f21510ce6` in history) → **exit 0, tree `72cb9c45a841c839de56ce99a6c804764b79c5d1`, no conflicts.**
+
+## R2-8. Promotion-owed (unchanged, must not be forgotten)
+
+The **browser race check is still NOT RUN** and remains promotion-owed (handback §3.9 + §F5): real dev build under the StrictMode root at `apps/web/src/main.tsx:20`, DevTools throttled to Slow 3G, continuous typing across several debounce windows, asserting (a) never two `POST /documents/auto-save` in flight simultaneously, (b) later requests carry the first response's `draft_id` rather than `null`, (c) the document list shows exactly ONE draft, (d) repeat with the first call forced to 500 and confirm the trailing save still fires, and **(e)** after a long in-flight request spanning several 3 s pauses, exactly ONE follow-up POST is issued and it carries the newest body. No stack was available to this gate either; (e) in particular is the browser-level restatement of the fix and cannot be considered discharged by the vitest evidence above.
