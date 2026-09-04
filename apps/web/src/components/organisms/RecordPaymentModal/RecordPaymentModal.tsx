@@ -158,8 +158,15 @@ export function RecordPaymentModal({
       setValidationError(null)
       setShowSuccess(false)
       setSuccessData(null)
+      // Each open is a NEW payment intent. The hosts keep this modal mounted
+      // (they gate it on partner_id, not on the open flag), so without this the
+      // key minted at mount would span every payment the operator ever records
+      // from the page — and a retry after a lost response would replay the
+      // earlier payment as HTTP 200 while the operator sees a success panel.
+      // Mirrors PaymentDetailPage's per-dialog-open refund_request_id.
+      resetIdempotencyKey()
     }
-  }, [isOpen, prefill])
+  }, [isOpen, prefill, resetIdempotencyKey])
 
   const createNewPaymentLine = useCallback((): PaymentLineData => ({
     id: crypto.randomUUID(),

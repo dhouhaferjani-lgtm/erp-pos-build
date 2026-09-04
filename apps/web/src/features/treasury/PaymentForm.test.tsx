@@ -480,3 +480,53 @@ describe('PaymentForm idempotency and double-submit lock', () => {
     await act(async () => { resolvePost?.({ id: 'payment-1' }); await Promise.resolve() })
   })
 })
+
+/** Read the idempotency_key off a recorded POST body without an unsafe cast. */
+function postedIdempotencyKey(callIndex: number): string {
+  const body: unknown = mockApiPost.mock.calls[callIndex]?.[1]
+  if (typeof body !== 'object' || body === null || !('idempotency_key' in body)) {
+    throw new Error(`POST #${String(callIndex)} carried no request body`)
+  }
+  const key: unknown = body.idempotency_key
+  if (typeof key !== 'string') {
+    throw new Error(`POST #${String(callIndex)} carried no idempotency_key`)
+  }
+  return key
+}
+
+describe('PaymentForm idempotency key survives a failed request', () => {
+  it('reuses the SAME idempotency_key when retrying after a rejected POST', async () => {
+    // Falsifier for "reset only in onSuccess": moving resetIdempotencyKey()
+    // into onError would rotate the key here, so the retry of an intent that
+    // may already have committed server-side would create a SECOND payment.
+    mockApiPost.mockRejectedValueOnce(new Error('network error'))
+    mockApiPost.mockResolvedValueOnce({ id: 'payment-1', payment_number: 'PAY-1', amount: 100 })
+    mockLookups([CARD_METHOD], [BANK_REPO])
+    render(<PaymentForm />, { wrapper: wrapper(createClient()) })
+
+    await selectMethod(CARD_METHOD.id)
+    fireEvent.change(await screen.findByLabelText('treasury:payments.form.amount *'), {
+      target: { value: '100' },
+    })
+    fireEvent.change(await screen.findByLabelText('treasury:payments.form.repository *'), {
+      target: { value: BANK_REPO.id },
+    })
+    fireEvent.change(await screen.findByLabelText('treasury:payments.partner *'), {
+      target: { value: 'partner-1' },
+    })
+    const save = screen.getByRole('button', { name: 'common:save' })
+    const form = save.closest('form')
+    if (form === null) throw new Error('PaymentForm submit button has no form')
+
+    await act(async () => { fireEvent.submit(form); await Promise.resolve() })
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+
+    await act(async () => { fireEvent.submit(form); await Promise.resolve() })
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(2) })
+
+    const firstKey = postedIdempotencyKey(0)
+    const retryKey = postedIdempotencyKey(1)
+    expect(firstKey).toMatch(/^[0-9a-f-]{36}$/)
+    expect(retryKey).toBe(firstKey)
+  })
+})

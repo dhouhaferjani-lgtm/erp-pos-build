@@ -264,3 +264,43 @@ describe('SplitPaymentForm money boundary and double-submit lock', () => {
     expect(mockApiPost).not.toHaveBeenCalled()
   })
 })
+
+/** Read the idempotency_key off a recorded POST body without an unsafe cast. */
+function postedIdempotencyKey(callIndex: number): string {
+  const body: unknown = mockApiPost.mock.calls[callIndex]?.[1]
+  if (typeof body !== 'object' || body === null || !('idempotency_key' in body)) {
+    throw new Error(`POST #${String(callIndex)} carried no request body`)
+  }
+  const key: unknown = body.idempotency_key
+  if (typeof key !== 'string') {
+    throw new Error(`POST #${String(callIndex)} carried no idempotency_key`)
+  }
+  return key
+}
+
+describe('SplitPaymentForm idempotency key survives a failed request', () => {
+  it('reuses the SAME idempotency_key when retrying after a rejected POST', async () => {
+    // Falsifier for "reset only in onSuccess": adding a reset to an onError
+    // handler would rotate the key here, so a retry of a split batch that may
+    // already have committed would book a SECOND batch.
+    mockApiPost.mockRejectedValueOnce(new Error('network error'))
+    mockApiPost.mockResolvedValueOnce({ data: { ok: true } })
+    renderForm({ totalAmount: '100' })
+
+    await screen.findByRole('option', { name: 'Cash' })
+    await userEvent.selectOptions(screen.getByLabelText('treasury:payments.method'), 'method-1')
+    await userEvent.type(screen.getByLabelText('treasury:payments.amount'), '100')
+    const submit = screen.getByRole('button', { name: 'common:actions.submit' })
+
+    await act(async () => { fireEvent.click(submit); await Promise.resolve() })
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+
+    await act(async () => { fireEvent.click(submit); await Promise.resolve() })
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(2) })
+
+    const firstKey = postedIdempotencyKey(0)
+    const retryKey = postedIdempotencyKey(1)
+    expect(firstKey).toMatch(/^[0-9a-f-]{36}$/)
+    expect(retryKey).toBe(firstKey)
+  })
+})
