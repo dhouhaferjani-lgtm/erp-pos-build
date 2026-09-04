@@ -217,3 +217,176 @@ All temporary controller/test mutations were reverted with `git checkout --` and
 ## 5. What to fix before merge
 
 Make the tie-break test falsifying with explicit shuffled v4 UUIDs (B1), add `nullable` to `search`/`movement_type`/`reason` (B2), then run the Step 11 browser probe and the four W4 inventory specs against a live stack (B3).
+
+---
+
+# Re-gate r2 (2026-09-04)
+
+**Reviewer:** inventory-costing-reviewer
+**Range re-reviewed:** `ae0921a2c..e17506511` (backend fix round 1), plus a confirmation that `e17506511..HEAD` (`18fbcbe01`, `47e988267`) touches **zero** `apps/api` files.
+**Mode:** read-only. Every mutation below was temporary and fully reverted; `git status --porcelain` is empty at the end (index *and* worktree verified against `HEAD` by SHA-256).
+**Environment:** shared PG `:5433` left untouched (another project's container). PG leg ran on the lane container `autoerp_pg_t2` at `127.0.0.1:5452`, DB `autoerp_test_t2`. Container left running.
+
+## VERDICT: MERGE — spec ✅ + quality APPROVED
+
+Both r1 backend blockers (B1, B2) are **fixed and independently falsified by me on both drivers**. r1 B3 is confirmed as a **promotion precondition, not a merge blocker**. One new finding, non-blocking, ruled acceptable below.
+
+---
+
+## r2-1 — r1 B1 (tie-break test not falsifying) — **RESOLVED**
+
+`apps/api/tests/Feature/Inventory/StockMovementTest.php:532-591`. The fixture now:
+
+- builds 30 **explicit v4-shaped ids** `sprintf('7f000000-0000-4000-8000-%012x', $sequence)` for `$sequence` 1..30 (`:543-546`) — fixed prefix + zero-padded lowercase hex suffix, so a descending *string* sort is exactly `id DESC`, and PG's `uuid` byte order agrees;
+- assigns them with `forceFill(['id' => …])` on a bare `new StockMovement` (`:555-572`). Verified this survives `HasUuids`: `bootHasUuids()` only assigns when `empty($model->{$column})`, so the explicit key is kept — and the green run proves it, since `$expectedIds` is built from the literals;
+- inserts in permutation `[...range(1,29,2), ...range(30,2,-2)]` (`:551`) = `1,3,…,29,30,28,…,2`. First inserted holds the **lowest** id, last holds the **second-lowest**, so `id DESC` equals **neither** insertion order **nor** its reverse. A `assertCount(30, $insertionOrder)` self-check guards the permutation itself (`:552`);
+- computes `$expectedIds` from the id literals via `rsort($expectedIds, SORT_STRING)` (`:579-580`), never from a query. `$ids` is unaffected (PHP copy-on-write), so the `forceFill` loop and the expectation cannot co-drift.
+
+**Falsified by me, both drivers.** I deleted `->orderByDesc('id')` from `StockMovementController.php:121` and ran the single test:
+
+```
+# SQLite — tie-break REMOVED
+$ php artisan test tests/Feature/Inventory/StockMovementTest.php \
+    --filter test_tied_created_at_rows_cross_two_pages_without_duplicates_or_omissions
+  ➜ 590▕         self::assertSame($expectedIds, $actualIds);
+  Tests:    1 failed (6 assertions)
+  Duration: 3.57s
+
+# PostgreSQL (:5452) — tie-break REMOVED
+$ DB_HOST=127.0.0.1 DB_PORT=5452 DB_DATABASE=autoerp_test_t2 DB_CENTRAL_DATABASE=autoerp_test_t2 \
+    php artisan test -c phpunit-pgsql.xml tests/Feature/Inventory/StockMovementTest.php --filter …
+  ➜ 590▕         self::assertSame($expectedIds, $actualIds);
+  Tests:    1 failed (6 assertions)
+  Duration: 12.44s
+```
+
+Both diffs show the actual sequence returned in odd-then-even **insertion** order (`…000013, 000011, 00000f, …, 000003, 000001`) rather than `id DESC` — i.e. the assertion now discriminates exactly the property it claims to pin. Contrast r1, where the same mutation left the old fixture **green** on both drivers.
+
+Controller restored with `git checkout --`; SHA-256 of the working file equals SHA-256 of `git show e17506511:…StockMovementController.php` (`19ab967f…5a9e80`).
+
+## r2-2 — r1 B2 (`nullable` on cleared filters) — **RESOLVED**
+
+`apps/api/app/Modules/Inventory/Presentation/Requests/ListStockMovementsRequest.php:37-55` — `nullable` added to `movement_type` (`:39`), `reason` (`:48`), `search` (`:55`); `location_id` (`:29`) and `product_id` (`:32`) already carried it. Comment at `:33-36` records the `ConvertEmptyStringsToNull` mechanism.
+
+Mechanism re-verified in vendor, not from memory: `Validator::isValidatable()` (`vendor/laravel/framework/src/Illuminate/Validation/Validator.php:817-827`) gates on `presentOrRuleIsImplicit()` (`:837-845` — a present null **is** "present", so the rule runs) and `isNotNullIfMarkedAsNullable()` (`:884-891` — only a `Nullable` rule skips it). Without `nullable`, `validateInteger`/`validateString` therefore execute against `null` and fail.
+
+**Falsified by me.** With the FormRequest reverted to `ae0921a2c` and the controller/test at `e17506511`:
+
+```
+$ php artisan test tests/Feature/Inventory/StockMovementTest.php \
+    --filter test_index_accepts_cleared_filters_sent_as_empty_strings
+  ➜ 603▕             ->assertOk()
+  Tests:    1 failed (1 assertions)
+  Duration: 4.10s
+```
+
+Green with the fix (in the full run below). The test at `:593-608` asserts the whole envelope (200, one row, `meta.current_page=1`, `meta.per_page=25`, `meta.total=1`), not just a status code, so it is a data-meaning assertion.
+
+Index and worktree fully restored (`git restore --source=HEAD --staged --worktree`; SHA-256 match, `git status --porcelain` empty).
+
+## r2-3 — r1 B3 (browser probe + four W4 Playwright specs) — **NOT A MERGE BLOCKER**
+
+**Explicit ruling, as requested.** B3 is a **promotion precondition**, not a merge blocker. Reasons, all code-grounded:
+
+- The endpoint's correctness is fully pinned by server-side tests on both drivers (60/191, below). Nothing B3 would exercise is unverified *logic*; it is unverified *integration*.
+- The only never-executed new assertion is `expect(body.meta?.last_page …).toBe(1)` at `apps/web/e2e/money-campaign/w4-support.ts:658`. Its eight call sites all pass `?product_id=…` and the helper pins `per_page=100` (`:654-655`), so they are per-product ledgers; the risk is a noisy Playwright failure, not wrong stock data at rest.
+- No costing, WAC, batch/FEFO, movement-sign or stock-decrement path is in the diff at all.
+
+It must nevertheless be run before this lane is promoted, and the handback already records it as owed ("Not done in this round — still owed", items 1–2).
+
+## r2-4 — [Minor, NOT a blocker] `?page=` / `?per_page=` still 422, and the handback's stated reason for that is factually wrong
+
+`ListStockMovementsRequest.php:56-57` deliberately leaves `page`/`per_page` without `nullable`. **What this controller actually does** (measured, exact rules pulled from the class by reflection):
+
+```
+$ CACHE_STORE=array php artisan tinker --execute='…Validator::make($data, (new ReflectionClass(ListStockMovementsRequest::class))->newInstanceWithoutConstructor()->rules())…'
+["page"]                                                    => FAIL ["page"]
+["per_page"]                                                => FAIL ["per_page"]
+["page","per_page"]                                         => FAIL ["page","per_page"]
+["search","movement_type","reason","location_id","product_id"] => PASS {"location_id":null,…,"search":null}
+```
+
+**Ruling: acceptable, not a blocker.** It **422s loudly** — it does *not* exhibit the Task 4 failure mode of silently falling back to a wrong page size. The controller never reads the raw request: `$perPage = (int) ($validated['per_page'] ?? self::DEFAULT_PER_PAGE)` / `$page = (int) ($validated['page'] ?? 1)` (`StockMovementController.php:115-116`, `DEFAULT_PER_PAGE = 25` at `:44`), so a 15-row Eloquent default is structurally unreachable here. No in-repo client can emit an empty value either: `StockMovementsPage.tsx:169-170` and `ProductMovementsTab.tsx:110-111` both send `String(page)`/`String(perPage)` from numeric `useState`, and `w4-support.ts:654-655` uses `params.set('page','1')`. And the pre-change behaviour for `?per_page=` was not a *correct* 200 — `Request::integer()` is `(int) $this->data($key, $default)` (`vendor/laravel/framework/src/Illuminate/Support/Traits/InteractsWithData.php:273-276`), which yields `0` for a present null, clamped by `min(max(0,1),100)` to **1** in the old controller (`git show b133caf21:…StockMovementController.php`) — a degenerate one-row page. Trading that for a 422 is an improvement, not a regression worth blocking.
+
+**But the recorded justification is wrong and must not propagate.** The handback says `page`/`per_page` were left non-nullable because "`(int) null` would degrade to `paginate(0)`". That is false for **this** controller: `??` coalesces a *present* null, so `nullable` would be safe here. Measured:
+
+```
+$ php -r '$validated=["per_page"=>null,"page"=>null]; var_dump((int)($validated["per_page"] ?? 25), (int)($validated["page"] ?? 1));'
+int(25)
+int(1)
+```
+
+`ListPaymentsRequest` (T3) is not on this base, so I cannot verify whether the "consistency with T3" half of the rationale holds — **cannot verify**. Fix-forward: either add `nullable` to `:56-57` (safe as measured), or correct the handback sentence so a later lane does not copy a wrong premise into a controller that *does* read `$validated[...]` without `??`.
+
+## r2-5 — Nothing else in the backend changed
+
+```
+$ git diff --stat ae0921a2c e17506511 -- apps/api
+ .../Requests/ListStockMovementsRequest.php        |  8 ++-
+ .../tests/Feature/Inventory/StockMovementTest.php | 78 +++++++++++++++-----
+ 2 files changed, 68 insertions(+), 18 deletions(-)
+
+$ git diff --stat ae0921a2c e17506511 -- .../Controllers/StockMovementController.php
+(empty — controller byte-identical)
+
+$ git diff --stat e17506511 HEAD -- apps/api
+(empty — 18fbcbe01 and 47e988267 are web + docs only)
+```
+
+Consequences carried forward from r1 without re-derivation, since the controller is unchanged: the OR-search remains correctly parenthesised inside the outer `tenant_id`/`company_id` ANDs; `ESCAPE '!'` escaping order is still safe and bound; `formatMovement()` (`:159-201`) still emits `quantity`/`quantity_before`/`quantity_after` as **strings** with `quantity_decimals` from the unit (`:177`) — no float, no `number_format`, no scale downgrade (rule 19 clean); no WAC/batch/FEFO/stock-decrement code is in range. The new test fixture also uses string quantities (`'1.0000'`, `StockMovementTest.php:564-566`).
+
+## r2-6 — Commands and exact outputs
+
+**PHPStan level 8** (`apps/api`, controller + FormRequest)
+```
+$ ./vendor/bin/phpstan analyse --level=8 --memory-limit=2G \
+    app/Modules/Inventory/Presentation/Controllers/StockMovementController.php \
+    app/Modules/Inventory/Presentation/Requests/ListStockMovementsRequest.php
+Note: Using configuration file …/.worktrees/rh-t2/apps/api/phpstan.neon.
+ 2/2 [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓] 100%
+ [OK] No errors
+```
+
+**Pint** (controller + FormRequest + test)
+```
+$ ./vendor/bin/pint --test app/Modules/Inventory/Presentation/Controllers/StockMovementController.php \
+    app/Modules/Inventory/Presentation/Requests/ListStockMovementsRequest.php \
+    tests/Feature/Inventory/StockMovementTest.php
+{"result":"pass"}
+```
+
+**Four backend files — SQLite**
+```
+$ php artisan test tests/Feature/Inventory/StockMovementTest.php \
+    tests/Feature/Inventory/StockMovementLocationFilterTest.php \
+    tests/Feature/BatchExpiry/ReverseWriteOffRouteTest.php \
+    tests/Feature/Inventory/InventoryTenantIsolationTest.php
+  Tests:    60 passed (191 assertions)
+  Duration: 60.19s
+```
+
+**Four backend files — PostgreSQL (`autoerp_pg_t2`, 127.0.0.1:5452)**
+```
+$ DB_HOST=127.0.0.1 DB_PORT=5452 DB_DATABASE=autoerp_test_t2 DB_CENTRAL_DATABASE=autoerp_test_t2 \
+    php artisan test -c phpunit-pgsql.xml <same four paths>
+  Tests:    60 passed (191 assertions)
+  Duration: 161.89s
+```
+
+r1 measured 59 tests / 185 assertions. The delta is exactly `+1` test (`test_index_accepts_cleared_filters_sent_as_empty_strings`, 5 assertions) and `+1` assertion inside the rewritten tie-break test (`assertCount(30, $insertionOrder)`, `StockMovementTest.php:552`) → 60 / 191. Arithmetic reconciles; no test was silently dropped or renamed.
+
+**Worktree cleanliness after all mutations**
+```
+$ git status --porcelain
+(empty)
+$ shasum -a 256 …/ListStockMovementsRequest.php   == git show HEAD:… | shasum -a 256   ✔ 568d1ec1…c5b87e
+$ shasum -a 256 …/StockMovementController.php     == git show e17506511:… | shasum -a 256 ✔ 19ab967f…5a9e80
+```
+
+## r2-7 — r1 non-blocking findings still open (carried, none blocking)
+
+`docs/api/README.md:448-449` still claims the endpoint is "unchanged" (now false); no second-company assertion for the new `search`/`reason` filters beside `InventoryTenantIsolationTest`'s existing `stock movements index excludes same tenant cross company rows` (green on both drivers — the OR-group was proven correctly parenthesised at r1, so this is a test-coverage gap, not a leak); `reason=write_off` tab-widening unasserted; leading-wildcard search unindexable + `COUNT(*)` per page; ledger ordered by `created_at`, not `occurred_at`; empty-`whereIn` short-circuit. Plus the new r2-4. None gates the merge.
+
+## r2-8 — What to fix before promotion (not before merge)
+
+Run the Step 11 browser probe and the four W4 inventory Playwright specs against a live stack, and correct the `page`/`per_page` rationale (r2-4) so T3 does not inherit a wrong premise.

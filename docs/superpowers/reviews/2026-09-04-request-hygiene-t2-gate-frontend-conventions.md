@@ -215,3 +215,214 @@ No vitest worker processes left behind (`ps aux | grep 'node (vitest'` → empty
 3. Land N1 and N2 in the same round (both one-liners), and N3's two assertions.
 4. Reconcile D3 with T3 before either lane merges — one shared hook, one pattern.
 5. Step 11 browser probe + the four W4 specs remain promotion preconditions, per the handback's own §6.8.
+
+---
+
+# Re-gate r2 (2026-09-04)
+
+- Reviewed: web commit `18fbcbe01` (`fix(rh-t2 web): guard missing meta, hide Reverse on reversal receipts`) on `lane/rh-t2-stock-movements`, worktree `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/rh-t2`, branch head `47e988267`.
+- Handback section replayed: `docs/handoff/HANDBACK-request-hygiene-T2-2026-09-03.md` `## Fix round 1 (2026-09-04)` items 3 and 4.
+- Read-only review. No file in the worktree was modified (`git status --porcelain` empty at start and at end).
+
+## VERDICT: **CHANGES**
+
+r1-B1 is fully fixed and honestly evidenced. r1-B2 is **half** fixed: the lane closed the `reverses_movement_id` door and left a second, equally reachable one open — the backend's `movement_type === Issue` guard has no FE mirror, and this lane's reason-only Write-Offs filter is exactly what newly surfaces the rows it refuses. That plus a lint-ratchet regression and the still-unpinned filter mapping are the three blockers.
+
+---
+
+## Blocking findings
+
+### F1 (BLOCKER) — the OQ-11 defect r1-B2 named is only half closed: adjustment-sourced write-offs still offer a Reverse the backend always refuses
+
+`apps/web/src/features/inventory/StockMovementsPage.tsx:93-105` now mirrors three of the backend's four pre-flight guards, and misses the third one:
+
+| `ReverseWriteOffService.php` guard | FE mirror |
+|---|---|
+| 1a reason ∈ {expiry, damage, write_off} — `:73-80` | `StockMovementsPage.tsx:94` ✓ |
+| 1a-bis `reverses_movement_id !== null` — `:89-93` | `StockMovementsPage.tsx:101` ✓ (added this round) |
+| **1a-ter `movement_type !== MovementType::Issue`** — `apps/api/app/Modules/BatchExpiry/Domain/Services/ReverseWriteOffService.php:98-104` | **MISSING** |
+| 1a-quater `reference_type === pos_receipt_return_scrap` — `:144-149` | `StockMovementsPage.tsx:91,103-104` ✓ |
+
+The uncovered row class is real, shipped and operator-reachable, not hypothetical:
+
+- A stock-adjustment line may carry `reason_code` `damage` or `write_off` — offered in the UI at `apps/web/src/features/stock-adjustments/pages/CreateStockAdjustmentPage.tsx:128` and `apps/web/src/features/stock-adjustments/components/QuickStockAdjustmentModal.tsx:138`, and refused **only** on batch-tracked products (`apps/api/app/Modules/Inventory/Application/Services/StockAdjustmentDocumentService.php:526-530`, re-checked at post `:692-695`). On any non-batch-tracked product it posts.
+- Posting routes through `adjustByDelta(... reasonCode: $line->reason_code, referenceType: StockMovementReferenceType::StockAdjustment ...)` (`StockAdjustmentDocumentService.php:252-267`), which records `type: MovementType::Adjustment` with that reason (`apps/api/app/Modules/Inventory/Domain/Services/StockAdjustmentService.php:950,956`).
+- Result row: `movement_type = adjustment`, `reason = damage|write_off`, `reverses_movement_id = null`, `reference_type = stock_adjustment`, `is_reversed = false`.
+- The lane's Write-Offs tab now sends **reason only** (`StockMovementsPage.tsx:162-163`) and the backend alias is `whereIn reason [write_off, expiry, damage]` with no type predicate (`StockMovementController.php:106-110`), so the row lands in the tab. Pre-diff it could not: the tab sent `movement_type=issue`.
+- `isReversibleMovement` returns **true** for it (reason ✓, `reverses_movement_id === null` ✓, `stock_adjustment` ∉ `NON_REVERSIBLE_REFERENCE_TYPES` ✓) → the Reverse button renders → the request dies on `ReverseWriteOffService.php:98-104` *"Only write-off issue movements can be reversed; movement X is of type adjustment."* → `movements.actions.reverseFailed` toast, every time.
+
+This is the same owner rule (OQ-11: a control whose backend refuses it is hidden, not shown-and-failing) and the same widening mechanism r1-B2 described. The fix commit's own message quotes the sibling guard from the very same service and stops one guard short.
+
+**Falsifying scenario:** on a non-batch-tracked product, post a stock adjustment with reason `damage`, then open Inventory → Movements → Write-Offs. The adjustment row appears with a live Reverse button; clicking it errors.
+
+**Fix directive:** add `if (movement.movement_type !== 'issue') return false` to `isReversibleMovement` (`StockMovementsPage.tsx:93-105`) so the FE mirrors all four backend guards, and add a red-first vitest case with a `movement_type: 'adjustment'`, `reason: 'damage'`, `reverses_movement_id: null` fixture asserting no Reverse button.
+
+### F2 (MAJOR, blocking) — the new ESLint warning is lint-ratchet drift; the lane picked the one option that fails a CI gate
+
+`apps/web/src/features/inventory/StockMovementsPage.tsx:372` — `@typescript-eslint/no-unnecessary-condition`, 0 errors / **1 warning**, measured below. r1 measured this file at **0 problems** on `ae0921a2c`, so the delta is exactly **+1 web warning**.
+
+`scripts/lint-ratchet.mjs:113-116` fails the run when a package's warning count *grows* (`FAIL — warnings rose N → N+1`); `scripts/lint-warning-baseline.json` pins `@autoerp/web` at 6448. The ratchet is a discrete CI step in `frontend-lint`. Re-baselining upward to absorb the lane's own new warning is the absorption pattern this gate rejects, so option (a) is not available. See the ruling below for the disposition.
+
+### F3 (MAJOR, blocking) — r1-N3 unfixed: the diff's core behaviour still has zero executed evidence, and it is precisely the behaviour that produced both B2 and F1
+
+`apps/web/src/features/inventory/StockMovementsPage.test.tsx:181,191` still pin only `page`/`per_page`. Nothing in the suite executes the transfer or write-off branches at `StockMovementsPage.tsx:160-166`. r1 dispositioned this as MINOR on the reasoning that the mapping was *correct*, just unpinned; r2 revises that: the reason-only write-off branch is the exact line that widened the tab and produced two blockers, and it is still asserted by nobody. With Step 11's browser probe unrun, an unasserted `params.append('reason', 'write_off')` is the single riskiest untested token in the diff.
+
+**Fix directive:** two assertions in `StockMovementsPage.test.tsx` — Transfers tab → last `api.get` URL contains `movement_type=transfer`; Write-Offs tab → contains `reason=write_off` and does **not** contain `movement_type=`.
+
+---
+
+## Item-by-item verification of the fix round
+
+### 1. r1-B1 — FIXED, evidence replayed
+
+- `apps/web/src/features/inventory/StockMovementsPage.tsx:372` → `subtitle={t('movements.subtitle', { count: data?.meta?.total ?? 0 })}`. Correct guard, consistent with the pager's `data?.meta ?` at `:429`.
+- `apps/web/src/features/inventory/StockMovementsPage.reverseWriteOff.test.tsx:200-216` — the fixture now carries the full six-field meta (`current_page`, `last_page`, `per_page`, `total`, `from`, `to`), matching the contract rather than tolerating a shape the server cannot emit. Right direction, same as D2.
+- Whole directory green, re-run by the reviewer (not accepted from the handback):
+```
+$ pnpm vitest run src/features/inventory src/features/stock-adjustments/__tests__/queries.test.tsx
+ Test Files  47 passed (47)
+      Tests  328 passed (328)
+   Duration  9.97s
+$ pnpm vitest run src/features/inventory/StockMovementsPage.reverseWriteOff.test.tsx \
+    src/features/inventory/StockMovementsPage.test.tsx
+ ✓ src/features/inventory/StockMovementsPage.test.tsx (5 tests) 162ms
+ ✓ src/features/inventory/StockMovementsPage.reverseWriteOff.test.tsx (17 tests) 473ms
+ Test Files  2 passed (2)
+      Tests  22 passed (22)
+```
+The handback's 47/328 claim reproduces exactly. The previously-red file is now 15 → 17 tests, all green.
+
+### 2. r1-B2 — the guard is right and the two tests are meaningful, but the fix is incomplete (F1)
+
+`StockMovementsPage.tsx:101` `if (movement.reverses_movement_id !== null) return false` mirrors `ReverseWriteOffService.php:89-93` exactly.
+
+**Are the two new tests meaningful? Yes — they assert DOM, not implementation.**
+- `StockMovementsPage.reverseWriteOff.test.tsx:418-424` renders the page with a lone reversal receipt and asserts `screen.queryByRole('button', { name: 'movements.actions.reverse' })` is absent. Role+accessible-name query against the rendered tree; the button's accessible name comes from `aria-label={t('movements.actions.reverse')}` (`StockMovementsPage.tsx:355`). No spying on `isReversibleMovement`, no class-name assertion.
+- `:426-433` is the stronger of the two and is what makes the pair non-vacuous: with `[writeOffMovement, reversalReceiptMovement]` it asserts **exactly one** button, so the test cannot pass by the page rendering nothing (the classic failure mode of a lone `not.toBeInTheDocument()`).
+- Falsifying by construction: `reversalReceiptMovement` (`:183-190`) satisfies every *other* branch of the gate — `reason: 'write_off'` passes `:94`, `reference_type` is absent from the fixture so `:103-104` returns true, `is_reversed: false` passes the render guard at `StockMovementsPage.tsx:343`, and `mockHasPermission` grants `batches.write-off` at `:366-369`. Delete line `:101` and both tests go red. The handback's red-first output (`expected [...] to have a length of 1 but got 2`) is consistent with that structure.
+
+The residual is F1: the same fixture family with `movement_type: 'adjustment'` is untested and unguarded.
+
+Note also that the handback does state the tab is now type-agnostic by design (fix round item 4), which discharges the second half of r1-B2's fix directive. Leaving reversal receipts *visible* in the Write-Offs tab (button suppressed) is acceptable and arguably informative; the objection was only ever to the live control.
+
+### 3. Ruling on the `no-unnecessary-condition` warning at `StockMovementsPage.tsx:372`
+
+**Ruling: none of (a)–(c). Take (d) in its cheapest form — hoist the read once (`const meta = data?.meta`) and use `meta?.total ?? 0` and `meta ? … : null`. Zero warnings, no type widening, no suppression, the runtime guard kept.**
+
+Empirically verified, not reasoned: a throwaway probe file (created, linted, deleted in one command; working tree clean afterwards) with the identical types showed the rule fires on the inline chain and is silent on the hoisted form —
+```
+$ pnpm exec eslint src/features/inventory/__eslintprobe_meta.ts     # probe, since deleted
+  9:20  warning  Unnecessary optional chain on a non-nullish value  @typescript-eslint/no-unnecessary-condition
+✖ 1 problem (0 errors, 1 warning)
+# line 9  = `return data?.meta?.total ?? 0`        → FLAGGED
+# line 13 = `const meta = data?.meta`
+# line 14 = `return meta?.total ?? 0`              → NOT flagged
+```
+The rule discounts the `undefined` contributed by an earlier link *inside the same chain*, so `?.total` reads as redundant there; once `data?.meta` is bound to a variable its type is genuinely `OffsetPaginationMeta | undefined` and the optional chain is necessary. Concretely:
+```tsx
+const meta = data?.meta
+…
+subtitle={t('movements.subtitle', { count: meta?.total ?? 0 })}
+…
+{meta ? (
+  <OffsetPagination currentPage={meta.current_page} lastPage={meta.last_page} total={meta.total}
+                    perPage={meta.per_page} from={meta.from} to={meta.to} … />
+) : null}
+```
+This also collapses the seven `data.meta.*` reads at `:428-435` to one binding.
+
+Why the other three are rejected:
+- **(a) accept the warning — NO.** It is a growth on a shrink-only ratchet (`scripts/lint-ratchet.mjs:113-116`, baseline `@autoerp/web: 6448`). Accepting it means either a red `frontend-lint` for this lane or a baseline bumped to absorb the lane's own new warning — the exact `--write-baseline` absorption class this gate rejects on the design-system baseline.
+- **(b) widen `meta?:` — NO.** The endpoint is unconditionally paginated; `meta` is always emitted. Typing it optional makes the declared contract tolerate a shape the server cannot produce and would silently license `?.` everywhere downstream. It is the precise inverse of the D2 direction r1 endorsed (fixture made to match the contract, not the code made to tolerate a lie).
+- **(c) strict type + drop `?.` + fixtures all carry meta — NO,** although the prerequisite now genuinely holds: the only remaining meta-less `/stock-movements` fixture in the touched tree is the **dead** duplicate branch at `__tests__/tenantScope.test.tsx:178-180` (r1-N1); the live branch `:129-138`, `StockMovementsPage.test.tsx:113` and `StockMovementsPage.reverseWriteOff.test.tsx:205-212` all carry it. Rejected anyway because `api.get<StockMovementsResponse>` is an **unchecked cast**, not a validated parse: a rolling deploy against an older API, an error envelope or a proxy-rewritten body all produce a `meta`-less object at runtime, and the cost of the guard is one `?`. The pager at `:428` already takes exactly this defensive position; the page should not be defensive in one place and fatal in the other.
+
+The lane's stated reasoning for (c-as-shipped) was sound — it correctly refused both the type widening and the suppression comment. It simply stopped at the first option that had no downside *in the file* and did not check the ratchet. The hoist gives it everything it wanted for free.
+
+### 4. Cross-lane convergence with T3 — CONVERGED
+
+T3 has no worktree; read from branch `lane/rh-t3-payments-list` (head `ba87012a2`, commit `c008547fe` *"render-phase page reset and PaymentStatus-aligned status union"*).
+
+`apps/web/src/features/treasury/PaymentListPage.tsx:83-93` vs `apps/web/src/features/inventory/StockMovementsPage.tsx:134-144` — **the same shape, token for token**: same comment rationale, `const filterSignature = JSON.stringify([...])`, `const [appliedFilterSignature, setAppliedFilterSignature] = useState(filterSignature)`, then the guarded `if (appliedFilterSignature !== filterSignature) { setAppliedFilterSignature(...); setPage(1) }` before the `useQuery`. The only difference is the signature payload (T3 `[search]`, T2 `[searchQuery, movementFilter, scope]`). r1's D3 ruling is discharged: T3 adopted the canonical pattern; the two lanes no longer ship two answers.
+
+**Shared-hook extraction (`useResetOnChange` / `usePagedFilters` in `src/hooks/`) is recorded as a POST-MERGE follow-up, not a blocker for either lane.** r1's merge condition 4 is hereby downgraded: convergence-on-the-pattern was the substance of the condition and it is met; a cross-lane hook extraction touching two in-flight worktrees is worse merge hygiene than one ticket after both land.
+
+Two cross-lane notes for T3's own reviewer (not charged to T2):
+- `PaymentListPage.tsx:121` — `const total = data?.meta.total ?? payments.length` is the **identical unguarded read** that was T2's r1-B1. Same hoist applies, and it will produce the same `no-unnecessary-condition` warning if guarded inline.
+- T3 **exported** its row interface so the page's tests bind to it instead of re-declaring it (`PaymentListPage.tsx:36-40`, "a second hand-rolled copy is how the `status` union drifted"). T2 has not — see the type-shadowing note below, which is the structural cause of r1-B1.
+
+### 5. Commands and outputs (all from `<worktree>/apps/web`, default vitest pool)
+
+**typecheck**
+```
+$ pnpm typecheck
+> tsc --noEmit
+(no output — clean)   TYPECHECK_EXIT=0
+```
+
+**eslint, the touched files**
+```
+$ pnpm exec eslint src/features/inventory/StockMovementsPage.tsx \
+    src/features/inventory/StockMovementsPage.reverseWriteOff.test.tsx \
+    src/features/inventory/StockMovementsPage.test.tsx \
+    src/features/stock-adjustments/__tests__/queries.test.tsx
+src/features/inventory/StockMovementsPage.tsx
+  372:62  warning  Unnecessary optional chain on a non-nullish value  @typescript-eslint/no-unnecessary-condition
+
+✖ 1 problem (0 errors, 1 warning)
+```
+0 errors. The single warning is F2. (`tenantScope.test.tsx` deliberately excluded here — its 15 warnings are pre-existing and were itemised in r1.)
+
+**audit:keys**
+```
+$ pnpm audit:keys
+[sweep-progress] Gate C — useQuery/useQueries/queryClient queryKeys without an approved tenant scope: 1
+[gate-summary] Gate C baseline: 0 acknowledged, 1 new, 0 stale baseline entries
+New unscoped TanStack query key violations:
+  src/features/uom/hooks/useUnits.ts:53:9 invalidateQueries({ queryKey: tenantScopedKey([...]) }) is a no-op filter …
+ ELIFECYCLE  Command failed with exit code 1.
+```
+Lines naming a touched file: **none**. Unchanged from r1; `useUnits.ts` is not in this diff.
+
+**Baseline / mechanism audit for the fix round**
+```
+$ git diff --stat b133caf21..47e988267 -- apps/web/tools scripts/lint-warning-baseline.json
+(empty)
+```
+No detector baseline, no token file, no locale file touched by the fix round. `18fbcbe01` is 2 files / +48 −1. No alias table, no suppression comment, no renamed-equivalent literal. Mechanism audit clean.
+
+**Worker hygiene**
+```
+$ ps aux | grep '[v]itest'
+(empty)
+```
+
+---
+
+## Disposition of the r1 non-blocking items (explicit, as requested)
+
+| Item | r2 status | Classification |
+|---|---|---|
+| **N1** — dead duplicate `/stock-movements` mock branch, `__tests__/tenantScope.test.tsx:178-180` | still present (verified) | **NOT merge-blocking** — fold the 3-line delete into the F1/F2 commit. Two branches for one URL, one of them meta-less, is how the next fixture drifts from the contract. Acceptable as a follow-up if the lane prefers. |
+| **N2** — `filterSignature` normalises `scope` raw (`StockMovementsPage.tsx:139`) while `locationScopedKey` sorts it (`src/lib/locationScopedKey.ts:16`) | still present (verified) | **NOT merge-blocking → follow-up**, bundled with the shared-hook extraction (item 4). No current mutator permutes the array. |
+| **N3** — transfer/write-off param mapping unasserted | still present | **MERGE-BLOCKING — promoted to F3.** Rationale in F3: this is the line that produced both B2 and F1. |
+| **N4** — `page > last_page` after a shrink | unchanged | follow-up, shared with every `OffsetPagination` consumer, not this lane's debt. |
+| **N5** — `ar` has no `inventory.movements.*` namespace | unchanged | follow-up (pre-existing; the lane touches no locale file). |
+| **N6** — Step 11 browser probe + four W4 Playwright specs unrun | unchanged, correctly disclosed in the handback | **Not merge-blocking; PROMOTION-blocking.** Unchanged from r1: this lane must not reach staging on the current evidence set. |
+| **`docs/api/README.md:447`** — "`GET /api/v1/stock-movements` is unchanged." | still says it; now false (unconditional pagination + `meta` envelope + `movement_type`/`reason`/`search`/`page`/`per_page` contract) | **NOT merge-blocking by itself, but fold it into the same fix commit** — a one-line edit, and it is a published-contract statement that is actively false about this lane's own change (other clients, incl. mobile, read this doc). If not fixed here it must be a named follow-up ticket, not a silent carry. |
+
+## New non-blocking finding (r2)
+
+### N7 (MAJOR, not merge-blocking) — three hand-rolled `StockMovement` shapes; the page's interface is not exported. This is the structural cause of r1-B1.
+`StockMovementsPage.tsx:36-61` declares the row type and does not export it; `StockMovementsPage.test.tsx:65-93` and `StockMovementsPage.reverseWriteOff.test.tsx:96-114` each re-declare a *narrower* copy (both omit `reference_type`, `source_document_id/type`; the reverseWriteOff copy also omits `quantity_decimals`, so `getQuantityDecimals(movement)` runs on `undefined` there). Nothing type-checks a fixture against what the page actually reads — which is exactly why a `meta`-less, `reference_type`-less fixture could sit green for a whole lane and then explode. One-surface-per-concept: export the page's `StockMovement`/`StockMovementsResponse` and have both test files import them, as **T3 already did** for `Payment` (`PaymentListPage.tsx:36-40`). Cheap, and it is the only change in this round that prevents r1-B1 from recurring.
+
+---
+
+## Merge conditions (r2)
+
+1. **F1** — mirror the backend's `movement_type === Issue` guard in `isReversibleMovement`, with a red-first `movement_type: 'adjustment'` / `reason: 'damage'` test.
+2. **F2** — hoist `const meta = data?.meta` and read through it in both places; confirm `pnpm exec eslint` on the file is 0 problems.
+3. **F3** — two assertions pinning the Transfers and Write-Offs URL params.
+4. Fold in N1 and the `docs/api/README.md:447` line; open a ticket for N2 + the shared `useResetOnChange` hook (post-merge, with T3) and for N7 if not taken now.
+5. Unchanged from r1: N6 (browser probe + four W4 specs) remains a **promotion** precondition; merging into local `dev` does not discharge it.
+
+Re-run for r3: `pnpm vitest run src/features/inventory src/features/stock-adjustments/__tests__/queries.test.tsx`, `pnpm typecheck`, `pnpm exec eslint <touched>`, `pnpm audit:keys`.

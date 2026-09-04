@@ -370,7 +370,7 @@ $ php artisan test tests/Feature/Inventory/StockMovementTest.php \
   Tests:    1 failed (1 assertions)
 ```
 
-**Fix** (`ListStockMovementsRequest.php`): `nullable` added to `movement_type`, `reason`, `search`. `location_id` and `product_id` already carried it (the gate matrix confirmed both were already 200 on empty). `page`/`per_page` deliberately left **without** `nullable` — they are not filters, `(int) null` would degrade to `paginate(0)`, and T3's `ListPaymentsRequest` makes the same call, so the two lanes stay consistent. The test asserts the full normal envelope: 200, one row, `meta.current_page=1`, `meta.per_page=25`, `meta.total=1`.
+**Fix** (`ListStockMovementsRequest.php`): `nullable` added to `movement_type`, `reason`, `search`. `location_id` and `product_id` already carried it (the gate matrix confirmed both were already 200 on empty). `page`/`per_page` deliberately left **without** `nullable`. **[Corrected in fix round 2 — the original rationale here was factually wrong.](#fix-round-2-2026-09-04)** They are not filters: the controller reads them only out of `validated()` behind `?? DEFAULT_PER_PAGE` / the paginator's own default, so a *missing* key is already handled and `(int) (null ?? 25)` would be `25`, never `paginate(0)`. The real rationale is that no in-repo client sends an empty `page=`/`per_page=`, so a present-but-empty value 422s **loudly** rather than silently paginating something unexpected — acceptable, and recorded as a follow-up to align with T3's `ListPaymentsRequest`, which makes the same call. The test asserts the full normal envelope: 200, one row, `meta.current_page=1`, `meta.per_page=25`, `meta.total=1`.
 
 ### Item 3 — B1 (web): `meta` crash + the un-run test file
 
@@ -487,3 +487,105 @@ Both remain **promotion preconditions**. This lane must not be promoted on the c
 - inventory-costing non-blocking: `docs/api/README.md:448-449` still says the endpoint is "unchanged" (now false); second-company search case for `InventoryTenantIsolationTest`; `reason=write_off` tab-widening unasserted; search indexability; empty-`whereIn` short-circuit.
 - frontend **N1** (dead duplicate `/stock-movements` mock branch, `tenantScope.test.tsx:178-180`), **N2** (`filterSignature` vs `locationScopedKey` scope normalisation), **N3** (two assertions pinning the transfer/write-off param mapping).
 - frontend **merge condition 4 / D3** — reconcile the render-phase reset with T3's `useEffect` variant into **one shared hook** before either lane merges. This is cross-lane and needs an orchestrator decision, not a unilateral edit in this worktree.
+
+---
+
+## Fix round 2 (2026-09-04)
+
+Backend re-gate r2 = **MERGE**. Frontend re-gate r2 = **CHANGES** with three items (F1, F2, F3). This round implements exactly those three plus one documentation correction. `apps/api` was **not touched** (`git diff` on `apps/api` is empty for this round).
+
+Reviewed head at dispatch: `47e988267`. Code commit: `0c476ff7f`.
+
+### F1 — the fourth reversibility guard (issue-only)
+
+`ReverseWriteOffService.php:98-104` refuses any movement that is not a `MovementType::Issue`. The FE mirrored three of the four pre-flight guards and missed this one. A stock adjustment with `reason_code` `damage`/`write_off` on a **non-batch-tracked** product posts as `movement_type=adjustment`, `reason=damage`, `reverses_movement_id=null`, `reference_type=stock_adjustment` — and this lane's reason-only Write-Offs tab is exactly what newly surfaces it, with a live Reverse button that always errors.
+
+**RED first**, two new cases in `StockMovementsPage.reverseWriteOff.test.tsx` against the unfixed guard:
+
+```
+$ pnpm vitest run src/features/inventory/StockMovementsPage.reverseWriteOff.test.tsx
+ FAIL  … > does NOT show a Reverse button for an adjustment-sourced damage write-off
+ FAIL  … > shows Reverse for the issue write-off but not for the adjustment-sourced one
+       AssertionError: expected [ <button …(3)></button>, …(1) ] to have a length of 1 but got 2
+      Tests  2 failed | 17 passed (19)
+```
+
+The pair is non-vacuous by construction: the second case renders `[writeOffMovement, adjustmentDamageMovement]` and asserts **exactly one** button, so it cannot pass by the page rendering nothing. The `adjustmentDamageMovement` fixture satisfies every other branch of the gate (reason `damage` passes the reason check, `reverses_movement_id` is null, no `reference_type`, `is_reversed: false`, permission granted) — only `movement_type` differs.
+
+**Fix** (`StockMovementsPage.tsx`, `isReversibleMovement`): `if (movement.movement_type !== 'issue') return false`, with the backend guard quoted in the comment. → `Tests 19 passed (19)`.
+
+### F2 — hoisted `meta`, ESLint back to zero
+
+Applied the gate's ruling verbatim (option (d) in its cheapest form): `const meta = data?.meta` bound once next to `const movements`, then `meta?.total ?? 0` in the `PageHeader` subtitle and `meta ? <OffsetPagination …meta.x /> : null` for the pager (collapsing seven `data.meta.*` reads to one binding). The declared `StockMovementsResponse.meta` stays **non-optional** — no widening — and there is no suppression comment; the runtime guard is kept because `api.get<StockMovementsResponse>` is an unchecked cast, not a validated parse.
+
+```
+# before (47e988267)
+$ pnpm exec eslint src/features/inventory/StockMovementsPage.tsx
+  372:62  warning  Unnecessary optional chain on a non-nullish value  @typescript-eslint/no-unnecessary-condition
+✖ 1 problem (0 errors, 1 warning)
+
+# after (0c476ff7f)
+$ pnpm exec eslint src/features/inventory/StockMovementsPage.tsx
+(no output — 0 problems)
+```
+
+The +1 growth against the shrink-only web lint ratchet (`scripts/lint-ratchet.mjs`, baseline `@autoerp/web: 6448`) is therefore gone; no baseline was touched.
+
+### F3 — the transfer / write-off param mapping is now pinned
+
+Two assertions in `StockMovementsPage.test.tsx`, driven through the real `FilterTabs` DOM (click the tab, await the re-registered query, execute its `queryFn`, read the URL `api.get` was actually called with):
+
+- Transfers tab → URL contains `movement_type=transfer` and does **not** contain `reason=`.
+- Write-Offs tab → URL contains `reason=write_off` and does **not** contain `movement_type=`.
+
+**Falsified**, not assumed: with the two branches swapped (`reason=transfer` / `movement_type=write_off`) both went red —
+
+```
+AssertionError: expected '/stock-movements?reason=transfer&page…' to contain 'movement_type=transfer'
+AssertionError: expected '/stock-movements?movement_type=write_…' to contain 'reason=write_off'
+      Tests  2 failed | 5 passed (7)
+```
+
+then the mapping was restored (`git diff --stat` back to the intended 20/8 shape) and the pair went green.
+
+### Documentation correction — backend re-gate r2, minor 1
+
+Fix round 1's stated reason for leaving `page`/`per_page` without `nullable` (`(int) null` → `paginate(0)`) was **factually wrong**: `(int) (null ?? 25)` is `25`, and the controller only ever reads these out of `validated()` behind a default. The sentence in §"Fix round 1 → Item 2" above has been rewritten to the true rationale — no in-repo client sends an empty value, so a present-empty `page`/`per_page` 422s loudly, which is acceptable and is recorded as a follow-up to align with T3. **No backend code was changed.**
+
+### Verification (all from `<worktree>/apps/web`)
+
+```
+$ pnpm vitest run src/features/inventory src/features/stock-adjustments/__tests__/queries.test.tsx
+ Test Files  47 passed (47)
+      Tests  332 passed (332)          # 328 → 332 (+2 F1, +2 F3)
+
+$ pnpm typecheck
+(no output — clean)   exit 0
+
+$ pnpm exec eslint src/features/inventory/StockMovementsPage.tsx     src/features/inventory/StockMovementsPage.test.tsx     src/features/inventory/StockMovementsPage.reverseWriteOff.test.tsx
+(no output — 0 errors, 0 warnings)     # page file 1 warning → 0; both test files 0 → 0
+
+$ pnpm audit:keys
+  src/features/uom/hooks/useUnits.ts:53:9 …   # unchanged, pre-existing, not in this diff
+```
+
+An interim revision of the F3 helper used `lastCall[0] as string` and raised a **new** `@typescript-eslint/no-unsafe-type-assertion` warning in `StockMovementsPage.test.tsx`; it was replaced with an `unknown` + `typeof` guard before commit, so the round ships **zero new warnings** on every touched file.
+
+**React Doctor.** The `pre-commit` hook printed its generic "staged regressions" line again. Re-scanned against `HEAD~1`: the only `StockMovementsPage.tsx` entries are the two pre-existing findings at `:128` and `:227` (`no-giant-component`, `prefer-module-scope-pure-function`), both outside every line this round touched and both present before it. No regression.
+
+No vitest worker processes left behind.
+
+### Commits (fix round 2)
+
+| Hash | Message | Paths |
+|---|---|---|
+| `0c476ff7f` | `fix(rh-t2 web): issue-only reversibility guard, hoisted meta (lint-clean), tab param-mapping assertions` | `apps/web/src/features/inventory/StockMovementsPage.tsx`, `…/StockMovementsPage.test.tsx`, `…/StockMovementsPage.reverseWriteOff.test.tsx` |
+| `<this commit>` | `docs(rh-t2): re-gate r2 reports + handback fix round 2 (nullable rationale corrected)` | the two gate reports + this section |
+
+### Not done in this round — still owed
+
+Scope was held to the three frontend blockers plus the documentation correction, as dispatched. Deliberately **not** taken (each needs an explicit disposition before r3 closes):
+
+- Frontend merge condition 4 — **N1** (dead duplicate `/stock-movements` mock branch, `__tests__/tenantScope.test.tsx:178-180`), the `docs/api/README.md:447` "unchanged" line that is now false, **N2** (`filterSignature` vs `locationScopedKey` scope normalisation) and **N7** (export the page's `StockMovement`/`StockMovementsResponse` so the two test files stop re-declaring narrower copies, as T3 did for `Payment`). None were in this round's dispatch; they remain open as either a fold-in for r3 or named follow-up tickets.
+- Shared `useResetOnChange` / `usePagedFilters` extraction with T3 — already downgraded by r2 to a post-merge follow-up.
+- **N6 / inventory-costing B3 — unchanged promotion preconditions:** the Step 11 browser probe and the four W4 Playwright specs are still unrun. This lane must not be promoted on the current evidence set.
