@@ -96,14 +96,17 @@ Route::prefix('api/v1')->middleware([
         ->whereUuid('id')
         ->name('supplier-invoices.show');
 
-    // Create supplier invoice + auto-match (can:documents.update)
+    // Create supplier invoice + auto-match (can:supplier-invoices.manage)
+    // F-W2-14 / DEV-QA-027-028: dedicated permission, NOT the generic
+    // documents.update a cashier holds. Invoice-first / pending branches layer
+    // supplier-invoices.create-pending on top in the controller.
     Route::post('/supplier-invoices', [SupplierInvoiceController::class, 'store'])
-        ->middleware('can:documents.update')
+        ->middleware('can:supplier-invoices.manage')
         ->name('supplier-invoices.store');
 
-    // Re-run matcher (can:documents.update)
+    // Re-run matcher (can:supplier-invoices.manage)
     Route::post('/supplier-invoices/{id}/match', [SupplierInvoiceController::class, 'match'])
-        ->middleware('can:documents.update')
+        ->middleware('can:supplier-invoices.manage')
         ->whereUuid('id')
         ->name('supplier-invoices.match');
 
@@ -113,9 +116,10 @@ Route::prefix('api/v1')->middleware([
         ->whereUuid('id')
         ->name('supplier-invoices.link-receipts');
 
-    // Post supplier invoice (can:documents.update)
+    // Post supplier invoice (can:supplier-invoices.manage)
+    // F-W2-14 / DEV-QA-027-028: dedicated permission, NOT the generic documents.update.
     Route::post('/supplier-invoices/{id}/post', [SupplierInvoiceController::class, 'post'])
-        ->middleware('can:documents.update')
+        ->middleware('can:supplier-invoices.manage')
         ->whereUuid('id')
         ->name('supplier-invoices.post');
 });

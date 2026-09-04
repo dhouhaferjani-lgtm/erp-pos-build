@@ -1,6 +1,6 @@
 // This file is generated. Do not edit it by hand.
 // Source: apps/api/database/seeders/RolesAndPermissionsSeeder.php
-// Source hash: sha256:d126b0d004691f15a61e5dc1d71c261f5370da2065803d7f1df0f2b02eff5801
+// Source hash: sha256:109bee610f3a444edf4a61b44ec02d6ea6e702f1367228b3756f1eceb906d4c2
 
 export const PERMISSIONS = {
   'accounts.manage': ['accountant', 'admin', 'manager'],
@@ -91,6 +91,7 @@ export const PERMISSIONS = {
   'fraud-settings.view': ['accountant', 'admin', 'manager'],
   'goods-receipt.create-standalone': ['admin', 'manager'],
   'goods-receipt.edit-price': ['admin', 'manager'],
+  'goods-receipt.receive-expired': ['admin', 'manager'],
   'imports.manage': ['admin'],
   'income.create': ['accountant', 'admin', 'cashier', 'manager', 'operator'],
   'income.delete': ['accountant', 'admin'],
@@ -253,6 +254,7 @@ export const PERMISSIONS = {
   'supplier-invoices.approve-invoice-first': ['accountant', 'admin', 'manager'],
   'supplier-invoices.create-pending': ['accountant', 'admin', 'manager'],
   'supplier-invoices.link-receipts': ['accountant', 'admin', 'manager'],
+  'supplier-invoices.manage': ['accountant', 'admin', 'manager'],
   'support-access.manage': ['admin'],
   'support-access.view': ['admin'],
   'taxation.tax_configurations.manage': ['accountant', 'admin'],
