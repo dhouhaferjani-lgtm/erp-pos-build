@@ -6,11 +6,13 @@ namespace Tests\Unit\POS;
 
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
+use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
 use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\Services\InventoryGlPostingBuffer;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\POS\Application\Services\LegacyCorrectionGuard;
@@ -97,6 +99,8 @@ class ReceiptReturnServiceTest extends TestCase
             $this->app->make(RestockPolicyResolver::class),
             $this->app->make(LegacyCorrectionGuard::class),
             $this->app->make(ReturnScrapWriteOffService::class),
+            $this->app->make(InventoryGlPostingBuffer::class),
+            $this->app->make(FEFOInventoryService::class),
         );
     }
 
