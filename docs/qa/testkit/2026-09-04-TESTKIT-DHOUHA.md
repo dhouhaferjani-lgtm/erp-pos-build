@@ -77,16 +77,33 @@ test — c'est normal, la référence vivante est l'écran `Inventaire → Stock
 - [ ] **Planche imprimée** à 100 % + un scanner (douchette USB ou l'appareil photo du téléphone).
 - [ ] **IziPOS (caisse)** : la caisse vendeuse est l'**application de bureau IziPOS (Tauri)** — il n'y a **pas** de
       caisse dans le navigateur (le web ne propose que le back-office POS : tickets, shifts, rapports Z).
-      **Le build IziPOS pour staging est à demander à Houssam** : sans lui, les scénarios B et C ne sont pas jouables.
-      Ouvrir un shift avec un fond de caisse avant tout scénario POS.
-- [ ] **Mobile** : Expo Go + le dépôt `erp-mobile` (branche `codex/inventory-alignment-2026-09` si elle est
-      livrée, sinon `main`), `.env` → `EXPO_PUBLIC_API_URL=https://api.erp.otospex.dev/api/v1`.
+      L'application de bureau se construit séparément et se connecte au backend staging : **c'est toi qui la
+      construis/installes** (procédure habituelle du dépôt POS). Ouvrir un shift avec un fond de caisse avant tout
+      scénario POS. Les scénarios B et C ne sont pas prioritaires cette semaine (voir « Priorité » ci-dessous).
+- [ ] **Mobile (PRIORITÉ n° 1 — comptage d'inventaire)** : le dépôt `erp-mobile`, branche **`main`**, **une fois
+      que Houssam a confirmé que la correction Codex est fusionnée** (2 correctifs en cours : tuile « En vérification »
+      supprimée, libellé de zone = nom et non code). **C'est toi qui construis le paquet** :
+      ```bash
+      git clone <erp-mobile> && cd erp-mobile && git checkout main && git pull
+      pnpm install
+      cp .env.example .env        # puis : EXPO_PUBLIC_API_URL=https://api.erp.otospex.dev/api/v1
+      npx expo start              # Expo Go sur le téléphone (QR code), ou
+      npx expo run:android        # build de développement Android (nécessite Android Studio / SDK)
+      ```
+      Le `README.md` du dépôt détaille l'installation ; vérifier `npx tsc --noEmit` et `npx jest` avant de tester.
       Se connecter en **`manager@pharmabio.tn`** (les brouillons mobiles exigent manager/admin).
+      Les 4 vérifications physiques attendues sur mobile (à faire en premier) : scan caméra sur l'écran de réception,
+      saisie manuelle Android sur les scanners de comptage ET de réception, « Tout abandonner » avec un vrai
+      brouillon de comptage clôturé garé, et un comptage avec `includes_zero_stock` (produits à stock zéro visibles).
 - [ ] **Rôles** : `owner` = admin (crée, révise, finalise) · `manager` = compte · `cashier` = POS seulement.
 
 ---
 
 ## 4. Scénarios
+
+> **Priorité de la semaine : le mobile.** Jouer d'abord **A** (mobile), **F** (mobile), **D** (réception mobile) et
+> **E** ; **B** et **C** (caisse de bureau) ensuite, quand tu as le temps.
+
 
 Les résultats attendus détaillés du comptage (mode bloquant, comptage en direct, zone, hors-ligne) sont dans
 `docs/handoff/HANDOVER-DHOUHA-INVENTORY-COUNTING-A2Z-2026-09-02.md` — **le lire avant A et B**, notamment sa
@@ -273,11 +290,11 @@ Contrôles hors ligne :
 
 ### Ce qui n'a **pas** pu être vérifié
 
-- **La caisse IziPOS** : aucun build POS n'est publié sur staging (`pos.erp.otospex.dev` et
-  `izipos.erp.otospex.dev` ne répondent pas). Les scénarios **B** et **C** dépendent d'un build de bureau
-  **à fournir par Houssam**.
-- **L'application mobile** : le dépôt `erp-mobile` n'est pas dans ce checkout ; le build et la branche à installer
-  sont à confirmer avec Houssam.
+- **La caisse IziPOS** : aucun build de bureau n'est installé ici (les hôtes `pos.`/`izipos.erp.otospex.dev` ne
+  répondent pas, ce qui est normal : l'app de bureau se construit à part). Les scénarios **B** et **C** n'ont donc pas
+  été rejoués de ce côté-ci.
+- **L'application mobile** : la branche `main` d'`erp-mobile` attend la fusion des 2 correctifs Codex (gate ERP du
+  2026-09-04). Houssam confirme quand c'est prêt ; le paquet est à construire par la testeuse (voir §3).
 - **Le mot de passe** des comptes : jamais testé au-delà de `owner@pharmabio.tn`, et volontairement non écrit ici.
 - **La ligne « Ventes pendant le comptage »** dans l'interface : vérifiée uniquement côté API/commit
   (`de31017e0` présent sur `origin/dev`), **pas** visuellement sur le build staging — d'où la case à cocher en §3.
