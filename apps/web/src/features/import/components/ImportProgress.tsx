@@ -22,7 +22,7 @@ export function ImportProgress({
   const { t } = useTranslation('import')
 
   return (
-    <nav aria-label={t('wizard.progressAriaLabel')}>
+    <nav aria-label={t('wizard.execute.progressAriaLabel')}>
       <ol className="flex items-center">
         {steps.map((step, index) => {
           const isCompleted = completedSteps.includes(index)
