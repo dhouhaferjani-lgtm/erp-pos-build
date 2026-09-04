@@ -18,6 +18,10 @@ const companyConfigMock = vi.hoisted(() => ({
   purchaseBonusEnabled: false,
 }))
 
+const companyMock = vi.hoisted(() => ({
+  currentCompanyId: 'company-1',
+}))
+
 const taxSelectMock = vi.hoisted(() =>
   vi.fn((props: { documentType?: string }) => (
     <span data-document-type={props.documentType ?? ''} data-testid="tax-select">Tax</span>
@@ -114,16 +118,20 @@ vi.mock('react-i18next', () => ({
 }))
 
 // Mock company store
+// Mutable so a test can switch the active company mid-form. The real store is
+// a zustand store whose value changes do NOT unmount this component (FE gate r1
+// B1: CompanyProvider renders a bare fragment and CompanySelector only
+// invalidates), so the switch is modelled here as "same tree, new company id".
 vi.mock('../../../../stores/companyStore', () => ({
   useCompanyStore: Object.assign(
     (selector: (s: { currentCompanyId: string; getCurrentCompany: () => null }) => unknown) =>
     selector({
-      currentCompanyId: 'company-1',
+      currentCompanyId: companyMock.currentCompanyId,
       getCurrentCompany: () => null,
     }),
     {
       getState: () => ({
-        currentCompanyId: 'company-1',
+        currentCompanyId: companyMock.currentCompanyId,
       }),
     },
   ),
@@ -180,6 +188,55 @@ function createWrapper() {
   return Wrapper
 }
 
+/**
+ * Like {@link createWrapper} but hands back the client so a test can inspect
+ * what was actually cached and under which key. `gcTime: Infinity` keeps
+ * de-subscribed entries around, which is the point: the FE gate r1 M1 defect
+ * showed up as an ORPHANED entry filed under the wrong signature.
+ */
+function createWrapperWithClient() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+  })
+  function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  }
+  return { queryClient, Wrapper }
+}
+
+/**
+ * Rebuild the signature segment the component would file an answer under, from
+ * the body it actually POSTed. Narrowed with type guards rather than an `as`
+ * cast so the assertion-free no-`any` bar holds in the test file too.
+ */
+function signatureOfRequestBody(body: unknown): string {
+  if (typeof body !== 'object' || body === null || !('lines' in body)) return '<no lines>'
+  const lines: unknown = body.lines
+  if (!Array.isArray(lines)) return '<no lines>'
+  return lines
+    .map((line: unknown) => {
+      if (typeof line !== 'object' || line === null) return '<not a line>'
+      const productId = 'product_id' in line && typeof line.product_id === 'string' ? line.product_id : ''
+      const variantId = 'variant_id' in line && typeof line.variant_id === 'string' ? line.variant_id : ''
+      const unitPrice = 'unit_price' in line && typeof line.unit_price === 'string' ? line.unit_price : ''
+      return `${productId}:${variantId}:${unitPrice}`
+    })
+    .join('|')
+}
+
+/**
+ * Let TanStack settle under fake timers: its notifyManager batches through a
+ * `setTimeout(…, 0)`, so microtask ticks alone never flip a query to success.
+ * Advancing by 0 fires that batch without touching the 250 ms debounce.
+ */
+async function flushFakeTimerQueries(): Promise<void> {
+  await act(async () => {
+    vi.advanceTimersByTime(0)
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+}
+
 function makeLine(overrides: Partial<DocumentLine> = {}): DocumentLine {
   return {
     id: crypto.randomUUID(),
@@ -207,6 +264,7 @@ describe('DocumentLineEditor — designation cells', () => {
     onChange = vi.fn()
     companyConfigMock.enabledModules = ['Workshop']
     companyConfigMock.purchaseBonusEnabled = false
+    companyMock.currentCompanyId = 'company-1'
     vi.mocked(apiPost).mockReset()
   })
 
@@ -1097,5 +1155,167 @@ describe('DocumentLineEditor — designation cells', () => {
       partner_id: 'partner-1',
       lines: [{ product_id: 'prod-1', variant_id: null, unit_price: '125' }],
     })
+  })
+
+  // FE gate r1 B1. Switching company does NOT unmount this editor (the real
+  // CompanyProvider renders a bare fragment and CompanySelector only
+  // invalidates), so a `placeholderData: keepPreviousData` on the pricing query
+  // would keep the PREVIOUS company's WAC cost, margin verdict and suggested
+  // price on screen — and `Use suggested` would commit it into the line.
+  it('never shows the previous company pricing while the new company read is in flight', async () => {
+    const user = userEvent.setup()
+    vi.mocked(apiPost).mockResolvedValue({
+      items: {
+        'prod-1': {
+          currency: 'TND',
+          cost_wac: '111.000000',
+          last_purchase_cost: '99.000000',
+          last_purchase_at: null,
+          last_sale_to_partner: null,
+          suggested_price: '888.000',
+          target_margin_pct: '30.00',
+          minimum_margin_pct: '15.00',
+          policy: { level: 'green', allowed: true, requires_permission: null },
+        },
+      },
+    })
+
+    function ControlledEditor() {
+      const [currentLines, setCurrentLines] = useState<DocumentLine[]>([
+        makeLine({ product_id: 'prod-1', unit_price: '10.000', line_total: '10.000' }),
+      ])
+      return (
+        <DocumentLineEditor
+          partnerId="partner-1"
+          lines={currentLines}
+          onChange={setCurrentLines}
+        />
+      )
+    }
+
+    const { rerender } = render(<ControlledEditor />, { wrapper: createWrapper() })
+    await user.click(screen.getByRole('spinbutton', { name: 'Unit Price' }))
+    expect(await screen.findByText('Cost 111.000000 · Last buy 99.000000 · Margin 30%')).toBeInTheDocument()
+
+    // Company 2's read never settles, so the ONLY thing that could still be on
+    // screen is company 1's answer.
+    vi.mocked(apiPost).mockImplementation(() => new Promise(() => { /* never settles */ }))
+    companyMock.currentCompanyId = 'company-2'
+    rerender(<ControlledEditor />)
+
+    await waitFor(() => {
+      expect(screen.queryByText('Cost 111.000000 · Last buy 99.000000 · Margin 30%')).toBeNull()
+    })
+    // …and with the hint gone, the details popover — the only path that COMMITS
+    // a pricing answer into the line — is unreachable too.
+    expect(screen.queryByRole('button', { name: 'Pricing details' })).toBeNull()
+  })
+
+  // FE gate r1 M1. Adding a product and clicking its price inside the debounce
+  // window used to cost TWO requests: one fired at focus while the debounced
+  // signature still said "no lines", then the real one after the settle.
+  it('sends exactly one bulk pricing request when a line is added and its price is focused inside the window', async () => {
+    vi.useFakeTimers()
+    vi.mocked(apiPost).mockResolvedValue({ items: {} })
+
+    function ControlledEditor() {
+      const [currentLines, setCurrentLines] = useState<DocumentLine[]>([])
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              setCurrentLines([makeLine({ product_id: 'prod-1', unit_price: '10.000', line_total: '10.000' })])
+            }}
+          >
+            harness-add-line
+          </button>
+          <DocumentLineEditor
+            partnerId="partner-1"
+            lines={currentLines}
+            onChange={setCurrentLines}
+          />
+        </>
+      )
+    }
+
+    render(<ControlledEditor />, { wrapper: createWrapper() })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'harness-add-line' }))
+      await Promise.resolve()
+    })
+    await act(async () => {
+      fireEvent.focus(screen.getByRole('spinbutton', { name: 'Unit Price' }))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(apiPost).not.toHaveBeenCalled()
+
+    await act(async () => { vi.advanceTimersByTime(250); await Promise.resolve() })
+    expect(apiPost).toHaveBeenCalledTimes(1)
+    expect(apiPost).toHaveBeenCalledWith('/line-entry/pricing-context/bulk', {
+      partner_id: 'partner-1',
+      lines: [{ product_id: 'prod-1', variant_id: null, unit_price: '10.000' }],
+    })
+  })
+
+  // FE gate r1 M1, the durable half: a cached pricing verdict must be filed
+  // under the signature of the lines it was actually computed for. When the key
+  // was debounced but the body was live, an answer for one price landed under
+  // another price's key and was served from cache for a whole staleTime.
+  it('files every cached pricing answer under the signature of the body it was fetched with', async () => {
+    vi.useFakeTimers()
+    vi.mocked(apiPost).mockResolvedValue({ items: {} })
+    const { queryClient, Wrapper } = createWrapperWithClient()
+
+    function ControlledEditor() {
+      const [currentLines, setCurrentLines] = useState<DocumentLine[]>([])
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              setCurrentLines([makeLine({ product_id: 'prod-1', unit_price: '10.000', line_total: '10.000' })])
+            }}
+          >
+            harness-add-line
+          </button>
+          <DocumentLineEditor
+            partnerId="partner-1"
+            lines={currentLines}
+            onChange={setCurrentLines}
+          />
+        </>
+      )
+    }
+
+    render(<ControlledEditor />, { wrapper: Wrapper })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'harness-add-line' }))
+      await Promise.resolve()
+    })
+    await act(async () => {
+      fireEvent.focus(screen.getByRole('spinbutton', { name: 'Unit Price' }))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await act(async () => { vi.advanceTimersByTime(250); await Promise.resolve() })
+    await flushFakeTimerQueries()
+
+    // What the server was actually asked, in order.
+    const askedSignatures = vi.mocked(apiPost).mock.calls.map(([, body]) => signatureOfRequestBody(body))
+    // What the cache actually holds an ANSWER under.
+    const cachedSignatures = queryClient
+      .getQueryCache()
+      .getAll()
+      .filter((query) => query.queryKey[0] === 'line-entry-pricing-context' && query.state.status === 'success')
+      .map((query) => String(query.queryKey[2]))
+
+    // The coherence invariant is the point of this test: every ANSWER in the
+    // cache is filed under the signature of the body that produced it. Before
+    // the fix this read ['', 'prod-1::10.000'] against ['prod-1::10.000', …] —
+    // prod-1's verdict cached under a key that claims the document has no lines.
+    expect([...cachedSignatures].sort()).toEqual([...askedSignatures].sort())
+    expect(askedSignatures).toEqual(['prod-1::10.000'])
   })
 })

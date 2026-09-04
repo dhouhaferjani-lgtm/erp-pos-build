@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
-import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Info, Plus, Trash2 } from 'lucide-react'
 import { formatCurrency, formatPercent } from '../../../lib/format'
@@ -377,27 +377,25 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
         unit_price: decimalValue((line.price_entry_mode ?? 'unit') === 'total' ? deriveUnitPrice(line) : line.unit_price),
       }))
   ), [deriveUnitPrice, lines])
+  // S-5: debounce the LINES, not just their signature. The key, the `enabled`
+  // predicate and the request body are all derived from this one debounced
+  // value, so a cached answer is always filed under the signature of the state
+  // it was actually computed for (FE gate r1 M1: debouncing the signature alone
+  // let the key lag the body, poisoning `prod-1::10.000` with the verdict for
+  // 20.000 for a whole `staleTime`, and cost two requests on add-then-focus).
+  // `useDebouncedValue` seeds its state with the current value, so a document
+  // that mounts with lines still reads immediately on first price focus.
+  const debouncedPricingLines = useDebouncedValue(pricingContextLines, 250)
   const pricingContextSignature = useMemo(
-    () => pricingContextLines
+    () => debouncedPricingLines
       .map((line) => `${line.product_id}:${line.variant_id ?? ''}:${line.unit_price}`)
       .join('|'),
-    [pricingContextLines],
+    [debouncedPricingLines],
   )
-  // S-5: the signature is what moves the query key, so debouncing it (and only
-  // it) collapses a burst of unit-price keystrokes into ONE bulk pricing POST
-  // 250 ms after the operator stops typing. The debounced hook seeds its state
-  // with the current value, so the first read on focus is still immediate.
-  const debouncedPricingSignature = useDebouncedValue(pricingContextSignature, 250)
-  // The request body must match the signature that FIRED the query, not the
-  // signature the operator has typed since. Reading the lines through a ref
-  // written during render keeps the payload out of the query key while still
-  // sending the price the debounce settled on.
-  const pricingContextLinesRef = useRef(pricingContextLines)
-  pricingContextLinesRef.current = pricingContextLines
   const pricingContextEnabled =
     !readonly &&
     focusedPriceLineId !== null &&
-    pricingContextLines.length > 0 &&
+    debouncedPricingLines.length > 0 &&
     tenantId !== null &&
     companyId !== null
 
@@ -405,16 +403,20 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
     queryKey: tenantScopedKey([
       'line-entry-pricing-context',
       partnerId ?? null,
-      debouncedPricingSignature,
+      pricingContextSignature,
     ]),
     queryFn: () => apiPost<PricingContextResponse>('/line-entry/pricing-context/bulk', {
       partner_id: partnerId ?? null,
-      lines: pricingContextLinesRef.current,
+      lines: debouncedPricingLines,
     }),
     enabled: pricingContextEnabled,
-    // Keep the previous answer on screen while the debounced key settles, so
-    // the cost/margin hint does not blink out between keystrokes.
-    placeholderData: keepPreviousData,
+    // NO placeholderData: keepPreviousData here, deliberately (FE gate r1 B1,
+    // mirroring the same gate's B2 ruling on LineItemEntryBar). TanStack hands
+    // back the observer's last query WITH DATA regardless of key lineage, and a
+    // company switch neither unmounts this editor nor clears the cache — so a
+    // placeholder here would keep the PREVIOUS company's WAC cost, margin
+    // verdict and suggested price on screen, and `Use suggested` would commit
+    // it into the line. A blink while the key settles is the honest behaviour.
     staleTime: 30000,
   })
 
