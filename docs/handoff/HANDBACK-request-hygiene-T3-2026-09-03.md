@@ -516,3 +516,186 @@ or typecheck leg was re-run.
 
 Everything still owed at the bottom of §3 (browser check, live Playwright run, external-consumer
 pagination evidence, both reviewer gates, rebase on `dev`) is unchanged by this round.
+
+---
+
+## Fix round 2 (web, 2026-09-04)
+
+Commit: `c008547fe` — `fix(web request-hygiene t3): render-phase page reset and PaymentStatus-aligned status union`
+(3 files, +108 / −35: `PaymentListPage.tsx`, `PaymentListPage.test.tsx`, `PaymentListPage.search.test.tsx`).
+Scope was exactly the two web defects handed back; **no `apps/api` file was touched** (a treasury reviewer
+was reading the backend in this worktree during the round) and no other `apps/web` file was changed.
+
+### R2.1 — Fix 1: render-phase page reset (closes D3)
+
+`PaymentListPage.tsx:70-84` — the `useEffect(() => setPage(1), [search])` is replaced by the derived-state
+reset Task 2 uses at `.worktrees/rh-t2/apps/web/src/features/inventory/StockMovementsPage.tsx:127-137`,
+mirrored exactly:
+
+```tsx
+const filterSignature = JSON.stringify([search])
+const [appliedFilterSignature, setAppliedFilterSignature] = useState(filterSignature)
+if (appliedFilterSignature !== filterSignature) {
+  setAppliedFilterSignature(filterSignature)
+  setPage(1)
+}
+```
+
+`useEffect` is no longer imported (`import { useState } from 'react'`, line 1) — it had no other use.
+
+**RED first.** `PaymentListPage.search.test.tsx` had no reset assertion, so one was added:
+`restarts traversal at page one when the search term changes, without requesting the stale page`. Its
+`api.get` mock now echoes the requested page over a two-page set (`last_page: 2`, `total: 30`) so the
+pagination bar's next button is enabled; the test pages to 2, types `Alice`, waits for
+`/payments?search=Alice&page=1&per_page=25`, and then asserts the stale page was **never** requested.
+(The first test's `pagination.page 1 pagination.of 1` assertion became `… of 2` for the new meta.)
+
+Against the effect-based reset (`git show HEAD~1`):
+```
+ × PaymentListPage server-side search > restarts traversal at page one when the search term changes,
+   without requesting the stale page                                                            433ms
+   → expected "spy" to not be called with arguments: [ Array(1) ]
+ AssertionError: expected "spy" to not be called with arguments: [ Array(1) ]
+ ❯ src/features/treasury/PaymentListPage.search.test.tsx:138:24
+   138|     expect(apiGet).not.toHaveBeenCalledWith('/payments?search=Alice&pa…
+  Test Files  1 failed (1)
+       Tests  1 failed | 2 passed (3)
+```
+That is the gate's rationale reproduced empirically: the effect fired **after** React Query had already
+read the stale key, so `/payments?search=Alice&page=2&per_page=25` really did reach the server. Green
+after the fix (see §R2.4).
+
+**Not done, by instruction:** the shared hook was **not** extracted. Follow-up recorded in §R2.5.
+
+### R2.2 — Fix 2: `status` aligned to the generated `PaymentStatus` (closes §R1.6 follow-up 2)
+
+**(a) A generated type DOES exist** — `packages/shared/types/generated.d.ts:2611`:
+```
+declare namespace App.Modules.Treasury.Domain.Enums {
+  export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'reversed';
+```
+(Two unrelated same-named types live in other namespaces — `App.Modules.Billing.Domain.Enums.PaymentStatus`
+at `:321` and `App.Modules.Document.Domain.Enums.PaymentStatus` at `:875` — so the fully-qualified Treasury
+name is required.) The hand-rolled union at `PaymentListPage.tsx:34` is therefore **aliased**, not
+re-listed (`PaymentListPage.tsx:23-32`), the same shape `PaymentDetailPage.tsx:49` already uses for
+`PaymentType`:
+```tsx
+type PaymentStatus = App.Modules.Treasury.Domain.Enums.PaymentStatus
+```
+The `Payment` interface is now **exported** so the page's test binds to it instead of re-declaring the
+row shape — the duplicate copy at the old `PaymentListPage.test.tsx:50` was itself flagged in §R1.6 and
+is deleted in this round. (`react-refresh/only-export-components` does not fire: the export is type-only.)
+
+**(b) Status → label/badge.** The label path (`getStatusLabel`, `treasury:payments.statuses.${status}`)
+needed no change — it is key-driven and all four keys already exist. The badge tone map did:
+`paymentStatusTones` was an empty `Record<string, StatusTone>` whose comment claimed
+`pending`/`completed`/`cancelled` were covered by the built-in map. It is now
+`Record<PaymentStatus, StatusTone>` with all four backend values spelled out
+(`pending: 'pending'`, `completed: 'success'`, `failed: 'danger'`, `reversed: 'neutral'`) — typed by the
+enum, so a future enum value becomes a compile error here, and `reversed` gets the same explicit neutral
+override `PaymentDetailPage.tsx:111` carries instead of silently landing on `statusTone`'s fallback.
+
+**i18n: no key added — all four already present in all three locales.**
+```
+en {"pending":"Pending","completed":"Completed","failed":"Failed","reversed":"Reversed", …}
+fr {"pending":"En attente","completed":"Terminé","failed":"Échoué","reversed":"Annulé", …}
+ar {"pending":"قيد الانتظار","completed":"مكتملة","failed":"فاشلة","reversed":"معكوسة", …}
+```
+(`src/locales/{en,fr,ar}/treasury.json`, `payments.statuses`.) Note `fr` renders both `reversed` and
+`cancelled` as "Annulé" — pre-existing, not touched here.
+
+**(c) Status filter control: none exists.** `PaymentListPage` has only a `SearchInput`; no status
+`Select`, no `status` query param is ever sent (`params` is built from `search`/`page`/`per_page` only,
+lines 92-97). Nothing to align.
+
+**(d) RED first.** `PaymentListPage.test.tsx` now imports `type Payment` from the page and its fixture
+adds a `failed` and a `reversed` row plus the test
+`labels every backend PaymentStatus, including failed and reversed`.
+
+With the old union still in place, `pnpm typecheck`:
+```
+src/features/treasury/PaymentListPage.test.tsx(72,58): error TS2322: Type '"failed"' is not assignable to type '"pending" | "completed" | "cancelled"'.
+src/features/treasury/PaymentListPage.test.tsx(73,58): error TS2322: Type '"reversed"' is not assignable to type '"pending" | "completed" | "cancelled"'.
+ ELIFECYCLE  Command failed with exit code 2.
+```
+Green after the alias (§R2.4).
+
+**Stated plainly, as §R1.3 was:** the falsifying red for the union fix is the **typecheck** above, not the
+vitest case. The union is erased at runtime, so the new vitest test (which asserts all four pills render
+as `rounded-full` StatusBadge spans) would also have passed against the old union — it is a rendering
+regression guard for `failed`/`reversed`, not a test-first red. The typecheck red is the honest proof
+that the drift existed and is now impossible to reintroduce without regenerating the DTOs.
+
+### R2.3 — Not touched: `PaymentDetailPage.tsx:70`
+
+It does **not** share the list page's type — it hand-writes its own
+`status: 'pending' | 'completed' | 'failed' | 'reversed'`, which is *correct* against the enum today. Per
+the brief it was left alone. Recorded as a follow-up in §R2.5.
+
+### R2.4 — Verification (all from `<worktree>/apps/web`)
+
+**vitest, by path** — `pnpm vitest run src/features/treasury/PaymentListPage.search.test.tsx src/features/treasury/PaymentListPage.test.tsx src/features/treasury/__tests__/TreasuryTenantScope.test.tsx`:
+```
+ ✓ src/features/treasury/PaymentListPage.test.tsx (5 tests) 814ms
+ ✓ src/features/treasury/__tests__/TreasuryTenantScope.test.tsx (2 tests) 527ms
+ ✓ src/features/treasury/PaymentListPage.search.test.tsx (3 tests) 1362ms
+   ✓ … > restarts traversal at page one when the search term changes, without requesting the stale page
+ Test Files  3 passed (3)
+      Tests  10 passed (10)
+```
+Baseline before this round on the same three paths was **8 passed**; the delta of +2 is exactly the two
+tests added here (1 reset, 1 status labelling). No test was deleted.
+
+**Typecheck** — `pnpm typecheck` → clean, no output (exit 0).
+
+**ESLint** — `pnpm exec eslint src/features/treasury/PaymentListPage.tsx src/features/treasury/PaymentListPage.test.tsx src/features/treasury/PaymentListPage.search.test.tsx`:
+```
+✖ 5 problems (0 errors, 5 warnings)
+  102:47  no-unnecessary-condition       (currentCompany?.locale?.replace)
+  139:11  local/no-hardcoded-entity-route
+  159:14  no-unnecessary-condition       (partner_name ??)
+  163:14  no-unnecessary-condition       (partner_name ??)
+  205:15  local/no-hardcoded-entity-route
+```
+All five are on lines this round did not write. Proven pre-existing by linting the `HEAD~1` copy of the
+file (`git show HEAD:…PaymentListPage.tsx` into a scratch path in `src/features/treasury/`, linted, then
+removed): **6 warnings — the same 5 at their old line numbers, plus**
+```
+react-hooks/set-state-in-effect  — Avoid calling setState() directly within an effect
+  65 |   }, [search])
+```
+**`react-hooks/set-state-in-effect` is gone. Deviation D3 in §2 is now closed.** Both test files lint
+clean (0 problems). `lint:eslint` has no `--max-warnings`, so nothing here fails lint.
+
+**i18n** — `pnpm audit:i18n:local | grep -i treasury` → **no output**: not one reported line touches the
+`treasury` namespace or any key this round relies on. The command itself still exits 1 on the baseline
+(`✗ ar|uom|missing|unit{Created,Deleted,Updated}`, `✗ fr|import|plural|unitErrors.line_many`, plus the
+"9 baseline entries now translated" burn-down note) — all in the `uom` / `import` namespaces, untouched
+by this lane.
+
+**Not run this round:** any backend leg (deliberately — `apps/api` was being reviewed concurrently), the
+Playwright suite, and a browser probe. `e2e/payments.spec.ts` is unaffected by this round's changes; the
+browser checks listed at the bottom of §3 are still owed.
+
+### R2.5 — Follow-ups recorded, not done
+
+1. **Extract the render-phase reset into a shared hook** (e.g. `usePageResetOnFilterChange(deps)`), after
+   **both** T2 and T3 have merged — until then the two copies (`StockMovementsPage.tsx:127-137` and
+   `PaymentListPage.tsx:70-84`) are deliberate duplicates so neither lane depends on the other's merge.
+   Explicitly out of scope for this round by instruction.
+2. **`PaymentDetailPage.tsx:70`** still hand-writes the status union (correct values today, but the same
+   class of drift that produced this defect). It should alias
+   `App.Modules.Treasury.Domain.Enums.PaymentStatus` the way its own `PaymentType` at `:49` already does,
+   and its `statusToneOverrides` (`:111`) can then be typed by the enum too.
+3. **LIKE wildcard escaping in the payment search** (§R1.6 item 1) — unchanged, still owed.
+
+### R2.6 — Fix-round items status
+
+| Item | Status |
+|---|---|
+| Fix 1 — render-phase reset mirroring T2, `useEffect` import dropped, red-first test | **Done** (§R2.1) — D3 closed |
+| Fix 2a — generated `PaymentStatus` located and aliased (a generated type **did** exist) | **Done** (§R2.2) |
+| Fix 2b — `failed`/`reversed` label + badge paths, `t()` keys in en/fr/ar | **Done** (§R2.2) — no key needed, all four pre-existed |
+| Fix 2c — status filter control options | **N/A** — the page has no status filter (§R2.2c) |
+| Fix 2d — red-first test for `failed`/`reversed` | **Done** (§R2.2d), red is the typecheck; the vitest case is a rendering guard, declared as such |
+| Out of scope this round | shared hook extraction, `PaymentDetailPage` union, LIKE escaping (§R2.5) |
