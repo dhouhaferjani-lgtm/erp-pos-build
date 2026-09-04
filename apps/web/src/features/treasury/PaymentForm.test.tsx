@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -13,6 +13,7 @@ const mockApiPost = vi.hoisted(() => vi.fn())
 const mockNavigate = vi.hoisted(() => vi.fn())
 const mockSearchParams = vi.hoisted(() => new URLSearchParams())
 const mockWithholdingPreviewMutate = vi.hoisted(() => vi.fn())
+const mockCountryCode = vi.hoisted(() => ({ current: '' }))
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
@@ -61,6 +62,14 @@ vi.mock('./components/OpenInvoicesList', () => ({
 
 vi.mock('@/features/withholding/hooks/useWithholding', () => ({
   useWithholdingPreview: () => ({ data: undefined, mutate: mockWithholdingPreviewMutate }),
+}))
+
+// The company config arrives from a query, so `country_code` can flip from
+// absent to present while the form is already mounted — which is what makes the
+// RIB-derived `bank_iban` setValue a PROGRAMMATIC write with no operator edit.
+vi.mock('@/contexts/CompanyConfigContext', () => ({
+  useCompanyConfig: () => ({ config: { country_code: mockCountryCode.current } }),
+  useCompanyConfigOptional: () => ({ config: { country_code: mockCountryCode.current } }),
 }))
 
 vi.mock('@/hooks/useCurrency', async (importOriginal) => {
@@ -115,6 +124,7 @@ beforeEach(() => {
   for (const key of Array.from(mockSearchParams.keys())) {
     mockSearchParams.delete(key)
   }
+  mockCountryCode.current = ''
   setTenant('tenant-A', 'company-1')
   mockApiGet.mockImplementation(async (url: string) => {
     if (url === '/payment-methods') return { data: { data: [{ id: 'method-1', name: 'Cash', is_physical: false }] } }
@@ -440,5 +450,264 @@ describe('PaymentForm check payment persistence', () => {
         }),
       }))
     })
+  })
+})
+
+
+describe('PaymentForm idempotency and double-submit lock', () => {
+  it('adds a key and a ref lock rejects a second synchronous submit', async () => {
+    let resolvePost: ((value: unknown) => void) | null = null
+    mockApiPost.mockImplementation(() => new Promise((resolve) => { resolvePost = resolve }))
+    mockLookups([CARD_METHOD], [BANK_REPO])
+    render(<PaymentForm />, { wrapper: wrapper(createClient()) })
+
+    await selectMethod(CARD_METHOD.id)
+    fireEvent.change(await screen.findByLabelText('treasury:payments.form.amount *'), {
+      target: { value: '100' },
+    })
+    fireEvent.change(await screen.findByLabelText('treasury:payments.form.repository *'), {
+      target: { value: BANK_REPO.id },
+    })
+    fireEvent.change(await screen.findByLabelText('treasury:payments.partner *'), {
+      target: { value: 'partner-1' },
+    })
+    const save = screen.getByRole('button', { name: 'common:save' })
+    const form = save.closest('form')
+    if (form === null) throw new Error('PaymentForm submit button has no form')
+    act(() => {
+      fireEvent.submit(form)
+      fireEvent.submit(form)
+    })
+
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+    // The key is read back through the typed narrowing helper below rather than
+    // an `expect.stringMatching` matcher (which is typed `any`); its UUID shape
+    // is asserted separately.
+    expect(postedIdempotencyKey(0)).toMatch(/^[0-9a-f-]{36}$/)
+    expect(mockApiPost.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
+      idempotency_key: postedIdempotencyKey(0),
+      amount: '100',
+      payment_method_id: CARD_METHOD.id,
+      repository_id: BANK_REPO.id,
+      partner_id: 'partner-1',
+    }))
+    await act(async () => { resolvePost?.({ id: 'payment-1' }); await Promise.resolve() })
+  })
+})
+
+/** Read the idempotency_key off a recorded POST body without an unsafe cast. */
+function postedIdempotencyKey(callIndex: number): string {
+  const body: unknown = mockApiPost.mock.calls[callIndex]?.[1]
+  if (typeof body !== 'object' || body === null || !('idempotency_key' in body)) {
+    throw new Error(`POST #${String(callIndex)} carried no request body`)
+  }
+  const key: unknown = body.idempotency_key
+  if (typeof key !== 'string') {
+    throw new Error(`POST #${String(callIndex)} carried no idempotency_key`)
+  }
+  return key
+}
+
+describe('PaymentForm idempotency key survives a failed request', () => {
+  it('reuses the SAME idempotency_key when retrying after a rejected POST', async () => {
+    // Falsifier for "reset only in onSuccess": moving resetIdempotencyKey()
+    // into onError would rotate the key here, so the retry of an intent that
+    // may already have committed server-side would create a SECOND payment.
+    mockApiPost.mockRejectedValueOnce(new Error('network error'))
+    mockApiPost.mockResolvedValueOnce({ id: 'payment-1', payment_number: 'PAY-1', amount: 100 })
+    mockLookups([CARD_METHOD], [BANK_REPO])
+    render(<PaymentForm />, { wrapper: wrapper(createClient()) })
+
+    await selectMethod(CARD_METHOD.id)
+    fireEvent.change(await screen.findByLabelText('treasury:payments.form.amount *'), {
+      target: { value: '100' },
+    })
+    fireEvent.change(await screen.findByLabelText('treasury:payments.form.repository *'), {
+      target: { value: BANK_REPO.id },
+    })
+    fireEvent.change(await screen.findByLabelText('treasury:payments.partner *'), {
+      target: { value: 'partner-1' },
+    })
+    const save = screen.getByRole('button', { name: 'common:save' })
+    const form = save.closest('form')
+    if (form === null) throw new Error('PaymentForm submit button has no form')
+
+    await act(async () => { fireEvent.submit(form); await Promise.resolve() })
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+
+    await act(async () => { fireEvent.submit(form); await Promise.resolve() })
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(2) })
+
+    const firstKey = postedIdempotencyKey(0)
+    const retryKey = postedIdempotencyKey(1)
+    expect(firstKey).toMatch(/^[0-9a-f-]{36}$/)
+    expect(retryKey).toBe(firstKey)
+  })
+})
+
+describe('PaymentForm idempotency key is scoped to ONE submit intent', () => {
+  it('mints a DIFFERENT idempotency_key once the payload is edited after a failed submit', async () => {
+    // Ruling: one key = one submit intent. An UNCHANGED retry replays (previous
+    // test). An EDITED payload is a NEW intent: reusing the key would make the
+    // server return the FIRST (possibly committed) payment as HTTP 200, so
+    // onSuccess would navigate away announcing a payment of 250 that never
+    // existed while the 100 stayed booked.
+    mockApiPost.mockRejectedValueOnce(new Error('network error'))
+    mockApiPost.mockResolvedValueOnce({ id: 'payment-1', payment_number: 'PAY-1', amount: 250 })
+    mockLookups([CARD_METHOD], [BANK_REPO])
+    render(<PaymentForm />, { wrapper: wrapper(createClient()) })
+
+    await selectMethod(CARD_METHOD.id)
+    const amount = await screen.findByLabelText('treasury:payments.form.amount *')
+    fireEvent.change(amount, { target: { value: '100' } })
+    fireEvent.change(await screen.findByLabelText('treasury:payments.form.repository *'), {
+      target: { value: BANK_REPO.id },
+    })
+    fireEvent.change(await screen.findByLabelText('treasury:payments.partner *'), {
+      target: { value: 'partner-1' },
+    })
+    const save = screen.getByRole('button', { name: 'common:save' })
+    const form = save.closest('form')
+    if (form === null) throw new Error('PaymentForm submit button has no form')
+
+    await act(async () => { fireEvent.submit(form); await Promise.resolve() })
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+
+    // Payload edit -> new intent.
+    await act(async () => { fireEvent.change(amount, { target: { value: '250' } }); await Promise.resolve() })
+
+    await act(async () => { fireEvent.submit(form); await Promise.resolve() })
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(2) })
+
+    const firstKey = postedIdempotencyKey(0)
+    const secondKey = postedIdempotencyKey(1)
+    expect(firstKey).toMatch(/^[0-9a-f-]{36}$/)
+    expect(secondKey).toMatch(/^[0-9a-f-]{36}$/)
+    expect(secondKey).not.toBe(firstKey)
+    expect(mockApiPost).toHaveBeenLastCalledWith('/payments', expect.objectContaining({
+      amount: '250',
+      idempotency_key: secondKey,
+    }))
+  })
+})
+
+function deterministicUuid(n: number): `${string}-${string}-${string}-${string}-${string}` {
+  return `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
+}
+
+/**
+ * Records every `crypto.randomUUID()` mint so a test can prove that an
+ * interaction minted NO new idempotency key. PaymentForm's only uuid producer
+ * is `useIdempotencyKey`, so `minted[0]` is the key the form mounted with.
+ */
+function installUuidRecorder(): { minted: string[]; restore: () => void } {
+  const minted: string[] = []
+  const spy = vi.spyOn(globalThis.crypto, 'randomUUID').mockImplementation(() => {
+    const value = deterministicUuid(minted.length + 1)
+    minted.push(value)
+    return value
+  })
+  return { minted, restore: () => { spy.mockRestore() } }
+}
+
+describe('PaymentForm idempotency key ignores programmatic form writes', () => {
+  it('keeps the SAME idempotency_key when a PROGRAMMATIC RHF write lands after a failed submit', async () => {
+    // Gate r2 F2 / M1'. RHF 7.67 notifies a `watch(cb)` subscription for
+    // programmatic writes too — `setValue` reports `type` as undefined and
+    // `reset()` fires even when it writes byte-identical values. This form
+    // performs both from effects driven by SERVER data (the document prefill
+    // `reset()` at PaymentForm.tsx:389-439, the RIB-derived `bank_iban` at
+    // :331-341). A reconnect refetch after a lost response would therefore
+    // rotate the key with no operator edit and book a SECOND payment.
+    //
+    // Driven here through the real production path: the company config query
+    // resolves while the form is mounted, `country_code` flips '' -> 'TN', the
+    // already-typed RIB validates and the form writes `bank_iban` via setValue.
+    // `bank_iban` does NOT ride in the POST body, so the two requests carry a
+    // byte-identical payload — an unchanged retry, which must replay.
+    mockApiPost.mockRejectedValueOnce(new Error('network error'))
+    mockApiPost.mockResolvedValueOnce({ id: 'payment-1', payment_number: 'PAY-1', amount: 100 })
+    mockLookups([CHECK_METHOD], [BANK_REPO])
+    const { rerender } = render(<PaymentForm />, { wrapper: wrapper(createClient()) })
+
+    await selectMethod(CHECK_METHOD.id)
+    fireEvent.change(await screen.findByLabelText('treasury:payments.form.amount *'), {
+      target: { value: '100' },
+    })
+    fireEvent.change(await screen.findByLabelText('treasury:payments.form.repository *'), {
+      target: { value: BANK_REPO.id },
+    })
+    fireEvent.change(await screen.findByLabelText('treasury:payments.partner *'), {
+      target: { value: 'partner-1' },
+    })
+    fireEvent.change(await screen.findByLabelText('treasury:instruments.reference *'), {
+      target: { value: 'CHK-1' },
+    })
+    fireEvent.change(screen.getByLabelText('treasury:instruments.bankAccount'), {
+      target: { value: '07040005810111129653' },
+    })
+
+    const save = screen.getByRole('button', { name: 'common:save' })
+    const form = save.closest('form')
+    if (form === null) throw new Error('PaymentForm submit button has no form')
+
+    await act(async () => { fireEvent.submit(form); await Promise.resolve() })
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+
+    // No country yet -> the RIB is 'unsupported' and nothing was auto-derived.
+    expect(screen.getByLabelText('treasury:repositories.iban')).toHaveValue('')
+
+    // Server data arrives. NO operator edit happens in this window.
+    mockCountryCode.current = 'TN'
+    await act(async () => { rerender(<PaymentForm />); await Promise.resolve() })
+    expect(screen.getByLabelText('treasury:repositories.iban')).toHaveValue('TN5907040005810111129653')
+
+    await act(async () => { fireEvent.submit(form); await Promise.resolve() })
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(2) })
+
+    expect(postedIdempotencyKey(1)).toBe(postedIdempotencyKey(0))
+  })
+})
+
+describe('PaymentForm idempotency key is not rotated before the first attempt', () => {
+  it('carries the MOUNT key on the first submit even though the payload was edited', async () => {
+    // Falsifier for the `if (!hadFailedAttemptRef.current) return` guard in
+    // startNewIntentOnPayloadEdit. Without it the mechanism is keystroke-scoped
+    // rather than intent-scoped: every field the operator fills would mint a
+    // fresh key, and the first submit would race its own rotation.
+    const uuids = installUuidRecorder()
+    try {
+      mockApiPost.mockRejectedValueOnce(new Error('network error'))
+      mockLookups([CARD_METHOD], [BANK_REPO])
+      render(<PaymentForm />, { wrapper: wrapper(createClient()) })
+
+      await screen.findByLabelText('treasury:payments.form.paymentMethod *')
+      const mintedAtMount = [...uuids.minted]
+      expect(mintedAtMount).toHaveLength(1)
+
+      await selectMethod(CARD_METHOD.id)
+      fireEvent.change(await screen.findByLabelText('treasury:payments.form.amount *'), {
+        target: { value: '100' },
+      })
+      fireEvent.change(await screen.findByLabelText('treasury:payments.form.repository *'), {
+        target: { value: BANK_REPO.id },
+      })
+      fireEvent.change(await screen.findByLabelText('treasury:payments.partner *'), {
+        target: { value: 'partner-1' },
+      })
+
+      // Four operator edits, still no attempt: nothing may rotate.
+      expect(uuids.minted).toEqual(mintedAtMount)
+
+      const save = screen.getByRole('button', { name: 'common:save' })
+      const form = save.closest('form')
+      if (form === null) throw new Error('PaymentForm submit button has no form')
+      await act(async () => { fireEvent.submit(form); await Promise.resolve() })
+      await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+
+      expect(postedIdempotencyKey(0)).toBe(mintedAtMount[0])
+    } finally {
+      uuids.restore()
+    }
   })
 })

@@ -1,7 +1,7 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, Controller } from 'react-hook-form'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertCircle, ArrowLeft, CheckCircle2, CircleAlert, Plus, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
@@ -24,6 +24,7 @@ import { AllocationMethod, type ManualAllocation, type OpenInvoice } from '../..
 import { useWithholdingPreview } from '../withholding/hooks/useWithholding'
 import type { TransactionType } from '../withholding/types'
 import { useCurrency } from '../../hooks/useCurrency'
+import { useIdempotencyKey } from '@/hooks/useIdempotencyKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { usePaymentAllocationPreview } from './hooks/useSmartPayment'
@@ -279,9 +280,9 @@ export function PaymentForm() {
   const supplierInvoiceId = searchParams.get('supplier_invoice')
   const [showPartnerModal, setShowPartnerModal] = useState(false)
   const [showRepositoryModal, setShowRepositoryModal] = useState(false)
-  const [withholdingEnabled, setWithholdingEnabled] = useState(false)
-  const [withholdingTransactionType, setWithholdingTransactionType] = useState<TransactionType | ''>('')
-  const [withholdingRate, setWithholdingRate] = useState('')
+  const [withholdingEnabled, setWithholdingEnabledState] = useState(false)
+  const [withholdingTransactionType, setWithholdingTransactionTypeState] = useState<TransactionType | ''>('')
+  const [withholdingRate, setWithholdingRateState] = useState('')
   const [allocationMethod, setAllocationMethod] = useState<AllocationMethod>(AllocationMethod.FIFO)
   const [manualAllocations, setManualAllocations] = useState<ManualAllocation[]>([])
 
@@ -327,18 +328,40 @@ export function PaymentForm() {
   const bankFallback = watch('bank_fallback') ?? false
   const ribValidation = useBankAccountValidation(bankAccount, countryCode, 'rib')
 
+  /**
+   * react-hook-form notifies a `watch(cb)` subscription for PROGRAMMATIC writes
+   * as well as operator edits, and in 7.67.0 a `setValue` emits `type: 'change'`
+   * exactly like a keystroke (measured on this form: a `setValue('bank_iban')`
+   * produces `{name:'bank_iban', type:'change'}` followed by `{name:'bank_iban'}`),
+   * so the event metadata alone cannot tell them apart. Every write this
+   * component performs on its own — server-data prefills, the RIB-derived IBAN,
+   * the method-compatibility repository clear — is therefore routed through
+   * `writeProgrammatically`, which suppresses the intent rotation for the
+   * notifications that write emits. Operator-driven writes (the pickers) are
+   * deliberately NOT routed through it: they are real payload edits.
+   */
+  const programmaticWriteRef = useRef(false)
+  const writeProgrammatically = useCallback((write: () => void) => {
+    programmaticWriteRef.current = true
+    try {
+      write()
+    } finally {
+      programmaticWriteRef.current = false
+    }
+  }, [])
+
   useEffect(() => {
     const nextIban = ribValidation.status === 'valid' ? ribValidation.derivedIban ?? '' : ''
     if (nextIban !== '') {
       if (bankIban === '' || bankIban === autoDerivedIbanRef.current) {
-        setValue('bank_iban', nextIban)
+        writeProgrammatically(() => { setValue('bank_iban', nextIban) })
         autoDerivedIbanRef.current = nextIban
       }
     } else if (autoDerivedIbanRef.current !== '' && bankIban === autoDerivedIbanRef.current) {
-      setValue('bank_iban', '')
+      writeProgrammatically(() => { setValue('bank_iban', '') })
       autoDerivedIbanRef.current = ''
     }
-  }, [bankIban, ribValidation.derivedIban, ribValidation.status, setValue])
+  }, [bankIban, ribValidation.derivedIban, ribValidation.status, setValue, writeProgrammatically])
 
   // Fetch invoice data if invoice ID is provided in query params
   const { data: invoiceData } = useQuery({
@@ -384,58 +407,63 @@ export function PaymentForm() {
     enabled: !!supplierInvoiceId && tenantId !== null && companyId !== null,
   })
 
-  // Pre-fill form when document data is loaded
+  // Pre-fill form when document data is loaded. The reset() calls are
+  // PROGRAMMATIC: they are driven by query data, so a reconnect refetch after
+  // a lost response must not be mistaken for an operator edit (RHF fires the
+  // watch subscription for reset() even when it writes identical values).
   useEffect(() => {
-    if (invoiceData) {
-      const amountResidual = invoiceData.amount_residual == null
-        ? invoiceData.total
-        : invoiceData.amount_residual.toString()
-      reset({
-        amount: amountResidual,
-        payment_method_id: '',
-        partner_id: invoiceData.partner_id,
-        payment_date: new Date().toISOString().split('T')[0],
-        reference: invoiceData.document_number,
-        notes: t('treasury:payments.form.paymentForInvoice', { invoiceNumber: invoiceData.document_number }),
-      })
-    } else if (purchaseOrderData) {
-      reset({
-        amount: purchaseOrderData.total,
-        payment_method_id: '',
-        partner_id: purchaseOrderData.partner_id,
-        payment_date: new Date().toISOString().split('T')[0],
-        reference: purchaseOrderData.document_number,
-        notes: t('treasury:payments.form.paymentForPurchaseOrder', {
-          defaultValue: 'Payment for Purchase Order {{poNumber}}',
-          poNumber: purchaseOrderData.document_number
-        }),
-      })
-    } else if (deliveryNoteData) {
-      reset({
-        amount: deliveryNoteData.total || '',
-        payment_method_id: '',
-        partner_id: deliveryNoteData.partner_id,
-        payment_date: new Date().toISOString().split('T')[0],
-        reference: deliveryNoteData.document_number,
-        notes: t('treasury:payments.form.paymentForDeliveryNote', {
-          defaultValue: 'Payment for Delivery Note {{dnNumber}}',
-          dnNumber: deliveryNoteData.document_number
-        }),
-      })
-    } else if (supplierInvoiceData) {
-      const supplierInvoiceNumber = supplierInvoiceData.document_number ?? supplierInvoiceData.number ?? ''
-      reset({
-        amount: supplierInvoiceData.balance_due || supplierInvoiceData.total,
-        payment_method_id: '',
-        partner_id: supplierInvoiceData.partner_id ?? supplierInvoiceData.partner?.id ?? '',
-        payment_date: new Date().toISOString().split('T')[0],
-        reference: supplierInvoiceNumber,
-        notes: t('treasury:payments.form.paymentForSupplierInvoice', {
-          invoiceNumber: supplierInvoiceNumber,
-        }),
-      })
-    }
-  }, [invoiceData, purchaseOrderData, deliveryNoteData, supplierInvoiceData, reset])
+    writeProgrammatically(() => {
+      if (invoiceData) {
+        const amountResidual = invoiceData.amount_residual == null
+          ? invoiceData.total
+          : invoiceData.amount_residual.toString()
+        reset({
+          amount: amountResidual,
+          payment_method_id: '',
+          partner_id: invoiceData.partner_id,
+          payment_date: new Date().toISOString().split('T')[0],
+          reference: invoiceData.document_number,
+          notes: t('treasury:payments.form.paymentForInvoice', { invoiceNumber: invoiceData.document_number }),
+        })
+      } else if (purchaseOrderData) {
+        reset({
+          amount: purchaseOrderData.total,
+          payment_method_id: '',
+          partner_id: purchaseOrderData.partner_id,
+          payment_date: new Date().toISOString().split('T')[0],
+          reference: purchaseOrderData.document_number,
+          notes: t('treasury:payments.form.paymentForPurchaseOrder', {
+            defaultValue: 'Payment for Purchase Order {{poNumber}}',
+            poNumber: purchaseOrderData.document_number
+          }),
+        })
+      } else if (deliveryNoteData) {
+        reset({
+          amount: deliveryNoteData.total || '',
+          payment_method_id: '',
+          partner_id: deliveryNoteData.partner_id,
+          payment_date: new Date().toISOString().split('T')[0],
+          reference: deliveryNoteData.document_number,
+          notes: t('treasury:payments.form.paymentForDeliveryNote', {
+            defaultValue: 'Payment for Delivery Note {{dnNumber}}',
+            dnNumber: deliveryNoteData.document_number
+          }),
+        })
+      } else if (supplierInvoiceData) {
+        const supplierInvoiceNumber = supplierInvoiceData.document_number ?? supplierInvoiceData.number ?? ''
+        reset({
+          amount: supplierInvoiceData.balance_due || supplierInvoiceData.total,
+          payment_method_id: '',
+          partner_id: supplierInvoiceData.partner_id ?? supplierInvoiceData.partner?.id ?? '',
+          payment_date: new Date().toISOString().split('T')[0],
+          reference: supplierInvoiceNumber,
+          notes: t('treasury:payments.form.paymentForSupplierInvoice', {
+            invoiceNumber: supplierInvoiceNumber,
+          }),
+        })
+      }
+    })
+  }, [invoiceData, purchaseOrderData, deliveryNoteData, supplierInvoiceData, reset, writeProgrammatically])
 
   // Fetch payment methods
   const { data: paymentMethodsData } = useQuery({
@@ -509,9 +537,9 @@ export function PaymentForm() {
       selectedRepositoryId &&
       !compatibleRepositories.some((repo) => repo.id === selectedRepositoryId)
     ) {
-      setValue('repository_id', '')
+      writeProgrammatically(() => { setValue('repository_id', '') })
     }
-  }, [compatibleRepositories, selectedRepositoryId, setValue])
+  }, [compatibleRepositories, selectedRepositoryId, setValue, writeProgrammatically])
 
   // Informational fee + net preview for methods that deduct a processing fee.
   const feeAmount = useMemo(() => {
@@ -580,9 +608,50 @@ export function PaymentForm() {
   // Update withholding rate when preview changes
   useEffect(() => {
     if (withholdingPreview?.calculation && !withholdingRate) {
-      setWithholdingRate(withholdingPreview.calculation.rate_percentage.toString())
+      setWithholdingRateState(withholdingPreview.calculation.rate_percentage.toString())
     }
   }, [withholdingPreview])
+
+  const { key: idempotencyKey, reset: resetIdempotencyKey } = useIdempotencyKey()
+  const submitLockRef = useRef<boolean>(false)
+  const hadFailedAttemptRef = useRef<boolean>(false)
+
+  /**
+   * One idempotency key = ONE submit intent. After a failed attempt the key is
+   * kept so an unchanged retry replays server-side; the first edit to a
+   * payload-bearing field starts a NEW intent, so the key must rotate —
+   * otherwise the server would replay the earlier (possibly committed) payment
+   * as HTTP 200 and the operator's edit would silently never be booked.
+   */
+  const startNewIntentOnPayloadEdit = useCallback(() => {
+    if (!hadFailedAttemptRef.current) return
+    hadFailedAttemptRef.current = false
+    resetIdempotencyKey()
+  }, [resetIdempotencyKey])
+
+  // Covers every react-hook-form field in the POST body (amount, method,
+  // repository, partner, date, reference, notes, instrument…). The non-RHF
+  // payload state (withholding, allocations) calls the same helper at its own
+  // change handlers.
+  //
+  // Two filters:
+  //  - `type !== 'change'` narrows to change-shaped notifications (RHF also
+  //    emits a values-only one, with no `type`, alongside every `setValue`).
+  //  - `programmaticWriteRef` is the LOAD-BEARING one: RHF 7.67 reports a
+  //    `setValue` as `type: 'change'` too, indistinguishable from a keystroke,
+  //    and `reset()` notifies even when it writes identical values. Without it
+  //    a reconnect refetch after a lost response (queryClient
+  //    `refetchOnReconnect`, WebSocketReconnectProvider) rotates the key with
+  //    no operator edit and the retry books a SECOND payment — measured, see
+  //    the fix-round-3 mutation table in the handback.
+  useEffect(() => {
+    const subscription = watch((_values, { type }) => {
+      if (type !== 'change') return
+      if (programmaticWriteRef.current) return
+      startNewIntentOnPayloadEdit()
+    })
+    return () => { subscription.unsubscribe() }
+  }, [watch, startNewIntentOnPayloadEdit])
 
   const buildPaymentAllocations = (paymentAmountValue: string): PaymentAllocationPayload[] => {
     if (invoiceId && invoiceData) {
@@ -613,9 +682,33 @@ export function PaymentForm() {
   }
 
   const handleAllocationMethodChange = (method: AllocationMethod) => {
+    startNewIntentOnPayloadEdit()
     setAllocationMethod(method)
     setManualAllocations([])
     allocationPreviewMutation.reset()
+  }
+
+  // Withholding fields ride in the POST body, so an operator edit to any of
+  // them is a payload edit. Wrapping the setters (rather than each call site)
+  // keeps every existing call — and the JSX around it — byte-identical.
+  const setWithholdingEnabled = (enabled: boolean) => {
+    startNewIntentOnPayloadEdit()
+    setWithholdingEnabledState(enabled)
+  }
+
+  const setWithholdingTransactionType = (type: TransactionType | '') => {
+    startNewIntentOnPayloadEdit()
+    setWithholdingTransactionTypeState(type)
+  }
+
+  const setWithholdingRate = (rate: string) => {
+    startNewIntentOnPayloadEdit()
+    setWithholdingRateState(rate)
+  }
+
+  const handleManualAllocationsChange = (allocations: ManualAllocation[]) => {
+    startNewIntentOnPayloadEdit()
+    setManualAllocations(allocations)
   }
 
   const handlePreviewAllocation = () => {
@@ -677,6 +770,7 @@ export function PaymentForm() {
           : data.notes
 
       return apiPost<Payment>('/payments', {
+        idempotency_key: idempotencyKey,
         amount: data.amount,
         payment_method_id: data.payment_method_id,
         repository_id: data.repository_id,
@@ -703,6 +797,8 @@ export function PaymentForm() {
       })
     },
     onSuccess: async () => {
+      hadFailedAttemptRef.current = false
+      resetIdempotencyKey()
       await Promise.all([
         queryClient.invalidateQueries({ predicate: scopedNamespacePredicate('payments', tenantId, companyId) }),
         invoiceId
@@ -725,6 +821,9 @@ export function PaymentForm() {
       handleNavigateAway()
     },
     onError: (error) => {
+      // The key is deliberately NOT rotated here: an unchanged retry of a
+      // request that may already have committed must replay server-side.
+      hadFailedAttemptRef.current = true
       toast.error(getErrorMessage(error))
     },
   })
@@ -744,8 +843,12 @@ export function PaymentForm() {
     }
   }
 
-  const onSubmit = (data: PaymentFormData) => {
-    createMutation.mutate(data)
+  const onSubmit = (data: PaymentFormData): void => {
+    if (submitLockRef.current) return
+    submitLockRef.current = true
+    createMutation.mutate(data, {
+      onSettled: () => { submitLockRef.current = false },
+    })
   }
 
   const backTo = invoiceId
@@ -1313,7 +1416,7 @@ export function PaymentForm() {
                 invoices={openInvoices}
                 allocationMethod={allocationMethod}
                 selectedAllocations={manualAllocations}
-                onAllocationChange={setManualAllocations}
+                onAllocationChange={handleManualAllocationsChange}
               />
 
               {allocationPreviewMutation.data && (
@@ -1350,8 +1453,8 @@ export function PaymentForm() {
           >
             {t('common:cancel')}
           </Button>
-          <Button type="submit" variant="primary" disabled={isSubmitting}>
-            {isSubmitting ? t('common:saving') : t('common:save')}
+          <Button type="submit" variant="primary" disabled={isSubmitting || createMutation.isPending}>
+            {(isSubmitting || createMutation.isPending) ? t('common:saving') : t('common:save')}
           </Button>
         </div>
       </form>

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -240,4 +240,53 @@ describe('RecordPaymentModal tenant scope', () => {
     })
     expect(queryClient.getQueryData(['payment-repositories', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-repositories' })
   })
+  it('adds a key and synchronously locks duplicate payment recording', async () => {
+    let resolvePost: (value: unknown) => void = () => {}
+    mockApiPost.mockImplementation(() => new Promise((resolve) => { resolvePost = resolve }))
+    render(<RecordPaymentModal isOpen onClose={vi.fn()} prefill={prefill()} />, {
+      wrapper: wrapper(createClient()),
+    })
+
+    await screen.findByRole('option', { name: 'Cash' })
+    await userEvent.selectOptions(screen.getByLabelText('treasury:payments.method *'), 'method-1')
+    await userEvent.type(screen.getByLabelText('treasury:payments.amount *'), '100')
+    await userEvent.selectOptions(screen.getByLabelText('treasury:repositories.title'), 'repo-1')
+    await userEvent.click(screen.getByRole('button', { name: 'common:actions.confirm' }))
+    const record = screen.getByRole('button', { name: /treasury:payments.record/ })
+
+    act(() => {
+      fireEvent.click(record)
+      fireEvent.click(record)
+    })
+
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+    // The key is read back through a typed narrowing helper rather than an
+    // `expect.stringMatching` matcher (which is typed `any`); the UUID shape is
+    // asserted separately.
+    expect(mockApiPost).toHaveBeenCalledWith('/payments', expect.objectContaining({
+      idempotency_key: postedIdempotencyKey(0),
+    }))
+    expect(postedIdempotencyKey(0)).toMatch(/^[0-9a-f-]{36}$/)
+    await act(async () => {
+      resolvePost({
+        payments: [{ id: 'payment-1', payment_number: 'PAY-1', amount: '100.00' }],
+        document: { id: 'doc-1', document_number: 'INV-1', balance_due: '0.00', status: 'paid' },
+        excess_handling: { excess_amount: '0.00', allocation_method: 'advance', allocations: [] },
+      })
+      await Promise.resolve()
+    })
+  })
 })
+
+/** Read the idempotency_key off a recorded POST body without an unsafe cast. */
+function postedIdempotencyKey(callIndex: number): string {
+  const body: unknown = mockApiPost.mock.calls[callIndex]?.[1]
+  if (typeof body !== 'object' || body === null || !('idempotency_key' in body)) {
+    throw new Error(`POST #${String(callIndex)} carried no request body`)
+  }
+  const key: unknown = body.idempotency_key
+  if (typeof key !== 'string') {
+    throw new Error(`POST #${String(callIndex)} carried no idempotency_key`)
+  }
+  return key
+}

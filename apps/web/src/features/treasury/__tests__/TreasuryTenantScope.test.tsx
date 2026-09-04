@@ -38,7 +38,9 @@ vi.mock('@/hooks/usePermissions', () => ({
 }))
 
 vi.mock('@/hooks/useCurrency', () => ({
-  useCurrency: () => ({ format: (value: number) => value.toFixed(2) }),
+  // T12 deviation D2: SplitPaymentForm now feeds the formatter decimal STRINGS,
+  // so this shared mock must accept the real formatter input without coercion.
+  useCurrency: () => ({ format: (value: string | number) => String(value) }),
   getDecimals: () => 2,
   getLocale: () => 'en-US',
 }))
@@ -167,7 +169,7 @@ describe('treasury tenant scope', () => {
         <InstrumentListPage />
         <PaymentListPage />
         <RepositoryListPage />
-        <SplitPaymentForm documentId="doc-1" totalAmount={100} onSuccess={vi.fn()} onCancel={vi.fn()} />
+        <SplitPaymentForm documentId="doc-1" totalAmount="100" onSuccess={vi.fn()} onCancel={vi.fn()} />
         <AddPaymentMethodModal isOpen={true} onClose={vi.fn()} />
       </>,
       { wrapper: wrapper(queryClient) },
@@ -212,7 +214,7 @@ describe('treasury tenant scope', () => {
     const queryClient = createClient()
     resetTenant()
 
-    render(<SplitPaymentForm documentId="doc-1" totalAmount={100} onSuccess={vi.fn()} onCancel={vi.fn()} />, {
+    render(<SplitPaymentForm documentId="doc-1" totalAmount="100" onSuccess={vi.fn()} onCancel={vi.fn()} />, {
       wrapper: wrapper(queryClient),
     })
 

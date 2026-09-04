@@ -1204,7 +1204,7 @@ describe('Treasury Management', () => {
       render(
         <SplitPaymentForm
           documentId="doc-1"
-          totalAmount={1000}
+          totalAmount="1000"
           currency="TND"
           onSuccess={() => {}}
           onCancel={() => {}}
@@ -1224,7 +1224,7 @@ describe('Treasury Management', () => {
       render(
         <SplitPaymentForm
           documentId="doc-1"
-          totalAmount={1000}
+          totalAmount="1000"
           currency="TND"
           onSuccess={() => {}}
           onCancel={() => {}}
@@ -1246,7 +1246,7 @@ describe('Treasury Management', () => {
       render(
         <SplitPaymentForm
           documentId="doc-1"
-          totalAmount={1000}
+          totalAmount="1000"
           currency="TND"
           onSuccess={() => {}}
           onCancel={() => {}}
@@ -1273,7 +1273,7 @@ describe('Treasury Management', () => {
       render(
         <SplitPaymentForm
           documentId="doc-1"
-          totalAmount={1000}
+          totalAmount="1000"
           currency="TND"
           onSuccess={() => {}}
           onCancel={() => {}}
@@ -1296,7 +1296,7 @@ describe('Treasury Management', () => {
       render(
         <SplitPaymentForm
           documentId="doc-1"
-          totalAmount={1000}
+          totalAmount="1000"
           currency="TND"
           onSuccess={() => {}}
           onCancel={() => {}}
@@ -1331,7 +1331,7 @@ describe('Treasury Management', () => {
       render(
         <SplitPaymentForm
           documentId="doc-1"
-          totalAmount={1000}
+          totalAmount="1000"
           currency="TND"
           onSuccess={onSuccess}
           onCancel={() => {}}
@@ -1377,7 +1377,7 @@ describe('Treasury Management', () => {
       render(
         <SplitPaymentForm
           documentId="doc-1"
-          totalAmount={1000}
+          totalAmount="1000"
           currency="TND"
           onSuccess={() => {}}
           onCancel={() => {}}

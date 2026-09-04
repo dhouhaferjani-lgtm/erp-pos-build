@@ -276,7 +276,8 @@
     "addPayment": "Ajouter un paiement",
     "amountDoesNotMatch": "Le montant total ne correspond pas au montant requis",
     "incompleteLines": "Veuillez compléter toutes les lignes de paiement",
-    "success": "Paiement fractionné enregistré avec succès"
+    "success": "Paiement fractionné enregistré avec succès",
+    "submitFailed": "Le paiement fractionné n’a pas pu être enregistré. Veuillez réessayer."
   },
   "unifiedPayment": {
     "balanceDue": "Solde dû",

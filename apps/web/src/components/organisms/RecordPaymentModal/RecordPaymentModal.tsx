@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Loader2, Plus, CheckCircle, Trash2, Check } from 'lucide-react'
@@ -11,6 +11,7 @@ import { Button } from '../../atoms/Button'
 import { api, apiPost } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useCurrency } from '../../../hooks/useCurrency'
+import { useIdempotencyKey } from '../../../hooks/useIdempotencyKey'
 import { AddRepositoryModal } from '../AddRepositoryModal'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
@@ -143,6 +144,24 @@ export function RecordPaymentModal({
   const [validationError, setValidationError] = useState<string | null>(null)
   const [showSuccess, setShowSuccess] = useState(false)
   const [successData, setSuccessData] = useState<MultiPaymentResponseData | null>(null)
+  const { key: idempotencyKey, reset: resetIdempotencyKey } = useIdempotencyKey()
+  const submitLockRef = useRef<boolean>(false)
+  const hadFailedAttemptRef = useRef<boolean>(false)
+  const wasOpenRef = useRef<boolean>(false)
+
+  /**
+   * One idempotency key = ONE submit intent. After a failed attempt the key is
+   * kept so an unchanged retry replays server-side; the first edit to a
+   * payload-bearing field (date, lines, excess allocation) starts a NEW intent,
+   * so the key must rotate — otherwise the server would replay the earlier
+   * (possibly committed) batch as HTTP 200 and the success panel would show
+   * figures the operator never submitted.
+   */
+  const startNewIntentOnPayloadEdit = useCallback(() => {
+    if (!hadFailedAttemptRef.current) return
+    hadFailedAttemptRef.current = false
+    resetIdempotencyKey()
+  }, [resetIdempotencyKey])
 
   // Reset form when modal opens
   useEffect(() => {
@@ -156,7 +175,31 @@ export function RecordPaymentModal({
       setShowSuccess(false)
       setSuccessData(null)
     }
-  }, [isOpen, prefill])
+  }, [isOpen, prefill, resetIdempotencyKey])
+
+  // Each open is a NEW payment intent. The hosts keep this modal mounted (they
+  // gate it on partner_id, not on the open flag), so without this the key
+  // minted at mount would span every payment the operator ever records from the
+  // page — and a retry after a lost response would replay the earlier payment
+  // as HTTP 200 while the operator sees a success panel. Mirrors
+  // PaymentDetailPage's per-dialog-open refund_request_id.
+  //
+  // This MUST stay out of the form-reset effect above: that effect also depends
+  // on `prefill`, which all three hosts build as an inline object literal, so it
+  // re-runs on every parent re-render while the modal is open. A reconnect
+  // refetch — the very thing a lost response causes — would then rotate the key
+  // mid-intent and let an unchanged retry book a SECOND payment. `wasOpenRef`
+  // narrows the rotation to the closed -> open TRANSITION.
+  useEffect(() => {
+    if (isOpen) {
+      if (wasOpenRef.current) return
+      wasOpenRef.current = true
+      hadFailedAttemptRef.current = false
+      resetIdempotencyKey()
+    } else {
+      wasOpenRef.current = false
+    }
+  }, [isOpen, resetIdempotencyKey])
 
   const createNewPaymentLine = useCallback((): PaymentLineData => ({
     id: crypto.randomUUID(),
@@ -249,18 +292,21 @@ export function RecordPaymentModal({
 
   // Payment line handlers
   const addPaymentLine = () => {
+    startNewIntentOnPayloadEdit()
     setPaymentLines([...paymentLines, createNewPaymentLine()])
     setValidationError(null)
   }
 
   const removePaymentLine = (id: string) => {
     if (paymentLines.length > 1) {
+      startNewIntentOnPayloadEdit()
       setPaymentLines(paymentLines.filter(line => line.id !== id))
       setValidationError(null)
     }
   }
 
   const updatePaymentLine = (id: string, field: keyof PaymentLineData, value: string | boolean) => {
+    startNewIntentOnPayloadEdit()
     setPaymentLines(prev => prev.map(line =>
       line.id === id ? { ...line, [field]: value } : line
     ))
@@ -269,6 +315,7 @@ export function RecordPaymentModal({
 
   // Update multiple fields at once (avoids race conditions)
   const updatePaymentLineMultiple = (id: string, updates: Partial<PaymentLineData>) => {
+    startNewIntentOnPayloadEdit()
     setPaymentLines(prev => prev.map(line =>
       line.id === id ? { ...line, ...updates } : line
     ))
@@ -295,6 +342,7 @@ export function RecordPaymentModal({
 
   // Manual allocation handlers
   const updateManualAllocation = (documentId: string, amount: string) => {
+    startNewIntentOnPayloadEdit()
     setManualAllocations(prev => {
       const existing = prev.find(a => a.document_id === documentId)
       if (existing) {
@@ -322,6 +370,7 @@ export function RecordPaymentModal({
 
       // apiPost already unwraps the ApiResponse wrapper, so we get MultiPaymentResponseData directly
       return apiPost<MultiPaymentResponseData>('/payments', {
+        idempotency_key: idempotencyKey,
         partner_id: prefill.partner_id,
         document_id: prefill.document_id,
         currency,
@@ -332,6 +381,8 @@ export function RecordPaymentModal({
       })
     },
     onSuccess: async (response) => {
+      hadFailedAttemptRef.current = false
+      resetIdempotencyKey()
       await Promise.all([
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('payments', tenantId, companyId),
@@ -354,12 +405,17 @@ export function RecordPaymentModal({
       setShowSuccess(true)
     },
     onError: (error) => {
+      // The key is deliberately NOT rotated here: an unchanged retry of a batch
+      // that may already have committed must replay server-side.
+      hadFailedAttemptRef.current = true
       console.error('Payment recording failed:', error)
       // Error is shown via mutation.isError in the UI
     },
   })
 
   const handleSubmit = () => {
+    if (submitLockRef.current) return
+
     // Validate at least one confirmed payment
     const confirmedLines = paymentLines.filter(l => l.confirmed)
     if (confirmedLines.length === 0) {
@@ -367,7 +423,20 @@ export function RecordPaymentModal({
       return
     }
 
-    mutation.mutate()
+    submitLockRef.current = true
+    mutation.mutate(undefined, {
+      onSettled: () => { submitLockRef.current = false },
+    })
+  }
+
+  const changePaymentDate = (nextDate: string) => {
+    startNewIntentOnPayloadEdit()
+    setPaymentDate(nextDate)
+  }
+
+  const changeExcessAllocationMethod = (method: ExcessAllocationMethod) => {
+    startNewIntentOnPayloadEdit()
+    setExcessAllocationMethod(method)
   }
 
   const handleFinalClose = () => {
@@ -512,7 +581,7 @@ export function RecordPaymentModal({
                     id="payment-date"
                     type="date"
                     value={paymentDate}
-                    onChange={e => { setPaymentDate(e.target.value); }}
+                    onChange={e => { changePaymentDate(e.target.value); }}
                   />
                 </FormField>
               </div>
@@ -687,7 +756,7 @@ export function RecordPaymentModal({
                           name="excessMethod"
                           value="advance"
                           checked={excessAllocationMethod === 'advance'}
-                          onChange={() => { setExcessAllocationMethod('advance'); }}
+                          onChange={() => { changeExcessAllocationMethod('advance'); }}
                           className={`${colorTokens.intent.primary.text}`}
                         />
                         <span className={`text-sm ${colorTokens.text.secondary}`}>
@@ -703,7 +772,7 @@ export function RecordPaymentModal({
                               name="excessMethod"
                               value="fifo"
                               checked={excessAllocationMethod === 'fifo'}
-                              onChange={() => { setExcessAllocationMethod('fifo'); }}
+                              onChange={() => { changeExcessAllocationMethod('fifo'); }}
                               className={`${colorTokens.intent.primary.text}`}
                             />
                             <span className={`text-sm ${colorTokens.text.secondary}`}>
@@ -717,7 +786,7 @@ export function RecordPaymentModal({
                               name="excessMethod"
                               value="due_date"
                               checked={excessAllocationMethod === 'due_date'}
-                              onChange={() => { setExcessAllocationMethod('due_date'); }}
+                              onChange={() => { changeExcessAllocationMethod('due_date'); }}
                               className={`${colorTokens.intent.primary.text}`}
                             />
                             <span className={`text-sm ${colorTokens.text.secondary}`}>
@@ -731,7 +800,7 @@ export function RecordPaymentModal({
                               name="excessMethod"
                               value="manual"
                               checked={excessAllocationMethod === 'manual'}
-                              onChange={() => { setExcessAllocationMethod('manual'); }}
+                              onChange={() => { changeExcessAllocationMethod('manual'); }}
                               className={`${colorTokens.intent.primary.text}`}
                             />
                             <span className={`text-sm ${colorTokens.text.secondary}`}>
