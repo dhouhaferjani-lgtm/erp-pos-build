@@ -93,6 +93,13 @@ const NON_REVERSIBLE_REFERENCE_TYPES = ['pos_receipt_return_scrap'] as const
 function isReversibleMovement(movement: StockMovement): boolean {
   if (!isReversibleWriteOff(movement.reason)) return false
 
+  // A write-off REVERSAL is a receipt that inherits the original's reason, so it
+  // is indistinguishable from a genuine write-off by reason alone — and the
+  // Write-Offs tab (reason-only server filter) now surfaces it. The backend
+  // refuses it unconditionally (ReverseWriteOffService: "is itself a reversal
+  // and cannot be reversed"), so never offer the control (gate r1, B2).
+  if (movement.reverses_movement_id !== null) return false
+
   return movement.reference_type === null
     || !(NON_REVERSIBLE_REFERENCE_TYPES as readonly string[]).includes(movement.reference_type)
 }
@@ -362,7 +369,7 @@ export function StockMovementsPage() {
     <div className="space-y-6">
       <PageHeader
         title={t('movements.title')}
-        subtitle={t('movements.subtitle', { count: data?.meta.total ?? 0 })}
+        subtitle={t('movements.subtitle', { count: data?.meta?.total ?? 0 })}
         breadcrumb={
           <Link
             to="/inventory/stock"
