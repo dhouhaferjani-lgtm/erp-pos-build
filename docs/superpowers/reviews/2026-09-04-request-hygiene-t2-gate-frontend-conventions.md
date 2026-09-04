@@ -426,3 +426,211 @@ $ ps aux | grep '[v]itest'
 5. Unchanged from r1: N6 (browser probe + four W4 specs) remains a **promotion** precondition; merging into local `dev` does not discharge it.
 
 Re-run for r3: `pnpm vitest run src/features/inventory src/features/stock-adjustments/__tests__/queries.test.tsx`, `pnpm typecheck`, `pnpm exec eslint <touched>`, `pnpm audit:keys`.
+
+---
+
+# Re-gate r3 (2026-09-04)
+
+- Reviewed: fix round 2 `0c476ff7f` + docs `16e599285`; fix round 3 `8c2ea02f4` + docs `a54b4fc67`. Branch `lane/rh-t2-stock-movements`, worktree head `a54b4fc67`.
+- Handback sections replayed: `docs/handoff/HANDBACK-request-hygiene-T2-2026-09-03.md` `## Fix round 2` and `## Fix round 3`.
+- Backend re-gate r2 = MERGE (inventory-costing reviewer). This section is the web half only.
+- Read-only. `git status --porcelain` empty at start, after every measurement, and at end.
+
+## VERDICT: **MERGE**
+
+All three r2 blockers (F1, F2, F3) are closed, and all four carried non-blockers (N1, N2, N7, the `docs/api/README.md` line) are folded in honestly. Every claim in the two handback sections reproduced under re-execution; nothing was absorbed into a baseline, no detector was evaded, no suppression comment was introduced, and the merge is conflict-free against a `dev` that already carries T3 and T4. Zero blocking findings.
+
+---
+
+## Item-by-item verification
+
+### 1. F1 — issue-only reversibility guard: **VERIFIED**
+
+`apps/web/src/features/inventory/StockMovementsPage.tsx:100-119` now mirrors all four backend pre-flight guards:
+
+| `ReverseWriteOffService.php` guard | FE mirror |
+|---|---|
+| reason ∈ {expiry, damage, write_off} | `StockMovementsPage.tsx:101` |
+| `reverses_movement_id !== null` | `StockMovementsPage.tsx:108` |
+| `movement_type !== Issue` | `StockMovementsPage.tsx:115` **← added this round** |
+| `reference_type === pos_receipt_return_scrap` | `StockMovementsPage.tsx:98,117-118` |
+
+`:115` is exactly `if (movement.movement_type !== 'issue') return false`, with the backend guard quoted in the comment at `:110-114`. The r2-F1 row class (`movement_type: 'adjustment'`, `reason: 'damage'`, `reverses_movement_id: null`) is now gated.
+
+**The red-first tests assert DOM by role/name, not implementation.** `StockMovementsPage.reverseWriteOff.test.tsx:439-444` renders the lone `adjustmentDamageMovement` and asserts `screen.queryByRole('button', { name: 'movements.actions.reverse' })` absent; `:446-453` renders `[writeOffMovement, adjustmentDamageMovement]` and asserts **exactly one** button — the pairing is what makes it non-vacuous (it cannot pass by the page rendering nothing). The fixture at `:185-192` satisfies every *other* branch of the gate (reason `damage` passes `:101`; `reverses_movement_id: null` passes `:108`; `reference_type: null` passes `:117`; `is_reversed: false` passes the render guard at `:366`; `mockHasPermission` grants `batches.write-off`), so deleting `:115` sends both red. The same structure holds for the r1-B2 pair at `:419-436` with `reversalReceiptMovement` (`:170-177`). The existing positive case is unharmed: `damageWriteOffMovement` (`:158-164`) is `movement_type: 'issue'`.
+
+### 2. F2 — hoisted meta: **VERIFIED**
+
+`apps/web/src/features/inventory/StockMovementsPage.tsx:224` — `const meta = data?.meta`, bound once beside `const movements = data?.data ?? []` at `:219`, with the rationale in the comment at `:220-223`.
+- Subtitle: `StockMovementsPage.tsx:394` → `t('movements.subtitle', { count: meta?.total ?? 0 })`.
+- Pager: `StockMovementsPage.tsx:451-459` → `{meta ? (<OffsetPagination currentPage={meta.current_page} … />) : null}`; the seven `data.meta.*` reads collapsed to one binding.
+- Declared type still strict: `StockMovementsResponse.meta: OffsetPaginationMeta` at `StockMovementsPage.tsx:70-73` — **non-optional**, no widening, no `eslint-disable`.
+- Page file measured at **0 errors / 0 warnings** (table in §7).
+
+The gate's r2 ruling was applied verbatim in its cheapest form; the runtime guard is retained because `api.get<StockMovementsResponse>` at `:186` is an unchecked cast.
+
+### 3. F3 — tab param-mapping assertions execute the real `queryFn`: **VERIFIED**
+
+`apps/web/src/features/inventory/StockMovementsPage.test.tsx:191-203` (`urlForTab`) renders the page, clicks the real `FilterTabs` button by accessible name, waits for the re-registered query, then **executes** `tabQuery.queryFn()` (`:199`) and reads the URL `api.get` was actually called with (`:200`) through an `unknown` + `typeof` guard (no unsafe cast — confirmed by the 0-warning measurement on this file).
+
+- `:205-209` Transfers → `toContain('movement_type=transfer')` **and** `not.toContain('reason=')`.
+- `:211-215` Write-Offs → `toContain('reason=write_off')` **and** `not.toContain('movement_type=')`.
+
+Falsifying by construction: swapping the two branches at `StockMovementsPage.tsx:177-183` produces `reason=transfer` / `movement_type=write_off`, which fails both the positive `toContain` **and** the negative `not.toContain` in each test — four assertion failures across two tests. The presence-plus-absence pairing is what makes a swap detectable; a positive-only assertion would not have been. The handback's recorded red output matches that shape.
+
+### 4. N2 — one scope normalisation: **VERIFIED**
+
+`apps/web/src/lib/locationScopedKey.ts:13-15` exports `normalizeViewScope`, and `locationScopedKey` calls **that same function** at `:28`. The diff is a pure extraction — `git diff 16e599285 8c2ea02f4 -- apps/web/src/lib/locationScopedKey.ts` replaces the inline `const locScope = scope === 'all' ? 'all' : [...scope].sort()` with `const locScope = normalizeViewScope(scope)`. **No duplicated sort anywhere in the app**: `grep -rn '\.sort()' apps/web/src/lib apps/web/src/features/locations` returns exactly one production hit, `locationScopedKey.ts:14`.
+
+`StockMovementsPage.tsx:156` consumes it in the reset signature: `JSON.stringify([searchQuery, movementFilter, normalizeViewScope(scope)])`.
+
+**No key-output change**, proven two ways rather than asserted:
+- `apps/web/src/lib/locationScopedKey.test.ts:12-15` pins `{ locScope: ['loc-a','loc-b'] }` from an unsorted input, and `:17-20` pins `'all'` — both green in the `src/lib` run below.
+- `apps/web/src/features/stock-adjustments/__tests__/queries.test.tsx:74` pins the whole key literal `['stock-movements', '', 'all', 1, 25, { locScope: 'all' }, tenant, company]` — green.
+
+**The permutation test is meaningful.** `StockMovementsPage.test.tsx:222-251`: scope `['loc-b','loc-a']` → page to 2 → asserts `page=2` (`:233`); permute to `['loc-a','loc-b']` + `rerender` → asserts **still** `page=2` (`:241`); switch to a genuinely different set `['loc-c']` → asserts `page=1` (`:250`). The third leg is what keeps it honest — it fails if the reset were disabled rather than normalised. Reverting `:156` to the raw `scope` makes `:241` fail by construction (the signature would differ, the render-phase guard at `:158-161` would fire, `page` would be 1). `scopeRef` is a hoisted mutable mock (`:40-48`) because `scope` is a store value no handler on this page can observe — which is precisely the argument that made the render-derived reset canonical in r1's D3 ruling.
+
+### 5. N7 — exported row types: **VERIFIED**
+
+`StockMovementsPage.tsx:41` `export interface StockMovement` and `:70` `export interface StockMovementsResponse`, both with a docblock naming the reason (`:35-40`, `:69`). Consumed by:
+- `StockMovementsPage.test.tsx:3` — `import { StockMovementsPage, type StockMovement, type StockMovementsResponse }`; its two local re-declarations are deleted (diff `16e599285..8c2ea02f4` removes the 15-line `interface StockMovement` and the 11-line `interface StockMovementsResponse`).
+- `StockMovementsPage.reverseWriteOff.test.tsx:14` — `import { StockMovementsPage, type StockMovement }`; its 19-line local copy is deleted.
+- `__tests__/tenantScope.test.tsx` has no local copy (grep confirms).
+
+`makeMovement` in both files now supplies every field the page reads (`StockMovementsPage.test.tsx:69-94`, `reverseWriteOff.test.tsx:100-121`), so a fixture can no longer omit a field the page dereferences without a type error — the structural cause of r1-B1 is closed. This is also the T3 pattern (`PaymentListPage.tsx` exports `Payment`), so the two lanes converge here too.
+
+**The `quantity_decimals: 3` fixture fix does not mask a rendering regression.** `StockMovementsPage.reverseWriteOff.test.tsx` contains **no formatted-quantity assertion at all** — grep for text assertions in that file returns only Reverse-button `queryByRole`/`getAllByRole` checks (`:288, :300, :396, :425, :442`). Previously `getQuantityDecimals(undefined)` returned the `DEFAULT_QUANTITY_DECIMALS = 4` fallback (`src/lib/quantityScale.ts:129-135`) and rendered `-5.0000`; now it renders `-5.000`. Nothing asserted either value, so no assertion was loosened and none was silently satisfied. Unit-precision display remains pinned where it always was — `StockMovementsPage.test.tsx:152-165` (`+5.000`, `0.000`, `5.000` from `quantity_decimals: 3`), unchanged by this round. Recorded as N9 below: the fix is a latent-correctness improvement, not new coverage.
+
+### 6. N1 + `docs/api/README.md`: **VERIFIED**
+
+**N1** — the shadowed branch is gone: `git diff 16e599285 8c2ea02f4 -- .../__tests__/tenantScope.test.tsx` removes exactly the three lines `if (url.startsWith('/stock-movements')) { return { data: { data: [] } } }`. The single surviving handler is the live one at `tenantScope.test.tsx:129-138`, returning the six-field meta. Tenant-isolation assertions untouched (file's warning count is byte-identical at 15, §7).
+
+**README contract block accurate** — `docs/api/README.md:457-467`, spot-checked against `apps/api/app/Modules/Inventory/Presentation/Controllers/StockMovementController.php` (note: `Presentation/Controllers/`, not the `Presentation/Http/Controllers/` path the handback table implies — cosmetic, the claims themselves check out):
+
+| README claim | Verified at |
+|---|---|
+| six-field `meta` envelope `{current_page,last_page,per_page,total,from,to}` | `StockMovementController.php:141-148` |
+| `movement_type=transfer` matches `transfer_in` + `transfer_out` | `StockMovementController.php:96-102` (`whereIn` on both `MovementType` cases); alias allowed at `ListStockMovementsRequest.php:37-45` |
+| `reason=write_off` matches `write_off`, `expiry`, `damage` | `StockMovementController.php:105-111` |
+| ordering `created_at DESC, id DESC` | `StockMovementController.php:118-123` |
+| `per_page` default 25 / max 100, `page` min 1 | `StockMovementController.php:43` (`DEFAULT_PER_PAGE = 25`), `ListStockMovementsRequest.php:55-56` |
+| `search` server-side over reference / product name / SKU | `StockMovementController.php:78-95` |
+
+The false "`GET /api/v1/stock-movements` is unchanged." sentence is deleted from the DPA V7 removal note (`docs/api/README.md:445-448`).
+
+### 7. Lint delta — **0 errors, 0 new warnings**
+
+Measured, not accepted: baseline copies of each touched file were materialised via `git show <rev>:<path>` into same-directory temp paths inside `src/` (ESLint overrides in `eslint.config.js` are directory-glob based — `:248`, `:384`, `:212` — so a same-directory temp file resolves an identical rule set), linted with `-f json`, then deleted. `git status --porcelain` empty afterwards.
+
+```
+=== BASELINE per-file (errors/warnings) ===
+0E  0W  src/features/inventory/__gb_r2_page.tsx          (16e599285 StockMovementsPage.tsx)
+0E  0W  src/features/inventory/__gb_r2_pagetest.tsx      (16e599285 StockMovementsPage.test.tsx)
+0E  0W  src/features/inventory/__gb_r2_rwo.tsx           (16e599285 …reverseWriteOff.test.tsx)
+0E 15W  src/features/inventory/__tests__/__gb_base_tenantscope.tsx  (b133caf21 lane base)
+0E 15W  src/features/inventory/__tests__/__gb_r2_tenantscope.tsx    (16e599285)
+0E  1W  src/lib/__gb_base_lsk.ts                         (b133caf21 locationScopedKey.ts)
+0E  1W  src/lib/__gb_r2_lsk.ts                           (16e599285 locationScopedKey.ts)
+
+=== CURRENT per-file (errors/warnings) ===
+0E  0W  src/features/inventory/StockMovementsPage.tsx
+0E  0W  src/features/inventory/StockMovementsPage.test.tsx
+0E  0W  src/features/inventory/StockMovementsPage.reverseWriteOff.test.tsx
+0E 15W  src/features/inventory/__tests__/tenantScope.test.tsx
+0E  1W  src/lib/locationScopedKey.ts
+0E  0W  src/features/stock-adjustments/__tests__/queries.test.tsx
+```
+
+Both non-zero counts are **pre-existing at the lane base `b133caf21`**, not inherited from an intermediate: `tenantScope.test.tsx` 15 → 15 (`react-hooks/globals`, `require-await`, `restrict-template-expressions`, `no-unsafe-type-assertion`, `array-type`), `locationScopedKey.ts` 1 → 1 (`no-unsafe-type-assertion` on the `QueryKey` cast at `:29`). r2-F2's +1 ratchet drift is gone: the page file is back to 0. **Net web warning delta for the lane: 0.** No `scripts/lint-warning-baseline.json` change (§8).
+
+**audit:keys** — no touched file named:
+```
+$ pnpm audit:keys
+[sweep-progress] Gate C — …queryKeys without an approved tenant scope: 1
+[gate-summary] Gate C baseline: 0 acknowledged, 1 new, 0 stale baseline entries
+New unscoped TanStack query key violations:
+  src/features/uom/hooks/useUnits.ts:53:9 invalidateQueries({ queryKey: tenantScopedKey([...]) }) is a no-op filter …
+ ELIFECYCLE  Command failed with exit code 1.
+```
+`useUnits.ts` is not in this diff and is verbatim at `b133caf21` (verified in r1). Unchanged across all three rounds.
+
+**audit:design-system** — no touched file named:
+```
+$ pnpm audit:design-system
+[gate-summary] Design-system baseline: 796 acknowledged, 15 new, 11 stale baseline entries
+```
+All 15 enumerated entries are `src/features/import/pages/ImportWizardPage.tsx` (14: C2 raw checkbox/radio, C3 raw buttons) and `src/features/uom/components/UnmappedUnitTextsPanel.tsx:138` (1: C2 raw select). Zero matches for `StockMovements`, `locationScopedKey`, `tenantScope`, `OffsetPagination`. Identical to r1 and r2.
+
+### 8. Baseline honesty & mechanism audit — **CLEAN**
+
+```
+$ git diff --stat b133caf21..a54b4fc67 -- apps/web/tools scripts/lint-warning-baseline.json \
+    apps/web/src/lib/designTokens.ts apps/web/src/locales
+(empty)
+```
+No detector baseline, no ratchet baseline, no token file, no locale file touched by ANY of the three fix rounds. The whole-lane diff is 14 files: 3 backend, 7 web src/e2e, 4 docs. No alias table re-exporting `tokens.*`, no suppression comment containing a detector keyword, no renamed-but-equivalent literal. Every metric that improved this round improved by deleting the offending construct (`:115` guard added, inline chain hoisted, dead mock branch deleted, local types deleted), not by moving a denominator.
+
+### 9. Tests and typecheck — re-run, exact output
+
+```
+$ pnpm vitest run src/features/inventory src/lib src/features/stock-adjustments/__tests__/queries.test.tsx
+ Test Files  69 passed (69)
+      Tests  484 passed (484)
+   Duration  16.41s
+```
+Reconciles exactly with the handback's split claim (inventory 46/328 + lib 22/151 = 68/479, plus `queries.test.tsx` 1/5 = **69/484**). Default pool.
+
+```
+$ pnpm typecheck
+> tsc --noEmit
+(no output)   TYPECHECK_EXIT=0
+```
+
+Worker hygiene: `ps aux | grep -c '[n]ode (vitest'` → `0`.
+
+### 10. Merge readiness
+
+```
+$ cd /Users/houssamr/Projects/syneriva/apps/erp
+$ git merge-tree --write-tree dev lane/rh-t2-stock-movements
+451cf1783d5758ebb718184a74d6d7aaf235ad80
+MERGE_TREE_EXIT=0
+```
+Exit 0 with a bare tree OID and no `CONFLICT` section → **clean merge, zero conflicting files**. `dev` at `c872427cb` already contains the T3 merge (`451f8b62e`) and the T4 merge (`fbae84cb3`), so the two lanes this one shares files-of-concept with are already folded in without collision. The only shared file across T2/T3 is `apps/web/src/lib/locationScopedKey.ts`, which T3 does not touch.
+
+---
+
+## Non-blocking findings (r3)
+
+### N8 (MINOR, new this round) — `StockMovementsPage.test.tsx` now mocks `useViewScope`, so the real hook is no longer exercised in this file
+`StockMovementsPage.test.tsx:41-48`. The mock is *necessary* for the N2 permutation test (the scope is a store value no handler can drive), and it changes nothing observable — the real hook produced `scope: 'all'` / `effectiveLocationIds: []`, and the pre-existing URL pin at `:174` (`?page=1&per_page=25`, no `location_ids[]`) was identical before. Consequence, not regression: the `effectiveLocationIds.forEach((id) => params.append('location_ids[]', id))` branch at `StockMovementsPage.tsx:173` is now permanently unexercised by this file. Worth one assertion with a non-empty `effectiveLocationIds` in the shared-hook follow-up.
+
+### N9 (MINOR, new this round) — the `quantity_decimals` fixture fix is a latent-correctness improvement, not new coverage
+`StockMovementsPage.reverseWriteOff.test.tsx:109`. That file asserts no rendered quantity text, so the pre-r3 `getQuantityDecimals(undefined) → 4` fallback was invisible to it and the fix is invisible too. Unit-precision display for this page is pinned by exactly one test, `StockMovementsPage.test.tsx:152-165`. Adequate, but single-threaded.
+
+### N10 (MINOR) — `normalizeViewScope` has no direct unit test
+`src/lib/locationScopedKey.test.ts` (3 tests) exercises it only through `locationScopedKey`. That is sufficient to prove the extraction is behaviour-preserving (which is what mattered this round), but the newly-public helper now has a second consumer and deserves its own case in the follow-up.
+
+### N11 (MINOR) — `StockMovement` is a second FE surface with no glossary row
+`docs/glossary.md:42` carries **Stock level** but no **Stock movement** row, while two hand-rolled `StockMovement`/`StockMovementsResponse` pairs exist: `StockMovementsPage.tsx:41,70` (now exported, `GET /stock-movements`) and `components/ProductMovementsTab.tsx:30,50` (`GET /products/{id}/movements`). Correctly left alone by this lane — different endpoint, different shape, and there is no generated DTO to shadow (`packages/shared/types/generated.d.ts` carries only the `StockMovementReferenceType` enum at `:3192`, no movement row type). Per convention 11 this is a declare-it-or-unify-it follow-up, not this lane's debt: the second surface pre-dates the lane and the lane strictly *reduced* the count from four to two.
+
+### Carried, unchanged
+
+| Item | Status |
+|---|---|
+| **N4** — `page > last_page` after a shrink | follow-up, shared with every `OffsetPagination` consumer |
+| **N5** — `ar` has no `inventory.movements.*` namespace | follow-up, pre-existing, lane touches no locale file |
+| **N6 / inventory-costing B3** — Step 11 browser probe + four W4 Playwright specs unrun; `w4-support.ts`'s `expect(meta.last_page).toBe(1)` unexercised | **PROMOTION-blocking, not merge-blocking.** Correctly disclosed in the handback's "Still owed after round 3". Merging into local `dev` does not discharge it. |
+| Shared `useResetOnChange` / `usePagedFilters` extraction with T3 | post-merge follow-up (r2 ruling), now due — T3 is already on `dev` at `451f8b62e` with the identical render-phase block |
+
+## Owner-rule check (r3 delta only)
+
+- **OQ-11 (dead controls hidden, not disabled)** — the r1/r2 defect class is fully closed: all four backend refusal conditions are mirrored in `isReversibleMovement`, and the control is *hidden* (`return null` at `StockMovementsPage.tsx:364`), never rendered-and-failing. No `disabled={true}` + toast anywhere in the diff.
+- **One main element per screen** — unchanged; no colour, badge or accent added this round. The single global figure remains the `PageHeader` subtitle.
+- Brand strings, refunds/sales separation, blind counting, module gates, orphaned routes, overstated guarantees: not touched by this diff.
+
+## Merge conditions (r3)
+
+None. The lane is merge-ready into local `dev`.
+
+Standing precondition, unchanged and NOT discharged by merging: **N6** — Step 11 browser probe + the four W4 Playwright specs must run green before this lane is promoted to `origin/dev`/staging.
