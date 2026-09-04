@@ -147,6 +147,7 @@ export function RecordPaymentModal({
   const { key: idempotencyKey, reset: resetIdempotencyKey } = useIdempotencyKey()
   const submitLockRef = useRef<boolean>(false)
   const hadFailedAttemptRef = useRef<boolean>(false)
+  const wasOpenRef = useRef<boolean>(false)
 
   /**
    * One idempotency key = ONE submit intent. After a failed attempt the key is
@@ -173,16 +174,32 @@ export function RecordPaymentModal({
       setValidationError(null)
       setShowSuccess(false)
       setSuccessData(null)
-      // Each open is a NEW payment intent. The hosts keep this modal mounted
-      // (they gate it on partner_id, not on the open flag), so without this the
-      // key minted at mount would span every payment the operator ever records
-      // from the page — and a retry after a lost response would replay the
-      // earlier payment as HTTP 200 while the operator sees a success panel.
-      // Mirrors PaymentDetailPage's per-dialog-open refund_request_id.
-      hadFailedAttemptRef.current = false
-      resetIdempotencyKey()
     }
   }, [isOpen, prefill, resetIdempotencyKey])
+
+  // Each open is a NEW payment intent. The hosts keep this modal mounted (they
+  // gate it on partner_id, not on the open flag), so without this the key
+  // minted at mount would span every payment the operator ever records from the
+  // page — and a retry after a lost response would replay the earlier payment
+  // as HTTP 200 while the operator sees a success panel. Mirrors
+  // PaymentDetailPage's per-dialog-open refund_request_id.
+  //
+  // This MUST stay out of the form-reset effect above: that effect also depends
+  // on `prefill`, which all three hosts build as an inline object literal, so it
+  // re-runs on every parent re-render while the modal is open. A reconnect
+  // refetch — the very thing a lost response causes — would then rotate the key
+  // mid-intent and let an unchanged retry book a SECOND payment. `wasOpenRef`
+  // narrows the rotation to the closed -> open TRANSITION.
+  useEffect(() => {
+    if (isOpen) {
+      if (wasOpenRef.current) return
+      wasOpenRef.current = true
+      hadFailedAttemptRef.current = false
+      resetIdempotencyKey()
+    } else {
+      wasOpenRef.current = false
+    }
+  }, [isOpen, resetIdempotencyKey])
 
   const createNewPaymentLine = useCallback((): PaymentLineData => ({
     id: crypto.randomUUID(),

@@ -81,16 +81,47 @@ function wrapper(queryClient: QueryClient) {
   }
 }
 
-// Stable identity: the modal's reset effect depends on [isOpen, prefill], so a
-// freshly-built prefill object on every rerender would fire the effect for the
-// wrong reason and mask the open/close behaviour under test.
-const PREFILL = {
-  partner_id: 'partner-1',
-  partner_name: 'Partner A',
-  amount: 100,
-  reference: 'INV-1',
-  document_id: 'doc-1',
-  document_type: 'invoice' as const,
+/**
+ * A FRESH object on every call — exactly what the three production hosts pass:
+ * `InvoiceDetailPage.tsx:899`, `SalesOrderDetailPage.tsx:784` and
+ * `PurchaseOrderDetailPage.tsx:713` all build `prefill` as an inline object
+ * literal, so its identity changes on every parent re-render. A hoisted
+ * constant would stabilise the fixture PAST the production condition and hide
+ * a rotation that fires on re-render rather than on the open transition.
+ */
+function makePrefill() {
+  return {
+    partner_id: 'partner-1',
+    partner_name: 'Partner A',
+    amount: 100,
+    reference: 'INV-1',
+    document_id: 'doc-1',
+    document_type: 'invoice' as const,
+  }
+}
+
+function deterministicUuid(n: number): `${string}-${string}-${string}-${string}-${string}` {
+  return `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
+}
+
+/**
+ * Records every `crypto.randomUUID()` mint.
+ *
+ * An idempotency key rotation is only observable through a POST, and this
+ * surface wipes its form whenever `prefill` changes identity — so a re-render
+ * that rotated the key could never be told apart from one that did not by
+ * comparing two posted keys (the operator has to re-enter the line either way,
+ * and that re-entry legitimately rotates). Counting mints across a precise
+ * window is the observation channel that survives the wipe.
+ */
+function installUuidRecorder(): { minted: string[]; restore: () => void } {
+  const minted: string[] = []
+  const spy = vi.spyOn(globalThis.crypto, 'randomUUID').mockImplementation(() => {
+    const value = deterministicUuid(minted.length + 1)
+    minted.push(value)
+    return value
+  })
+  return { minted, restore: () => { spy.mockRestore() } }
 }
 
 function mockLookupResponses() {
@@ -156,7 +187,7 @@ describe('RecordPaymentModal idempotency key lifetime', () => {
 
     const onClose = vi.fn()
     const { rerender } = render(
-      <RecordPaymentModal isOpen onClose={onClose} prefill={PREFILL} />,
+      <RecordPaymentModal isOpen onClose={onClose} prefill={makePrefill()} />,
       { wrapper: wrapper(createClient()) },
     )
 
@@ -166,8 +197,8 @@ describe('RecordPaymentModal idempotency key lifetime', () => {
     // The hosts (InvoiceDetailPage / SalesOrderDetailPage / PurchaseOrderDetailPage)
     // render the modal gated on partner_id, so closing only flips isOpen — the
     // component stays MOUNTED across the close/reopen cycle.
-    rerender(<RecordPaymentModal isOpen={false} onClose={onClose} prefill={PREFILL} />)
-    rerender(<RecordPaymentModal isOpen onClose={onClose} prefill={PREFILL} />)
+    rerender(<RecordPaymentModal isOpen={false} onClose={onClose} prefill={makePrefill()} />)
+    rerender(<RecordPaymentModal isOpen onClose={onClose} prefill={makePrefill()} />)
 
     await confirmLineAndRecord('1000')
     await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(2) })
@@ -187,7 +218,7 @@ describe('RecordPaymentModal idempotency key lifetime', () => {
       excess_handling: { excess_amount: '0.00', allocation_method: 'advance', allocations: [] },
     })
 
-    render(<RecordPaymentModal isOpen onClose={vi.fn()} prefill={PREFILL} />, {
+    render(<RecordPaymentModal isOpen onClose={vi.fn()} prefill={makePrefill()} />, {
       wrapper: wrapper(createClient()),
     })
 
@@ -216,7 +247,7 @@ describe('RecordPaymentModal idempotency key lifetime', () => {
       excess_handling: { excess_amount: '0.00', allocation_method: 'advance', allocations: [] },
     })
 
-    render(<RecordPaymentModal isOpen onClose={vi.fn()} prefill={PREFILL} />, {
+    render(<RecordPaymentModal isOpen onClose={vi.fn()} prefill={makePrefill()} />, {
       wrapper: wrapper(createClient()),
     })
 
@@ -243,5 +274,96 @@ describe('RecordPaymentModal idempotency key lifetime', () => {
     expect(firstKey).toMatch(UUID_REGEX)
     expect(secondKey).toMatch(UUID_REGEX)
     expect(secondKey).not.toBe(firstKey)
+  })
+
+  it('does NOT rotate the key when the PARENT re-renders with a fresh prefill object while the modal stays open', async () => {
+    // Gate r2 F1 / B1'. All three hosts build `prefill` as an inline object
+    // literal, so its identity changes on every parent re-render. Before the
+    // fix the per-open rotation lived in the effect whose deps include
+    // `prefill`, so a reconnect-driven refetch — caused by the very lost
+    // response the key exists to survive (`lib/queryClient.ts:9`
+    // refetchOnReconnect, WebSocketReconnectProvider invalidating all queries)
+    // — rotated the key mid-intent and let the retry book a SECOND payment.
+    //
+    // The rotation must fire on the closed -> open TRANSITION only.
+    const uuids = installUuidRecorder()
+    try {
+      mockApiPost.mockRejectedValueOnce(new Error('network error'))
+      mockApiPost.mockResolvedValueOnce({
+        payments: [{ id: 'payment-1', payment_number: 'PAY-1', amount: '400.00' }],
+        document: { id: 'doc-1', document_number: 'INV-1', balance_due: '600.00', status: 'partially_paid' },
+        excess_handling: { excess_amount: '0.00', allocation_method: 'advance', allocations: [] },
+      })
+
+      const onClose = vi.fn()
+      const { rerender } = render(
+        <RecordPaymentModal isOpen onClose={onClose} prefill={makePrefill()} />,
+        { wrapper: wrapper(createClient()) },
+      )
+
+      await confirmLineAndRecord('400')
+      await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+
+      const mintedBeforeRerender = uuids.minted.length
+      // isOpen is UNCHANGED — only the parent re-rendered, exactly as a
+      // refetch of the host document does.
+      await act(async () => {
+        rerender(<RecordPaymentModal isOpen onClose={onClose} prefill={makePrefill()} />)
+        await Promise.resolve()
+      })
+      const mintedDuringRerender = uuids.minted.slice(mintedBeforeRerender)
+
+      // The form-reset effect legitimately mints exactly ONE uuid on re-entry:
+      // the id of the replacement payment line. A SECOND mint in this window is
+      // the idempotency key rotating — the defect.
+      expect(mintedDuringRerender).toHaveLength(1)
+
+      // Same invariant read from the money path: the key the retry carries must
+      // have been minted by the operator's re-entry (a real new intent), never
+      // by the re-render itself.
+      await confirmLineAndRecord('400')
+      await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(2) })
+      expect(mintedDuringRerender).not.toContain(postedIdempotencyKey(1))
+    } finally {
+      uuids.restore()
+    }
+  })
+
+  it('does NOT rotate the key when the payload is edited BEFORE any submit attempt', async () => {
+    // Falsifier for the `if (!hadFailedAttemptRef.current) return` guard in
+    // startNewIntentOnPayloadEdit. Without it the mechanism is keystroke-scoped
+    // rather than intent-scoped: filling the form would mint a fresh key on
+    // every edit, and the very first submit would race its own rotation.
+    const uuids = installUuidRecorder()
+    try {
+      // Rejected so the modal stays on the form (no success panel churn); the
+      // assertion only reads the key the FIRST submit carried.
+      mockApiPost.mockRejectedValueOnce(new Error('network error'))
+
+      render(<RecordPaymentModal isOpen onClose={vi.fn()} prefill={makePrefill()} />, {
+        wrapper: wrapper(createClient()),
+      })
+
+      await screen.findByRole('option', { name: 'Cash' })
+      const mintedAtMount = [...uuids.minted]
+
+      // Operator edits, no attempt yet: method, amount, repository, confirm.
+      await userEvent.selectOptions(screen.getByLabelText('treasury:payments.method *'), 'method-1')
+      await userEvent.type(screen.getByLabelText('treasury:payments.amount *'), '400')
+      await userEvent.selectOptions(screen.getByLabelText('treasury:repositories.title'), 'repo-1')
+      await userEvent.click(screen.getByRole('button', { name: 'common:actions.confirm' }))
+
+      expect(uuids.minted).toEqual(mintedAtMount)
+
+      await act(async () => {
+        await userEvent.click(screen.getByRole('button', { name: /treasury:payments.record/ }))
+      })
+      await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+
+      // The first submit carries the key that was live at mount.
+      expect(mintedAtMount).toContain(postedIdempotencyKey(0))
+    } finally {
+      uuids.restore()
+    }
   })
 })

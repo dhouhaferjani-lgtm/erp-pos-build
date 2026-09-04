@@ -328,18 +328,40 @@ export function PaymentForm() {
   const bankFallback = watch('bank_fallback') ?? false
   const ribValidation = useBankAccountValidation(bankAccount, countryCode, 'rib')
 
+  /**
+   * react-hook-form notifies a `watch(cb)` subscription for PROGRAMMATIC writes
+   * as well as operator edits, and in 7.67.0 a `setValue` emits `type: 'change'`
+   * exactly like a keystroke (measured on this form: a `setValue('bank_iban')`
+   * produces `{name:'bank_iban', type:'change'}` followed by `{name:'bank_iban'}`),
+   * so the event metadata alone cannot tell them apart. Every write this
+   * component performs on its own — server-data prefills, the RIB-derived IBAN,
+   * the method-compatibility repository clear — is therefore routed through
+   * `writeProgrammatically`, which suppresses the intent rotation for the
+   * notifications that write emits. Operator-driven writes (the pickers) are
+   * deliberately NOT routed through it: they are real payload edits.
+   */
+  const programmaticWriteRef = useRef(false)
+  const writeProgrammatically = useCallback((write: () => void) => {
+    programmaticWriteRef.current = true
+    try {
+      write()
+    } finally {
+      programmaticWriteRef.current = false
+    }
+  }, [])
+
   useEffect(() => {
     const nextIban = ribValidation.status === 'valid' ? ribValidation.derivedIban ?? '' : ''
     if (nextIban !== '') {
       if (bankIban === '' || bankIban === autoDerivedIbanRef.current) {
-        setValue('bank_iban', nextIban)
+        writeProgrammatically(() => { setValue('bank_iban', nextIban) })
         autoDerivedIbanRef.current = nextIban
       }
     } else if (autoDerivedIbanRef.current !== '' && bankIban === autoDerivedIbanRef.current) {
-      setValue('bank_iban', '')
+      writeProgrammatically(() => { setValue('bank_iban', '') })
       autoDerivedIbanRef.current = ''
     }
-  }, [bankIban, ribValidation.derivedIban, ribValidation.status, setValue])
+  }, [bankIban, ribValidation.derivedIban, ribValidation.status, setValue, writeProgrammatically])
 
   // Fetch invoice data if invoice ID is provided in query params
   const { data: invoiceData } = useQuery({
@@ -385,58 +407,63 @@ export function PaymentForm() {
     enabled: !!supplierInvoiceId && tenantId !== null && companyId !== null,
   })
 
-  // Pre-fill form when document data is loaded
+  // Pre-fill form when document data is loaded. The reset() calls are
+  // PROGRAMMATIC: they are driven by query data, so a reconnect refetch after
+  // a lost response must not be mistaken for an operator edit (RHF fires the
+  // watch subscription for reset() even when it writes identical values).
   useEffect(() => {
-    if (invoiceData) {
-      const amountResidual = invoiceData.amount_residual == null
-        ? invoiceData.total
-        : invoiceData.amount_residual.toString()
-      reset({
-        amount: amountResidual,
-        payment_method_id: '',
-        partner_id: invoiceData.partner_id,
-        payment_date: new Date().toISOString().split('T')[0],
-        reference: invoiceData.document_number,
-        notes: t('treasury:payments.form.paymentForInvoice', { invoiceNumber: invoiceData.document_number }),
-      })
-    } else if (purchaseOrderData) {
-      reset({
-        amount: purchaseOrderData.total,
-        payment_method_id: '',
-        partner_id: purchaseOrderData.partner_id,
-        payment_date: new Date().toISOString().split('T')[0],
-        reference: purchaseOrderData.document_number,
-        notes: t('treasury:payments.form.paymentForPurchaseOrder', {
-          defaultValue: 'Payment for Purchase Order {{poNumber}}',
-          poNumber: purchaseOrderData.document_number
-        }),
-      })
-    } else if (deliveryNoteData) {
-      reset({
-        amount: deliveryNoteData.total || '',
-        payment_method_id: '',
-        partner_id: deliveryNoteData.partner_id,
-        payment_date: new Date().toISOString().split('T')[0],
-        reference: deliveryNoteData.document_number,
-        notes: t('treasury:payments.form.paymentForDeliveryNote', {
-          defaultValue: 'Payment for Delivery Note {{dnNumber}}',
-          dnNumber: deliveryNoteData.document_number
-        }),
-      })
-    } else if (supplierInvoiceData) {
-      const supplierInvoiceNumber = supplierInvoiceData.document_number ?? supplierInvoiceData.number ?? ''
-      reset({
-        amount: supplierInvoiceData.balance_due || supplierInvoiceData.total,
-        payment_method_id: '',
-        partner_id: supplierInvoiceData.partner_id ?? supplierInvoiceData.partner?.id ?? '',
-        payment_date: new Date().toISOString().split('T')[0],
-        reference: supplierInvoiceNumber,
-        notes: t('treasury:payments.form.paymentForSupplierInvoice', {
-          invoiceNumber: supplierInvoiceNumber,
-        }),
-      })
-    }
-  }, [invoiceData, purchaseOrderData, deliveryNoteData, supplierInvoiceData, reset])
+    writeProgrammatically(() => {
+      if (invoiceData) {
+        const amountResidual = invoiceData.amount_residual == null
+          ? invoiceData.total
+          : invoiceData.amount_residual.toString()
+        reset({
+          amount: amountResidual,
+          payment_method_id: '',
+          partner_id: invoiceData.partner_id,
+          payment_date: new Date().toISOString().split('T')[0],
+          reference: invoiceData.document_number,
+          notes: t('treasury:payments.form.paymentForInvoice', { invoiceNumber: invoiceData.document_number }),
+        })
+      } else if (purchaseOrderData) {
+        reset({
+          amount: purchaseOrderData.total,
+          payment_method_id: '',
+          partner_id: purchaseOrderData.partner_id,
+          payment_date: new Date().toISOString().split('T')[0],
+          reference: purchaseOrderData.document_number,
+          notes: t('treasury:payments.form.paymentForPurchaseOrder', {
+            defaultValue: 'Payment for Purchase Order {{poNumber}}',
+            poNumber: purchaseOrderData.document_number
+          }),
+        })
+      } else if (deliveryNoteData) {
+        reset({
+          amount: deliveryNoteData.total || '',
+          payment_method_id: '',
+          partner_id: deliveryNoteData.partner_id,
+          payment_date: new Date().toISOString().split('T')[0],
+          reference: deliveryNoteData.document_number,
+          notes: t('treasury:payments.form.paymentForDeliveryNote', {
+            defaultValue: 'Payment for Delivery Note {{dnNumber}}',
+            dnNumber: deliveryNoteData.document_number
+          }),
+        })
+      } else if (supplierInvoiceData) {
+        const supplierInvoiceNumber = supplierInvoiceData.document_number ?? supplierInvoiceData.number ?? ''
+        reset({
+          amount: supplierInvoiceData.balance_due || supplierInvoiceData.total,
+          payment_method_id: '',
+          partner_id: supplierInvoiceData.partner_id ?? supplierInvoiceData.partner?.id ?? '',
+          payment_date: new Date().toISOString().split('T')[0],
+          reference: supplierInvoiceNumber,
+          notes: t('treasury:payments.form.paymentForSupplierInvoice', {
+            invoiceNumber: supplierInvoiceNumber,
+          }),
+        })
+      }
+    })
+  }, [invoiceData, purchaseOrderData, deliveryNoteData, supplierInvoiceData, reset, writeProgrammatically])
 
   // Fetch payment methods
   const { data: paymentMethodsData } = useQuery({
@@ -510,9 +537,9 @@ export function PaymentForm() {
       selectedRepositoryId &&
       !compatibleRepositories.some((repo) => repo.id === selectedRepositoryId)
     ) {
-      setValue('repository_id', '')
+      writeProgrammatically(() => { setValue('repository_id', '') })
     }
-  }, [compatibleRepositories, selectedRepositoryId, setValue])
+  }, [compatibleRepositories, selectedRepositoryId, setValue, writeProgrammatically])
 
   // Informational fee + net preview for methods that deduct a processing fee.
   const feeAmount = useMemo(() => {
@@ -606,8 +633,23 @@ export function PaymentForm() {
   // repository, partner, date, reference, notes, instrument…). The non-RHF
   // payload state (withholding, allocations) calls the same helper at its own
   // change handlers.
+  //
+  // Two filters:
+  //  - `type !== 'change'` narrows to change-shaped notifications (RHF also
+  //    emits a values-only one, with no `type`, alongside every `setValue`).
+  //  - `programmaticWriteRef` is the LOAD-BEARING one: RHF 7.67 reports a
+  //    `setValue` as `type: 'change'` too, indistinguishable from a keystroke,
+  //    and `reset()` notifies even when it writes identical values. Without it
+  //    a reconnect refetch after a lost response (queryClient
+  //    `refetchOnReconnect`, WebSocketReconnectProvider) rotates the key with
+  //    no operator edit and the retry books a SECOND payment — measured, see
+  //    the fix-round-3 mutation table in the handback.
   useEffect(() => {
-    const subscription = watch(() => { startNewIntentOnPayloadEdit() })
+    const subscription = watch((_values, { type }) => {
+      if (type !== 'change') return
+      if (programmaticWriteRef.current) return
+      startNewIntentOnPayloadEdit()
+    })
     return () => { subscription.unsubscribe() }
   }, [watch, startNewIntentOnPayloadEdit])
 

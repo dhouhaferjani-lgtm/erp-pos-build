@@ -380,3 +380,61 @@ describe('SplitPaymentForm surfaces a failed submission', () => {
     expect(postedIdempotencyKey(1)).toBe(postedIdempotencyKey(0))
   })
 })
+
+function deterministicUuid(n: number): `${string}-${string}-${string}-${string}-${string}` {
+  return `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
+}
+
+/**
+ * Records every `crypto.randomUUID()` mint, deterministically, so the key a POST
+ * carries can be traced back to the moment it was minted.
+ *
+ * `useIdempotencyKey` (`SplitPaymentForm.tsx:59`) runs before anything else in
+ * the component, so `minted[0]` is ALWAYS the key the form mounted with. Later
+ * mints are payment-line ids — note `:65` passes an eager array literal to
+ * `useState`, so a fresh line id is minted on every render; only the FIRST mint
+ * is meaningful here.
+ */
+function installUuidRecorder(): { minted: string[]; restore: () => void } {
+  const minted: string[] = []
+  const spy = vi.spyOn(globalThis.crypto, 'randomUUID').mockImplementation(() => {
+    const value = deterministicUuid(minted.length + 1)
+    minted.push(value)
+    return value
+  })
+  return { minted, restore: () => { spy.mockRestore() } }
+}
+
+describe('SplitPaymentForm idempotency key is not rotated before the first attempt', () => {
+  it('carries the MOUNT key on the first submit even though the payload was edited', async () => {
+    // Falsifier for the `if (!hadFailedAttemptRef.current) return` guard in
+    // startNewIntentOnPayloadEdit. Without it the mechanism is keystroke-scoped
+    // rather than intent-scoped: every line edit would mint a fresh key and the
+    // first submit would race its own rotation.
+    const uuids = installUuidRecorder()
+    try {
+      mockApiPost.mockRejectedValueOnce(new Error('network error'))
+      renderForm({ totalAmount: '100' })
+
+      await screen.findByRole('option', { name: 'Cash' })
+      const mountKey = uuids.minted[0]
+
+      await userEvent.selectOptions(screen.getByLabelText('treasury:payments.method'), 'method-1')
+      await userEvent.type(screen.getByLabelText('treasury:payments.amount'), '100')
+      await userEvent.type(screen.getByLabelText('treasury:payments.reference'), 'FIRST-1')
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'common:actions.submit' }))
+        await Promise.resolve()
+      })
+      await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+
+      // Every one of those edits landed BEFORE any attempt, so the first
+      // submit must still carry the mount key. Delete the guard and each edit
+      // rotates, so this POST would carry a much later mint.
+      expect(postedIdempotencyKey(0)).toBe(mountKey)
+    } finally {
+      uuids.restore()
+    }
+  })
+})
