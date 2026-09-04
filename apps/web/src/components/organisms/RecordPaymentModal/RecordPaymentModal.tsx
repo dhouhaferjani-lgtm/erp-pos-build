@@ -434,6 +434,28 @@ export function RecordPaymentModal({
     },
   })
 
+  // A rotated idempotency key means the failed attempt's intent is OVER. The key
+  // rotates in exactly three places — the open transition and the intent
+  // (partner+document) change above, and the first payload edit after a failure
+  // (`startNewIntentOnPayloadEdit`) — and `mutation.isError` follows none of
+  // them: nothing in TanStack Query clears it. Left alone, the "may already have
+  // been recorded" banner keeps advising "press Record without changing
+  // anything" after the operator has already changed something, when Record now
+  // books a SECOND payment; and a failure carried from document A raises both
+  // banners on document B. The rotation is the single choke point for "this is a
+  // different intent now", so clear the mutation exactly there.
+  //
+  // Guarded on `isError`: the key also rotates in `onSuccess`, and resetting
+  // there would detach the mutation observer mid-callback and drop the
+  // `onSettled` that releases `submitLockRef` (`handleSubmit` below), wedging
+  // every later submit from the same mounted modal.
+  const errorIntentKeyRef = useRef(idempotencyKey)
+  useEffect(() => {
+    if (errorIntentKeyRef.current === idempotencyKey) return
+    errorIntentKeyRef.current = idempotencyKey
+    if (mutation.isError) mutation.reset()
+  }, [idempotencyKey, mutation])
+
   const handleSubmit = () => {
     if (submitLockRef.current) return
 

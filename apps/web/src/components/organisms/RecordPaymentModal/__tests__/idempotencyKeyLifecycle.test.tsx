@@ -596,4 +596,125 @@ describe('RecordPaymentModal prefill identity does not wipe in-progress entry', 
       'Payment for invoice INV-1',
     )
   })
+  it('clears the failure banners when the operator edits the payload after a failure (the key has rotated)', async () => {
+    // Gate r2 NB-7. `mutation.isError` outlives the intent it belongs to —
+    // nothing in TanStack Query clears it. The banner's advice ("press Record
+    // without changing anything to confirm") is only true while the FAILED
+    // attempt's key is still in the box; the first payload edit rotates it
+    // (`startNewIntentOnPayloadEdit`), after which Record posts a NEW key and
+    // books a SECOND payment. So the banners must go with the rotation.
+    mockApiPost.mockRejectedValueOnce(new Error('network error'))
+
+    const onClose = vi.fn()
+    const { rerender } = render(
+      <RecordPaymentModal isOpen onClose={onClose} prefill={makePrefill()} />,
+      { wrapper: wrapper(createClient()) },
+    )
+
+    await confirmLineAndRecord('100')
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+
+    // The lost response had committed: the refetch brings the outstanding to 0.
+    await act(async () => {
+      rerender(
+        <RecordPaymentModal isOpen onClose={onClose} prefill={{ ...makePrefill(), amount: 0 }} />,
+      )
+      await Promise.resolve()
+    })
+    expect(screen.getByText('treasury:unifiedPayment.possiblyRecorded')).toBeInTheDocument()
+    expect(screen.getByText('network error')).toBeInTheDocument()
+
+    // The operator changes the payment date — a payload edit, i.e. a NEW intent.
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('treasury:payments.date *'), {
+        target: { value: '2026-09-02' },
+      })
+      await Promise.resolve()
+    })
+
+    // `mutation.reset()` notifies through TanStack's notifyManager, which
+    // batches outside the rerender commit — so the clear lands on the next tick.
+    await waitFor(() => {
+      expect(screen.queryByText('treasury:unifiedPayment.possiblyRecorded')).not.toBeInTheDocument()
+    })
+    expect(screen.queryByText('network error')).not.toBeInTheDocument()
+    // The confirmed line still stands and the outstanding is still 0, so the two
+    // other halves of the banner gate are untouched: only the intent moved on.
+    expect(screen.getByText('treasury:unifiedPayment.lineConfirmed')).toBeInTheDocument()
+  })
+
+  it('clears the failure banners when the document swaps under the open modal', async () => {
+    // Gate r2 NB-7, second half: a failure recorded against document A must not
+    // paint a red error over document B. The re-seed already clears the
+    // confirmed line (so the "possibly recorded" gate falls on its own), but the
+    // raw error banner is gated on `mutation.isError` ALONE — it is the
+    // load-bearing assertion here.
+    mockApiPost.mockRejectedValueOnce(new Error('network error'))
+
+    const onClose = vi.fn()
+    const { rerender } = render(
+      <RecordPaymentModal isOpen onClose={onClose} prefill={makePrefill()} />,
+      { wrapper: wrapper(createClient()) },
+    )
+
+    await confirmLineAndRecord('100')
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+    expect(screen.getByText('network error')).toBeInTheDocument()
+
+    await act(async () => {
+      rerender(
+        <RecordPaymentModal
+          isOpen
+          onClose={onClose}
+          prefill={{
+            partner_id: 'partner-2',
+            partner_name: 'Partner B',
+            amount: 50,
+            reference: 'INV-2',
+            document_id: 'doc-2',
+            document_type: 'invoice' as const,
+          }}
+        />,
+      )
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByText('network error')).not.toBeInTheDocument()
+    })
+    expect(screen.queryByText('treasury:unifiedPayment.possiblyRecorded')).not.toBeInTheDocument()
+  })
+
+  it('KEEPS the failure banners while the intent is unchanged (retrying unchanged is still the safe move)', async () => {
+    // The control for the two tests above: the cure must scope the banners to
+    // the intent, not suppress them. A same-intent re-render — which is exactly
+    // what the reconnect refetch produces — leaves the key alone, so the advice
+    // stays true and the banners must stay up.
+    mockApiPost.mockRejectedValueOnce(new Error('network error'))
+
+    const onClose = vi.fn()
+    const { rerender } = render(
+      <RecordPaymentModal isOpen onClose={onClose} prefill={makePrefill()} />,
+      { wrapper: wrapper(createClient()) },
+    )
+
+    await confirmLineAndRecord('100')
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+
+    await act(async () => {
+      rerender(
+        <RecordPaymentModal isOpen onClose={onClose} prefill={{ ...makePrefill(), amount: 0 }} />,
+      )
+      await Promise.resolve()
+    })
+    await act(async () => {
+      rerender(
+        <RecordPaymentModal isOpen onClose={onClose} prefill={{ ...makePrefill(), amount: 0 }} />,
+      )
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText('treasury:unifiedPayment.possiblyRecorded')).toBeInTheDocument()
+    expect(screen.getByText('network error')).toBeInTheDocument()
+  })
 })

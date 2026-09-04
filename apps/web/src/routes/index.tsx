@@ -325,8 +325,15 @@ const ProgressionModulesPage = lazy(() => import('../features/progression').then
  *
  * Keying on the id is the one-line structural fix: it makes "a different document" mean
  * "a different component instance", so no page has to remember to clear itself.
+ *
+ * Request-hygiene T12b gate (2026-09-04) extended it to the two order detail hosts: they
+ * mount the same `RecordPaymentModal`, whose POST reads `prefill.partner_id` /
+ * `prefill.document_id` at SUBMIT time, so a confirmed payment line carried across the
+ * param change would be booked against the next document and partner. The modal now also
+ * re-seeds on an intent change, but that is the money fix — this is the structural belt,
+ * and it must stay on all three document detail hosts (`routes.test.tsx` locks it).
  */
-function KeyedByRouteId({ children }: { children: React.ReactNode }) {
+export function KeyedByRouteId({ children }: { children: React.ReactNode }) {
   const { id } = useParams()
 
   return <React.Fragment key={id ?? 'none'}>{children}</React.Fragment>
@@ -699,7 +706,9 @@ export function AppRoutes() {
             element={
               <RequirePermission moduleKey="sales">
                 <SuspenseWrapper>
-                  <SalesOrderDetailPage />
+                  <KeyedByRouteId>
+                    <SalesOrderDetailPage />
+                  </KeyedByRouteId>
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -948,7 +957,9 @@ export function AppRoutes() {
             element={
               <RequirePermission moduleKey="purchases">
                 <SuspenseWrapper>
-                  <PurchaseOrderDetailPage />
+                  <KeyedByRouteId>
+                    <PurchaseOrderDetailPage />
+                  </KeyedByRouteId>
                 </SuspenseWrapper>
               </RequirePermission>
             }
