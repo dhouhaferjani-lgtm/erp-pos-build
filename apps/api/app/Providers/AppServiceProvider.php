@@ -65,8 +65,10 @@ use App\Shared\Infrastructure\CurrencyScaleResolver;
 use App\Shared\Infrastructure\GateAbilityAuthorizer;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
@@ -156,6 +158,8 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->loadTenantMigrationsInTestingEnvironment();
 
+        $this->configureLazyLoadingGuard();
+
         $this->registerPolicies();
 
         Password::defaults(function () {
@@ -212,6 +216,26 @@ class AppServiceProvider extends ServiceProvider
 
             return $isValid;
         });
+    }
+
+    /**
+     * Request hygiene Phase A, Task 10 — LOG-ONLY lazy-loading guard.
+     *
+     * Outside production every lazy load from a multi-row hydration is recorded
+     * as `lazy-load` with the model class and relation name, and then RESOLVES
+     * NORMALLY: the handler is deliberately overridden so Eloquent never throws
+     * `LazyLoadingViolationException`. An unconverted N+1 therefore shows up in
+     * the log of local, testing and staging runs without any chance of breaking
+     * a request. Production keeps the framework default (guard off), so its
+     * behaviour is unchanged by this provider.
+     */
+    private function configureLazyLoadingGuard(): void
+    {
+        Model::handleLazyLoadingViolationUsing(static function (Model $model, string $relation): void {
+            Log::warning('lazy-load', ['model' => $model::class, 'relation' => $relation]);
+        });
+
+        Model::preventLazyLoading(! $this->app->isProduction());
     }
 
     /**

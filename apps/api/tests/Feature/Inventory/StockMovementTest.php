@@ -31,11 +31,14 @@ use App\Modules\Uom\Domain\Entities\UnitCategory;
 use Carbon\CarbonImmutable;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\CountsQueries;
 
 class StockMovementTest extends TestCase
 {
+    use CountsQueries;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -605,5 +608,98 @@ class StockMovementTest extends TestCase
             ->assertJsonPath('meta.current_page', 1)
             ->assertJsonPath('meta.per_page', 25)
             ->assertJsonPath('meta.total', 1);
+    }
+
+    /**
+     * Request hygiene S-2 / Task 10 — the paginated index must resolve source
+     * documents once per PAGE, not once per row, so growing the page from 5 to
+     * 50 rows (3 linked -> 30 linked) may not grow the query count
+     * proportionally. Falsifying check: restoring a per-row `Document` lookup in
+     * StockMovementController::formatMovement() turns this red.
+     */
+    public function test_index_query_count_is_flat_and_includes_document_linkage(): void
+    {
+        $document = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $this->warehouse->id,
+            'type' => DocumentType::Invoice,
+            'fiscal_category' => FiscalCategory::TaxInvoice,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Posted,
+            'document_number' => 'INV-QUERY-BUDGET',
+            'document_date' => now()->toDateString(),
+            'currency' => 'TND',
+            'subtotal' => '50.000',
+            'discount_amount' => '0.000',
+            'tax_amount' => '0.000',
+            'total' => '50.000',
+            'balance_due' => '50.000',
+        ]);
+
+        foreach (range(1, 50) as $index) {
+            $movement = $this->ledgerRow($index);
+            $createdAt = CarbonImmutable::parse('2026-09-03 12:00:00')->addSeconds($index);
+            // Newest-first, indexes 50..46 carry modulo values 0, 4, 3, 2, 1, so
+            // the first page of 5 deterministically holds exactly 3 linked rows
+            // while the full 50 hold 30.
+            $isLinked = in_array($index % 5, [1, 2, 3], true);
+            $movement->forceFill([
+                'reference_type' => $isLinked ? 'Document' : null,
+                'reference_id' => $isLinked ? $document->id : null,
+                'created_at' => $createdAt,
+                'updated_at' => $createdAt,
+            ])->save();
+        }
+
+        $small = $this->countQueries(fn () => $this->actingAs($this->user)
+            ->getJson('/api/v1/stock-movements?page=1&per_page=5')
+            ->assertOk()
+            ->assertJsonCount(5, 'data')
+            ->assertJsonPath('data.0.source_document_id', null)
+            ->assertJsonPath('data.2.source_document_id', $document->id));
+
+        $large = $this->countQueries(fn () => $this->actingAs($this->user)
+            ->getJson('/api/v1/stock-movements?page=1&per_page=50')
+            ->assertOk()
+            ->assertJsonCount(50, 'data'));
+
+        self::assertLessThanOrEqual($small + 2, $large, '5 rows (3 linked)='.$small.', 50 rows (30 linked)='.$large);
+    }
+
+    /**
+     * Request hygiene Task 10 — the global lazy-loading guard is LOG-ONLY
+     * outside production: the violation is recorded and the relation still
+     * resolves, so no request can be broken by an unconverted N+1.
+     */
+    public function test_lazy_load_logs_warning_and_relation_still_loads(): void
+    {
+        $service = app(StockAdjustmentService::class);
+        $service->receive(
+            productId: $this->product->id,
+            locationId: $this->warehouse->id,
+            quantity: '1.0000',
+            reference: 'LAZY-1',
+            userId: $this->user->id,
+        );
+        $service->receive(
+            productId: $this->product->id,
+            locationId: $this->warehouse->id,
+            quantity: '1.0000',
+            reference: 'LAZY-2',
+            userId: $this->user->id,
+        );
+        Log::spy();
+
+        // Two hydrated rows are required: Eloquent only stamps
+        // `preventsLazyLoading` onto models hydrated from a multi-row result.
+        $movement = StockMovement::query()->orderBy('created_at')->get()->firstOrFail();
+        self::assertFalse($movement->relationLoaded('product'));
+        self::assertSame($this->product->name, $movement->product->name);
+
+        Log::shouldHaveReceived('warning')->once()->with('lazy-load', [
+            'model' => StockMovement::class,
+            'relation' => 'product',
+        ]);
     }
 }
