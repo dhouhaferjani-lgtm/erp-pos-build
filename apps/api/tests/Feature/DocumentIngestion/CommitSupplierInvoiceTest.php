@@ -95,7 +95,9 @@ final class CommitSupplierInvoiceTest extends TestCase
             'document-ingestions.commit',
             'goods-receipt.create-standalone',
             'supplier-invoices.create-pending',
-            'documents.update',
+            // F-W2-14: the receipt-mapped commit path now requires the dedicated
+            // supplier-invoices.manage gate (was documents.update).
+            'supplier-invoices.manage',
         ]);
 
         UserCompanyMembership::create([
@@ -233,13 +235,18 @@ final class CommitSupplierInvoiceTest extends TestCase
     }
 
     #[Test]
-    public function receipt_mapped_commit_requires_documents_update_permission(): void
+    public function receipt_mapped_commit_requires_supplier_invoices_manage_permission(): void
     {
+        // F-W2-14 / DEV-QA-027-028: the receipt-mapped (non-pending) ingestion
+        // commit is a second API door into supplier-invoice creation. A holder of
+        // the generic document-ingestions.commit (even WITH supplier-invoices.create-pending)
+        // must still carry the dedicated supplier-invoices.manage gate — otherwise
+        // the commit path becomes a privilege bypass around the store route.
         $product = $this->product('SI-PERM', '10.000');
         [$purchaseOrder] = $this->createPostedStandaloneReceipt($product, 'si-perm-receipt');
         $poLine = $purchaseOrder->lines->firstOrFail();
 
-        $limited = $this->user('commit-si-no-doc-update@test.example');
+        $limited = $this->user('commit-si-no-manage@test.example');
         $limited->givePermissionTo([
             'document-ingestions.commit',
             'supplier-invoices.create-pending',
@@ -250,11 +257,25 @@ final class CommitSupplierInvoiceTest extends TestCase
             'role' => 'admin',
         ]);
 
+        $ingestion = $this->ingestion();
+
+        // Without supplier-invoices.manage → 403, nothing created.
         $this->actingAs($limited, 'sanctum')
-            ->postJson("/api/v1/document-ingestions/{$this->ingestion()->id}/commit", $this->payload($product, $poLine->id, reference: 'INV-PERM-001'))
+            ->postJson("/api/v1/document-ingestions/{$ingestion->id}/commit", $this->payload($product, $poLine->id, reference: 'INV-PERM-001'))
             ->assertForbidden();
 
         $this->assertSame(0, Document::query()->where('type', DocumentType::SupplierInvoice)->count());
+
+        // Granting the dedicated gate flips the same commit to success — proving the
+        // gate is supplier-invoices.manage specifically, not create-pending.
+        $limited->givePermissionTo('supplier-invoices.manage');
+
+        $this->actingAs($limited, 'sanctum')
+            ->postJson("/api/v1/document-ingestions/{$ingestion->id}/commit", $this->payload($product, $poLine->id, reference: 'INV-PERM-001'))
+            ->assertCreated()
+            ->assertJsonPath('data.committed_type', 'supplier_invoice');
+
+        $this->assertSame(1, Document::query()->where('type', DocumentType::SupplierInvoice)->count());
     }
 
     #[Test]
