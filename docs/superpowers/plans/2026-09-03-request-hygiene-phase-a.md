@@ -810,6 +810,8 @@ it('requests bounded server filters and renders the real OffsetPagination DOM', 
 
 - [ ] **Step 6: Implement the page with every import named.**
 
+> **`placeholderData: keepPreviousData` WARNING (added 2026-09-04, T6 FE gate r1/r2 — applies to EVERY task in this plan).** **Registered residual (T6 independent gate MAJOR-1):** this pattern is ALREADY LIVE on `dev` in `StockMovementsPage.tsx` (T2, `:~190`), `PaymentListPage.tsx` (T3, `:~117`) and POS `useDiscountPreview.ts` (`:~87`) with no `isPlaceholderData` guard; the follow-up lane `lane/rh-placeholder-data-audit` (handback `docs/handoff/HANDBACK-request-hygiene-placeholder-data-2026-09-04.md`) removes the previous-company exposure there. The warning below is retrospective for those three and forward-looking for everything else. TanStack v5 hands back the observer's last query *with data* **regardless of key lineage**, so the tenant/company suffix of `tenantScopedKey` does **not** protect a placeholder. A company switch neither unmounts these pages (`CompanyProvider.tsx:149` renders a bare fragment; `CompanySelector.tsx:39-47` only invalidates; there is no `key={currentCompanyId}` anywhere in `apps/web/src`) nor clears the cache — so the previous company's rows stay on screen, and any surface that lets the operator *act on* them commits cross-company data. The same gate removed this option from `LineItemEntryBar` (T5 fix round 1, see the standing comment at `LineItemEntryBar.tsx:89-96`) and from `DocumentLineEditor` (T6 fix round 1). **Do not add it to a tenant/company-scoped read without gating both display and every commit path on `isPlaceholderData === false`.** This step's snippet below predates that ruling.
+
 ~~~tsx
 import { useEffect, useMemo, useState } from 'react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -1072,6 +1074,8 @@ public function index(ListPaymentsRequest $request): JsonResponse
 No `$request->has()`, `$request->input()`, `$request->query()`, or `$request->integer()` remains in `index()`.
 
 - [ ] **Step 5: Make PaymentListPage a required modification with exact imports and state.**
+
+> **`placeholderData: keepPreviousData` WARNING (added 2026-09-04, T6 FE gate r1/r2 — applies to EVERY task in this plan).** **Registered residual (T6 independent gate MAJOR-1):** this pattern is ALREADY LIVE on `dev` in `StockMovementsPage.tsx` (T2, `:~190`), `PaymentListPage.tsx` (T3, `:~117`) and POS `useDiscountPreview.ts` (`:~87`) with no `isPlaceholderData` guard; the follow-up lane `lane/rh-placeholder-data-audit` (handback `docs/handoff/HANDBACK-request-hygiene-placeholder-data-2026-09-04.md`) removes the previous-company exposure there. The warning below is retrospective for those three and forward-looking for everything else. TanStack v5 hands back the observer's last query *with data* **regardless of key lineage**, so the tenant/company suffix of `tenantScopedKey` does **not** protect a placeholder. A company switch neither unmounts these pages (`CompanyProvider.tsx:149` renders a bare fragment; `CompanySelector.tsx:39-47` only invalidates; there is no `key={currentCompanyId}` anywhere in `apps/web/src`) nor clears the cache — so the previous company's rows stay on screen, and any surface that lets the operator *act on* them commits cross-company data. The same gate removed this option from `LineItemEntryBar` (T5 fix round 1, see the standing comment at `LineItemEntryBar.tsx:89-96`) and from `DocumentLineEditor` (T6 fix round 1). **Do not add it to a tenant/company-scoped read without gating both display and every commit path on `isPlaceholderData === false`.** This step's snippet below predates that ruling.
 
 ~~~tsx
 import { useEffect, useState } from 'react'
@@ -1646,7 +1650,7 @@ it('waits 250 ms and sends exactly the final product search', async () => {
 - [ ] **Step 3: Implement with exact imports.**
 
 ~~~tsx
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useDebouncedValue } from '../../../lib/hooks'
 
 const trimmedQuery = query.trim()
@@ -1654,7 +1658,11 @@ const debouncedQuery = useDebouncedValue(trimmedQuery, 250)
 
 queryKey: tenantScopedKey(['line-entry-products', debouncedQuery]),
 // use debouncedQuery in params
-placeholderData: keepPreviousData,
+// STRUCK 2026-09-04 (T5 gate r1 B2, re-affirmed by T6 gate r1/r2):
+// ~~placeholderData: keepPreviousData~~ — it hands the PREVIOUS company's
+// products back across the tenantScopedKey suffix and they were committable.
+// As shipped, LineItemEntryBar has no placeholderData and gates its suggestion
+// list on `debouncedQuery === trimmedQuery && !isPlaceholderData`.
 ~~~
 
 - [ ] **Step 4: Verify by path and gate.** Run `apps/web/src/components/molecules/line-items/LineItemEntryBar.test.tsx` by path, then typecheck, lint, and browser-check Sales, transfer, replenishment, and counting product entry. Gate: frontend-conventions-reviewer.
@@ -1662,6 +1670,13 @@ placeholderData: keepPreviousData,
 ---
 
 ## Task 6: Debounce bulk pricing context (S-5) — **WAIT for wave-2 PO lane merge**
+
+> **AS-SHIPPED BANNER (2026-09-04, T6 FE gate r1 = CHANGES → fixed on `lane/rh-t6-pricing-debounce`).** Two mechanisms the original Step 3 prescribed were rejected and **must not be copied by Tasks 7 or 14**:
+>
+> 1. **No `placeholderData: keepPreviousData` on a tenant/company-scoped read.** TanStack v5 hands back the observer's last query *with data* regardless of key lineage (`@tanstack/query-core@5.90.11 build/modern/queryObserver.js:265-281` → `utils.js:198`). A company switch neither unmounts the document editor (`CompanyProvider.tsx:149` renders a bare fragment; `CompanySelector.tsx:39-47` only invalidates; there is no `key={currentCompanyId}` anywhere in `apps/web/src`) nor clears the cache, so the placeholder shows — and `Use suggested` *commits* — the previous company's WAC cost, margin verdict and suggested price. This is the identical defect gate r1 removed from `LineItemEntryBar` on 2026-09-04 (see the standing comment at `LineItemEntryBar.tsx:89-96`).
+> 2. **Debounce the VALUE the request body is built from, not just its signature.** Debouncing the signature while `enabled` and the body stayed live made the query key lag the body: an answer computed for one price got cached under another price's key for a whole `staleTime` (30 s), and the common add-product-then-click-price path cost two requests instead of one. Derive the key, the body and `enabled` from a single debounced value; the current-body ref then disappears.
+>
+> Handback: `docs/handoff/HANDBACK-request-hygiene-T6-2026-09-04.md` §7. Gate report: `docs/superpowers/reviews/2026-09-04-request-hygiene-t6-gate-frontend-conventions.md`.
 
 **Files**
 
@@ -1720,7 +1735,33 @@ it('waits 250 ms and sends only the final unit price to bulk pricing', async () 
 })
 ~~~
 
-- [ ] **Step 3: Implement with exact imports and current-body ref.**
+- [ ] **Step 3: Implement with exact imports and current-body ref.** ~~As written below~~ — **SUPERSEDED by the T6 FE gate r1 (2026-09-04), see the banner under the Task 6 heading. Do NOT copy this snippet.** Debounce the LINES and derive key, body and `enabled` from that one value; ship no `placeholderData`.
+
+~~~tsx
+// AS-SHIPPED (gate r1 B1 + M1). The struck-through original is kept below for history.
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useDebouncedValue } from '../../../lib/hooks'
+
+const debouncedPricingLines = useDebouncedValue(pricingContextLines, 250)
+const pricingContextSignature = useMemo(
+  () => debouncedPricingLines.map((l) => `${l.product_id}:${l.variant_id ?? ''}:${l.unit_price}`).join('|'),
+  [debouncedPricingLines],
+)
+// enabled: … && debouncedPricingLines.length > 0 && …
+
+queryKey: tenantScopedKey([
+  'line-entry-pricing-context',
+  partnerId ?? null,
+  pricingContextSignature,
+]),
+queryFn: () => apiPost<PricingContextResponse>('/line-entry/pricing-context/bulk', {
+  partner_id: partnerId ?? null,
+  lines: debouncedPricingLines,
+}),
+// NO placeholderData — see the banner.
+~~~
+
+<details><summary>Original Step 3 snippet (rejected by gate r1 — kept for history)</summary>
 
 ~~~tsx
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -1741,6 +1782,8 @@ queryFn: () => apiPost<PricingContextResponse>('/line-entry/pricing-context/bulk
 }),
 placeholderData: keepPreviousData,
 ~~~
+
+</details>
 
 - [ ] **Step 4: Verify by path and gate.** Run `apps/web/src/features/documents/components/__tests__/DocumentLineEditor.test.tsx` by path, then typecheck, lint, and browser-check purchase-order plus `apps/web/src/features/documents/CreateCreditNotePage.tsx` pricing. Gate: frontend-conventions-reviewer. WAIT remains binding until Step 1.
 
