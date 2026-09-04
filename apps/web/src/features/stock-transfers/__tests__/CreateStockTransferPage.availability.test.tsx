@@ -1,11 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CreateStockTransferPage } from '../pages/CreateStockTransferPage'
 import type { ProductPickerValue } from '@/components/molecules/pickers/ProductPicker'
 import type { LocationApiResponse } from '@/features/locations/api'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 const mockFetchLocations = vi.fn<() => Promise<LocationApiResponse[]>>()
 const mockApiGet = vi.fn()
@@ -65,8 +67,23 @@ function renderPage() {
 describe('CreateStockTransferPage available-at-source column', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // The shared stock-level hook stays disabled until both scopes exist.
+    useAuthStore.setState({
+      user: {
+        id: 'user-1', name: 'Test User', email: 'test@example.com',
+        tenant_id: 'tenant-1', roles: [], email_verified_at: null,
+      },
+    })
+    useCompanyStore.setState({ currentCompanyId: 'company-1' })
     mockFetchLocations.mockResolvedValue([loc('loc-source', 'Source WH'), loc('loc-dest', 'Dest WH')])
     mockApiGet.mockResolvedValue({ locations: [{ location_id: 'loc-source', available: '5.0000' }] })
+  })
+
+  afterEach(() => {
+    act(() => {
+      useAuthStore.setState({ user: null })
+      useCompanyStore.setState({ currentCompanyId: null })
+    })
   })
 
   it('shows available stock at the source and warns when the quantity exceeds it', async () => {
@@ -82,6 +99,14 @@ describe('CreateStockTransferPage available-at-source column', () => {
     await waitFor(() => {
       expect(screen.getByText('5.0000')).toBeInTheDocument()
     })
+
+    // S-6 partial (Task 7): AvailabilityCell and TransferSourceSuggestion request the
+    // same product/variant and must share ONE stock-level query. Count only
+    // stock-level URLs — selecting a product also hits /products/:id/variants.
+    const stockLevelCalls = () => mockApiGet.mock.calls.filter(
+      ([url]) => typeof url === 'string' && /^\/products\/[^/]+\/stock-levels$/.test(url),
+    )
+    expect(stockLevelCalls()).toHaveLength(1)
 
     const quantity = screen.getByRole('spinbutton', { name: 'Quantity' })
     await user.clear(quantity)

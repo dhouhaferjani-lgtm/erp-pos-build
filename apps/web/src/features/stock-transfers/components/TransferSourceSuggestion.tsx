@@ -1,20 +1,18 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { locationScopedKey } from '@/lib/locationScopedKey'
 import { formatQuantity } from '@/lib/format'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
 import { Button } from '@/components/atoms/Button/Button'
 import { Modal, ModalFooter } from '@/components/organisms/Modal'
-import { getProductStock } from '@/features/products/api/productStock'
-import { useViewScope } from '@/features/locations/hooks/useViewScope'
+import { useProductStockLevels } from '@/features/products/api/useProductStockLevels'
 import { suggestSource } from '../lib/suggestSource'
 
 export function TransferSourceSuggestion({ productId, variantId, destinationLocationId, requestedQuantity, lineCount, onUseSource }: { productId: string; variantId: string | null; destinationLocationId: string; requestedQuantity: string; lineCount: number; onUseSource: (locationId: string) => void }) {
   const { t } = useTranslation('stock-transfers')
-  const { scope } = useViewScope()
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const query = useQuery({ queryKey: locationScopedKey(['product-stock-suggestion', productId, variantId], scope), queryFn: () => getProductStock(productId, variantId), enabled: productId !== '' })
+  // Shares the row's stock-level query with AvailabilityCell (S-6 partial, Task 7).
+  // The endpoint already returns every company location, so no view scope is needed.
+  const query = useProductStockLevels(productId, variantId, true)
   const locations = query.data?.locations ?? []
   const suggestion = suggestSource(locations, destinationLocationId, requestedQuantity)
   if (query.isLoading) return <span className={`text-xs ${textColors.tertiary}`}>{t('create.suggestion.loading')}</span>
