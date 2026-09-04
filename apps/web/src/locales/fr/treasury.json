@@ -280,6 +280,7 @@
     "submitFailed": "Le paiement fractionné n’a pas pu être enregistré. Veuillez réessayer."
   },
   "unifiedPayment": {
+    "possiblyRecorded": "Ce paiement a peut-être déjà été enregistré — le solde dû est maintenant nul. Cliquez sur Enregistrer sans rien modifier pour confirmer ; modifier le montant créerait un second paiement.",
     "balanceDue": "Solde dû",
     "totalEntered": "Total saisi",
     "remaining": "Restant",

@@ -148,6 +148,7 @@ export function RecordPaymentModal({
   const submitLockRef = useRef<boolean>(false)
   const hadFailedAttemptRef = useRef<boolean>(false)
   const wasOpenRef = useRef<boolean>(false)
+  const lastIntentRef = useRef<string | null>(null)
 
   /**
    * One idempotency key = ONE submit intent. After a failed attempt the key is
@@ -176,18 +177,31 @@ export function RecordPaymentModal({
   // lines, date and notes and (b) rotate the key, so the forced re-entry would
   // book a SECOND payment for a batch the server had already committed.
   //
-  // While the modal stays open a `prefill` change therefore touches NO entry
-  // state. It still flows into read-only display — `balanceDue` below reads
-  // `prefill.amount` straight off the prop at render — so a smaller outstanding
-  // shows immediately; entered lines are never silently clamped, over-allocation
-  // stays the existing excess-allocation / validation path's job.
+  // While the modal stays open a `prefill` change of the SAME intent therefore
+  // touches NO entry state. It still flows into read-only display —
+  // `balanceDue` below reads `prefill.amount` straight off the prop at render —
+  // so a smaller outstanding shows immediately; entered lines are never
+  // silently clamped, over-allocation stays the existing excess-allocation /
+  // validation path's job.
+  //
+  // A change of the INTENT IDENTITY (partner + document) is the exception and
+  // must re-seed: only the invoice host is wrapped in `KeyedByRouteId`
+  // (`routes/index.tsx:739-750`), so on the sales-order (`:699-706`) and
+  // purchase-order (`:948-955`) hosts a route-param change swaps `prefill`
+  // under the same mounted modal. The POST body reads `prefill.partner_id` /
+  // `prefill.document_id` at SUBMIT time, so a line kept from document A would
+  // be booked against document B and partner B. A document swap is by
+  // definition a new payment intent: re-seed the form AND rotate the key.
   useEffect(() => {
     if (!isOpen) {
       wasOpenRef.current = false
+      lastIntentRef.current = null
       return
     }
-    if (wasOpenRef.current) return
+    const intent = `${prefill.partner_id}|${prefill.document_id}`
+    if (wasOpenRef.current && lastIntentRef.current === intent) return
     wasOpenRef.current = true
+    lastIntentRef.current = intent
 
     setPaymentDate(new Date().toISOString().split('T')[0])
     setNotes(`Payment for ${prefill.document_type} ${prefill.reference}`)
@@ -889,6 +903,17 @@ export function RecordPaymentModal({
               {validationError && (
                 <div className={`rounded-lg ${colorTokens.intent.danger.bgSubtle} p-3 text-sm ${colorTokens.intent.danger.textStrong} mt-4`}>
                   {validationError}
+                </div>
+              )}
+
+              {/* "May already have been recorded" — after a failed attempt the
+                  refetch can bring the outstanding to 0 while the operator's
+                  lines still stand, i.e. the lost response had committed.
+                  Editing the payload starts a NEW intent and rotates the
+                  idempotency key, so the only safe move is Record unchanged. */}
+              {mutation.isError && confirmedCount > 0 && balanceDue === 0 && (
+                <div className={`rounded-lg ${colorTokens.intent.info.bgSubtle} p-3 text-sm ${colorTokens.intent.info.textStrong} mt-4`}>
+                  {t('treasury:unifiedPayment.possiblyRecorded')}
                 </div>
               )}
 

@@ -280,6 +280,7 @@
     "submitFailed": "The split payment could not be recorded. Please try again."
   },
   "unifiedPayment": {
+    "possiblyRecorded": "This payment may already have been recorded — the outstanding is now zero. Press Record without changing anything to confirm; editing the amount would create a second payment.",
     "balanceDue": "Balance Due",
     "totalEntered": "Total Entered",
     "remaining": "Remaining",

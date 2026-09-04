@@ -171,6 +171,15 @@ function postedIdempotencyKey(callIndex: number): string {
   return key
 }
 
+/** Read any field off a recorded POST body without an unsafe cast. */
+function postedField(callIndex: number, field: string): unknown {
+  const body: unknown = mockApiPost.mock.calls[callIndex]?.[1]
+  if (typeof body !== 'object' || body === null) {
+    throw new Error(`POST #${String(callIndex)} carried no request body`)
+  }
+  return Reflect.get(body, field)
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   setTenant('tenant-A', 'company-1')
@@ -426,26 +435,134 @@ describe('RecordPaymentModal prefill identity does not wipe in-progress entry', 
     // outstanding. The read-only balance display must follow the server; the
     // operator's entry must NOT be touched and must NOT be silently clamped —
     // over-allocation stays the existing excess/validation path's job.
+    //
+    // SAME document: this is the T12b cure itself, and the uuid window proves
+    // the r1 BLOCKER-1 fix did not over-reach — a money-only prefill change on
+    // the same intent must mint neither a replacement line id nor a new key.
+    const uuids = installUuidRecorder()
+    try {
+      const onClose = vi.fn()
+      const { rerender } = render(
+        <RecordPaymentModal isOpen onClose={onClose} prefill={makePrefill()} />,
+        { wrapper: wrapper(createClient()) },
+      )
+
+      await confirmLine('400')
+      expect(screen.getByText('100')).toBeInTheDocument()
+      const mintedBeforeRerender = uuids.minted.length
+
+      await act(async () => {
+        rerender(
+          <RecordPaymentModal isOpen onClose={onClose} prefill={{ ...makePrefill(), amount: 600 }} />,
+        )
+        await Promise.resolve()
+      })
+
+      expect(screen.getByText('treasury:unifiedPayment.lineConfirmed')).toBeInTheDocument()
+      expect(screen.getByLabelText('treasury:payments.amount *')).toHaveValue(400)
+      expect(screen.getByText('600')).toBeInTheDocument()
+      expect(screen.queryByText('100')).not.toBeInTheDocument()
+      expect(uuids.minted.slice(mintedBeforeRerender)).toHaveLength(0)
+    } finally {
+      uuids.restore()
+    }
+  })
+
+  it('resets the form and rotates the key when prefill switches to a DIFFERENT document while the modal stays open', async () => {
+    // Gate r1 BLOCKER-1. `sales-orders` (`routes/index.tsx:699-706`) and
+    // `purchase-orders` (`:948-955`) are NOT wrapped in `KeyedByRouteId` (the
+    // invoice host is, `:739-750`), so a route-param change — browser Back,
+    // two-finger swipe-back — swaps `prefill` under a modal that stays open and
+    // mounted. The POST body reads `prefill.partner_id` / `prefill.document_id`
+    // at SUBMIT time, so a surviving line from document A would be booked
+    // against document B and partner B. A document swap is a NEW intent: the
+    // form must re-seed and the idempotency key must rotate.
+    mockApiPost.mockRejectedValueOnce(new Error('network error'))
+    mockApiPost.mockResolvedValueOnce({
+      payments: [{ id: 'payment-2', payment_number: 'PAY-2', amount: '50.00' }],
+      document: { id: 'doc-2', document_number: 'INV-2', balance_due: '0.00', status: 'paid' },
+      excess_handling: { excess_amount: '0.00', allocation_method: 'advance', allocations: [] },
+    })
+
     const onClose = vi.fn()
     const { rerender } = render(
       <RecordPaymentModal isOpen onClose={onClose} prefill={makePrefill()} />,
       { wrapper: wrapper(createClient()) },
     )
 
-    await confirmLine('400')
-    expect(screen.getByText('100')).toBeInTheDocument()
+    // Document A: the operator confirms 400 and the response is lost.
+    await confirmLineAndRecord('400')
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+    expect(screen.getByText('treasury:unifiedPayment.lineConfirmed')).toBeInTheDocument()
 
+    // Route param changes to document B while the overlay is still open.
     await act(async () => {
       rerender(
-        <RecordPaymentModal isOpen onClose={onClose} prefill={{ ...makePrefill(), amount: 600 }} />,
+        <RecordPaymentModal
+          isOpen
+          onClose={onClose}
+          prefill={{
+            partner_id: 'partner-2',
+            partner_name: 'Partner B',
+            amount: 50,
+            reference: 'INV-2',
+            document_id: 'doc-2',
+            document_type: 'invoice' as const,
+          }}
+        />,
       )
       await Promise.resolve()
     })
 
-    expect(screen.getByText('treasury:unifiedPayment.lineConfirmed')).toBeInTheDocument()
-    expect(screen.getByLabelText('treasury:payments.amount *')).toHaveValue(400)
-    expect(screen.getByText('600')).toBeInTheDocument()
-    expect(screen.queryByText('100')).not.toBeInTheDocument()
+    expect(screen.queryByText('treasury:unifiedPayment.lineConfirmed')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('treasury:payments.amount *')).toHaveValue(null)
+    expect(screen.getByLabelText('treasury:payments.notes')).toHaveValue(
+      'Payment for invoice INV-2',
+    )
+    expect(screen.getByRole('button', { name: /treasury:payments.record/ })).toBeDisabled()
+
+    // Whatever the operator does next must never carry document A's line, and
+    // must not replay document A's committed batch under its key.
+    await confirmLine('50')
+    await pressRecord()
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(2) })
+
+    expect(postedField(1, 'document_id')).toBe('doc-2')
+    expect(postedField(1, 'partner_id')).toBe('partner-2')
+    expect(postedField(1, 'payments')).toEqual([
+      { payment_method_id: 'method-1', repository_id: 'repo-1', amount: '50' },
+    ])
+    expect(postedIdempotencyKey(1)).not.toBe(postedIdempotencyKey(0))
+  })
+
+  it('warns that the payment may already have been recorded when the outstanding drops to 0 after a failed attempt', async () => {
+    // Gate r1 NB-1. The ONLY protection against a double payment is retrying
+    // literally unchanged (any payload edit rotates the key, `:161-165`), yet
+    // after a lost response the reconnect refetch repaints "balance due 0 /
+    // excess N" with nothing saying the first attempt may have committed —
+    // the state that most invites the one action that defeats the protection.
+    mockApiPost.mockRejectedValueOnce(new Error('network error'))
+
+    const onClose = vi.fn()
+    const { rerender } = render(
+      <RecordPaymentModal isOpen onClose={onClose} prefill={makePrefill()} />,
+      { wrapper: wrapper(createClient()) },
+    )
+
+    await confirmLineAndRecord('100')
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalledTimes(1) })
+    // Before the refetch the outstanding still stands: no reason to warn yet.
+    expect(screen.queryByText('treasury:unifiedPayment.possiblyRecorded')).not.toBeInTheDocument()
+
+    // The payment DID commit — the refetch brings the outstanding back as 0.
+    await act(async () => {
+      rerender(
+        <RecordPaymentModal isOpen onClose={onClose} prefill={{ ...makePrefill(), amount: 0 }} />,
+      )
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText('treasury:unifiedPayment.possiblyRecorded')).toBeInTheDocument()
   })
 
   it('DOES reset the form on the next open transition (close -> reopen)', async () => {
