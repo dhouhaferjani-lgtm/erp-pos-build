@@ -189,6 +189,21 @@ const reversalReceiptMovement = makeMovement({
   is_reversed: false,
 })
 
+// A STOCK ADJUSTMENT line may carry reason_code `damage`/`write_off` on a
+// non-batch-tracked product (StockAdjustmentDocumentService), and posts as
+// movement_type='adjustment' with that reason and reverses_movement_id=null.
+// The reason-only Write-Offs tab surfaces it, but ReverseWriteOffService refuses
+// anything that is not an ISSUE ("Only write-off issue movements can be
+// reversed"), so the control must not be offered (gate r2, F1).
+const adjustmentDamageMovement = makeMovement({
+  id: 'adj-damage-1',
+  product_name: 'AdjustedDamagedWidget',
+  movement_type: 'adjustment',
+  reason: 'damage',
+  reverses_movement_id: null,
+  is_reversed: false,
+})
+
 const alreadyReversedExpiryMovement = makeMovement({
   id: 'wo-expiry-rev',
   product_name: 'ReversedExpiryWidget',
@@ -425,6 +440,23 @@ describe('StockMovementsPage — reverse write-off action for expiry/damage reas
 
   it('shows Reverse for the genuine write-off but not for its reversal receipt', () => {
     mockQueryReturn.data.data = [writeOffMovement, reversalReceiptMovement]
+    setup()
+    const reverseButtons = screen.queryAllByRole('button', {
+      name: 'movements.actions.reverse',
+    })
+    expect(reverseButtons).toHaveLength(1)
+  })
+
+  it('does NOT show a Reverse button for an adjustment-sourced damage write-off', () => {
+    mockQueryReturn.data.data = [adjustmentDamageMovement]
+    setup()
+    expect(
+      screen.queryByRole('button', { name: 'movements.actions.reverse' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows Reverse for the issue write-off but not for the adjustment-sourced one', () => {
+    mockQueryReturn.data.data = [writeOffMovement, adjustmentDamageMovement]
     setup()
     const reverseButtons = screen.queryAllByRole('button', {
       name: 'movements.actions.reverse',

@@ -190,4 +190,34 @@ describe('StockMovementsPage (canonical list)', () => {
     await secondQuery.queryFn()
     expect(apiGetMock).toHaveBeenLastCalledWith('/stock-movements?page=2&per_page=25')
   })
+
+  // The Transfers and Write-Offs tabs do NOT map to `movement_type=<tab value>`
+  // like the other tabs: `transfer` is a type with no reason, `write_off` is a
+  // REASON that spans several types. That asymmetry (StockMovementsPage.tsx
+  // filter mapping) is the line that widened the Write-Offs tab, so pin it.
+  async function urlForTab(tabLabel: string): Promise<string> {
+    apiGetMock.mockResolvedValue({ data: mockReturn.data })
+    render(<StockMovementsPage />)
+    const initialQuery = queryCapture.current
+    fireEvent.click(screen.getByRole('button', { name: tabLabel }))
+    await waitFor(() => { expect(queryCapture.current).not.toBe(initialQuery) })
+    const tabQuery = queryCapture.current
+    if (tabQuery === null) throw new Error(`Tab ${tabLabel} did not register a query`)
+    await tabQuery.queryFn()
+    const requestedUrl: unknown = apiGetMock.mock.lastCall?.[0]
+    if (typeof requestedUrl !== 'string') throw new Error('api.get was not called with a URL')
+    return requestedUrl
+  }
+
+  it('maps the Transfers tab to movement_type=transfer and sends no reason', async () => {
+    const url = await urlForTab('movements.filters.transfers')
+    expect(url).toContain('movement_type=transfer')
+    expect(url).not.toContain('reason=')
+  })
+
+  it('maps the Write-Offs tab to reason=write_off and sends no movement_type', async () => {
+    const url = await urlForTab('movements.filters.writeOffs')
+    expect(url).toContain('reason=write_off')
+    expect(url).not.toContain('movement_type=')
+  })
 })

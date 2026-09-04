@@ -100,6 +100,13 @@ function isReversibleMovement(movement: StockMovement): boolean {
   // and cannot be reversed"), so never offer the control (gate r1, B2).
   if (movement.reverses_movement_id !== null) return false
 
+  // A stock ADJUSTMENT line can carry reason_code 'damage'/'write_off' on a
+  // non-batch-tracked product, so the reason-only Write-Offs tab surfaces it —
+  // but ReverseWriteOffService refuses anything that is not an ISSUE ("Only
+  // write-off issue movements can be reversed"), so never offer the control
+  // (gate r2, F1).
+  if (movement.movement_type !== 'issue') return false
+
   return movement.reference_type === null
     || !(NON_REVERSIBLE_REFERENCE_TYPES as readonly string[]).includes(movement.reference_type)
 }
@@ -200,6 +207,11 @@ export function StockMovementsPage() {
 
   // The server already applied every filter; the page is rendered verbatim.
   const movements = data?.data ?? []
+  // Hoisted once: `api.get<StockMovementsResponse>` is an unchecked cast, so a
+  // rolling deploy / error envelope can still hand us a meta-less body. Binding
+  // it to a variable keeps the runtime guard AND keeps the declared response
+  // type strict, without the inline-chain `no-unnecessary-condition` warning.
+  const meta = data?.meta
 
   // No counts: a single page cannot supply the GLOBAL total for the other tabs,
   // and a per-page count would understate every filter the user has not selected.
@@ -369,7 +381,7 @@ export function StockMovementsPage() {
     <div className="space-y-6">
       <PageHeader
         title={t('movements.title')}
-        subtitle={t('movements.subtitle', { count: data?.meta?.total ?? 0 })}
+        subtitle={t('movements.subtitle', { count: meta?.total ?? 0 })}
         breadcrumb={
           <Link
             to="/inventory/stock"
@@ -426,14 +438,14 @@ export function StockMovementsPage() {
               </div>
             }
           />
-          {data?.meta ? (
+          {meta ? (
             <OffsetPagination
-              currentPage={data.meta.current_page}
-              lastPage={data.meta.last_page}
-              total={data.meta.total}
-              perPage={data.meta.per_page}
-              from={data.meta.from}
-              to={data.meta.to}
+              currentPage={meta.current_page}
+              lastPage={meta.last_page}
+              total={meta.total}
+              perPage={meta.per_page}
+              from={meta.from}
+              to={meta.to}
               onPageChange={setPage}
               onPerPageChange={(next) => {
                 setPerPage(next)
