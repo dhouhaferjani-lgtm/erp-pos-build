@@ -810,6 +810,8 @@ it('requests bounded server filters and renders the real OffsetPagination DOM', 
 
 - [ ] **Step 6: Implement the page with every import named.**
 
+> **`placeholderData: keepPreviousData` WARNING (added 2026-09-04, T6 FE gate r1/r2 — applies to EVERY task in this plan).** TanStack v5 hands back the observer's last query *with data* **regardless of key lineage**, so the tenant/company suffix of `tenantScopedKey` does **not** protect a placeholder. A company switch neither unmounts these pages (`CompanyProvider.tsx:143` renders a bare fragment; `CompanySelector.tsx:39-47` only invalidates; there is no `key={currentCompanyId}` anywhere in `apps/web/src`) nor clears the cache — so the previous company's rows stay on screen, and any surface that lets the operator *act on* them commits cross-company data. The same gate removed this option from `LineItemEntryBar` (T5 fix round 1, see the standing comment at `LineItemEntryBar.tsx:89-96`) and from `DocumentLineEditor` (T6 fix round 1). **Do not add it to a tenant/company-scoped read without gating both display and every commit path on `isPlaceholderData === false`.** This step's snippet below predates that ruling.
+
 ~~~tsx
 import { useEffect, useMemo, useState } from 'react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -1072,6 +1074,8 @@ public function index(ListPaymentsRequest $request): JsonResponse
 No `$request->has()`, `$request->input()`, `$request->query()`, or `$request->integer()` remains in `index()`.
 
 - [ ] **Step 5: Make PaymentListPage a required modification with exact imports and state.**
+
+> **`placeholderData: keepPreviousData` WARNING (added 2026-09-04, T6 FE gate r1/r2 — applies to EVERY task in this plan).** TanStack v5 hands back the observer's last query *with data* **regardless of key lineage**, so the tenant/company suffix of `tenantScopedKey` does **not** protect a placeholder. A company switch neither unmounts these pages (`CompanyProvider.tsx:143` renders a bare fragment; `CompanySelector.tsx:39-47` only invalidates; there is no `key={currentCompanyId}` anywhere in `apps/web/src`) nor clears the cache — so the previous company's rows stay on screen, and any surface that lets the operator *act on* them commits cross-company data. The same gate removed this option from `LineItemEntryBar` (T5 fix round 1, see the standing comment at `LineItemEntryBar.tsx:89-96`) and from `DocumentLineEditor` (T6 fix round 1). **Do not add it to a tenant/company-scoped read without gating both display and every commit path on `isPlaceholderData === false`.** This step's snippet below predates that ruling.
 
 ~~~tsx
 import { useEffect, useState } from 'react'
@@ -1646,7 +1650,7 @@ it('waits 250 ms and sends exactly the final product search', async () => {
 - [ ] **Step 3: Implement with exact imports.**
 
 ~~~tsx
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useDebouncedValue } from '../../../lib/hooks'
 
 const trimmedQuery = query.trim()
@@ -1654,7 +1658,11 @@ const debouncedQuery = useDebouncedValue(trimmedQuery, 250)
 
 queryKey: tenantScopedKey(['line-entry-products', debouncedQuery]),
 // use debouncedQuery in params
-placeholderData: keepPreviousData,
+// STRUCK 2026-09-04 (T5 gate r1 B2, re-affirmed by T6 gate r1/r2):
+// ~~placeholderData: keepPreviousData~~ — it hands the PREVIOUS company's
+// products back across the tenantScopedKey suffix and they were committable.
+// As shipped, LineItemEntryBar has no placeholderData and gates its suggestion
+// list on `debouncedQuery === trimmedQuery && !isPlaceholderData`.
 ~~~
 
 - [ ] **Step 4: Verify by path and gate.** Run `apps/web/src/components/molecules/line-items/LineItemEntryBar.test.tsx` by path, then typecheck, lint, and browser-check Sales, transfer, replenishment, and counting product entry. Gate: frontend-conventions-reviewer.

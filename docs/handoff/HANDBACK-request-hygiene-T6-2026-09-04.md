@@ -19,14 +19,15 @@
 | File | Change |
 |---|---|
 | `apps/web/src/features/documents/components/DocumentLineEditor.tsx` | **~~`pricingContextSignature` … passes through `useDebouncedValue`; the body reads a render-written `pricingContextLinesRef.current`; added `placeholderData: keepPreviousData`.~~ REWRITTEN in fix round 1 — see §7; the struck text is history and two of its claims were false.** As shipped: `pricingContextLines` (the array) passes through `useDebouncedValue(…, 250)`, and the query **key**, the **body** and the **`enabled`** predicate are all derived from that one debounced value — so a cached answer is always filed under the signature of the state it was computed for. Key is `tenantScopedKey(['line-entry-pricing-context', partnerId ?? null, pricingContextSignature])` (**same root, same arity, tenant/company still the suffixes**). **No `placeholderData`.** No ref. `staleTime: 30000` untouched. |
-| `apps/web/src/features/documents/components/__tests__/DocumentLineEditor.test.tsx` | Added the fake-timer test `waits 250 ms and sends only the final unit price to bulk pricing`. Imports widened: `act` from `@testing-library/react`, `afterEach` from `vitest`. A suite-level `afterEach(() => { vi.useRealTimers() })` sits next to the existing `beforeEach`, so a fake-timer test can never leak into the 29 real-timer tests that follow. |
+| `apps/web/src/features/documents/components/__tests__/DocumentLineEditor.test.tsx` | Added the fake-timer test `waits 250 ms and sends only the final unit price to bulk pricing`, plus **four more in fix rounds 1–2** (§7.1, §7.5): a company-switch leg, the empty-document add-then-focus request count, its non-empty-document companion, and a cache key ⟺ body coherence invariant. Imports widened: `act` from `@testing-library/react`, `afterEach` from `vitest`. A suite-level `afterEach(() => { vi.useRealTimers() })` sits next to the existing `beforeEach`, so a fake-timer test can never leak into the real-timer tests around it. The `useCompanyStore` mock reads a hoisted mutable `companyMock`, reset in `beforeEach`. File total: **34** tests (29 pre-existing + 5 new). |
 
 Nothing else changed. In particular `useDebouncedValue`, `tenantScopedKey`, `LineItemsTable`, `MoneyInput`, **`DocumentForm.tsx`**, `CreateCreditNotePage.tsx`, `ProductController.php` and every Inventory Counting file are untouched (global constraints, plan line 15 block).
 
 ### Behaviour delta
 
 - **Before:** every keystroke in the unit-price cell produced a new `pricingContextSignature` → a new query key → one `POST /line-entry/pricing-context/bulk` per character. Typing `125` = **3** requests (measured, §3 RED). Adding a product and clicking its price = **2** requests, the first cached under a key claiming the document had no lines (measured, §7.3).
-- **After:** the key only moves 250 ms after the last keystroke → typing `125` = **1** request carrying `unit_price: '125'`; add-then-focus = **1** request; every cached answer is filed under the signature of the body that produced it.
+- **After:** the key only moves 250 ms after the last keystroke → typing `125` = **1** request carrying `unit_price: '125'`; adding the **first** line and focusing its price = **1** request; every cached answer is filed under the signature of the body that produced it.
+- **Honest cost (gate r2 MINOR-7):** adding a line to a document that **already** has priced lines costs **2** requests where the base cost 1 (`prod-A::5.000`, then `prod-A::5.000|prod-B::10.000`). The debounced array is non-empty, so `enabled` cannot suppress the read already in flight for the old line set. Both are internally coherent; the extra round trip buys the "first read on focus is immediate" property. Pinned by its own test so it cannot drift silently.
 - **Unchanged — the first read on focus is still immediate.** `useDebouncedValue` seeds its state with the current value, so at the moment `enabled` flips true on `onFocus` the debounced signature already equals the live one and no timer has to elapse. The pre-existing test `lazily fetches bulk pricing context on unit-price focus and renders the hint` still passes untouched, which is the regression proof for that.
 - **The hint blinks while the key settles, deliberately.** With no `placeholderData` the cost/margin hint disappears for the duration of the settling request instead of showing the previous verdict. That is the honest behaviour and the same trade the FE gate imposed on `LineItemEntryBar` (T5 fix round 1): a momentary blank beats a stale margin verdict the operator could act on — or commit through `Use suggested`.
 - **Money stays a string end-to-end** (rule 19). The signature is built from `decimalValue(...)` strings, the ref carries the same `PricingContextLineRequest[]`, and the asserted payload is `unit_price: '125'` — no `parseFloat`, no `Number()`, nothing numeric added.
@@ -181,14 +182,17 @@ The repo's pre-commit hook printed "React Doctor found staged regressions". Insp
 
 Both sit on **pre-existing lines** — `:372` is the `pricingContextLines` `.filter().map()` chain and `:452` is `generateId`; both are present verbatim at `5e1e54f69` (`git show 5e1e54f69:…` lines 371 and the same `generateId`). React Doctor scans whole staged files, not the diff, so these are inherited debt surfaced by touching the file. Not fixed here: rule 4 (no scope creep), and `pricingContextLines` is deliberately a filter-then-map for readability of the pricing contract. Flagged for the backlog.
 
-### Browser checks — NOT RUN (promotion-owed)
+### ~~Browser checks — NOT RUN (promotion-owed)~~ — SUPERSEDED, see §7.6
 
-Plan Step 4 asks for a browser check of purchase-order pricing and `CreateCreditNotePage` pricing, and rev 12's onboarding-safety table marks Task 6 conditional on exactly that. **No stack was up, so neither was browser-checked.** They are **promotion preconditions, not merge preconditions**:
+**Struck 2026-09-04 (gate r2 MINOR-8).** The four items that stood here were written against round 0
+and described the *rejected* behaviour: item 1 asked the tester to "confirm the cost/margin hint stays
+on screen (no blink) while typing" and item 4 opened "with `placeholderData: keepPreviousData`, the
+hint shown during the 250 ms settle is the previous signature's answer". Both are false as shipped —
+`placeholderData` is gone and **the blink is the deliberate trade** (§7.2). A tester reading this
+first would have reported the blink as a defect, or "fixed" it by re-adding the option.
 
-1. **Purchase order** (`DocumentForm`, `documentType='purchase_order'`) — focus a line's unit price, type a multi-digit price quickly, and confirm the network panel shows **one** `POST /line-entry/pricing-context/bulk` carrying the final price, not one per character. Confirm the cost/margin hint stays on screen (no blink) while typing, and that it updates to the settled answer.
-2. **Credit note** (`CreateCreditNotePage`) — same.
-3. On both: confirm the hint still appears **immediately** on first focus of a line whose price has not been touched (the "seeded debounce" property), and that `Use suggested` still writes the suggested price.
-4. Worth an eye: with `placeholderData: keepPreviousData`, the hint shown during the 250 ms settle is the **previous** signature's answer. Confirm it is visibly replaced once the new answer lands, so an operator never *commits* on a stale margin verdict (see §6.2 — this is the reviewer question this lane most wants answered).
+**The live browser-check list is §7.6.** Browser checks were not run (no stack up) and remain
+**promotion preconditions, not merge preconditions**.
 
 ---
 
@@ -243,7 +247,9 @@ The plan's Task 6 body cites no `path:line` anchors inside the source files, so 
 |---|---|
 | `584fd3264` | `fix(web request-hygiene t6): debounce bulk pricing context (S-5)` — 2 files changed, 79 insertions(+), 5 deletions(-) |
 | `4ec9db85a` | `fix(web request-hygiene t6): gate r1 — drop placeholderData, debounce the pricing lines so key and body agree` — 2 files changed, 244 insertions(+), 22 deletions(-) |
-| (this file) | `docs(request-hygiene t6): gate r1 report, plan banner, handback fix round 1` — also carries the `## Task 6` amendment in `docs/superpowers/plans/2026-09-03-request-hygiene-phase-a.md` (gate merge condition 3) and the gate report |
+| `272247e59` | `docs(request-hygiene t6): gate r1 report, plan banner, handback fix round 1` — also carries the `## Task 6` amendment in `docs/superpowers/plans/2026-09-03-request-hygiene-phase-a.md` (gate r1 merge condition 3) and the r1 gate report |
+| `e514f884e` | `fix(web request-hygiene t6): gate r2 — scope the company-switch claim to what is proven, pin the non-empty add cost` — 2 files changed, 96 insertions(+), 13 deletions(-) |
+| (this file) | `docs(request-hygiene t6): gate r2 report, plan Task 2/3/5 hygiene, handback fix round 2` |
 
 `git status` is clean at handback time. Housekeeping honoured: no `git stash`, no `apps/api` file touched, path-scoped `git commit -- <paths>`, vitest run by path only (never the whole web suite), no leftover scratch files inside the repo (the falsification copy lived in the session scratchpad).
 
@@ -299,7 +305,7 @@ All three new tests were run against the **round-0 committed component** (`584fd
 
 The span is company-1's `Cost 111.000000 · Last buy 99.000000 · Margin 30%` still on screen under company-2. The test also asserts the `Pricing details` button is gone, so the `Use suggested` commit path (the gate's PROBE 4) is unreachable.
 
-**M1a — `sends exactly one bulk pricing request when a line is added and its price is focused inside the window`.** The gate's PROBE 2 path: empty document, a line is added, its price cell is focused inside the 250 ms window.
+**M1a — `sends exactly one bulk pricing request when the first line is added and its price is focused inside the window`.** The gate's PROBE 2 path: **empty** document, the first line is added, its price cell is focused inside the 250 ms window. (Renamed in fix round 2 — gate r2 MINOR-7 — because it is not a general add-then-focus guarantee; see §7.5.)
 
 ```
  × sends exactly one bulk pricing request when a line is added and its price is focused inside the window 126ms
@@ -364,6 +370,7 @@ The pre-existing `lazily fetches bulk pricing context on unit-price focus and re
 | MINOR-1 — ref inert / wrongly justified | **Fixed** — ref deleted; §6.3 corrected above. |
 | MINOR-2 — Deviation D1 accepted | Noted, no change. |
 | MINOR-3 — `LineItemsTable` component-typed cells remount every cell on any `lineColumns` dep change, dropping focus and selection | **Not fixed here (rule 4, out of lane scope). Owed as a follow-up ticket.** `LineItemsTable.tsx:133-138`; fix shape is to invoke `column.Cell({ line, index })` or memoise per column id. Real production impact: `priceSourceByLineId`, `invalidLineIds`, `purchaseBonusEnabled` and `handleUpdateLine` all move in normal use. |
+| **KNOWN RESIDUAL (gate r2 M2), pre-existing** — the *rendered* pricing hint can lag the query, so a company switch can still leave company-1's hint on screen with `Use suggested` reachable | **Not fixed here; same ticket as MINOR-3.** `DocumentLineEditor.tsx:1111` (deps omit `pricingContext`) + `LineItemsTable.tsx:133-138` (cells are component types). Measured identical at base `5e1e54f69`, so not a T6 regression. Order matters: **remount fix first, deps second** — deps alone would drop focus mid-typing. See §8.1. |
 | MINOR-4 — handback eslint line numbers | **Fixed** — §3 corrected, §7.4 re-measured. |
 | MINOR-5 — `pnpm --filter @autoerp/web lint` RED | **Inherited, not this lane.** `audit:design-system` 14 new + 11 stale, all in `src/features/import/pages/ImportWizardPage.tsx`, introduced by the imports merge `40aed177b`. This lane touches neither that file nor the baseline JSON and contributes zero design-system violations. **Whoever promotes must reconcile it** — the branch cannot claim a green full-lint gate. |
 | MINOR-6 — rule 22 second-company leg | **Fixed** — the company-switch test in §7.3 is that leg. |
@@ -382,3 +389,79 @@ Per the gate's ruling 6, the promotion browser pass on **purchase order** and **
 |---|---|
 | `4ec9db85a` | `fix(web request-hygiene t6): gate r1 — drop placeholderData, debounce the pricing lines so key and body agree` |
 | (this file) | `docs(request-hygiene t6): gate r1 report, plan banner, handback fix round 1` |
+
+
+---
+
+## 8. Fix round 2 — FE gate r2 (2026-09-04)
+
+Gate report: `docs/superpowers/reviews/2026-09-04-request-hygiene-t6-gate-frontend-conventions-r2.md` — **VERDICT: CHANGES**, 1 MAJOR (M2), 3 MINOR (7, 8, 9). **B1 and M1 were confirmed genuinely fixed**, re-falsified by the gate itself against `584fd3264` rather than taken on report; the partner-switch leg r1 flagged is fixed too. Everything in this round is comment/doc-level plus one added test — **no further change to the query itself**.
+
+### 8.1 M2 — the company-switch guarantee was overstated; the claims are now scoped to what is proven
+
+`DocumentLineEditor.tsx:1111-1126` (`lineColumns`' dep array) omits `pricingContext`, and `LineItemsTable.tsx:133-138` renders each cell as a **component type**, so a cell body runs inside the closure captured the last time the memo computed. A pricing answer moves no `lineColumns` dep, so the **rendered** hint can lag the query. The gate measured, on HEAD with a production-faithful stable `t`:
+
+```
+PROBE D hint visible right after the answer arrives (no dep moved): false
+PROBE D hint visible after one dep move:                            true
+PROBE D LEAK — company-1 hint still on screen under company-2: true | Use suggested reachable: true
+```
+
+**Identical at base `5e1e54f69` — strictly pre-existing, not a T6 regression** (hence MAJOR, not BLOCKER). Two consequences worth carrying forward:
+
+1. The B1 leak survives in production through a **second, unrelated mechanism**. `CreateCreditNotePage.tsx:630` passes a stable `onChange`, so it is the exposed surface; `DocumentForm.tsx:698-704` passes an inline arrow whose identity churns, so its leak self-heals on the next parent render — timing-dependent, not absent.
+2. **The pricing hint is largely dead in production today** — it does not appear when the answer arrives, only after some later unrelated dep move. A separate pre-existing product bug this gate surfaced.
+
+Taken here (gate option (a), the in-lane one): the production comment at the query site and the company-switch test's name and header comment now state **only what is proven** — that the *query* does not carry data across a key change — and both explicitly name the residual and where it is tracked. Handback §7.5 carries the residual row below. Option (b), the real fix, is a **separate lane**: fix MINOR-3 first (invoke `column.Cell({ line, index })` or memoise per column id), **then** add `pricingContext?.items` and `openPricingLineId` to the deps — in that order, or every pricing answer remounts the cells and drops focus mid-typing. **MINOR-3 and M2 are one ticket, not two.**
+
+### 8.2 MINOR-7 — the request-count claim was too broad; corrected and pinned
+
+`add-then-focus = 1 request` holds only on an **empty** document, where `enabled` (`debouncedPricingLines.length > 0`) suppresses the early read. On a document that already has priced lines the gate measured HEAD at **2** requests where base was 1:
+
+```
+HEAD  (272247e59): requests at focus: 1 | after settle: 2  ["prod-A::5.000", "prod-A::5.000|prod-B::10.000"]
+base  (5e1e54f69): requests at focus: 1 | after settle: 1  ["prod-A::5.000|prod-B::10.000"]
+```
+
+Both HEAD requests are internally coherent (no M1 relapse); the extra one is the cost of keeping the first read on focus immediate. §1's behaviour delta now says so, the empty-document test is renamed `…when the first line is added…`, and a companion test `costs one extra settling request when a line is added to a document that already has priced lines` pins the real behaviour so it cannot drift silently.
+
+### 8.3 MINOR-8 — handback §3's browser block struck
+
+§3's four browser items were written against round 0 and told the tester to confirm the *rejected* no-blink behaviour. Struck in place with a pointer to §7.6, which is the live list. §1's test-file row refreshed to the as-shipped 34 tests.
+
+### 8.4 MINOR-9 — plan hygiene, plus two escalations OUT of this lane
+
+The r1 banner covers Task 6, and Tasks 7 and 14 do not prescribe the pattern at all — but the gate found it still live elsewhere. In this round, in `docs/superpowers/plans/2026-09-03-request-hygiene-phase-a.md`: a plan-wide `placeholderData: keepPreviousData` WARNING block is repeated at **Task 2 Step 6** and **Task 3 Step 5** (the two steps whose snippets still prescribe it), and **Task 5 Step 3**'s snippet is struck in place to match what actually shipped after its own gate removed the option.
+
+**Escalated to the orchestrator, NOT fixed here (different features, different lanes):** `placeholderData: keepPreviousData` has already shipped on two tenant/company-scoped reads —
+
+- `apps/web/src/features/treasury/PaymentListPage.tsx:117`
+- `apps/web/src/features/inventory/StockMovementsPage.tsx:190`
+
+Both are list reads keyed with `tenantScopedKey`, so both are exposed to the same cross-company carry-over B1 describes (TanStack ignores key lineage; a company switch neither unmounts nor clears). Whether either is *committable* the way `Use suggested` was has not been assessed — that is the lane's first question, not an assumption.
+
+### 8.5 Re-runs after fix round 2
+
+```
+$ pnpm vitest run src/features/documents/components/__tests__/
+ ✓ …/DocumentLineEditor.test.tsx (34 tests)
+ Test Files  10 passed (10)
+      Tests  97 passed (97)
+
+$ pnpm vitest run src/features/documents/
+ Test Files  53 passed (53)
+      Tests  453 passed (453)
+
+$ pnpm typecheck
+> tsc --noEmit
+(no output)          EXIT: 0
+```
+
+eslint, both touched files: **0 errors, 2 + 13 warnings — same rule set as the `5e1e54f69` baseline, no new errors or warnings.** `pnpm audit:keys`: Gate C 0 / 0 new / 0 stale.
+
+### 8.6 Commits added this round
+
+| Hash | Subject |
+|---|---|
+| `e514f884e` | `fix(web request-hygiene t6): gate r2 — scope the company-switch claim to what is proven, pin the non-empty add cost` — 2 files changed, 96 insertions(+), 13 deletions(-) |
+| (this file) | `docs(request-hygiene t6): gate r2 report, plan Task 3/5 hygiene, handback fix round 2` |
