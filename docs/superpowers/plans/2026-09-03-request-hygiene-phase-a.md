@@ -1,6 +1,6 @@
 # Request Hygiene Phase A Implementation Plan
 
-Revision 12 (2026-09-04) — Tasks 2/3/4 LANDED on local dev (banners below record the as-shipped deviations; their step bodies are history); Tasks 12/13 implemented on lanes, gates in flight; addresses plan gates r1..r10; Tasks 9/11 landed; Tasks 2/3/4 dispatched (lanes rh-t2/t3/t4); Tasks 12/13 fixed per gate r9 (test id, inline migration bootstrap, self-contained PG command)
+Revision 13 (2026-09-04) — Tasks 2/3/4/5/6/7/8/10/12/13 LANDED on local dev (banners record as-shipped deviations; step bodies are history); Task 14 fix round landed, re-gate in flight; placeholder-data follow-up lane (guarded keepPreviousData + Gate C detector) gated; T1 remains with the owner (Codex Desktop); addresses plan gates r1..r10; Tasks 9/11 landed; Tasks 2/3/4 dispatched (lanes rh-t2/t3/t4); Tasks 12/13 fixed per gate r9 (test id, inline migration bootstrap, self-contained PG command)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development or superpowers:executing-plans. Execute each checkbox in order; every task starts red, ends with its named focused checks, and goes through its reviewer gate.
 
@@ -847,7 +847,7 @@ params.append('page', String(page))
 params.append('per_page', String(perPage))
 
 // useQuery option
-placeholderData: keepPreviousData,
+placeholderData: keepPreviousData, // rev 13: HISTORY — as shipped this read is guarded (placeholder hidden on tenant/company/location scope change) by the placeholder-data lane; new code must not copy this line unguarded (Gate C detector fails it)
 ~~~
 
 Delete the client-side movement filtering. Use const movements = data?.data ?? []. Remove every FilterTabs count property because a selected page cannot supply global counts for the other tabs. Use data?.meta.total ?? 0 in the PageHeader subtitle. Render below DataTable:
@@ -1096,7 +1096,7 @@ useEffect(() => {
 }, [search])
 
 queryKey: tenantScopedKey(['payments', search, page, perPage]),
-placeholderData: keepPreviousData,
+placeholderData: keepPreviousData, // rev 13: HISTORY — as shipped this read is guarded (placeholder hidden on tenant/company/location scope change) by the placeholder-data lane; new code must not copy this line unguarded (Gate C detector fails it)
 ~~~
 
 Build the URL in this exact order:
@@ -1603,6 +1603,8 @@ public function test_legacy_limit_5000_returns_exactly_100_of_101_documents(): v
 
 ## Task 5: Debounce LineItemEntryBar product search (S-4)
 
+> **LANDED (rev 13) — merged `5e1e54f69` from `lane/rh-t5-product-search`; FE gate r1 CHANGES → r2 MERGE.** As shipped: `placeholderData` DROPPED (company leak) and the suggestion list is trusted only when `debouncedQuery === trimmedQuery && !isPlaceholderData` — otherwise the Enter fork chose a stale first-page suggestion over `resolveScan` (barcode + Enter inside the debounce window). Scan path stays undebounced. Promotion-owed: wedge scan, 3-chars+Enter <250 ms, company switch with dropdown open, across the four consumers.
+
 **Files**
 
 - Modify: apps/web/src/components/molecules/line-items/LineItemEntryBar.tsx
@@ -1780,7 +1782,7 @@ queryFn: () => apiPost<PricingContextResponse>('/line-entry/pricing-context/bulk
   partner_id: partnerId ?? null,
   lines: pricingContextLinesRef.current,
 }),
-placeholderData: keepPreviousData,
+placeholderData: keepPreviousData, // rev 13: HISTORY — as shipped this read is guarded (placeholder hidden on tenant/company/location scope change) by the placeholder-data lane; new code must not copy this line unguarded (Gate C detector fails it)
 ~~~
 
 </details>
@@ -1792,6 +1794,8 @@ placeholderData: keepPreviousData,
 - [ ] **Rev 8 (gate r7 NB): also run the sibling suites** `pnpm vitest run src/features/documents/components/__tests__/` (incl. `DocumentLineEditor.purchasePriceDefault.test.tsx`) and the documents tenant-scope suite, not only the primary test file.
 
 ## Task 7: Deduplicate stock-level requests between transfer components (S-6 partial)
+
+> **LANDED (rev 13) — merged `9c28b430a` from `lane/rh-t7-stock-dedupe`; lane self-gate r2 MERGE + independent FE gate MERGE.** All three Step 5 arms are asserted in vitest with exact URLs. Four other consumers use a `['product-stock', …]` root that does not cross-invalidate with `['stock-levels']` — B-8 debt. Follow-ups: idle-scope availability placeholder, quantity-display debt on the transfer surface. Promotion-owed: browser network-panel check.
 
 **Files**
 
@@ -1926,6 +1930,8 @@ Before the shared hook, `AvailabilityCell` and `TransferSourceSuggestion` produc
 ---
 
 ## Task 8: Cooldown-only reconnect recovery (S-7)
+
+> **LANDED (rev 13) — merged `0bb875180` from `lane/rh-t8-reconnect`; FE gate r1 MERGE (N-1 ruled must-fix) → fix → r2 MERGE.** As shipped: `hasEverConnected` ref — the initial connect after mount neither sweeps nor arms the cooldown; only genuine reconnects do (`{ refetchType: 'active' }`, 30 s cooldown measured from the last invalidation, suppressed edges dropped). Follow-up R2-N5: a socket that first connects after the give-up window gets no sweep (grace-window fix). Promotion-owed: authenticated-layout browser reconnect probe (step 0: no burst on initial connect).
 
 **Files**
 
@@ -2254,6 +2260,8 @@ Expected: all four `CACHE_STORE=database` commands reach `cache:verify-store` an
 
 ## Task 10: Restorable query counting and log-only lazy-load guard
 
+> **LANDED (rev 13) — merged `6292cf235` from `lane/rh-t10-guards`; gate MERGE for LOCAL dev.** Before push: whole-backend CI run (PR→dev or `workflow_dispatch`; CI never runs on a bare branch push) green except the documented pre-existing reds. Before promotion: staging log volume ruling — the guard logs every lazy-load with no dedupe; orchestrator requires a per-process (model, relation) dedupe before staging. `CountsQueries` counts the default connection only (safe while `TENANCY_DB_PER_TENANT=false` in phpunit). Pre-existing reds found on the way: `ReceiptReturnServiceTest` ctor arity + `CapturingFiscalLog` (repaired test-only in `d7b087d4a`); two batch-restitution cases remain red for a substantive reason (FEFO restore credits nothing without shipped-lot movements).
+
 **Files**
 
 - Create: apps/api/tests/Traits/CountsQueries.php
@@ -2458,6 +2466,8 @@ export function useIdempotencyKey(): { key: string; reset: () => void } {
 ---
 
 ## Task 12: Payment surfaces send keys and synchronously block double submit (ID-1, ID-2)
+
+> **LANDED (rev 13) — merged `f21510ce6` from `lane/rh-t12-payment-idempotency`; treasury r1 CHANGES → r2 CHANGES → r3 MERGE; FE r1 REJECT → r2 CHANGES → r3 MERGE.** As shipped beyond the steps: a key belongs to ONE submit intent — rotate on the modal's open TRANSITION (`wasOpenRef`, not the prefill-keyed reset effect), on success, and on the first OPERATOR edit after a failed attempt (`hadFailedAttemptRef`); programmatic RHF writes are wrapped in `writeProgrammatically()` because RHF 7.67 `setValue` also emits `type: 'change'`; unchanged retry keeps the key (replay). `SplitPaymentForm` gained an `onError` surface (`treasury:splitPayment.submitFailed`). Backend has NO payload fingerprint (Phase B convergence item). Follow-ups: P1 pre-production — `RecordPaymentModal` still wipes the in-progress form on prefill identity change (hosts pass inline literals), so a reconnect refetch forces re-entry; `crypto.randomUUID` secure-context check for staging/prod origins; `SupplierInvoiceDetailPage` keyless writer (B-7 sibling). Promotion-owed: five browser legs (throttled double-submit ×3, keyboard three-decimal proof, detail-page openings, fail→edit→resubmit, fail→untouched→retry same key). `SplitPaymentForm` has no active route.
 
 **Files**
 
@@ -2787,6 +2797,8 @@ it('adds a key and synchronously locks duplicate payment recording', async () =>
 ---
 
 ## Task 13: Transfer/adjustment keys and transfer collision replay (ID-3, ID-4)
+
+> **LANDED (rev 13) — merged `f85b7c0e9` from `lane/rh-t13-transfer-idempotency`; inventory-costing r1 CHANGES (CI allowlist) → fixed; FE r1 APPROVE-WITH-FIXES → fix → r2 MERGE.** PG collision proven at both transaction depths; `StockTransferIdempotencyCollisionPostgresTest` added to the CI PostgreSQL class allowlist (runs on PRs/main, not push→dev). Web: `useRef` submit latch on both create pages; the adjustment page uses TWO keys (draft vs post) so a lost draft response cannot replay as a post. Follow-ups: generic error surface on the adjustment page (MAJOR-4), stock-conservation assertion on the replay path (N-1), second-company key-reuse test (N-2), adjustments still lack collision replay (declared residual). Promotion-owed: browser double-click probes with zero-5xx assertion.
 
 **Files**
 
@@ -3394,6 +3406,8 @@ beforeEach(() => {
 
 ## Task 14: Strictly serialized draft autosave (ID-12)
 
+> **STATUS (rev 13) — lane `lane/rh-t14-autosave-serial`: FE gate r1 CHANGES (the promise tail was an unbounded FIFO of stale bodies, not one trailing slot; an intermediate success reset `isDirty` so unmount could silently drop the latest edit) → fix round `8dcc12be5` (single `pendingRef` slot + `latestRequestRef` re-read at execution; `autosavePending` true until the last unsent body is issued) → re-gate r2 in flight.** The plan's `StrictWrapper` indirection was vacuous; `wrapper: StrictMode` is the falsifying form. A statement `try/finally` around the awaited save makes the React Compiler bail out silently — the promise `.finally` shape is the ruled form.
+
 **Files**
 
 - Modify: apps/web/src/hooks/useDraftAutoSave.ts
@@ -3878,4 +3892,8 @@ Do not replace tailRef on reset: new work must still queue behind the physical i
 |---|---|
 | B1 Task 12 Step 2 test used `toHaveTextContent('0.000')` (substring match) while Step 4 promised the exact regex | Step 2 assertion is now `toHaveTextContent(/^0\.000$/)`. |
 | Task 13 | Dispatch-ready per r10; no change. |
+
+## Follow-up lane (rev 13): placeholder-data audit
+
+`lane/rh-placeholder-data-audit` (handback `docs/handoff/HANDBACK-request-hygiene-placeholder-data-2026-09-04.md`): `PaymentListPage`/`StockMovementsPage` keep `keepPreviousData` for same-scope paging but hide placeholder rows whenever the tenant/company (and, for stock movements, location) scope of the data differs from the current one, and reset the page offset on a scope switch; POS `useDiscountPreview` drops `placeholderData` (per-cart key) and `TransactionCart` shows an `aria-busy` skeleton while computing. `tools/audit-tanstack-keys.mjs` Gate C now fails any `placeholderData` on a scoped key without the guard (documented in `docs/conventions/05-REACT-QUERY.md`). Independent gate in flight.
 
