@@ -99,6 +99,33 @@ const APPROVED_FACTORY_CALLS = new Set([
   'locationScopedKey',
 ]);
 
+/**
+ * Read factories whose `placeholderData` survives a key change.
+ *
+ * TanStack v5 picks the placeholder from the OBSERVER's last query that had
+ * data, with no key-lineage check (`queryObserver.js` #lastQueryWithDefinedData),
+ * so `placeholderData: keepPreviousData` on a key built by
+ * {@link APPROVED_FACTORY_CALLS} hands the PREVIOUS company's payload back across
+ * the tenant/company suffix — and a company switch only invalidates the cache,
+ * it never unmounts the page. The operator then reads, links into and acts on
+ * another company's records for the whole in-flight window.
+ *
+ * It stays legitimate WITHIN one scope (paging 1 -> 2 must not flash an empty
+ * table), so this is a PAIRING rule, not a ban: the reader must gate its rows on
+ * `usePlaceholderScopeGuard`, which blanks them when the placeholder predates a
+ * scope change. Pairing is checked per FILE, which is the granularity a reviewer
+ * can verify at a glance; a lane that legitimately has no same-scope win should
+ * drop `placeholderData` instead (see `features/pos/hooks/useDiscountPreview.ts`).
+ */
+const PLACEHOLDER_BEARING_FACTORIES = new Set([
+  'useQuery',
+  'useInfiniteQuery',
+  'useSuspenseQuery',
+]);
+
+/** The guard that makes `placeholderData` safe on a scoped key. */
+const PLACEHOLDER_SCOPE_GUARD = 'usePlaceholderScopeGuard';
+
 const BASELINED_VIOLATION_KEYS = new Set([]);
 
 /**
@@ -431,6 +458,40 @@ function checkOptionsObject(options, factoryName, sourceFile, relPath, out) {
       ts.isCallExpression(innerKey) &&
       ts.isIdentifier(innerKey.expression) &&
       APPROVED_FACTORY_CALLS.has(innerKey.expression.text);
+    // Pairing rule: a scoped key + `placeholderData` + no guard in this file.
+    // Checked before the approval verdict below because the key here is, by
+    // construction, an APPROVED one — an unscoped key is already reported by
+    // that verdict and must not be reported twice.
+    if (isTenantScopedFactoryCall && PLACEHOLDER_BEARING_FACTORIES.has(factoryName)) {
+      const placeholderProp = options.properties.find(
+        (p) =>
+          (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) &&
+          p.name &&
+          ts.isIdentifier(p.name) &&
+          p.name.text === 'placeholderData',
+      );
+      if (placeholderProp && !sourceFile.text.includes(PLACEHOLDER_SCOPE_GUARD)) {
+        const startPos = placeholderProp.getStart(sourceFile);
+        const { line, character } = sourceFile.getLineAndCharacterOfPosition(startPos);
+        out.push({
+          file: relPath,
+          line: line + 1,
+          column: character + 1,
+          reason:
+            `${factoryName}({ queryKey: ${innerKey.expression.text}([...]), placeholderData }) ` +
+            'renders the PREVIOUS tenant/company payload after a scope switch: TanStack picks the ' +
+            'placeholder from the observer\'s last query that had data with no key-lineage check. ' +
+            `Gate the rows on ${PLACEHOLDER_SCOPE_GUARD}(isPlaceholderData, data !== undefined), ` +
+            'or drop placeholderData when there is no same-scope win to keep.',
+          factory: factoryName,
+          enclosing_symbol: findEnclosingSymbol(placeholderProp),
+          resource: innerKey.arguments[0] ? extractQueryKeyResource(innerKey.arguments[0]) : null,
+          statement_fingerprint: `${fingerprintExpression(sourceFile, initializer)}@${startPos}`,
+          ast_kind: classifyQueryKeyAstKind(initializer),
+        });
+      }
+    }
+
     if (isCacheFilterFactory && isTenantScopedFactoryCall) {
       const startPos = queryKeyProp.getStart(sourceFile);
       const { line, character } = sourceFile.getLineAndCharacterOfPosition(startPos);

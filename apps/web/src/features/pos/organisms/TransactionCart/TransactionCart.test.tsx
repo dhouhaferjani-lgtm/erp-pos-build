@@ -274,3 +274,57 @@ describe('TransactionCart', () => {
     expect(getByText(/0\.00/)).toBeInTheDocument()
   })
 })
+
+/**
+ * The discount preview deliberately carries no `placeholderData` (a placeholder
+ * there is a discount priced for a DIFFERENT cart or company — see
+ * `hooks/useDiscountPreview.ts`), so the applied-discounts block has nothing to
+ * show while a preview is in flight. It must then read as "still computing", not
+ * as "no promotion applies": those two are the same pixels otherwise, on every
+ * cart edit.
+ */
+describe('TransactionCart applied-discounts loading state', () => {
+  const item: CartItem = {
+    id: '1',
+    product: { id: 'prod-1', name: 'Oil Filter', sku: 'OF-1234', price: '15.500' },
+    quantity: 1,
+    unit_price: '15.500',
+    line_total: '15.500',
+  }
+
+  function renderCart(extra: Partial<React.ComponentProps<typeof TransactionCart>>) {
+    return renderWithClient(
+      <TransactionCart
+        items={[item]}
+        onUpdateQuantity={vi.fn()}
+        onRemoveItem={vi.fn()}
+        onQuickCheckout={vi.fn()}
+        onAdvancedPayments={vi.fn()}
+        {...extra}
+      />,
+    )
+  }
+
+  it('holds the block with a busy placeholder while a preview is in flight', () => {
+    const { getByTestId } = renderCart({ isDiscountPreviewLoading: true })
+
+    const region = getByTestId('applied-discounts-loading')
+    expect(region).toHaveAttribute('aria-busy', 'true')
+  })
+
+  it('shows nothing when the settled preview carries no promotion', () => {
+    const { queryByTestId } = renderCart({
+      isDiscountPreviewLoading: false,
+      discountBreakdown: { lines: [], total_transaction_discount: '0.000', line_discounts: {} },
+      discountSavings: '0.000',
+    })
+
+    expect(queryByTestId('applied-discounts-loading')).not.toBeInTheDocument()
+  })
+
+  it('does not show the busy placeholder for an empty cart', () => {
+    const { queryByTestId } = renderCart({ items: [], isDiscountPreviewLoading: true })
+
+    expect(queryByTestId('applied-discounts-loading')).not.toBeInTheDocument()
+  })
+})

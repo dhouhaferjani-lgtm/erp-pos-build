@@ -45,6 +45,13 @@ export interface TransactionCartProps {
   loyaltyEnrollment?: LoyaltyEnrollment | null | undefined
   discountBreakdown?: DiscountBreakdownData | null | undefined
   discountSavings?: string | undefined
+  /**
+   * The discount preview is refetching. The preview carries no `placeholderData`
+   * (a placeholder there is a discount priced for a different cart), so without
+   * this the applied-discounts block unmounts on every cart edit and an
+   * in-flight preview is indistinguishable from "no promotion applies".
+   */
+  isDiscountPreviewLoading?: boolean | undefined
   couponCode?: string | null | undefined
   onCouponApplied?: ((code: string, discountAmount: string, promotionName: string) => void) | undefined
   onCouponRemoved?: (() => void) | undefined
@@ -72,6 +79,7 @@ export function TransactionCart({
   loyaltyEnrollment,
   discountBreakdown,
   discountSavings,
+  isDiscountPreviewLoading = false,
   couponCode,
   onCouponApplied,
   onCouponRemoved,
@@ -310,8 +318,21 @@ export function TransactionCart({
         </div>
       )}
 
+      {/* Applied discounts still computing — hold the row, do not read as "none" */}
+      {!isEmpty && isDiscountPreviewLoading && (
+        <div
+          data-testid="applied-discounts-loading"
+          aria-busy="true"
+          aria-live="polite"
+          className={cn('border-t pt-3 pb-3 space-y-2', borderColors.light)}
+        >
+          <div className={cn('animate-pulse h-6 w-2/5 rounded-full', colors.neutral[200])} />
+          <div className={cn('animate-pulse h-4 w-1/4 rounded', colors.neutral[200])} />
+        </div>
+      )}
+
       {/* Applied Discounts (promotions, coupons, loyalty — not manual) */}
-      {!isEmpty && discountBreakdown && discountBreakdown.lines.filter((l) => l.source !== 'manual').length > 0 && (
+      {!isEmpty && !isDiscountPreviewLoading && discountBreakdown && discountBreakdown.lines.filter((l) => l.source !== 'manual').length > 0 && (
         <div className={cn('border-t pt-3 pb-3 space-y-2', borderColors.light)}>
           {discountBreakdown.lines
             .filter((l) => l.source !== 'manual')
