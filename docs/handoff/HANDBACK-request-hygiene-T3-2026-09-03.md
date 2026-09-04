@@ -227,7 +227,7 @@ green), but a reviewer may want the six-field meta there too.
 new unscoped-key violation in `src/features/uom/hooks/useUnits.ts:53` and `pnpm audit:design-system`
 reports C3 violations in `src/features/import/pages/ImportWizardPage.tsx`. Neither file is touched by
 this lane (`git status` lists only treasury/dashboard/e2e files). No violation is reported against any
-file this lane changed.
+file this lane changed. **[Corrected 2026-09-04, FE gate r1 blocker: after fix round 2 the enum-typed `paymentStatusTones` re-keyed the pre-existing C6 baseline entry — `audit:design-system` reported `PaymentListPage.tsx:66` as NEW and the old `Record<string, StatusTone>` key as STALE. Fixed in fix round 3 below (baseline line 791 re-keyed; same debt, same line, net zero). D6 as originally written was false for the post-round-2 tree.]**
 
 ---
 
@@ -699,3 +699,12 @@ browser checks listed at the bottom of §3 are still owed.
 | Fix 2c — status filter control options | **N/A** — the page has no status filter (§R2.2c) |
 | Fix 2d — red-first test for `failed`/`reversed` | **Done** (§R2.2d), red is the typecheck; the vitest case is a rendering guard, declared as such |
 | Out of scope this round | shared hook extraction, `PaymentDetailPage` union, LIKE escaping (§R2.5) |
+
+## Fix round 3 (design-system baseline re-key, 2026-09-04)
+
+Frontend-conventions gate r1 (`docs/superpowers/reviews/2026-09-04-request-hygiene-t3-gate-frontend-conventions.md`) found one blocker: `apps/web/tools/audit-design-system-baseline.json:791` still acknowledged `C6|…PaymentListPage.tsx|Record<string, StatusTone>|#1`, so the fix-round-2 change to `Record<PaymentStatus, StatusTone>` surfaced as a NEW violation plus a STALE entry. The gate pre-authorised re-keying the baseline line (not reverting the enum-typed map). Landed in `fb36c4932`.
+
+- Edit: line 791 → `C6|src/features/treasury/PaymentListPage.tsx|Record<PaymentStatus, StatusTone>|#1`.
+- Verification: `cd apps/web && node tools/audit-design-system.mjs` → `796 acknowledged, 15 new, 11 stale` (was 16 new / 12 stale); `grep -c PaymentListPage` on the output → `0`. The remaining 15/11 are pre-existing dev-base debt in files this lane does not touch (ImportWizardPage etc.).
+- Treasury gate r2 = MERGE (`docs/superpowers/reviews/2026-09-04-request-hygiene-t3-gate-treasury-r2.md`); its minor follow-ups (nullable on `page`/`per_page`, newest-first assertion in the default-cap test, comment wording in `ListPaymentsRequest`) are recorded as follow-ups, not fixed here.
+
