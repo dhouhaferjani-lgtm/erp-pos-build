@@ -178,9 +178,11 @@ describe('treasury tenant scope', () => {
       expect(queryClient.getQueriesData({ queryKey: ['instruments'] }).some(([key, value]) => (
         key.at(-2) === 'tenant-A' && key.at(-1) === 'company-1' && value !== undefined
       ))).toBe(true)
-      // PaymentListPage keys its query as ['payments', search, tenant, company]
-      // since the list-search branch; the initial search term is ''.
-      expect(queryClient.getQueryData(['payments', '', 'tenant-A', 'company-1'])).toBeDefined()
+      // PaymentListPage keys its query as
+      // ['payments', search, page, perPage, tenant, company] since list
+      // pagination became mandatory; the initial search term is '' and the
+      // first page is 1 at the 25-row default.
+      expect(queryClient.getQueryData(['payments', '', 1, 25, 'tenant-A', 'company-1'])).toBeDefined()
       expect(queryClient.getQueryData(['payment-repositories', 'tenant-A', 'company-1'])).toBeDefined()
       expect(queryClient.getQueryData(['payment-methods', 'tenant-A', 'company-1'])).toBeDefined()
     })

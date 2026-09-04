@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { PaymentListPage } from './PaymentListPage'
+import { PaymentListPage, type Payment } from './PaymentListPage'
+import type { OffsetPaginationMeta } from '../../types/pagination'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -35,24 +36,9 @@ vi.mock('../../stores/companyStore', () => {
   return { useCompanyStore }
 })
 
-interface Payment {
-  id: string
-  payment_number: string
-  amount: number
-  payment_date: string
-  payment_method_id: string
-  payment_method_name: string
-  partner_id: string
-  partner_name: string
-  partner_type: 'customer' | 'supplier' | 'both' | null
-  payment_type: string | null
-  status: 'pending' | 'completed' | 'cancelled'
-  created_at: string
-}
-
 interface PaymentsResponse {
   data: Payment[]
-  meta?: { total: number }
+  meta: OffsetPaginationMeta
 }
 
 function makePayment(overrides: Partial<Payment>): Payment {
@@ -68,6 +54,7 @@ function makePayment(overrides: Partial<Payment>): Payment {
     partner_type: 'customer',
     payment_type: null,
     status: 'pending',
+    dishonored_at: null,
     created_at: '2026-06-14T00:00:00Z',
     ...overrides,
   }
@@ -82,8 +69,10 @@ const mockUseQueryReturn: {
     data: [
       makePayment({ id: '1', payment_number: 'PAY-1001', status: 'pending', amount: 120.5 }),
       makePayment({ id: '2', payment_number: 'PAY-1002', status: 'completed', amount: 90 }),
+      makePayment({ id: '3', payment_number: 'PAY-1003', status: 'failed', amount: 40 }),
+      makePayment({ id: '4', payment_number: 'PAY-1004', status: 'reversed', amount: 60 }),
     ],
-    meta: { total: 2 },
+    meta: { current_page: 1, last_page: 1, per_page: 25, total: 4, from: 1, to: 4 },
   },
   isLoading: false,
   error: null,
@@ -112,6 +101,17 @@ describe('PaymentListPage (canonical list)', () => {
     const badge = screen.getByText('pending')
     expect(badge.tagName).toBe('SPAN')
     expect(badge.className).toContain('rounded-full')
+  })
+
+  it('labels every backend PaymentStatus, including failed and reversed', () => {
+    render(<PaymentListPage />)
+    // The i18n mock echoes the string default, so each pill shows the raw
+    // status key that `treasury:payments.statuses.<status>` resolves.
+    for (const status of ['pending', 'completed', 'failed', 'reversed']) {
+      const badge = screen.getByText(status)
+      expect(badge.tagName).toBe('SPAN')
+      expect(badge.className).toContain('rounded-full')
+    }
   })
 
   it('navigates to the new-payment route from the Add button', async () => {

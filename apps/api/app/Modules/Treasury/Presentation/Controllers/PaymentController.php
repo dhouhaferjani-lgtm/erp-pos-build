@@ -46,6 +46,7 @@ use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\Services\DocumentAllocationClassifier;
+use App\Modules\Treasury\Presentation\Requests\ListPaymentsRequest;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use App\Shared\Presentation\Validation\ScopedExists;
@@ -256,11 +257,11 @@ class PaymentController extends Controller
         ], 200);
     }
 
-    public function index(Request $request): JsonResponse
+    public function index(ListPaymentsRequest $request): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
-        $company = $this->companyContext->requireCompany();
-        $tenantId = $company->tenant_id;
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+        $validated = $request->validated();
 
         // Tenant+company scope — Treasury is company-scoped (api.treasury.075).
         // Without the company_id predicate a user bound to one company could
@@ -270,42 +271,43 @@ class PaymentController extends Controller
             ->where('company_id', $companyId)
             ->with(['partner', 'paymentMethod', 'allocations.document']);
 
-        // Filter by partner
-        if ($request->has('partner_id')) {
-            $query->where('partner_id', $request->input('partner_id'));
+        if (is_string($validated['partner_id'] ?? null)) {
+            $query->where('partner_id', $validated['partner_id']);
         }
-
-        // Filter by status
-        if ($request->has('status')) {
-            $query->where('status', $request->input('status'));
+        if (is_string($validated['status'] ?? null)) {
+            $query->where('status', $validated['status']);
         }
 
         // Free-text search by reference (the displayed payment number derives
         // from reference) or partner name. Grouped so the clauses OR together.
-        $search = $request->query('search');
+        $search = $validated['search'] ?? null;
         if (is_string($search) && $search !== '') {
-            $query->where(function (Builder $q) use ($search): void {
-                $q->where('reference', 'like', "%{$search}%")
-                    ->orWhereHas('partner', function (Builder $partnerQuery) use ($search): void {
-                        $partnerQuery->where('partners.name', 'like', "%{$search}%");
+            $pattern = '%'.$search.'%';
+            $query->where(static function (Builder $searchQuery) use ($pattern): void {
+                $searchQuery->where('reference', 'like', $pattern)
+                    ->orWhereHas('partner', static function (Builder $partnerQuery) use ($pattern): void {
+                        $partnerQuery->where('partners.name', 'like', $pattern);
                     });
             });
         }
 
-        if (! $request->has('page')) {
-            $payments = $query->orderByDesc('payment_date')->get();
-
-            return response()->json([
-                'data' => $payments->map(fn (Payment $payment) => $this->formatPayment($payment))->values(),
-            ]);
-        }
-
-        $perPage = min(max($request->integer('per_page', 25), 1), 100);
-        $page = max($request->integer('page', 1), 1);
-        $payments = $query->orderByDesc('payment_date')->paginate($perPage, ['*'], 'page', $page);
+        // Always paginated: an unbounded list read is a request-hygiene defect
+        // (S-2). `payment_date DESC, id DESC` makes page traversal
+        // deterministic even when many payments share one payment date.
+        $payments = $query
+            ->orderByDesc('payment_date')
+            ->orderByDesc('id')
+            ->paginate(
+                (int) ($validated['per_page'] ?? 25),
+                ['*'],
+                'page',
+                (int) ($validated['page'] ?? 1),
+            );
 
         return response()->json([
-            'data' => $payments->getCollection()->map(fn (Payment $payment) => $this->formatPayment($payment))->values(),
+            'data' => $payments->getCollection()
+                ->map(fn (Payment $payment): array => $this->formatPayment($payment))
+                ->values(),
             'meta' => [
                 'current_page' => $payments->currentPage(),
                 'last_page' => $payments->lastPage(),

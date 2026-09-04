@@ -194,25 +194,43 @@ export async function repositoryIdByCode(
 /**
  * EVERY payment id for the session's company, SORTED.
  *
- * `PaymentController::index` branches on the `page` parameter: **without** `page`
- * it takes the `->get()` branch and returns the WHOLE company payment set (no
- * pagination, no `meta`); **with** `?page=` it paginates and does carry
- * `meta.total`. This helper deliberately omits `page`, so the comparison it feeds
- * is a FULL-SET comparison — not a "page 1 didn't change" heuristic. That is what
- * makes the plan's "**No** `Payment` entity created" caveat (§B.5 row 71)
- * assertable exactly: any new payment row anywhere in the set changes the result.
+ * `PaymentController::index` is ALWAYS paginated (request-hygiene T3): there is
+ * no unbounded `->get()` branch left, so a single call only ever returns one
+ * page. This helper therefore walks `meta.last_page` to keep feeding a FULL-SET
+ * comparison — that is what makes the plan's "**No** `Payment` entity created"
+ * caveat (§B.5 row 71) assertable exactly: any new payment row anywhere in the
+ * set changes the result.
  *
- * SORTED because the index orders by `payment_date` DESC with no tiebreaker, and
- * that column is date-only — two payments on the same date may come back in either
- * order between two reads, which would flake an ordered comparison.
+ * It reads the raw response instead of `get()` because `asJsonResult()`
+ * deliberately unwraps `data` and discards the sibling `meta` this loop needs.
+ *
+ * SORTED so the comparison never depends on server ordering.
  */
 export async function allPaymentIds(
   request: APIRequestContext,
   session: Session,
 ): Promise<string[]> {
-  const res = await get(request, session, '/payments')
-  expect(res.ok, `payments index -> ${res.status}`).toBeTruthy()
-  return (res.data as unknown as Array<{ id: string }>).map((p) => p.id).sort()
+  const ids: string[] = []
+  let page = 1
+  let lastPage = 1
+
+  do {
+    const response = await request.get(
+      `${API_BASE}/payments?page=${page}&per_page=100`,
+      { headers: authHeaders(session) },
+    )
+    expect(response.ok(), `payments page ${page} -> ${response.status()}`).toBeTruthy()
+    const body = await response.json() as {
+      data: Array<{ id: string }>
+      meta: { current_page: number; last_page: number }
+    }
+    expect(body.meta.current_page).toBe(page)
+    ids.push(...body.data.map((payment) => payment.id))
+    lastPage = body.meta.last_page
+    page += 1
+  } while (page <= lastPage)
+
+  return ids.sort()
 }
 
 export async function paymentMethodIdByCode(

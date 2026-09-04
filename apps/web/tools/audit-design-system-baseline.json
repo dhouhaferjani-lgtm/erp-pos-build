@@ -788,7 +788,7 @@
     "C6|src/features/treasury/InstrumentListPage.tsx|StatusTones: Record<|#1",
     "C6|src/features/treasury/InstrumentListPage.tsx|const instrumentStatusTones:|#1",
     "C6|src/features/treasury/PaymentDetailPage.tsx|Record<string, StatusTone>|#1",
-    "C6|src/features/treasury/PaymentListPage.tsx|Record<string, StatusTone>|#1",
+    "C6|src/features/treasury/PaymentListPage.tsx|Record<PaymentStatus, StatusTone>|#1",
     "C6|src/features/treasury/PaymentListPage.tsx|StatusTones: Record<|#1",
     "C6|src/features/treasury/PaymentListPage.tsx|const paymentStatusTones:|#1",
     "C6|src/features/treasury/RepositoryDetailPage.tsx|Record<Repository['type'], StatusTone>|#1",
