@@ -2,12 +2,17 @@
 
 Branch: `lane/rh-devreds-2` (base = `dev` `fa000edc3`). Worktree:
 `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/rh-devreds2`.
-Not merged. Eight commits: one per item below (item 6 needed two, per its
-documented ritual; item 4 got a follow-up commit per the orchestrator's
-ruling — see the item-4 ADDENDUM below), plus this handback doc.
+Not merged. Ten commits total: one per item below (item 6 needed two, per
+its documented ritual), plus a deptrac follow-up (item 4's ADDENDUM,
+applied per orchestrator ruling), a fix-round-1 commit (F-1, restoring
+two type assertions gate r1 found had been dropped — see below), and
+this handback doc (amended in place through several rounds rather than
+appended commit-by-commit, per the harness's own note-taking).
 
 ```
-(HEAD)      docs(handoff): append item-4 addendum -- deptrac ceiling bump applied per ruling
+$ git log --oneline dev..lane/rh-devreds-2
+61a9c5fef fix(web tests): restore the two HTMLInputElement assertions the eslint pass dropped (tsc TS2339)
+e8829bcd0 docs(handoff): append item-4 addendum -- deptrac ceiling bump applied per ruling
 3ccf6a26a chore(deptrac): carry the waived CustomerAdvanceClearingInterface->Document edge in the SharedContracts→ModuleDomain ceiling (36->37)
 317b12a5b docs(handoff): dev-reds-2 reconciliation handback
 b4247f966 docs(i18n): re-pin baseline mirror to the 2026-09-05 seed commit (commit 2 of 2)
@@ -17,9 +22,44 @@ b4247f966 docs(i18n): re-pin baseline mirror to the 2026-09-05 seed commit (comm
 fa3719e23 fix(pos-test): hoist getSyncMetadataSpy to fix vi.mock hoisting ReferenceError
 3801c4f13 style(tests): fix Pint ordered_imports in ProductsImportPipelineTest
 ```
-(the deptrac ceiling-bump commit `3ccf6a26a` landed AFTER the original handback commit
-`317b12a5b`, per an orchestrator ruling on item 4 received after this doc's first version —
-see the ADDENDUM at the end of the item-4 section below.)
+
+## Gate r1 — CHANGES → fix round 1 applied
+
+Gate r1 (`docs/superpowers/reviews/2026-09-05-request-hygiene-devreds-2-gate-r1.md`) returned
+**CHANGES**, one BLOCKER (F-1) and six lower-severity findings (F-2 through F-7). Fix round 1,
+in this same worktree/branch, addressed everything actionable:
+
+- **F-1 (BLOCKER, fixed):** commit `5524b9a69` had removed two `as HTMLInputElement` type
+  assertions at `ProductForm.test.tsx:772,816`, breaking `tsc --noEmit` (TS2339) and turning the
+  required CI job `frontend-typecheck` red — the exact opposite of this lane's purpose. Restored
+  both assertions verbatim in commit `61a9c5fef`. Verified:
+  ```
+  $ cd apps/web && ./node_modules/.bin/tsc --noEmit
+  (no output, exit 0)
+
+  $ cd .. && node scripts/lint-ratchet.mjs
+  @autoerp/web     baseline=  6448  current=  6401  improved — warnings fell 6448 → 6401 (-47)
+  @autoerp/pos     baseline=    84  current=    84  held — 84 warnings
+  RESULT: PASS — no lint-warning regression against baseline.
+  ```
+- **F-2 (MAJOR, documented):** item 6's owner-action list was incomplete. Rewritten below with
+  the full ordered ritual (merge → tag → variable) and the ordering-constraint warning.
+- **F-3 (MINOR, documented):** 4 of the 62 new baseline entries are real, previously-unbaselined
+  Arabic plural debt, not granularisation. Called out explicitly below with a follow-up-ticket
+  note (owner/next-session, not this lane).
+- **F-4 (MINOR, documented):** commit `5524b9a69`'s message undercounted its rule list by one
+  (`@typescript-eslint/consistent-type-definitions` also fired). Disclosed in item 5 below;
+  the historical commit message itself was not amended (would require rebasing three already
+  gate-reviewed commits after it for a message-only fix).
+- **F-5 (MINOR, documented):** corrected ".gitignore" → the actual mechanism,
+  `.git/info/exclude:21`, in item 1 below. Gate r1's `markTestSkipped` suggestion recorded as a
+  follow-up, out of this lane's remit (see item 1).
+- **F-6 (INFO, documented):** corrected item 6's CI-symptom attribution (the exit 1 comes from
+  62 fresh findings, not the harmless 9-stale `console.log`) and the seed commit's 8→7 miscount.
+- **F-7 (INFO):** no action — awareness only, acknowledged.
+
+Not re-merged after this round; still awaiting gate r2 / orchestrator sign-off on
+`lane/rh-devreds-2`.
 
 ---
 
@@ -42,8 +82,12 @@ $ ./vendor/bin/pint --test tests/Feature/Import/ProductsImportPipelineTest.php
 `test_real_products_workbook_reports_all_859_piece_rows_and_preserves_the_three_quantity_errors` —
 both fail `assertIsString($path, '... fixture must remain available.')` because they reference
 `apps/web/e2e-local/real-produits-nobarcode.csv` and `apps/web/e2e-local/real-produits.xlsx`,
-files that exist locally in the main checkout but were **never committed to git** (never tracked,
-no `.gitignore` entry — confirmed via `git ls-files` / `git log --all --diff-filter=A`). This is
+files that exist locally in the main checkout but were **never committed to git** (never tracked
+— confirmed via `git ls-files` / `git log --all --diff-filter=A`). **Correction (gate r1 F-5):**
+these are not merely un-gitignored; the whole `apps/web/e2e-local/` directory is deliberately
+excluded via `.git/info/exclude:21` (a local, untracked-file exclude — `.gitignore` is unrelated
+and, correctly, does not list it). That is the more relevant fact: it is *why* these files can
+never be committed by accident, not just an absence of a rule. This is
 not a fresh-checkout problem in practice: the only CI job that runs `tests/Feature/Import/` as a
 whole (`.github/workflows/ci.yml:2239`, job `feature-lane-data-console`) runs on
 `runs-on: [self-hosted, linux, x64, autoerp-heavy]` and is gated
@@ -52,6 +96,15 @@ whole (`.github/workflows/ci.yml:2239`, job `feature-lane-data-console`) runs on
 owner-local fixture files already sit on disk. Out of scope for this lane: not one of the 6 named
 items, gated behind an owner flag, and not fixable by committing real customer-shaped data into
 the repo.
+
+**Follow-up suggested by gate r1 (not this lane's remit):** replace the `assertIsString(...)`
+hard-fail precondition with `markTestSkipped('...fixture is owner-local, see ...')` guarded on
+`$path === false`. Rationale for: `assertIsString` makes an environment precondition
+indistinguishable from a product regression — anyone who flips `SELF_HOSTED_RUNNER_READY` on a
+machine without these fixtures gets a red that reads as a data-pipeline bug. Rationale against
+(why it stays out of this lane): the hard failure is a deliberate tripwire so the owner notices
+if the fixtures ever go missing from the self-hosted box, and converting it is a behaviour
+change to a test, not a CI-reconciliation fix.
 
 ---
 
@@ -233,6 +286,15 @@ string — mostly `colorTokens.*` template-literal className props), and
 void expression, e.g. inline `onChange`/`onClick` handlers and `waitFor(() => expect(...))` in
 tests). 12 files touched, 308 → 257 warnings (**-51**, comfortably above the +8 margin required).
 
+**Correction (gate r1 F-4):** the original commit message named only the three rules above. A
+fourth also fired and landed in the same diff — `@typescript-eslint/consistent-type-definitions`
+(`ProductForm.test.tsx:70`, `type MutationOptions = {...}` → `interface MutationOptions {...}`),
+behaviour-neutral (a type alias and an equivalent interface are interchangeable here). The commit
+message should have named all four; it named three. (Gate r1 also flagged two `as
+HTMLInputElement` removals in this same diff that were **not** produced by any of these four
+rules and were not behaviour-neutral — see the F-1 fix-round commit `61a9c5fef`, which restored
+them; `tsc --noEmit` is now clean.)
+
 **Correctness check:** these three rules are all type-preserving/behavior-preserving by
 construction (`Array<T>` ≡ `T[]`; removing a no-op template wrapper doesn't change the string
 value; wrapping `expr` in `{ expr; }` for a function typed to return `void` doesn't change what
@@ -260,6 +322,17 @@ RESULT: PASS — no lint-warning regression against baseline.
 scoped file's warnings were already double-counted against overlapping baseline categories —
 either way, PASS.) **Did not run `--update-baseline`** — per instructions, "do NOT re-baseline";
 the existing baseline (6448) already covers the improved number.
+
+**Re-verified after the F-1 fix round** (restoring the two `as HTMLInputElement` assertions puts
+2 warnings back — `@typescript-eslint/no-unsafe-type-assertion` fires on them again, as it does
+on the file's ten sibling assertions):
+```
+$ node scripts/lint-ratchet.mjs
+@autoerp/web     baseline=  6448  current=  6401  improved — warnings fell 6448 → 6401 (-47)
+@autoerp/pos     baseline=    84  current=    84  held — 84 warnings
+RESULT: PASS — no lint-warning regression against baseline.
+```
+Still comfortably under the 6448 ceiling.
 
 **Companion light gates, run once each as instructed:**
 ```
@@ -304,22 +377,63 @@ EXIT=0
 
 ## Item 6 — i18n completeness gate (`pnpm audit:i18n:local`)
 
-**CI symptom:** exits 1 with `i18n completeness — 9 baseline entries now translated (burn-down;
-regenerate the baseline and re-pin to lock the gain in).` (entries like `ar|uom|missing|title`).
+**CI symptom — corrected (gate r1 F-6; the seed commit's own message misattributed this, see
+below):** `pnpm audit:i18n:local` exits 1 with `i18n completeness — 62 NEW gap(s) not in the
+baseline:` (a list including `ar|uom|missing|title`, `ar|import|plural|unitErrors.line_few`,
+etc.). A second, non-fatal line also prints — `i18n completeness — 9 baseline entries now
+translated (burn-down; regenerate the baseline and re-pin to lock the gain in).` — but **that
+line can never cause the exit 1 on its own**: `audit-i18n-completeness.mjs`'s `stale` branch is a
+bare `console.log` with no `failed = true` assignment, and the file's own header comment states
+it explicitly ("Stale baseline entries are burn-down (a note, never a failure)"). The seed
+commit's message (`89b508e1f`) quoted only the harmless stale line as "the CI red", which reads
+as though burn-down alone tripped the gate — it did not. **The actual, exit-1-causing failure is
+the 62 fresh findings** (`audit-i18n-completeness.mjs:781-785`, which does set `failed = true`).
 
-**What the symptom line doesn't say (important for whoever reads this next):** running the
-checker live showed the FULL picture is not "9 stale entries only" — it is **9 stale + 62 fresh**
-(`i18n completeness — 62 NEW gap(s) not in the baseline`). Root cause of the 62: a
-pre-existing-on-dev commit (`4b5b58789`, already on `dev` before this lane started, not something
-introduced here) wired a real (partial) Arabic bundle for the `uom` namespace
-(`apps/web/src/lib/i18n.ts:388`, `uom: { ...enUom, ...arUom, ... }`), where previously `uom` under
-`ar` was wholly English-aliased. That's genuine translation progress, but the checker's
-classification rule ("one entry per (locale,namespace) for `aliased`, but per-key for `missing`")
-means de-aliasing a namespace converts ONE baseline entry (`ar|uom|aliased|*`) into MANY granular
-findings (58 `ar|uom|missing|*` here) that were never individually baselined — plus 4
-`ar|import|plural|unitErrors.line_*` findings that were already live but likewise unbaselined.
+Root cause of the 62 fresh findings splits into two genuinely different categories — **58 are
+re-classification of already-known debt, 4 are new, real, previously-unbaselined debt:**
+
+- **58 `ar|uom|missing|*` — granularisation, not new debt.** A pre-existing-on-dev commit
+  (`4b5b58789`, confirmed an ancestor of `dev` — already on `dev` before this lane started, not
+  something introduced here) wired a real (partial) Arabic bundle for the `uom` namespace
+  (`apps/web/src/lib/i18n.ts:388`, `uom: { ...enUom, ...arUom, ... }`), where previously `uom`
+  under `ar` was wholly English-aliased. `en/uom.json` authors 77 keys, `ar/uom.json` authors 19
+  → exactly 58 missing. That's genuine translation progress (19 keys newly translated), but the
+  checker's classification rule ("one entry per (locale,namespace) for `aliased`, but per-key for
+  `missing`") means de-aliasing a namespace converts ONE baseline entry (`ar|uom|aliased|*`) into
+  58 granular `missing` findings that were never individually baselined. Net effect is *less*
+  debt, at finer grain — no debt hidden here.
+- **4 `ar|import|plural|unitErrors.line_{zero,two,few,many}` — real, unbaselined Arabic plural
+  debt, NOT granularisation.** `ar|import` was never aliased — the old baseline already carried
+  170 per-key `ar|import|missing|*` entries for this namespace, so this is not the same
+  reclassification mechanism as `uom`. `apps/web/src/locales/ar/import.json`'s `unitErrors`
+  object authors only `line_one` and `line_other`; Arabic CLDR requires all six plural categories
+  (`zero`, `one`, `two`, `few`, `many`, `other`). These 4 forms were always missing and were
+  always live findings — they were simply never entered into the baseline before this lane's
+  regeneration. Baselining plural-category gaps is the established, consistent treatment already
+  used 42 times elsewhere in this file (`fr|*|plural|*`, `en|*|plural|*`), so folding these 4 in
+  is not inconsistent — but it IS blessing 4 real gaps, not merely re-describing an old one, and
+  the original framing understated that.
+
+**FOLLOW-UP TICKET (owner/next-session, not this lane):** author the 4 missing Arabic plural
+forms for `ar|import|unitErrors` —
+`line_zero`, `line_two`, `line_few`, `line_many` (CLDR Arabic requires all six categories;
+`line_one` and `line_other` already exist in `apps/web/src/locales/ar/import.json`). This is a
+~4-string translation edit; once landed, these 4 entries drop out of the baseline on the next
+regeneration and stop being blessed debt. Filed here rather than done in this lane because this
+is a CI-reconciliation lane (mechanical fixes to make the gate accurately reflect existing state),
+not a translation-authoring lane.
+
 None of the 62 are the file's own recent edits (locale files and `i18n.ts` are untouched by this
 lane); they were already live on `dev` before this lane started.
+
+**Two inaccuracies in the seed commit's own message (`89b508e1f`), not amended (gate r1 F-6,
+archaeology-only, not re-litigated by rewriting the reviewed commit):** (1) it says "CI red:
+pnpm audit:i18n:local exits 1 ('9 baseline entries now translated…')" — as established above,
+that line cannot cause an exit 1; the actual cause is the 62 fresh findings. (2) it says
+"8x ar|sales|missing.partners.b2b.*" in the removed-entries list; the measured count is **7**
+(9 removed total = 7 `ar|sales|missing` + 1 `ar|pos|missing` + 1 `ar|uom|aliased` catch-all).
+Both corrected here; the commit's actual file diff (the regenerated baseline JSON) is unaffected
+by either inaccuracy and was independently re-measured by gate r1 to match.
 
 **Ritual performed** (per `audit-i18n-completeness.mjs`'s own header comment and
 `scripts/i18n-baseline-authority.sh`, "two-phase pinned baseline"):
@@ -345,15 +459,74 @@ i18n completeness OK — 55 namespaces, authored keys: en=9497, fr=9514, ar=5142
 EXIT=0
 ```
 
-**OWNER ACTION OWED — CI stays red until this happens:** the local green run above works because
+**OWNER ACTION OWED — CI stays red until this happens.** The local green run above works because
 `scripts/i18n-baseline-authority.sh` *derives* `I18N_BASELINE_PROTECTED_BLOB` from the mirror
 pin I just wrote, so by construction it matches. **CI does not read that mirror** — it reads the
-GitHub Actions repository variable `I18N_BASELINE_PROTECTED_BLOB` directly, which only the owner
+GitHub Actions repository variable `I18N_BASELINE_PROTECTED_BLOB` directly (`ci.yml:2444`, `env:
+I18N_BASELINE_PROTECTED_BLOB: ${{ vars.I18N_BASELINE_PROTECTED_BLOB }}`), which only the owner
 can set (this is deliberate: "the OWNER-SET repository variable... the checker never trusts the
-working file or a branch name"). **The owner must set that repository variable to
-`fd6dbe3952cc3daaec15dc432e6b99e007f50dd6`** for this CI gate to go green on `dev`. Until then,
-CI will fail with either "unset variable" (if never set) or a mismatch against whatever blob it
-currently holds.
+working file or a branch name").
+
+**Correction (gate r1 F-2): setting the repository variable alone is necessary but NOT
+sufficient, and doing it in the wrong order actively breaks CI for every other branch.** The
+full ritual, in order, is:
+
+1. **Merge `lane/rh-devreds-2` to `dev` and push to `origin/dev` FIRST.** Until this branch's
+   mirror-pin commit (`b4247f966`, `i18n_baseline_seed_commit: 89b508e1f…`,
+   `i18n_baseline_protected_blob: fd6dbe39…`) is on `origin/dev`, every other branch/PR still
+   carries the OLD mirror pin (`6a0c1cd72…` / `26a9ae16…`) in its checked-out
+   `enforcement-p2.progress.yaml`.
+
+2. **Only after step 1, create a new durable pin tag reaching the new seed commit, and push it.**
+   `ci.yml:2427` hardcodes a fixed tag name in a blob-fetch step:
+   ```yaml
+   - name: Fetch the pinned i18n baseline revision
+     run: git fetch origin tag ci-pin/enforcement-p2-r1
+   ```
+   with the comment "actions/checkout fetches a single commit, so that blob is not in the object
+   store until we fetch the durable pin tag that reaches it." **The tag currently only reaches
+   the OLD seed commit and its OLD blob** — verified: `git rev-parse
+   ci-pin/enforcement-p2-r1:apps/web/tools/i18n-completeness-baseline.json` → `26a9ae1688…` (the
+   old blob), and `git merge-base --is-ancestor 89b508e1f ci-pin/enforcement-p2-r1` → NO. Exact
+   commands for the owner, run from a checkout with push rights, once `origin/dev` contains
+   `89b508e1f` (per step 1):
+   ```
+   git fetch origin dev
+   git tag -f ci-pin/enforcement-p2-r1 origin/dev   # or the specific 89b508e1f sha directly
+   git push origin refs/tags/ci-pin/enforcement-p2-r1 --force
+   ```
+   (Either target works — the blob is content-addressed, so any commit whose tree still has that
+   exact baseline-file content, `89b508e1f` itself or any later `dev` commit that hasn't
+   re-touched the file, brings the same blob object `fd6dbe3952cc3daaec15dc432e6b99e007f50dd6`
+   into the fetched object store.) **WHY this step cannot be skipped:** on a **push to `dev`**,
+   the new blob happens to already be in the checked-out tree (the full commit that introduced it
+   is part of the branch history being built/tested), so `git cat-file blob fd6dbe…` succeeds
+   even with a stale tag — which is exactly why this gap was invisible from this lane's own local
+   verification. But on **any PR from a branch that does not already contain commit `89b508e1f`**
+   (e.g. a feature branch cut from an older `dev` point, or any branch that legitimately shrinks
+   the baseline further later), `actions/checkout` never fetches that specific historical blob
+   object, and the ONLY mechanism that injects it is the tag-fetch step. With the tag still
+   pointing at the old commit, `git cat-file blob fd6dbe3952cc3daaec15dc432e6b99e007f50dd6` fails
+   ("cannot read the protected baseline blob") and the gate fails closed — for a reason nobody
+   reviewing that PR's own diff would think to look for.
+
+3. **Only after step 2's tag is pushed, set the repository variable:**
+   `I18N_BASELINE_PROTECTED_BLOB = fd6dbe3952cc3daaec15dc432e6b99e007f50dd6`.
+
+**Ordering constraint (why steps 1-3 must run in exactly this order, not merely "eventually
+all three"):** if the owner sets the repository variable in step 3 *before* step 1 lands on
+`origin/dev`, then from that moment until this branch merges, **every other open branch's CI
+run fails closed** on the i18n gate — not just this lane's. Those branches still carry the OLD
+mirror pin (`26a9ae16…`) in their own checked-out `enforcement-p2.progress.yaml`, so the
+checker's `MIRROR DRIFT` check (`audit-i18n-completeness.mjs:723-731`) sees
+`I18N_BASELINE_PROTECTED_BLOB` (now `fd6dbe39…`) ≠ the YAML mirror they carry (`26a9ae16…`) and
+fails every one of them, immediately, for a reason that has nothing to do with their own change.
+
+**Current status: none of steps 1-3 have happened.** With the variable still unset (or still on
+the old blob), CI fails at "unset variable" or `MIRROR DRIFT` today; once this branch is merged
+without steps 2-3, a push to `dev` will still pass this gate by the coincidence explained above,
+but the underlying tag gap remains latent until the first PR that doesn't already contain
+`89b508e1f` hits it.
 
 ---
 
@@ -361,15 +534,17 @@ currently holds.
 
 | Item | Status | Commit(s) |
 |---|---|---|
-| 1. Pint | Fixed, verified | `3801c4f13` |
+| 1. Pint | Fixed, verified; F-5 correction applied | `3801c4f13` |
 | 2. POS Vitest | Fixed, verified (25/25 green) | `fa3719e23` |
 | 3. PHPStan | Fixed, verified (0 errors) | `9ad5d68c3` |
 | 4. Deptrac ratchet | Fixed, verified (PASS) — applied per orchestrator ruling, see ADDENDUM | `3ccf6a26a` |
-| 5. ESLint warning ratchet | Fixed, verified (PASS, -49 to -51) | `5524b9a69` |
-| 6. i18n completeness | Ritual completed locally (exit 0); **CI still red until owner sets the GH repo variable** | `89b508e1f`, `b4247f966` |
+| 5. ESLint warning ratchet | Fixed, verified (PASS, -47 to -51); F-1 BLOCKER fixed, F-4 rule-list correction applied | `5524b9a69`, `61a9c5fef` |
+| 6. i18n completeness | Ritual completed locally (exit 0); F-2/F-3/F-6 corrections applied; **CI still red — full ordered owner-action ritual above, not just "set the variable"** | `89b508e1f`, `b4247f966` |
 
 ```
 $ git log --oneline dev..lane/rh-devreds-2
+61a9c5fef fix(web tests): restore the two HTMLInputElement assertions the eslint pass dropped (tsc TS2339)
+e8829bcd0 docs(handoff): append item-4 addendum -- deptrac ceiling bump applied per ruling
 3ccf6a26a chore(deptrac): carry the waived CustomerAdvanceClearingInterface->Document edge in the SharedContracts→ModuleDomain ceiling (36->37)
 317b12a5b docs(handoff): dev-reds-2 reconciliation handback
 b4247f966 docs(i18n): re-pin baseline mirror to the 2026-09-05 seed commit (commit 2 of 2)
@@ -379,6 +554,7 @@ b4247f966 docs(i18n): re-pin baseline mirror to the 2026-09-05 seed commit (comm
 fa3719e23 fix(pos-test): hoist getSyncMetadataSpy to fix vi.mock hoisting ReferenceError
 3801c4f13 style(tests): fix Pint ordered_imports in ProductsImportPipelineTest
 ```
-(plus this addendum commit, newest on the branch — see `git log --oneline dev..lane/rh-devreds-2` after it lands.)
+(plus the commit that lands this fix-round update to this doc, newest on the branch — see
+`git log --oneline dev..lane/rh-devreds-2` after it lands.)
 
-Not merged. Left on `lane/rh-devreds-2` for the orchestrator to gate and merge.
+Not merged. Left on `lane/rh-devreds-2` for the orchestrator / gate r2.
