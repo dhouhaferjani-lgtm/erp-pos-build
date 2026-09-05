@@ -154,7 +154,7 @@ describe('POS smart prompts tenant scope', () => {
   }
 
   function updateContactProfile(metadata: Record<string, string>) {
-    return ((globalThis as Record<string, unknown>)['__contactProfileMutation'] as (input: Record<string, string>) => void)(metadata)
+    ;((globalThis as Record<string, unknown>)['__contactProfileMutation'] as (input: Record<string, string>) => void)(metadata);
   }
 
   it('scopes cart recommendation and contact-profile query keys (.541-.542)', async () => {

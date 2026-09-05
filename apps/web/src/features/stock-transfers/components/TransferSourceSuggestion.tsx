@@ -27,11 +27,11 @@ export function TransferSourceSuggestion({ productId, variantId, destinationLoca
         </div>)}
       </div>
       {suggestion ? <>
-        <Button type="button" size="sm" variant="secondary" onClick={() => setConfirmOpen(true)}>{t('create.suggestion.useSource')}</Button>
-        <Modal isOpen={confirmOpen} onClose={() => setConfirmOpen(false)} title={t('create.suggestion.confirmTitle')}>
+        <Button type="button" size="sm" variant="secondary" onClick={() => { setConfirmOpen(true); }}>{t('create.suggestion.useSource')}</Button>
+        <Modal isOpen={confirmOpen} onClose={() => { setConfirmOpen(false); }} title={t('create.suggestion.confirmTitle')}>
           <div className="p-4 text-sm">{t('create.suggestion.confirmSwitch', { count: lineCount })}</div>
           <ModalFooter>
-            <Button type="button" variant="secondary" onClick={() => setConfirmOpen(false)}>{t('common:cancel')}</Button>
+            <Button type="button" variant="secondary" onClick={() => { setConfirmOpen(false); }}>{t('common:cancel')}</Button>
             <Button type="button" onClick={() => { onUseSource(suggestion.locationId); setConfirmOpen(false) }}>{t('common:confirm')}</Button>
           </ModalFooter>
         </Modal>

@@ -69,8 +69,19 @@ merge_announcement_ack: "SENT 2026-08-21 (parent, in-session relay to the owner 
 # legitimately (ui-wave0's owner-ruled marketing deletion removed ar|marketing) and merged lanes
 # added keys, so the gate failed closed by design. Baseline regenerated on the merged tree
 # (Phase 5.5.2 dedicated seed commit, 2924 entries); prior pins cb618c12c/da151bbc5 superseded.
-i18n_baseline_seed_commit: 6a0c1cd72bd5e97548f42871497ae015ea68de6d
-i18n_baseline_protected_blob: 26a9ae1688d80e0f450215326b19ccd1701c9a8f
+# SEED REVISION 2026-09-05 (dev-reds-2 reconciliation lane, lane/rh-devreds-2): local
+# `pnpm audit:i18n:local` failed closed with "9 baseline entries now translated" plus a
+# RATCHET-GROWTH-shaped surface change — a pre-existing dev commit (4b5b58789) wired a real
+# partial Arabic bundle for the `uom` namespace (i18n.ts:388), converting the single
+# `ar|uom|aliased|*` catch-all into 58 granular `missing` per-key findings (same underlying
+# gap, finer grain), alongside 4 pre-existing `ar|import|plural` findings and 9 genuine
+# burn-down removals. Baseline regenerated on dev tip (commit 89b508e1f, 2816 entries).
+# THIS MIRROR UPDATE ALONE DOES NOT GREEN CI: the checker's real authority is the GitHub
+# Actions repository variable `I18N_BASELINE_PROTECTED_BLOB`, which only the OWNER can set —
+# see docs/handoff/HANDBACK-request-hygiene-devreds-2-2026-09-05.md item 6. Pin tag left
+# untouched (creating/advancing the annotated tag is an owner promotion action, brief §5).
+i18n_baseline_seed_commit: 89b508e1f18a8f8e276c9403f8324082fec0ca62
+i18n_baseline_protected_blob: fd6dbe3952cc3daaec15dc432e6b99e007f50dd6
 i18n_baseline_pin_tag: ci-pin/enforcement-p2-r1
 
 # PRE-PROMOTION CI DISPATCH receipt (gate-r2 R2-C-2/R2-H-2; cycle fixed gate-r3 R3-C-2). The GATE is

@@ -70,11 +70,11 @@ type ExcessAllocationMethod = 'fifo' | 'due_date' | 'manual' | 'advance'
 
 // This is the shape returned by apiPost (already unwrapped from ApiResponse wrapper)
 interface MultiPaymentResponseData {
-  payments: Array<{
+  payments: {
     id: string
     payment_number: string
     amount: string
-  }>
+  }[]
   document: {
     id: string
     document_number: string
@@ -84,11 +84,11 @@ interface MultiPaymentResponseData {
   excess_handling: {
     excess_amount: string
     allocation_method: string
-    allocations: Array<{
+    allocations: {
       document_id: string
       document_number: string
       amount: string
-    }>
+    }[]
   }
 }
 
@@ -531,7 +531,7 @@ export function RecordPaymentModal({
                   <div className="flex justify-between">
                     <span className={`text-sm ${colorTokens.text.muted}`}>{successData.document.document_number}</span>
                     <span className={`text-sm font-medium ${
-                      successData.document.status === 'paid' ? `${colorTokens.intent.success.text}` : `${colorTokens.intent.warning.text}`
+                      successData.document.status === 'paid' ? colorTokens.intent.success.text : colorTokens.intent.warning.text
                     }`}>
                       {successData.document.status === 'paid'
                         ? t('common:status.paid')
@@ -580,7 +580,7 @@ export function RecordPaymentModal({
                 <div className={`flex items-center gap-2 text-sm ${colorTokens.intent.primary.textStronger}`}>
                   <span className="font-medium">{t('treasury:payments.payingFor')}:</span>
                   <span>{prefill.reference}</span>
-                  <span className={`${colorTokens.intent.primary.text}`}>({prefill.partner_name})</span>
+                  <span className={colorTokens.intent.primary.text}>({prefill.partner_name})</span>
                 </div>
               </div>
 
@@ -608,8 +608,8 @@ export function RecordPaymentModal({
                       {t('treasury:unifiedPayment.remaining')}
                     </span>
                     <span className={`text-xl font-bold ${
-                      Math.abs(remaining) < 0.01 ? `${colorTokens.intent.success.text}` :
-                      remaining > 0 ? `${colorTokens.intent.warning.text}` : `${colorTokens.intent.danger.text}`
+                      Math.abs(remaining) < 0.01 ? colorTokens.intent.success.text :
+                      remaining > 0 ? colorTokens.intent.warning.text : colorTokens.intent.danger.text
                     }`}>
                       {formatAmount(remaining)}
                     </span>
@@ -800,7 +800,7 @@ export function RecordPaymentModal({
                           value="advance"
                           checked={excessAllocationMethod === 'advance'}
                           onChange={() => { changeExcessAllocationMethod('advance'); }}
-                          className={`${colorTokens.intent.primary.text}`}
+                          className={colorTokens.intent.primary.text}
                         />
                         <span className={`text-sm ${colorTokens.text.secondary}`}>
                           {t('treasury:unifiedPayment.keepAsAdvance')}
@@ -816,7 +816,7 @@ export function RecordPaymentModal({
                               value="fifo"
                               checked={excessAllocationMethod === 'fifo'}
                               onChange={() => { changeExcessAllocationMethod('fifo'); }}
-                              className={`${colorTokens.intent.primary.text}`}
+                              className={colorTokens.intent.primary.text}
                             />
                             <span className={`text-sm ${colorTokens.text.secondary}`}>
                               {t('treasury:smartPayment.fifo')}
@@ -830,7 +830,7 @@ export function RecordPaymentModal({
                               value="due_date"
                               checked={excessAllocationMethod === 'due_date'}
                               onChange={() => { changeExcessAllocationMethod('due_date'); }}
-                              className={`${colorTokens.intent.primary.text}`}
+                              className={colorTokens.intent.primary.text}
                             />
                             <span className={`text-sm ${colorTokens.text.secondary}`}>
                               {t('treasury:smartPayment.dueDatePriority')}
@@ -844,7 +844,7 @@ export function RecordPaymentModal({
                               value="manual"
                               checked={excessAllocationMethod === 'manual'}
                               onChange={() => { changeExcessAllocationMethod('manual'); }}
-                              className={`${colorTokens.intent.primary.text}`}
+                              className={colorTokens.intent.primary.text}
                             />
                             <span className={`text-sm ${colorTokens.text.secondary}`}>
                               {t('treasury:smartPayment.manual')}
@@ -858,7 +858,7 @@ export function RecordPaymentModal({
                     {excessAllocationMethod === 'manual' && openInvoices.length > 0 && (
                       <div className={`mt-4 rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base}`}>
                         <table className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-                          <thead className={`${colorTokens.surface.page}`}>
+                          <thead className={colorTokens.surface.page}>
                             <tr>
                               <th className={`px-4 py-2 text-start text-xs font-medium uppercase ${colorTokens.text.subtle}`}>
                                 {t('treasury:payments.invoice')}

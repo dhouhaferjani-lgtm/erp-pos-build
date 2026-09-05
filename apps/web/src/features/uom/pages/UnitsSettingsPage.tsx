@@ -78,7 +78,7 @@ export function UnitsSettingsPage() {
   if (error) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className={`${colorTokens.intent.danger.textSubtle}`}>{t('common:common.error')}</div>
+        <div className={colorTokens.intent.danger.textSubtle}>{t('common:common.error')}</div>
       </div>
     )
   }
@@ -124,7 +124,7 @@ export function UnitsSettingsPage() {
             {/* Units Table */}
             <div className="overflow-x-auto">
               <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-                <thead className={`${colorTokens.surface.page}`}>
+                <thead className={colorTokens.surface.page}>
                   <tr>
                     <th className={`px-6 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                       {t('uom:name')}
@@ -149,7 +149,7 @@ export function UnitsSettingsPage() {
                 <tbody className={`bg-white divide-y ${colorTokens.border.divider}`}>
                   {category.units && category.units.length > 0 ? (
                     category.units.map((unit) => (
-                      <tr key={unit.id} className={`${colorTokens.variants.hoverBgGray50}`}>
+                      <tr key={unit.id} className={colorTokens.variants.hoverBgGray50}>
                         <td className={`px-6 py-4 text-sm font-medium ${colorTokens.text.primary}`}>
                           {unit.name}
                         </td>

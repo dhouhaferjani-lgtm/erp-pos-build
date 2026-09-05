@@ -93,12 +93,12 @@ export function SplitPaymentForm({
 
   const submitMutation = useMutation({
     mutationFn: async (
-      splits: Array<{
+      splits: {
         payment_method_id: string
         amount: string
         repository_id?: string
         reference?: string
-      }>,
+      }[],
     ) => api.post(`/documents/${documentId}/split-payment`, {
       splits,
       idempotency_key: idempotencyKey,

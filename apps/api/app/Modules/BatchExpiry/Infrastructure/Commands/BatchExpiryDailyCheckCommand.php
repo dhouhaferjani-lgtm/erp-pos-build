@@ -139,7 +139,7 @@ final class BatchExpiryDailyCheckCommand extends TenantScopedCommand
                     'batch_number' => $batch->batch_number,
                     'product_id' => $batch->product_id,
                     'company_id' => $batch->company_id,
-                    'expiry_date' => $batch->expiry_date->toDateString(),
+                    'expiry_date' => $batch->expiry_date?->toDateString(),
                 ]);
 
                 $count++;
@@ -200,7 +200,7 @@ final class BatchExpiryDailyCheckCommand extends TenantScopedCommand
                     'batches' => $batches->map(fn (Batch $batch): array => [
                         'batch_number' => $batch->batch_number,
                         'product_name' => $batch->product->name ?? 'Unknown',
-                        'expiry_date' => $batch->expiry_date->toDateString(),
+                        'expiry_date' => $batch->expiry_date?->toDateString(),
                         'days_until_expiry' => $batch->daysUntilExpiry(),
                     ])->toArray(),
                 ]);

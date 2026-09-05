@@ -4,10 +4,10 @@
   "total": 183,
   "categories": {
     "ModuleApplication on ModuleInfrastructure": 68,
-    "ModuleDomain on ModuleApplication": 54,
+    "ModuleDomain on ModuleApplication": 53,
     "ModuleInfrastructure on ModulePresentation": 1,
     "SharedContracts on ModuleApplication": 18,
-    "SharedContracts on ModuleDomain": 36,
+    "SharedContracts on ModuleDomain": 37,
     "SharedDomain on ModuleDomain": 4,
     "SharedInfrastructure on ModuleDomain": 2
   },
@@ -44,7 +44,8 @@
       "category": "SharedContracts on ModuleDomain",
       "delta": 1,
       "line": "app/Shared/Contracts/Accounting/CustomerAdvanceClearingInterface.php — clearCustomerAdvanceForDocument(Document, string, ?string)",
-      "why": "Exactly the shape already waived for DocumentGlCorrectionInterface / DocumentGlPreflightInterface / DocumentGlReversalInterface: a Shared contract that lets the Document module hand a Document to Accounting WITHOUT importing GeneralLedgerService (CLAUDE.md rule 6). The contract must be typed on the aggregate it is about, and the only alternatives are worse — pass a bag of scalars (losing the type safety the contract exists for) or let Document import the ledger service (a real Domain-to-Domain cross-module dependency instead of a declared seam). Clearing a customer advance at posting has to be atomic with the seal, so the call site is inside DocumentPostingService::post()'s transaction and cannot be relocated. Recorded by the treasury gate r1 (I-1) as the ACCEPTED half of that finding; the BLOCKER half (DocumentAllocationClassifier in Application) was FIXED by relocating it to Treasury\\Domain\\Services rather than waived."
+      "why": "Exactly the shape already waived for DocumentGlCorrectionInterface / DocumentGlPreflightInterface / DocumentGlReversalInterface: a Shared contract that lets the Document module hand a Document to Accounting WITHOUT importing GeneralLedgerService (CLAUDE.md rule 6). The contract must be typed on the aggregate it is about, and the only alternatives are worse — pass a bag of scalars (losing the type safety the contract exists for) or let Document import the ledger service (a real Domain-to-Domain cross-module dependency instead of a declared seam). Clearing a customer advance at posting has to be atomic with the seal, so the call site is inside DocumentPostingService::post()'s transaction and cannot be relocated. Recorded by the treasury gate r1 (I-1) as the ACCEPTED half of that finding; the BLOCKER half (DocumentAllocationClassifier in Application) was FIXED by relocating it to Treasury\\Domain\\Services rather than waived.",
+      "ceiling_note": "36->37 on 2026-09-05: CustomerAdvanceClearingInterface -> Document\\Domain\\Document, introduced 7fda05602 (2026-08-24), already waived in waivers[]; the ratchet does not read waivers[], so the ceiling must carry it. Same commit's DocumentAllocationClassifier relocation improved 'ModuleDomain on ModuleApplication' 54->53 in the same breath, which is why TOTAL held at 183/183 and the per-category regression went unnoticed for 12 days — dev-reds-2 reconciliation lane (2026-09-05) locks both numbers in together (categories now sum to 183, matching total) rather than bumping total to 184."
     }
   ]
 }

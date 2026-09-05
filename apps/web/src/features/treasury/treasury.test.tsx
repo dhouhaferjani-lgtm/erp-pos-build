@@ -797,7 +797,7 @@ describe('Treasury Management', () => {
       status: 'pending' | 'completed' | 'cancelled'
       reference: string
       notes: string
-      allocations: Array<{ id: string; document_id: string; document_number: string; amount: string }>
+      allocations: { id: string; document_id: string; document_number: string; amount: string }[]
       created_at: string
     }
 

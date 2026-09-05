@@ -88,7 +88,7 @@ interface AutoSaveState {
 interface DraftData {
   type: 'quote' | 'sales_order' | 'invoice' | 'purchase_order' | 'delivery_note' | 'credit_note' | 'return_note'
   partner_id?: string | null
-  lines?: Array<{
+  lines?: {
     id?: string
     product_id?: string
     service_id?: string
@@ -100,7 +100,7 @@ interface DraftData {
     discount_percent?: string | null
     discount_amount?: string | null
     tax_rate?: number | string
-  }>
+  }[]
   notes?: string | null
   document_date?: string
   due_date?: string | null

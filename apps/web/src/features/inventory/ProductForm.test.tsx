@@ -66,7 +66,7 @@ vi.mock('../../lib/api', () => ({
 // decouple from network
 vi.mock('@tanstack/react-query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-query')>()
-  type MutationOptions = {
+  interface MutationOptions {
     mutationFn?: (variables: unknown) => unknown
   }
   return {
@@ -322,7 +322,7 @@ describe('ProductForm (canonical layout)', () => {
     fireEvent.change(screen.getByLabelText('inventory:products.name', { exact: false }), { target: { value: 'Test Product' } })
     fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-9' } })
     fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/inventory/products/prod-9'))
+    await waitFor(() => { expect(mockNavigate).toHaveBeenCalledWith('/inventory/products/prod-9'); })
   })
 
   it('shows the barcode holder and offers to open it when create is refused', async () => {
@@ -342,7 +342,7 @@ describe('ProductForm (canonical layout)', () => {
     fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'NEW-SKU' } })
     fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
 
-    await waitFor(() => expect(mockToastError).toHaveBeenCalled())
+    await waitFor(() => { expect(mockToastError).toHaveBeenCalled(); })
     const [, options] = mockToastError.mock.calls[0] as [string, { action: { onClick: () => void } }]
     expect(mockToastError.mock.calls[0]?.[0]).toBe('inventory:products.barcodeConflict')
     options.action.onClick()
@@ -358,7 +358,7 @@ describe('ProductForm (canonical layout)', () => {
     // (sets close intent + requestSubmit on the external form).
     fireEvent.click(screen.getByRole('button', { name: 'actions.openSaveMenu' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'actions.saveAndClose' }))
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/inventory/products'))
+    await waitFor(() => { expect(mockNavigate).toHaveBeenCalledWith('/inventory/products'); })
     // And NOT to the detail route.
     expect(mockNavigate).not.toHaveBeenCalledWith('/inventory/products/prod-10')
   })
@@ -375,7 +375,7 @@ describe('ProductForm (canonical layout)', () => {
     fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-FOUND' } })
     fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
 
-    await waitFor(() => expect(mockApiPost).toHaveBeenCalled())
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalled(); })
     expect(getProductsPostPayload()).toMatchObject({
       platform_product_id: 'platform-product-001',
     })
@@ -390,7 +390,7 @@ describe('ProductForm (canonical layout)', () => {
     fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-MANUAL' } })
     fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
 
-    await waitFor(() => expect(mockApiPost).toHaveBeenCalled())
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalled(); })
     expect(getProductsPostPayload()).not.toHaveProperty('platform_product_id')
   })
 
@@ -401,12 +401,12 @@ describe('ProductForm (canonical layout)', () => {
     render(<ProductForm />)
 
     const barcodeInput = screen.getByLabelText('editor.hero.barcodePlaceholder')
-    await waitFor(() => expect(barcodeInput).toHaveValue('3017620422003'))
+    await waitFor(() => { expect(barcodeInput).toHaveValue('3017620422003'); })
     fireEvent.change(barcodeInput, { target: { value: '9999999999999' } })
     fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-STALE' } })
     fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
 
-    await waitFor(() => expect(mockApiPost).toHaveBeenCalled())
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalled(); })
     expect(getProductsPostPayload()).not.toHaveProperty('platform_product_id')
   })
 
@@ -417,16 +417,16 @@ describe('ProductForm (canonical layout)', () => {
     render(<ProductForm />)
 
     await waitFor(() =>
-      expect(screen.getByLabelText('inventory:products.name', { exact: false })).toHaveValue('Catalog Product'),
+      { expect(screen.getByLabelText('inventory:products.name', { exact: false })).toHaveValue('Catalog Product'); },
     )
     fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-BRAND' } })
     fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
 
     await waitFor(() =>
-      expect(mockApiPost).toHaveBeenCalledWith(
+      { expect(mockApiPost).toHaveBeenCalledWith(
         '/products',
         expect.objectContaining({ brand_id: 'brand-uuid-1' }),
-      ),
+      ); },
     )
   })
 
@@ -437,12 +437,12 @@ describe('ProductForm (canonical layout)', () => {
     render(<ProductForm />)
 
     await waitFor(() =>
-      expect(screen.getByLabelText('editor.hero.namePlaceholder')).toHaveValue('Catalog Cream'),
+      { expect(screen.getByLabelText('editor.hero.namePlaceholder')).toHaveValue('Catalog Cream'); },
     )
     fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-NOBRAND' } })
     fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
 
-    await waitFor(() => expect(mockApiPost).toHaveBeenCalled())
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalled(); })
     expect(getProductsPostPayload()).not.toHaveProperty('brand_id')
   })
 
@@ -454,7 +454,7 @@ describe('ProductForm (canonical layout)', () => {
 
     // Genuine found flow: the suggested barcode ('12345678') is written into the form.
     await waitFor(() =>
-      expect(screen.getByLabelText('inventory:products.name', { exact: false })).toHaveValue('Catalog Product'),
+      { expect(screen.getByLabelText('inventory:products.name', { exact: false })).toHaveValue('Catalog Product'); },
     )
     fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-STALE' } })
     // Stale case: the barcode field changes to a DIFFERENT barcode while
@@ -464,7 +464,7 @@ describe('ProductForm (canonical layout)', () => {
     fireEvent.change(screen.getByLabelText('editor.hero.barcodePlaceholder'), { target: { value: '99999999' } })
     fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
 
-    await waitFor(() => expect(mockApiPost).toHaveBeenCalled())
+    await waitFor(() => { expect(mockApiPost).toHaveBeenCalled(); })
     expect(getProductsPostPayload()).not.toHaveProperty('brand_id')
   })
 
@@ -491,7 +491,7 @@ describe('ProductForm (canonical layout)', () => {
     fireEvent.click(screen.getAllByTestId('category-select')[0])
     fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
 
-    await waitFor(() => expect(mockSubmitForEnrichment).toHaveBeenCalled())
+    await waitFor(() => { expect(mockSubmitForEnrichment).toHaveBeenCalled(); })
     expect(mockSubmitForEnrichment.mock.calls[0][0]).toMatchObject({ category: 'Solaires' })
   })
 
@@ -515,7 +515,7 @@ describe('ProductForm (canonical layout)', () => {
     fireEvent.change(await screen.findByLabelText('barcodeLookup.captureAddPhoto'), {
       target: { files: [new File(['front'], 'front.jpg', { type: 'image/jpeg' })] },
     })
-    await waitFor(() => expect(mockUploadEnrichmentPhoto).toHaveBeenCalled())
+    await waitFor(() => { expect(mockUploadEnrichmentPhoto).toHaveBeenCalled(); })
     fireEvent.change(screen.getByLabelText('barcodeLookup.captureBrandLabel'), {
       target: { value: 'BrandX' },
     })

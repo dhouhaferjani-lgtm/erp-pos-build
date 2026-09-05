@@ -186,7 +186,7 @@ export function Dashboard() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className={`${colorTokens.text.subtle}`}>{t('status.loading')}</div>
+        <div className={colorTokens.text.subtle}>{t('status.loading')}</div>
       </div>
     )
   }
@@ -227,7 +227,7 @@ export function Dashboard() {
       <div className="flex items-center justify-between">
         <div>
           <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>{t('dashboard.title')}</PageHeaderTitle>
-          <p className={`${colorTokens.text.subtle}`}>{t('dashboard.welcome')}</p>
+          <p className={colorTokens.text.subtle}>{t('dashboard.welcome')}</p>
         </div>
         <div className="flex gap-3">
           <Link
@@ -260,7 +260,7 @@ export function Dashboard() {
                 className={`flex items-center gap-1 text-sm ${
                   revenueChange === null
                     ? colorTokens.text.subtle
-                    : revenueChangeIsNegative ? `${colorTokens.intent.danger.text}` : `${colorTokens.intent.success.text}`
+                    : revenueChangeIsNegative ? colorTokens.intent.danger.text : colorTokens.intent.success.text
                 }`}
               >
                 {revenueChange !== null && (
