@@ -1,0 +1,52 @@
+# Lane brief — W-LOT: batch management A-to-Z (parapharmacy remediation)
+
+Date: 2026-09-05. Orchestrator: Claude Fable 5.1 (gates, merges, promotes). Implementer: Codex (owner dispatches via Codex Desktop). Base: local `dev` at dispatch time (≥ `e3ca1ba67`). Worktree: `apps/erp/.worktrees/w-lot`, branch `lane/w-lot-batch-a-to-z`. PG: private container on a free port ≥ 5453, test DB `autoerp_test_wlot`. Never `git stash` (shared across worktrees). No merges, no pushes; end with `docs/handoff/HANDBACK-W-LOT-<date>.md`.
+
+**Authority:** spec v4 `docs/superpowers/specs/2026-09-05-parapharmacy-readiness-remediation-design.md` §W-LOT (L1–L9, W5, W6) as accepted at gate r4; owner rulings `docs/handoff/OWNER-RULINGS-parapharmacy-remediation-2026-09-05.md` (RD2, D9, D3, D4, D7, Q4, Q5, Q7). Where this brief and the spec differ, the rulings win, then the spec.
+
+## 0. Benchmark (convention 10)
+
+| Guarantee | Odoo | ERPNext | Dolibarr | AutoERP today (`b9a5565aa`) | Decision |
+|---|---|---|---|---|---|
+| Recall/hold stops a lot immediately, company-wide recall needs central authority | Lot block via `quality_hold` / OCA `stock_lock_lot`, quarantine location; no approval workflow | Batch `disabled` blocks new transactions; warehouse-restricted users vs unrestricted role | Lot module, no hold workflow (NV) | Single unpermissioned recall boolean (`BatchController.php:176-210`) | **Stricter than benchmark by ruling RD2/Q5:** branch hold (immediate, local) + general-manager company-wide recall |
+| Lot identity/expiry frozen after use | Reassignment via inventory adjustment procedure | Batch fields editable (NV rule) | NV | `UpdateBatchRequest.php:20-24` free edit | L2 freeze + permissioned correction with history |
+| Split an unidentified cohort into real lots | Adjustment procedure | **Batch → Split** | NV | none; opening import mints DEFAULT (`ProductOpeningStockPhase.php:71-77`) | L9 identification/split, ERPNext precedent |
+| Count at lot grain | Lot lines in count | Batch-wise stock reconciliation | NV | `InventoryCountingItem.php:79-105` product grain | L4 child lot observations |
+| Removal strategy for expiry stock | FEFO documented for perishables | Expiry on batch; FIFO is valuation | FEFO in lot module | `FEFOInventoryService` | Keep FEFO (Q7) |
+| Lot at POS | Popup to type/scan lot; auto-select by removal strategy; **not hashed** in FR certification (`l10n_fr_pos_cert/models/pos.py` LINE_FIELDS) | Batch on POS invoice item | TakePOS NV | POS has zero lot refs; server FEFO after sale labelled as traceability | L7: display → editable capture (D3), evidence **outside** the hash chain (D7), refresh at session open (D4) |
+
+Sources: Odoo 19 lots doc; Odoo forum "block or quarantine a lot"; OCA stock_lock_lot; ERPNext Batch doc; Odoo 18 POS serial numbers doc; Odoo `l10n_fr_pos_cert` source (18.0).
+
+## 1. Scope and order (one lane, ordered slices, each slice gated before the next starts)
+
+| Slice | Gap | Deliverable | Reviewer gate |
+|---|---|---|---|
+| S1 | L1 permissions + RD2 escalation + Q4 role | `batches.view/traceability/delete` enforced on the body-less routes; new `batches.recall.request` (branch hold: blocks sale/transfer of that lot at the requesting location immediately, records reason/actor, visible to central) and `batches.recall` (company-wide, general-manager only); new seeded role `general_manager` = manager set with no location restriction + `batches.recall` + `treasury.manage_all_locations`; seeded manager loses `batches.recall`; web layer gated (`Sidebar.tsx:222-223`, `RequirePermission`/`usePermissions` on batch routes and actions); `BatchController::expiring()` validates `location_id` (UUID) and scopes like `expired()`; role-delta table + reseed/cache-reset step in HANDBACK | tenancy-authz |
+| S2 | L2 freeze + correction | After first movement, ordinary update of number/expiry refused (422); `POST /batches/{id}/corrections` permissioned, records old/new, reason, actor, evidence ref, optimistic version; no merge of two used histories; deactivation with stock requires disposition | inventory-costing |
+| S3 | L3 exact availability | Retire every float in BatchExpiry: `BatchStock::getAvailableQuantityAttribute` and `reserve/releaseReservation/adjustQuantity` (`BatchStock.php:44-84`), `Batch.php:143-151` → `BatchResource`, `FEFOInventoryService::getTotalAvailableQuantity` (`:940-957`), guards at `BatchStockService.php:471,515-516`; strings + `QuantityScale`; PHPStan `ForbidFloatCastOnDecimalProperty` must stay green | inventory-costing |
+| S4 | L9 DEFAULT identification/split (**before L4**) | `POST /batches/{id}/identify` (`batches.identify`): split a DEFAULT/unknown holding into identified lots with quantities and expiry; one `lot_identifications` document + one **flat** stock justification with offsetting lot legs; Σ lots, aggregate, WAC, GL unchanged; idempotent on operation UUID; append-only lineage; no invented expiry | inventory-costing + stock-gl-interaction |
+| S5 | L4 lot-grain counts + DEFAULT inflation | Child `inventory_counting_item_lots` observations; parent total derived; explicit zero ≠ missing row; discrepancy applied per lot via `StockAdjustmentService` with a **flat** reattribution pair when aggregate is unchanged (booked 10+10, observed 15+5 → +5/−5, zero GL, WAC unchanged); positive arm no longer auto-credits DEFAULT (`StockAdjustmentService.php:1446-1447`) when identified lots exist; Σ lots = aggregate at finalize; late-sync via `LateSyncResidualDetector`; lock census vs `WeightedAverageCostService:87-95` and FEFO `SKIP LOCKED` (`FEFOInventoryService:264-272`) documented and tested on PG; `InventoryCountingDefaultBatchTest:130-131` re-derived (marker `_pins_limitation_` removed once behaviour is real) | inventory-costing + stock-gl-interaction |
+| S6 | L5 provenance + L6 drift schedule | `system_fefo_estimate` / `unknown` / `operator_captured` on all three producers: `pos_receipt_line_batch_allocations`, `document_lines` via converters, `stock_transfer_line_batch_allocations`; both branches of `BatchTraceabilityController` (`:60-88`), exports, returns; `inventory:lot-drift-census --fail-on-drift` scheduled per tenant in `routes/console.php` with overlap lock, entitlement filter (`LotLedgerDriftCensus.php:81` → tracked **and** entitled), last-success + alert surface; dedicated PG tests for the census query | fiscal-pos + inventory-costing |
+| S7a | L7 display (D3 step 1, D4) | Device: additive SQLite table `branch_lot_eligibility` (decimal strings, `toSqliteUtc`), populated by product sync at **session open** (D4) and on manual refresh; snapshot age visible; FEFO suggestion (same order as server) on `NearExpirySlot.tsx` in ProductCard/ProductListRow/ProductTable and on `CartLineItem`; `ProductDetailDrawer` `stock_lots` tab gated on `hasModule('BatchExpiry')`; module-off renders nothing; nets server reservations + local pending sales via `stockGate` | fiscal-pos + frontend-conventions |
+| S7b | L7 capture (D3 step 2, D7) | Editable lot field prefilled from suggestion; validated against cache (active, not held/recalled, not expired unless override policy — none in this lane); **evidence record** `pos_receipt_line_lot_evidence` written in the same SQLite transaction as the receipt (fiscal engine is caller-transactional, `FiscalEventEngine.ts:10-11`), own outbox item linked to receipt event id + hash, provenance `operator_captured`; **no change to sealed payload**; server ingress validates terminal/company/line mapping/quantities/hash; same id + different content = conflict | fiscal-pos |
+| S7c | L7 projection consumption | `PosCoreReceiptProjection` consumes captured lots when evidence is present and valid; FEFO only as fallback labelled `system_fefo_estimate`; missing/late evidence → durable inventory obligation (W4 `blocked` status; add `blocked` to `ProjectionStatus`), never a second aggregate decrement; refunds use original captured provenance; evidence arriving before or after the event both converge | fiscal-pos + inventory-costing |
+
+L8 (iteration 2 policy: overrides, no-oversell reservations) is **out of scope**.
+
+## 2. Standing rules for every slice
+
+- **R2 entitlement:** every lot route `module:BatchExpiry` + action permission; every web/device lot surface `hasModule('BatchExpiry')`; projection/worker lot arms resolve company-level entitlement explicitly (fix `PosCoreReceiptProjection::requiresModule()` null + product-flag-only check at `FEFOInventoryService.php:930-934`); tenant without the module: no lot UI, no lot legs, unknown entitlement = blocked with reason, never guessed. Tracking is per product (D9): `requires_batch_tracking` stays the product switch.
+- **Second-of-everything (convention 09):** two companies via real registration, two locations, two real lots, two terminals for S7, re-run/idempotency test, module-off fixture, cross-tenant negatives separate.
+- **TDD, red first.** PG lane for everything touching locks, uniques, `SKIP LOCKED`, decimals. SQLite-only green is not evidence.
+- **Precision contract (rule 19):** strings/BCMath, `QuantityScale`, unit precision for display, `QuantityInput` on the device.
+- **Glossary (convention 11):** Lot evidence, Lot identification, Recall request are registered; no new synonyms.
+- **Events immutable (rule 8):** no change to SALE_RECEIPT; lot evidence is its own versioned record.
+- **Guards:** W0 G1 (route permission ratchet) and G4 (lot-evidence vocabulary) baselines shrink with this lane; `_pins_limitation_` on any retained limitation test.
+
+## 3. Acceptance matrix
+
+Spec v4 W-LOT acceptance matrix rows L1–L7, plus: (a) branch hold blocks POS sale of the held lot at that location within one cache refresh and blocks transfer immediately; (b) general-manager recall spans branches, manager cannot; (c) L9 split then L4 count on the same product reconciles Σ lots = aggregate with zero GL; (d) captured lot ≠ FEFO suggestion → projection consumes the captured lot; (e) evidence lost → fiscal sale and money effects preserved, inventory obligation `blocked`, drift census reports it; (f) module-off tenant: all of the above absent, aggregate behaviour unchanged.
+
+## 4. Deliverables
+
+Code + tests per slice; migrations additive and self-guarding (push = staging deploy); `php artisan typescript:transform` after DTO changes; permissions map regen; `HANDBACK-W-LOT-<date>.md` mapping every L1–L7 item to evidence, gated deferral or open finding; deploy steps (reseed roles + `permission:cache-reset`, device build with new SQLite migration, scheduler entry).
