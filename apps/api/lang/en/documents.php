@@ -113,6 +113,10 @@ return [
         'below_tolerance' => 'Discount must exceed the tolerance margin (:margin). For smaller residuals, use payment-tolerance write-off at settlement.',
         'amount_exceeds_line_gross' => 'Discount amount cannot exceed the line gross amount (:gross).',
     ],
+    'dates' => [
+        'due_date_before_document_date' => 'The due date cannot precede the document date (:document_date).',
+        'valid_until_before_document_date' => 'The validity date cannot precede the document date (:document_date).',
+    ],
     'bonus_quantity' => [
         'sub_row' => 'including bonus: +:quantity free unit',
         'line_total' => 'Line total: :quantity expected delivered units',
