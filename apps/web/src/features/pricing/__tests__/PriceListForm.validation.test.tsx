@@ -119,3 +119,44 @@ describe('PriceListForm — DEV-QA-015 date-range validation', () => {
     ).toBeInTheDocument()
   })
 })
+
+describe('PriceListForm — gate r1 F-6: no server 422 message is silently dropped', () => {
+  it('renders inline errors for the fields that previously had no renderer', async () => {
+    // applyServerErrors writes to 8 fields; pre-fix only code/name/valid_until
+    // had an inline renderer, so a 422 on currency/description/valid_from/
+    // is_active/is_default went into react-hook-form state and was never shown.
+    mockCreatePriceList.mockRejectedValue(
+      make422({
+        currency: ['The selected currency is invalid.'],
+        description: ['The description may not be greater than 500 characters.'],
+        valid_from: ['The valid from field must be a valid date.'],
+        is_default: ['A default price list already exists for this currency.'],
+      }),
+    )
+    renderWithProviders(<PriceListForm />, { queryClient: createTestQueryClient() })
+
+    await fillRequired()
+    await userEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    expect(await screen.findByText('The selected currency is invalid.')).toBeInTheDocument()
+    expect(
+      screen.getByText('The description may not be greater than 500 characters.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('The valid from field must be a valid date.')).toBeInTheDocument()
+    expect(
+      screen.getByText('A default price list already exists for this currency.'),
+    ).toBeInTheDocument()
+  })
+
+  it('routes a 422 on a field this form has no input for to the form-level alert', async () => {
+    mockCreatePriceList.mockRejectedValue(
+      make422({ company_id: ['The selected company is invalid.'] }),
+    )
+    renderWithProviders(<PriceListForm />, { queryClient: createTestQueryClient() })
+
+    await fillRequired()
+    await userEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    expect(await screen.findByText('The selected company is invalid.')).toBeInTheDocument()
+  })
+})
