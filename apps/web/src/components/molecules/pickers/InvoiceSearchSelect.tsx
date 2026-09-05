@@ -44,6 +44,19 @@ interface InvoiceSearchSelectProps {
   className?: string | undefined
   label?: string | undefined
   error?: string | undefined
+  /**
+   * OPT-IN source filter (F-STG-4). This picker is shared: the credit-note page
+   * and the return-note page both mount it
+   * (`CreateCreditNotePage.tsx`, `CreateReturnNotePage.tsx`).
+   *
+   * - `'payable'` (DEFAULT, unchanged behaviour) — `status=posted` +
+   *   `has_balance=true`: invoices that still owe money.
+   * - `'creditable'` — `creditable=1`: every SEALED invoice, Posted (still
+   *   owing) OR Paid (settled → the credit becomes a customer credit). Only the
+   *   credit-note page asks for this; gate r1 BLOCKER-2/MAJOR-4 flagged that
+   *   making it unconditional silently changed the return-note source list too.
+   */
+  sourceFilter?: 'payable' | 'creditable' | undefined
 }
 
 const invoiceCurrencyFormatters = new Map<string, Intl.NumberFormat>()
@@ -62,8 +75,23 @@ function formatInvoiceCurrency(amount: number | string | undefined, currency: st
   return formatter.format(num)
 }
 
-export function InvoiceSearchSelect(props: InvoiceSearchSelectProps) {
+/**
+ * The server-side filter each source mode asks for. Kept as data so the DEFAULT
+ * (`payable`) is provably byte-identical to the pre-F-STG-4 behaviour.
+ */
+const sourceFilterConfig = {
+  payable: { statusFilter: 'posted', additionalFilters: { has_balance: 'true' } },
+  // `creditable=1` returns Posted AND Paid invoices — see
+  // `InvoiceController::index()`, which validates the flag as a boolean.
+  creditable: { statusFilter: undefined, additionalFilters: { creditable: '1' } },
+} as const satisfies Record<
+  'payable' | 'creditable',
+  { statusFilter: string | undefined; additionalFilters: Record<string, string> }
+>
+
+export function InvoiceSearchSelect({ sourceFilter = 'payable', ...props }: InvoiceSearchSelectProps) {
   const { t } = useTranslation()
+  const { statusFilter, additionalFilters } = sourceFilterConfig[sourceFilter]
 
   return (
     <DocumentSearchSelect<Invoice>
@@ -71,12 +99,8 @@ export function InvoiceSearchSelect(props: InvoiceSearchSelectProps) {
       config={{
         endpoint: '/invoices',
         queryKey: 'invoices-search',
-        // F-STG-4: a credit note may be raised against any sealed invoice —
-        // Posted (still owing) OR Paid (settled → the credit becomes a customer
-        // refund). The backend `creditable=true` filter returns exactly that set
-        // (see InvoiceController::index), replacing the old status=posted +
-        // has_balance filter that hid fully-paid invoices.
-        additionalFilters: { creditable: 'true' },
+        ...(statusFilter === undefined ? {} : { statusFilter }),
+        additionalFilters,
         icon: Receipt,
         searchPlaceholder: t('sales:invoices.searchPlaceholder', 'Search by invoice number or partner...'),
         noResultsMessage: t('sales:invoices.noInvoicesFound', 'No invoices found'),

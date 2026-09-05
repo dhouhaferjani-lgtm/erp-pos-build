@@ -148,6 +148,62 @@ describe('InvoiceSearchSelect', () => {
     })
   })
 
+  /**
+   * F-STG-4 / gate r1 BLOCKER-2 + MAJOR-4. The picker is SHARED — the
+   * return-note page mounts it too (`CreateReturnNotePage.tsx`) — so the
+   * sealed-invoice source list (Posted OR Paid) is opt-in, never inherited.
+   */
+  it('keeps the still-owing filter (has_balance) by default — the return-note contract', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: { data: mockInvoices } })
+
+    renderComponent()
+
+    await user.click(screen.getByRole('button'))
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith(expect.stringContaining('has_balance=true'))
+    })
+    expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining('creditable'))
+  })
+
+  it('asks for the creditable (Posted OR Paid) list only when sourceFilter="creditable"', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: { data: mockInvoices } })
+
+    renderComponent({ sourceFilter: 'creditable' })
+
+    await user.click(screen.getByRole('button'))
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith(expect.stringContaining('creditable=1'))
+    })
+    // The old still-owing filters must be GONE in this mode: a fully-paid
+    // invoice has neither `status=posted` nor a balance.
+    expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining('status=posted'))
+    expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining('has_balance'))
+  })
+
+  it('surfaces a fully PAID invoice in creditable mode (F-STG-4)', async () => {
+    const paid = makeInvoice({
+      id: '3',
+      number: 'INV-00003',
+      document_date: '2024-12-22',
+      total: '900.00',
+      balance: '0.00',
+      currency: 'EUR',
+      status: 'paid',
+      partner: { id: 'p3', name: 'Paid Customer' },
+    })
+    vi.mocked(api.get).mockResolvedValue({ data: { data: [paid] } })
+
+    renderComponent({ sourceFilter: 'creditable' })
+
+    await user.click(screen.getByRole('button'))
+
+    await waitFor(() => {
+      expect(screen.getByText('INV-00003')).toBeInTheDocument()
+    })
+  })
+
   it('filters by partner ID when provided', async () => {
     vi.mocked(api.get).mockResolvedValue({ data: { data: mockInvoices } })
 

@@ -371,6 +371,11 @@ export function CreateCreditNotePage() {
                       <InvoiceSearchSelect
                         value={selectedInvoice}
                         onChange={handleInvoiceSelect}
+                        // F-STG-4: opt IN to the sealed-invoice source list
+                        // (Posted OR Paid). The picker is shared with
+                        // CreateReturnNotePage, which keeps the default
+                        // still-owing list — gate r1 BLOCKER-2/MAJOR-4.
+                        sourceFilter="creditable"
                         label={t('sales:creditNotes.sourceInvoice')}
                         required
                         error={errors.source_invoice_id?.message}
