@@ -23,6 +23,7 @@ import { DocumentLineEditor, type DocumentLine } from '@/components/documents/Do
 import {
   buildCreditNotePayload,
   findIncompleteCreditNoteLineIds,
+  isUndescribedCreditNoteLine,
   isUnpricedCreditNoteLine,
 } from './creditNotePayload'
 import { Button } from '@/components/atoms/Button/Button'
@@ -91,10 +92,11 @@ export function CreateCreditNotePage() {
   // Selected invoice state
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
 
-  // Lines the submit refused because a required field is blank (price or
-  // designation) — same marking contract as DocumentForm (gate r1 IMPORTANT-3,
-  // gate r2 NEW-2).
-  const [incompleteLineIds, setIncompleteLineIds] = useState<Set<string>>(new Set())
+  // Lines the submit refused, split BY FIELD so the editor reddens and focuses
+  // the cell that is actually empty (gate r1 IMPORTANT-3, gate r2 NEW-2,
+  // gate r3 R3-3). `invalidLineIds` is price-specific in the editor.
+  const [unpricedLineIds, setUnpricedLineIds] = useState<Set<string>>(new Set())
+  const [undescribedLineIds, setUndescribedLineIds] = useState<Set<string>>(new Set())
 
   const {
     control,
@@ -247,13 +249,24 @@ export function CreateCreditNotePage() {
       const creditNoteId = createdCreditNote.data?.id ?? createdCreditNote.id
       navigate(creditNoteId ? entityRoutes.document(creditNoteId, { documentType: 'credit_note' }) : '/sales/credit-notes')
     },
-    onError: (error: Error) => {
-      toast.error(error.message || t('sales:creditNotes.messages.createFailed'))
+    // Gate r3 R3-2 (interim) — the axios interceptor rejects the raw AxiosError
+    // (`lib/api.ts:366`), whose `.message` is "Request failed with status code
+    // 422". The API's own envelope carries the real reason — e.g. "Total credit
+    // notes would exceed invoice total" from the headroom guard
+    // (`CreditNoteService::createCreditNote():845-850`), which is still
+    // reachable because nothing sets `payload.fully_credited` on this path.
+    // Same shape as the sibling DocumentForm handler (`DocumentForm.tsx:416-421`).
+    onError: (error: Error & { response?: { data?: { message?: string; error?: { message?: string } } } }) => {
+      const message = error.response?.data?.error?.message
+        ?? error.response?.data?.message
+        ?? error.message
+      toast.error(message || t('sales:creditNotes.messages.createFailed'))
     },
   })
 
   const onSubmit = (data: CreditNoteFormData) => {
-    setIncompleteLineIds(new Set())
+    setUnpricedLineIds(new Set())
+    setUndescribedLineIds(new Set())
 
     // Validation for invoice mode
     if (creditMode === 'invoice') {
@@ -289,12 +302,18 @@ export function CreateCreditNotePage() {
       // predicate for "not submittable" (shared with the payload builder), the
       // same `invalidLineIds` marking DocumentForm uses, and the message names
       // the field that is actually missing.
-      const incompleteIds = findIncompleteCreditNoteLineIds(lines)
-      if (incompleteIds.length > 0) {
-        setIncompleteLineIds(new Set(incompleteIds))
-        const incompleteLines = lines.filter((line) => incompleteIds.includes(line.id))
+      const incompleteIds = new Set(findIncompleteCreditNoteLineIds(lines))
+      if (incompleteIds.size > 0) {
+        const refused = lines.filter((line) => incompleteIds.has(line.id))
+        const unpriced = refused.filter(isUnpricedCreditNoteLine)
+        // A line can be missing BOTH; it is then marked in both cells, and the
+        // price message wins because that is the field the operator hits first.
+        setUnpricedLineIds(new Set(unpriced.map((line) => line.id)))
+        setUndescribedLineIds(
+          new Set(refused.filter(isUndescribedCreditNoteLine).map((line) => line.id)),
+        )
         toast.error(
-          incompleteLines.some(isUnpricedCreditNoteLine)
+          unpriced.length > 0
             ? t('sales:documents.errors.unitPriceRequired')
             : t('sales:documents.errors.descriptionRequired'),
         )
@@ -658,7 +677,8 @@ export function CreateCreditNotePage() {
                 lines={lines}
                 onChange={setLines}
                 partnerId={partnerId}
-                invalidLineIds={incompleteLineIds}
+                invalidLineIds={unpricedLineIds}
+                invalidDescriptionLineIds={undescribedLineIds}
               />
             </div>
           )}

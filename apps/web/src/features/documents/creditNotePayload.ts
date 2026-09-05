@@ -148,6 +148,11 @@ export function isUnpricedCreditNoteLine(line: CreditNoteSourceLine): boolean {
   return findBlankPriceLineIds([line]).length > 0
 }
 
+/** True when the line has no designation (as opposed to no unit price). */
+export function isUndescribedCreditNoteLine(line: CreditNoteSourceLine): boolean {
+  return isBlank(line.description)
+}
+
 export function buildCreditNotePayload({
   data,
   creditMode,
