@@ -33,15 +33,25 @@ const mockApiInstance = vi.hoisted(() => ({
   delete: vi.fn(),
 }))
 
-vi.mock('../../lib/api', () => ({
-  apiGet: mockApiGet,
-  apiPost: mockApiPost,
-  apiPatch: mockApiPatch,
-  apiDelete: mockApiDelete,
-  api: mockApiInstance,
-  getErrorMessage: mockGetErrorMessage,
-  isApiError: mockIsApiError,
-}))
+// Spread the REAL module, then override only the transport + the two spies the
+// tests drive. `getFieldErrors` MUST come from the real module: gate r2 R2-1 —
+// this mock was an object literal that never exported it, and once PartnerForm
+// stopped defining a private copy (fix round 1, F-5), `handleMutationError`
+// called `undefined` and the three mutation-error tests went red. Spreading also
+// means the next helper added to `lib/api` cannot silently break this file.
+vi.mock('../../lib/api', async () => {
+  const actual = await vi.importActual<typeof import('../../lib/api')>('../../lib/api')
+  return {
+    ...actual,
+    apiGet: mockApiGet,
+    apiPost: mockApiPost,
+    apiPatch: mockApiPatch,
+    apiDelete: mockApiDelete,
+    api: mockApiInstance,
+    getErrorMessage: mockGetErrorMessage,
+    isApiError: mockIsApiError,
+  }
+})
 
 const mockToast = vi.hoisted(() => ({
   success: vi.fn(),

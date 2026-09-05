@@ -18,10 +18,15 @@ import type {
  * `{ data, meta }` wrapper. Typing it as a wrapper (the pre-fix shape) made
  * `PriceListListPage`'s `data?.data` permanently `undefined`.
  *
- * The paginator's own meta is dropped by that unwrap; the list page renders a
- * single page today and does not read it. Restoring meta needs `api.get` +
- * `response.data` (the standing double-unwrap pitfall) — filed as a residual in
- * the fix-round-1 handback, not done here.
+ * KNOWN LIMIT (residual, gate r2): the paginator's meta is structurally
+ * unreachable through `apiGet` — it sits on the paginator's TOP level, which the
+ * unwrap discards. `PricingController::index()` paginates at 20, so past 20
+ * price lists this page silently TRUNCATES to the first 20 and the header count
+ * at `PriceListListPage.tsx:73` (and the filter-tab counts at :42) report 20 as
+ * the total. Strictly better than the always-empty page this replaced, so it does
+ * not hold the merge; restoring meta needs `api.get` + `response.data` (the
+ * standing double-unwrap pitfall) plus a real pagination control, which is a
+ * separate change. Filed in the fix-round handback.
  */
 export async function fetchPriceLists(params?: {
   is_active?: boolean

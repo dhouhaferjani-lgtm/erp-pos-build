@@ -23,7 +23,14 @@ vi.mock('pdfjs-dist', () => ({
 }))
 vi.mock('pdfjs-dist/build/pdf.worker.min.mjs?url', () => ({ default: 'worker.js' }))
 
-vi.mock('@/lib/api', () => ({
+// Spread the REAL module, then override only the transport and `getErrorMessage`.
+// Gate r2: this page renders PartnerForm, which imports `getFieldErrors` from
+// `lib/api` (fix round 1, F-5). The pre-existing object-literal mock did not
+// export it — no test here drives the mutation-error path today, so it was
+// latent rather than red, but the next error-path test would have called
+// `undefined`. Spreading closes that and any future one.
+vi.mock('@/lib/api', async () => ({
+  ...(await vi.importActual<typeof import('@/lib/api')>('@/lib/api')),
   api: {
     get: mockApiGet,
     post: mockApiPost,

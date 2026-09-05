@@ -52,7 +52,13 @@ vi.mock('sonner', () => ({
   },
 }))
 
-vi.mock('../../lib/api', () => ({
+// Spread the REAL module, then override only what these tests drive. Gate r2:
+// `ProductForm` imports `getFieldErrors` from `lib/api` (fix round 1, F-5); an
+// object-literal mock that omits it resolves the import to `undefined`, which is
+// how `partners.test.tsx` went red. No test here drives the mutation-error path
+// today, so this is hardening, not a fix — but it closes the same latent gap.
+vi.mock('../../lib/api', async () => ({
+  ...(await vi.importActual<typeof import('../../lib/api')>('../../lib/api')),
   api: {},
   apiPost: mockApiPost,
   apiPatch: mockApiPatch,
