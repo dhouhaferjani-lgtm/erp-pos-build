@@ -139,6 +139,53 @@ describe('PaymentDetailPage presentation', () => {
     expect(badge.className).toContain('rounded-full')
   })
 
+  it('explains why refunding is refused for a supplier payment instead of only disabling the buttons', async () => {
+    // F-W2-13 fix round 1 (gate r1 finding #2): `can_refund: false` used to leave
+    // two greyed-out buttons and no reason anywhere on the page.
+    mockApiGet.mockImplementation(async (url: string) => {
+      if (url === '/payments/payment-1/can-refund') {
+        return { data: { data: { can_refund: false, status: 'completed', amount: '150.00' } } }
+      }
+      if (url === '/payments/payment-1/refund-history') {
+        return { data: { data: [] } }
+      }
+      if (url === '/payments/payment-1') {
+        return {
+          data: {
+            data: {
+              ...paymentFixture(),
+              payment_type: 'supplier_payment',
+              partner: { id: 'partner-1', name: 'Supplier A', type: 'supplier' },
+            },
+          },
+        }
+      }
+      return { data: { data: [] } }
+    })
+
+    render(<PaymentDetailPage />, { wrapper: wrapper(createClient()) })
+
+    const reason = await screen.findByRole('note')
+    expect(reason).toHaveTextContent('payments.refund.refusedSupplierPayment')
+
+    const refundButton = screen.getByRole('button', { name: /payments\.refund\.refund$/ })
+    expect(refundButton).toBeDisabled()
+    expect(refundButton).toHaveAttribute('title', 'payments.refund.refusedSupplierPayment')
+    const partialRefundButton = screen.getByRole('button', { name: 'payments.refund.partialRefund' })
+    expect(partialRefundButton).toBeDisabled()
+    expect(partialRefundButton).toHaveAttribute('title', 'payments.refund.refusedSupplierPayment')
+  })
+
+  it('offers the refund actions with no refusal note for a refundable customer payment', async () => {
+    render(<PaymentDetailPage />, { wrapper: wrapper(createClient()) })
+
+    const refundButton = await screen.findByRole('button', { name: /payments\.refund\.refund$/ })
+    // `can_refund` arrives on its own query, so the button starts disabled.
+    await waitFor(() => { expect(refundButton).toBeEnabled() })
+    expect(refundButton).not.toHaveAttribute('title')
+    expect(screen.queryByRole('note')).toBeNull()
+  })
+
   it('links supplier-payment allocations to supplier invoice detail pages', async () => {
     mockApiGet.mockImplementation(async (url: string) => {
       if (url === '/payments/payment-1/can-refund') {

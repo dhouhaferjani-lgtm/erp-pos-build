@@ -131,7 +131,8 @@
       "partialRefundTitle": "Partial Refund",
       "maxRefundable": "Maximum refundable",
       "reverseTitle": "Reverse Payment",
-      "reverseMessage": "This will reverse the entire payment and mark it as voided. This action cannot be undone."
+      "reverseMessage": "This will reverse the entire payment and mark it as voided. This action cannot be undone.",
+      "refusedSupplierPayment": "This payment was made against a supplier invoice, so it cannot be refunded here: this screen refunds money received from a customer, and this money went out to a supplier. Undoing a supplier invoice payment belongs to the supplier payment flow and is not available yet — contact an administrator."
     }
   },
   "instruments": {

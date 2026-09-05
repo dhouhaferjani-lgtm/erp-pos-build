@@ -360,6 +360,20 @@ export function PaymentDetailPage() {
 
   const payment = data.data
 
+  /**
+   * F-W2-13 fix round 1 (gate r1 finding #2): a disabled refund button with no
+   * explanation is an operator dead end. The backend refuses a supplier-invoice
+   * payment in this lane (`PaymentRefundService::assertRefundableType()`, 422
+   * `REFUND_LANE_REFUSED`) and `canRefund` reports the same refusal, so name the
+   * reason here instead of leaving a greyed-out button. Text via `t()` in the
+   * `treasury` namespace (rule 11), mirroring the backend key
+   * `refund_refused.supplier_payment` in `lang/<locale>/treasury.php`.
+   */
+  const refundRefusalReason =
+    !canRefund && payment.payment_type === 'supplier_payment'
+      ? t('payments.refund.refusedSupplierPayment')
+      : null
+
   const backLink = (
     <Link
       to="/treasury/payments"
@@ -398,6 +412,7 @@ export function PaymentDetailPage() {
                   variant="secondary"
                   onClick={() => { setRefundRequestId(crypto.randomUUID()); setShowRefundModal(true); }}
                   disabled={!canRefund || remainingAmount <= 0}
+                  title={refundRefusalReason ?? undefined}
                 >
                   <RotateCcw className="me-2 h-4 w-4" />
                   {t('payments.refund.refund')}
@@ -406,9 +421,20 @@ export function PaymentDetailPage() {
                   variant="secondary"
                   onClick={() => { setPartialRefundRequestId(crypto.randomUUID()); setShowPartialRefundModal(true); }}
                   disabled={!canRefund || remainingAmount <= 0}
+                  title={refundRefusalReason ?? undefined}
                 >
                   {t('payments.refund.partialRefund')}
                 </Button>
+                {refundRefusalReason !== null && (
+                  // `title` alone is not enough: a disabled button gives no hover
+                  // tooltip in every browser, so the reason is also rendered.
+                  <p
+                    role="note"
+                    className={cn('max-w-xs text-xs', textColors.tertiary)}
+                  >
+                    {refundRefusalReason}
+                  </p>
+                )}
                 <Button
                   variant="danger"
                   onClick={() => { setShowReverseModal(true); }}

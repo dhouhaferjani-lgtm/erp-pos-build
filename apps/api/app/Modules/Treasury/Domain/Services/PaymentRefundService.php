@@ -26,6 +26,7 @@ use App\Modules\Treasury\Domain\Events\PaymentRefunded;
 use App\Modules\Treasury\Domain\Events\PaymentReversed;
 use App\Modules\Treasury\Domain\Exceptions\OverRefundException;
 use App\Modules\Treasury\Domain\Exceptions\RefundIdempotencyException;
+use App\Modules\Treasury\Domain\Exceptions\RefundLaneRefusedException;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentInstrument;
@@ -151,6 +152,12 @@ class PaymentRefundService
                 if ($original->status === PaymentStatus::Reversed) {
                     return $this->findExistingFullRefund($original);
                 }
+
+                // F-W2-13: refuse a wrong-lane shape on the PERSISTED type (mirrors
+                // reversePayment()'s D-6 gate). Read from $original, not the
+                // caller's model, so a non-hydrated in-memory payment_type can't
+                // slip a supplier payment through. Throws before any write.
+                $this->assertRefundableType($original);
 
                 // Idempotent replay: a refund row already exists for this
                 // (company, original payment, request id) triplet.
@@ -338,6 +345,10 @@ class PaymentRefundService
                     ->lockForUpdate()
                     ->findOrFail($payment->id);
 
+                // F-W2-13: refuse a wrong-lane shape on the PERSISTED type, before
+                // any write (mirrors refundPayment() and reversePayment()'s D-6 gate).
+                $this->assertRefundableType($original);
+
                 // Idempotent replay for this (company, original payment, request id).
                 $existing = $this->findExistingRefundByRequestId($original, $refundRequestId);
                 if ($existing instanceof Payment) {
@@ -462,6 +473,44 @@ class PaymentRefundService
                 .'only a positive payment can be. A refund or reversal row is itself the undo of a '
                 .'payment; refund or reverse the ORIGINAL payment instead.'
             );
+        }
+    }
+
+    /**
+     * F-W2-13 (P0) — the CUSTOMER refund lane must refuse a SUPPLIER payment.
+     * `refundPayment()`/`partialRefund()` route their GL UNCONDITIONALLY through
+     * `createPaymentRefundJournalEntry()` (Dr CustomerReceivable 411 / Cr cash,
+     * `source_type='customer_payment_refund'`) plus a cash movement OUT — correct
+     * ONLY for a payment that came IN from a customer. A `SupplierPayment` posted
+     * Dr 401 / Cr Bank, so its undo is Dr Bank / Cr 401 with cash IN: the opposite
+     * direction and a different subledger. Refunding one here debits 411 for a
+     * receivable that never existed and never re-credits 401 — the exact damage
+     * measured in `docs/superpowers/reviews/2026-09-01-wave2-po-evidence.md:136`.
+     *
+     * SCOPE (fix round 1, gate r1 findings #1 and #4). The first cut of this guard
+     * refused every `PaymentType::reversalSupport() === Unsupported` shape, which
+     * also covers `POS`/`POSRefund` and silently broke the §13 writer-inventory
+     * rows 7/8 (`tests/Feature/Fiscal/PaymentOriginWriterInventoryTest.php:435`,
+     * `:471`). Whether the back-office may refund a POS payment is a SECOND flow
+     * with its own owner ruling (rule 4), so this guard is narrowed to the
+     * supplier shape only and POS behaviour is exactly as it was before F-W2-13.
+     *
+     * SoT for "supplier shape" is `Payment::isSupplierPayment()`
+     * (`Payment.php:370`) — i.e. `PaymentType::SupplierPayment`, the ONLY type any
+     * supplier-invoice payment is ever written with: `PaymentController::store()`
+     * types it from `DocumentType::SupplierInvoice` (`PaymentController.php:526`,
+     * `:936`) and every other payment writer refuses supplier invoices outright
+     * (`MultiPaymentController.php:173`, `:389`). No hardcoded case list here or
+     * in `canRefund()`.
+     *
+     * Runs on the DB-locked `$original`, not the caller's model, so a non-hydrated
+     * in-memory `payment_type` cannot slip a supplier payment through, and before
+     * any write. It is the refund-lane twin of `reversePayment()`'s D-6 gate.
+     */
+    private function assertRefundableType(Payment $payment): void
+    {
+        if ($payment->isSupplierPayment()) {
+            throw new RefundLaneRefusedException((string) $payment->id, PaymentType::SupplierPayment);
         }
     }
 
@@ -1072,6 +1121,21 @@ class PaymentRefundService
     public function canRefund(Payment $payment): bool
     {
         if ($payment->status !== PaymentStatus::Completed) {
+            return false;
+        }
+
+        // F-W2-13: never OFFER the action the write path refuses, so the UI does
+        // not advertise a refund that will 422. Same predicate as
+        // assertRefundableType() — `Payment::isSupplierPayment()`, the domain SoT
+        // — rather than a case list duplicated here (gate r1 finding #5); it is
+        // null-safe by construction, since an unhydrated `payment_type` is null
+        // and null is not `PaymentType::SupplierPayment`.
+        //
+        // This does NOT claim to mirror every write-path refusal: a `Refund` /
+        // `Reversal` row still reports `true` here and is refused on amount by
+        // assertRefundableSubject() (gate r1 finding #6, left as-is — it is
+        // pre-existing and out of this fix round's scope).
+        if ($payment->isSupplierPayment()) {
             return false;
         }
 

@@ -33,4 +33,18 @@ return [
         'payable_not_settleable_here' => 'This is a supplier invoice. Record the payment through the supplier payment flow, which pays the supplier and clears the payable.',
         'partner_role_mismatch' => "This document's type does not match the partner's role, so the payment direction cannot be determined. A customer invoice must belong to a customer and a supplier invoice to a supplier. If this partner is both, set its type to Both; otherwise correct the document.",
     ],
+    /*
+     * F-W2-13 (P0) — why the CUSTOMER refund lane refused a payment.
+     * Rendered as the `message` of a 422 `REFUND_LANE_REFUSED` by
+     * `PaymentRefundController::refundPayment()`/`partialRefund()`; the payment
+     * type travels alongside it in `details.payment_type`.
+     *
+     * Wording rule (gate r1 finding #3): name only what the operator can act on
+     * today. It must NOT send them to the vendor prepayment refund
+     * (`VendorRefundService::refundPrepayment()`), which only serves purchase
+     * orders and would refuse a supplier-invoice payment as well.
+     */
+    'refund_refused' => [
+        'supplier_payment' => 'This payment was made against a supplier invoice, so it cannot be refunded here: this screen refunds money received from a customer, and this money went out to a supplier. Undoing a supplier invoice payment belongs to the supplier payment flow and is not available yet — contact an administrator.',
+    ],
 ];
