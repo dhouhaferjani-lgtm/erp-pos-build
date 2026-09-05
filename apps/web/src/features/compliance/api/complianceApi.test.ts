@@ -56,21 +56,51 @@ describe('verifyChains', () => {
   it('extracts the terminals array from the nested response.data.data.terminals', async () => {
     mockedPost.mockResolvedValueOnce(realResponse())
 
-    const result = await verifyChains('company-1')
+    const result = await verifyChains()
 
-    expect(Array.isArray(result)).toBe(true)
-    expect(result).toHaveLength(1)
-    expect(result[0].terminal_code).toBe('CAISSE-01')
-    expect(result[0].receipt_chain.total_receipts).toBe(42)
+    expect(Array.isArray(result.terminals)).toBe(true)
+    expect(result.terminals).toHaveLength(1)
+    expect(result.terminals[0].terminal_code).toBe('CAISSE-01')
+    expect(result.terminals[0].receipt_chain.total_receipts).toBe(42)
   })
 
-  it('degrades gracefully to an empty array when the payload is unexpected', async () => {
+  it('preserves the audit fields of the envelope (all_chains_valid + verified_at)', async () => {
+    mockedPost.mockResolvedValueOnce(realResponse())
+
+    const result = await verifyChains()
+
+    expect(result.all_chains_valid).toBe(true)
+    expect(result.verified_at).toBe('2026-09-04T10:00:00+00:00')
+    expect(result.company_id).toBe('company-1')
+  })
+
+  it('sends NO company_id in the body — the controller resolves the company from CompanyContext', async () => {
+    // Nf525ExportController::verifyChains uses `$this->companyContext->requireCompanyId()`
+    // and the class docblock states "Body `company_id` is no longer accepted"
+    // (it was a cross-tenant exfiltration vector). Sending one implied the
+    // client picks the tenant scope.
+    mockedPost.mockResolvedValueOnce(realResponse())
+
+    await verifyChains()
+
+    expect(mockedPost).toHaveBeenCalledWith('/compliance/nf525/verify-chains', {})
+  })
+
+  it('degrades gracefully to an empty terminal list when the payload is unexpected', async () => {
     mockedPost.mockResolvedValueOnce({ data: { data: { all_chains_valid: true } } })
-    await expect(verifyChains('company-1')).resolves.toEqual([])
+
+    const result = await verifyChains()
+
+    expect(result.terminals).toEqual([])
+    expect(result.verified_at).toBe('')
   })
 
-  it('degrades gracefully to an empty array when the body is empty/null', async () => {
+  it('degrades gracefully when the body is empty/null', async () => {
     mockedPost.mockResolvedValueOnce({ data: null })
-    await expect(verifyChains('company-1')).resolves.toEqual([])
+
+    const result = await verifyChains()
+
+    expect(result.terminals).toEqual([])
+    expect(result.all_chains_valid).toBe(false)
   })
 })

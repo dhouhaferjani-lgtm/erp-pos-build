@@ -74,13 +74,29 @@ export async function exportJetXml(companyId: string, from: string, to: string):
  *
  * The backend nests the payload under the standard `data` envelope, and the
  * per-terminal rows live at `data.terminals` (NOT `data` directly). We read
- * `response.data.data.terminals` and defensively normalize to an array so an
+ * `response.data.data` and defensively normalize every field so an
  * unexpected/empty payload degrades gracefully instead of crashing the panel.
+ *
+ * The WHOLE envelope is returned (not just `terminals`): `verified_at` is the
+ * "as of" stamp an integrity verdict needs to be audit evidence, and
+ * `all_chains_valid` is the backend's own verdict — the panel renders that
+ * rather than recomputing a second one client-side.
+ *
+ * NO request body: `Nf525ExportController::verifyChains` resolves the company
+ * exclusively from `CompanyContext` (`requireCompanyId()`, controller docblock
+ * "Body `company_id` is no longer accepted") — sending one implied the client
+ * controls the tenant scope, which it does not.
  */
-export async function verifyChains(companyId: string): Promise<ChainVerificationResult[]> {
-  const response = await api.post('/compliance/nf525/verify-chains', { company_id: companyId })
+export async function verifyChains(): Promise<ChainVerificationResponse> {
+  const response = await api.post('/compliance/nf525/verify-chains', {})
   const payload = (response.data as { data?: Partial<ChainVerificationResponse> } | null)?.data
-  return Array.isArray(payload?.terminals) ? payload.terminals : []
+
+  return {
+    company_id: typeof payload?.company_id === 'string' ? payload.company_id : '',
+    terminals: Array.isArray(payload?.terminals) ? payload.terminals : [],
+    all_chains_valid: payload?.all_chains_valid === true,
+    verified_at: typeof payload?.verified_at === 'string' ? payload.verified_at : '',
+  }
 }
 
 /**

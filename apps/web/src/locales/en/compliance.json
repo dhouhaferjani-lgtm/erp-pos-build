@@ -25,7 +25,21 @@
     "brokenAt": "Broken at",
     "noTerminals": "No terminals found.",
     "allValid": "All chains are valid.",
-    "hasBroken": "Some chains have integrity issues."
+    "hasBroken": "Some chains have integrity issues.",
+    "legacyRowsVerified": "Legacy Rows Verified",
+    "noLegacyRows": "None",
+    "notCovered": "Not covered",
+    "legacyArmOnlyNote": "No legacy-arm receipts to verify. The event-chain arm is not covered by this check.",
+    "allValidWithLegacyGap": "No integrity failure was detected. Note: on terminals with no legacy-arm receipts this check covers the legacy arm only, and the event-chain arm is not covered.",
+    "technicalDetail": "Technical detail",
+    "verifiedAt": "As of {{timestamp}}",
+    "errors": {
+      "fiscalEventsChainBreak": "The event-chain seal does not match: a receipt's sealed content or its link to the previous receipt has changed. Contact support with this terminal code.",
+      "legacyLinkageBroken": "Chain link broken: a receipt does not point to the previous receipt's seal.",
+      "sealedHashAlgorithmAnomaly": "A receipt carries no seal algorithm although this terminal's seal migration is complete. Contact support with this terminal code.",
+      "fiscalHashMismatch": "Seal mismatch: this receipt's data no longer matches its fiscal seal.",
+      "zReportChainBreak": "Z-report chain break: the session chain or the Z-report links do not match."
+    }
   },
   "reprintLog": {
     "title": "Receipt Print Audit Log",
