@@ -208,6 +208,7 @@
     }
   },
   "invoices": {
+    "noCreditableInvoices": "لا توجد فواتير متاحة لإصدار إشعار خصم",
     "paymentStatus": {
       "unpaid": "غير مدفوعة",
       "partially_paid": "مدفوعة جزئيًا",
@@ -246,6 +247,9 @@
     }
   },
   "creditNotes": {
+    "form": {
+      "invoiceLinesNotLoaded": "لا يزال تحميل سطور الفاتورة جاريًا. انتظر لحظة ثم أعد المحاولة."
+    },
     "postingMarker": {
       "cancelledTitle": "ملغاة — تم إبطال هذا المستند",
       "cancelledDetail": "تم إلغاء إشعار الخصم هذا ولا يجوز استخدامه كمستند إثبات."
