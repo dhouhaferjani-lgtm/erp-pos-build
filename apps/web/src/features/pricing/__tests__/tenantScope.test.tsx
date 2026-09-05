@@ -97,9 +97,10 @@ beforeEach(() => {
     },
   })
   mockCreatePriceList.mockReset()
-  mockCreatePriceList.mockResolvedValue({ data: { id: 'pl-new' } })
+  // createPriceList/updatePriceList resolve the unwrapped PriceList (id at top level).
+  mockCreatePriceList.mockResolvedValue({ id: 'pl-new' })
   mockUpdatePriceList.mockReset()
-  mockUpdatePriceList.mockResolvedValue({ data: { id: 'pl-123' } })
+  mockUpdatePriceList.mockResolvedValue({ id: 'pl-123' })
   mockDeletePriceList.mockReset()
   mockDeletePriceList.mockResolvedValue(undefined)
   mockRemovePriceListItem.mockReset()

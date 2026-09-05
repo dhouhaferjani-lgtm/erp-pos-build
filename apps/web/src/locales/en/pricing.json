@@ -50,6 +50,7 @@
   },
   "validation": {
     "codeRequired": "Code is required",
-    "nameRequired": "Name is required"
+    "nameRequired": "Name is required",
+    "validUntilAfterValidFrom": "Valid Until must be after Valid From"
   }
 }
