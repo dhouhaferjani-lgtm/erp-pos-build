@@ -6,6 +6,7 @@ namespace App\Modules\Document\Domain\Services;
 
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Exceptions\DocumentDatesInconsistentException;
 use App\Modules\Document\Domain\Exceptions\DocumentRenumberingException;
 use App\Modules\Document\Domain\Exceptions\DocumentTransitionException;
 use Illuminate\Support\Facades\DB;
@@ -109,6 +110,7 @@ final readonly class DocumentStatusService
      *
      * @param  array<string, mixed>  $extraAttributes  written in the SAME update statement
      *
+     * @throws DocumentDatesInconsistentException
      * @throws DocumentRenumberingException
      * @throws DocumentTransitionException
      */
@@ -165,6 +167,14 @@ final readonly class DocumentStatusService
             );
         }
 
+        // DEV-QA-008/057, gate r2 N-1 — defence in depth for the ONE edge on
+        // which a draft becomes a document somebody else is shown. See
+        // {@see DocumentDatesInconsistentException} for why the FormRequest
+        // guards are not enough: no `confirm()` action re-validates dates.
+        if ($from === DocumentStatus::Draft && $to === DocumentStatus::Confirmed) {
+            $this->assertDatesAreConsistent($document);
+        }
+
         if ($from === DocumentStatus::Draft
             && $persistedNumber === null
             && $to !== DocumentStatus::Draft
@@ -180,6 +190,48 @@ final readonly class DocumentStatusService
         $document->update([...$extraAttributes, 'status' => $to]);
 
         return $document;
+    }
+
+    /**
+     * Refuse a `Draft -> Confirmed` edge on a row whose `due_date` /
+     * `valid_until` precedes its own `document_date`.
+     *
+     * Compared at DAY granularity on the model's own `date` casts
+     * (`Document.php:183-184`), so a time component cannot decide the outcome
+     * and EQUALITY PASSES — the same `>=` semantics the FormRequest rule
+     * `DueDateNotBeforeDocumentDate` applies at the write boundary, and the
+     * same two message keys, so an operator meets one sentence rather than two
+     * different ones for one mistake.
+     *
+     * `document_date` is NOT NULL in the schema
+     * (`2025_11_30_080000_create_documents_table.php:21`); the two compared
+     * columns are nullable and a null one is simply nothing to compare.
+     *
+     * @throws DocumentDatesInconsistentException
+     */
+    private function assertDatesAreConsistent(Document $document): void
+    {
+        $documentDate = $document->document_date->toDateString();
+
+        $dueDate = $document->due_date;
+
+        if ($dueDate !== null && $dueDate->toDateString() < $documentDate) {
+            throw DocumentDatesInconsistentException::dueDateBeforeDocumentDate(
+                $document->id,
+                $documentDate,
+                $dueDate->toDateString(),
+            );
+        }
+
+        $validUntil = $document->valid_until;
+
+        if ($validUntil !== null && $validUntil->toDateString() < $documentDate) {
+            throw DocumentDatesInconsistentException::validUntilBeforeDocumentDate(
+                $document->id,
+                $documentDate,
+                $validUntil->toDateString(),
+            );
+        }
     }
 
     /**
