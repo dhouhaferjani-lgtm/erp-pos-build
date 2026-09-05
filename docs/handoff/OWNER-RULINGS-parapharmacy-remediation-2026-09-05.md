@@ -121,3 +121,14 @@ Sources: Odoo forum on blocking/quarantining a lot, OCA `stock_lock_lot`, Odoo 1
 - The **device** records opening float, cash in/out and the count in the Z report and shift events, and the server **fiscal** projection copies them (`ZSessionLifecycleProjection`) and derives expected cash from them (`ShiftExpectedCashService`, sources: v3 `pos_z_session_events` or v2 `pos_cash_drawer_operations`). So the Z report and the expected-cash figure are correct.
 - **Treasury** has no consumer of those events: the only Treasury bridges are receipt, account payment, account charge and deposit. Nothing books the float into the drawer repository, nothing books a drop out of it into the safe, so the drawer repository balance only ever contains sales takings. Back-office drawer→safe transfers exist as a manual service (`RepositoryTransferService::transfer`), but they are not driven by the shift.
 - The variance GL leg (`PostShiftCashVarianceAdjustment`) shipped **disabled** for exactly this reason (gate finding I1, SV-3/SV-4): enabling it before float and drops are booked would create a cash/GL mismatch.
+
+## Q9 — over-payment on a zero-balance document (ruled 2026-09-05)
+
+**Ruling: match the benchmark (Odoo/ERPNext): never over-allocate to the document; accept the surplus only as an explicit, operator-confirmed customer advance; make advances visible in AR aging and the customer balance; provide a supported refund path.** Two constraints from the owner:
+
+1. **The document payment path is not a POS path.** For parapharmacy tenants the web B2B Sales module is gated off (D2), so "pay against a document on the web" is not reachable for this client; the confirmation gate above applies to tenants that do have the module. Do not build a POS-specific variant of it.
+2. **Standalone customer-account replenishment stays.** Topping up a customer account (an advance/deposit not tied to any document) must remain possible for this client, through the existing account-deposit path (`TreasuryDepositBridge` / customer-account deposit surfaces), independent of the document module. It is the operational way a parapharmacy customer pre-funds an account.
+
+Consequence for the testing session (owner of PR #214 and the treasury fix lanes): (a) confirmation gate on document payments when balance is zero or the amount exceeds balance; (b) advances surfaced in AR aging and refundable; (c) the customer-account deposit path audited to be reachable with Sales gated off, both layers (rule 12). Benchmark sources: Odoo 18 payments (outstanding credit, keep-open vs mark-fully-paid prompt); ERPNext Payment Entry (allocated ≤ outstanding, unallocated amount as advance).
+
+**All twelve spec decisions plus Q1–Q9 are now ruled. No open owner question remains for this program.**
