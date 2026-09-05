@@ -569,3 +569,285 @@ Exactly one, and it is **not** this branch:
 `CreditNoteAllocationTest::it_creates_credit_note_allocation_when_posting`
 (`DomainException … has no document_number`), on SQLite and on PG, identical to
 base dev per gate r1 MINOR 3. Output above.
+
+---
+
+# Fix round 2 — answering gate r2
+
+- **Gate answered**: [`2026-09-05-dhouha-pr-214-gate-r2.md`](./2026-09-05-dhouha-pr-214-gate-r2.md) — VERDICT `spec ✅ · quality APPROVED — CONDITIONAL` on head `cff7df47a`, with six ruling-independent items.
+- **Fix-round-2 head**: `0d0054749` before this section's own commit — 6 commits, one per item.
+- **PG lane**: `autoerp_test_f214` recreated, used, dropped again.
+- Still **not merged**, nothing pushed.
+
+| Gate r2 item | Status | Commit |
+|---|---|---|
+| NEW-1 (creditable filter lists non-creditable invoices) | ✅ fixed, falsifying test | `a290631a0` |
+| NEW-5 (exists rule allows soft-deleted) | ✅ fixed, falsifying test | `66b2beb57` |
+| NEW-2 + NEW-4a (blank `description`; two "unpriced" definitions) | ✅ fixed, one predicate | `db7ee0df0` |
+| NEW-3 (`reason` widened to `string`) | ✅ fixed, generated union | `facd08ed2` |
+| NEW-4b (stale `creditable=true` comment) | ✅ fixed | `1ab959780` |
+| NEW-6 (empty-state copy) | ✅ fixed, both modes tested | `0d0054749` |
+
+## [NEW-1] One creditable-source predicate for the list AND `/can-credit` — `a290631a0`
+
+**Claim verified.** `InvoiceController.php:222` filtered on status only.
+`RefundService::canCreditInvoice()` (`:1229-1243`) additionally refused
+`payload.fully_credited === true` and is live at
+`GET /invoices/{invoice}/can-credit` (`Presentation/routes.php:240-242` →
+`RefundController::checkCreditable():376`). Create then 422s on
+`CreditNoteService.php:845-850` / `:1096-1099`.
+
+**Change — the predicate count goes DOWN, not up.** `Document` now owns all three
+expressions of the one rule, side by side:
+
+- `isFullyCredited()` (`Document.php:604-609`) — the ONE reading of the
+  `payload.fully_credited` flag, replacing the two inline
+  `isset(...) && === true` restatements in `RefundService` (`:892`, `:1242`);
+- `isCreditableSource()` (`Document.php:633-636`) — sealed invoice **and** not
+  fully credited;
+- `scopeCreditableSource()` (`Document.php:651-670`) — its SQL twin.
+
+`RefundService::canCreditInvoice()` (`:1229-1237`) is now a one-line delegation;
+`RefundService::createFullCreditNote()` (`:892`) reads the flag through
+`isFullyCredited()`; `InvoiceController.php:231` consumes the scope. **The list
+and the check are the same predicate, so they cannot disagree.**
+
+**The JSON clause is written "absent OR explicitly false"**, not
+`NOT (flag = true)`: a missing key yields NULL on both engines and
+`NOT (NULL = true)` is NULL, which would silently drop every invoice that has
+never been credited at all. `RefundService::getCreditNoteSummary():1264` really
+does write `fully_credited => false`, so the `false` case is pinned by its own
+fixture (`INV-FLAG-FALSE`). The `false` arm goes through `->getQuery()` because
+Larastan's `checkModelProperties` types `where()`/`orWhere()`'s first argument as
+a real model column and a JSON arrow path is not one — `whereNull()` has no such
+constraint, hence the asymmetry. Same SQL either way, **verified green on both
+engines**, and PHPStan L8 is clean without an ignore.
+
+**Falsifying test** `test_creditable_filter_excludes_a_fully_credited_invoice`
+(`CreditNotePaidInvoiceSourceTest.php:389-419`) also asserts the list agrees with
+the live `/can-credit` endpoint **both ways**. With the old status-only filter:
+
+```
+1) …::test_creditable_filter_excludes_a_fully_credited_invoice
+a fully-credited invoice must never be offered as a credit-note source
+Failed asserting that an array does not contain '01a07194-8179-7378-b48c-79c9e51a224b'.
+```
+
+**Residual, documented on the predicate itself and not hidden:** the create-time
+guard is *arithmetic* (`remainingCreditHeadroom()` sums prior credit notes), so an
+invoice exhausted by several PARTIAL credit notes carries no `fully_credited`
+flag and would still be listed. This mirrors `canCreditInvoice()` exactly — which
+is what the gate asked for, and what makes the two surfaces agree — but closing
+the arithmetic gap needs a stored/derived headroom column and is its own lane.
+
+**Non-regression for the collapsed predicate:** `LinelessCreditNoteAuthoringGuardsTest`
+4/4, `RefundServiceScalingTest` 2/2, `RefundResidualTenantIsolationTest` 18/18,
+on SQLite **and** PG.
+
+## [NEW-5] Soft-deleted source documents — `66b2beb57`
+
+**Claim verified.** `Document` uses `SoftDeletes` (`Document.php:115`) and
+`Rule::exists` queries the raw table. **Change:** `->whereNull('deleted_at')` on
+the source rule (`CreditNoteController.php:167`).
+
+**Falsifying test** `test_credit_note_rejects_a_soft_deleted_source_invoice`
+(`CreditNotePaidInvoiceSourceTest.php:336-351`). Without the clause:
+
+```
+1) …::test_credit_note_rejects_a_soft_deleted_source_invoice
+Failed to find a validation error in the response for key: 'source_invoice_id'
+Failed asserting that an array has the key 'source_invoice_id'.
+```
+
+## [NEW-2] + [NEW-4a] One incomplete-line predicate — `db7ee0df0`
+
+**Claims verified.** `lines.*.description` is `['required','string','max:500']`
+(`CreditNoteController.php:179`); `DocumentLineEditor::handleAddBlankLine()`
+creates `description: ''` (`:563`). And the wire-side strip used
+`!isBlank(unit_price)` — weaker than the page guard's `findBlankPriceLineIds`,
+which also catches a TOTAL-entry line with a blank `line_total`.
+
+**Change — one predicate, consumed by both sides.**
+`findIncompleteCreditNoteLineIds()` (`creditNotePayload.ts:138-145`) is composed
+from the **shared** `findBlankPriceLineIds` plus the **shared** `isBlank`; no new
+"blank line" concept. To let the narrower credit-note line share that predicate,
+`findBlankPriceLineIds`'s parameter is now the structural
+`PricedLine = Pick<DocumentLine, 'id'|'unit_price'|'line_total'|'price_entry_mode'>`
+(`linePayload.ts:163-172`) — `DocumentLine` satisfies it, so `DocumentForm` is
+untouched — and `CreditNoteSourceLine` carries those two extra fields.
+
+- Page guard: `CreateCreditNotePage.tsx:292-302`, marking through the same
+  `invalidLineIds` mechanism DocumentForm uses (`:661`).
+- Wire strip: `creditNotePayload.ts:191-193` filters with the same helper.
+
+**Message choice — stated, not smuggled.** The gate/brief asked for a "shared
+translated message". The refusal reuses DocumentForm's message **block**
+(`sales:documents.errors.*`): `unitPriceRequired` when a price is missing, and a
+sibling `descriptionRequired` added to that same block (en + fr + **ar**, since
+`unitPriceRequired` already exists in all three) when it is the designation. One
+helper, one marking mechanism, one message block — but the operator is told which
+field is actually missing. Telling them "enter a unit price" when the price is
+fine would be the same defect (`a message about a field the operator cannot see`)
+in a new coat. Cheap for gate r3 to overrule if it disagrees.
+
+**Tests** — `creditNotePayload.test.ts` 4 → 7 cases: unpriced line, blank
+designation, TOTAL-entry line with blank `line_total` (proving the shared
+predicate is used, not a weaker copy), and a complete line.
+
+## [NEW-3] `reason` typed as the generated union — `facd08ed2`
+
+`generated.d.ts` declares its namespaces inside `declare global`, so
+`App.Modules.Document.Domain.Enums.CreditNoteReason` (`generated.d.ts:862`) is
+**ambient** — aliased once at `creditNotePayload.ts:35`, no import, no
+hand-written copy of the six literals. Both `CreditNoteFormValues.reason` and
+`CreditNotePayload.reason` use it. The unit test's fixture is now typed
+`CreditNoteFormValues`, so a widened `string` literal cannot compile past it —
+which is exactly what `tsc` caught when the alias landed, and what now keeps it
+honest.
+
+## [NEW-4b] Stale e2e comment — `1ab959780`
+
+`e2e/credit-note-creation.spec.ts:9-11` now says `creditable=1` and records that
+`creditable=true` is a 422 since the flag became a validated boolean.
+
+## [NEW-6] Mode-aware empty state — `0d0054749`
+
+The empty-state key moved into the same `sourceFilterConfig` table as the filter
+it belongs to (`InvoiceSearchSelect.tsx:82-108`), read at `:111` and used at
+`:124`. Creditable mode gets `sales:invoices.noCreditableInvoices`
+("No invoices available to credit" / "Aucune facture disponible pour un avoir",
+en + fr; `ar` resolves through the `...enSales` spread in `i18n.ts` and
+`fallbackLng: 'en'`). Test asserts **both** modes: creditable shows the new copy
+and NOT the old one; the default mode still shows the original.
+
+## Verification — verbatim (fix round 2)
+
+### PHPUnit — SQLite (`./vendor/bin/phpunit <path>`)
+
+```
+### tests/Feature/Document/CreditNotePaidInvoiceSourceTest.php
+..........                                                        10 / 10 (100%)
+OK (10 tests, 58 assertions)
+
+### tests/Feature/Document/CreditNoteIntegrationTest.php
+...............                                                   15 / 15 (100%)
+Tests: 15, Assertions: 68, PHPUnit Deprecations: 15.
+
+### tests/Unit/Document/CreditNoteServiceTest.php
+..........                                                        10 / 10 (100%)
+Tests: 10, Assertions: 36, PHPUnit Deprecations: 10.
+
+### tests/Feature/Document/CreditNoteMoneyLaneTest.php
+.............                                                     13 / 13 (100%)
+OK (13 tests, 109 assertions)
+
+### tests/Feature/Document/CreditNoteTenantIsolationTest.php
+...........                                                       11 / 11 (100%)
+OK (11 tests, 26 assertions)
+
+### tests/Feature/Document/CreditNoteAllocationTest.php
+ERRORS! Tests: 10, Assertions: 28, Errors: 1, PHPUnit Deprecations: 10.
+   → PRE-EXISTING (gate r2 confirmed the identical error on the unmodified main
+     checkout at dev fa000edc3).
+
+### collateral suites for the collapsed predicate
+tests/Feature/Accounting/LinelessCreditNoteAuthoringGuardsTest.php  OK (4 tests, 14 assertions)
+tests/Feature/Document/RefundServiceScalingTest.php                 Tests: 2, Assertions: 5
+tests/Feature/Document/RefundResidualTenantIsolationTest.php        OK (18 tests, 57 assertions)
+```
+
+### PHPUnit — PostgreSQL (`DB_HOST=127.0.0.1 DB_PORT=5433 DB_DATABASE=autoerp_test_f214 DB_CENTRAL_DATABASE=autoerp_test_f214 php artisan test -c phpunit-pgsql.xml <path>`)
+
+```
+### tests/Feature/Document/CreditNotePaidInvoiceSourceTest.php
+  Tests:    10 passed (58 assertions)   Duration: 26.82s
+### tests/Feature/Document/CreditNoteIntegrationTest.php
+  Tests:    15 passed (68 assertions)   Duration: 30.57s
+### tests/Unit/Document/CreditNoteServiceTest.php
+  Tests:    10 passed (36 assertions)   Duration: 13.25s
+### tests/Feature/Document/CreditNoteMoneyLaneTest.php
+  Tests:    13 passed (109 assertions)  Duration: 31.04s
+### tests/Feature/Document/CreditNoteTenantIsolationTest.php
+  Tests:    11 passed (26 assertions)   Duration: 36.90s
+### tests/Feature/Document/CreditNoteAllocationTest.php
+  Tests:    1 failed, 9 passed (28 assertions)  Duration: 16.28s   ← PRE-EXISTING
+### tests/Feature/Document/RefundResidualTenantIsolationTest.php
+  Tests:    18 passed (57 assertions)   Duration: 60.27s
+### tests/Feature/Accounting/LinelessCreditNoteAuthoringGuardsTest.php
+  Tests:    4 passed (14 assertions)    Duration: 19.13s
+### tests/Feature/Document/RefundServiceScalingTest.php
+  Tests:    2 passed (5 assertions)     Duration: 11.97s
+```
+
+DB dropped at the end.
+
+### Vitest (`./node_modules/.bin/vitest run <files>`)
+
+```
+ ✓ src/features/documents/__tests__/creditNotePayload.test.ts (7 tests)
+ ✓ src/components/molecules/pickers/InvoiceSearchSelect.test.tsx (21 tests)
+ ✓ src/features/documents/__tests__/CreateNotePages.quantityDisplay.test.tsx (2 tests)
+ ✓ src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx (5 tests)
+ ✓ src/features/documents/__tests__/DocumentForm.blankUnitPrice.test.tsx (10 tests)
+ ✓ src/features/documents/__tests__/DocumentForm.payload.test.ts (22 tests)
+ ✓ src/features/documents/components/__tests__/DocumentLineEditor.test.tsx (34 tests)
+ ✓ src/features/documents/components/__tests__/DocumentLineEditor.purchasePriceDefault.test.tsx (17 tests)
+ … (19 files total)
+ Test Files  19 passed (19)
+      Tests  177 passed (177)
+```
+
+### Static gates
+
+```
+$ ./vendor/bin/pint --test <6 touched PHP files>
+{"result":"pass"}
+
+$ ./vendor/bin/phpstan analyse --level=8 --memory-limit=2G \
+    app/Modules/Document/Domain/Document.php \
+    app/Modules/Document/Domain/Services/RefundService.php \
+    app/Modules/Document/Application/Services/CreditNoteService.php \
+    app/Modules/Document/Presentation/Controllers/CreditNoteController.php \
+    app/Modules/Document/Presentation/Controllers/InvoiceController.php
+ [OK] No errors
+
+$ ./node_modules/.bin/tsc --noEmit
+TSC_EXIT=0   (no output)
+
+$ ./node_modules/.bin/eslint <7 touched web files>
+e2e/credit-note-creation.spec.ts                               errors=0 warnings=1
+src/components/molecules/pickers/InvoiceSearchSelect.test.tsx  errors=0 warnings=29
+src/components/molecules/pickers/InvoiceSearchSelect.tsx       errors=0 warnings=6
+src/features/documents/CreateCreditNotePage.tsx                errors=0 warnings=102
+src/features/documents/__tests__/creditNotePayload.test.ts      errors=0 warnings=0
+src/features/documents/creditNotePayload.ts                    errors=0 warnings=0
+src/features/documents/linePayload.ts                          errors=0 warnings=1
+TOTAL ERRORS 0
+```
+
+## Deploy notes (delta on fix round 1)
+
+- Still no migrations, seeders, queue/Horizon or route changes; no PHP DTO
+  changes.
+- **Behaviour change:** `GET /invoices?creditable=1` no longer returns invoices
+  flagged `payload.fully_credited = true`. The flag is only ever written by
+  `RefundService::createFullCreditNote()`; the list now matches
+  `GET /invoices/{id}/can-credit`, which already behaved this way.
+- `RefundService::canCreditInvoice()` is unchanged in behaviour — it delegates to
+  the predicate that expresses exactly what it used to compute inline.
+- A soft-deleted `source_invoice_id` is now a 422 instead of a 404/500.
+- New i18n keys: `sales:documents.errors.descriptionRequired` (en/fr/ar),
+  `sales:invoices.noCreditableInvoices` (en/fr).
+
+## Still red (unchanged)
+
+`CreditNoteAllocationTest::it_creates_credit_note_allocation_when_posting`
+(`DomainException … has no document_number`), on both engines — pre-existing,
+confirmed by gate r2 on the unmodified `dev` checkout.
+
+## Owner follow-ups (unchanged)
+
+Gate r1 **MAJOR-2**, **MAJOR-3** (policy half), **IMPORTANT-6**, and
+**IMPORTANT-4** (`issue_date`) remain untouched and are reproduced verbatim in
+the fix-round-1 section above. The `fully_credited` half of MAJOR-3 was **not**
+policy and is closed by NEW-1.
