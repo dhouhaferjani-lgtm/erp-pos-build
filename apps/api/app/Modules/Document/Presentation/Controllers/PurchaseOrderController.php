@@ -368,12 +368,6 @@ class PurchaseOrderController extends Controller
         $vehicleContext = $validated['vehicle_context'] ?? null;
         unset($validated['vehicle_context']);
 
-        // Normalize issue_date to document_date (frontend sends issue_date)
-        if (isset($validated['issue_date']) && ! isset($validated['document_date'])) {
-            $validated['document_date'] = $validated['issue_date'];
-            unset($validated['issue_date']);
-        }
-
         $companyId = $this->companyContext->requireCompanyId();
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
@@ -526,12 +520,6 @@ class PurchaseOrderController extends Controller
         /** @var array{vehicle_id: string, snapshot?: array<string, mixed>, mileage?: int, additional_data?: array<string, mixed>}|null $vehicleContext */
         $vehicleContext = $validated['vehicle_context'] ?? null;
         unset($validated['vehicle_context']);
-
-        // Normalize issue_date to document_date (frontend sends issue_date)
-        if (isset($validated['issue_date']) && ! isset($validated['document_date'])) {
-            $validated['document_date'] = $validated['issue_date'];
-            unset($validated['issue_date']);
-        }
 
         $company = $this->companyContext->requireCompany();
 
