@@ -550,3 +550,242 @@ keys from blanking the English siblings — justified, not creep.
 - No PHP executed (backend untouched); no POS/Compliance PHPUnit run.
 
 ## Merge to local dev: **NO** — blocked on r2 finding 1 (copy + badge tone). Findings 2-3 are cheap to fold into the same round.
+
+---
+---
+
+# Gate r3 — PR #209 fix round 2
+
+| Field | Value |
+|---|---|
+| Re-gated sha | `9d22ce9bbc8d468bdd60d9d3d25135baee9282a0` (branch `gate/pr-209`) |
+| Fix commit | `1a9706aaa` `fix(compliance): scope the legacy-row caveat to the COUNT, not the verification (PR #209 gate r2)` |
+| Handback | `docs/superpowers/reviews/2026-09-05-dhouha-pr-209-fix-round-1-handback.md` → "Fix round 2" (in-worktree) |
+| Delta vs r2 sha `7d0beb283` | 5 code/test/locale files + 1 doc; `ChainVerificationPanel.tsx` +23/-32, `.test.tsx` +40/-16, en/fr/ar `compliance.json` +1/-3 each |
+| Reviewer | Fable adversarial merge gate, 2026-09-05 |
+
+## Verdict: **MERGE**
+
+The r2 MAJOR is closed at the root, not papered over: the alarm branch is *deleted*
+rather than re-tuned, and the replacement caveat is a statement about the **figure**
+that I could verify true against the backend. Every claim in the handback was checked
+against source and holds. Remaining items are the same three MINOR follow-ups carried
+from r2 plus two unreachable edge cases recorded below — none blocking.
+
+---
+
+## Claim-by-claim verification
+
+### 1. `BadgeTone` back to `valid | broken`; `notCovered` tone deleted — **VERIFIED**
+`ChainVerificationPanel.tsx:10` `type BadgeTone = 'valid' | 'broken'`; `TONE_CLASSES`
+(`:12-15`) and `TONE_LABEL_KEYS` (`:17-20`) each carry exactly two entries. `grep -n
+'caution' ChainVerificationPanel.tsx` → **zero hits**: the panel no longer references
+`semanticColorTokens.intent.caution` at all.
+
+### 2. No code path can turn a backend pass into an alarm — **VERIFIED by exhaustion**
+I enumerated every tone/banner decision point in the file
+(`grep -n 'tone=\|allValid\|hasBroken\|total_receipts'`). There are exactly four:
+- `ChainVerificationPanel.tsx:86` — `tone="broken"`, reachable only inside `if (!isValid)` (`:84`)
+- `:99` — `tone="valid"`, the unconditional else
+- `:219` — `tone={result.z_report_chain.is_valid ? 'valid' : 'broken'}`
+- `:164` / `:171` — `allValid && (green)` / `!allValid && (danger)`, where `allValid = report?.all_chains_valid === true` (`:126`)
+
+So the only alarm inputs are `receipt_chain.is_valid === false`,
+`z_report_chain.is_valid === false`, and `all_chains_valid !== true` — all three
+backend-authored. `hasUncoveredReceiptArm` is gone (`grep` → no hits), and
+`ReceiptChainStatus` no longer receives `totalReceipts` (`:207-210` passes only
+`isValid`, `failedAtSequence`, `error`). `total_receipts` now appears in exactly one
+place outside comments — the count cell at `:214-216` — where it selects between
+`noLegacyRows` and `verified / total` and has **no tone effect**.
+
+### 3. The caveat wording is TRUE against `Nf525DataProvider.php:396-418` — **VERIFIED**
+`en/compliance.json:33` `legacyRowsCountNote`: *"This column counts legacy-arm receipts
+only. Event-chained receipts are verified by this check but are not counted in the figure."*
+- **Clause 1 is true**: `Nf525DataProvider.php:390-394` scopes the counted set to
+  `Receipt::where('terminal_id',…)->whereNull('fiscal_event_id')->where('is_training', false)`,
+  and `totalRows` is that collection's `count()` (`:401`, `:420`, `:432`, `:473`, `:483`, `:489`).
+- **Clause 2 is true**: `:396-407` invokes
+  `receiptHashService->verifyTerminalChainFiscalArm($terminal)` **before** the legacy
+  early-return at `:409-418`, and that method is real work —
+  `ReceiptHashService.php:267-270` → `inspectFiscalEventsArm` (`:272-340`) joins
+  `fiscal_events` to `pos_receipts`, partitions into one stream per
+  `(company_id, chain_context)` (`:316-321`) and walks/rehashes each stream (`:322-333`).
+  Event-chained receipts are verified; they are simply absent from `totalRows`.
+
+Crucially the sentence describes the **scope of the check**, not the contents of any
+one terminal — which is exactly what the payload can support, since it carries no
+event-arm count. This is the honest ceiling of what the FE can say.
+
+### 4. The vacuous `(true, 0)` case is not misrepresented — **VERIFIED**
+`ReceiptHashService.php:292-294`: a terminal with **no `fiscal_events` rows at all**
+returns `ReceiptChainArmVerificationResult(true, 0)` vacuously, and with an empty legacy
+set the endpoint reports `is_valid: true, total_receipts: 0` — identical to a busy
+Phase-1 terminal. The panel now renders both as: green `Valid` badge + `None` in the
+legacy-count column + the scope caveat under the table.
+- For the **busy Phase-1** terminal that is straightforwardly correct.
+- For the **genuinely empty** terminal it is also not a false statement: an empty chain
+  is trivially valid, the count column says `None` rather than implying volume, and the
+  caveat asserts nothing about how many event-chained receipts this terminal has.
+There is no sentence anywhere on the panel that would be false in either case. The two
+remain *indistinguishable* — see carried finding C.
+
+### 5. Removed keys leave no dangling `t()` — **VERIFIED**
+`grep -rn 'notCovered\|legacyArmOnlyNote\|allValidWithLegacyGap' src/` → **zero hits**,
+in code *and* in `src/locales/` (all three files cleaned, not just `en`).
+`legacyRowsCountNote` exists in `en:33`, `fr:33`, `ar:7` and is referenced once in
+production (`ChainVerificationPanel.tsx:245`) and once in test (`:199`).
+`src/lib/i18n.ts` was **not** touched this round; its deep-merge is key-generic
+(`chainVerification` + nested `errors`), so removing keys needed no merge change — and
+`tsc` exit 0 confirms no JSON-typed reference dangles.
+
+### 6. New tests + falsifiability both directions — **VERIFIED by reasoning**
+- `ChainVerificationPanel.test.tsx:178-203` "renders a zero-legacy-row terminal as
+  VERIFIED, not as an anomaly": asserts the success badge inside the receipt verdict
+  cell, `container.querySelector('[class*="amber"]')` is `null`, the count cell equals
+  `noLegacyRows`, the caveat is present, and the fleet banner is the plain `allValid`.
+  The amber guard is meaningful because `semanticColorTokens.intent.caution.*` really is
+  the `amber-*` family (`designTokens.ts:285-304`) — it is a structural check, not a
+  string match on copy.
+- `:206-219` "never claims the event-chain arm went unverified": whole-panel
+  `container.textContent` guard, `not.toMatch(/not covered/i)` and
+  `not.toMatch(/covers the legacy arm only/i)`. This is the right shape of regression
+  guard for this class of mistake — node-independent, and it would catch the copy
+  drifting back even in a different component.
+- **Direction A** (r1 test file vs r2/r3 code): the deleted assertion
+  `queryByText(valid)).toBeNull()` now finds the badge → 1 red. Matches the handback's
+  pasted `expected <span …(1)></span> to be null`.
+- **Direction B** (r1-style amber branch re-introduced under the current tests):
+  `getByText(valid)` fails in the verdict cell **and** the text guard matches
+  `/not covered/i` → 2 red. Matches the handback's pasted output.
+The claim is bidirectional and internally consistent; I accept it.
+
+### 7. i18n audit clean, baseline untouched — **VERIFIED**
+`bash scripts/i18n-baseline-authority.sh` exit 0, `en 9513 → 9511`, `fr 9530 → 9528`,
+`ar 5158 → 5156` — exactly −3 +1 per locale as claimed (net **+10 vs `dev`**).
+Known-gap count **unchanged at 2816**; `git diff dev HEAD --stat -- apps/web/tools/ scripts/`
+is **empty**. The `fr` file kept its `\uXXXX` escaping (the diff is a surgical 4-line
+edit, not a re-dump), so no encoding churn was smuggled in.
+
+---
+
+## Carried / new MINORs (none blocking)
+
+### A. MINOR (new, unreachable in practice) — a malformed envelope shows the danger banner over green rows
+`complianceApi.ts:99` coerces `all_chains_valid: payload?.all_chains_valid === true`, so
+an absent field yields `false` → `ChainVerificationPanel.tsx:171` renders the danger
+`hasBroken` banner while every row badge is green. This cannot convert a backend **pass**
+into an alarm — the controller always emits the field (`Nf525ExportController.php:119-127`) —
+it can only fire on a malformed body, where erring toward "do not claim a pass" is the
+right direction for an integrity panel. Recorded, not actioned.
+
+### B. MINOR (new, unreachable in practice) — the caveat assumes the terminal row exists
+`Nf525DataProvider.php:396` guards the event arm with `if ($terminal !== null)`. If
+`Terminal::find` missed, the event arm would be skipped and clause 2 of the caveat would
+not hold for that row. Unreachable: the terminal list comes from
+`listTerminalsForCompany($companyId)` and the lookup uses the same id.
+
+### C. MINOR (carried from r2, unchanged) — busy Phase-1 vs genuinely-empty terminal remain indistinguishable
+Neither is misrepresented (see §4), but the panel still cannot say *how much* was
+verified on the dominant modern shape. The data exists and is discarded:
+`ReceiptChainArmVerificationResult` carries `count` / `inspectedCount`
+(`ReceiptHashService.php:296-300, 335-339`) and `verifyTerminalChainFiscalArm` throws
+them away with `->isValid` (`:269`). **Backend follow-up lane:** plumb both into
+`Nf525ChainVerificationResult` + the controller payload, then the caveat can be replaced
+by a real number.
+
+### D. MINOR (carried from r2) — row-level `is_valid` still unused
+`complianceApi.ts:29`. The panel reads `receipt_chain.is_valid` (`:208`) and
+`z_report_chain.is_valid` (`:219-220`) but never the composed row flag. Declared-but-unread
+fields are how the original `chain_length` drift began.
+
+### E. MINOR (carried from r2) — no generated DTO; `exportJetXml` still posts a dead `company_id`
+`grep -c 'ChainVerification' packages/shared/types/generated.d.ts` → **0**; the FE type
+and the `chainDiagnostics` prefix table remain two untyped couplings to one backend, both
+pinned only by tests. `complianceApi.ts:63-70` still sends `company_id` on the JET export.
+Both correctly declared out of scope in the handback.
+
+---
+
+## Guardrail evidence (verbatim, re-run by the reviewer at `9d22ce9bb`)
+
+Full compliance suite, by file:
+```
+ ✓ src/features/compliance/lib/chainDiagnostics.test.ts (7 tests) 4ms
+ ✓ src/features/compliance/api/complianceApi.test.ts (5 tests) 9ms
+ ✓ src/features/compliance/pages/FraudSettingsPage.test.tsx (2 tests) 328ms
+ ✓ src/features/compliance/__tests__/tenantScope.test.tsx (13 tests) 432ms
+ ✓ src/features/compliance/components/CashDrawerControlsSection.test.tsx (8 tests) 489ms
+ ✓ src/features/compliance/pages/__tests__/QuarantineResolveAssistPage.test.tsx (4 tests) 804ms
+ ✓ src/features/compliance/components/ChainVerificationPanel.test.tsx (9 tests) 651ms
+ Test Files  7 passed (7)
+      Tests  48 passed (48)
+   Duration  4.21s (transform 1.81s, setup 5.60s, collect 5.48s, tests 2.72s, environment 7.31s, prepare 1.06s)
+```
+**48/48** — the claimed count, and the panel file is 8 → 9 tests.
+
+Shared-file regression check (`src/lib/i18n.ts` unchanged this round, re-run anyway):
+```
+ ✓ src/lib/__tests__/i18nPosZReportsShadowing.test.ts (4 tests) 12ms
+ ✓ src/lib/i18nRawKeyCoverage.test.tsx (5 tests) 135ms
+ Test Files  2 passed (2)
+      Tests  9 passed (9)
+```
+
+`./node_modules/.bin/eslint <7 touched files incl. src/lib/i18n.ts>`:
+```
+/…/complianceApi.test.ts
+  12:30  warning  A method that is not declared with `this: void` … @typescript-eslint/unbound-method
+/…/complianceApi.ts
+   69:10  warning  Unsafe assertion from `any` detected … @typescript-eslint/no-unsafe-type-assertion
+   92:20  warning  Unsafe assertion from `any` detected … @typescript-eslint/no-unsafe-type-assertion
+  115:10  warning  Unsafe assertion from `any` detected … @typescript-eslint/no-unsafe-type-assertion
+
+✖ 4 problems (0 errors, 4 warnings)
+```
+**0 errors**; unchanged from r2 (all four are on `complianceApi.*`, none on the rewritten panel).
+
+`./node_modules/.bin/tsc --noEmit`:
+```
+TSC EXIT: 0
+```
+(no output)
+
+`bash ../../scripts/i18n-baseline-authority.sh`:
+```
+I18N EXIT: 0
+i18n completeness OK — 55 namespaces, authored keys: en=9511, fr=9528, ar=5156 authored (1921 behind aliases); 2816 known gap(s) held at the baseline.
+  English-aliased namespaces — ar: 21 ns / 1921 keys served in English
+```
+
+Audits:
+```
+[gate-summary] Gate C baseline: 0 acknowledged, 0 new, 0 stale baseline entries
+[sweep-progress] Design-system audit C1-C6 violations: 810
+[gate-summary] Design-system baseline: 810 acknowledged, 0 new, 0 stale baseline entries
+[audit-quantity] raw quantity display sites: 0 total (0 baselined, 0 new, 0 stale baseline entries)
+```
+Baseline honesty: `git diff dev HEAD --stat -- apps/web/tools/ scripts/` **empty** across
+the whole branch. Mechanism audit: the design-system count is unchanged even though the
+round *deleted* a token usage (`intent.caution`) — no substitution of a neighbouring
+shade, no literal class introduced, no suppression comment. The i18n numbers moved by
+removing three false keys and adding one true one, with the pinned baseline untouched.
+
+Scope: FE-only, 5 files. No backend change, no new dependency, no unrelated file.
+Commit subject accurately describes the change ("scope the legacy-row caveat to the
+COUNT, not the verification").
+
+## Could not verify
+- **The DEV-QA registry is still not in this repo** (`grep -rl 'DEV-QA-035'` → nothing).
+- **Still no live call to `POST /compliance/nf525/verify-chains`** and no in-browser
+  pass. The r3 conclusions rest on reading `Nf525DataProvider.php:390-418` and
+  `ReceiptHashService.php:267-340`. A browser check on a POS tenant with sealed receipts
+  remains the cheapest confirmation that the panel now reads green on a healthy fleet.
+- **Arabic copy quality still unassessed.** `ar/compliance.json:7` `legacyRowsCountNote`
+  is machine-authored and states a compliance fact to an auditor; the handback flags it
+  and I concur — it needs a native reader before it ships to an Arabic tenant. Same for
+  the five `errors.*` strings.
+- The bidirectional falsification runs pasted in the handback were **reproduced by
+  reasoning**, not by re-running reverted trees (read-only review; no code modified).
+- No PHP executed; backend untouched in all three rounds.
+
+## Merge to local dev: **YES**
