@@ -8,6 +8,7 @@ use App\Modules\Catalog\Presentation\Rules\TaxConfigurationCountryCoherent;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Enums\PriceEntryMode;
 use App\Modules\Document\Presentation\Requests\Concerns\AppliesDiscountToleranceRule;
+use App\Modules\Document\Presentation\Rules\DueDateNotBeforeDocumentDate;
 use App\Modules\Document\Presentation\Rules\LineDiscountAmountWithinGross;
 use App\Modules\Document\Presentation\Validation\DiscountPolicyDocumentValidator;
 use App\Modules\Identity\Domain\User;
@@ -62,6 +63,17 @@ class CreateDocumentRequest extends FormRequest
             && $this->configService->getConfigForTenant($user->tenant)->hasModule('Vehicle');
         $purchaseBonusEnabled = $this->purchaseBonusGate->enabledFor($company);
 
+        // DEV-QA-008/057. There is no persisted row to fall back to on create,
+        // so the comparand is whatever the request carries — which
+        // `prepareForValidation()` has already resolved from the `issue_date`
+        // alias. Shared by `due_date` and `valid_until` so both refuse with the
+        // same semantics the update path uses.
+        $submittedDocumentDate = $this->input('document_date');
+        $documentDateGuard = new DueDateNotBeforeDocumentDate(
+            submittedDocumentDate: is_string($submittedDocumentDate) ? $submittedDocumentDate : null,
+            storedDocumentDate: null,
+        );
+
         $rules = [
             'partner_id' => [
                 'required',
@@ -77,10 +89,16 @@ class CreateDocumentRequest extends FormRequest
             'vehicle_context.snapshot.year' => ['nullable', 'integer', 'min:1900', 'max:2100'],
             'vehicle_context.mileage' => ['nullable', 'integer', 'min:0'],
             'vehicle_context.additional_data' => ['nullable', 'array'],
-            'document_date' => ['required_without:issue_date', 'date'],
-            'issue_date' => ['required_without:document_date', 'date'],
-            'due_date' => ['nullable', 'date', 'after_or_equal:document_date'],
-            'valid_until' => ['nullable', 'date', 'after_or_equal:document_date'],
+            // `issue_date` is the FRONTEND alias only. It is normalised into
+            // `document_date` by `prepareForValidation()` (which runs BEFORE
+            // this method) and is deliberately NOT a rule: an undeclared key
+            // can never reach `validated()`, so the alias cannot leak into the
+            // `Document::update()`/`create()` payload on any transport — body
+            // or query string. That is what makes the six controllers'
+            // post-validation `issue_date` normalisers dead code (gate r1 F7).
+            'document_date' => ['required', 'date'],
+            'due_date' => ['nullable', 'date', $documentDateGuard],
+            'valid_until' => ['nullable', 'date', $documentDateGuard],
             'currency' => ['nullable', 'string', 'size:3'],
             'notes' => ['nullable', 'string', 'max:5000'],
             'internal_notes' => ['nullable', 'string', 'max:5000'],
@@ -175,6 +193,23 @@ class CreateDocumentRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        // DEV-QA-008/057 — the frontend submits `issue_date`; the canonical
+        // column is `document_date`. Normalize the alias BEFORE validation so
+        // the `due_date` / `valid_until` guards actually have a value to compare
+        // against (previously the controller only mapped it AFTER validation, so
+        // the guard silently never fired).
+        //
+        // Gate r1 F4: the alias is NOT stripped out of the request bag here. The
+        // previous `$this->replace($this->except('issue_date'))` was built on
+        // `all()`, which merges the query bag, so it wrote every query-string
+        // parameter into the JSON body bag permanently for every downstream
+        // reader of `$request->json()`. Dropping the key is unnecessary anyway:
+        // `issue_date` carries no rule, and `Validator::validated()` returns only
+        // rule-declared keys, so the alias cannot reach `validated()`.
+        if ($this->has('issue_date') && ! $this->has('document_date')) {
+            $this->merge(['document_date' => $this->input('issue_date')]);
+        }
+
         if ($this->has('lines') && is_array($this->input('lines'))) {
             $lines = array_map(function (array $line): array {
                 if (isset($line['description']) && is_string($line['description'])) {

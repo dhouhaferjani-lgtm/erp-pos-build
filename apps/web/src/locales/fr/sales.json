@@ -193,6 +193,7 @@
     "documentDate": "Date du document",
     "issueDate": "Date d'émission",
     "dueDate": "Date d'échéance",
+    "dueDateBeforeIssue": "La date d'échéance ne peut pas précéder la date d'émission",
     "customer": "Client",
     "supplier": "Fournisseur",
     "description": "Description",

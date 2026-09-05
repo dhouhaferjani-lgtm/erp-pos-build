@@ -14,6 +14,7 @@ use App\Modules\Accounting\Domain\Exceptions\UnpostableCorrectingEntryException;
 use App\Modules\BatchExpiry\Domain\Exceptions\InsufficientBatchStockException;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\CountryDefaults\Domain\Exceptions\CountryDefaultsProvisioningUnavailableException;
+use App\Modules\Document\Domain\Exceptions\DocumentDatesInconsistentException;
 use App\Modules\Document\Domain\Exceptions\DocumentHasPaymentsException;
 use App\Modules\Document\Domain\Exceptions\DocumentTransitionException;
 use App\Modules\Document\Domain\Exceptions\ReturnDecisionConflictException;
@@ -975,6 +976,36 @@ return Application::configure(basePath: dirname(__DIR__))
                             'document_type' => $e->documentType->value,
                             'status' => $e->documentStatus->value,
                             'reason' => $e->reason->value,
+                        ],
+                    ],
+                ], 422);
+            }
+        });
+
+        // DEV-QA-008/057, gate r2 N-1. Registered ABOVE the generic
+        // `DomainException` closure (Laravel matches in registration order,
+        // first match wins), which would otherwise render this as an untyped
+        // `BUSINESS_ERROR`. Every `confirm()` action already catches
+        // `\DomainException` itself and answers 422 with this message, so this
+        // closure is the arm for the callers that do NOT catch it — today
+        // `CorrectingEntryController::confirm()`, tomorrow whoever forgets.
+        // `errors` mirrors the FormRequest 422 envelope
+        // (`{error:{code,message,errors:{<field>:[…]}}}`) so a client can key on
+        // the same field name whether the refusal came from the write boundary
+        // or from confirm.
+        $exceptions->render(function (DocumentDatesInconsistentException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'DOCUMENT_DATES_INCONSISTENT',
+                        'message' => $e->getMessage(),
+                        'errors' => [
+                            $e->attribute => [$e->getMessage()],
+                        ],
+                        'details' => [
+                            'document_id' => $e->documentId,
+                            'document_date' => $e->documentDate,
+                            $e->attribute => $e->offendingDate,
                         ],
                     ],
                 ], 422);
