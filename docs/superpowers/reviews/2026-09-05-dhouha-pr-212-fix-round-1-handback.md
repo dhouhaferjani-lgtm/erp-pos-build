@@ -223,7 +223,15 @@ it resolved upstream. The blocks were dead, not a fallback.
   coverage; that is now answered by a real unit test. Retiring or localising
   the e2e spec is a separate call.
 
-### Known residual, deliberately accepted
+### ~~Known residual, deliberately accepted~~ — **WRONG, closed in fix round 2**
+
+> ⚠️ The paragraph below was written in fix round 1 and its premise is **false**.
+> Gate r2 N-1 proved it: `QuoteController::confirm()` (`QuoteController.php:488`)
+> and all seven siblings take a bare `Illuminate\Http\Request` and re-validate
+> no dates, so the draft *could* become a confirmed, numbered document. Kept
+> verbatim for the record; see **§8 Fix round 2** for what was actually done.
+
+
 
 An auto-save that carries a `due_date` **but no `document_date`** and creates a
 NEW draft still lands a row whose `document_date` defaults to
@@ -482,3 +490,293 @@ check this PR broke (F1) is green again, and the two remaining items are
 owner/teammate decisions (F9 scope, F10 registry), not code reds.
 
 **Not merged, not pushed** — `gate/pr-212` is ready for gate r2.
+
+---
+
+# Fix round 2 — answering gate r2 `2026-09-05-dhouha-pr-212-gate-r2.md`
+
+| | |
+|---|---|
+| **Gate answered** | [`2026-09-05-dhouha-pr-212-gate-r2.md`](2026-09-05-dhouha-pr-212-gate-r2.md) — VERDICT **CHANGES REQUIRED**, one blocker (N-1) |
+| **Fix-round-2 commits** | `afd147b2b`, `c16987fa4`, `0ab2dfdef` |
+| **PG leg** | private throwaway DB `autoerp_test_f212b` on 127.0.0.1:5433 — created, used, **dropped** |
+| **Merge state** | **NOT merged, NOT pushed.** Working tree clean. |
+
+## 8.1 Findings answered
+
+| Finding | r2 severity | Status |
+|---|---|---|
+| **N-1** the "accepted residual" premise is false; a draft with `due_date < document_date` can still be **confirmed and numbered** | **HIGH · BLOCKER** | **FIXED — both halves** (§8.2, §8.3) |
+| **N-2** the auto-save UPDATE branch 422s over a header field it never persists | LOW | **DOCUMENTED, deliberately kept** (§8.5) |
+| **N-3** `storedDocumentDate()` is type-agnostic | INFO | no action (§8.5) |
+| **N-4** `storedDraftDocumentDate()` not memoised | INFO, trivial | **FIXED** (folded into `afd147b2b`) |
+
+**The r2 finding is accepted in full.** The r1 handback's premise — "the draft
+cannot become a real document without passing `CreateDocumentRequest` /
+`UpdateDocumentRequest`" — is false, and I re-verified it before acting:
+`QuoteController::confirm()` at `:488` takes `Request $request`, checks
+existence, draft status and the lock, and calls
+`DocumentStatusService::transition()`. No date is re-read. Same for the seven
+siblings.
+
+## 8.2 N-1 half one — the auto-save CREATE branch (`afd147b2b`)
+
+The comparand was never "unknown" on that branch:
+`DraftPersistenceService::createNewDraft()` writes
+`'document_date' => $data['document_date'] ?? now()->format('Y-m-d')` (`:261`).
+`AutoSaveDraftRequest` now resolves the comparand in the **same order the
+service resolves the value it will write** — payload `document_date`, then the
+stored draft's, then `now()->format('Y-m-d')` on the create branch (same date
+source, same timezone, same request).
+
+`now()` is reached only when no draft resolved, which is exactly when
+`saveDraft()` takes the create branch — the request's lookup uses the identical
+tenant+company scoping (`DraftPersistenceService.php:104-119`), so an unknown or
+foreign `draft_id` is a create on both sides. This is deliberately *stricter*
+than the snippet the gate suggested, which stayed silent when a `draft_id`
+string was supplied but did not resolve — that case authors a new draft too.
+`documents.document_date` is NOT NULL
+(`2025_11_30_080000_create_documents_table.php:21`), so a resolved draft always
+yields a real date and `now()` can never shadow one.
+
+The dateless auto-save still saves: the rule is silent when `due_date` itself is
+absent (`DueDateNotBeforeDocumentDate.php:57-59`), pinned by
+`test_auto_save_accepts_a_payload_that_carries_no_dates` — still green.
+
+## 8.3 N-1 half two — the confirm-time guard (`c16987fa4`)
+
+Placed at `DocumentStatusService::transition()`, the single write path for
+lifecycle status and the **one place a `documents` row is numbered**, so all
+eight confirm entry points are covered by one check instead of eight controller
+edits. Scoped to the `Draft -> Confirmed` edge **only**:
+
+- **not** `Draft -> Posted` — expense, income and supplier invoice post directly
+  from draft through their own already-guarded request classes
+  (`CreateSupplierInvoiceRequest.php:109-110`);
+- **not** any later edge — a confirmed document must stay correctable through
+  the credit-note path, never bricked by a guard added after it was sealed;
+- **not** `-> Cancelled` — a draft that dies never became a document.
+
+Day-granularity comparison on the model's own `date` casts, equality passes, and
+the **same two message keys** the FormRequest rule uses, so one mistake produces
+one sentence wherever the operator meets it.
+
+`DocumentDatesInconsistentException extends DomainException` on purpose: every
+confirm already ends in `catch (\DomainException $e) =>
+validationErrorResponse(...)`, so the refusal surfaces as **422 with this
+message on all eight** without touching eight controllers.
+`bootstrap/app.php` additionally renders a typed
+`DOCUMENT_DATES_INCONSISTENT` envelope — with an `errors` bag keyed on the
+offending field, mirroring the FormRequest 422 shape — for callers that do not
+catch it (today `CorrectingEntryController::confirm()`), registered ABOVE the
+generic `DomainException` closure so it is not flattened to `BUSINESS_ERROR`.
+
+## 8.4 N-1 tests (`0ab2dfdef`) — 18 → 25, five red without the fix
+
+The reviewer's probes, reproduced:
+
+- **PROBE R1** — brand-new draft, `document_date` omitted, `due_date` a month in
+  the past → **422 at the auto-save**, so PROBE R2's confirm is never reached
+  and no row is authored (asserted on the document count, not just the status).
+  **The refusal lands at the auto-save layer** — that is the answer to "assert
+  which".
+- **PROBE R3** — the byte-exact FE payload `document_date: ''` → same refusal.
+- **PROBE R2** — proven independently, because the confirm guard must hold for
+  rows that never passed the auto-save: an **unnumbered** draft written straight
+  to the table, then confirmed → 422, still `Draft`, `document_number` still
+  NULL (no number burned). Quote `due_date`, quote `valid_until`, purchase-order
+  `due_date`.
+- **Positive controls** — an auto-save with `due_date = today` still authors the
+  draft; a consistent draft still confirms **and still receives its number**.
+  Without the second one, a guard that refused every confirm would look green.
+
+Falsifiability, by reverting `AutoSaveDraftRequest.php`, `DocumentStatusService.php`
+and `bootstrap/app.php` to the fix-round-1 commit and re-running:
+
+```
+1) …::test_auto_save_rejects_a_due_date_before_today_on_a_brand_new_draft
+2) …::test_auto_save_rejects_a_due_date_before_today_when_the_issue_date_was_cleared
+3) …::test_confirming_a_quote_whose_due_date_precedes_its_document_date_is_refused
+4) …::test_confirming_a_quote_whose_valid_until_precedes_its_document_date_is_refused
+5) …::test_confirming_a_purchase_order_whose_due_date_precedes_its_document_date_is_refused
+
+FAILURES!
+Tests: 25, Assertions: 64, Failures: 5.
+```
+
+(files restored from copies immediately after; `git status --porcelain` clean.)
+
+## 8.5 N-2, N-3, N-4
+
+**N-2 (LOW) — documented, deliberately kept.** On the auto-save UPDATE branch
+`saveDraft()` writes lines only ("header is immutable for now",
+`DraftPersistenceService.php:135`), so `due_date` in that payload is discarded;
+the rule nonetheless refuses the whole request, which costs the operator their
+**line** auto-saves until the dates agree (`useDraftAutoSave.ts:269-279` sets
+`autosaveFailed`; the work stays in the form but stops being persisted). The
+reviewer offered "one sentence in the handback, or narrow the arm". **Kept, not
+narrowed**, for three reasons:
+
+1. it is the arm gate r1 F3 explicitly asked for ("fall back to the persisted
+   draft's `document_date` when the payload omits it") — narrowing it now would
+   partially revert an r1-mandated fix;
+2. "header is immutable for now" is a *current* property of one service method,
+   not a contract; the guard becomes load-bearing the moment that changes, and a
+   guard that silently stops covering its case is worse than one that costs a
+   save;
+3. the state being refused is invalid, the operator is visibly warned, and RHF
+   re-validates on change after the first failed submit, so the message is in
+   front of them.
+
+The same trade now also applies on the CREATE branch (an operator who clears the
+Issue Date *and* types a past due date gets no draft saved at all). That is the
+narrow price of closing N-1, and `issue_date` defaults to today
+(`DocumentForm.tsx:220`), so it only arises when the field is deliberately
+cleared. Stated here rather than left silent.
+
+**N-3 (INFO)** — no action, as the gate advised. The missing `->ofType()` means
+a same-company cross-type id can 422 before the controller 404s; no
+cross-company read, no write, and the reviewer's own recommendation is not to
+add the coupling.
+
+**N-4 (INFO, trivial)** — fixed. `AutoSaveDraftRequest` now memoises the draft
+lookup (`$resolvedTargetDraft`/`$targetDraftResolved`), matching its update-side
+twin.
+
+## 8.6 Verification — verbatim
+
+### `DocumentDueDateGuardTest` — sqlite (GREEN)
+
+```
+$ ./vendor/bin/phpunit tests/Feature/Document/DocumentDueDateGuardTest.php
+PHPUnit 11.5.55 by Sebastian Bergmann and contributors.
+Runtime:       PHP 8.4.15
+Configuration: /…/.worktrees/pr-212/apps/api/phpunit.xml
+
+.........................                                         25 / 25 (100%)
+
+Time: 00:39.203, Memory: 169.00 MB
+
+OK (25 tests, 78 assertions)
+```
+
+### `DocumentDueDateGuardTest` — PostgreSQL 16 (GREEN)
+
+```
+$ DB_HOST=127.0.0.1 DB_PORT=5433 DB_DATABASE=autoerp_test_f212b DB_CENTRAL_DATABASE=autoerp_test_f212b \
+  php artisan test -c phpunit-pgsql.xml tests/Feature/Document/DocumentDueDateGuardTest.php
+
+   PASS  Tests\Feature\Document\DocumentDueDateGuardTest
+  ✓ quote create rejects due date before issue date                     15.67s
+  … (18 fix-round-1 cases) …
+  ✓ auto save rejects a due date before today on a brand new draft       4.76s
+  ✓ auto save rejects a due date before today when the issue date was c… 3.30s
+  ✓ auto save accepts a due date from today on a brand new draft         3.69s
+  ✓ confirming a quote whose due date precedes its document date is ref… 2.95s
+  ✓ confirming a quote whose valid until precedes its document date is…  2.40s
+  ✓ confirming a purchase order whose due date precedes its document da… 6.29s
+  ✓ confirming a quote with consistent dates still allocates a number    5.09s
+
+  Tests:    25 passed (78 assertions)
+  Duration: 107.28s
+```
+
+### Regression — sqlite (GREEN)
+
+```
+$ ./vendor/bin/phpunit <the nine r1 document suites>
+............................................................... 161 / 161 (100%)
+Time: 02:37.052, Memory: 203.00 MB
+OK, but there were issues!
+Tests: 161, Assertions: 613, PHPUnit Deprecations: 2.
+```
+
+```
+$ ./vendor/bin/phpunit tests/Feature/Document/DeferredDocumentNumberingTest.php \
+    tests/Feature/Document/DocumentNumberingCompanyScopeTest.php tests/Feature/Document/DocumentConversionScenarioTest.php \
+    tests/Feature/Document/DiscountToleranceValidationTest.php tests/Feature/Document/DiscountPolicyDocumentValidationTest.php \
+    tests/Architecture/FeatureLaneManifestCheckerTest.php tests/Unit/Document/PurchaseOrderServiceTest.php \
+    tests/Unit/Treasury/CloseInvoiceWithToleranceServiceTest.php tests/Feature/Treasury/N6PaymentOnUnpostedInvoiceTest.php \
+    tests/Feature/Treasury/PaymentReversalDocumentTest.php tests/Feature/Treasury/ProRataResidualRedistributionTest.php \
+    tests/Feature/Modules/Document/DocumentPdfSellerTaxIdTest.php
+.............................................................   187 / 187 (100%)
+Time: 02:09.240, Memory: 195.00 MB
+OK, but some tests were skipped!
+Tests: 187, Assertions: 878, Skipped: 1.
+```
+
+**Confirm-surface blast radius** — the suites the new `Draft -> Confirmed` guard
+could plausibly break:
+
+```
+$ ./vendor/bin/phpunit tests/Feature/Document/CorrectingEntryEndpointTest.php \
+    tests/Feature/Document/PurchaseOrderUnpricedLineConfirmTest.php tests/Feature/Document/InvoiceDeliveryNoteConfirmationTest.php \
+    tests/Feature/Document/ReturnNoteConfirmSealAndPeriodTest.php tests/Feature/Document/CreditNoteIntegrationTest.php \
+    tests/Feature/Document/CompleteSalesCycleWithReturnTest.php tests/Feature/Document/PartialDeliveryTest.php \
+    tests/Feature/Document/MissingStockLevelConfirmRefusalTest.php
+..................                                                83 / 83 (100%)
+Time: 01:36.857, Memory: 185.00 MB
+OK, but there were issues!
+Tests: 83, Assertions: 344, PHPUnit Deprecations: 15, Skipped: 4.
+```
+
+### Regression — PostgreSQL 16 (GREEN)
+
+```
+$ … php artisan test -c phpunit-pgsql.xml tests/Feature/Document/CreateDocumentTest.php tests/Feature/Document/UpdateDocumentTest.php \
+    tests/Feature/Modules/Document/CreateDocumentLineValidationTest.php tests/Feature/Document/AutoSaveRouteHardeningTest.php \
+    tests/Feature/Document/AutoSaveDraftLineTaxResolutionTest.php tests/Feature/Document/Types/QuoteControllerTest.php
+  Tests:    109 passed (429 assertions)
+  Duration: 393.53s
+```
+
+```
+$ … php artisan test -c phpunit-pgsql.xml tests/Feature/Document/DeferredDocumentNumberingTest.php \
+    tests/Feature/Document/DocumentNumberingCompanyScopeTest.php tests/Feature/Document/CorrectingEntryEndpointTest.php \
+    tests/Feature/Document/PurchaseOrderUnpricedLineConfirmTest.php tests/Feature/Document/ReturnNoteConfirmSealAndPeriodTest.php \
+    tests/Feature/Document/DocumentConversionScenarioTest.php
+  Tests:    71 passed (283 assertions)
+  Duration: 366.32s
+```
+
+### PHPStan L8 / Pint / manifest / FE
+
+```
+$ ./vendor/bin/phpstan analyse --level=8 --memory-limit=2G --no-progress \
+    app/Modules/Document/Domain/Exceptions/DocumentDatesInconsistentException.php \
+    app/Modules/Document/Domain/Services/DocumentStatusService.php \
+    app/Modules/Document/Presentation/Requests/AutoSaveDraftRequest.php \
+    bootstrap/app.php tests/Feature/Document/DocumentDueDateGuardTest.php
+ [OK] No errors
+
+$ ./vendor/bin/pint --test <the same five files>
+{"result":"pass"}          # after one Pint pass on bootstrap/app.php, whose only
+                           # diff was ordering the new import
+
+$ php tools/feature-lane-manifest-check.php
+tests/Feature lane manifest OK — 1509 Feature classes in 74 groups; …
+```
+
+No frontend file was touched in round 2. The autosave hook suite was run anyway
+for completeness:
+
+```
+$ npx vitest run src/hooks/__tests__
+ Test Files  15 passed (15)
+      Tests  86 passed (86)
+```
+
+### Manifest ceiling
+
+Unchanged. Round 2 adds **no** new test class — the seven new cases live in the
+existing `DocumentDueDateGuardTest`, so `Document.classes` stays 93 and
+`gated_ceiling` stays 1246. `DocumentDatesInconsistentException` is app code, not
+a Feature class.
+
+## 8.7 Anything still red
+
+**Nothing.** Every command above is green as printed. F9 (AR/AP opening-balance
+import) and F10 (DEV-QA registry) remain owner/teammate items, unchanged from
+round 1.
+
+**Not merged, not pushed** — `gate/pr-212` is ready for gate r3.
