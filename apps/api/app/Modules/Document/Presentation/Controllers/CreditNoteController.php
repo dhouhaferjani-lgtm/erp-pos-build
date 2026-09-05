@@ -143,7 +143,22 @@ class CreditNoteController extends Controller
             // Invoice-linked mode
             // api.document.001: tenant+company-scoped exists prevents a cross-tenant
             // source_invoice_id from satisfying the FK validator.
-            $rules['source_invoice_id'] = ['required', 'string', ScopedExists::tenantAndCompany('documents', $tenantId, $companyId)];
+            //
+            // Gate r1 MAJOR-6 — the TYPE constraint is part of the validator, not
+            // an afterthought in the service: `documents` holds every document
+            // type, so without it a posted delivery note, return note or supplier
+            // invoice id validated here and only failed deeper in
+            // `CreditNoteService`, with a message about invoice STATUS. A
+            // non-invoice source is now a plain 422 on `source_invoice_id`. The
+            // domain helper `Document::isCreditableInvoiceSource()` enforces the
+            // same type condition inside the transaction (defence in depth, and
+            // the guard every non-HTTP caller goes through).
+            $rules['source_invoice_id'] = [
+                'required',
+                'string',
+                ScopedExists::tenantAndCompany('documents', $tenantId, $companyId)
+                    ->where('type', DocumentType::Invoice->value),
+            ];
 
             if (! $isLineBased) {
                 // Amount-based
