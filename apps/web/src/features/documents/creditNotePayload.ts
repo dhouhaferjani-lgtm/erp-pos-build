@@ -26,6 +26,15 @@ export type CreditMode = 'customer' | 'invoice'
 export type LineMode = 'all' | 'partial'
 
 /**
+ * The GENERATED credit-note reason union (rule 7). `generated.d.ts` declares its
+ * namespaces inside `declare global`, so `App.Modules.Document.Domain.Enums.*`
+ * is ambient — no import, and no hand-written copy of the six literals here.
+ * Gate r2 NEW-3: this field was typed as a bare `string`, wider than both the
+ * backend enum and the page's own zod schema.
+ */
+export type CreditNoteReason = App.Modules.Document.Domain.Enums.CreditNoteReason
+
+/**
  * The subset of a `DocumentLine` this builder reads. Derived from the editor's
  * type, never restated, so the two cannot drift.
  */
@@ -47,7 +56,7 @@ export type CreditNoteSourceLine = Pick<
 export interface CreditNoteFormValues {
   partner_id: string | null
   issue_date: string
-  reason: string
+  reason: CreditNoteReason
   notes?: string | undefined
   source_invoice_id?: string | undefined
 }
@@ -90,7 +99,7 @@ export type CreditNoteLinePayload = CreditNoteInvoiceLinePayload | CreditNoteMan
 export interface CreditNotePayload {
   partner_id: string | null
   issue_date: string
-  reason: string
+  reason: CreditNoteReason
   notes?: string | undefined
   source_invoice_id?: string
   amount?: string

@@ -13,6 +13,7 @@ import {
   buildCreditNotePayload,
   findIncompleteCreditNoteLineIds,
   type CreditNoteLinePayload,
+  type CreditNoteFormValues,
   type CreditNoteManualLinePayload,
   type CreditNoteSourceLine,
 } from '../creditNotePayload'
@@ -42,7 +43,9 @@ function manualLine(line: CreditNoteLinePayload | undefined): CreditNoteManualLi
   return line
 }
 
-const base = {
+// Typed on purpose: `reason` is the GENERATED `CreditNoteReason` union
+// (gate r2 NEW-3), so a widened `string` literal here must not compile.
+const base: { data: CreditNoteFormValues } = {
   data: {
     partner_id: 'partner-1',
     issue_date: '2026-09-04',
