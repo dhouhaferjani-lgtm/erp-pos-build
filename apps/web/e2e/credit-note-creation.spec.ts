@@ -7,7 +7,8 @@ import { test, expect } from './fixtures'
  * full ("all lines") credit note now posts a LINE-BASED payload the backend
  * accepts, instead of the old amount-less request that 422'd with
  * "montant obligatoire". The picker also surfaces a fully-PAID invoice
- * (creditable=true filter).
+ * (the opt-in `creditable=1` filter — a validated boolean since gate r1
+ * IMPORTANT-1; `creditable=true` is now a 422).
  *
  * The standalone customer-mode `unit_price`-as-string contract is pinned by the
  * pure-unit test `src/features/documents/__tests__/creditNotePayload.test.ts`.
