@@ -769,7 +769,7 @@ describe('ProductForm (Pricing & Tax parity)', () => {
     // post-demo design: the ready-to-sell strip always renders the margin
     // input; an empty value (not absence) is the "no margin yet" state.
     render(<ProductForm />)
-    expect((screen.getByLabelText('inventory:products.marginPercent')).value).toBe('')
+    expect((screen.getByLabelText('inventory:products.marginPercent') as HTMLInputElement).value).toBe('')
   })
 
   it('shows Margin when both purchase_price and sale_price are entered', () => {
@@ -813,7 +813,7 @@ describe('ProductForm (Pricing & Tax parity)', () => {
     fireEvent.focus(saleInput)
     fireEvent.change(saleInput, { target: { value: '' } })
     fireEvent.blur(saleInput)
-    expect((screen.getByLabelText('inventory:products.marginPercent')).value).toBe('')
+    expect((screen.getByLabelText('inventory:products.marginPercent') as HTMLInputElement).value).toBe('')
   })
 
   it('WAC display (edit mode) — uses formatCurrency (no raw parseFloat in rendered output)', () => {
