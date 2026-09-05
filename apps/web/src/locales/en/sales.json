@@ -193,6 +193,7 @@
     "documentDate": "Document Date",
     "issueDate": "Issue Date",
     "dueDate": "Due Date",
+    "dueDateBeforeIssue": "Due date cannot be before the issue date",
     "customer": "Customer",
     "supplier": "Supplier",
     "description": "Description",

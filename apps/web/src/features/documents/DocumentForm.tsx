@@ -616,9 +616,28 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
               />
             </FormField>
 
-            {/* Due Date */}
-            <FormField label={t('sales:documents.dueDate')} htmlFor="due_date">
-              <Input type="date" id="due_date" {...register('due_date')} />
+            {/* Due Date — client-side mirror of the backend
+                `after_or_equal:document_date` guard (DEV-QA-008/057). The
+                backend remains authoritative; this only spares the operator a
+                round-trip. */}
+            <FormField
+              label={t('sales:documents.dueDate')}
+              htmlFor="due_date"
+              error={errors.due_date?.message}
+            >
+              <Input
+                type="date"
+                id="due_date"
+                min={watchedDocumentDate || undefined}
+                error={Boolean(errors.due_date)}
+                {...register('due_date', {
+                  validate: value =>
+                    !value ||
+                    !watchedDocumentDate ||
+                    value >= watchedDocumentDate ||
+                    t('sales:documents.dueDateBeforeIssue'),
+                })}
+              />
             </FormField>
 
             {/* Reason (Credit Notes only) — `CreditNoteController::store()`

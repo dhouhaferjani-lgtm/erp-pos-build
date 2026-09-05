@@ -175,6 +175,19 @@ class CreateDocumentRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        // DEV-QA-008/057 — the frontend submits `issue_date`; the canonical
+        // column is `document_date`. Normalize the alias BEFORE validation so
+        // `after_or_equal:document_date` on `due_date` / `valid_until` actually
+        // has a value to compare against (previously the controller only mapped
+        // it AFTER validation, so the guard silently never fired). We then drop
+        // the FE-only alias so `validated()` exposes the canonical field alone —
+        // the controllers keep a harmless post-validation fallback for API
+        // clients that already send `document_date`.
+        if ($this->has('issue_date') && ! $this->has('document_date')) {
+            $this->merge(['document_date' => $this->input('issue_date')]);
+        }
+        $this->replace($this->except('issue_date'));
+
         if ($this->has('lines') && is_array($this->input('lines'))) {
             $lines = array_map(function (array $line): array {
                 if (isset($line['description']) && is_string($line['description'])) {
