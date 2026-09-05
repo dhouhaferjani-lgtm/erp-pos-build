@@ -32,6 +32,11 @@
     "updateSuccess": "Contact mis à jour avec succès",
     "deleteSuccess": "Contact supprimé avec succès",
     "deleteConfirm": "Êtes-vous sûr de vouloir supprimer ce contact ?",
+    "validation": {
+      "firstNameRequired": "Le prénom est obligatoire",
+      "invalidEmail": "Saisissez une adresse email valide",
+      "dateOfBirthFuture": "La date de naissance ne peut pas être dans le futur"
+    },
     "genders": {
       "male": "Homme",
       "female": "Femme",
