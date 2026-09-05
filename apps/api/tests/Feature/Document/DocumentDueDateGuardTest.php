@@ -147,7 +147,7 @@ class DocumentDueDateGuardTest extends TestCase
     }
 
     /**
-     * @return array<string, mixed>
+     * @return list<array<string, string>>
      */
     private function lines(): array
     {
@@ -249,6 +249,224 @@ class DocumentDueDateGuardTest extends TestCase
             ->patchJson("/api/v1/purchase-orders/{$this->purchaseOrder->id}", [
                 'issue_date' => now()->toDateString(),
                 'due_date' => now()->subDay()->toDateString(),
+            ]);
+
+        $this->assertApiValidationErrors($response, ['due_date']);
+    }
+
+    // ----- Equality boundary (F5.1) ------------------------------------------
+
+    public function test_quote_create_accepts_a_due_date_equal_to_the_issue_date(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/quotes', [
+                'partner_id' => $this->customer->id,
+                'issue_date' => now()->toDateString(),
+                'due_date' => now()->toDateString(),
+                'lines' => $this->lines(),
+            ]);
+
+        $response->assertCreated();
+    }
+
+    // ----- valid_until (F5.3) ------------------------------------------------
+
+    public function test_quote_create_rejects_a_valid_until_before_the_issue_date(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/quotes', [
+                'partner_id' => $this->customer->id,
+                'issue_date' => now()->toDateString(),
+                'valid_until' => now()->subDay()->toDateString(),
+                'lines' => $this->lines(),
+            ]);
+
+        $this->assertApiValidationErrors($response, ['valid_until']);
+    }
+
+    // ----- Partial PATCH: the stored document_date is the comparand (F2) -----
+
+    public function test_quote_partial_update_rejects_a_due_date_before_the_stored_document_date(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/quotes/{$this->quote->id}", [
+                'due_date' => now()->subDay()->toDateString(),
+            ]);
+
+        $this->assertApiValidationErrors($response, ['due_date']);
+
+        $this->assertNull(
+            $this->quote->refresh()->due_date,
+            'A refused partial PATCH must not have persisted the early due date.'
+        );
+    }
+
+    public function test_quote_partial_update_accepts_a_due_date_equal_to_the_stored_document_date(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/quotes/{$this->quote->id}", [
+                'due_date' => now()->toDateString(),
+            ]);
+
+        $response->assertOk();
+    }
+
+    public function test_quote_partial_update_rejects_a_valid_until_before_the_stored_document_date(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/quotes/{$this->quote->id}", [
+                'valid_until' => now()->subDay()->toDateString(),
+            ]);
+
+        $this->assertApiValidationErrors($response, ['valid_until']);
+    }
+
+    public function test_purchase_order_partial_update_rejects_a_due_date_before_the_stored_document_date(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/purchase-orders/{$this->purchaseOrder->id}", [
+                'due_date' => now()->subDay()->toDateString(),
+            ]);
+
+        $this->assertApiValidationErrors($response, ['due_date']);
+    }
+
+    // ----- Second company (CLAUDE.md rule 22, F5.4) --------------------------
+
+    public function test_the_partial_update_guard_applies_in_a_second_company(): void
+    {
+        $secondCompany = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Second Company',
+            'legal_name' => 'Second Company LLC',
+            'tax_id' => 'TAX456',
+            'country_code' => 'FR',
+            'locale' => 'fr_FR',
+            'timezone' => 'Europe/Paris',
+            'currency' => 'EUR',
+            'status' => CompanyStatus::Active,
+        ]);
+
+        UserCompanyMembership::create([
+            'user_id' => $this->user->id,
+            'company_id' => $secondCompany->id,
+            'role' => 'admin',
+        ]);
+
+        $secondCustomer = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $secondCompany->id,
+            'name' => 'Jane Roe',
+            'type' => PartnerType::Customer,
+        ]);
+
+        $secondQuote = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $secondCompany->id,
+            'partner_id' => $secondCustomer->id,
+            'type' => DocumentType::Quote,
+            'status' => DocumentStatus::Draft,
+            'document_number' => 'QT-2025-0001',
+            'document_date' => now()->toDateString(),
+            'currency' => 'EUR',
+            'subtotal' => '100.00',
+            'tax_amount' => '20.00',
+            'total' => '120.00',
+        ]);
+
+        DocumentLine::create([
+            'document_id' => $secondQuote->id,
+            'line_number' => 1,
+            'description' => 'Original Line',
+            'quantity' => '1.00',
+            'unit_price' => '100.00',
+            'tax_rate' => '20.00',
+            'line_total' => '100.00',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $secondCompany->id)
+            ->patchJson("/api/v1/quotes/{$secondQuote->id}", [
+                'due_date' => now()->subDay()->toDateString(),
+            ]);
+
+        $this->assertApiValidationErrors($response, ['due_date']);
+
+        $this->assertNull(
+            $secondQuote->refresh()->due_date,
+            'The guard must hold in the second company, not just the first.'
+        );
+    }
+
+    // ----- Draft auto-save (F3) ---------------------------------------------
+
+    public function test_auto_save_rejects_a_due_date_before_the_document_date(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/documents/auto-save', [
+                'type' => DocumentType::Quote->value,
+                'partner_id' => $this->customer->id,
+                'document_date' => now()->toDateString(),
+                'due_date' => now()->subDay()->toDateString(),
+                'lines' => [
+                    ['description' => 'Service', 'quantity' => '1.00', 'unit_price' => '100.00'],
+                ],
+            ]);
+
+        $this->assertApiValidationErrors($response, ['due_date']);
+
+        $this->assertSame(
+            2,
+            Document::query()->count(),
+            'A refused auto-save must not author a third document (the two setUp drafts stand).'
+        );
+    }
+
+    public function test_auto_save_accepts_a_due_date_equal_to_the_document_date(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/documents/auto-save', [
+                'type' => DocumentType::Quote->value,
+                'partner_id' => $this->customer->id,
+                'document_date' => now()->toDateString(),
+                'due_date' => now()->toDateString(),
+                'lines' => [
+                    ['description' => 'Service', 'quantity' => '1.00', 'unit_price' => '100.00'],
+                ],
+            ]);
+
+        $response->assertOk();
+    }
+
+    public function test_auto_save_accepts_a_payload_that_carries_no_dates(): void
+    {
+        // A draft mid-typing is legitimately incomplete: the guard must not turn
+        // a dateless keystroke auto-save into a 422 that strands the operator's
+        // work (useDraftAutoSave.ts:270-280 surfaces a failure as
+        // `autosaveFailed` and saves nothing).
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/documents/auto-save', [
+                'type' => DocumentType::Quote->value,
+                'partner_id' => $this->customer->id,
+                'lines' => [
+                    ['description' => 'Service', 'quantity' => '1.00', 'unit_price' => '100.00'],
+                ],
+            ]);
+
+        $response->assertOk();
+    }
+
+    public function test_auto_save_rejects_a_due_date_before_the_stored_draft_document_date(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/documents/auto-save', [
+                'draft_id' => $this->quote->id,
+                'type' => DocumentType::Quote->value,
+                'partner_id' => $this->customer->id,
+                'due_date' => now()->subDay()->toDateString(),
+                'lines' => [
+                    ['description' => 'Service', 'quantity' => '1.00', 'unit_price' => '100.00'],
+                ],
             ]);
 
         $this->assertApiValidationErrors($response, ['due_date']);
