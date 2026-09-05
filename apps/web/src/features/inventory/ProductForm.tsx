@@ -90,7 +90,7 @@ interface Product {
   brand_source?: string | null
   category?: { id?: number | string; name: string } | null
   oem_numbers: string[] | null
-  cross_references: Array<{ brand: string; reference: string }> | null
+  cross_references: { brand: string; reference: string }[] | null
   parapharmacy_metadata: ParapharmacyMetadata | null
   requires_batch_tracking: boolean
   default_shelf_life_days: number | null
@@ -879,7 +879,7 @@ export function ProductForm() {
             <Checkbox
               id="enrichment-opt-in"
               checked={enrichmentOptIn}
-              onChange={(e) => setEnrichmentOptIn(e.target.checked)}
+              onChange={(e) => { setEnrichmentOptIn(e.target.checked); }}
             />
             <label htmlFor="enrichment-opt-in" className="text-sm">
               <span className="font-medium">{t('inventory:barcodeLookup.enrichmentCheckbox')}</span>

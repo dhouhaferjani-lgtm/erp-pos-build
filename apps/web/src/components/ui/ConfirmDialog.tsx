@@ -18,15 +18,15 @@ interface ConfirmDialogProps {
 
 const variantStyles = {
   danger: {
-    icon: `${colorTokens.intent.danger.text}`,
+    icon: colorTokens.intent.danger.text,
     button: `${colorTokens.intent.danger.bgStrong} ${colorTokens.variants.hoverBgRed700}`,
   },
   warning: {
-    icon: `${colorTokens.intent.warning.text}`,
+    icon: colorTokens.intent.warning.text,
     button: `${colorTokens.intent.warning.bgStrong} ${colorTokens.variants.hoverBgYellow700}`,
   },
   info: {
-    icon: `${colorTokens.intent.primary.text}`,
+    icon: colorTokens.intent.primary.text,
     button: `${colorTokens.intent.primary.bgStrong} ${colorTokens.variants.hoverBgBlue700}`,
   },
 }

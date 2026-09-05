@@ -453,7 +453,7 @@ describe('inventory cascades and cross-tenant isolation', () => {
         const k = q.queryKey as unknown[]
         return Array.isArray(k) && k[0] === 'products' && k[k.length - 2] === 'tenant-A'
       })
-    const tenantAData = tenantAQuery?.state.data as { data?: Array<{ id: string }> } | undefined
+    const tenantAData = tenantAQuery?.state.data as { data?: { id: string }[] } | undefined
     expect(tenantAData?.data ?? []).toEqual([])
     expect((tenantAData?.data ?? []).map((row) => row.id)).not.toContain('leaked-tenant-b-product')
 
