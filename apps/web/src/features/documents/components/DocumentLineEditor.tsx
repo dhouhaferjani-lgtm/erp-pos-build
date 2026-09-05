@@ -221,6 +221,17 @@ interface DocumentLineEditorProps {
    * Escalates the blank-price hint from advisory to error and marks the input.
    */
   invalidLineIds?: ReadonlySet<string>
+  /**
+   * Lines the parent form refused because the DESIGNATION is blank.
+   *
+   * A sibling of `invalidLineIds` rather than a widening of it (gate r3 R3-3):
+   * `invalidLineIds` is price-specific — it reddens the money input and the
+   * focus jump targets `line-price-input-<id>` — so feeding a
+   * blank-designation refusal through it painted a correctly-filled PRICE cell
+   * red and put the cursor there while the message said "enter a designation".
+   * `DocumentForm` passes only `invalidLineIds` and is unaffected.
+   */
+  invalidDescriptionLineIds?: ReadonlySet<string>
 }
 
 interface PricingContextLineRequest {
@@ -280,7 +291,7 @@ function pricingContextKey(line: Pick<DocumentLine, 'product_id' | 'variant_id'>
   return `${line.product_id}:${line.variant_id}`
 }
 
-export function DocumentLineEditor({ lines, onChange, readonly = false, documentType, partnerId = null, invalidLineIds }: DocumentLineEditorProps) {
+export function DocumentLineEditor({ lines, onChange, readonly = false, documentType, partnerId = null, invalidLineIds, invalidDescriptionLineIds }: DocumentLineEditorProps) {
   const { t } = useTranslation(['sales', 'common'])
   const queryClient = useQueryClient()
   const { config: companyConfig, hasModule } = useCompanyConfig()
@@ -313,20 +324,35 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
 
   // Gate r2 finding 6: a refused submit must take the operator TO the problem.
   // On a long document the inline message can be far off-screen, so focus the
-  // first refused price cell (which scrolls it into view) when the parent form
-  // flags one.
+  // first refused cell (which scrolls it into view) when the parent form flags
+  // one. Gate r3 R3-3: to the cell of the FIELD that is missing — a price
+  // refusal targets the money input, a designation refusal the designation
+  // cell. A price refusal wins when a line has both, because that is the
+  // message the parent shows in that case.
   const firstRefusedLineId = useMemo(() => {
     if (invalidLineIds === undefined || invalidLineIds.size === 0) return null
     return lines.find((line) => invalidLineIds.has(line.id))?.id ?? null
   }, [invalidLineIds, lines])
 
+  const firstDescriptionRefusedLineId = useMemo(() => {
+    if (invalidDescriptionLineIds === undefined || invalidDescriptionLineIds.size === 0) return null
+    return lines.find((line) => invalidDescriptionLineIds.has(line.id))?.id ?? null
+  }, [invalidDescriptionLineIds, lines])
+
   useEffect(() => {
-    if (firstRefusedLineId === null) return
-    const input = document.getElementById(`line-price-input-${firstRefusedLineId}`)
-    if (input instanceof HTMLInputElement) {
-      input.focus()
+    if (firstRefusedLineId !== null) {
+      const input = document.getElementById(`line-price-input-${firstRefusedLineId}`)
+      if (input instanceof HTMLInputElement) {
+        input.focus()
+      }
+      return
     }
-  }, [firstRefusedLineId])
+    if (firstDescriptionRefusedLineId === null) return
+    const cell = document.getElementById(`line-description-${firstDescriptionRefusedLineId}`)
+    if (cell instanceof HTMLElement) {
+      cell.focus()
+    }
+  }, [firstRefusedLineId, firstDescriptionRefusedLineId])
 
   // Get company currency with fallback
   const companyCurrency = currentCompany?.currency ?? 'EUR'
@@ -562,7 +588,12 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
       product_name: '',
       description: '',
       quantity: 1,
-      unit_price: 0,
+      // F-STG-4: money fields are strings on the wire (precision contract,
+      // rule 19). A blank line starts as an empty string, not the number 0, so
+      // the standalone credit-note payload never sends a numeric unit_price
+      // (which the backend's `string` rule rejects). Total-mode logic below is
+      // untouched.
+      unit_price: '',
       discount_percent: null,
       discount_amount: null,
       tax_rate: 0,
@@ -713,7 +744,25 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
               primary_image_url: line.primary_image_url ?? null,
             }}
           />
-          <div className="max-w-xl">
+          <div
+            id={`line-description-${line.id}`}
+            {...(invalidDescriptionLineIds?.has(line.id) === true
+              ? {
+                  tabIndex: -1,
+                  'aria-describedby': `line-description-hint-${line.id}`,
+                  className: `max-w-xl rounded border ${borderColors.error} px-1 py-0.5`,
+                }
+              : { className: 'max-w-xl' })}
+          >
+            {invalidDescriptionLineIds?.has(line.id) === true && (
+              <p
+                id={`line-description-hint-${line.id}`}
+                role="alert"
+                className={`text-[11px] leading-4 ${textColors.error}`}
+              >
+                {t('sales:documents.errors.descriptionRequired')}
+              </p>
+            )}
             {designationFeatureEnabled ? (
               <DesignationCell
                 value={line.description || line.product_name}
@@ -1122,6 +1171,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
     designationFeatureEnabled,
     deriveUnitPrice,
     invalidLineIds,
+    invalidDescriptionLineIds,
     isPurchaseDocument,
     priceSourceByLineId,
     formatAmount,

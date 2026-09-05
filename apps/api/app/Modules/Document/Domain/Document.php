@@ -576,6 +576,140 @@ class Document extends Model
     }
 
     /**
+     * Whether this document may be the source of a customer credit note.
+     *
+     * TWO conditions, both required (gate r1 MAJOR-6):
+     *  1. it IS a customer invoice — `CreditNoteService` loads any `documents`
+     *     row by id, so without this a posted delivery note, return note or
+     *     supplier invoice would satisfy a helper whose NAME promises otherwise
+     *     and mint a customer credit-note draft; and
+     *  2. it is SEALED: Posted (still owing) OR Paid (settled — the credit note
+     *     then becomes a customer credit). Draft, Confirmed and Cancelled
+     *     invoices are never creditable. F-STG-4.
+     */
+    public function isCreditableInvoiceSource(): bool
+    {
+        return $this->type === DocumentType::Invoice
+            && in_array($this->status, [DocumentStatus::Posted, DocumentStatus::Paid], true);
+    }
+
+    /**
+     * Has this invoice already been credited in full? The ONE reading of the
+     * `payload.fully_credited` flag (gate r2 NEW-1) — `RefundService` wrote the
+     * same `isset(...) && === true` expression twice (`:892`, `:1242`).
+     *
+     * The flag is set by `RefundService::createFullCreditNote()` (`:967`) when a
+     * whole invoice is credited in one document.
+     */
+    public function isFullyCredited(): bool
+    {
+        $payload = $this->payload ?? [];
+
+        return isset($payload['fully_credited']) && $payload['fully_credited'] === true;
+    }
+
+    /**
+     * May a credit note be raised against this document RIGHT NOW?
+     *
+     * The complete operator-facing rule, and the ONE definition behind BOTH
+     * `GET /invoices/{id}/can-credit` (`RefundService::canCreditInvoice()`) and
+     * the `GET /invoices?creditable=1` list filter — see
+     * {@see scopeCreditableSource()}, its SQL twin.
+     *
+     * Gate r2 NEW-1: the list filter used to check STATUS only, so a
+     * fully-credited invoice was offered in the credit-note source picker while
+     * the very same API's `/can-credit` called it non-creditable and the create
+     * attempt 422'd on the headroom guard
+     * (`CreditNoteService::createCreditNote():845-850`). Two API surfaces
+     * disagreeing about one noun (rule 22).
+     *
+     * THE RESIDUAL, stated at its real size (gate r3 R3-2 — the earlier wording
+     * called it an edge case; it is the DEFAULT case):
+     *
+     * `payload.fully_credited` has exactly ONE writer in the whole application —
+     * `RefundService::createFullCreditNote()` (`:960-970`), reachable only via
+     * `POST /invoices/{invoice}/credit-full`, a route with NO frontend consumer.
+     * `CreditNoteService` — which is what `POST /credit-notes`, and therefore
+     * the entire `/sales/credit-notes/create` page, goes through — never writes
+     * `payload` at all. So an invoice credited to exhaustion through the shipped
+     * UI (full or partial) carries NO flag: it stays in the list, `/can-credit`
+     * still answers `true`, and the create call is refused by the ARITHMETIC
+     * guard instead (`CreditNoteService::createCreditNote():845-850`,
+     * `::createLineBasedCreditNote():1096-1099`).
+     *
+     * That refusal is a UX dead end, not a money defect — the arithmetic guard
+     * holds on both create paths, counting prior credit notes through the
+     * `creditNotes()` relation independently of this flag, so no invoice can be
+     * over-credited and no GL is written twice. The interim mitigation shipped
+     * with this round is legibility: the credit-note page now surfaces the
+     * API's own message ("Total credit notes would exceed invoice total")
+     * instead of "Request failed with status code 422".
+     *
+     * OWNER FOLLOW-UP (own lane, own gate — it mutates a POSTED invoice's
+     * payload): have `CreditNoteService` set `fully_credited` inside the same
+     * transaction when `remainingCreditHeadroom()` reaches zero. The flag-based
+     * predicate then becomes correct for every path at no divergence risk.
+     * Expressing headroom in SQL instead is the wrong shape: it is computed
+     * per prior credit note through `TaxCalculationService::calculateDocumentTaxes()`
+     * (duty-EXCLUSIVE), so a SQL approximation would disagree with the
+     * create-time guard — trading a documented gap for a fresh PHP/SQL
+     * divergence, which is the exact failure this predicate was unified to end.
+     */
+    public function isCreditableSource(): bool
+    {
+        return $this->isCreditableInvoiceSource() && ! $this->isFullyCredited();
+    }
+
+    /**
+     * SQL twin of {@see isCreditableSource()} — the same rule, expressed for a
+     * list query. Both must move together; that is the point of putting them
+     * side by side.
+     *
+     * The JSON predicate is written as "absent OR not true" rather than
+     * `NOT (flag = true)` on purpose: on both engines a missing key yields NULL,
+     * and `NOT (NULL = true)` is NULL, which would silently drop every invoice
+     * that has never been credited at all — i.e. every invoice in a fresh
+     * tenant.
+     *
+     * The explicit `false` arm is a PARITY GUARANTEE, not a live case (gate r3
+     * R3-4): no writer stores `false` today — `RefundService` writes only
+     * `fully_credited => true` (`:967`) and `partially_credited => true`
+     * (`:1070`), and `getCreditNoteSummary()` (`:1259`, `:1277`) builds a
+     * RESPONSE array, it does not touch `documents.payload`. The arm exists so
+     * this SQL matches the PHP `=== true` semantics for any value a future
+     * writer or backfill might store, and it is pinned by a fixture so it
+     * cannot rot.
+     *
+     * Known, unreachable-today divergence (gate r3 R3-5): a NON-boolean stored
+     * value — `1`, `"true"` — reads as creditable in PHP (`=== true` fails) but
+     * would be EXCLUDED by the `= false` arm here. Safe while `:967` is the only
+     * writer and writes a real boolean; a future importer that writes `1` must
+     * fix both sides together.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeCreditableSource(Builder $query): Builder
+    {
+        return $query
+            ->where('type', DocumentType::Invoice->value)
+            ->whereIn('status', [DocumentStatus::Posted->value, DocumentStatus::Paid->value])
+            ->where(static function (Builder $inner): void {
+                // The `false` arm goes through the underlying query builder on
+                // purpose: Larastan's model-property check (phpstan.neon
+                // `checkModelProperties`) types `where()`/`orWhere()`'s first
+                // argument as a real column of the model, and a JSON arrow path
+                // is not one. `whereNull()` has no such constraint, hence the
+                // asymmetry. Same SQL either way — verified green on SQLite and
+                // on PostgreSQL.
+                $inner->whereNull('payload->fully_credited')
+                    ->orWhere(static function (Builder $flag): void {
+                        $flag->getQuery()->where('payload->fully_credited', false);
+                    });
+            });
+    }
+
+    /**
      * Check if document is cancelled
      */
     public function isCancelled(): bool

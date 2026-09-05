@@ -823,8 +823,8 @@ class CreditNoteService
 
             // 2. Validate INSIDE transaction (race-safe)
             // Validation: Only posted invoices can have credit notes
-            if (! $invoice->isPosted()) {
-                throw new \InvalidArgumentException('Credit notes can only be created for posted invoices');
+            if (! $invoice->isCreditableInvoiceSource()) {
+                throw new \InvalidArgumentException('Credit notes can only be created for posted or paid invoices');
             }
 
             // Validation: Credit note amount cannot exceed invoice total
@@ -949,8 +949,8 @@ class CreditNoteService
 
             // 2. Validate INSIDE transaction (race-safe)
             // Validation: Only posted invoices can have credit notes
-            if (! $invoice->isPosted()) {
-                throw new \InvalidArgumentException('Credit notes can only be created for posted invoices');
+            if (! $invoice->isCreditableInvoiceSource()) {
+                throw new \InvalidArgumentException('Credit notes can only be created for posted or paid invoices');
             }
 
             $scale = $this->scaleFor($invoice);
@@ -1299,8 +1299,31 @@ class CreditNoteService
             $this->allocationStateGuard->assertDirectionMatchesPartner($invoice);
 
             $scale = $this->scaleFor($invoice);
+
+            // Gate r1 MAJOR-1 (F-STG-4 fix round 1) — clamp on the COMPUTED
+            // outstanding, never on the raw `balance_due` cache.
+            //
+            // `balance_due` is a PostgreSQL trigger cache with exactly two
+            // writers (the allocation triggers and ArApOpeningService), so a
+            // document nothing was ever allocated against keeps it NULL forever
+            // -- documented at Document::outstandingBalance() and measured by
+            // AgedReceivablesService (165 invoices / 59 532.410 TND on the demo
+            // tenant). The old `?? $invoice->total` fallback therefore treated a
+            // blind cache as "nothing has been paid" and let the credit note
+            // allocate the FULL total against an invoice that had already been
+            // settled through real `payment_allocations` rows -- exactly the
+            // sub-ledger/GL divergence this clamp exists to prevent, and now the
+            // headline case since F-STG-4 admits Paid invoices as sources.
+            //
+            // `outstandingBalance()` is the ONE definition of "still open"
+            // (rule 22): authoritative cache when present, otherwise the
+            // trigger's own formula -- total minus payment allocations minus
+            // credit-note allocations -- which is what every other consumer
+            // (AgedReceivables/Payables, MultiPaymentService, PaymentController,
+            // CloseInvoiceWithToleranceService) already uses.
+            $invoice->loadMissing(['allocations', 'creditsAgainstDocument']);
             /** @var numeric-string $currentBalance */
-            $currentBalance = (string) ($invoice->balance_due ?? $invoice->total ?? '0');
+            $currentBalance = $invoice->outstandingBalance($scale);
 
             // Q1 (gate C-2) — allocate EX-STAMP: the credit note's own
             // stamp_duty_amount never reduces what the customer owes.

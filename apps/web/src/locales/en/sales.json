@@ -282,7 +282,8 @@
     "notesPlaceholder": "Additional notes…",
     "draftSavedAt": "Draft saved {{time}}",
     "errors": {
-      "unitPriceRequired": "Enter a unit price on every line before saving."
+      "unitPriceRequired": "Enter a unit price on every line before saving.",
+      "descriptionRequired": "Enter a designation on every line before saving."
     },
     "proforma": {
       "title": "Proforma — non-fiscal document",
@@ -477,6 +478,7 @@
     "searchInvoicePlaceholder": "Search by invoice number or partner…",
     "noInvoicesFound": "No invoices found",
     "noPostedInvoices": "No posted invoices available",
+    "noCreditableInvoices": "No invoices available to credit",
     "invoice": "Invoice",
     "balance": "Balance",
     "total": "Total",
@@ -806,6 +808,7 @@
       "creditPartial": "Credit Partial",
       "creditPartialDesc": "Select specific lines and quantities",
       "selectLinesRequired": "Please select at least one line to credit",
+      "invoiceLinesNotLoaded": "The invoice lines are still loading. Wait a moment and try again.",
       "selectLinesTable": "Select invoice lines to credit",
       "linesRequired": "Please add at least one line",
       "create": "Create Credit Note"

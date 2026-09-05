@@ -192,7 +192,8 @@
       "goodsReceivedWithReceipt": "تم استلام البضائع ضمن {{receiptNumber}}"
     },
     "errors": {
-      "unitPriceRequired": "أدخل سعر الوحدة في كل سطر قبل الحفظ."
+      "unitPriceRequired": "أدخل سعر الوحدة في كل سطر قبل الحفظ.",
+      "descriptionRequired": "أدخل وصفًا في كل سطر قبل الحفظ."
     },
     "proforma": {
       "title": "مستند مبدئي — غير ضريبي",
@@ -207,6 +208,7 @@
     }
   },
   "invoices": {
+    "noCreditableInvoices": "لا توجد فواتير متاحة لإصدار إشعار خصم",
     "paymentStatus": {
       "unpaid": "غير مدفوعة",
       "partially_paid": "مدفوعة جزئيًا",
@@ -245,6 +247,9 @@
     }
   },
   "creditNotes": {
+    "form": {
+      "invoiceLinesNotLoaded": "لا يزال تحميل سطور الفاتورة جاريًا. انتظر لحظة ثم أعد المحاولة."
+    },
     "postingMarker": {
       "cancelledTitle": "ملغاة — تم إبطال هذا المستند",
       "cancelledDetail": "تم إلغاء إشعار الخصم هذا ولا يجوز استخدامه كمستند إثبات."

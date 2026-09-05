@@ -44,6 +44,19 @@ interface InvoiceSearchSelectProps {
   className?: string | undefined
   label?: string | undefined
   error?: string | undefined
+  /**
+   * OPT-IN source filter (F-STG-4). This picker is shared: the credit-note page
+   * and the return-note page both mount it
+   * (`CreateCreditNotePage.tsx`, `CreateReturnNotePage.tsx`).
+   *
+   * - `'payable'` (DEFAULT, unchanged behaviour) — `status=posted` +
+   *   `has_balance=true`: invoices that still owe money.
+   * - `'creditable'` — `creditable=1`: every SEALED invoice, Posted (still
+   *   owing) OR Paid (settled → the credit becomes a customer credit). Only the
+   *   credit-note page asks for this; gate r1 BLOCKER-2/MAJOR-4 flagged that
+   *   making it unconditional silently changed the return-note source list too.
+   */
+  sourceFilter?: 'payable' | 'creditable' | undefined
 }
 
 const invoiceCurrencyFormatters = new Map<string, Intl.NumberFormat>()
@@ -62,8 +75,40 @@ function formatInvoiceCurrency(amount: number | string | undefined, currency: st
   return formatter.format(num)
 }
 
-export function InvoiceSearchSelect(props: InvoiceSearchSelectProps) {
+/**
+ * The server-side filter each source mode asks for. Kept as data so the DEFAULT
+ * (`payable`) is provably byte-identical to the pre-F-STG-4 behaviour.
+ */
+const sourceFilterConfig = {
+  payable: {
+    statusFilter: 'posted',
+    additionalFilters: { has_balance: 'true' },
+    emptyKey: 'sales:invoices.noPostedInvoices',
+    emptyFallback: 'No posted invoices available',
+  },
+  // `creditable=1` returns Posted AND Paid invoices — see
+  // `InvoiceController::index()`, which validates the flag as a boolean.
+  // Its empty state must NOT say "no posted invoices": the list deliberately
+  // carries settled (Paid) invoices too (gate r2 NEW-6).
+  creditable: {
+    statusFilter: undefined,
+    additionalFilters: { creditable: '1' },
+    emptyKey: 'sales:invoices.noCreditableInvoices',
+    emptyFallback: 'No invoices available to credit',
+  },
+} as const satisfies Record<
+  'payable' | 'creditable',
+  {
+    statusFilter: string | undefined
+    additionalFilters: Record<string, string>
+    emptyKey: string
+    emptyFallback: string
+  }
+>
+
+export function InvoiceSearchSelect({ sourceFilter = 'payable', ...props }: InvoiceSearchSelectProps) {
   const { t } = useTranslation()
+  const { statusFilter, additionalFilters, emptyKey, emptyFallback } = sourceFilterConfig[sourceFilter]
 
   return (
     <DocumentSearchSelect<Invoice>
@@ -71,12 +116,12 @@ export function InvoiceSearchSelect(props: InvoiceSearchSelectProps) {
       config={{
         endpoint: '/invoices',
         queryKey: 'invoices-search',
-        statusFilter: 'posted',
-        additionalFilters: { has_balance: 'true' },
+        ...(statusFilter === undefined ? {} : { statusFilter }),
+        additionalFilters,
         icon: Receipt,
         searchPlaceholder: t('sales:invoices.searchPlaceholder', 'Search by invoice number or partner...'),
         noResultsMessage: t('sales:invoices.noInvoicesFound', 'No invoices found'),
-        noDataMessage: t('sales:invoices.noPostedInvoices', 'No posted invoices available'),
+        noDataMessage: t(emptyKey, emptyFallback),
         getDisplayText: (invoice) => {
           const partner = invoice.partner?.name || t('common:unknown')
           const total = formatInvoiceCurrency(invoice.total, invoice.currency)

@@ -282,7 +282,8 @@
     "notesPlaceholder": "Notes supplémentaires…",
     "draftSavedAt": "Brouillon enregistré {{time}}",
     "errors": {
-      "unitPriceRequired": "Saisissez un prix unitaire sur chaque ligne avant d'enregistrer."
+      "unitPriceRequired": "Saisissez un prix unitaire sur chaque ligne avant d'enregistrer.",
+      "descriptionRequired": "Saisissez une désignation sur chaque ligne avant d'enregistrer."
     },
     "proforma": {
       "title": "Proforma — document non fiscal",
@@ -477,6 +478,7 @@
     "searchInvoicePlaceholder": "Rechercher par numéro de facture ou partenaire…",
     "noInvoicesFound": "Aucune facture trouvée",
     "noPostedInvoices": "Aucune facture comptabilisée disponible",
+    "noCreditableInvoices": "Aucune facture disponible pour un avoir",
     "invoice": "Facture",
     "balance": "Solde",
     "total": "Total",
@@ -806,6 +808,7 @@
       "creditPartial": "Crédit partiel",
       "creditPartialDesc": "Sélectionner des lignes et quantités spécifiques",
       "selectLinesRequired": "Veuillez sélectionner au moins une ligne à créditer",
+      "invoiceLinesNotLoaded": "Les lignes de la facture sont en cours de chargement. Patientez un instant puis réessayez.",
       "selectLinesTable": "Sélectionner les lignes de facture à créditer",
       "linesRequired": "Veuillez ajouter au moins une ligne",
       "create": "Créer l'avoir"

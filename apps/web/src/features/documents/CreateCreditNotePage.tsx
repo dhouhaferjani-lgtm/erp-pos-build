@@ -20,6 +20,12 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { PartnerPicker } from '@/components/molecules/pickers/PartnerPicker'
 import { InvoiceSearchSelect } from '@/components/molecules/pickers/InvoiceSearchSelect'
 import { DocumentLineEditor, type DocumentLine } from '@/components/documents/DocumentLineEditor'
+import {
+  buildCreditNotePayload,
+  findIncompleteCreditNoteLineIds,
+  isUndescribedCreditNoteLine,
+  isUnpricedCreditNoteLine,
+} from './creditNotePayload'
 import { Button } from '@/components/atoms/Button/Button'
 import { PageHeader } from '@/components/molecules/PageHeader/PageHeader'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
@@ -86,6 +92,12 @@ export function CreateCreditNotePage() {
   // Selected invoice state
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
 
+  // Lines the submit refused, split BY FIELD so the editor reddens and focuses
+  // the cell that is actually empty (gate r1 IMPORTANT-3, gate r2 NEW-2,
+  // gate r3 R3-3). `invalidLineIds` is price-specific in the editor.
+  const [unpricedLineIds, setUnpricedLineIds] = useState<Set<string>>(new Set())
+  const [undescribedLineIds, setUndescribedLineIds] = useState<Set<string>>(new Set())
+
   const {
     control,
     register,
@@ -125,6 +137,10 @@ export function CreateCreditNotePage() {
 
       // Convert invoice lines to document lines
       if (invoiceData.lines) {
+        // Rule 19 — money and tax rates stay DECIMAL STRINGS end to end. The API
+        // already returns them as strings; parseFloat'ing them here made the
+        // payload builder depend on a float round-trip for the value it puts on
+        // the wire (gate r1 IMPORTANT-5).
         const documentLines: DocumentLine[] = invoiceData.lines.map((line) => ({
           id: line.id,
           product_id: line.product_id ?? '',
@@ -132,9 +148,9 @@ export function CreateCreditNotePage() {
           product_name: line.product_name,
           description: line.description ?? '',
           quantity: line.quantity,
-          unit_price: parseFloat(line.unit_price),
-          tax_rate: parseFloat(line.tax_rate),
-          line_total: parseFloat(line.total),
+          unit_price: line.unit_price,
+          tax_rate: line.tax_rate,
+          line_total: line.total,
           quantity_decimals: line.quantity_decimals ?? null,
         }))
         setLines(documentLines)
@@ -208,34 +224,14 @@ export function CreateCreditNotePage() {
   // Create mutation
   const createMutation = useMutation({
     mutationFn: async (data: CreditNoteFormData) => {
-      const payload: any = {
-        partner_id: data.partner_id,
-        issue_date: data.issue_date,
-        reason: data.reason,
-        notes: data.notes,
-      }
-
-      if (creditMode === 'invoice' && data.source_invoice_id) {
-        payload.source_invoice_id = data.source_invoice_id
-
-        if (lineMode === 'partial') {
-          // Send selected lines with quantities
-          payload.lines = Array.from(selectedLineIds).map(lineId => ({
-            line_id: lineId,
-            quantity: lineQuantities.get(lineId) || 0,
-          }))
-        }
-        // For 'all' mode, backend will credit entire invoice
-      } else {
-        // Customer mode - manual line entry
-        payload.lines = lines.map(line => ({
-          product_id: line.product_id,
-          description: line.description,
-          quantity: line.quantity,
-          unit_price: line.unit_price,
-          tax_rate: line.tax_rate,
-        }))
-      }
+      const payload = buildCreditNotePayload({
+        data,
+        creditMode,
+        lineMode,
+        lines,
+        selectedLineIds,
+        lineQuantities,
+      })
 
       const response = await api.post<{ data?: { id?: string }; id?: string }>('/credit-notes', payload)
       return response.data
@@ -253,12 +249,25 @@ export function CreateCreditNotePage() {
       const creditNoteId = createdCreditNote.data?.id ?? createdCreditNote.id
       navigate(creditNoteId ? entityRoutes.document(creditNoteId, { documentType: 'credit_note' }) : '/sales/credit-notes')
     },
-    onError: (error: Error) => {
-      toast.error(error.message || t('sales:creditNotes.messages.createFailed'))
+    // Gate r3 R3-2 (interim) — the axios interceptor rejects the raw AxiosError
+    // (`lib/api.ts:366`), whose `.message` is "Request failed with status code
+    // 422". The API's own envelope carries the real reason — e.g. "Total credit
+    // notes would exceed invoice total" from the headroom guard
+    // (`CreditNoteService::createCreditNote():845-850`), which is still
+    // reachable because nothing sets `payload.fully_credited` on this path.
+    // Same shape as the sibling DocumentForm handler (`DocumentForm.tsx:416-421`).
+    onError: (error: Error & { response?: { data?: { message?: string; error?: { message?: string } } } }) => {
+      const message = error.response?.data?.error?.message
+        ?? error.response?.data?.message
+        ?? error.message
+      toast.error(message || t('sales:creditNotes.messages.createFailed'))
     },
   })
 
   const onSubmit = (data: CreditNoteFormData) => {
+    setUnpricedLineIds(new Set())
+    setUndescribedLineIds(new Set())
+
     // Validation for invoice mode
     if (creditMode === 'invoice') {
       if (!data.source_invoice_id) {
@@ -270,10 +279,44 @@ export function CreateCreditNotePage() {
         toast.error(t('sales:creditNotes.form.selectLinesRequired'))
         return
       }
+
+      // Gate r1 IMPORTANT-2: 'all' mode credits the invoice LINE BY LINE, and
+      // `lines` is filled asynchronously by the /invoices/{id} query. Submitting
+      // before it resolves used to post `lines: []` and reproduce the very
+      // F-STG-4 422 this PR fixes ("lines ... min:1"), as a race. Refuse here,
+      // with a message, instead of round-tripping to the validator.
+      if (lineMode === 'all' && lines.length === 0) {
+        toast.error(t('sales:creditNotes.form.invoiceLinesNotLoaded'))
+        return
+      }
     } else {
       // Customer mode validation
       if (lines.length === 0) {
         toast.error(t('sales:creditNotes.form.linesRequired'))
+        return
+      }
+
+      // Gate r1 IMPORTANT-3 + gate r2 NEW-2: `lines.*.unit_price` AND
+      // `lines.*.description` are both `required` server-side, so an incomplete
+      // line 422s with a message about a field the operator cannot see. ONE
+      // predicate for "not submittable" (shared with the payload builder), the
+      // same `invalidLineIds` marking DocumentForm uses, and the message names
+      // the field that is actually missing.
+      const incompleteIds = new Set(findIncompleteCreditNoteLineIds(lines))
+      if (incompleteIds.size > 0) {
+        const refused = lines.filter((line) => incompleteIds.has(line.id))
+        const unpriced = refused.filter(isUnpricedCreditNoteLine)
+        // A line can be missing BOTH; it is then marked in both cells, and the
+        // price message wins because that is the field the operator hits first.
+        setUnpricedLineIds(new Set(unpriced.map((line) => line.id)))
+        setUndescribedLineIds(
+          new Set(refused.filter(isUndescribedCreditNoteLine).map((line) => line.id)),
+        )
+        toast.error(
+          unpriced.length > 0
+            ? t('sales:documents.errors.unitPriceRequired')
+            : t('sales:documents.errors.descriptionRequired'),
+        )
         return
       }
     }
@@ -390,6 +433,11 @@ export function CreateCreditNotePage() {
                       <InvoiceSearchSelect
                         value={selectedInvoice}
                         onChange={handleInvoiceSelect}
+                        // F-STG-4: opt IN to the sealed-invoice source list
+                        // (Posted OR Paid). The picker is shared with
+                        // CreateReturnNotePage, which keeps the default
+                        // still-owing list — gate r1 BLOCKER-2/MAJOR-4.
+                        sourceFilter="creditable"
                         label={t('sales:creditNotes.sourceInvoice')}
                         required
                         error={errors.source_invoice_id?.message}
@@ -629,6 +677,8 @@ export function CreateCreditNotePage() {
                 lines={lines}
                 onChange={setLines}
                 partnerId={partnerId}
+                invalidLineIds={unpricedLineIds}
+                invalidDescriptionLineIds={undescribedLineIds}
               />
             </div>
           )}

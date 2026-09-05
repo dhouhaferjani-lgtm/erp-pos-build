@@ -189,17 +189,47 @@ class InvoiceController extends Controller
      * - date_from: Filter documents from this date (inclusive)
      * - date_to: Filter documents up to this date (inclusive)
      * - product_id: Filter documents containing a specific product
+     * - creditable: Boolean. When true, restrict to invoices a credit note can
+     *   be raised against (Posted or Paid). Validated as a boolean — an
+     *   unparseable value is a 422, never a silent unfiltered list.
      *
      * GET /api/v1/invoices
      */
     public function index(Request $request): JsonResponse
     {
+        // F-STG-4 / gate r1 IMPORTANT-1: `creditable` is a BOOLEAN flag, and it
+        // is VALIDATED. The first cut compared the raw query string to the magic
+        // literal 'true', so `creditable=1`, `creditable=TRUE` and a bare
+        // `?creditable` all fell through to the UNFILTERED list — which includes
+        // drafts. A filter that hides drafts must fail CLOSED: anything that is
+        // not a boolean is now a 422, and the flag itself is read through
+        // `Request::boolean()` rather than a string comparison.
+        $request->validate([
+            'creditable' => ['sometimes', 'boolean'],
+        ]);
+
         $params = $this->getPaginationParams($request);
 
         $query = $this->baseQuery()->ofType(DocumentType::Invoice);
 
         // Apply common filters from the trait
         $query = $this->applyFilters($query, $request);
+
+        // The credit-note source picker asks for this to surface every invoice a
+        // credit note can be raised against — Posted (still owing) AND Paid
+        // (settled → the credit becomes a customer credit).
+        // Draft/Confirmed/Cancelled and already fully-credited invoices are
+        // excluded.
+        //
+        // Gate r2 NEW-1: this used to filter on STATUS alone, so the picker
+        // listed invoices that `GET /invoices/{id}/can-credit` called
+        // non-creditable and whose create call 422'd on the headroom guard. It
+        // now consumes `Document::scopeCreditableSource()` — the SQL twin of the
+        // `Document::isCreditableSource()` predicate `canCreditInvoice()` also
+        // consumes, so the list and the check cannot disagree.
+        if ($request->boolean('creditable')) {
+            $query->creditableSource();
+        }
 
         // Order by created_at desc and id for consistent cursor pagination (in case created_at is the same)
         $query->orderBy('created_at', 'desc')->orderBy('id', 'desc');

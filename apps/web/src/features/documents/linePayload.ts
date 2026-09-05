@@ -29,8 +29,11 @@ export interface LinePayload {
 /**
  * True when a value is absent or blank — used for the tax fields, where an
  * empty string means "the line says nothing", not "zero".
+ *
+ * Exported so the credit-note payload builder tests the SAME predicate rather
+ * than growing a second definition of "unpriced" (rule 22, one surface).
  */
-function isBlank(value: string | number | null | undefined): boolean {
+export function isBlank(value: string | number | null | undefined): boolean {
   return value === null || value === undefined || String(value).trim() === ''
 }
 
@@ -152,13 +155,21 @@ export function buildAutoSaveLinePayload(line: DocumentLine): LinePayload {
 }
 
 /**
+ * The fields {@link findBlankPriceLineIds} actually reads. Declared structurally
+ * so callers that hold a NARROWER line (the credit-note payload builder's
+ * `CreditNoteSourceLine`) can share the one predicate instead of growing a
+ * second definition of "unpriced" — gate r2 NEW-4. `DocumentLine` satisfies it.
+ */
+export type PricedLine = Pick<DocumentLine, 'id' | 'unit_price' | 'line_total' | 'price_entry_mode'>
+
+/**
  * Ids of lines that carry no unit price. A blank price is only ever produced by
  * the W2-6 EMPTY purchase default or by an operator clearing the cell
  * (`MoneyInput` emits '' on clear) — both must block the submit, on EVERY
  * document type. Sales documents used to 422 server-side for exactly this; the
  * client message is added, the refusal is kept.
  */
-export function findBlankPriceLineIds(lines: DocumentLine[]): string[] {
+export function findBlankPriceLineIds(lines: readonly PricedLine[]): string[] {
   return lines
     .filter((line) => {
       if (isBlank(line.unit_price)) return true
