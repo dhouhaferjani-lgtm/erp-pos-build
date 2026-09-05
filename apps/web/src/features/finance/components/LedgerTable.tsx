@@ -1,21 +1,35 @@
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../lib/utils'
+import { bccomp } from '../../../lib/decimal'
 import { textColors } from '../../../lib/designTokens'
 import { DataTable, type DataTableColumn } from '../../../components/molecules'
+import type { Company } from '../../../stores/companyStore'
+import { formatReportCurrency } from '../pages/reportPageUtils'
 import type { LedgerLine } from '../types'
 
 interface LedgerTableProps {
   lines: LedgerLine[]
   isLoading?: boolean
+  company: Company | null | undefined
 }
 
-function formatAmount(value: string): string {
-  if (value === '0.00' || value === '0') return ''
-  return `$${value}`
-}
-
-export function LedgerTable({ lines, isLoading = false }: LedgerTableProps) {
+export function LedgerTable({ lines, isLoading = false, company }: LedgerTableProps) {
   const { t } = useTranslation(['finance'])
+
+  /**
+   * Debit/credit cells are blanked when the amount is zero so a two-sided
+   * ledger reads as one number per row.
+   *
+   * The comparison MUST be decimal-numeric, not a string compare: the API
+   * emits scale-4 strings (`GeneralLedgerReportService.php` DECIMAL_SCALE = 4
+   * -> `"0.0000"`), so a `value === '0.00'` guard never matches the wire format
+   * and every zero cell would render `0,000 TND`. `bccomp` goes through big.js
+   * (`lib/decimal.ts`) - no float ever touches the money string (rule 19).
+   */
+  const formatAmount = (value: string): string => {
+    if (bccomp(value, '0') === 0) return ''
+    return formatReportCurrency(value, company)
+  }
 
   const columns: DataTableColumn<LedgerLine>[] = [
     {
@@ -65,7 +79,7 @@ export function LedgerTable({ lines, isLoading = false }: LedgerTableProps) {
       header: t('finance:ledger.columns.balance'),
       numeric: true,
       cellClassName: cn('whitespace-nowrap font-mono', textColors.primary),
-      render: (line) => `$${line.balance}`,
+      render: (line) => formatReportCurrency(line.balance, company),
     },
   ]
 

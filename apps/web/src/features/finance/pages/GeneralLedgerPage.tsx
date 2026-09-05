@@ -8,10 +8,12 @@ import { LedgerTable } from '../components/LedgerTable'
 import { QueryError } from '@/components/QueryError'
 import { Button } from '../../../components/atoms'
 import { ListPageLayout } from '../../../components/molecules'
+import { useCompany } from '../../../hooks/useCompany'
 import type { LedgerFilters as LedgerFiltersType } from '../types'
 
 export function GeneralLedgerPage() {
   const { t } = useTranslation(['finance'])
+  const { currentCompany } = useCompany()
   const [filters, setFilters] = useState<LedgerFiltersType>({})
   const { data: ledgerData, isLoading, error, refetch } = useLedger(filters)
   const { data: accounts } = useAccounts()
@@ -48,7 +50,11 @@ export function GeneralLedgerPage() {
         />
       }
     >
-      <LedgerTable lines={ledgerData?.lines ?? []} isLoading={isLoading} />
+      <LedgerTable
+        lines={ledgerData?.lines ?? []}
+        isLoading={isLoading}
+        company={currentCompany}
+      />
     </ListPageLayout>
   )
 }

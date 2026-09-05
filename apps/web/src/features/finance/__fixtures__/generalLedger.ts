@@ -21,9 +21,12 @@ export function makeLedgerLine(
     description: 'Cash sale',
     account_code: '1000',
     account_name: 'Cash',
-    debit: '1000.00',
-    credit: '0.00',
-    balance: '1000.00',
+    // Scale-4 strings: the wire format emitted by
+    // GeneralLedgerReportService.php (DECIMAL_SCALE = 4, CurrencyScale::bcformat($v, 4))
+    // and documented in LedgerData.php's example payload ("debit": "500.0000").
+    debit: '1000.0000',
+    credit: '0.0000',
+    balance: '1000.0000',
     source_type: 'invoice',
     source_id: '00000000-0000-4000-8000-00000000000f',
     ...overrides,
@@ -49,10 +52,10 @@ export function makeLedgerReport(
   const lines = overrides.lines ?? defaultLines
   return {
     lines,
-    opening_balance: '0.00',
-    closing_balance: '1000.00',
-    total_debits: '1000.00',
-    total_credits: '0.00',
+    opening_balance: '0.0000',
+    closing_balance: '1000.0000',
+    total_debits: '1000.0000',
+    total_credits: '0.0000',
     date_from: null,
     date_to: '2026-04-19',
     account_filter: null,
