@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
@@ -8,10 +8,28 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { fetchPriceList, createPriceList, updatePriceList } from './api'
+import { getErrorMessage, getFieldErrors } from '@/lib/api'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { Input } from '@/components/atoms/Input'
+import { Select } from '@/components/atoms/Select'
+import { Textarea } from '@/components/atoms/Textarea'
+import { Checkbox } from '@/components/atoms/Checkbox'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import { priceListsInvalidationPredicate } from './_invalidation'
 import type { PriceListFormData } from './types'
-import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
-import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+
+// Server validation errors we can attach to a matching form field. Every field
+// listed here MUST have an inline renderer below — a `setError` on a field the
+// form never displays is a silently dropped 422 (gate r1 F-6). Anything the
+// backend rejects that is NOT in this list is collected into
+// `unmappedServerErrors` and shown in the form-level alert instead.
+const PRICE_LIST_FIELDS: readonly (keyof PriceListFormData)[] = [
+  'code', 'name', 'description', 'currency', 'is_active', 'is_default', 'valid_from', 'valid_until',
+]
+
+function isPriceListField(field: string): field is keyof PriceListFormData {
+  return (PRICE_LIST_FIELDS as readonly string[]).includes(field)
+}
 
 export function PriceListForm() {
   const { t } = useTranslation(['common', 'pricing'])
@@ -22,10 +40,15 @@ export function PriceListForm() {
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
   const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
+  // Backend 422 messages for fields this form has no input for. Rendered in the
+  // form-level alert so no server message is silently dropped (gate r1 F-6).
+  const [unmappedServerErrors, setUnmappedServerErrors] = useState<string[]>([])
+
   const {
     register,
     handleSubmit,
     reset,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<PriceListFormData>({
     defaultValues: {
@@ -47,10 +70,12 @@ export function PriceListForm() {
     enabled: isEditing && !!tenantId && !!companyId,
   })
 
-  // Reset form when existing data is loaded
+  // Reset form when existing data is loaded.
+  // `fetchPriceList` resolves the PriceListDetail itself (apiGet already unwraps
+  // `response.data.data`) — reading `.data` off it left the edit form empty.
   useEffect(() => {
-    if (existingPriceList?.data) {
-      const data = existingPriceList.data
+    if (existingPriceList) {
+      const data = existingPriceList
       reset({
         code: data.code,
         name: data.name,
@@ -64,14 +89,36 @@ export function PriceListForm() {
     }
   }, [existingPriceList, reset])
 
+  // Map backend 422 validation errors onto the matching form fields so they
+  // surface inline instead of failing silently (DEV-QA-015). Messages for
+  // fields this form has no input for are NOT dropped — they go to the
+  // form-level alert (gate r1 F-6).
+  const applyServerErrors = (error: Error) => {
+    const fieldErrors = getFieldErrors(error)
+    if (!fieldErrors) {
+      setUnmappedServerErrors([])
+      return
+    }
+    const unmapped: string[] = []
+    for (const [field, message] of Object.entries(fieldErrors)) {
+      if (isPriceListField(field)) {
+        setError(field, { type: 'server', message })
+      } else {
+        unmapped.push(message)
+      }
+    }
+    setUnmappedServerErrors(unmapped)
+  }
+
   const createMutation = useMutation({
     mutationFn: createPriceList,
     onSuccess: async (response) => {
       await queryClient.invalidateQueries({
         predicate: priceListsInvalidationPredicate(tenantId, companyId),
       })
-      navigate(`/pricing/price-lists/${response.data.id}`)
+      navigate(`/pricing/price-lists/${response.id}`)
     },
+    onError: applyServerErrors,
   })
 
   const updateMutation = useMutation({
@@ -85,9 +132,11 @@ export function PriceListForm() {
       ])
       navigate(`/pricing/price-lists/${id}`)
     },
+    onError: applyServerErrors,
   })
 
   const onSubmit = (data: PriceListFormData) => {
+    setUnmappedServerErrors([])
     if (isEditing) {
       updateMutation.mutate(data)
     } else {
@@ -136,11 +185,11 @@ export function PriceListForm() {
             <label htmlFor="code" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
               {t('pricing:priceLists.fields.code', 'Code')} *
             </label>
-            <input
+            <Input
               type="text"
               id="code"
               {...register('code', { required: t('pricing:validation.codeRequired', 'Code is required') })}
-              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
+              error={Boolean(errors.code)}
               placeholder={t('pricing:priceLists.codePlaceholder')}
             />
             {errors.code && (
@@ -153,11 +202,11 @@ export function PriceListForm() {
             <label htmlFor="name" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
               {t('pricing:priceLists.fields.name', 'Name')} *
             </label>
-            <input
+            <Input
               type="text"
               id="name"
               {...register('name', { required: t('pricing:validation.nameRequired', 'Name is required') })}
-              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
+              error={Boolean(errors.name)}
               placeholder={t('pricing:priceLists.namePlaceholder')}
             />
             {errors.name && (
@@ -170,15 +219,18 @@ export function PriceListForm() {
             <label htmlFor="currency" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
               {t('pricing:priceLists.fields.currency', 'Currency')} *
             </label>
-            <select
+            <Select
               id="currency"
               {...register('currency', { required: true })}
-              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
+              error={Boolean(errors.currency)}
             >
               <option value="TND">{t('pricing:priceLists.currencies.TND')}</option>
               <option value="EUR">{t('pricing:priceLists.currencies.EUR')}</option>
               <option value="USD">{t('pricing:priceLists.currencies.USD')}</option>
-            </select>
+            </Select>
+            {errors.currency && (
+              <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.currency.message}</p>
+            )}
           </div>
 
           {/* Description */}
@@ -186,13 +238,16 @@ export function PriceListForm() {
             <label htmlFor="description" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
               {t('pricing:priceLists.fields.description', 'Description')}
             </label>
-            <textarea
+            <Textarea
               id="description"
               {...register('description')}
               rows={3}
-              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
+              error={Boolean(errors.description)}
               placeholder={t('pricing:priceLists.descriptionPlaceholder', 'Optional description for this price list')}
             />
+            {errors.description && (
+              <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.description.message}</p>
+            )}
           </div>
 
           {/* Valid From */}
@@ -200,12 +255,15 @@ export function PriceListForm() {
             <label htmlFor="valid_from" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
               {t('pricing:priceLists.fields.validFrom', 'Valid From')}
             </label>
-            <input
+            <Input
               type="date"
               id="valid_from"
               {...register('valid_from')}
-              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
+              error={Boolean(errors.valid_from)}
             />
+            {errors.valid_from && (
+              <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.valid_from.message}</p>
+            )}
           </div>
 
           {/* Valid Until */}
@@ -213,50 +271,69 @@ export function PriceListForm() {
             <label htmlFor="valid_until" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
               {t('pricing:priceLists.fields.validUntil', 'Valid Until')}
             </label>
-            <input
+            <Input
               type="date"
               id="valid_until"
-              {...register('valid_until')}
-              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
+              {...register('valid_until', {
+                validate: (value, formValues) =>
+                  !value ||
+                  !formValues.valid_from ||
+                  value > formValues.valid_from ||
+                  t(
+                    'pricing:validation.validUntilAfterValidFrom',
+                    'Valid Until must be after Valid From',
+                  ),
+              })}
+              error={Boolean(errors.valid_until)}
             />
+            {errors.valid_until && (
+              <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.valid_until.message}</p>
+            )}
           </div>
 
           {/* Toggles */}
           <div className="sm:col-span-2 flex flex-wrap gap-6">
             {/* Active */}
-            <label htmlFor="is_active" className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                id="is_active"
-                {...register('is_active')}
-                className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.variants.focusRingBlue500}`}
-              />
-              <span className={`text-sm ${colorTokens.text.secondary}`}>
-                {t('pricing:priceLists.fields.active', 'Active')}
-              </span>
-            </label>
+            <div>
+              <label htmlFor="is_active" className="flex items-center gap-2 cursor-pointer">
+                <Checkbox id="is_active" {...register('is_active')} />
+                <span className={`text-sm ${colorTokens.text.secondary}`}>
+                  {t('pricing:priceLists.fields.active', 'Active')}
+                </span>
+              </label>
+              {errors.is_active && (
+                <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.is_active.message}</p>
+              )}
+            </div>
 
             {/* Default */}
-            <label htmlFor="is_default" className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                id="is_default"
-                {...register('is_default')}
-                className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.variants.focusRingBlue500}`}
-              />
-              <span className={`text-sm ${colorTokens.text.secondary}`}>
-                {t('pricing:priceLists.fields.default', 'Default')}
-              </span>
-            </label>
+            <div>
+              <label htmlFor="is_default" className="flex items-center gap-2 cursor-pointer">
+                <Checkbox id="is_default" {...register('is_default')} />
+                <span className={`text-sm ${colorTokens.text.secondary}`}>
+                  {t('pricing:priceLists.fields.default', 'Default')}
+                </span>
+              </label>
+              {errors.is_default && (
+                <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.is_default.message}</p>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Error message */}
+        {/* Error message. Field-level 422s render inline above; anything the
+            backend rejected that this form has no input for lands here, so no
+            server message is silently dropped (gate r1 F-6). */}
         {mutation.error && (
           <div className={`rounded-lg ${colorTokens.intent.danger.bgSubtle} p-3 text-sm ${colorTokens.intent.danger.textStrong}`}>
-            {mutation.error instanceof Error
-              ? mutation.error.message
-              : t('common:status.error')}
+            <p>{getErrorMessage(mutation.error)}</p>
+            {unmappedServerErrors.length > 0 && (
+              <ul className="mt-2 list-disc ps-5">
+                {unmappedServerErrors.map((message) => (
+                  <li key={message}>{message}</li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
 

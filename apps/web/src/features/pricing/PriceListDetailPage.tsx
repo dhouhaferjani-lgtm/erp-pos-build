@@ -62,7 +62,9 @@ export function PriceListDetailPage() {
     },
   })
 
-  const priceList = data?.data
+  // `fetchPriceList` resolves the PriceListDetail itself — apiGet already
+  // unwraps `response.data.data` (gate r1 F-3).
+  const priceList = data
 
   const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return '-'

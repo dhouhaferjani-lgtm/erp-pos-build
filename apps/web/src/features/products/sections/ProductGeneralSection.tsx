@@ -110,11 +110,16 @@ export function ProductGeneralSection({ adapter }: ProductGeneralSectionProps) {
         />
       </FormField>
 
-      <FormField label={t('inventory:products.unitOfMeasure')} htmlFor="unit_id">
+      <FormField
+        label={t('inventory:products.unitOfMeasure')}
+        htmlFor="unit_id"
+        error={errors.unit_id?.message}
+      >
         <UnitDropdown
           id="unit_id"
           value={watch('unit_id') ?? undefined}
           onChange={(unitId) => { setValue('unit_id', unitId || null) }}
+          error={Boolean(errors.unit_id)}
         />
       </FormField>
 

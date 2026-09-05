@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { AxiosError, type AxiosResponse } from 'axios'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
@@ -14,16 +15,22 @@ const mockApiPatch = vi.hoisted(() => vi.fn())
 const mockApiGetUnwrapped = vi.hoisted(() => vi.fn())
 const mockGetCountries = vi.hoisted(() => vi.fn())
 
-vi.mock('../../lib/api', () => ({
-  api: {
-    get: mockApiGet,
-  },
-  apiPost: mockApiPost,
-  apiPatch: mockApiPatch,
-  apiGet: mockApiGetUnwrapped,
-  getErrorMessage: (error: unknown): string => (error instanceof Error ? error.message : 'Unexpected error'),
-  isApiError: () => false,
-}))
+// `getFieldErrors` is the REAL shared export (gate r1 F-5 consolidated the two
+// private copies into `lib/api`), so the 422 mapping test below exercises the
+// shipped helper rather than a stub.
+vi.mock('../../lib/api', async () => {
+  const actual = await vi.importActual<typeof import('../../lib/api')>('../../lib/api')
+  return {
+    api: {
+      get: mockApiGet,
+    },
+    apiPost: mockApiPost,
+    apiPatch: mockApiPatch,
+    apiGet: mockApiGetUnwrapped,
+    getErrorMessage: (error: unknown): string => (error instanceof Error ? error.message : 'Unexpected error'),
+    getFieldErrors: actual.getFieldErrors,
+  }
+})
 
 vi.mock('../settings/api/country', () => ({
   getCountries: mockGetCountries,
@@ -682,5 +689,33 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
         bank_accounts: [expect.objectContaining({ rib: '123' })],
       }))
     })
+  })
+
+  it('maps a backend 422 onto the matching field through the shared getFieldErrors helper', async () => {
+    // Gate r1 F-5 — one surface per concept: PartnerForm no longer carries its
+    // own copy of the extractor, so this asserts the shared `lib/api` export
+    // still surfaces the server message inline at this call site.
+    const error = new AxiosError('Request failed with status code 422', 'ERR_BAD_REQUEST')
+    error.response = {
+      status: 422,
+      statusText: 'Unprocessable Content',
+      headers: {},
+      config: {} as AxiosResponse['config'],
+      data: {
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'The name has already been taken.',
+          errors: { name: ['The name has already been taken.'] },
+        },
+      },
+    }
+    mockApiPost.mockRejectedValue(error)
+    renderPartnerForm(['/purchases/suppliers/new'], '/purchases/suppliers/new')
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Duplicate Supplier' } })
+    fireEvent.change(screen.getByLabelText(/^Nature/), { target: { value: 'business' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+
+    expect(await screen.findByText('The name has already been taken.')).toBeInTheDocument()
   })
 })

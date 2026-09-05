@@ -38,6 +38,13 @@ export interface ApiError {
     code: string
     message: string
     details?: Record<string, unknown>
+    /**
+     * Field-level validation messages on a 422. Laravel's `ValidationException`
+     * is rendered into this envelope by `apps/api/bootstrap/app.php` as
+     * `{ error: { code: 'VALIDATION_ERROR', message, errors: { field: [msg] } } }`.
+     * Read it through `getFieldErrors()` rather than by hand.
+     */
+    errors?: Record<string, string[]>
   }
   meta: {
     timestamp: string
@@ -95,6 +102,32 @@ export function getErrorMessage(error: unknown): string {
     return error.message
   }
   return 'An unexpected error occurred'
+}
+
+/**
+ * Extract field-level validation errors from a 422 API error response.
+ *
+ * The backend renders `ValidationException` as the typed envelope
+ * (`bootstrap/app.php`): `{ error: { code: 'VALIDATION_ERROR', errors: { field: ["msg"] } } }`.
+ * Returns a `field -> first message` map, or `null` when the error is not a
+ * field-level 422. Use this in form `onError` handlers to surface backend
+ * validation messages inline (react-hook-form `setError`) instead of silently
+ * dropping them.
+ */
+export function getFieldErrors(error: unknown): Record<string, string> | null {
+  if (!isApiError(error)) return null
+  const data: unknown = error.response?.data
+  const envelope = isRecord(data) ? data['error'] : null
+  const errorsBag = isRecord(envelope) ? envelope['errors'] : null
+  if (!isRecord(errorsBag)) return null
+
+  const result: Record<string, string> = {}
+  for (const [field, messages] of Object.entries(errorsBag)) {
+    if (Array.isArray(messages) && messages.length > 0 && typeof messages[0] === 'string') {
+      result[field] = messages[0]
+    }
+  }
+  return Object.keys(result).length > 0 ? result : null
 }
 
 /**

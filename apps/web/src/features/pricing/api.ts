@@ -1,22 +1,38 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from '../../lib/api'
 import type {
   PriceList,
+  PriceListDetail,
   PriceListFormData,
   PriceListItemFormData,
   AssignPartnerFormData,
-  PriceListsResponse,
-  PriceListResponse,
   PriceListItem,
 } from './types'
 
 /**
- * Fetch all price lists
+ * Fetch a page of price lists.
+ *
+ * `PricingController::index()` returns Laravel's RAW paginator
+ * (`{ data: [...], current_page, total, ... }`; PricingController.php:68), and
+ * `apiGet` already unwraps `response.data.data` (src/lib/api.ts:407-410,
+ * docs/conventions/01) — so this resolves the PAGE ARRAY, not a
+ * `{ data, meta }` wrapper. Typing it as a wrapper (the pre-fix shape) made
+ * `PriceListListPage`'s `data?.data` permanently `undefined`.
+ *
+ * KNOWN LIMIT (residual, gate r2): the paginator's meta is structurally
+ * unreachable through `apiGet` — it sits on the paginator's TOP level, which the
+ * unwrap discards. `PricingController::index()` paginates at 20, so past 20
+ * price lists this page silently TRUNCATES to the first 20 and the header count
+ * at `PriceListListPage.tsx:73` (and the filter-tab counts at :42) report 20 as
+ * the total. Strictly better than the always-empty page this replaced, so it does
+ * not hold the merge; restoring meta needs `api.get` + `response.data` (the
+ * standing double-unwrap pitfall) plus a real pagination control, which is a
+ * separate change. Filed in the fix-round handback.
  */
 export async function fetchPriceLists(params?: {
   is_active?: boolean
   currency?: string
   search?: string
-}): Promise<PriceListsResponse> {
+}): Promise<PriceList[]> {
   const searchParams = new URLSearchParams()
   if (params?.is_active !== undefined) {
     searchParams.append('is_active', String(params.is_active))
@@ -28,21 +44,31 @@ export async function fetchPriceLists(params?: {
     searchParams.append('search', params.search)
   }
   const queryString = searchParams.toString()
-  return apiGet<PriceListsResponse>(`/price-lists${queryString ? `?${queryString}` : ''}`)
+  return apiGet<PriceList[]>(`/price-lists${queryString ? `?${queryString}` : ''}`)
 }
 
 /**
- * Fetch a single price list with items and partners
+ * Fetch a single price list with items and partners.
+ *
+ * `PricingController::show()` emits `{ data: $priceList }`
+ * (PricingController.php:88) and `apiGet` unwraps `response.data.data`, so this
+ * resolves the `PriceListDetail` ITSELF — not a `{ data: PriceListDetail }`
+ * wrapper. This is the read-path twin of the DEV-QA-047 write-path bug: while
+ * it was typed as a wrapper, `PriceListForm`'s `existingPriceList?.data` and
+ * `PriceListDetailPage`'s `data?.data` were always `undefined`, so the edit form
+ * rendered empty and the detail page had no data (gate r1 F-3).
  */
-export async function fetchPriceList(id: string): Promise<PriceListResponse> {
-  return apiGet<PriceListResponse>(`/price-lists/${id}`)
+export async function fetchPriceList(id: string): Promise<PriceListDetail> {
+  return apiGet<PriceListDetail>(`/price-lists/${id}`)
 }
 
 /**
  * Create a new price list
  */
-export async function createPriceList(data: PriceListFormData): Promise<{ data: PriceList }> {
-  return apiPost<{ data: PriceList }>('/price-lists', {
+export async function createPriceList(data: PriceListFormData): Promise<PriceList> {
+  // apiPost already unwraps the `{ data: ... }` envelope, so this resolves the
+  // PriceList directly (id at the top level) — NOT a `{ data: PriceList }` wrapper.
+  return apiPost<PriceList>('/price-lists', {
     code: data.code,
     name: data.name,
     description: data.description ?? null,
@@ -60,7 +86,7 @@ export async function createPriceList(data: PriceListFormData): Promise<{ data: 
 export async function updatePriceList(
   id: string,
   data: Partial<PriceListFormData>
-): Promise<{ data: PriceList }> {
+): Promise<PriceList> {
   const payload: Partial<{
     code: string
     name: string
@@ -81,7 +107,7 @@ export async function updatePriceList(
   if (data.valid_from !== undefined) payload.valid_from = data.valid_from ?? null
   if (data.valid_until !== undefined) payload.valid_until = data.valid_until ?? null
 
-  return apiPatch<{ data: PriceList }>(`/price-lists/${id}`, payload)
+  return apiPatch<PriceList>(`/price-lists/${id}`, payload)
 }
 
 /**
