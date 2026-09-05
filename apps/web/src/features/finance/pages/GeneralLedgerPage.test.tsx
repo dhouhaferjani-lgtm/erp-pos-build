@@ -1,10 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { formatCurrency } from '../../../lib/format'
 import type { LedgerLine } from '../types'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (k: string, s?: unknown) => (typeof s === 'string' ? s : k),
+  }),
+}))
+
+// A TND tenant: the GL must format amounts with the tenant currency/locale,
+// exactly like the sibling financial reports (TrialBalance/BalanceSheet/…).
+vi.mock('../../../hooks/useCompany', () => ({
+  useCompany: () => ({
+    currentCompany: { currency: 'TND', locale: 'fr_TN' },
   }),
 }))
 
@@ -71,9 +80,17 @@ describe('GeneralLedgerPage', () => {
 
     const { container } = render(<GeneralLedgerPage />)
 
-    const moneyCell = screen.getByText('$100.00').closest('td')
+    // The debit (100.00) renders through the shared tenant-currency formatter,
+    // NOT a hardcoded "$". For a TND/fr_TN tenant that is e.g. "100,000 TND".
+    const expectedDebit = formatCurrency('100.00', {
+      currency: 'TND',
+      locale: 'fr-TN',
+    })
+    const moneyCell = screen.getByText(expectedDebit).closest('td')
     expect(moneyCell).not.toBeNull()
     expect(moneyCell?.className).toContain('tabular-nums')
+    // no dollar sign anywhere in the rendered ledger
+    expect(container.textContent).not.toContain('$')
     // sanity: the table itself rendered
     expect(container.querySelector('table')).not.toBeNull()
   })

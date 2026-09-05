@@ -2,20 +2,23 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '../../../lib/utils'
 import { textColors } from '../../../lib/designTokens'
 import { DataTable, type DataTableColumn } from '../../../components/molecules'
+import type { Company } from '../../../stores/companyStore'
+import { formatReportCurrency } from '../pages/reportPageUtils'
 import type { LedgerLine } from '../types'
 
 interface LedgerTableProps {
   lines: LedgerLine[]
   isLoading?: boolean
+  company: Company | null | undefined
 }
 
-function formatAmount(value: string): string {
-  if (value === '0.00' || value === '0') return ''
-  return `$${value}`
-}
-
-export function LedgerTable({ lines, isLoading = false }: LedgerTableProps) {
+export function LedgerTable({ lines, isLoading = false, company }: LedgerTableProps) {
   const { t } = useTranslation(['finance'])
+
+  const formatAmount = (value: string): string => {
+    if (value === '0.00' || value === '0') return ''
+    return formatReportCurrency(value, company)
+  }
 
   const columns: DataTableColumn<LedgerLine>[] = [
     {
@@ -65,7 +68,7 @@ export function LedgerTable({ lines, isLoading = false }: LedgerTableProps) {
       header: t('finance:ledger.columns.balance'),
       numeric: true,
       cellClassName: cn('whitespace-nowrap font-mono', textColors.primary),
-      render: (line) => `$${line.balance}`,
+      render: (line) => formatReportCurrency(line.balance, company),
     },
   ]
 
