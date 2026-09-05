@@ -182,6 +182,26 @@ describe('InvoiceSearchSelect', () => {
     expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining('has_balance'))
   })
 
+  it('empty state does not say "no posted invoices" in creditable mode (gate r2 NEW-6)', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: { data: [] } })
+
+    const { unmount } = renderComponent({ sourceFilter: 'creditable' })
+    await user.click(screen.getByRole('button'))
+
+    await waitFor(() => {
+      expect(screen.getByText('No invoices available to credit')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('No posted invoices available')).not.toBeInTheDocument()
+    unmount()
+
+    // The default mode keeps the original copy.
+    renderComponent()
+    await user.click(screen.getAllByRole('button')[0]!)
+    await waitFor(() => {
+      expect(screen.getByText('No posted invoices available')).toBeInTheDocument()
+    })
+  })
+
   it('surfaces a fully PAID invoice in creditable mode (F-STG-4)', async () => {
     const paid = makeInvoice({
       id: '3',

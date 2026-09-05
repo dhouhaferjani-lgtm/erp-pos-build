@@ -478,6 +478,7 @@
     "searchInvoicePlaceholder": "Search by invoice number or partner…",
     "noInvoicesFound": "No invoices found",
     "noPostedInvoices": "No posted invoices available",
+    "noCreditableInvoices": "No invoices available to credit",
     "invoice": "Invoice",
     "balance": "Balance",
     "total": "Total",

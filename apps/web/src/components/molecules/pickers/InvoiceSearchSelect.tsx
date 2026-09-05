@@ -80,18 +80,35 @@ function formatInvoiceCurrency(amount: number | string | undefined, currency: st
  * (`payable`) is provably byte-identical to the pre-F-STG-4 behaviour.
  */
 const sourceFilterConfig = {
-  payable: { statusFilter: 'posted', additionalFilters: { has_balance: 'true' } },
+  payable: {
+    statusFilter: 'posted',
+    additionalFilters: { has_balance: 'true' },
+    emptyKey: 'sales:invoices.noPostedInvoices',
+    emptyFallback: 'No posted invoices available',
+  },
   // `creditable=1` returns Posted AND Paid invoices — see
   // `InvoiceController::index()`, which validates the flag as a boolean.
-  creditable: { statusFilter: undefined, additionalFilters: { creditable: '1' } },
+  // Its empty state must NOT say "no posted invoices": the list deliberately
+  // carries settled (Paid) invoices too (gate r2 NEW-6).
+  creditable: {
+    statusFilter: undefined,
+    additionalFilters: { creditable: '1' },
+    emptyKey: 'sales:invoices.noCreditableInvoices',
+    emptyFallback: 'No invoices available to credit',
+  },
 } as const satisfies Record<
   'payable' | 'creditable',
-  { statusFilter: string | undefined; additionalFilters: Record<string, string> }
+  {
+    statusFilter: string | undefined
+    additionalFilters: Record<string, string>
+    emptyKey: string
+    emptyFallback: string
+  }
 >
 
 export function InvoiceSearchSelect({ sourceFilter = 'payable', ...props }: InvoiceSearchSelectProps) {
   const { t } = useTranslation()
-  const { statusFilter, additionalFilters } = sourceFilterConfig[sourceFilter]
+  const { statusFilter, additionalFilters, emptyKey, emptyFallback } = sourceFilterConfig[sourceFilter]
 
   return (
     <DocumentSearchSelect<Invoice>
@@ -104,7 +121,7 @@ export function InvoiceSearchSelect({ sourceFilter = 'payable', ...props }: Invo
         icon: Receipt,
         searchPlaceholder: t('sales:invoices.searchPlaceholder', 'Search by invoice number or partner...'),
         noResultsMessage: t('sales:invoices.noInvoicesFound', 'No invoices found'),
-        noDataMessage: t('sales:invoices.noPostedInvoices', 'No posted invoices available'),
+        noDataMessage: t(emptyKey, emptyFallback),
         getDisplayText: (invoice) => {
           const partner = invoice.partner?.name || t('common:unknown')
           const total = formatInvoiceCurrency(invoice.total, invoice.currency)
