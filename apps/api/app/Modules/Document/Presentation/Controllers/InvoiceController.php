@@ -189,11 +189,25 @@ class InvoiceController extends Controller
      * - date_from: Filter documents from this date (inclusive)
      * - date_to: Filter documents up to this date (inclusive)
      * - product_id: Filter documents containing a specific product
+     * - creditable: Boolean. When true, restrict to invoices a credit note can
+     *   be raised against (Posted or Paid). Validated as a boolean — an
+     *   unparseable value is a 422, never a silent unfiltered list.
      *
      * GET /api/v1/invoices
      */
     public function index(Request $request): JsonResponse
     {
+        // F-STG-4 / gate r1 IMPORTANT-1: `creditable` is a BOOLEAN flag, and it
+        // is VALIDATED. The first cut compared the raw query string to the magic
+        // literal 'true', so `creditable=1`, `creditable=TRUE` and a bare
+        // `?creditable` all fell through to the UNFILTERED list — which includes
+        // drafts. A filter that hides drafts must fail CLOSED: anything that is
+        // not a boolean is now a 422, and the flag itself is read through
+        // `Request::boolean()` rather than a string comparison.
+        $request->validate([
+            'creditable' => ['sometimes', 'boolean'],
+        ]);
+
         $params = $this->getPaginationParams($request);
 
         $query = $this->baseQuery()->ofType(DocumentType::Invoice);
@@ -201,11 +215,11 @@ class InvoiceController extends Controller
         // Apply common filters from the trait
         $query = $this->applyFilters($query, $request);
 
-        // F-STG-4: the credit-note source picker requests `creditable=true` to
-        // surface every invoice a credit note can be raised against — Posted
-        // (still owing) AND Paid (settled → the credit becomes a customer
-        // refund). Draft/Confirmed/Cancelled invoices are excluded.
-        if ($request->query('creditable') === 'true') {
+        // The credit-note source picker asks for this to surface every invoice a
+        // credit note can be raised against — Posted (still owing) AND Paid
+        // (settled → the credit becomes a customer credit).
+        // Draft/Confirmed/Cancelled invoices are excluded.
+        if ($request->boolean('creditable')) {
             $query->whereIn('status', [DocumentStatus::Posted->value, DocumentStatus::Paid->value]);
         }
 
