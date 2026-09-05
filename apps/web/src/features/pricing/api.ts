@@ -1,22 +1,33 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from '../../lib/api'
 import type {
   PriceList,
+  PriceListDetail,
   PriceListFormData,
   PriceListItemFormData,
   AssignPartnerFormData,
-  PriceListsResponse,
-  PriceListResponse,
   PriceListItem,
 } from './types'
 
 /**
- * Fetch all price lists
+ * Fetch a page of price lists.
+ *
+ * `PricingController::index()` returns Laravel's RAW paginator
+ * (`{ data: [...], current_page, total, ... }`; PricingController.php:68), and
+ * `apiGet` already unwraps `response.data.data` (src/lib/api.ts:407-410,
+ * docs/conventions/01) — so this resolves the PAGE ARRAY, not a
+ * `{ data, meta }` wrapper. Typing it as a wrapper (the pre-fix shape) made
+ * `PriceListListPage`'s `data?.data` permanently `undefined`.
+ *
+ * The paginator's own meta is dropped by that unwrap; the list page renders a
+ * single page today and does not read it. Restoring meta needs `api.get` +
+ * `response.data` (the standing double-unwrap pitfall) — filed as a residual in
+ * the fix-round-1 handback, not done here.
  */
 export async function fetchPriceLists(params?: {
   is_active?: boolean
   currency?: string
   search?: string
-}): Promise<PriceListsResponse> {
+}): Promise<PriceList[]> {
   const searchParams = new URLSearchParams()
   if (params?.is_active !== undefined) {
     searchParams.append('is_active', String(params.is_active))
@@ -28,14 +39,22 @@ export async function fetchPriceLists(params?: {
     searchParams.append('search', params.search)
   }
   const queryString = searchParams.toString()
-  return apiGet<PriceListsResponse>(`/price-lists${queryString ? `?${queryString}` : ''}`)
+  return apiGet<PriceList[]>(`/price-lists${queryString ? `?${queryString}` : ''}`)
 }
 
 /**
- * Fetch a single price list with items and partners
+ * Fetch a single price list with items and partners.
+ *
+ * `PricingController::show()` emits `{ data: $priceList }`
+ * (PricingController.php:88) and `apiGet` unwraps `response.data.data`, so this
+ * resolves the `PriceListDetail` ITSELF — not a `{ data: PriceListDetail }`
+ * wrapper. This is the read-path twin of the DEV-QA-047 write-path bug: while
+ * it was typed as a wrapper, `PriceListForm`'s `existingPriceList?.data` and
+ * `PriceListDetailPage`'s `data?.data` were always `undefined`, so the edit form
+ * rendered empty and the detail page had no data (gate r1 F-3).
  */
-export async function fetchPriceList(id: string): Promise<PriceListResponse> {
-  return apiGet<PriceListResponse>(`/price-lists/${id}`)
+export async function fetchPriceList(id: string): Promise<PriceListDetail> {
+  return apiGet<PriceListDetail>(`/price-lists/${id}`)
 }
 
 /**

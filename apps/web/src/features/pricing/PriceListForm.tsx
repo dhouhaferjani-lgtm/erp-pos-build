@@ -58,10 +58,12 @@ export function PriceListForm() {
     enabled: isEditing && !!tenantId && !!companyId,
   })
 
-  // Reset form when existing data is loaded
+  // Reset form when existing data is loaded.
+  // `fetchPriceList` resolves the PriceListDetail itself (apiGet already unwraps
+  // `response.data.data`) — reading `.data` off it left the edit form empty.
   useEffect(() => {
-    if (existingPriceList?.data) {
-      const data = existingPriceList.data
+    if (existingPriceList) {
+      const data = existingPriceList
       reset({
         code: data.code,
         name: data.name,

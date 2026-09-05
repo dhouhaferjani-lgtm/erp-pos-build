@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { useAuthStore } from '@/stores/authStore'
@@ -77,24 +77,25 @@ function pricingKeysFromCache(client: ReturnType<typeof createTestQueryClient>):
 }
 
 beforeEach(() => {
+  // Fixtures are the REAL resolved shapes: apiGet unwraps `response.data.data`,
+  // so `fetchPriceLists` resolves the page ARRAY and `fetchPriceList` resolves
+  // the PriceListDetail itself — no `{ data: ... }` wrapper (gate r1 F-3).
   mockFetchPriceLists.mockReset()
-  mockFetchPriceLists.mockResolvedValue({ data: [] })
+  mockFetchPriceLists.mockResolvedValue([])
   mockFetchPriceList.mockReset()
   mockFetchPriceList.mockResolvedValue({
-    data: {
-      id: 'pl-123',
-      code: 'X',
-      name: 'X',
-      description: null,
-      currency: 'TND',
-      is_active: true,
-      is_default: false,
-      valid_from: null,
-      valid_until: null,
-      created_at: null,
-      items: [],
-      partners: [],
-    },
+    id: 'pl-123',
+    code: 'PL-EDIT',
+    name: 'Retail edit',
+    description: 'Seeded description',
+    currency: 'EUR',
+    is_active: true,
+    is_default: false,
+    valid_from: '2026-01-01',
+    valid_until: '2026-12-31',
+    created_at: null,
+    items: [],
+    partners: [],
   })
   mockCreatePriceList.mockReset()
   // createPriceList/updatePriceList resolve the unwrapped PriceList (id at top level).
@@ -183,6 +184,26 @@ describe('pricing page queryKey shapes', () => {
     expect(list).toEqual(['price-lists', 'all', '', 'tenant-A', 'company-1'])
   })
 
+  it('PriceListForm (edit mode) POPULATES from the real unwrapped fetch shape (F-3)', async () => {
+    // Falsifying guard for gate r1 F-3: `fetchPriceList` resolves the
+    // PriceListDetail itself (apiGet unwraps `response.data.data`;
+    // PricingController::show():88 emits a single `{ data: ... }`). While the
+    // fetcher was typed `{ data: PriceListDetail }`, `existingPriceList?.data`
+    // was always undefined, `reset()` never ran and the edit form rendered
+    // EMPTY — a save would then blank currency/valid_from/valid_until.
+    setTenant('tenant-A', 'company-1')
+    renderWithProviders(<PriceListForm />, { queryClient: createTestQueryClient() })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Code/)).toHaveValue('PL-EDIT')
+    })
+    expect(screen.getByLabelText(/Name/)).toHaveValue('Retail edit')
+    expect(screen.getByLabelText(/Description/)).toHaveValue('Seeded description')
+    expect(screen.getByLabelText(/Currency/)).toHaveValue('EUR')
+    expect(screen.getByLabelText(/Valid From/)).toHaveValue('2026-01-01')
+    expect(screen.getByLabelText(/Valid Until/)).toHaveValue('2026-12-31')
+  })
+
   it('queryKeys differ across tenants', async () => {
     setTenant('tenant-A', 'company-1')
     const cA = createTestQueryClient()
@@ -216,13 +237,13 @@ describe('cross-tenant isolation (predicate-based plural cascade)', () => {
     const queryClient = createTestQueryClient()
 
     const tenantBKey = ['price-lists', 'all', 'tenant-B', 'company-1']
-    queryClient.setQueryData(tenantBKey, { data: [{ id: 'pl-tenant-b' }] })
+    queryClient.setQueryData(tenantBKey, [{ id: 'pl-tenant-b' }])
 
     const pred = priceListsInvalidationPredicate('tenant-A', 'company-1')
     await queryClient.invalidateQueries({ predicate: pred })
 
     const tBQuery = queryClient.getQueryCache().find({ queryKey: tenantBKey, exact: true })
-    expect(tBQuery?.state.data).toEqual({ data: [{ id: 'pl-tenant-b' }] })
+    expect(tBQuery?.state.data).toEqual([{ id: 'pl-tenant-b' }])
     expect(tBQuery?.state.isInvalidated).toBe(false)
   })
 })

@@ -8,7 +8,15 @@ import { PriceListListPage } from './PriceListListPage'
 import { PriceListForm } from './PriceListForm'
 import { PriceListDetailPage } from './PriceListDetailPage'
 
-// Mock the API
+// Mock the API.
+//
+// IMPORTANT (gate r1 F-3): the mock replaces `apiGet` ITSELF, and the real
+// `apiGet` already unwraps `response.data.data` (src/lib/api.ts:407-410,
+// docs/conventions/01). So every fixture here must be the UNWRAPPED payload —
+// the page array for the index, the PriceListDetail for the show endpoint —
+// never a `{ data: ... }` / `{ data, meta }` envelope. The pre-fix fixtures
+// returned the envelope, which is what green-lit the read-path double-unwrap
+// (empty list page, empty edit form, empty detail page) for as long as it lived.
 const { mockApiGet, mockApiPost, mockApiPatch, mockApiDelete } = vi.hoisted(() => ({
   mockApiGet: vi.fn(),
   mockApiPost: vi.fn(),
@@ -155,7 +163,7 @@ describe('Pricing Module', () => {
 
   describe('PriceListListPage', () => {
     it('renders the price list page with title', () => {
-      mockApiGet.mockResolvedValue({ data: [], meta: { total: 0 } })
+      mockApiGet.mockResolvedValue([])
 
       render(<PriceListListPage />, { wrapper: TestWrapper })
 
@@ -173,7 +181,7 @@ describe('Pricing Module', () => {
     })
 
     it('displays list of price lists', async () => {
-      mockApiGet.mockResolvedValue({ data: mockPriceLists, meta: { total: 3 } })
+      mockApiGet.mockResolvedValue(mockPriceLists)
 
       render(<PriceListListPage />, { wrapper: TestWrapper })
 
@@ -185,7 +193,7 @@ describe('Pricing Module', () => {
     })
 
     it('displays empty state when no price lists', async () => {
-      mockApiGet.mockResolvedValue({ data: [], meta: { total: 0 } })
+      mockApiGet.mockResolvedValue([])
 
       render(<PriceListListPage />, { wrapper: TestWrapper })
 
@@ -195,7 +203,7 @@ describe('Pricing Module', () => {
     })
 
     it('has a button to create new price list', () => {
-      mockApiGet.mockResolvedValue({ data: [], meta: { total: 0 } })
+      mockApiGet.mockResolvedValue([])
 
       render(<PriceListListPage />, { wrapper: TestWrapper })
 
@@ -203,7 +211,7 @@ describe('Pricing Module', () => {
     })
 
     it('displays price list status badges', async () => {
-      mockApiGet.mockResolvedValue({ data: mockPriceLists, meta: { total: 3 } })
+      mockApiGet.mockResolvedValue(mockPriceLists)
 
       render(<PriceListListPage />, { wrapper: TestWrapper })
 
@@ -215,7 +223,7 @@ describe('Pricing Module', () => {
     })
 
     it('displays items count for each price list', async () => {
-      mockApiGet.mockResolvedValue({ data: mockPriceLists, meta: { total: 3 } })
+      mockApiGet.mockResolvedValue(mockPriceLists)
 
       render(<PriceListListPage />, { wrapper: TestWrapper })
 
@@ -226,7 +234,7 @@ describe('Pricing Module', () => {
     })
 
     it('shows default badge for default price list', async () => {
-      mockApiGet.mockResolvedValue({ data: mockPriceLists, meta: { total: 3 } })
+      mockApiGet.mockResolvedValue(mockPriceLists)
 
       render(<PriceListListPage />, { wrapper: TestWrapper })
 
@@ -256,7 +264,7 @@ describe('Pricing Module', () => {
     }
 
     it('renders price list form with required fields', async () => {
-      mockApiGet.mockResolvedValue({ data: mockExistingPriceList })
+      mockApiGet.mockResolvedValue(mockExistingPriceList)
 
       render(<PriceListForm />, { wrapper: TestWrapper })
 
@@ -269,7 +277,7 @@ describe('Pricing Module', () => {
     })
 
     it('shows validation errors for required fields', async () => {
-      mockApiGet.mockResolvedValue({ data: mockExistingPriceList })
+      mockApiGet.mockResolvedValue(mockExistingPriceList)
       const user = userEvent.setup()
 
       render(<PriceListForm />, { wrapper: TestWrapper })
@@ -295,7 +303,7 @@ describe('Pricing Module', () => {
     })
 
     it('has cancel button that navigates back', async () => {
-      mockApiGet.mockResolvedValue({ data: mockExistingPriceList })
+      mockApiGet.mockResolvedValue(mockExistingPriceList)
 
       render(<PriceListForm />, { wrapper: TestWrapper })
 
@@ -305,7 +313,7 @@ describe('Pricing Module', () => {
     })
 
     it('allows entering description', async () => {
-      mockApiGet.mockResolvedValue({ data: mockExistingPriceList })
+      mockApiGet.mockResolvedValue(mockExistingPriceList)
       const user = userEvent.setup()
 
       render(<PriceListForm />, { wrapper: TestWrapper })
@@ -322,7 +330,7 @@ describe('Pricing Module', () => {
     })
 
     it('has validity date fields', async () => {
-      mockApiGet.mockResolvedValue({ data: mockExistingPriceList })
+      mockApiGet.mockResolvedValue(mockExistingPriceList)
 
       render(<PriceListForm />, { wrapper: TestWrapper })
 
@@ -333,7 +341,7 @@ describe('Pricing Module', () => {
     })
 
     it('has active and default toggles', async () => {
-      mockApiGet.mockResolvedValue({ data: mockExistingPriceList })
+      mockApiGet.mockResolvedValue(mockExistingPriceList)
 
       render(<PriceListForm />, { wrapper: TestWrapper })
 
@@ -346,7 +354,7 @@ describe('Pricing Module', () => {
 
   describe('PriceListDetailPage', () => {
     it('renders the price list detail page', async () => {
-      mockApiGet.mockResolvedValue({ data: mockPriceListDetail })
+      mockApiGet.mockResolvedValue(mockPriceListDetail)
 
       render(<PriceListDetailPage />, { wrapper: TestWrapper })
 
@@ -366,7 +374,7 @@ describe('Pricing Module', () => {
     })
 
     it('displays price list items table', async () => {
-      mockApiGet.mockResolvedValue({ data: mockPriceListDetail })
+      mockApiGet.mockResolvedValue(mockPriceListDetail)
 
       render(<PriceListDetailPage />, { wrapper: TestWrapper })
 
@@ -377,7 +385,7 @@ describe('Pricing Module', () => {
     })
 
     it('shows quantity breaks for products', async () => {
-      mockApiGet.mockResolvedValue({ data: mockPriceListDetail })
+      mockApiGet.mockResolvedValue(mockPriceListDetail)
 
       render(<PriceListDetailPage />, { wrapper: TestWrapper })
 
@@ -389,7 +397,7 @@ describe('Pricing Module', () => {
     })
 
     it('has button to add item', async () => {
-      mockApiGet.mockResolvedValue({ data: mockPriceListDetail })
+      mockApiGet.mockResolvedValue(mockPriceListDetail)
 
       render(<PriceListDetailPage />, { wrapper: TestWrapper })
 
@@ -399,7 +407,7 @@ describe('Pricing Module', () => {
     })
 
     it('displays assigned partners section', async () => {
-      mockApiGet.mockResolvedValue({ data: mockPriceListDetail })
+      mockApiGet.mockResolvedValue(mockPriceListDetail)
 
       render(<PriceListDetailPage />, { wrapper: TestWrapper })
 
@@ -411,7 +419,7 @@ describe('Pricing Module', () => {
     })
 
     it('has button to assign partner', async () => {
-      mockApiGet.mockResolvedValue({ data: mockPriceListDetail })
+      mockApiGet.mockResolvedValue(mockPriceListDetail)
 
       render(<PriceListDetailPage />, { wrapper: TestWrapper })
 
@@ -421,7 +429,7 @@ describe('Pricing Module', () => {
     })
 
     it('has edit button', async () => {
-      mockApiGet.mockResolvedValue({ data: mockPriceListDetail })
+      mockApiGet.mockResolvedValue(mockPriceListDetail)
 
       render(<PriceListDetailPage />, { wrapper: TestWrapper })
 

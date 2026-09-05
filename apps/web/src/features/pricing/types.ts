@@ -2,8 +2,6 @@
  * Price List types for the pricing module
  */
 
-import type { OffsetPaginationMeta } from '@/types/pagination'
-
 export interface PriceList {
   id: string
   code: string
@@ -67,12 +65,11 @@ export interface AssignPartnerFormData {
   priority?: number
 }
 
-export interface PriceListsResponse {
-  data: PriceList[]
-  meta: Pick<OffsetPaginationMeta, 'total'> &
-    Partial<Omit<OffsetPaginationMeta, 'total'>>
-}
-
-export interface PriceListResponse {
-  data: PriceListDetail
-}
+/**
+ * NOTE (gate r1 F-3): there are deliberately NO `PriceListResponse` /
+ * `PriceListsResponse` envelope types here. `apiGet` already unwraps
+ * `response.data.data` (src/lib/api.ts:407-410, docs/conventions/01), so the
+ * pricing fetchers resolve the payload itself — `PriceListDetail` for the show
+ * endpoint and `PriceList[]` for the index page. Declaring a `{ data: ... }`
+ * wrapper is what made every pricing read surface render empty.
+ */

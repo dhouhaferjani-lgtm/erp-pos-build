@@ -34,7 +34,9 @@ export function PriceListListPage() {
 
   // Search runs server-side (code/name/description); the returned page is the
   // authoritative filtered set — no additional client-side filtering.
-  const filteredPriceLists = data?.data ?? []
+  // `fetchPriceLists` resolves the page array itself — apiGet already unwraps
+  // `response.data.data` off the raw paginator (gate r1 F-3 sibling).
+  const filteredPriceLists = data ?? []
 
   const filterTabs = [
     { value: 'all' as StatusFilter, label: t('common:filters.all'), count: filteredPriceLists.length },
