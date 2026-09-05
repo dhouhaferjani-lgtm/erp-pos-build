@@ -11,12 +11,11 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildCreditNotePayload,
+  findIncompleteCreditNoteLineIds,
   type CreditNoteLinePayload,
   type CreditNoteManualLinePayload,
   type CreditNoteSourceLine,
 } from '../creditNotePayload'
-import { findBlankPriceLineIds } from '../linePayload'
-import type { DocumentLine } from '@/components/documents/DocumentLineEditor'
 
 const invoiceLine = (over: Partial<CreditNoteSourceLine> = {}): CreditNoteSourceLine => ({
   id: 'line-1',
@@ -25,6 +24,7 @@ const invoiceLine = (over: Partial<CreditNoteSourceLine> = {}): CreditNoteSource
   quantity: '3',
   unit_price: '100.000',
   tax_rate: '20',
+  line_total: '300.000',
   ...over,
 })
 
@@ -109,26 +109,17 @@ describe('buildCreditNotePayload', () => {
   })
 
   /**
-   * Gate r1 IMPORTANT-3: the pre-fix builder emitted `unit_price: ''` for an
-   * unpriced line, a value `CreditNoteController::store()` refuses
-   * (`lines.*.unit_price` is `required|string|regex`). The real contract is a
-   * REFUSAL, not a blank on the wire — the page blocks the submit with
-   * `findBlankPriceLineIds` (the same guard DocumentForm uses) and the builder
-   * never serialises the line.
+   * Gate r1 IMPORTANT-3 + gate r2 NEW-2: the pre-fix builder emitted
+   * `unit_price: ''` for an unpriced line, a value `CreditNoteController::store()`
+   * refuses (`lines.*.unit_price` is `required|string|regex`) — and the NEXT 422
+   * on that path is `lines.*.description`, `required` for exactly the same
+   * reason. The real contract is a REFUSAL, not a blank on the wire, and there
+   * is ONE predicate for it, shared by the page's guard and the builder's strip.
    */
-  it('customer mode refuses an unpriced line: it is flagged client-side and never serialised', () => {
-    const blank: DocumentLine = {
-      id: 'l1',
-      product_id: 'prod-1',
-      product_name: 'Widget',
-      description: 'Widget',
-      quantity: '1',
-      unit_price: '',
-      tax_rate: '20',
-      line_total: '',
-    }
+  it('refuses an unpriced line: flagged client-side and never serialised', () => {
+    const blank = invoiceLine({ id: 'l1', unit_price: '', line_total: '' })
 
-    expect(findBlankPriceLineIds([blank])).toEqual(['l1'])
+    expect(findIncompleteCreditNoteLineIds([blank])).toEqual(['l1'])
 
     const payload = buildCreditNotePayload({
       ...base,
@@ -141,5 +132,38 @@ describe('buildCreditNotePayload', () => {
 
     expect(payload.lines).toHaveLength(1)
     expect(manualLine(payload.lines?.[0]).unit_price).toBe('50.000')
+  })
+
+  it('refuses a line with no designation, by the SAME predicate (gate r2 NEW-2)', () => {
+    const noDescription = invoiceLine({ id: 'l1', description: '', unit_price: '80.000' })
+
+    expect(findIncompleteCreditNoteLineIds([noDescription])).toEqual(['l1'])
+
+    const payload = buildCreditNotePayload({
+      ...base,
+      creditMode: 'customer',
+      lineMode: 'all',
+      lines: [noDescription, invoiceLine({ id: 'l2', unit_price: '50.000' })],
+      selectedLineIds: new Set(),
+      lineQuantities: new Map(),
+    })
+
+    expect(payload.lines).toHaveLength(1)
+    expect(manualLine(payload.lines?.[0]).unit_price).toBe('50.000')
+  })
+
+  it('treats a TOTAL-entry line with no line_total as incomplete — the shared price predicate, not a weaker copy', () => {
+    const totalMode = invoiceLine({
+      id: 'l1',
+      unit_price: '10.000',
+      line_total: '',
+      price_entry_mode: 'total',
+    })
+
+    expect(findIncompleteCreditNoteLineIds([totalMode])).toEqual(['l1'])
+  })
+
+  it('accepts a complete line', () => {
+    expect(findIncompleteCreditNoteLineIds([invoiceLine({ id: 'l1' })])).toEqual([])
   })
 })

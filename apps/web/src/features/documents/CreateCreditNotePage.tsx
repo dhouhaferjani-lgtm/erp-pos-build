@@ -20,8 +20,11 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { PartnerPicker } from '@/components/molecules/pickers/PartnerPicker'
 import { InvoiceSearchSelect } from '@/components/molecules/pickers/InvoiceSearchSelect'
 import { DocumentLineEditor, type DocumentLine } from '@/components/documents/DocumentLineEditor'
-import { buildCreditNotePayload } from './creditNotePayload'
-import { findBlankPriceLineIds } from './linePayload'
+import {
+  buildCreditNotePayload,
+  findIncompleteCreditNoteLineIds,
+  isUnpricedCreditNoteLine,
+} from './creditNotePayload'
 import { Button } from '@/components/atoms/Button/Button'
 import { PageHeader } from '@/components/molecules/PageHeader/PageHeader'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
@@ -88,9 +91,10 @@ export function CreateCreditNotePage() {
   // Selected invoice state
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
 
-  // Lines the submit refused because they carry no unit price — same contract as
-  // DocumentForm (gate r1 IMPORTANT-3).
-  const [blankPriceLineIds, setBlankPriceLineIds] = useState<Set<string>>(new Set())
+  // Lines the submit refused because a required field is blank (price or
+  // designation) — same marking contract as DocumentForm (gate r1 IMPORTANT-3,
+  // gate r2 NEW-2).
+  const [incompleteLineIds, setIncompleteLineIds] = useState<Set<string>>(new Set())
 
   const {
     control,
@@ -249,7 +253,7 @@ export function CreateCreditNotePage() {
   })
 
   const onSubmit = (data: CreditNoteFormData) => {
-    setBlankPriceLineIds(new Set())
+    setIncompleteLineIds(new Set())
 
     // Validation for invoice mode
     if (creditMode === 'invoice') {
@@ -279,13 +283,21 @@ export function CreateCreditNotePage() {
         return
       }
 
-      // Gate r1 IMPORTANT-3: `lines.*.unit_price` is `required|string|regex`
-      // server-side, so an unpriced line 422s with a message about a field the
-      // operator cannot see. Same guard, same message as DocumentForm.
-      const blankPriceIds = findBlankPriceLineIds(lines)
-      if (blankPriceIds.length > 0) {
-        setBlankPriceLineIds(new Set(blankPriceIds))
-        toast.error(t('sales:documents.errors.unitPriceRequired'))
+      // Gate r1 IMPORTANT-3 + gate r2 NEW-2: `lines.*.unit_price` AND
+      // `lines.*.description` are both `required` server-side, so an incomplete
+      // line 422s with a message about a field the operator cannot see. ONE
+      // predicate for "not submittable" (shared with the payload builder), the
+      // same `invalidLineIds` marking DocumentForm uses, and the message names
+      // the field that is actually missing.
+      const incompleteIds = findIncompleteCreditNoteLineIds(lines)
+      if (incompleteIds.length > 0) {
+        setIncompleteLineIds(new Set(incompleteIds))
+        const incompleteLines = lines.filter((line) => incompleteIds.includes(line.id))
+        toast.error(
+          incompleteLines.some(isUnpricedCreditNoteLine)
+            ? t('sales:documents.errors.unitPriceRequired')
+            : t('sales:documents.errors.descriptionRequired'),
+        )
         return
       }
     }
@@ -646,7 +658,7 @@ export function CreateCreditNotePage() {
                 lines={lines}
                 onChange={setLines}
                 partnerId={partnerId}
-                invalidLineIds={blankPriceLineIds}
+                invalidLineIds={incompleteLineIds}
               />
             </div>
           )}

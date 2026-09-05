@@ -282,7 +282,8 @@
     "notesPlaceholder": "Additional notes…",
     "draftSavedAt": "Draft saved {{time}}",
     "errors": {
-      "unitPriceRequired": "Enter a unit price on every line before saving."
+      "unitPriceRequired": "Enter a unit price on every line before saving.",
+      "descriptionRequired": "Enter a designation on every line before saving."
     },
     "proforma": {
       "title": "Proforma — non-fiscal document",

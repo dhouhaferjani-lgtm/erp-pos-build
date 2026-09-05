@@ -20,7 +20,7 @@
  */
 
 import type { DocumentLine } from '@/components/documents/DocumentLineEditor'
-import { isBlank } from './linePayload'
+import { findBlankPriceLineIds, isBlank } from './linePayload'
 
 export type CreditMode = 'customer' | 'invoice'
 export type LineMode = 'all' | 'partial'
@@ -31,7 +31,17 @@ export type LineMode = 'all' | 'partial'
  */
 export type CreditNoteSourceLine = Pick<
   DocumentLine,
-  'id' | 'product_id' | 'description' | 'quantity' | 'unit_price' | 'tax_rate'
+  | 'id'
+  | 'product_id'
+  | 'description'
+  | 'quantity'
+  | 'unit_price'
+  | 'tax_rate'
+  // `line_total` and `price_entry_mode` are carried so this type satisfies
+  // `PricedLine` and the ONE blank-price predicate can be reused here
+  // (gate r2 NEW-4) instead of a weaker local copy of it.
+  | 'line_total'
+  | 'price_entry_mode'
 >
 
 export interface CreditNoteFormValues {
@@ -98,6 +108,37 @@ function toDecimalString(value: string | number): string {
   return typeof value === 'string' ? value : String(value)
 }
 
+/**
+ * Ids of standalone (customer-mode) lines the `POST /credit-notes` validator
+ * would refuse — the ONE definition of "this line is not submittable", used by
+ * BOTH the page's pre-submit guard and the builder's wire-side strip, so the
+ * brace and the belt cannot diverge (gate r2 NEW-2 + NEW-4).
+ *
+ * Two required fields, both `required` on the standalone rule set
+ * (`CreditNoteController::store()`), both blank on a freshly added editor line
+ * (`DocumentLineEditor::handleAddBlankLine()` — `unit_price: ''`,
+ * `description: ''`):
+ *
+ * - **price** — delegated to the shared {@link findBlankPriceLineIds}, which also
+ *   catches a TOTAL-entry line with no `line_total`;
+ * - **description** — `lines.*.description` is `required|string|max:500`. A
+ *   product-picked line gets it from the product; a free-text line does not, and
+ *   before this guard the operator got `The lines.0.description field is
+ *   required` as an opaque toast about a field they cannot see.
+ */
+export function findIncompleteCreditNoteLineIds(lines: readonly CreditNoteSourceLine[]): string[] {
+  const blankPrice = new Set(findBlankPriceLineIds(lines))
+
+  return lines
+    .filter((line) => blankPrice.has(line.id) || isBlank(line.description))
+    .map((line) => line.id)
+}
+
+/** True when the line has no unit price (as opposed to no designation). */
+export function isUnpricedCreditNoteLine(line: CreditNoteSourceLine): boolean {
+  return findBlankPriceLineIds([line]).length > 0
+}
+
 export function buildCreditNotePayload({
   data,
   creditMode,
@@ -133,14 +174,14 @@ export function buildCreditNotePayload({
   } else {
     // Customer (standalone) — money fields as strings (rule 19).
     //
-    // An UNPRICED line is STRIPPED, never serialised: `lines.*.unit_price` is
-    // `required|string|regex` server-side, so an empty string 422s with a
-    // message about a field the operator cannot see. The page refuses the
-    // submit first (`findBlankPriceLineIds`, the same guard DocumentForm uses)
-    // so the operator gets an inline message; this filter is the wire-side
-    // belt to that brace.
+    // An INCOMPLETE line is STRIPPED, never serialised: `lines.*.unit_price` and
+    // `lines.*.description` are both `required` server-side, so a blank one 422s
+    // with a message about a field the operator cannot see. The page refuses the
+    // submit first (same predicate, so the operator gets an inline message);
+    // this filter is the wire-side belt to that brace.
+    const incomplete = new Set(findIncompleteCreditNoteLineIds(lines))
     payload.lines = lines
-      .filter((line) => !isBlank(line.unit_price))
+      .filter((line) => !incomplete.has(line.id))
       .map((line) => ({
         product_id: line.product_id,
         description: line.description,

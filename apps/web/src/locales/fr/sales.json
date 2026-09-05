@@ -282,7 +282,8 @@
     "notesPlaceholder": "Notes supplémentaires…",
     "draftSavedAt": "Brouillon enregistré {{time}}",
     "errors": {
-      "unitPriceRequired": "Saisissez un prix unitaire sur chaque ligne avant d'enregistrer."
+      "unitPriceRequired": "Saisissez un prix unitaire sur chaque ligne avant d'enregistrer.",
+      "descriptionRequired": "Saisissez une désignation sur chaque ligne avant d'enregistrer."
     },
     "proforma": {
       "title": "Proforma — document non fiscal",

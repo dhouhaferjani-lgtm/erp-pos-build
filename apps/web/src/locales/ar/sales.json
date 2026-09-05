@@ -192,7 +192,8 @@
       "goodsReceivedWithReceipt": "تم استلام البضائع ضمن {{receiptNumber}}"
     },
     "errors": {
-      "unitPriceRequired": "أدخل سعر الوحدة في كل سطر قبل الحفظ."
+      "unitPriceRequired": "أدخل سعر الوحدة في كل سطر قبل الحفظ.",
+      "descriptionRequired": "أدخل وصفًا في كل سطر قبل الحفظ."
     },
     "proforma": {
       "title": "مستند مبدئي — غير ضريبي",
