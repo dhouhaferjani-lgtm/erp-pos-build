@@ -348,3 +348,238 @@ The page still defaults `reason: 'return'` (`CreateCreditNotePage.tsx:108`) whil
 
 ## What to fix before promotion
 Exclude fully-credited invoices from the `creditable` filter so the picker stops offering invoices the create call refuses (NEW-1), guard the blank `description` the same way the blank price is now guarded (NEW-2), and get the owner's ruling on Q1–Q4 — especially Q4, because a credit note defaulted to `reason: 'return'` that writes no stock movement is a silent inventory drift on the exact pharmacy journey this PR unblocks.
+
+---
+---
+
+# Gate r3 — fix round 2 (targeted re-gate)
+
+- **Reviewed tree**: worktree `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/pr-214`, branch `gate/pr-214`, head **`374d4ab37`** = r2 head `cff7df47a` + 7 commits. `git status --porcelain` empty.
+- **Scope**: `git diff cff7df47a 374d4ab37` only — 16 files, 654 insertions / 74 deletions (of which the handback doc is 282 lines).
+- **Answers**: the "Fix round 2" section of `docs/superpowers/reviews/2026-09-05-dhouha-pr-214-fix-round-1-handback.md`, against gate r2's NEW-1..NEW-6.
+- **PG lane**: private DB `autoerp_test_g214c` on 127.0.0.1:5433 — created, used, **dropped**.
+- **No code modified. Nothing merged.**
+
+## VERDICT r3: **CHANGES** · Merge to local dev: **NO** (one 2-line fix away from YES)
+
+Five of the six items are fixed properly and I verified each by execution or by reading the emitted SQL, not by claim. The sixth — NEW-1 — is **half fixed**: the two API surfaces genuinely do share one predicate now (a real one-surface win), but the operator-visible symptom I raised survives for the only path the shipped UI uses, and the residual is documented in a way that understates it.
+
+What blocks the merge is something neither round noticed: **this PR introduces two NEW findings in the repo's i18n completeness ratchet**, which is wired into `pnpm lint` (`apps/web/package.json:10`) and `scripts/preflight.sh:203`. That is a CI red the PR causes — the same class as r1 BLOCKER-2 — and it is a two-line fix. **This also corrects my own gate r2**, where I accepted the lane's round-1 claim that "no parity gate exists for the `ar` bundle" without running the ratchet. It does exist, and it bites.
+
+Everything else is MERGE-ready: 8 PHPUnit suites green on SQLite **and** PostgreSQL with the exact expected counts, 19 vitest files green, PHPStan L8 clean, Pint pass, `tsc --noEmit` exit 0, ESLint 0 errors, and `git merge-tree` reports **no conflicts** against local dev `a622d7e97`.
+
+---
+
+## Findings (r3)
+
+### BLOCKER
+
+**[R3-1] The i18n completeness ratchet gains two NEW entries because of this PR — `pnpm lint` and preflight go red on merge.**
+`apps/web/tools/audit-i18n-completeness.mjs`, run through the documented local authority (`scripts/i18n-baseline-authority.sh`, wired at `apps/web/package.json:10` and `scripts/preflight.sh:203`), reports on this branch:
+```
+  ✗ ar|sales|missing|creditNotes.form.invoiceLinesNotLoaded
+  ✗ ar|sales|missing|invoices.noCreditableInvoices
+```
+Both are keys this PR adds to `en` + `fr` only — `invoiceLinesNotLoaded` in fix round 1 (`en/sales.json:809`, `fr/sales.json:809`), `noCreditableInvoices` in fix round 2 (`en/sales.json:481`, `fr/sales.json:481`). Neither string appears anywhere in local dev's re-pinned baseline (`git show a622d7e97:apps/web/tools/i18n-completeness-baseline.json`, 2 816 entries — searched, absent), so after merging they are "NEW gap(s) not in the baseline" and the checker exits 1.
+The lane's own round-2 work **proves the gate is real**: `documents.errors.descriptionRequired` was added to `ar` as well as `en`/`fr` and consequently produces **no** finding. The two that were left English-only do.
+*Why it matters*: dev was red on exactly this checker two commits ago and the owner re-pinned the baseline to clear it (`89b508e1f`, `b4247f966`, 2026-09-05 11:52). Merging this branch re-reds it immediately, and the ratchet is shrink-only — a growth is a hard failure, not a warning.
+*Verification honesty*: I did **not** execute the checker on a merged tree (that would require materialising the merge, i.e. mutating the repo). The conclusion is deduced from three separately verified facts: (a) the checker emits those two findings from this branch's locale files; (b) neither is present in dev's pinned baseline; (c) the checker's observed failure mode for a finding absent from the baseline is `NEW gap(s) not in the baseline` + exit 1. The other 62 findings in my run are the branch's **stale** pins (branch base `fa000edc3`, pre-re-pin) and are dev's already-fixed `ar|uom` / `ar|import` debt — **not** caused by this PR.
+*Fix (two lines)*: add `invoices.noCreditableInvoices` to `apps/web/src/locales/ar/sales.json` (the `invoices` object already exists, currently `{paymentStatus}`) and `creditNotes.form.invoiceLinesNotLoaded` (the `creditNotes` object exists with only `postingMarker`; a `form` child must be created). Neither addition regresses the shallow-spread behaviour in `src/lib/i18n.ts:291-293`, because `arSales.creditNotes` and `arSales.invoices` already shadow their English siblings and every other key already resolves through `fallbackLng: 'en'` (`i18n.ts:483`).
+
+### IMPORTANT
+
+**[R3-2] NEW-1 is half fixed: the flag the new predicate reads is never written by the path this PR ships, so the picker still offers invoices whose create call 422s.**
+The two read surfaces now agree — that part is real and correct. But the *writer* is the gap. `grep -rn "fully_credited" app/` returns exactly one payload writer: `RefundService::createFullCreditNote()` (`apps/api/app/Modules/Document/Domain/Services/RefundService.php:960-970`), reachable only via `POST /invoices/{invoice}/credit-full` (`app/Modules/Document/Presentation/routes.php:228`). `CreditNoteService` — which is what `POST /credit-notes`, and therefore the whole `/sales/credit-notes/create` page this PR repairs, goes through — **never touches `$invoice->payload`** (verified: no `invoice->update` / `payload` write anywhere in `CreditNoteService.php`). And `grep -rn "credit-full\|can-credit" apps/web/src` returns **no FE consumer at all** for either route.
+Net: credit a paid invoice to exhaustion through the page, come back, and the invoice is still listed, `/can-credit` still says `true`, and the create attempt 422s on the arithmetic headroom guard (`CreditNoteService.php:845-850`, `:1096-1099`) — surfaced as an opaque toast, because `CreateCreditNotePage.tsx:246-248` toasts `error.message` and the axios interceptor rejects the raw `AxiosError` (`apps/web/src/lib/api.ts:366`), whose message is `Request failed with status code 422`.
+The docblock at `apps/api/app/Modules/Document/Domain/Document.php:625-631` describes this as "an invoice exhausted by several PARTIAL credit notes", which reads as an edge case. It is the **default** case for every credit note this product's UI creates, full or partial.
+*Other side of the seam verified*: no money defect. The arithmetic guard holds on both create paths, so no invoice can be over-credited and no GL is written twice — I re-checked `remainingCreditHeadroom()` (`CreditNoteService.php:146-171`) counts prior credit notes through the `creditNotes()` relation (`Document.php:349-353`), independently of the payload flag. This is a UX/one-surface defect, not a ledger defect.
+*Fix*: correct the docblock to say what the gap actually is, and open the follow-up lane (see the ruling below).
+
+### MINOR
+
+**[R3-3] The refusal marks and focuses the wrong cell when the missing field is the designation.**
+`CreateCreditNotePage.tsx:293-302` feeds *all* incomplete line ids into `invalidLineIds`, but that prop is price-specific in the editor: `DocumentLineEditor.tsx:829` (`priceRefused` → `error={isBlocked || priceRefused}` on the money input) and `:319-327` (focus jumps to `line-price-input-<id>`). A line refused only for a blank designation therefore gets a red **price** cell — which is correctly filled — and the cursor lands in it, while the toast says "Enter a designation on every line". The message is right and the data is safe; the affordance contradicts it.
+*Fix*: split the prop (`invalidPriceLineIds` / `invalidDescriptionLineIds`), or mark only the price-blank subset (`incompleteIds.filter(isUnpricedCreditNoteLine)`) through the existing prop.
+
+**[R3-4] The justification for the `false` arm is factually wrong (the arm itself is right).**
+Both `CreditNotePaidInvoiceSourceTest.php:333-335` and the handback state that `RefundService::getCreditNoteSummary()` "really does write `fully_credited => false`". It does not: `RefundService.php:1259` and `:1277` build a **response array** for `GET /invoices/{id}/credit-summary`; neither writes `documents.payload`. The only payload writers are `:967` (`fully_credited => true`) and `:1070` (`partially_credited => true`). So the `false` arm is unreachable in production today — which is fine and I would keep it (it is what makes the SQL twin match the PHP `=== true` semantics), but it should be documented as a parity guarantee, not as a live case.
+
+**[R3-5] PHP predicate and SQL twin diverge for non-boolean stored values (unreachable today).**
+`Document::isFullyCredited()` (`:604-609`) requires `=== true`, so `fully_credited: 1` or `"true"` would read as **creditable**; the SQL twin's `= 'false'::jsonb` / `= false` arms would **exclude** them. Unreachable while `:967` is the only writer and writes a real boolean, and the `array` cast round-trips JSONB booleans faithfully. Recording it so a future importer/backfill that writes `1` does not silently split the two surfaces.
+
+---
+
+## Item-by-item verification
+
+### (1) NEW-1 — the predicate, its SQL twin, and the residual
+
+**The twin is genuinely equal on both engines — verified by dumping the emitted SQL, not by inference.**
+```
+SQLite : select * from "documents" where "type" = ? and "status" in (?, ?)
+         and (json_extract("payload", '$."fully_credited"') is null
+              or (json_extract("payload", '$."fully_credited"') = false))
+         and "documents"."deleted_at" is null
+
+Postgres: select * from "documents" where "type" = ? and "status" in (?, ?)
+         and ("payload"->>'fully_credited' is null
+              or (("payload"->'fully_credited')::jsonb = 'false'::jsonb))
+         and "documents"."deleted_at" is null
+```
+Arm by arm against `isCreditableSource()` = `isCreditableInvoiceSource() && ! isFullyCredited()`:
+- **absent key** → PG `->>` yields SQL NULL, SQLite `json_extract` yields NULL → both `is null` → **listed**; PHP `isset()` false → **creditable**. ✅ agree. This is the arm the lane correctly refused to express as `NOT (flag = true)`: `NOT (NULL = true)` is NULL, which would have dropped every never-credited invoice — i.e. **every** invoice in a fresh tenant. The reasoning is right and the fixture proves it (all default `makeInvoice()` calls now write `payload => null`, `CreditNotePaidInvoiceSourceTest.php:208-211`).
+- **JSON `null`** → both grammars yield SQL NULL → listed; PHP `isset()` false → creditable. ✅ agree.
+- **`false`** → `'false'::jsonb = 'false'::jsonb` / `0 = 0` → listed; PHP `=== true` false → creditable. ✅ agree. **Pinned** by fixture `INV-FLAG-FALSE` (`:337`, asserted at `:372`).
+- **`true`** → both arms false → excluded; PHP → not creditable. ✅ agree. **Pinned** by `test_creditable_filter_excludes_a_fully_credited_invoice` (`:389-419`), which also asserts the live `/can-credit` endpoint **both ways** (`false` for the exhausted invoice, `true` for the open one) — that is the right way to pin "these two surfaces cannot disagree".
+- non-boolean values → see R3-5.
+All four arms exercised green on SQLite **and** PostgreSQL (10/58 on both).
+
+**`canCreditInvoice()` delegates** — `RefundService.php:1229-1237` is now a one-line `return $invoice->isCreditableSource();`. **`createFullCreditNote()`** reads the flag through `isFullyCredited()` (`:892`). **`InvoiceController`** consumes the scope (`:231`, `$query->creditableSource()`). All confirmed by reading.
+
+**Predicate count — stated as asked.** Independent, potentially-divergent creditability predicates go from **6 → 4**:
+| # | Expression | Status |
+|---|---|---|
+| 1 | `Document::isCreditableSource()` (+ `isFullyCredited()`, + its adjacent SQL twin `scopeCreditableSource()`) | **one rule**, three co-located expressions in one file, consumed by `canCreditInvoice()`, `createFullCreditNote()` and `InvoiceController` |
+| 2 | `RefundService::createFullCreditNote()` inline type+status (`:884-889`) | still restated (the flag half now delegates) |
+| 3 | `InvoiceToCreditNoteConverter` — type + `isPosted()` only (`:69-77`) | still **divergent** — owner MAJOR-3 |
+| 4 | FE `canCreateCreditNote()` (`apps/web/src/types/creditNote.ts:214-233`) | unchanged |
+(The exists-rule `->where('type', …)` in `CreditNoteController` is a fragment of #1's type half, not an independent predicate.) The flag read specifically went **2 → 1**. This is a real reduction, and the direction of travel is right.
+
+**Ruling on the documented residual — must the scope compute headroom now? NO, and I would refuse it if offered.**
+`remainingCreditHeadroom()` (`CreditNoteService.php:146-171`) is not expressible in SQL without changing its meaning: it calls `TaxCalculationService::calculateDocumentTaxes()` **per prior credit note** to obtain the duty-exclusive amount (`:160-163`). A SQL approximation (`total − SUM(credit_notes.total)`) would be duty-INCLUSIVE and would disagree with the create-time guard — trading today's honest, documented gap for a fresh PHP/SQL divergence, which is strictly worse and is the exact failure mode NEW-1 was raised about. **Defer the exact-headroom scope to its own lane: correct call.**
+But the residual must be **re-scoped** first (R3-2) and, when the lane comes, the right shape is the opposite of a SQL headroom: have the one place that already computes headroom — `CreditNoteService`, inside the same transaction — set `fully_credited` when headroom reaches zero. The flag-based scope then becomes correct for every path at no divergence risk. Note that write mutates a posted invoice's payload, so it needs its own gate. **Cheap interim, independent of that lane**: make the 422 legible (surface the API's `error.message` — "Total credit notes would exceed invoice total" — instead of `Request failed with status code 422`); that turns the remaining dead end into a correct explanation for near-zero risk.
+
+### (2) NEW-2 / NEW-4a — one incomplete-line predicate
+
+**Composition verified, no second definition.** `findIncompleteCreditNoteLineIds()` (`creditNotePayload.ts:138-145`) is `findBlankPriceLineIds(lines)` ∪ `isBlank(line.description)` — both imported from `linePayload.ts`, no local re-implementation. The wire-side strip now filters on the **same** helper (`:190-193`), closing the r2 NEW-4a divergence where the belt (`!isBlank(unit_price)`) was weaker than the brace (which also catches a TOTAL-entry line with a blank `line_total`). Pinned by a dedicated case (`creditNotePayload.test.ts:161-170`).
+**`DocumentForm` is untouched** — verified: the only change to `linePayload.ts` is widening `findBlankPriceLineIds`'s parameter to the structural `PricedLine` (`:157-163`, `readonly PricedLine[]`), which `DocumentLine` satisfies. `DocumentForm.test.tsx` 20/20, `DocumentForm.payload` 22/22, `DocumentForm.blankUnitPrice` 10/10, `DocumentForm.tenantScope` 3/3 all green.
+
+**Ruling on the sibling `descriptionRequired` key: ACCEPT.**
+The one-surface rule (`docs/conventions/11-ONE-SURFACE-PER-CONCEPT.md`) is about one *concept* having one table, one write path, one operator surface — not about one concept having one sentence. The concept here is "this line is not submittable", and it now has exactly one predicate (`findIncompleteCreditNoteLineIds`), one marking mechanism (`invalidLineIds`), and one message **block** (`sales:documents.errors.*`). Two sibling strings inside that block name the two distinct required fields. Telling an operator "enter a unit price" when the price is fine and the designation is empty would reproduce the very defect NEW-2 exists to remove — a message about a field that is not the problem. The keys are correctly placed beside `unitPriceRequired` and shipped in **en + fr + ar** (`ar` added precisely because `unitPriceRequired` was already there — the lane got the shallow-spread merge semantics of `src/lib/i18n.ts:295-296` right). Accepted; the selection logic at `CreateCreditNotePage.tsx:296-301` is sound (price message wins when any refused line is unpriced).
+The residual on this item is R3-3, not the message split.
+
+### (3) NEW-3 / NEW-4b / NEW-5 / NEW-6
+
+- **NEW-3 ✅** — `creditNotePayload.ts:35` aliases the **generated** `App.Modules.Document.Domain.Enums.CreditNoteReason` (ambient via `declare global` in `packages/shared/types/generated.d.ts:862`), used by both `CreditNoteFormValues.reason` (`:47`) and `CreditNotePayload.reason` (`:102`). No hand-written copy of the six literals. The test fixture is typed `CreditNoteFormValues` (`creditNotePayload.test.ts:46`), so a widened `string` cannot compile past it. Rule 7 satisfied; `tsc` exit 0.
+- **NEW-4b ✅** — `e2e/credit-note-creation.spec.ts:9-11` now reads `creditable=1` and records that `creditable=true` is a 422.
+- **NEW-5 ✅, with the citation asked for** — `Document` uses `SoftDeletes` at `apps/api/app/Modules/Document/Domain/Document.php:115`, and the column exists per `apps/api/database/migrations/tenant/2025_11_30_080000_create_documents_table.php:36` (`$table->softDeletes();`). `Rule::exists` queries the raw table, so `->whereNull('deleted_at')` (`CreditNoteController.php:167`) is required and correct. Pinned by `test_credit_note_rejects_a_soft_deleted_source_invoice` (`CreditNotePaidInvoiceSourceTest.php:336-351`), which asserts the 422 **and** that no credit note row was created. Green on both engines.
+- **NEW-6 ✅ with a caveat** — the empty-state key moved into the same `sourceFilterConfig` table as the filter (`InvoiceSearchSelect.tsx:82-108`), read at `:111`, applied at `:124`. Both modes asserted, including the negative (`InvoiceSearchSelect.test.tsx:185-204`). `en` + `fr` added. The `ar` claim in the handback ("resolves through the `...enSales` spread") is **half right**: `arSales.invoices` exists (`{paymentStatus}` only) and the ar block has **no** deep-merge entry for `invoices` (checked `src/lib/i18n.ts:285-360`), so the shallow `...arSales` shadows the whole English `invoices` object and the string actually resolves through `fallbackLng: 'en'` (`:483`), per key. The operator sees correct English either way — but the completeness ratchet counts it as a gap, which is R3-1.
+
+### (4) Test and gate re-runs — all counts match, both engines
+
+### (5) Merge into local dev
+```
+$ git rev-parse dev                          a622d7e97e162cd14ca6610b8396aebb9bc0f569
+$ git merge-tree --write-tree dev HEAD       e51f65e0c317c03b48c34b655bce8c9d60213f35   (exit 0)
+```
+Single tree OID, no conflict section → **no conflicts**. I also checked it is not merely a textual pass: `git diff --stat fa000edc3 a622d7e97 -- apps/api/app/Modules/Document apps/api/app/Modules/Accounting apps/web/src/features/documents apps/web/src/components/molecules/pickers apps/web/src/locales/{en,fr,ar}/sales.json` is **empty** — dev's 20 commits since the branch base touch none of the paths this PR touches. The one interaction is the i18n baseline re-pin (`89b508e1f`, `b4247f966`), which is R3-1.
+
+---
+
+## Verbatim output (r3, head `374d4ab37`)
+
+### PHPUnit — SQLite (`./vendor/bin/phpunit <path>`)
+```
+tests/Feature/Document/CreditNotePaidInvoiceSourceTest.php    OK (10 tests, 58 assertions)
+tests/Feature/Document/CreditNoteIntegrationTest.php          Tests: 15, Assertions: 68
+tests/Unit/Document/CreditNoteServiceTest.php                 Tests: 10, Assertions: 36
+tests/Feature/Document/CreditNoteMoneyLaneTest.php            OK (13 tests, 109 assertions)
+tests/Feature/Document/CreditNoteTenantIsolationTest.php      OK (11 tests, 26 assertions)
+tests/Feature/Accounting/LinelessCreditNoteAuthoringGuardsTest.php  OK (4 tests, 14 assertions)
+tests/Feature/Document/RefundServiceScalingTest.php           Tests: 2, Assertions: 5
+tests/Feature/Document/RefundResidualTenantIsolationTest.php  OK (18 tests, 57 assertions)
+```
+
+### PHPUnit — PostgreSQL (`DB_HOST=127.0.0.1 DB_PORT=5433 DB_DATABASE=autoerp_test_g214c DB_CENTRAL_DATABASE=autoerp_test_g214c php artisan test -c phpunit-pgsql.xml <path>`)
+```
+   PASS  Tests\Feature\Document\CreditNotePaidInvoiceSourceTest
+  ✓ amount based credit note can be created from a paid invoice         27.42s
+  ✓ line based credit note can be created from a paid invoice            3.20s
+  ✓ credit note still rejects a draft source invoice                     2.71s
+  ✓ credit note rejects a non invoice source document                    2.58s
+  ✓ credit note rejects a soft deleted source invoice                    3.03s
+  ✓ creditable filter returns posted and paid but not draft invoices     3.52s
+  ✓ creditable filter excludes a fully credited invoice                  2.93s
+  ✓ creditable filter rejects a non boolean value                        2.35s
+  ✓ creditable filter is scoped to the current company                   2.01s
+  ✓ posting against a settled invoice with a blind cache allocates zero… 2.40s
+  Tests:    10 passed (58 assertions)   Duration: 52.20s
+
+  CreditNoteIntegrationTest                 15 passed (68 assertions)
+  CreditNoteServiceTest                     10 passed (36 assertions)
+  LinelessCreditNoteAuthoringGuardsTest      4 passed (14 assertions)
+  RefundServiceScalingTest                   2 passed (5 assertions)
+  CreditNoteMoneyLaneTest                   13 passed (109 assertions)
+  CreditNoteTenantIsolationTest             11 passed (26 assertions)
+  RefundResidualTenantIsolationTest         18 passed (57 assertions)
+```
+All eight match the expected counts exactly, on both engines.
+
+### Vitest (19 files, by file)
+```
+ ✓ creditNotePayload.test.ts (7)   ✓ DocumentForm.payload.test.ts (22)
+ ✓ CreateNotePages.quantityDisplay.test.tsx (2)   ✓ InvoiceSearchSelect.test.tsx (21)
+ ✓ DocumentForm.blankUnitPrice.test.tsx (10)      ✓ ReturnCreditNotePages.tenantScope.test.tsx (5)
+ Test Files  6 passed (6)        Tests  67 passed (67)
+
+ src/features/documents/components/__tests__ (10 files)
+ Test Files  10 passed (10)      Tests  97 passed (97)
+
+ ✓ DocumentForm.test.tsx (20)  ✓ DocumentForm.tenantScope.test.tsx (3)  ✓ DocumentTenantScope.test.tsx (3)
+ Test Files  3 passed (3)       Tests  26 passed (26)
+
+ → 19 files, 190 tests, 0 failures. (The lane reported 177 across 19 files; the
+   file SET differs — I could not reconstruct theirs, so I report mine. Nothing red.)
+```
+
+### Static gates
+```
+$ ./node_modules/.bin/tsc --noEmit                       TSC_EXIT=0   (0 lines of output)
+
+$ ./vendor/bin/pint --test <5 app files + the test file>
+{"result":"pass"}
+
+$ ./vendor/bin/phpstan analyse --level=8 --memory-limit=2G --no-progress \
+    CreditNoteService.php Document.php RefundService.php CreditNoteController.php InvoiceController.php
+ [OK] No errors
+   (the `->getQuery()->where('payload->fully_credited', false)` Larastan workaround is clean
+    without an ignore — confirmed)
+
+$ ./node_modules/.bin/eslint <7 touched web files>
+  InvoiceSearchSelect.test.tsx  0 errors / 29 warnings
+  InvoiceSearchSelect.tsx       0 / 6
+  CreateCreditNotePage.tsx      0 / 102
+  creditNotePayload.test.ts     0 / 0
+  creditNotePayload.ts          0 / 0
+  DocumentLineEditor.tsx        0 / 2
+  linePayload.ts                0 / 1
+  TOTAL 0 errors, 140 warnings   (all pre-existing classes)
+
+$ bash scripts/i18n-baseline-authority.sh                EXIT=1
+  i18n completeness — 64 NEW gap(s) not in the baseline:
+    ✗ ar|sales|missing|creditNotes.form.invoiceLinesNotLoaded    ← THIS PR
+    ✗ ar|sales|missing|invoices.noCreditableInvoices             ← THIS PR
+    (+ 62 ar|uom / ar|import entries = the branch's STALE pins, already fixed on dev
+       by 89b508e1f + b4247f966; not caused by this PR)
+```
+
+### SQL twin, both grammars
+```
+$ php artisan tinker --execute='echo Document::query()->creditableSource()->toSql();'
+SQLite   … and (json_extract("payload", '$."fully_credited"') is null
+                or (json_extract("payload", '$."fully_credited"') = false)) …
+Postgres … and ("payload"->>'fully_credited' is null
+                or (("payload"->'fully_credited')::jsonb = 'false'::jsonb)) …
+```
+
+---
+
+## Could not verify (r3)
+
+- **The merged-tree i18n run** — see R3-1; deduced from three verified facts rather than executed, because materialising the merge would mutate the repo.
+- **The lane's 177/19 vitest figure** — my 19-file selection yields 190. Not a discrepancy in outcome (nothing red), only in file set.
+- **Playwright e2e** — still not executed (mocked-API harness, needs a running stack). Its comment is now accurate; its coverage claim is unchanged.
+- **Browser/manual pass** on the repaired flow — none performed in any round.
+- Carried from r2: the **F-STG-4 finding record** is still not in the repo, so the "owner-confirmed Paid-invoice scope" remains unverifiable from code. The four owner questions (Q1–Q4 in the r2 section) are unchanged by fix round 2.
+
+## Merge to local dev: **NO — pending R3-1 only**
+Add the two `ar` keys (`invoices.noCreditableInvoices`, `creditNotes.form.invoiceLinesNotLoaded`) to `apps/web/src/locales/ar/sales.json`, re-run `bash scripts/i18n-baseline-authority.sh` and confirm the two `ar|sales|…` lines are gone. With that, this becomes **MERGE** — no other change is required, the merge is conflict-free against `a622d7e97`, and R3-2/R3-3/R3-4/R3-5 are follow-ups, not merge blockers. Promotion to staging remains gated on the owner ruling Q1–Q4 and on R3-2.
