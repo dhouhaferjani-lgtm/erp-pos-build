@@ -1,6 +1,6 @@
 // This file is generated. Do not edit it by hand.
 // Source: apps/api/database/seeders/RolesAndPermissionsSeeder.php
-// Source hash: sha256:d126b0d004691f15a61e5dc1d71c261f5370da2065803d7f1df0f2b02eff5801
+// Source hash: sha256:5f14a08684f121ef803e2e76f9a0a59dd0b74c7ec5f91bb2c9daf0d593cc2ea2
 
 export const PERMISSIONS = {
   'accounts.manage': ['accountant', 'admin', 'manager'],
@@ -91,6 +91,7 @@ export const PERMISSIONS = {
   'fraud-settings.view': ['accountant', 'admin', 'manager'],
   'goods-receipt.create-standalone': ['admin', 'manager'],
   'goods-receipt.edit-price': ['admin', 'manager'],
+  'goods-receipt.receive-expired': ['admin', 'manager'],
   'imports.manage': ['admin'],
   'income.create': ['accountant', 'admin', 'cashier', 'manager', 'operator'],
   'income.delete': ['accountant', 'admin'],
