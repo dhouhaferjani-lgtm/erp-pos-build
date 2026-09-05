@@ -355,9 +355,13 @@ class CreditNotePaidInvoiceSourceTest extends TestCase
         $posted = $this->makeInvoice(DocumentStatus::Posted, 'INV-POSTED', '1200.000');
         $paid = $this->makeInvoice(DocumentStatus::Paid, 'INV-PAID', '0.000');
         $draft = $this->makeInvoice(DocumentStatus::Draft, 'INV-DRAFT', '1200.000');
-        // An invoice explicitly flagged NOT fully credited must still be listed:
-        // the JSON predicate has to distinguish `false` from `true`, and
-        // RefundService::getCreditNoteSummary() really does write `false`.
+        // An invoice explicitly flagged NOT fully credited must still be listed.
+        // Gate r3 R3-4: no writer stores `false` today — `RefundService` writes
+        // only `fully_credited => true` (`:967`), and `getCreditNoteSummary()`
+        // builds a RESPONSE array rather than touching `documents.payload`. This
+        // fixture pins the arm as a PARITY GUARANTEE: the SQL twin must agree
+        // with the PHP `=== true` semantics for a stored `false`, so the arm
+        // cannot be deleted as dead code by someone who only reads the writers.
         $notCredited = $this->makeInvoice(DocumentStatus::Posted, 'INV-FLAG-FALSE', '1200.000', null, null, false);
 
         $response = $this->actingAs($this->user, 'sanctum')
