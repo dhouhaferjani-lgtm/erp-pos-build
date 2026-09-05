@@ -303,9 +303,8 @@ Not a blocker for this PR; flagged so the owner can decide whether to install or
 
 ## Residuals (filed, not done this round)
 
-1. **`fetchPriceLists` loses the paginator meta** to the `apiGet` unwrap. The list page renders a single
-   page and never reads it, so nothing is broken today; restoring meta needs `api.get` + `response.data`
-   per the standing double-unwrap pitfall. Comment left at `apps/web/src/features/pricing/api.ts`.
+1. **`fetchPriceLists` loses the paginator meta** to the `apiGet` unwrap — **sharpened in round 2**, see
+   the residual list at the end of this document. Comment at `apps/web/src/features/pricing/api.ts`.
 2. **F-9 (LOW, not in the r2 list)** — `ProductForm.tsx:582` still puts a raw untranslated backend English
    string into a toast when *no* field maps. The PriceListForm treatment (route unmapped messages into a
    form-level alert) is the pattern to port.
@@ -320,6 +319,173 @@ Not a blocker for this PR; flagged so the owner can decide whether to install or
 ## Commits
 
 ```
+ab54459ad fix(pricing): PriceListForm adopts the form atoms and drops no server 422 (gate r1 F-1, F-6, F-8)
+eada7caa1 fix(pricing): correct the read-path double-unwrap that emptied every price-list surface (gate r1 F-3)
+222fce906 refactor(web): one getFieldErrors surface for all three call sites (gate r1 F-5)
+cb7713517 fix(catalog): scope the attribute-value unique rule to real UUIDs (gate r1 F-2, F-4, F-7)
+```
+
+---
+---
+
+# Fix round 2 — answers gate r2
+
+| | |
+|---|---|
+| **Gate answered** | the r2 section of [`2026-09-05-dhouha-pr-215-gate-r1.md`](2026-09-05-dhouha-pr-215-gate-r1.md) — verdict CHANGES, one blocker (R2-1) |
+| **Fix commit** | `77ddb32f0` |
+| **Author** | Claude Opus 5, 2026-09-05 |
+| **Merged** | **NO** |
+
+r2 confirmed every round-1 finding as FIXED and raised exactly one blocker plus two follow-ups. All three
+are done.
+
+## R2-1 (BLOCKER) — `partners.test.tsx` went red on the F-5 consolidation
+
+**Claim verified, and it was slightly larger than the gate measured: 3 failures, not 2.**
+
+`src/features/partners/partners.test.tsx:36-44` mocked `../../lib/api` with an object literal that never
+exported `getFieldErrors`. Before round 1 that mock was *complete*: `PartnerForm` defined the helper
+locally and imported only `isApiError`, which the mock does provide. Once `222fce906` deleted the local
+copy, `PartnerForm.tsx:383` called the imported `getFieldErrors` → `undefined`, and
+`handleMutationError` threw before reaching `toast.error`.
+
+Measured on `gate/pr-215` @ `023c4e49b` before the fix:
+
+```
+× Partner Management > PartnerForm > shows error toast when create mutation fails with generic error
+    → expected "spy" to be called with arguments: [ 'Network error' ]
+× Partner Management > PartnerForm > shows error toast when create mutation fails with 422 validation error
+    → expected "spy" to be called at least once
+× Partner Management > PartnerForm > displays field-level error from 422 response under the specific field
+    → Unable to find an element with the text: The VAT number format is invalid for the selected country.
+ Test Files  1 failed (1)      Tests  3 failed | 46 passed (49)
+```
+
+All three are mutation-**error** tests — the only ones that reach the deleted path. This was my miss in
+round 1: I hardened `PartnerForm.test.tsx` and did not sweep for other mocks of the same module.
+
+**Fix:** converted to the `vi.importActual` spread, matching what round 1 did for `PartnerForm.test.tsx`.
+The real helper now runs, so the 422 tests keep their meaning rather than being satisfied by a stub, and
+a future `lib/api` export cannot silently break the file again. The transport functions and the two
+spies the tests drive (`getErrorMessage`, `isApiError`) stay overridden, so nothing else changes.
+
+The plain-object error fixtures in this file carry `isAxiosError: true`, which is exactly what
+`axios.isAxiosError` checks, so the real `getFieldErrors` (via the module-local real `isApiError`)
+recognises them.
+
+```
+$ npx vitest run src/features/partners/partners.test.tsx
+ ✓ src/features/partners/partners.test.tsx (49 tests) 2532ms
+ Test Files  1 passed (1)      Tests  49 passed (49)
+
+$ npx vitest run src/features/partners/PartnerForm.test.tsx
+ ✓ src/features/partners/PartnerForm.test.tsx (32 tests) 1266ms
+ Test Files  1 passed (1)      Tests  32 passed (32)
+```
+
+## The sweep — 6 object-literal mocks at risk, 2 real, 4 structurally immune
+
+The gate noted 87 object-literal `lib/api` mocks and asked which matter. Narrowed mechanically:
+
+- **Only four production files import `getFieldErrors`**: `PartnerForm.tsx`, `ProductForm.tsx`,
+  `PriceListForm.tsx`, `AddQuickProductModal.tsx`.
+- **200** test files mock `lib/api`; **21** also reference one of those four; **6** of those used an
+  object-literal mock without `getFieldErrors`.
+- **Four of the six cannot break**: `DocumentLineEditor.test.tsx`,
+  `.quantityStep`, `.purchasePriceDefault` and `.refusedFields` all stub
+  `AddQuickProductModal: () => null`, so the real module is never loaded. No change.
+- **Two are genuine latent gaps** — `src/features/inventory/ProductForm.test.tsx:55` (renders the real
+  `ProductForm`) and `src/features/pricing/pricing.test.tsx:19` (renders the real `PriceListForm`).
+  Neither fails today because no test in them drives a mutation error — the same condition that made
+  `ReviewIngestionPage.test.tsx` latent rather than red.
+
+All three latent files (those two plus `ReviewIngestionPage.test.tsx:26`, the one the gate named) now use
+the same spread. Full spread, not a targeted `getFieldErrors` re-export, and verified not to perturb
+anything:
+
+```
+ ✓ src/features/inventory/ProductForm.test.tsx (54 tests)
+ ✓ src/features/pricing/pricing.test.tsx (22 tests)
+   src/features/document-ingestions/__tests__/ReviewIngestionPage.test.tsx — 1 failed | 13 passed
+                                                                             (the failure is pre-existing, below)
+```
+
+## The two reds that are NOT this PR — proven on dev
+
+Re-measured read-only in the main checkout `/Users/houssamr/Projects/syneriva/apps/erp`, on `dev`
+**`7494a0c02`**. The gate measured `143cded50`; that commit is an **ancestor** of `7494a0c02`, and
+`git diff 143cded50..HEAD` over `ReviewIngestionPage.test.tsx`,
+`SharedSingletons.tenantScope.test.tsx`, `PartnerForm.tsx`, `AddPartnerModal.tsx` and
+`ReviewIngestionPage.tsx` is **empty**, so the two runs measure the same code.
+
+```
+$ (main checkout, dev 7494a0c02)
+npx vitest run src/features/document-ingestions/__tests__/ReviewIngestionPage.test.tsx                src/components/__tests__/SharedSingletons.tenantScope.test.tsx
+ × shared singleton tenant scope > scopes modal invalidations (.001-.003)
+     → Unable to find an accessible element with the role "button" and name "common:actions.create"
+       TypeError: countries.map is not a function
+           at AddPartnerModal (…/src/components/organisms/AddPartnerModal/AddPartnerModal.tsx:370:26)
+ × ReviewIngestionPage > posts only PartnerFormData keys when creating a supplier from the review page …
+     → expected [ 'city', 'country_code', …(8) ] to deeply equal [ 'address', 'city', 'country', …(7) ]
+ Test Files  2 failed (2)      Tests  2 failed | 15 passed (17)
+```
+
+Byte-identical failures and messages on `gate/pr-215`. **Pre-existing dev reds — recorded, not fixed**,
+per the coordinator's instruction. Neither is on a path this PR touches (`AddPartnerModal` imports only
+`apiPost`; `PartnerForm`'s payload-building code is byte-identical to base).
+
+## Round-2 verification — verbatim
+
+```
+$ npx vitest run partners.test.tsx PartnerForm.test.tsx ProductForm.test.tsx pricing.test.tsx                  ReviewIngestionPage.test.tsx
+ ✓ src/features/pricing/pricing.test.tsx (22 tests) 1616ms
+ ✓ src/features/partners/PartnerForm.test.tsx (32 tests) 3628ms
+ ✓ src/features/inventory/ProductForm.test.tsx (54 tests) 6286ms
+ ✓ src/features/partners/partners.test.tsx (49 tests) 5660ms
+ × ReviewIngestionPage > posts only PartnerFormData keys …          ← pre-existing on dev
+ Test Files  1 failed | 4 passed (5)      Tests  1 failed | 170 passed (171)
+
+$ npx tsc --noEmit -p tsconfig.json                            exit=0   (swap free 916 MB)
+$ npx eslint <the 5 files touched this round>                  ✖ 32 problems (0 errors, 32 warnings)
+$ node tools/audit-design-system.mjs
+[gate-summary] Design-system baseline: 802 acknowledged, 0 new, 0 stale baseline entries
+$ node tools/audit-tanstack-keys.mjs
+[gate-summary] Gate C baseline: 0 acknowledged, 0 new, 0 stale baseline entries
+```
+
+Backend is untouched this round (round-1 results stand: 5 passed / 21 assertions on sqlite and PG).
+
+## Residual list — updated
+
+1. **`fetchPriceLists` drops the paginator meta — with a user-visible consequence.** The meta is
+   *structurally* unreachable through `apiGet`: it sits on the paginator's top level, which
+   `response.data.data` discards. `PricingController::index()` paginates at **20**, so past 20 price
+   lists **the index page silently truncates to the first 20, and the header count
+   (`PriceListListPage.tsx:73`) plus the filter-tab counts (`:42`) report 20 as the total.** Strictly
+   better than the always-empty page it replaces, so it should not hold the merge — but it needs
+   `api.get` + `response.data` and a real pagination control to close. The comment in
+   `apps/web/src/features/pricing/api.ts` now states this consequence, not just "meta is unread".
+2. **Two pre-existing dev reds** (§ above) — `SharedSingletons.tenantScope` (`countries.map is not a
+   function`, `AddPartnerModal.tsx:370`) and `ReviewIngestionPage` (payload-keys mismatch). Owner's call;
+   not chargeable to this PR.
+3. **F-9 (LOW)** — `ProductForm.tsx:582` still toasts a raw untranslated backend English string when no
+   field maps. The `PriceListForm` treatment (unmapped messages → form-level alert) is the pattern to port.
+4. **F-10 (INFO)** — the broadened non-422 error branch on product save (5xx / 403 / network) is untested.
+5. **No browser leg.** All three pricing read surfaces were dead on `dev` and are now proven only by
+   rendering tests. Still the highest-value manual check before promotion.
+6. **Attribute-value re-scoping.** The second-company test records the tenant-wide key as current
+   behaviour; a re-scoping lane now has a red to flip.
+7. *Cosmetic, from the r2 nits:* `key={message}` on the unmapped-error `<li>` collides if the backend
+   returns two identical messages; and the F-4 second company is built with `Company::factory()` rather
+   than the real company-creation path convention 09 prefers (this endpoint has no company dimension to
+   seed).
+
+## Commits (round 1 + round 2)
+
+```
+77ddb32f0 test(web): lib/api mocks spread the real module so getFieldErrors resolves (gate r2 R2-1)
+023c4e49b docs(review): PR #215 fix-round-1 handback (gate r1 answered)
 ab54459ad fix(pricing): PriceListForm adopts the form atoms and drops no server 422 (gate r1 F-1, F-6, F-8)
 eada7caa1 fix(pricing): correct the read-path double-unwrap that emptied every price-list surface (gate r1 F-3)
 222fce906 refactor(web): one getFieldErrors surface for all three call sites (gate r1 F-5)
