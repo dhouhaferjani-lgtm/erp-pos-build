@@ -252,3 +252,231 @@ indirection, no `eslint-disable`.
 - **RTL/Arabic rendering not checked in a browser.** The new markup uses logical
   properties (`ms-2`, `text-start`) consistent with the existing panel.
 - The Arabic strings are machine-authored and unreviewed.
+
+---
+---
+
+# Fix round 2 — answering gate r2
+
+| Field | Value |
+|---|---|
+| Gate section answered | `docs/superpowers/reviews/2026-09-05-dhouha-pr-209-gate-r1.md` → "Gate r2 — PR #209 fix round 1" (verdict **CHANGES**, 1 MAJOR blocking) |
+| Re-gated sha | `7d0beb283` |
+| Fix-round-2 commit | `1a9706aaa` — `fix(compliance): scope the legacy-row caveat to the COUNT, not the verification (PR #209 gate r2)` |
+| Author of fix round | Claude Opus 5, 2026-09-05 |
+| Findings addressed | r2 finding 1 (MAJOR, blocking) + r2 finding 2 (MINOR, closed by the same change) |
+| Findings deliberately left | r2 findings 3, 4, 5 (below) |
+| Backend changed | **none** |
+| Merge decision | **not merged** — handed back for re-gate |
+
+## r2 finding 1 (MAJOR) — the r1 copy denied a verification that actually happened
+
+**The gate is right, and I re-derived it from the source rather than accepting it.**
+
+`apps/api/app/Modules/POS/Application/Services/Nf525DataProvider.php`:
+- `:396-407` — the **fiscal-events arm runs first**:
+  `$fiscalEventsArmOk = $this->receiptHashService->verifyTerminalChainFiscalArm($terminal);`
+  and returns a chain-break result if it fails.
+- `:409-418` — **only then** does the legacy early-return fire
+  (`if ($legacyReceipts->isEmpty()) return … isValid: true, totalRows: 0 …`).
+
+`apps/api/app/Modules/POS/Domain/Services/ReceiptHashService.php`:
+- `:267-270` — `verifyTerminalChainFiscalArm` is `inspectFiscalEventsArm($terminal)->isValid`.
+- `:272-340` — `inspectFiscalEventsArm` joins `fiscal_events` to `pos_receipts`, groups
+  rows into one stream per `(company_id, chain_context)` (`:316-321`) and walks/rehashes
+  each stream via `inspectFiscalEventStream` (`:322-333`). It is not a stub.
+
+So `is_valid: true, total_receipts: 0` means **"the event chain was verified and passed,
+and there were additionally no legacy rows"**. My r1 copy asserted the opposite
+("The event-chain arm is not covered by this check"), and since the legacy arm ages out
+post-Phase-1 (`Nf525DataProvider.php:359-363`), that amber badge plus the
+`allValidWithLegacyGap` banner would have fired on **every terminal of a normal modern
+fleet** — a standing false alarm on a compliance surface, which is the same
+signal-overload failure the original r1 finding was raised to prevent. My r1 handback
+even recorded the correct fact ("the fiscal-events arm returns only a boolean") and then
+drew the opposite conclusion in the copy. That is on me.
+
+**Changes** (`apps/web/src/features/compliance/components/ChainVerificationPanel.tsx`):
+
+1. `BadgeTone` is back to `'valid' | 'broken'`; the `notCovered` amber tone and its
+   label key are gone (`:10-21`). The panel no longer references
+   `semanticColorTokens.intent.caution` at all.
+2. `ReceiptChainStatus` (`:60-99`) renders the **backend's verdict and nothing else** —
+   broken → danger badge + `brokenAt` + diagnostics (unchanged); otherwise → the plain
+   `valid` badge. It no longer takes `totalReceipts`, so there is no code path left that
+   can turn a backend pass into an alarm. A docblock records the call-order proof above
+   so the next reader cannot re-derive the r1 mistake.
+3. `hasUncoveredReceiptArm` is deleted and the caution banner branch with it; a passing
+   fleet gets the plain green `allValid` banner again (`:167-173`).
+4. The caveat now describes the **figure**, not the verification, and sits **once** under
+   the table rather than on every row (`:243-245`):
+   `chainVerification.legacyRowsCountNote` — *"This column counts legacy-arm receipts
+   only. Event-chained receipts are verified by this check but are not counted in the
+   figure."* The column header stays `legacyRowsVerified`, the cell stays
+   `verified / total` (or `noLegacyRows` = "None" at zero).
+
+**r2 finding 2 (MINOR) is closed by the same change** — a brand-new terminal that has
+simply never sold anything now renders as a plain pass with "None" in the count column,
+not as an anomaly. There is no per-row caution state left to trigger.
+
+## i18n re-authoring
+
+Removed from `en`, `fr` **and** `ar` (all three carried the false claim):
+`chainVerification.notCovered`, `chainVerification.legacyArmOnlyNote`,
+`chainVerification.allValidWithLegacyGap`.
+
+Added to all three: `chainVerification.legacyRowsCountNote`.
+
+Net vs `dev`: **+10 keys per locale** (r1's +12, minus 3, plus 1). Locale diffs are
+minimal (`4 +---` each) — the `fr` file's `\uXXXX` escaping style was preserved with a
+surgical text edit rather than a full re-dump.
+
+**The `ar` strings remain machine-authored by this fix round and have NOT been reviewed
+by a native speaker.** Flagged again for the Arabic backfill lane; the re-authored
+`legacyRowsCountNote` in particular states a compliance fact and should be read by a
+native speaker before it reaches an auditor.
+
+## Tests
+
+`ChainVerificationPanel.test.tsx` — the r1 test *"does NOT show a green Valid verdict for
+a terminal whose legacy arm is empty"* encoded the false claim and is **replaced**:
+
+- **`renders a zero-legacy-row terminal as VERIFIED, not as an anomaly`** — asserts the
+  success badge is present in the receipt verdict cell, `container.querySelector('[class*="amber"]')`
+  is `null` (no caution anywhere on the panel), the count cell reads `noLegacyRows`, the
+  `legacyRowsCountNote` caveat is under the table, and the fleet banner is the plain
+  `allValid`.
+- **`never claims the event-chain arm went unverified`** — a whole-panel text guard:
+  `not.toMatch(/not covered/i)` and `not.toMatch(/covers the legacy arm only/i)`. This is
+  the regression guard for this specific class of mistake, independent of any one node.
+- The `phase1Terminal` fixture docblock now records that this shape is the **normal**
+  post-Phase-1 case, with the `:396-407` before `:409-418` ordering cited.
+
+**Falsifiability, both directions (verbatim):**
+
+r1's test file (`git show afc97db0a:…ChainVerificationPanel.test.tsx`) run against the r2 code:
+```
+   × ChainVerificationPanel > does NOT show a green "Valid" verdict for a terminal whose legacy arm is empty 36ms
+     → expected <span …(1)></span> to be null
+      Tests  1 failed | 7 passed (8)
+```
+Re-introducing an r1-style amber branch under the r2 test file:
+```
+   × ChainVerificationPanel > renders a zero-legacy-row terminal as VERIFIED, not as an anomaly 38ms
+     → Unable to find an element with the text: Valid. …
+   × ChainVerificationPanel > never claims the event-chain arm went unverified 18ms
+     → expected 'Hash Chain VerificationVerify the int…' not to match /not covered/i
+      Tests  2 failed | 7 passed (9)
+```
+
+## Verbatim guardrail evidence (at `1a9706aaa`)
+
+Compliance suite, by file:
+```
+ ✓ src/features/compliance/lib/chainDiagnostics.test.ts (7 tests) 13ms
+ ✓ src/features/compliance/api/complianceApi.test.ts (5 tests) 11ms
+ ✓ src/features/compliance/pages/FraudSettingsPage.test.tsx (2 tests) 1946ms
+ ✓ src/features/compliance/pages/__tests__/QuarantineResolveAssistPage.test.tsx (4 tests) 3011ms
+ ✓ src/features/compliance/__tests__/tenantScope.test.tsx (13 tests) 2236ms
+ ✓ src/features/compliance/components/CashDrawerControlsSection.test.tsx (8 tests) 2225ms
+ ✓ src/features/compliance/components/ChainVerificationPanel.test.tsx (9 tests) 2534ms
+ Test Files  7 passed (7)
+      Tests  48 passed (48)
+```
+(47 → 48: the r1 zero-legacy test is replaced and a second guard added.)
+
+Shared-file regression check (`src/lib/i18n.ts` carried over from r1):
+```
+ ✓ src/lib/__tests__/i18nPosZReportsShadowing.test.ts (4 tests) 4ms
+ ✓ src/lib/i18nRawKeyCoverage.test.tsx (5 tests) 48ms
+ Test Files  2 passed (2)
+      Tests  9 passed (9)
+```
+
+`./node_modules/.bin/eslint <6 compliance files> src/lib/i18n.ts` — **0 errors**, 4
+warnings, all pre-existing and unchanged from the r2 gate's own measurement
+(`complianceApi.test.ts:12:30` unbound-method; `complianceApi.ts:69/92/115`
+no-unsafe-type-assertion). Re-linting just the two files this round touched:
+```
+ESLINT-SCOPED EXIT: 0
+```
+(no output — `ChainVerificationPanel.tsx` and `ChainVerificationPanel.test.tsx` are clean.)
+
+`./node_modules/.bin/tsc --noEmit`
+```
+TSC EXIT: 0
+```
+(swap free at the time: 1087 MB, above the 300 MB floor.)
+
+`pnpm -s audit:i18n:local`
+```
+i18n completeness OK — 55 namespaces, authored keys: en=9511, fr=9528, ar=5156 authored (1921 behind aliases); 2816 known gap(s) held at the baseline.
+  English-aliased namespaces — ar: 21 ns / 1921 keys served in English
+```
+(en 9513 → 9511, fr 9530 → 9528, ar 5158 → 5156: −3 +1 per locale. The 2816 baselined
+gaps are unchanged.)
+
+Audits:
+```
+[gate-summary] Gate C baseline: 0 acknowledged, 0 new, 0 stale baseline entries
+[gate-summary] Design-system baseline: 810 acknowledged, 0 new, 0 stale baseline entries
+[audit-quantity] raw quantity display sites: 0 total (0 baselined, 0 new, 0 stale baseline entries)
+```
+
+**Baseline honesty.** `git status --porcelain -- apps/web/tools scripts` is empty — no
+baseline or audit tool was touched in either round. The i18n counts moved by
+authoring/removing real strings, not by absorption. The design-system count is still 810
+with 0 new even though the component lost its amber branch.
+
+Scope of `1a9706aaa`: 5 files — the panel, its test, and the three locale files.
+
+## Durable follow-up (backend lane — explicitly NOT this PR)
+
+The event-arm count the panel would need in order to state the truth **with a number**
+already exists and is thrown away:
+
+- `ReceiptHashService.php:296-300` — `inspectFiscalEventsArm` computes
+  `$receiptCoverageCount` (fiscal_events rows projected onto a receipt of this terminal)
+  and `$inspectedCount` (all fiscal_events rows walked).
+- `ReceiptHashService.php:335-339` — the clean path returns
+  `new ReceiptChainArmVerificationResult(isValid: true, count: $receiptCoverageCount, inspectedCount: $inspectedCount)`.
+- `ReceiptHashService.php:269` — `verifyTerminalChainFiscalArm` reduces all of that to
+  `->isValid`, so `Nf525DataProvider` never sees the numbers and the controller payload
+  cannot carry them.
+
+Plumbing `count` / `inspectedCount` through `Nf525ChainVerificationResult` and
+`Nf525ExportController::verifyChains` would let the panel show an event-arm figure beside
+the legacy one and retire `legacyRowsCountNote` entirely. It would also disambiguate the
+one case the FE genuinely cannot distinguish today: a terminal with **no fiscal_events
+rows at all**, where `inspectFiscalEventsArm` returns `(true, 0)` vacuously
+(`ReceiptHashService.php:292-294`), is indistinguishable in this payload from a busy
+Phase-1 terminal.
+
+## Deliberately NOT changed in round 2
+
+- **r2 finding 3 (MINOR) — row-level `is_valid` is the only unused field**
+  (`complianceApi.ts:29`). Left as-is: the fix-round-2 brief scoped this round to the
+  MAJOR (plus finding 2, which the same change closes). It is a one-line decision
+  (render it or drop it) and should be taken in the same round as the backend DTO work
+  below rather than churned twice.
+- **r2 finding 4 (MINOR, carried) — no generated DTO for this endpoint.** The controller
+  still builds a raw array literal (`Nf525ExportController.php:91-110`), so both the
+  `ChainVerificationResult` interface and the `chainDiagnostics.ts` prefix table are
+  untyped couplings to the backend. Both are pinned by tests; the `#[TypeScript]` DTO +
+  stable `error_code` remains a backend lane.
+- **r2 finding 5 (MINOR, carried) — `exportJetXml` still posts a dead `company_id`**
+  (`complianceApi.ts:66`), on the sibling endpoint, outside this PR's diff.
+- **r1 findings 5, 6, 7** (name collision, Arabic backfill, generated DTO) as recorded in
+  the round-1 section above.
+
+## Not verified in round 2
+
+- **Still no live call to `POST /compliance/nf525/verify-chains`.** The correction rests
+  on reading `Nf525DataProvider.php:396-418` and `ReceiptHashService.php:267-340`, not on
+  observing a running tenant. A browser pass on a POS tenant with sealed receipts remains
+  the fastest way to settle both this and the r1 shape claim.
+- **No browser recette**; the new render is proven by unit test only.
+- **No PHP executed and no PHP file changed.**
+- **RTL/Arabic not rendered in a browser.** The new caption uses the same subtle text
+  token and inherits the panel's logical properties.
+- **Arabic copy quality still unassessed** (machine-authored).
