@@ -6,7 +6,7 @@
     "deferred": "CAN run, but no lane runs it yet. Requires `reason`. Counted loudly on every CI run. After O-29 exactly one group is left here — `(root files)`, which no whole-directory selector can address."
   },
   "debt_ceiling": 1,
-  "gated_ceiling": 1247,
+  "gated_ceiling": 1248,
   "lanes": {
     "security-regression": {
       "job": "security-regression",
@@ -722,8 +722,9 @@
     },
     "Catalog": {
       "lane": "feature-lane-catalog/Catalog",
-      "classes": 34,
-      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped. DELIBERATE RAISE 33 -> 34 (union at merge; lane fork base 33) (2026-08-30, lane G-3a feat/g3a-company-scoped-sku): VariantIndexScopeTest pins sibling-company SKU allowance, tenant-wide barcode refusal, and create/restore 422 mapping against the repaired indexes. It is also named in the live backend-test-pgsql --filter allowlist (added in fix round 2, 2026-08-30; gate r2 G3A-R2-2) because this lane is PARKED, so that filter is the only live gate that can run it. === prior note === Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
+      "classes": 35,
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped. DELIBERATE RAISE 33 -> 34 (union at merge; lane fork base 33) (2026-08-30, lane G-3a feat/g3a-company-scoped-sku): VariantIndexScopeTest pins sibling-company SKU allowance, tenant-wide barcode refusal, and create/restore 422 mapping against the repaired indexes. It is also named in the live backend-test-pgsql --filter allowlist (added in fix round 2, 2026-08-30; gate r2 G3A-R2-2) because this lane is PARKED, so that filter is the only live gate that can run it. === prior note === Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped.",
+      "raise_note_2026_09_05": "DELIBERATE MERGED-TREE RAISE 34 -> 35 (2026-09-05, merge of teammate PR #215, 3259d49db): AddAttributeValueEndpointTest (attribute-value uniqueness scoped to real UUIDs — non-UUID attribute id is a 400 not a PG 22P02 500; second-company case per rule 22; 5 tests / 21 assertions green on sqlite AND PostgreSQL in gates r1-r2) arrived without the accompanying raise. Also added to the backend-test-pgsql --filter allowlist in the same commit (the PG 22P02 regression is the whole point and only executes on PostgreSQL) so it has a live CI gate while this lane is parked behind vars.SELF_HOSTED_RUNNER_READY."
     },
     "Channel": {
       "lane": "feature-lane-catalog/Channel",
@@ -1049,5 +1050,6 @@
   },
   "gated_ceiling_raise_note_2026_09_05_pr212": "DELIBERATE RAISE 1245 -> 1246 (2026-09-05, teammate PR #212 fix round 1): Document 92 -> 93, see groups.Document.raise_note_2026_09_05. One class, one raise; every other group taken from local dev fa000edc3 verbatim.",
   "gated_ceiling_raise_note_2026_09_05": "DELIBERATE RAISE 1243 -> 1245 (2026-09-05): Inventory 123 -> 125, see groups.Inventory.raise_note_2026_09_05. Union arithmetic: origin/dev had already reached 1244 (N-1's SubmitCountQuantityScaleTest without a raise), local dev adds Phase A's StockTransferIdempotencyCollisionPostgresTest.",
-  "gated_ceiling_raise_note_2026_09_05b": "DELIBERATE RAISE 1246 -> 1247 (2026-09-05): Document 93 -> 94, see groups.Document.raise_note_2026_09_05b."
+  "gated_ceiling_raise_note_2026_09_05b": "DELIBERATE RAISE 1246 -> 1247 (2026-09-05): Document 93 -> 94, see groups.Document.raise_note_2026_09_05b.",
+  "gated_ceiling_raise_note_2026_09_05c": "DELIBERATE RAISE 1247 -> 1248 (2026-09-05): Catalog 34 -> 35, see groups.Catalog.raise_note_2026_09_05."
 }
