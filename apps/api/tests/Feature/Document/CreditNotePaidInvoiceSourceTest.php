@@ -327,6 +327,29 @@ class CreditNotePaidInvoiceSourceTest extends TestCase
         $this->assertFalse($deliveryNote->isCreditableInvoiceSource());
     }
 
+    /**
+     * Gate r2 NEW-5 — `Rule::exists` queries the raw table, and `Document` is
+     * soft-deleting, so without `whereNull('deleted_at')` a soft-deleted invoice
+     * validated and then missed the service's soft-delete-scoped `findOrFail()`:
+     * a 404/500 where the honest answer is a 422 on `source_invoice_id`.
+     */
+    public function test_credit_note_rejects_a_soft_deleted_source_invoice(): void
+    {
+        $invoice = $this->makeInvoice(DocumentStatus::Posted, 'INV-DELETED', '1200.000');
+        $invoice->delete();
+        $this->assertSoftDeleted('documents', ['id' => $invoice->id]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/credit-notes', [
+                'source_invoice_id' => $invoice->id,
+                'amount' => '1200.000',
+                'reason' => 'return',
+            ]);
+
+        $this->assertJsonValidationErrors($response, ['source_invoice_id']);
+        $this->assertSame(0, Document::where('type', DocumentType::CreditNote)->count());
+    }
+
     public function test_creditable_filter_returns_posted_and_paid_but_not_draft_invoices(): void
     {
         $posted = $this->makeInvoice(DocumentStatus::Posted, 'INV-POSTED', '1200.000');

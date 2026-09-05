@@ -157,7 +157,14 @@ class CreditNoteController extends Controller
                 'required',
                 'string',
                 ScopedExists::tenantAndCompany('documents', $tenantId, $companyId)
-                    ->where('type', DocumentType::Invoice->value),
+                    ->where('type', DocumentType::Invoice->value)
+                    // Gate r2 NEW-5 — `Document` is soft-deleting
+                    // (`Document.php:115`) but `Rule::exists` queries the raw
+                    // table, so a soft-deleted invoice satisfied the validator
+                    // and then missed the service's soft-delete-scoped
+                    // `findOrFail()`, surfacing as a 404/500 instead of a clean
+                    // 422 on the field that is actually wrong.
+                    ->whereNull('deleted_at'),
             ];
 
             if (! $isLineBased) {
