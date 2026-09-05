@@ -131,7 +131,8 @@
       "partialRefundTitle": "Remboursement partiel",
       "maxRefundable": "Montant maximum remboursable",
       "reverseTitle": "Annuler le paiement",
-      "reverseMessage": "Cela annulera entièrement le paiement et le marquera comme annulé. Cette action est irréversible."
+      "reverseMessage": "Cela annulera entièrement le paiement et le marquera comme annulé. Cette action est irréversible.",
+      "refusedSupplierPayment": "Ce paiement a été effectué sur une facture fournisseur : il ne peut pas être remboursé ici, car cet écran rembourse de l'argent reçu d'un client alors que cette somme est sortie vers un fournisseur. L'annulation d'un paiement de facture fournisseur relève du parcours de paiement fournisseur et n'est pas encore disponible — contactez un administrateur."
     }
   },
   "instruments": {

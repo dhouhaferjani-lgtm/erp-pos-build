@@ -33,4 +33,16 @@ return [
         'payable_not_settleable_here' => "Il s'agit d'une facture fournisseur. Enregistrez le paiement via le parcours de paiement fournisseur, qui règle le fournisseur et solde la dette.",
         'partner_role_mismatch' => 'Le type de ce document ne correspond pas au rôle du partenaire : le sens du paiement ne peut pas être déterminé. Une facture client doit appartenir à un client et une facture fournisseur à un fournisseur. Si ce partenaire est les deux, réglez son type sur « Les deux » ; sinon, corrigez le document.',
     ],
+    /*
+     * F-W2-13 (P0) — motif de refus du remboursement dans le parcours CLIENT.
+     * Rendu comme `message` d'un 422 `REFUND_LANE_REFUSED` ; le type de paiement
+     * l'accompagne dans `details.payment_type`.
+     *
+     * Règle de formulation (gate r1, constat #3) : ne citer que ce que
+     * l'opérateur peut faire aujourd'hui — surtout pas le remboursement d'acompte
+     * fournisseur, réservé aux commandes fournisseur.
+     */
+    'refund_refused' => [
+        'supplier_payment' => "Ce paiement a été effectué sur une facture fournisseur : il ne peut pas être remboursé ici, car cet écran rembourse de l'argent reçu d'un client alors que cette somme est sortie vers un fournisseur. L'annulation d'un paiement de facture fournisseur relève du parcours de paiement fournisseur et n'est pas encore disponible — contactez un administrateur.",
+    ],
 ];

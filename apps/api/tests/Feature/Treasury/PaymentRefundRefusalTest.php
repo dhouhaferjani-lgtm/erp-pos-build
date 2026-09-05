@@ -20,6 +20,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\Exceptions\RefundLaneRefusedException;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentMethod;
@@ -45,15 +46,23 @@ use Tests\TestCase;
  * re-credits 401.
  *
  * The subject guard `assertRefundableSubject()` only checks `amount > 0`, so a
- * positive supplier payment sails through. The reversal lane already refuses these
- * shapes via `PaymentType::reversalSupport() === Unsupported`
+ * positive supplier payment sails through. The reversal lane already refuses the
+ * supplier shape via `PaymentType::reversalSupport() === Unsupported`
  * (see PaymentReversalRefusalTest); this test pins the SAME refusal on both refund
- * entry points. POS / POSRefund are `Unsupported` for the same lane reasons and
- * are refused here too.
+ * entry points.
  *
- * `Refund` / `Reversal` rows are ALSO `Unsupported`, but they are negative and are
- * already refused earlier by `assertRefundableSubject()`; they are covered by
- * PaymentRefundTest and are deliberately NOT re-asserted here.
+ * SCOPE — fix round 1 (gate r1 findings #1 and #4). The first cut of this suite
+ * also pinned POS / POSRefund as refused. That was scope creep beyond F-W2-13 (a
+ * SUPPLIER finding) and it broke the §13 writer-inventory rows 7/8, which refund a
+ * POS-typed payment through this very lane
+ * (`tests/Feature/Fiscal/PaymentOriginWriterInventoryTest.php:435`, `:471`).
+ * Whether the back office may refund a POS payment is a second flow needing its own
+ * owner ruling, so those cases are INVERTED here: `test_pos_shapes_are_still_offered`
+ * pins that POS behaviour is exactly what it was before F-W2-13.
+ *
+ * `Refund` / `Reversal` rows are negative and are refused earlier by
+ * `assertRefundableSubject()`; they are covered by PaymentRefundTest and are
+ * deliberately NOT re-asserted here.
  */
 final class PaymentRefundRefusalTest extends TestCase
 {
@@ -138,41 +147,19 @@ final class PaymentRefundRefusalTest extends TestCase
         $this->refundService = app(PaymentRefundService::class);
     }
 
-    /**
-     * The POSITIVE `Unsupported` shapes that actually reach the refund lane (the
-     * negative Refund/Reversal rows are stopped earlier by the amount guard).
-     *
-     * @return array<string, array{PaymentType, string}>
-     */
-    public static function unsupportedRefundShapes(): array
+    public function test_full_refund_of_a_supplier_payment_refuses_and_writes_nothing(): void
     {
-        return [
-            'supplier payment' => [PaymentType::SupplierPayment, 'supplier refund lane'],
-            'pos' => [PaymentType::POS, 'pos void/return lane'],
-            'pos refund' => [PaymentType::POSRefund, 'pos void/return lane'],
-        ];
-    }
-
-    #[DataProvider('unsupportedRefundShapes')]
-    public function test_full_refund_of_an_unsupported_shape_refuses_and_writes_nothing(
-        PaymentType $type,
-        string $expectedFragment,
-    ): void {
-        $payment = $this->paymentOfType($type);
+        $payment = $this->paymentOfType(PaymentType::SupplierPayment);
 
         $this->assertRefusedAndNothingWritten(
             fn () => $this->refundService->refundPayment($payment, 'must refuse', $this->user->id),
             $payment,
-            $expectedFragment,
         );
     }
 
-    #[DataProvider('unsupportedRefundShapes')]
-    public function test_partial_refund_of_an_unsupported_shape_refuses_and_writes_nothing(
-        PaymentType $type,
-        string $expectedFragment,
-    ): void {
-        $payment = $this->paymentOfType($type);
+    public function test_partial_refund_of_a_supplier_payment_refuses_and_writes_nothing(): void
+    {
+        $payment = $this->paymentOfType(PaymentType::SupplierPayment);
 
         // 100 of 500 is comfortably within the per-request amount bounds, so the
         // request reaches (and must be stopped by) the payment_type gate, not the
@@ -180,18 +167,44 @@ final class PaymentRefundRefusalTest extends TestCase
         $this->assertRefusedAndNothingWritten(
             fn () => $this->refundService->partialRefund($payment, '100.00', 'must refuse', $this->user->id),
             $payment,
-            $expectedFragment,
         );
     }
 
-    #[DataProvider('unsupportedRefundShapes')]
-    public function test_can_refund_is_false_for_an_unsupported_shape(PaymentType $type): void
+    public function test_can_refund_is_false_for_a_supplier_payment(): void
     {
-        $payment = $this->paymentOfType($type);
+        $payment = $this->paymentOfType(PaymentType::SupplierPayment);
 
         self::assertFalse(
             $this->refundService->canRefund($payment),
-            "{$type->value}: the UI must not offer a refund action for a shape this lane refuses",
+            'supplier_payment: the UI must not offer a refund action for a shape this lane refuses',
+        );
+    }
+
+    /**
+     * The narrowing itself (gate r1 findings #1 / #4): the guard is SUPPLIER-only,
+     * so a POS-typed payment is still offered exactly as before F-W2-13. The write
+     * path for these rows is pinned by the §13 writer inventory
+     * (`PaymentOriginWriterInventoryTest::test_refund_inherits_pos_origin_when_original_is_pos`
+     * and its partial-refund twin), which this suite must not contradict.
+     *
+     * @return array<string, array{PaymentType}>
+     */
+    public static function posShapes(): array
+    {
+        return [
+            'pos' => [PaymentType::POS],
+            'pos refund' => [PaymentType::POSRefund],
+        ];
+    }
+
+    #[DataProvider('posShapes')]
+    public function test_pos_shapes_are_still_offered(PaymentType $type): void
+    {
+        $payment = $this->paymentOfType($type);
+
+        self::assertTrue(
+            $this->refundService->canRefund($payment),
+            "{$type->value}: F-W2-13 is a supplier finding — POS behaviour must be unchanged",
         );
     }
 
@@ -219,24 +232,57 @@ final class PaymentRefundRefusalTest extends TestCase
     }
 
     /**
-     * The refusal surfaces as the controller's existing 422 (it catches
-     * `\Exception`), naming the correct vendor-refund path.
+     * Fix round 1 (gate r1 finding #2): the refusal must REACH the operator. The
+     * body is the house envelope `{error:{code,message,details}}` — the shape
+     * `apps/web/src/lib/api.ts` `getErrorMessage()` reads (`data.error.message`).
+     * A bare `{"error": "<string>"}` renders as "Request failed with status code
+     * 422" in the toast, which is why the string shape is asserted against here.
      */
-    public function test_a_full_refund_refusal_surfaces_as_a_422_over_the_http_api(): void
+    public function test_a_full_refund_refusal_surfaces_as_a_structured_422_over_the_http_api(): void
     {
         $this->user->givePermissionTo('payments.refund');
         $payment = $this->paymentOfType(PaymentType::SupplierPayment);
 
-        $this->actingAs($this->user)
+        $response = $this->actingAs($this->user)
             ->postJson("/api/v1/payments/{$payment->id}/refund", [
                 'reason' => 'http refusal',
                 'refund_request_id' => Str::uuid()->toString(),
             ])
             ->assertStatus(422)
-            ->assertJsonPath(
-                'error',
-                fn (string $error): bool => str_contains(strtolower($error), 'supplier refund lane'),
-            );
+            ->assertJsonPath('error.code', 'REFUND_LANE_REFUSED')
+            ->assertJsonPath('error.message', __('treasury.refund_refused.supplier_payment'))
+            ->assertJsonPath('error.details.payment_type', PaymentType::SupplierPayment->value);
+
+        /** @var array{error: array{message: string}} $body */
+        $body = $response->json();
+        self::assertStringNotContainsString(
+            'VendorRefundService',
+            $body['error']['message'],
+            'gate r1 finding #3: the operator text must not name an internal class, '
+            .'nor a lane that would refuse this payment too',
+        );
+
+        self::assertSame(PaymentStatus::Completed, $payment->fresh()?->status);
+    }
+
+    /**
+     * The partial-refund entry point answers with the same envelope — it has its
+     * own catch arm, and the first cut flattened both to a bare string.
+     */
+    public function test_a_partial_refund_refusal_surfaces_as_a_structured_422_over_the_http_api(): void
+    {
+        $this->user->givePermissionTo('payments.refund');
+        $payment = $this->paymentOfType(PaymentType::SupplierPayment);
+
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/payments/{$payment->id}/partial-refund", [
+                'amount' => '100.00',
+                'reason' => 'http refusal',
+                'refund_request_id' => Str::uuid()->toString(),
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'REFUND_LANE_REFUSED')
+            ->assertJsonPath('error.message', __('treasury.refund_refused.supplier_payment'));
 
         self::assertSame(PaymentStatus::Completed, $payment->fresh()?->status);
     }
@@ -248,7 +294,6 @@ final class PaymentRefundRefusalTest extends TestCase
     private function assertRefusedAndNothingWritten(
         callable $act,
         Payment $payment,
-        string $expectedFragment,
     ): void {
         $paymentsBefore = Payment::query()->count();
         $entriesBefore = JournalEntry::query()->where('company_id', $this->company->id)->count();
@@ -256,11 +301,15 @@ final class PaymentRefundRefusalTest extends TestCase
         try {
             $act();
             self::fail('the refund lane must refuse this shape');
-        } catch (\DomainException $exception) {
+        } catch (RefundLaneRefusedException $exception) {
+            // Typed, so the controller can answer with the house envelope instead
+            // of a bare string (gate r1 finding #2).
+            self::assertSame(PaymentType::SupplierPayment, $exception->paymentType);
+            self::assertSame($payment->id, $exception->paymentId);
             self::assertStringContainsString(
-                $expectedFragment,
+                'supplier invoice',
                 strtolower($exception->getMessage()),
-                'the refusal must name the correct lane',
+                'the technical message must say WHY, on the payment it refused',
             );
         }
 

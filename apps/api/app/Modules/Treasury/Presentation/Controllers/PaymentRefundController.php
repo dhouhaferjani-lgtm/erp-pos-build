@@ -7,6 +7,7 @@ namespace App\Modules\Treasury\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Treasury\Domain\Exceptions\RefundLaneRefusedException;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\Services\PaymentRefundService;
 use App\Modules\Treasury\Domain\Services\VendorRefundService;
@@ -86,6 +87,24 @@ class PaymentRefundController extends Controller
                 'data' => $refund->load(['partner', 'paymentMethod', 'allocations']),
                 'message' => 'Payment refunded successfully',
             ], 201);
+        } catch (RefundLaneRefusedException $e) {
+            // F-W2-13 fix round 1 (gate r1 finding #2). MUST precede the generic
+            // arm below: that arm flattens the refusal to `{"error": "<string>"}`,
+            // a shape `apps/web/src/lib/api.ts` `getErrorMessage()` cannot read
+            // (it looks for `data.error.message`), so the operator was shown
+            // "Request failed with status code 422" instead of the reason. Same
+            // house envelope as `refundPrepayment()` below, and the operator text
+            // comes from `lang/<locale>/treasury.php` (rule 11).
+            return response()->json([
+                'error' => [
+                    'code' => 'REFUND_LANE_REFUSED',
+                    'message' => __($e->translationKey()),
+                    'details' => [
+                        'payment_id' => $e->paymentId,
+                        'payment_type' => $e->paymentType->value,
+                    ],
+                ],
+            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'error' => $e->getMessage(),
@@ -125,6 +144,24 @@ class PaymentRefundController extends Controller
                 'data' => $refund->load(['partner', 'paymentMethod']),
                 'message' => 'Partial refund created successfully',
             ], 201);
+        } catch (RefundLaneRefusedException $e) {
+            // F-W2-13 fix round 1 (gate r1 finding #2). MUST precede the generic
+            // arm below: that arm flattens the refusal to `{"error": "<string>"}`,
+            // a shape `apps/web/src/lib/api.ts` `getErrorMessage()` cannot read
+            // (it looks for `data.error.message`), so the operator was shown
+            // "Request failed with status code 422" instead of the reason. Same
+            // house envelope as `refundPrepayment()` below, and the operator text
+            // comes from `lang/<locale>/treasury.php` (rule 11).
+            return response()->json([
+                'error' => [
+                    'code' => 'REFUND_LANE_REFUSED',
+                    'message' => __($e->translationKey()),
+                    'details' => [
+                        'payment_id' => $e->paymentId,
+                        'payment_type' => $e->paymentType->value,
+                    ],
+                ],
+            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'error' => $e->getMessage(),
