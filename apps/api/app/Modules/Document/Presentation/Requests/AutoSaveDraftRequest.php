@@ -6,9 +6,13 @@ namespace App\Modules\Document\Presentation\Requests;
 
 use App\Modules\Catalog\Presentation\Rules\TaxConfigurationCountryCoherent;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Presentation\Rules\DueDateNotBeforeDocumentDate;
 use App\Shared\Presentation\Validation\ScopedExists;
+use Carbon\CarbonInterface;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 /**
@@ -179,6 +183,8 @@ class AutoSaveDraftRequest extends FormRequest
         $companyId = $this->companyContext->requireCompanyId();
         $tenantId = $company->tenant_id;
 
+        $submittedDocumentDate = $this->input('document_date');
+
         return [
             'draft_id' => ['nullable', 'uuid'],
             'type' => ['required', Rule::enum(DocumentType::class)->only(self::autoSavableTypes())],
@@ -188,7 +194,22 @@ class AutoSaveDraftRequest extends FormRequest
                 ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
             ],
             'document_date' => ['nullable', 'date'],
-            'due_date' => ['nullable', 'date'],
+            // DEV-QA-008/057, gate r1 F3. `createNewDraft()` writes BOTH dates
+            // straight onto the `documents` row
+            // (DraftPersistenceService.php:261-262), so before this rule the
+            // editor's own keystroke auto-save was the app's primary way to
+            // persist `due_date < document_date` — and that draft is the row
+            // that later gets confirmed and numbered. The rule is silent unless
+            // a comparand is actually known (payload first, then the stored
+            // draft): a half-typed draft with no date at all must still save.
+            'due_date' => [
+                'nullable',
+                'date',
+                new DueDateNotBeforeDocumentDate(
+                    submittedDocumentDate: is_string($submittedDocumentDate) ? $submittedDocumentDate : null,
+                    storedDocumentDate: $this->storedDraftDocumentDate(),
+                ),
+            ],
             'notes' => ['nullable', 'string', 'max:5000'],
 
             'lines' => ['sometimes', 'array'],
@@ -238,6 +259,40 @@ class AutoSaveDraftRequest extends FormRequest
                 new TaxConfigurationCountryCoherent($company->country_code),
             ],
         ];
+    }
+
+    /**
+     * The persisted `document_date` of the draft this auto-save targets, as
+     * `Y-m-d`, or null when there is no such draft.
+     *
+     * The payload's own `document_date` wins whenever it carries one (the editor
+     * sends it on every keystroke — `DocumentForm.tsx:248`); this is only the
+     * fallback for a client that omits it. Scoped by tenant AND company, the
+     * same scoping `DraftPersistenceService::saveDraft()` uses to decide whether
+     * `draft_id` addresses a row at all — a foreign id resolves to null there
+     * and must resolve to null here too, or this rule would leak one company's
+     * document date into another company's 422.
+     */
+    private function storedDraftDocumentDate(): ?string
+    {
+        $draftId = $this->input('draft_id');
+
+        if (! is_string($draftId) || ! Str::isUuid($draftId)) {
+            return null;
+        }
+
+        $document = Document::query()
+            ->where('tenant_id', $this->companyContext->requireCompany()->tenant_id)
+            ->where('company_id', $this->companyContext->requireCompanyId())
+            ->find($draftId);
+
+        if ($document === null) {
+            return null;
+        }
+
+        $documentDate = $document->getAttribute('document_date');
+
+        return $documentDate instanceof CarbonInterface ? $documentDate->toDateString() : null;
     }
 
     /**
