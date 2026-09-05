@@ -83,6 +83,36 @@
       "live": true,
       "retired_in_task": "Task 29",
       "note": "Task 29 §14.2: POST /pos/receipts/{id}/payments is 410 Gone; service body never reached via HTTP. Still reachable from ExchangeService (which is itself inert per the §14.3 entry above)."
+    },
+    {
+      "file": "apps/api/app/Modules/Import/Services/ImportService.php",
+      "line_anchor": "$this->importJobClaimService->finalize($job, $status, $counters, null, null);",
+      "calling_class": "App\\Modules\\Import\\Services\\ImportService",
+      "calling_method": "executeImport",
+      "receiver_type": "App\\Modules\\Import\\Services\\ImportJobClaimService",
+      "chokepoint": "unrelated",
+      "live": true,
+      "note": "Import job claim lifecycle (ImportJobClaimService::finalize releases a claimed import_jobs row and writes its terminal status/counters); NOT a fiscal chokepoint. Explicit unrelated allowlist — same method name, unrelated receiver type. Added 2026-09-05 (request-hygiene Phase A promotion reconciliation): the Import module landed on origin/dev 2026-09-02 (wave 1) without manifest entries, so the §14.3 gate has been red on every PR→dev run since — invisible until the first workflow_dispatch (the §event-graph blindness class)."
+    },
+    {
+      "file": "apps/api/app/Modules/Import/Services/ImportService.php",
+      "line_anchor": "return $this->importJobClaimService->finalize(",
+      "calling_class": "App\\Modules\\Import\\Services\\ImportService",
+      "calling_method": "finalizeClaimedJob",
+      "receiver_type": "App\\Modules\\Import\\Services\\ImportJobClaimService",
+      "chokepoint": "unrelated",
+      "live": true,
+      "note": "Import job claim lifecycle (ImportJobClaimService::finalize releases a claimed import_jobs row and writes its terminal status/counters); NOT a fiscal chokepoint. Explicit unrelated allowlist — same method name, unrelated receiver type. Added 2026-09-05 (request-hygiene Phase A promotion reconciliation): the Import module landed on origin/dev 2026-09-02 (wave 1) without manifest entries, so the §14.3 gate has been red on every PR→dev run since — invisible until the first workflow_dispatch (the §event-graph blindness class)."
+    },
+    {
+      "file": "apps/api/app/Modules/Import/Infrastructure/Commands/ReapStuckImportsCommand.php",
+      "line_anchor": "$won = $this->claimService->finalize(",
+      "calling_class": "App\\Modules\\Import\\Infrastructure\\Commands\\ReapStuckImportsCommand",
+      "calling_method": "executeCommand",
+      "receiver_type": "App\\Modules\\Import\\Services\\ImportJobClaimService",
+      "chokepoint": "unrelated",
+      "live": true,
+      "note": "Import job claim lifecycle (ImportJobClaimService::finalize releases a claimed import_jobs row and writes its terminal status/counters); NOT a fiscal chokepoint. Explicit unrelated allowlist — same method name, unrelated receiver type. Added 2026-09-05 (request-hygiene Phase A promotion reconciliation): the Import module landed on origin/dev 2026-09-02 (wave 1) without manifest entries, so the §14.3 gate has been red on every PR→dev run since — invisible until the first workflow_dispatch (the §event-graph blindness class)."
     }
   ]
 }

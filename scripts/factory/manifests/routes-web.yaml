@@ -140,9 +140,9 @@ routes:
     module_gate: null
     permission: null
   - path: /crm/companies
-    component: CrmCompanyListPage
+    component: Navigate
     module_gate: null
-    permission: partners.view
+    permission: null
   - path: /crm/contacts
     component: CrmContactListPage
     module_gate: contacts
@@ -714,19 +714,19 @@ routes:
   - path: /purchases/suppliers
     component: CustomerListPage
     module_gate: purchases
-    permission: null
+    permission: partners.view
   - path: /purchases/suppliers/:id
     component: CustomerDetailPage
     module_gate: purchases
-    permission: null
+    permission: partners.view
   - path: /purchases/suppliers/:id/edit
     component: CustomerForm
     module_gate: null
-    permission: contacts.update
+    permission: partners.update
   - path: /purchases/suppliers/new
     component: CustomerForm
     module_gate: null
-    permission: purchases.create
+    permission: partners.create
   - path: /register
     component: RegisterPage
     module_gate: null
@@ -762,19 +762,19 @@ routes:
   - path: /sales/customers
     component: CustomerListPage
     module_gate: sales
-    permission: null
+    permission: partners.view
   - path: /sales/customers/:id
     component: CustomerDetailPage
     module_gate: sales
-    permission: null
+    permission: partners.view
   - path: /sales/customers/:id/edit
     component: CustomerForm
     module_gate: null
-    permission: contacts.update
+    permission: partners.update
   - path: /sales/customers/new
     component: CustomerForm
     module_gate: null
-    permission: sales.create
+    permission: partners.create
   - path: /sales/invoices
     component: DocumentListPage
     module_gate: sales
