@@ -7,18 +7,16 @@ import { resolveChainDiagnosticKey } from '../lib/chainDiagnostics'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
-type BadgeTone = 'valid' | 'broken' | 'notCovered'
+type BadgeTone = 'valid' | 'broken'
 
 const TONE_CLASSES: Record<BadgeTone, string> = {
   valid: `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStronger}`,
   broken: `${colorTokens.intent.danger.bgSoft} ${colorTokens.intent.danger.textStronger}`,
-  notCovered: `${colorTokens.intent.caution.bgSoft} ${colorTokens.intent.caution.textStronger}`,
 }
 
 const TONE_LABEL_KEYS: Record<BadgeTone, string> = {
   valid: 'chainVerification.valid',
   broken: 'chainVerification.broken',
-  notCovered: 'chainVerification.notCovered',
 }
 
 function StatusBadge({ tone }: { tone: BadgeTone }) {
@@ -57,15 +55,26 @@ function ChainDiagnostic({ error }: { error: string }) {
   )
 }
 
-/** Receipt-chain verdict cell: never a bare green badge over an unverified arm. */
+/**
+ * Receipt-chain verdict cell.
+ *
+ * The badge renders the BACKEND's verdict and nothing else. A pass really is a
+ * pass even when `total_receipts` is 0: `Nf525DataProvider::verifyReceiptChain`
+ * runs the fiscal-events arm FIRST (:396-407, delegating to
+ * `ReceiptHashService::verifyTerminalChainFiscalArm` -> `inspectFiscalEventsArm`,
+ * ReceiptHashService.php:267-340, which rehashes and walks every fiscal_events
+ * row) and only then early-returns on an empty LEGACY set (:409-418). So
+ * `is_valid: true, total_receipts: 0` means "the event chain verified clean and
+ * there were additionally no legacy rows" — it must NOT be shown as an alarm.
+ * What is legacy-scoped is the COUNT, not the verification; that caveat lives
+ * once under the table (`legacyRowsCountNote`) instead of per row.
+ */
 function ReceiptChainStatus({
   isValid,
-  totalReceipts,
   failedAtSequence,
   error,
 }: {
   isValid: boolean
-  totalReceipts: number
   failedAtSequence: number | null
   error: string | null
 }) {
@@ -83,22 +92,6 @@ function ReceiptChainStatus({
           )}
         </span>
         {error !== null && <ChainDiagnostic error={error} />}
-      </>
-    )
-  }
-
-  // `total_receipts` is the LEGACY-arm row count only (Nf525DataProvider.php:382-395
-  // scopes it to `whereNull('fiscal_event_id')`, and :410-418 early-returns
-  // isValid/totalRows 0 when that set is empty). On a Phase-1 terminal every
-  // receipt is event-chained, so a green "Valid" here would claim an integrity
-  // pass over rows this endpoint never looked at.
-  if (totalReceipts === 0) {
-    return (
-      <>
-        <StatusBadge tone="notCovered" />
-        <span className={`block text-xs ${colorTokens.text.subtle}`}>
-          {t('chainVerification.legacyArmOnlyNote')}
-        </span>
       </>
     )
   }
@@ -131,11 +124,6 @@ export function ChainVerificationPanel() {
   // The backend already computed the fleet verdict (`all_chains_valid`); the
   // panel renders it rather than deriving a second, competing one.
   const allValid = report?.all_chains_valid === true
-  // ...but a green fleet verdict is only honest when every receipt arm this
-  // check can see actually had rows to verify.
-  const hasUncoveredReceiptArm = terminals.some(
-    (row) => row.receipt_chain.is_valid && row.receipt_chain.total_receipts === 0
-  )
 
   return (
     <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
@@ -173,17 +161,10 @@ export function ChainVerificationPanel() {
               })}
             </p>
           )}
-          {allValid && !hasUncoveredReceiptArm && (
+          {allValid && (
             <div className={`mb-4 rounded-md ${colorTokens.intent.success.bgSubtle} p-3`}>
               <p className={`text-sm font-medium ${colorTokens.intent.success.textStronger}`}>
                 {t('chainVerification.allValid')}
-              </p>
-            </div>
-          )}
-          {allValid && hasUncoveredReceiptArm && (
-            <div className={`mb-4 rounded-md ${colorTokens.intent.caution.bgSubtle} p-3`}>
-              <p className={`text-sm font-medium ${colorTokens.intent.caution.textStronger}`}>
-                {t('chainVerification.allValidWithLegacyGap')}
               </p>
             </div>
           )}
@@ -225,7 +206,6 @@ export function ChainVerificationPanel() {
                     <td className="px-4 py-3 text-sm">
                       <ReceiptChainStatus
                         isValid={result.receipt_chain.is_valid}
-                        totalReceipts={result.receipt_chain.total_receipts}
                         failedAtSequence={result.receipt_chain.failed_at_sequence}
                         error={result.receipt_chain.error}
                       />
@@ -261,6 +241,9 @@ export function ChainVerificationPanel() {
               </tbody>
             </DataTable>
           </div>
+          <p className={`mt-3 text-xs ${colorTokens.text.subtle}`}>
+            {t('chainVerification.legacyRowsCountNote')}
+          </p>
         </>
       )}
     </div>

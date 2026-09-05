@@ -48,7 +48,13 @@ const brokenTerminal: ChainVerificationResult = {
  * A Phase-1 terminal: every receipt carries a `fiscal_event_id`, so the legacy
  * arm queried by Nf525DataProvider::verifyReceiptChain (`whereNull('fiscal_event_id')`,
  * :390-394) is EMPTY and the method early-returns isValid:true / totalRows:0
- * (:410-418) — even for a terminal holding thousands of sealed receipts.
+ * (:409-418) — even for a terminal holding thousands of sealed receipts.
+ *
+ * This is the NORMAL post-Phase-1 shape, NOT an anomaly: the fiscal-events arm
+ * already ran and PASSED at :396-407 (ReceiptHashService::verifyTerminalChainFiscalArm
+ * -> inspectFiscalEventsArm, ReceiptHashService.php:267-340, which rehashes every
+ * fiscal_events row) before that early return was reached. Only the COUNT is
+ * legacy-scoped; the verification is not.
  */
 const phase1Terminal: ChainVerificationResult = {
   terminal_id: 't-3',
@@ -169,35 +175,48 @@ describe('ChainVerificationPanel', () => {
     ).toBeInTheDocument()
   })
 
-  it('does NOT show a green "Valid" verdict for a terminal whose legacy arm is empty', async () => {
+  it('renders a zero-legacy-row terminal as VERIFIED, not as an anomaly', async () => {
     mockedVerify.mockResolvedValueOnce(envelope([phase1Terminal]))
-    renderPanel()
+    const { container } = renderPanel()
 
     await userEvent.click(screen.getByRole('button'))
 
     await screen.findByText('CAISSE-03')
     const { verdict, count } = receiptCells('CAISSE-03')
 
-    // RED before the fix: the cell rendered a bare "Valid" badge beside "0".
+    // The backend returned a PASS (the event arm ran and verified first), so the
+    // badge is the plain success verdict. RED against fix round 1, which showed a
+    // caution "Not covered" badge here and denied the verification outright.
     expect(
-      within(verdict).queryByText(i18n.t('compliance:chainVerification.valid')),
-    ).toBeNull()
-    expect(
-      within(verdict).getByText(i18n.t('compliance:chainVerification.notCovered')),
+      within(verdict).getByText(i18n.t('compliance:chainVerification.valid')),
     ).toBeInTheDocument()
-    expect(
-      within(verdict).getByText(i18n.t('compliance:chainVerification.legacyArmOnlyNote')),
-    ).toBeInTheDocument()
-    // and the count column says so in words rather than showing a bare 0
+    // no amber anywhere on this panel: a verified fleet must not read as an alarm
+    expect(container.querySelector('[class*="amber"]')).toBeNull()
+    // the count column reports "none" for the legacy figure, without a verdict claim
     expect(count.textContent).toBe(i18n.t('compliance:chainVerification.noLegacyRows'))
-    expect(count.textContent).not.toBe('0')
-    // the fleet banner carries the same caveat instead of a plain "all valid"
+    // the caveat is scoped to the COUNT and sits once under the table
     expect(
-      screen.getByText(i18n.t('compliance:chainVerification.allValidWithLegacyGap')),
+      screen.getByText(i18n.t('compliance:chainVerification.legacyRowsCountNote')),
     ).toBeInTheDocument()
+    // and the fleet banner stays the plain green pass
     expect(
-      screen.queryByText(i18n.t('compliance:chainVerification.allValid')),
-    ).toBeNull()
+      screen.getByText(i18n.t('compliance:chainVerification.allValid')),
+    ).toBeInTheDocument()
+  })
+
+  it('never claims the event-chain arm went unverified', async () => {
+    mockedVerify.mockResolvedValueOnce(envelope([phase1Terminal]))
+    const { container } = renderPanel()
+
+    await userEvent.click(screen.getByRole('button'))
+
+    await screen.findByText('CAISSE-03')
+    // Nf525DataProvider.php:396-407 runs (and passes) the fiscal-events arm BEFORE
+    // the legacy early-return at :409-418, so any copy asserting the event chain was
+    // not covered is factually false. Guard the whole rendered panel, not one node.
+    const text = container.textContent
+    expect(text).not.toMatch(/not covered/i)
+    expect(text).not.toMatch(/covers the legacy arm only/i)
   })
 
   it('keeps the plain all-valid banner when every receipt arm actually had rows', async () => {
@@ -210,9 +229,6 @@ describe('ChainVerificationPanel', () => {
     expect(
       screen.getByText(i18n.t('compliance:chainVerification.allValid')),
     ).toBeInTheDocument()
-    expect(
-      screen.queryByText(i18n.t('compliance:chainVerification.allValidWithLegacyGap')),
-    ).toBeNull()
   })
 
   it('renders the verification timestamp as an "as of" stamp', async () => {

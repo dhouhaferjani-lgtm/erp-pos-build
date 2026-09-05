@@ -28,11 +28,9 @@
     "hasBroken": "Some chains have integrity issues.",
     "legacyRowsVerified": "Legacy Rows Verified",
     "noLegacyRows": "None",
-    "notCovered": "Not covered",
-    "legacyArmOnlyNote": "No legacy-arm receipts to verify. The event-chain arm is not covered by this check.",
-    "allValidWithLegacyGap": "No integrity failure was detected. Note: on terminals with no legacy-arm receipts this check covers the legacy arm only, and the event-chain arm is not covered.",
     "technicalDetail": "Technical detail",
     "verifiedAt": "As of {{timestamp}}",
+    "legacyRowsCountNote": "This column counts legacy-arm receipts only. Event-chained receipts are verified by this check but are not counted in the figure.",
     "errors": {
       "fiscalEventsChainBreak": "The event-chain seal does not match: a receipt's sealed content or its link to the previous receipt has changed. Contact support with this terminal code.",
       "legacyLinkageBroken": "Chain link broken: a receipt does not point to the previous receipt's seal.",

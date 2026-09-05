@@ -28,11 +28,9 @@
     "hasBroken": "Certaines cha\u00eenes pr\u00e9sentent des probl\u00e8mes d'int\u00e9grit\u00e9.",
     "legacyRowsVerified": "Lignes H\u00e9rit\u00e9es V\u00e9rifi\u00e9es",
     "noLegacyRows": "Aucune",
-    "notCovered": "Non couvert",
-    "legacyArmOnlyNote": "Aucun ticket h\u00e9rit\u00e9 \u00e0 v\u00e9rifier. La cha\u00eene d'\u00e9v\u00e9nements n'est pas couverte par ce contr\u00f4le.",
-    "allValidWithLegacyGap": "Aucune anomalie d'int\u00e9grit\u00e9 d\u00e9tect\u00e9e. Remarque : sur les terminaux sans ticket h\u00e9rit\u00e9, ce contr\u00f4le ne couvre que la cha\u00eene h\u00e9rit\u00e9e, pas la cha\u00eene d'\u00e9v\u00e9nements.",
     "technicalDetail": "D\u00e9tail technique",
     "verifiedAt": "Au {{timestamp}}",
+    "legacyRowsCountNote": "Cette colonne ne compte que les tickets de la cha\u00eene h\u00e9rit\u00e9e. Les tickets rattach\u00e9s \u00e0 la cha\u00eene d'\u00e9v\u00e9nements sont v\u00e9rifi\u00e9s par ce contr\u00f4le mais ne sont pas comptabilis\u00e9s dans ce chiffre.",
     "errors": {
       "fiscalEventsChainBreak": "Le scellement de la cha\u00eene d'\u00e9v\u00e9nements ne correspond pas : le contenu scell\u00e9 d'un ticket ou son lien avec le ticket pr\u00e9c\u00e9dent a chang\u00e9. Contactez le support avec le code de ce terminal.",
       "legacyLinkageBroken": "Lien de cha\u00eene rompu : un ticket ne pointe pas vers le scellement du ticket pr\u00e9c\u00e9dent.",
