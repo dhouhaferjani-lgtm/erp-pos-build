@@ -107,6 +107,10 @@ class AutoSaveDraftRequest extends FormRequest
         'return_note' => 'deliveries.create',
     ];
 
+    private ?Document $resolvedTargetDraft = null;
+
+    private bool $targetDraftResolved = false;
+
     public function __construct(
         private readonly CompanyContext $companyContext,
     ) {
@@ -194,20 +198,26 @@ class AutoSaveDraftRequest extends FormRequest
                 ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
             ],
             'document_date' => ['nullable', 'date'],
-            // DEV-QA-008/057, gate r1 F3. `createNewDraft()` writes BOTH dates
-            // straight onto the `documents` row
+            // DEV-QA-008/057, gate r1 F3 + gate r2 N-1. `createNewDraft()` writes
+            // BOTH dates straight onto the `documents` row
             // (DraftPersistenceService.php:261-262), so before this rule the
             // editor's own keystroke auto-save was the app's primary way to
             // persist `due_date < document_date` — and that draft is the row
-            // that later gets confirmed and numbered. The rule is silent unless
-            // a comparand is actually known (payload first, then the stored
-            // draft): a half-typed draft with no date at all must still save.
+            // that later gets confirmed and numbered.
+            //
+            // The comparand is resolved in the same order the service resolves
+            // the value it will actually write: the payload's own
+            // `document_date`, then the stored draft's, then — on the CREATE
+            // branch — `now()`, because that is literally what
+            // `DraftPersistenceService.php:261` substitutes. The rule stays
+            // silent only when `due_date` itself is absent, so a half-typed
+            // draft with no dates still saves.
             'due_date' => [
                 'nullable',
                 'date',
                 new DueDateNotBeforeDocumentDate(
                     submittedDocumentDate: is_string($submittedDocumentDate) ? $submittedDocumentDate : null,
-                    storedDocumentDate: $this->storedDraftDocumentDate(),
+                    storedDocumentDate: $this->documentDateFallback(),
                 ),
             ],
             'notes' => ['nullable', 'string', 'max:5000'],
@@ -262,37 +272,79 @@ class AutoSaveDraftRequest extends FormRequest
     }
 
     /**
-     * The persisted `document_date` of the draft this auto-save targets, as
-     * `Y-m-d`, or null when there is no such draft.
+     * The `document_date` this auto-save will end up written against, as
+     * `Y-m-d`, for a payload that does not carry one itself.
      *
-     * The payload's own `document_date` wins whenever it carries one (the editor
-     * sends it on every keystroke — `DocumentForm.tsx:248`); this is only the
-     * fallback for a client that omits it. Scoped by tenant AND company, the
-     * same scoping `DraftPersistenceService::saveDraft()` uses to decide whether
-     * `draft_id` addresses a row at all — a foreign id resolves to null there
-     * and must resolve to null here too, or this rule would leak one company's
-     * document date into another company's 422.
+     * Gate r2 N-1. The previous version returned null on the CREATE branch and
+     * the rule then went silent — but "unknown" was the wrong word for that
+     * state: `DraftPersistenceService::createNewDraft()` substitutes
+     * `now()->format('Y-m-d')` (`:261`) for a missing `document_date`, so the
+     * comparand is known exactly. The reviewer reproduced the consequence
+     * end-to-end through the shipped UI: `DocumentForm.tsx:248` emits
+     * `document_date: ''` when the operator clears the Issue Date input,
+     * Laravel's global `ConvertEmptyStringsToNull` turns it into null, the rule
+     * saw no comparand, and the draft was born `document_date = today` with a
+     * `due_date` a month earlier — then confirmed and numbered
+     * (`QuoteController::confirm()` re-validates no dates).
+     *
+     * Same date source and timezone as the service: `now()->format('Y-m-d')`,
+     * i.e. the app timezone, evaluated within the same request.
+     *
+     * On the UPDATE branch the stored row's own `document_date` is used. It is
+     * NOT NULL in the schema (`2025_11_30_080000_create_documents_table.php:21`),
+     * so a resolved draft always yields a date; `now()` is reached only when no
+     * draft resolved, which is precisely when `saveDraft()` takes the create
+     * branch (`DraftPersistenceService.php:104-119` — same tenant+company
+     * scoping, so an unknown or foreign `draft_id` is a create on both sides).
      */
-    private function storedDraftDocumentDate(): ?string
+    private function documentDateFallback(): ?string
     {
+        $draft = $this->resolveTargetDraft();
+
+        if ($draft === null) {
+            return now()->format('Y-m-d');
+        }
+
+        $documentDate = $draft->getAttribute('document_date');
+
+        return $documentDate instanceof CarbonInterface ? $documentDate->toDateString() : null;
+    }
+
+    /**
+     * The draft this auto-save targets, or null when it will author a new one.
+     *
+     * Scoped by tenant AND company, the same scoping
+     * `DraftPersistenceService::saveDraft()` uses to decide whether `draft_id`
+     * addresses a row at all — a foreign id resolves to null there and must
+     * resolve to null here too, or this rule would leak one company's document
+     * date into another company's 422. `Str::isUuid()` guards the lookup:
+     * `documents.id` is a PostgreSQL `uuid` column and a non-UUID in a `where`
+     * on it raises 22P02 rather than returning no rows.
+     *
+     * Memoised (gate r2 N-4) so the resolution costs one query per request even
+     * if `rules()` is ever evaluated more than once, matching its update-side
+     * twin `UpdateDocumentRequest::storedDocumentDate()`.
+     */
+    private function resolveTargetDraft(): ?Document
+    {
+        if ($this->targetDraftResolved) {
+            return $this->resolvedTargetDraft;
+        }
+
+        $this->targetDraftResolved = true;
+
         $draftId = $this->input('draft_id');
 
         if (! is_string($draftId) || ! Str::isUuid($draftId)) {
             return null;
         }
 
-        $document = Document::query()
+        $this->resolvedTargetDraft = Document::query()
             ->where('tenant_id', $this->companyContext->requireCompany()->tenant_id)
             ->where('company_id', $this->companyContext->requireCompanyId())
             ->find($draftId);
 
-        if ($document === null) {
-            return null;
-        }
-
-        $documentDate = $document->getAttribute('document_date');
-
-        return $documentDate instanceof CarbonInterface ? $documentDate->toDateString() : null;
+        return $this->resolvedTargetDraft;
     }
 
     /**
