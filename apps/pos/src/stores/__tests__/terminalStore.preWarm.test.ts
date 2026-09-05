@@ -32,10 +32,18 @@ const { pullOperatorPinsSpy, refreshFraudSettingsCacheSpy } = vi.hoisted(() => (
 
 // T1.3 Step 4.1 + 4.2: startup hydration spies — invoked from
 // seedOfflineHashChain after scheduler.start.
+//
+// getSyncMetadataSpy MUST be `vi.hoisted()`: its `vi.mock('@/lib/db/repositories/
+// syncLogRepository', ...)` factory below is hoisted to the top of the file by
+// Vitest and runs during the eager import graph resolution — before a plain
+// top-level `const` would have initialized — throwing "Cannot access
+// 'getSyncMetadataSpy' before initialization".
 const setPendingCountSpy = vi.fn();
 const setLastSyncAtSpy = vi.fn();
 const getPendingReceiptCountSpy = vi.fn().mockResolvedValue(0);
-const getSyncMetadataSpy = vi.fn().mockResolvedValue(null);
+const { getSyncMetadataSpy } = vi.hoisted(() => ({
+  getSyncMetadataSpy: vi.fn().mockResolvedValue(null),
+}));
 
 // T2.1 Step D: stranded-syncing recovery spy — invoked BEFORE
 // scheduler.start to demote any rows left at `'syncing'` after a
