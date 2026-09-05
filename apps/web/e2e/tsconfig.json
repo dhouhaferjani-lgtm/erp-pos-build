@@ -9,5 +9,10 @@
     "types": ["@playwright/test", "node"],
     "verbatimModuleSyntax": false
   },
-  "include": ["campaign/**/*.ts", "../playwright.campaign.config.ts"]
+  "include": [
+    "campaign/**/*.ts",
+    "request-hygiene/**/*.ts",
+    "../playwright.campaign.config.ts",
+    "request-hygiene/pw.config.ts"
+  ]
 }

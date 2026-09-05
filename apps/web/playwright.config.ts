@@ -2,6 +2,9 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './e2e',
+  // Live-stack evidence harness: registers a tenant and shells out to psql.
+  // Never part of `pnpm test:e2e`; run it via e2e/request-hygiene/pw.config.ts.
+  testIgnore: ['**/request-hygiene/**'],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
