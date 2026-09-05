@@ -823,8 +823,8 @@ class CreditNoteService
 
             // 2. Validate INSIDE transaction (race-safe)
             // Validation: Only posted invoices can have credit notes
-            if (! $invoice->isPosted()) {
-                throw new \InvalidArgumentException('Credit notes can only be created for posted invoices');
+            if (! $invoice->isCreditableInvoiceSource()) {
+                throw new \InvalidArgumentException('Credit notes can only be created for posted or paid invoices');
             }
 
             // Validation: Credit note amount cannot exceed invoice total
@@ -949,8 +949,8 @@ class CreditNoteService
 
             // 2. Validate INSIDE transaction (race-safe)
             // Validation: Only posted invoices can have credit notes
-            if (! $invoice->isPosted()) {
-                throw new \InvalidArgumentException('Credit notes can only be created for posted invoices');
+            if (! $invoice->isCreditableInvoiceSource()) {
+                throw new \InvalidArgumentException('Credit notes can only be created for posted or paid invoices');
             }
 
             $scale = $this->scaleFor($invoice);

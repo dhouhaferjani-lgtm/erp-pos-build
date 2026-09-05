@@ -205,7 +205,7 @@ class CreditNoteServiceTest extends TestCase
         $invoice = $this->createInvoice('INV-001', '1000.00', '200.00', '1200.00', DocumentStatus::Draft);
 
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Credit notes can only be created for posted invoices');
+        $this->expectExceptionMessage('Credit notes can only be created for posted or paid invoices');
 
         $this->service->createCreditNote(
             sourceInvoiceId: $invoice->id,

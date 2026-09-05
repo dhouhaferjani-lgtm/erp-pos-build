@@ -576,6 +576,17 @@ class Document extends Model
     }
 
     /**
+     * Whether this invoice may be the source of a credit note. An invoice is
+     * creditable once it is sealed: Posted (still owing) OR Paid (settled — the
+     * credit note then becomes a customer credit / refund). Draft, Confirmed and
+     * Cancelled invoices are never creditable. F-STG-4.
+     */
+    public function isCreditableInvoiceSource(): bool
+    {
+        return in_array($this->status, [DocumentStatus::Posted, DocumentStatus::Paid], true);
+    }
+
+    /**
      * Check if document is cancelled
      */
     public function isCancelled(): bool

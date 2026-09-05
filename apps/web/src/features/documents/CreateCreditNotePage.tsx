@@ -20,6 +20,7 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { PartnerPicker } from '@/components/molecules/pickers/PartnerPicker'
 import { InvoiceSearchSelect } from '@/components/molecules/pickers/InvoiceSearchSelect'
 import { DocumentLineEditor, type DocumentLine } from '@/components/documents/DocumentLineEditor'
+import { buildCreditNotePayload } from './creditNotePayload'
 import { Button } from '@/components/atoms/Button/Button'
 import { PageHeader } from '@/components/molecules/PageHeader/PageHeader'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
@@ -208,34 +209,14 @@ export function CreateCreditNotePage() {
   // Create mutation
   const createMutation = useMutation({
     mutationFn: async (data: CreditNoteFormData) => {
-      const payload: any = {
-        partner_id: data.partner_id,
-        issue_date: data.issue_date,
-        reason: data.reason,
-        notes: data.notes,
-      }
-
-      if (creditMode === 'invoice' && data.source_invoice_id) {
-        payload.source_invoice_id = data.source_invoice_id
-
-        if (lineMode === 'partial') {
-          // Send selected lines with quantities
-          payload.lines = Array.from(selectedLineIds).map(lineId => ({
-            line_id: lineId,
-            quantity: lineQuantities.get(lineId) || 0,
-          }))
-        }
-        // For 'all' mode, backend will credit entire invoice
-      } else {
-        // Customer mode - manual line entry
-        payload.lines = lines.map(line => ({
-          product_id: line.product_id,
-          description: line.description,
-          quantity: line.quantity,
-          unit_price: line.unit_price,
-          tax_rate: line.tax_rate,
-        }))
-      }
+      const payload = buildCreditNotePayload({
+        data,
+        creditMode,
+        lineMode,
+        lines,
+        selectedLineIds,
+        lineQuantities,
+      })
 
       const response = await api.post<{ data?: { id?: string }; id?: string }>('/credit-notes', payload)
       return response.data
