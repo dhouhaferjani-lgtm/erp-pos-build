@@ -9,17 +9,38 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { buildCreditNotePayload, type CreditNoteSourceLine } from '../creditNotePayload'
+import {
+  buildCreditNotePayload,
+  type CreditNoteLinePayload,
+  type CreditNoteManualLinePayload,
+  type CreditNoteSourceLine,
+} from '../creditNotePayload'
+import { findBlankPriceLineIds } from '../linePayload'
+import type { DocumentLine } from '@/components/documents/DocumentLineEditor'
 
 const invoiceLine = (over: Partial<CreditNoteSourceLine> = {}): CreditNoteSourceLine => ({
   id: 'line-1',
   product_id: 'prod-1',
   description: 'Widget',
-  quantity: 3,
-  unit_price: 100,
-  tax_rate: 20,
+  quantity: '3',
+  unit_price: '100.000',
+  tax_rate: '20',
   ...over,
 })
+
+/**
+ * Narrow a wire line to the standalone (manual) arm. The payload's `lines` is a
+ * union — an invoice-linked line carries no money at all — so a test that reads
+ * `unit_price` must say which arm it expects instead of indexing a bag of
+ * `unknown` (that was BLOCKER-1 of gate r1: `Record<string, unknown>` forced
+ * TS4111 index-signature access and turned `pnpm typecheck` red).
+ */
+function manualLine(line: CreditNoteLinePayload | undefined): CreditNoteManualLinePayload {
+  if (line === undefined || !('unit_price' in line)) {
+    throw new Error('expected a standalone (manual) credit-note line')
+  }
+  return line
+}
 
 const base = {
   data: {
@@ -32,7 +53,7 @@ const base = {
 
 describe('buildCreditNotePayload', () => {
   it("invoice mode 'all' credits every line via the line-based path (no bare amount-only request)", () => {
-    const lines = [invoiceLine({ id: 'l1', quantity: 3 }), invoiceLine({ id: 'l2', quantity: 5 })]
+    const lines = [invoiceLine({ id: 'l1', quantity: '3' }), invoiceLine({ id: 'l2', quantity: '5' })]
 
     const payload = buildCreditNotePayload({
       ...base,
@@ -47,8 +68,8 @@ describe('buildCreditNotePayload', () => {
     expect(payload.source_invoice_id).toBe('inv-1')
     expect(payload.amount).toBeUndefined()
     expect(payload.lines).toEqual([
-      { line_id: 'l1', quantity: 3 },
-      { line_id: 'l2', quantity: 5 },
+      { line_id: 'l1', quantity: '3' },
+      { line_id: 'l2', quantity: '5' },
     ])
   })
 
@@ -68,8 +89,8 @@ describe('buildCreditNotePayload', () => {
     expect(payload.lines).toEqual([{ line_id: 'l2', quantity: 2 }])
   })
 
-  it('customer mode emits unit_price as a decimal STRING (rule 19)', () => {
-    const lines = [invoiceLine({ id: 'l1', unit_price: 100, tax_rate: 20 })]
+  it('customer mode emits unit_price as a decimal STRING (rule 19), passed through unrounded', () => {
+    const lines = [invoiceLine({ id: 'l1', unit_price: '100.125', tax_rate: '20' })]
 
     const payload = buildCreditNotePayload({
       ...base,
@@ -80,26 +101,45 @@ describe('buildCreditNotePayload', () => {
       lineQuantities: new Map(),
     })
 
-    const first = payload.lines?.[0]
-    expect(typeof first?.unit_price).toBe('string')
-    expect(first?.unit_price).toBe('100')
+    const first = manualLine(payload.lines?.[0])
+    expect(typeof first.unit_price).toBe('string')
+    // The API's own decimal string, byte for byte — no parseFloat round-trip.
+    expect(first.unit_price).toBe('100.125')
     expect(payload.source_invoice_id).toBeUndefined()
   })
 
-  it('customer mode keeps a blank-price line as an (empty) string, never a number', () => {
-    const lines = [invoiceLine({ id: 'l1', unit_price: '' })]
+  /**
+   * Gate r1 IMPORTANT-3: the pre-fix builder emitted `unit_price: ''` for an
+   * unpriced line, a value `CreditNoteController::store()` refuses
+   * (`lines.*.unit_price` is `required|string|regex`). The real contract is a
+   * REFUSAL, not a blank on the wire — the page blocks the submit with
+   * `findBlankPriceLineIds` (the same guard DocumentForm uses) and the builder
+   * never serialises the line.
+   */
+  it('customer mode refuses an unpriced line: it is flagged client-side and never serialised', () => {
+    const blank: DocumentLine = {
+      id: 'l1',
+      product_id: 'prod-1',
+      product_name: 'Widget',
+      description: 'Widget',
+      quantity: '1',
+      unit_price: '',
+      tax_rate: '20',
+      line_total: '',
+    }
+
+    expect(findBlankPriceLineIds([blank])).toEqual(['l1'])
 
     const payload = buildCreditNotePayload({
       ...base,
       creditMode: 'customer',
       lineMode: 'all',
-      lines,
+      lines: [blank, invoiceLine({ id: 'l2', unit_price: '50.000' })],
       selectedLineIds: new Set(),
       lineQuantities: new Map(),
     })
 
-    const first = payload.lines?.[0]
-    expect(typeof first?.unit_price).toBe('string')
-    expect(first?.unit_price).toBe('')
+    expect(payload.lines).toHaveLength(1)
+    expect(manualLine(payload.lines?.[0]).unit_price).toBe('50.000')
   })
 })

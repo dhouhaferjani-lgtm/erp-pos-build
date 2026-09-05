@@ -29,8 +29,11 @@ export interface LinePayload {
 /**
  * True when a value is absent or blank — used for the tax fields, where an
  * empty string means "the line says nothing", not "zero".
+ *
+ * Exported so the credit-note payload builder tests the SAME predicate rather
+ * than growing a second definition of "unpriced" (rule 22, one surface).
  */
-function isBlank(value: string | number | null | undefined): boolean {
+export function isBlank(value: string | number | null | undefined): boolean {
   return value === null || value === undefined || String(value).trim() === ''
 }
 
