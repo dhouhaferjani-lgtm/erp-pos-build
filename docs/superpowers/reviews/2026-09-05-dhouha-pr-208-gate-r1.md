@@ -201,3 +201,157 @@ trailer present. Scope creep: none — 3 files, all in scope.
 - No RTL/Arabic rendering check of the currency string.
 
 ## Merge to local dev: **NO** — pending fix round on findings 1-3.
+
+---
+---
+
+# Gate r2 — PR #208 fix round 1
+
+| Field | Value |
+|---|---|
+| Re-gated sha | `e2cc7146c6026658c63186e5607a2381297f38b9` (branch `gate/pr-208`) |
+| Fix commit | `0f9292bf1` `fix(finance): decimal-zero guard + scale-4 GL fixtures (PR #208 gate r1)` |
+| Handback | `docs/superpowers/reviews/2026-09-05-dhouha-pr-208-fix-round-1-handback.md` (in-worktree) |
+| Delta vs r1 gate sha `0c3f5c3d1` | 3 code/test files + 1 doc; `LedgerTable.tsx` +13/-3, `GeneralLedgerPage.test.tsx` +106/-20, `__fixtures__/generalLedger.ts` +10/-7 |
+| Reviewer | Fable adversarial merge gate, 2026-09-05 |
+
+## Verdict: **MERGE**
+
+All three blocking findings are closed, each against the primary source rather
+than against the gate report's summary of it. No new defect found; no scope
+creep; no baseline touched.
+
+---
+
+## Finding-by-finding re-check
+
+### r1 finding 1 (MAJOR, dead zero-guard) — **CLOSED**
+`apps/web/src/features/finance/components/LedgerTable.tsx:30-32`
+```ts
+const formatAmount = (value: string): string => {
+  if (bccomp(value, '0') === 0) return ''
+  return formatReportCurrency(value, company)
+}
+```
+`bccomp` (`apps/web/src/lib/decimal.ts:115-117`) is `safeBig(a).cmp(safeBig(b))` on
+**big.js** — no `parseFloat`, no `Number(`, no `toFixed` on a JS number anywhere
+on the path. Rule 19 holds.
+
+Input-safety re-checked at the real choke point, `safeBig`
+(`apps/web/src/lib/decimal.ts:30-37`):
+- `"0.0000"` → `Big(0)` → `cmp` 0 → **blank**. ✔
+- `"-0.0000"` → big.js normalises the sign of zero → `cmp` 0 → **blank**. ✔
+- `""` / whitespace-only → guarded by `if (!value || value.trim() === '')` → `Big(0)` → blank. ✔
+- `undefined`/`null` (not reachable through `LedgerLine.debit: string`, `types.ts:154-156`, but the guard is falsy-safe) → `Big(0)` → blank, no throw. ✔
+- Unparseable (`"abc"`) → `try/catch` → `Big(0)` → blank. Behaviour change from the old code (which would have rendered `$abc`), and it is the safer direction; see r2 finding A below.
+
+The block comment at `LedgerTable.tsx:19-29` records *why* the comparison must be
+numeric and cites the backend scale — the next reader cannot re-introduce a string
+compare by accident.
+
+### r1 finding 2 (MAJOR, fixture scale) — **CLOSED**
+Both fixture sources moved to the wire format:
+- `apps/web/src/features/finance/pages/GeneralLedgerPage.test.tsx:64-66` — `debit: '100.0000'`, `credit: '0.0000'`, `balance: '250.0000'`, with a docblock at `:46-56` citing `GeneralLedgerReportService.php` (`DECIMAL_SCALE = 4`, `CurrencyScale::bcformat($v, 4)`) and the `LedgerData.php` example payload.
+- `apps/web/src/features/finance/__fixtures__/generalLedger.ts:24-29,55-58` — `makeLedgerLine` and `makeLedgerReport` both at scale 4, comment citing the same source.
+
+Consumer sweep: `grep -rl 'makeLedgerLine\|makeLedgerReport'` → only
+`src/features/finance/GeneralLedgerPage.test.tsx` and the fixture file itself. The
+twin suite still passes (6/6, below), so the scale change caused no collateral.
+
+### r1 finding 3 (MINOR, tautology / no non-TND case) — **CLOSED**
+- The tautology is gone: `GeneralLedgerPage.test.tsx:118` now asserts the **literal** `'100,000 TND'`, and `:127-129` separately cross-checks that the shared formatter agrees with that literal (an equivalence check, not the assertion itself).
+- A real EUR case exists at `:161-174`: `companyRef.current = { currency: 'EUR', locale: 'fr_FR' }` → asserts `'100,00 EUR'` **and** `not.toContain('100,000 EUR')`, which is exactly the "scale is not hardcoded to TND's 3" falsifier that was missing in r1.
+- The `useCompany` mock is switchable per test via `vi.hoisted` (`:15-24`) with a `beforeEach` reset to TND (`:99`), so tests cannot leak tenant state into each other.
+
+I independently reproduced the expected renders through `Intl`: `fr-TN` decimal
+separator `","`, currency code trailing → `100,000 TND`; `fr-FR` + `getDecimals('EUR') = 2`
+(`currencyMeta.ts:4`) → `100,00 EUR`. Both literals in the tests are correct.
+
+### Falsifiability (reasoned from the tests, then cross-checked against the handback)
+Reverting only the guard to `value === '0.00' || value === '0'`:
+- `:135` "blanks a zero credit…" → credit cell would be `'0,000 TND'`, expected `''` → **RED**
+- `:150` "renders a non-zero credit…" → debit cell `'0,000 TND'`, expected `''` → **RED**
+- `:161` "derives the scale from the tenant currency…" → credit cell `'0,00 EUR'`, expected `''` → **RED**
+- `:110` "right-aligns a money cell", `:107` "renders exactly one h1", the QueryError case → green.
+**3 of 6 red** — which is exactly the run pasted in the handback (§ Finding 1,
+including the three `expected '0,000 TND' to be ''` messages). The claim is
+independently reproducible by reasoning and I accept it.
+
+### r1 findings 4, 5, 6 — deliberately left, correctly disclosed
+The handback lists 4 (dead Export button, OQ-11), 5 (hand-rolled `LedgerLine` vs
+generated `LedgerLineData`) and 6 (twin test files) as follow-ups. All three were
+MINOR/pre-existing in r1 and none was mislabelled as fixed. Accepted.
+
+---
+
+## New findings in r2
+
+### A. MINOR (informational, not blocking) — malformed money now blanks silently
+`LedgerTable.tsx:31` via `safeBig` (`decimal.ts:30-37`): a value big.js cannot parse
+degrades to `0` and therefore renders an **empty cell**, indistinguishable from a
+legitimate zero. Given `LedgerLine.debit/credit` are typed `string` and the backend
+formats through `CurrencyScale::bcformat`, this is unreachable in practice, and
+silent-blank is safer than rendering garbage. Recorded, not actioned.
+
+### B. MINOR (informational) — the balance column is deliberately not zero-blanked
+`LedgerTable.tsx:81` still calls `formatReportCurrency(line.balance, company)`
+unconditionally, so a zero running balance renders `0,000 TND`. That is the correct
+and pre-existing behaviour (a ledger's running balance must always show), and it is
+consistent with the r1 report. No change wanted.
+
+---
+
+## Guardrail evidence (verbatim, re-run by the reviewer at `e2cc7146c`)
+
+`./node_modules/.bin/vitest run src/features/finance/pages/GeneralLedgerPage.test.tsx src/features/finance/GeneralLedgerPage.test.tsx`:
+```
+ ✓ src/features/finance/pages/GeneralLedgerPage.test.tsx (6 tests) 118ms
+ ✓ src/features/finance/GeneralLedgerPage.test.tsx (6 tests) 219ms
+ Test Files  2 passed (2)
+      Tests  12 passed (12)
+   Duration  1.86s (transform 451ms, setup 829ms, collect 913ms, tests 337ms, environment 833ms, prepare 147ms)
+```
+(9 → 12 tests; the twin suite is unaffected by the scale-4 fixture change.)
+
+`./node_modules/.bin/eslint src/features/finance/components/LedgerTable.tsx src/features/finance/pages/GeneralLedgerPage.tsx src/features/finance/pages/GeneralLedgerPage.test.tsx src/features/finance/__fixtures__/generalLedger.ts`:
+```
+/…/src/features/finance/pages/GeneralLedgerPage.tsx
+  29:17  warning  Promise-returning function provided to attribute where a void return was expected  @typescript-eslint/no-misused-promises
+
+✖ 1 problem (0 errors, 1 warning)
+```
+**0 errors.** Same single pre-existing warning as r1 (untouched line 29); the fix
+round added no new warning and the newly-touched fixture file is clean.
+
+`./node_modules/.bin/tsc --noEmit`:
+```
+TSC EXIT: 0
+```
+(no output)
+
+Audits:
+```
+[sweep-progress] Gate C — useQuery/useQueries/queryClient queryKeys without an approved tenant scope: 0
+[gate-summary] Gate C baseline: 0 acknowledged, 0 new, 0 stale baseline entries
+[sweep-progress] Design-system audit C1-C6 violations: 810
+[gate-summary] Design-system baseline: 810 acknowledged, 0 new, 0 stale baseline entries
+[audit-quantity] raw quantity display sites: 0 total (0 baselined, 0 new, 0 stale baseline entries)
+```
+Baseline honesty: `git diff dev HEAD --stat -- apps/web/tools/` is **empty** — no
+baseline file exists in the diff at any point in this branch. Mechanism audit: the
+improvement is a real behavioural change (string compare → big.js compare) plus
+fixtures moved *toward* the wire format; no alias table, no suppression comment, no
+renamed-equivalent literal, nothing that could defeat a detector.
+
+Scope: 3 code/test files + 1 in-worktree handback doc. No production file outside
+`features/finance/` touched. Commit is conventional and its subject matches its content.
+
+## Could not verify (unchanged from r1)
+- The **DEV-QA registry is still not in this repo** (`grep -rl 'DEV-QA-043'` → nothing).
+- No live API payload captured; the scale-4 premise remains a code-read of
+  `GeneralLedgerReportService.php:61,494-497` + `LedgerData.php`, now cited in-code.
+- Still **not manually recette'd in a browser** on a TND tenant.
+- The falsification run in the handback was **reproduced by reasoning**, not by
+  re-running a reverted tree (read-only review; no code modified).
+
+## Merge to local dev: **YES**
