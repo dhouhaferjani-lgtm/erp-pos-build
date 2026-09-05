@@ -38,6 +38,13 @@ export interface ApiError {
     code: string
     message: string
     details?: Record<string, unknown>
+    /**
+     * Field-level validation messages on a 422. Laravel's `ValidationException`
+     * is rendered into this envelope by `apps/api/bootstrap/app.php` as
+     * `{ error: { code: 'VALIDATION_ERROR', message, errors: { field: [msg] } } }`.
+     * Read it through `getFieldErrors()` rather than by hand.
+     */
+    errors?: Record<string, string[]>
   }
   meta: {
     timestamp: string

@@ -8,7 +8,7 @@ import { Modal, ModalHeader, ModalContent, ModalFooter } from '../Modal'
 import { FormField } from '../../atoms/FormField'
 import { Input } from '../../atoms/Input'
 import { Button } from '../../atoms/Button'
-import { apiPost, getErrorMessage, isApiError } from '../../../lib/api'
+import { apiPost, getErrorMessage, getFieldErrors } from '../../../lib/api'
 import { tokens } from '../../../lib/designTokens'
 import { cn } from '../../../lib/utils'
 import { TaxConfigurationField } from '../../molecules/TaxConfigurationField'
@@ -89,32 +89,6 @@ function generateQuickProductSku(name: string): string {
   const prefix = slugifySkuPrefix(name)
   const suffix = Date.now().toString(36).toUpperCase().slice(-6)
   return `${prefix}-${suffix}`
-}
-
-function hasOwnProperty<K extends PropertyKey>(value: object, key: K): value is Record<K, unknown> {
-  return key in value
-}
-
-/**
- * Extract field-level validation errors from a 422 API error response.
- * Laravel returns: { error: { code: "VALIDATION_ERROR", errors: { field: ["msg"] } } }
- */
-function getFieldErrors(error: unknown): Record<string, string> | null {
-  if (!isApiError(error)) return null
-  const payload: unknown = error.response?.data
-  if (typeof payload !== 'object' || payload === null || !hasOwnProperty(payload, 'error')) return null
-  const errorField = payload.error
-  if (typeof errorField !== 'object' || errorField === null || !hasOwnProperty(errorField, 'errors')) return null
-  const errorsField = errorField.errors
-  if (typeof errorsField !== 'object' || errorsField === null) return null
-
-  const result: Record<string, string> = {}
-  for (const [field, messages] of Object.entries(errorsField)) {
-    if (Array.isArray(messages) && messages.length > 0 && typeof messages[0] === 'string') {
-      result[field] = messages[0]
-    }
-  }
-  return Object.keys(result).length > 0 ? result : null
 }
 
 export interface AddQuickProductModalProps {

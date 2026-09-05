@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { z } from 'zod'
-import { api, apiPost, apiPatch, getErrorMessage, isApiError } from '../../lib/api'
+import { api, apiPost, apiPatch, getErrorMessage, getFieldErrors } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { tokens } from '../../lib/designTokens'
 import { cn } from '../../lib/utils'
@@ -117,25 +117,6 @@ function sortCountries(countries: Country[]): { pinned: Country[]; rest: Country
   rest.sort((a, b) => a.name.localeCompare(b.name))
 
   return { pinned, rest }
-}
-
-/**
- * Extract field-level validation errors from a 422 API error response.
- * Laravel returns: { error: { code: "VALIDATION_ERROR", errors: { field: ["msg"] } } }
- */
-function getFieldErrors(error: unknown): Record<string, string> | null {
-  if (!isApiError(error)) return null
-  const data = error.response?.data as { error?: { errors?: Record<string, string[]> } } | undefined
-  const errors = data?.error?.errors
-  if (!errors) return null
-
-  const result: Record<string, string> = {}
-  for (const [field, messages] of Object.entries(errors)) {
-    if (Array.isArray(messages) && messages.length > 0) {
-      result[field] = messages[0]
-    }
-  }
-  return result
 }
 
 export function PartnerForm({ partnerType }: PartnerFormProps) {
