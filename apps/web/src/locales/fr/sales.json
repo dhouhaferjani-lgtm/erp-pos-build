@@ -806,6 +806,7 @@
       "creditPartial": "Crédit partiel",
       "creditPartialDesc": "Sélectionner des lignes et quantités spécifiques",
       "selectLinesRequired": "Veuillez sélectionner au moins une ligne à créditer",
+      "invoiceLinesNotLoaded": "Les lignes de la facture sont en cours de chargement. Patientez un instant puis réessayez.",
       "selectLinesTable": "Sélectionner les lignes de facture à créditer",
       "linesRequired": "Veuillez ajouter au moins une ligne",
       "create": "Créer l'avoir"

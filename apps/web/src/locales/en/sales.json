@@ -806,6 +806,7 @@
       "creditPartial": "Credit Partial",
       "creditPartialDesc": "Select specific lines and quantities",
       "selectLinesRequired": "Please select at least one line to credit",
+      "invoiceLinesNotLoaded": "The invoice lines are still loading. Wait a moment and try again.",
       "selectLinesTable": "Select invoice lines to credit",
       "linesRequired": "Please add at least one line",
       "create": "Create Credit Note"

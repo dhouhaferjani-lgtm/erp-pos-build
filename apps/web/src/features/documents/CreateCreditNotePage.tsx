@@ -21,6 +21,7 @@ import { PartnerPicker } from '@/components/molecules/pickers/PartnerPicker'
 import { InvoiceSearchSelect } from '@/components/molecules/pickers/InvoiceSearchSelect'
 import { DocumentLineEditor, type DocumentLine } from '@/components/documents/DocumentLineEditor'
 import { buildCreditNotePayload } from './creditNotePayload'
+import { findBlankPriceLineIds } from './linePayload'
 import { Button } from '@/components/atoms/Button/Button'
 import { PageHeader } from '@/components/molecules/PageHeader/PageHeader'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
@@ -87,6 +88,10 @@ export function CreateCreditNotePage() {
   // Selected invoice state
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
 
+  // Lines the submit refused because they carry no unit price — same contract as
+  // DocumentForm (gate r1 IMPORTANT-3).
+  const [blankPriceLineIds, setBlankPriceLineIds] = useState<Set<string>>(new Set())
+
   const {
     control,
     register,
@@ -126,6 +131,10 @@ export function CreateCreditNotePage() {
 
       // Convert invoice lines to document lines
       if (invoiceData.lines) {
+        // Rule 19 — money and tax rates stay DECIMAL STRINGS end to end. The API
+        // already returns them as strings; parseFloat'ing them here made the
+        // payload builder depend on a float round-trip for the value it puts on
+        // the wire (gate r1 IMPORTANT-5).
         const documentLines: DocumentLine[] = invoiceData.lines.map((line) => ({
           id: line.id,
           product_id: line.product_id ?? '',
@@ -133,9 +142,9 @@ export function CreateCreditNotePage() {
           product_name: line.product_name,
           description: line.description ?? '',
           quantity: line.quantity,
-          unit_price: parseFloat(line.unit_price),
-          tax_rate: parseFloat(line.tax_rate),
-          line_total: parseFloat(line.total),
+          unit_price: line.unit_price,
+          tax_rate: line.tax_rate,
+          line_total: line.total,
           quantity_decimals: line.quantity_decimals ?? null,
         }))
         setLines(documentLines)
@@ -240,6 +249,8 @@ export function CreateCreditNotePage() {
   })
 
   const onSubmit = (data: CreditNoteFormData) => {
+    setBlankPriceLineIds(new Set())
+
     // Validation for invoice mode
     if (creditMode === 'invoice') {
       if (!data.source_invoice_id) {
@@ -251,10 +262,30 @@ export function CreateCreditNotePage() {
         toast.error(t('sales:creditNotes.form.selectLinesRequired'))
         return
       }
+
+      // Gate r1 IMPORTANT-2: 'all' mode credits the invoice LINE BY LINE, and
+      // `lines` is filled asynchronously by the /invoices/{id} query. Submitting
+      // before it resolves used to post `lines: []` and reproduce the very
+      // F-STG-4 422 this PR fixes ("lines ... min:1"), as a race. Refuse here,
+      // with a message, instead of round-tripping to the validator.
+      if (lineMode === 'all' && lines.length === 0) {
+        toast.error(t('sales:creditNotes.form.invoiceLinesNotLoaded'))
+        return
+      }
     } else {
       // Customer mode validation
       if (lines.length === 0) {
         toast.error(t('sales:creditNotes.form.linesRequired'))
+        return
+      }
+
+      // Gate r1 IMPORTANT-3: `lines.*.unit_price` is `required|string|regex`
+      // server-side, so an unpriced line 422s with a message about a field the
+      // operator cannot see. Same guard, same message as DocumentForm.
+      const blankPriceIds = findBlankPriceLineIds(lines)
+      if (blankPriceIds.length > 0) {
+        setBlankPriceLineIds(new Set(blankPriceIds))
+        toast.error(t('sales:documents.errors.unitPriceRequired'))
         return
       }
     }
@@ -615,6 +646,7 @@ export function CreateCreditNotePage() {
                 lines={lines}
                 onChange={setLines}
                 partnerId={partnerId}
+                invalidLineIds={blankPriceLineIds}
               />
             </div>
           )}
