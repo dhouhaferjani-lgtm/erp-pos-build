@@ -471,4 +471,197 @@ class DocumentDueDateGuardTest extends TestCase
 
         $this->assertApiValidationErrors($response, ['due_date']);
     }
+
+    // ----- Gate r2 N-1: the auto-save CREATE branch, and confirm ------------
+
+    /**
+     * Reviewer PROBE R1 — a brand-new draft, `document_date` omitted entirely.
+     *
+     * `DraftPersistenceService::createNewDraft()` substitutes
+     * `now()->format('Y-m-d')` (`:261`), so the comparand is known exactly; it
+     * was not "unknown", which is why the rule used to stay silent and the draft
+     * was born with a due date a month before its document date.
+     *
+     * The refusal lands at the AUTO-SAVE, so the confirm in PROBE R2 is never
+     * reached: no row is authored at all.
+     */
+    public function test_auto_save_rejects_a_due_date_before_today_on_a_brand_new_draft(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/documents/auto-save', [
+                'type' => DocumentType::Quote->value,
+                'partner_id' => $this->customer->id,
+                'due_date' => now()->subMonth()->toDateString(),
+                'lines' => [
+                    ['description' => 'Service', 'quantity' => '1.00', 'unit_price' => '100.00'],
+                ],
+            ]);
+
+        $this->assertApiValidationErrors($response, ['due_date']);
+
+        $this->assertSame(
+            2,
+            Document::query()->count(),
+            'A refused auto-save must not author a third document (the two setUp drafts stand).'
+        );
+    }
+
+    /**
+     * Reviewer PROBE R3 — the byte-exact frontend payload. `DocumentForm.tsx:248`
+     * emits `document_date: ''` when the operator clears the Issue Date input,
+     * and Laravel's global `ConvertEmptyStringsToNull` turns that into null
+     * before validation. Same refusal, same reason.
+     */
+    public function test_auto_save_rejects_a_due_date_before_today_when_the_issue_date_was_cleared(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/documents/auto-save', [
+                'type' => DocumentType::Quote->value,
+                'partner_id' => $this->customer->id,
+                'document_date' => '',
+                'due_date' => now()->subMonth()->toDateString(),
+                'lines' => [
+                    ['description' => 'Service', 'quantity' => '1.00', 'unit_price' => '100.00'],
+                ],
+            ]);
+
+        $this->assertApiValidationErrors($response, ['due_date']);
+
+        $this->assertSame(2, Document::query()->count());
+    }
+
+    public function test_auto_save_accepts_a_due_date_from_today_on_a_brand_new_draft(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/documents/auto-save', [
+                'type' => DocumentType::Quote->value,
+                'partner_id' => $this->customer->id,
+                'due_date' => now()->toDateString(),
+                'lines' => [
+                    ['description' => 'Service', 'quantity' => '1.00', 'unit_price' => '100.00'],
+                ],
+            ]);
+
+        $response->assertOk();
+        $this->assertSame(3, Document::query()->count());
+    }
+
+    /**
+     * Reviewer PROBE R2, defence in depth. Every `confirm()` action takes a bare
+     * `Illuminate\Http\Request` and re-validates no dates, so a row that reached
+     * the database by ANY other route was confirmed and NUMBERED with the exact
+     * inconsistency this lane refuses. `DocumentStatusService::transition()` —
+     * the one place a document changes status and the one place it is numbered —
+     * now refuses the `Draft -> Confirmed` edge.
+     *
+     * The fixture is written straight to the table on purpose: that is what a
+     * legacy draft, an importer, or a future writer looks like from confirm's
+     * point of view.
+     */
+    public function test_confirming_a_quote_whose_due_date_precedes_its_document_date_is_refused(): void
+    {
+        $draft = $this->makeUnnumberedDraft(DocumentType::Quote, $this->customer, [
+            'due_date' => now()->subMonth()->toDateString(),
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/quotes/{$draft->id}/confirm");
+
+        $response->assertStatus(422);
+
+        $draft->refresh();
+
+        $this->assertSame(
+            DocumentStatus::Draft,
+            $draft->status,
+            'A refused confirm must leave the document a draft.'
+        );
+        $this->assertNull(
+            $draft->document_number,
+            'A refused confirm must not burn a number out of the quote sequence.'
+        );
+    }
+
+    public function test_confirming_a_quote_whose_valid_until_precedes_its_document_date_is_refused(): void
+    {
+        $draft = $this->makeUnnumberedDraft(DocumentType::Quote, $this->customer, [
+            'valid_until' => now()->subMonth()->toDateString(),
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/quotes/{$draft->id}/confirm");
+
+        $response->assertStatus(422);
+        $this->assertSame(DocumentStatus::Draft, $draft->refresh()->status);
+        $this->assertNull($draft->document_number);
+    }
+
+    public function test_confirming_a_purchase_order_whose_due_date_precedes_its_document_date_is_refused(): void
+    {
+        $draft = $this->makeUnnumberedDraft(DocumentType::PurchaseOrder, $this->supplier, [
+            'due_date' => now()->subMonth()->toDateString(),
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/purchase-orders/{$draft->id}/confirm");
+
+        $response->assertStatus(422);
+        $this->assertSame(DocumentStatus::Draft, $draft->refresh()->status);
+        $this->assertNull($draft->document_number);
+    }
+
+    /**
+     * The positive control for the confirm guard: a consistent draft must still
+     * confirm and still receive its number. Without this, a guard that refused
+     * EVERY confirm would look green.
+     */
+    public function test_confirming_a_quote_with_consistent_dates_still_allocates_a_number(): void
+    {
+        $draft = $this->makeUnnumberedDraft(DocumentType::Quote, $this->customer, [
+            'due_date' => now()->addDays(30)->toDateString(),
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/quotes/{$draft->id}/confirm")
+            ->assertOk();
+
+        $draft->refresh();
+
+        $this->assertSame(DocumentStatus::Confirmed, $draft->status);
+        $this->assertNotNull($draft->document_number);
+    }
+
+    /**
+     * @param  array<string, string>  $dates
+     */
+    private function makeUnnumberedDraft(DocumentType $type, Partner $partner, array $dates): Document
+    {
+        // R-2 / LEDGER D-T9-1: a draft is born WITHOUT a number, so the
+        // "no number was burned" assertions above are meaningful.
+        $document = Document::create(array_merge([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $partner->id,
+            'type' => $type,
+            'status' => DocumentStatus::Draft,
+            'document_number' => null,
+            'document_date' => now()->toDateString(),
+            'currency' => 'EUR',
+            'subtotal' => '100.00',
+            'tax_amount' => '20.00',
+            'total' => '120.00',
+        ], $dates));
+
+        DocumentLine::create([
+            'document_id' => $document->id,
+            'line_number' => 1,
+            'description' => 'Original Line',
+            'quantity' => '1.00',
+            'unit_price' => '100.00',
+            'tax_rate' => '20.00',
+            'line_total' => '100.00',
+        ]);
+
+        return $document;
+    }
 }
