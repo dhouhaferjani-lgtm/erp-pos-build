@@ -75,3 +75,15 @@ If instead each has its own registration (its own RNE number, own VAT filing), t
 D8 (recommend unsealed binding), RD4 (recommend fiscal-derived first), D7 (recorded as separate record per your reasoning), sister-company fact.
 
 Sources consulted for the industry checks: Odoo 18 POS serial numbers and lots documentation; Odoo `l10n_fr_pos_cert/models/pos.py` (18.0) hashed field lists; Odoo forum and OCA notes on offline lot selection; NF525 overviews (JDC, Agiris, Tactill).
+
+## Open questions surfaced after the rulings (2026-09-05, end of session)
+
+1. D3 cost call: ~3 weeks lane time for editable capture; inside "not very expensive", or display-only for launch and capture right after?
+2. D8: confirm unsealed authored binding (recommended).
+3. RD4: confirm fiscal-derived first (recommended), or pull float/drop booking into launch.
+4. General-manager: new seeded role vs explicit grant on admin.
+5. Recall request: immediate local block on sale and transfer in the requesting branch while GM decides — confirm.
+6. B2B module for parapharmacy: removed from vertical, or opt-in paid extra (August lean).
+7. FIFO vs FEFO: FEFO kept — confirm.
+8. Sister companies: establishment suffix vs separate registrations — client accountant.
+9. Cross-session: over-payment on zero-balance document booked as customer advance without refusal — intended? (request-hygiene handover).
