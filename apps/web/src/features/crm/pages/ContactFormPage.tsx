@@ -22,6 +22,9 @@ import { useCompanyStore } from '@/stores/companyStore'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
+/** Today as an ISO `YYYY-MM-DD` string for max-date guards and comparisons. */
+const todayIso = () => new Date().toISOString().slice(0, 10)
+
 const contactSchema = z.object({
   first_name: z.string().min(1, 'crm:contacts.validation.firstNameRequired'),
   last_name: z.string(),
@@ -31,7 +34,10 @@ const contactSchema = z.object({
     'crm:contacts.validation.invalidEmail'
   ),
   mobile: z.string(),
-  date_of_birth: z.string(),
+  date_of_birth: z.string().refine(
+    (val) => val === '' || val <= todayIso(),
+    'crm:contacts.validation.dateOfBirthFuture'
+  ),
   gender: z.string(),
   national_id: z.string(),
   notes: z.string(),
@@ -235,11 +241,14 @@ export function ContactFormPage() {
             <FormField
               label={t('crm:contacts.dateOfBirth')}
               htmlFor="date_of_birth"
+              error={errors.date_of_birth?.message ? t(errors.date_of_birth.message) : undefined}
             >
               <Input
                 id="date_of_birth"
                 type="date"
+                max={todayIso()}
                 {...register('date_of_birth')}
+                error={!!errors.date_of_birth}
               />
             </FormField>
 

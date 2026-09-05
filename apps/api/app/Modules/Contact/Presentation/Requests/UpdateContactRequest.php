@@ -26,7 +26,7 @@ class UpdateContactRequest extends FormRequest
             'phone' => ['sometimes', 'nullable', 'string', 'max:50'],
             'email' => ['sometimes', 'nullable', 'email', 'max:255'],
             'mobile' => ['sometimes', 'nullable', 'string', 'max:50'],
-            'date_of_birth' => ['sometimes', 'nullable', 'date'],
+            'date_of_birth' => ['sometimes', 'nullable', 'date', 'before_or_equal:today'],
             'gender' => ['sometimes', 'nullable', new Enum(Gender::class)],
             'national_id' => ['sometimes', 'nullable', 'string', 'max:50'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:5000'],

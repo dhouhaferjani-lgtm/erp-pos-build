@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ContactFormPage } from '../ContactFormPage'
 
@@ -171,6 +171,38 @@ describe('ContactFormPage', () => {
     expect(screen.getByText('crm:contacts.companyAssociations')).toBeInTheDocument()
     expect(screen.getByTestId('partner-select')).toBeInTheDocument()
     expect(screen.getByLabelText(/crm:contacts.jobTitle/)).toBeInTheDocument()
+  })
+
+  it('blocks submission when date of birth is in the future', async () => {
+    mockCreateContact.mockResolvedValue({ id: 'new-id', full_name: 'Test' })
+    const user = userEvent.setup()
+
+    render(<ContactFormPage />)
+
+    await user.type(screen.getByLabelText(/crm:contacts.firstName/), 'Test')
+    fireEvent.change(screen.getByLabelText(/crm:contacts.dateOfBirth/), {
+      target: { value: '2999-01-01' },
+    })
+
+    await user.click(screen.getByText('common:actions.create'))
+
+    expect(mockMutate).not.toHaveBeenCalled()
+  })
+
+  it('allows submission with a past date of birth', async () => {
+    mockCreateContact.mockResolvedValue({ id: 'new-id', full_name: 'Test' })
+    const user = userEvent.setup()
+
+    render(<ContactFormPage />)
+
+    await user.type(screen.getByLabelText(/crm:contacts.firstName/), 'Test')
+    fireEvent.change(screen.getByLabelText(/crm:contacts.dateOfBirth/), {
+      target: { value: '1990-05-15' },
+    })
+
+    await user.click(screen.getByText('common:actions.create'))
+
+    expect(mockMutate).toHaveBeenCalledTimes(1)
   })
 
   it('submits with party_id when company selected', async () => {

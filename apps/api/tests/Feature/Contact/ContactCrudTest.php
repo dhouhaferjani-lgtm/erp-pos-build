@@ -345,6 +345,34 @@ class ContactCrudTest extends TestCase
         $this->assertApiValidationErrors($response, ['gender']);
     }
 
+    public function test_create_rejects_future_date_of_birth(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/contacts', [
+                'first_name' => 'Test',
+                'date_of_birth' => '2999-01-01',
+            ]);
+
+        $this->assertApiValidationErrors($response, ['date_of_birth']);
+    }
+
+    public function test_update_rejects_future_date_of_birth(): void
+    {
+        $contact = Contact::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'first_name' => 'Existing',
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/contacts/{$contact->id}", [
+                'date_of_birth' => '2999-01-01',
+            ]);
+
+        $this->assertApiValidationErrors($response, ['date_of_birth']);
+    }
+
     public function test_permission_denied_without_create_permission(): void
     {
         $viewerUser = User::create([
