@@ -100,3 +100,24 @@ Sources consulted for the industry checks: Odoo 18 POS serial numbers and lots d
 | L9 DEFAULT split (already ruled into W-LOT) | Identify a lot cohort after the fact | Lot reassignment procedure via inventory adjustment | **Batch → Split** button splits a batch into smaller batches | No split operation | ERPNext's split is the closest precedent for L9. |
 
 Sources: Odoo forum on blocking/quarantining a lot, OCA `stock_lock_lot`, Odoo 19 lot documentation; ERPNext Batch documentation (disabled, Split, expiry) and User Permissions (Warehouse); Odoo 14–18 POS cash control, cash in/out accounting forum answers; ERPNext POS Opening/Closing Entry documentation; Odoo 17–19 POS payment methods (journal per method, Bank for terminals); ERPNext Mode of Payment / POS Profile.
+
+## Second ruling pass (2026-09-05, later)
+
+| ID / Q | Ruling | Consequence |
+|---|---|---|
+| **D8** | CONFIRMED: destination is defined **at tender setup**, never chosen by the cashier. Each payment method (tender) is bound to its final destination(s): cash → the terminal location's drawer (already true); card and other electronic settlement → a **bank account (repository)**, with per-location override when the company has several bank accounts. Transport = **unsealed authored binding** (configuration revision recorded with the sale, honoured by the server), not sealed into the receipt. Benchmark: Odoo requires a journal per payment method and attaches methods per POS; the cashier has no choice of destination. | W2: `PaymentMethod` settlement binding becomes required for electronic classes at activation (RD3), with optional per-location repository override; policy snapshot to the device; terminal projection filtered by persisted terminal location; no drawer fallback for electronic. |
+| **D7** | CONFIRMED: lot evidence is **not** in the hash chain and not printed by default. The chain stores only what certification requires; everything else about an order is stored alongside and recallable for operations and audit. | W-LOT L7/L8: separate linked, authenticated inventory-evidence record. No SALE_RECEIPT version needed for lot capture. |
+| **D3** | CONFIRMED: ship in the suggested order inside one W-LOT lane: display (label + suggested lot) → capture (editable, FEFO-prefilled) → projection consumption. | W-LOT brief sequences L7a display, L7b capture, L7c consumption. |
+| **D1 / sister companies** | CONFIRMED: one legal company, five establishments (tax-ID suffixes 000/001/002…). Locations of one company. | No intercompany design. Establishment number may need to appear on receipts/invoices per establishment (verify with accountant during the Tunisia review, not blocking). |
+| **RD4** | RULED **CRITICAL, into launch scope**: Treasury must book opening float, cash in/out (drops) and drawer→safe→bank transfers so repository balances are real and the drawer reconciles to the Z report. Owner believed this was already fixed; it was not (see explanation below). | New lane **W-CASH** (or W7b): book float/drops from device shift events into Treasury via existing movement/transfer services with stable source identities; then enable repository comparison in W7 and the variance GL leg. Benchmark: Odoo cash control books opening balance and cash in/out as journal entries; ERPNext POS Opening/Closing Entry per mode of payment. |
+| **Q4 general-manager role** | CONFIRMED: new seeded `general_manager` role (manager set, no location restriction, `batches.recall`, `treasury.manage_all_locations`). | W1 + W-LOT seeder deltas. |
+| **Q5 recall hold** | CONFIRMED: branch request = immediate local hold on sale and transfer. | W-LOT L1. |
+| **Q6 B2B module** | CONFIRMED: compatible extra, default off for parapharmacy. | W0 verticals change. |
+| **Q7 FEFO** | CONFIRMED. | — |
+| **Q9 over-payment as advance** | STILL OPEN (cross-session). | — |
+
+### What is actually in place for float and drops today (verified in code)
+
+- The **device** records opening float, cash in/out and the count in the Z report and shift events, and the server **fiscal** projection copies them (`ZSessionLifecycleProjection`) and derives expected cash from them (`ShiftExpectedCashService`, sources: v3 `pos_z_session_events` or v2 `pos_cash_drawer_operations`). So the Z report and the expected-cash figure are correct.
+- **Treasury** has no consumer of those events: the only Treasury bridges are receipt, account payment, account charge and deposit. Nothing books the float into the drawer repository, nothing books a drop out of it into the safe, so the drawer repository balance only ever contains sales takings. Back-office drawer→safe transfers exist as a manual service (`RepositoryTransferService::transfer`), but they are not driven by the shift.
+- The variance GL leg (`PostShiftCashVarianceAdjustment`) shipped **disabled** for exactly this reason (gate finding I1, SV-3/SV-4): enabling it before float and drops are booked would create a cash/GL mismatch.
