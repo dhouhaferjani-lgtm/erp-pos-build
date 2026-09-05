@@ -41,7 +41,7 @@ class CriticalBatchExpiryNotification extends Notification
                 'batch_number' => $batch->batch_number,
                 'product_name' => $batch->product->name ?? 'Unknown',
                 'product_id' => $batch->product_id,
-                'expiry_date' => $batch->expiry_date->toDateString(),
+                'expiry_date' => $batch->expiry_date?->toDateString(),
                 'days_until_expiry' => $batch->daysUntilExpiry(),
             ])->toArray(),
             'message' => $this->batches->count() === 1
