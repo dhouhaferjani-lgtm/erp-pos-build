@@ -432,6 +432,17 @@ const resources = {
     compliance: {
       ...enCompliance,
       ...arCompliance,
+      // Nested objects must be merged EXPLICITLY: the spread above is shallow,
+      // so an `ar` file that carries only part of a nested object would drop
+      // every English sibling key inside it (raw-key bug in Arabic).
+      chainVerification: {
+        ...enCompliance.chainVerification,
+        ...arCompliance.chainVerification,
+        errors: {
+          ...enCompliance.chainVerification.errors,
+          ...arCompliance.chainVerification.errors,
+        },
+      },
       fraudSettings: {
         ...enCompliance.fraudSettings,
         ...arCompliance.fraudSettings,

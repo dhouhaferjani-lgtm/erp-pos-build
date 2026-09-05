@@ -25,7 +25,19 @@
     "brokenAt": "Cass\u00e9e \u00e0",
     "noTerminals": "Aucun terminal trouv\u00e9.",
     "allValid": "Toutes les cha\u00eenes sont valides.",
-    "hasBroken": "Certaines cha\u00eenes pr\u00e9sentent des probl\u00e8mes d'int\u00e9grit\u00e9."
+    "hasBroken": "Certaines cha\u00eenes pr\u00e9sentent des probl\u00e8mes d'int\u00e9grit\u00e9.",
+    "legacyRowsVerified": "Lignes H\u00e9rit\u00e9es V\u00e9rifi\u00e9es",
+    "noLegacyRows": "Aucune",
+    "technicalDetail": "D\u00e9tail technique",
+    "verifiedAt": "Au {{timestamp}}",
+    "legacyRowsCountNote": "Cette colonne ne compte que les tickets de la cha\u00eene h\u00e9rit\u00e9e. Les tickets rattach\u00e9s \u00e0 la cha\u00eene d'\u00e9v\u00e9nements sont v\u00e9rifi\u00e9s par ce contr\u00f4le mais ne sont pas comptabilis\u00e9s dans ce chiffre.",
+    "errors": {
+      "fiscalEventsChainBreak": "Le scellement de la cha\u00eene d'\u00e9v\u00e9nements ne correspond pas : le contenu scell\u00e9 d'un ticket ou son lien avec le ticket pr\u00e9c\u00e9dent a chang\u00e9. Contactez le support avec le code de ce terminal.",
+      "legacyLinkageBroken": "Lien de cha\u00eene rompu : un ticket ne pointe pas vers le scellement du ticket pr\u00e9c\u00e9dent.",
+      "sealedHashAlgorithmAnomaly": "Un ticket ne porte aucun algorithme de scellement alors que la migration de scellement de ce terminal est termin\u00e9e. Contactez le support avec le code de ce terminal.",
+      "fiscalHashMismatch": "Scellement non concordant : les donn\u00e9es de ce ticket ne correspondent plus \u00e0 son scellement fiscal.",
+      "zReportChainBreak": "Rupture de la cha\u00eene des rapports Z : la cha\u00eene de session ou les liens des rapports Z ne correspondent pas."
+    }
   },
   "reprintLog": {
     "title": "Journal d'Audit des Impressions",

@@ -1,25 +1,42 @@
 import { api } from '../../../lib/api'
 import type { OffsetPaginationMeta } from '@/types/pagination'
 
+/**
+ * Per-terminal chain verification result.
+ *
+ * Field names mirror the backend contract exactly
+ * (Nf525ExportController::verifyChains) — do NOT rename them to FE-local
+ * conventions; the panel renders directly off these keys.
+ */
 export interface ChainVerificationResult {
-  terminal_code: string
   terminal_id: string
+  terminal_code: string
+  terminal_name: string
   receipt_chain: {
     is_valid: boolean
-    chain_length: number
-    first_receipt: string | null
-    last_receipt: string | null
-    broken_at_sequence: number | null
-    verified_at: string
+    total_receipts: number
+    verified: number
+    failed_at_sequence: number | null
+    error: string | null
   }
   z_report_chain: {
     is_valid: boolean
-    chain_length: number
-    first_z_number: number | null
-    last_z_number: number | null
-    broken_at_z_number: number | null
-    verified_at: string
+    total_reports: number
+    verified: number
+    failed_at_z_number: number | null
+    error: string | null
   }
+  is_valid: boolean
+}
+
+/**
+ * Full verify-chains payload as returned under the top-level `data` envelope.
+ */
+export interface ChainVerificationResponse {
+  company_id: string
+  terminals: ChainVerificationResult[]
+  all_chains_valid: boolean
+  verified_at: string
 }
 
 export interface ReprintLogEntry {
@@ -54,11 +71,32 @@ export async function exportJetXml(companyId: string, from: string, to: string):
 
 /**
  * Verify receipt and Z-report hash chains for all terminals.
- * Returns per-terminal verification results.
+ *
+ * The backend nests the payload under the standard `data` envelope, and the
+ * per-terminal rows live at `data.terminals` (NOT `data` directly). We read
+ * `response.data.data` and defensively normalize every field so an
+ * unexpected/empty payload degrades gracefully instead of crashing the panel.
+ *
+ * The WHOLE envelope is returned (not just `terminals`): `verified_at` is the
+ * "as of" stamp an integrity verdict needs to be audit evidence, and
+ * `all_chains_valid` is the backend's own verdict — the panel renders that
+ * rather than recomputing a second one client-side.
+ *
+ * NO request body: `Nf525ExportController::verifyChains` resolves the company
+ * exclusively from `CompanyContext` (`requireCompanyId()`, controller docblock
+ * "Body `company_id` is no longer accepted") — sending one implied the client
+ * controls the tenant scope, which it does not.
  */
-export async function verifyChains(companyId: string): Promise<ChainVerificationResult[]> {
-  const response = await api.post('/compliance/nf525/verify-chains', { company_id: companyId })
-  return (response.data as { data: ChainVerificationResult[] }).data
+export async function verifyChains(): Promise<ChainVerificationResponse> {
+  const response = await api.post('/compliance/nf525/verify-chains', {})
+  const payload = (response.data as { data?: Partial<ChainVerificationResponse> } | null)?.data
+
+  return {
+    company_id: typeof payload?.company_id === 'string' ? payload.company_id : '',
+    terminals: Array.isArray(payload?.terminals) ? payload.terminals : [],
+    all_chains_valid: payload?.all_chains_valid === true,
+    verified_at: typeof payload?.verified_at === 'string' ? payload.verified_at : '',
+  }
 }
 
 /**
