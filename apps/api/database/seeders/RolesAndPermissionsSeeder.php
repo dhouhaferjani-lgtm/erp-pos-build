@@ -151,6 +151,11 @@ class RolesAndPermissionsSeeder extends Seeder
             'supplier-invoices.create-pending',
             'supplier-invoices.link-receipts',
             'supplier-invoices.approve-invoice-first',
+            // F-W2-14 / DEV-QA-027-028: dedicated coarse gate for the supplier-invoice
+            // mutation surface (create / re-match / post). Replaces the generic
+            // documents.update the routes previously used — a cashier holds
+            // documents.update but must NOT be able to create or post supplier invoices.
+            'supplier-invoices.manage',
             'document-ingestions.view',
             'document-ingestions.create',
             'document-ingestions.commit',
@@ -571,7 +576,7 @@ class RolesAndPermissionsSeeder extends Seeder
                 'quotes.view', 'quotes.create', 'quotes.update', 'quotes.convert',
                 'orders.view', 'orders.create', 'orders.update', 'orders.confirm',
                 'purchase-orders.view', 'purchase-orders.create', 'purchase-orders.update', 'purchase-orders.confirm', 'purchase-orders.receive', 'goods-receipt.edit-price', 'goods-receipt.receive-expired', 'goods-receipt.create-standalone',
-                'supplier-invoices.create-pending', 'supplier-invoices.link-receipts', 'supplier-invoices.approve-invoice-first',
+                'supplier-invoices.create-pending', 'supplier-invoices.link-receipts', 'supplier-invoices.approve-invoice-first', 'supplier-invoices.manage',
                 'document-ingestions.view', 'document-ingestions.create', 'document-ingestions.commit', 'document-ingestions.reject',
                 'purchase-quote-requests.view', 'purchase-quote-requests.create', 'purchase-quote-requests.update', 'purchase-quote-requests.convert', 'purchase-quote-requests.delete',
                 'invoices.view', 'invoices.create', 'invoices.update', 'invoices.post', 'invoices.print',
@@ -805,7 +810,7 @@ class RolesAndPermissionsSeeder extends Seeder
                 'partners.view',
                 'documents.view', 'documents.update',
                 'invoices.view', 'invoices.post',
-                'supplier-invoices.create-pending', 'supplier-invoices.link-receipts', 'supplier-invoices.approve-invoice-first',
+                'supplier-invoices.create-pending', 'supplier-invoices.link-receipts', 'supplier-invoices.approve-invoice-first', 'supplier-invoices.manage',
                 'document-ingestions.view', 'document-ingestions.create', 'document-ingestions.commit', 'document-ingestions.reject',
                 'credit-notes.view', 'credit-notes.post',
                 'expenses.view', 'expenses.create', 'expenses.update', 'expenses.delete', 'expenses.post', 'expenses.pay',
