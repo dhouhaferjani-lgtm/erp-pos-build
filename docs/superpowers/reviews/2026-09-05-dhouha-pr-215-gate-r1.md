@@ -374,3 +374,325 @@ matches the new snippet and no stale row remains. Re-run must print `0 new, 0 st
 7. **F-7 / F-8** — column-width ceilings; import moved to the top.
 
 **Merge to local dev: NO.**
+
+---
+---
+
+# Gate r2 — fix round 1 (PR #215)
+
+| | |
+|---|---|
+| **Reviewed** | `git diff 2b7994db4 023c4e49b` — 5 commits (`cb7713517`, `222fce906`, `eada7caa1`, `ab54459ad`, `023c4e49b` docs), 16 files |
+| **Diff vs base** | `d56d62535..023c4e49b` = 20 files, +1190/−186 (docs included) |
+| **Handback** | `docs/superpowers/reviews/2026-09-05-dhouha-pr-215-fix-round-1-handback.md` |
+| **Engines** | web vitest (node) · api PHPUnit **sqlite + PG** (private DB `autoerp_test_g215b`, created and dropped) |
+| **Reviewer** | Fable 5.1, 2026-09-05 |
+| **Verdict** | **CHANGES REQUIRED** — one blocker, everything else resolved |
+| **Merge to local dev** | **NO** |
+
+**Eight of the nine r1 findings are genuinely fixed and independently verified.** The round also correctly
+widened F-3 (three dead read surfaces, not two) and correctly refused the cheap re-key on F-1. One blocker
+remains, and it is a **new regression created by the round itself**.
+
+| r1 # | Status (verified by me, not taken on trust) |
+|---|---|
+| F-1 | **FIXED** — atoms adopted; `audit:design-system` `802 acknowledged, 0 new, 0 stale`, exit 0 |
+| F-2 | **FIXED** — `Str::isUuid` guard; non-UUID id now 400, proven on the PG leg |
+| F-3 | **FIXED and correctly widened** — three read surfaces; claim independently re-derived |
+| F-4 | **FIXED** — second-company test against the real key, "second location: N/A" declared |
+| F-5 | **FIXED in production code — but it broke a test file that the round did not run** (R2-1) |
+| F-6 | **FIXED** — all 8 fields render; unmapped 422s routed to the alert |
+| F-7 | **FIXED** — `max:64` / `max:128` match the column widths |
+| F-8 | **FIXED** — import back at the top |
+| F-9 / F-10 | Not done; correctly filed as residuals (out of the r2 list) |
+
+---
+
+## R2-1 — **BLOCKER**: the F-5 consolidation turns a green test file red
+
+`src/features/partners/partners.test.tsx` mocks the module with an **object literal** that never exported
+`getFieldErrors`:
+
+```ts
+// src/features/partners/partners.test.tsx:36-44
+vi.mock('../../lib/api', () => ({
+  apiGet: mockApiGet, apiPost: mockApiPost, apiPatch: mockApiPatch, apiDelete: mockApiDelete,
+  api: mockApiInstance, getErrorMessage: mockGetErrorMessage, isApiError: mockIsApiError,
+}))
+```
+
+Before the round, `PartnerForm` defined `getFieldErrors` **locally** (it only needed `isApiError`, which the
+mock does provide), so the mock was complete. After `222fce906` deleted the local copy,
+`PartnerForm.tsx:383` calls the imported `getFieldErrors`, which resolves to `undefined` under that mock, so
+`handleMutationError` throws before reaching `toast.error`.
+
+**Measured on both trees — this is a regression, not a pre-existing red:**
+
+```
+# current dev 143cded50 (main checkout)
+ ✓ src/features/partners/partners.test.tsx (49 tests) 2493ms
+
+# gate/pr-215 @ 023c4e49b
+ × Partner Management > PartnerForm > shows error toast when create mutation fails with generic error
+ × Partner Management > PartnerForm > shows error toast when create mutation fails with 422 validation error
+   AssertionError: expected "spy" to be called with arguments: [ 'Network error' ]   Number of calls: 0
+   TestingLibraryElementError: Unable to find an element with the text:
+     The VAT number format is invalid for the selected country.
+ Test Files  1 failed | 7 passed (9)   Tests  4 failed | 137 passed (141)
+```
+
+The two failures are precisely the two mutation-**error** tests — the only ones that reach the deleted code
+path. The round fixed `PartnerForm.test.tsx` (via `vi.importActual`) and stopped there; `partners.test.tsx`
+was never run.
+
+**Fix:** add `getFieldErrors` to that mock factory — preferably by converting it to the same
+`vi.importActual` spread used in `PartnerForm.test.tsx`, so the real helper runs and the 422 test keeps its
+meaning. Then re-run `partners.test.tsx` (49 tests) **and** `PartnerForm.test.tsx` (32).
+
+### The mock sweep the gate asked for
+
+`grep -rn "vi.mock('.*lib/api', () => ({" src` returns **87** object-literal (non-`importActual`) mocks. Only
+files that render a `getFieldErrors` consumer *and* drive a mutation error can break. I ran every test file
+that references `PartnerForm`, `AddQuickProductModal`, `PriceListForm` or `ProductForm`:
+
+- broken: **`partners.test.tsx`** (above) — the only one.
+- green: `PartnerForm.test.tsx` 32 ✓ · `partners/__tests__/tenantScope` 10 ✓ · `partnerIsActiveToggle` 3 ✓ ·
+  `partnerListRouteType` 11 ✓ · `PartnerBankAccountsSection` 1 ✓ · `PartnerRoutes.gates` 19 ✓ ·
+  `TunisiaLocalization` 2 ✓ · `AddQuickProductModal` 7 ✓ · `DocumentLineEditor` 34 ✓ + `.quantityStep` 3 ✓ +
+  `.purchasePriceDefault` 17 ✓ + `.refusedFields` 4 ✓ · `DocumentComponents.tenantScope` 3 ✓ ·
+  `LineMappingTable` 7 ✓ · `pricing.test.tsx` 22 ✓ · `ProductForm.test.tsx` 54 ✓.
+
+**Latent (not currently failing, worth a one-line hardening):**
+`src/features/document-ingestions/__tests__/ReviewIngestionPage.test.tsx:26` renders `PartnerForm` behind an
+object-literal `@/lib/api` mock with no `getFieldErrors`. Its current tests never hit the error path, so it
+does not fail today — but the next error-path test there will.
+
+### Two reds that are **NOT** this PR
+
+Both were measured red on the **current dev checkout (143cded50)** as well:
+
+```
+ FAIL src/components/__tests__/SharedSingletons.tenantScope.test.tsx > scopes modal invalidations (.001-.003)
+      TypeError: countries.map is not a function  (AddPartnerModal.tsx:370)
+ FAIL src/features/document-ingestions/__tests__/ReviewIngestionPage.test.tsx > posts only PartnerFormData keys …
+      expected [ 'city', 'country_code', …(8) ] to deeply equal [ 'address', 'city', 'country', …(7) ]
+ Test Files  2 failed | 1 passed (3)
+```
+
+Neither is on any path this PR touches (`AddPartnerModal` imports only `apiPost`; `PartnerForm`'s payload
+code is byte-identical to base). **Pre-existing dev reds — flagged for the owner, not chargeable here.**
+
+---
+
+## 1. F-2 / F-4 / F-7 — backend
+
+**F-2 verified.** `AddAttributeValueRequest.php:37-39` now computes
+`$scopedAttributeId = is_string($attributeId) && Str::isUuid($attributeId) ? $attributeId : null` and binds
+that. The chosen status is **400, matching the controller contract** — and that contract is real, not
+invented: `AttributeController.php:69`, `:99` and `:122` all answer a malformed id with
+`{"message":"Invalid ID format"}`, 400. A non-UUID makes the unique rule a no-match, so the controller guard
+(`:68-70`) resumes ownership. `test_non_uuid_attribute_id_returns_400_not_500`
+(`AddAttributeValueEndpointTest.php:120-133`) asserts both the status **and** the body string, so a silent
+drift to 422 would go red. In r1 I independently proved the underlying mechanism on this same PG instance
+(`SQLSTATE[22P02]` from the real Laravel validator), so the guard is addressing a real, measured failure.
+
+**F-7 verified against the migration.** `code` `max:64`, `label` `max:128` — matching
+`2026_06_02_100002_create_product_attribute_values_table.php:18-19` (`string('code', 64)`,
+`string('label', 128)`). `test_over_long_code_and_label_are_rejected_with_422` drives 65/129 chars; I proved
+the pre-fix overflow directly in r1 (`ERROR: value too long for type character varying(64)`).
+
+**F-4 verified against the actual unique key.** The test docblock cites the right keys and I re-read both
+migrations: `product_attribute_values` is `unique(['attribute_id','code'])` with **no `company_id`**
+(migration line 24) and the parent `product_attributes` is `unique(['tenant_id','code'])`
+(`…100001_create_product_attributes_table.php:24`) — both tenant-wide, exactly the shape
+`docs/conventions/09-SECOND-OF-EVERYTHING.md` lists as legacy-too-wide.
+`test_second_company_shares_the_tenant_wide_attribute_value_scope` provisions company B in the same tenant,
+adds a real `UserCompanyMembership`, switches `CompanyContext`, and asserts on **data meaning** (B collides
+on `xl` → 422; B stores `xxl` → 201). Re-run/idempotency is the existing duplicate test; "second location:
+N/A" is declared with a reason. The `app()` → `$this->app->make()` nit is done.
+*Minor, non-blocking:* company B is created with `Company::factory()`, where convention 09 asks for "the real
+company-creation path". Acceptable here — this endpoint has no company dimension to seed — but worth a line.
+
+```
+$ php artisan test tests/Feature/Catalog/AddAttributeValueEndpointTest.php          # sqlite
+  ✓ duplicate attribute value returns 422 with readable message   ✓ same code under a different attribute is allowed
+  ✓ non uuid attribute id returns 400 not 500                     ✓ over long code and label are rejected with 422
+  ✓ second company shares the tenant wide attribute value scope
+  Tests: 5 passed (21 assertions)  Duration: 7.39s
+
+$ DB_HOST=127.0.0.1 DB_PORT=5433 DB_DATABASE=autoerp_test_g215b DB_CENTRAL_DATABASE=autoerp_test_g215b \
+  php artisan test -c phpunit-pgsql.xml tests/Feature/Catalog/AddAttributeValueEndpointTest.php
+  Tests: 5 passed (21 assertions)  Duration: 27.53s
+```
+
+---
+
+## 2. F-3 — the widened read-path claim: **verified, and the list-page claim holds**
+
+I re-derived the `fetchPriceLists` claim from source rather than accepting it:
+
+```
+PricingController::index()                              apps/api/.../PricingController.php:68
+    $priceLists = $query->latest()->paginate(20);
+    return response()->json($priceLists);               ← the RAW paginator, no {data,meta} wrapper:
+                                                          { current_page, data:[…], …, total }
+apiGet<T>(url)                                          apps/web/src/lib/api.ts:407-410
+    const response = await api.get<ApiResponse<T>>(url)
+    return response.data.data                           ← axios body → paginator → its `data` = the PAGE ARRAY
+PriceListListPage.tsx:53 (pre-fix)  const filteredPriceLists = data?.data ?? []
+                                                        ← array.data === undefined  ⇒  ALWAYS []
+```
+
+**Claim confirmed: the price-list index page rendered permanently empty on dev**, exactly as the handback
+states — and there is no success-envelope middleware in `apps/api/bootstrap/app.php` that could have made it
+otherwise. Together with the two surfaces r1 found, **all three pricing read surfaces were dead**. That makes
+this round's scope extension the right call, not scope creep.
+
+**All three now populate, proven by rendering assertions, not call counts:**
+`tenantScope.test.tsx` — *"PriceListForm (edit mode) POPULATES from the real unwrapped fetch shape (F-3)"* —
+asserts six field **values** (`PL-EDIT`, `Retail edit`, `Seeded description`, `EUR`, `2026-01-01`,
+`2026-12-31`) via `toHaveValue`. `pricing.test.tsx` covers the list rows and the detail page.
+`PriceListDetailPage.tsx:65` → `const priceList = data`; `PriceListListPage.tsx:39` → `data ?? []`;
+`PriceListForm.tsx:75-77` → `if (existingPriceList) { const data = existingPriceList …`.
+The dead `PriceListResponse` / `PriceListsResponse` types are deleted and replaced by an explanatory note in
+`types.ts` — `tsc --noEmit` exit 0 proves nothing else referenced them.
+
+### The `pricing.test.tsx` fixture rewrite — **correct for every endpoint**
+
+The file mocks `apiGet` **itself**, so each fixture must be what the real `apiGet` resolves. Checked all 20:
+
+| endpoint | real chain | new fixture | verdict |
+|---|---|---|---|
+| index (`/price-lists`) | raw paginator → `.data` → **page array** | `mockResolvedValue([])` / `mockResolvedValue(mockPriceLists)` (13×) | **correct** |
+| show (`/price-lists/{id}`) | `{data: $priceList}` → `.data` → **the object** | `mockResolvedValue(mockExistingPriceList)` / `(mockPriceListDetail)` (7×) | **correct** |
+
+Both old shapes (`{data, meta}` and `{data}`) were shapes `apiGet` can never return — for the paginated index
+in particular, `apiGet` structurally **cannot** deliver `meta`, since meta sits on the paginator's top level
+which the unwrap discards. The header comment now states the rule for the next author. This is the right
+correction, and it is the load-bearing one: these fixtures are what green-lit the bug for its whole life.
+
+**Residual — `fetchPriceLists` drops the paginator meta: acceptable, with a caveat to file.**
+`PriceListListPage` has no pagination control and never reads meta (`grep` for Pagination/cursor/total →
+nothing but the local `filteredPriceLists.length`), so nothing is broken *today* and restoring meta means
+switching to `api.get` + `response.data`, which is a separate change with its own double-unwrap trap. But the
+backend paginates at 20: past 20 price lists the page silently truncates **and the header count
+(`PriceListListPage.tsx:73`) reports 20 as the total.** That is strictly better than the always-empty page it
+replaces, so it should not hold the merge — but it must stay on the residual list with that consequence
+spelled out, not just "meta is unread".
+
+---
+
+## 3. F-5 — consolidation is behaviour-identical (production code)
+
+One exported `getFieldErrors` in `lib/api.ts:110`; both private copies deleted
+(`PartnerForm.tsx`, `AddQuickProductModal.tsx`), along with the now-unused `isApiError` imports and the local
+`hasOwnProperty` helper. `ApiError.error` gains `errors?: Record<string, string[]>` (`lib/api.ts:41-47`),
+matching `apps/api/bootstrap/app.php:324-334`.
+
+Behaviour deltas checked:
+- `AddQuickProductModal`'s old copy was the shared function verbatim, tail included → identical.
+- `PartnerForm`'s old copy returned `{}` (not `null`) for an empty bag, but its only call site guards
+  `if (fieldErrors && Object.keys(fieldErrors).length > 0)` (`PartnerForm.tsx:384`) → identical.
+
+Production behaviour is right. The defect is in the **test fixtures** — R2-1.
+
+---
+
+## 4. F-1 / F-6 / F-8
+
+**F-1 — the preferred route, and the baseline surgery is clean.** All 8 raw controls in `PriceListForm` now
+use `Input` / `Select` / `Textarea` / `Checkbox`, each carrying `error={Boolean(errors.X)}`. The baseline
+diff is **deletions only — 8 lines, every one keyed `src/features/pricing/PriceListForm.tsx`**; no other
+file's key was touched and nothing was added (no `--write-baseline` sweep). 810 → 802. The file's single
+remaining entry is the untouched C3 raw submit `<button>`, still acknowledged and neither new nor stale —
+verified by grepping the baseline directly.
+
+**F-6 — nothing is dropped now.** All 8 mapped fields have an inline `<p>` renderer (`currency` :232-234,
+`description` :249-251, `valid_from` :265-267, `is_active` :305-307, `is_default` :318-320, plus the three
+that already had one). Fields the form has no input for go to `unmappedServerErrors` and render as an `<ul>`
+under the form-level alert (:337-343), cleared on each submit (:139). Two new falsifiable tests: one drives a
+4-field 422 and asserts all four rendered strings; one drives `company_id` (no such input) and asserts it
+reaches the alert. *Nit:* `key={message}` on the `<li>` collides if the backend returns two identical
+messages — cosmetic.
+
+**F-8** — `import { semanticColorTokens … }` is back above the top-level const (`PriceListForm.tsx:12`).
+
+---
+
+## 5. Re-run — verbatim
+
+```
+# vitest, by file (batched; per-file isolation, no --singleFork)
+ ✓ src/features/pricing/pricing.test.tsx (22)          ✓ src/features/pricing/__tests__/tenantScope.test.tsx (10)
+ ✓ .../PriceListForm.validation.test.tsx (5)           ✓ src/features/inventory/ProductForm.test.tsx (54)
+ ✓ .../ProductForm.serverValidation.test.tsx (2)       ✓ .../ProductFormInvalidSubmit.test.tsx (3)
+ ✓ src/features/products/sections/ProductGeneralSection.test.tsx (2)
+ Test Files 7 passed (7)   Tests 98 passed (98)          ← pricing total 37, as claimed
+
+ ✓ PartnerForm.test.tsx (32) · partners/__tests__/tenantScope (10) · partnerIsActiveToggle (3)
+ ✓ partnerListRouteType (11) · PartnerBankAccountsSection (1) · TunisiaLocalization (2) · PartnerRoutes.gates (19)
+ × partners.test.tsx  → 2 failed                        ← R2-1
+ × ReviewIngestionPage.test.tsx → 1 failed              ← pre-existing on dev
+ Test Files 2 failed | 7 passed (9)   Tests 4 failed | 137 passed (141)
+
+ ✓ AddQuickProductModal (7) · DocumentLineEditor (34) · .quantityStep (3) · .purchasePriceDefault (17)
+ ✓ .refusedFields (4) · DocumentComponents.tenantScope (3) · LineMappingTable (7)
+ ✓ src/lib/__tests__/api.companyScope (16) · api.csrfRetry (5) · api.unauthorized (4)
+ × SharedSingletons.tenantScope.test.tsx → 1 failed     ← pre-existing on dev
+ Test Files 1 failed | 10 passed (11)   Tests 1 failed | 102 passed (103)
+
+# backend — see §1: 5 passed (21 assertions) on sqlite AND PG
+
+$ node tools/audit-design-system.mjs
+[sweep-progress] Design-system audit C1-C6 violations: 802
+[gate-summary] Design-system baseline: 802 acknowledged, 0 new, 0 stale baseline entries      exit=0
+
+$ node tools/audit-tanstack-keys.mjs
+[sweep-progress] Gate C — …queryKeys without an approved tenant scope: 0
+[gate-summary] Gate C baseline: 0 acknowledged, 0 new, 0 stale baseline entries               exit=0
+
+$ node tools/audit-quantity-display.mjs
+[audit-quantity] raw quantity display sites: 0 total (0 baselined, 0 new, 0 stale)            exit=0
+
+$ pnpm -s audit:i18n:local
+i18n completeness OK — 55 namespaces, authored keys: en=9502, fr=9519, ar=5146 authored
+(1922 behind aliases); 2816 known gap(s) held at the baseline.                                exit=0
+
+$ ./vendor/bin/pint --test <the 2 touched PHP files>          {"result":"pass"}
+$ ./vendor/bin/phpstan analyse <the 2 touched PHP files>       [OK] No errors
+$ xargs npx eslint < (the 15 touched TS/TSX files)             ✖ 55 problems (0 errors, 55 warnings)
+$ npx tsc --noEmit -p tsconfig.json                            exit=0   (swap free 1310 MB)
+
+$ git merge-tree --write-tree --name-only 143cded50 023c4e49b
+exit=0 — 3b59062dfb4fd048a473fbf3165fffe922ada8aa   ← NO CONFLICTS against current dev
+```
+
+---
+
+## Could not verify (r2)
+
+1. **Still no browser leg.** All three pricing surfaces were dead on `dev` and are now proven only by
+   rendering tests. This remains the single highest-value manual check before promotion — the handback says
+   the same.
+2. **The handback's falsification runs** (guard removed → 22P02; `existingPriceList?.data` restored → the
+   populate test fails; mock stubbed to `() => null` → the PartnerForm 422 test fails) were **not re-executed
+   here** — the worktree is read-only for this gate. Each is structurally consistent with what I measured
+   independently, and for F-2 I reproduced the underlying 22P02 myself in r1.
+3. **DEV-QA registry** — still not in the repository (`grep -rl "DEV-QA-0"` returns only gate reports).
+4. **Whole-suite / CI run** not performed (owner rule). Only the named files were run.
+5. The **React Doctor pre-commit noise** the handback flags was not investigated; it is in none of
+   `pnpm lint`, `scripts/preflight.sh`, `.github/workflows/ci.yml`, so it gates nothing.
+
+---
+
+## What r3 must contain
+
+1. **R2-1** — `partners.test.tsx`'s `lib/api` mock exports `getFieldErrors` (preferably via
+   `vi.importActual`); `partners.test.tsx` **49/49** and `PartnerForm.test.tsx` **32/32** pasted verbatim.
+2. Optional, one line: the same hardening for `ReviewIngestionPage.test.tsx`'s mock (latent, not failing).
+3. Residual list updated so the `fetchPriceLists` meta entry records the **>20 truncation + wrong header
+   count**, not just "meta is unread".
+
+Nothing else is outstanding. With R2-1 fixed this is a **MERGE**.
+
+**Merge to local dev: NO.**
