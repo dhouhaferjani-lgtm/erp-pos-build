@@ -2,10 +2,14 @@
 
 Branch: `lane/rh-devreds-2` (base = `dev` `fa000edc3`). Worktree:
 `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/rh-devreds2`.
-Not merged. Six commits, one per item below (item 6 needed two, per its
-documented ritual).
+Not merged. Eight commits: one per item below (item 6 needed two, per its
+documented ritual; item 4 got a follow-up commit per the orchestrator's
+ruling — see the item-4 ADDENDUM below), plus this handback doc.
 
 ```
+(HEAD)      docs(handoff): append item-4 addendum -- deptrac ceiling bump applied per ruling
+3ccf6a26a chore(deptrac): carry the waived CustomerAdvanceClearingInterface->Document edge in the SharedContracts→ModuleDomain ceiling (36->37)
+317b12a5b docs(handoff): dev-reds-2 reconciliation handback
 b4247f966 docs(i18n): re-pin baseline mirror to the 2026-09-05 seed commit (commit 2 of 2)
 89b508e1f chore(i18n): regenerate completeness baseline -- SEED REVISION (commit 1 of 2)
 5524b9a69 style(web): fix 51 eslint warnings on files changed since the lint baseline
@@ -13,6 +17,9 @@ b4247f966 docs(i18n): re-pin baseline mirror to the 2026-09-05 seed commit (comm
 fa3719e23 fix(pos-test): hoist getSyncMetadataSpy to fix vi.mock hoisting ReferenceError
 3801c4f13 style(tests): fix Pint ordered_imports in ProductsImportPipelineTest
 ```
+(the deptrac ceiling-bump commit `3ccf6a26a` landed AFTER the original handback commit
+`317b12a5b`, per an orchestrator ruling on item 4 received after this doc's first version —
+see the ADDENDUM at the end of the item-4 section below.)
 
 ---
 
@@ -157,6 +164,57 @@ number.
 $ ./vendor/bin/deptrac analyse --config-file=deptrac.yaml --formatter=table --no-progress
 $ ./vendor/bin/deptrac analyse --config-file=deptrac.yaml --formatter=json --no-progress   # for file:line detail
 ```
+
+### ADDENDUM (2026-09-05, after orchestrator ruling): remedy applied
+
+The orchestrator ruled to apply the recommended remedy rather than leave it report-only.
+Read `tools/deptrac-ratchet.php` again specifically for the total-check question the ruling
+asked about: the script has **two independent failure conditions** — (1) each category fails
+if `current > baseline` for THAT category alone, entirely independent of the total; (2) total
+fails only if `currentTotal > baselineTotal`, where `baselineTotal` is read as the literal
+`"total"` JSON field (`$baselineRaw['total']`), **not** re-derived as `array_sum($baselineCategories)`
+unless the field is absent. So bumping `SharedContracts on ModuleDomain` alone to 37 without
+touching `"total"` would already have passed (183 == 183, using the old literal total field) —
+the total bump to 184 was **not required** by the script's own logic. Applied anyway, per the
+ruling's own fallback instruction, the version that mirrors exactly what
+`--update-baseline` would write today: bumped `SharedContracts on ModuleDomain` 36 → 37 **and**
+lowered `ModuleDomain on ModuleApplication` 54 → 53 (the same-commit, already-observed,
+pre-existing improvement from `7fda05602`'s `DocumentAllocationClassifier` relocation), keeping
+`"total"` at 183 — which now also equals `sum(categories)` (68+53+1+18+37+4+2 = 183), so the
+file is internally self-consistent. Did **not** run `--update-baseline` (it would silently drop
+the entire `waivers[]` array — its written payload is only `{generated_at, note, total,
+categories}`); hand-edited `apps/api/deptrac.baseline.json` instead, and extended the existing
+2026-08-24 waiver entry for `CustomerAdvanceClearingInterface` with a new `ceiling_note` field
+(the required explanation text), leaving every other waiver entry and the `waivers[]` array
+shape untouched.
+
+**Verification:**
+```
+$ php tools/deptrac-ratchet.php --config=deptrac.yaml --baseline=deptrac.baseline.json
+=== Deptrac ratchet ===
+Config:   deptrac.yaml
+Baseline: deptrac.baseline.json
+
+Deptrac report: 183 violations, 14726 allowed, 13809 uncovered.
+
+Category                                       baseline  current   status
+------------------------------------------------------------------------------
+ModuleApplication on ModuleInfrastructure            68       68   held
+ModuleDomain on ModuleApplication                    53       53   held (domain)
+ModuleInfrastructure on ModulePresentation            1        1   held
+SharedContracts on ModuleApplication                 18       18   held
+SharedContracts on ModuleDomain                      37       37   held
+SharedDomain on ModuleDomain                          4        4   held
+SharedInfrastructure on ModuleDomain                  2        2   held
+------------------------------------------------------------------------------
+TOTAL                                               183      183
+
+RESULT: PASS — no boundary regression against baseline.
+```
+
+**Commit:** `3ccf6a26a` — `chore(deptrac): carry the waived CustomerAdvanceClearingInterface->Document edge in the SharedContracts→ModuleDomain ceiling (36->37)`.
+
+**Still red:** nothing — item 4 is now fully closed (fixed + verified), not just reported.
 
 ---
 
@@ -306,12 +364,14 @@ currently holds.
 | 1. Pint | Fixed, verified | `3801c4f13` |
 | 2. POS Vitest | Fixed, verified (25/25 green) | `fa3719e23` |
 | 3. PHPStan | Fixed, verified (0 errors) | `9ad5d68c3` |
-| 4. Deptrac ratchet | **Reported only** — edge + commit + recommended remedy given, not applied | none (report only) |
+| 4. Deptrac ratchet | Fixed, verified (PASS) — applied per orchestrator ruling, see ADDENDUM | `3ccf6a26a` |
 | 5. ESLint warning ratchet | Fixed, verified (PASS, -49 to -51) | `5524b9a69` |
 | 6. i18n completeness | Ritual completed locally (exit 0); **CI still red until owner sets the GH repo variable** | `89b508e1f`, `b4247f966` |
 
 ```
 $ git log --oneline dev..lane/rh-devreds-2
+3ccf6a26a chore(deptrac): carry the waived CustomerAdvanceClearingInterface->Document edge in the SharedContracts→ModuleDomain ceiling (36->37)
+317b12a5b docs(handoff): dev-reds-2 reconciliation handback
 b4247f966 docs(i18n): re-pin baseline mirror to the 2026-09-05 seed commit (commit 2 of 2)
 89b508e1f chore(i18n): regenerate completeness baseline -- SEED REVISION (commit 1 of 2)
 5524b9a69 style(web): fix 51 eslint warnings on files changed since the lint baseline
@@ -319,5 +379,6 @@ b4247f966 docs(i18n): re-pin baseline mirror to the 2026-09-05 seed commit (comm
 fa3719e23 fix(pos-test): hoist getSyncMetadataSpy to fix vi.mock hoisting ReferenceError
 3801c4f13 style(tests): fix Pint ordered_imports in ProductsImportPipelineTest
 ```
+(plus this addendum commit, newest on the branch — see `git log --oneline dev..lane/rh-devreds-2` after it lands.)
 
 Not merged. Left on `lane/rh-devreds-2` for the orchestrator to gate and merge.
