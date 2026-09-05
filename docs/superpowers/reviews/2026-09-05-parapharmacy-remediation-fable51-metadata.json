@@ -1,0 +1,47 @@
+{
+  "requested_model": "claude-fable-5-1",
+  "fallback_configured": false,
+  "source_commit": "b9a5565aa",
+  "spec_sha256": "afdc24e16df7bcf9889c3cd378fd4c19609fd40eb511dbcdd3d3022ac22c7f35",
+  "request_sha256": "46b358a8ccb6b2a5e9d55ab4724872e0d9c946fe25e2aa43df101d1102cd59e8",
+  "raw_result_sha256": "a7dc6ab3de0a8b9673ce99bc3db51ef69899e60205bfed992538ca9417fa5aa2",
+  "review_sha256": "62f2adca89c4935d2c4efed29bd6a66808f178ecdb916fdb6b6810bf247c551c",
+  "verdict": "VERDICT: CHANGES-REQUIRED",
+  "subtype": "success",
+  "is_error": false,
+  "duration_ms": 554365,
+  "num_turns": 126,
+  "model_usage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 2012,
+      "outputTokens": 24,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0021319999999999998,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-fable-5-1": {
+      "inputTokens": 450,
+      "outputTokens": 44717,
+      "cacheReadInputTokens": 1746469,
+      "cacheCreationInputTokens": 218440,
+      "webSearchRequests": 0,
+      "costUSD": 7.04576725,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 20780,
+      "canonicalModel": "claude-fable-5-1",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "implementation_started": false,
+  "review_fix_round_started": false
+}

@@ -1,0 +1,53 @@
+# Fable 5.1 adversarial review — parapharmacy remediation
+
+Date: 2026-09-05. Requested model: `claude-fable-5-1`; runtime reports usage of this model. No fallback configured. Full reported model usage, including the CLI-reported Haiku usage, is retained in the adjacent metadata JSON; no claim is made that the CLI used only one model internally.
+
+Input: [proposed spec](../specs/2026-09-05-parapharmacy-readiness-remediation-design.md). Source snapshot: `b9a5565aa`.
+Spec SHA-256: `afdc24e16df7bcf9889c3cd378fd4c19609fd40eb511dbcdd3d3022ac22c7f35`.
+Review scope: one read-only adversarial design review; Read/Glob/Grep tools only, no permission denials reported. No implementation or review-fix round authorized or performed. The spec remains unchanged after review.
+
+The reviewer response below is preserved verbatim. Its verdict is not implementation or launch approval.
+
+---
+
+Review complete. I verified every cited seam in source (read-only), tried to disprove the audit findings first, and did not run any tests or commands.
+
+## Findings, ordered by severity
+
+**F-A (MAJOR, blocks spec approval). W2 does not name the destination source of truth that already exists on the device, nor the sealed precedent that already exists on the server.** Spec lines 107 to 117 propose a five-value settlement enum plus a versioned tender-policy snapshot. CONFIRMED: the device already chooses a repository per tender locally, and the choice is arbitrary. Card checkout takes the first active virtual or bank repository (`apps/pos/src/stores/paymentStore.ts:1185`), stores it in the local receipt row, and the server discards it because the sealed SALE_RECEIPT payment carries only a method code (`apps/api/app/Modules/Fiscal/Domain/DTOs/Canonical/PaymentDTO.php:27-34`, bridge comment at `TreasuryReceiptBridge.php:379-386`). Meanwhile ACCOUNT_PAYMENT already seals an optional `repository_id` and its bridge validates and honours it (`TreasuryAccountPaymentBridge.php:406-418`). Failure scenario: after W2 ships, three destination answers coexist for one card leg: the device's first-active pick, the server mapping, and the new snapshot. Whichever the plan wires, the other two remain as latent drift, which is exactly the convention 11 incident class. Minimum correction: the spec must state that the device-side pick is retired in favour of one binding, and must evaluate the simpler path that already has precedent: seal the resolved `repository_id` on a new SALE_RECEIPT version and have the receipt bridge validate it the way the account-payment bridge does. The enum can shrink to what the resolver actually needs: cash, maturity instrument, settlement. Vouchers and customer-account legs never reach the tender resolver. Also name the behaviour reversal: a test currently pins that a seeded non-cash method resolves to the cash drawer on day one (`tests/Feature/Tenant/CleanRegistrationDownstreamAssumptionsTest.php`). Blocks spec.
+
+**F-B (MAJOR, blocks spec approval). W6 presents an unresolved alternative as chosen.** Spec lines 176 to 178 mandate a separate versioned inventory-evidence outbox item. The repository's established pattern for new device facts is a new event version of the sealed payload, gated by event version cutover, and the fiscal engine appends inside the caller's SQLite transaction (`apps/pos/src/lib/fiscal/FiscalEventEngine.ts:10-11`), so receipt-plus-lot atomicity is native if the lot is a line field. A separate stream adds a second outbox, linking, ordering and a new conflict class, all of which the spec itself enumerates as work. Minimum correction: add a decision row (D7) comparing "line-level optional lot fields in SALE_RECEIPT vN+1" against "separate evidence record", with the tradeoff stated: sealed bytes cannot be corrected later, but lot corrections are already append-only history under W5. Blocks spec only because the choice drives W4, W7 and the device plan.
+
+**F-C (MAJOR, blocks execution plan). W3's prescribed lock order contradicts the order the posting transaction uses today.** Spec line 125 orders GL serialization before source-document locks. CONFIRMED today: the document chain row lock is taken first (`DocumentPostingService.php:673-678`), then the in-transaction advance clearing writes GL (`:239`), which takes the tenant numbering key then the company chain key (`GeneralLedgerService.php:5722-5731`). Also CONFIRMED and stronger than the audit stated: invoice GL uses unlocked max+1 chain allocation (`AccountingService.php:591-609`, `JournalEntry.php:140-146`) under a unique index on company plus chain sequence (migration `2026_07_08_100400`). Two concurrent posts today collide in the after-commit listener, leaving a sealed invoice with no GL. This is the likely mechanism for F5 case 1. Minimum correction: the spec should not prescribe an order. It should require a writer census and adopt whichever order matches every existing in-transaction path. Any GL writer that later locks a Document row would deadlock against the proposed order. UNVERIFIED whether such a writer exists. No unique source index exists for source type Document (migration grep), so the proposed partial index must follow the existing per-source-type pattern and be preceded by a duplicate census.
+
+**F-D (MAJOR, blocks execution plan). W7 mixes two ledgers whose coverage differs.** Spec line 198 counts opening float and back-office repository movements in expected cash. CONFIRMED: the shift variance GL listener ships disabled precisely because Treasury does not book opening float or mid-shift drawer operations (`PostShiftCashVarianceAdjustment.php:50-56`). The server derivation of expected cash from fiscal events already exists and is documented as the single derivation (`ShiftExpectedCashService.php:27-59`). Minimum correction: define reconciliation as device totals versus the fiscal-event derivation, and treat repository balance comparison as a separate check that is only meaningful once float and drops are booked. Also register the new noun in the glossary. The glossary has no reconciliation entry, and the name collides with the orphan-close reconciler and bank reconciliation fields.
+
+**F-E (MINOR, plan). W1 over-scopes batch enforcement and omits one seam.** CONFIRMED gaps: recall and destroy have no permission gate (`BatchExpiry/Presentation/routes.php:26,29`, `BatchController.php:176-210`). But create, update, transfer and write-off are already gated in their FormRequests (`CreateBatchRequest.php:22`, `UpdateBatchRequest.php:13`, `TransferBatchStockRequest.php:21`). Narrow spec line 91 to recall, destroy and the read routes. The seeded manager role holds recall (`RolesAndPermissionsSeeder.php:632`), so the "membership does not confer recall" sentence needs an owner ruling on the manager role. The repository adjustments route (`Treasury/Presentation/routes.php:98-100`) is reachable with a permission the manager holds and is absent from the W1 seam list. Its location scoping is UNVERIFIED.
+
+**F-F (MINOR, spec wording). W4 overstates the seeding gap.** Projection rows are already seeded inside the ingest transaction with after-commit dispatch (`OutboxIngestor.php:1025-1046`). The only seeding hole is the fail-closed exclusion when the module resolver throws (`FiscalEventProjectionRegistry.php:248-267`), and Treasury is module-gated (`TreasuryReceiptBridge.php:214`) while POS-core is not. The recovery gap is real and CONFIRMED: the scheduled sweep selects only dead-lettered rows or pending rows with five or more attempts (`RetryFiscalProjectionsCommand.php:299-307`), so a pending row whose enqueue was lost after commit is invisible, and running rows orphaned by a lost job are re-enqueued by nothing. W4's scheduled dispatcher is warranted. Say the gap precisely.
+
+## Counterevidence and rejected false positives
+
+- **Offline sealing is not a defect.** Confirmed intentional and stable (`offlineCheckoutService.ts:114-155`). Not treated as a finding.
+- **Remap after projection cannot move money.** Per-leg idempotency resolves the existing payment before current routing (`TreasuryReceiptBridge.php:1297-1310`). W2's acceptance on this point is already true for projected legs.
+- **Frozen destination on replay already has a policy.** Offline replay can record while frozen with an alert (`TreasuryMovementService.php:91-96`).
+- **Z projection already has a membership gate.** It blocks until every verified sale in the device-time window is projected (`ZReportProjection.php:305-319`). The spec's answer to line 194 is: the range fields are legacy receipt hash and hash sequence, not fiscal sequence numbers (`zReportService.ts:749-752`), and refunds are excluded from the count (`ZReportProjection.php:288-294`).
+- **Late-sync residuals after a count are already detected read-only** (`LateSyncResidualDetector.php:16-24`). W5 should name it as a seam rather than imply new detection.
+- **Audit F7 example is confirmed by ordering.** Shortage draws non-recalled then earliest expiry (`StockAdjustmentService.php:1561-1564`).
+- **F1 is confirmed as capability gap only.** Non-strict FEFO with logged shortfall (`PosCoreReceiptProjection.php:2052-2082`); a read-only drift census exists (`LotLedgerDriftCensusCommand.php`). No regulatory claim is made or needed.
+
+## Sound parts and simplifications
+
+Preserve: the ownership table and global requirements in section 3, the decision to keep POS and B2B separate, W4's reuse of the existing job and overlap locks, W5's child-observation model, the shelf-control profile as honestly labeled containment, and W8 in full. The proposed treasury bypass permission is not a duplicate: null membership remains the primary "all locations" grant, and the resolver already takes a per-endpoint bypass (`LocationScopeResolver.php:31,53`). Simplify W2 per F-A. Split W6 into the decision (D7) and the projection-side consumption, which is unchanged either way. W7's destination picker and any transfer-destination list should be a mode of the existing repository index, not a second surface.
+
+## Owner decisions required
+
+1. D7: lot evidence in the sealed payload version or a separate evidence stream.
+2. Whether the seeded manager role keeps company-wide recall.
+3. Accept reversing the day-one rule that an unmapped non-cash tender falls to the drawer.
+4. Whether Treasury will book opening float and drawer drops before W7 compares repository balances.
+5. D1 to D6 as listed remain open.
+
+Not verified: real PostgreSQL concurrency, the adjustments controller scope, any GL writer that locks Document rows after the GL keys, the POS product type contents, and the sync service's handling of local repository ids. No tests were run.
+
+VERDICT: CHANGES-REQUIRED
