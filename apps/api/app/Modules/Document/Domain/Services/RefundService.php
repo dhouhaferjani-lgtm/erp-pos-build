@@ -887,9 +887,9 @@ class RefundService
             throw new \RuntimeException('Can only create credit notes from posted or paid invoices');
         }
 
-        // Check if already fully credited
-        $payload = $invoice->payload ?? [];
-        if (isset($payload['fully_credited']) && $payload['fully_credited'] === true) {
+        // Check if already fully credited (same single reading of the flag as
+        // Document::isCreditableSource() — gate r2 NEW-1).
+        if ($invoice->isFullyCredited()) {
             throw new \RuntimeException('Invoice has already been fully credited');
         }
 
@@ -1228,18 +1228,13 @@ class RefundService
      */
     public function canCreditInvoice(Document $invoice): bool
     {
-        if ($invoice->type !== DocumentType::Invoice) {
-            return false;
-        }
-
-        if (! in_array($invoice->status, [DocumentStatus::Posted, DocumentStatus::Paid], true)) {
-            return false;
-        }
-
-        // Check if already fully credited
-        $payload = $invoice->payload ?? [];
-
-        return ! (isset($payload['fully_credited']) && $payload['fully_credited'] === true);
+        // Gate r2 NEW-1 — ONE definition, shared with the
+        // `GET /invoices?creditable=1` list filter (which consumes its SQL twin,
+        // `Document::scopeCreditableSource()`). This method used to restate
+        // type + status + the `fully_credited` payload read inline, which is how
+        // the picker came to list invoices this very endpoint calls
+        // non-creditable.
+        return $invoice->isCreditableSource();
     }
 
     /**

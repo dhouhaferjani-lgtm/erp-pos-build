@@ -185,6 +185,7 @@ class CreditNotePaidInvoiceSourceTest extends TestCase
         ?string $balanceDue,
         ?Company $company = null,
         ?Partner $partner = null,
+        ?bool $fullyCredited = null,
     ): Document {
         $company ??= $this->company;
         $partner ??= $this->customer;
@@ -204,6 +205,10 @@ class CreditNotePaidInvoiceSourceTest extends TestCase
             'total' => '1200.000',
             'balance_due' => $balanceDue,
             'currency' => 'EUR',
+            // NULL leaves `payload` absent entirely — the shape of every invoice
+            // that has never been credited, and the one a `NOT (flag = true)`
+            // predicate would silently drop.
+            'payload' => $fullyCredited === null ? null : ['fully_credited' => $fullyCredited],
         ]);
 
         DocumentLine::create([
@@ -327,6 +332,10 @@ class CreditNotePaidInvoiceSourceTest extends TestCase
         $posted = $this->makeInvoice(DocumentStatus::Posted, 'INV-POSTED', '1200.000');
         $paid = $this->makeInvoice(DocumentStatus::Paid, 'INV-PAID', '0.000');
         $draft = $this->makeInvoice(DocumentStatus::Draft, 'INV-DRAFT', '1200.000');
+        // An invoice explicitly flagged NOT fully credited must still be listed:
+        // the JSON predicate has to distinguish `false` from `true`, and
+        // RefundService::getCreditNoteSummary() really does write `false`.
+        $notCredited = $this->makeInvoice(DocumentStatus::Posted, 'INV-FLAG-FALSE', '1200.000', null, null, false);
 
         $response = $this->actingAs($this->user, 'sanctum')
             ->getJson('/api/v1/invoices?creditable=1&per_page=50');
@@ -337,7 +346,48 @@ class CreditNotePaidInvoiceSourceTest extends TestCase
 
         $this->assertContains($posted->id, $ids);
         $this->assertContains($paid->id, $ids);
+        $this->assertContains($notCredited->id, $ids);
         $this->assertNotContains($draft->id, $ids);
+    }
+
+    /**
+     * Gate r2 NEW-1 — the picker must never offer an invoice that
+     * `GET /invoices/{id}/can-credit` calls non-creditable and whose create call
+     * 422s on the headroom guard (`CreditNoteService::createCreditNote():845-850`).
+     *
+     * Falsifying: with the old status-only filter
+     * (`whereIn('status', [Posted, Paid])`) the fully-credited invoice is listed
+     * and this test fails on the first `assertNotContains`.
+     *
+     * The last two assertions are the point of the fix: the LIST and the CHECK
+     * are now the same predicate (`Document::isCreditableSource()` and its SQL
+     * twin `scopeCreditableSource()`), so they cannot disagree.
+     */
+    public function test_creditable_filter_excludes_a_fully_credited_invoice(): void
+    {
+        $open = $this->makeInvoice(DocumentStatus::Posted, 'INV-OPEN', '1200.000');
+        $exhausted = $this->makeInvoice(DocumentStatus::Posted, 'INV-CREDITED', '1200.000', null, null, true);
+
+        $ids = collect(
+            $this->actingAs($this->user, 'sanctum')
+                ->getJson('/api/v1/invoices?creditable=1&per_page=50')
+                ->assertOk()
+                ->json('data')
+        )->pluck('id')->all();
+
+        $this->assertContains($open->id, $ids);
+        $this->assertNotContains($exhausted->id, $ids, 'a fully-credited invoice must never be offered as a credit-note source');
+
+        // The list agrees with the live /can-credit endpoint, both ways.
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/invoices/{$exhausted->id}/can-credit")
+            ->assertOk()
+            ->assertJsonPath('data.can_credit', false);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/invoices/{$open->id}/can-credit")
+            ->assertOk()
+            ->assertJsonPath('data.can_credit', true);
     }
 
     /**

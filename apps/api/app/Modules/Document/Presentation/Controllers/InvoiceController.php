@@ -218,9 +218,17 @@ class InvoiceController extends Controller
         // The credit-note source picker asks for this to surface every invoice a
         // credit note can be raised against — Posted (still owing) AND Paid
         // (settled → the credit becomes a customer credit).
-        // Draft/Confirmed/Cancelled invoices are excluded.
+        // Draft/Confirmed/Cancelled and already fully-credited invoices are
+        // excluded.
+        //
+        // Gate r2 NEW-1: this used to filter on STATUS alone, so the picker
+        // listed invoices that `GET /invoices/{id}/can-credit` called
+        // non-creditable and whose create call 422'd on the headroom guard. It
+        // now consumes `Document::scopeCreditableSource()` — the SQL twin of the
+        // `Document::isCreditableSource()` predicate `canCreditInvoice()` also
+        // consumes, so the list and the check cannot disagree.
         if ($request->boolean('creditable')) {
-            $query->whereIn('status', [DocumentStatus::Posted->value, DocumentStatus::Paid->value]);
+            $query->creditableSource();
         }
 
         // Order by created_at desc and id for consistent cursor pagination (in case created_at is the same)

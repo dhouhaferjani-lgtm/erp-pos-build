@@ -594,6 +594,81 @@ class Document extends Model
     }
 
     /**
+     * Has this invoice already been credited in full? The ONE reading of the
+     * `payload.fully_credited` flag (gate r2 NEW-1) — `RefundService` wrote the
+     * same `isset(...) && === true` expression twice (`:892`, `:1242`).
+     *
+     * The flag is set by `RefundService::createFullCreditNote()` (`:967`) when a
+     * whole invoice is credited in one document.
+     */
+    public function isFullyCredited(): bool
+    {
+        $payload = $this->payload ?? [];
+
+        return isset($payload['fully_credited']) && $payload['fully_credited'] === true;
+    }
+
+    /**
+     * May a credit note be raised against this document RIGHT NOW?
+     *
+     * The complete operator-facing rule, and the ONE definition behind BOTH
+     * `GET /invoices/{id}/can-credit` (`RefundService::canCreditInvoice()`) and
+     * the `GET /invoices?creditable=1` list filter — see
+     * {@see scopeCreditableSource()}, its SQL twin.
+     *
+     * Gate r2 NEW-1: the list filter used to check STATUS only, so a
+     * fully-credited invoice was offered in the credit-note source picker while
+     * the very same API's `/can-credit` called it non-creditable and the create
+     * attempt 422'd on the headroom guard
+     * (`CreditNoteService::createCreditNote():845-850`). Two API surfaces
+     * disagreeing about one noun (rule 22).
+     *
+     * NOTE the residual, deliberately not folded in here: the create-time guard
+     * is arithmetic — `remainingCreditHeadroom()` sums the prior credit notes —
+     * and an invoice credited to exhaustion by several PARTIAL credit notes
+     * carries no `fully_credited` flag. This predicate mirrors
+     * `canCreditInvoice()` exactly, so both surfaces agree; closing the
+     * arithmetic gap needs a stored/derived headroom column and is its own lane.
+     */
+    public function isCreditableSource(): bool
+    {
+        return $this->isCreditableInvoiceSource() && ! $this->isFullyCredited();
+    }
+
+    /**
+     * SQL twin of {@see isCreditableSource()} — the same rule, expressed for a
+     * list query. Both must move together; that is the point of putting them
+     * side by side.
+     *
+     * The JSON predicate is written as "absent OR not true" rather than
+     * `NOT (flag = true)` on purpose: on both engines a missing key yields NULL,
+     * and `NOT (NULL = true)` is NULL, which would silently drop every invoice
+     * that has never been credited at all.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeCreditableSource(Builder $query): Builder
+    {
+        return $query
+            ->where('type', DocumentType::Invoice->value)
+            ->whereIn('status', [DocumentStatus::Posted->value, DocumentStatus::Paid->value])
+            ->where(static function (Builder $inner): void {
+                // The `false` arm goes through the underlying query builder on
+                // purpose: Larastan's model-property check (phpstan.neon
+                // `checkModelProperties`) types `where()`/`orWhere()`'s first
+                // argument as a real column of the model, and a JSON arrow path
+                // is not one. `whereNull()` has no such constraint, hence the
+                // asymmetry. Same SQL either way — verified green on SQLite and
+                // on PostgreSQL.
+                $inner->whereNull('payload->fully_credited')
+                    ->orWhere(static function (Builder $flag): void {
+                        $flag->getQuery()->where('payload->fully_credited', false);
+                    });
+            });
+    }
+
+    /**
      * Check if document is cancelled
      */
     public function isCancelled(): bool
