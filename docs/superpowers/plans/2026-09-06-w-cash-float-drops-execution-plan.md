@@ -1,219 +1,894 @@
-<!-- Authored by Codex CLI (gpt-5.6-sol, high effort, read-only) on 2026-09-06 from the W-CASH brief + plan gate r1; filed verbatim by the orchestrator. Status: rev 1, awaiting plan gate r2. -->
-# W-CASH Execution Plan — Opening Float, Cash Operations, and Drawer → Safe → Bank Treasury Custody
+<!-- Rev 2, authored by Codex CLI (gpt-5.6-sol, high, read-only) on 2026-09-06 from rev 1 + plan gate r2; filed verbatim by the orchestrator. Status: awaiting plan gate r3. Rev 1 is in git history (67c0805d4). -->
+<!-- Authored by Codex CLI on 2026-09-06 from local dev HEAD 6e17a76022c5ccd8864afdf98cd5302e5264176b. Revision 2 replaces docs/superpowers/plans/2026-09-06-w-cash-float-drops-execution-plan.md verbatim. Read-only planning pass: no repository files changed and no tests run. -->
+
+# W-CASH Execution Plan — Revision 2
+
+## Opening Float, Cash Operations, and Drawer → Safe → Bank Treasury Custody
 
 **Date:** 2026-09-06  
 **Repository:** `/Users/houssamr/Projects/syneriva/apps/erp`  
-**Plan base:** local `dev` at `c36cc97ca4e98f2aaeba2d3d0acf09ffd01e2226`  
-**Authority order:** owner rulings → accepted specification v4 → W-CASH brief → gate r1 corrections  
-**Delivery mode:** additive migrations and compatible readers first; all new money-writing capability disabled by default  
-**Exact audit artifact:** `docs/superpowers/audits/2026-09-05-w-cash-census.md`  
-**Exact handback artifact:** `docs/handoff/HANDBACK-W-CASH-2026-09-06.md`
+**Verified local `dev` HEAD:** `6e17a76022c5ccd8864afdf98cd5302e5264176b`  
+**Authority order:** owner rulings → accepted specification v4 → W-CASH brief → gate-r2 corrections  
+**Delivery mode:** reader-first additive migrations; all money-writing capability disabled by default  
+**Audit artifact:** `docs/superpowers/audits/2026-09-05-w-cash-census.md`  
+**Handback artifact:** `docs/handoff/HANDBACK-W-CASH-2026-09-06.md`
 
-## 1. Outcome and boundaries
+Source files inspected at this HEAD:
 
-W-CASH will make physical cash custody explicit in Treasury:
+- `CLAUDE.md`
+- `docs/conventions/09-SECOND-OF-EVERYTHING.md`
+- `docs/conventions/10-BENCHMARK-FIRST-SPECS.md`
+- `docs/conventions/11-ONE-SURFACE-PER-CONCEPT.md`
+- `docs/glossary.md`
+- `docs/superpowers/specs/2026-09-05-parapharmacy-readiness-remediation-design.md`
+- `docs/handoff/OWNER-RULINGS-parapharmacy-remediation-2026-09-05.md`
+- revision 1 of this plan
+- `docs/superpowers/reviews/2026-09-06-w-cash-plan-codex-gate-r2.md`
 
-- Opening float is a transfer from a configured safe to a drawer, never new company money.
-- A custody transfer creates one immutable transfer document, one transfer group, and exactly two cross-linked repository movement legs.
-- Drawer → safe and safe → bank use the same transfer-document and movement service.
-- External payouts such as petty expenses do not masquerade as transfers; they use one accounting document, one repository leg, and one posted journal entry.
-- A v3 fiscal adapter and a durable v2 drawer-operation adapter converge on one `ShiftCashBookingService`.
-- W7 receives an append-only session-reconciliation store, a versioned unsealed close manifest, and a durable v3 `CashCountRecorded` producer before variance posting can be enabled.
-- W-CASH capability is independent of Treasury module entitlement and defaults to disabled.
-- Existing fiscal bytes and Z calculations are not rewritten. `ShiftExpectedCashService` remains the single expected-cash derivation.
-- Historical facts are not financially back-booked unless an owner-approved alignment policy explicitly authorizes an evidenced compensating document.
+Existing unrelated untracked files observed during the read-only inspection are outside W-CASH and must not be modified.
 
-Three user-visible accounting policies remain open. This plan recommends benchmark-derived defaults but does not choose them. Tasks depending on those decisions remain conditional.
+---
 
-## 2. Current-code evidence at HEAD
+## 1. Revision change log and gate closure
 
-The current device authors `SESSION_OPEN` and a separate `OPENING_FLOAT` in one write transaction; `SESSION_OPEN` carries `opening_float_amount`, while `OPENING_FLOAT` carries the money-movement identity and amount (`apps/pos/src/lib/fiscal/zSessionAuthoring.ts:291-335`, `apps/pos/src/lib/fiscal/zSessionAuthoring.ts:507-566`). The server lifecycle projection accepts `SESSION_OPEN`, `OPENING_FLOAT`, `CASH_IN`, `CASH_OUT`, `SAFE_DROP`, and related lifecycle events, but only `SESSION_OPEN` and `SESSION_CLOSE` mutate the projected shift (`apps/api/app/Modules/POS/Application/Projections/ZSessionLifecycleProjection.php:31-42`, `apps/api/app/Modules/POS/Application/Projections/ZSessionLifecycleProjection.php:117-125`). Consequently, `OPENING_FLOAT`, not `SESSION_OPEN.opening_float_amount`, must be the Treasury money source.
+No gate finding is rejected.
 
-The expected-cash derivation already chooses v3 fiscal movements for schema-v3 terminals and v2 drawer rows otherwise (`apps/api/app/Modules/POS/Application/Services/ShiftExpectedCashService.php:252-304`). It deliberately skips the v3 `OPENING_FLOAT` movement because the shift’s opening amount is already included (`apps/api/app/Modules/POS/Application/Services/ShiftExpectedCashService.php:484-520`). Its current v3 signs are `CASH_IN = +`, `CASH_OUT = -`, and `SAFE_DROP = -` (`apps/api/app/Modules/POS/Application/Services/ShiftExpectedCashService.php:657-714`).
+### 1.1 Gate-r1 PARTIAL/OPEN closure
 
-Treasury’s transfer port already promises an atomic out/in pair, sorted repository locks, and zero or one journal entry depending on whether the repositories have the same GL account (`apps/api/app/Shared/Contracts/Treasury/TreasuryMovementServiceInterface.php:59-96`). Its implementation writes exactly two legs (`apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:355-396`). The current manual transfer service creates the GL draft and paired legs but no justifying transfer document (`apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferService.php:64-115`).
+| Gate-r1 finding | Rev 2 disposition |
+|---|---|
+| B2 — C1 census incomplete | **CLOSED:** §§6–7 enumerate device/server sources, X/Z payloads, every direct repository-movement caller, writer boundaries, transactions, predicates, locks, scope, and hold time. T0 adds a capability-aware live census that works before future tables exist. |
+| B4 — v2/v3 fingerprint and cutover incomplete | **CLOSED:** §8.2 defines the semantic fingerprint independently of raw evidence hashes; §§8.3–8.4 define immutable configuration revisions, event-time policy records, and bounded rail cutovers. T2 and T5 name equivalence/conflict tests. |
+| B5 — shared drawer/opening semantics open and contradictory | **CLOSED:** Q11 remains OPEN verbatim. §8.5 supplies the complete retained-balance and sequential-shift algorithm only as a conditional implementation branch. No unconditional opening transfer remains. |
+| B6 — W7 implementation incomplete | **CLOSED:** T9 is sequenced after W2 classification, W4 policy completeness, T7 manifests, T8 durable dispatch, and W-LOT status readiness. It includes the complete spec-v4 matrix, append-only supersession, and one reconciliation writer. |
+| B7 — migration/deployment unsafe | **CLOSED:** T1 exclusively owns `apps/pos/src/lib/db/migrations.ts` and adds v68 before v69. §12 defines persisted cutovers and the five-push staging manifest. |
+| M1 — frozen replay alert incomplete | **CLOSED:** T4 adds `treasury_transfer_alerts`, `TreasuryTransferAlert`, `FrozenTransferAlertData`, company-scoped uniqueness, and retry tests. |
+| M3 — owner-controlled semantics incomplete | **CLOSED:** §3 carries Q10–Q13 verbatim as OPEN. Q10 gates W-LOT-dependent promotion; Q11 gates shared-drawer/opening behavior; Q12 gates typed financial dispatch; Q13 gates historical alignment and variance activation. |
+| M4 — convention-09 tests not task-specific | **CLOSED:** every task names its second-company, second-location, and rerun-data-meaning cases, first failing assertion, command, and lane. |
+| M6 — module and prerequisite gaps | **CLOSED:** T4 gates the reused transfer route with `module:Treasury`; T9 cannot dispatch before its explicit W2/W4/manifest/W-LOT prerequisites. |
+| M7 — alignment files generic | **CLOSED:** T11 gives exact model, DTO, service, command, migration, controller, request, test, and route paths. The task remains conditional on Q13. |
+| M9 — local type census incomplete | **CLOSED:** §5.2 enumerates every located repository/transfer/movement type alias, including the actual HEAD paths for `RepositoryListPage.tsx`, `PaymentForm.tsx`, and `useTransferCash.ts`. |
 
-The v3 Z projection stores cash-count data but does not emit `CashCountRecorded` (`apps/api/app/Modules/POS/Application/Projections/ZReportProjection.php:54-100`, `apps/api/app/Modules/POS/Application/Projections/ZReportProjection.php:139-164`). The architecture ratchet records this missing v3 producer explicitly (`apps/api/tests/Architecture/ProjectorEmissionRatchetTest.php:160-187`). The variance listener exists but is globally disabled and runs on the existing `default` queue (`apps/api/app/Modules/Treasury/Application/Listeners/PostShiftCashVarianceAdjustment.php:258-325`, `apps/api/config/treasury.php:16-28`).
+### 1.2 Gate-r2 closure
 
-## 3. Industry baseline
+| Gate-r2 finding | Rev 2 disposition |
+|---|---|
+| BLOCKER — Q10 omitted and Q11/Q12 partly decided | **CLOSED:** §3 reproduces all four owner rows verbatim and marks every row OPEN. No SAFE_DROP dispatch occurs before Q12. |
+| BLOCKER — no opening interval-start algorithm | **CLOSED:** §8.5 defines zero, partial top-up, retained-match, retained-excess mismatch, sequential-shift, shared-drawer, missing predecessor, and late predecessor behavior, all conditional on Q11. |
+| BLOCKER — recovery uses current activation | **CLOSED:** §8.3 and T2 require immutable event-time policy evidence or an explicit persisted legacy cutover. Recovery may not query today’s registry to invent historical obligations. |
+| BLOCKER — no durable cutover/config revision | **CLOSED:** T1/T2/T3 add immutable policy records, cutovers, configuration revisions, authored revision evidence, and bounded source ranges. |
+| BLOCKER — tasks lack dispatch contracts | **CLOSED:** every task in §11 contains exact production paths, signatures/schema deltas, red-first tests, command/lane, implementation steps, convention-09 cases, and a reviewer stop. |
+| MAJOR — v69 before v68/W7 before prerequisites | **CLOSED:** T1 owns both device migrations and orders v68 then v69; T9 is downstream of T2, T5, T7, T8, W2, W4, and W-LOT. |
+| MAJOR — W7 matrix incomplete | **CLOSED:** T9 contains every acceptance case from spec v4 §W7. |
+| MAJOR — reconciliation supersession mutates history | **CLOSED:** `pos_session_reconciliation_supersessions` is append-only; the current-result query anti-joins superseded runs. |
+| MAJOR — CashCountDispatcher not durable | **CLOSED:** T8 changes `dispatch()` to a typed result, persists one obligation per consumer, and tests partial success and enqueue failure. |
+| MAJOR — manifest membership/atomicity undefined | **CLOSED:** §8.6 limits the device manifest to device-authored streams. T7 inserts Z, manifest, and local sync outbox in the existing SQLite write transaction and stores server Z/manifest together. |
+| MAJOR — cross-rail fingerprint not canonical | **CLOSED:** §8.2 defines normalized common semantic fields and separate raw-rail hashes. |
+| MAJOR — manual movement cannot link to shift/session | **CLOSED:** T4 extends the immutable transfer document/request with authorized optional `shift_id` and `session_id`, validated against company and location. |
+| MAJOR — transfer route lacks module gate | **CLOSED:** T4 modifies the verified route at `apps/api/app/Modules/Treasury/Presentation/routes.php:102`. |
+| MAJOR — JSONB DTOs unnamed | **CLOSED:** §9 maps every new JSONB column to an exact PHP DTO and requires round-trip tests. |
+| MAJOR — local type census incomplete | **CLOSED:** §5.2. |
+| MAJOR — provisioning hooks unnamed | **CLOSED:** T3 names `CompanyController`, `LocationController`, both existing provisioners, their interfaces, and their transaction behavior. |
+| MAJOR — promotion evidence incomplete | **CLOSED:** T12 and §12 require two branches, two terminals, the onboarding campaign, direct and fleet day-one census, and real Tauri/SQLite/printer/offline/crash smoke. |
+| MAJOR — frozen alert not durable | **CLOSED:** T4. |
+| MAJOR — tenant-only unique ratchet | **CLOSED:** §9.2 requires `company_id` in every new business unique and names the PostgreSQL ratchet test. |
+| MINOR — T0 assumes future tables | **CLOSED:** T0 guards optional probes with `Schema::hasTable()` and tests against the pre-migration schema. |
+| MINOR — `training_flag` vague | **CLOSED:** §8.1 fixes the path at `payload.training_flag`, requires a real boolean, and fails closed on missing/string values. |
+| MINOR — coverage writer ambiguous | **CLOSED:** `RepositoryCashCoverageService` is a pure calculator; only `PosSessionReconciliationService` persists reconciliation data. |
 
-Flow: POS cash custody from opening through safe and bank deposit. Reference systems: Odoo 18/19, ERPNext current documentation, and Dolibarr TakePOS/Bank-Cash documentation.
+### 1.3 Findings explicitly preserved
 
-| ID | Guarantee the baseline gives the user | Odoo | ERPNext | Dolibarr or NV | AutoERP at HEAD | Gap | Decision |
-|---|---|---|---|---|---|---|---|
-| B1 | Opening cash is an explicit session fact tied to a cash account. | Opening Cash Control starts the POS session ([Odoo POS](https://www.odoo.com/documentation/18.0/applications/sales/point_of_sale.html)). | POS Opening Entry captures opening cash before sales ([ERPNext POS workflows](https://docs.frappe.io/erpnext/pos-workflows)). | `TAKEPOS_CONTROL_CASH_OPENING` enables controlled opening ([Dolibarr setup](https://wiki.dolibarr.org/index.php/Setup_Other)); the cash-fence table stores `opening` and terminal/user evidence ([Dolibarr cash fence](https://wiki.dolibarr.org/index.php?title=Table_llx_pos_cash_fence)). | Device and fiscal projection record the opening, but Treasury does not consume `OPENING_FLOAT` (`apps/pos/src/lib/fiscal/zSessionAuthoring.ts:507-566`; `apps/api/app/Modules/POS/Application/Projections/ZSessionLifecycleProjection.php:31-42`). | MISSING | **MATCH — T5:** book the `OPENING_FLOAT` fact as safe → drawer, conditional on the shared-drawer ruling. |
-| B2 | Cash in/out records amount and reason; its economic counterparty is explicit before accounting. | POS captures Cash In/Out plus reason; access is permissioned ([Odoo workflow](https://www.odoo.com/documentation/19.0/applications/sales/point_of_sale/use.html)). Cash journals expose configured liquidity, profit, and loss accounts ([Odoo journals](https://www.odoo.com/documentation/19.0/applications/finance/accounting/get_started/journals.html)). | Mode of Payment selects a company-specific default cash or bank ledger ([ERPNext Mode of Payment](https://docs.frappe.io/erpnext/mode-of-payment)). | Bank/Cash distinguishes cash and bank accounts, but a typed TakePOS cash-operation counterparty was not verified: **NV** ([Dolibarr Bank/Cash](https://wiki.dolibarr.org/index.php/Module_Banks_and_cash)). | Device `deposit` maps to `CASH_IN`, while v2 `DEPOSIT` means drawer → safe (`apps/pos/src/api/cashDrawerApi.ts:168-183`; `apps/api/database/migrations/tenant/2026_01_08_190642_create_pos_cash_drawer_operations_table.php:63-74`). | WRONG/AMBIGUOUS | **CONDITIONAL MATCH — D-WC-02, T6/T7:** require typed semantics; never infer custody from free text. |
-| B3 | An internal liquidity transfer affects both source and destination. | Internal transfer requires outgoing and incoming transactions and updates both accounts ([Odoo internal transfers](https://www.odoo.com/documentation/19.0/applications/finance/accounting/bank/internal_transfers.html)). | Cash/bank ledgers are company-specific destinations; transfer accounting is performed through submitted payment/journal entries ([ERPNext Mode of Payment](https://docs.frappe.io/erpnext/mode-of-payment)). | Bank/Cash supports multiple bank or cash accounts and exposes a dedicated transfer permission ([Dolibarr Bank/Cash developer](https://wiki.dolibarr.org/index.php/Module_Banks_and_Cash_%28developer%29)). | The port writes two movement legs, but manual transfer has no transfer document (`apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:355-396`; `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferService.php:64-115`). | PARTIAL | **MATCH — T4/T8:** one transfer document, one group, exactly two legs, zero/one JE. |
-| B4 | Closing compares expected and counted cash and exposes differences. | Closing Control shows expected amounts and counted cash and may require resolution of a difference ([Odoo POS](https://www.odoo.com/documentation/18.0/applications/sales/point_of_sale.html)). | POS Closing Entry closes the period and performs accounting postings ([ERPNext POS workflows](https://docs.frappe.io/erpnext/pos-workflows)). | Cash-fence rows carry opening, cash, status, creator, validator, and validation date ([Dolibarr cash fence](https://wiki.dolibarr.org/index.php?title=Table_llx_pos_cash_fence)). | Expected cash is derived, but no W7 result store exists and v3 Z projection emits no cash-count event (`apps/api/app/Modules/POS/Application/Services/ShiftExpectedCashService.php:252-304`; `apps/api/app/Modules/POS/Application/Projections/ZReportProjection.php:54-100`). | MISSING | **MATCH — T2/T10:** add durable fiscal and repository checks before variance GL. |
-| B5 | A repeated command does not move money twice. | Posted journal records and reconciliation provide stable accounting artifacts; exact POS replay semantics were not verified. | Submitted documents provide stable accounting identity; exact POS replay semantics were not verified. | **NV.** | Transfer group replay returns the original pair after semantic validation (`apps/api/app/Shared/Contracts/Treasury/TreasuryMovementServiceInterface.php:81-85`). | PARTIAL | **MATCH — T4/T5:** deterministic document/group/source keys plus visible conflicts. |
-| B6 | Cash configuration and balances are isolated by company. | Multiple journals can exist, including distinct journals per bank/cash account ([Odoo journals](https://www.odoo.com/documentation/19.0/applications/finance/accounting/get_started/journals.html)). | Mode of Payment has company-specific account rows ([ERPNext Mode of Payment](https://docs.frappe.io/erpnext/mode-of-payment)). | Dolibarr account rows are entity-scoped and Bank/Cash supports multiple accounts ([Dolibarr Bank/Cash](https://wiki.dolibarr.org/index.php/Module_Banks_and_cash)). | The real additional-company path provisions its own default location, drawer, and safe (`apps/api/app/Modules/Company/Presentation/Controllers/CompanyController.php:63-74`, `apps/api/app/Modules/Company/Presentation/Controllers/CompanyController.php:127-145`, `apps/api/app/Modules/Company/Presentation/Controllers/CompanyController.php:172-196`). | PARTIAL | **MATCH — T3 and convention-09 tests:** configuration, source keys, and results are company-scoped. |
-| B7 | Branch/location custody lands in the selected register, not the first register found. | Payment methods are attached to a selected POS configuration ([Odoo payment methods](https://www.odoo.com/documentation/18.0/applications/sales/point_of_sale/payment_methods.html)). | POS Opening/Closing Entry is associated with a POS Profile ([ERPNext POS workflows](https://docs.frappe.io/erpnext/pos-workflows)). | TakePOS supports multiple terminals, but selected-location custody binding was not verified: **NV** ([Dolibarr TakePOS](https://wiki.dolibarr.org/index.php/Module_Point_of_sale_%28TakePOS%29)). | Creating a selected `pos_enabled` location provisions its drawer (`apps/api/app/Modules/Company/Presentation/Controllers/LocationController.php:181-216`, `apps/api/app/Modules/Company/Presentation/Controllers/LocationController.php:227-250`). | PARTIAL | **MATCH — T3/T8:** exact persisted terminal location and configured repositories; no first/default fallback. |
-| B8 | Cash operations and transfers are permissioned, and configuration changes are auditable. | Employee rights control session and cash-in/out actions ([Odoo employee access](https://www.odoo.com/documentation/18.0/applications/sales/point_of_sale/employee_login.html)). | Company/account access controls selection of company-specific ledgers ([ERPNext Mode of Payment](https://docs.frappe.io/erpnext/mode-of-payment)). | Bank/Cash defines read/modify/configure/transfer permissions; security settings expose audit and group permissions ([Dolibarr Bank/Cash developer](https://wiki.dolibarr.org/index.php/Module_Banks_and_Cash_%28developer%29), [Dolibarr security](https://wiki.dolibarr.org/index.php/Setup_Security)). | Transfer and adjustment routes have action permissions, but the route group has no inline `module:Treasury` gate (`apps/api/app/Modules/Treasury/Presentation/routes.php:35-59`, `apps/api/app/Modules/Treasury/Presentation/routes.php:96-104`). | PARTIAL | **MATCH — T3/T8:** `module:Treasury` on new backend endpoints and `hasModule('Treasury')` plus permissions in the existing frontend surface. |
-| B9 | Accounting history is append-only; corrections use linked reversal/compensation. | Posted cash/bank journal history is reconciled; secure posted-entry options restrict alteration where applicable ([Odoo journals](https://www.odoo.com/documentation/19.0/applications/finance/accounting/get_started/journals.html)). | Submitted accounting documents are corrected through accounting documents, not silent balance edits. | Dolibarr exposes audit and bank-operation tables; an exact TakePOS reversal contract was not verified: **NV** ([Dolibarr security](https://wiki.dolibarr.org/index.php/Setup_Security)). | Repository movements reject update/delete and require compensating movements (`apps/api/app/Modules/Treasury/Domain/RepositoryMovement.php:62-81`). | PARTIAL | **MATCH — T4/T9:** immutable original document; reversal creates a new cross-linked document and opposite legs. |
-| B10 | A cash register’s variance is posted only against a trustworthy covered interval. | Closing reports compare session activity and counted cash ([Odoo POS](https://www.odoo.com/documentation/18.0/applications/sales/point_of_sale.html)). | Opening and Closing Entries bound the POS period ([ERPNext POS workflows](https://docs.frappe.io/erpnext/pos-workflows)). | Cash-fence records are terminal- and period-related, but a repository-ordinal coverage algorithm was not verified: **NV**. | Variance posting resolves one repository and is disabled globally; no repository-coverage result is required today (`apps/api/app/Modules/Treasury/Application/Listeners/PostShiftCashVarianceAdjustment.php:289-325`, `apps/api/app/Modules/Treasury/Application/Listeners/PostShiftCashVarianceAdjustment.php:620-693`). | MISSING | **MATCH — T10:** require a matching immutable coverage fingerprint before posting. |
-| B11 | Offline facts remain recoverable without silently bypassing controls. | Odoo POS operates temporarily offline, while cash operations remain session facts ([Odoo POS](https://www.odoo.com/documentation/18.0/applications/sales/point_of_sale.html)). | Offline replay policy was not verified: **NV**. | **NV.** | `record()` supports flagged frozen/checkpoint projection writes, but paired transfer currently hard-rejects frozen repositories and hardcodes false flags (`apps/api/app/Shared/Contracts/Treasury/TreasuryMovementServiceInterface.php:98-104`; `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferService.php:43-50`; `apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:295-318`, `apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:355-396`). | WRONG | **MATCH — T4:** explicit offline transfer policy, atomic flagged legs, alert, and no negative-cash bypass. |
-| B12 | A legacy cash account starts from one reviewed opening/alignment balance rather than invented transaction history. | Opening bank/cash statement balance is set to the actual pre-cutover balance ([Odoo accounting setup](https://www.odoo.com/documentation/19.0/applications/finance/accounting/get_started.html)). | Opening balances are introduced through opening/accounting entries. | Exact POS historical-alignment flow was not verified: **NV**. | Existing repository opening balance refuses a repository that already has foreign movements (`apps/api/app/Modules/Treasury/Application/Services/RepositoryOpeningBalanceService.php:139-152`). | MISSING | **CONDITIONAL MATCH — D-WC-03, T9:** evidenced dated alignment; no invented per-shift history. |
+- One repository transfer document/group produces exactly two repository movement legs and zero or one journal entry.
+- Existing expected-cash calculation already includes opening cash; it must not add a second opening component.
+- A sidecar close manifest is sufficient; sealed fiscal payload bytes do not need a version bump.
+- Existing queues remain `default` and `fiscal-projections`.
+- Acceptance order is opening → sales → drop → close/reconcile.
+- Bank settlement confirmation remains separate from repository transfer creation.
+- Historical per-shift backbooking remains prohibited.
+- Existing repository and shift/Z detail surfaces remain canonical.
 
-## 4. Vocabulary and one-surface contract
+---
 
-**Vocabulary:** Concepts: Repository (glossary ✅); Shift (glossary ✅); Session reconciliation (glossary ✅, definition extended); Cash custody configuration (NEW — glossary row added in T3); Shift cash booking (NEW — glossary row added in T3); Repository transfer document (NEW — glossary row added in T4); Coverage interval (NEW — glossary row added in T2); Opening-balance alignment (NEW — glossary row added conditionally in T9).
+## 2. Outcome and non-negotiable boundaries
 
-The existing glossary already defines Repository, Shift, Session reconciliation, and Opening batch (`docs/glossary.md:60`, `docs/glossary.md:63`, `docs/glossary.md:75-76`). The new rows will state:
+W-CASH makes physical cash custody explicit without rewriting fiscal history:
 
-| Concept | Definition and single writer | Canonical surface |
-|---|---|---|
-| Cash custody configuration | Versioned company/location mapping from terminal drawer to safe and optional bank, written only by `CashCustodyConfigurationService`. | Existing Treasury repository detail/editor. |
-| Shift cash booking | Idempotent conversion of one typed POS cash fact into its Treasury document/effect, written only by `ShiftCashBookingService`. | Existing shift/Z detail for status; repository detail for money movements. |
-| Repository transfer document | Immutable justification for one custody action, owning one transfer group and exactly two repository legs, written only by `RepositoryTransferDocumentService`. | Existing repository detail and existing `TransferCashModal`. |
-| Coverage interval | Immutable source-membership snapshot and repository ordinal bounds used for one close comparison. | Existing shift/Z detail. |
-| Opening-balance alignment | Reviewed cutover document reconciling observed physical custody with Treasury without fabricating past shifts. | Existing repository detail; conditional on D-WC-03. |
+1. A typed custody action creates one immutable transfer document, one transfer group, exactly two cross-linked repository movements, and zero or one posted journal entry.
+2. Opening cash is not revenue. Whether a declared opening amount causes a safe → drawer transfer depends on the Q11-approved interval-start policy.
+3. Drawer → safe and safe → bank use the existing Treasury transfer port.
+4. Petty expense is not a transfer. If Q12 approves that classification, it produces an expense document, one cash-repository movement, and one journal entry.
+5. v2 and v3 facts converge on one semantic booking obligation while retaining distinct immutable evidence.
+6. Training events never move money.
+7. No worker or recovery command may infer historical obligations from today’s enabled modules or current repository mappings.
+8. No migration, backfill, or activation fabricates historical per-shift movements.
+9. New capability defaults disabled at global, company/location configuration, and cutover levels.
+10. W7 reports fiscal comparison and repository-coverage comparison independently.
+11. Mutable current repository balance is never used as historical close truth.
+12. `ShiftExpectedCashService` remains the expected-drawer calculator; W-CASH must not duplicate its opening component.
 
-No new repository catalogue, “bank deposit” catalogue, transfer modal, or alternate shift-close surface will be created. The existing repository detail already imports `TransferCashModal` (`apps/web/src/features/treasury/RepositoryDetailPage.tsx:23-25`), and both repository list/detail currently expose that modal (`apps/web/src/features/treasury/RepositoryDetailPage.tsx:229-237`, `apps/web/src/features/treasury/RepositoryListPage.tsx:210`).
+---
 
-Create backend Spatie Data DTOs and regenerate `packages/shared/types/generated.d.ts`. Remove the hand-written repository shapes in `apps/web/src/features/treasury/hooks/usePaymentRepositories.ts:7-20` and `apps/web/src/features/treasury/RepositoryDetailPage.tsx:27-45`. Types flow from backend per `CLAUDE.md:33-37`.
+## 3. Owner rulings — all remain OPEN
 
-## 5. Open owner decisions
+**Status: OPEN for Q10, Q11, Q12, and Q13.** The rows below are copied verbatim from `docs/handoff/OWNER-RULINGS-parapharmacy-remediation-2026-09-05.md:138-143`. Recommended defaults are recommendations only.
 
-| Decision | Status | Benchmark-derived recommended default | Alternative and consequence | Conditional tasks |
-|---|---|---|---|---|
-| **D-WC-01 — shared drawer model** | **OPEN; do not implement a policy implicitly.** | One cash-bearing drawer session at a time. A terminal must hold the drawer lease to author an opening float; another terminal either joins an explicitly modelled drawer session without a second float or is refused cash-bearing open. This follows the one-POS-session/register custody model in Odoo and the per-profile opening in ERPNext. | Coordinated aggregation permits overlapping terminal shifts, but requires drawer-level membership, overlap-safe close ordering, one physical count owner, late-member invalidation, and an allocation rule for two closing counts. Simply booking both floats is prohibited. | T5 opening float, T7 device authoring, shared-drawer cases in T10, activation. |
-| **D-WC-02 — typed meaning of `CASH_IN`, `CASH_OUT`, `DEPOSIT`, `PAYOUT`** | **OPEN.** | Add typed reason codes `SAFE_DROP`, `BANK_DEPOSIT`, `PETTY_EXPENSE`, `FLOAT_TOP_UP`, `OTHER`. `SAFE_DROP` is drawer → safe; `BANK_DEPOSIT` is drawer/safe → bank; `FLOAT_TOP_UP` is safe → drawer; `PETTY_EXPENSE` is an expense/adjustment document with one out leg; `OTHER` remains blocked until classified. Map v2 `DEPOSIT` to safe drop only if approved. Require per-row evidence for ambiguous historical `PAYOUT`. | Keeping raw kinds/free text makes counter-custody and GL treatment unknowable. Such events must remain blocked and variance cannot be enabled for their intervals. Mapping every payout to the safe would misstate petty expenses. | T3 policy schema, T5 non-opening operations, T6 v2 adapter, T7 POS UI, T10 coverage. |
-| **D-WC-03 — historical alignment accounting** | **OPEN.** | One dated, approved alignment per repository at cutover: record physical count, ledger balance, signed difference, evidence, reviewer, and one compensating movement/JE to approved cash-difference gain/loss accounts. Do not recreate past floats/drops or past variance documents. | “Start from current balance without accounting” leaves GL/repository disagreement and makes later reconciliation untrustworthy. Retroactive per-shift reconstruction invents timing/counterparties and can alter closed periods. The only safe alternative is to leave the repository comparison unavailable and variance disabled. | T9, final capability readiness, historical-window disposition in T10/T11. |
+| Q | Question | Odoo | ERPNext / domain norm | AutoERP today | Benchmark-derived default (owner rules) |
+|---|---|---|---|---|---|
+| **Q10** Recall request lifecycle | May the general manager **reject** a branch recall request and **release** the branch hold? Who may release, with what evidence? | Lot hold (`quality_hold` / OCA lock) is a status that QC lifts; no built-in approval chain | GMP norm: quarantined → **released** or **rejected** by the quality authority only, with a recorded disposition and signature; a hold is never lifted by the requester | No hold exists; `is_recalled` is a global boolean | Hold lifecycle `requested → recalled (company-wide)` **or** `requested → released` where **only the general manager** may release, with mandatory reason + append-only evidence; the requesting branch cannot lift its own hold. Recommend this, in scope for W-LOT S1. |
+| **Q11** Shared drawer, two terminals | When two terminals open on one physical drawer, how is the float attributed and the drawer reconciled? | **One open session per POS config (register)**; two registers sharing one cash journal is not supported natively and mis-states the opening balance (OCA "Correct Opening Balance" exists to patch it); guidance is one cash payment method **per register** | POS Opening Entry is per user per POS Profile; each profile is its own cash custody | Device floats per terminal session; Treasury has no drawer session | **One cash-bearing shift per drawer at a time**: a second terminal on the same drawer joins the open drawer session (no second float) or is refused; drawer-level session is the custody unit, terminal sessions attribute sales. Recommend this; the aggregation alternative is what Odoo needs a patch module for. |
+| **Q12** Typed meaning of cash in/out | What do `CASH_IN`, `CASH_OUT`, v2 `DEPOSIT`, `PAYOUT` mean in money terms: safe transfer, bank deposit, petty-cash expense, other counterparty? | Cash in/out carries a **reason**; each reason maps to an account (OCA `pos_cash_move_reason`): bank-deposit moves go to a "cash awaiting bank deposit" intermediate account, small expenses to an expense account | Petty cash via Journal Entry to expense or transfer accounts; safe drop = transfer between cash accounts | Free-text reason on the device; no typed counterparty; only v3 `SAFE_DROP` is unambiguous | **Typed reason codes** on the device (`SAFE_DROP`, `BANK_DEPOSIT`, `PETTY_EXPENSE`, `FLOAT_TOP_UP`, `OTHER`), each mapped in configuration to a destination: transfer to safe/bank for the first three, expense document for petty cash, blocked for `OTHER` until classified. Recommend; v2 `DEPOSIT`/`PAYOUT` are mapped by a cutover table. |
+| **Q13** Historical alignment | How do we set the opening Treasury balance of a drawer/safe that has traded for months without float/drop booking, and what happens to the disabled variance window? | Cash journal "Opening with last closing balance"; discrepancies booked as cash-difference gain/loss at the next open/close; no retroactive rebooking | Opening balances via an Opening Entry / Journal Entry dated at cutover; prior history left as is | No alignment mechanism; variance GL disabled since 2026-08-08 | **One dated alignment per repository at cutover**: count the physical cash, book a single opening-balance adjustment (document + movement + JE to cash-difference gain/loss), no retroactive rebooking of past shifts; the disabled variance window is closed by that alignment and documented per tenant. Recommend. |
 
-The owner’s eventual selections must be recorded in `docs/handoff/OWNER-RULINGS-parapharmacy-remediation-2026-09-05.md` with decision date, actor, selected branch, and accounting reviewer evidence. Independent schema, recovery, DTO, and read-side tasks may proceed; no dependent write capability may be enabled while its decision is open.
+Conditionality:
 
-## 6. Completed C1 producer, consumer, and writer census
+- **Q10:** blocks launch certification of W-LOT status handling and therefore the W7 lot-status promotion row. W-CASH must consume only the eventually approved W-LOT status contract.
+- **Q11:** blocks shared-drawer enforcement, interval ownership, retained-balance opening booking, and activation of opening transfers.
+- **Q12:** blocks financial dispatch of `CASH_IN`, `CASH_OUT`, `SAFE_DROP`, `DEPOSIT`, and `PAYOUT`. No SAFE_DROP authoring may dispatch before this ruling.
+- **Q13:** blocks alignment execution and `TREASURY_SHIFT_VARIANCE_GL_ENABLED=true`.
+- Generic schemas, disabled readers, policy-recording infrastructure, manifests, and reconciliation plumbing may ship dormant without selecting any recommended default.
 
-### 6.1 v3 fiscal and device sources
+---
 
-| Fact | Producer/payload | Server persistence today | W-CASH treatment |
+## 4. Benchmark and compatibility baseline
+
+This table satisfies convention 10: external benchmark, current AutoERP evidence, gap, decision, and verification are explicit.
+
+| Guarantee | Benchmark | AutoERP at HEAD | W-CASH disposition |
 |---|---|---|---|
-| `SESSION_OPEN` | Device payload includes `opening_float_amount` (`apps/pos/src/lib/fiscal/zSessionAuthoring.ts:291-310`). | `ZSessionLifecycleProjection` stores the event and writes `pos_shifts.opening_cash` (`apps/api/app/Modules/POS/Application/Projections/ZSessionLifecycleProjection.php:94-125`, `apps/api/app/Modules/POS/Application/Projections/ZSessionLifecycleProjection.php:208-221`). | Provenance only. Never book money from this event. |
-| `OPENING_FLOAT` | Authored immediately after `SESSION_OPEN`, with `movement_id`, optional `cash_drawer_operation_id`, amount, reason, session, and shift (`apps/pos/src/lib/fiscal/zSessionAuthoring.ts:313-335`, `apps/pos/src/lib/fiscal/zSessionAuthoring.ts:553-566`). | Stored in `pos_z_session_events` because the lifecycle projector handles it (`apps/api/app/Modules/POS/Application/Projections/ZSessionLifecycleProjection.php:31-42`, `apps/api/app/Modules/POS/Application/Projections/ZSessionLifecycleProjection.php:99-115`). | Sole v3 opening-float money source; safe → drawer, conditional on D-WC-01. |
-| `CASH_IN` | Current device `deposit` action emits `CASH_IN` with a free-text reason and `cash_drawer_operation_id` (`apps/pos/src/api/cashDrawerApi.ts:139-194`). | Stored in `pos_z_session_events`. Expected-cash sign is positive (`apps/api/app/Modules/POS/Application/Services/ShiftExpectedCashService.php:684-714`). | Block until D-WC-02 supplies typed meaning; afterwards dispatch by typed code. |
-| `CASH_OUT` | Current device `payout` action emits `CASH_OUT` (`apps/pos/src/api/cashDrawerApi.ts:168-194`). | Stored in `pos_z_session_events`. Expected-cash sign is negative (`apps/api/app/Modules/POS/Application/Services/ShiftExpectedCashService.php:684-714`). | Block until D-WC-02 distinguishes transfer from external expense. |
-| `SAFE_DROP` | Present in the authoring type union, but the current cash-drawer UI only chooses `CASH_IN`/`CASH_OUT` (`apps/pos/src/lib/fiscal/zSessionAuthoring.ts:87-92`; `apps/pos/src/api/cashDrawerApi.ts:177-183`). | Stored in `pos_z_session_events`; expected-cash sign is negative (`apps/api/app/Modules/POS/Application/Services/ShiftExpectedCashService.php:710-713`). | Unambiguous drawer → configured safe transfer. |
-| `CASH_CORRECTION` | Accepted by device/server type sets but current expected-cash derivation deliberately refuses to assign a direction (`apps/pos/src/lib/fiscal/zSessionAuthoring.ts:87-92`; `apps/api/app/Modules/POS/Application/Services/ShiftExpectedCashService.php:675-713`). | Stored in `pos_z_session_events`. | Unsupported/blocked; W-CASH does not guess. |
-| `SESSION_CLOSE` | Device authors close and then Z (`apps/pos/src/lib/fiscal/zSessionAuthoring.ts:664-711`). | Lifecycle projection closes the shift (`apps/api/app/Modules/POS/Application/Projections/ZSessionLifecycleProjection.php:123-125`). | No Treasury movement; provides interval boundary. |
-| `Z_REPORT` | Device Z payload contains cash count and source ranges (`apps/pos/src/lib/fiscal/zSessionAuthoring.ts:689-711`). | `ZReportProjection` stores cash count and expected/actual/variance (`apps/api/app/Modules/POS/Application/Projections/ZReportProjection.php:139-164`). | W7 close-manifest/result source and assigned v3 `CashCountRecorded` producer in T2. |
+| Opening is a session/custody fact | Odoo POS opening cash control; ERPNext POS Opening Entry | Device writes `SESSION_OPEN` and `OPENING_FLOAT` in one transaction (`apps/pos/src/lib/fiscal/zSessionAuthoring.ts:507-566`), but Treasury does not book it. | Match only after Q11 through the interval-start contract; never duplicate opening in expected cash. |
+| Cash in/out has typed economic meaning | Odoo cash-move reasons map to accounts; ERPNext selects company-specific payment accounts | Device UI maps free-text deposit/payout to `CASH_IN`/`CASH_OUT` (`apps/pos/src/api/cashDrawerApi.ts:27-76,139-194`). | Q12-gated typed policy; unresolved or `OTHER` remains blocked without money. |
+| Internal transfer affects both custody accounts | Odoo internal transfers create outgoing/incoming liquidity effects | `TreasuryMovementService::transfer()` already creates two legs (`apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:225-396`). | Add immutable transfer document, evidence, optional shift/session link, and durable conflict alert. |
+| Close compares expected and counted cash | Odoo Closing Control; ERPNext POS Closing Entry | Expected cash exists; W7 result store does not. | Add immutable manifest, independently derived comparison, and repository ordinal coverage. |
+| Replays never move money twice | Submitted accounting documents have stable identity | Existing movement service has idempotency support. | Company-scoped semantic obligation plus raw-rail evidence and visible conflict. |
+| Cash custody is company/location scoped | Odoo journals/POS configs and ERPNext profiles/accounts are company-specific | Company/location provisioning creates repository rows (`CompanyController.php:194-196`; `LocationController.php:216,240-251`). | Add disabled configuration head/revision during provisioning and convention-09 isolation tests. |
+| History is corrected append-only | Posted accounting is corrected by reversal/compensation | Repository movements are protected by immutability migrations. | Original documents/results remain unchanged; append reversal or supersession records. |
+| Offline facts recover without bypassing controls | POS may work temporarily offline | v3 and v2 facts can arrive late; frozen repositories currently reject new transfers. | Persist obligations, permit explicitly flagged verified offline transfers, retain no-negative rule, and emit durable once-per-group alerts. |
+| Legacy custody starts from one reviewed balance | Accounting systems use opening entries, not invented past transactions | Existing opening service refuses foreign history. | Q13-gated single alignment; no historical shift backbooking. |
 
-Cross-rail source key:
+---
+
+## 5. Convention-11 vocabulary and one-surface contract
+
+### 5.1 Glossary reconciliation
+
+Existing canonical terms at HEAD:
+
+- **Repository:** `docs/glossary.md:60`
+- **Terminal:** `docs/glossary.md:74`
+- **Shift:** `docs/glossary.md:75`
+- **Session reconciliation:** `docs/glossary.md:76`
+
+T3/T4/T9/T11 add these exact glossary rows:
+
+| Canonical term | Definition | Sole writer | Canonical surface |
+|---|---|---|---|
+| Cash custody configuration | Company/location mapping and policy governing terminal drawer, safe, optional bank, and operation classifications. | `CashCustodyConfigurationService` | Treasury repository detail/editor |
+| Cash custody configuration revision | Immutable snapshot used to interpret authored cash facts. | `CashCustodyConfigurationService::appendRevision()` | Configuration history on repository detail |
+| Fiscal projection policy record | Event-time decision that a named projector was required, skipped, or blocked. | `FiscalProjectionPolicyRecorder` | Fiscal projection diagnostics |
+| Fiscal projection cutover | Persisted bounded rule for admitting legacy source facts. | `FiscalProjectionCutoverService` | Fiscal projection diagnostics |
+| Shift cash booking | Idempotent conversion of a typed POS cash fact into a Treasury document/effect. | `ShiftCashBookingService` | Shift/Z detail for status; repository detail for money |
+| Repository transfer document | Immutable justification owning one transfer group, two movement legs, and zero/one JE. | `RepositoryTransferDocumentService` | Existing repository transfer/detail surface |
+| Coverage interval | Immutable manifest/dependency membership and repository ordinal bounds used for a close comparison. | `PosSessionReconciliationService` | Shift/Z detail |
+| Opening-balance alignment | Reviewed cutover adjustment between observed physical cash and Treasury without fabricated past shifts. | `RepositoryBalanceAlignmentService` | Repository detail; Q13-conditional |
+
+No second repository catalogue, transfer modal, bank-deposit catalogue, or shift-close screen is created.
+
+### 5.2 Complete local TypeScript census
+
+Canonical backend DTOs will generate `PaymentRepositoryData`, `RepositoryMovementData`, `RepositoryTransferDocumentData`, `CashCustodyConfigurationData`, and `PosSessionReconciliationData` into `packages/shared/types/generated.d.ts`.
+
+Local entity aliases to remove or replace:
+
+| HEAD path | Local type | Disposition |
+|---|---|---|
+| `apps/web/src/features/treasury/RepositoryListPage.tsx:23` | `Repository` | Replace with generated `PaymentRepositoryData`. |
+| `apps/web/src/features/treasury/PaymentForm.tsx:60` | `Repository` | Replace with generated DTO/pick. |
+| `apps/web/src/features/treasury/hooks/useTransferCash.ts:5-19` | `TransferPayload`, `TransferResponse` | Replace with generated request/result types. |
+| `apps/web/src/features/treasury/hooks/usePaymentRepositories.ts:7-20` | `PaymentRepository` | Remove. |
+| `apps/web/src/features/treasury/RepositoryDetailPage.tsx:27-45` | `Repository`, response wrapper | Replace with generated DTO. |
+| `apps/web/src/components/organisms/RecordPaymentModal/RecordPaymentModal.tsx:28` | repository shape | Replace with generated DTO/pick. |
+| `apps/web/src/components/organisms/AddRepositoryModal/AddRepositoryModal.tsx:41` | repository shape | Replace with generated DTO. |
+| `apps/web/src/features/treasury/SplitPaymentForm.tsx:27` | repository shape | Replace with generated DTO/pick. |
+| `apps/web/src/features/pos/api/paymentRepositoryApi.ts:9` | repository shape | Replace with generated DTO. |
+| `apps/web/src/features/treasury/hooks/useRepositoryMovements.ts:38` | movement shape | Replace with generated `RepositoryMovementData`. |
+
+Permitted projection-only view models, explicitly not canonical entities:
+
+| HEAD path | View model | Rule |
+|---|---|---|
+| `apps/web/src/features/treasury/hooks/useCashPosition.ts:14-16` | `CashPositionRepository` | Keep as server cash-position projection only; add comment naming source DTO. |
+| `apps/web/src/features/treasury/hooks/useRemittances.ts:9` | `RemittanceRepository` | Keep as remittance selector projection. |
+| `apps/web/src/features/treasury/statements/api.ts:79` | `RepositoryMovementCandidate` | Keep as statement-matching candidate. |
+| `apps/web/src/features/treasury/statements/StatementUploadWizard.tsx:26` | `WizardRepository` | Replace with a pick from the generated candidate DTO or document why UI-only. |
+
+---
+
+## 6. HEAD source, payload, and producer census
+
+### 6.1 Device fiscal and offline sources
+
+| Source | Verified writer | Current behavior | W-CASH use |
+|---|---|---|---|
+| v3 `SESSION_OPEN` + `OPENING_FLOAT` | `authorZSessionOpenWithOpeningFloatOnDb()` at `apps/pos/src/lib/fiscal/zSessionAuthoring.ts:507`; one transaction at `:523`; event appends at `:539-566` | Opening appears twice semantically: session declaration plus distinct movement fact. | `OPENING_FLOAT` is the source identity; `SESSION_OPEN` supplies boundary context. Financial effect is Q11-conditional. |
+| v3 cash movement | `authorZCashDrawerMovement()` in `zSessionAuthoring.ts`; caller `apps/pos/src/api/cashDrawerApi.ts:139-194` | UI authors only `CASH_IN` or `CASH_OUT`; `SAFE_DROP` exists in registries but is not the observed UI choice. | Record raw fact and block until a Q12-approved typed policy resolves it. |
+| v3 close/Z | `appendZSessionCloseAndZReport()` at `zSessionAuthoring.ts:664-722` | Close and Z are consecutive fiscal events. | Boundary plus immutable manifest identity. |
+| Offline Z generation | `generateZReport()` at `apps/pos/src/lib/offline/zReportService.ts:134`; source collection at `:198-225`; write transaction at `:541-576` | Inserts local Z, counts, chains, grand totals, then close/Z. | Add manifest and sync-outbox writes to this same transaction. |
+| v2 offline cash rows | `apps/pos/src/lib/db/repositories/cashDrawerRepository.ts`; `apps/pos/src/api/cashDrawerApi.ts:79-133` | Stores deposit/payout, amount, free-text reason, approval, shift, terminal, idempotency key. | Retain immutable row; append typed policy evidence in v68; never infer from reason text. |
+| Device sync | `apps/pos/src/lib/sync/syncService.ts:541-562,591,633,2294` | Z reports and drawer operations sync separately. | Z request carries its sidecar manifest; reordered fiscal-event upload remains pending, not falsely complete. |
+| SQLite schema | `apps/pos/src/lib/db/migrations.ts:2163` | Highest version is 67. | T1 exclusively adds v68 then v69. |
+
+### 6.2 Server fiscal and cash-count sources
+
+| Source | Verified path | Current behavior | Required change |
+|---|---|---|---|
+| Fiscal event ingestion | `apps/api/app/Modules/Fiscal/Application/Services/OutboxIngestor.php:980-1046` | Selects today’s active projectors and inserts pending rows. | Record immutable event-time policy decisions in the ingest transaction. |
+| Projection seeding | `FiscalEventProjectionDispatcher.php:79,110-159` | Uses current active registry. | Seed only from persisted policy records or explicit bounded cutover. |
+| Projection worker | `ApplyFiscalEventProjectionJob.php:226-319` | Short `lockForUpdate()` claim transaction; releases before projector work. | Add `blocked` CAS state and typed detail without holding the lock during work. |
+| v3 Z projection | `apps/api/app/Modules/POS/Application/Projections/ZReportProjection.php:54` | Persists Z/cash count but emits no durable count obligation. | Create the producer obligation transactionally and dispatch after commit. |
+| Other cash-count producers | `ReportGenerationService.php:433`; `ZReportSyncController.php:508,555` | Call a void dispatcher. | Route through one idempotent producer service. |
+| Dispatcher | `CashCountDispatcher.php:89-112` | One event dispatch; catches failure; first listener failure can suppress later listeners. | Typed per-consumer outcomes and persisted obligations. |
+| Treasury consumer | `PostShiftCashVarianceAdjustment.php:294`; registered at `TreasuryServiceProvider.php:232-233` | Disabled by `treasury.shift_variance_gl_enabled`. | Consumer key `treasury.shift_variance`; activation only after matched coverage and Q13. |
+| Compliance consumer | `OpenFraudAlertForShiftVariance.php:14,22`; registered at `ComplianceServiceProvider.php:82-85` | Event listener. | Consumer key `compliance.shift_variance`; independent outcome/retry. |
+
+### 6.3 X/Z and related payload census
+
+The current fiscal payload keys are:
+
+- `XReportPayload.php:9-29`: `business_date`, `cash_drawer_totals`, `generated_at_device`, `operational_event_range`, `operator_id`, `operator_name`, `payment_method_totals`, `period_start`, `period_end`, `receipt_count`, refund/sale totals, `session_id`, `shift_id`, `terminal_id`, `training_flag`, `vat_breakdown`, void totals, `x_report_uuid`.
+- `ZReportPayload.php:9-42`: `business_date`, `cash_count`, `cash_drawer_totals`, `closed_at_device`, `company_snapshot`, `currency_code`, `currency_scale`, formatted and numeric Z identifiers, grand totals before/after, `legacy_report_reference`, `operational_event_range`, operator, payment totals, period, receipt/refund/sale totals, seller, `session_event_range`, session/shift/terminal identity, terminal label, tolerance summary, `training_flag`, VAT, voids, `z_report_uuid`.
+- `SessionClosePayload.php:9-38`: cash-count lines, expected/count/variance data, session/shift/terminal identity, operator and `training_flag`.
+- `ZCashDrawerMovementPayload.php:9-26`: amount, approval, business date, operation ID, currency/scale, device event time, movement ID/type, operator, reason code/text, session/shift and `training_flag`.
+- `zReportService.ts:748-753`: current `operationalEventRange` covers receipt sequence/hash membership only; it is not a complete close manifest.
+
+The sidecar manifest therefore must not be misrepresented as an existing X/Z field.
+
+---
+
+## 7. Complete writer and lock census
+
+### 7.1 Current repository-movement callers
+
+`TreasuryMovementService::insertMovementLeg()` at `apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:554-608` is the sole low-level `repository_movements` insert and `payment_repositories.balance` writer. `record()` requires an already-active caller transaction at `:49-56`; `transfer()` owns its transaction at `:225-237`.
+
+Every direct call located at HEAD:
+
+| Path/method or call line | Transaction owner | Row predicates and scope | Lock order and hold time |
+|---|---|---|---|
+| `IncomeService::post()` call at `apps/api/app/Modules/Income/Application/Services/IncomeService.php:175` | Enclosing `post()` transaction | Source document/idempotency key; tenant/company repository | Existing accounting/JE serialization, then repository row through `record()`; held to outer commit |
+| `ExpenseService::post()` calls at `apps/api/app/Modules/Expense/Application/Services/ExpenseService.php:452,488` | Enclosing `post()` transaction | Expense/source identity and company repository | GL/JE work, then repository; outer commit |
+| `ExpenseService::settle()` call at `:816` | Enclosing settlement transaction | Settlement/source identity | GL then repository; outer commit |
+| `ExpenseService::reverse()` call at `:998` | Enclosing reversal transaction | Reversal source identity | GL then repository; outer commit |
+| `RefundCompensationService::compensate()` call at `apps/api/app/Modules/Fiscal/Application/Services/RefundCompensationService.php:308` | Enclosing compensation transaction | Fiscal source identity, company repository | GL then repository; outer commit |
+| `VendorRefundService::refundPrepayment()` call at `apps/api/app/Modules/Treasury/Domain/Services/VendorRefundService.php:211` | Enclosing refund transaction | Vendor prepayment/refund identity | GL then repository; outer commit |
+| `MultiPaymentService::recordInMovement()` at `apps/api/app/Modules/Treasury/Domain/Services/MultiPaymentService.php:594-602` | Public payment orchestration transaction | Payment line/source key | GL then repository; outer commit |
+| `PaymentController::store()` call at `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:1349` | `store()` transaction, method begins `:340` | Payment/idempotency and company | GL then repository; request transaction |
+| `PaymentController::storeMultiple()` call at `:2063`, method at `:1421` | `storeMultiple()` transaction | Payment group/line identity and company | GL then repository; request transaction |
+| `PaymentRefundService::postRefundGlAndMovement()` call at `apps/api/app/Modules/Treasury/Domain/Services/PaymentRefundService.php:729` | Enclosing refund transaction | Refund/source identity | GL then repository; outer commit |
+| `PaymentRefundService::postReversalGlAndMovement()` call at `:1087` | Enclosing reversal transaction | Reversal/source identity | GL then repository; outer commit |
+| `OutboundInstrumentService::clear()` call at `apps/api/app/Modules/Treasury/Application/Services/OutboundInstrumentService.php:140` | `clear()` transaction, method at `:50` | Instrument lifecycle source | GL then repository; outer commit |
+| `OutboundInstrumentService::bounce()` call at `:298` | `bounce()` transaction, method at `:203` | Instrument lifecycle source | GL then repository; outer commit |
+| `OutboundInstrumentService::represent()` call at `:452` | `represent()` transaction, method at `:360` | Instrument lifecycle source | GL then repository; outer commit |
+| `InstrumentLifecycleService::clear()` call at `apps/api/app/Modules/Treasury/Application/Services/InstrumentLifecycleService.php:277` | `clear()` transaction, method at `:205` | Instrument/source identity | GL then repository; outer commit |
+| `InstrumentLifecycleService::bounce()` call at `:495` | `bounce()` transaction, method at `:332` | Instrument/source identity | GL then repository; outer commit |
+| `RepositoryOpeningBalanceService::seed()` call at `apps/api/app/Modules/Treasury/Application/Services/RepositoryOpeningBalanceService.php:152` | `seed()` transaction, method at `:95` | Company/repository/source; refuses foreign movement history | GL then repository; outer commit |
+| `RepositoryTransferService::transfer()` call at `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferService.php:89` | Transaction at `:64-115` | Company-scoped source/destination IDs at `:118-123` | Company GL advisory lock, repositories sorted by UUID; held to commit |
+| `TreasuryReceiptBridge::projectPaymentLineFromCanonical()` call at `apps/api/app/Modules/Treasury/Application/Projections/TreasuryReceiptBridge.php:1560` | Fiscal projection’s financial transaction | Fiscal event/payment-line source | GL then repository; projection transaction |
+| `RepositoryAdjustmentService::post()` call at `apps/api/app/Modules/Treasury/Application/Services/RepositoryAdjustmentService.php:234` | `post()` transaction, method at `:90` | Adjustment document/source identity | GL then repository; outer commit |
+| `AcquirerFeeService::record()` call at `apps/api/app/Modules/Treasury/Application/Services/AcquirerFeeService.php:133` | `record()` transaction, method at `:35` | Acquirer fee/source identity | GL then repository; outer commit |
+| `TreasuryDepositBridge::apply()` call at `apps/api/app/Modules/Treasury/Application/Projections/TreasuryDepositBridge.php:249` | Projection financial transaction | Fiscal deposit-event identity | GL then repository; projection commit |
+| `TreasuryAccountPaymentBridge::apply()` call at `apps/api/app/Modules/Treasury/Application/Projections/TreasuryAccountPaymentBridge.php:267` | Projection financial transaction | Fiscal account-payment identity | GL then repository; projection commit |
+
+No W-CASH class may insert `repository_movements` or update cached repository balance directly.
+
+### 7.2 Current and planned non-movement writers
+
+| Writer | Rows/predicate | Transaction owner | Lock order, scope, hold |
+|---|---|---|---|
+| `authorZSessionOpenWithOpeningFloatOnDb()` | Device fiscal chain for one company/terminal/session | SQLite fiscal write transaction | Device DB writer lock; append session then opening; transaction only |
+| `generateZReport()` | Local Z, counts, fiscal events | SQLite `withWriteTransaction('fiscal')` | Device DB writer lock; Z → manifest → local outbox → close/Z; transaction only |
+| `OutboxIngestor::dispatchProjections()` | One event/projector policy and projection row | Fiscal ingest transaction | Unique insert/CAS, no Treasury locks; ingest transaction |
+| `ApplyFiscalEventProjectionJob::handle()` | One `fiscal_event_projections` row by ID/status | Short claim transaction | Projection row `FOR UPDATE`; released before projector work |
+| `CashCustodyConfigurationService` | Head by `(company_id,location_id)`; next immutable revision | Service transaction | Configuration head `FOR UPDATE`; no GL/repository locks; commit immediately |
+| `FiscalProjectionCutoverService` | Cutover by company/location/terminal/rail/bound | Service transaction | Company-scoped unique insert; no source row locks |
+| `ShiftCashBookingService` | Obligation by company/semantic fingerprint | Short claim, then separate financial transaction | Claim obligation and release; financial phase uses company GL advisory lock then sorted repositories |
+| `RepositoryTransferDocumentService` | Document by company/source identity or booking obligation | Financial transaction | Deterministic document insert/savepoint → company GL advisory lock → sorted repositories → JE/legs/document links |
+| `TreasuryTransferAlertService` | Alert by company/group/code | Same transfer transaction | Unique insert after flagged legs, before commit; no additional long lock |
+| `CashCountDispatcher` | One obligation per company/count/consumer | Short transaction | Unique insert/CAS; release before queue call; outcome update in a new short transaction |
+| `PosSessionReconciliationService` | Immutable run and optional supersession | Reconciliation transaction | Stable source reads; run insert; supersession insert; no Treasury row lock |
+| `RepositoryCashCoverageService` | **No writes** | None | Pure snapshot calculator over immutable movements and stored ordinals |
+| `RepositoryBalanceAlignmentService` | Alignment document, JE, movement | Q13-conditional financial transaction | Alignment unique insert → company GL advisory lock → repository lock → JE/movement/link |
+| Device manifest sync controller | Server Z/manifest row by company/Z UUID | Request transaction | Company-scoped unique insert/update of sync acknowledgement only |
+
+### 7.3 Global lock order
+
+All W-CASH writers must obey:
+
+1. Read immutable fiscal/POS source facts without `FOR UPDATE`.
+2. Insert or claim the company-scoped obligation/configuration/document identity in a short transaction.
+3. Release claim/configuration locks before financial work or queue I/O.
+4. For financial work, acquire the company GL advisory lock.
+5. Lock affected repositories in ascending UUID order with predicates on `tenant_id`, `company_id`, and `id`.
+6. Create zero/one JE, exactly two transfer legs or the documented single external leg, cached balances, links, and alerts.
+7. Commit the financial transaction.
+8. Update obligation/projection outcome in a separate short transaction.
+9. Never acquire terminal, shift, fiscal-event, or configuration locks after GL/repository locks.
+
+Repository locks are held only for the financial transaction. Projection and obligation row locks are held only for claim/CAS operations and never across external queue calls.
+
+---
+
+## 8. Core contracts and algorithms
+
+### 8.1 Fiscal admission and training
+
+A v3 money candidate is admissible only when:
+
+- `integrity_status=verified`
+- `chain_context=z_session`
+- `payload.training_flag` exists and is a PHP/JSON boolean
+- `payload.training_flag === false`
+- an event-time `FiscalProjectionPolicyRecord` says the projector was required
+- the authored configuration revision exists
+- the source identity falls within an enabled persisted cutover
+
+`ZCashDrawerMovementPayload` must implement `fromArray()` using `FiscalPayloadArrayGuards::requireBool($data, 'training_flag')`. Missing, `null`, `0`, `1`, `"false"`, or `"true"` fail closed as `malformed_training_flag`; they never default to production and never move money. A valid `true` event is recorded as `training_no_money`.
+
+### 8.2 Canonical v2/v3 semantic fingerprint
+
+Raw payload hashes remain evidence and are never used as the cross-rail equality test.
 
 ```text
-if payload.cash_drawer_operation_id is a non-empty UUID:
-    source_key = "pos_cash_drawer_operation:" + cash_drawer_operation_id
-else:
-    source_key = "fiscal_event:" + fiscal_event_id
+semantic_schema = "w-cash-semantic/v1"
+semantic_fingerprint = SHA-256(canonical JSON of):
+  company_id
+  location_id
+  terminal_id
+  cash_drawer_operation_id
+  normalized_operation_kind
+  direction
+  amount_minor_units
+  currency_code_uppercase
+  event_time_utc_seconds
+  normalized_reason_code
+  source_repository_role
+  destination_repository_role
+  authored_configuration_revision_id
 ```
 
-This causes a v2 row and a v3 fiscal event representing the same device operation to converge on one obligation/document. The fiscal event ID, sequence, hash, and payload fingerprint remain evidence even when the v2 operation ID is the economic deduplication key.
+Rules:
 
-Training facts are never booked. The v3 adapter requires `integrity_status=verified`, `chain_context=z_session`, and `training_flag=false`; `training_z_session` is an explicit applied-without-money containment result, not a blocked error. The current lifecycle projector accepts both live and training chain contexts (`apps/api/app/Modules/POS/Application/Projections/ZSessionLifecycleProjection.php:55-63`), so W-CASH must make this narrower check itself.
+- Keys are UTF-8, lexicographically sorted, with no insignificant whitespace.
+- Monetary text is validated at the explicit currency scale, then converted to integer minor units. PHP floats and JavaScript `number` arithmetic are forbidden.
+- `cash_drawer_operation_id` is the common economic identity when present.
+- Rail-only event IDs, fiscal sequence/hash, v2 row timestamp formatting, raw reason text, and envelope bytes are excluded from the semantic fingerprint and stored as evidence.
+- Missing common semantic fields produce `blocked_missing_semantic_evidence`; they are not omitted from the fingerprint.
+- Equivalent v2/v3 facts converge on one obligation and attach two evidence records.
+- A reused operation ID with a different semantic fingerprint freezes the obligation as `conflict`; it does not choose the first or last arrival silently.
 
-### 6.2 v2 `pos_cash_drawer_operations`
+### 8.3 Event-time policy and recovery
 
-The v2 table permits `OPENING`, `SALE`, `REFUND`, `DEPOSIT`, `PAYOUT`, and `CLOSING`; its database comments define `DEPOSIT` as cash moved to safe and `PAYOUT` as petty cash out (`apps/api/database/migrations/tenant/2026_01_08_190642_create_pos_cash_drawer_operations_table.php:20-74`).
+```php
+FiscalProjectionPolicyRecorder::record(
+    FiscalEvent $event,
+    string $projectorKey,
+    ProjectionPolicyDecision $decision,
+    ProjectionPolicyEvidenceData $evidence
+): FiscalProjectionPolicyRecord;
 
-| v2 kind | Current producer/meaning | W-CASH treatment |
-|---|---|---|
-| `OPENING` | `CashDrawerService::recordOpening()` creates the row but emits no operation event (`apps/api/app/Modules/POS/Domain/Services/CashDrawerService.php:192-214`). `ShiftManagementService` calls it when opening the server shift (`apps/api/app/Modules/POS/Domain/Services/ShiftManagementService.php:101-125`). | v2 safe → drawer opening candidate, keyed by the row ID and conditional on D-WC-01. |
-| `SALE` | Recorded from a cash receipt (`apps/api/app/Modules/POS/Domain/Services/CashDrawerService.php:314-338`). | Ignored by the W-CASH adapter; receipt Treasury booking remains authoritative. |
-| `REFUND` | Recorded from a receipt refund and emits the legacy event (`apps/api/app/Modules/POS/Domain/Services/CashDrawerService.php:340-368`). | Ignored by W-CASH to avoid duplicating the receipt/refund Treasury path. |
-| `DEPOSIT` | Documented and implemented as drawer → safe (`apps/api/app/Modules/POS/Domain/Services/CashDrawerService.php:240-275`). | Conditional safe drop after D-WC-02 confirms the mapping. |
-| `PAYOUT` | Implemented as a non-sale cash payout/refund/petty cash (`apps/api/app/Modules/POS/Domain/Services/CashDrawerService.php:277-312`). | Block unless D-WC-02 and typed evidence classify it as transfer or expense. |
-| `CLOSING` | Records counted cash (`apps/api/app/Modules/POS/Domain/Services/CashDrawerService.php:216-238`). | No movement; v2’s existing close producer remains, while W7 stores the result. |
+FiscalProjectionRecoveryService::recover(
+    FiscalProjectionRecoveryCriteria $criteria
+): FiscalProjectionRecoveryResult;
+```
 
-The existing `CashDrawerOperationRecorded` event covers only the old fields and lacks tenant, currency, location, and reason (`apps/api/app/Modules/POS/Domain/Events/CashDrawerOperationRecorded.php:15-33`). It will not be modified because events are immutable (`CLAUDE.md:36-37`). T6 adds `CashDrawerOperationAuthoredV2`, dispatched after commit for new `OPENING`, `DEPOSIT`, and `PAYOUT` rows. Historical rows are found by an idempotent catch-up command.
+Recovery rules:
 
-### 6.3 Treasury money-writer census
+- New events receive required/skipped/blocked policy records inside ingestion.
+- Recovery first reads the immutable policy record.
+- A legacy event without a record may be admitted only by a persisted `FiscalProjectionCutover` whose tenant/company/location/terminal/rail and inclusive source bounds contain it.
+- The cutover records the policy/configuration revision and evidence used to define the cohort.
+- Current module entitlement, current projector registry, current configuration head, or current feature flags may never be substituted for event-time evidence.
+- Recovery criteria must include a cutover ID or explicit policy-record IDs; “all blocked” is invalid.
+- Module/capability changes after event ingestion cannot add or remove that event’s obligations.
+- `blocked → pending` is a compare-and-set tied to a matching resolution/configuration revision.
 
-`TreasuryMovementService::insertMovementLeg()` is the sole low-level `repository_movements` insert and cached-balance writer (`apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:542-610`). The architecture ratchet permits only that service to update `payment_repositories.balance` (`apps/api/tests/Architecture/TreasuryBalanceWritePortTest.php:14-22`, `apps/api/tests/Architecture/TreasuryBalanceWritePortTest.php:48-81`).
+### 8.4 Configuration revision and cutover
 
-Every current direct movement-port call site at HEAD is:
+```php
+CashCustodyConfigurationService::appendRevision(
+    CashCustodyConfiguration $configuration,
+    CashCustodyConfigurationRevisionData $revision,
+    string $actorId
+): CashCustodyConfigurationRevision;
 
-| Consumer group | Direct calls |
+CashCustodyConfigurationService::activateRevision(
+    string $companyId,
+    string $configurationId,
+    string $revisionId,
+    CashCustodyActivationData $activation
+): CashCustodyConfiguration;
+
+FiscalProjectionCutoverService::create(
+    FiscalProjectionCutoverData $data
+): FiscalProjectionCutover;
+```
+
+A revision is immutable and contains drawer, safe, optional bank, currency, terminal membership, opaque operation-policy map, effective device/source bounds, and evidence. The head’s `current_revision_id` may advance; previously authored events keep their recorded revision ID. Provisioning creates only a disabled head/revision and no operation mappings.
+
+### 8.5 Q11-conditional interval-start algorithm
+
+This section is an implementation candidate, not an owner ruling. It must not be dispatched until Q11 is resolved in its favor or replaced by the approved alternative.
+
+For a drawer custody interval:
+
+```text
+R = prior finalized retained drawer balance
+D = newly declared physical opening balance
+T = max(D - R, 0), but only when D >= R
+```
+
+Boundary source:
+
+- First interval after cutover: `R` is the stored post-alignment repository balance/ordinal approved under Q13, or zero only if the cutover explicitly states a verified empty drawer.
+- Later interval: `R` is the predecessor interval’s finalized closing balance at its stored repository ordinal.
+- Never use `payment_repositories.balance` as the historical value.
+- Predecessor ordering uses the persisted drawer interval chain and device close/open source sequence, not server arrival time.
+
+Cases:
+
+| Case | Result |
 |---|---|
-| Treasury HTTP/payment orchestration | `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:1349`, `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:2063`, `apps/api/app/Modules/Treasury/Domain/Services/MultiPaymentService.php:602`, `apps/api/app/Modules/Treasury/Domain/Services/PaymentRefundService.php:729`, `apps/api/app/Modules/Treasury/Domain/Services/PaymentRefundService.php:1087`, `apps/api/app/Modules/Treasury/Domain/Services/VendorRefundService.php:211` |
-| Treasury instruments/fees | `apps/api/app/Modules/Treasury/Application/Services/AcquirerFeeService.php:133`, `apps/api/app/Modules/Treasury/Application/Services/InstrumentLifecycleService.php:277`, `apps/api/app/Modules/Treasury/Application/Services/InstrumentLifecycleService.php:495`, `apps/api/app/Modules/Treasury/Application/Services/OutboundInstrumentService.php:140`, `apps/api/app/Modules/Treasury/Application/Services/OutboundInstrumentService.php:298`, `apps/api/app/Modules/Treasury/Application/Services/OutboundInstrumentService.php:452` |
-| Treasury fiscal bridges | `apps/api/app/Modules/Treasury/Application/Projections/TreasuryReceiptBridge.php:1560`, `apps/api/app/Modules/Treasury/Application/Projections/TreasuryAccountPaymentBridge.php:267`, `apps/api/app/Modules/Treasury/Application/Projections/TreasuryDepositBridge.php:249` |
-| Treasury repository documents | `apps/api/app/Modules/Treasury/Application/Services/RepositoryOpeningBalanceService.php:152`, `apps/api/app/Modules/Treasury/Application/Services/RepositoryAdjustmentService.php:234`, `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferService.php:89` |
-| Cross-module callers through the shared port | `apps/api/app/Modules/Income/Application/Services/IncomeService.php:175`, `apps/api/app/Modules/Expense/Application/Services/ExpenseService.php:452`, `apps/api/app/Modules/Expense/Application/Services/ExpenseService.php:488`, `apps/api/app/Modules/Expense/Application/Services/ExpenseService.php:816`, `apps/api/app/Modules/Expense/Application/Services/ExpenseService.php:998`, `apps/api/app/Modules/Fiscal/Application/Services/RefundCompensationService.php:308` |
+| `R=0, D=0` | No transfer; interval starts covered at zero. |
+| `R=0, D>0` | Candidate safe → drawer top-up of `D`. |
+| `0<R<D` | Candidate top-up of `D-R`; never book the full `D`. |
+| `R=D` | No transfer; opening declaration confirms retained cash. |
+| `R>D` | Block `opening_count_below_retained_balance`; do not infer a drop or add money. |
+| Missing/unfinalized predecessor | `pending_predecessor`; no financial write. |
+| Late predecessor before any financial post | Recompute and append a superseding interval result. |
+| Late predecessor after financial post | Freeze as conflict; require an explicit corrective/reversal document, never mutate the applied transfer. |
+| Shift A closes at 2,700; shift B declares 2,700 | B creates no new float. |
+| Shift A closes at 2,700; shift B declares 2,900 | B top-up is 200. |
+| Shift A closes at 2,700; shift B declares 200 | Block mismatch; never add 200. |
+| Second terminal on the same drawer | Under the recommended Q11 branch, join the same drawer custody interval without a second float or refuse opening; exact join/refusal UX waits for the ruling. |
 
-W-CASH adds no direct movement insert. `RepositoryTransferDocumentService`, `ShiftCashBookingService`, manual safe → bank, and conditional alignment all terminate in `TreasuryMovementServiceInterface::record()` or `transfer()`.
+Expected cash remains the existing shift-level calculation. The interval service reconciles custody continuity; it does not add another opening component.
 
-### 6.4 Lock and writer order
+### 8.6 Close manifest
 
-Current transfer locking is company GL advisory lock first, followed by both repositories in ascending UUID order (`apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:237-269`). The current shift-open paths lock terminal then inspect/write shifts (`apps/api/app/Modules/POS/Domain/Services/ShiftManagementService.php:66-112`; `apps/api/app/Modules/POS/Application/Projections/ZSessionLifecycleProjection.php:140-190`).
+The device manifest contains device-authored identities only:
 
-W-CASH must preserve this order:
+- `SESSION_OPEN`
+- `OPENING_FLOAT`
+- typed cash operations and their policy-evidence IDs
+- sale receipt events
+- v4 refund events
+- legacy refund records consumed by the local Z
+- local account payment/collection records
+- `SESSION_CLOSE`
+- `Z_REPORT`
 
-1. Read and fingerprint immutable POS/fiscal source facts without `FOR UPDATE`.
-2. Insert or find the deterministic booking obligation/document through a savepoint and company-scoped unique key; do not hold a source-row lock.
-3. Take the company GL advisory lock.
-4. Lock transfer repositories in ascending UUID order.
-5. Post zero/one JE and exactly two legs; update both cached balances.
-6. Link document to both legs and the JE inside the same outer transaction.
-7. Mark the booking obligation applied only after the financial transaction commits.
-8. Update projection lifecycle in its separate short transaction.
+It excludes server-authored repository movements, transfer documents, journal entries, projections, and alerts. Those appear in a separate server dependency snapshot.
 
-W-CASH must not lock a terminal or shift after acquiring GL/repository locks. If the projected shift or repository coverage is missing, the adapter releases its projection/obligation claim and records a dependency outcome rather than taking POS locks in the financial transaction. V2 catch-up claims source-obligation rows with `FOR UPDATE SKIP LOCKED`, commits the claim, and processes it without retaining a lock on `pos_cash_drawer_operations`.
+Manifest fields:
 
-## 7. Contracts
+- schema/version
+- tenant/company/location/terminal/shift/session/Z identities
+- each member’s stream, source ID, sequence where applicable, current hash where applicable, and raw evidence hash
+- per-stream first/last sequence and member count
+- device configuration revision
+- created-at device timestamp
+- canonical manifest hash
 
-### 7.1 Shared booking contract
+The device writes local Z, manifest, sync outbox, close event, and Z event within `zReportService.ts:541-576`’s existing SQLite write transaction. Server reconciliation remains pending until both fiscal membership and the sidecar exist, regardless of upload order.
 
-Create `apps/api/app/Modules/Treasury/Application/DTOs/ShiftCashBookingIntent.php`:
-
-```php
-final readonly class ShiftCashBookingIntent
-{
-    public function __construct(
-        public string $tenantId,
-        public string $companyId,
-        public string $locationId,
-        public string $terminalId,
-        public string $shiftId,
-        public ?string $sessionId,
-        public ShiftCashSourceRail $sourceRail,
-        public string $sourceKey,
-        public string $sourceId,
-        public string $sourceFingerprint,
-        public ShiftCashOperationKind $operationKind,
-        public string $amount,
-        public string $currency,
-        public CarbonImmutable $occurredAt,
-        public ?string $reasonCode,
-        public ?string $reasonText,
-        public ?string $operatorId,
-        public ShiftCashEvidenceData $evidence,
-    ) {}
-}
-```
-
-Create `apps/api/app/Modules/Treasury/Application/Services/ShiftCashBookingService.php`:
+### 8.7 Transfer and booking cardinality
 
 ```php
-public function book(ShiftCashBookingIntent $intent): ShiftCashBookingResult;
+RepositoryTransferDocumentService::post(
+    RepositoryTransferDocumentIntent $intent
+): RepositoryTransferDocumentResult;
+
+RepositoryTransferDocumentService::reverse(
+    RepositoryTransferDocument $original,
+    RepositoryTransferReversalIntent $intent
+): RepositoryTransferDocumentResult;
+
+ShiftCashBookingService::book(
+    ShiftCashBookingIntent $intent
+): ShiftCashBookingResult;
 ```
 
-Both adapters call this method:
+One internal custody action produces:
 
-- `TreasuryShiftCashFiscalProjection` for verified, non-training v3 events.
-- `QueueV2ShiftCashBooking` and `treasury:w-cash-catch-up-v2` for v2 operation rows.
+```text
+1 repository_transfer_documents row
+1 transfer_group_id
+2 repository_movements rows
+0 journal entries when both repositories share the same GL account
+1 posted journal entry when their GL accounts differ
+```
 
-The service must:
+A reversal produces a new document, new group, two opposite legs, and explicit lineage. No original row is updated.
 
-- Clear any reliance on `CompanyContext`.
-- Resolve scale with explicit currency using `getScaleSafe($intent->currency, 3)` at the worker boundary.
-- Normalize the amount once with `CurrencyScale::bcformatStrict`.
-- Reject zero, negative magnitudes, overprecision, source/repository currency mismatch, and conflicting replay.
-- Pass the same normalized string to document, both movement legs, and JE.
-- Resolve repositories only from the persisted, revisioned cash-custody configuration.
-- Return `Applied`, `IdempotentReplay`, `Blocked`, or `Conflict`; never silently skip a live enabled source.
+---
 
-### 7.2 Transfer contract extension
+## 9. Schema plan
 
-Modify `apps/api/app/Modules/Treasury/Application/DTOs/TransferIntent.php` to append:
+### 9.1 Additive tenant migrations
+
+Exact planned files; their parent directory exists at HEAD:
+
+1. `apps/api/database/migrations/tenant/2026_09_06_090000_add_recorded_policy_to_fiscal_event_projections.php`
+2. `apps/api/database/migrations/tenant/2026_09_06_090100_create_treasury_cash_custody_configuration_tables.php`
+3. `apps/api/database/migrations/tenant/2026_09_06_090200_create_repository_transfer_document_tables.php`
+4. `apps/api/database/migrations/tenant/2026_09_06_090300_create_shift_cash_booking_tables.php`
+5. `apps/api/database/migrations/tenant/2026_09_06_090400_create_z_close_manifest_tables.php`
+6. `apps/api/database/migrations/tenant/2026_09_06_090500_create_cash_count_dispatch_and_reconciliation_tables.php`
+7. `apps/api/database/migrations/tenant/2026_09_06_090600_create_repository_balance_alignments.php` — Q13-conditional and omitted from deployment until Q13 is resolved.
+
+Core deltas:
+
+- `fiscal_event_projections`: add `blocked_reason_code`, `blocked_detail`, `blocked_at`, `resolution_revision_id`, `recovery_attempt_count`, `last_recovery_at`.
+- `fiscal_projection_policy_records`: immutable event/projector decision and evidence.
+- `fiscal_projection_cutovers`: immutable bounded legacy cohort.
+- `treasury_cash_custody_configurations`: disabled/ready/active head by company/location.
+- `treasury_cash_custody_configuration_revisions`: immutable mapping/policy revisions.
+- `treasury_drawer_custody_intervals`: opening/predecessor/retained/top-up and boundary state.
+- `repository_transfer_documents`: immutable transfer justification, optional shift/session link, evidence, reversal lineage.
+- `repository_movements`: nullable `transfer_document_id` and `transfer_leg_role`.
+- `treasury_transfer_alerts`: durable frozen/checkpoint/conflict alerts.
+- `shift_cash_booking_obligations` and `shift_cash_booking_evidence`.
+- `pos_z_close_manifests`.
+- `cash_count_consumer_obligations`.
+- `pos_session_reconciliation_runs`.
+- `pos_session_reconciliation_supersessions`.
+- `repository_balance_alignments` only after Q13.
+
+Device migrations, exclusively owned by T1:
+
+- v68: `cash_custody_policy_cache`, authored revision/cutover evidence on offline cash rows, and typed-policy fields with no seeded economic defaults.
+- v69: `z_close_manifests` and local manifest sync-outbox state.
+
+### 9.2 Company-scoped uniqueness
+
+Every business unique contains `company_id`:
+
+- policy: `(company_id, fiscal_event_id, projector_key)`
+- cutover: `(company_id, location_id, terminal_id, source_rail, lower_bound)`
+- configuration: `(company_id, location_id)`
+- revision: `(company_id, configuration_id, revision_number)`
+- interval: `(company_id, drawer_repository_id, shift_id)`
+- source evidence: `(company_id, source_rail, source_id)`
+- booking obligation: `(company_id, semantic_fingerprint)`
+- transfer source: `(company_id, source_kind, source_key)`
+- transfer alert: `(company_id, transfer_group_id, alert_code)`
+- manifest: `(company_id, z_report_uuid)`
+- consumer obligation: `(company_id, cash_count_source_id, consumer_key)`
+- reconciliation run: `(company_id, z_report_uuid, run_number)`
+- supersession: `(company_id, prior_run_id)`
+- alignment: `(company_id, repository_id, cutover_id)`
+
+No new tenant-only business unique is permitted. PostgreSQL inspection by `TenantOnlyUniqueIndexScanner` must return no new entry.
+
+### 9.3 JSONB DTO map
+
+| Column | Exact DTO |
+|---|---|
+| `fiscal_event_projections.blocked_detail` | `apps/api/app/Modules/Fiscal/Application/DTOs/ProjectionBlockedDetailData.php` |
+| `fiscal_projection_policy_records.policy_evidence` | `apps/api/app/Modules/Fiscal/Application/DTOs/ProjectionPolicyEvidenceData.php` |
+| `fiscal_projection_cutovers.boundary_evidence` | `apps/api/app/Modules/Fiscal/Application/DTOs/ProjectionCutoverEvidenceData.php` |
+| `treasury_cash_custody_configuration_revisions.operation_policy` | `apps/api/app/Modules/Treasury/Application/DTOs/CashOperationPolicyMapData.php` |
+| `treasury_cash_custody_configuration_revisions.revision_evidence` | `apps/api/app/Modules/Treasury/Application/DTOs/CashCustodyRevisionEvidenceData.php` |
+| `repository_transfer_documents.source_evidence` | `apps/api/app/Modules/Treasury/Application/DTOs/RepositoryTransferEvidenceData.php` |
+| `treasury_transfer_alerts.detail` | `apps/api/app/Modules/Treasury/Application/DTOs/FrozenTransferAlertData.php` |
+| `shift_cash_booking_obligations.blocked_detail` | `apps/api/app/Modules/Treasury/Application/DTOs/ShiftCashBookingBlockedDetailData.php` |
+| `shift_cash_booking_evidence.raw_evidence` | `apps/api/app/Modules/Treasury/Application/DTOs/ShiftCashEvidenceData.php` |
+| `pos_z_close_manifests.manifest` | `apps/api/app/Modules/POS/Application/DTOs/ZCloseManifestData.php` |
+| `pos_session_reconciliation_runs.dependency_snapshot` | `apps/api/app/Modules/POS/Application/DTOs/SessionReconciliationDependencySnapshotData.php` |
+| `pos_session_reconciliation_runs.mismatch_detail` | `apps/api/app/Modules/POS/Application/DTOs/SessionReconciliationMismatchData.php` |
+| `repository_balance_alignments.count_evidence` | `apps/api/app/Modules/Treasury/Application/DTOs/RepositoryBalanceAlignmentEvidenceData.php` |
+
+Every DTO requires strict `fromArray()`, deterministic `toArray()`, invalid-shape rejection, and database round-trip tests.
+
+---
+
+## 10. State machines
+
+### Fiscal projection
+
+```text
+pending → running → applied
+pending → running → pending                 transient failure
+pending → running → blocked                 missing policy/config/dependency
+blocked → pending                           CAS with matching resolution revision
+pending/running → dead_lettered             exhausted/permanent technical failure
+```
+
+`blocked` does not consume ordinary retry attempts and is never swept globally.
+
+### Cash booking obligation
+
+```text
+pending → claimed → applied
+pending → claimed → blocked
+pending → claimed → conflict
+claimed → pending                           process crash/expired lease
+blocked → pending                           explicit matching resolution
+applied/conflict                            terminal; correction is a new obligation
+```
+
+### Reconciliation
+
+```text
+pending_membership
+pending_dependencies
+matched
+mismatched
+unavailable_before_coverage
+```
+
+Rows are immutable. A later result appends a run and, if replacing an earlier current run, appends a supersession record. Current result means “run not referenced as `prior_run_id` by any valid supersession for the same company/Z.”
+
+---
+
+## 11. Dispatchable implementation tasks
+
+## T0 — Pre-migration static and live W-CASH census
+
+**Production files**
+
+- New: `apps/api/app/Modules/Treasury/Infrastructure/Commands/AuditCashCustodyReadinessCommand.php`
+- Existing: `apps/api/app/Modules/Treasury/Providers/TreasuryServiceProvider.php:194,237`
+- Existing: `apps/api/app/Support/Tenancy/TenantOnlyUniqueIndexScanner.php:54`
+- Existing: `scripts/preflight.sh`
+- Evidence: `docs/superpowers/audits/2026-09-05-w-cash-census.md`
+
+**Contract**
+
+```php
+AuditCashCustodyReadinessCommand:
+treasury:w-cash-audit
+    {--company=*}
+    {--format=text}
+    {--include-optional}
+    {--fail-on-drift}
+```
+
+Output must enumerate companies, POS locations, terminals/schema versions, open shifts, repositories/types/currencies/GL links, active modules, current fiscal projection backlog, v2/v3 cash sources, and current tenant-only unique ratchet. Optional future-table probes use `Schema::hasTable()`.
+
+**Schema delta:** none.
+
+**Red-first tests**
+
+| Test | First failing assertion | Command/lane |
+|---|---|---|
+| `apps/api/tests/Feature/Treasury/WCashAuditCommandTest.php::test_it_succeeds_before_w_cash_tables_exist` | `$this->artisan('treasury:w-cash-audit')->assertExitCode(0)` | `cd apps/api && ./vendor/bin/phpunit tests/Feature/Treasury/WCashAuditCommandTest.php --filter test_it_succeeds_before_w_cash_tables_exist` — SQLite |
+| `...::test_second_company_rows_are_reported_without_first_company_repositories` | `assertNotContains($companyARepositoryId, $companyBRow['repository_ids'])` | `./scripts/run-feature-lane-local.sh feature-lane-tenancy --group Company` — PostgreSQL |
+| `...::test_second_location_keeps_its_terminal_and_drawer_binding` | `assertSame($locationBId, $terminalBRow['location_id'])` | same PostgreSQL lane |
+| `...::test_rerun_preserves_identical_data_meaning` | `assertSame($firstJson, $secondJson)` after removing observation timestamp | same PostgreSQL lane |
+
+**Implementation**
+
+1. Add capability-aware queries only; no new table is required.
+2. Add exact command registration.
+3. Add static `rg` census output for direct movement writers and X/Z payload keys to the audit artifact.
+4. Run locally, then on staging before Push 2:
+   `cd apps/api && php artisan treasury:w-cash-audit --format=json --include-optional --fail-on-drift`.
+5. Stop if company/location/repository ambiguity, unknown terminal schema, missing GL link, or unexpected writer is found.
+
+**Reviewer gate:** audit artifact contains local and staging output, actual candidate SHA, reviewer name/date, and an explicit `DISPATCHABLE` verdict.
+
+---
+
+## T1 — Additive schema and device migration order
+
+**Production files**
+
+- The seven exact tenant migration paths in §9.1
+- Existing: `apps/pos/src/lib/db/migrations.ts:2163`
+- Existing: `apps/api/database/migrations/tenant/2026_07_08_100200_create_repository_movements_immutability.php`
+- Existing: `apps/api/database/migrations/tenant/2026_07_08_160000_forbid_direct_payment_repository_balance_writes.php`
+
+**Contract/schema**
+
+Apply §9 exactly. v68 precedes v69 in the same `migrations` array. T1 is the sole owner of `migrations.ts`; later tasks consume the tables without editing migration order. All production defaults are disabled/null and all migrations are additive. Q13’s migration is withheld until Q13 is resolved.
+
+**Red-first tests**
+
+| Test | First failing assertion | Command/lane |
+|---|---|---|
+| `apps/api/tests/Feature/Treasury/WCashSchemaBoundaryTest.php::test_every_w_cash_business_unique_is_company_scoped` | `assertSame([], $scanner->scan())` | `./scripts/run-feature-lane-local.sh feature-lane-tenancy --group Company` — PostgreSQL |
+| `...::test_second_company_can_reuse_source_identity` | `assertDatabaseCount('shift_cash_booking_obligations', 2)` | same PostgreSQL lane |
+| `...::test_second_location_can_hold_an_independent_disabled_configuration` | `assertDatabaseCount('treasury_cash_custody_configurations', 2)` | same PostgreSQL lane |
+| `...::test_schema_rerun_preserves_existing_rows_and_meaning` | `assertSame($before, $after)` | same PostgreSQL lane |
+| `apps/pos/src/lib/db/__tests__/wCashMigrations.test.ts::applies_v68_before_v69_and_reruns_idempotently` | `expect(appliedVersions.slice(-2)).toEqual([68, 69])` | `pnpm --filter @autoerp/pos test -- src/lib/db/__tests__/wCashMigrations.test.ts -t "applies v68 before v69 and reruns idempotently"` — Vitest/SQLite |
+
+**Implementation**
+
+1. Add server tables/columns/checks/indexes without backfill or activation.
+2. Add v68, then v69, in one edit.
+3. Test migration up on empty and populated PostgreSQL tenant databases.
+4. Test backup/restore of a migrated tenant.
+5. Do not add destructive `down()` behavior; rollback retains compatible tables/readers.
+
+**Reviewer gate:** schema diff confirms no default-enabled state, no tenant-only unique, v68 before v69, and no other task owns `migrations.ts`.
+
+---
+
+## T2 — Immutable event-time projection policy and bounded recovery
+
+**Production files**
+
+- Existing: `apps/api/app/Modules/Fiscal/Application/Services/OutboxIngestor.php:980-1046`
+- Existing: `apps/api/app/Modules/Fiscal/Application/Services/FiscalEventProjectionDispatcher.php:79,110`
+- Existing: `apps/api/app/Modules/Fiscal/Application/Jobs/ApplyFiscalEventProjectionJob.php:226-319`
+- Existing: `apps/api/app/Modules/Fiscal/Domain/Enums/ProjectionStatus.php`
+- Existing: `apps/api/app/Modules/Fiscal/Infrastructure/Commands/RetryFiscalProjectionsCommand.php`
+- Existing: `apps/api/app/Modules/Fiscal/Infrastructure/Commands/EnqueueResolvedEventProjectionsCommand.php`
+- New: `apps/api/app/Modules/Fiscal/Domain/Models/FiscalProjectionPolicyRecord.php`
+- New: `apps/api/app/Modules/Fiscal/Domain/Models/FiscalProjectionCutover.php`
+- New: `apps/api/app/Modules/Fiscal/Domain/Enums/ProjectionPolicyDecision.php`
+- New: `apps/api/app/Modules/Fiscal/Domain/Enums/ProjectionBlockedReason.php`
+- New: the three Fiscal DTO paths in §9.3
+- New: `apps/api/app/Modules/Fiscal/Application/DTOs/FiscalProjectionRecoveryCriteria.php`
+- New: `apps/api/app/Modules/Fiscal/Application/DTOs/FiscalProjectionRecoveryResult.php`
+- New: `apps/api/app/Modules/Fiscal/Application/Services/FiscalProjectionPolicyRecorder.php`
+- New: `apps/api/app/Modules/Fiscal/Application/Services/FiscalProjectionCutoverService.php`
+- New: `apps/api/app/Modules/Fiscal/Application/Services/FiscalProjectionRecoveryService.php`
+- New: `apps/api/app/Modules/Fiscal/Infrastructure/Commands/CreateFiscalProjectionCutoverCommand.php`
+
+**Signatures/schema**
+
+Use §8.3. Command:
+
+```text
+fiscal:projection-cutover:create
+  {--company=}
+  {--location=}
+  {--terminal=}
+  {--rail=}
+  {--lower-bound=}
+  {--upper-bound=}
+  {--policy-revision=}
+  {--evidence-file=}
+```
+
+No current registry lookup is allowed during recovery.
+
+**Red-first tests**
+
+| Test | First failing assertion | Command/lane |
+|---|---|---|
+| `apps/api/tests/Feature/Fiscal/FiscalProjectionPolicyRecoveryTest.php::test_later_module_activation_does_not_create_an_old_event_obligation` | `assertDatabaseMissing('fiscal_event_projections', ['fiscal_event_id' => $oldId, 'projector_key' => $laterProjector])` | `./scripts/run-feature-lane-local.sh feature-lane-fiscal-finance --group Fiscal` — PostgreSQL |
+| `...::test_later_module_deactivation_does_not_erase_recorded_obligation` | `assertDatabaseHas('fiscal_event_projections', ['fiscal_event_id' => $id])` | same lane |
+| `...::test_recovery_refuses_unbounded_legacy_cohort` | `$this->expectException(UnboundedProjectionRecoveryException::class)` | same lane |
+| `...::test_second_company_cutover_cannot_admit_first_company_event` | `assertSame(0, $result->admittedCount)` | same lane |
+| `...::test_second_location_requires_matching_cutover_scope` | `assertSame(ProjectionBlockedReason::CutoverScopeMismatch, $result->reason)` | same lane |
+| `...::test_rerun_preserves_policy_decision_and_data_meaning` | `assertDatabaseCount('fiscal_projection_policy_records', 1)` | same lane |
+
+**Implementation**
+
+1. Record policy decisions in the event-ingestion transaction.
+2. Make dispatcher seed from those records.
+3. Add bounded legacy cutovers.
+4. Add blocked state/CAS recovery metadata.
+5. Change retry commands to require recorded policy/cutover evidence.
+6. Leave W-CASH projector unregistered until T5 and globally disabled afterward.
+
+**Reviewer gate:** module/capability-change tests are green and code search finds no recovery path deriving historical obligations from the active registry.
+
+---
+
+## T3 — Versioned cash-custody configuration and provisioning
+
+**Production files**
+
+- Existing: `apps/api/app/Modules/Company/Presentation/Controllers/CompanyController.php:49-60,83,194-196`
+- Existing: `apps/api/app/Modules/Company/Presentation/Controllers/LocationController.php:24-31,181-224,240-251,294`
+- Existing: `apps/api/app/Shared/Contracts/Treasury/CompanyPaymentRepositoryProvisionerInterface.php:49`
+- Existing: `apps/api/app/Modules/Treasury/Application/Services/PaymentRepositoryProvisioningService.php:32-70`
+- Existing: `apps/api/app/Shared/Contracts/Treasury/LocationCashRegisterProvisionerInterface.php`
+- Existing: `apps/api/app/Modules/Treasury/Application/Services/LocationCashRegisterProvisioner.php:94`
+- Existing: `apps/api/app/Modules/Treasury/Presentation/routes.php:35`
+- New: `apps/api/app/Modules/Treasury/Domain/Models/CashCustodyConfiguration.php`
+- New: `apps/api/app/Modules/Treasury/Domain/Models/CashCustodyConfigurationRevision.php`
+- New: `apps/api/app/Modules/Treasury/Domain/Enums/CashCustodyCapabilityState.php`
+- New: `apps/api/app/Modules/Treasury/Application/Services/CashCustodyConfigurationService.php`
+- New: `apps/api/app/Modules/Treasury/Application/DTOs/CashCustodyConfigurationData.php`
+- New: `apps/api/app/Modules/Treasury/Application/DTOs/CashCustodyConfigurationRevisionData.php`
+- New: `apps/api/app/Modules/Treasury/Application/DTOs/CashCustodyActivationData.php`
+- New: operation-policy and revision-evidence DTOs from §9.3
+- New: `apps/api/app/Modules/Treasury/Presentation/Controllers/CashCustodyConfigurationController.php`
+- New: `apps/api/app/Modules/Treasury/Presentation/Requests/UpdateCashCustodyConfigurationRequest.php`
+- New: `apps/api/app/Modules/Treasury/Infrastructure/Commands/ConfigureCashCustodyCommand.php`
+- Existing: `docs/glossary.md`
+- New generated DTO source: `apps/api/app/Modules/Treasury/Application/DTOs/PaymentRepositoryData.php`
+- Generated output: `packages/shared/types/generated.d.ts`
+
+**Signatures/schema**
+
+```php
+ensureDisabledForCompany(
+    string $tenantId,
+    string $companyId,
+    ?string $defaultLocationId
+): CashCustodyConfiguration;
+
+ensureDisabledForLocation(
+    string $tenantId,
+    string $companyId,
+    string $locationId
+): CashCustodyConfiguration;
+
+appendRevision(...): CashCustodyConfigurationRevision;
+activateRevision(...): CashCustodyConfiguration;
+```
+
+`CompanyController`’s existing outer transaction owns company + repository + disabled-config provisioning. `LocationController` wraps POS-enabled location creation/update and `LocationCashRegisterProvisioner::provision()` in one outer transaction; the Treasury provisioner’s nested transaction is a savepoint. Retries return the same disabled configuration.
+
+Command:
+
+```text
+treasury:w-cash-configure
+  {--company=}
+  {--location=}
+  {--drawer=}
+  {--safe=}
+  {--bank=}
+  {--policy-file=}
+  {--state=disabled}
+```
+
+No default operation policy is seeded while Q11/Q12 are open.
+
+**Red-first tests**
+
+| Test | First failing assertion | Command/lane |
+|---|---|---|
+| `apps/api/tests/Feature/Company/WCashProvisioningTest.php::test_registration_provisions_disabled_cash_custody_configuration` | `assertDatabaseHas('treasury_cash_custody_configurations', ['capability_state' => 'disabled'])` | `./scripts/run-feature-lane-local.sh feature-lane-tenancy --group Company` — PostgreSQL |
+| `...::test_second_company_gets_only_its_own_configuration` | `assertNotSame($companyAConfig->id, $companyBConfig->id)` | same lane |
+| `...::test_second_pos_location_gets_its_own_drawer_configuration` | `assertSame($locationB->id, $configB->location_id)` | same lane |
+| `...::test_provisioning_rerun_preserves_repository_and_configuration_meaning` | `assertDatabaseCount('treasury_cash_custody_configurations', 1)` | same lane |
+| `apps/api/tests/Feature/Treasury/CashCustodyConfigurationJsonTest.php::test_revision_jsonb_round_trips_strict_dtos` | `assertEquals($dto, CashCustodyConfigurationRevisionData::fromModel($row))` | PostgreSQL |
+
+**Implementation**
+
+1. Add immutable revision writer and disabled head.
+2. Hook it into both existing Treasury provisioners.
+3. Make location provisioning atomic with the location state transition.
+4. Add read/update endpoints behind `module:Treasury` and `can:treasury.manage`.
+5. Generate DTOs and add glossary rows.
+6. Reject cross-company, wrong-location, wrong-type, inactive, unlinked-GL, and currency-mismatch repositories.
+
+**Reviewer gate:** a real registration, second company, and second POS location each produce one correctly scoped disabled configuration without selecting Q11/Q12 defaults.
+
+---
+
+## T4 — Transfer document, manual linkage, module gate, and durable frozen alert
+
+**Production files**
+
+- Existing: `apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:49,225`
+- Existing: `apps/api/app/Shared/Contracts/Treasury/TreasuryMovementServiceInterface.php`
+- Existing: `apps/api/app/Modules/Treasury/Application/DTOs/TransferIntent.php`
+- Existing: `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferService.php:33-123`
+- Existing: `apps/api/app/Modules/Treasury/Presentation/Requests/TransferRepositoryRequest.php:19-27`
+- Existing: `apps/api/app/Modules/Treasury/Presentation/Controllers/RepositoryTransferController.php:21-56`
+- Existing: `apps/api/app/Modules/Treasury/Presentation/routes.php:35,102-104`
+- New: `apps/api/app/Modules/Treasury/Domain/Models/RepositoryTransferDocument.php`
+- New: `apps/api/app/Modules/Treasury/Domain/Models/TreasuryTransferAlert.php`
+- New: `apps/api/app/Modules/Treasury/Domain/Enums/RepositoryTransferKind.php`
+- New: `apps/api/app/Modules/Treasury/Domain/Enums/RepositoryTransferStatus.php`
+- New: `apps/api/app/Modules/Treasury/Application/DTOs/RepositoryTransferDocumentIntent.php`
+- New: `apps/api/app/Modules/Treasury/Application/DTOs/RepositoryTransferDocumentResult.php`
+- New: `apps/api/app/Modules/Treasury/Application/DTOs/RepositoryTransferReversalIntent.php`
+- New: transfer-evidence and frozen-alert DTOs from §9.3
+- New: `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferDocumentService.php`
+- New: `apps/api/app/Modules/Treasury/Application/Services/TreasuryTransferAlertService.php`
+- Existing: `docs/glossary.md`
+
+**Signatures/schema**
+
+Use §8.7. Extend `TransferIntent` with:
 
 ```php
 public bool $allowWhileFrozen = false;
@@ -221,1132 +896,861 @@ public bool $allowBehindCheckpoint = false;
 public bool $allowNegative = false;
 ```
 
-Interactive `RepositoryTransferService` passes all three as `false`. Verified offline W-CASH facts pass:
+Extend the request/document with nullable `shift_id` and `session_id`. Linkage is append-only, requires `treasury.transfer`, and must resolve to the same company/location as the drawer repository. Existing manual calls pass all replay exceptions as false.
+
+**Red-first tests**
+
+| Test | First failing assertion | Command/lane |
+|---|---|---|
+| `apps/api/tests/Feature/Treasury/RepositoryTransferDocumentTest.php::test_transfer_creates_one_document_two_legs_and_zero_or_one_je` | `assertDatabaseCount('repository_transfer_documents', 1)` | `./scripts/run-feature-lane-local.sh treasury-spine-pgsql --group Treasury` — PostgreSQL |
+| `...::test_frozen_offline_transfer_persists_one_durable_alert_on_retry` | `assertDatabaseCount('treasury_transfer_alerts', 1)` | same lane |
+| `...::test_manual_transfer_can_link_a_same_location_shift_and_session` | `assertSame($shiftId, $document->shift_id)` | same lane |
+| `...::test_second_company_cannot_reference_first_company_repository_or_shift` | `assertSame(422, $response->status())` | same lane |
+| `...::test_second_location_linkage_is_rejected_for_the_wrong_drawer` | `assertSame('TRANSFER_LOCATION_MISMATCH', $response->json('error.code'))` | same lane |
+| `...::test_exact_rerun_returns_original_document_without_new_legs` | `assertDatabaseCount('repository_movements', 2)` | same lane |
+| `apps/api/tests/Feature/Treasury/TreasuryModuleGateTest.php::test_module_off_refuses_existing_transfer_and_configuration_routes` | `assertSame(403, $response->status())` | PostgreSQL |
+
+**Implementation**
+
+1. Run T0 route compatibility census.
+2. Add `module:Treasury` specifically to the reused transfer and new configuration/alignment routes.
+3. Wrap manual transfer through `RepositoryTransferDocumentService`.
+4. Preserve exactly two legs and zero/one JE.
+5. Add optional shift/session validation.
+6. Add durable alert within the financial transaction for flagged frozen/checkpoint writes.
+7. Make all business uniques company-scoped.
+8. Add reversal lineage and no direct movement writes.
+
+**Reviewer gate:** cardinality, module-off behavior, same-company/location linkage, frozen-alert durability, rollback atomicity, and uniqueness ratchet are green on PostgreSQL.
+
+---
+
+## T5 — Shared server booking, canonical fingerprint, and v2/v3 adapters
+
+**Production files**
+
+- Existing: `apps/api/app/Modules/Fiscal/Domain/DTOs/ZCashDrawerMovementPayload.php:7-33`
+- Existing: `apps/api/app/Modules/Fiscal/Domain/DTOs/FiscalPayloadArrayGuards.php:34`
+- Existing: `apps/api/app/Modules/POS/Domain/Services/CashDrawerService.php`
+- Existing: `apps/api/app/Modules/POS/Domain/Events/CashDrawerOperationRecorded.php`
+- Existing: `apps/api/app/Modules/POS/Domain/Services/ShiftManagementService.php`
+- Existing: `apps/api/app/Modules/POS/Application/Services/ShiftExpectedCashService.php:250-304`
+- Existing: `apps/api/config/treasury.php:5-29`
+- New: `apps/api/app/Modules/Treasury/Application/DTOs/ShiftCashBookingIntent.php`
+- New: `apps/api/app/Modules/Treasury/Application/DTOs/ShiftCashBookingResult.php`
+- New: `apps/api/app/Modules/Treasury/Application/DTOs/ShiftCashEvidenceData.php`
+- New: `apps/api/app/Modules/Treasury/Application/DTOs/ShiftCashBookingBlockedDetailData.php`
+- New: `apps/api/app/Modules/Treasury/Domain/Enums/ShiftCashSourceRail.php`
+- New: `apps/api/app/Modules/Treasury/Domain/Enums/ShiftCashOperationKind.php`
+- New: `apps/api/app/Modules/Treasury/Domain/Models/ShiftCashBookingObligation.php`
+- New: `apps/api/app/Modules/Treasury/Domain/Models/ShiftCashBookingEvidence.php`
+- New: `apps/api/app/Modules/Treasury/Domain/Models/TreasuryDrawerCustodyInterval.php`
+- New: `apps/api/app/Modules/Treasury/Application/Services/ShiftCashSemanticFingerprint.php`
+- New: `apps/api/app/Modules/Treasury/Application/Services/DrawerIntervalStartService.php`
+- New: `apps/api/app/Modules/Treasury/Application/Services/ShiftCashBookingService.php`
+- New: `apps/api/app/Modules/Treasury/Application/Projections/TreasuryShiftCashFiscalProjection.php`
+- New: `apps/api/app/Modules/POS/Domain/Events/CashDrawerOperationAuthoredV2.php`
+- New: `apps/api/app/Modules/Treasury/Application/Listeners/QueueV2ShiftCashBooking.php`
+- New: `apps/api/app/Modules/Treasury/Infrastructure/Commands/CatchUpV2ShiftCashBookingsCommand.php`
+- Existing: `apps/api/app/Modules/Treasury/Providers/TreasuryServiceProvider.php`
+
+**Signatures/schema**
 
 ```php
-allowWhileFrozen: true,
-allowBehindCheckpoint: true,
-allowNegative: false,
+ShiftCashSemanticFingerprint::fromIntent(
+    ShiftCashBookingIntent $intent
+): string;
+
+DrawerIntervalStartService::resolve(
+    DrawerIntervalStartIntent $intent
+): DrawerIntervalStartResult;
+
+ShiftCashBookingService::book(
+    ShiftCashBookingIntent $intent
+): ShiftCashBookingResult;
 ```
 
-Modify `TreasuryMovementServiceInterface::transfer(TransferIntent $intent): TransferResult` documentation and implementation so:
-
-- Exact replay is resolved before mutable freeze/checkpoint policy.
-- A new flagged offline transfer can pass freeze/checkpoint checks, but both legs set `recorded_while_frozen` and/or `recorded_behind_checkpoint`.
-- A durable alert/audit record is emitted once per transfer group.
-- Insufficient drawer balance never becomes a negative transfer; the obligation remains dependency-blocked until earlier covered movements arrive or an operator resolves it.
-- Any failure before both legs are inserted rolls back document, JE, both legs, and both cached balances.
-
-### 7.3 Transfer-document contract
-
-Create:
+Config flags added to `config/treasury.php`:
 
 ```php
-public function post(
-    RepositoryTransferDocumentIntent $intent
-): RepositoryTransferDocumentResult;
-
-public function reverse(
-    RepositoryTransferDocument $original,
-    RepositoryTransferReversalIntent $intent
-): RepositoryTransferDocumentResult;
+'w_cash_booking_enabled' =>
+    (bool) env('TREASURY_W_CASH_BOOKING_ENABLED', false),
+'cash_count_dispatch_enabled' =>
+    (bool) env('TREASURY_CASH_COUNT_DISPATCH_ENABLED', false),
 ```
 
-`RepositoryTransferDocumentIntent` includes tenant, company, location, source/destination repositories, kind, source rail/key/id/fingerprint, amount, currency, occurred-at, evidence, actor, and replay policy.
+The v2 catch-up command requires `--cutover=` and supports `--dry-run`; no unbounded scan.
 
-A posted action must satisfy:
+**Red-first tests**
 
-```text
-1 repository_transfer_documents row
-1 transfer_group_id
-2 repository_movements rows
-0 JE if both repositories share gl_account_id
-1 posted JE if the repositories have different gl_account_id
+| Test | First failing assertion | Command/lane |
+|---|---|---|
+| `apps/api/tests/Feature/Treasury/ShiftCashBookingTest.php::test_equivalent_v2_and_v3_facts_share_one_semantic_obligation` | `assertDatabaseCount('shift_cash_booking_obligations', 1)` | `./scripts/run-feature-lane-local.sh treasury-spine-pgsql --group Treasury` — PostgreSQL |
+| `...::test_same_operation_id_with_different_amount_freezes_as_conflict` | `assertSame('conflict', $obligation->status->value)` | same lane |
+| `...::test_missing_or_string_training_flag_is_blocked_without_money` | `assertDatabaseCount('repository_movements', 0)` | same lane |
+| `...::test_training_event_is_applied_without_money` | `assertSame('training_no_money', $result->code)` | same lane |
+| `...::test_later_configuration_revision_does_not_reinterpret_authored_event` | `assertSame($oldRevisionId, $evidence->configuration_revision_id)` | same lane |
+| `...::test_second_company_can_reuse_operation_id_without_deduplication` | `assertDatabaseCount('shift_cash_booking_obligations', 2)` | same lane |
+| `...::test_second_location_does_not_resolve_first_location_configuration` | `assertSame('configuration_scope_mismatch', $result->code)` | same lane |
+| `...::test_exact_rerun_preserves_document_and_movement_meaning` | `assertDatabaseCount('repository_movements', 2)` | same lane |
+| `apps/api/tests/Feature/Treasury/DrawerIntervalStartTest.php::test_sequential_shift_uses_retained_balance_not_full_opening` | `assertSame('200.000', $result->topUpAmount)` | same lane; **Q11-conditional** |
+| `...::test_declared_opening_below_retained_balance_blocks` | `assertSame('opening_count_below_retained_balance', $result->code)` | same lane; **Q11-conditional** |
+| `...::test_second_terminal_cannot_create_a_second_float_for_shared_drawer` | `assertDatabaseCount('repository_transfer_documents', 1)` | same lane; **Q11-conditional** |
+
+**Implementation**
+
+1. Add strict training parsing.
+2. Add semantic fingerprint/evidence split.
+3. Append the new v2 event; do not mutate the existing event contract.
+4. Add bounded catch-up and dormant v3 projector.
+5. Persist obligations before financial work.
+6. Implement generic blocked outcomes immediately.
+7. Implement/enable interval-start financial behavior only after Q11.
+8. Implement/enable cash-operation classification only after Q12.
+9. Preserve receipt sales/refund booking as authoritative; W-CASH does not rebook them.
+10. Leave both global flags false.
+
+**Reviewer gate:** no money is written while Q11/Q12 are OPEN; equivalence, conflict, training, scope, recovery, and conditional sequential-shift tests are accepted.
+
+---
+
+## T6 — Device policy evidence and typed cash authoring
+
+**Production files**
+
+- Existing: `apps/pos/src/api/cashDrawerApi.ts:1-223`
+- Existing: `apps/pos/src/components/pos/CashDrawerModal.tsx:1-180`
+- Existing: `apps/pos/src/lib/fiscal/zSessionAuthoring.ts:37-92,507-566,664-722`
+- Existing: `apps/pos/src/lib/db/repositories/cashDrawerRepository.ts`
+- Existing: `apps/pos/src/lib/sync/syncService.ts:591,2294`
+- Existing: `apps/pos/src/lib/operatorApproval/cashDrawerApproval.ts:12-44`
+- Existing: `apps/api/app/Modules/POS/Presentation/Controllers/CashDrawerController.php:28-245`
+- Existing: `apps/api/app/Modules/POS/Presentation/Requests/RecordDepositRequest.php`
+- Existing: `apps/api/app/Modules/POS/Presentation/Requests/RecordPayoutRequest.php`
+- Existing: `apps/api/app/Modules/POS/Domain/Services/CashDrawerService.php`
+- New: `apps/pos/src/lib/cashCustody/cashCustodyPolicy.ts`
+- New: `apps/pos/src/lib/cashCustody/cashOperationAuthoring.ts`
+- New: `apps/pos/src/lib/db/repositories/cashCustodyPolicyRepository.ts`
+- New: `apps/pos/src/api/cashCustodyConfigurationApi.ts`
+
+**Contract/schema**
+
+```ts
+type CashOperationPolicy = {
+  configurationRevisionId: string;
+  cutoverId: string;
+  sourceLowerBound: string;
+  sourceUpperBound: string | null;
+  operationCode: string;
+  economicKind: string;
+  sourceRepositoryRole: string | null;
+  destinationRepositoryRole: string | null;
+};
+
+authorCashOperation(input: CashOperationAuthoringInput): Promise<void>;
 ```
 
-A correction never updates the original document or movements. `reverse()` creates a new reversal document, a new transfer group, and two opposite legs linked to the original document and movements.
+The device may display codes returned by an active signed configuration revision, but the plan does not seed or select the Q12 recommendation. No free-text inference. Opening authoring records revision/cutover evidence; its financial result remains Q11-conditional on the server.
 
-### 7.4 W7 contracts
+**Red-first tests**
 
-Create `PosSessionReconciliationService`:
+| Test | First failing assertion | Command/lane |
+|---|---|---|
+| `apps/pos/src/api/__tests__/cashDrawerApi.wCash.test.ts::blocks_cash_authoring_without_active_policy_revision` | `await expect(author).rejects.toThrow('cash custody policy unavailable')` | `pnpm --filter @autoerp/pos test -- src/api/__tests__/cashDrawerApi.wCash.test.ts -t "blocks cash authoring without active policy revision"` — Vitest/SQLite |
+| `...::does_not_dispatch_safe_drop_while_q12_policy_is_absent` | `expect(authorZCashDrawerMovement).not.toHaveBeenCalled()` | same lane |
+| `...::persists_exact_policy_revision_with_authored_fact` | `expect(row.configuration_revision_id).toBe(revisionId)` | same lane |
+| `...::second_company_reads_only_its_company_database_policy` | `expect(policy.companyId).toBe(companyB)` | same lane |
+| `...::second_location_rejects_a_policy_for_another_terminal_location` | `expect(result.code).toBe('policy_scope_mismatch')` | same lane |
+| `...::policy_refresh_rerun_preserves_authored_fact_meaning` | `expect(after.rawEvidenceHash).toBe(before.rawEvidenceHash)` | same lane |
+| `apps/pos/src/lib/fiscal/__tests__/zSessionAuthoring.test.ts::does_not_author_a_second_opening_for_a_joined_drawer_interval` | `expect(events.filter(isOpeningFloat)).toHaveLength(1)` | Vitest/SQLite; **Q11-conditional** |
+
+**Implementation**
+
+1. Sync disabled/active configuration revisions to the device.
+2. Cache them in v68.
+3. Require revision/cutover evidence at authoring.
+4. Replace free-text-only selection with server-provided typed policy choices after Q12.
+5. Keep reason text as evidence, not classification.
+6. Preserve approval evidence.
+7. Do not expose or dispatch SAFE_DROP until Q12.
+8. Apply Q11-approved join/refusal behavior only after Q11.
+9. Keep v2 endpoint compatibility until cutover verification is complete.
+
+**Reviewer gate:** offline behavior is fail-closed, policy evidence survives sync/retry, and no owner-open operation can dispatch money.
+
+---
+
+## T7 — Atomic device close manifest and server ingestion
+
+**Production files**
+
+- Existing: `apps/pos/src/lib/offline/zReportService.ts:134,198-225,541-576,748-753`
+- Existing: `apps/pos/src/lib/fiscal/zSessionAuthoring.ts:664-722`
+- Existing: `apps/pos/src/lib/sync/syncService.ts:541-562,633`
+- New: `apps/pos/src/lib/offline/zCloseManifest.ts`
+- New: `apps/pos/src/lib/db/repositories/zCloseManifestRepository.ts`
+- Existing: `apps/api/app/Modules/POS/Presentation/Controllers/ZReportSyncController.php:508-555`
+- Existing: `apps/api/app/Modules/POS/Presentation/routes.php:130-135`
+- New: `apps/api/app/Modules/POS/Domain/Models/ZCloseManifest.php`
+- New: `apps/api/app/Modules/POS/Application/DTOs/ZCloseManifestData.php`
+- New: `apps/api/app/Modules/POS/Application/Services/ZCloseManifestIngestor.php`
+
+**Contract/schema**
+
+```ts
+buildZCloseManifest(input: ZCloseManifestInput): ZCloseManifest;
+```
 
 ```php
-public function reconcile(
+ZCloseManifestIngestor::ingest(
+    string $companyId,
+    ZCloseManifestData $manifest
+): ZCloseManifest;
+```
+
+Membership follows §8.6. Z, manifest, and local outbox are atomic. Server sync stores the Z/manifest acknowledgement in one request transaction. Fiscal upload and Z sync may arrive in either order.
+
+**Red-first tests**
+
+| Test | First failing assertion | Command/lane |
+|---|---|---|
+| `apps/pos/src/lib/offline/__tests__/zCloseManifest.test.ts::writes_z_manifest_and_outbox_atomically` | `expect(await countManifests(db)).toBe(1)` | `pnpm --filter @autoerp/pos test -- src/lib/offline/__tests__/zCloseManifest.test.ts -t "writes z manifest and outbox atomically"` — Vitest/SQLite |
+| `...::rollback_after_manifest_failure_leaves_no_z_or_manifest` | `expect(await countZReports(db)).toBe(0)` | same lane |
+| `...::manifest_contains_device_sources_and_excludes_server_movements` | `expect(memberStreams).not.toContain('repository_movements')` | same lane |
+| `...::second_company_manifest_never_reads_first_company_database` | `expect(manifest.companyId).toBe(companyB)` | same lane |
+| `...::second_location_manifest_contains_only_selected_terminal_sources` | `expect(new Set(memberLocationIds)).toEqual(new Set([locationB]))` | same lane |
+| `...::manifest_rerun_has_identical_hash_and_membership` | `expect(second.manifestHash).toBe(first.manifestHash)` | same lane |
+| `apps/api/tests/Feature/POS/ZCloseManifestSyncTest.php::test_reordered_manifest_and_fiscal_upload_becomes_complete_only_after_both` | `assertSame('pending_membership', $firstResult->status->value)` | `./scripts/run-feature-lane-local.sh feature-lane-pos --group POS` — PostgreSQL |
+
+**Implementation**
+
+1. Build manifest exclusively from device-authored data used by Z.
+2. Insert it in the existing SQLite fiscal transaction.
+3. Send it with Z sync and verify its hash server-side.
+4. Keep reconciliation pending until referenced members exist.
+5. Reject duplicate Z with different manifest hash as a conflict.
+6. Do not alter sealed fiscal payload versions.
+
+**Reviewer gate:** crash, replay, out-of-order upload, company/location isolation, and deterministic hashing are green.
+
+---
+
+## T8 — Durable `CashCountDispatcher` and v3 producer
+
+**Production files**
+
+- Existing: `apps/api/app/Modules/POS/Application/Services/CashCountDispatcher.php:89-112`
+- Existing: `apps/api/app/Modules/POS/Application/Services/ReportGenerationService.php:433`
+- Existing: `apps/api/app/Modules/POS/Application/Projections/ZReportProjection.php:54`
+- Existing: `apps/api/app/Modules/POS/Presentation/Controllers/ZReportSyncController.php:508,555`
+- Existing: `apps/api/app/Modules/Treasury/Application/Listeners/PostShiftCashVarianceAdjustment.php:294`
+- Existing: `apps/api/app/Modules/Compliance/Application/Listeners/OpenFraudAlertForShiftVariance.php:14,22`
+- Existing: `apps/api/app/Modules/Treasury/Providers/TreasuryServiceProvider.php:221-237`
+- Existing: `apps/api/app/Modules/Compliance/Providers/ComplianceServiceProvider.php:82-85`
+- New: `apps/api/app/Shared/Contracts/POS/CashCountConsumerInterface.php`
+- New: `apps/api/app/Modules/POS/Application/DTOs/CashCountConsumerOutcome.php`
+- New: `apps/api/app/Modules/POS/Application/DTOs/CashCountDispatchResult.php`
+- New: `apps/api/app/Modules/POS/Domain/Models/CashCountConsumerObligation.php`
+- New: `apps/api/app/Modules/POS/Application/Services/CashCountObligationService.php`
+- New: `apps/api/app/Modules/POS/Application/Jobs/DispatchCashCountConsumerJob.php`
+- New: `apps/api/app/Modules/POS/Application/Jobs/DispatchProjectedCashCountJob.php`
+- New: `apps/api/app/Modules/POS/Application/Services/CashCountRecordedFactory.php`
+- New: `apps/api/app/Modules/POS/Infrastructure/Commands/RecoverCashCountDispatchCommand.php`
+
+**Signatures/schema**
+
+```php
+interface CashCountConsumerInterface
+{
+    public function consumerKey(): string;
+    public function consume(CashCountRecorded $event): CashCountConsumerOutcome;
+}
+
+CashCountDispatcher::dispatch(
+    CashCountRecorded $event
+): CashCountDispatchResult;
+```
+
+Consumers are tagged and iterated independently. The producer obligation is created with the Z projection. A queue-enqueue failure records `enqueue_failed` and throws `CashCountDispatchIncomplete`; it cannot be logged and forgotten.
+
+**Red-first tests**
+
+| Test | First failing assertion | Command/lane |
+|---|---|---|
+| `apps/api/tests/Feature/POS/CashCountDispatcherDurabilityTest.php::test_first_consumer_failure_does_not_erase_second_consumer_obligation` | `assertDatabaseCount('cash_count_consumer_obligations', 2)` | `./scripts/run-feature-lane-local.sh feature-lane-pos --group POS` — PostgreSQL |
+| `...::test_queue_failure_returns_typed_failure_and_remains_recoverable` | `assertSame('enqueue_failed', $result->outcomeFor('treasury.shift_variance')->code)` | same lane |
+| `...::test_retry_after_partial_success_does_not_repeat_completed_consumer` | `assertSame(1, $complianceConsumer->calls)` | same lane |
+| `...::test_v3_z_projection_creates_obligation_transactionally` | `assertDatabaseHas('cash_count_consumer_obligations', ['cash_count_source_id' => $zId])` | same lane |
+| `...::test_second_company_has_independent_consumer_obligations` | `assertDatabaseCount('cash_count_consumer_obligations', 4)` | same lane |
+| `...::test_second_location_count_keeps_its_shift_scope` | `assertSame($locationB, $captured->locationId)` | same lane |
+| `...::test_dispatch_rerun_preserves_consumer_outcome_meaning` | `assertDatabaseCount('cash_count_consumer_obligations', 2)` | same lane |
+
+**Implementation**
+
+1. Replace broad event dispatch with tagged consumers behind the shared contract.
+2. Persist obligations before enqueuing.
+3. Register the two existing consumers with stable keys.
+4. Create v3 producer obligation transactionally with Z.
+5. Route legacy/server Z producers through the same obligation service.
+6. Use only the existing `default` queue.
+7. Keep `TREASURY_CASH_COUNT_DISPATCH_ENABLED=false`.
+8. Exclude training counts.
+
+**Reviewer gate:** crash/retry and partial-consumer failures cannot lose either obligation, and v2/server/v3 producers deduplicate on company/count identity.
+
+---
+
+## T9 — W7 session reconciliation and repository coverage
+
+**Prerequisite stop**
+
+Do not dispatch T9 until all are evidenced:
+
+- W2 table/classification work is approved and its tender/financial-table classification is available.
+- W4 projection completeness and T2 event-time policy recovery are green.
+- T7 manifest is green.
+- T8 durable cash-count production is green.
+- W-LOT exposes an explicit lot-estimate/status contract.
+- Q10 is resolved before selecting launch-accepted lot states.
+- Q11/Q12 branches remain blocked unless separately resolved.
+
+**Production files**
+
+- Existing: `apps/api/app/Modules/POS/Application/Services/ShiftExpectedCashService.php:167-419`
+- Existing: `apps/api/app/Modules/POS/Domain/Exceptions/UnknownTenderClassificationException.php:39`
+- Existing: `apps/api/app/Modules/POS/Application/Projections/ZReportProjection.php:54`
+- New: `apps/api/app/Modules/POS/Domain/Models/PosSessionReconciliationRun.php`
+- New: `apps/api/app/Modules/POS/Domain/Models/PosSessionReconciliationSupersession.php`
+- New: `apps/api/app/Modules/POS/Domain/Enums/SessionReconciliationStatus.php`
+- New: `apps/api/app/Modules/POS/Application/DTOs/PosSessionReconciliationIntent.php`
+- New: `apps/api/app/Modules/POS/Application/DTOs/PosSessionReconciliationResult.php`
+- New: dependency/mismatch DTOs from §9.3
+- New: `apps/api/app/Modules/POS/Application/Services/FiscalSessionComparisonService.php`
+- New: `apps/api/app/Modules/POS/Application/Services/RepositoryCashCoverageService.php`
+- New: `apps/api/app/Modules/POS/Application/Services/PosSessionReconciliationService.php`
+- New: `apps/api/app/Modules/POS/Application/Jobs/ReconcileProjectedZReportJob.php`
+- New: `apps/api/app/Modules/POS/Infrastructure/Commands/ReconcilePosSessionsCommand.php`
+- New: `apps/api/app/Modules/POS/Presentation/Controllers/PosSessionReconciliationController.php`
+- Existing: `apps/api/app/Modules/POS/routes.php:42,130-135`
+- Existing: `docs/glossary.md`
+
+**Signatures/schema**
+
+```php
+FiscalSessionComparisonService::compare(
+    PosSessionReconciliationIntent $intent
+): FiscalSessionComparison;
+
+RepositoryCashCoverageService::calculate(
+    RepositoryCashCoverageInput $input
+): RepositoryCashCoverageResult; // pure; no writes
+
+PosSessionReconciliationService::reconcile(
     PosSessionReconciliationIntent $intent
 ): PosSessionReconciliationResult;
 
-public function invalidateForLateMember(
-    string $companyId,
-    string $zReportId,
-    string $dependencyIdentity
-): void;
+PosSessionReconciliationService::supersede(
+    string $priorRunId,
+    PosSessionReconciliationIntent $replacement
+): PosSessionReconciliationResult;
 ```
 
-Create `CashCountRecordedFactory`:
+The server dependency snapshot contains transfer documents, movement IDs/ordinals, cash bookings, explicitly linked backoffice documents, configuration revision, and alignment boundary. Only `PosSessionReconciliationService` persists runs/supersessions.
+
+**Complete spec-v4 W7 red-first matrix**
+
+All cases live in `apps/api/tests/Feature/POS/PosSessionReconciliationServiceTest.php` and run with:
+
+```bash
+./scripts/run-feature-lane-local.sh feature-lane-pos --group POS
+```
+
+Lane: PostgreSQL.
+
+| Exact case | First failing assertion |
+|---|---|
+| `test_taxed_sale_and_partial_refund_match_independent_totals` | `assertSame('matched', $result->fiscalStatus->value)` |
+| `test_multiple_vat_rates_compare_per_rate_not_only_grand_total` | `assertSame([], $result->fiscalMismatch->vatBuckets)` |
+| `test_rounded_cash_and_card_tenders_match_by_classification` | `assertSame($expectedTenderBuckets, $result->actualTenderBuckets)` |
+| `test_account_collection_is_included_in_expected_cash_once` | `assertSame('matched', $result->fiscalStatus->value)` |
+| `test_opening_float_and_fiscal_drop_are_covered_without_double_counting_opening` | `assertSame($countedCash, $result->repositoryCoverage->closingAmount)` |
+| `test_manifest_membership_gap_stays_pending` | `assertSame('pending_membership', $result->status->value)` |
+| `test_missing_projection_stays_pending_dependencies` | `assertSame('pending_dependencies', $result->status->value)` |
+| `test_late_valid_member_appends_superseding_run` | `assertDatabaseHas('pos_session_reconciliation_supersessions', ['prior_run_id' => $firstId])` |
+| `test_out_of_manifest_receipt_is_reported_as_mismatch` | `assertContains($receiptId, $result->fiscalMismatch->outOfManifestIds)` |
+| `test_refund_only_session_preserves_negative_vat_bucket` | `assertSame('-19.000', $result->actualVatBuckets['19.000'])` |
+| `test_duplicate_z_is_idempotent_when_manifest_hash_matches` | `assertDatabaseCount('pos_session_reconciliation_runs', 1)` |
+| `test_duplicate_z_with_different_manifest_hash_is_conflict` | `assertSame('manifest_conflict', $result->mismatchCode)` |
+| `test_legacy_source_with_insufficient_bounds_is_unavailable_not_matched` | `assertSame('unavailable_before_coverage', $result->repositoryStatus->value)` |
+| `test_valid_hashes_with_wrong_economic_totals_mismatch` | `assertSame('mismatched', $result->fiscalStatus->value)` |
+| `test_lot_estimate_status_is_explicit` | `assertNotNull($result->dependencySnapshot->lotEstimateStatus)` |
+| `test_before_repository_cutover_coverage_is_unavailable` | `assertSame('unavailable_before_coverage', $result->repositoryStatus->value)` |
+| `test_after_cutover_coverage_includes_float_drop_and_linked_backoffice_movement` | `assertSame($expectedOrdinals, $result->repositoryCoverage->movementOrdinals)` |
+| `test_two_terminals_sharing_custody_do_not_double_count` | `assertSame($physicalDrawerTotal, $result->repositoryCoverage->closingAmount)` — Q11-conditional |
+| `test_fiscal_and_repository_values_are_independently_derived` | `assertNotSame($zPayloadTotals, $result->derivedDependencySnapshot)` |
+| `test_unknown_tender_raises_unknown_tender_classification_exception` | `$this->expectException(UnknownTenderClassificationException::class)` |
+| `test_reclassified_tender_raises_unknown_tender_classification_exception` | `$this->expectException(UnknownTenderClassificationException::class)` |
+| `test_current_reader_anti_joins_superseded_run` | `assertSame($secondId, $repository->currentForZ($zId)->id)` |
+| `test_second_company_cannot_read_first_company_manifest_or_movements` | `assertSame('pending_dependencies', $resultB->status->value)` |
+| `test_second_location_uses_only_its_drawer_ordinals` | `assertNotContains($locationAOrdinal, $resultB->repositoryCoverage->movementOrdinals)` |
+| `test_rerun_with_same_dependencies_preserves_data_meaning` | `assertSame($first->fingerprint, $second->fingerprint)` |
+
+**Implementation**
+
+1. Derive fiscal totals from manifest members, not copied Z totals.
+2. Derive repository coverage from immutable documents/movement ordinals and stored interval bounds.
+3. Keep fiscal and repository results separately labeled.
+4. Persist one immutable run; append supersession when dependencies change.
+5. Raise `UnknownTenderClassificationException` for unknown or reclassified tender inputs.
+6. Keep pre-cutover repository result unavailable.
+7. Do not use current balances.
+8. Display explicit W-LOT status; defer accepted-state mapping until Q10.
+9. Queue on existing `default`.
+
+**Reviewer gate:** every matrix row passes on PostgreSQL and reviewers confirm independent derivation, append-only supersession, and single-writer ownership.
+
+---
+
+## T10 — Canonical web DTOs and existing Treasury/shift surfaces
+
+**Production files**
+
+- Every file in the §5.2 TypeScript census
+- Existing: `apps/web/src/routes/index.tsx:1937-1949`
+- Existing: `apps/web/src/features/treasury/RepositoryDetailPage.tsx:229-237`
+- Existing: `apps/web/src/features/treasury/RepositoryListPage.tsx:210`
+- Existing: `apps/web/src/features/treasury/components/TransferCashModal.tsx`
+- Generated: `packages/shared/types/generated.d.ts`
+- New: `apps/web/src/features/treasury/components/CashCustodyConfigurationPanel.tsx`
+- New: `apps/web/src/features/treasury/components/RepositoryTransferEvidencePanel.tsx`
+- New: `apps/web/src/features/pos/components/SessionReconciliationPanel.tsx`
+
+**Contract/schema:** no database delta. API types come exclusively from generated backend Data objects. Existing route/module/permission gates remain; no new catalogue or modal.
+
+**Red-first tests**
+
+| Test | First failing assertion | Command/lane |
+|---|---|---|
+| `apps/web/src/features/treasury/RepositoryDetailPage.test.tsx::renders_transfer_document_and_cash_custody_configuration_on_existing_detail` | `expect(screen.getByRole('heading', {name: /cash custody/i})).toBeVisible()` | `pnpm --filter @autoerp/web test -- src/features/treasury/RepositoryDetailPage.test.tsx -t "renders transfer document"` — Vitest |
+| `apps/web/src/features/pos/components/SessionReconciliationPanel.test.tsx::shows_fiscal_and_repository_results_separately` | `expect(screen.getByText('Repository coverage')).toBeVisible()` | `pnpm --filter @autoerp/web test -- src/features/pos/components/SessionReconciliationPanel.test.tsx -t "shows fiscal and repository results separately"` — Vitest |
+| `apps/web/src/features/treasury/RepositoryListPage.test.tsx::second_company_response_cannot_render_first_company_repository` | `expect(screen.queryByText(companyARepository)).not.toBeInTheDocument()` | web Vitest |
+| `apps/web/src/features/treasury/RepositoryDetailPage.test.tsx::second_location_link_is_displayed_without_default_location_fallback` | `expect(screen.getByText(locationBName)).toBeVisible()` | web Vitest |
+| `apps/web/src/features/treasury/hooks/useTransferCash.test.tsx::rerun_returns_same_generated_transfer_document_shape` | `expect(second.data.id).toBe(first.data.id)` | web Vitest |
+
+**Implementation**
+
+1. Generate DTO declarations.
+2. Remove canonical-entity aliases listed in §5.2.
+3. Document the four projection-only models.
+4. Add configuration/history/evidence to repository detail.
+5. Add reconciliation to the existing shift/Z detail.
+6. Keep transfer action in the existing `TransferCashModal`.
+7. Enforce `module:Treasury` plus existing permissions.
+
+**Reviewer gate:** repository entity/type search shows one canonical generated representation; UI has one primary surface per concept and accessibility-based tests pass.
+
+---
+
+## T11 — Q13-conditional opening-balance alignment and variance coverage gate
+
+**Status:** do not dispatch, migrate, or activate until Q13 is resolved.
+
+**Production files**
+
+- Conditional migration: `apps/api/database/migrations/tenant/2026_09_06_090600_create_repository_balance_alignments.php`
+- Existing: `apps/api/app/Modules/Treasury/Application/Services/RepositoryAdjustmentService.php:90,234`
+- Existing: `apps/api/app/Modules/Treasury/Application/Listeners/PostShiftCashVarianceAdjustment.php:289-325`
+- Existing: `apps/api/config/treasury.php:16-28`
+- Existing: `apps/api/app/Modules/Treasury/Presentation/routes.php:96-104`
+- New: `apps/api/app/Modules/Treasury/Domain/Models/RepositoryBalanceAlignment.php`
+- New: `apps/api/app/Modules/Treasury/Domain/Enums/RepositoryBalanceAlignmentStatus.php`
+- New: `apps/api/app/Modules/Treasury/Application/DTOs/RepositoryBalanceAlignmentIntent.php`
+- New: `apps/api/app/Modules/Treasury/Application/DTOs/RepositoryBalanceAlignmentResult.php`
+- New: alignment-evidence DTO from §9.3
+- New: `apps/api/app/Modules/Treasury/Application/Services/RepositoryBalanceAlignmentService.php`
+- New: `apps/api/app/Modules/Treasury/Presentation/Requests/CreateRepositoryBalanceAlignmentRequest.php`
+- New: `apps/api/app/Modules/Treasury/Presentation/Controllers/RepositoryBalanceAlignmentController.php`
+- New: `apps/api/app/Modules/Treasury/Infrastructure/Commands/CreateRepositoryBalanceAlignmentCommand.php`
+- Existing: `docs/glossary.md`
+
+**Signature/schema**
 
 ```php
-public function fromProjectedZ(
-    FiscalEvent $event,
-    ZReport $zReport
-): CashCountRecorded;
+RepositoryBalanceAlignmentService::align(
+    RepositoryBalanceAlignmentIntent $intent
+): RepositoryBalanceAlignmentResult;
 ```
 
-Create `DispatchProjectedCashCountJob` on the existing `default` queue:
-
-```php
-public function __construct(public readonly string $dispatchObligationId);
-
-public function handle(
-    CashCountRecordedFactory $factory,
-    CashCountDispatcher $dispatcher
-): void;
-```
-
-The Z projection creates the dispatch obligation transactionally with the Z row. Dispatch is after commit, idempotent on `(company_id, z_report_id)`, and excludes training. Recovery re-enqueues pending/failed obligations; it never reconstructs cash counts from mutable shift fields.
-
-## 8. Schema and state machines
-
-All migrations are additive and self-guarding. Every status/type/code column receives a PHP enum and PostgreSQL CHECK parity coverage.
-
-### 8.1 Migration `2026_09_06_090000_add_blocked_state_to_fiscal_event_projections.php`
-
-Add to `fiscal_event_projections`:
-
-- `blocked_reason_code varchar(64) nullable`
-- `blocked_detail jsonb nullable`
-- `blocked_at timestamptz nullable`
-- `blocked_configuration_revision bigint nullable`
-- index `(projector_name, projection_status, blocked_reason_code)`
-
-Extend `ProjectionStatus` from its current four cases (`apps/api/app/Modules/Fiscal/Domain/Enums/ProjectionStatus.php:7-13`) with `Blocked = 'blocked'`.
-
-State machine:
+Command:
 
 ```text
-pending → running → applied
-pending → running → pending            transient failure
-pending → running → blocked            actionable missing policy/configuration
-blocked → pending                       only after matching resolution or newer config revision
-pending/running → dead_lettered         exhausted or permanent technical failure
-applied, dead_lettered                  terminal unless existing authorized retry flow resets dead-letter
-```
-
-Blocked does not consume retry attempts and is not automatically requeued. Resolution records the deciding configuration/resolution revision and performs a compare-and-set from `blocked` to `pending`.
-
-### 8.2 Migration `2026_09_06_090100_create_treasury_cash_custody_configs.php`
-
-Create `treasury_cash_custody_configs`:
-
-- `id uuid primary key`
-- `tenant_id uuid`
-- `company_id uuid`
-- `location_id uuid`
-- `drawer_repository_id uuid`
-- `safe_repository_id uuid nullable`
-- `default_bank_repository_id uuid nullable`
-- `capability_state varchar(24)` enum `disabled|ready|enabled`, default `disabled`
-- `policy_revision bigint`, default `1`
-- `configuration_fingerprint char(64)`
-- `configured_by uuid nullable`
-- `activated_by uuid nullable`
-- `activated_at timestamptz nullable`
-- `disabled_at timestamptz nullable`
-- timestamps
-- unique `(company_id, location_id)`
-- FKs to the three repository rows
-- indexes `(tenant_id, company_id)` and `(company_id, capability_state)`
-
-Readiness validates exact tenant/company/currency ownership; drawer type `cash_register` and exact location; safe type `safe`; optional bank type `bank_account`; active repositories; GL account readiness; owner decisions; alignment disposition; W1/W2 prerequisites. No migration guesses repository IDs or enables any row.
-
-State machine:
-
-```text
-disabled → ready       validated configuration and resolved prerequisites
-ready → enabled        explicit authorized activation
-enabled → disabled     kill switch; existing outcomes remain readable/recoverable
-ready → disabled       configuration invalidated
-```
-
-Configuration edits increment `policy_revision`, write audit evidence, and return the state to `disabled` or `ready`; they never silently redirect already-authored facts.
-
-### 8.3 Migration `2026_09_06_090200_create_repository_transfer_documents.php`
-
-Create `repository_transfer_documents`:
-
-- `id uuid primary key`
-- `tenant_id`, `company_id`, `location_id uuid`
-- `terminal_id`, `shift_id`, `session_id uuid nullable`
-- `document_kind varchar(32)` enum `opening_float|safe_drop|float_top_up|drawer_to_bank|safe_to_bank|reversal`
-- `source_rail varchar(24)` enum `fiscal_v3|drawer_v2|backoffice|alignment`
-- `source_key varchar(160)`
-- `source_id uuid`
-- `source_fingerprint char(64)`
-- `from_repository_id`, `to_repository_id uuid`
-- `amount decimal(15,3)`
-- `currency char(3)`
-- `occurred_at timestamptz`
-- `reason_code varchar(32) nullable`
-- `reason_text text nullable`
-- `evidence jsonb`
-- `transfer_group_id uuid`
-- `out_movement_id`, `in_movement_id uuid nullable`
-- `journal_entry_id uuid nullable`
-- `reverses_document_id uuid nullable`
-- `created_by uuid nullable`
-- timestamps
-- unique `(company_id, source_key)`
-- unique `(company_id, transfer_group_id)`
-- unique `out_movement_id`
-- unique `in_movement_id`
-- unique `reverses_document_id` where non-null
-- FKs to repositories, movements, JE, and self-reversal document
-- positive amount and distinct-repository CHECKs
-
-State machine is represented by linkage, not a mutable user status:
-
-```text
-transaction-local draft → committed posted document with both leg IDs
-posted original → remains immutable
-reversal request → new posted reversal document
-```
-
-No committed row may have only one movement link. Add PostgreSQL deferred constraint-trigger coverage if ordinary CHECK/FK constraints cannot express the committed pair invariant.
-
-### 8.4 Migration `2026_09_06_090300_create_shift_cash_booking_obligations.php`
-
-Create `shift_cash_booking_obligations`:
-
-- identity/scope fields matching `ShiftCashBookingIntent`
-- `source_rail`, `source_key`, `source_id`, `source_fingerprint`
-- nullable `fiscal_event_id`, `cash_drawer_operation_id`
-- raw kind and nullable typed `operation_kind`
-- normalized amount/currency/occurred-at/reason/evidence
-- `status varchar(24)` enum `pending|processing|blocked|applied|conflict|contained_training`
-- `blocked_reason_code`, `blocked_detail`, `blocked_at`
-- `configuration_revision`
-- `transfer_document_id nullable`
-- `repository_adjustment_id nullable`
-- attempts/timestamps
-- unique `(company_id, source_key)`
-- indexes `(company_id, status)`, `(shift_id, status)`
-
-State machine:
-
-```text
-pending → processing → applied
-pending/processing → blocked
-blocked → pending          typed/config/dependency resolution
-pending/processing → conflict
-pending → contained_training
-processing → pending       expired claim recovery
-```
-
-An obligation can link either one transfer document or one external adjustment document, never both.
-
-### 8.5 Migration `2026_09_06_090400_create_pos_close_manifest_and_reconciliation_tables.php`
-
-Create `pos_session_close_manifests`:
-
-- `id`, tenant/company/terminal/shift/session/Z identities
-- `schema_version`
-- `fiscal_event_id`
-- device source ranges and identities in validated `manifest jsonb`
-- `source_fingerprint char(64)`
-- `authored_at_device`, `received_at`
-- unique `(company_id, z_report_id, schema_version)`
-- append-only guard
-
-Create `pos_session_reconciliations`:
-
-- `id`, tenant/company/terminal/shift/session/Z identities
-- `check_type` enum `fiscal_totals|repository_cash`
-- `status` enum `unavailable|pending_sync|blocked|mismatch|matched|superseded`
-- `input_fingerprint char(64)`
-- `coverage_started_at`, `coverage_ended_at`
-- nullable `opening_repository_ordinal`, `closing_repository_ordinal`
-- `expected_amount`, `actual_amount`, `variance_amount decimal(15,3) nullable`
-- `currency char(3)`
-- validated `dependency_snapshot jsonb`
-- `reason_code`, `reason_detail`
-- `supersedes_id nullable`
-- timestamps
-- unique `(company_id, z_report_id, check_type, input_fingerprint)`
-- append-only guard
-
-Create `pos_cash_count_dispatches`:
-
-- scope/Z/fiscal identities
-- `status` enum `pending|dispatching|dispatched|failed`
-- attempts, last error, claim/dispatched timestamps
-- unique `(company_id, z_report_id)`
-
-Reconciliation state machine:
-
-```text
-unavailable                      capability or owner policy absent
-pending_sync                     declared members/projections not complete
-blocked                          ambiguous/configuration/dependency evidence
-mismatch                         complete comparable inputs disagree
-matched                          complete comparable inputs agree
-any prior result → superseded    a late member changes the fingerprint
-```
-
-A new run is appended for a changed fingerprint. Existing results are not edited into a different conclusion.
-
-### 8.6 Conditional migration `2026_09_06_090500_create_repository_balance_alignments.php`
-
-Create only after D-WC-03 confirms an accounting treatment:
-
-- `repository_balance_alignments`
-- scope/repository/effective date
-- observed physical balance, pre-alignment ledger balance, signed difference, currency
-- accounting policy and GL purpose/account IDs
-- evidence, preparer, reviewer, approval timestamps
-- status enum `draft|reviewed|posted|reversed`
-- movement/JE/reversal links
-- company-scoped operation UUID and source fingerprint
-- unique `(company_id, operation_uuid)`
-
-No alignment value is backfilled. A row requires an operator-entered physical count and review evidence.
-
-## 9. Device SQLite versions
-
-The current maximum device migration is v67 (`apps/pos/src/lib/db/migrations.ts:2163-2182`). Reserve, in order:
-
-- **v68 — `add_w_cash_policy_and_typed_drawer_operation_fields`**
-  - Add nullable `reason_code`, `semantic_type`, `destination_repository_id`, `currency_code`, and `policy_revision` to `offline_cash_drawer_ops`.
-  - Create `w_cash_policy_cache` keyed by terminal, company, location, and revision with capability state and typed options.
-  - Existing rows remain null/unclassified; the migration does not infer semantics from `reason`.
-- **v69 — `create_pos_session_close_manifests`**
-  - Create local append-only manifest storage with shift/session/Z IDs, schema version, source identities/ranges, fingerprint, authored timestamp, and sync state.
-  - The manifest is an unsealed sidecar and does not alter fiscal canonical bytes.
-
-Create `apps/pos/src/lib/db/__tests__/migrations.v68.test.ts` and `apps/pos/src/lib/db/__tests__/migrations.v69.test.ts`. If another lane lands device migrations before implementation starts, rebase first and reserve the next two contiguous versions; never reuse or renumber a released migration.
-
-## 10. Convention-09 named tests
-
-All three required journeys run by path on SQLite and PostgreSQL 16. PostgreSQL is authoritative for constraints, concurrency, and lock behavior.
-
-| Obligation | File/class/case | Lane | Required data-meaning assertion |
-|---|---|---|---|
-| Second company through real creation paths | `apps/api/tests/Feature/Treasury/WCashSecondOfEverythingTest.php` → `WCashSecondOfEverythingTest::test_registration_then_real_second_company_creation_provisions_independent_disabled_cash_custody()` | SQLite + PG | First call real `POST /api/v1/auth/register`, then authenticated `POST /api/v1/companies`. Company B receives its own drawer/safe and disabled configuration; company A cannot list, resolve, or book against B’s rows. Same repository codes can exist per company. |
-| Second selected location | Same file → `test_selected_second_pos_location_uses_its_own_drawer_and_never_the_default_location_drawer()` | SQLite + PG | Create location B through real `POST /api/v1/locations` with `pos_enabled=true`; bind the terminal there; its obligation/document/legs reference B’s drawer, not MAIN or the first active repository. |
-| Re-run/idempotency | Same file → `test_replaying_the_same_source_returns_one_result_without_duplicate_document_legs_or_balance_change()` | SQLite + PG | Second execution returns `idempotentReplay=true`; one obligation, one document, two legs, unchanged ordinals/balances, and no second JE. |
-| Two-company concurrency | `apps/api/tests/Feature/Treasury/WCashBookingConcurrencyTest.php` → `test_same_source_racing_in_two_workers_converges_per_company_without_cross_company_collision()` | PG only | Same source UUID in two companies remains independent; two workers in one company converge to one document/two legs. |
-| Shared drawer | `apps/api/tests/Feature/Treasury/WCashSharedDrawerPolicyTest.php` → cases named for the selected D-WC-01 policy | SQLite + PG | No second float and no double physical count. |
-| Module off | `apps/api/tests/Feature/Fiscal/TreasuryShiftCashFiscalProjectionTest.php` → `test_treasury_module_off_creates_no_booking_effect_and_no_error()` | SQLite + PG | No obligation/document/movement/JE; fiscal event and core POS projection remain valid. |
-| Recovery G6 | `apps/api/tests/Feature/Fiscal/WCashProjectionRecoveryTest.php` → three cases specified in T1/T5 | SQLite + PG, worker-death concurrency on PG | Registry outage, lost enqueue, and post-effect worker death each converge to one semantic result or a visible blocked row. |
-
-Update `apps/api/tests/feature-lane-manifest.json` and the live PostgreSQL CI lane so none of these classes is parked or unexecuted.
-
-## 11. Execution tasks
-
-### T0 — Freeze the code census and live preactivation census
-
-**Create**
-
-- `docs/superpowers/audits/2026-09-05-w-cash-census.md`
-- `apps/api/app/Modules/Treasury/Infrastructure/Commands/WCashCensusCommand.php`
-- `apps/api/tests/Feature/Treasury/WCashCensusCommandTest.php`
-
-**Contract**
-
-```text
-treasury:w-cash-census
-  {--company=*}
-  {--location=*}
-  {--from=}
-  {--to=}
-  {--format=table|json}
-  {--fail-on=unconfigured|ambiguous|uncovered|conflict}
-```
-
-**Red first**
-
-`WCashCensusCommandTest::test_census_reports_each_company_location_source_rail_configuration_and_historical_gap_without_writing()` initially fails because the command does not exist. Assert snapshots of every new/effected table are identical before and after the command.
-
-**Implementation**
-
-- Copy the completed source/writer/lock census from this plan into the audit.
-- Add live read-only counts by tenant/company/location:
-  - v3 events per relevant kind, integrity, chain context, and projection state;
-  - v2 rows per kind and typed/untyped disposition;
-  - drawer/safe/bank repositories, currencies, GL mappings, balances, ordinals, freeze/checkpoint state;
-  - uncovered source windows;
-  - shared-drawer terminal candidates;
-  - missing W7 manifests/results;
-  - ambiguous cash operation rows;
-  - variance documents already posted;
-  - alignment-needed repositories.
-- Record query timestamp, environment, candidate revision, row counts, and a salted output digest.
-- Do not include tenant credentials or fiscal payload contents in the committed artifact.
-
-**Reviewer gate:** treasury + fiscal-pos. No production task starts until the repository census section is accepted; capability activation also requires the live staging output.
-
----
-
-### T1 — Land W4 blocked projection and standing recovery
-
-**Create**
-
-- `apps/api/database/migrations/tenant/2026_09_06_090000_add_blocked_state_to_fiscal_event_projections.php`
-- `apps/api/app/Modules/Fiscal/Domain/Exceptions/ProjectionBlockedException.php`
-- `apps/api/app/Modules/Fiscal/Domain/Enums/ProjectionBlockedReason.php`
-- `apps/api/tests/Feature/Fiscal/FiscalProjectionBlockedRecoveryTest.php`
-- `apps/api/tests/Feature/Fiscal/FiscalProjectionStandingRecoveryTest.php`
-
-**Modify**
-
-- `apps/api/app/Modules/Fiscal/Domain/Enums/ProjectionStatus.php`
-- `apps/api/app/Modules/Fiscal/Domain/Models/FiscalEventProjectionRow.php`
-- `apps/api/app/Modules/Fiscal/Application/Jobs/ApplyFiscalEventProjectionJob.php`
-- `apps/api/app/Modules/Fiscal/Application/Services/FiscalEventProjectionDispatcher.php`
-- `apps/api/app/Modules/Fiscal/Application/Services/FiscalEventProjectionRegistry.php`
-- `apps/api/app/Modules/Fiscal/Infrastructure/Commands/RetryFiscalProjectionsCommand.php`
-- `apps/api/app/Modules/Fiscal/Infrastructure/Commands/EnqueueResolvedEventProjectionsCommand.php`
-- `apps/api/app/Modules/Fiscal/Presentation/Controllers/DeadLetteredProjectionsController.php`
-- corresponding Fiscal routes/resources
-- `apps/api/tests/Unit/Config/HorizonQueueCoverageTest.php`
-
-**Red-first cases**
-
-- `test_actionable_configuration_failure_becomes_blocked_without_consuming_attempts()`
-- `test_newer_configuration_revision_requeues_one_blocked_projection()`
-- `test_registry_exception_at_ingest_is_recovered_as_one_missing_projection_row()`
-- `test_pending_attempts_zero_after_lost_enqueue_is_redispatched()`
-- `test_stale_running_after_effect_commit_replays_to_one_semantic_effect()`
-
-**Implementation**
-
-- Catch only `ProjectionBlockedException` as blocked; other exceptions retain current retry/dead-letter behavior.
-- Expose blocked reason, age, configuration revision, and recovery action in the existing projection operations endpoint.
-- Extend standing recovery to create missing rows for currently active projectors, enqueue pending attempts-zero rows, and reclaim stale-running rows.
-- Use the existing `fiscal-projections` queue. It is already consumed by Horizon (`apps/api/config/horizon.php:206-209`); do not create a W-CASH queue.
-- Preserve terminal `applied` and `dead_lettered` behavior.
-
-**Reviewer gate:** fiscal-pos. T5 cannot register the W-CASH projector before T1 passes.
-
----
-
-### T2 — Land W7 close manifest, result store, and v3 cash-count producer
-
-**Create**
-
-- `apps/api/database/migrations/tenant/2026_09_06_090400_create_pos_close_manifest_and_reconciliation_tables.php`
-- `apps/api/app/Modules/POS/Domain/Enums/ReconciliationCheckType.php`
-- `apps/api/app/Modules/POS/Domain/Enums/ReconciliationStatus.php`
-- `apps/api/app/Modules/POS/Domain/Enums/CashCountDispatchStatus.php`
-- `apps/api/app/Modules/POS/Domain/SessionCloseManifest.php`
-- `apps/api/app/Modules/POS/Domain/PosSessionReconciliation.php`
-- `apps/api/app/Modules/POS/Domain/CashCountDispatch.php`
-- `apps/api/app/Modules/POS/Application/DTOs/SessionCloseManifestData.php`
-- `apps/api/app/Modules/POS/Application/DTOs/PosSessionReconciliationData.php`
-- `apps/api/app/Modules/POS/Application/Services/PosSessionReconciliationService.php`
-- `apps/api/app/Modules/POS/Application/Services/CashCountRecordedFactory.php`
-- `apps/api/app/Modules/POS/Application/Jobs/DispatchProjectedCashCountJob.php`
-- `apps/api/app/Modules/POS/Presentation/Controllers/SessionCloseManifestController.php`
-- `apps/api/app/Modules/POS/Presentation/Requests/StoreSessionCloseManifestRequest.php`
-- `apps/api/app/Modules/POS/Infrastructure/Commands/RecoverCashCountDispatchesCommand.php`
-- `apps/api/tests/Feature/POS/PosSessionReconciliationServiceTest.php`
-- `apps/api/tests/Feature/POS/SessionCloseManifestSyncTest.php`
-- `apps/api/tests/Feature/POS/ProjectedCashCountDispatchTest.php`
-- `apps/pos/src/lib/db/__tests__/migrations.v69.test.ts`
-- device manifest authoring/sync tests beside the new implementation
-
-**Modify**
-
-- `apps/api/app/Modules/POS/Application/Projections/ZReportProjection.php`
-- `apps/api/app/Modules/POS/Application/Services/ReportGenerationService.php`
-- `apps/api/app/Modules/POS/Presentation/Controllers/ZReportSyncController.php`
-- `apps/api/app/Modules/POS/Application/Services/CashCountDispatcher.php`
-- `apps/api/app/Modules/POS/Providers/POSServiceProvider.php`
-- `apps/api/app/Modules/POS/Presentation/routes.php`
-- `apps/api/tests/Architecture/ProjectorEmissionRatchetTest.php`
-- `apps/api/config/pos.php`
-- `apps/pos/src/lib/db/migrations.ts`
-- `apps/pos/src/lib/fiscal/zSessionAuthoring.ts`
-- `apps/pos/src/lib/offline/zReportService.ts`
-- POS sync service and terminal policy authentication files selected by W2
-- `packages/shared/types/generated.d.ts`
-
-**Flags**
-
-```text
-POS_V3_CASH_COUNT_DISPATCH_ENABLED=false
-```
-
-The Z projection always records the durable obligation, but dispatch remains disabled until W7 and W-CASH readiness pass.
-
-**Red-first cases**
-
-- `test_v3_verified_live_z_creates_one_pending_cash_count_dispatch_obligation()`
-- `test_training_z_creates_no_cash_count_dispatch_or_money_reconciliation()`
-- `test_dispatch_replay_emits_idempotently_from_immutable_z_payload()`
-- `test_late_manifest_member_creates_new_fingerprint_and_supersedes_prior_result()`
-- `test_missing_refund_or_cash_operation_keeps_result_pending_sync_not_matched()`
-- `test_out_of_manifest_event_naming_the_session_is_blocked_not_deleted()`
-- `test_cash_count_dispatch_failure_is_recoverable_after_z_projection_is_already_applied()`
-
-**Implementation**
-
-- Factor all three current producers through `CashCountRecordedFactory`; current server producers are in `ReportGenerationService` and `ZReportSyncController` (`apps/api/app/Modules/POS/Application/Services/ReportGenerationService.php:433`; `apps/api/app/Modules/POS/Presentation/Controllers/ZReportSyncController.php:549-580`).
-- Create the v3 dispatch obligation inside the Z projection transaction, then enqueue after commit.
-- Do not depend on re-running an already-applied Z projector to recover dispatch.
-- Build manifest membership from explicit source identities and sequence namespaces for:
-  - Z-session lifecycle/movement events;
-  - sale receipts;
-  - refunds;
-  - account payments/collections;
-  - relevant v2 drawer rows;
-  - repository transfer documents/movements for the optional repository check.
-- Never use receipt count as all-event completeness.
-- Preserve `ShiftExpectedCashService`; extend membership-aware inputs there rather than copying arithmetic.
-- Require W2 terminal authority before enabling the manifest sync endpoint.
-- Update the architecture ratchet only when the v3 producer and its durable recovery test are green.
-
-**Reviewer gate:** fiscal-pos + treasury for repository-check schema. This task is a hard prerequisite for T10.
-
----
-
-### T3 — Add disabled cash-custody configuration and canonical DTOs
-
-**Create**
-
-- `apps/api/database/migrations/tenant/2026_09_06_090100_create_treasury_cash_custody_configs.php`
-- `apps/api/app/Modules/Treasury/Domain/CashCustodyConfiguration.php`
-- `apps/api/app/Modules/Treasury/Domain/Enums/WCashCapabilityState.php`
-- `apps/api/app/Modules/Treasury/Application/DTOs/PaymentRepositoryData.php`
-- `apps/api/app/Modules/Treasury/Application/DTOs/CashCustodyConfigurationData.php`
-- `apps/api/app/Modules/Treasury/Application/Services/CashCustodyConfigurationService.php`
-- `apps/api/app/Modules/Treasury/Presentation/Controllers/CashCustodyConfigurationController.php`
-- `apps/api/app/Modules/Treasury/Presentation/Requests/UpdateCashCustodyConfigurationRequest.php`
-- `apps/api/tests/Feature/Treasury/CashCustodyConfigurationTest.php`
-- `apps/api/tests/Feature/Treasury/WCashSecondOfEverythingTest.php`
-
-**Modify**
-
-- `apps/api/app/Modules/Treasury/Presentation/routes.php`
-- `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentRepositoryController.php`
-- `apps/api/app/Modules/Treasury/Providers/TreasuryServiceProvider.php`
-- `apps/api/database/seeders/PermissionSeeder.php`
-- `apps/api/database/seeders/RolesAndPermissionsSeeder.php`
-- `apps/web/src/features/treasury/RepositoryDetailPage.tsx`
-- `apps/web/src/features/treasury/hooks/usePaymentRepositories.ts`
-- relevant repository-detail tests and `en/fr/ar` Treasury locale files
-- `packages/shared/types/generated.d.ts`
-- `docs/glossary.md`
-- `apps/api/tests/Architecture/TenantOnlyUniqueOnCatalogueTablesRatchetTest.php`
-- `apps/api/tests/Architecture/baselines/tenant-only-unique-baseline.json` only if the live-schema ratchet requires classification
-
-**Endpoint and authorization**
-
-```text
-GET   /api/v1/payment-repositories/{repository}/cash-custody
-PATCH /api/v1/payment-repositories/{repository}/cash-custody
-POST  /api/v1/payment-repositories/{repository}/cash-custody/validate
-POST  /api/v1/payment-repositories/{repository}/cash-custody/enable
-POST  /api/v1/payment-repositories/{repository}/cash-custody/disable
-```
-
-All routes require `module:Treasury`; reads require `repositories.view`, edits/validation require `treasury.manage`, enable/disable require `treasury.manage_all_locations` or the owner-approved custody authority. Frontend fields require `hasModule('Treasury')` and the matching permission.
-
-**Red-first cases**
-
-- Wrong-company repository ID returns scoped 404 and writes nothing.
-- Wrong-location drawer, wrong type, inactive repository, and currency mismatch fail validation.
-- Missing W1/W2, open owner decisions, or alignment disposition prevents `ready/enabled`.
-- Module-off routes return 403/404 per established module behavior and fields are hidden.
-- Real second company and second location tests from §10 fail before implementation.
-
-**Implementation**
-
-- Reuse repository detail/editor; no second settings page.
-- New registrations may create a disabled config row only when the provisioner has exact deterministic drawer/safe identities. Existing companies receive no guessed mappings.
-- A second location may receive a disabled row with its exact drawer and a null safe until configured.
-- Configuration revisions are append-audited.
-- Run `CACHE_STORE=array php artisan typescript:transform`; frontend imports generated DTOs only.
-- C4/manual custody activation waits for W2 terminal authority and W1 location-scope rollout. Current repository endpoints are company-scoped but not staff-location-scoped (`docs/superpowers/specs/2026-09-05-parapharmacy-readiness-remediation-design.md:131-153`).
-
-**Reviewer gate:** treasury + tenancy-authz + frontend-conventions.
-
----
-
-### T4 — Add one transfer document and explicit offline transfer policy
-
-**Create**
-
-- `apps/api/database/migrations/tenant/2026_09_06_090200_create_repository_transfer_documents.php`
-- `apps/api/app/Modules/Treasury/Domain/RepositoryTransferDocument.php`
-- transfer-document enums and DTOs named in §§7-8
-- `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferDocumentService.php`
-- `apps/api/tests/Feature/Treasury/RepositoryTransferDocumentServiceTest.php`
-- `apps/api/tests/Feature/Treasury/RepositoryTransferDocumentConcurrencyTest.php`
-- `apps/api/tests/Feature/Treasury/RepositoryTransferFrozenReplayTest.php`
-- `apps/api/tests/Feature/Treasury/RepositoryTransferReversalTest.php`
-
-**Modify**
-
-- `apps/api/app/Modules/Treasury/Application/DTOs/TransferIntent.php`
-- `apps/api/app/Shared/Contracts/Treasury/TreasuryMovementServiceInterface.php`
-- `apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php`
-- `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferService.php`
-- `apps/api/app/Modules/Treasury/Application/DTOs/RepositoryTransferResult.php`
-- `apps/api/app/Modules/Treasury/Presentation/Controllers/RepositoryTransferController.php`
-- `apps/api/app/Modules/Treasury/Presentation/Controllers/RepositoryMovementController.php`
-- `apps/api/tests/Architecture/TreasuryBalanceWritePortTest.php`
-- existing transfer service/HTTP tests
-
-**Red-first cases**
-
-- `test_one_action_commits_one_document_one_group_two_cross_linked_legs_and_one_cross_gl_entry()`
-- `test_same_gl_transfer_has_two_legs_and_no_journal_entry()`
-- `test_crash_before_second_leg_rolls_back_document_entry_legs_and_balances()`
-- `test_same_source_replay_returns_original_document_and_pair()`
-- `test_same_source_with_changed_amount_destination_currency_or_fingerprint_is_conflict()`
-- `test_verified_offline_transfer_across_frozen_repository_sets_flags_and_alerts_atomically()`
-- `test_checkpoint_replay_is_returned_but_new_interactive_transfer_is_refused()`
-- `test_offline_drop_cannot_make_drawer_negative()`
-- `test_reversal_creates_new_document_and_opposite_pair_without_mutating_original()`
-
-**Implementation**
-
-- Refactor every new manual transfer through `RepositoryTransferDocumentService`.
-- Preserve old historical transfer legs without fabricating documents.
-- Change `RepositoryTransferService` to inject the shared movement interface rather than the concrete implementation.
-- Use deterministic UUIDv5 document/group IDs derived from company, source key, and document kind.
-- Compare every material field and evidence fingerprint on replay.
-- Ensure alerts are outside neither transaction nor idempotency: record a durable once-per-group alert obligation in the transaction, then deliver after commit.
-- Keep global lock order GL → sorted repositories.
-- Do not relax negative drawer rules.
-
-**Reviewer gate:** treasury + accounting/stock-gl-interaction.
-
----
-
-### T5 — Implement the shared booking service and v3 fiscal adapter
-
-**Create**
-
-- `apps/api/database/migrations/tenant/2026_09_06_090300_create_shift_cash_booking_obligations.php`
-- booking domain enums/DTOs from §§7-8
-- `apps/api/app/Modules/Treasury/Application/Services/ShiftCashBookingService.php`
-- `apps/api/app/Modules/Treasury/Application/Projections/TreasuryShiftCashFiscalProjection.php`
-- `apps/api/tests/Feature/Fiscal/TreasuryShiftCashFiscalProjectionTest.php`
-- `apps/api/tests/Feature/Fiscal/WCashProjectionRecoveryTest.php`
-- `apps/api/tests/Feature/Treasury/ShiftCashBookingServiceTest.php`
-- `apps/api/tests/Feature/Treasury/WCashBookingPrecisionTest.php`
-
-**Modify**
-
-- `apps/api/app/Modules/Treasury/Providers/TreasuryServiceProvider.php`
-- `apps/api/tests/Architecture/ProjectorEmissionRatchetTest.php`
-- projector registration-set tests
-- `apps/api/tests/feature-lane-manifest.json`
-- `.github/workflows/ci.yml` if the new PostgreSQL classes are not already collected by the live Treasury/Fiscal lanes
-
-**Projector contract**
-
-```php
-name(): 'treasury_shift_cash_booking'
-requiresModule(): 'Treasury'
-priority(): greater than pos_core_z_session_lifecycle
-handlesEventType(): OPENING_FLOAT | CASH_IN | CASH_OUT | SAFE_DROP
-```
-
-**Red-first cases**
-
-- Verified live `OPENING_FLOAT` creates safe → drawer document and pair once.
-- `SESSION_OPEN` is not handled and cannot double the float.
-- Training and unverified events create no money.
-- Disabled/unconfigured capability produces a blocked projection with a stable reason.
-- Module-off produces no projection effect/error.
-- `SAFE_DROP` before prior receipt coverage is visible dependency-blocked, not negative.
-- Registry exception, lost enqueue, and worker death after financial commit satisfy G6.
-- TND `200.000` and EUR `200.00` normalize correctly.
-- Zero, sub-minor, overprecision, and repository/event currency mismatch fail without writes.
-- `CompanyContext::clear()` precedes projector application.
-
-**Implementation**
-
-- Persist/upsert the source obligation before calling the booking service.
-- Resolve terminal → location and shift/session provenance from persisted source columns; never from the current HTTP company.
-- Use `OPENING_FLOAT` as the only opening money source.
-- Implement `SAFE_DROP` immediately.
-- Keep `CASH_IN`/`CASH_OUT` blocked until D-WC-02 is confirmed.
-- Keep opening booking blocked until D-WC-01 is confirmed.
-- For every applied transfer assert document amount = out amount = in amount = JE amount string.
-- Add no new queue; projection uses `fiscal-projections`.
-
-**Reviewer gate:** treasury + fiscal-pos + accounting.
-
----
-
-### T6 — Implement the durable v2 adapter and catch-up
-
-**Create**
-
-- `apps/api/app/Modules/POS/Domain/Events/CashDrawerOperationAuthoredV2.php`
-- `apps/api/app/Modules/Treasury/Application/Listeners/QueueV2ShiftCashBooking.php`
-- `apps/api/app/Modules/Treasury/Infrastructure/Commands/WCashCatchUpV2Command.php`
-- `apps/api/tests/Feature/Treasury/V2ShiftCashSourceAdapterTest.php`
-- `apps/api/tests/Feature/Treasury/WCashV2CatchUpCommandTest.php`
-
-**Modify**
-
-- `apps/api/app/Modules/POS/Domain/Services/CashDrawerService.php`
-- `apps/api/app/Modules/POS/Domain/Services/ShiftManagementService.php`
-- POS and Treasury service providers
-- existing drawer-operation event tests
-
-**Event contract**
-
-```php
-CashDrawerOperationAuthoredV2(
-    operationId,
-    tenantId,
-    companyId,
-    locationId,
-    terminalId,
-    shiftId,
-    operationType,
-    amount,
-    currency,
-    reason,
-    userId,
-    recordedAt,
-)
-```
-
-**Command**
-
-```text
-treasury:w-cash-catch-up-v2
-  {--company=*}
-  {--location=*}
-  {--from=}
-  {--to=}
+treasury:w-cash-align
+  {--company=}
+  {--repository=}
+  {--cutover=}
+  {--counted-amount=}
+  {--currency=}
+  {--cash-difference-account=}
+  {--evidence-file=}
   {--dry-run}
-  {--apply}
-  {--limit=500}
 ```
 
-**Red-first cases**
+The eventually approved Q13 contract controls execution. This plan does not select the recommended default.
 
-- New v2 opening emits the versioned event after commit and books through `ShiftCashBookingService`.
-- A v2 row and v3 event sharing `cash_drawer_operation_id` converge on one obligation/document.
-- V2 `SALE`, `REFUND`, and `CLOSING` are ignored.
-- V2 `DEPOSIT` and `PAYOUT` remain blocked until D-WC-02 supplies the mapping.
-- Historical catch-up creates obligations only for exact source rows in the approved interval.
-- Rerun reports `already_exists`, with no duplicate effects.
-- A claimed row abandoned by a worker is reclaimed without holding the source-row lock during Treasury booking.
+**Red-first tests**
 
-**Implementation**
-
-- Do not modify `CashDrawerOperationRecorded`.
-- Dispatch the new versioned event only after the drawer row transaction commits.
-- Derive tenant/company/location/currency by joining the persisted shift and terminal; fail blocked if any provenance is missing.
-- `--dry-run` is the default; `--apply` requires an explicit bounded `--from`.
-- Catch-up creates obligations, not guessed transfer documents. The common service determines whether a resolved obligation may book.
-
-**Reviewer gate:** treasury + fiscal-pos.
-
----
-
-### T7 — Add typed device authoring and drawer ownership, conditional on D-WC-01/D-WC-02
-
-**Create**
-
-- `apps/pos/src/lib/db/__tests__/migrations.v68.test.ts`
-- typed cash-operation policy models/tests
-- drawer-lease or drawer-session implementation/tests selected by D-WC-01
-
-**Modify**
-
-- `apps/pos/src/lib/db/migrations.ts`
-- `apps/pos/src/api/cashDrawerApi.ts`
-- relevant POS store/components for cash in/out
-- terminal policy sync/hydration files owned by W2
-- translations and accessibility tests
-
-**Red-first cases**
-
-- Device refuses an enabled cash operation when policy cache is absent, stale, wrong-company, wrong-terminal, or wrong-location.
-- `SAFE_DROP`, `BANK_DEPOSIT`, `PETTY_EXPENSE`, and `FLOAT_TOP_UP` produce the approved typed reason and destination class.
-- `OTHER` is blocked from money booking until classified.
-- Existing nullable/untyped rows remain readable and syncable but cannot be silently treated as safe transfers.
-- Selected D-WC-01 cases prove no second float.
-- Hydrated/restarted offline device retains only its own terminal/location policy.
-- Capability disabled hides/disables new authoring independently of Treasury module availability.
+| Test | First failing assertion | Command/lane |
+|---|---|---|
+| `apps/api/tests/Feature/Treasury/RepositoryBalanceAlignmentTest.php::test_alignment_creates_one_document_one_movement_and_one_balanced_je` | `assertDatabaseCount('repository_balance_alignments', 1)` | `./scripts/run-feature-lane-local.sh treasury-spine-pgsql --group Treasury` — PostgreSQL |
+| `...::test_alignment_never_backbooks_prior_shifts` | `assertDatabaseCount('repository_transfer_documents', 0)` for historical shifts | same lane |
+| `...::test_second_company_cannot_align_first_company_repository` | `assertSame('REPOSITORY_COMPANY_MISMATCH', $result->code)` | same lane |
+| `...::test_second_location_alignment_does_not_change_other_drawer` | `assertSame($beforeA, $afterA)` | same lane |
+| `...::test_exact_alignment_rerun_preserves_document_and_balance_meaning` | `assertDatabaseCount('repository_balance_alignments', 1)` | same lane |
+| `apps/api/tests/Feature/Treasury/ShiftVarianceCoverageGateTest.php::test_variance_listener_refuses_without_matched_repository_coverage` | `assertDatabaseCount('repository_adjustments', 0)` | same lane |
 
 **Implementation**
 
-- Use v68 exactly.
-- Transport the policy through W2’s authenticated terminal policy projection; do not reuse the human repository list.
-- Store repository IDs only as authored policy bindings, never cashier choices.
-- Preserve existing fiscal event shape; existing `reason_code`, `reason_text`, and `cash_drawer_operation_id` fields carry the typed policy result.
-- Do not activate until W2 terminal authority and W1 location-scope transition are complete.
+1. After Q13, encode only the approved alignment policy.
+2. Require counted evidence, explicit cutover, actor, currency, and difference account.
+3. Produce no historical shift transfers.
+4. Make variance posting require current matched reconciliation/coverage.
+5. Keep `TREASURY_SHIFT_VARIANCE_GL_ENABLED=false` until all alignments and W7 checks pass.
 
-**Reviewer gate:** fiscal-pos + tenancy-authz + frontend accessibility.
-
----
-
-### T8 — Complete the existing repository surface and safe → bank flow
-
-**Modify**
-
-- `apps/web/src/features/treasury/RepositoryDetailPage.tsx`
-- `apps/web/src/features/treasury/RepositoryDetailPage.test.tsx`
-- `apps/web/src/features/treasury/RepositoryListPage.tsx`
-- `apps/web/src/features/treasury/RepositoryListPage.test.tsx`
-- `apps/web/src/features/treasury/components/TransferCashModal.tsx`
-- `apps/web/src/features/treasury/components/TransferCashModal.test.tsx`
-- `apps/web/src/features/treasury/hooks/usePaymentRepositories.ts`
-- `apps/web/src/features/treasury/hooks/useTransferCash.ts`
-- `apps/api/app/Modules/Treasury/Presentation/Controllers/RepositoryTransferController.php`
-- `apps/api/app/Modules/Treasury/Presentation/Requests/TransferRepositoryRequest.php`
-- generated DTOs/types and `en/fr/ar` locales
-
-**Red-first cases**
-
-- Existing transfer modal supports safe → bank through one document/two-leg service.
-- Drawer → safe and safe → bank appear in existing repository movement history with document, opposite repository, source, reason, and JE link.
-- Wrong-location source is refused with zero side effects.
-- Allowed branch → configured central destination succeeds; central → branch still requires central authority.
-- No module or permission hides the action and fields.
-- Local repository interfaces are gone; generated types compile.
-
-**Implementation**
-
-- Add document/source metadata to existing movement responses.
-- Add configuration controls to repository detail without adding a second modal or catalogue.
-- Reuse `treasury.transfer`; add only a distinct `treasury.manage_cash_custody` permission if the owner/security reviewer requires configuration separation.
-- Wait for W2 terminal authority and W1 location-scope rollout before activation.
-
-**Reviewer gate:** treasury + tenancy-authz + frontend-conventions. Run React diagnostics for the touched feature before handback.
+**Reviewer gate:** owner ruling cited, alignment sample reviewed by Treasury/accounting, no-backbooking test green, and every activated repository has an evidenced cutover disposition.
 
 ---
 
-### T9 — Implement opening-balance alignment, conditional on D-WC-03
+## T12 — Promotion tooling, two-branch/two-terminal campaign, and real-device smoke
 
-**Create/modify only after the decision**
+**Production/control files**
 
-- `apps/api/database/migrations/tenant/2026_09_06_090500_create_repository_balance_alignments.php`
-- alignment model/enums/DTOs/service/controller/request
-- repository-detail alignment panel in the existing surface
-- `apps/api/tests/Feature/Treasury/RepositoryBalanceAlignmentTest.php`
-- `apps/api/tests/Feature/Treasury/RepositoryBalanceAlignmentConcurrencyTest.php`
-- glossary/generated types/locales
+- Existing: `scripts/campaign-onboarding.sh`
+- Existing: `apps/web/e2e/campaign/journey.ts`
+- Existing: `apps/web/e2e/campaign/onboarding.campaign.ts`
+- Existing: `apps/web/e2e/campaign/selectors.ts`
+- Existing: `docs/qa/ONBOARDING-CAMPAIGN.md`
+- Existing: `apps/api/app/Modules/Tenant/Application/Commands/BackupTenantCommand.php`
+- Existing: `apps/api/tests/Feature/Tenant/FreshTenantCensusInvariantsTest.php`
+- Existing: `apps/api/tests/Feature/Tenant/DayOneCensusCommandTest.php`
+- Existing: `docs/handoff/RUNBOOK-day-one-census.md`
+- Existing: `apps/pos/package.json:10,14`
+- Existing: `apps/api/config/treasury.php`
+- Evidence: `docs/handoff/HANDBACK-W-CASH-2026-09-06.md`
 
-**Red-first cases**
+**Contract/schema:** no schema delta. Campaign adds a W-CASH leg using two POS-enabled branches and two terminals. It records actual IDs, configuration revisions, source/member hashes, transfer document IDs, movement ordinals, reconciliation runs, flags, and candidate SHA.
 
-- Repository with historical movements cannot use ordinary opening-balance service.
-- Draft alignment writes no money.
-- Posting requires physical count, evidence, effective date, approved GL purposes/accounts, separate reviewer, and an exact pre-alignment ledger balance.
-- Stale balance or concurrent movement refuses posting.
-- Post creates one alignment document, one adjustment movement, and one JE; rerun is idempotent.
-- Reversal compensates without mutating original.
-- No automatic command creates alignment amounts or posts historical variance.
-- Module/company/location/permission denials write nothing.
+**Red-first tests**
 
-**Implementation**
+| Test | First failing assertion | Command/lane |
+|---|---|---|
+| `apps/web/e2e/campaign/onboarding.campaign.ts::W-CASH_two_branch_two_terminal_custody_journey` | `expect(ledger.legs.W_CASH.status).toBe('PASS')` | `scripts/campaign-onboarding.sh --web https://erp.otospex.dev --api https://api.erp.otospex.dev --country TN` — Playwright/staging |
+| `FreshTenantCensusInvariantsTest::test_second_company_and_second_pos_location_have_disabled_w_cash_configuration` | `assertSame('disabled', $configuration->capability_state->value)` | `./scripts/run-feature-lane-local.sh feature-lane-tenancy --group Company` — PostgreSQL |
+| `DayOneCensusCommandTest::test_rerun_preserves_w_cash_invariant_meaning` | `assertSame($firstVerdict, $secondVerdict)` | same lane |
+| Real-device smoke | First failure is any missing persisted Z/manifest after forced crash/restart | `pnpm --filter @autoerp/pos tauri build` followed by physical-device execution — real Tauri/SQLite/printer lane |
 
-- Capture the repository balance and ordinal during review; compare them under the GL → repository lock order at post time.
-- Normalize once with explicit currency.
-- Store the selected owner/accounting policy and review evidence.
-- Mark historical W7 repository checks before the effective date `unavailable: pre_cutover_uncovered`, not matched.
-- If D-WC-03 chooses no accounting alignment, do not create this table/service; record the unavailable historical disposition and keep affected capability disabled.
+**Implementation and evidence**
 
-**Reviewer gate:** treasury + accounting + tenancy-authz + owner/accountant evidence.
+1. Extend campaign with two branches and two terminals.
+2. Execute opening → cash sale → partial refund → account collection → approved typed drop if Q12 is resolved → close/Z → reconciliation.
+3. If Q11 is resolved to shared custody, exercise the approved join/refusal and sequential-shift behavior.
+4. Run direct day-one census inside the campaign tenant:
+   `cd apps/api && CACHE_STORE=array php artisan tenant:census-day-one --fail-on-drift`.
+5. Run fleet census:
+   `cd apps/api && CACHE_STORE=array php artisan tenants:run tenant:census-day-one --option='fail-on-drift=1'`.
+6. Because `tenants:run` discards child exit codes, read every printed `DAY-ONE CENSUS` line and reject any `DRIFT(n)` or `NO-COMPANY`.
+7. Capture `apps/web/test-results/campaign-<runId>/ledger.json`, `apps/web/test-results/campaign-report.json`, Playwright report, traces, screenshots, and device logs.
+8. Build the POS from the exact candidate SHA with:
+   `pnpm --filter @autoerp/pos tauri build`.
+9. Install that artifact on a real device and exercise local SQLite, receipt printer, drawer kick, offline authoring, process kill between operations, restart, reconnect, reordered sync, duplicate sync, and final server reconciliation.
+10. Perform backup and restore rehearsal:
+    `cd apps/api && php artisan tenant:backup "$WCASH_TENANT_SLUG"`.
+    Restore only in an isolated rehearsal target using the existing restore command/runbook; never overwrite staging during verification.
 
----
-
-### T10 — Repository coverage reconciliation and variance activation
-
-**Create**
-
-- `apps/api/app/Modules/Treasury/Application/Services/RepositoryCashCoverageService.php`
-- typed coverage DTOs
-- `apps/api/tests/Feature/Treasury/RepositoryCashCoverageTest.php`
-- `apps/api/tests/Feature/Treasury/WCashSharedDrawerPolicyTest.php`
-- `apps/api/tests/Feature/Treasury/WCashEndToEndPostgresTest.php`
-
-**Modify**
-
-- `apps/api/app/Modules/POS/Application/Services/PosSessionReconciliationService.php`
-- `apps/api/app/Modules/POS/Application/Services/ShiftExpectedCashService.php` only for membership-aware source selection, not duplicated arithmetic
-- `apps/api/app/Modules/Treasury/Application/Listeners/PostShiftCashVarianceAdjustment.php`
-- existing variance tests
-- shift/Z detail API DTO and existing UI
-- `apps/api/config/treasury.php`
-
-**Coverage algorithm**
-
-For each close:
-
-1. Load the immutable close manifest and exact fiscal source set.
-2. Require every source projection and W-CASH obligation in that set to be applied or explicitly contained.
-3. Resolve the approved drawer-custody unit from D-WC-01.
-4. Record the opening repository ordinal/balance at the first covered W-CASH movement and closing ordinal at the last pre-variance covered movement.
-5. Include:
-   - opening float document;
-   - receipt/refund/account-collection movements in the manifest;
-   - typed cash-operation documents;
-   - existing back-office drawer movements exactly once only when explicitly linked to the interval;
-   - no bank-settlement movements in the drawer check.
-6. Fingerprint ordered source identities, hashes, document IDs, movement IDs, configuration revisions, repository IDs, and ordinal bounds.
-7. Compare fiscal expected cash with the repository balance at the stored closing ordinal, never with the repository’s current cached balance.
-8. Append `matched`, `mismatch`, `pending_sync`, `blocked`, or `unavailable`.
-9. A late valid member creates a new fingerprint and supersedes the prior result.
-10. Permit variance posting only when the latest repository check is `matched` for exactly the `CashCountRecorded` Z/fingerprint.
-11. Post the signed physical-count variance once through the existing adjustment service.
-12. Store the pre-variance closing ordinal in the result; the variance movement is not retroactively included in its own comparison.
-
-**Red-first cases**
-
-- Correct acceptance order: opening float `200.000`, cash sales `3500.000`, then safe drop `1000.000` gives pre-variance drawer `2700.000`; closing count `2690.000` posts one `10.000` out variance.
-- The original unsafe order—drop before sufficient custody—is refused/blocked and does not make the drawer negative.
-- Repository balance equals expected before variance and counted cash after variance.
-- Current balance changed by a later shift does not affect the prior stored check.
-- Manual movement is included exactly once only when linked.
-- Missing/untyped movement is blocked, never zero.
-- Duplicate cash-count dispatch posts no second adjustment.
-- TND/EUR precision, zero, sub-minor, overprecision, and currency conflict.
-- Shared-drawer behavior follows D-WC-01 exactly.
-- Existing fiscal-total `matched` cannot be displayed as full reconciliation when repository check is unavailable.
-- Worker runs with `CompanyContext::clear()`.
-
-**Enablement rule**
-
-`TREASURY_SHIFT_VARIANCE_GL_ENABLED` remains the global worker kill switch. Per-company/location W-CASH capability and a current matched coverage result are additional mandatory gates. Neither replaces the other.
-
-**Reviewer gate:** treasury + fiscal-pos + accounting.
+**Reviewer gate:** campaign ledger is green, every census line is clean, real-device evidence is attached, and the handback records owner rulings, candidate SHA, migration versions, flags, cutovers, alignments, and rollback point.
 
 ---
 
-### T11 — Cutover, recovery proof, and handback
+## 12. Five-push staging auto-deploy manifest
 
-**Create**
+Every push to `dev` is treated as an independent staging deployment. Do not combine the stages.
 
-- `docs/handoff/HANDBACK-W-CASH-2026-09-06.md`
-- update `docs/superpowers/audits/2026-09-05-w-cash-census.md` with staging evidence
-- update deployment notes if the existing variance deployment ticket remains authoritative
+### Push 1 — Preflight and commands
 
-**Required handback contents**
+**Contents:** T0 command, tests, `scripts/preflight.sh` integration, and audit template only. No schema or financial behavior.
 
-- Actual candidate 40-character revision.
-- Exact migration identifiers and device migration versions.
-- Red and green command/output per task and test path.
-- PostgreSQL version/container/database used.
-- Before/after live census counts by company/location without secrets.
-- Capability/configuration revisions enabled.
-- Owner decision references.
-- Backup and restore rehearsal evidence.
-- Worker/API flag parity evidence.
-- Horizon/Redis reachability and queue-depth evidence.
-- Catch-up dry-run/apply counts.
-- Every blocked/conflict/unavailable row and disposition.
-- Screenshot or rendered evidence for repository and shift/Z surfaces.
-- Rollback exercise and post-rollback recovery result.
+Before push:
 
-**Reviewer gate:** treasury + fiscal-pos + tenancy-authz + frontend-conventions + final owner/accounting launch gate.
+```bash
+git rev-parse HEAD
+pnpm lint
+pnpm typecheck
+cd apps/api && ./vendor/bin/phpunit tests/Feature/Treasury/WCashAuditCommandTest.php
+```
 
-## 12. Deployment and cutover order
+After staging auto-deploy, in the API service console:
 
-Pushes to `dev` auto-deploy to staging, so every push must be safe with no operator configuration.
+```bash
+php artisan optimize:clear
+php artisan config:cache
+php artisan horizon:terminate
+php artisan treasury:w-cash-audit --format=json --include-optional --fail-on-drift
+```
 
-### Phase A — backup and additive inert deployment
+Stop before Push 2 unless the audit artifact is reviewed as `DISPATCHABLE`.
 
-1. Back up the staging tenant databases and rehearse restore to an isolated target.
-2. Deploy T1-T4 additive migrations, enums, models, compatible readers, DTOs, and hidden UI.
-3. Deploy W-CASH projector with blocked-state support already present.
-4. Keep:
-   - every `treasury_cash_custody_configs.capability_state = disabled`;
-   - `POS_V3_CASH_COUNT_DISPATCH_ENABLED=false`;
-   - `TREASURY_SHIFT_VARIANCE_GL_ENABLED=false`.
-5. Confirm old POS/device builds, old fiscal events, old repository APIs, and existing Treasury writers still work.
-6. Confirm `default` and `fiscal-projections` are consumed by Horizon and Redis is reachable.
-7. Do not run financial catch-up.
+### Push 2 — Schema-only additive migrations
 
-The inert projector may create blocked obligations for new relevant live events. It must not book money, retry to dead-letter, or affect fiscal Z processing.
+**Contents:** T1 migration production files, migration tests, device v68 then v69. No projector registration, policy default, backfill, or activation.
 
-### Phase B — policy and configuration readiness
+Before push:
 
-1. Obtain and record D-WC-01, D-WC-02, and D-WC-03.
-2. Complete W2 terminal authority and W1 location-scope prerequisites.
-3. Configure exact drawer/safe/bank mappings per company/location.
-4. Validate currencies, repository types, GL accounts, permissions, terminal location, and configuration fingerprint.
-5. Run `treasury:w-cash-census --format=json --fail-on=unconfigured`.
-6. Resolve or explicitly exclude every ambiguous v2 operation.
-7. Perform owner-approved alignment, or mark the historical interval unavailable and leave capability disabled.
-8. Transition configurations only to `ready`, not enabled.
+```bash
+cd apps/api && php artisan tenant:backup "$WCASH_TENANT_SLUG"
+cd ../.. && ./scripts/run-feature-lane-local.sh feature-lane-tenancy --group Company
+pnpm --filter @autoerp/pos test -- src/lib/db/__tests__/wCashMigrations.test.ts
+```
 
-### Phase C — enable booking and bounded catch-up
+After staging auto-migration:
 
-1. Deploy device v68/v69 and confirm server readers first.
-2. Enable W-CASH booking on workers before exposing device authoring.
-3. Transition one staging company/location from `ready` to `enabled`.
-4. Requeue its blocked projections by configuration revision.
-5. Run bounded dry-runs:
-   - v3 missing projection recovery from the approved cutover;
-   - v2 catch-up from the approved cutover.
-6. Compare exact source/obligation/document/leg counts.
-7. Apply catch-up.
-8. Enable device typed authoring for the same terminal/location.
-9. Verify new and replayed float/drop/safe → bank flows before expanding to another location.
+```bash
+cd apps/api
+php artisan migrate:status
+php artisan tenants:run migrate --option='force=1'
+php artisan treasury:w-cash-audit --format=json --include-optional --fail-on-drift
+php artisan optimize:clear
+php artisan config:cache
+php artisan horizon:terminate
+```
 
-### Phase D — enable W7 cash-count production
+Verify all new configuration/cutover tables are empty or disabled and v68 precedes v69.
 
-1. Confirm close-manifest v69 is hydrated and syncing.
-2. Confirm fiscal-total and repository checks store durable non-false-positive outcomes.
-3. Enable `POS_V3_CASH_COUNT_DISPATCH_ENABLED` in the worker processes.
-4. Restart workers and verify configuration cache values.
-5. Enable the same flag for API processes that execute legacy/live producers.
-6. Confirm API and worker values match and pending dispatch obligations drain once.
+### Push 3 — Dormant readers and code
 
-### Phase E — enable variance
+**Contents:** T2–T10 production code and tests. T11 only if Q13 has been resolved. Defaults remain:
 
-1. Confirm the target location’s repository check is `matched` for a real close.
-2. Enable `TREASURY_SHIFT_VARIANCE_GL_ENABLED=true` in Horizon/worker processes first.
-3. Restart Horizon and verify the effective value.
-4. Enable the API-side value second so new synchronous producers may enqueue.
-5. Run the `200 + 3500 - 1000 = 2700`, counted `2690`, variance `-10` staging journey.
-6. Verify one variance document, JE, movement, audit event, and final drawer balance.
-7. Expand company/location enablement individually; never enable by Treasury entitlement alone.
+```text
+TREASURY_W_CASH_BOOKING_ENABLED=false
+TREASURY_CASH_COUNT_DISPATCH_ENABLED=false
+TREASURY_SHIFT_VARIANCE_GL_ENABLED=false
+```
 
-## 13. Backfills that invent nothing
+After auto-deploy:
 
-Permitted backfills:
+```bash
+cd apps/api
+php artisan optimize:clear
+php artisan config:cache
+php artisan config:show treasury
+php artisan horizon:terminate
+php artisan treasury:w-cash-audit --format=json --include-optional --fail-on-drift
+```
 
-- Create missing fiscal projection rows for immutable existing fiscal events.
-- Create booking obligations from exact existing v3 event IDs/hashes or v2 operation IDs/values.
-- Create cash-count dispatch obligations from exact verified Z payloads.
-- Derive manifest/reconciliation states only where explicit source membership is provable.
-- Annotate existing sources with capability/configuration revisions.
-- Mark historical intervals `unavailable`, `pending_sync`, or `blocked`.
+Required observed values:
 
-Forbidden backfills:
+```text
+treasury.w_cash_booking_enabled = false
+treasury.cash_count_dispatch_enabled = false
+treasury.shift_variance_gl_enabled = false
+```
 
-- Guess drawer/safe/bank mappings from “first” or “default” repositories.
-- Infer `PAYOUT` or `CASH_IN/CASH_OUT` meaning from free text.
-- Generate missing physical counts, approvals, reasons, terminal assignments, or event hashes.
-- Recreate historical transfer documents/movements from expected-cash arithmetic.
-- Treat current repository balance as a historical closing balance.
-- Post historical variance automatically.
-- Rewrite fiscal events, Z reports, repository movements, or posted journal entries.
+Run all T2–T10 lanes. Confirm no new transfer document, movement, JE, variance adjustment, or recovery obligation is produced solely by deployment.
 
-## 14. Rollback
+### Push 4 — Bounded backfill and verification
 
-Operational rollback is flag/capability based:
+**Contents:** operational command changes/evidence only; no activation. Persist disabled configuration revisions, explicit policy records/cutovers, and manifests for bounded eligible cohorts.
 
-1. Disable device W-CASH authoring.
-2. Set affected per-company/location capability to `disabled`.
-3. Set `POS_V3_CASH_COUNT_DISPATCH_ENABLED=false`.
-4. Set `TREASURY_SHIFT_VARIANCE_GL_ENABLED=false` in API and worker environments.
-5. Restart Horizon and verify effective values.
-6. Stop catch-up commands.
-7. Preserve new schemas, readers, obligations, documents, movements, manifests, and results.
-8. Keep ingest/recovery capable of reading already-authored v68/v69 data.
-9. Never delete or mutate committed transfer documents, movements, or JEs.
-10. Correct an erroneous posted transfer only through its reversal contract.
-11. Use database restore only for a failed deployment before new business writes, not as routine financial rollback.
-12. Do not run destructive migration `down()` against financial history.
+Commands use IDs captured in T0’s reviewed JSON artifact:
 
-## 15. Dispatch order
+```bash
+test -n "$WCASH_COMPANY_ID"
+test -n "$WCASH_LOCATION_ID"
+test -n "$WCASH_TERMINAL_ID"
+test -n "$WCASH_DRAWER_REPOSITORY_ID"
+test -n "$WCASH_SAFE_REPOSITORY_ID"
+test -n "$WCASH_CUTOVER_ID"
 
-- [ ] T0 — freeze repository census and implement read-only live census command.
-- [ ] T1 — land blocked projection state and all three G6 recovery paths.
-- [ ] T2 — land W7 manifest/result store and durable v3 cash-count obligation, flag off.
-- [ ] T3 — land disabled cash-custody configuration, module/permission gates, glossary, and generated DTOs.
-- [ ] T4 — land transfer document, two-leg invariant, reversal, and offline frozen/checkpoint policy.
-- [ ] Record D-WC-01, D-WC-02, and D-WC-03.
-- [ ] Complete W2 terminal authority and W1 location-scope prerequisites.
-- [ ] T5 — land shared booking service and v3 adapter; only resolved operation branches become runnable.
-- [ ] T6 — land v2 versioned event adapter and bounded catch-up.
-- [ ] T7 — land device v68 typed authoring/shared-drawer policy and v69 close manifest.
-- [ ] T8 — extend the existing repository/transfer surfaces; no duplicate UI.
-- [ ] T9 — implement alignment only if D-WC-03 authorizes it.
-- [ ] T10 — land repository coverage and variance gate, both flags off.
-- [ ] Execute staged cutover phases A-E one company/location at a time.
-- [ ] T11 — write complete handback with candidate revision and staging proof.
+cd apps/api
 
-## 16. Verification checklist
+php artisan treasury:w-cash-configure \
+  --company="$WCASH_COMPANY_ID" \
+  --location="$WCASH_LOCATION_ID" \
+  --drawer="$WCASH_DRAWER_REPOSITORY_ID" \
+  --safe="$WCASH_SAFE_REPOSITORY_ID" \
+  --policy-file="$WCASH_POLICY_FILE" \
+  --state=disabled
 
-### Architecture and schema
+php artisan fiscal:projection-cutover:create \
+  --company="$WCASH_COMPANY_ID" \
+  --location="$WCASH_LOCATION_ID" \
+  --terminal="$WCASH_TERMINAL_ID" \
+  --rail="$WCASH_SOURCE_RAIL" \
+  --lower-bound="$WCASH_LOWER_BOUND" \
+  --upper-bound="$WCASH_UPPER_BOUND" \
+  --policy-revision="$WCASH_POLICY_REVISION" \
+  --evidence-file="$WCASH_CUTOVER_EVIDENCE_FILE"
 
-- [ ] All six migrations are additive, self-guarding, and tested on SQLite and PostgreSQL where applicable.
-- [ ] Device migrations reserve v68 and v69 from current max v67.
-- [ ] Every status/type/code column has a PHP enum and PostgreSQL CHECK parity test.
-- [ ] Every new company-owned unique includes `company_id`.
-- [ ] Catalogue/evidence table classifications pass the convention-09 ratchet.
-- [ ] `TreasuryBalanceWritePortTest` confirms no writer outside `TreasuryMovementService`.
-- [ ] No new queue was introduced; `HorizonQueueCoverageTest` remains green.
-- [ ] `CompanyContext::clear()` is used in projection/worker tests.
-- [ ] Module boundaries and constructor injection pass PHPStan/deptrac checks.
+php artisan treasury:w-cash-catch-up-v2 \
+  --cutover="$WCASH_CUTOVER_ID" \
+  --dry-run
 
-### Money and idempotency
+php artisan pos:reconcile-sessions \
+  --company="$WCASH_COMPANY_ID" \
+  --cutover="$WCASH_CUTOVER_ID" \
+  --dry-run
 
-- [ ] One transfer action produces one document, one group, two legs, zero/one JE.
-- [ ] Document, both legs, and JE share one normalized amount string and currency.
-- [ ] Same-source replay returns original IDs and balances.
-- [ ] Changed source content produces a visible conflict.
-- [ ] Frozen/checkpoint offline transfer records both-leg flags and one alert.
-- [ ] Interactive frozen/checkpoint transfer remains refused.
-- [ ] No transfer can make a non-negative drawer negative.
-- [ ] Reversal creates a new document and opposite pair.
-- [ ] External petty expense uses one adjustment/expense document and one out leg, not a transfer pair.
-- [ ] TND, EUR, zero, sub-minor, overprecision, and currency-conflict cases pass.
+php artisan pos:cash-count-recover \
+  --company="$WCASH_COMPANY_ID" \
+  --dry-run
+```
 
-### Rails and recovery
+Run the onboarding campaign, both census commands, backup/restore rehearsal, and real-device smoke. Resolve every unexplained conflict, missing member, unknown tender, or unavailable post-cutover interval before Push 5.
 
-- [ ] `SESSION_OPEN` never books opening money.
-- [ ] v3 `OPENING_FLOAT` is the sole v3 float source.
-- [ ] v2 and v3 cross-rail deduplication converges on `cash_drawer_operation_id`.
-- [ ] `SALE`, `REFUND`, and `CLOSING` v2 rows do not double-book.
-- [ ] Unverified/training events produce no Treasury money.
-- [ ] Registry failure at ingest is recovered.
-- [ ] Pending attempts-zero after lost enqueue is recovered.
-- [ ] Worker death in running after effect commit converges to one result.
-- [ ] Blocked configuration resolution requeues exactly once.
-- [ ] Module-off tenant produces no W-CASH effect or error.
+**Rollback point:** Push 4 complete, all code/schema deployed, all three flags false, no financial activation. Record this release SHA and backup ID in the handback.
 
-### Second-of-everything and authorization
+### Push 5 — Conditional activation
 
-- [ ] Real registration plus authenticated real second-company creation passes.
-- [ ] Company B owns independent drawer/safe/configuration and cannot see A’s.
-- [ ] Real second `pos_enabled` location uses its selected drawer.
-- [ ] Re-run returns explicit already-existing/idempotent outcome.
-- [ ] W1 location restrictions cover list/detail/balance/transactions/movements/configuration/transfer/adjustment.
-- [ ] W2 terminal policy contains only the terminal’s company/location destinations.
-- [ ] New backend endpoints have `module:Treasury`.
-- [ ] Existing frontend surfaces gate fields/actions by module and permission.
-- [ ] Denial leaves documents, movements, JEs, configurations, and audit snapshots unchanged.
+Push 5 is prohibited while relevant Q10–Q13 rows remain OPEN.
 
-### W7 and variance
+Required owner/risk conditions:
 
-- [ ] Close manifest covers receipts, refunds, collections, and cash operations with explicit identities.
-- [ ] Missing/late/out-of-manifest facts cannot yield a false `matched`.
-- [ ] A changed source set appends a new fingerprint and supersedes the prior result.
-- [ ] Repository comparison uses stored ordinal bounds, never current cached balance.
-- [ ] Back-office movements are included exactly once only when explicitly linked.
-- [ ] Fiscal-total and repository checks remain separately visible.
-- [ ] v3 `CashCountRecorded` is produced durably and excludes training.
-- [ ] Duplicate dispatch cannot double-post variance.
-- [ ] Acceptance journey uses float → sales → drop → close order.
-- [ ] `200.000 + 3500.000 - 1000.000 = 2700.000` before variance.
-- [ ] Count `2690.000` posts exactly one `10.000` shortfall.
-- [ ] Repository equals expected before variance and counted cash after variance.
-- [ ] Shared-drawer behavior matches the recorded D-WC-01 ruling.
+- Q11 resolved before opening/shared-drawer booking.
+- Q12 resolved before any cash-operation financial dispatch.
+- Q13 resolved and required alignments complete before variance GL.
+- Q10 and W-LOT status contract resolved before W7 lot-status promotion acceptance.
+- W2, W4, T7, T8, T9, campaign, census, and real-device gates green.
 
-### Tooling and handback
+Activate one reviewed company/location/terminal cohort first. In Dokploy, set:
 
-- [ ] `CACHE_STORE=array php artisan typescript:transform` produces no uncommitted drift after generated types are committed.
-- [ ] `composer test` passes for the named SQLite paths.
-- [ ] Named PostgreSQL Treasury/Fiscal tests pass against PostgreSQL 16.
-- [ ] `pnpm --filter @autoerp/pos test` and `typecheck` pass.
-- [ ] `pnpm --filter @autoerp/web test`, `typecheck`, and relevant E2E coverage pass.
-- [ ] React diagnostics pass for touched Treasury components.
-- [ ] `pnpm build`, `pnpm lint`, `pnpm test`, and `pnpm typecheck` pass.
-- [ ] `./vendor/bin/phpstan` and `./vendor/bin/pint --test` pass.
-- [ ] `./scripts/preflight.sh` passes.
-- [ ] Live staging census has zero unresolved targets selected for enablement.
-- [ ] Backup/restore rehearsal, worker/API flag parity, Redis/Horizon health, cutover, rollback, and actual candidate revision are recorded in `docs/handoff/HANDBACK-W-CASH-2026-09-06.md`.
+```text
+TREASURY_W_CASH_BOOKING_ENABLED=true
+TREASURY_CASH_COUNT_DISPATCH_ENABLED=true
+TREASURY_SHIFT_VARIANCE_GL_ENABLED=false
+```
+
+Then in the API service console:
+
+```bash
+php artisan optimize:clear
+php artisan config:cache
+php artisan config:show treasury
+php artisan horizon:terminate
+php artisan treasury:w-cash-audit --format=json --include-optional --fail-on-drift
+```
+
+Activate only the reviewed configuration revision/cutover through the authenticated configuration endpoint or exact configuration command. Observe one complete opening → sales → drop → close cycle. Enable variance only after matched repository coverage and completed Q13 alignment:
+
+```text
+TREASURY_SHIFT_VARIANCE_GL_ENABLED=true
+```
+
+Then:
+
+```bash
+php artisan optimize:clear
+php artisan config:cache
+php artisan config:show treasury
+php artisan horizon:terminate
+```
+
+### Activation rollback
+
+At the first wrong amount, cross-company/location reference, unbounded recovery, duplicate document/leg, missing manifest, unknown tender, unmatched post-cutover coverage, or queue obligation loss:
+
+1. Restore Dokploy environment to:
+
+```text
+TREASURY_W_CASH_BOOKING_ENABLED=false
+TREASURY_CASH_COUNT_DISPATCH_ENABLED=false
+TREASURY_SHIFT_VARIANCE_GL_ENABLED=false
+```
+
+2. Run:
+
+```bash
+php artisan optimize:clear
+php artisan config:cache
+php artisan horizon:terminate
+php artisan config:show treasury
+```
+
+3. Append a disabled configuration revision; do not overwrite the active revision.
+4. Leave schema/readers deployed.
+5. Do not delete fiscal events, manifests, obligations, documents, movements, alerts, or reconciliation runs.
+6. Correct any financial effect through the documented reversal/compensation path.
+7. Recover only explicitly selected obligations after the cause is fixed.
+
+---
+
+## 13. Dispatch order
+
+1. T0 — pre-migration census and reviewer stop.
+2. T1 — additive server schema and device v68 → v69.
+3. T2 — event-time policy and bounded recovery.
+4. T3 — disabled revisioned configuration and provisioning.
+5. T4 — transfer document, manual linkage, route gate, durable alerts.
+6. Resolve Q11/Q12 before enabling dependent branches.
+7. T5 — booking/fingerprint/adapters, shipped dormant.
+8. T6 — device policy evidence/typed authoring, shipped fail-closed.
+9. T7 — atomic manifest.
+10. T8 — durable per-consumer cash-count dispatch.
+11. Confirm W2 classification, W4 completeness, W-LOT readiness, and Q10 disposition.
+12. T9 — complete W7 reconciliation.
+13. T10 — generated types and canonical existing surfaces.
+14. Resolve Q13, then dispatch T11 if approved.
+15. T12 — campaign, day-one census, real-device smoke, backup/restore, handback.
+16. Execute Push 4 and record the rollback point.
+17. Execute Push 5 only after every applicable owner and reviewer gate is signed.
+
+---
+
+## 14. Final verification checklist
+
+- [ ] Candidate SHA recorded as the exact deployed commit; plan inspection base is `6e17a76022c5ccd8864afdf98cd5302e5264176b`.
+- [ ] T0 works before any future W-CASH table exists.
+- [ ] Static and live census name every v2/v3 source, X/Z payload key set, writer, consumer, company, location, terminal, repository, and active module.
+- [ ] No unexpected direct `repository_movements` or cached-balance writer exists.
+- [ ] Device migration v68 precedes v69 and only T1 owns `migrations.ts`.
+- [ ] Every migration is additive, compatible, default-disabled, and tested on PostgreSQL.
+- [ ] Every business unique includes `company_id`; tenant-only unique scanner is unchanged/clean.
+- [ ] Every JSONB column uses its named strict DTO and round-trips.
+- [ ] Q10–Q13 remain explicitly OPEN until separate owner resolution; no recommended default is treated as decided.
+- [ ] No Q11-dependent opening/shared-drawer money path activates before Q11.
+- [ ] Sequential shifts cover zero, partial top-up, retained match, retained excess, missing predecessor, out-of-order arrival, late predecessor, and shared-drawer behavior.
+- [ ] No Q12-dependent `CASH_IN`, `CASH_OUT`, `SAFE_DROP`, `DEPOSIT`, or `PAYOUT` dispatch activates before Q12.
+- [ ] `payload.training_flag` is required as a real boolean; missing/string values move no money.
+- [ ] Training events produce an explicit no-money outcome.
+- [ ] Recovery reads immutable event-time policy or a persisted bounded cutover, never current activation.
+- [ ] Configuration revisions are immutable and authored events retain the exact revision/cutover evidence.
+- [ ] v2/v3 semantic equivalence creates one obligation; true semantic conflict freezes visibly.
+- [ ] One internal transfer produces one document/group, two legs, and zero/one JE.
+- [ ] Exact replay produces no additional document, leg, JE, balance change, or alert.
+- [ ] Frozen/checkpoint transfer alert is durable and once per company/group/code.
+- [ ] Manual transfer linkage validates company, location, shift, and session.
+- [ ] Reused transfer and new configuration/alignment routes are protected by `module:Treasury`.
+- [ ] Device Z, close manifest, and local outbox are atomic.
+- [ ] Manifest includes only device-authored sources; server dependencies are a separate snapshot.
+- [ ] Reordered uploads and crash recovery remain pending until complete, then converge.
+- [ ] Cash-count dispatch persists one independent obligation/outcome per consumer.
+- [ ] Partial consumer success and queue failure cannot lose an obligation.
+- [ ] W7 ran only after W2, W4, manifest, durable dispatch, and W-LOT prerequisites.
+- [ ] Every spec-v4 W7 matrix case is green on PostgreSQL.
+- [ ] Unknown and reclassified tenders raise `UnknownTenderClassificationException`.
+- [ ] Fiscal totals and repository coverage are independently derived.
+- [ ] Pre-cutover repository coverage is `unavailable_before_coverage`, never matched.
+- [ ] Repository coverage uses immutable movement ordinals, never current cached balance.
+- [ ] `RepositoryCashCoverageService` has no writes.
+- [ ] Only `PosSessionReconciliationService` writes reconciliation runs/supersessions.
+- [ ] Supersession is append-only and the current reader anti-joins prior runs.
+- [ ] Generated DTOs replace all canonical repository/transfer/movement aliases; projection-only models are documented.
+- [ ] Existing repository detail/transfer and shift/Z detail remain the only primary surfaces.
+- [ ] Fresh registration, second company, second POS location, and rerun tests satisfy convention 09.
+- [ ] Onboarding campaign covers two branches and two terminals.
+- [ ] Direct day-one census is clean.
+- [ ] Fleet census prints no `DRIFT(n)` or `NO-COMPANY`.
+- [ ] Real Tauri build from the candidate SHA passes SQLite, printer, drawer, offline, crash/restart, reconnect, reordered sync, and duplicate sync smoke.
+- [ ] Backup and isolated restore rehearsal are evidenced.
+- [ ] Push 4 rollback SHA and backup ID are recorded.
+- [ ] All three flags are false before activation.
+- [ ] Q13-approved alignment exists before enabling variance GL.
+- [ ] Activation starts with one reviewed cohort.
+- [ ] Rollback disables all three flags, clears/rebuilds config cache, terminates Horizon, preserves append-only evidence, and uses forward corrections only.
