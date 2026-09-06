@@ -328,3 +328,229 @@ Tests\Unit\Product\ProductServiceUpsertTest::test_upsert_ignores_nonexistent_cat
 ```
 
 Known at a glance: FeatureLaneManifestCheckerTest ×7 and ChokepointCompletenessTest ×2 are the manifest/chokepoint reds fixed in `3df25b94f`; ProductsImportPipelineTest ×2 depend on owner-local xlsx fixtures; ReceiptReturnServiceTest ×2 are the documented batch-restitution reds (night handover §4). The rest await the baseline diff (§B/§C to be appended when runs B and baseline complete).
+
+## §B Run B vs baseline
+
+Jobs compared: B = run `33972668125` on `189fe7d8a`; baseline = run `33975221815` on `4d5b8812e` (= origin/dev). Job ids below are each run's `databaseId` for that job name (`gh run view <run> --json jobs`). Promotion rule: REGRESSION = fails in B, passes/absent in baseline. FIXED = fails in baseline, absent in B. SHARED = fails in both (pre-existing origin/dev debt, not created by this promotion).
+
+### B.1 Backend Tests (PHPUnit) — job B `101323832949` / baseline `101330624672`
+
+Scope: the "Full backend suite (manual security gate)" step only (`./vendor/bin/phpunit <dir>` per top-level `tests/*` directory, classic PHPUnit output, 78 directory groups incl. `tests/Unit` re-run, `tests/Integration`, `tests/Architecture`, `tests/PHPStan`). The earlier "Run unit tests" (Pest pretty-printer, `--testsuite=Unit`) step's failures are a strict subset of this step's `tests/Unit` group and are not counted twice.
+
+**Totals**: B failing = 218 distinct tests (221 occurrences incl. dataset variants) · baseline failing = 236 distinct (239 occurrences).
+
+**REGRESSIONS (1)** — fails in B, absent in baseline:
+
+- `Tests\Feature\Treasury\ReconcileTreasuryTest::test_one_millime_scale_mismatch_is_tolerated_and_does_not_false_freeze`
+  First assertion line: `A 1-millime scale mismatch must be tolerated, not frozen. Failed asserting that 1 is identical to 0.` (`tests/Feature/Treasury/ReconcileTreasuryTest.php:808`)
+
+**FIXED (19)** — fails in baseline, absent in B (per-class):
+
+```
+  7 Tests\Architecture\FeatureLaneManifestCheckerTest
+  9 Tests\Unit\POS\ReceiptReturnServiceTest
+  2 Tests\Feature\Fiscal\QuarantineBestEffortParseControllerTest
+  1 Tests\Feature\Console\ExportFrontendPermissionsMapCommandTest
+```
+
+**SHARED (217 methods / 73 classes)** — pre-existing origin/dev debt, per-class counts:
+
+```
+  16 Tests\Unit\POS\ReceiptReturnServiceDispositionTest
+  15 Tests\Feature\Inventory\CogsRelocationCharacterisationTest
+  13 Tests\Unit\POS\CashCountValidationServiceTest
+  12 Tests\Feature\Service\Api\ServiceCategoryApiTest
+  11 Tests\Feature\Service\Api\ServiceApiTest
+  10 Tests\Feature\POS\PosReturnScrapWriteOffTest
+  10 Tests\Feature\Service\IngressPrecisionTest
+  10 Tests\Feature\Treasury\OutboundInstrumentServiceTest
+   9 Tests\Feature\Service\ServiceTenantIsolationTest
+   8 Tests\Feature\Expense\ExpensePayByInstrumentTest
+   8 Tests\Feature\Treasury\OutboundCancelReopenTest
+   8 Tests\Unit\POS\ZReportHashServiceTest
+   6 Tests\Feature\Treasury\DeferredSupplierPaymentTest
+   3 Tests\Feature\Catalog\ProductVariantRepositoryTest
+   3 Tests\Feature\Console\Sweep\SweepInventoryDeferCommandTest
+   3 Tests\Feature\POS\ServerSideZReportOverTenderTest
+   3 Tests\Feature\Procurement\SupplierInvoiceApiTest
+   3 Tests\Feature\Treasury\StatementCreationActionTest
+   3 Tests\Feature\Workshop\WorkOrder\DocumentGenerationAdapterDesignationTest
+   2 Tests\Feature\Document\InventoryGlCompositeRootTest
+   2 Tests\Feature\Fiscal\ChokepointCompletenessTest
+   2 Tests\Feature\Import\ColumnMappingTest
+   2 Tests\Feature\Import\ProductsImportPipelineTest
+   2 Tests\Feature\Treasury\AcquirerFeeServiceTest
+   2 Tests\Feature\Treasury\InstrumentClearTest
+   2 Tests\Feature\Workshop\WorkOrder\DocumentVehicleContextWrittenOnInvoiceTest
+   2 Tests\Unit\Inventory\GoodsReceiptDataTest
+   2 Tests\Unit\POS\ReceiptReturnServiceTest
+   1 each: Architecture\AuthLifecycleTest, Architecture\ConsoleCommandTenantContextTest, Architecture\ControllerTenantContextTest,
+          Architecture\DocumentPerActionBaselineRatchetTest, Architecture\QueueJobTenantContextTest, Admin\CentralModelPinningTest,
+          Catalog\AttributeValueRepositoryTest, Catalog\CatalogTenantIsolationTest, CountryDefaults\FrozenSeederProvisioningIsolationTest,
+          Document\CreditNoteAllocationTest, Document\DeliveryNoteBillingMarkerMigrationTest, Fiscal\ZReportServerAuthoringChokepointTest,
+          Identity\UserManagement\CreateUserTest, Import\ImportPreviewTest, Import\ImportTypesTest, Import\ProductIdentityResolutionTest,
+          Import\RoundTrip\CompositeItemsRoundTripTest, Inventory\ExitMovementPrecisionTest, Inventory\GoodsReceiptLedgerSchemaTest,
+          Inventory\PosMovementCostSnapshotTest, Inventory\ZoneScopedCountingTest, Partner\PartnerReferenceSchemaSweepTest,
+          Product\DiscountPolicySubjectProviderTest, Product\ProductMarginIntentEndToEndTest, Product\ProductPricingIntentServiceTest,
+          Seeders\DemoPharmacyBatchSeedingTest, Seeders\DemoPharmacySeederExpensesTest, Seeders\DemoPharmacySeederTest,
+          Taxation\FranceTaxConfigurationSeederTest, Tenant\TenantCreationTest, Treasury\OutboundInstrumentEndpointsTest,
+          Treasury\PaymentTest, Treasury\ReconcilePortfolioCheckTest, Treasury\StatementActionHandlerTest,
+          Workshop\WorkOrder\DocumentGenerationAdapterStripsSubToleranceDiscountTest, Workshop\WorkOrder\DocumentLineWorkOrderLineIdRetentionTest,
+          Workshop\WorkOrder\InvoiceZeroLineWorkOrderFailsTest, Unit\CountryDefaults\FrozenSeederDocblockTest,
+          Unit\CountryDefaults\ProvisioningRequiredPurposesRegistrationRatchetTest, Unit\CountryDefaults\ProvisioningRequiredPurposesV1ConformanceTest,
+          Unit\Fiscal\FiscalEventPayloadRegistryTest, Unit\Fiscal\SaleReceiptV3KeySetTest, Unit\Fiscal\StrictCanonicalParserTest,
+          Unit\Import\ProductPriceResolverTest, Unit\Product\ProductServiceUpsertTest  (39 classes × 1)
+```
+
+**Sanity — per-directory `Tests:` summary, B vs baseline (rows shown only where Tests/Errors/Failures differ; every other one of the 78 directory groups is byte-identical between runs):**
+
+| Directory | B: Tests/Assertions/Errors/Failures | baseline: Tests/Assertions/Errors/Failures |
+|---|---|---|
+| tests/Unit | 3231 / 35096 / 40 / 11 | 3222 / 35054 / 51 / 9 |
+| tests/Architecture | 220 / 881 / 0 / 5 | 220 / 874 / 0 / 12 |
+| tests/Feature/Catalog | 238 / 674 / 0 / 5 | 233 / 653 / 0 / 5 |
+| tests/Feature/Compliance | 176 / 711 / 0 / 0 | 161 / 638 / 0 / 0 |
+| tests/Feature/Console | 178 / 572 / 0 / 3 | 178 / 572 / 0 / 4 |
+| tests/Feature/Contact | 29 / 138 / 0 / 0 | 27 / 130 / 0 / 0 |
+| tests/Feature/Document | 989 / 4337 / 3 / 1 | 951 / 4191 / 3 / 1 |
+| tests/Feature/Fiscal | 942 / 6554 / 0 / 3 | 942 / 6519 / 2 / 3 |
+| tests/Feature/Inventory | 1062 / 4229 / 16 / 3 | 1046 / 4163 / 16 / 3 |
+| tests/Feature/Treasury | 1355 / 5531 / 31 / 5 | 1341 / 5468 / 31 / 4 |
+| **Total (all 78 groups)** | **14708 / 86728 / 124 / 97** | **14609 / 86228 / 137 / 102** |
+
+No directory is missing from either run and neither run looks truncated (every group present in one is present in the other; totals move only by the expected new-test/fix/regression deltas above — e.g. Contact +2 tests, Catalog +5 tests, Document +38 tests, Inventory +16 tests, Treasury +14 tests, all net-new coverage added on local dev between baseline and B).
+
+### B.2 Backend Tests — PG-only invariants — job B `101323833199` / baseline `101330624615`
+
+**CI-shape caveat (affects both runs equally):** the "Run pgsql-only invariant tests" step runs three sequential `php artisan test -c phpunit-pgsql.xml` invocations in one `run:` block (GitHub Actions' default `bash -e`). The first invocation (huge `--filter=...` regex, ~200 classes) fails in both B and baseline, so the script aborts before invocation 2 (`CompanyPaymentRepositoryProvisioningTest`, `BackfillCompanyPaymentRepositoriesMigrationTest`) and invocation 3 (`DeliveryNoteConsolidationConcurrencyTest`, `DeliveryNoteBillingProjectionTest`, `DeliveryNoteBillingClaimServiceTest`, `DeliveryNoteBillingMarkerMigrationTest`) ever run — confirmed by only one Pest summary line appearing in either log. This is a pre-existing CI gap (identical in B and baseline), not a B regression, but it means those 6 classes' PG contract is currently unproven on **every** whole-suite run, not just this one.
+
+**Totals**: B `Tests: 58 failed, 4 skipped, 1987 passed (9633 assertions)` · baseline `Tests: 56 failed, 4 skipped, 1947 passed (9420 assertions)`.
+
+**REGRESSIONS (3)** — fail in B, absent in baseline:
+
+- `Tests\Feature\Fiscal\TreasuryAccountChargeBridgeTest > treasury bridge creates ar journal entry from account charge event` — `Failed asserting that two strings are identical. -'e7875406-633a-40bd-bb87-49b0ded0efed' +'01c45ff8-b2be-4749-a28e-eeeed539d1f6'` (`TreasuryAccountChargeBridgeTest.php:83`, a tenant_id mismatch)
+- `Tests\Feature\Fiscal\TreasuryAccountChargeBridgeTest > bridge resolves pending customer alias before ar creation` — `Failed asserting that actual size 0 matches expected size 1.` (`TreasuryAccountChargeBridgeTest.php:530`)
+- `Tests\Feature\Uom\UnitsInvariantTest > visibility census failure logs the exception and tenant context` — `Method error(<Any Arguments>) from Mockery_2_Illuminate_Log_LogManager should be called at least 1 times but called 0 times.` (`UnitsInvariantTest.php:145`)
+
+**Attribution check**: neither test file nor the underlying production files (`app/Modules/Treasury/Application/Projections/TreasuryAccountChargeBridge.php`, the Uom census migration/command) has ANY commit between baseline (`4d5b8812e`) and B (`189fe7d8a`) (`git log 4d5b8812e..189fe7d8a -- <file>` = empty for all three). Neither class fails under the SQLite-driven classic run (§B.1) in either B or baseline. **These read as environment/order flakes, not code regressions** — see verdict.
+
+**FIXED (1)**: `Tests\Feature\Fiscal\ChokepointCompletenessTest > every finalize callsite is reconciled with receiver type`.
+
+**SHARED (55 methods / 18 classes)**:
+
+```
+  8 Tests\Feature\Tenant\FreshTenantCensusInvariantsTest
+  6 Tests\Feature\Fiscal\TaskPhase3AccountChargeFullFlowTest
+  6 Tests\Feature\POS\PosReceiptsCashRoundingCheckTest
+  6 Tests\Feature\Uom\UnitsInvariantTest
+  5 Tests\Feature\Fiscal\TreasuryReceiptBridgeTest
+  4 Tests\Feature\Fiscal\TreasuryAccountChargeBridgeTest
+  4 Tests\Feature\POS\Migrations\PosTerminalsIdentityLifecycleConstraintsTest
+  3 Tests\Feature\Inventory\StockThresholdTest
+  2 Tests\Feature\Fiscal\RefundCompensationControllerTest
+  2 Tests\Feature\Import\UnitResolutionTest
+  2 Tests\Feature\POS\ConfigureCashRoundingCommandTest
+  1 each: Accounting\Reports\UpcomingPaymentsTest, Fiscal\PosCoreReceiptProjectionRefundDispositionStockTest,
+          Import\ProductIdentityResolutionTest, Import\RoundTrip\CompositeItemsRoundTripTest, Import\UnitsNotSeededRefusalTest,
+          POS\Migrations\BackfillLocationPosEnabledB3MigrationTest, Tenant\DayOneCensusCommandTest  (7 classes × 1)
+```
+
+### B.3 Treasury Spine — PG-only invariants — job B `101323833175` / baseline `101330624774`
+
+**Same CI-shape caveat**: three separate named steps (`Treasury Feature suite`, `Accounting Feature suite`, `Treasury Unit suite`), none with `continue-on-error` or `if: always()`. Step 1 (`./vendor/bin/phpunit tests/Feature/Treasury`) fails in both runs, so GitHub Actions skips steps 2 and 3 — `tests/Feature/Accounting` and `tests/Unit/Treasury` never execute under this PG-only driver on **either** run. Pre-existing gap, identical in B and baseline.
+
+**Totals**: B `Tests: 1355, Assertions: 5597, Errors: 33, Failures: 99` · baseline `Tests: 1341, Assertions: 5533, Errors: 33, Failures: 97`.
+
+**REGRESSIONS (2)** — fail in B, absent in baseline (file did not exist in baseline):
+
+- `Tests\Feature\Treasury\PaymentRefundRefusalTest::test_full_refund_of_a_supplier_payment_refuses_and_writes_nothing`
+- `Tests\Feature\Treasury\PaymentRefundRefusalTest::test_partial_refund_of_a_supplier_payment_refuses_and_writes_nothing`
+
+Both: `Failed asserting that table [repository_movements] matches expected entries count of 0. Entries found: 1.` (`PaymentRefundRefusalTest.php:334`, called from lines 154/167). `PaymentRefundRefusalTest.php` is a brand-new file (`git diff --name-status 4d5b8812e..189fe7d8a` shows `A`), added by F-W2-13 commits `c8c4aa55f` (2026-09-04, "refuse supplier payments in the customer refund lane") and `e6f576be1` (2026-09-05, "narrow the customer-refund refusal ... fix round 1"). The same two tests **pass** under the SQLite-driven classic run (§B.1, `tests/Feature/Treasury` group) in B — this is a PG-only defect in brand-new local-dev code, not a flake: the refusal guard the new tests assert on is not (yet) preventing a `repository_movements` write under the PostgreSQL driver. **This is a real, attributable regression** — see verdict.
+
+**FIXED (0)**.
+
+**SHARED (126 methods / 41 classes)**:
+
+```
+  11 Tests\Feature\Treasury\ShiftCashVarianceAdjustmentTest
+  10 Tests\Feature\Treasury\OutboundInstrumentServiceTest
+   8 Tests\Feature\Treasury\OutboundCancelReopenTest
+   6 Tests\Feature\Treasury\DeferredSupplierPaymentTest
+   6 Tests\Feature\Treasury\DeferredTenderPaymentTest
+   5 Tests\Feature\Treasury\BackfillBanksCommandTest
+   5 Tests\Feature\Treasury\DeferredTenderGuardsTest
+   5 Tests\Feature\Treasury\OpeningItemPaymentDirectionTest
+   5 Tests\Feature\Treasury\PosBridgeInstrumentTest
+   5 Tests\Feature\Treasury\StatementImportFlowTest
+   4 Tests\Feature\Treasury\RepositoryAdjustmentServiceTest
+   3 Tests\Feature\Treasury\InstrumentLifecycleReceiveTest
+   3 Tests\Feature\Treasury\InstrumentRemittanceServiceTest
+   3 Tests\Feature\Treasury\PaymentReversalDocumentTest
+   3 Tests\Feature\Treasury\PosSiblingBridgesMaturityTest
+   3 Tests\Feature\Treasury\StatementCreationActionTest
+   3 Tests\Feature\Treasury\TrainingAccountPaymentContainmentTest
+   2 each: AcquirerFeeServiceTest, InstrumentClearTest, PosBridgeInstrumentRefundTest, PosReceiptVatGlSplitTest,
+          RepositoryAdjustmentTest, RepositoryTransferServiceTest, ShiftCashVarianceQueueRetryTest, StatementMatchingHttpTest,
+          StatementMatchingServiceTest, TreasuryMovementServiceTransferTest, TreasuryOrphanCensusCommandTest  (11 classes × 2)
+   1 each: AdvanceReversalReportingAndApiTest, InstrumentEventsImmutabilityTest, MultiPaymentSpineTest,
+          OutboundInstrumentConcurrencyTest, OutboundInstrumentEndpointsTest, PaymentAllocationDocumentStateTest,
+          PaymentInstrumentPortfolioColumnsTest, PaymentReversalRefusalTest, PaymentTest, ReconcilePortfolioCheckTest,
+          RepositoryTransferEndpointTest, ReversalIdempotencyIndexTest, ShiftCashVarianceBranchDrawerTest,
+          ShiftCashVarianceOfflineDevicePayloadTest, ShiftCashVarianceTriggerPathsTest, StatementActionHandlerTest  (16 classes × 1)
+```
+
+Note `ReconcileTreasuryTest` (the §B.1 phpunit-job regression) does **not** appear in this PG-driven list at all — `test_one_millime_scale_mismatch_is_tolerated_and_does_not_false_freeze` passes here in both B and baseline, i.e. under PostgreSQL it is green on both runs; it only flips red under SQLite in B. Further evidence for the flake reading in the verdict.
+
+### B.4 Frontend Tests (Vitest) — job B `101323833112` / baseline `101330624875`
+
+**Totals**: B `Test Files 3 failed | 740 passed (743)`, `Tests 3 failed | 4971 passed | 3 todo (4977)` · baseline `Test Files 3 failed | 721 passed (724)`, `Tests 3 failed | 4781 passed | 3 todo (4787)`.
+
+**REGRESSIONS (0). FIXED (0). SHARED (3/3 — identical failing set in both runs, byte-identical test names):**
+
+```
+src/components/__tests__/SharedSingletons.tenantScope.test.tsx > shared singleton tenant scope > scopes modal invalidations (.001-.003)
+src/features/document-ingestions/__tests__/ReviewIngestionPage.test.tsx > ReviewIngestionPage > posts only PartnerFormData keys when creating a supplier from the review page (no extraction-field leakage)
+src/features/support-access/__tests__/SupportWindowForm.test.tsx > SupportWindowForm > matches backend length and absolute configured-window limits
+```
+
+No coverage gap: file/test counts grow by exactly the +19 test files / +190 tests added on local dev, nothing shrinks. The `i18n completeness — FAIL CLOSED: ...` lines visible mid-log (both runs) are **not** failures — they are captured stdout from the passing self-test `tools/__tests__/audit-i18n-completeness.test.mjs` (46 tests, ✓), which exercises the audit script's own fail-closed code paths against synthetic fixture hashes (`deadbeef…`, `0000…0`). They are unrelated to the real i18n gate below.
+
+### B.5 Frontend Lint (ESLint) — job B `101323833105` / baseline `101330624855`
+
+**B's only red is the i18n completeness MIRROR DRIFT path — confirmed, nothing else fails:**
+
+```
+i18n completeness — FAIL CLOSED: MIRROR DRIFT.
+  I18N_BASELINE_PROTECTED_BLOB = 26a9ae1688d80e0f450215326b19ccd1701c9a8f
+  progress-YAML mirror  = fd6dbe3952cc3daaec15dc432e6b99e007f50dd6
+  The YAML mirror is a paper trail, not the authority; a divergence means one of the two
+  was changed without the other. Re-pin both together (owner, at promotion).
+ ELIFECYCLE  Command failed with exit code 1.
+```
+
+Preceding gates in the same job, all clean: `pnpm audit:keys` → `Gate C ... : 0` / `0 acknowledged, 0 new, 0 stale`; `pnpm audit:design-system` → `802 acknowledged, 0 new, 0 stale` (ratchet not growing); `pnpm audit:quantity` → `0 total (0 baselined, 0 new, 0 stale)`. No ESLint rule violations, no TypeScript errors reach this job at all — the pipeline aborts at `audit:i18n` before any linter runs. So the red is **exactly** the MIRROR-DRIFT/cannot-re-pin path described in the task, and nothing else.
+
+**Baseline's red is a DIFFERENT gate — Gate C, not i18n:**
+
+```
+[sweep-progress] Gate C — useQuery/useQueries/queryClient queryKeys without an approved tenant scope: 1
+[gate-summary] Gate C baseline: 0 acknowledged, 1 new, 0 stale baseline entries
+
+New unscoped TanStack query key violations:
+  src/features/uom/hooks/useUnits.ts:53:9 invalidateQueries({ queryKey: tenantScopedKey([...]) }) is a no-op filter: ...
+```
+
+Local dev fixed this baseline red via commit `4b5b58789` ("chore(web): clear lint-gate debt — e2e-local parser project, uom invalidation key, missing ar/fr i18n keys", 2026-09-03), landing before B's tip — confirmed clean (`Gate C ... : 0`) in B's log. Baseline never reaches the i18n gate at all (it fails earlier, at Gate C) — so the i18n MIRROR DRIFT in B is a **newly-exposed** red (the gate itself is unaffected by local dev's code; the drift is a stale CI variable / tag pin, not a code defect — see verdict).
+
+## §C Verdict
+
+**No regression in this promotion candidate is attributable to a code defect introduced by local dev's own new work, with one exception: `PaymentRefundRefusalTest` (2 tests, `tests/Feature/Treasury/PaymentRefundRefusalTest.php`, PG-only invariants job) is a real, attributable regression** — the file is brand-new (added between baseline and B by commits `c8c4aa55f` "fix(treasury): refuse supplier payments in the customer refund lane (F-W2-13, P0)" and `e6f576be1` "fix(treasury): narrow the customer-refund refusal ... fix round 1"), and its own two new tests fail under the PostgreSQL driver (`repository_movements` gets a row the refusal guard is supposed to prevent) while passing under SQLite. This blocks promotion of the Treasury Spine / PG-only invariants gate until F-W2-13's refusal guard is fixed to also hold under the PostgreSQL write path, or the fix-round author confirms and re-verifies.
+
+Every other apparent regression across the five red jobs is one of:
+1. **A single genuine flake with no code behind it** — `Tests\Feature\Treasury\ReconcileTreasuryTest::test_one_millime_scale_mismatch_is_tolerated_and_does_not_false_freeze` (Backend Tests PHPUnit job) fails only under SQLite in B; neither the test file nor `ReconcileTreasuryCommand.php` has any commit between baseline and B, and the same test passes under PostgreSQL in both runs (§B.3 note). Absent from run A's 228-failure list too.
+2. **Two PG-only flakes riding the same pattern** — `TreasuryAccountChargeBridgeTest` (2 methods) and `UnitsInvariantTest` (1 method) fail only in B's PG-only invariants job; neither the test files nor their production code (`TreasuryAccountChargeBridge.php`, Uom census command) changed between baseline and B, and neither class fails under SQLite in either run. **Flake risk flagged per the task's "~3 test flakes" hint — that hint matches exactly**: 1 (ReconcileTreasuryTest) + 2 (TreasuryAccountChargeBridgeTest ×2 methods, same class) = 3 flake-shaped regressions with zero code behind them, all absent from run A's failure list, all environment/order-sensitive (a stray tenant_id / an uncalled Mockery log spy / an unfrozen repository) rather than deterministic assertion breaks.
+3. **A bookkeeping drift, not a code regression** — Frontend Lint's i18n MIRROR DRIFT (`I18N_BASELINE_PROTECTED_BLOB` var `26a9ae16…` vs YAML mirror `fd6dbe39…`) is exactly the re-pin gap the task anticipated: yesterday's re-pin (`89b508e1f`) updated the working repo but the CI variable and the `ci-pin/enforcement-p2-r1` tag were not moved together. No FE code, no ESLint rule, no ratchet (Gate C: 0 new; design-system: 0 new; quantity: 0 new) contributes to this red. Needs an owner action (re-pin both together), not a code fix.
+4. **A CI-shape gap, present identically in both runs, not a regression at all** — both PG-only jobs execute only their first script/step and skip the rest (Backend Tests PG-only's invocations 2–3 covering `CompanyPaymentRepositoryProvisioningTest`, `BackfillCompanyPaymentRepositoriesMigrationTest`, the 4 `DeliveryNote*` classes; Treasury Spine's `Accounting Feature suite` and `Treasury Unit suite` steps) because the first failing call aborts the job under GitHub Actions' default `bash -e`. This affects baseline and B equally, so it gates nothing here, but it means those classes' PostgreSQL contract is unproven on *every* whole-suite run today, independent of this promotion — worth its own follow-up ticket, out of this diff's scope.
+
+Frontend Tests (Vitest) has zero drift either way (3/3 byte-identical failing tests in both runs). Frontend Lint fixed a real baseline red (Gate C at `useUnits.ts:53`, commit `4b5b58789`) while exposing the unrelated i18n pin drift. Backend Tests (PHPUnit) net-fixed 19 pre-existing failures (`FeatureLaneManifestCheckerTest` ×7, `ReceiptReturnServiceTest` ×9, `QuarantineBestEffortParseControllerTest` ×2, `ExportFrontendPermissionsMapCommandTest` ×1) against 1 flake-shaped new red. **Promotion-blocking finding: fix `PaymentRefundRefusalTest`'s PG-only failure (or get an explicit owner waiver) before promoting; the 3 flake-shaped reds warrant a re-run of the PG-only + Treasury Spine + Backend Tests (PHPUnit) jobs alone to confirm they clear on a clean re-run, but should not block promotion on their own given the zero-code-change evidence; the i18n MIRROR DRIFT needs an owner re-pin, not a code change.**
