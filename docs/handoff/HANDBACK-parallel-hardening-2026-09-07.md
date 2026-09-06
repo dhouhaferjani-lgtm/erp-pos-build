@@ -32,3 +32,17 @@ Session started from the main checkout on local `dev` (`db8fb1471` at start). Ru
   4. Code gate: `treasury-reviewer` + `stock-gl-interaction-reviewer` → merge to local `dev` from the main checkout with an absolute `cd` → tell the parapharmacy orchestrator session (W-CASH-1 P0 depends on it) → ledger.
 - Commits this session so far (local `dev`, unpushed): `51dd84878` brief, `213b0bcc3` owner rows A9/A10, `3641298ad` handback block 1.
 - Queue beyond item 1 untouched (owner cap: "do not start more than that"); #210 owner-gated (A9).
+
+## Status block 3 — owner back, rulings applied, lanes running (2026-09-07, ~2 h mark)
+
+**Owner rulings (chat):** A9 = option (a), secure default, permission must stay grantable per role/user; A10 = casts stay `decimal:3` provisionally, benchmark first; queue CONTINUE until 2026-09-08 morning; greenfield.
+**Supersession:** item 1 precision widening now lives inside W-CASH-1 (P0-a/P0-b, orchestrator session `erp-ea`); `precision-4` parked (`c65af2735`, brief kept as input). Orchestrator confirmed it cites the brief, keeps casts at 3, adds the `fourth_decimal_present` detector (rev 13).
+**Benchmark note (A10 input):** `docs/superpowers/reviews/2026-09-07-benchmark-money-precision-4-decimals-casts.md` (`0c7bd49fb`) — recommended (A) casts stay 3 conditional on the census detector; NC 01 §62 verbatim; no 4-dp preset exists; 192 strict assertions would break under casts→4. Owner row A10 updated.
+**Running now (2 agents, swap 9.3 GB → no further launches until < 9 GB):** PR #210 fix round 1 (Opus, `.worktrees/pr-210`, 21 files in progress); build-fingerprint lane (Opus, `.worktrees/build-fingerprint`, 8 files in progress).
+**Briefs committed, dispatch-ready:** item 6 sales-extra `d636d8328`; item 4 q9-overpay `16ac29aad`; item 5 build-fingerprint `965931a32` (running).
+**Found already done:** item 9 K-6/K-7 merged to local dev on 2026-09-02 (`8f8eca958`, `71b1eae26`). Item 2: all Dhouha PRs merged except #210 (in fix round).
+**Item 12 prep:** `docs/superpowers/reviews/2026-09-07-rh-phase-a-ci-reconciliation-prep.md` (`d90fa8878`): candidate run fixes 8 job families red on origin/dev, keeps 5 red; 6 new PHPUnit failures vs baseline (TreasuryAccountChargeBridgeTest ×2, ReceiptReturnServiceTest ×2, UnitsInvariantTest, MediaUrlResolverTest); vitest 3 files + ESLint detail still to extract.
+**Item 3 K-1:** brief lives in gitignored `docs/sessions/session-K-otospex-money-2026-08-30/LANE-K1-…-BRIEF.md` (copy into the worktree at dispatch); touches the account-charge arm that is also red in CI — dispatch after #210/build-fingerprint gates.
+**Items 7/10/11:** doc lanes queued (Phase 2 brief: remove backfill arm per A6; impersonation runbook from `config/support_access.php` + SupportAccess routes; P0 roll-up `docs/handoff/PLAN-p0-fix-lanes-pre-production-2026-08-05.md` L1–L5 vs merged lanes).
+**Commits this block (local dev, unpushed):** `c65af2735`, `965931a32`, `d636d8328`, `16ac29aad`, `0c7bd49fb`, `d90fa8878`.
+**Restart:** not safe while the two agents run; will be announced.
