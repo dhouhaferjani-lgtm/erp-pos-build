@@ -68,6 +68,13 @@ ORDER RULES:
 
 ## 3. Seeders / one-shot steps that do NOT self-run
 - [ ] `CountryDocumentSettingsSeeder`, `CountryInventorySettingsSeeder` (P-1), `PlansSeeder` if plans empty, `RolesAndPermissionsSeeder` + `permission:cache-reset` per tenant (S-18; new perms: `pos.manage_terminals` Q-7, others per register).
+- [ ] **F-W2-14 (PR #210 + fix round 1, 2026-09-07) — `RolesAndPermissionsSeeder` MUST re-run on every already-provisioned tenant DB.** Two NEW permissions ship: `supplier-invoices.manage` (supplier-invoice create/re-match/post + ingestion commit + supplier-invoice attachments) and `payments.pay-supplier` (the AP branch of `POST /payments`). Under database-per-tenant they do not exist in an existing tenant DB until the seeder runs there.
+  - Staging: covered automatically IF `SYNC_PERMISSIONS_ON_BOOT=true` is still set on the API service in Dokploy (`apps/api/docker/entrypoint.sh:153-161` runs `tenants:seed --force --class='Database\Seeders\RolesAndPermissionsSeeder'`, then `permission:cache-reset` at `:176`). The var is in NO in-repo compose file and `.env.example:178` ships `false` — **confirm it on the service before promoting**.
+  - Every environment where the flag is false (local dev tenants, production): run manually, per environment —
+    `php artisan tenants:seed --force --class='Database\Seeders\RolesAndPermissionsSeeder'` then `php artisan permission:cache-reset`. `tenants:run`/`tenants:seed` exit 0 regardless — **gate on the printed per-tenant output**.
+  - `syncPermissions` resets built-in roles to the canonical set: any tenant-customised built-in role is reverted (standing caveat, `entrypoint.sh:150-152`). Note it in the release notes.
+  - Post-deploy smoke on ONE pre-existing tenant: manager posts a draft supplier invoice → 200; cashier `POST /api/v1/supplier-invoices` → 403; cashier `POST /api/v1/payments` allocating a posted supplier invoice → 403 with no `payments` row and no `repository_movements` row; cashier customer payment → 201; cashier `POST /api/v1/documents/{confirmed PO}/revert` → 403.
+  - The frontend now fails CLOSED for both permissions (`SERVER_AUTHORITATIVE_PERMISSIONS`, `apps/web/src/hooks/usePermissions.ts`), so a tenant that has NOT been re-seeded hides the controls instead of showing a button that 403s — the seeder step is what turns them back on for manager/accountant.
 - [ ] i18n baseline re-pin (B-10) if the audit says the blob moved; `I18N_BASELINE_PROTECTED_BLOB`.
 - [x] `ProvisioningRequiredPurposesV1` AST ratchet regen — DONE `e917a3d38` (CI-hygiene lane; 100→103 sites).
 - [ ] Impersonation seeder + role reseed (country-defaults promotion owes).

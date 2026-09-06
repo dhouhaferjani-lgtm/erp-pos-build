@@ -27,20 +27,22 @@ List. Query: `partner_id?`, `status?` (draft|posted|paid), `match_status?` (matc
 ### GET /api/v1/supplier-invoices/{id}  (can:documents.view)
 Detail: header + `lines[]` (each: source PO line ref, qty, unit_price net, vat_rate, recoverable_tax_amount, line_subtotal), `source_purchase_order:{id,number}`, `match:{status, per_line[]:{po_line_id, ordered, received, invoiced, matchable, price_variance}}`, `attachments[]` (from the generic media endpoint), GL `posted_at?`.
 
-### POST /api/v1/supplier-invoices  (can:documents.update)
+### POST /api/v1/supplier-invoices  (can:supplier-invoices.manage)
 Create DRAFT, link to a PO, then auto-run `match()`. Body: `{partner_id, source_document_id (PO id), currency, issue_date, due_date?, supplier_reference?, lines:[{source_line_id (PO line id), quantity (string, qty scale), unit_price (string, net/HT), vat_rate (string)}]}`. 201 → full detail incl. computed `match_status`. Validate: regex scale ceilings (qty `…{1,4}`, money `…{1,3}`, percent `…{1,2}`); every `source_line_id` belongs to the linked PO; partner matches PO partner.
 
-### POST /api/v1/supplier-invoices/{id}/match  (can:documents.update)
+### POST /api/v1/supplier-invoices/{id}/match  (can:supplier-invoices.manage)
 Re-run `match()`; returns updated `match` block. (Idempotent; create already matches.)
 
-### POST /api/v1/supplier-invoices/{id}/post  (can:documents.update)
+### POST /api/v1/supplier-invoices/{id}/post  (can:supplier-invoices.manage)
 `assertPostable($doc, $policy->matchEnforcement)` then `SupplierInvoicePostingService::post()`. 200 → detail with `status=posted`, `posted_at`. **422** when the hard quantity invariant blocks (over-invoice vs received) — this is NOT bypassable by `warn`. Price variance under `warn` → allowed (surface a warning in the response); under `block` → 422.
 
-### POST /api/v1/documents/{document}/attachments  (can:documents.update) — REUSE (Stage E)
+### POST /api/v1/documents/{document}/attachments  (can:documents.update + DocumentPolicy::attach) — REUSE (Stage E)
 Existing generic `DocumentAttachmentController::store`. Stage E adds an optional validated `role`; supplier-invoice UI passes `role=source_document` (`MediaRole::SourceDocument`, `MediaAssetType::Document`, s3 disk). List/download/delete via the same generic endpoints.
+F-W2-14 fix round 1: the route keeps the coarse `can:documents.update`, but store/destroy now take a per-TYPE verdict through `DocumentPolicy::attach()` — on a **supplier invoice** the caller must hold `supplier-invoices.manage`. Read (index/download) is unchanged (`can:documents.view`).
 
 ### Payment — REUSE `POST /api/v1/payments` (single-payment supplier path)  ⚠️ GATED on C4 re-review
 Already built: Dr 401 / Cr treasury, decrements `payable_balance`. The multi-line `storeMultiple` path now rejects supplier invoices (`b593ee70b`). FE detail page "Record payment" posts the single-payment supplier payload. **Confirm SHIP before wiring.**
+F-W2-14 fix round 1: `POST /payments` keeps `can:payments.create` on the route, and its **supplier-side** branch additionally requires `payments.pay-supplier` (`SupplierPaymentAuthorizer`, taken after validation and before any write). Customer-side payments are unchanged. Seeded to admin/manager/accountant only.
 
 ## Web (Stage F) — Purchases → Supplier Invoices
 `apps/web/src/features/purchases/supplier-invoices/` (sits beside `GoodsReceiptListPage`). List page (filters + match-status badge), detail page (lines, linked PO, per-line match table, Post action, attachment upload+list, Record-payment if C4 ships). Route + nav under Purchases, module-gated. i18n keys in `purchases`/`common` namespaces, all 3 locales (en/fr/ar). Vitest for list/filter + match badge; typecheck + lint.
