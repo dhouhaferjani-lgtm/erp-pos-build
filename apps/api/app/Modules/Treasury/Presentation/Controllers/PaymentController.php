@@ -27,6 +27,7 @@ use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
 use App\Modules\Treasury\Application\Services\OutboundInstrumentIssuer;
 use App\Modules\Treasury\Application\Services\OutboundRepositoryValidator;
 use App\Modules\Treasury\Application\Services\PaymentAllocationService;
+use App\Modules\Treasury\Application\Services\SupplierPaymentAuthorizer;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
 use App\Modules\Treasury\Domain\Enums\AllocationTreatment;
 use App\Modules\Treasury\Domain\Enums\InstrumentAccountPurpose;
@@ -75,11 +76,39 @@ class PaymentController extends Controller
         private readonly DocumentAllocationStateGuard $allocationStateGuard,
         private readonly DocumentAllocationClassifier $allocationClassifier,
         private readonly DocumentStatusService $documentStatus,
+        private readonly SupplierPaymentAuthorizer $supplierPaymentAuthorizer,
     ) {}
 
     private function scale(): int
     {
         return $this->scaleResolver->getScale();
+    }
+
+    /**
+     * Pull the document ids out of a validated allocation array.
+     *
+     * F-W2-14 residual (a) helper for {@see SupplierPaymentAuthorizer}. The
+     * shape is already validated (`allocations.*.document_id` /
+     * `excess_allocations.*.document_id` are `uuid` + ScopedExists), so this
+     * only narrows the static type; anything unexpected is skipped rather than
+     * cast, because a silently coerced id would weaken the gate.
+     *
+     * @return list<string>
+     */
+    private function allocationDocumentIds(mixed $allocations): array
+    {
+        if (! is_array($allocations)) {
+            return [];
+        }
+
+        $ids = [];
+        foreach ($allocations as $allocation) {
+            if (is_array($allocation) && isset($allocation['document_id']) && is_string($allocation['document_id'])) {
+                $ids[] = $allocation['document_id'];
+            }
+        }
+
+        return $ids;
     }
 
     /**
@@ -419,6 +448,20 @@ class PaymentController extends Controller
             'allocations.*.amount.regex' => 'Allocation amount must have at most 3 decimal places.',
             'withholding_rate.regex' => 'Withholding rate must have at most 4 decimal places.',
         ]);
+
+        // F-W2-14 residual (a): `payments.create` (which a cashier holds so a
+        // till can take a customer payment) is NOT authority to send money to a
+        // supplier. Taken here — after validation proved the ids are real and
+        // tenant/company-scoped, before the first write — so a refusal leaves no
+        // payment row and no repository movement. Customer-side payments are
+        // untouched. See SupplierPaymentAuthorizer.
+        $this->supplierPaymentAuthorizer->assertMayPay(
+            $user,
+            $tenantId,
+            $companyId,
+            isset($validated['partner_id']) ? (string) $validated['partner_id'] : null,
+            $this->allocationDocumentIds($validated['allocations'] ?? null),
+        );
 
         $paymentMethodId = (string) $validated['payment_method_id'];
         $paymentMethod = PaymentMethod::query()
@@ -1476,6 +1519,21 @@ class PaymentController extends Controller
             'payments.*.amount.regex' => 'Payment amount must have at most 3 decimal places.',
             'excess_allocations.*.amount.regex' => 'Excess allocation amount must have at most 3 decimal places.',
         ]);
+
+        // F-W2-14 residual (a) — same gate as store(), on the multi-tender arm.
+        // A multi-payment names ONE settled `document_id` plus optional excess
+        // allocations; any of them being a supplier settlement makes the whole
+        // batch supplier-side.
+        $this->supplierPaymentAuthorizer->assertMayPay(
+            $user,
+            $tenantId,
+            $companyId,
+            isset($validated['partner_id']) ? (string) $validated['partner_id'] : null,
+            array_merge(
+                isset($validated['document_id']) ? [(string) $validated['document_id']] : [],
+                $this->allocationDocumentIds($validated['excess_allocations'] ?? null),
+            ),
+        );
 
         $methodIds = [];
         foreach ($validated['payments'] as $paymentLine) {

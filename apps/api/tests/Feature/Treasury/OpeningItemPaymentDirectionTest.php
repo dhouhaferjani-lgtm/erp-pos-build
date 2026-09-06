@@ -117,7 +117,7 @@ final class OpeningItemPaymentDirectionTest extends TestCase
             'password' => bcrypt('password'),
             'status' => UserStatus::Active,
         ]);
-        $this->user->givePermissionTo(['payments.view', 'payments.create', 'payments.allocate']);
+        $this->user->givePermissionTo(['payments.view', 'payments.create', 'payments.allocate', 'payments.pay-supplier']);
 
         UserCompanyMembership::create([
             'user_id' => $this->user->id,

@@ -242,6 +242,22 @@ class RolesAndPermissionsSeeder extends Seeder
             // Treasury/Payments
             'payments.view',
             'payments.create',
+            // F-W2-14 residual (a) — the AP half of `POST /payments`.
+            //
+            // `payments.create` is held by `cashier` (and `operator`) because a
+            // till operator must be able to take a CUSTOMER payment. The very
+            // same endpoint settles a SUPPLIER invoice, which moves cash OUT of
+            // a repository and debits 401 — a different act, measured as a live
+            // hole on the browser run (`W2-PERM-6..11`, cashier paid a supplier
+            // 201 with a cash movement out).
+            //
+            // Nothing in the existing catalogue expresses "may send money to a
+            // supplier": `payments.allocate` gates the invoice-side auto-alloc
+            // route (Document routes.php `documents.allocate-payment`) and
+            // `expenses.pay` is the expense flow. Hence a dedicated, coarse
+            // gate, enforced at the request-authorization layer on the AP branch
+            // ONLY, so customer-side payments by a cashier are untouched.
+            'payments.pay-supplier',
             'payments.allocate',
             'payments.void',
             'payments.refund',
@@ -590,7 +606,7 @@ class RolesAndPermissionsSeeder extends Seeder
                 'expense-categories.view', 'expense-categories.create', 'expense-categories.update', 'expense-categories.delete',
                 'expense-recurrences.view', 'expense-recurrences.create', 'expense-recurrences.update', 'expense-recurrences.delete', 'expenses.export',
                 'income.view', 'income.create', 'income.update', 'income.post',
-                'payments.view', 'payments.create', 'payments.allocate', 'payments.refund',
+                'payments.view', 'payments.create', 'payments.pay-supplier', 'payments.allocate', 'payments.refund',
                 'instruments.view', 'instruments.create', 'instruments.update', 'instruments.transfer', 'instruments.clear', 'instruments.bounce', 'instruments.remit', 'instruments.cancel',
                 'repositories.view',
                 'treasury.view', 'treasury.adjust', 'treasury.transfer',
@@ -817,7 +833,7 @@ class RolesAndPermissionsSeeder extends Seeder
                 'expense-categories.view', 'expense-categories.create', 'expense-categories.update', 'expense-categories.delete',
                 'expense-recurrences.view', 'expense-recurrences.create', 'expense-recurrences.update', 'expense-recurrences.delete', 'expenses.export',
                 'income.view', 'income.create', 'income.update', 'income.delete', 'income.post',
-                'payments.view', 'payments.create', 'payments.allocate', 'payments.refund',
+                'payments.view', 'payments.create', 'payments.pay-supplier', 'payments.allocate', 'payments.refund',
                 'instruments.view', 'instruments.update', 'instruments.transfer', 'instruments.clear', 'instruments.bounce', 'instruments.remit', 'instruments.cancel', 'instruments.clear-outbound', 'instruments.cancel-outbound',
                 'repositories.view', 'repositories.manage',
                 'treasury.view', 'treasury.manage', 'treasury.adjust', 'treasury.transfer',

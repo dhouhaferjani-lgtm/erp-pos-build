@@ -2042,11 +2042,12 @@ final class SupplierInvoiceApiTest extends TestCase
 
     public function test_operator_cannot_post_supplier_invoice_under_secure_default(): void
     {
-        // SECURE DEFAULT (F-W2-14, owner policy call — see PR): the operator role
-        // holds documents.update but NOT the dedicated supplier-invoices.manage, so
-        // it can no longer post supplier invoices via the API. If the owner decides
-        // operators should retain this ability, grant supplier-invoices.manage to
-        // the operator role in RolesAndPermissionsSeeder and update this test.
+        // SECURE DEFAULT — OWNER RULING 2026-09-07, option (a), BINDING: the
+        // `operator` role does NOT get `supplier-invoices.manage` by default; only
+        // admin/manager/accountant hold it. The ability stays GRANTABLE — see
+        // test_operator_granted_supplier_invoices_manage_directly_can_post() for
+        // the other half of the ruling. Do not "fix" this test by widening the
+        // seeder.
         $operator = $this->createUserWithRole('operator', 'operator-si@test.example');
         $this->assertTrue($operator->can('documents.update'), 'Precondition: operator holds the generic documents.update.');
 
@@ -2059,6 +2060,51 @@ final class SupplierInvoiceApiTest extends TestCase
         $this->actingAs($operator, 'sanctum')
             ->postJson("/api/v1/supplier-invoices/{$siId}/post")
             ->assertForbidden();
+    }
+
+    /**
+     * OWNER RULING 2026-09-07 (second half): the secure default is a DEFAULT,
+     * never a hard-coded role check. Whoever manages roles/permissions can grant
+     * `supplier-invoices.manage` to a specific operator — through the same
+     * permissions surface that lists the whole catalogue
+     * (`GET /api/v1/permissions` → `Permission::all()`, and
+     * `PATCH /api/v1/roles/{id}` → `syncPermissions`) — and the API must then
+     * let that user post.
+     *
+     * Pinned end-to-end on the real route (`can:supplier-invoices.manage`
+     * middleware), with the SAME operator role whose default is a deny in the
+     * test above, so a future refactor that swapped the permission check for a
+     * role check would fail here.
+     */
+    public function test_operator_granted_supplier_invoices_manage_directly_can_post(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        $operator = $this->createUserWithRole('operator', 'operator-granted-si@test.example');
+        $this->assertFalse($operator->can('supplier-invoices.manage'), 'Precondition: the role default is a deny.');
+
+        $operator->givePermissionTo('supplier-invoices.manage');
+        $operator = $operator->fresh();
+        $this->assertNotNull($operator);
+        $this->assertTrue($operator->can('supplier-invoices.manage'));
+
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '100.000');
+        app(GeneralLedgerService::class)->createGoodsReceiptGrIrEntry(
+            $this->company->id,
+            Str::uuid()->toString(),
+            '10.0000',
+            '100.000',
+            'TND',
+        );
+
+        $siId = $this->actingAs($operator, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '10.0000', '100.000', '19.00'))
+            ->assertCreated()
+            ->json('data.id');
+
+        $this->actingAs($operator, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$siId}/post")
+            ->assertOk()
+            ->assertJsonPath('data.status', DocumentStatus::Posted->value);
     }
 
     public function test_seeded_roles_grant_supplier_invoice_manage_only_to_authorized_roles(): void

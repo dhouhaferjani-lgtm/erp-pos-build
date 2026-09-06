@@ -100,7 +100,7 @@ class PaymentGlPostingTest extends TestCase
             'password' => bcrypt('password'),
             'status' => UserStatus::Active,
         ]);
-        $this->user->givePermissionTo(['payments.create', 'payments.view']);
+        $this->user->givePermissionTo(['payments.create', 'payments.view', 'payments.pay-supplier']);
 
         UserCompanyMembership::create([
             'user_id' => $this->user->id,
