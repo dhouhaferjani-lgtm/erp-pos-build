@@ -334,7 +334,12 @@ describe('SupplierInvoiceListPage — create entry point (F-W2-14 both-layer gat
     expect(screen.queryByRole('link', { name: /purchases:supplierInvoices.new/ })).not.toBeInTheDocument()
   })
 
-  it('honours a direct server grant to an operator (owner ruling: grantable)', async () => {
+  // NOTE (gate r2 finding 1): this renders the PAGE, so it proves only that the
+  // in-page link honours a direct grant. The ROUTE guard — which is what actually
+  // decided the ruling's grantability, and which used to deny this same operator
+  // through the `purchases` role alias — is covered by
+  // supplierInvoiceRouteGuards.test.tsx. Keep both.
+  it('honours a direct server grant to an operator in the page body (route guard: see supplierInvoiceRouteGuards.test.tsx)', async () => {
     setTenant('tenant-1', 'company-1', ['operator'], ['supplier-invoices.manage'])
     renderWithProviders(<SupplierInvoiceListPage />)
 

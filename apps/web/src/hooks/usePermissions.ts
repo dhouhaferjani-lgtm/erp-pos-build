@@ -55,7 +55,17 @@ const SERVER_AUTHORITATIVE_PERMISSIONS = new Set<Permission>([
 export const MODULE_PERMISSIONS = {
   dashboard: ['dashboard.view'],
   sales: ['sales.view'],
-  purchases: ['purchases.view'],
+  // Gate r2 finding 1: `purchases.view` is a UI ROLE ALIAS
+  // (uiAliasPermissions.ts: ['admin','purchases','manager']) with no backend
+  // twin, so on its own it locked the seeded `accountant` — and any user
+  // granted `supplier-invoices.manage` through the permissions surface — out of
+  // the whole Purchases nav group, children included (Sidebar filters children
+  // only AFTER the group's own gate passes). The real permission is listed
+  // beside the alias so the group opens for the people the API already
+  // authorises; each child that an accountant cannot actually use is gated on
+  // its own real backend permission in Sidebar.tsx, so nobody is offered a page
+  // the API will refuse.
+  purchases: ['purchases.view', 'supplier-invoices.manage'],
   'document-ingestions': ['document-ingestions.view'],
   inventory: ['inventory.view'],
   'inventory.transfers.view': ['inventory.transfers.view'],
@@ -122,6 +132,23 @@ export const MODULE_PERMISSIONS = {
   'deliveries.view': ['deliveries.view'],
   // UI-01 row 2: same shape, for the "stockByLocation" nav item.
   'inventory.view': ['inventory.view'],
+  // Gate r2 finding 1 — NAV-ONLY keys for the Purchases group's children.
+  //
+  // Each is a UNION of the REAL backend permission that child's own API checks
+  // (`can:purchase-orders.view` Document routes.php:275,
+  //  `can:purchase-quote-requests.view` Procurement routes.php:45,
+  //  `can:supplier-invoices.manage` Procurement routes.php:104)
+  // with the legacy `purchases.view` alias, so that widening the GROUP gate
+  // above for `supplier-invoices.manage` holders offers them only the entries
+  // their permissions actually work on, while every role that could already see
+  // these entries — including a role that holds nothing but the alias — keeps
+  // all of them. Purely additive.
+  //
+  // `nav.supplierInvoices` carries no alias arm on purpose: the alias is exactly
+  // what used to hide this entry from the accountant this PR grants.
+  'nav.purchaseOrders': ['purchase-orders.view', 'purchases.view'],
+  'nav.purchaseQuoteRequests': ['purchase-quote-requests.view', 'purchases.view'],
+  'nav.supplierInvoices': ['supplier-invoices.manage'],
 } as const satisfies Record<string, readonly Permission[]>
 
 /**

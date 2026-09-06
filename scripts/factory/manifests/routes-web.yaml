@@ -701,15 +701,15 @@ routes:
     permission: document-ingestions.view
   - path: /purchases/supplier-invoices
     component: SupplierInvoiceListPage
-    module_gate: purchases
-    permission: null
+    module_gate: null
+    permission: documents.view
   - path: /purchases/supplier-invoices/:id
     component: SupplierInvoiceDetailPage
-    module_gate: purchases
-    permission: null
+    module_gate: null
+    permission: documents.view
   - path: /purchases/supplier-invoices/new
     component: SupplierInvoiceCreatePage
-    module_gate: purchases
+    module_gate: null
     permission: supplier-invoices.manage
   - path: /purchases/suppliers
     component: CustomerListPage

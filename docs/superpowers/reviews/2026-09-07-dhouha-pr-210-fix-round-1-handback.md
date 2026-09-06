@@ -275,3 +275,110 @@ The committed map IS the generator's output; a re-run produces no further diff.
 - `docs/handoff/PROMOTION-CHECKLIST-2026-08-26.md` §3 — the F-W2-14 deploy row
 - `docs/superpowers/coordination/2026-06-26-supplier-invoice-api-contract.md` — finding 6
 - `scripts/factory/manifests/routes-web.yaml` — regenerated
+
+---
+---
+
+# Fix round 2 — answering gate r2 (`docs/superpowers/reviews/2026-09-07-dhouha-pr-210-gate-r2.md`, verdict MERGE-WITH-FIXES)
+
+Commits: see below. Not merged, not pushed. Nothing under the lot/cash slices touched.
+
+## Item 1 [MAJOR] — the FE module gate was a role alias in front of the permission gate
+
+**Routes** (`apps/web/src/routes/index.tsx`) now carry the SAME permission the API route checks, with no module alias:
+
+| Web route | was | now | backend twin |
+|---|---|---|---|
+| `/purchases/supplier-invoices` `:1046-1055` | `moduleKey="purchases"` | `permission="documents.view"` | `Procurement/Presentation/routes.php:84` `can:documents.view` |
+| `/purchases/supplier-invoices/:id` `:1071-1080` | `moduleKey="purchases"` | `permission="documents.view"` | `…routes.php:94` `can:documents.view` |
+| `/purchases/supplier-invoices/new` `:1061-1069` | `moduleKey="purchases" permission="supplier-invoices.manage"` | `permission="supplier-invoices.manage"` | `…routes.php:104` `can:supplier-invoices.manage` |
+
+Regenerated `scripts/factory/manifests/routes-web.yaml:709-720` → all three `module_gate: null`, permissions as above.
+
+**Nav** (the gate's "also check the sidebar" half). The whole Purchases GROUP hung off the same alias (`Sidebar.tsx:176 permission: 'purchases'` → `MODULE_PERMISSIONS.purchases = ['purchases.view']`), and `Sidebar.tsx:453-458` filters children only AFTER the group's own gate passes — so an accountant saw no supplier-invoice link at all. Fixed **additively**, so nobody loses an entry:
+- `apps/web/src/hooks/usePermissions.ts:58` — `purchases: ['purchases.view', 'supplier-invoices.manage']` (`canAccessModule` is `hasAnyPermission`, so the group now opens for the people the API already authorises).
+- `usePermissions.ts:106-121` — three NAV-ONLY keys, each a UNION of the real permission that child's own API checks with the legacy alias, so the widening cannot offer anyone a page the server refuses: `nav.purchaseOrders: ['purchase-orders.view','purchases.view']`, `nav.purchaseQuoteRequests: ['purchase-quote-requests.view','purchases.view']`, `nav.supplierInvoices: ['supplier-invoices.manage']` (no alias arm — the alias is exactly what hid it from the accountant).
+- `apps/web/src/components/organisms/Sidebar/Sidebar.tsx:180-195` — `quoteRequests`, `purchaseOrders`, `goodsReceipts` (its list reads `/purchase-orders`, `GoodsReceiptListPage.tsx:194`) and `supplierInvoices` gated on those keys.
+- **Net effect**: accountant now sees Suppliers / Scans / Supplier invoices / Return notes and NOT the three whose API would 403; manager, admin and the alias-only `purchases` role keep every entry (pinned); cashier/viewer/operator still cannot open the group.
+
+**Tests** — `apps/web/src/features/purchases/supplier-invoices/supplierInvoiceRouteGuards.test.tsx` (new, 11 tests) mounts the real `RequirePermission` guard with the real `usePermissions` hook and the real auth store, plus a static assertion against the generated route manifest so the wiring cannot drift back:
+- read (`documents.view`): accountant ✅, granted operator ✅, **default operator ✅** — read mirrors the API, which allows `documents.view`; signed-out ❌.
+- create (`supplier-invoices.manage`): accountant ✅, granted operator ✅, default operator ❌, **cashier ❌**.
+- manifest: all three routes assert `module_gate: null` + the exact permission.
+
+> Correction to the fix-round brief: "cashier denied" holds for CREATE only. A cashier holds `documents.view` and the API's `GET /supplier-invoices` admits them, so denying the read route on the FE would re-create the very mismatch this finding is about. The tests say so explicitly.
+
+`Sidebar.test.tsx` gains 3 tests (accountant sees supplier invoices and not the 403 pages; manager keeps every child; cashier still shut out). `SupplierInvoiceListPage.test.tsx:337` — the test the gate called "green while asserting the opposite of production" is retitled to say it covers the PAGE BODY only and points at the route-guard file; both are kept.
+
+## Item 2 [MINOR] — `PartnerType::Both` pinned; the cashier over-deny documented
+
+`tests/Feature/Treasury/SupplierPaymentPermissionTest.php` `test_cashier_may_take_an_inbound_receipt_from_a_both_typed_partner`: cashier + `both` partner + no document → **201**, and `repository_movements.direction === 'in'` with **no** `out` row. The direction assertion is the load-bearing half: the `Both` exclusion is only safe because direction is derived from a `SupplierInvoice` allocation and not from the partner, so if that coupling ever changes this test fails instead of the arm silently becoming a hole.
+
+**Behaviour change, recorded, NOT changed** (gate r2 finding 3): arm 2 of `SupplierPaymentAuthorizer` refuses a cashier ANY document-less payment naming a **pure `supplier`** partner — including money coming IN (a supplier refunding cash at the till). Pinned by `test_cashier_cannot_make_an_on_account_payment_to_a_supplier`. It is deliberate (a document-less payment to a supplier partner is indistinguishable, at request time, from an on-account supplier payment) and it is **not a one-liner to relax**: direction is decided downstream in `PaymentController::store()`, after the point where the gate must run to leave no rows behind. The clean fix would be an explicit `direction`/`kind` on the request, which is a product change, not a fix-round edit. **Owner-visible consequence**: a till taking cash back from a partner typed `supplier` now needs `payments.pay-supplier`, or the partner should be typed `both`. Added to the promotion row's smoke list.
+
+## Item 3 [MINOR] — the idempotency replay no longer skips the gate
+
+`apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:389-405` (`store`) and `:1512-1524` (`storeMultiple`): the replay arm now re-takes `assertMayPay` against the **persisted** payment — its partner and its allocated documents (`allocatedDocumentIdsOf()`, `:88-107`; both finders already eager-load `allocations`) — because a replay request carries nothing but the key. Moving the gate *above* the short-circuit was not possible: it needs validated, scoped ids that only exist after `$request->validate(...)`, which itself runs after the replay by design (a retry must not be re-validated).
+
+Test: `test_cashier_cannot_replay_a_managers_supplier_payment_idempotency_key` — manager creates (201), cashier replays the same key → **403**, manager's own retry still replays → **200**, and exactly **one** payment row exists.
+
+## Item 4 [MINOR] — unguarded uuid bind
+
+`apps/api/app/Modules/Media/Presentation/Controllers/DocumentAttachmentController.php:193-202` — `Str::isUuid()` guard → 404 before the query. Test `test_malformed_document_id_is_a_404_not_a_database_error` covers GET and POST on `/documents/not-a-uuid/attachments`.
+
+## Item 5 [MINOR / OWNER CONFIRM] — accountant is denied PO revert by default
+
+**Owner-visible default, stated for confirmation.** The ruling's parenthetical named "admin/manager/accountant/purchases-type roles"; the shipped shape is narrower for this one act:
+
+| Act | Permission | Default holders | Deliberately NOT default |
+|---|---|---|---|
+| Create / re-match / post a supplier invoice; attach to one | `supplier-invoices.manage` | admin, manager, **accountant** | cashier, operator, viewer, technician |
+| Pay a supplier | `payments.pay-supplier` | admin, manager, **accountant** | cashier, operator, viewer, technician |
+| **Un-confirm (revert) a confirmed purchase order** | `purchase-orders.confirm` (existing) | admin, **manager only** | cashier, operator, viewer, **accountant** |
+
+Rationale: un-committing a supplier commitment is a purchasing act, not an accounting one, and `purchase-orders.confirm` already existed with exactly that tier — inventing a wider permission would have been the larger change. It stays fully grantable (`P2pEntryPointPermissionsTest::test_purchase_order_revert_permission_is_manager_tier_not_cashier_tier` pins the default; `DocumentRevertEndpointTest::test_directly_granted_purchase_order_confirm_permission_allows_revert` pins the grant). **If the owner wants accountants to revert POs by default, add `'purchase-orders.confirm'` to the accountant block in `RolesAndPermissionsSeeder.php:829` and flip the one assertion — no code change.**
+
+## Verification — fix round 2
+
+```
+$ sysctl vm.swapusage    -> used 8571M then 9498M / 10240M — runs kept to single files, full suite never run
+
+# Backend (apps/api, sqlite)
+$ ./vendor/bin/phpunit tests/Feature/Treasury/SupplierPaymentPermissionTest.php
+  OK (7 tests, 23 assertions)
+$ ./vendor/bin/phpunit tests/Feature/Modules/Media/DocumentAttachmentApiContractTest.php
+  Tests: 17, Assertions: 87, PHPUnit Deprecations: 14   (0 failures)
+
+# Red-before-green (replay gate removed, test re-run, gate restored)
+  test_cashier_cannot_replay_a_managers_supplier_payment_idempotency_key
+    -> "Expected response status code [403] but received 200."
+
+# Static
+$ ./vendor/bin/phpstan analyse app/Modules/Media/Presentation/Controllers/DocumentAttachmentController.php \
+    app/Modules/Treasury/Presentation/Controllers/PaymentController.php --memory-limit=1G --no-progress
+  [OK] No errors
+$ ./vendor/bin/pint --test <4 changed PHP files>   -> {"result":"pass"}
+
+# Generators (byte-identity re-confirmed)
+$ (apps/api) CACHE_STORE=array php artisan permissions:export-frontend-map
+  -> git status --porcelain apps/web/src/hooks/permissionsMap.generated.ts : EMPTY (seeder untouched in r2)
+$ node scripts/factory/gen-route-manifest.mjs      -> wrote routes-web.yaml (271 routes)
+$ node --test scripts/factory/gen-route-manifest.test.mjs -> pass 10, fail 0
+
+# Frontend (apps/web)
+$ ./node_modules/.bin/vitest run src/features/purchases/supplier-invoices \
+    src/hooks/__tests__/usePermissions.supplierInvoiceGates.test.tsx \
+    src/components/organisms/Sidebar/__tests__/Sidebar.test.tsx src/routes/routes.test.tsx
+  Test Files 8 passed (8)   Tests 155 passed (155)
+$ ./node_modules/.bin/vitest run tools/__tests__     Test Files 8 passed (8)   Tests 189 passed (189)
+$ ./node_modules/.bin/tsc --noEmit                   exit 0
+$ ./node_modules/.bin/eslint <6 touched FE files>    ✖ 7 problems (0 errors, 7 warnings)
+$ (dev baseline, the same 5 pre-existing files)      ✖ 7 problems (0 errors, 7 warnings)   => 0 new
+```
+
+## Still outstanding after round 2
+
+- **No browser/Playwright run.** Finding 1 is now proven at the route-guard level with the real hook and store, and pinned in the generated manifest — but nobody has clicked through as an accountant or a granted operator.
+- **No deploy**; the promotion row is written, executing it is owner work.
+- The PG leg was **not** re-run for round 2 (swap at 9.5G/10.2G); round 1's PG evidence stands for the files it covered. `SupplierPaymentPermissionTest`'s two new cases assert on `repository_movements`, which round 1 already exercised on PG.
+- Unchanged from round 1: the 3 invoice-first 422s and the 2 PG `locations.code` truncations are pre-existing and un-ticketed; the deptrac ratchet red is inherited and clears on merge (gate r2 confirmed this independently).

@@ -853,6 +853,56 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       )
     })
 
+    /**
+     * Gate r2 finding 1 — the accountant this PR grants `supplier-invoices.manage`
+     * could not see (nor open) any supplier-invoice screen, because the whole
+     * Purchases group hung off the `purchases.view` UI ROLE ALIAS. The group now
+     * also admits `supplier-invoices.manage` holders, and each child an
+     * accountant cannot use is gated on the real permission its own API checks —
+     * so the widening never offers a page the server will refuse.
+     */
+    it('shows Supplier invoices to an accountant, and hides the purchases pages their API refuses', async () => {
+      seedAuth({
+        roles: ['accountant'],
+        permissions: ['documents.view', 'supplier-invoices.manage', 'payments.pay-supplier', 'partners.view', 'deliveries.view'],
+      })
+      renderSidebar(mechanicFullConfig)
+
+      expect(await screen.findByRole('link', { name: /navigation\.supplierInvoices/i })).toHaveAttribute(
+        'href',
+        '/purchases/supplier-invoices',
+      )
+      // No purchase-orders.view / purchase-quote-requests.view => those APIs 403.
+      expect(screen.queryByRole('link', { name: /navigation\.purchaseOrders/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: /navigation\.quoteRequests/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: /navigation\.goodsReceipts/i })).not.toBeInTheDocument()
+    })
+
+    it('keeps every Purchases child for a manager (the widening is additive)', async () => {
+      // `supplier-invoices.manage` is SERVER-AUTHORITATIVE (fail closed on a
+      // tenant whose seeder has not re-run), so the manager's session must carry
+      // the real server permission list — exactly what a live login sends.
+      seedAuth({
+        roles: ['manager'],
+        permissions: ['documents.view', 'purchase-orders.view', 'purchase-quote-requests.view', 'supplier-invoices.manage'],
+      })
+      renderSidebar(mechanicFullConfig)
+
+      expect(await screen.findByRole('link', { name: /navigation\.purchaseOrders/i })).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: /navigation\.quoteRequests/i })).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: /navigation\.goodsReceipts/i })).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: /navigation\.supplierInvoices/i })).toBeInTheDocument()
+    })
+
+    it('still hides the Purchases group from a cashier', async () => {
+      seedAuth({ roles: ['cashier'], permissions: ['documents.view', 'documents.update', 'payments.create'] })
+      renderSidebar(mechanicFullConfig)
+
+      // Positive control: the cashier renders navigation at all.
+      expect(await screen.findByRole('link', { name: /navigation\.expenses$/i })).toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: /navigation\.supplierInvoices/i })).not.toBeInTheDocument()
+    })
+
     it('still hides the expenses nav item from a role holding neither expenses.view nor treasury.view', async () => {
       seedAuth({ roles: ['purchases'] })
       renderSidebar(mechanicFullConfig)

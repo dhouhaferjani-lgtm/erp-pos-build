@@ -85,6 +85,27 @@ class PaymentController extends Controller
     }
 
     /**
+     * The documents a PERSISTED payment (or multi-payment batch) is allocated
+     * to — the replay-path input for {@see SupplierPaymentAuthorizer}
+     * (gate r2 finding 4). `findPaymentByIdempotencyKey()` and
+     * `findMultiPaymentBatchByIdempotencyKey()` both eager-load `allocations`.
+     *
+     * @param  array<int, Payment>  $payments
+     * @return list<string>
+     */
+    private function allocatedDocumentIdsOf(array $payments): array
+    {
+        $ids = [];
+        foreach ($payments as $payment) {
+            foreach ($payment->allocations as $allocation) {
+                $ids[] = $allocation->document_id;
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
      * Pull the document ids out of a validated allocation array.
      *
      * F-W2-14 residual (a) helper for {@see SupplierPaymentAuthorizer}. The
@@ -390,6 +411,20 @@ class PaymentController extends Controller
         if ($idempotencyKey !== null) {
             $existingPayment = $this->findPaymentByIdempotencyKey($tenantId, $companyId, $idempotencyKey);
             if ($existingPayment instanceof Payment) {
+                // Gate r2 finding 4: the replay is a READ, but it hands back a
+                // full supplier-payment payload, so it must not become the one
+                // path around the gate the AP branch just gained. Re-taken
+                // against the PERSISTED payment (its partner and its allocated
+                // documents) rather than the request body, because a replay
+                // carries nothing but the key.
+                $this->supplierPaymentAuthorizer->assertMayPay(
+                    $user,
+                    $tenantId,
+                    $companyId,
+                    $existingPayment->partner_id,
+                    $this->allocatedDocumentIdsOf([$existingPayment]),
+                );
+
                 return response()->json([
                     'data' => $this->formatPayment($existingPayment),
                 ], 200);
@@ -1473,6 +1508,17 @@ class PaymentController extends Controller
         if ($idempotencyKey !== null) {
             $existingBatch = $this->findMultiPaymentBatchByIdempotencyKey($tenantId, $companyId, $idempotencyKey);
             if ($existingBatch !== null) {
+                // Gate r2 finding 4 — same gate as store()'s replay arm, over
+                // every row of the batch (they share a partner; the union of the
+                // allocated documents is what decides supplier-side).
+                $this->supplierPaymentAuthorizer->assertMayPay(
+                    $user,
+                    $tenantId,
+                    $companyId,
+                    isset($existingBatch[0]) ? $existingBatch[0]->partner_id : null,
+                    $this->allocatedDocumentIdsOf($existingBatch),
+                );
+
                 return $this->formatMultiPaymentReplay($existingBatch, $request);
             }
         }

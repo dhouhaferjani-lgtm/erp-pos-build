@@ -25,6 +25,7 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -204,6 +205,82 @@ final class SupplierPaymentPermissionTest extends TestCase
             ->postJson('/api/v1/payments', $this->supplierPayload($invoice, '300.00'));
 
         $response->assertCreated();
+    }
+
+    /**
+     * Gate r2 finding 2 — PIN the deliberate `PartnerType::Both` exclusion.
+     *
+     * A `both`-typed partner with NO supplier document named is an inbound
+     * receipt, not a supplier payment: `PaymentController::store()` derives
+     * `$isSupplierPayment` solely from a `SupplierInvoice` allocation, and the
+     * movement direction keys on that flag. The authorizer therefore lets a
+     * cashier through — which is only correct WHILE that coupling holds. This
+     * test asserts the coupling itself (direction `in`, money ARRIVING), so if
+     * direction ever becomes partner-derived the `Both` arm stops being a silent
+     * hole and fails here instead.
+     */
+    public function test_cashier_may_take_an_inbound_receipt_from_a_both_typed_partner(): void
+    {
+        $cashier = $this->makeUser('cashier', 'cashier-both@example.com');
+        $both = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'F-W2-14 Both Partner',
+            'type' => PartnerType::Both,
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($cashier)->postJson('/api/v1/payments', [
+            'partner_id' => $both->id,
+            'payment_method_id' => $this->bankMethod->id,
+            'repository_id' => $this->repository->id,
+            'amount' => '300.00',
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+        ]);
+
+        $response->assertCreated();
+        $this->assertDatabaseHas('payments', ['partner_id' => $both->id]);
+        // The load-bearing half: money came IN. A supplier payment would be 'out'.
+        $this->assertDatabaseHas('repository_movements', [
+            'payment_repository_id' => $this->repository->id,
+            'direction' => 'in',
+        ]);
+        $this->assertDatabaseMissing('repository_movements', [
+            'payment_repository_id' => $this->repository->id,
+            'direction' => 'out',
+        ]);
+    }
+
+    /**
+     * Gate r2 finding 4 — the idempotency replay must not be the one path around
+     * the gate. A cashier who learns a manager's Idempotency-Key used to get 200
+     * with the full supplier-payment payload; the replay arm now re-takes the
+     * verdict against the PERSISTED payment.
+     */
+    public function test_cashier_cannot_replay_a_managers_supplier_payment_idempotency_key(): void
+    {
+        $manager = $this->makeUser('manager', 'manager-idem@example.com');
+        $cashier = $this->makeUser('cashier', 'cashier-idem@example.com');
+        $invoice = $this->makePayableSupplierInvoice('300.000');
+
+        $this->actingAs($manager)
+            ->withHeader('Idempotency-Key', 'F-W2-14-REPLAY-1')
+            ->postJson('/api/v1/payments', $this->supplierPayload($invoice, '300.00'))
+            ->assertCreated();
+
+        $this->actingAs($cashier)
+            ->withHeader('Idempotency-Key', 'F-W2-14-REPLAY-1')
+            ->postJson('/api/v1/payments', $this->supplierPayload($invoice, '300.00'))
+            ->assertForbidden();
+
+        // The manager's own retry still replays cleanly — no second payment row.
+        $this->actingAs($manager)
+            ->withHeader('Idempotency-Key', 'F-W2-14-REPLAY-1')
+            ->postJson('/api/v1/payments', $this->supplierPayload($invoice, '300.00'))
+            ->assertOk();
+
+        $this->assertSame(1, Payment::query()->where('partner_id', $this->supplier->id)->count());
     }
 
     /**

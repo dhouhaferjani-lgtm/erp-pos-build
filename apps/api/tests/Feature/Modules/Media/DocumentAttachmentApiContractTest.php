@@ -459,6 +459,30 @@ final class DocumentAttachmentApiContractTest extends TestCase
             ->assertCreated();
     }
 
+    /**
+     * Gate r2 finding 5: `documents.id` is a PostgreSQL `uuid` column and the
+     * Media routes carry no `whereUuid('document')`, so a malformed id used to
+     * reach the query and raise SQLSTATE 22P02 -> 500 on PG. It is a 404 now.
+     */
+    public function test_malformed_document_id_is_a_404_not_a_database_error(): void
+    {
+        Storage::fake('s3');
+        Queue::fake();
+
+        [$user] = $this->seedUserWithDocument(DocumentType::Invoice);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/documents/not-a-uuid/attachments')
+            ->assertNotFound();
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson(
+                '/api/v1/documents/not-a-uuid/attachments',
+                ['file' => UploadedFile::fake()->create('x.pdf', 10, 'application/pdf')],
+            )
+            ->assertNotFound();
+    }
+
     private function makeRoleUser(string $tenantId, string $companyId, string $role): User
     {
         app(PermissionRegistrar::class)->setPermissionsTeamId($tenantId);

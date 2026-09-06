@@ -19,6 +19,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -191,6 +192,16 @@ class DocumentAttachmentController extends Controller
 
     private function resolveDocument(string $documentId): Document
     {
+        // Gate r2 finding 5 (pre-existing, now on this lane's own path): the
+        // route param is bound straight into `documents.id`, a PostgreSQL `uuid`
+        // column, and the Media routes carry no `whereUuid('document')`. A
+        // non-UUID id therefore raised SQLSTATE 22P02 -> 500 on PG (sqlite is
+        // permissive and hid it). A malformed id is simply not a document:
+        // answer 404, the same as an id that does not exist.
+        if (! Str::isUuid($documentId)) {
+            abort(404, 'Document not found');
+        }
+
         $company = $this->companyContext->requireCompany();
 
         $document = Document::query()

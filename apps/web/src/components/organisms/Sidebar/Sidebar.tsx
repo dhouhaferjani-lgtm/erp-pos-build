@@ -174,14 +174,24 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
       key: 'purchases',
       icon: Truck,
       permission: 'purchases',
+      // Gate r2 finding 1: the group gate now admits `supplier-invoices.manage`
+      // holders (accountant, and anyone granted it) as well as the legacy
+      // `purchases.view` alias — see MODULE_PERMISSIONS.purchases. Because the
+      // group's gate short-circuits its children, every child an accountant
+      // CANNOT use is gated on the real permission its own API checks, so the
+      // widening offers nobody a page the server will refuse.
       children: [
+        // `/purchases/suppliers` is `permission="partners.view"` at the route,
+        // which every role holding this group already has — left ungated here.
         { key: 'suppliers', href: '/purchases/suppliers', icon: Users },
-        { key: 'quoteRequests', href: '/purchases/quote-requests', icon: FileQuestion },
-        { key: 'purchaseOrders', href: '/purchases/orders', icon: ClipboardList },
-        { key: 'goodsReceipts', href: '/purchases/receipts', icon: Package },
+        { key: 'quoteRequests', href: '/purchases/quote-requests', icon: FileQuestion, permission: 'nav.purchaseQuoteRequests' },
+        { key: 'purchaseOrders', href: '/purchases/orders', icon: ClipboardList, permission: 'nav.purchaseOrders' },
+        // The goods-receipt list reads `/purchase-orders` (GoodsReceiptListPage),
+        // so it needs the PO read permission, not a receipt-specific one.
+        { key: 'goodsReceipts', href: '/purchases/receipts', icon: Package, permission: 'nav.purchaseOrders' },
         { key: 'newGoodsReceipt', href: '/purchases/receipts/new', icon: Package2, permission: 'goods-receipt.create-standalone' },
         { key: 'scans', href: '/purchases/scans', icon: FileText, permission: 'document-ingestions' },
-        { key: 'supplierInvoices', href: '/purchases/supplier-invoices', icon: Receipt },
+        { key: 'supplierInvoices', href: '/purchases/supplier-invoices', icon: Receipt, permission: 'nav.supplierInvoices' },
         { key: 'returnNotes', href: '/inventory/return-notes', icon: RotateCcw },
       ],
     },

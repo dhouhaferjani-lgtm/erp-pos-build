@@ -1027,27 +1027,41 @@ export function AppRoutes() {
             }
           />
 
-          {/* Supplier Invoices */}
+          {/* Supplier Invoices — gate r2 finding 1 (MAJOR).
+              These three routes used to gate on moduleKey="purchases", which
+              resolves through MODULE_PERMISSIONS.purchases -> the `purchases.view`
+              UI ROLE ALIAS (uiAliasPermissions.ts: ['admin','purchases','manager'],
+              and that file's own header says "NOT backend authorization").
+              RequirePermission evaluates the module gate FIRST and short-circuits
+              the permission, so the seeded `accountant` — which this PR grants
+              supplier-invoices.manage — and an operator granted it through the
+              permissions surface (owner ruling 2026-09-07) could not open list,
+              detail or create at all: the grant was API-only. There is no backend
+              twin for the module gate either (the Procurement route group carries
+              no `module:` middleware and `purchases` is not a ModuleName), so it
+              was never rule-12 both-layer gating.
+              They now gate on the SAME permissions the API routes check:
+              apps/api/app/Modules/Procurement/Presentation/routes.php:84 and :94
+              (`can:documents.view`) and :104 (`can:supplier-invoices.manage`). */}
           <Route
             path="supplier-invoices"
             element={
-              <RequirePermission moduleKey="purchases">
+              <RequirePermission permission="documents.view">
                 <SuspenseWrapper>
                   <SupplierInvoiceListPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
           />
-          {/* F-W2-14 gate r1 finding 4 (both-layer gating, rule 12): the CREATE
-              surface must gate on the SAME permission the backend enforces on
-              POST /supplier-invoices (`can:supplier-invoices.manage`), not on
-              the `purchases.create` UI ROLE ALIAS — which denied accountants a
-              page whose API call they are explicitly authorised to make. The
-              module gate is kept alongside it. */}
+          {/* F-W2-14 gate r1 finding 4 + gate r2 finding 1: the CREATE surface
+              gates on the SAME permission the backend enforces on
+              POST /supplier-invoices (`can:supplier-invoices.manage`) — not on
+              the `purchases.create` UI role alias, and no longer behind the
+              `purchases` module alias either. */}
           <Route
             path="supplier-invoices/new"
             element={
-              <RequirePermission moduleKey="purchases" permission="supplier-invoices.manage">
+              <RequirePermission permission="supplier-invoices.manage">
                 <SuspenseWrapper>
                   <SupplierInvoiceCreatePage />
                 </SuspenseWrapper>
@@ -1057,7 +1071,7 @@ export function AppRoutes() {
           <Route
             path="supplier-invoices/:id"
             element={
-              <RequirePermission moduleKey="purchases">
+              <RequirePermission permission="documents.view">
                 <SuspenseWrapper>
                   <SupplierInvoiceDetailPage />
                 </SuspenseWrapper>
