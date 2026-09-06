@@ -1,167 +1,195 @@
-<!-- W-CASH-1 rev 13 (rev 5 by Codex CLI fix round 4; rev 6/7/8/9/10/11 orchestrator-applied gate r5/r6/r7/r8/r9 corrections; rev 12 integrates gate r11 Amendment A corrections; rev 13 integrates gate r12 Amendment B and the owner’s provisional option-A ruling) (gpt-5.6-sol, read-only) on 2026-09-06, saved verbatim by the orchestrator (owner away). Rev 4 = 59e8c6c82. Status: awaiting gate r13. -->
-# Slice plan W-CASH-1 — per-location cash custody configuration and repository transfer document (rev 13)
+<!-- W-CASH-1 rev 14 (rev 10 dispatch-ready base plus gate-r11 Amendment A, gate-r12 Amendment B, and gate-r13 D1–D5 corrections) (gpt-5.6-sol, read-only) on 2026-09-06, saved verbatim by the orchestrator (owner away). Rev 4 = 59e8c6c82. Status: awaiting gate r14. -->
+# Slice plan W-CASH-1 — per-location cash custody configuration and repository transfer document (rev 14)
 
-Evidence baseline: reviewed local `dev` HEAD `1e8eb5e51568127815da0a767c62f8ed11dadfac`, resolved with `git rev-parse HEAD` on 2026-09-06. Historical production-source baseline was `f13b923a5c150ceee8acb8165e98197207c88eff`; r2 reviewed `5fe262c84527d90a6124e467978b282806630d50`. Existing-code anchors below were re-read at the current reviewed HEAD; Amendment-B citations are path:line at that SHA; NEW files/contracts are proposals, not shipped behavior. This round edits only this plan. No code, tests, migrations or Git state were changed.
+Evidence baseline: reviewed local `dev` HEAD `55bf3d14204363ab857738f785a3c405100da9db`, resolved with `git rev-parse HEAD` on 2026-09-06. Historical production-source baseline was `f13b923a5c150ceee8acb8165e98197207c88eff`; r2 reviewed `5fe262c84527d90a6124e467978b282806630d50`. Existing-code anchors below were re-read at the current reviewed HEAD; Amendment-A/B citations are path:line at that SHA; NEW files/contracts are proposals, not shipped behavior. This round edits only this plan. No code, tests, migrations or Git state were changed.
 
-## Round-12 change log (gate r12 Amendment B)
+## Round-13 change log — rev 14 deltas
 
-| Item | Change and closing plan line |
-|---|---|
-| B1 | Made `fourth_decimal_present` a standing, per-tenant P0-a guard with exact SQL predicate, human/JSON output key, per-column counts/sample IDs, hard P0-b exit rule and one named red PG test that writes `1.0005` through the movement-port GUC. Closed at plan line 746. |
-| B2 | Recorded provisional owner row A10 option A in both the P0-b migration-docblock and precision-contract instructions with NC 01 §62, Laravel HALF_UP read rounding, the three-ERP benchmark, preset census, 192/34 strict-test blast radius, hardcoded scale-three consumer and 4-of-19 heterogeneous-shape evidence. Casts stay `decimal:3`; the detector makes that provisional choice safe; widening casts is a separate future lane only when a 4-dp preset exists. Closed at plan line 749. |
-| B3 | Preserved the rev-12 dispatch order while releasing its resolved decision gate: dispatch P0-a/T1/T2 now; P0-b is dispatchable after the detector is present and its per-tenant output is zero/accepted; dispatch T3–T6 only after accepted P0-b. Closed at plan line 744. |
-| m1 | Advanced revision/status to rev 13 / awaiting gate r13 and refreshed the reviewed local `dev` SHA. Closed at plan line 742. |
-
-## Round-11 change log (gate r11 fix round 6)
+This table is historical closure metadata, not an operative dispatch instruction; see dispatch order.
 
 | Item | Change and closing plan line |
 |---|---|
-| B1 | Made `docs/superpowers/plans/2026-09-07-precision-widening-gl-repository-scale-4.md` authoritative for all P0 command, class, DTO, enum, marker, migration, test, ticket and deployment identifiers; all five classifications, including Geometry, are retained. Closed at plan line 747. |
-| Compatibility | Former repository-precision command class/service/aggregate DTO/check DTO/storage-floor DTO/CLI/marker/census test/prerequisite test/ratchet test/migration/follow-up ticket/deployment slice are renamed respectively to `MoneyPrecisionCensusCommand`, `MoneyPrecisionCensusService`, `MoneyPrecisionCensusData`, `MoneyPrecisionCheckData`, `MoneyColumnShapeData`, `treasury:census-money-precision`, `MONEY-PRECISION CENSUS`, `MoneyPrecisionCensusCommandTest`, `GlAndRepositoryBalanceScale4Test`, `MoneyStorageScale4RatchetTest`, `2026_09_07_100000_widen_gl_and_repository_balance_columns_to_scale_4.php`, `2026-09-07-money-columns-below-scale-4-followup.md`, and `precision-4`. Closed at plan line 236. |
-| B2 | Reconciled every normative dependency, deployment variable, final checklist and dispatch section: dispatch P0-a, T1 and T2 now; hold P0-b until the benchmark note and owner cast ruling; dispatch T3–T6 only after accepted P0-b. Historical contradictions are explicitly labelled superseded. Closed at plan line 793. |
-| M1 | P0-b accepts only exact pre-widen `(15,3,NO,0)` / `(15,3,YES,NULL)` or already-compliant `(15,4,…)`; scale two is a refusal fixture asserting `unexpected_column_shape`, no DDL and unchanged rows/schema. Closed at plan line 240. |
-| m1 | Revision/status metadata advanced to rev 12 / awaiting gate r12, HEAD refreshed, and the five Round-9 internal anchors re-anchored to lines 509, 407, 415, 664 and 411/413. Closed at plan line 34. |
-| A | Amendment A remains binding: storage widens `(15,3)→(15,4)`; the four Eloquent casts stay `decimal:3` provisionally under the 2026-09-07 owner ruling; cast change and operational-ceiling removal remain deferred pending `docs/superpowers/reviews/2026-09-07-benchmark-money-precision-4-decimals-casts.md` and the owner’s cast ruling. Closed at plan line 793. |
+| D1 | Integrated Amendment A: the fully migrated source shape is `(15,3)`, P0-b widens only `(15,3)→(15,4)`, every other shape including scale two refuses, and all authoritative P0 names come from the precision-4 brief. Closed in the P0 premise, migration and test lines below. |
+| D2 | Integrated Amendment B: `fourth_decimal_present` is a standing per-tenant detector and hard P0-b stop; the migration docblock and precision contract carry the NC 01 §62, Laravel HALF_UP, preset, test-blast-radius and dependent-consumer evidence; casts remain `decimal:3` provisionally. Closed in the P0 census and cast-ruling lines below. |
+| D3 | Replaced the cross-boundary Shared Infrastructure factory with NEW `App\Shared\Contracts\Company\CompanyCurrencyScaleResolverFactoryInterface` and a Company Infrastructure implementation; Treasury Application injects only the contract, with an exact architecture gate. Closed in the T3 precision-ceiling line below. |
+| D4 | Centralized all operative sequencing into exactly one binding statement in § Dispatch order; every other sequencing mention is historical/superseded or marked “see dispatch order.” Closed in § Dispatch order. |
+| D5 | Restored the complete rev-10 T4/T5/T6 packets, added exact manifest census greps and expected-tenant UUID-set checks, refreshed HEAD/revision/status, and re-anchored change-log closures to current sections. Closed in T4–T6 and the deployment census variable below. |
 
-## Round-10 change log (orchestrator-applied amendment A)
+## Historical/superseded Round-12 change log — gate r12 Amendment B
 
-| Item | Change |
+No row in this or any earlier change log is operative; see dispatch order.
+
+| Item | Historical change |
 |---|---|
-| A.1 | Premise corrected: live scale is 3 (March 2026 migrations), widening is (15,3)→(15,4); accepted pre-widen tuples restated. |
-| A.2 | Owner ruling 2026-09-07: casts stay `decimal:3` provisionally; cast change + ceiling removal deferred to the 4-decimal benchmark and ruling. |
-| A.3 | P0 reuses the parallel session's brief (allowlist, deploy variables, lock profile, two tests) instead of re-deriving. |
-| A.4 | Dispatch order: P0-a/T1/T2 now; P0-b after the ruling; T3+ after P0-b. |
+| B1 | Made `fourth_decimal_present` a standing, per-tenant P0-a guard with exact SQL predicate, human/JSON output key, per-column counts/sample IDs, hard P0-b exit rule and one named red PG test that writes `1.0005` through the movement-port GUC. Current closure: § P0 pre-ALTER census. |
+| B2 | Recorded provisional owner row A10 option A in both the P0-b migration-docblock and precision-contract instructions with NC 01 §62, Laravel HALF_UP read rounding, the three-ERP benchmark, preset census, 192/34 strict-test blast radius, hardcoded scale-three consumer and 4-of-19 heterogeneous-shape evidence. Casts stay `decimal:3`; the detector makes that provisional choice safe; widening casts is a separate future lane only when a 4-dp preset exists. Current closure: § P0 prerequisite. |
+| B3 | Historical sequencing disposition superseded by the single binding statement in § Dispatch order; see dispatch order. |
+| m1 | Historical revision/status metadata superseded by the rev-14 header and HEAD declaration above. |
 
-## Round-9 change log (orchestrator-applied, gate r9 B1 + m1)
+## Historical/superseded Round-11 change log — gate r11 fix round 6
 
-| Item | Change |
+No row is operative; see dispatch order.
+
+| Item | Historical change |
 |---|---|
-| B1.1 | Company-bound scale lookup is executable without a bound `CompanyContext` for both authority branches through the fully declared factory, tuple lookup, not-found exception and container binding at plan line 509. |
-| B1.2 | The task-owned exception register now contains the exact T3 `RepositoryTransferPrecisionCeilingException` contract at plan line 407. |
-| B1.3 | The registered renderer test now has an exact file, class, method, first failing assertion, command and lane at plan line 415. |
-| B1.4 | The precision endpoint test asserts the exact translated 422 JSON and unchanged document/movement/repository/JE snapshots at plan line 664. |
-| B1.5 | The precision translation is explicitly assigned to `treasury.transfer.precision_exceeds_ledger_scale` in all three backend `treasury.php` files and excluded from `messages.treasury.*` at plan lines 411 and 413. |
+| B1 | Made `docs/superpowers/plans/2026-09-07-precision-widening-gl-repository-scale-4.md` authoritative for all P0 command, class, DTO, enum, marker, migration, test, ticket and deployment identifiers; all five classifications, including Geometry, are retained. Current closure: § P0 prerequisite. |
+| Compatibility | Former repository-precision command class/service/aggregate DTO/check DTO/storage-floor DTO/CLI/marker/census test/prerequisite test/ratchet test/migration/follow-up ticket/deployment slice are renamed respectively to `MoneyPrecisionCensusCommand`, `MoneyPrecisionCensusService`, `MoneyPrecisionCensusData`, `MoneyPrecisionCheckData`, `MoneyColumnShapeData`, `treasury:census-money-precision`, `MONEY-PRECISION CENSUS`, `MoneyPrecisionCensusCommandTest`, `GlAndRepositoryBalanceScale4Test`, `MoneyStorageScale4RatchetTest`, `2026_09_07_100000_widen_gl_and_repository_balance_columns_to_scale_4.php`, `2026-09-07-money-columns-below-scale-4-followup.md`, and `precision-4`. Current closure: § P0 prerequisite. |
+| B2 | Historical sequencing disposition superseded by the single binding statement in § Dispatch order; see dispatch order. |
+| M1 | P0-b accepts only exact pre-widen `(15,3,NO,0)` / `(15,3,YES,NULL)` or already-compliant `(15,4,…)`; scale two is a refusal fixture asserting `unexpected_column_shape`, no DDL and unchanged rows/schema. Current closure: § P0 complete shape contract. |
+| m1 | Historical revision/status metadata and line anchors are superseded by the rev-14 header and current section anchors. |
+| A | Amendment A remains binding: storage widens `(15,3)→(15,4)`; the four Eloquent casts stay `decimal:3` provisionally under owner row A10; cast change and operational-ceiling removal are separate future lanes. Current closure: § P0 prerequisite and § T3. |
 
-## Round-8 change log (orchestrator-applied, gate r8 B1)
+## Historical/superseded Round-10 change log — orchestrator-applied Amendment A
 
-| Item | Change |
+No row is operative; see dispatch order.
+
+| Item | Historical change |
 |---|---|
-| B1.1 | T3 `executeTransfer(...)` returns `DocumentedRepositoryTransferResult`; `RepositoryTransferResult` reserved for the atomic T5 rename. |
-| B1.2 | `RepositoryTransferPrecisionCeilingException extends \DomainException` with the complete constructor `(public readonly string $amount, public readonly int $effectiveScale)`; in the T3 exception register. |
-| B1.3 | Executable scale source for both authority branches: `CompanyScopedCurrencyScaleResolverFactory::forCompany(tenantId, companyId)` reusing the resolver's `$companyOverride` parameter, called with no currency argument so the country preset applies; first-statement policy call shown. |
+| A.1 | Premise corrected: live scale is 3 after the March 2026 migration; widening is `(15,3)→(15,4)` and accepted pre-widen tuples are exact. |
+| A.2 | Owner row A10: casts stay `decimal:3` provisionally; cast widening and ceiling removal are separate future lanes. |
+| A.3 | P0 reuses the precision-4 brief’s allowlist, deployment variables, lock profile and tests. |
+| A.4 | Historical sequencing disposition superseded by the single binding statement in § Dispatch order; see dispatch order. |
+
+## Historical/superseded Round-9 change log — gate r9 B1 + m1
+
+No row is operative; see dispatch order.
+
+| Item | Historical change |
+|---|---|
+| B1.1 | Company-bound scale lookup is executable without a bound `CompanyContext` for both authority branches. Rev 14 replaces the cross-boundary implementation with the Shared contract and Company Infrastructure adapter in § T3. |
+| B1.2 | The task-owned exception register contains the exact T3 `RepositoryTransferPrecisionCeilingException` contract in § Exact file resolution and typed failure contracts. |
+| B1.3 | The registered renderer test has an exact file, class, method, first failing assertion, command and lane in § Exact file resolution and typed failure contracts. |
+| B1.4 | The precision endpoint test asserts the exact translated 422 JSON and unchanged document/movement/repository/JE snapshots in § T5. |
+| B1.5 | The precision translation is assigned to `treasury.transfer.precision_exceeds_ledger_scale` in all three backend `treasury.php` files and excluded from `messages.treasury.*` in § Exact file resolution and typed failure contracts. |
+
+## Historical/superseded Round-8 change log — gate r8 B1
+
+No row is operative; see dispatch order.
+
+| Item | Historical change |
+|---|---|
+| B1.1 | T3 `executeTransfer(...)` returns `DocumentedRepositoryTransferResult`; `RepositoryTransferResult` is reserved for the atomic T5 rename. |
+| B1.2 | `RepositoryTransferPrecisionCeilingException extends \DomainException` with the complete constructor `(public readonly string $amount, public readonly int $effectiveScale)`; it is in the T3 exception register. |
+| B1.3 | Executable scale source for both authority branches uses `CompanyCurrencyScaleResolverFactoryInterface::forCompany(tenantId, companyId)`, called with no currency argument so the country preset applies. |
 | B1.4 | Red tests use the captured-exception pattern so typed fields and every unchanged snapshot are asserted for human and system callers. |
-| B1.5 | One normative 422 envelope (flat `error` extras `amount`, `effective_scale`), renderer extras rule reconciled, status/envelope table case added, backend and frontend translation paths/keys named, renderer and endpoint tests assert the full envelope. |
+| B1.5 | One normative 422 envelope uses flat `error` extras `amount` and `effective_scale`; renderer, status-contract and endpoint tests assert the full envelope. |
 
-## Round-7 change log (orchestrator-applied, gate r7 B1 + m1)
+## Historical/superseded Round-7 change log — gate r7 B1 + m1
 
-| Item | Change |
+No row is operative; see dispatch order.
+
+| Item | Historical change |
 |---|---|
-| B1 | The three-decimal operational ceiling is now a normative T3 contract (policy class, exception class, first-statement check in `executeTransfer` for both authority branches, two service-level red tests + one HTTP red test, verbatim removal condition) and a T5 contract (renderer union member, 422 + `TRANSFER_PRECISION_EXCEEDS_LEDGER_SCALE`, status-contract case, translations); the T5 validation rule now reads `min(country preset, OPERATIONAL_SCALE_CEILING)`. |
-| m1 | Status metadata → awaiting gate r8; revision → rev 8. |
+| B1 | The three-decimal operational ceiling became a normative T3 contract and T5 HTTP contract with two service-level red tests, one HTTP red test and a verbatim removal condition. |
+| m1 | Historical revision metadata superseded by the rev-14 header. |
 
-## Round-6 change log (orchestrator-applied, gate r6 B1 + m1)
+## Historical/superseded Round-6 change log — gate r6 B1 + m1
 
-| Item | Change |
+No row is operative; see dispatch order.
+
+| Item | Historical change |
 |---|---|
-| B1 | **Operational precision ceiling (temporary).** Until the movement ledger (`repository_movements.amount`, `balance_after`) is widened in a follow-up lane, `RepositoryTransferService` (and every typed caller of the transfer/document contract, including system-intent callers) REFUSES an amount with more than three fractional digits even when the company's country preset is four: validation error `TRANSFER_PRECISION_EXCEEDS_LEDGER_SCALE` (422 over HTTP; typed exception for service callers), evaluated BEFORE any document/movement/JE write. Red-first test (PG lane) `RepositoryTransferDocumentTest::test_scale_four_company_transfer_of_10005_is_refused_with_unchanged_snapshots(): void` — first failing assertion: `assertSame('TRANSFER_PRECISION_EXCEEDS_LEDGER_SCALE', $response->json('error.code'))`; then asserts zero new rows in `repository_transfer_documents`, `repository_movements`, `journal_entries` and unchanged `payment_repositories.balance` for both repositories. The ceiling constant lives in one place (`RepositoryTransferPrecisionPolicy::OPERATIONAL_SCALE_CEILING = 3`) and its removal is gated on the movement-ledger widening ticket (opened by the P0 census) plus its own PG round-trip test; the precision-contract doc notes the ceiling. |
-| m1 | Revision metadata corrected to rev 7 (rev 5 was the CLI output; rev 6 applied gate r5 B1; rev 7 applies gate r6). |
+| B1 | **Operational precision ceiling (temporary).** Until the movement ledger (`repository_movements.amount`, `balance_after`) is widened in a follow-up lane, `RepositoryTransferService` and every typed caller refuse an amount with more than three fractional digits even when the company country preset is four: `TRANSFER_PRECISION_EXCEEDS_LEDGER_SCALE`, evaluated before document/movement/JE writes. |
+| m1 | Historical revision metadata superseded by the rev-14 header. |
 
-## Round-5 change log (orchestrator-applied, gate r5 B1)
+## Historical/superseded Round-5 change log — gate r5 B1
 
-| Item | Change |
+No row is operative; see dispatch order.
+
+| Item | Historical change |
 |---|---|
-| B1 | Operational transfer/movement fixtures (T3 same/cross-GL test, P0 census idempotency movement, RepositoryTransferDocumentTest) now use a real country-valid value of at most three decimals (TND `1.005`) because `repository_movements.amount`/`balance_after` remain scale 3 in this slice; `1.0005` is retained ONLY for the raw round-trip proof of the four P0 target columns. Four-decimal operational transfers are DEFERRED to a follow-up widening of the movement ledger (ticket to be opened by the precision lane census). |
+| B1 | Operational transfer/movement fixtures use a country-valid value of at most three decimals, TND `1.005`, because `repository_movements.amount` and `balance_after` remain scale 3 in this slice. `1.0005` is retained only for raw round-trip proof of the four P0 target columns. |
 
-## Round-4 change log
+## Historical/superseded Round-4 change log
 
-This revision closes gate r4; it does not claim implementation or deployment approval. The r4 reviewer reported one blocker, one major and one minor; every other earlier finding remains CLOSED and its prior disposition is preserved below. Re-anchor again if production changes before dispatch.
+This is review history, not implementation or deployment approval; see dispatch order.
 
-| Gate item | Rev-5 disposition |
+| Gate item | Historical rev-5 disposition |
 |---|---|
-| B1 | **SUPERSEDED in part by Amendment A.** Applied binding owner follow-up A1: the four existing P0 columns and the new transfer-document amount use `decimal(15,4)` storage; operational precision remains the company country preset from `countries.currency_decimal_places`. Added `1.0005` round-trip proof, full scale-four tuple ratchet, the precision-contract update and a census-owned follow-up ticket listing every other money column below scale four. The historical instruction to add scale-four Eloquent casts is superseded; those casts remain `decimal:3` provisionally. |
-| M1 | **SUPERSEDED in dispatch order by Amendment A.** Split P0 into ordered P0-a and P0-b deployment packages. P0-a contains only read-only census code and must be deployed and run once per inventoried tenant with captured output before P0-b. P0-b alone contains the non-additive widening migration, requires the host-side backup, topology-specific migration command, per-tenant verification and an explicit rollback point. Current binding order is: dispatch P0-a, T1 and T2 now; hold P0-b pending the benchmark and owner cast ruling; dispatch T3–T6 only after accepted P0-b. |
-| m1 | Corrected the movement persistence citation: `balance_after` is at `TreasuryMovementService.php:590`; `source_type` and `source_id` are at `:592–593`. |
+| B1 | **SUPERSEDED in part by Amendments A/B.** The four existing P0 columns and new transfer-document amount use `decimal(15,4)` storage; operational precision remains the company country preset. The historical instruction to add scale-four Eloquent casts is superseded; those casts remain `decimal:3` provisionally. |
+| M1 | Split P0 into ordered P0-a and P0-b deployment packages. P0-a contains only read-only census code; P0-b alone contains the non-additive widening migration, backup, topology-specific command, verification and rollback contract. Sequencing is governed solely by § Dispatch order; see dispatch order. |
+| m1 | Corrected movement persistence citation: `balance_after` is at `TreasuryMovementService.php:590`; `source_type` and `source_id` are at `:592–593`. |
 
-## Round-3 change log
+## Historical/superseded Round-3 change log
 
-This revision closes gate r3; it does not claim implementation or deployment approval. The r3 reviewer reported governed production sources unchanged at a5191dafdf7506da6b513eb5a49bff0b0d2e75df; this round re-read the affected production seams at the HEAD declared above. Re-anchor again if production changes before dispatch.
+This is review history, not implementation or deployment approval; see dispatch order.
 
-| Gate item | Rev-4 disposition |
+| Gate item | Historical rev-4 disposition |
 |---|---|
 | M1 | Corrected balance DEFAULT 0; P0 compares complete precision/scale/nullability/normalized-default tuples before, after and on direct rerun. |
-| M2 | Added read-only pre-ALTER precision census, exact command, typed output, measurable comparisons, unknown historical loss and reviewer pair treasury-reviewer + stock-gl-interaction-reviewer. Ticket's no-later-widening assertion is rejected by the March migration cited in P0; census remains required. |
-| M3 | Added explicit shared-connection migrate --path commands for all three files, topology/connection proof, markers, exit rules and physical SQL verification. Rolling no-op cannot pass. |
-| M4 | P0 repeats the current movement port on the real company-B second-location drawer: wasIdempotentHit=true, same movement/ordinal/count/balance, company A unchanged. |
-| M5 | T1 direct migration liveness providers cover partial tables, wrong parent keys/FKs/CHECKs/uniques/triggers with exact refusal and unchanged schema/data. |
-| M6 | Builder now carries each opposite-leg reversal ID into existing RepositoryMovementRecorded (original v1); payload already has the field, so immutable event class remains unchanged. Event and Compliance audit-row tests added. |
-| M7 | Push 3 preserves the existing scalar endpoint and result constructor; typed core stays disconnected/default-false. Push 5 atomically replaces the scalar path, shrinks its architecture exception and enables documented writes only after old processes drain. Post-use rollback is permanently fail-closed. |
-| M8 | Added exact exception, warning, sink and HTTP renderer paths/signatures; explicit task ownership, status/envelope and alert assertions. Existing abbreviated DTO paths resolve under the exact namespace rule below. |
-| m1 | Unknown-field tests assert errors.surprise.0 / actual forged key and translated messages.validation.unexpected_field. |
-| m2 | Refreshed reviewed HEAD from repository metadata without git commands. |
+| M2 | Added read-only pre-ALTER precision census, exact command, typed output, measurable comparisons and reviewer pair treasury-reviewer + stock-gl-interaction-reviewer. |
+| M3 | Added explicit shared-connection migration commands, topology/connection proof, markers, exit rules and physical SQL verification. Rolling no-op cannot pass. |
+| M4 | P0 repeats the current movement port on the real company-B second-location drawer: `wasIdempotentHit=true`, same movement/ordinal/count/balance, company A unchanged. |
+| M5 | T1 direct-migration liveness providers cover partial tables, wrong parent keys/FKs/CHECKs/uniques/triggers with exact refusal and unchanged schema/data. |
+| M6 | Builder carries each opposite-leg reversal ID into existing `RepositoryMovementRecorded` v1; its payload already has the field. Event and Compliance audit-row tests were added to the plan. |
+| M7 | Push 3 preserves the existing scalar endpoint and result constructor; Push 5 atomically replaces the scalar path, shrinks its architecture exception and enables documented writes only after old processes drain. Post-use rollback is fail-closed. |
+| M8 | Added exact exception, warning, sink and HTTP renderer paths/signatures, task ownership, status/envelope and alert assertions. |
+| m1 | Unknown-field tests assert `errors.surprise.0` or the actual forged key and translated `messages.validation.unexpected_field`. |
+| m2 | Refreshed reviewed HEAD. |
 | m3 | Restored literal `DRIFT(` and every-target verdict inspection. |
 
-## Round-2 change log
+## Historical/superseded Round-2 change log
 
-Historical rev-3 dispositions below are retained as review history; round-3 M7 supersedes the fail-closed scalar adapter and moves baseline removal to atomic Push 5.
+Historical rev-3 dispositions are retained as review history; see dispatch order.
 
-| Gate item | Rev-3 disposition |
+| Gate item | Historical rev-3 disposition |
 |---|---|
 | B1 | T1/T3 define a human/system actor union, nullable human FK on documents, stable named system authority/provenance, branch validation and PG first/retry/conflict tests. No system caller fabricates a user. |
-| B2 | Added hard prerequisite **P0 precision widening**, its four-column schema/round-trip ratchet, dedicated non-additive repair push and backup/migration proof. **Source correction:** the original scale-2 CREATE migrations are superseded for all four columns by `apps/api/database/migrations/tenant/2026_03_11_200000_widen_monetary_columns_to_scale_3.php:27`, `:113`, `:178`. Thus scale-2 on a fully migrated database is not established; live drift remains unverified. P0 verifies and widens only the ruled scale-3 source shape, refusing scale-2 migration-history drift. |
-| Program-level precision finding for Fable/orchestrator | Report P0 as fleet precision assurance/deployment-drift risk affecting existing POS receipt posting too: `apps/api/app/Modules/Treasury/Application/Projections/TreasuryReceiptBridge.php:1515` creates payment GL and `:1526` posts it. Any deployment still at scale 2 may have lost precision in existing flows, not only WCASH. Inventory live shapes before claiming incidence; scale 2 is not an accepted P0-b repair input and no historical rebooking or amount reconstruction occurs. This register and P0 handback are the orchestrator report; no external message sent in this round. |
-| M1 | T3 retains the eight-scalar transfer signature as a deprecated fail-closed adapter and adds executeTransfer(intent). T5 migrates the controller, removes the adapter and renames the typed method atomically in the same task. |
-| M2 | Common real registration/company/POS-location fixture contract applies to every task. T1/T2 share one acceptance boundary so T1 repeats the actual configuration writer; migration rerun is only a schema test. |
-| M3 | T5 includes movement controller, generated movement DTO, hook, tab and detail page for durable authorized history links, both legs, reload, omission and scoped 404 tests. |
-| M4 | Added StatementUploadWizard and StatementListPage consumer; exact POS triple-slash generated-global wiring and fully qualified ambient DTO namespace. |
+| B2 | Added hard prerequisite P0 precision widening, its four-column schema/round-trip ratchet, dedicated non-additive push and backup/migration proof. The original scale-2 CREATE migrations are superseded by `apps/api/database/migrations/tenant/2026_03_11_200000_widen_monetary_columns_to_scale_3.php:27-30,113-116`; P0 widens only exact scale 3 and refuses scale-2 migration-history drift. |
+| Program-level precision finding for Fable/orchestrator | P0 is fleet precision-assurance/deployment-drift work affecting existing POS receipt posting too: `apps/api/app/Modules/Treasury/Application/Projections/TreasuryReceiptBridge.php:1515` creates payment GL and `:1526` posts it. A deployment still at scale 2 may have lost precision; no historical rebooking or reconstruction occurs. |
+| M1 | T3 retains the eight-scalar transfer signature as a deprecated adapter and adds `executeTransfer(intent)`. T5 migrates the controller, removes the adapter and renames the typed method atomically. |
+| M2 | Common real registration/company/POS-location fixture applies to every task. T1/T2 share one acceptance boundary. |
+| M3 | T5 includes movement controller, generated movement DTO, hook, tab and detail page for durable authorized history links, both legs, reload, omission and scoped-404 tests. |
+| M4 | Added `StatementUploadWizard` and `StatementListPage` consumer; exact POS generated-global wiring and fully qualified ambient DTO namespace. |
 | M5 | Added matrix B10, vocabulary architecture linkage, T3 baseline JSON shrink and exact protected-blob ratchet tests. |
-| m1 | Exact trim → NFC → collapse Unicode whitespace, case-preserving notes normalization and comparison encoding, with equivalence/conflict cases. |
-| m2 | All three FormRequests use withValidator/after allowlist rejection on raw input keys; named arbitrary-key 422/no-write tests. |
-| m3 | T1 invalid enum SQL tests and EnumCheckParityTest gate named, including new initiator enums. |
-| m4 | Current reviewed HEAD and historical source baseline distinguished; repository tenant/company predicate citation corrected to :121. |
+| m1 | Exact trim → NFC → collapse Unicode whitespace, case-preserving notes normalization and comparison encoding. |
+| m2 | All three FormRequests use `withValidator`/`after` allowlist rejection on raw input keys. |
+| m3 | T1 invalid-enum SQL tests and `EnumCheckParityTest` gate include new initiator enums. |
+| m4 | Current reviewed HEAD and historical source baseline distinguished; repository tenant/company predicate citation corrected to `:121`. |
 
-## Round-1 change log
+## Historical/superseded Round-1 change log
 
-Historical r1 disposition: accepted findings carried forward, with remaining gaps closed in the round-2 log above. This is a revised plan, not a claim of a passed implementation gate.
+Historical r1 dispositions are retained as review history; see dispatch order.
 
-| Finding | Rev-2 correction |
+| Finding | Historical rev-2 correction |
 |---|---|
-| BLOCKER 1 | Owner register below copies Q11–Q13 RULED verbatim. Their implementation is deferred by slice scope, not pending a decision. |
-| BLOCKER 2 | Deployment section now contains the canonical §5 sentence, every variable, §4 verbatim checklist, per-push rollback points and U-1/U-2 promotion prerequisites. T3/T5 specify a default-false, forward-only writer cutover. |
-| BLOCKER 3 | T3/T5 specify stored-document-first replay authorization under locks, original-actor comparison, client-only semantics, scoped 404 before conflict, and immutable server-derived evidence on retry. |
+| BLOCKER 1 | Owner register below copies Q11–Q13 RULED verbatim. Their implementation is deferred by scope, not pending a decision. |
+| BLOCKER 2 | Deployment contains the canonical manifest sentence, every variable, §4 checklist, per-push rollback points and U-1/U-2 promotion prerequisites. |
+| BLOCKER 3 | T3/T5 specify stored-document-first replay authorization under locks, original-actor comparison, client-only semantics, scoped 404 before conflict and immutable server-derived retry evidence. |
 | MAJOR 1 | T1 adds tenant/company, tenant/actor and tenant/company/repository/leg/JE composites plus direct-SQL topology tests. |
 | MAJOR 2 | T2 uses Presentation/Console, exact provider import/registration seams, deterministic fleet JSON/markers, option semantics and aggregate failure status. |
-| MAJOR 3 | T2 names RepositoryMetadataService as the metadata writer and orders both metadata/configuration writes company lock → locations → configurations → repositories. |
-| MAJOR 4 | Each task has an executable red-contract register and immediate convention-09 mapping below; no gate borrows future T6 coverage. |
-| MAJOR 5 | T5 has the hard external W1-T-CUSTODY-AUTHZ prerequisite, full request rules, index modes, document-read scope, envelopes and statuses. |
-| MAJOR 6 | T5 enumerates all repository-response shadows found in web and device clients, converts to generated types/Pick aliases and keeps POS runtime behavior unchanged. |
-| MINOR 1 | Append-only anchor is RepositoryMovement.php:73; web wrapper is routes/index.tsx:1937; command registration is TreasuryServiceProvider.php:236 with Console imports at :37. |
+| MAJOR 3 | T2 names `RepositoryMetadataService` as metadata writer and orders metadata/configuration writes company lock → locations → configurations → repositories. |
+| MAJOR 4 | Each task has an executable red-contract register and immediate convention-09 mapping. |
+| MAJOR 5 | T5 has the hard external W1-T-CUSTODY-AUTHZ prerequisite, request rules, index modes, document-read scope, envelopes and statuses. |
+| MAJOR 6 | T5 enumerates repository-response shadows in web and device clients, converts them to generated types/Pick aliases and keeps POS runtime behavior unchanged. |
+| MINOR 1 | Append-only anchor is `RepositoryMovement.php:73`; web wrapper is `routes/index.tsx:1937`; command registration is `TreasuryServiceProvider.php:236` with Console imports at `:37`. |
 
 Deliver two prerequisites: location custody defaults on Treasury → Repositories, and one immutable justifying document for each new back-office repository transfer. Six tasks maximum, plus the separately gated P0 precision prerequisite. Exclude shift-event booking, v2/v3 adapters, W7, variance enablement, drawer sessions, typed device cash reasons and historical alignment.
 
 ## Industry baseline — convention 10
 
-Flow: cash custody setup and internal repository transfer. Odoo reference is specifically version 17, not a claim about all later releases. ERPNext and Dolibarr references are their unversioned documentation accessed 2026-09-06. NV means not verified, not absent. Sources: [Odoo 17 internal transfers](https://www.odoo.com/documentation/17.0/applications/finance/accounting/payments/internal_transfers.html) (search result available; full-page fetch timed out), [ERPNext Payment Entry](https://docs.frappe.io/erpnext/payment-entry), [Dolibarr Banks and Cash](https://wiki.dolibarr.org/index.php/Module_Banks_and_cash). Odoo's paired-liquidity behavior and Dolibarr account transfers are also supplied benchmark facts in the dispatch; do not infer their exact document schema or retry guarantees.
+Flow: cash custody setup and internal repository transfer. Odoo reference is specifically version 17, not a claim about all later releases. ERPNext and Dolibarr references are their unversioned documentation accessed 2026-09-06. NV means not verified, not absent. Sources: [Odoo 17 internal transfers](https://www.odoo.com/documentation/17.0/applications/finance/accounting/payments/internal_transfers.html), [ERPNext Payment Entry](https://docs.frappe.io/erpnext/payment-entry), [Dolibarr Banks and Cash](https://wiki.dolibarr.org/index.php/Module_Banks_and_cash). Odoo’s paired-liquidity behavior and Dolibarr account transfers are supplied benchmark facts; do not infer their exact document schema or retry guarantees.
 
 | ID | Guarantee | Odoo | ERPNext | Dolibarr or NV | AutoERP today path:line | Gap | Decision MATCH/DEFER/DIVERGE/ALREADY |
 |---|---|---|---|---|---|---|---|
 | B1 create | Internal movement has supporting evidence and balanced money effects | Paired liquidity entries | Internal Transfer Payment Entry | Account transfer; document shape NV | `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferService.php:76` creates optional draft; `:89` writes legs; `:108` returns no document | Justifying document missing | MATCH — T1/T3; retain zero JE for same GL |
 | B2 duplicate | Duplicate action cannot move funds twice | Operation UUID guarantee NV | Operation UUID guarantee NV | NV | `apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:296` uses group-based leg keys | No company-operation document identity | DIVERGE — explicit stronger company-operation contract, T3 |
 | B3 edit | Editing defaults cannot rewrite an executed transfer | Exact custody-default revision behavior NV | Exact revision behavior NV | NV | `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentRepositoryController.php:165` validates mutable repository fields | No custody revision/evidence snapshot | DIVERGE — immutable configuration revisions and documents, T1/T2 |
-| B4 cancel/reverse | Correction preserves the original evidence | Exact linked-document policy NV | Payment Entry supports cancellation; exact proposed shape NV | NV | `apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:369` writes null reversal link for transfers | No linked transfer reversal | MATCH — compensating document and pair, T4 |
-| B5 rerun | A retry returns an explicit existing outcome | Exact response NV | Exact response NV | NV | `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferService.php:113` reports replay of both legs | Replay result lacks document and stable company-operation semantics | ALREADY for paired replay; MATCH document extension, T3 |
-| B6 second company | Each company's configuration and operation identity are independent | Exact UUID scope NV | Internal transfer between company cash/bank accounts | NV | `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferService.php:121` scopes repositories; `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentRepositoryController.php:80` still validates codes tenant-wide | New keys must include company; HTTP code validation disagrees | MATCH — T1/T2/T6 |
-| B7 second location | Selected branch controls source custody and defaults | Branch-specific policy NV | Exact drawer policy NV | NV | `apps/api/app/Modules/Company/Services/LocationScopeResolver.php:31` resolves allowed locations; `apps/api/app/Modules/Treasury/Presentation/Controllers/RepositoryTransferController.php:28` passes no location intent | Transfer adapter has no branch check | DIVERGE — W1 source-custody policy, T5 |
-| B8 permission | Unauthorized source IDs are inaccessible without side effects | Exact scoped-404 policy NV | Exact scoped-404 policy NV | NV | `apps/api/app/Modules/Treasury/Presentation/routes.php:102` uses treasury.transfer; outer middleware at `:35` has no module gate | Permission exists; module/source checks missing here | MATCH permission defense; DIVERGE scoped-404 contract, T5 |
-| B9 audit | Evidence identifies actor, legs and accounting effect | Accounting entries | Operational document and ledger effect | Account records; exact evidence NV | `apps/api/app/Modules/Treasury/Domain/RepositoryMovement.php:73` is append-only; `apps/api/app/Modules/Treasury/Presentation/Controllers/RepositoryTransferController.php:41` returns group/JE/legs | No immutable action record | MATCH — T1/T3/T4 |
-| B10 document per action | A new transfer has durable justification and removes its known documentless compensation exception | Liquidity accounting evidence; exact code ratchet NV | Payment Entry justification | Document shape NV | `apps/api/tests/Architecture/baselines/document-per-action-baseline.json:34` names Treasury draft delete; `apps/api/tests/Architecture/DocumentPerActionBaselineRatchetTest.php:78` rejects stale exceptions | Service improvement must shrink its baseline in the same task | MATCH — T3 prepares the replacement; T5 atomically removes only the Treasury exception with the legacy delete path |
+| B4 cancel/reverse | Correction preserves original evidence | Exact linked-document policy NV | Payment Entry supports cancellation; exact proposed shape NV | NV | `apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:369` writes null reversal link for transfers | No linked transfer reversal | MATCH — compensating document and pair, T4 |
+| B5 rerun | A retry returns an explicit existing outcome | Exact response NV | Exact response NV | NV | `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferService.php:113` reports replay of both legs | Replay lacks document and stable company-operation semantics | ALREADY for paired replay; MATCH document extension, T3 |
+| B6 second company | Each company’s configuration and operation identity are independent | Exact UUID scope NV | Internal transfer between company cash/bank accounts | NV | `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferService.php:121` scopes repositories; `PaymentRepositoryController.php:80` validates codes tenant-wide | New keys must include company; HTTP code validation disagrees | MATCH — T1/T2/T6 |
+| B7 second location | Selected branch controls source custody and defaults | Branch-specific policy NV | Exact drawer policy NV | NV | `apps/api/app/Modules/Company/Services/LocationScopeResolver.php:31`; `RepositoryTransferController.php:28` passes no location intent | Transfer adapter has no branch check | DIVERGE — W1 source-custody policy, T5 |
+| B8 permission | Unauthorized source IDs are inaccessible without side effects | Exact scoped-404 policy NV | Exact scoped-404 policy NV | NV | `apps/api/app/Modules/Treasury/Presentation/routes.php:102` uses `treasury.transfer`; outer middleware at `:35` has no module gate | Permission exists; module/source checks missing | MATCH permission defense; DIVERGE scoped-404 contract, T5 |
+| B9 audit | Evidence identifies actor, legs and accounting effect | Accounting entries | Operational document and ledger effect | Account records; exact evidence NV | `RepositoryMovement.php:73` is append-only; `RepositoryTransferController.php:41` returns group/JE/legs | No immutable action record | MATCH — T1/T3/T4 |
+| B10 document per action | A new transfer has durable justification and removes its known documentless compensation exception | Liquidity accounting evidence; exact code ratchet NV | Payment Entry justification | Document shape NV | `apps/api/tests/Architecture/baselines/document-per-action-baseline.json:34`; `DocumentPerActionBaselineRatchetTest.php:78` | Service improvement must shrink its baseline in the same task | MATCH — T3 prepares replacement; T5 atomically removes only the Treasury exception |
 
-Vocabulary — convention 11: **Repository** exists (`docs/glossary.md:60`), canonical surface Treasury → Repositories. **Cash custody configuration** is NEW: `cash_custody_configurations`, Treasury, sole writer `CashCustodyConfigurationService`, a location setting mode on that existing surface; synonym “custody defaults.” **Repository transfer document** is NEW: `repository_transfer_documents`, Treasury, sole writer `RepositoryTransferService`, existing transfer modal and repository detail history; synonym “transfer justification.” Add both glossary rows in T1. A revision is history of the same configuration, not another catalogue. A reversal is another repository transfer document, not a separate concept/table. The new glossary row explicitly ties this evidence concept to the document-per-action invariant and to removal of the Treasury baseline exception at T5 activation; the architecture baseline is not a third business concept or surface.
+Vocabulary — convention 11: **Repository** exists (`docs/glossary.md:60`), canonical surface Treasury → Repositories. **Cash custody configuration** is NEW: `cash_custody_configurations`, Treasury, sole writer `CashCustodyConfigurationService`, a location setting mode on that existing surface; synonym “custody defaults.” **Repository transfer document** is NEW: `repository_transfer_documents`, Treasury, sole writer `RepositoryTransferService`, existing transfer modal and repository detail history; synonym “transfer justification.” Add both glossary rows in T1. A revision is history of the same configuration, not another catalogue. A reversal is another repository transfer document, not a separate concept/table. The new glossary row explicitly ties this evidence concept to the document-per-action invariant and removal of the Treasury baseline exception at T5 activation; the architecture baseline is not a third business concept or surface.
 
-Second-of-everything — convention 09: every T1–T6 acceptance below includes real second-company, real second pos_enabled location/provisioned drawer and actual mutation rerun coverage. T1/T2 intentionally share an atomic acceptance boundary so schema-only work cannot substitute migration rerun for a business mutation. No tenant-only new catalogue unique and no ratchet ceiling increase.
+Second-of-everything — convention 09: every T1–T6 acceptance below includes real second-company, real second `pos_enabled` location/provisioned drawer and actual mutation-rerun coverage. T1/T2 intentionally share an atomic acceptance boundary so schema-only work cannot substitute migration rerun for a business mutation. No tenant-only new catalogue unique and no ratchet-ceiling increase.
 
 ## Owner rulings — RULED, verbatim
 
-Authority: `docs/handoff/OWNER-RULINGS-parapharmacy-remediation-2026-09-05.md:147`, section “Q10–Q13 RULED”; all recommended defaults accepted. Q11–Q13 ruling rows below are verbatim.
+Authority: `docs/handoff/OWNER-RULINGS-parapharmacy-remediation-2026-09-05.md:147`, section “Q10–Q13 RULED”; all recommended defaults accepted. Q11–Q13 rows below are verbatim.
 
 | ID | Ruling |
 |---|---|
@@ -176,83 +204,177 @@ The Q11 drawer-session model, Q12 device reason-code enum/mapping and Q13 counte
 Existing signatures, retained unless explicitly replaced below:
 
 - `RepositoryTransferService::transfer(string $tenantId, string $companyId, string $fromRepositoryId, string $toRepositoryId, string $amount, ?string $notes, ?string $transferGroupId, string $userId): RepositoryTransferResult` — `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferService.php:33`.
-- `TreasuryMovementServiceInterface::transfer(TransferIntent $intent): TransferResult` — `apps/api/app/Shared/Contracts/Treasury/TreasuryMovementServiceInterface.php:96`; implementation `apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:225`.
-- `GeneralLedgerService::createRepositoryTransferJournalEntry(string $companyId, string $tenantId, string $transferGroupId, string $fromGlAccountId, string $toGlAccountId, string $amount, \DateTimeInterface $date, string $description): JournalEntry` — `apps/api/app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:1497`. It creates a draft, not a posted entry (`:1490`); movement transfer posts it (`apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:347`). Correct the shared contract's contradictory “pre-posted” wording at `apps/api/app/Shared/Contracts/Treasury/TreasuryMovementServiceInterface.php:76`.
-- `LocationScopeResolver::resolve(User $user, array $requestedIds = [], ?string $bypassPermission = null): array`, lists of UUID strings — `apps/api/app/Modules/Company/Services/LocationScopeResolver.php:31`. HTTP-only restriction is explicit at `:12`.
-- `PaymentRepositoryController::{index(Request $request), show(Request $request, string $id), store(Request $request), update(Request $request, string $id)}: JsonResponse` — `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentRepositoryController.php:33`, `:51`, `:69`, `:153`.
-- `RepositoryTransferController::store(TransferRepositoryRequest $request): JsonResponse` — `apps/api/app/Modules/Treasury/Presentation/Controllers/RepositoryTransferController.php:21`; `TransferRepositoryRequest::rules(): array` — `apps/api/app/Modules/Treasury/Presentation/Requests/TransferRepositoryRequest.php:19`.
+- `TreasuryMovementServiceInterface::transfer(TransferIntent $intent): TransferResult` — `apps/api/app/Shared/Contracts/Treasury/TreasuryMovementServiceInterface.php:96`; implementation `TreasuryMovementService.php:225`.
+- `GeneralLedgerService::createRepositoryTransferJournalEntry(string $companyId, string $tenantId, string $transferGroupId, string $fromGlAccountId, string $toGlAccountId, string $amount, \DateTimeInterface $date, string $description): JournalEntry` — `apps/api/app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:1497`. It creates a draft, not a posted entry (`:1490`); movement transfer posts it at `TreasuryMovementService.php:347`. Correct the shared contract’s contradictory “pre-posted” wording at `TreasuryMovementServiceInterface.php:76`.
+- `LocationScopeResolver::resolve(User $user, array $requestedIds = [], ?string $bypassPermission = null): array` — `apps/api/app/Modules/Company/Services/LocationScopeResolver.php:31`. HTTP-only restriction is explicit at `:12`.
+- `PaymentRepositoryController::{index(Request $request), show(Request $request, string $id), store(Request $request), update(Request $request, string $id)}: JsonResponse` — `PaymentRepositoryController.php:33,51,69,153`.
+- `RepositoryTransferController::store(TransferRepositoryRequest $request): JsonResponse` — `RepositoryTransferController.php:21`; `TransferRepositoryRequest::rules(): array` — `TransferRepositoryRequest.php:19`.
 
 All new PHP production types use strict types and constructor injection; DTOs extend Spatie Data and are exported by the existing TypeScript transform. All money is numeric-string, normalized with the explicit repository currency; reject nonpositive, excess precision, overflow, incompatible currencies, inactive/virtual repositories and self-transfer at the service boundary as well as HTTP.
 
 ## P0 prerequisite — P0 precision widening
 
-**Amendment B (rev 13 integration of the owner’s provisional ruling dated 2026-09-07; Amendment A remains binding):**
+**Amendments A/B, binding technical premise; sequencing remains exclusively in § Dispatch order (see dispatch order):**
 
-1. **Premise:** the four target columns are already `decimal(15,3)` on a fully migrated tenant because `apps/api/database/migrations/tenant/2026_03_11_200000_widen_monetary_columns_to_scale_3.php:27-30,113-116` widened them. P0-b widens `(15,3) → (15,4)` only. Accepted source tuples are exactly `(15,3,NO,0)` / `(15,3,YES,NULL)` or already-compliant `(15,4,…)`; every other tuple, including scale two, aborts before DDL.
-2. **Casts and standing guard:** owner row A10 provisionally rules option A: Eloquent casts for `PaymentRepository` balance fields and `JournalLine` debit/credit stay `decimal:3`. The cast decision is no longer a P0-b hold. P0-a must first ship `fourth_decimal_present`; any non-zero result is a hard P0-b block. Cast widening is a separate future lane, all 19 Treasury/Accounting casts together, conditioned on a 4-dp country preset actually existing. The T3 operational ceiling remains independently governed by its movement-ledger removal condition.
-3. **Authoritative precision brief:** `docs/superpowers/plans/2026-09-07-precision-widening-gl-repository-scale-4.md:50-68` governs the P0 command, service, DTOs, classifications, output marker, migration and tests; `:103-117` governs deployment identifiers and variables. Amendment B below overrides that brief only by making the detector’s exact per-tenant shape/hard stop normative and by replacing its “153 assertions” rationale with the verified benchmark result of 192 across 34 files. The five classifications remain `Money`, `Percent`, `Quantity`, `Geometry`, and `Other`; `pos_tables.*` is Geometry.
-4. **Dispatch effect:** dispatch P0-a, T1 and T2 now. The benchmark exists and the owner cast ruling is provisionally recorded, so P0-b is dispatchable once `fourth_decimal_present` is implemented in P0-a and accepted per-tenant output is zero; a non-zero detector result blocks P0-b. Dispatch T3–T6 only after P0-b has accepted reviewer, migration, raw round-trip and PostgreSQL schema evidence.
+1. The four target columns are already `decimal(15,3)` on a fully migrated tenant because `apps/api/database/migrations/tenant/2026_03_11_200000_widen_monetary_columns_to_scale_3.php:27-30,113-116` widened them. P0-b widens `(15,3)→(15,4)` only. Accepted source tuples are exactly `(15,3,NO,0)` / `(15,3,YES,NULL)` or already-compliant `(15,4,…)`; every other tuple, including scale two, aborts before DDL.
+2. Owner row A10 provisionally rules option A: Eloquent casts for `PaymentRepository` balance fields and `JournalLine` debit/credit stay `decimal:3`. P0-a supplies the standing `fourth_decimal_present` guard. Any non-zero result is a hard P0-b block. Cast widening is a separate future lane, all 19 Treasury/Accounting casts together, conditioned on a 4-dp preset, a 4-dp `SCALE_MAP` entry or a non-zero detector result. The T3 operational ceiling is independently governed by its movement-ledger removal condition.
+3. `docs/superpowers/plans/2026-09-07-precision-widening-gl-repository-scale-4.md:50-68` is authoritative for P0 command, service, DTOs, classifications, output marker, migration and tests; `:103-117` is authoritative for deployment identifiers and variables. The five classifications are exactly `Money`, `Percent`, `Quantity`, `Geometry`, and `Other`; `pos_tables.*` is `Geometry`.
+4. Task eligibility follows the single binding statement in § Dispatch order; see dispatch order.
 
-**Hard prerequisite for T3–T6 and money acceptance.** P0 is a separately accepted program-level engineering task outside the six WCASH tasks. P0-a census acceptance evidence, including a zero `fourth_decimal_present` result for every inventoried tenant, must exist before P0-b promotion; any non-zero result blocks P0-b without reviewer waiver. T1 and T2 may be implemented and reviewed in parallel with P0-a, but their WCASH deployment remains after accepted P0-b. P0-b acceptance SHA and PG evidence must be recorded before T3–T6 start or WCASH money work is declared green.
+P0 is a separately accepted program-level engineering task outside the six WCASH tasks. The detector, migration and task dependencies are technical gates; their operative sequencing is stated only in § Dispatch order.
 
-Binding owner follow-up A1 is at `docs/handoff/OWNER-QUESTIONS-consolidated-2026-09-06.md:82`: storage capacity is widened to a maximum scale of four, while business validation, computation, rounding and display precision remain the company country preset in `countries.currency_decimal_places`. The provisional cast ruling is recorded at `docs/handoff/OWNER-QUESTIONS-consolidated-2026-09-06.md:91`. The company-bound resolver reads the preset at `apps/api/app/Shared/Infrastructure/CurrencyScaleResolver.php:54-64` at reviewed HEAD `1e8eb5e51568127815da0a767c62f8ed11dadfac`; no service may treat storage scale four as operational precision four.
+Binding owner follow-up A1 is at `docs/handoff/OWNER-QUESTIONS-consolidated-2026-09-06.md:82`: storage capacity widens to a maximum scale of four while business validation, computation, rounding and display precision remain the company country preset in `countries.currency_decimal_places`. The provisional cast ruling is at `docs/handoff/OWNER-QUESTIONS-consolidated-2026-09-06.md:91`. The resolver reads that preset at `apps/api/app/Shared/Infrastructure/CurrencyScaleResolver.php:54-64` at reviewed HEAD `55bf3d14204363ab857738f785a3c405100da9db`; no service may treat storage scale four as operational precision four.
 
 | Physical column | Original CREATE definition | Existing widening at current HEAD | Required verified shape |
 |---|---|---|---|
-| payment_repositories.balance | `apps/api/database/migrations/tenant/2025_11_30_120000_create_treasury_tables.php:29`, decimal(15,2), NOT NULL DEFAULT 0 | `apps/api/database/migrations/tenant/2026_03_11_200000_widen_monetary_columns_to_scale_3.php:114` | numeric(15,4) NOT NULL DEFAULT 0 |
-| payment_repositories.last_reconciled_balance | Same CREATE `:31`, decimal(15,2), nullable, no non-null default | Same widening `:115` | numeric(15,4) NULL, no default |
-| journal_lines.debit | `apps/api/database/migrations/tenant/2025_11_30_100000_create_journal_entries_table.php:51`, decimal(15,2), NOT NULL DEFAULT 0 | March widening `:28` | numeric(15,4), NOT NULL DEFAULT 0 |
-| journal_lines.credit | Same CREATE `:52`, decimal(15,2), NOT NULL DEFAULT 0 | March widening `:29` | numeric(15,4), NOT NULL DEFAULT 0 |
+| `payment_repositories.balance` | `2025_11_30_120000_create_treasury_tables.php:29`, decimal(15,2), NOT NULL DEFAULT 0 | `2026_03_11_200000_widen_monetary_columns_to_scale_3.php:114` | numeric(15,4) NOT NULL DEFAULT 0 |
+| `payment_repositories.last_reconciled_balance` | Same CREATE `:31`, decimal(15,2), nullable | Same widening `:115` | numeric(15,4) NULL, no default |
+| `journal_lines.debit` | `2025_11_30_100000_create_journal_entries_table.php:51`, decimal(15,2), NOT NULL DEFAULT 0 | March widening `:28` | numeric(15,4) NOT NULL DEFAULT 0 |
+| `journal_lines.credit` | Same CREATE `:52`, decimal(15,2), NOT NULL DEFAULT 0 | March widening `:29` | numeric(15,4) NOT NULL DEFAULT 0 |
 
-Do not infer live scale from the original CREATE: the March migration executes ALTER at `apps/api/database/migrations/tenant/2026_03_11_200000_widen_monetary_columns_to_scale_3.php:178-193` and skips SQLite at `:182`. Models currently cast repository fields scale 3 (`apps/api/app/Modules/Treasury/Domain/PaymentRepository.php:214-215`) and GL debit/credit scale 3 (`apps/api/app/Modules/Accounting/Domain/JournalLine.php:54-55`); those casts remain unchanged provisionally. P0-b updates `docs/architecture/precision-contract.md:9,17` and Rule 19 at `CLAUDE.md:72-75`: the canonical money **storage floor** becomes `decimal(N,4)`, while ingress, computation, rounding, display and provisional Eloquent serialization continue at the country-resolved scale, currently capped at three by seeded presets and the transfer ceiling. The precision-contract update must include the same decision record required in the migration docblock: NC 01 §62, « L'arrondi n'est pas admis dans l'enregistrement des opérations. Il n'est admis que pour la présentation. » (`docs/superpowers/reviews/2026-09-07-benchmark-money-precision-4-decimals-casts.md:39-49,58-63,175-176`); Laravel `decimal:3` silently HALF_UP-rounds a stored fourth decimal (`apps/api/vendor/laravel/framework/src/Illuminate/Database/Eloquent/Concerns/HasAttributes.php:1512-1515`; benchmark §1 `:23` and §2 `:49`); Odoo, ERPNext and Dolibarr store GL wider than operational precision and none narrows on read (benchmark §2 `:43-56`); no 4-dp preset exists—CountriesSeeder 0/40 and `CurrencyScale::SCALE_MAP` none (benchmark §1 `:27-31`, §2 `:51`, §4 `:132-138`; `apps/api/app/Shared/Domain/CurrencyScale.php:20-38`); casts→4 breaks 192 strict `assertSame` assertions across 34 files (benchmark §3 `:69-77`); `CloseInvoiceWithToleranceService` hardcodes `outstandingBalance(3)` (`apps/api/app/Modules/Treasury/Application/Services/CloseInvoiceWithToleranceService.php:78-82`; benchmark `:104`); and moving only the four target fields among 19 casts recreates the heterogeneous numeric-string shape fixed at `apps/api/app/Modules/Treasury/Domain/Services/PaymentRefundService.php:1461-1468` (benchmark `:103`). Record the conclusion from benchmark §4 `:121-148` and owner row A10: casts stay `decimal:3` provisionally; `fourth_decimal_present` is the standing guard that makes that safe; cast widening is a separate future lane, all 19 together, conditioned on a 4-dp preset actually existing. P0 closes verified schema drift only; it does not reconstruct missing historic fractions.
+Do not infer live scale from the original CREATE: the March migration executes ALTER at `apps/api/database/migrations/tenant/2026_03_11_200000_widen_monetary_columns_to_scale_3.php:178-193` and skips SQLite at `:182`. Models currently cast repository fields scale 3 (`apps/api/app/Modules/Treasury/Domain/PaymentRepository.php:214-215`) and GL debit/credit scale 3 (`apps/api/app/Modules/Accounting/Domain/JournalLine.php:54-55`); those casts remain unchanged provisionally.
 
-NEW P0-b migration: `apps/api/database/migrations/tenant/2026_09_07_100000_widen_gl_and_repository_balance_columns_to_scale_4.php`, anonymous migration with `up(): void` and `down(): void`. It is a non-additive PostgreSQL schema alteration and never ships in P0-a. Before any DDL, inspect all four complete tuples. Accept only exact `(15,3,NO,0)`, `(15,3,YES,NULL)` or matching `(15,4,…)`. Any other precision, scale, nullability or default throws `RuntimeException('P0-PRECISION: status=failed reason=unexpected_column_shape column=<table.column> found=<tuple>')` before any ALTER. All four at scale four emit `P0-PRECISION: status=already_compliant` and perform no DDL. Otherwise issue the two fixed ALTER statements from the authoritative brief, preserve defaults/nullability/triggers, assert all post-tuples and emit `P0-PRECISION: status=widened columns=4`. Driver other than pgsql returns. `down()` is a documented forward-only no-op. The docblock cites the ruling, premise correction and lock profile: numeric scale ALTER rewrites the tables under `ACCESS EXCLUSIVE`, requiring a bounded outage with money writes stopped. It also copies the full cast/storage decision record and citations required for `docs/architecture/precision-contract.md` above: NC 01 §62; `HasAttributes.php:1512-1515` HALF_UP read rounding; the Odoo/ERPNext/Dolibarr wider-storage/no-read-narrowing benchmark; no 4-dp preset; 192 strict assertions/34 files; `CloseInvoiceWithToleranceService.php:78-82`; `PaymentRefundService.php:1461-1468`; provisional option A; the standing detector; and the future all-19-casts lane conditioned on an actual 4-dp preset.
+P0-b updates `docs/architecture/precision-contract.md:9,17` and Rule 19 at `CLAUDE.md:72-75`: the canonical money storage floor becomes `decimal(N,4)`, while ingress, computation, rounding, display and provisional Eloquent serialization continue at country-resolved scale. The update must cite NC 01 §62 verbatim: « L'arrondi n'est pas admis dans l'enregistrement des opérations. Il n'est admis que pour la présentation. » (`docs/superpowers/reviews/2026-09-07-benchmark-money-precision-4-decimals-casts.md:39-49,58-63`).
 
-NEW PG test file `apps/api/tests/Feature/Schema/GlAndRepositoryBalanceScale4Test.php` methods: `test_target_columns_have_full_tuple_15_4(): void`; `test_journal_line_round_trips_1_0005_raw(): void`; `test_repository_balance_round_trips_1_0005_raw_via_port_guc(): void`; `test_legacy_scale_3_shape_is_widened_and_reported(): void`; `test_rerun_on_compliant_schema_is_already_compliant_and_changes_nothing(): void`; `test_unexpected_shape_refuses_before_ddl(): void`; and `test_scale_two_shape_refuses_before_ddl_and_changes_nothing(): void`. The scale-two test deliberately changes one target to `(15,2,…)`, invokes `up()`, first asserts `reason=unexpected_column_shape`, then asserts zero DDL, byte-identical rows, identical tuples for all four columns and an unchanged migrations ledger. No successful fixture uses scale two. Raw repository writes use `SET LOCAL app.treasury_movement_port = 'on'`; the sibling no-GUC assertion proves the trigger remains live.
+Laravel’s `decimal:3` cast silently HALF_UP-rounds a stored fourth decimal at `apps/api/vendor/laravel/framework/src/Illuminate/Database/Eloquent/Concerns/HasAttributes.php:1512-1515`. Odoo, ERPNext and Dolibarr store GL values wider than operational precision and do not narrow on read (`benchmark-money-precision-4-decimals-casts.md:43-56`). No 4-dp preset exists: `CountriesSeeder` contains 3×0, 30×2, 7×3 and zero 4 among 40 presets; `CurrencyScale::SCALE_MAP` has no 4-dp entry (`apps/api/app/Shared/Domain/CurrencyScale.php:20-47`). Casts→4 would break 192 strict `assertSame` assertions across 34 files (`benchmark-money-precision-4-decimals-casts.md:69-77`). `CloseInvoiceWithToleranceService.php:78-82` deliberately calls `outstandingBalance(3)`. Moving only the four target casts among 19 would recreate the heterogeneous numeric-string shape documented at `apps/api/app/Modules/Treasury/Domain/Services/PaymentRefundService.php:1461-1469`.
 
-NEW architecture ratchet `apps/api/tests/Architecture/MoneyStorageScale4RatchetTest.php::money_storage_target_columns_have_scale_4_full_tuple(): void`, with NEW test support `apps/api/tests/Architecture/Support/MoneyStorageScaleChecker.php`. It asserts precision, scale, nullability and normalized default for all four columns; liveness providers damage each property separately. Exact P0-b commands from `apps/api`, lane backend-test-pgsql / precision-4: `php artisan test -c phpunit-pgsql.xml tests/Feature/Schema/GlAndRepositoryBalanceScale4Test.php tests/Architecture/MoneyStorageScale4RatchetTest.php`. T3’s same/cross-GL fixture uses a TND company whose country preset is three and transfers `1.005`, comparing raw document, movements, balance_after, repository balances and debit/credit. A TND fixture remains limited to three operational decimals even though the four target columns store four.
+Conclusion: the four casts stay `decimal:3` provisionally; `fourth_decimal_present` is the standing guard; widening casts is a separate future lane covering all 19 casts. P0 closes verified schema drift only and cannot reconstruct missing historic fractions.
+
+NEW P0-b migration: `apps/api/database/migrations/tenant/2026_09_07_100000_widen_gl_and_repository_balance_columns_to_scale_4.php`, anonymous migration with `up(): void` and `down(): void`. It is a non-additive PostgreSQL schema alteration and never ships in P0-a. Before any DDL, inspect all four complete tuples. Accept only exact `(15,3,NO,0)`, `(15,3,YES,NULL)` or matching `(15,4,…)`. Any other precision, scale, nullability or default throws `RuntimeException('P0-PRECISION: status=failed reason=unexpected_column_shape column=<table.column> found=<tuple>')` before any ALTER. All four at scale four emit `P0-PRECISION: status=already_compliant` and perform no DDL. Otherwise issue the two fixed ALTER statements from the authoritative brief, preserve defaults/nullability/triggers, assert all post-tuples and emit `P0-PRECISION: status=widened columns=4`. Driver other than pgsql returns. `down()` is a documented forward-only no-op.
+
+The migration docblock cites the ruling, premise correction and lock profile: numeric-scale ALTER rewrites both tables under `ACCESS EXCLUSIVE`, requiring a bounded outage with money writes stopped. It also copies the full cast/storage decision record above: NC 01 §62; `HasAttributes.php:1512-1515` HALF_UP read rounding; the wider-storage/no-read-narrowing benchmark; no 4-dp preset; 192 strict assertions across 34 files; `CloseInvoiceWithToleranceService.php:78-82`; `PaymentRefundService.php:1461-1469`; provisional option A; standing detector; and the future all-19-casts lane.
+
+NEW PG test file `apps/api/tests/Feature/Schema/GlAndRepositoryBalanceScale4Test.php` methods:
+
+- `test_target_columns_have_full_tuple_15_4(): void`.
+- `test_journal_line_round_trips_1_0005_raw(): void`.
+- `test_repository_balance_round_trips_1_0005_raw_via_port_guc(): void`.
+- `test_legacy_scale_3_shape_is_widened_and_reported(): void`.
+- `test_rerun_on_compliant_schema_is_already_compliant_and_changes_nothing(): void`.
+- `test_unexpected_shape_refuses_before_ddl(): void`.
+- `test_scale_two_shape_refuses_before_ddl_and_changes_nothing(): void`.
+
+The scale-two test deliberately changes one target to `(15,2,…)`, invokes `up()`, first asserts `reason=unexpected_column_shape`, then asserts zero DDL, byte-identical rows, identical tuples for all four columns and unchanged migration ledger. No successful fixture uses scale two. Raw repository writes use `SET LOCAL app.treasury_movement_port = 'on'`; a sibling no-GUC assertion proves the trigger remains live.
+
+NEW architecture ratchet `apps/api/tests/Architecture/MoneyStorageScale4RatchetTest.php::money_storage_target_columns_have_scale_4_full_tuple(): void`, with NEW support `apps/api/tests/Architecture/Support/MoneyStorageScaleChecker.php`. It asserts precision, scale, nullability and normalized default for all four columns; liveness providers damage each property separately. Exact P0-b command from `apps/api`, lane **backend-test-pgsql / precision-4**:
+
+```sh
+php artisan test -c phpunit-pgsql.xml tests/Feature/Schema/GlAndRepositoryBalanceScale4Test.php tests/Architecture/MoneyStorageScale4RatchetTest.php
+```
+
+T3’s same/cross-GL fixture uses a TND company whose country preset is three and transfers `1.005`, comparing raw document, movements, `balance_after`, repository balances and debit/credit. TND remains limited to three operational decimals even though the four target columns store four.
 
 ### P0-a / P0-b deployment packages
 
-Both packages are governed by `docs/superpowers/plans/2026-09-06-parapharmacy-staging-push-manifest.md`. P0-a is the census-only commit/deployment within lane `precision-4`; P0-b is the separately promoted non-additive migration/docs/test commit from the same authoritative lane. They never share a push. The benchmark/ruling gate is resolved provisionally; the detector gate below is not.
+Both packages are governed by `docs/superpowers/plans/2026-09-06-parapharmacy-staging-push-manifest.md`. P0-a is the census-only commit/deployment within lane `precision-4`; P0-b is the separately promoted non-additive migration/docs/test commit from the same authoritative lane. They never share a push. Operative sequencing: see dispatch order.
 
 | Manifest variable | P0-a — precision census tooling | P0-b — non-additive scale-four widening |
 |---|---|---|
 | `<slice>` | `precision-4` | `precision-4` |
-| Exact contents | Read-only `treasury:census-money-precision` command, service, enum, DTOs and `MoneyPrecisionCensusCommandTest` only, including the `fourth_decimal_present` aggregate/column detail shape. Additive application code; no migration, cast change, write path or precision-contract mutation. | `2026_09_07_100000_widen_gl_and_repository_balance_columns_to_scale_4.php`, scale-four schema tests/ratchet, precision-contract/Rule-19 updates, follow-up ticket and handback. The four Eloquent casts remain `decimal:3` under provisional owner row A10. |
-| Migration marker | None. Boot may run the normal entrypoint, but P0-a contains no P0 migration. Any pending scale-four migration in its image is a packaging failure. Census marker is `MONEY-PRECISION CENSUS`. | `P0-PRECISION: status=widened columns=4` or `P0-PRECISION: status=already_compliant`; refusal emits `P0-PRECISION: status=failed reason=unexpected_column_shape ...` and throws. |
-| Exact command | Run `php artisan treasury:census-money-precision --tenant=<verified-tenant-uuid> --json` separately for every inventoried tenant and retain `php artisan treasury:census-money-precision --json` for the fleet aggregate. The command runs standalone, never under `tenants:run`. Each tenant JSON object must contain exact key `fourth_decimal_present` with `{count:<int>,sample_ids:<list<string>>,columns:<object>}`; the human marker includes `fourth_decimal_present=<n>`. | DB-per-tenant: boot and explicit `php artisan tenants:migrate-rolling --force`, followed by `php artisan tenants:migrate-rolling --force --tenant=<verified-tenant-uuid>` for every tenant. Compatibility mode uses the exact shared-connection migration path below. |
-| Schema/data census | Capture command JSON, exit status, `current_database()`, `current_schema()`, all four source tuples, measurable drift and all numeric columns below scale four with their five-way classification. For each of the four target columns, retain detector count and sorted sample row IDs; total `fourth_decimal_present.count` must be zero. Any non-zero detector count exits 1 and blocks P0-b without reviewer waiver; exit 2 also blocks; other exit-1 drift requires reviewer classification. | Capture all four post-tuples, migration marker, post-census JSON with `fourth_decimal_present.count=0`, and the unchanged classified follow-up list. Exactly four ruled columns are widened. |
+| Exact contents | Read-only `treasury:census-money-precision` command, service, enum, DTOs and `MoneyPrecisionCensusCommandTest` only, including the `fourth_decimal_present` shape. No migration, cast change, write path or precision-contract mutation. | `2026_09_07_100000_widen_gl_and_repository_balance_columns_to_scale_4.php`, scale-four tests/ratchet, precision-contract/Rule-19 updates, follow-up ticket and handback. Casts remain `decimal:3`. |
+| Migration marker | None. Any pending scale-four migration in the P0-a image is packaging failure. Census marker is `MONEY-PRECISION CENSUS`. | `P0-PRECISION: status=widened columns=4` or `P0-PRECISION: status=already_compliant`; refusal emits `P0-PRECISION: status=failed reason=unexpected_column_shape ...`. |
+| Exact command | Run `php artisan treasury:census-money-precision --tenant=<verified-tenant-uuid> --json` separately for every inventoried tenant and retain the aggregate `php artisan treasury:census-money-precision --json`. Standalone, never under `tenants:run`. | DB-per-tenant: boot and explicit `php artisan tenants:migrate-rolling --force`, then `--tenant=<verified-tenant-uuid>` per tenant. Compatibility mode uses the exact shared-connection command below. |
+| Schema/data census | Capture JSON, exit status, database/schema, four source tuples, measurable drift and classified below-scale-four columns. Each tenant has exact `fourth_decimal_present` aggregate/per-column counts and sample IDs. Non-zero exits 1 and blocks P0-b without waiver; exit 2 blocks. | Capture post-tuples, migration marker and post-census JSON with detector count zero. Exactly four ruled columns are widened. |
 | Flags | None. | None. |
-| Web/API behavior | No HTTP/API/web behavior; one direct read-only command. | No HTTP/API/web behavior. Storage capacity changes; Eloquent casts and country-resolved operational precision do not. |
+| Web/API behavior | No HTTP/API/web behavior; one direct read-only command. | No HTTP/API/web behavior. Storage capacity changes; casts and operational precision do not. |
 | Device behavior/build | None. | None. |
 | Queues | None. | None. |
-| Collapsed pushes | Authoritative Push 1: census in its own commit/push. Never collapse with P0-b or WCASH. | Separate non-additive Push 2 exception after accepted P0-a contains the detector and every inventoried tenant reports zero. The benchmark exists and provisional cast ruling is recorded; no further cast-decision hold remains. Manifest additive Push 2 does not absorb it; it precedes every WCASH deployment push. |
-| Environment changes | None. U-1/U-2/U-5 still resolve topology, connection and backup targets. | None. U-1/U-2/U-5 must be evidenced before backup/promotion. |
+| Collapsed pushes | Authoritative Push 1: census in its own commit/push. Never collapse with P0-b or WCASH. | Separate non-additive Push 2 exception. Manifest additive Push 2 does not absorb it. Sequencing: see dispatch order. |
+| Environment changes | None. U-1/U-2/U-5 still resolve topology, connection and backup targets. | None. U-1/U-2/U-5 must be evidenced. |
 | Host-side backup | None; read-only code and no schema/backfill. | Required outside the container: one non-zero restore-readable `pg_dump -Fc` per physical target database. |
-| Rollback point | Revert tooling; preserve evidence. A non-zero `fourth_decimal_present` result is an investigation stop, not a value to repair in P0-a. | Transaction rollback before commit. After commit retain scale-four schema and provisional scale-three casts, never narrow, stop money writes and correct forward. |
+| Rollback point | Revert tooling; preserve evidence. A non-zero detector is an investigation stop, not a P0-a repair target. | Transaction rollback before commit. After commit retain scale-four schema and provisional scale-three casts, never narrow, stop writes and correct forward. |
 
-Dispatch P0-a, T1 and T2 now. P0-a must contain the `fourth_decimal_present` detector, finish its per-tenant run and receive treasury-reviewer + stock-gl-interaction-reviewer classification before P0-b promotion; every inventoried tenant must report zero, and non-zero blocks P0-b. The benchmark note exists and owner row A10 provisionally selects option A, so P0-b is dispatchable as soon as that detector/evidence condition is met. Once released, stop money writes for the bounded ALTER window, capture backups and require no-op evidence for already-compliant tenants. P0-b acceptance releases T3–T6. P0 handback reports the fleet finding to Fable and attaches both reviews without labelling tenants defective from CREATE text alone.
+The detector/reviewer, outage, backup and no-op-evidence requirements remain mandatory technical gates. Operative sequencing is only in § Dispatch order; see dispatch order. P0 handback reports the fleet finding to Fable and attaches treasury-reviewer + stock-gl-interaction-reviewer reviews without labelling tenants defective from CREATE text alone.
 
-**P0 complete shape contract:** expected post-tuples are balance `(15,4,NO,0)`, last_reconciled_balance `(15,4,YES,NULL)`, debit and credit `(15,4,NO,0)`. Accepted pre-tuples are only balance/debit/credit `(15,3,NO,0)` and last_reconciled_balance `(15,3,YES,NULL)`; matching `(15,4,…)` is already compliant. Normalize only PostgreSQL zero spellings, optional parentheses and numeric casts to `0`; SQL NULL stays NULL. Any other tuple—including `(15,2,…)`—refuses with `reason=unexpected_column_shape` before DDL. Tests assert complete tuples before, after and on rerun. The scale-two red fixture asserts no DDL and unchanged rows/schema. Liveness providers separately damage precision, scale, nullability and default. Migration never drops defaults.
+**P0 complete shape contract:** expected post-tuples are balance `(15,4,NO,0)`, last-reconciled balance `(15,4,YES,NULL)`, debit and credit `(15,4,NO,0)`. Accepted pre-tuples are only balance/debit/credit `(15,3,NO,0)` and last-reconciled balance `(15,3,YES,NULL)`; matching `(15,4,…)` is already compliant. Normalize only PostgreSQL zero spellings, optional parentheses and numeric casts to `0`; SQL NULL stays NULL. Any other tuple, including `(15,2,…)`, refuses with `reason=unexpected_column_shape` before DDL. Tests assert complete tuples before, after and on rerun. The scale-two red fixture asserts no DDL and unchanged rows/schema. Liveness providers separately damage precision, scale, nullability and default. Migration never drops defaults.
 
-**P0 pre-ALTER census:** NEW `apps/api/app/Modules/Treasury/Presentation/Console/MoneyPrecisionCensusCommand.php`, namespace `App\Modules\Treasury\Presentation\Console`, extends `App\Console\TenantScopedCommand`; constructor `__construct(CompanyContext $companyContext, MoneyPrecisionCensusService $census)` calls `parent::__construct($companyContext)`; `protected function executeCommand(): int`. Signature: `treasury:census-money-precision {--tenant=} {--json}`. NEW `apps/api/app/Modules/Treasury/Application/Services/MoneyPrecisionCensusService.php`, namespace `App\Modules\Treasury\Application\Services`; `inspect(string $tenantId): MoneyPrecisionCensusData`, using one read-only REPEATABLE READ transaction on the bound tenant connection. Register the command in `apps/api/app/Modules/Treasury/Providers/TreasuryServiceProvider.php:237`. No insert, update, delete, DDL or log-table write is permitted.
+**P0 pre-ALTER census:** NEW `apps/api/app/Modules/Treasury/Presentation/Console/MoneyPrecisionCensusCommand.php`, FQCN `App\Modules\Treasury\Presentation\Console\MoneyPrecisionCensusCommand`, extends `App\Console\TenantScopedCommand`; constructor `__construct(CompanyContext $companyContext, MoneyPrecisionCensusService $census)` calls `parent::__construct($companyContext)`; `protected function executeCommand(): int`. Signature `treasury:census-money-precision {--tenant=} {--json}`.
 
-NEW DTOs under namespace `App\Modules\Treasury\Application\DTOs`: `MoneyPrecisionCensusData.php` with `__construct(string $tenant_id, string $database_name, bool $complete, int $measurable_drift_count, array $checks, array $columns_below_scale_4, array $fourth_decimal_present)` where checks is `list<MoneyPrecisionCheckData>`, columns is `list<MoneyColumnShapeData>`, and `fourth_decimal_present` has exact shape `{count:int,sample_ids:list<string>,columns:array<string,{count:int,sample_ids:list<string>}>}`; `MoneyPrecisionCheckData.php` with `__construct(string $check, int $examined_count, int $drift_count, array $sample_ids)`; `MoneyColumnShapeData.php` with `__construct(string $table, string $column, int $precision, int $scale, bool $nullable, ?string $default, string $classification)`. NEW backed enum `apps/api/app/Modules/Treasury/Domain/Enums/MoneyColumnClassification.php`, namespace `App\Modules\Treasury\Domain\Enums`, has exactly `Money`, `Percent`, `Quantity`, `Geometry`, and `Other`.
+NEW `apps/api/app/Modules/Treasury/Application/Services/MoneyPrecisionCensusService.php`, FQCN `App\Modules\Treasury\Application\Services\MoneyPrecisionCensusService`; public signature `inspect(string $tenantId): MoneyPrecisionCensusData`, using one read-only REPEATABLE READ transaction on the bound tenant connection. Register the command at `apps/api/app/Modules/Treasury/Providers/TreasuryServiceProvider.php:237`. No insert, update, delete, DDL or log-table write is permitted.
 
-Fixed census checks are `target_shape`, `fourth_decimal_present`, `repository_last_movement`, `journal_entry_balance`, and `columns_below_scale_4`. `target_shape` accepts only the exact pre/post tuples above. `fourth_decimal_present` scans each of `journal_lines.debit`, `journal_lines.credit`, `payment_repositories.balance`, and nullable `payment_repositories.last_reconciled_balance` with exact predicate `value IS NOT NULL AND ((value * 10000)::bigint % 10) <> 0`; it counts target-column hits per tenant and per column (a row present in two target columns counts twice) and returns deterministic sample keys `<table>.<column>:<row-id>`, sorted, first 20 per column and in the aggregate. `repository_last_movement` compares repository balance with the latest movement by ordinal. `journal_entry_balance` compares raw debit and credit sums, including drafts with `draft:` sample prefixes. `columns_below_scale_4` classifies every numeric column below scale four: Percent for the authoritative suffix/field allowlist, Geometry for `pos_tables.*`, Quantity for the authoritative weight/hours/time allowlist, Other only where explicitly curated, and Money otherwise. Only Money feeds the follow-up ticket.
+NEW DTOs under `App\Modules\Treasury\Application\DTOs`:
 
-Output is one grep-stable line per tenant: `MONEY-PRECISION CENSUS tenant=<uuid> db=<name> status=clean|drift|incomplete measurable_drift=<n> fourth_decimal_present=<n> money_columns_below_scale_4=<n>`, followed by a table with one `fourth_decimal_present` row per target column or `--json`. Fleet JSON uses a `tenants` array; each tenant object has the exact key `"fourth_decimal_present":{"count":<int>,"sample_ids":["<table>.<column>:<row-id>",...],"columns":{"journal_lines.debit":{"count":<int>,"sample_ids":["<row-id>",...]},"journal_lines.credit":{...},"payment_repositories.balance":{...},"payment_repositories.last_reconciled_balance":{...}}}`. Exit 0 means complete, otherwise clean and detector count zero; exit 1 means drift. Within exit 1, any `fourth_decimal_present.count > 0` is a non-waivable P0-b block; other drift requires both reviewers to classify before promotion. Exit 2 means incomplete and always blocks. Run standalone: `php artisan treasury:census-money-precision --json` and one `--tenant=<uuid> --json` command per inventoried tenant. Capture stdout, exit code and connection identities before ALTER. Below-floor findings are capacity inventory, not proof of historical loss.
+- `MoneyPrecisionCensusData.php`: `__construct(string $tenant_id, string $database_name, bool $complete, int $measurable_drift_count, array $checks, array $columns_below_scale_4, array $fourth_decimal_present)`, where checks is `list<MoneyPrecisionCheckData>`, columns is `list<MoneyColumnShapeData>`, and `fourth_decimal_present` has exact shape `{count:int,sample_ids:list<string>,columns:array<string,{count:int,sample_ids:list<string>}>}`.
+- `MoneyPrecisionCheckData.php`: `__construct(string $check, int $examined_count, int $drift_count, array $sample_ids)`.
+- `MoneyColumnShapeData.php`: `__construct(string $table, string $column, int $precision, int $scale, bool $nullable, ?string $default, string $classification)`.
 
-Read-only comparisons use raw numeric SQL/text and decimal-string arithmetic. Missing independent evidence is not called clean historical data. Current port stores `balance_after` at `apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:590` and source identity at `:592-593` at reviewed HEAD `1e8eb5e51568127815da0a767c62f8ed11dadfac`; ORM padding is not evidence of loss. NEW follow-up ticket `docs/superpowers/tickets/2026-09-07-money-columns-below-scale-4-followup.md` contains the fresh census Money list with table, column, tuple and module owner, grouped by module; `repository_movements.amount`, `repository_movements.balance_after` and `accounts.balance` are highest priority. Percent, Quantity, Geometry and Other remain visible but do not enter the money ticket.
+NEW backed enum `apps/api/app/Modules/Treasury/Domain/Enums/MoneyColumnClassification.php`, FQCN `App\Modules\Treasury\Domain\Enums\MoneyColumnClassification`, has exactly `Money`, `Percent`, `Quantity`, `Geometry`, and `Other`.
 
-NEW `apps/api/tests/Feature/Treasury/MoneyPrecisionCensusCommandTest.php`, class `Tests\Feature\Treasury\MoneyPrecisionCensusCommandTest`, PG lane **backend-test-pgsql / precision-4**, methods: `test_reports_clean_on_fresh_tenant(): void`; `test_detects_repository_balance_vs_last_movement_drift(): void`; `test_detects_unbalanced_journal_entry(): void`; `test_lists_money_columns_below_scale_4_with_classification(): void`; `test_json_output_matches_dto(): void`; `test_two_tenants_are_scoped_and_rerun_is_read_only(): void`; `test_incomplete_scan_exits_two(): void`; and red-first `test_fourth_decimal_present_blocks_p0_b_and_reports_sample_ids(): void`. That test creates one repository row, transactionally makes the target balance capable of retaining scale four when necessary, executes `SET LOCAL app.treasury_movement_port = 'on'`, writes raw `balance='1.0005'`, invokes `treasury:census-money-precision --tenant=<tenant-uuid> --json`, decodes stdout, and its first failing assertion is `$this->assertSame(1, $payload['tenants'][0]['fourth_decimal_present']['count']);`; it then asserts per-column count 1, exact sample ID `payment_repositories.balance:<repository-uuid>`, human key `fourth_decimal_present=1`, exit 1, unchanged rows, and rollback-safe setup. Exact red command from `apps/api`: `php artisan test -c phpunit-pgsql.xml tests/Feature/Treasury/MoneyPrecisionCensusCommandTest.php --filter='MoneyPrecisionCensusCommandTest::test_fourth_decimal_present_blocks_p0_b_and_reports_sample_ids'`. Full class command: `php artisan test -c phpunit-pgsql.xml --filter=MoneyPrecisionCensusCommandTest`. The classification test asserts all five enum cases and `pos_tables.* = Geometry`; the read-only test asserts byte-equal output and unchanged table snapshots.
+Fixed census checks are `target_shape`, `fourth_decimal_present`, `repository_last_movement`, `journal_entry_balance`, and `columns_below_scale_4`. `target_shape` accepts only the exact pre/post tuples. `fourth_decimal_present` scans `journal_lines.debit`, `journal_lines.credit`, `payment_repositories.balance`, and nullable `payment_repositories.last_reconciled_balance` with exact predicate:
 
-**P0 convention 09:** move the common real-provisioning helper into the precision-4 test set so it needs no T1 schema. Extend `GlAndRepositoryBalanceScale4Test` with `test_second_company_second_location_movement_rerun_is_idempotent(): void`, using registration A, POST company B and a real second pos-enabled location/drawer. After P0-b call `TreasuryMovementServiceInterface::record(MovementIntent $intent): MovementResult` (`apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:49`) twice with amount `1.005`, fixed source UUID/leg and explicit tenant/company. Assert `wasIdempotentHit === true` (`apps/api/app/Modules/Treasury/Application/DTOs/MovementResult.php:16`), identical IDs/balanceAfter/ordinal, one raw balance delta, one movement and unchanged company-A/first-location snapshots.
+```sql
+value IS NOT NULL AND ((value * 10000)::bigint % 10) <> 0
+```
 
-**Topology execution supplement for P0-b and WCASH Push 2:** rolling returns a successful no-op in compatibility mode (`apps/api/app/Modules/Tenant/Application/Commands/RollingTenantMigrationCommand.php:57`); tenant migrations are auto-loaded only in testing (`apps/api/app/Providers/AppServiceProvider.php:283`). Before execution, record topology, Laravel connection name and `SELECT current_database(), current_schema()`. In DB-per-tenant mode P0-b and WCASH Push 2 use `php artisan tenants:migrate-rolling --force`, require every tenant visited with no failures/skips, then rerun `--tenant=<verified-tenant-uuid>` for every inventoried tenant. Enumerate every pending migration before rollout.
+It counts target-column hits per tenant and per column; a row present in two target columns counts twice. It returns deterministic sample keys `<table>.<column>:<row-id>`, sorted, first 20 per column and aggregate. `repository_last_movement` compares repository balance with latest movement by ordinal. `journal_entry_balance` compares raw debit and credit sums, with drafts prefixed `draft:`. `columns_below_scale_4` classifies every numeric column below scale four: Percent for the authoritative suffix/field allowlist, Geometry for `pos_tables.*`, Quantity for authoritative weight/hours/time allowlist, Other only where explicitly curated, and Money otherwise. Only Money feeds the follow-up ticket.
 
-In shared-database mode set `WCASH_SHARED_CONNECTION` to the verified configured connection name, then from `apps/api` execute each file only in its designated push:
+Output is one grep-stable line per tenant:
+
+```text
+MONEY-PRECISION CENSUS tenant=<uuid> db=<name> status=clean|drift|incomplete measurable_drift=<n> fourth_decimal_present=<n> money_columns_below_scale_4=<n>
+```
+
+Fleet JSON uses a `tenants` array; each tenant object contains:
+
+```json
+{
+  "fourth_decimal_present": {
+    "count": 0,
+    "sample_ids": [],
+    "columns": {
+      "journal_lines.debit": {"count": 0, "sample_ids": []},
+      "journal_lines.credit": {"count": 0, "sample_ids": []},
+      "payment_repositories.balance": {"count": 0, "sample_ids": []},
+      "payment_repositories.last_reconciled_balance": {"count": 0, "sample_ids": []}
+    }
+  }
+}
+```
+
+Exit 0 means complete and clean with detector zero. Exit 1 means drift; any non-zero `fourth_decimal_present.count` is a non-waivable P0-b block, while other drift requires both named reviewers to classify. Exit 2 means incomplete and always blocks. Capture stdout, exit code and connection identities before ALTER. Below-floor findings are capacity inventory, not proof of historical loss.
+
+Read-only comparisons use raw numeric SQL/text and decimal-string arithmetic. Missing independent evidence is not called clean historical data. Current port stores `balance_after` at `apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:590` and source identity at `:592-593` at HEAD `55bf3d14204363ab857738f785a3c405100da9db`; ORM padding is not evidence of loss.
+
+NEW follow-up ticket `docs/superpowers/tickets/2026-09-07-money-columns-below-scale-4-followup.md` contains the fresh census Money list with table, column, tuple and module owner, grouped by module; `repository_movements.amount`, `repository_movements.balance_after` and `accounts.balance` are highest priority. Percent, Quantity, Geometry and Other remain visible but do not enter the money ticket.
+
+NEW `apps/api/tests/Feature/Treasury/MoneyPrecisionCensusCommandTest.php`, class `Tests\Feature\Treasury\MoneyPrecisionCensusCommandTest`, PG lane **backend-test-pgsql / precision-4**, methods:
+
+- `test_reports_clean_on_fresh_tenant(): void`.
+- `test_detects_repository_balance_vs_last_movement_drift(): void`.
+- `test_detects_unbalanced_journal_entry(): void`.
+- `test_lists_money_columns_below_scale_4_with_classification(): void`.
+- `test_json_output_matches_dto(): void`.
+- `test_two_tenants_are_scoped_and_rerun_is_read_only(): void`.
+- `test_incomplete_scan_exits_two(): void`.
+- `test_fourth_decimal_present_blocks_p0_b_and_reports_sample_ids(): void`.
+
+The last test creates one repository row, transactionally makes the target capable of retaining scale four when necessary, executes `SET LOCAL app.treasury_movement_port = 'on'`, writes raw `balance='1.0005'`, invokes the tenant-targeted census, and first asserts:
+
+```php
+$this->assertSame(1, $payload['tenants'][0]['fourth_decimal_present']['count']);
+```
+
+It then asserts per-column count 1, exact sample ID `payment_repositories.balance:<repository-uuid>`, human key `fourth_decimal_present=1`, exit 1, unchanged rows and rollback-safe setup.
+
+Exact red command from `apps/api`:
+
+```sh
+php artisan test -c phpunit-pgsql.xml tests/Feature/Treasury/MoneyPrecisionCensusCommandTest.php --filter='MoneyPrecisionCensusCommandTest::test_fourth_decimal_present_blocks_p0_b_and_reports_sample_ids'
+```
+
+Full class command:
+
+```sh
+php artisan test -c phpunit-pgsql.xml --filter=MoneyPrecisionCensusCommandTest
+```
+
+The classification test asserts all five enum cases and `pos_tables.* = Geometry`; the read-only test asserts byte-equal output and unchanged table snapshots.
+
+**P0 convention 09:** move the common real-provisioning helper into the precision-4 test set so it needs no T1 schema. Extend `GlAndRepositoryBalanceScale4Test` with `test_second_company_second_location_movement_rerun_is_idempotent(): void`, using registration A, POST company B and a real second POS-enabled location/drawer. Call `TreasuryMovementServiceInterface::record(MovementIntent $intent): MovementResult` (`TreasuryMovementService.php:49`) twice with amount `1.005`, fixed source UUID/leg and explicit tenant/company. Assert `wasIdempotentHit === true` (`MovementResult.php:16`), identical IDs/balanceAfter/ordinal, one raw balance delta, one movement and unchanged company-A/first-location snapshots.
+
+**Topology execution supplement for P0-b and WCASH Push 2:** rolling returns a successful no-op in compatibility mode (`RollingTenantMigrationCommand.php:57`); tenant migrations are auto-loaded only in testing (`AppServiceProvider.php:283`). Record topology, Laravel connection name and `SELECT current_database(), current_schema()` before execution. In DB-per-tenant mode require every tenant visited with no failures/skips, then rerun `--tenant=<verified-tenant-uuid>` per inventoried tenant. Enumerate every pending migration before rollout. Sequencing: see dispatch order.
+
+In shared-database mode set `WCASH_SHARED_CONNECTION` to the verified configured connection name and run each file only in its designated package:
 
 ```sh
 php artisan migrate --force --database="$WCASH_SHARED_CONNECTION" --path=database/migrations/tenant/2026_09_07_100000_widen_gl_and_repository_balance_columns_to_scale_4.php
@@ -260,456 +382,1039 @@ php artisan migrate --force --database="$WCASH_SHARED_CONNECTION" --path=databas
 php artisan migrate --force --database="$WCASH_SHARED_CONNECTION" --path=database/migrations/tenant/2026_09_06_210100_create_repository_transfer_documents.php
 ```
 
-The first command is P0-b only. The final two are WCASH Push 2 after accepted P0-b. Require exit 0 and filename/DONE or Nothing-to-migrate output. P0-b emits `P0-PRECISION: status=widened columns=4|already_compliant`; WCASH emits `WCASH-1-SCHEMA: migration=<basename> status=created|already_compliant`. A ledger-skipped migration still requires physical postchecks. Emit `WCASH-1-MIGRATION: topology=shared connection=<verified-name> database=<actual-db> migration=<basename> status=verified` only after exit and postchecks succeed.
+Require exit 0 and filename/DONE or Nothing-to-migrate output. P0-b emits `P0-PRECISION: status=widened columns=4|already_compliant`; WCASH emits `WCASH-1-SCHEMA: migration=<basename> status=created|already_compliant`. A ledger-skipped migration still requires physical postchecks. Emit `WCASH-1-MIGRATION: topology=shared connection=<verified-name> database=<actual-db> migration=<basename> status=verified` only after exit and postchecks succeed.
 
-Post-command SQL on the SAME verified connection, also per tenant after rolling:
+Post-command SQL on the same verified connection, also per tenant after rolling:
 
 ```sql
 SELECT current_database(), current_schema();
+
 SELECT table_name,column_name,data_type,numeric_precision,numeric_scale,is_nullable,column_default
-FROM information_schema.columns WHERE table_schema=current_schema()
+FROM information_schema.columns
+WHERE table_schema=current_schema()
 AND ((table_name='payment_repositories' AND column_name IN ('balance','last_reconciled_balance'))
  OR (table_name='journal_lines' AND column_name IN ('debit','credit')))
 ORDER BY table_name,column_name;
+
 SELECT table_name,column_name,data_type,udt_name,is_nullable,column_default,numeric_precision,numeric_scale
-FROM information_schema.columns WHERE table_schema=current_schema()
+FROM information_schema.columns
+WHERE table_schema=current_schema()
 AND table_name IN ('cash_custody_configurations','repository_transfer_documents')
 ORDER BY table_name,ordinal_position;
-SELECT table_name,constraint_name,constraint_type FROM information_schema.table_constraints
-WHERE table_schema=current_schema() AND table_name IN ('cash_custody_configurations','repository_transfer_documents')
+
+SELECT table_name,constraint_name,constraint_type
+FROM information_schema.table_constraints
+WHERE table_schema=current_schema()
+AND table_name IN ('cash_custody_configurations','repository_transfer_documents')
 ORDER BY table_name,constraint_name;
-SELECT c.relname,t.tgname,pg_get_triggerdef(t.oid) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
-JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=current_schema() AND NOT t.tgisinternal
+
+SELECT c.relname,t.tgname,pg_get_triggerdef(t.oid)
+FROM pg_trigger t
+JOIN pg_class c ON c.oid=t.tgrelid
+JOIN pg_namespace n ON n.oid=c.relnamespace
+WHERE n.nspname=current_schema()
+AND NOT t.tgisinternal
 AND c.relname IN ('cash_custody_configurations','repository_transfer_documents','repository_movements');
-SELECT c.relname,k.conname,pg_get_constraintdef(k.oid) FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid
-JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=current_schema()
-AND c.relname IN ('companies','users','locations','payment_repositories','repository_movements','journal_entries','pos_terminals','cash_custody_configurations','repository_transfer_documents');
+
+SELECT c.relname,k.conname,pg_get_constraintdef(k.oid)
+FROM pg_constraint k
+JOIN pg_class c ON c.oid=k.conrelid
+JOIN pg_namespace n ON n.oid=c.relnamespace
+WHERE n.nspname=current_schema()
+AND c.relname IN (
+  'companies','users','locations','payment_repositories','repository_movements',
+  'journal_entries','pos_terminals','cash_custody_configurations','repository_transfer_documents'
+);
 ```
 
-P0-b requires exactly four complete scale-four tuples while retaining the four scale-three Eloquent casts. WCASH Push 2 additionally compares every T1 column, FK action/ordering, CHECK, unique, trigger and function definition. Include `pg_get_functiondef`; names alone do not prove correctness. No synthetic live money insertion: raw `1.0005` proof belongs to isolated PG tests. NEW handback `docs/superpowers/reviews/2026-09-07-precision-4-handback-for-wcash-1.md` lists delivered files, markers, the `(15,4)`/`1.0005` correction, provisional casts and merge SHA.
+P0-b requires exactly four complete scale-four tuples while retaining four scale-three Eloquent casts. WCASH Push 2 additionally compares every T1 column, FK action/ordering, CHECK, unique, trigger and function definition. Include `pg_get_functiondef`; names alone do not prove correctness. No synthetic live money insertion: raw `1.0005` proof belongs to isolated PG tests.
+
+NEW handback `docs/superpowers/reviews/2026-09-07-precision-4-handback-for-wcash-1.md` lists delivered files, markers, `(15,4)`/`1.0005` correction, provisional casts and merge SHA.
 
 ## Common real-provisioning fixture and task boundary
 
-Every P0/T1–T6 test named “second company/location” uses NEW `apps/api/tests/Support/CreatesWcashCompanyAndLocations.php` shared fixture method `createWcashCompaniesAndSecondPosLocation(): WcashProvisionedFixture` with NEW `apps/api/tests/Support/WcashProvisionedFixture.php`, constructor `__construct(string $tenantId, string $companyAId, string $companyBId, string $userId, string $firstLocationId, string $secondLocationId, string $provisionedDrawerId)`: register tenant/company A through `/api/v1/auth/register` (verified test `apps/api/tests/Feature/Tenant/TenantInitializationTest.php:158`); create B via authenticated POST `/api/v1/companies` (verified `apps/api/tests/Feature/Treasury/CompanyPaymentRepositoryProvisioningTest.php:95`), then switch the real company context/header. Create a SECOND shop through POST `/api/v1/locations` (`apps/api/app/Modules/Inventory/Presentation/routes.php:41`, module Inventory at :31, inventory.adjust at :42) with unique code/name, type shop, pos_enabled=true and country-required valid test tax fields. The production controller at `apps/api/app/Modules/Company/Presentation/Controllers/LocationController.php:181` persists pos_enabled at `:211` and calls drawer provisioning at `:216`/`:246`; `CreateLocationRequest.php:29` and `:70` require valid payload/tax rules. Assert the returned location is pos_enabled and the automatically provisioned active cash_register has company_id=B and location_id=that second location. No raw insert or Location/Company factory substitutes for these creation paths. Seed valid country chart through registration so drawer provisioning cannot silently skip. Fixture returns identifiers, not hand-built replacement repositories.
+Every P0/T1–T6 test named “second company/location” uses NEW `apps/api/tests/Support/CreatesWcashCompanyAndLocations.php` method `createWcashCompaniesAndSecondPosLocation(): WcashProvisionedFixture` with NEW `apps/api/tests/Support/WcashProvisionedFixture.php`, FQCN `Tests\Support\WcashProvisionedFixture`, constructor:
 
-**T1/T2 combined acceptance:** dispatch both tasks now. No separate T1 acceptance past T2 until `CashCustodyConfigurationService::save` has run twice against the real selected second location, asserting Unchanged, same configuration ID/revision and no duplicate. T1 schema red/green is provisional; migration rerun is additional schema evidence, never the convention-09 rerun. T1/T2 deployment waits for accepted P0-b. T3–T6 depend on accepted P0-b; T5 additionally depends on accepted W1. P0-b is now dispatchable after accepted P0-a detector evidence is zero; no benchmark/ruling hold remains.
+```php
+__construct(
+    string $tenantId,
+    string $companyAId,
+    string $companyBId,
+    string $userId,
+    string $firstLocationId,
+    string $secondLocationId,
+    string $provisionedDrawerId,
+)
+```
+
+Register tenant/company A through `/api/v1/auth/register` (`TenantInitializationTest.php:158`); create B through authenticated POST `/api/v1/companies` (`CompanyPaymentRepositoryProvisioningTest.php:95`), then switch real company context/header. Create a second shop through POST `/api/v1/locations` (`Inventory/Presentation/routes.php:41`, module Inventory at `:31`, `inventory.adjust` at `:42`) with unique code/name, type shop, `pos_enabled=true` and valid country tax fields. `LocationController.php:181` persists `pos_enabled` at `:211` and calls drawer provisioning at `:216`/`:246`; `CreateLocationRequest.php:29,70` requires valid payload/tax rules. Assert the returned location is POS-enabled and its auto-provisioned active cash register has company B and the second location. No raw Company/Location inserts or factories substitute for these creation paths.
+
+**T1/T2 combined acceptance:** both tasks share one acceptance boundary. `CashCustodyConfigurationService::save` runs twice against the real second location, asserting `Unchanged`, same configuration ID/revision and no duplicate. Migration rerun remains schema evidence, never the convention-09 business rerun. Eligibility and sequencing: see dispatch order.
 
 ## T1 — Schemas, vocabulary and typed contracts
 
-Verified production anchors: movement schema `apps/api/database/migrations/tenant/2026_07_08_100100_create_repository_movements_table.php:15`; immutable model `apps/api/app/Modules/Treasury/Domain/RepositoryMovement.php:73`; repository types `apps/api/app/Modules/Treasury/Domain/Enums/RepositoryType.php:7`; existing transfer DTO `apps/api/app/Modules/Treasury/Application/DTOs/TransferIntent.php:26`. Update `docs/glossary.md:60` with the two NEW rows.
+Verified anchors: movement schema `apps/api/database/migrations/tenant/2026_07_08_100100_create_repository_movements_table.php:15`; immutable model `RepositoryMovement.php:73`; repository types `RepositoryType.php:7`; existing transfer DTO `TransferIntent.php:26`. Update `docs/glossary.md:60` with the two NEW rows.
 
-NEW migration files, in order:
+NEW migrations, in order:
 
 1. `apps/api/database/migrations/tenant/2026_09_06_210000_create_cash_custody_configurations.php`
 2. `apps/api/database/migrations/tenant/2026_09_06_210100_create_repository_transfer_documents.php`
 
-Every migration implements `up(): void` and `down(): void`; use existence guards plus fail-loud shape verification on rerun, not silently accepting a partially created schema. PostgreSQL is authoritative for the relational/trigger guarantees.
+Each anonymous migration implements `up(): void` and `down(): void`; use existence guards plus fail-loud shape verification on direct rerun. PostgreSQL is authoritative.
 
-T1 migration guard liveness: NEW `apps/api/tests/Integration/Treasury/CashCustodyMigrationGuardTest.php`, methods `test_configuration_migration_refuses_wrong_shape_without_changes(): void` and `test_document_migration_refuses_wrong_shape_without_changes(): void`. PG lane command `php artisan test -c phpunit-pgsql.xml --filter=CashCustodyMigrationGuardTest`. Each provider constructs an independently malformed disposable pre-state: partial child table, wrong column/default/nullability, wrong owned parent composite, wrong FK columns/actions, missing or wrong CHECK/unique, missing or wrong immutable/deferred trigger/function. Invoke the pending migration's up() directly, bypassing the migrations ledger. First assertion is RuntimeException with exact message `WCASH-1-SCHEMA: migration=2026_09_06_210000_create_cash_custody_configurations reason=unexpected_shape` or `WCASH-1-SCHEMA: migration=2026_09_06_210100_create_repository_transfer_documents reason=unexpected_shape`; assert complete pg_catalog definitions, rows and migration ledger unchanged. Each migration preflights ALL existing objects before any DDL in one transaction. `test_direct_compliant_rerun_reports_already_compliant(): void` invokes each up twice and asserts its exact already_compliant marker and identical schema/data. This is distinct from Laravel skipping an applied migration. Expected function bodies and constraint definitions are compared semantically, not merely object names.
+NEW `apps/api/tests/Integration/Treasury/CashCustodyMigrationGuardTest.php`, class `Tests\Integration\Treasury\CashCustodyMigrationGuardTest`, methods:
 
-Complete proposed schema notation: unless specified, columns are NOT NULL, have no default, and FKs use ON DELETE RESTRICT / ON UPDATE RESTRICT. UUID primary keys are application-generated. No soft deletes or updated_at on either append-only table. Tenant IDs never reference the central tenants table across a database boundary. Instead, enforce local relational ownership: `(tenant_id,company_id)` references `companies(tenant_id,id)` and `(tenant_id,created_by)` references `users(tenant_id,id)`, both RESTRICT. Add owned parent uniques `(tenant_id,id)` to companies and users where no equivalent exists. The company and actor must agree with the initialized tenant in db-per-tenant mode and with explicit tenant intent in compatibility mode. For configuration revisions, created_by stays required. For transfer documents, the actor-union constraints below govern nullable created_by: membership/permission checks apply only to humans; no system user is manufactured. Tenant-global user identity alone grants no company rights.
+- `test_configuration_migration_refuses_wrong_shape_without_changes(): void`.
+- `test_document_migration_refuses_wrong_shape_without_changes(): void`.
+- `test_direct_compliant_rerun_reports_already_compliant(): void`.
+
+PG command:
+
+```sh
+php artisan test -c phpunit-pgsql.xml --filter=CashCustodyMigrationGuardTest
+```
+
+Providers construct independently malformed disposable states: partial child table, wrong column/default/nullability, wrong parent composite, wrong FK/actions, missing/wrong CHECK/unique, missing/wrong immutable/deferred trigger/function. Invoke `up()` directly. First assertion is exact `RuntimeException`:
+
+```text
+WCASH-1-SCHEMA: migration=2026_09_06_210000_create_cash_custody_configurations reason=unexpected_shape
+```
+
+or:
+
+```text
+WCASH-1-SCHEMA: migration=2026_09_06_210100_create_repository_transfer_documents reason=unexpected_shape
+```
+
+Assert pg_catalog definitions, rows and migration ledger unchanged. Compare expected function bodies and constraints semantically, not only names.
+
+Unless specified, columns are NOT NULL, have no default and FKs use ON DELETE/UPDATE RESTRICT. UUID primary keys are application-generated. No soft deletes or `updated_at`. Tenant IDs never reference the central tenant table across database boundaries. Enforce local ownership: `(tenant_id,company_id)` references `companies(tenant_id,id)` and `(tenant_id,created_by)` references `users(tenant_id,id)`. Add owned parent uniques `(tenant_id,id)` where absent.
 
 `cash_custody_configurations`:
 
 | Column | SQL type | Null/default | FK |
 |---|---|---|---|
 | id | uuid | primary key | — |
-| tenant_id | uuid | required | composite ownership FKs below |
-| company_id | uuid | required | companies(tenant_id,id), composite with tenant_id |
-| location_id | uuid | required | locations(company_id,id), composite with company_id |
+| tenant_id | uuid | required | ownership composites |
+| company_id | uuid | required | companies(tenant_id,id) |
+| location_id | uuid | required | locations(company_id,id) |
 | revision | bigint | required | — |
-| default_safe_repository_id | uuid | NULL | payment_repositories(tenant_id,company_id,id), composite |
-| default_bank_repository_id | uuid | NULL | payment_repositories(tenant_id,company_id,id), composite |
+| default_safe_repository_id | uuid | NULL | payment_repositories(tenant_id,company_id,id) |
+| default_bank_repository_id | uuid | NULL | payment_repositories(tenant_id,company_id,id) |
 | enabled | boolean | DEFAULT false | — |
-| created_by | uuid | required | users(tenant_id,id), composite with tenant_id |
+| created_by | uuid | required | users(tenant_id,id) |
 | created_at | timestamptz | DEFAULT CURRENT_TIMESTAMP | — |
 
-Checks: revision > 0; enabled implies non-null safe; safe and bank differ when both present. Unique `(company_id,location_id,revision)` and `(company_id,id)`; index `(company_id,location_id,revision DESC)`. Current configuration is highest revision, never an arbitrary first row. Add parent unique `(company_id,id)` on locations only if an equivalent constraint does not already exist; track ownership so down removes only this migration's additions. No JSON columns. Model and PG BEFORE UPDATE/DELETE triggers reject mutation. This preserves configuration audit without a second history table.
+Checks: revision > 0; enabled implies non-null safe; safe and bank differ. Unique `(company_id,location_id,revision)` and `(company_id,id)`; index `(company_id,location_id,revision DESC)`. Current is highest revision. Add `(company_id,id)` on locations if absent and remove only migration-owned additions in `down()`. No JSON. Model and PG BEFORE UPDATE/DELETE guards reject mutation.
 
 `repository_transfer_documents`:
 
 | Column | SQL type | Null/default | FK |
 |---|---|---|---|
 | id | uuid | primary key | — |
-| tenant_id | uuid | required | composite ownership FKs below |
-| company_id | uuid | required | companies(tenant_id,id), composite with tenant_id |
+| tenant_id | uuid | required | ownership composites |
+| company_id | uuid | required | companies(tenant_id,id) |
 | operation_uuid | uuid | required | — |
 | transfer_group_id | uuid | required | — |
-| kind | varchar(16) | required | PHP enum; check below |
-| from_repository_id | uuid | required | payment_repositories(tenant_id,company_id,id), composite |
-| to_repository_id | uuid | required | payment_repositories(tenant_id,company_id,id), composite |
-| source_location_id | uuid | NULL | locations(company_id,id), composite |
+| kind | varchar(16) | required | enum/check |
+| from_repository_id | uuid | required | payment_repositories(tenant_id,company_id,id) |
+| to_repository_id | uuid | required | payment_repositories(tenant_id,company_id,id) |
+| source_location_id | uuid | NULL | locations(company_id,id) |
 | amount | decimal(15,4) | required | — |
 | currency | char(3) | required | — |
-| out_movement_id | uuid | required | repository_movements(tenant_id,company_id,id), composite |
-| in_movement_id | uuid | required | repository_movements(tenant_id,company_id,id), composite |
-| journal_entry_id | uuid | NULL | journal_entries(tenant_id,company_id,id), composite |
-| reverses_document_id | uuid | NULL | repository_transfer_documents(tenant_id,company_id,id), composite |
-| evidence | jsonb | required, no default | TransferDocumentEvidenceData |
+| out_movement_id | uuid | required | repository_movements(tenant_id,company_id,id) |
+| in_movement_id | uuid | required | repository_movements(tenant_id,company_id,id) |
+| journal_entry_id | uuid | NULL | journal_entries(tenant_id,company_id,id) |
+| reverses_document_id | uuid | NULL | repository_transfer_documents(tenant_id,company_id,id) |
+| evidence | jsonb | required, no default | `TransferDocumentEvidenceData` |
 | notes | varchar(1000) | NULL | — |
 | occurred_at | timestamptz | required | — |
-| initiator_kind | varchar(8) | required | RepositoryTransferInitiatorKind: human/system |
-| created_by | uuid | NULL, human branch only | users(tenant_id,id), composite with tenant_id |
-| system_authority | varchar(24) | NULL, system branch only | RepositoryTransferSystemAuthority enum |
-| system_principal | varchar(255) | NULL, system branch only | stable named projection/command identity, not a display name |
-| provenance_source_id | uuid | NULL, system branch only | stable persisted source/command-run UUID, verified by trusted caller |
-| provenance_terminal_id | uuid | NULL; required for fiscal_projection | pos_terminals(tenant_id,company_id,id), composite |
+| initiator_kind | varchar(8) | required | human/system |
+| created_by | uuid | NULL, human only | users(tenant_id,id) |
+| system_authority | varchar(24) | NULL, system only | enum |
+| system_principal | varchar(255) | NULL, system only | — |
+| provenance_source_id | uuid | NULL, system only | — |
+| provenance_terminal_id | uuid | NULL; required for fiscal_projection | pos_terminals(tenant_id,company_id,id) |
 | created_at | timestamptz | DEFAULT CURRENT_TIMESTAMP | — |
 
-Checks: amount > 0; source != destination; out != in; uppercase three-letter currency; kind IN ('transfer','reversal'); transfer requires null reverses_document_id; reversal requires non-null, non-self reverses_document_id; evidence is a JSON object with schema_version 1. No stored status: successful insert means recorded; reversed display state derives from a linked reversal. Additional CHECKs: initiator_kind IN ('human','system'); system_authority IS NULL OR IN ('fiscal_projection','scheduled_command'); human requires created_by non-null and ALL system/provenance fields null; system requires created_by null and non-null/nonblank system_authority/system_principal/provenance_source_id. FiscalProjection requires terminal ID; ScheduledCommand may use null terminal but must still name explicit company/source custody. Add owned `(tenant_id,company_id,id)` unique on pos_terminals and matching RESTRICT FK; its current tenant/company/location identities are at `apps/api/database/migrations/tenant/2026_01_08_190429_create_pos_terminals_table.php:25`. All new status/type columns have enums and T1 CHECK parity gate.
+Checks: amount > 0; source != destination; out != in; uppercase currency; kind in transfer/reversal; transfer requires null `reverses_document_id`; reversal requires non-null/non-self; evidence is schema-version-1 object. Human requires user and null system fields; system requires no user and complete authority/principal/source. Fiscal projection requires terminal. Add owned terminal composite.
 
-Uniques: `(company_id,id)`, `(company_id,operation_uuid)`, `(company_id,transfer_group_id)`, `(company_id,out_movement_id)`, `(company_id,in_movement_id)`; partial unique `(company_id,reverses_document_id) WHERE reverses_document_id IS NOT NULL`. Indexes: `(company_id,from_repository_id,occurred_at)`, `(company_id,to_repository_id,occurred_at)`, `(company_id,source_location_id,occurred_at)`. Add parent `(tenant_id,company_id,id)` uniques on payment_repositories in migration 210000 and on repository_movements and journal_entries in migration 210100 if absent; each reference includes all three columns. Add `(tenant_id,company_id,id)` on repository_transfer_documents for the reversal FK. Existing `(company_id,id)` document and configuration keys remain company-scoped; the operation unique remains `(company_id,operation_uuid)`, with company ownership enforcing the tenant dimension. Add self-FK after CREATE TABLE.
+Uniques: `(company_id,id)`, `(company_id,operation_uuid)`, `(company_id,transfer_group_id)`, `(company_id,out_movement_id)`, `(company_id,in_movement_id)`, and partial `(company_id,reverses_document_id)` where non-null. Indexes cover company/from, company/to and company/location with occurred time. Add owned composites to repositories, movements, journal entries and documents when absent.
 
-Direct-SQL checks must also reject mismatched tenant values on referenced legacy repository/leg/JE rows, not just mismatched company IDs. Parent composites are additive and migration-owned. Existing ratchet exclusions classify companies as the scope boundary and users as tenant-global identities (`apps/api/tests/Architecture/TenantOnlyUniqueOnCatalogueTablesRatchetTest.php:78`, `:175`); no new waiver or ceiling increase is needed for their identity composites.
+A deferred constraint trigger validates exactly two legs, directions, repositories, tenant, amount, currency, Transfer source/group and nullable JE; cross-GL requires one posted balanced JE, same-GL requires null JE. Movement INSERT rejects a third leg when a document exists. Reversal trigger validates opposite repositories, amount/currency, original transfer and movement reversal links. Evidence discriminator/scalars must match relational fields. SQLSTATE is 23514 on violations. BEFORE UPDATE/DELETE makes documents immutable.
 
-Cross-link both ways without updating immutable movements: document points to the two legs; each leg's existing `(company_id,transfer_group_id)` resolves the unique document. Add scoped Eloquent read relationships. NEW documents are inserted after their legs within the same outer transaction. A deferred PG constraint trigger on document INSERT checks: exactly two legs in its company/group; correct directions, repositories, tenant, amount, currency, source_type Transfer, source_id group and matching nullable JE; a cross-GL evidence snapshot requires one posted balanced JE in that company, same-GL requires null JE. An INSERT trigger on movements also checks groups that already have documents, preventing a later third leg. Legacy groups without documents remain readable and are not retroactively synthesized. Trigger checks reversal amount/currency/opposite repositories, original kind transfer and reversed movement links. It also checks the evidence actor discriminator and scalar identity match the relational columns. Human evidence user_id must equal created_by, permission treasury.transfer, and authorized source location match the snapshot. System evidence must match authority/principal/source/terminal and contain no human user identity; inconsistent branch evidence raises SQLSTATE 23514. BEFORE UPDATE/DELETE rejects document mutation; mirror with model guards.
+NEW Treasury production types:
 
-NEW files under `apps/api/app/Modules/Treasury/`: `Domain/CashCustodyConfiguration.php`, `Domain/RepositoryTransferDocument.php`; `Domain/Enums/RepositoryTransferDocumentKind.php` with Transfer='transfer', Reversal='reversal'; `Domain/Enums/RepositoryTransferOutcome.php` with Recorded='recorded', AlreadyRecorded='already_recorded'; `Domain/Enums/CashCustodySaveOutcome.php` with Saved='saved', Unchanged='unchanged'. These are document/outcome types, not Q12 cash-reason codes.
+- `App\Modules\Treasury\Domain\CashCustodyConfiguration`.
+- `App\Modules\Treasury\Domain\RepositoryTransferDocument`.
+- `App\Modules\Treasury\Domain\Enums\RepositoryTransferDocumentKind` with Transfer=`transfer`, Reversal=`reversal`.
+- `App\Modules\Treasury\Domain\Enums\RepositoryTransferOutcome` with Recorded=`recorded`, AlreadyRecorded=`already_recorded`.
+- `App\Modules\Treasury\Domain\Enums\CashCustodySaveOutcome` with Saved=`saved`, Unchanged=`unchanged`.
+- `App\Modules\Treasury\Domain\Enums\RepositoryTransferInitiatorKind` with Human=`human`, System=`system`.
+- `App\Modules\Treasury\Domain\Enums\RepositoryTransferSystemAuthority` with FiscalProjection=`fiscal_projection`, ScheduledCommand=`scheduled_command`.
 
-NEW `Application/DTOs/TransferDocumentEvidenceData.php` constructor: `__construct(int $schema_version, ?string $configuration_id, ?int $configuration_revision, ?string $from_gl_account_id, ?string $to_gl_account_id, bool $source_recorded_while_frozen, bool $destination_recorded_while_frozen, ?string $reversal_explanation, HumanTransferAuthorityData|SystemTransferAuthorityData $authorization)`. Validate schema_version=1, configuration id/revision jointly null or present, evidence snapshots against rows while locked. No arbitrary metadata array or mixed. NEW actor union under Application/DTOs, used for both explicit intent and immutable evidence:
+NEW `App\Modules\Treasury\Application\DTOs\TransferDocumentEvidenceData` constructor:
 
-- `HumanTransferAuthorityData::__construct(string $tenant_id, string $company_id, string $user_id, array $allowed_source_location_ids, bool $company_wide_authority, string $permission)`; list<string> location IDs, permission treasury.transfer. Readonly discriminator `initiator_kind=Human` derived from class, never request-settable. HTTP adapter validates active user + tenant/company membership + permission/location and captures authorized scope; service validates explicit persisted scope under locks without CompanyContext or resolving a user anew.
-- `SystemTransferAuthorityData::__construct(string $tenant_id, string $company_id, RepositoryTransferSystemAuthority $authority, string $principal, string $source_id, ?string $terminal_id, ?string $source_location_id)`; derived `initiator_kind=System`. Stable principal is the fully qualified trusted projection class or command signature, not a label supplied by an operator. FiscalProjection requires a persisted source event UUID and terminal; its future trusted producer validates event ownership before constructing this intent. ScheduledCommand uses a durable invocation/source UUID reused on retry, not a fresh UUID per delivery; terminal may be null only for explicitly company-scoped operations. Validate tenant initialized/explicit compatibility scope, company belongs to tenant, both repositories belong to company, source location matches persisted custody, and supplied terminal's persisted tenant/company/location matches. No membership, request or fabricated user. Source UUID/principal are application authority, not a bearer credential: HTTP MUST NOT deserialize this DTO. Changed principal, authority, source UUID or terminal/source-location provenance on same operation conflicts (existing readable document ID internally), never becomes another actor row.
-- NEW `Domain/Enums/RepositoryTransferInitiatorKind.php`: Human='human', System='system'; NEW `Domain/Enums/RepositoryTransferSystemAuthority.php`: FiscalProjection='fiscal_projection', ScheduledCommand='scheduled_command'. These classify provenance, NOT Q12 cash reasons.
-- Cross-module terminal check: NEW `apps/api/app/Shared/Contracts/POS/TransferTerminalProvenanceResolver.php` method `resolve(string $tenantId, string $companyId, string $terminalId): TransferTerminalProvenanceData`; NEW shared DTO `TransferTerminalProvenanceData::__construct(string $tenantId, string $companyId, string $terminalId, string $locationId)`. Implement in POS `Application/Services/TransferTerminalProvenanceService.php` using its Terminal model (`apps/api/app/Modules/POS/Domain/Terminal.php:28`, `:80`) and bind in `apps/api/app/Modules/POS/Providers/POSServiceProvider.php:38`, alongside the existing shared-contract binding at :55. Treasury imports only Shared contract/DTO. Revalidate terminal source location under the transfer transaction; no new queue, v2/v3 projection or event consumer is wired. Missing/cross-company terminal fails closed. Trusted system producers are responsible for verifying their source event/run provenance before calling; this slice supplies the typed authority boundary and tests, not those future producers.
+```php
+__construct(
+    int $schema_version,
+    ?string $configuration_id,
+    ?int $configuration_revision,
+    ?string $from_gl_account_id,
+    ?string $to_gl_account_id,
+    bool $source_recorded_while_frozen,
+    bool $destination_recorded_while_frozen,
+    ?string $reversal_explanation,
+    HumanTransferAuthorityData|SystemTransferAuthorityData $authorization,
+)
+```
 
-Other proposed DTO constructors:
+NEW actor union:
+
+- `App\Modules\Treasury\Application\DTOs\HumanTransferAuthorityData::__construct(string $tenant_id, string $company_id, string $user_id, array $allowed_source_location_ids, bool $company_wide_authority, string $permission)`.
+- `App\Modules\Treasury\Application\DTOs\SystemTransferAuthorityData::__construct(string $tenant_id, string $company_id, RepositoryTransferSystemAuthority $authority, string $principal, string $source_id, ?string $terminal_id, ?string $source_location_id)`.
+
+HTTP never deserializes system authority. Stable system principal is a trusted FQCN/command signature. Scheduled commands reuse durable invocation UUIDs. Changed authority/principal/source/terminal/location conflicts.
+
+NEW shared POS provenance contract:
+
+- `apps/api/app/Shared/Contracts/POS/TransferTerminalProvenanceResolver.php`, FQCN `App\Shared\Contracts\POS\TransferTerminalProvenanceResolver`, signature `resolve(string $tenantId, string $companyId, string $terminalId): TransferTerminalProvenanceData`.
+- `apps/api/app/Shared/Contracts/POS/TransferTerminalProvenanceData.php`, FQCN `App\Shared\Contracts\POS\TransferTerminalProvenanceData`, constructor `__construct(string $tenantId, string $companyId, string $terminalId, string $locationId)`.
+- NEW implementation `App\Modules\POS\Application\Services\TransferTerminalProvenanceService::resolve(string $tenantId, string $companyId, string $terminalId): TransferTerminalProvenanceData`, bound in `apps/api/app/Modules/POS/Providers/POSServiceProvider.php:38` beside the shared binding at `:55`.
+
+Other NEW DTO constructors:
 
 - `CashCustodyConfigurationData::__construct(string $id, string $company_id, string $location_id, int $revision, ?string $default_safe_repository_id, ?string $default_bank_repository_id, bool $enabled)`.
 - `CashCustodySaveResult::__construct(CashCustodyConfigurationData $configuration, CashCustodySaveOutcome $outcome)`.
 - `RepositoryTransferDocumentData::__construct(string $id, string $operation_uuid, string $transfer_group_id, RepositoryTransferDocumentKind $kind, string $from_repository_id, string $to_repository_id, ?string $source_location_id, string $amount, string $currency, string $out_movement_id, string $in_movement_id, ?string $journal_entry_id, ?string $reverses_document_id, TransferDocumentEvidenceData $evidence, ?string $notes, string $occurred_at, RepositoryTransferInitiatorKind $initiator_kind, ?string $created_by, ?RepositoryTransferSystemAuthority $system_authority, ?string $system_principal, ?string $provenance_source_id, ?string $provenance_terminal_id, string $created_at)`.
 
-Red-first contract register (all methods below are required):
+NEW `apps/api/tests/Feature/Treasury/CashCustodySchemaTest.php`, lane **backend-test-pgsql / WCASH-1 isolated PG**, command:
 
-File **NEW unless already cited**: `apps/api/tests/Feature/Treasury/CashCustodySchemaTest.php`. Named lane: **backend-test-pgsql / WCASH-1 isolated PG**. Exact command from apps/api: `php artisan test -c phpunit-pgsql.xml --filter=CashCustodySchemaTest`.
+```sh
+php artisan test -c phpunit-pgsql.xml --filter=CashCustodySchemaTest
+```
 
-| Exact test | First failing assertion / required data assertion |
+| Exact test | First failing assertion |
 |---|---|
-| `CashCustodySchemaTest::test_schema_has_company_scoped_document_identity(): void` | `assertTrue(Schema::hasTable("repository_transfer_documents"))`; inspect named operation unique. |
-| `CashCustodySchemaTest::test_wrong_tenant_company_insert_is_rejected(): void` | Catch `QueryException`, `assertSame("23503", $e->errorInfo[0])`; document/configuration counts unchanged. Compatibility PG, tenant A + company B. |
-| `CashCustodySchemaTest::test_wrong_tenant_actor_insert_is_rejected(): void` | SQLSTATE 23503 for actor B on otherwise A-owned rows; snapshot unchanged. |
-| `CashCustodySchemaTest::test_foreign_repository_leg_and_journal_are_rejected(): void` | Data provider targets each composite FK; SQLSTATE 23503 and no child insert. |
-| `CashCustodySchemaTest::test_documents_and_configurations_are_append_only(): void` | Data provider raw UPDATE/DELETE on each table: SQLSTATE 23514 from named immutable trigger; row bytes unchanged. |
-| `CashCustodySchemaTest::test_third_leg_and_wrong_journal_are_rejected(): void` | Deferred constraint forced IMMEDIATE: SQLSTATE 23514 for third leg, wrong posted-status/balance/nullability, snapshot unchanged. |
-| `CashCustodySchemaTest::test_second_registered_company_accepts_same_operation_uuid(): void` | Assert two documents with same client UUID and distinct company/group ownership; register A then real POST companies for B. |
-| `CashCustodySchemaTest::test_second_location_accepts_independent_configuration(): void` | Assert stored second location ID, safe ID and revision 1; first location row unchanged. |
-| `CashCustodySchemaTest::test_migration_rerun_reports_nothing_to_migrate(): void` | Invoke isolated migrator twice; second output contains "Nothing to migrate" and schema/data snapshots equal; explicit database-migrator outcome "Nothing to migrate" (already applied), not silence. |
+| `CashCustodySchemaTest::test_schema_has_company_scoped_document_identity(): void` | `assertTrue(Schema::hasTable("repository_transfer_documents"))`; inspect operation unique. |
+| `test_wrong_tenant_company_insert_is_rejected(): void` | SQLSTATE 23503; counts unchanged. |
+| `test_wrong_tenant_actor_insert_is_rejected(): void` | SQLSTATE 23503; snapshot unchanged. |
+| `test_foreign_repository_leg_and_journal_are_rejected(): void` | Each composite FK rejects 23503. |
+| `test_documents_and_configurations_are_append_only(): void` | UPDATE/DELETE rejects 23514; bytes unchanged. |
+| `test_third_leg_and_wrong_journal_are_rejected(): void` | Deferred trigger rejects 23514. |
+| `test_second_registered_company_accepts_same_operation_uuid(): void` | Two company-owned documents share client UUID but have distinct groups. |
+| `test_second_location_accepts_independent_configuration(): void` | Second location/safe/revision 1 stored; first unchanged. |
+| `test_migration_rerun_reports_nothing_to_migrate(): void` | Second migrator output says “Nothing to migrate”; schema/data equal. |
+| `test_actual_configuration_rerun_is_unchanged(): void` | Second service save is Unchanged with same ID/revision/count. |
 
-Convention-09 at the combined T1/T2 gate: all fixtures follow Common real-provisioning above. Second company = test_second_registered_company_accepts_same_operation_uuid; second location = test_second_location_accepts_independent_configuration (assert real pos_enabled location and auto-provisioned drawer); actual mutation rerun = NEW CashCustodySchemaTest::test_actual_configuration_rerun_is_unchanged(): void, first assert second CashCustodyConfigurationService::save result Unchanged, same ID/revision and count after the T2 writer exists. Same CashCustodySchemaTest PG command. test_migration_rerun_reports_nothing_to_migrate remains schema-only, never a business rerun substitute. T1 is not accepted separately from T2.
+T1 enum/union gates extend that file with `test_invalid_kind_and_initiator_fail_check(): void`, `test_actor_branch_nullability_is_enforced(): void`, and `test_system_document_does_not_require_user(): void`. Run existing `EnumCheckParityTest::enum_backed_tenant_columns_match_their_check_constraints_or_the_baseline(): void` with:
 
-Implement only after capturing the named red failures, then rerun the exact commands to green. Test results are not claimed by this plan.
+```sh
+php artisan test -c phpunit-pgsql.xml --filter=EnumCheckParityTest
+```
 
-T1 enum/union red gates: extend `apps/api/tests/Feature/Treasury/CashCustodySchemaTest.php` with `test_invalid_kind_and_initiator_fail_check(): void` (provider unknown kind, initiator_kind and system_authority; first assert SQLSTATE23514 and unchanged row counts), `test_actor_branch_nullability_is_enforced(): void` (human without user/system with user/system missing principal or fiscal terminal => SQLSTATE23514), and `test_system_document_does_not_require_user(): void` (valid system row created_by SQL NULL, no new users). Run `php artisan test -c phpunit-pgsql.xml --filter=CashCustodySchemaTest` from apps/api. Add existing `apps/api/tests/Architecture/EnumCheckParityTest.php::enum_backed_tenant_columns_match_their_check_constraints_or_the_baseline(): void` (verified at :212) with exact command `php artisan test -c phpunit-pgsql.xml --filter=EnumCheckParityTest`, lane backend-test-pgsql / enum-CHECK parity. Register model casts so detector sees kind/initiator_kind/system_authority; no baseline growth. First assertion: no new or stale parity findings, plus explicit accepted enum cases equal CHECK allowed cases.
+Combined T1/T2 gate: treasury-reviewer + tenancy-authz-reviewer inspect business rerun, cardinality, ownership and absence of reason-code/session/alignment additions. Rollback: pre-use only, drop owned triggers/functions, children then owned parent constraints; after recorded money, retain schema/evidence and roll forward.
 
-Combined T1/T2 gate: treasury-reviewer + tenancy-authz-reviewer inspect real mutation rerun, cardinality, FK ownership, no reason-code/session/alignment additions. Rollback: pre-use only, drop triggers/functions, child tables then owned parent constraints; after recorded money, retain schema and evidence and roll application forward.
+### Exact file resolution and typed failure contracts
 
-**Exact file resolution and typed failure contracts (task-owned production set):** every abbreviated `Application/DTOs/X.php`, `Application/Services/X.php`, `Domain/Enums/X.php`, `Domain/Exceptions/X.php` or `Presentation/...` path in T1–T5 means exactly `apps/api/app/Modules/Treasury/` plus that path; every named Treasury DTO constructor means a NEW file `apps/api/app/Modules/Treasury/Application/DTOs/<ClassName>.php` unless explicitly identified as existing. No implementer choice of namespace/file. The shared terminal DTO is exactly NEW `apps/api/app/Shared/Contracts/POS/TransferTerminalProvenanceData.php`; implementation exactly NEW `apps/api/app/Modules/POS/Application/Services/TransferTerminalProvenanceService.php::resolve(string $tenantId, string $companyId, string $terminalId): TransferTerminalProvenanceData`. T6 adds only tests/handback, no production contract.
+Every abbreviated `Application/DTOs/X.php`, `Application/Services/X.php`, `Domain/Enums/X.php`, `Domain/Exceptions/X.php` or `Presentation/...` path in T1–T5 means `apps/api/app/Modules/Treasury/` plus that path. Every named Treasury DTO constructor means a NEW file there unless explicitly existing.
 
 | Owner | Exact NEW production file | Full public constructor/signature and mapping |
 |---|---|---|
-| T2 | `apps/api/app/Modules/Treasury/Domain/Exceptions/CashCustodyRevisionConflictException.php` | extends DomainException; `__construct(public readonly int $currentRevision)`; stable code cash_custody_revision_conflict, 409 with current_revision. |
-| T2 | `apps/api/app/Modules/Treasury/Domain/Exceptions/CashCustodyMetadataConflictException.php` | extends DomainException; `__construct(public readonly string $repositoryId)`; stable code cash_custody_metadata_conflict, 422; ID never included in response. |
-| T3 | `apps/api/app/Modules/Treasury/Domain/Exceptions/RepositoryTransferConflictException.php` | extends DomainException; `__construct(public readonly string $documentId)`; repository_transfer_conflict, 409 with authorized document_id. |
-| T3 | `apps/api/app/Modules/Treasury/Domain/Exceptions/RepositoryTransferWritesDisabledException.php` | extends DomainException; `__construct()`; repository_transfer_writes_disabled, 503, no ID. |
-| T3 | `apps/api/app/Modules/Treasury/Domain/Exceptions/LegacyTransferDocumentUnavailableException.php` | extends DomainException; `__construct()`; legacy_transfer_document_unavailable, 409, document_id:null after scoped legacy-source authorization. |
-| T3 | `apps/api/app/Modules/Treasury/Domain/Exceptions/RepositoryTransferPrecisionCeilingException.php` | `final class RepositoryTransferPrecisionCeilingException extends \DomainException { public const CODE = 'TRANSFER_PRECISION_EXCEEDS_LEDGER_SCALE'; public function __construct(public readonly string $amount, public readonly int $effectiveScale) { parent::__construct(sprintf('Transfer amount %s exceeds the operational ledger scale %d', $amount, $effectiveScale)); } }`. |
-| T4 | `apps/api/app/Modules/Treasury/Domain/Exceptions/RepositoryTransferCorrectionRequiredException.php` | extends DomainException; `__construct(public readonly string $originalDocumentId)`; repository_transfer_correction_required, 422; no ID in envelope. |
-| T4 | `apps/api/app/Modules/Treasury/Application/DTOs/RepositoryTransferFrozenWarningData.php` | extends Data; `__construct(string $tenant_id, string $company_id, string $document_id, string $transfer_group_id, string $movement_id, string $repository_id)`; fixed message/marker below, no variable payload keys. |
-| T4 | `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferFrozenWarningSink.php` | `__construct(private readonly \Psr\Log\LoggerInterface $logger)`; `warn(RepositoryTransferFrozenWarningData $warning): void`; calls injected logger->warning('WCASH-1-FROZEN-TRANSFER:', $warning->toArray()) on the existing Laravel default log channel, no queue/event/outbox/remote transport. |
-| T5 | `apps/api/app/Modules/Treasury/Presentation/Services/RepositoryTransferErrorRenderer.php` | `render(CashCustodyRevisionConflictException\|CashCustodyMetadataConflictException\|RepositoryTransferConflictException\|RepositoryTransferWritesDisabledException\|LegacyTransferDocumentUnavailableException\|RepositoryTransferCorrectionRequiredException\|RepositoryFrozenException\|RepositoryCheckpointException\|InsufficientRepositoryBalanceException\|CurrencyMismatchException\|RepositoryTransferPrecisionCeilingException $error): JsonResponse`; no constructor dependencies. `RepositoryTransferPrecisionCeilingException` renders exactly `422 {message: __('treasury.transfer.precision_exceeds_ledger_scale'), error: {code: "TRANSFER_PRECISION_EXCEEDS_LEDGER_SCALE", amount: <numeric-string>, effective_scale: <int>}}` (flat `error` extras like the other 409/422 envelopes; no nested `details`). Backend key `transfer.precision_exceeds_ledger_scale` in `apps/api/lang/{en,fr,ar}/treasury.php`; frontend key `transfer.precisionExceedsLedgerScale` in `apps/web/src/locales/{en,fr,ar}/treasury.json` (rule 11). The dedicated renderer test is the NEW registered `apps/api/tests/Feature/Treasury/RepositoryTransferErrorContractTest.php`, class `Tests\Feature\Treasury\RepositoryTransferErrorContractTest`, method `test_precision_ceiling_renders_422_with_code_amount_and_effective_scale(): void`; its exact assertion, command and lane are registered below. Union bars here denote literal PHP union separators. |
+| T2 | `Domain/Exceptions/CashCustodyRevisionConflictException.php` | FQCN `App\Modules\Treasury\Domain\Exceptions\CashCustodyRevisionConflictException`; extends `\DomainException`; `__construct(public readonly int $currentRevision)`; code `cash_custody_revision_conflict`, 409. |
+| T2 | `Domain/Exceptions/CashCustodyMetadataConflictException.php` | FQCN `App\Modules\Treasury\Domain\Exceptions\CashCustodyMetadataConflictException`; extends `\DomainException`; `__construct(public readonly string $repositoryId)`; code `cash_custody_metadata_conflict`, 422; ID excluded from response. |
+| T3 | `Domain/Exceptions/RepositoryTransferConflictException.php` | FQCN `App\Modules\Treasury\Domain\Exceptions\RepositoryTransferConflictException`; extends `\DomainException`; `__construct(public readonly string $documentId)`; 409. |
+| T3 | `Domain/Exceptions/RepositoryTransferWritesDisabledException.php` | FQCN `App\Modules\Treasury\Domain\Exceptions\RepositoryTransferWritesDisabledException`; extends `\DomainException`; `__construct()`; 503. |
+| T3 | `Domain/Exceptions/LegacyTransferDocumentUnavailableException.php` | FQCN `App\Modules\Treasury\Domain\Exceptions\LegacyTransferDocumentUnavailableException`; extends `\DomainException`; `__construct()`; 409 with null document ID after authorization. |
+| T3 | `Domain/Exceptions/RepositoryTransferPrecisionCeilingException.php` | FQCN `App\Modules\Treasury\Domain\Exceptions\RepositoryTransferPrecisionCeilingException`; `final`, extends `\DomainException`; constant `CODE='TRANSFER_PRECISION_EXCEEDS_LEDGER_SCALE'`; `__construct(public readonly string $amount, public readonly int $effectiveScale)`. |
+| T4 | `Domain/Exceptions/RepositoryTransferCorrectionRequiredException.php` | FQCN `App\Modules\Treasury\Domain\Exceptions\RepositoryTransferCorrectionRequiredException`; extends `\DomainException`; `__construct(public readonly string $originalDocumentId)`; 422; ID excluded. |
+| T4 | `Application/DTOs/RepositoryTransferFrozenWarningData.php` | FQCN `App\Modules\Treasury\Application\DTOs\RepositoryTransferFrozenWarningData`; extends Data; `__construct(string $tenant_id, string $company_id, string $document_id, string $transfer_group_id, string $movement_id, string $repository_id)`. |
+| T4 | `Application/Services/RepositoryTransferFrozenWarningSink.php` | FQCN `App\Modules\Treasury\Application\Services\RepositoryTransferFrozenWarningSink`; `__construct(private readonly \Psr\Log\LoggerInterface $logger)`; `warn(RepositoryTransferFrozenWarningData $warning): void`; logs `WCASH-1-FROZEN-TRANSFER:`. |
+| T5 | `Presentation/Services/RepositoryTransferErrorRenderer.php` | FQCN `App\Modules\Treasury\Presentation\Services\RepositoryTransferErrorRenderer`; `render(CashCustodyRevisionConflictException\|CashCustodyMetadataConflictException\|RepositoryTransferConflictException\|RepositoryTransferWritesDisabledException\|LegacyTransferDocumentUnavailableException\|RepositoryTransferCorrectionRequiredException\|RepositoryFrozenException\|RepositoryCheckpointException\|InsufficientRepositoryBalanceException\|CurrencyMismatchException\|RepositoryTransferPrecisionCeilingException $error): JsonResponse`; no constructor dependencies. |
 
-Controller mapping is explicit: constructor-inject RepositoryTransferErrorRenderer into `apps/api/app/Modules/Treasury/Presentation/Controllers/RepositoryTransferController.php` and `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentRepositoryController.php`; their transfer/reverse/custody/metadata methods catch only the listed typed failures and return renderer->render. Do not catch arbitrary Throwable/DomainException and mask bugs as 422. Renderer extras are limited to `current_revision`, `document_id`, or, for the precision case only, `amount` + `effective_scale`. Laravel ValidationException handles input/service field failures (inactive repository, invalid type, incompatible currency, invalid authority branch) via field errors with numeric-string input preserved; Laravel's existing auth/model-not-found handling remains. Existing lower-port RepositoryFrozenException, RepositoryCheckpointException, InsufficientRepositoryBalanceException and CurrencyMismatchException map respectively to 422 codes repository_frozen, repository_checkpoint, insufficient_repository_balance, currency_mismatch, with no private IDs/amounts. Renderer returns exactly `{message:translated,error:{code:<listed-code>}}` plus ONLY the documented current_revision or document_id extras. Add translation keys `messages.treasury.<code>` for each code in the three `apps/api/lang/{en,fr,ar}/messages.php` files EXCEPT `RepositoryTransferPrecisionCeilingException`: its message lives only under `transfer.precision_exceeds_ledger_scale` in the three `apps/api/lang/{en,fr,ar}/treasury.php` files and is explicitly excluded from the generic `messages.treasury.*` instruction. Source authorization must precede exception creation carrying readable IDs; no global renderer shortcut can bypass it. Existing controller seam is `apps/api/app/Modules/Treasury/Presentation/Controllers/RepositoryTransferController.php:21`.
+Bind/inject `RepositoryTransferErrorRenderer` into `RepositoryTransferController` and `PaymentRepositoryController`. Catch only listed typed failures. Precision renders exactly:
 
-T2 test_stale_changed_configuration_conflicts first asserts CashCustodyRevisionConflictException class/currentRevision; metadata invalidation test asserts CashCustodyMetadataConflictException. T3 conflict/write-disabled/legacy tests assert those exact classes and readonly fields; T4 mapping-change test asserts RepositoryTransferCorrectionRequiredException. NEW T5 file `apps/api/tests/Feature/Treasury/RepositoryTransferErrorContractTest.php`, namespace/class `Tests\Feature\Treasury\RepositoryTransferErrorContractTest`: `test_typed_failure_status_and_envelope(): void` provides every listed exception and first asserts exact status and complete JSON envelope (translated message, exact code/allowed extras, no additional properties); its precision provider case constructs `new RepositoryTransferPrecisionCeilingException('1.0005', 3)` and binds that exception to status 422. Dedicated method `test_precision_ceiling_renders_422_with_code_amount_and_effective_scale(): void` constructs that same exception, calls `RepositoryTransferErrorRenderer::render(...)`, and its first failing assertion is `$this->assertSame(422, $response->getStatusCode())`; it then asserts `$this->assertSame(['message' => __('treasury.transfer.precision_exceeds_ledger_scale'), 'error' => ['code' => RepositoryTransferPrecisionCeilingException::CODE, 'amount' => '1.0005', 'effective_scale' => 3]], $response->getData(true))`, proving the complete translated envelope and that `error` has no additional properties. `test_scoped_denial_precedes_readable_conflict(): void` asserts 404 without any document ID for an inaccessible original before the changed-payload conflict. Exact command from `apps/api`: `php artisan test -c phpunit-pgsql.xml --filter=RepositoryTransferErrorContractTest`; named lane **backend-test-pgsql / WCASH-1 isolated PG**. Service gates run their named typed tests immediately; T5 mapping tests do not substitute for those gates.
+```php
+[
+    'message' => __('treasury.transfer.precision_exceeds_ledger_scale'),
+    'error' => [
+        'code' => RepositoryTransferPrecisionCeilingException::CODE,
+        'amount' => $error->amount,
+        'effective_scale' => $error->effectiveScale,
+    ],
+]
+```
+
+Backend translation key `transfer.precision_exceeds_ledger_scale` lives in `apps/api/lang/{en,fr,ar}/treasury.php`; frontend key `transfer.precisionExceedsLedgerScale` in `apps/web/src/locales/{en,fr,ar}/treasury.json`. It is excluded from generic `messages.treasury.*`.
+
+NEW `apps/api/tests/Feature/Treasury/RepositoryTransferErrorContractTest.php`, FQCN `Tests\Feature\Treasury\RepositoryTransferErrorContractTest`:
+
+- `test_typed_failure_status_and_envelope(): void`.
+- `test_precision_ceiling_renders_422_with_code_amount_and_effective_scale(): void`.
+- `test_scoped_denial_precedes_readable_conflict(): void`.
+
+The precision method first asserts `$this->assertSame(422, $response->getStatusCode())`, then exact full JSON with only code/amount/effective_scale. Command/lane:
+
+```sh
+php artisan test -c phpunit-pgsql.xml --filter=RepositoryTransferErrorContractTest
+```
+
+Lane: **backend-test-pgsql / WCASH-1 isolated PG**.
 
 ## T2 — Location settings, activation validator and census
 
-Verified production anchors: existing repository reads/writes `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentRepositoryController.php:33`, `:153`; Console imports `apps/api/app/Modules/Treasury/Providers/TreasuryServiceProvider.php:37` and command registration `apps/api/app/Modules/Treasury/Providers/TreasuryServiceProvider.php:236`. Existing progression activation calls an external client (`apps/api/app/Modules/Progression/Application/Services/ProgressionService.php:106`); it is not evidence of a cash-custody activation mechanism.
+Verified anchors: repository reads/writes `PaymentRepositoryController.php:33,153`; Console imports `TreasuryServiceProvider.php:37`; command registration `:236`.
 
-NEW `Application/Services/CashCustodyConfigurationService.php` public signatures:
+NEW `App\Modules\Treasury\Application\Services\CashCustodyConfigurationService` signatures:
 
 - `save(string $tenantId, string $companyId, string $locationId, ?string $safeRepositoryId, ?string $bankRepositoryId, bool $enabled, int $expectedRevision, string $actorId): CashCustodySaveResult`.
 - `current(string $tenantId, string $companyId, string $locationId): ?CashCustodyConfigurationData`.
 - `assertReadyForActivation(string $tenantId, string $companyId): void`.
 - `census(string $tenantId, string $companyId): CashCustodyCensusData`.
 
-NEW `Application/DTOs/CashCustodyCensusData.php`: `__construct(string $tenant_id, string $company_id, CashCustodyCensusStatus $status, array $unconfigured_location_ids, array $unlocated_drawer_ids, array $missing_bank_location_ids)`; each array is `list<string>`, never untyped arbitrary JSON. This is transport, not a stored JSON column.
+NEW `CashCustodyCensusData::__construct(string $tenant_id, string $company_id, CashCustodyCensusStatus $status, array $unconfigured_location_ids, array $unlocated_drawer_ids, array $missing_bank_location_ids)`; arrays are `list<string>`.
 
-Activation means enabling a location's cash-custody configuration, not granting a module licence or enabling any event consumer. `save(...enabled:true...)` validates the selected location; the company-wide validator refuses readiness if ANY location with an active drawer lacks an enabled configuration with a valid safe, or an active drawer lacks a location. Later W-CASH activation must call this public validator before enabling its consumer. This slice wires the local enabled transition and ships the company readiness command; it does not pretend to activate a nonexistent projector.
+Activation means enabling location custody configuration, not module licensing or a consumer. Enabled save validates selected location. Company readiness refuses when any active-drawer location lacks enabled valid safe configuration or an active drawer lacks a location. Missing bank is visible but does not block safe-only readiness.
 
-The NEW `Application/Services/RepositoryMetadataService.php` is the single in-scope repository metadata writer: `update(string $tenantId, string $companyId, string $repositoryId, RepositoryMetadataUpdateData $changes, string $actorId): PaymentRepository`. NEW `Application/DTOs/RepositoryMetadataUpdateData.php` uses Spatie Optional to distinguish omitted from explicit null; full constructor is `__construct(string|Optional $code, string|Optional $name, RepositoryType|Optional $type, bool|Optional $allow_negative, string|null|Optional $bank_id, string|null|Optional $bank_name, string|null|Optional $account_number, string|null|Optional $iban, string|null|Optional $bic, string|null|Optional $location_id, string|null|Optional $responsible_user_id, string|null|Optional $account_id, string|null|Optional $gl_account_id, bool|Optional $is_active)`. All arguments are explicit; the adapter passes Optional::create() for omitted fields, never implicit null. No balance, ordinal, tenant_id or company_id is writable.
+NEW `App\Modules\Treasury\Application\Services\RepositoryMetadataService::update(string $tenantId, string $companyId, string $repositoryId, RepositoryMetadataUpdateData $changes, string $actorId): PaymentRepository`.
 
-Replace both update branches in `PaymentRepositoryController.php:216` and `:264` with this writer **before any controller repository lock**. Preserve account-id/GL defaulting, the existing no-JE transfer reassignment refusal (`apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentRepositoryController.php:235`), type-derived allow_negative and duplicate-drawer error translation. Do not call a location-first validator from within the existing repository-first transaction.
+NEW `RepositoryMetadataUpdateData::__construct(string|Optional $code, string|Optional $name, RepositoryType|Optional $type, bool|Optional $allow_negative, string|null|Optional $bank_id, string|null|Optional $bank_name, string|null|Optional $account_number, string|null|Optional $iban, string|null|Optional $bic, string|null|Optional $location_id, string|null|Optional $responsible_user_id, string|null|Optional $account_id, string|null|Optional $gl_account_id, bool|Optional $is_active)`. Omitted fields use `Optional::create()`. No balance, ordinal, tenant or company is writable.
 
-One lock order for configuration save and metadata update: transaction → existing bare company-GL advisory lock (`TreasuryMovementService.php:250`) → affected location rows sorted by ID → current configuration rows sorted by location/revision → all involved repositories sorted by ID. Add NEW `Application/Services/CashCustodyLock.php` with `acquireCompany(string $companyId): void`, requiring an outer transaction and using the existing company advisory-lock key (:250); both configuration and metadata writers constructor-inject it. Both writers take the company lock before discovering dependent configurations, then re-read the protected set under it; neither mints a JE, takes an operation lock, or takes the tenant-numbering lock afterward. Transfers take operation → tenant-numbering → company → repository, so metadata never creates a reverse lock edge. Configuration validation inside an already locked transfer is read-only and must not acquire earlier location/configuration locks. All in-scope metadata mutations converge on this writer; T2 tests this writer with explicit authorized fixture intent; exposing its HTTP mutation requires the accepted W1 authorization seam at T5. No direct metadata update bypass may remain in this controller.
+Replace both controller update branches at `PaymentRepositoryController.php:216,264` with this writer before controller repository locking. Preserve account/GL defaulting, no-JE transfer reassignment refusal at `:235`, type-derived negative-balance behavior and duplicate-drawer translation.
 
-For configuration save compare expectedRevision: identical normalized content returns Unchanged and the existing ID/revision, including stale identical retry; different stale content returns 409. Append a revision for a real edit. Validate same company/currency, active Safe and optional active BankAccount, correct location or explicitly selected company-central destination. Missing bank is reported and blocks use of a deposit default, but does not block safe-only readiness. No guessed first safe/bank. An enabled safe cannot be cleared without disabling that configuration. RepositoryMetadataService refuses type change, location reassignment, deactivation, or GL unlink/reassignment that would invalidate ANY latest enabled reference; refuse moving/deactivating an active drawer where this would defeat source-custody/default validation. Currency/company/tenant changes are prohibited request fields. Changing harmless name/code does not rewrite evidence; code validation includes company_id (`PaymentRepositoryController.php:80`, `:170`). A default bank may be absent, but a configured enabled bank may not silently become invalid. PG concurrent tests exercise save versus update with barriers and the changed fields individually.
+Lock order: transaction → existing company-GL advisory lock (`TreasuryMovementService.php:250`) → affected locations sorted → current configurations sorted → repositories sorted. NEW `App\Modules\Treasury\Application\Services\CashCustodyLock::acquireCompany(string $companyId): void`, requiring an outer transaction and using the existing company lock key. Both writers inject it.
 
-NEW `Presentation/Console/CashCustodyCensusCommand.php`, namespace `App\Modules\Treasury\Presentation\Console`; extends `App\Console\TenantScopedCommand` with `protected function executeCommand(): int`, inherited handle wrapper. Constructor: `__construct(CompanyContext $companyContext, CashCustodyConfigurationService $custodyService)` calls the base constructor; the injected CompanyContext is lifecycle infrastructure only, never custody authority. Existing Console precedent/import/registration: `apps/api/app/Modules/Treasury/Presentation/Console/CensusRepositoriesCommand.php:5`, `:42`, `apps/api/app/Modules/Treasury/Providers/TreasuryServiceProvider.php:39`, `:236`. Add the new import beside :39 and class to :237's commands list.
+Identical normalized save returns Unchanged even with stale expected revision. Different stale content conflicts. Real edit appends revision. Enabled safe cannot be cleared without disabling. Metadata changes that invalidate latest enabled defaults are refused. Harmless name/code changes do not rewrite evidence. Repository code validation includes company ID.
 
-Signature: `treasury:census-cash-custody {--tenant=} {--company=} {--require-ready} {--json}`. No options = all provisioned tenants/all their companies; tenant only = every company in that tenant; tenant+company = exactly that owned company. Company without tenant, malformed UUID, unknown tenant/company or mismatched ownership = usage/lookup failure 2. Use the base tenant iterator, record expected/visited counts, initialize/end tenancy in finally, and filter every company by tenant even in compatibility mode. A skipped missing tenant DB, failure to inspect any target, or empty fleet is incomplete and returns 2, not false readiness. Do not run under tenants:run: this command manages and aggregates tenancy itself.
+NEW `App\Modules\Treasury\Presentation\Console\CashCustodyCensusCommand`, extends `TenantScopedCommand`; constructor `__construct(CompanyContext $companyContext, CashCustodyConfigurationService $custodyService)`; `protected function executeCommand(): int`. Register beside `CensusRepositoriesCommand` in `TreasuryServiceProvider.php:236-237`.
 
-Stable output: one compact JSON document when --json, otherwise one summary plus company lines, each marker `WCASH-1-CUSTODY:`. JSON shape is `{marker:"WCASH-1-CUSTODY:",schema_version:1,complete:boolean,status:"READY"|"NOT_READY"|"ERROR",expected_companies:int,visited_companies:int,companies:[{tenant_id,company_id,status,unconfigured_location_ids:[],unlocated_drawer_ids:[],missing_bank_location_ids:[]}],errors:[{tenant_id:uuid|null,company_id:uuid|null,message:string}]}`. NEW files under Application/DTOs: `CashCustodyFleetCensusData.php` constructor `__construct(string $marker, int $schema_version, bool $complete, CashCustodyCensusStatus $status, int $expected_companies, int $visited_companies, array $companies, array $errors)`, arrays list<CashCustodyCensusData> and list<CashCustodyCensusErrorData>; `CashCustodyCensusErrorData.php` constructor `__construct(?string $tenant_id, ?string $company_id, string $message)`. CashCustodyCensusData includes the required status parameter shown above. NEW Domain/Enums/CashCustodyCensusStatus.php cases Ready='READY', NotReady='NOT_READY', Error='ERROR'. All arrays have concrete DTO/list<string> element types. No clock timestamp in comparison output; sort tenant/company IDs and every finding list. Config table absent on Push 1 = every drawer location unconfigured, never query missing columns. Tables present with wrong shape = ERROR. A completed census exits 0 without --require-ready even if NOT_READY; with --require-ready it exits 1 when not ready, 0 only READY; ERROR always 2 and dominates other results. No money or seeder writes. Missing bank appears in the report without safe-readiness failure. No additional persisted schema beyond T1.
+Signature:
 
-Red-first contract register:
+```text
+treasury:census-cash-custody {--tenant=} {--company=} {--require-ready} {--json}
+```
 
-File **NEW unless already cited**: `apps/api/tests/Feature/Treasury/CashCustodyConfigurationTest.php`. Named lane: **backend-test-pgsql / WCASH-1 isolated PG**. Exact command from apps/api: `php artisan test -c phpunit-pgsql.xml --filter=CashCustodyConfigurationTest`.
+No options = all tenants/companies; tenant only = all companies in tenant; tenant+company = exact owned company. Company-only, malformed/unknown/foreign = exit 2. Manage tenancy internally; never use `tenants:run`.
 
-| Exact test | First failing assertion / required data assertion |
+JSON:
+
+```text
+{marker:"WCASH-1-CUSTODY:",schema_version:1,complete:boolean,status:"READY"|"NOT_READY"|"ERROR",expected_companies:int,visited_companies:int,companies:[...],errors:[...]}
+```
+
+NEW:
+
+- `CashCustodyFleetCensusData::__construct(string $marker, int $schema_version, bool $complete, CashCustodyCensusStatus $status, int $expected_companies, int $visited_companies, array $companies, array $errors)`.
+- `CashCustodyCensusErrorData::__construct(?string $tenant_id, ?string $company_id, string $message)`.
+- `CashCustodyCensusStatus` cases Ready=`READY`, NotReady=`NOT_READY`, Error=`ERROR`.
+
+Sort all IDs/findings; no timestamp. Missing table in Push 1 means NOT_READY without querying missing columns. Wrong shape = ERROR. Without `--require-ready`, completed NOT_READY exits 0; with it, NOT_READY exits 1; ERROR/incomplete exits 2.
+
+NEW `CashCustodyConfigurationTest`, command/lane:
+
+```sh
+php artisan test -c phpunit-pgsql.xml --filter=CashCustodyConfigurationTest
+```
+
+| Test | First assertion |
 |---|---|
-| `CashCustodyConfigurationTest::test_activation_refuses_second_location_without_safe(): void` | `expectException(ValidationException::class)` for enabled save at second location; company assertReady also refuses until all active-drawer locations have safe. |
-| `CashCustodyConfigurationTest::test_identical_save_returns_unchanged(): void` | `assertSame(CashCustodySaveOutcome::Unchanged,$second->outcome)`; same ID/revision/count. |
-| `CashCustodyConfigurationTest::test_second_company_defaults_are_independent(): void` | B real company creation; assert B same code accepted, B safe selected and A absent from B census. |
-| `CashCustodyConfigurationTest::test_second_location_save_uses_selected_safe(): void` | Assert current(secondLocation).default_safe_repository_id equals secondSafe and first remains unchanged. |
-| `CashCustodyConfigurationTest::test_repository_mutation_cannot_invalidate_enabled_defaults(): void` | Provider type/location/is_active/gl_account_id/account_id on safe/bank/drawer: expect CashCustodyMetadataConflictException; entire metadata/configuration/balance snapshot unchanged. |
-| `CashCustodyConfigurationTest::test_harmless_metadata_change_preserves_configuration(): void` | Assert renamed repository plus identical configuration ID/revision and historical evidence. |
-| `CashCustodyConfigurationTest::test_stale_changed_configuration_conflicts(): void` | Expect revision conflict with unchanged revision count and current_revision value. |
+| `test_activation_refuses_second_location_without_safe(): void` | `ValidationException`; readiness also refuses. |
+| `test_identical_save_returns_unchanged(): void` | Outcome Unchanged; same ID/revision/count. |
+| `test_second_company_defaults_are_independent(): void` | B safe selected; A absent from B census. |
+| `test_second_location_save_uses_selected_safe(): void` | Second location’s safe equals selected safe; first unchanged. |
+| `test_repository_mutation_cannot_invalidate_enabled_defaults(): void` | `CashCustodyMetadataConflictException`; snapshot unchanged. |
+| `test_harmless_metadata_change_preserves_configuration(): void` | Renamed repository; same configuration/evidence. |
+| `test_stale_changed_configuration_conflicts(): void` | Revision conflict/current revision; count unchanged. |
 
-File **NEW unless already cited**: `apps/api/tests/Feature/Treasury/CashCustodyCensusCommandTest.php`. Named lane: **backend-test-pgsql / WCASH-1 isolated PG**. Exact command from apps/api: `php artisan test -c phpunit-pgsql.xml --filter=CashCustodyCensusCommandTest`.
+NEW `CashCustodyCensusCommandTest`, command:
 
-| Exact test | First failing assertion / required data assertion |
-|---|---|
-| `CashCustodyCensusCommandTest::test_require_ready_reports_unconfigured_second_location(): void` | `assertExitCode(1)` plus NOT_READY marker and exact second location ID. |
-| `CashCustodyCensusCommandTest::test_option_matrix_and_deterministic_output(): void` | Provider no options, tenant only, tenant+company: assert exact expected/visited IDs and identical JSON bytes on rerun; status READY/NOT_READY explicit. |
-| `CashCustodyCensusCommandTest::test_invalid_options_or_ownership_return_error(): void` | Provider company-only/malformed/unknown/foreign: `assertExitCode(2)`; ERROR marker; zero writes. |
-| `CashCustodyCensusCommandTest::test_incomplete_fleet_cannot_report_ready(): void` | Missing DB/lookup fault/empty fleet: exit 2, complete=false and expected != visited or explicit error; later companies still attempted. |
-| `CashCustodyCensusCommandTest::test_pre_schema_census_does_not_query_missing_tables(): void` | No T1 tables: NOT_READY, unconfigured selected location, no missing-relation exception. |
-| `CashCustodyCensusCommandTest::test_command_does_not_leak_tenant_context(): void` | After two tenants: assert previous connection/context restored and no cross-tenant company results. |
+```sh
+php artisan test -c phpunit-pgsql.xml --filter=CashCustodyCensusCommandTest
+```
 
-File **NEW unless already cited**: `apps/api/tests/Integration/Treasury/CashCustodyMetadataConcurrencyTest.php`. Named lane: **backend-test-pgsql / WCASH-1 isolated PG**. Exact command from apps/api: `php artisan test -c phpunit-pgsql.xml --filter=CashCustodyMetadataConcurrencyTest`.
+Methods cover ready refusal, exact option matrix, deterministic output, invalid ownership exit 2, incomplete fleet exit 2, pre-schema behavior and context restoration.
 
-| Exact test | First failing assertion / required data assertion |
-|---|---|
-| `CashCustodyMetadataConcurrencyTest::test_save_and_metadata_update_share_lock_order(): void` | Two committed connections with barrier: both finish without deadlock; exactly one valid configuration/metadata outcome wins, loser explicitly refused or unchanged; no invalid enabled default. |
+NEW `CashCustodyMetadataConcurrencyTest::test_save_and_metadata_update_share_lock_order(): void`, command:
 
-Convention-09 at T2 gate: CashCustodyConfigurationTest::test_second_company_defaults_are_independent; ::test_second_location_save_uses_selected_safe; ::test_identical_save_returns_unchanged. Census rerun also has byte-equal deterministic output. All referenced cases MUST use Common real-provisioning: real B creation, real second pos_enabled shop and asserted auto-provisioned drawer company/location; repeat the named actual mutation, never just migrations.
+```sh
+php artisan test -c phpunit-pgsql.xml --filter=CashCustodyMetadataConcurrencyTest
+```
 
-Implement only after capturing the named red failures, then rerun the exact commands to green. Test results are not claimed by this plan.
+Two committed connections/barrier must finish without deadlock, with exactly one valid outcome and no invalid enabled default.
 
-Gate: treasury-reviewer + tenancy-authz-reviewer check activation semantics, console tenant lifecycle and central-destination authorization. Rollback: disable the new configuration through a new revision, retain revision history; no balance changes to undo.
+Convention-09 at T2: `test_second_company_defaults_are_independent`, `test_second_location_save_uses_selected_safe`, `test_identical_save_returns_unchanged`. Gate: treasury-reviewer + tenancy-authz-reviewer. Rollback: append a disabled/correcting revision; retain history; no balance undo.
 
 ## T3 — One atomic, idempotent transfer document
 
-Production files: extend `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferService.php:33` with the compile-safe compatibility transition below; extend `apps/api/app/Modules/Treasury/Application/DTOs/RepositoryTransferResult.php:7`; preserve movement port `apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:225` and GL factory `apps/api/app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:1497`.
+Extend `RepositoryTransferService.php:33`; preserve `TreasuryMovementService.php:225` and `GeneralLedgerService.php:1497`.
 
-NEW `Application/DTOs/RepositoryTransferIntent.php` constructor: `__construct(string $tenantId, string $companyId, string $operationUuid, string $fromRepositoryId, string $toRepositoryId, string $amount, string $currency, ?string $sourceLocationId, ?string $configurationId, ?int $configurationRevision, ?string $notes, ?CarbonImmutable $occurredAt, HumanTransferAuthorityData|SystemTransferAuthorityData $authority, bool $allowWhileFrozen = false)`. Branch validation is T1's union; human actor ID is authority.user_id, system has null created_by. T3 adds `executeTransfer(RepositoryTransferIntent $intent): DocumentedRepositoryTransferResult` as the typed core while preserving the old eight-scalar `transfer(...)` signature until T5 completes.
+NEW `App\Modules\Treasury\Application\DTOs\RepositoryTransferIntent`:
 
-**Compile-safe, inert packaging transition (T3 prepares; T5 activates):** during Push 3 retain the existing eight-scalar transfer method BODY, controller request contract and legacy result constructor unchanged (`apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferService.php:33`, `apps/api/app/Modules/Treasury/Presentation/Controllers/RepositoryTransferController.php:28`, `apps/api/app/Modules/Treasury/Application/DTOs/RepositoryTransferResult.php:7`). Mark scalar method deprecated; do not add a 503 flag check to it at this stage. Add typed executeTransfer using NEW `apps/api/app/Modules/Treasury/Application/DTOs/DocumentedRepositoryTransferResult.php` with the full result constructor below. Its existing five-field sibling stays intact until activation. It has no route, queue or production caller in Push 3, remains default-false; enabling documented writes early is a release failure. Existing endpoint tests stay unchanged. T3 core tests call executeTransfer with explicit authority, not the scalar method. Keep legacy draft-delete architecture baseline until removal; its staged shrink belongs to T5 activation packaging.
+```php
+__construct(
+    string $tenantId,
+    string $companyId,
+    string $operationUuid,
+    string $fromRepositoryId,
+    string $toRepositoryId,
+    string $amount,
+    string $currency,
+    ?string $sourceLocationId,
+    ?string $configurationId,
+    ?int $configurationRevision,
+    ?string $notes,
+    ?CarbonImmutable $occurredAt,
+    HumanTransferAuthorityData|SystemTransferAuthorityData $authority,
+    bool $allowWhileFrozen = false,
+)
+```
 
-Push 5 first pauses/drains transfer requests and all old API/worker processes; verify zero repository_transfer_documents in every target before cutover. Atomically deploy the T5 controller/requests/HTTP adapter, remove scalar method/body, rename executeTransfer to transfer, switch its return type to RepositoryTransferResult with the new constructor, remove temporary DocumentedRepositoryTransferResult and update every typed caller/test in that same release. Remove the draft-delete baseline entry in that release too. Deploy compatible web before enabling writes. Verify all running processes use the new release, run false-flag 503/no-write smoke, then enable and reopen traffic. Never decide fallback by querying document count per request: removal is permanent. After the first document, flag=false only refuses writes/replays, retains reads and never restores old code. Push-3 rollback can remove disconnected new code while no documents exist; after activation rollback is forward-only. Task-order source changes must be split into these reviewed packaging artifacts, not deploy all T3–T5 commits at Push 3.
+Add `executeTransfer(RepositoryTransferIntent $intent): DocumentedRepositoryTransferResult` while preserving the existing scalar method until atomic T5 activation.
 
-Typed core result constructor (DocumentedRepositoryTransferResult in Push 3, RepositoryTransferResult after atomic Push 5) becomes `__construct(string $transferGroupId, ?string $journalEntryId, MovementResult $out, MovementResult $in, bool $idempotentReplay, RepositoryTransferDocumentData $document, RepositoryTransferOutcome $outcome)`. Preserve existing output aliases during the web rollout.
+Push 3 retains the scalar method body, controller request and five-field result unchanged. Typed core is disconnected, default-false and has no production caller. Push 5 pauses/drains old processes, verifies zero documents, atomically installs the controller/adapter, removes scalar body, renames typed method to `transfer`, switches result type, removes temporary result, updates all callers/tests and shrinks the DPA baseline. After first document, rollback never restores documentless writing.
 
-Identity is `(tenant, company, operation UUID, first-submission human OR system authority)`. The physical unique index is `(company_id,operation_uuid)`, NOT an actor-inclusive unique: a different actor must conflict with the original operation rather than create another transfer. Composite ownership FKs establish the tenant dimension. Semantic comparison fields are initiator_kind plus human user_id (stored created_by) OR the full stable system authority/principal/source/terminal/source-location tuple, from_repository_id, to_repository_id, normalized decimal amount, currency, and reason (the existing free-text notes field, normalized by the exact rule below). Reversal also compares originalDocumentId and explanation. This slice adds no typed cash-reason enum.
+Typed core result constructor:
 
-**Exact notes/reason normalization:** NEW `Application/Services/RepositoryTransferNotes.php::canonicalize(?string $notes): ?string`. Omitted maps to null; validate UTF-8 first. Trim leading/trailing Unicode White_Space (`[\p{Z}\x{0009}-\x{000D}\x{0085}]`); normalize NFC using `Normalizer::normalize(..., Normalizer::FORM_C)`; collapse each run of that same whitespace class to one U+0020; preserve case and every non-whitespace meaningful character; empty result maps to null. No case-folding, accent removal, punctuation stripping or zero-width character stripping. ext-intl is required (`apps/api/composer.json:9`); normalization failure is validation error, not raw-string fallback. Store canonical notes on first submission. Compare normalized strings byte-for-byte in UTF-8; fixed ordered comparison tuple is serialized with JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES, decimal amount normalized as string and no floats; compare actual normalized fields, not hash alone. Reversal explanation uses the same normalization but rejects resulting null.
+```php
+__construct(
+    string $transferGroupId,
+    ?string $journalEntryId,
+    MovementResult $out,
+    MovementResult $in,
+    bool $idempotentReplay,
+    RepositoryTransferDocumentData $document,
+    RepositoryTransferOutcome $outcome,
+)
+```
 
-NEW `Application/Services/RepositoryTransferOperationLock.php`: `acquire(string $tenantId, string $companyId, string $operationUuid): void`, requires an outer transaction and uses a dedicated namespaced PG advisory key. Add `acquireOriginal(string $tenantId, string $companyId, string $originalDocumentId): void` using a separate reversal-original namespace; reversals acquire it before acquire(operation). Both are shared by HTTP adapter and service. NEW public `GeneralLedgerService::lockRepositoryTransferContext(string $tenantId, string $companyId): void` uses the existing private tenant-numbering helper (`apps/api/app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:5671`) then the existing company advisory lock; it neither creates nor posts. Never duplicate the numbering-key literal outside that owner.
+Identity is tenant/company/operation plus first-submission actor branch. Physical unique is `(company_id,operation_uuid)`, not actor-inclusive. Semantic tuple includes actor identity/provenance, repositories, normalized amount, currency and canonical notes. Different actor conflicts rather than creating another transfer.
 
-Replay order is mandatory: authenticated tenant/company + module/basic action permission → outer transaction and operation lock → tenant-numbering/company lock → resolve existing document in tenant/company → HTTP adapter authorizes its historical source location AND current source repository custody → only then compare actor/semantic fields. Inaccessible stored source returns scoped 404 with NO document ID, even when the submitted source is authorized. Once stored source is accessible, another actor or changed semantic content returns 409 with that existing document ID and code repository_transfer_conflict. An actor whose current authority was revoked cannot reuse first-submission authority; return scoped 404 or action-permission 403, never successful replay.
+NEW `App\Modules\Treasury\Application\Services\RepositoryTransferNotes::canonicalize(?string $notes): ?string`: validate UTF-8; trim Unicode White_Space; NFC normalize; collapse whitespace runs to U+0020; preserve case/punctuation/zero-width characters; empty becomes null. Compare ordered JSON-encoded normalized tuple without floats.
 
-An identical same-actor authorized retry returns the original document/legs/JE with AlreadyRecorded and idempotentReplay=true. Server-derived source location/configuration ID/revision and server timestamp are copied from original evidence; never recompute them into a client fingerprint. Identical retry remains AlreadyRecorded after configuration revision changes. Client supplies currency explicitly; the server validates it on first submission and compares against original on replay. HTTP does not accept occurred_at/configuration/scope/actor fields. Internal explicit occurredAt is copied from the original on replay and is not a mutable retry token. Conflict reports neither a new row nor changed balances.
+NEW `App\Modules\Treasury\Application\Services\RepositoryTransferOperationLock`:
 
-NEW `Presentation/Services/RepositoryTransferHttpAdapter.php` owns HTTP-only authorization within the transaction: `transfer(TransferRepositoryRequest $request): RepositoryTransferResult`, `reverse(ReverseRepositoryTransferRequest $request, string $documentId): RepositoryTransferResult`, `show(Request $request, string $documentId): RepositoryTransferDocumentData`. Its constructor is `__construct(private readonly LocationScopeResolver $locationScopeResolver, private readonly CompanyContext $companyContext, private readonly RepositoryTransferOperationLock $operationLock, private readonly GeneralLedgerService $generalLedger, private readonly RepositoryTransferService $transferService)`; no HTTP resolver enters either application service. The service independently re-acquires the same locks, validates tenant/company/actor/semantic identity, and consumes explicit authorized scope on the intent. Internal callers supply the T1 HumanTransferAuthorityData|SystemTransferAuthorityData union, never a client-selected bypass. The service checks explicit authority branch and persisted tenant/company/source/terminal custody inside locks. Human replay follows HTTP stored-source authorization then semantic comparison; system replay validates current persisted provenance/custody without any HTTP resolver, then compares its stable system tuple. Record the original union evidence without rewriting it on retry. Lower-level TransferIntent.createdBy and GL post actor remain nullable for systems; no `User::find` call with a forged system ID. T1 union constraints govern snapshots; W1 owns human revocation semantics.
+- `acquire(string $tenantId, string $companyId, string $operationUuid): void`.
+- `acquireOriginal(string $tenantId, string $companyId, string $originalDocumentId): void`.
 
-**T3 precision ceiling contract (normative; temporary until the movement ledger is widened).** NEW `apps/api/app/Modules/Treasury/Domain/Policies/RepositoryTransferPrecisionPolicy.php`, namespace `App\Modules\Treasury\Domain\Policies`: `final class RepositoryTransferPrecisionPolicy { public const OPERATIONAL_SCALE_CEILING = 3; public static function effectiveScale(int $countryScale): int; /* min($countryScale, self::OPERATIONAL_SCALE_CEILING) */ public static function assertWithinCeiling(string $amount, int $countryScale): void; /* throws RepositoryTransferPrecisionCeilingException when fractional digits > effectiveScale */ }`. NEW `apps/api/app/Modules/Treasury/Domain/Exceptions/RepositoryTransferPrecisionCeilingException.php`, namespace `App\Modules\Treasury\Domain\Exceptions`: `final class RepositoryTransferPrecisionCeilingException extends \DomainException { public const CODE = 'TRANSFER_PRECISION_EXCEEDS_LEDGER_SCALE'; public function __construct(public readonly string $amount, public readonly int $effectiveScale) { parent::__construct(sprintf('Transfer amount %s exceeds the operational ledger scale %d', $amount, $effectiveScale)); } }` (same base as `InsufficientRepositoryBalanceException`, `apps/api/app/Modules/Treasury/Domain/Exceptions/InsufficientRepositoryBalanceException.php:26`, which extends PHP `DomainException` directly); registered in the T3 exception register table. The HEAD seam census found no company repository/finder contract under `apps/api/app/Modules/Company` or `apps/api/app/Shared/Contracts`; the existing model is `App\Modules\Company\Domain\Company` at `apps/api/app/Modules/Company/Domain/Company.php:133`, its table is declared at `:210`, and `tenant_id` is an owned attribute at `:218`, all at reviewed HEAD `9c26e06412d704018cb47119871a1c0cbbd09723`. Therefore NEW `apps/api/app/Shared/Exceptions/CompanyScopedCurrencyScaleCompanyNotFoundException.php`, namespace `App\Shared\Exceptions`: `final class CompanyScopedCurrencyScaleCompanyNotFoundException extends \RuntimeException { public function __construct(public readonly string $tenantId, public readonly string $companyId) { parent::__construct(sprintf('Company %s was not found in tenant %s', $companyId, $tenantId)); } }`. NEW `apps/api/app/Shared/Infrastructure/CompanyScopedCurrencyScaleResolverFactory.php`, namespace `App\Shared\Infrastructure`, imports `App\Modules\Company\Domain\Company`, `App\Modules\Company\Services\CompanyContext`, `App\Shared\Contracts\CurrencyScaleResolverInterface`, `App\Shared\Exceptions\CompanyScopedCurrencyScaleCompanyNotFoundException`, and `Closure`: `final class CompanyScopedCurrencyScaleResolverFactory { public function __construct(private readonly CompanyContext $companyContext, private readonly Closure $countryFinder) {} public function forCompany(string $tenantId, string $companyId): CurrencyScaleResolverInterface { $company = Company::query()->where('tenant_id', $tenantId)->whereKey($companyId)->first(); if ($company === null) { throw new CompanyScopedCurrencyScaleCompanyNotFoundException($tenantId, $companyId); } return new CurrencyScaleResolver($this->companyContext, $this->countryFinder, $company); } }`. The lookup is explicitly by `(tenant_id, company_id)` and never by company ID alone. Add `use App\Shared\Infrastructure\CompanyScopedCurrencyScaleResolverFactory;` to `apps/api/app/Providers/AppServiceProvider.php` and bind beside the existing resolver binding at `apps/api/app/Providers/AppServiceProvider.php:101-107` with the same country-finder closure: `$this->app->singleton(CompanyScopedCurrencyScaleResolverFactory::class, function ($app): CompanyScopedCurrencyScaleResolverFactory { return new CompanyScopedCurrencyScaleResolverFactory($app->make(CompanyContext::class), fn (string $countryCode): ?Country => Country::find($countryCode)); });`. Constructor-inject the factory into `RepositoryTransferService`; it is identical for `HumanTransferAuthorityData` and `SystemTransferAuthorityData` because both intents carry `tenantId` and `companyId`. The factory passes a non-null company override to the existing `CurrencyScaleResolver::__construct(CompanyContext $companyContext, Closure $countryFinder, ?Company $companyOverride = null)` at `apps/api/app/Shared/Infrastructure/CurrencyScaleResolver.php:30-34`; consequently the resolver selects `$companyOverride` at `:43` and does not read a bound `CompanyContext`. `RepositoryTransferService::executeTransfer(RepositoryTransferIntent $intent): DocumentedRepositoryTransferResult` resolves `$countryScale = $this->companyScaleResolverFactory->forCompany($intent->tenantId, $intent->companyId)->getScale()` with NO currency argument, so the company country preset is used. It calls `RepositoryTransferPrecisionPolicy::assertWithinCeiling(...)` as its first statement for both authority branches, before locks, replay lookup or writes. Red tests use captured exceptions and assert typed amount/effectiveScale plus unchanged document, movement, JE, balance and ordinal snapshots. **Removal condition (verbatim):** removing `OPERATIONAL_SCALE_CEILING` requires a separately accepted follow-up lane that widens `repository_movements.amount` and `repository_movements.balance_after` to `decimal(15,4)`, updates both `RepositoryMovement` casts, the write/replay precision guards in `TreasuryMovementService`, and their architecture/regression tests; the P0 census opens that ticket. The benchmark/cast ruling alone does not remove the ceiling.
+Requires outer transaction and distinct advisory-key namespaces. NEW `GeneralLedgerService::lockRepositoryTransferContext(string $tenantId, string $companyId): void` uses existing tenant-numbering helper (`GeneralLedgerService.php:5671`) then company advisory lock.
 
-For a new operation generate a server group UUID independent of the user operation UUID; the company-operation unique owns retries. Existing movement keys at `TreasuryMovementService.php:296` are tenant-database-global, so using the client's operation UUID directly would incorrectly collide across companies. UUID collision must roll back and retry allocation before any committed effect; do not widen the existing movement key contract casually.
+Replay order: authenticated tenant/company/module/action → outer transaction/operation lock → tenant-numbering/company lock → existing document lookup → historical/current source authorization → semantic comparison. Inaccessible stored source returns 404 without document ID. Accessible changed actor/content returns 409 with readable document ID. Exact authorized retry returns original document/legs/JE, AlreadyRecorded and no writes.
 
-Mint optional JE through the existing factory before the movement port takes company/repository locks. Preserve tenant-numbering → company-GL → sorted repository lock order documented at `TreasuryMovementService.php:238`; do not introduce repository-before-numbering locking. After the port locks, revalidate active/type/currency and GL mapping against the selected draft; concurrent mapping drift aborts the whole operation. Snapshot evidence from locked rows, insert document after both legs, and commit once. Any failure rolls back document, legs, balances, ordinals and draft/post. Exact document replay runs before mutable freeze/checkpoint/active rules, after stored-source adapter authorization in the order above.
+NEW `App\Modules\Treasury\Presentation\Services\RepositoryTransferHttpAdapter`:
 
-Same linked GL account: two opposite legs, no JE. Different linked GL accounts: exactly one posted JE, Dr destination/Cr source, equal amount. Retain existing behavior for both-unlinked repositories explicitly as no-GL operational custody; never treat one-null/one-linked as same GL. Future launch readiness may require linked accounts; this slice does not invent an owner accounting cutover.
+```php
+__construct(
+    private readonly LocationScopeResolver $locationScopeResolver,
+    private readonly CompanyContext $companyContext,
+    private readonly RepositoryTransferOperationLock $operationLock,
+    private readonly GeneralLedgerService $generalLedger,
+    private readonly RepositoryTransferService $transferService,
+)
+```
 
-P0-b acceptance is a hard dependency for this task. No schema beyond T1/P0. Do not change the raw movement source type or fiscal events. NEW config entry in `apps/api/config/treasury.php` (existing flag shape at :28): `repository_transfer_documents_enabled` reads `TREASURY_REPOSITORY_TRANSFER_DOCUMENTS_ENABLED`, default false. Both documented transfer and reversal methods, including internal callers, refuse new writes when false; the retained Push-3 scalar method is outside this new flag contract until removed at Push 5; the final activated HTTP contract returns 503 repository_transfer_writes_disabled. The replacement has no fallback call to the old documentless writer. Configuration saves and document reads remain available for preparation/audit; flag-off transfer replay is a refused write request (503), with no mutation. After any human- or system-authored document exists, code rollback may not restore the old writer or drop system provenance/null-user support; retain full actor-union read compatibility. T5 renders the refused state and prevents submission. This flag does not enable variance or a queue.
+Public signatures:
 
-Red-first contract register:
+- `transfer(TransferRepositoryRequest $request): RepositoryTransferResult`.
+- `reverse(ReverseRepositoryTransferRequest $request, string $documentId): RepositoryTransferResult`.
+- `show(Request $request, string $documentId): RepositoryTransferDocumentData`.
 
-File **NEW unless already cited**: `apps/api/tests/Feature/Treasury/RepositoryTransferDocumentTest.php`. Named lane: **backend-test-pgsql / WCASH-1 isolated PG**. Exact command from apps/api: `php artisan test -c phpunit-pgsql.xml --filter=RepositoryTransferDocumentTest`.
+HTTP resolver never enters application service. Service independently reacquires locks and validates explicit authority.
 
-| Exact test | First failing assertion / required data assertion |
+### T3 precision ceiling and architecture contract
+
+NEW `App\Modules\Treasury\Domain\Policies\RepositoryTransferPrecisionPolicy`:
+
+```php
+final class RepositoryTransferPrecisionPolicy
+{
+    public const OPERATIONAL_SCALE_CEILING = 3;
+
+    public static function effectiveScale(int $countryScale): int;
+
+    public static function assertWithinCeiling(string $amount, int $countryScale): void;
+}
+```
+
+NEW `App\Modules\Treasury\Domain\Exceptions\RepositoryTransferPrecisionCeilingException`:
+
+```php
+final class RepositoryTransferPrecisionCeilingException extends \DomainException
+{
+    public const CODE = 'TRANSFER_PRECISION_EXCEEDS_LEDGER_SCALE';
+
+    public function __construct(
+        public readonly string $amount,
+        public readonly int $effectiveScale,
+    );
+}
+```
+
+No existing Company-bound scale-factory contract exists under `apps/api/app/Shared/Contracts` at HEAD. Declare NEW `apps/api/app/Shared/Contracts/Company/CompanyCurrencyScaleResolverFactoryInterface.php`, FQCN `App\Shared\Contracts\Company\CompanyCurrencyScaleResolverFactoryInterface`:
+
+```php
+interface CompanyCurrencyScaleResolverFactoryInterface
+{
+    public function forCompany(
+        string $tenantId,
+        string $companyId,
+    ): CurrencyScaleResolverInterface;
+}
+```
+
+Declare NEW implementation `apps/api/app/Modules/Company/Infrastructure/Services/CompanyCurrencyScaleResolverFactory.php`, FQCN `App\Modules\Company\Infrastructure\Services\CompanyCurrencyScaleResolverFactory`, implements that interface:
+
+```php
+final class CompanyCurrencyScaleResolverFactory implements CompanyCurrencyScaleResolverFactoryInterface
+{
+    /**
+     * @param \Closure(string): ?\App\Models\Country $countryFinder
+     */
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+        private readonly \Closure $countryFinder,
+    );
+
+    public function forCompany(
+        string $tenantId,
+        string $companyId,
+    ): CurrencyScaleResolverInterface;
+}
+```
+
+Implementation queries `App\Modules\Company\Domain\Company` by both `tenant_id` and primary key. If absent, it throws NEW `App\Shared\Exceptions\CompanyScopedCurrencyScaleCompanyNotFoundException::__construct(public readonly string $tenantId, public readonly string $companyId)`, extending `\RuntimeException`. If present, it returns existing `App\Shared\Infrastructure\CurrencyScaleResolver` with the same `CompanyContext`, same country-finder closure and the resolved Company as `$companyOverride`. Existing constructor/override behavior is at `CurrencyScaleResolver.php:30-43`.
+
+Bind beside the existing resolver at `apps/api/app/Providers/AppServiceProvider.php:101-107`:
+
+```php
+$this->app->singleton(
+    CompanyCurrencyScaleResolverFactoryInterface::class,
+    function ($app): CompanyCurrencyScaleResolverFactoryInterface {
+        return new CompanyCurrencyScaleResolverFactory(
+            $app->make(CompanyContext::class),
+            fn (string $countryCode): ?Country => Country::find($countryCode),
+        );
+    },
+);
+```
+
+Add imports for the Shared contract and Company Infrastructure implementation. Treasury Application constructor-injects only `CompanyCurrencyScaleResolverFactoryInterface`; it does not import Shared Infrastructure or Company Domain/Infrastructure.
+
+`executeTransfer()` first resolves:
+
+```php
+$countryScale = $this->companyCurrencyScaleResolverFactory
+    ->forCompany($intent->tenantId, $intent->companyId)
+    ->getScale();
+```
+
+It passes no currency argument, so country preset applies. Precision validation is the first **policy operation after resolving the country scale**:
+
+```php
+RepositoryTransferPrecisionPolicy::assertWithinCeiling(
+    $intent->amount,
+    $countryScale,
+);
+```
+
+It runs before operation locks, replay lookup or writes for both human and system authority branches.
+
+NEW architecture test `apps/api/tests/Architecture/CompanyCurrencyScaleResolverBoundaryTest.php`, FQCN `Tests\Architecture\CompanyCurrencyScaleResolverBoundaryTest`, method `treasury_application_uses_only_the_shared_company_scale_factory_contract(): void`. Its first assertion reflects the `RepositoryTransferService` constructor and asserts the factory parameter type equals `App\Shared\Contracts\Company\CompanyCurrencyScaleResolverFactoryInterface`; it then asserts Treasury Application has no import/reference to `App\Shared\Infrastructure\CompanyScopedCurrencyScaleResolverFactory`, `App\Shared\Infrastructure\CurrencyScaleResolver`, `App\Modules\Company\Domain\Company`, or Company Infrastructure.
+
+Exact test command/lane:
+
+```sh
+php artisan test --filter=CompanyCurrencyScaleResolverBoundaryTest
+```
+
+Lane: **backend architecture / WCASH-1 boundary**.
+
+Existing Deptrac rules are `ModuleApplication` may depend on `SharedContracts` but not `SharedInfrastructure` (`apps/api/deptrac.yaml:96-101`) and `SharedInfrastructure` may not depend on `ModuleDomain` (`:74-87`). Exact ratchet command/lane:
+
+```sh
+php tools/deptrac-ratchet.php --config=deptrac.yaml --baseline=deptrac.baseline.json
+```
+
+Lane: **backend-architecture / Deptrac ratchet**. First red output for the rejected design must report a ratchet regression for `ModuleApplication → SharedInfrastructure` and/or `SharedInfrastructure → ModuleDomain`; no category or total baseline increase is accepted (`tools/deptrac-ratchet.php:178-183,208-214`).
+
+Red service tests in `RepositoryTransferDocumentTest`:
+
+- `test_scale_four_company_human_transfer_of_10005_is_refused_with_unchanged_snapshots(): void`.
+- `test_scale_four_company_system_transfer_of_10005_is_refused_with_unchanged_snapshots(): void`.
+
+Use captured exception; first assert instance, then `amount==='1.0005'`, `effectiveScale===3`, zero new documents/movements/JEs and unchanged balances/ordinals. Command:
+
+```sh
+php artisan test -c phpunit-pgsql.xml --filter=RepositoryTransferDocumentTest
+```
+
+**Removal condition (verbatim):** removing `OPERATIONAL_SCALE_CEILING` requires a separately accepted follow-up lane that widens `repository_movements.amount` and `repository_movements.balance_after` to `decimal(15,4)`, updates both `RepositoryMovement` casts, the write/replay precision guards in `TreasuryMovementService`, and their architecture/regression tests; the P0 census opens that ticket.
+
+New operation gets a server group UUID independent of client operation UUID. Same linked GL account: two opposite legs, no JE. Different linked GL accounts: one posted balanced JE, Dr destination/Cr source. Both unlinked remain no-GL custody; one-null/one-linked is not same GL.
+
+NEW flag in `apps/api/config/treasury.php`: `repository_transfer_documents_enabled`, environment `TREASURY_REPOSITORY_TRANSFER_DOCUMENTS_ENABLED`, default false. Typed transfer/reversal refuse when false. No fallback to old writer. Dependencies and eligibility: see dispatch order.
+
+NEW `RepositoryTransferDocumentTest`, lane **backend-test-pgsql / WCASH-1 isolated PG**, exact command above.
+
+| Exact test | First assertion |
 |---|---|
-| `RepositoryTransferDocumentTest::test_same_gl_records_document_without_journal(): void` | Document count=1 and journal_entry_id null; exactly two legs, repository sums unchanged. |
-| `RepositoryTransferDocumentTest::test_cross_gl_records_one_balanced_journal(): void` | Document JE non-null; one posted JE with debit=credit=amount and exact source/destination accounts. |
-| `RepositoryTransferDocumentTest::test_retry_returns_original_document_without_writes(): void` | `assertSame(RepositoryTransferOutcome::AlreadyRecorded,$second->outcome)`; same ID, legs/JE/balances/ordinals unchanged. |
-| `RepositoryTransferDocumentTest::test_changed_payload_conflicts(): void` | Provider source/destination/amount/currency/notes: conflict exception carries original document ID; no money changes. |
-| `RepositoryTransferDocumentTest::test_different_actor_conflicts(): void` | Different authorized same-company actor: conflict with original ID, created_by unchanged, no new row. |
-| `RepositoryTransferDocumentTest::test_configuration_change_does_not_change_retry_identity(): void` | Append different defaults after commit; identical same-actor retry AlreadyRecorded with original evidence configuration revision. |
-| `RepositoryTransferDocumentTest::test_failure_after_legs_rolls_everything_back(): void` | Injected document-insert failure: assert complete pre-operation document/movement/JE/balance/ordinal snapshot equality. |
-| `RepositoryTransferDocumentTest::test_second_company_can_reuse_operation_uuid(): void` | Real registered B: assert B-owned document/legs with distinct group, same client UUID, no A balance effect. |
-| `RepositoryTransferDocumentTest::test_second_location_transfer_uses_selected_source(): void` | Assert out leg repository and document source location equal selected second branch. |
-| `RepositoryTransferDocumentTest::test_disabled_flag_never_calls_documentless_writer(): void` | Flag false before first use AND after recorded document: expect write-disabled exception and identical money snapshot. |
+| `test_same_gl_records_document_without_journal(): void` | Document count 1; JE null; exactly two legs. |
+| `test_cross_gl_records_one_balanced_journal(): void` | One posted JE; debit=credit=amount. |
+| `test_retry_returns_original_document_without_writes(): void` | Outcome AlreadyRecorded; IDs/snapshots unchanged. |
+| `test_changed_payload_conflicts(): void` | Conflict carries original document ID; no money change. |
+| `test_different_actor_conflicts(): void` | Different authorized actor conflicts; creator unchanged. |
+| `test_configuration_change_does_not_change_retry_identity(): void` | Retry returns original evidence revision. |
+| `test_failure_after_legs_rolls_everything_back(): void` | Complete snapshot equality. |
+| `test_second_company_can_reuse_operation_uuid(): void` | B owns independent document/group; A unchanged. |
+| `test_second_location_transfer_uses_selected_source(): void` | Document/out leg use selected location. |
+| `test_disabled_flag_never_calls_documentless_writer(): void` | Disabled exception; no changes. |
+| `test_system_first_submission_without_user(): void` | System document has null creator and one pair. |
+| `test_fiscal_system_terminal_provenance_is_validated(): void` | Foreign terminal/company/location refuses; no writes. |
+| `test_system_retry_is_already_recorded(): void` | Same system tuple returns same document. |
+| `test_system_authority_or_provenance_change_conflicts(): void` | Changed provenance conflicts; snapshot unchanged. |
+| `test_human_system_identity_swap_conflicts(): void` | Branch swap conflicts. |
+| `test_notes_canonical_equivalences_replay(): void` | Equivalent notes return AlreadyRecorded. |
+| `test_meaningful_notes_differences_conflict(): void` | Meaningful differences conflict. |
+| `test_1005_matches_raw_repository_movement_and_gl(): void` | Raw `1.005` equality everywhere; fourth decimal refused. |
 
-Convention-09 at T3 gate: test_second_company_can_reuse_operation_uuid; test_second_location_transfer_uses_selected_source; test_retry_returns_original_document_without_writes (AlreadyRecorded). No T6 dependency. Existing transfer regression command also runs: `php artisan test -c phpunit.xml --filter=RepositoryTransferServiceTest`, lane backend-test / SQLite regression. All referenced cases MUST use Common real-provisioning.
+NEW `RepositoryTransferCompatibilityTest`:
 
-Additional T3 red tests, same file/command:
+- `test_push_three_scalar_endpoint_preserves_current_behavior(): void`.
+- `test_push_three_typed_core_is_disconnected_and_disabled(): void`.
+- T5 replacements: `test_activation_removes_scalar_fallback(): void`, `test_flag_off_after_first_document_is_503_without_mutation(): void`.
 
-| Exact test method | First failing assertion |
-|---|---|
-| `RepositoryTransferDocumentTest::test_system_first_submission_without_user(): void` | ScheduledCommand intent, no CompanyContext/user: document initiator_kind System, created_by null, users count unchanged and one pair. |
-| `RepositoryTransferDocumentTest::test_fiscal_system_terminal_provenance_is_validated(): void` | Valid persisted terminal scope records system provenance; foreign terminal/company/source location refuses with zero writes. |
-| `RepositoryTransferDocumentTest::test_system_retry_is_already_recorded(): void` | Same stable system tuple + operation => AlreadyRecorded, same document, no extra money/users. |
-| `RepositoryTransferDocumentTest::test_system_authority_or_provenance_change_conflicts(): void` | Changed principal/authority/source UUID/terminal/source location conflicts with unchanged snapshots. |
-| `RepositoryTransferDocumentTest::test_human_system_identity_swap_conflicts(): void` | Same operation with other actor branch conflicts; no new document/user. |
-| `RepositoryTransferDocumentTest::test_notes_canonical_equivalences_replay(): void` | Canonical-equivalent notes replay with identical stored canonical value. |
-| `RepositoryTransferDocumentTest::test_meaningful_notes_differences_conflict(): void` | Case, accent, punctuation, meaningful character and zero-width differences conflict. |
-| `RepositoryTransferDocumentTest::test_1005_matches_raw_repository_movement_and_gl(): void` | After P0-b, TND raw SQL deltas equal `1.005`; companion assertion refuses a fourth operational decimal. |
+Document-per-action: T3 prepares; T5 removes only the Treasury draft-delete baseline entry from `document-per-action-baseline.json:34`. Exact commands:
 
-T3 compatibility test file NEW `apps/api/tests/Feature/Treasury/RepositoryTransferCompatibilityTest.php`: `test_push_three_scalar_endpoint_preserves_current_behavior(): void` and `test_push_three_typed_core_is_disconnected_and_disabled(): void`; command `php artisan test -c phpunit-pgsql.xml --filter=RepositoryTransferCompatibilityTest`. T5 replaces these with `test_activation_removes_scalar_fallback(): void` and `test_flag_off_after_first_document_is_503_without_mutation(): void`.
+```sh
+php artisan test --filter=DocumentPerActionBaselineRatchetTest
+php artisan test --filter=DocumentPerActionBaselineRatchetTest::the_working_baseline_never_grows_against_the_owner_pinned_blob
+```
 
-**Document-per-action baseline:** T3 prepares removal; T5 atomically removes only `app/Modules/Treasury/Application/Services/RepositoryTransferService.php::App\Modules\Treasury\Application\Services\RepositoryTransferService::transfer::journal_entries::delete#1` from `apps/api/tests/Architecture/baselines/document-per-action-baseline.json:34` after the legacy path is gone. Run `DocumentPerActionBaselineRatchetTest` and its protected-blob method with the owner-pinned CI variable from `.github/workflows/ci.yml:318`. No baseline growth or new pin.
-
-Gate: treasury-reviewer + tenancy-authz-reviewer inspect operation serialization, monetary snapshots, GL lock order and company identity. Rollback: block new transfers and roll forward; never delete recorded documents or posted JEs.
+Supply `DPA_BASELINE_PROTECTED_BLOB` from existing CI variable at `.github/workflows/ci.yml:318`; unset is incomplete. Gate: treasury-reviewer + tenancy-authz-reviewer. Rollback: block submissions and correct forward; never delete documents/JEs.
 
 ## T4 — Linked reversals and explicit frozen policy
 
-Production anchors: wrapper rejects either frozen repository at `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferService.php:46`; single-leg port allows explicitly flagged record-and-alert at `apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:91`; paired port currently hardcodes false at `:371`, `:391`, and event builder `:639`. Existing TransferIntent has no freeze/reversal fields (`apps/api/app/Modules/Treasury/Application/DTOs/TransferIntent.php:26`).
+Production anchors: wrapper freeze check `RepositoryTransferService.php:46`; single-leg explicit flag at `TreasuryMovementService.php:91`; paired port hardcodes false at `:371,391`; event builder `:639`; existing `TransferIntent.php:26`.
 
-Extend that constructor, retaining its complete existing parameter order: `__construct(string $fromRepositoryId, string $toRepositoryId, string $tenantId, string $companyId, string $amount, string $currency, string $transferGroupId, ?string $journalEntryId, ?CarbonImmutable $occurredAt, ?string $createdBy, ?string $notes, bool $allowWhileFrozen = false, ?string $reversesOutMovementId = null, ?string $reversesInMovementId = null)`. Extend private `buildTransferLegEvent(..., bool $recordedWhileFrozen, ?string $reversesMovementId): RepositoryMovementRecorded`; new out references original in and new in references original out.
+Extend `TransferIntent` preserving parameter order:
 
-Use existing v1 `RepositoryMovementRecorded` (`apps/api/app/Modules/Treasury/Domain/Events/RepositoryMovementRecorded.php:23`), whose constructor accepts reversesMovementId at :43 and audit payload emits it at :75. Do not edit the event class or version it. Compliance persists it through `apps/api/app/Modules/Compliance/Listeners/DomainEventSubscriber.php:1144`, registered at :1273.
+```php
+__construct(
+    string $fromRepositoryId,
+    string $toRepositoryId,
+    string $tenantId,
+    string $companyId,
+    string $amount,
+    string $currency,
+    string $transferGroupId,
+    ?string $journalEntryId,
+    ?CarbonImmutable $occurredAt,
+    ?string $createdBy,
+    ?string $notes,
+    bool $allowWhileFrozen = false,
+    ?string $reversesOutMovementId = null,
+    ?string $reversesInMovementId = null,
+)
+```
 
-Extend `RepositoryTransferReversalTest` with event and real-audit assertions; no fake intercepts the audit proof. Constructor-inject `RepositoryTransferFrozenWarningSink`; schedule `warn()` only through `DB::afterCommit` for each successfully recorded frozen leg. Marker is exactly `WCASH-1-FROZEN-TRANSFER:` with tenant, company, document, group, movement and repository IDs only.
+Extend private builder:
 
-NEW `Application/DTOs/RepositoryTransferReversalIntent.php`: `__construct(string $tenantId, string $companyId, string $originalDocumentId, string $operationUuid, ?string $sourceLocationId, string $explanation, CarbonImmutable $occurredAt, HumanTransferAuthorityData|SystemTransferAuthorityData $authority)`.
+```php
+buildTransferLegEvent(
+    string $movementId,
+    string $repositoryId,
+    TransferIntent $intent,
+    MovementDirection $direction,
+    string $balanceAfter,
+    int $ordinal,
+    ?string $journalEntryId,
+    CarbonInterface $occurredAt,
+    bool $recordedWhileFrozen,
+    ?string $reversesMovementId,
+): RepositoryMovementRecorded
+```
 
-Add `RepositoryTransferService::reverse(...): DocumentedRepositoryTransferResult` while disconnected; atomically rename the result at Push 5. Only full reversals. Serialize original identity, authorize the original destination as current reversal source, swap repositories, preserve amount/currency, link documents and opposite legs, retain original rows/JEs, refuse changed GL mapping and respect checkpoint/balance controls.
+New out reverses original in; new in reverses original out. Ordinary transfers pass null.
 
-Interactive HTTP always sets allowWhileFrozen=false. Internal true records and alerts. Replay produces no duplicate effect or alert. P0-b acceptance is required before T4 money tests. The temporary precision ceiling remains until the full removal condition in T3 is met; P0-b alone does not remove it.
+Use existing v1 `App\Modules\Treasury\Domain\Events\RepositoryMovementRecorded` (`RepositoryMovementRecorded.php:23`); constructor already accepts reversal ID at `:43` and audit payload emits it at `:75`. Do not edit event class/name/payload. Compliance persists payload through `DomainEventSubscriber.php:1144`, registered at `:1273`.
 
-Red-first files:
+Extend `RepositoryTransferReversalTest`:
 
-- NEW `apps/api/tests/Feature/Treasury/RepositoryTransferReversalTest.php`, command `php artisan test -c phpunit-pgsql.xml --filter=RepositoryTransferReversalTest`.
-- NEW `apps/api/tests/Feature/Treasury/RepositoryTransferFrozenPolicyTest.php`, command `php artisan test -c phpunit-pgsql.xml --filter=RepositoryTransferFrozenPolicyTest`.
+- `test_reversal_events_reference_original_opposite_legs(): void`.
+- `test_reversal_audit_rows_reference_original_opposite_legs(): void`.
+- `test_reversal_retry_emits_no_duplicate_audit_rows(): void`.
 
-Required reversal cases: append linked reversal; repeat returns original reversal; second operation refused; mapping change refused; second company independent; second-location current outflow custody; actor/explanation conflict; opposite-leg event references; real audit references; retry emits no duplicate audit.
+The warning sink is called through `DB::afterCommit` only after a new document is committed for each frozen leg. Extend `RepositoryTransferFrozenPolicyTest`:
 
-Required frozen cases: explicit frozen destination records and alerts once after commit; interactive frozen destination has no effect; retry returns original without warning; rollback warns zero.
+- `test_warning_sink_payload_is_exact_and_after_commit(): void`.
+- `test_rollback_and_retry_do_not_warn(): void`.
 
-Gate: treasury-reviewer + tenancy-authz-reviewer inspect compensation direction, current custody, immutable original and non-client-settable override. Rollback: disable new reversals; preserve all evidence and money rows.
+NEW `App\Modules\Treasury\Application\DTOs\RepositoryTransferReversalIntent`:
+
+```php
+__construct(
+    string $tenantId,
+    string $companyId,
+    string $originalDocumentId,
+    string $operationUuid,
+    ?string $sourceLocationId,
+    string $explanation,
+    CarbonImmutable $occurredAt,
+    HumanTransferAuthorityData|SystemTransferAuthorityData $authority,
+)
+```
+
+Add full public signature:
+
+```php
+RepositoryTransferService::reverse(
+    RepositoryTransferReversalIntent $intent,
+): DocumentedRepositoryTransferResult
+```
+
+At atomic activation, change return type to `RepositoryTransferResult` with transfer method/callers. Full reversal only; reject reversal-of-reversal, partial amount, duplicate reversal under another operation, foreign original and unauthorized current source. Lock original before operation. Authorize original destination as reversal source. Swap repositories, preserve amount/currency, create new group/document, link `reverses_document_id`, and link new legs to opposite original legs. Do not mutate original or old JE. Changed GL mapping throws correction-required.
+
+Interactive HTTP always uses `allowWhileFrozen=false`. Internal explicit true records both legs, marks only frozen legs and emits after-commit warning per frozen leg. Retry emits no duplicate effect/alert. No negative-balance/checkpoint bypass. Eligibility: see dispatch order.
+
+NEW `apps/api/tests/Feature/Treasury/RepositoryTransferReversalTest.php`, lane **backend-test-pgsql / WCASH-1 isolated PG**, command:
+
+```sh
+php artisan test -c phpunit-pgsql.xml --filter=RepositoryTransferReversalTest
+```
+
+| Exact test | First failing assertion |
+|---|---|
+| `test_reverse_appends_linked_document_and_preserves_original(): void` | Reversal links original; original bytes/JE unchanged; opposite legs exact. |
+| `test_repeat_reverse_returns_original_reversal(): void` | AlreadyRecorded; same ID; no extra rows. |
+| `test_second_reversal_operation_is_refused(): void` | Conflict with existing reversal; snapshot unchanged. |
+| `test_mapping_change_refuses_reversal(): void` | `RepositoryTransferCorrectionRequiredException`; no second document/JE. |
+| `test_second_company_reversal_is_independent(): void` | B restores its balances; A unchanged. |
+| `test_second_location_reversal_uses_current_outflow_custody(): void` | Allowed second branch succeeds; denial leaves snapshots unchanged. |
+| `test_reversal_actor_and_explanation_conflict(): void` | Changed actor/explanation conflicts; no extra leg. |
+
+NEW `apps/api/tests/Feature/Treasury/RepositoryTransferFrozenPolicyTest.php`, same lane, command:
+
+```sh
+php artisan test -c phpunit-pgsql.xml --filter=RepositoryTransferFrozenPolicyTest
+```
+
+| Exact test | First failing assertion |
+|---|---|
+| `test_explicit_frozen_destination_records_and_alerts(): void` | Destination leg marked frozen and one warning tied to document/group/repository. |
+| `test_interactive_frozen_destination_has_no_effect(): void` | `RepositoryFrozenException`; full snapshot unchanged. |
+| `test_retry_after_freeze_returns_original(): void` | AlreadyRecorded with same IDs and no new warning. |
+| `test_warning_sink_payload_is_exact_and_after_commit(): void` | Exact marker/keys; zero before commit. |
+| `test_rollback_and_retry_do_not_warn(): void` | Zero on rollback and no increment on replay. |
+
+Convention-09: `test_second_company_reversal_is_independent`, `test_second_location_reversal_uses_current_outflow_custody`, `test_repeat_reverse_returns_original_reversal`. Gate: treasury-reviewer + tenancy-authz-reviewer. Rollback: disable reversal submissions; preserve all evidence/provenance/money rows.
 
 ## T5 — Existing HTTP and web surfaces, generated types
 
-**Hard prerequisite W1-T-CUSTODY-AUTHZ:** before T5 starts, pin its implementation SHA, treasury-reviewer + tenancy-authz-reviewer acceptance, `treasury.manage_all_locations`/general_manager behavior and existing-tenant cache/grant evidence. Source spec: `docs/superpowers/specs/2026-09-05-parapharmacy-readiness-remediation-design.md:139,147`; current permission catalogue ends at `apps/api/database/seeders/RolesAndPermissionsSeeder.php:266`. No temporary permission.
+Verified files: Treasury routes `:35,102`; transfer controller `:21`; request `:21`; repository controller `:420`; `useTransferCash.ts:5`; `usePaymentRepositories.ts:7`; `RepositoryListPage.tsx:23`; `RepositoryDetailPage.tsx:27`; `PaymentForm.tsx:60`; `TransferCashModal.tsx:28,84`; web wrapper `routes/index.tsx:1937`.
 
-All three FormRequests implement `withValidator(Validator $validator): void`, compare raw top-level keys to explicit allowlists and add `__('messages.validation.unexpected_field')` for every unexpected field. Transfer allowlist: operation_uuid, transfer_group_id, from_repository_id, to_repository_id, amount, currency, notes. Reverse: operation_uuid, explanation. Custody: location_id, default_safe_repository_id, default_bank_repository_id, enabled, expected_revision. Add translations in en/fr/ar.
+**Hard prerequisite W1-T-CUSTODY-AUTHZ:** accepted source-custody/permission implementation for `docs/superpowers/specs/2026-09-05-parapharmacy-readiness-remediation-design.md:139,147`, with implementation SHA, treasury-reviewer + tenancy-authz-reviewer acceptance, `treasury.manage_all_locations` behavior and tenant cache/grant evidence. T5 eligibility: see dispatch order.
 
-Keep POST `/api/v1/payment-repositories/transfers`. `TransferRepositoryRequest::rules()` requires operation UUID/legacy equal alias, repositories, numeric-string positive amount matching `/^\d+(\.\d{1,4})?$/`, uppercase currency and optional notes. Service then enforces `min(country preset, OPERATIONAL_SCALE_CEILING)`, currently three. Unknown authority/freeze/timing/configuration fields are rejected.
+All three requests implement `withValidator(Validator $validator): void` using `after`, comparing raw top-level keys to explicit allowlists and adding `__('messages.validation.unexpected_field')`. Add translations in `apps/api/lang/{en,fr,ar}/messages.php`.
 
-NEW requests:
+Transfer allowlist: operation UUID/alias, from/to, amount, currency, notes. Reverse: operation UUID, explanation. Custody: location, safe, bank, enabled, expected revision. Arrays/objects fail scalar rules. Query keys are also checked.
 
-- `apps/api/app/Modules/Treasury/Presentation/Requests/ReverseRepositoryTransferRequest.php`.
-- `apps/api/app/Modules/Treasury/Presentation/Requests/SaveCashCustodyRequest.php`.
+Keep POST `/api/v1/payment-repositories/transfers`; controller calls HTTP adapter. Complete rules:
 
-Controller additions:
+- `operation_uuid`: required_without alias, UUID.
+- `transfer_group_id`: nullable UUID, deprecated alias.
+- from/to required UUID; to differs.
+- amount required string numeric gt:0, regex `/^\d+(\.\d{1,4})?$/`, max 16; service checks decimal(15,4) overflow and effective precision.
+- currency uppercase 3.
+- notes nullable string max 1000.
+- Both UUID names must match.
+- Authority/freeze/company/tenant/source-location/configuration/occurred/kind fields rejected.
+
+NEW `ReverseRepositoryTransferRequest`: authorize treasury.transfer; operation UUID required; explanation required normalized nonblank max 1000; everything else rejected.
+
+NEW `SaveCashCustodyRequest`: authorize repositories.manage; location UUID; safe present nullable UUID; bank present nullable/different UUID; enabled boolean; expected revision integer min 0; enabled requires safe.
+
+Controller signatures:
 
 - `RepositoryTransferController::show(Request $request, string $documentId): JsonResponse`.
 - `RepositoryTransferController::reverse(ReverseRepositoryTransferRequest $request, string $documentId): JsonResponse`.
 - `PaymentRepositoryController::saveCashCustody(SaveCashCustodyRequest $request, string $id): JsonResponse`.
 
-Add fixed UUID-constrained routes before generic repository routes and retain auth, tenant, permission and `module:Treasury` middleware.
+Routes: GET transfer document, POST reverse, PUT repository custody; fixed paths precede generic `{id}`. Preserve auth/team/tenant middleware and add case-sensitive `module:Treasury`.
 
-Index modes: omitted retains compatibility; `transfer_source` returns authorized active physical sources; `transfer_destination&from_repository_id=` scopes the source then returns authorized destinations or configured central safe/bank. NEW `RepositoryDestinationData::__construct(string $id, string $name, RepositoryType $type, string $currency)` exposes no balance/bank details.
+Index modes: omitted retains compatibility; `transfer_source` returns authorized active physical sources; `transfer_destination&from_repository_id=` returns allowed branch destinations or configured central safe/bank after source scoping. Return only NEW `RepositoryDestinationData::__construct(string $id, string $name, RepositoryType $type, string $currency)`.
 
-Document reads require repositories.view and authority over both historical source location and current source repository, or company-wide authority. Destination-only users receive no document link/evidence and direct 404. Destination balance_after is nullable when unreadable.
+Document read requires `repositories.view` plus authority over historical/current source, or company-wide authority. Destination-only access does not grant evidence. Unreadable links are omitted; direct access returns 404. Destination balance is nullable in success response when not readable.
 
-HTTP contracts:
+Statuses/envelopes:
 
-- New transfer/reversal: 201.
-- Exact replay: 200 already_recorded.
-- Document GET: 200.
-- Configuration saved/unchanged: 200.
-- Transfer conflict: 409 with authorized document_id.
-- Revision conflict: 409 with current_revision.
-- Precision ceiling: exact translated 422 with `error.code`, `amount`, `effective_scale`.
-- Accessible legacy group without document: 409/document_id null.
-- Scoped miss: 404 without IDs.
-- Permission/module: 403.
-- Unauthenticated: 401.
-- Typed business refusal: 422.
-- Flag false: 503, no fallback.
+- New transfer/reversal 201.
+- Exact replay 200.
+- Document GET 200.
+- Save/unchanged 200.
+- Transfer conflict 409 with readable document ID.
+- Revision conflict 409 with current revision.
+- Precision 422 exact translated envelope.
+- Accessible legacy no-document 409 with null ID.
+- Inaccessible source 404.
+- Validation 422.
+- Module/action denied 403; unauthenticated 401.
+- Frozen/inactive/type/currency/checkpoint/balance 422.
+- Flag false 503.
+- No private IDs in unauthenticated/forbidden/scoped-miss.
 
-NEW transport DTOs:
+NEW transport constructors:
 
 - `RepositoryTransferRequestData::__construct(string $operation_uuid, string $from_repository_id, string $to_repository_id, string $amount, string $currency, ?string $notes)`.
 - `RepositoryTransferResponseData::__construct(RepositoryTransferDocumentData $document, RepositoryTransferOutcome $outcome, string $transfer_group_id, ?string $journal_entry_id, bool $idempotent_replay, RepositoryTransferLegData $out, RepositoryTransferLegData $in)`.
 - `RepositoryTransferLegData::__construct(string $movement_id, ?string $balance_after, string $repository_id)`.
-- `PaymentRepositoryData::__construct(string $id, string $code, string $name, RepositoryType $type, bool $allow_negative, ?string $bank_id, ?string $bank_name, ?string $account_number, ?string $iban, ?string $bic, string $balance, string $currency, bool $is_active, ?string $gl_account_id, ?RepositoryGlAccountData $gl_account, ?string $location_id, ?string $location_name, RepositoryBankValidationData $bank_account_validation, ?CashCustodyConfigurationData $cash_custody)`.
+
+NEW `PaymentRepositoryData` constructor:
+
+```php
+__construct(
+    string $id,
+    string $code,
+    string $name,
+    RepositoryType $type,
+    bool $allow_negative,
+    ?string $bank_id,
+    ?string $bank_name,
+    ?string $account_number,
+    ?string $iban,
+    ?string $bic,
+    string $balance,
+    string $currency,
+    bool $is_active,
+    ?string $gl_account_id,
+    ?RepositoryGlAccountData $gl_account,
+    ?string $location_id,
+    ?string $location_name,
+    RepositoryBankValidationData $bank_account_validation,
+    ?CashCustodyConfigurationData $cash_custody,
+)
+```
+
+Nested:
+
 - `RepositoryGlAccountData::__construct(string $id, string $code, string $name)`.
 - `RepositoryBankValidationData::__construct(?RibValidationResult $rib, ?IbanValidationResult $iban, ?bool $bic_valid)`.
 
-Durable history updates `RepositoryMovementController`, NEW `RepositoryMovementData`, `useRepositoryMovements`, `RepositoryMovementsTab` and `RepositoryDetailPage`. Preserve every current movement field and add nullable `transfer_document_id`/`href`. Batch resolve by tenant/company/group and apply document-read policy.
+Durable history exact files:
 
-Generated types remain ambient `App.*`. Add `/// <reference path="../../../packages/shared/types/generated.d.ts" />` to POS vite-env. Replace repository response shadows throughout the enumerated web/POS consumers with generated aliases/Picks, including StatementUploadWizard/ListPage, repository pages/forms/hooks/modals, POS APIs/types/sync and device SQLite adapter. No runtime POS behavior or device build changes.
+- `RepositoryMovementController.php:36,101`.
+- NEW `RepositoryMovementData.php`.
+- `useRepositoryMovements.ts:38`.
+- `RepositoryMovementsTab.tsx:58`.
+- `RepositoryDetailPage.tsx:229`.
 
-Add `data-feature="wcash-1-custody-transfer-v2"` to the repository detail custody/document section. Preserve operation UUID across ambiguous retries, freeze submitted intent until resolved, reset on tenant/company switch, use unwrapped API results, money strings, translations and scoped cache keys.
+`RepositoryMovementData` preserves all current fields and adds nullable transfer document ID/href. Resolve documents by tenant/company/group in batch. Both authorized leg histories discover same document. Href points to existing repository detail with query ID. Destination-only sees null and show 404. Legacy groups stay unlinked.
 
-Required backend endpoint tests include branch/source 404, UUID oracle prevention, retry after configuration change, different-actor conflict, central reverse denial, module-off denial, forged freeze denial, destination omission, document-read policy, exact precision 422, status matrix, second company, second location and explicit retry outcome.
+Generated-global wiring: web already references `packages/shared/types/generated.d.ts`; add identical relative triple-slash reference to `apps/pos/src/vite-env.d.ts`. Use fully qualified ambient `App.Modules.Treasury.Application.DTOs.PaymentRepositoryData` or Picks. No named import from generated file.
 
-Required web tests cover returned document/replay outcome, stable retry UUID, central destination balance omission, second-location custody save and company-switch reset. Generated typecheck fixtures assert exact ambient aliases for web and POS. POS storage regression asserts unchanged cached row conversion.
+Update:
 
-Additional backend tests reject arbitrary unknown transfer/reverse/custody fields and forged system authority; verify final controller typed signature and no scalar callers. NEW `RepositoryTransferHistoryTest` covers both authorized legs, destination-only omission and system-authored document reads. Web movement tests cover persisted links after reload and destination-only omission.
+- `StatementUploadWizard.tsx:26`.
+- `StatementListPage.tsx:56`.
+- `RepositoryListPage.tsx:23`.
+- `RepositoryDetailPage.tsx:27`.
+- `PaymentForm.tsx:60`.
+- `SplitPaymentForm.tsx:27`.
+- `usePaymentRepositories.ts:7`.
+- `useRemittances.ts:9`.
+- `RecordPaymentModal.tsx:28`.
+- `AddRepositoryModal.tsx:41`.
+- web POS repository API `:9`.
+- `apps/pos/src/types/payment.ts:27`.
+- `InstrumentDetailPage.tsx:134`.
+- `AdvancedPaymentsModal.tsx:185`.
+- POS payment API `:9`.
+- POS sync service `:1256`.
+- `TransferCashModal.tsx:15`.
+- `useTransferCash.ts:5`.
 
-Gate: treasury-reviewer + tenancy-authz-reviewer + frontend-conventions review and React Doctor finishing workflow. Rollback: disable action UI/HTTP writes together; retain document reads/schema; never restore documentless writes after first use.
+Device storage alias becomes generated-derived `Omit<PaymentRepository,'is_active'|'type'> & {is_active:number;type:string}`; preserve row conversion/query behavior.
+
+Add `data-feature="wcash-1-custody-transfer-v2"` to custody/document section. Preserve one operation UUID across retries, freeze intent after ambiguous failure, reset on tenant/company change, use already-unwrapped `apiPost`, retain money strings and query invalidation.
+
+NEW `RepositoryTransferEndpointTest`, command/lane:
+
+```sh
+php artisan test -c phpunit-pgsql.xml --filter=RepositoryTransferEndpointTest
+```
+
+Lane: **backend-test-pgsql / WCASH-1 isolated PG**.
+
+Required methods include scoped source 404, foreign UUID oracle denial, replay after config change, actor conflict, central reverse denial, module-off refusal, frozen override rejection, destination-field minimization, document-read scope, exact precision 422, status matrix, real second company, second location and exact retry.
+
+Precision first assertion:
+
+```php
+$response->assertStatus(422)->assertExactJson([
+    'message' => __('treasury.transfer.precision_exceeds_ledger_scale'),
+    'error' => [
+        'code' => RepositoryTransferPrecisionCeilingException::CODE,
+        'amount' => '1.0005',
+        'effective_scale' => 3,
+    ],
+]);
+```
+
+Then assert `error` has exactly those three keys and document/movement/repository/JE snapshots are unchanged.
+
+Web Vitest command:
+
+```sh
+pnpm exec vitest run src/features/treasury/hooks/useTransferCash.test.ts src/features/treasury/RepositoryListPage.transferIntegration.test.tsx src/features/treasury/components/TransferCashModal.test.tsx src/features/treasury/RepositoryDetailPage.custody.test.tsx
+```
+
+Tests assert explicit replay outcome, same operation UUID, document link, no central balance, second-location defaults and company-switch reset.
+
+Frontend-types lane:
+
+```sh
+php artisan typescript:transform
+pnpm --filter @autoerp/web typecheck
+pnpm --filter @autoerp/pos typecheck
+```
+
+NEW compile fixtures:
+
+- `apps/web/src/features/treasury/__tests__/repositoryGeneratedContract.typecheck.ts`.
+- `apps/pos/src/types/paymentRepositoryGeneratedContract.typecheck.ts`.
+
+POS storage regression:
+
+```sh
+pnpm exec vitest run src/lib/db/repositories/paymentRepository.generatedContract.test.ts
+```
+
+Additional backend tests reject arbitrary transfer/reverse/custody keys and forged system fields with `errors.<key>.0 === __("messages.validation.unexpected_field")`, unchanged snapshots, and prove controller uses typed signature after scalar removal.
+
+NEW `RepositoryTransferHistoryTest`, command:
+
+```sh
+php artisan test -c phpunit-pgsql.xml --filter=RepositoryTransferHistoryTest
+```
+
+Methods cover both histories sharing document, destination-only omission/show404 and system document readability without a user.
+
+NEW web history test command:
+
+```sh
+pnpm exec vitest run src/features/treasury/components/RepositoryMovementsTab.transferDocument.test.tsx src/features/treasury/RepositoryDetailPage.custody.test.tsx
+```
+
+Gate: treasury-reviewer + tenancy-authz-reviewer + frontend-conventions and React Doctor finishing workflow. Rollback: disable action UI/HTTP writes together; retain document reads/schema; never restore documentless writing.
 
 ## T6 — PostgreSQL proof and deployment handback
 
-Verified anchors: PG lane `apps/api/phpunit-pgsql.xml:1`; registration fixture `apps/api/tests/Feature/Tenant/TenantInitializationTest.php:158`; second-company path `apps/api/tests/Feature/Treasury/CompanyPaymentRepositoryProvisioningTest.php:95`; catalogue ratchet `apps/api/tests/Architecture/TenantOnlyUniqueOnCatalogueTablesRatchetTest.php:212,254`.
+Verified anchors: PG lane `apps/api/phpunit-pgsql.xml:1`; registration fixture `TenantInitializationTest.php:158`; second-company path `CompanyPaymentRepositoryProvisioningTest.php:95`; unique ratchet `TenantOnlyUniqueOnCatalogueTablesRatchetTest.php:212,254`.
 
-NEW `apps/api/tests/Feature/Treasury/CashCustodySecondOfEverythingTest.php`:
-
-- `test_registered_second_company_can_reuse_operation_uuid(): void`.
-- `test_selected_second_pos_location_keeps_its_own_custody(): void`.
-- `test_rerun_configuration_and_transfer_are_explicit(): void`.
-
-NEW `apps/api/tests/Integration/Treasury/RepositoryTransferDocumentConcurrencyTest.php`:
-
-- `test_concurrent_same_operation_commits_one_document(): void`.
-- `test_opposing_transfers_preserve_lock_order(): void`.
-- `test_concurrent_reverse_commits_once(): void`.
-- `test_company_uuid_reuse_does_not_collide(): void`.
-
-NEW `apps/api/tests/Integration/Treasury/CashCustodyTopologyTest.php`:
-
-- `test_db_per_tenant_and_compatibility_scope_are_equivalent(): void`.
-- `test_migrations_are_repeatable_and_empty_down_up_is_safe(): void`.
-
-Run `TenantOnlyUniqueOnCatalogueTablesRatchetTest`; classify configurations as catalogue and documents as immutable evidence without ceiling growth.
-
-NEW Playwright `apps/web/e2e/treasury-cash-custody-transfer.spec.ts`, test `second branch custody and transfer evidence`, on private API :8011 and Vite :5174. It verifies configure/transfer, stable retry, linked reversal, wrong-branch denial and company-switch reset.
-
-Local host verification:
+NEW `CashCustodySecondOfEverythingTest`, command:
 
 ```sh
-PREFLIGHT_TEST_PATHS='tests/Feature/Treasury/CashCustodySchemaTest.php tests/Feature/Treasury/CashCustodyConfigurationTest.php tests/Feature/Treasury/CashCustodyCensusCommandTest.php tests/Feature/Treasury/RepositoryTransferDocumentTest.php tests/Feature/Treasury/RepositoryTransferReversalTest.php tests/Feature/Treasury/RepositoryTransferFrozenPolicyTest.php tests/Feature/Treasury/RepositoryTransferEndpointTest.php tests/Feature/Treasury/CashCustodySecondOfEverythingTest.php' ./scripts/preflight.sh
+php artisan test -c phpunit-pgsql.xml --filter=CashCustodySecondOfEverythingTest
 ```
 
-Run all focused PG integration commands, SQLite transfer regressions, type generation, web/POS typechecks, focused Vitest and Playwright. Full suite remains VPS/CI: `pnpm build`, `pnpm lint`, `pnpm test`, `pnpm typecheck`, web e2e, `composer test`, PHPStan and Pint. Skips are incomplete, not green.
+| Test | First assertion |
+|---|---|
+| `test_registered_second_company_can_reuse_operation_uuid(): void` | B document belongs to B with distinct group and same UUID. |
+| `test_selected_second_pos_location_keeps_its_own_custody(): void` | Real second POS location owns configured drawer/safe and attribution. |
+| `test_rerun_configuration_and_transfer_are_explicit(): void` | Unchanged + AlreadyRecorded, same IDs/counts/balances. |
 
-Gate: treasury-reviewer + tenancy-authz-reviewer approve PG evidence, second-company registration and denial snapshots. NEW handback `docs/handoff/HANDBACK-WCASH-1-2026-09-06.md` records implementation SHA, red/green commands, screenshots, migrations/censuses and reviews.
+NEW `RepositoryTransferDocumentConcurrencyTest`, command:
+
+```sh
+php artisan test -c phpunit-pgsql.xml --filter=RepositoryTransferDocumentConcurrencyTest
+```
+
+| Test | First assertion |
+|---|---|
+| `test_concurrent_same_operation_commits_one_document(): void` | Count 1, two legs, zero/one JE, Recorded/AlreadyRecorded. |
+| `test_opposing_transfers_preserve_lock_order(): void` | Both complete before timeout; exact net balances/ordinals. |
+| `test_concurrent_reverse_commits_once(): void` | One reversal; retry/rejection outcomes exact. |
+| `test_company_uuid_reuse_does_not_collide(): void` | Independent company documents/groups; other balance unchanged. |
+
+NEW `CashCustodyTopologyTest`, command:
+
+```sh
+php artisan test -c phpunit-pgsql.xml --filter=CashCustodyTopologyTest
+```
+
+| Test | First assertion |
+|---|---|
+| `test_db_per_tenant_and_compatibility_scope_are_equivalent(): void` | Foreign lookup 404 in both; wrong inserts 23503; snapshots unchanged. |
+| `test_migrations_are_repeatable_and_empty_down_up_is_safe(): void` | First apply succeeds; second Nothing-to-migrate; empty down/up restores definitions. |
+
+Ratchet command:
+
+```sh
+php artisan test -c phpunit-pgsql.xml --filter=TenantOnlyUniqueOnCatalogueTablesRatchetTest
+```
+
+Classify `cash_custody_configurations` as catalogue and `repository_transfer_documents` as immutable evidence; no waiver/ceiling increase.
+
+NEW Playwright test `apps/web/e2e/treasury-cash-custody-transfer.spec.ts`, test `second branch custody and transfer evidence`. First assertion after configure/transfer is visible document ID and selected second branch; retry retains ID, reversal links original, wrong branch denied, company switch clears state. Command/lane:
+
+```sh
+pnpm --dir apps/web exec playwright test e2e/treasury-cash-custody-transfer.spec.ts
+```
+
+Lane: **web-e2e / private WCASH-1 stack**, API `:8011`, Vite `:5174`, output outside Vite root.
+
+Convention-09 methods are the three `CashCustodySecondOfEverythingTest` cases above. Concurrency uses committed processes/barriers. PG inability is incomplete, never replaced by SQLite.
+
+Local preflight:
+
+```sh
+PREFLIGHT_TEST_PATHS='tests/Feature/Treasury/CashCustodySchemaTest.php tests/Feature/Treasury/CashCustodyConfigurationTest.php tests/Feature/Treasury/CashCustodyCensusCommandTest.php tests/Feature/Treasury/RepositoryTransferDocumentTest.php tests/Feature/Treasury/RepositoryTransferReversalTest.php tests/Feature/Treasury/RepositoryTransferFrozenPolicyTest.php tests/Feature/Treasury/RepositoryTransferEndpointTest.php tests/Feature/Treasury/CashCustodySecondOfEverythingTest.php tests/Integration/Treasury/RepositoryTransferDocumentConcurrencyTest.php tests/Integration/Treasury/CashCustodyTopologyTest.php' ./scripts/preflight.sh
+```
+
+SQLite regression:
+
+```sh
+php artisan test -c phpunit.xml --filter='RepositoryTransferServiceTest|RepositoryTransferEndpointTest'
+```
+
+Full VPS/CI:
+
+```sh
+pnpm build
+pnpm lint
+pnpm test
+pnpm typecheck
+pnpm --filter @autoerp/web test:e2e
+cd apps/api
+composer test
+./vendor/bin/phpstan
+./vendor/bin/pint --test
+```
+
+Attach actual errors/skips/screenshots; skipped PHPUnit is not green.
+
+Gate: treasury-reviewer + tenancy-authz-reviewer approve PG evidence, second-company registration and denial snapshots. Rollback: verification/handback only; preserve evidence, revert no production state. Remove only disposable isolated test databases/fixtures through their test-harness teardown. NEW `docs/handoff/HANDBACK-WCASH-1-2026-09-06.md` records implementation SHA, red/green commands, screenshots, migration/census output and reviewer findings. No implementation or reviewer gate ran in this planning assignment.
 
 ## Deployment — canonical manifest variables
 
 > Deployment follows `docs/superpowers/plans/2026-09-06-parapharmacy-staging-push-manifest.md`
 > (five-push sequence §2, web block §3, gate checklist §4). This slice supplies only the variables
-> below; it does not restate deploy mechanics. Dispatch P0-a, T1 and T2 now. P0-b is dispatchable
-> once P0-a contains the accepted detector and every inventoried tenant reports zero; after accepted P0-b, deploy WCASH and dispatch T3–T6.
+> below; it does not restate deploy mechanics.
 
 | Variable | WCASH-1 value |
 |---|---|
-| `<slice>` | `wcash-1`; the authoritative precision prerequisite uses `<slice>=precision-4`. |
-| **Migrations list** | P0-a: none. P0-b only: `apps/api/database/migrations/tenant/2026_09_07_100000_widen_gl_and_repository_balance_columns_to_scale_4.php`, non-additive, self-guarding and standalone after accepted P0-a detector evidence is zero. WCASH additive files: `2026_09_06_210000_create_cash_custody_configurations.php`, then `2026_09_06_210100_create_repository_transfer_documents.php`. |
-| **Flags** | P0: none. WCASH: NEW `treasury.repository_transfer_documents_enabled` / `TREASURY_REPOSITORY_TRANSFER_DOCUMENTS_ENABLED` / `apps/api/config/treasury.php` / false. Existing variance flag remains false. |
-| **Commands** | P0-a: NEW `treasury:census-money-precision {--tenant=} {--json}`, standalone, marker `MONEY-PRECISION CENSUS`; run per tenant and fleet aggregate; exact human key `fourth_decimal_present=<n>` and JSON key `fourth_decimal_present`. P0-b: rolling migration or exact compatibility-mode path. WCASH: NEW `treasury:census-cash-custody {--tenant=} {--company=} {--require-ready} {--json}`, standalone, marker `WCASH-1-CUSTODY:`. |
-| **Censuses** | P0-a: complete `MONEY-PRECISION CENSUS` evidence, exact source tuples, all five classifications, and per-tenant/per-column `fourth_decimal_present` counts plus sample IDs; count must be zero, and non-zero blocks P0-b. P0-b: post-census, four exact scale-four tuples, unchanged casts, zero detector and classified follow-up list; also run `treasury:reconcile --tenant=<uuid>` and `tenant:census-day-one`. WCASH Push 1/4 retain day-one and POS VAT census requirements. |
-| **Web changes** | P0: none. WCASH: yes; canonical web block, `<slice-unique-string>=wcash-1-custody-transfer-v2`, served hash/fingerprint before activation. |
-| **Device build** | No. POS changes are type-only aliases/serialization adapters. |
-| **Queues** | None. |
-| **Collapsed pushes** | P0-a is precision-4 Push 1 census-only. P0-b is a separate non-additive Push 2 exception after the accepted detector is present and zero for every inventoried tenant; the benchmark exists and provisional owner ruling is recorded, so there is no further cast-decision hold. It is not collapsed with WCASH. T1/T2 implementation dispatches now but WCASH deployment starts only after accepted P0-b. No canonical WCASH push is collapsed. T3–T6 dispatch only after accepted P0-b. |
-| **Env path** | P0 adds none. WCASH candidate remains Dokploy Environment tabs; U-1 must verify actual delivery/topology. |
-| **Host-side backup** | P0-a none. P0-b: `/root/backup-precision-4-<database>-<UTC>.dump` per actual physical DB, non-zero and restore-readable. WCASH: `/root/backup-wcash-1-<UTC>.dump` before Push 2 and Push-4 writes. |
-| **Rollback point per push** | P0-a revert tooling/preserve evidence. P0-b transaction rollback before commit; after commit retain scale-four schema and scale-three casts, never narrow. WCASH rollback remains forward-only after evidence/money use. |
+| `<slice>` | `wcash-1`; precision prerequisite uses authoritative lane identifier `precision-4`. |
+| **Migrations list** | P0-a none. P0-b only `2026_09_07_100000_widen_gl_and_repository_balance_columns_to_scale_4.php`, non-additive/self-guarding. WCASH additive: `2026_09_06_210000_create_cash_custody_configurations.php`, then `2026_09_06_210100_create_repository_transfer_documents.php`. |
+| **Flags** | P0 none. WCASH NEW `treasury.repository_transfer_documents_enabled` / `TREASURY_REPOSITORY_TRANSFER_DOCUMENTS_ENABLED`, default false. Existing variance flag remains false. |
+| **Commands** | P0-a NEW `treasury:census-money-precision {--tenant=} {--json}`, standalone, marker `MONEY-PRECISION CENSUS`. P0-b rolling/per-tenant migration or shared exact path. WCASH NEW `treasury:census-cash-custody {--tenant=} {--company=} {--require-ready} {--json}`, marker `WCASH-1-CUSTODY:`. |
+| **Censuses** | At Push 1 and Push 4, capture `php artisan tenants:run tenant:census-day-one --option='fail-on-drift=1' 2>&1 \| tee /tmp/wcash-1-day-one-p{1,4}.log` and `php artisan tenants:run pos:census-vat-legs 2>&1 \| tee /tmp/wcash-1-vatlegs-p{1,4}.log`. Build `/tmp/wcash-1-expected-tenants.txt` from the U-2 inventory as sorted unique canonical UUIDs before either run. For day-one, pass grep is `grep -E '^DAY-ONE CENSUS [0-9a-f-]{36} [0-9a-f-]{36}: CLEAN$'`; fail if `grep -Eq 'DRIFT\\(|NO-COMPANY|DAY-ONE CENSUS: .*valid UUID|DAY-ONE CENSUS: company .* does not exist'` matches, if any expected tenant lacks at least one CLEAN line, or if any observed tenant UUID is outside the expected set. Extract observed day-one tenant UUIDs with `sed -nE 's/^DAY-ONE CENSUS ([0-9a-f-]{36}) .*/\\1/p' \| sort -u` and require `diff -u /tmp/wcash-1-expected-tenants.txt /tmp/wcash-1-day-one-observed.txt` empty. For POS VAT, per-tenant pass marker is exact prefix `POS output-VAT leg census: none` (`PosReceiptVatLegCensusCommand.php:336`); fail grep is `POS output-VAT leg census: [1-9][0-9]* receipt` (`:342`), any `FAILED|ERROR|exception`, any missing expected tenant wrapper/verdict, or unexpected tenant. Extract Stancl `Tenant: <uuid>` wrappers into a sorted set and require exact diff against `/tmp/wcash-1-expected-tenants.txt`; additionally require exactly one clean POS marker between each expected tenant wrapper and the next wrapper. Never trust `tenants:run` exit status. P0-a separately requires one `MONEY-PRECISION CENSUS tenant=<uuid>` verdict for each exact expected UUID plus aggregate output; pass requires exit 0, complete=true and `fourth_decimal_present=0` per tenant; non-zero detector or missing/duplicate/unexpected UUID fails. WCASH direct census baseline permits NOT_READY but not ERROR/incomplete; Push 4 adds `--require-ready` and requires READY, marker, complete=true, and expected_companies=visited_companies. |
+| **Web changes** | P0 none. WCASH yes; canonical §3 with `<slice>=wcash-1`, fingerprint `wcash-1-custody-transfer-v2`; record asset hash and grep ≥1. |
+| **Device build** | No. POS edits are compile-time/generated-derived aliases only. |
+| **Queues** | None. No listener/projector/Horizon change. |
+| **Collapsed pushes** | P0-a/P0-b remain distinct; none of five WCASH pushes collapse. P1 census/DTOs; P2 additive schema; P3 disconnected default-false writer + dormant web; P4 configuration/census/evidence; P5 activation. Operative sequencing: see dispatch order. |
+| **Env path** | P0 adds none. Candidate WCASH path is separate Dokploy Environment tabs; U-1 must verify. If compose, add declared env to `x-api-env` and apply manifest plumbing push. |
+| **Host-side backup** | P0-a none. P0-b `/root/backup-precision-4-<database>-<UTC>.dump` per physical DB. WCASH `/root/backup-wcash-1-<database>-<UTC>.dump` before Push 2 and writes. Verify non-zero and restore-readable. |
+| **Rollback point per push** | P0-a revert tooling/preserve evidence. P0-b transaction rollback before commit; after commit retain scale-four schema and scale-three casts. WCASH P1 revert tooling; P2 retain additive schema; P3 revert disconnected additions only while document count zero; P4 preserve revisions/append corrections; P5 flag false refuses writes while retaining reads/documents/legs/JE and never restoring legacy writer. |
 
-**Promotion preconditions:** U-1 topology/env, U-2 tenancy mode/migration execution and U-5 backup targets must be evidenced. P0-a reviewer evidence is required, including the detector contract and zero per-tenant results; any non-zero `fourth_decimal_present` count blocks P0-b. The benchmark note exists and owner row A10 provisionally rules option A, so P0-b is dispatchable after that P0-a condition, then requires backup, accepted SHA, raw `1.0005` tests, exact tuples and post-census. T1/T2 can be implemented now but their deployment waits for P0-b. T3–T6 do not dispatch until P0-b acceptance. T5 also requires accepted W1 authorization. The four Eloquent casts stay `decimal:3`; cast widening is a separate all-19 future lane conditioned on a 4-dp preset actually existing, and no ceiling removal follows from P0-b.
+Promotion requires U-1 topology/env proof, U-2 actual tenancy topology/migration proof and U-5 backup-target proof. P0 detector, migration and W1 acceptance are technical prerequisites. Operative sequencing: see dispatch order.
 
 ### Canonical manifest §4 gate checklist — verbatim
 
@@ -737,24 +1442,28 @@ Gate: treasury-reviewer + tenancy-authz-reviewer approve PG evidence, second-com
 
 ## Dispatch order and verification checklist
 
-Dispatch **P0-a precision census tooling, T1 and T2 now**. P0-a must include the accepted `fourth_decimal_present` detector and capture every tenant’s per-column counts/sample IDs. The benchmark note exists and owner row A10 provisionally selects option A, so **P0-b is dispatchable once the detector is in P0-a and every inventoried tenant reports zero**; non-zero blocks P0-b. Promote P0-b with backups and topology-specific migration proof. Only after accepted P0-b dispatch **T3 → T4 → T5 → T6**. T1/T2 retain one combined acceptance after the real writer rerun and deploy only after P0-b. T5 remains held for W1-T-CUSTODY-AUTHZ. Use isolated worktrees and coordinate shared files; this planning assignment performs no Git write.
+**Binding dispatch order:** dispatch P0-a, T1 and T2 now; dispatch P0-b after `fourth_decimal_present` ships in P0-a and every required per-tenant detector result is zero/accepted—the owner’s provisional A10 cast ruling is given; dispatch T3–T6 only after accepted P0-b. T1/T2 retain one combined acceptance and their deployment follows the accepted P0-b package. T5 also requires accepted W1-T-CUSTODY-AUTHZ implementation/reviewer SHAs and tenant permission/cache rollout. Use isolated worktrees and coordinate shared files; this planning assignment performs no Git write.
 
-- [ ] HEAD `1e8eb5e51568127815da0a767c62f8ed11dadfac` and every existing seam reverified; NEW paths remain proposals until implemented.
-- [ ] Ten benchmark rows, glossary additions, Q11–Q13 verbatim and all explicit deferrals retained.
-- [ ] Dispatch P0-a, T1 and T2 now; P0-b is dispatchable after the detector is accepted in P0-a and every inventoried tenant reports zero; do not dispatch T3–T6 before accepted P0-b.
-- [ ] P0-a contains only `MoneyPrecision*` census code, `MoneyColumnShapeData`, five-case `MoneyColumnClassification`, command `treasury:census-money-precision`, marker `MONEY-PRECISION CENSUS`, the exact `fourth_decimal_present` output shape/hard stop, and `MoneyPrecisionCensusCommandTest`.
-- [ ] P0-a per-tenant/fleet output captured; all five classifications proven, including Geometry for `pos_tables.*`; detector counts/sample IDs captured for all four target columns; non-zero exits 1 and blocks P0-b; the named port-GUC `1.0005` red PG test passes; all Money findings written to `2026-09-07-money-columns-below-scale-4-followup.md`.
-- [ ] P0-b accepts only exact `(15,3,NO,0)` / `(15,3,YES,NULL)` or compliant `(15,4,…)`; scale two asserts `unexpected_column_shape`, no DDL and unchanged rows/schema.
-- [ ] P0-b uses `2026_09_07_100000_widen_gl_and_repository_balance_columns_to_scale_4.php`, `GlAndRepositoryBalanceScale4Test.php`, `MoneyStorageScale4RatchetTest.php`, raw `1.0005` proof, backups and physical postchecks.
-- [ ] All four Eloquent casts remain `decimal:3` under provisional owner row A10; the standing detector remains green; the migration docblock and precision contract carry the complete Amendment-B evidence/citations; cast widening is a separate all-19 future lane only when a 4-dp preset actually exists.
-- [ ] `OPERATIONAL_SCALE_CEILING = 3` remains until the separately accepted movement-ledger widening, cast, guard and PG-test condition is complete.
-- [ ] Complete schemas, typed JSONB evidence, enums, company ownership and append-only guards proven on PostgreSQL.
-- [ ] Every active-drawer location has a valid enabled safe; missing bank remains visible; no guessed defaults.
+- [ ] HEAD `55bf3d14204363ab857738f785a3c405100da9db` and every existing seam reverified; NEW paths remain proposals.
+- [ ] Ten benchmark rows, glossary additions, Q11–Q13 verbatim and explicit deferrals retained.
+- [ ] Binding order above followed; all other sequencing text is historical/superseded or a cross-reference to this section.
+- [ ] P0-a contains only authoritative `MoneyPrecision*` census code, five-case classification, marker and detector.
+- [ ] Every expected tenant UUID has exactly one detector verdict; non-zero/missing/duplicate/unexpected tenant blocks.
+- [ ] P0-b accepts only exact scale-three or compliant scale-four tuples; scale two refuses before DDL.
+- [ ] P0-b uses the authoritative migration/test/ratchet names, raw `1.0005` proof, backups and physical postchecks.
+- [ ] Four Eloquent casts remain `decimal:3`; standing detector remains green; full Amendment-B evidence is in docblock/precision contract.
+- [ ] Company-bound scale factory crosses boundaries only through `CompanyCurrencyScaleResolverFactoryInterface`; Deptrac and exact architecture test pass.
+- [ ] Precision validation is the first policy operation after resolving company country scale.
+- [ ] `OPERATIONAL_SCALE_CEILING=3` remains until separately accepted movement-ledger widening.
+- [ ] Complete schemas, typed evidence, enums, ownership and append-only guards proven on PostgreSQL.
+- [ ] Every active-drawer location has valid enabled safe; missing bank remains visible; no guessed defaults.
 - [ ] Real registration, second company, second location and explicit rerun outcomes proven.
-- [ ] One document, one group and exactly two cross-linked legs; same GL zero JE, cross GL one posted balanced JE.
-- [ ] Conflicting/concurrent retries, partial failure, changed GL mapping, reversed custody and legacy aliases tested.
-- [ ] Original preserved; exactly one linked full reversal; original and compensating JEs remain auditable.
-- [ ] Frozen internal override records/alerts after commit; HTTP cannot request it; replay emits no duplicate.
-- [ ] Scoped source denial leaves document/movement/JE/balance/ordinal snapshots unchanged.
-- [ ] Routes/actions are module-gated; only HTTP resolves user location authority; internal intents carry explicit authority.
-- [ ] Generated DTOs replace repository/transfer response shadows; one repository surface; stable UUID retry and company-switch reset verified.
+- [ ] One document, one group, two cross-linked legs; same GL zero JE, cross GL one posted balanced JE.
+- [ ] Conflicting/concurrent retries, partial failure, mapping changes, reversed custody and legacy aliases tested.
+- [ ] Original preserved; one linked full reversal; original and compensating JE remain auditable.
+- [ ] Explicit frozen internal transfer records/alerts; HTTP cannot request override; replay emits no duplicate alert.
+- [ ] Branch-source 404 leaves snapshots unchanged; central destination exposes only permitted identifiers.
+- [ ] Reused routes/actions are module-gated; HTTP alone resolves location authority.
+- [ ] Generated DTOs replace repository/transfer shadows; UUID retry and company-switch behavior verified.
+- [ ] Exact per-tenant day-one/POS-VAT marker greps and expected-UUID set comparisons pass.
+- [ ] PG ratchets, concurrency tests, preflight, web E2E, campaign and census evidence accepted; manifest variables and U-1/U-2/U-5 evidence complete.
