@@ -254,3 +254,140 @@ U-9's remedy would send an operator to a Dokploy screen that cannot fix it. That
 small hardening/accuracy edits that can ride along in the same fix commit; 5-7 need no action. Nothing
 here touches a user-visible surface, so no owner-ruled UI principle, design-token, i18n or precision
 rule is engaged, and merging into local `dev` is conflict-free today.
+
+---
+
+# Gate verdict r2: MERGE
+
+Re-gate after fix round 1 (2026-09-07). Range now 7 commits over `dev`; new since r1:
+`ea4dccaa2` (compose args), `b5f9e2ee4` (CI value guard + nginx comment + nosniff),
+`ab760c842` (handback "Fix round 1"). Scope of the r1→r2 delta: 7 files, 201 insertions.
+Each r1 finding re-checked against the new code, not against the handback's account of it.
+
+## Finding 1 (was MAJOR) — CLOSED
+
+`BUILD_SHA: ${BUILD_SHA:-}` is now in the web `args:` map of both compose files:
+`docker-compose.staging.yml:274` and `docker-compose.dokploy.yml:261`, each with a four-line comment
+stating the actual mechanism (compose forwards only enumerated args; the builder stage has no `.git`).
+Both files still parse and the key lands in the right node — `yaml.safe_load(...)['services']['web']['build']['args']`
+returns `{'VITE_API_URL': …, 'VITE_APP_PRODUCT': …, 'BUILD_SHA': '${BUILD_SHA:-}'}` (staging) and
+`{'VITE_API_URL': …, 'BUILD_SHA': '${BUILD_SHA:-}'}` (dokploy). The `:-` default is the right choice:
+an unset `BUILD_SHA` interpolates to `""`, which `resolveBuildSha` (`apps/web/tools/write-build-fingerprint.mjs:90-91`)
+treats as absent → `"unknown"`, so a deploy environment that has not exported it degrades honestly
+instead of failing the build or fabricating a sha.
+
+U-9 (`docs/superpowers/plans/2026-09-06-parapharmacy-staging-push-manifest.md:322`) is rewritten
+correctly: the claim is now "a `BUILD_SHA` build argument actually reaches the web image build" rather
+than a Dokploy-only assertion, it names the U-1 shape ambiguity as the reason both halves were wired,
+cites `docker-compose.staging.yml:274` / `docker-compose.dokploy.yml:261` (both **accurate** — verified
+by `grep -n`), and gives two branch-specific remedies (export `BUILD_SHA` for the compose shape, Build
+Args for the application shape) with "Settle U-1 first if unsure". That is exactly the gap I flagged.
+
+## Finding 2 (was MINOR) — CLOSED
+
+`apps/web/tools/write-build-fingerprint.mjs:220-229` now guards the **value**, not just the file:
+`if ((env.CI ?? '').trim() !== '' && payload.feature_fingerprint === UNKNOWN) { … return 1 }`.
+Placement is right — after `buildFingerprintPayload` (`:218`) and **before** the `--print-fingerprint`
+branch (`:231`), so the degraded value cannot escape by either exit path. The docblock was updated to
+match (`:40-42`: "missing OR parses to zero routes"), so the contract and the code agree.
+
+Three new tests, all genuinely adversarial rather than restatements of the implementation
+(`apps/web/tools/__tests__/write-build-fingerprint.test.mjs:239-283`):
+- `:239-255` present-but-unparseable manifest under `CI=true` → exit 1, stderr contains `0 routes`.
+  The fixture is `'app: web\nroutes:\n  - "path": "/pos"\n'` — a *quoted key*, i.e. the realistic
+  `gen-route-manifest.mjs` format drift I described, not a contrived empty file.
+- `:256-268` same manifest without `CI` → exit 0 and `feature_fingerprint: "unknown"`, pinning that
+  local builds are still permissive.
+- `:270-281` `--print-fingerprint` with `routes: []` under `CI=true` → exit 1, covering the second
+  exit path.
+
+No false positive introduced: `CI=true node apps/web/tools/write-build-fingerprint.mjs --print-fingerprint`
+against the real 271-route manifest still prints `42eb6b3a2089326d` and exits 0.
+
+## Finding 3 (was MINOR) — CLOSED
+
+`apps/web/docker/entrypoint.sh:174-177` now reads "An exact-match (=) location wins over the
+\"location /\" prefix regardless of declaration order, so the placement here is cosmetic. What keeps a
+missing file a 404 … is \"try_files \$uri =404\" below, NOT the ordering." That is the correct nginx
+mechanism. `sh -n apps/web/docker/entrypoint.sh` → OK (the reworded comment lives inside the unquoted
+heredoc, and the `\$uri` inside it is escaped, so it cannot become an expansion at generation time).
+
+## Finding 4 (was MINOR) — ACCEPT nosniff-only; the implementer's argument is correct and verified
+
+I asked whether all four server-level headers should be restored. They should not, and the evidence is
+in the file: **every** location block in this config already drops all four, because each declares its
+own `add_header` —
+`.mjs` `:74-79` (Cache-Control only), static assets `:82-86` (Cache-Control only), images `:89-93`
+(Cache-Control only), `.html` `:96-99` (Cache-Control only), `/health` `:194-198` (Content-Type only).
+The server-level set at `:64-67` therefore only ever applies to `location /`. Restoring all four inside
+the fingerprint block alone would make it the single inconsistent block in the file while adding no real
+protection: `X-Frame-Options` and `Referrer-Policy` are meaningless for a JSON document fetched by
+`curl`/`jq`, and `X-XSS-Protection` is a retired header. `nosniff` is the one that matters here — it is
+the only one with a live threat model for a parsed JSON response — and `:183` adds it. The block is now
+strictly better than the house baseline, and `:178-180` documents the inheritance rule so the next
+editor knows why. Accepted as-is; restoring the other three would be site-wide work, out of this lane.
+
+## Refreshed citations and scope
+
+- `docs/…-staging-push-manifest.md:223` (§3) and the U-4 row (`:317`) now both cite
+  `apps/web/docker/entrypoint.sh:171-186`. Verified exact: the comment opens at `:171`, `location = /build-fingerprint.json`
+  is `:181`, and the closing `}` is `:186`. The `(:64-67)` reference inside the new nginx comment
+  (`:179`) also still resolves to the four security headers.
+- U-8's `apps/web/Dockerfile:107-108` is unchanged and still correct (this round touched no Dockerfile line).
+- No other manifest row altered in the r1→r2 delta (only §3's citation, U-4's citation, and U-9's body).
+- **No scope creep.** Full `dev...HEAD` file list is 11 files, all in-lane: `apps/web/Dockerfile`,
+  `apps/web/docker/entrypoint.sh`, `apps/web/package.json`, the two `tools/__fixtures__` YAMLs, the
+  tool + its test, the two compose files (added by the fix I required), the handback, and the staging
+  manifest. No `apps/web/src/**`, no `apps/api/**`, no `tsconfig.tsbuildinfo`, no `dist/` artefact;
+  working tree clean.
+
+## Commands run (r2)
+
+```
+$ git log --oneline dev..HEAD | head -3
+ab760c842 / b5f9e2ee4 / ea4dccaa2                          # expected fix commits
+$ git diff f1facb630..HEAD --stat
+7 files changed, 201 insertions(+), 8 deletions(-)
+
+$ cd apps/web && pnpm vitest run tools/__tests__/write-build-fingerprint.test.mjs
+ Test Files  1 passed (1)
+      Tests  24 passed (24)      Duration 1.27s             # 21 → 24, the 3 new guard tests
+
+$ node apps/web/tools/write-build-fingerprint.mjs --print-fingerprint
+42eb6b3a2089326d
+$ CI=true node apps/web/tools/write-build-fingerprint.mjs --print-fingerprint; echo $?
+42eb6b3a2089326d
+0                                                          # new guard does not false-positive
+
+$ sh -n apps/web/docker/entrypoint.sh
+entrypoint sh -n OK
+$ python3 -c "import yaml; …['services']['web']['build']['args']"
+staging  {'VITE_API_URL': …, 'VITE_APP_PRODUCT': …, 'BUILD_SHA': '${BUILD_SHA:-}'}
+dokploy  {'VITE_API_URL': …, 'BUILD_SHA': '${BUILD_SHA:-}'}
+
+$ grep -n "BUILD_SHA" docker-compose.staging.yml docker-compose.dokploy.yml
+staging:274 · dokploy:261                                  # == the lines U-9 cites
+
+$ git diff dev...HEAD --name-only | grep -Ei 'tsbuildinfo|dist/'   → no match
+$ git status --porcelain                                            → empty
+```
+
+`pnpm typecheck` skipped again for the same provable reason (swap 8.97 GB / 10.24 GB; the delta contains
+zero `.ts`/`.tsx` and `apps/web/tsconfig.json` includes only `src` with no `allowJs`/`checkJs`).
+`docker build` still not run — unchanged residual from r1 finding 7, and this round added no new
+Dockerfile layer, so the residual did not grow. Findings 5-7 from r1 were INFO and remain open by design.
+
+## Merge recommendation (r2)
+
+All four actionable findings are closed with real code, not with documentation. The two that mattered
+are properly fixed rather than papered over: the compose arg is wired in both files with the mechanism
+explained, and the CI guard now protects the fingerprint *value* on both exit paths with three tests
+that would have caught the original hole. The fourth was closed by an argument I asked to be defended
+and which the file itself supports — every sibling location block already drops the server-level
+headers, so nosniff-only is the consistent and sufficient choice. Citations were refreshed to the new
+line numbers and I re-verified each one rather than trusting the handback. Nothing left is a merge
+blocker: the outstanding items are the unrun `docker build` (two trivial layers, path resolution proven
+independently in r1) and U-9's out-of-repo half, which is now correctly framed as an environment/UI
+verification with a branch-specific remedy and an honest `"unknown"` fallback in the meantime.
+**MERGE.** Run one `docker build -f apps/web/Dockerfile --build-arg BUILD_SHA=$(git rev-parse HEAD) -t web-fp .`
+on a rebooted laptop before the staging deploy, not before the merge.
