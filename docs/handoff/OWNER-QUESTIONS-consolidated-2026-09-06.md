@@ -74,3 +74,11 @@ Compiled by the orchestrator from every ledger (first-tenant launch program, ses
 | B3 | Impersonation: **allow**, properly logged; needed for support. | Ruled. Unblocks the merged impersonation feature; audit log already required by its spec. |
 | B4 | One legal entity with establishments; benchmark; expectation: each establishment has its **own sequential numbering**, possibly with a prefix. | Benchmark (Tunisian facture/receipt numbering per établissement; Odoo/ERPNext sequence per journal/branch). Likely: numbering series per location with a location prefix, sequential per series. Feeds A8 and the W-CASH/W-LOT briefs' second-location fixtures. |
 | D1–D7 | DB per tenant is how we go live and what staging runs; details confirmed tomorrow by Khalil (Dokploy access). | Team checklist `docs/handoff/TEAM-CHECKLIST-staging-facts-and-hardening-2026-09-07.md`. |
+
+## Owner follow-up (2026-09-06, later)
+
+| # | Ruling | Consequence |
+|---|---|---|
+| A1 | Proceed. **Widen money storage to 4 decimals maximum** (`decimal(N,4)`), because some currencies and accounting practices need 4; precision used remains the country preset. | Precision lane widens `journal_lines.debit/credit`, `payment_repositories.balance`, `last_reconciled_balance` to `decimal(15,4)` (not 3); the precision contract doc is updated so the **money storage floor becomes scale 4** while display/rounding stay country-resolved; the census + round-trip tests use `1.0005`. W-CASH-1 P0 prerequisite must say (15,4) — carried into its next fix round. Any other money column still at (15,2) or (15,3) is listed by the census; only the four named columns are widened in this lane, the rest become a follow-up ticket. |
+| A6 | **No backfill.** Greenfield; fix the demo-account seeders only. OQ10 closed; D-1..D-4 stand. | Session H Phase 2 brief: remove the backfill arm; add a seeder fix for demo tenants. |
+| A7 | Resolved (already promoted). | Closed. |

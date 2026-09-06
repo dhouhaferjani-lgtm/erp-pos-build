@@ -13,3 +13,5 @@
 **Scope:** program-level, not W-CASH-1-only. Affects existing `TreasuryReceiptBridge`, `TreasuryAccountPaymentBridge`, `TreasuryDepositBridge`, `AccountingService` invoice GL, and every repository balance. Needs a census of actual rounding drift on staging tenants before widening.
 
 **Disposition:** W-CASH-1 rev 3 carries a P0 "precision widening" prerequisite task (own non-additive push, host-side backup first, per-tenant `tenants:migrate-rolling --force` verification, raw round-trip test at `1.005`, schema-shape ratchet). The census + widening should be its own small lane, gated by treasury-reviewer + stock-gl-interaction-reviewer, and promoted BEFORE any W-CASH booking slice. Owner decision needed on whether it also precedes tenant #1 go-live (recommended: yes, since TND POS sales already post through it).
+
+**Owner ruling 2026-09-06 (later):** widen to **decimal(15,4)** (4 decimals maximum, to support 4-decimal currencies and accounting practice); the precision used stays the country preset (`countries.currency_decimal_places`). Update `docs/architecture/precision-contract.md`: money storage floor = scale 4. Round-trip test value `1.0005`.
