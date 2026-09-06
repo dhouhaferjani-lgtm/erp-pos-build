@@ -1,0 +1,18 @@
+# Same three routes as routes-web.sample.yaml, emitted in sorted order. The
+# fingerprint MUST be identical to the sample fixture's.
+app: web
+sources:
+  - apps/web/src/routes/index.tsx
+routes:
+  - path: /
+    component: DashboardLanding
+    module_gate: null
+    permission: null
+  - path: /inventory/lots
+    component: LotsPage
+    module_gate: BatchManagement
+    permission: inventory.lots.view
+  - path: /pos
+    component: PosPage
+    module_gate: Pos
+    permission: null

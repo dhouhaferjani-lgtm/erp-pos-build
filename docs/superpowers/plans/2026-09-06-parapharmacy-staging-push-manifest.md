@@ -217,7 +217,27 @@ curl -s "https://erp.otospex.dev${NEW_ASSET}" | grep -c '<slice-unique-string>' 
 ```
 
 Both checks are mandatory — hash alone missed a 78-commit-stale bundle (`WORKFLOW.md:220-227`).
-There is **no** `/build-fingerprint.json` in this repo (§6 U-4); do not plan around one.
+
+**Build fingerprint (preferred, two lines).** `/build-fingerprint.json` now exists
+(`apps/web/tools/write-build-fingerprint.mjs`, wired into `pnpm build` at
+`apps/web/package.json:8`, served `no-store` by `apps/web/docker/entrypoint.sh:171-186`):
+
+```bash
+curl -s https://erp.otospex.dev/build-fingerprint.json | tee /tmp/<slice>-fingerprint.json
+
+jq -r '.build_sha' /tmp/<slice>-fingerprint.json
+# MUST equal the promoted CANDIDATE_SHA. "unknown" == U-9 not closed (Dokploy is not
+# passing the BUILD_SHA build arg) — fall back to the asset-hash + grep pair above.
+
+jq -r '.feature_fingerprint' /tmp/<slice>-fingerprint.json
+# MUST equal, at CANDIDATE_SHA:
+#   node apps/web/tools/write-build-fingerprint.mjs --print-fingerprint
+# It is a sha256/16 of the sorted route paths in scripts/factory/manifests/routes-web.yaml,
+# so it moves only when the route SET changes — a slice that adds no route legitimately
+# leaves it unchanged; `build_sha` is the freshness signal, this is the shape signal.
+```
+
+Keep the asset-hash + grep pair as the mandatory fallback while U-9 is open.
 
 **Playwright smoke.** Existing specs: `apps/web/e2e/smoke/{auth,product,settings,treasury-spine,
 treasury-phase5a-outbound,treasury-phase5b-reconciliation}.smoke.ts`; runner
@@ -294,8 +314,9 @@ Then supply exactly these per-slice variables:
 | U-1 | Staging deploys from `docker-compose.staging.yml` (compose stack) vs. separate Dokploy applications | The repo holds the compose file, but `WORKFLOW.md:206-208` describes an independent web *application* with its own id and `autoDeploy=false` — application-shaped, not compose-shaped | Dokploy `project-all` / `application-one` on the staging project; read the app type and its Environment tab |
 | U-2 | `TENANCY_DB_PER_TENANT=true` is set on staging | **Absent** from `docker-compose.staging.yml`; `config/tenancy_resolver.php:30` defaults to `false`, and with it false the boot `tenants:migrate-rolling` is a documented no-op (`RollingTenantMigrationCommand.php:57-62`) | In the staging API container: `php artisan tinker --execute="var_dump(config('tenancy_resolver.db_per_tenant'));"` |
 | U-3 | Staging API Dokploy application id `x5wfthp8-7cVbiUfI6Hq7` | Appears only inside a sibling 2026-09-06 plan file; no runbook or handoff records it | Dokploy `project-all`; then pin it in `docs/factory/WORKFLOW.md` beside the web id |
-| U-4 | A `/build-fingerprint.json` endpoint carrying `build_sha` | **Does not exist** — no such file or emitter anywhere under `apps/web`. Sibling plans requiring `/build-fingerprint.json.build_sha` describe something unbuilt | Implement it in `apps/web` + its Dockerfile, or drop the requirement and use the §3 asset-hash + grep pair |
+| ~~U-4~~ | ~~A `/build-fingerprint.json` endpoint carrying `build_sha`~~ | **CLOSED 2026-09-07 — implemented.** Emitter `apps/web/tools/write-build-fingerprint.mjs`, tests `apps/web/tools/__tests__/write-build-fingerprint.test.mjs`, wired into `pnpm build` (`apps/web/package.json:8`), sha passed via `ARG BUILD_SHA` (`apps/web/Dockerfile:63-74` + the manifest COPY at `:53`), served `no-store` at `location = /build-fingerprint.json` (`apps/web/docker/entrypoint.sh:171-186`) | Done — the §3 fingerprint block replaces this row. The remaining risk is whether the sha actually arrives: see U-9 |
 | U-5 | Staging host / SSH / DB creds for the host-side `pg_dump` | The runbook SSH block (`deploy-runbook.md:69-87`) is **AX42 production** for the *platform* app; the ERP staging host is recorded only in memory (`157.180.71.252:5434`, creds via Dokploy `postgres-one`) and those ports churn on redeploys | Owner confirms the staging host + `postgres-one` creds; record them in a handoff, not in memory only |
 | U-6 | Whether `SYNC_PERMISSIONS_ON_BOOT` is set in the Dokploy environment | Absent from the compose file; on the application-shaped path it could still be set in Dokploy | Read the Dokploy Environment tab, or `php artisan tinker --execute="echo getenv('SYNC_PERMISSIONS_ON_BOOT');"` in the container |
 | U-7 | That promoting `origin/dev` triggers the staging API build today | Asserted by `PROMOTION-CHECKLIST-2026-08-26.md:4`, `WORKFLOW.md:217` and memory — all observational; no repo file configures it | Dokploy `application-one` on the API app → `autoDeploy` field |
-| U-8 | Nginx `/health` and the `curl`/`grep` asset-hash shape on the live staging web | The healthcheck exists in `apps/web/Dockerfile:80`, but the served bundle's exact `index-<hash>.js` markup was not fetched (read-only repo session, no network calls made) | Run the §3 step 0 command once against staging and paste the output into the slice plan |
+| U-8 | Nginx `/health` and the `curl`/`grep` asset-hash shape on the live staging web | The healthcheck exists in `apps/web/Dockerfile:107-108`, but the served bundle's exact `index-<hash>.js` markup was not fetched (read-only repo session, no network calls made) | Run the §3 step 0 command once against staging and paste the output into the slice plan |
+| U-9 | A `BUILD_SHA` build argument actually reaches the web image build | The Dockerfile declares `ARG BUILD_SHA` (`apps/web/Dockerfile:73-74`) and the builder stage has no `.git` to fall back on, so the sha can ONLY arrive as a build arg. **Which of the two deploy shapes is in use is itself unverified (U-1)**, and each needs a different thing done, so the in-repo half was wired for both: `BUILD_SHA: ${BUILD_SHA:-}` is now listed in the web `args:` map of `docker-compose.staging.yml:274` and `docker-compose.dokploy.yml:261` (compose forwards ONLY enumerated args). The environment/UI half cannot be read from the repo | Deploy once, then `curl -s https://erp.otospex.dev/build-fingerprint.json \| jq -r '.build_sha'` — it MUST be the deployed commit sha, not `"unknown"`. If `"unknown"`: **compose-shaped** deploy → the `args:` entry is present, so export `BUILD_SHA=<deployed sha>` in the deploy environment that runs `docker compose build`; **application-shaped** deploy → add `BUILD_SHA` to the web application's Build Args in Dokploy (application id `mY6P_PHb4pw-2LdG1Y7Ml`). Settle U-1 first if unsure |

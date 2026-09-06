@@ -1,0 +1,19 @@
+# Fixture for tools/__tests__/write-build-fingerprint.test.mjs — a miniature copy of
+# scripts/factory/manifests/routes-web.yaml. Paths are DELIBERATELY unsorted so the
+# test proves the fingerprint is order-independent.
+app: web
+sources:
+  - apps/web/src/routes/index.tsx
+routes:
+  - path: /pos
+    component: PosPage
+    module_gate: Pos
+    permission: null
+  - path: /
+    component: DashboardLanding
+    module_gate: null
+    permission: null
+  - path: /inventory/lots
+    component: LotsPage
+    module_gate: BatchManagement
+    permission: inventory.lots.view

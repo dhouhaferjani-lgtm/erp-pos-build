@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node tools/write-build-fingerprint.mjs",
     "preview": "vite preview",
     "lint": "pnpm lint:eslint && pnpm audit:keys && pnpm audit:design-system && pnpm audit:quantity && pnpm audit:i18n:local && pnpm test:eslint-rules && pnpm test:tools",
     "lint:eslint": "eslint .",

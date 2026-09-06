@@ -168,6 +168,23 @@ server {
         proxy_set_header X-Forwarded-Host \$host;
     }
 
+    # Build fingerprint - deploy freshness probe (staging push manifest §3).
+    # MUST be no-store: a cached copy would report a stale build as fresh, which is
+    # the exact failure this file exists to catch.
+    # An exact-match (=) location wins over the "location /" prefix regardless of
+    # declaration order, so the placement here is cosmetic. What keeps a missing file
+    # a 404 instead of a 200 index.html body (which would silently break jq on the
+    # caller side) is "try_files \$uri =404" below, NOT the ordering.
+    # add_header inheritance is all-or-nothing per level: declaring any add_header here
+    # drops all four server-level security headers (:64-67). Re-add nosniff explicitly —
+    # this endpoint is JSON a script will parse, so MIME sniffing must stay off.
+    location = /build-fingerprint.json {
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        default_type application/json;
+        try_files \$uri =404;
+    }
+
     # SPA fallback - serve index.html for all routes
     location / {
         try_files \$uri \$uri/ /index.html;
