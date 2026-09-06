@@ -1,90 +1,102 @@
-<!-- Rev 2, authored by Codex CLI (gpt-5.6-sol, high, read-only) on 2026-09-06 from rev 1 + plan gate r2; filed verbatim by the orchestrator. Status: awaiting plan gate r3. Rev 1 is in git history (67c0805d4). -->
-# W-LOT Batch Management Execution Plan — Revision 2
+<!-- Rev 3, authored by Codex CLI (gpt-5.6-sol, high, read-only) on 2026-09-06 from rev 2 + plan gate r3; filed verbatim by the orchestrator. Status: awaiting plan gate r4. Rev 1 = 67c0805d4, rev 2 = 2d5268890. -->
+<!-- Revision 3, produced read-only on 2026-09-06 from local dev HEAD 11e13eccd746241fb7546d84185310ce490d4464. This document replaces revision 2 verbatim. -->
+# W-LOT Batch Management Execution Plan — Revision 3
 
 **Status:** Dispatch-ready plan; implementation not started  
 **Plan date:** 2026-09-06  
-**Verified repository:** `/Users/houssamr/Projects/syneriva/apps/erp`  
-**Verified local `dev` HEAD:** `6e17a76022c5ccd8864afdf98cd5302e5264176b`  
-**Supersedes:** `docs/superpowers/plans/2026-09-06-w-lot-batch-management-execution-plan.md` revision 1  
+**Repository:** `/Users/houssamr/Projects/syneriva/apps/erp`  
+**Verified local `dev` HEAD:** `11e13eccd746241fb7546d84185310ce490d4464`  
+**Supersedes:** Revision 2 of this file  
 **Authority:** `docs/superpowers/specs/2026-09-05-parapharmacy-readiness-remediation-design.md` v4  
 **Owner register:** `docs/handoff/OWNER-RULINGS-parapharmacy-remediation-2026-09-05.md`  
-**Gate:** `docs/superpowers/reviews/2026-09-06-w-lot-plan-codex-gate-r2.md`
+**Gate addressed:** `docs/superpowers/reviews/2026-09-06-w-lot-plan-codex-gate-r3.md`  
+**Read-only revision:** No source, plan, Git, schema, or external state was changed while producing this revision.
 
 ---
 
-## 0. Revision-2 change log and gate closure
+## 0. Revision-3 change log and gate-r3 closure
 
-No gate-r2 finding is rejected.
+No gate-r3 finding is rejected.
 
-| Finding | Rev-2 closure |
-|---|---|
-| BLOCKER — owner register | §2 copies Q10–Q13 verbatim from `docs/handoff/OWNER-RULINGS-parapharmacy-remediation-2026-09-05.md:138-143`, marks all four OPEN, and makes every dependent branch conditional. |
-| BLOCKER — aggregate movement linkage | §6.8 makes `aggregate_stock_movement_id` mandatory on every projection lot obligation. Tasks 18 and 21 persist and verify the exact `stock_movements.id` created for that receipt line. |
-| BLOCKER — canonical line key | §5 defines versioned grammar, shared vectors, PHP/TypeScript implementations, and duplicate-product, evidence-reorder, retry, and mixed-version tests. |
-| BLOCKER — writer/lock census | §8 contains the pre-dispatch census, including `StockReservationService.php:507,631`, all `BatchStock` mutators at `BatchStock.php:54-84`, transaction ownership, predicates, order, scope, and hold-time limits. Task 1 only ratchets this completed census. |
-| BLOCKER — deployment order | §11 is an explicit five-push manifest: preflight command first, all additive migrations second, dormant code third, backfill/verification fourth, and activation fifth, with exact commands and rollback points. |
-| BLOCKER — dispatch packets | §10 gives all 24 tasks exact files, signatures/schema impact, red-first file/class/case/assertion/command/lane, implementation instructions, Convention-09 disposition, and reviewer gate. |
-| MAJOR — L9 permissions | §4 and Tasks 7–9 seed `batches.identify` and `batches.correct-identity` to `admin` only. Additional assignment uses ordinary role management. |
-| MAJOR — float retirement | Task 6 includes reservation mutation lines and every live transitive reservation consumer found at HEAD. |
-| MAJOR — provenance seams | Tasks 13–14 include both delivery-note conversion branches at `SalesOrderToDeliveryNoteConverter.php:363-379,501-517`, `DeliveryNoteFromDocumentFactory.php:137-153`, reservation propagation, POS, transfers, receipts, and returns. |
-| MAJOR — POS renderer census | Task 17 covers the active `ProductCard`, `ProductListRow`, `ProductTable`, `ProductDetailDrawer`, `BarcodeChooserModal`, and `NearExpirySlot` paths, and removes the unreferenced legacy grid/card pair. |
-| MAJOR — schedule safety | Task 15 schedules at 03:20, avoiding the existing 02:15, 02:30, 02:45, and 03:00 jobs in `apps/api/routes/console.php:118-120,250-259,277-280`; overlap expiry is 180 minutes, with failure notification and stale-run handling. |
-| MAJOR — vocabulary | §3 distinguishes Branch lot hold, Company lot recall, and Lot identity correction and assigns each one canonical writer and operator surface. |
-| MINOR — reproducible baseline | This plan declares full HEAD `6e17a76022c5ccd8864afdf98cd5302e5264176b` and cites the live batch uniqueness successor at `apps/api/database/migrations/tenant/2026_06_02_100008_add_variant_id_to_product_batches.php:27-31`. |
+### 0.1 Carried PARTIAL/OPEN rows
 
-### Gate-r1 closure table carried through gate r2
+| ID | Gate-r3 status | Revision-3 closure |
+|---|---:|---|
+| R1-1 | OPEN | §10 supplies exact existing and explicitly named new production files, full signatures, one red-first test with first assertion and command per task, lane, reviewer gate, and rollback. §11 supplies executable CI and staging commands. |
+| R1-2 | PARTIAL | §§3, 8, and Tasks 4–5 use exact `batches.recall.request`; remove the live bypass at `BatchExpiry/Presentation/routes.php:29`; remove `batches.recall` from manager; create `general_manager` as manager permissions plus `batches.recall`, `batches.health`, and `treasury.manage_all_locations`; and block both sale and transfer at the requesting location. |
+| R1-3 | PARTIAL | §§6.9, 7.6, and Tasks 19–21 make evidence atomic with the receipt and model one aggregate obligation with N lot-effect rows. Every effect links to an `inventory_batch_movements` row sharing the aggregate movement ID. |
+| R1-4 | PARTIAL | §7.7 defines a claim-then-commit lease followed by advisory-first application. §9 includes `InventoryGlPostingBuffer`, `InventoryGlPostingService`, `GeneralLedgerService`, numbering and hash-chain advisory locks, and proves no obligation/advisory inversion. |
+| R1-5 | PARTIAL | §11 provides five exact pushes, forwards all eight rollout flags through `docker-compose.staging.yml` and `apps/api/docker/entrypoint.sh`, uses `tenants:migrate-rolling --force`, uses tenant-aware permission seeding, and defines the provenance command before invocation. |
+| R1-7 | PARTIAL | Task 6 covers `Batch`, `BatchStock`, `BatchResource`, FEFO totals/controllers, reservation consumers, generated DTOs, `BatchDetailPage`, `BatchListPage`, and removal of numeric quantity shadows. |
+| R1-8 | PARTIAL | Tasks 7–9 assign `UpdateBatchRequest.php`, `BatchRepositoryInterface.php`, `BatchRepository.php`, and `Batch.php`; establish operation-UUID retry/conflict rules; freeze ordinary identity edits after first movement; and test no merge or value/quantity change. |
+| R1-10 | PARTIAL | Tasks 13–15 name every producer, the provenance backfill command, and `LotLedgerDriftCensusTest`; the latter is added to the live PostgreSQL CI filter. |
+| R1-11 | PARTIAL | Task 17 assigns `apps/pos/src/stores/terminalStore.ts:851`, makes refresh blocking before either shift-open branch, and tests disabled, unresolved, stale, wrong-company, and wrong-location states. |
+| R1-12 | PARTIAL | Task 19 writes fiscal event, offline receipt, evidence submission, evidence legs, evidence outbox, and voucher changes through the same `withWriteTransaction('fiscal', ...)` handle. |
+| R1-13 | PARTIAL | §12 maps every L1–L9 outcome to concrete tasks and withholds completion until live PostgreSQL, device crash, web, and staging acceptance all pass. |
+| R2-B2 | PARTIAL | §6.10 replaces the single movement link with `fiscal_projection_lot_obligation_effects`; §7.6 requires N effects, common aggregate linkage, and exact signed reconciliation. |
+| R2-B3 | PARTIAL | §5 and all PostgreSQL/SQLite schemas use `INTEGER` for canonical indexes, accept `0..999999`, and test `999999` and `1000000`. |
+| R2-B4 | PARTIAL | §9 is the complete writer/lock census, including GL ownership and the no-row-lock lease claim. |
+| R2-B5 | PARTIAL | §11 is executable under the current compose and tenant boot model and verifies per-tenant rolling migration output. |
+| R2-B6 | OPEN | Every task packet in §10 contains concrete files, signatures, red assertion, command, lane, Convention-09 coverage, reviewer gate, and rollback. |
+| R2-M4 | PARTIAL | Task 17 includes the active `TransactionCart.tsx`, `CartLineItem.tsx`, renderers, and actual `terminalStore.openShift()` owner. |
+| R2-m1 | PARTIAL | This revision records and plans against HEAD `11e13eccd746241fb7546d84185310ce490d4464`; all source citations below were checked at that SHA. |
 
-| # | R1 finding | Rev-2 status | Closure |
-|---|---|---|---|
-| 1 | Mechanical dispatch gate | **CLOSED** | Every task has a complete dispatch contract in §10. |
-| 2 | Recall escalation and roles | **CLOSED** | Local branch hold and company recall are separate; Q10 release remains conditional and unimplemented. |
-| 3 | POS core versus lot arm; late evidence | **CLOSED** | Always-on aggregate posting, mandatory aggregate movement linkage, deterministic line keys, and durable recovery are specified. |
-| 4 | Lock census too late | **CLOSED** | Complete census is in §8 before dispatch. |
-| 5 | Unsafe deployment order | **CLOSED** | Five-push manifest in §11 separates preflight, schema, dormant code, backfill, and activation. |
-| 6 | Freeze before replacement | **CLOSED** | Existing writers remain active until replacement tests pass; activation is one final gate. |
-| 7 | Cross-layer float retirement | **CLOSED** | Task 6 includes entity mutators, reservations, interfaces, commands, and transitive callers. |
-| 8 | Incomplete L9 identity correction | **CLOSED** | Full schema/service/API/audit/UI slice; permissions are administrator-only by default. |
-| 9 | Flat-row counting model | **CLOSED** | Counting retains flat aggregate rows plus explicit lot observations and reconciliation legs. |
-| 10 | Producer provenance and health | **CLOSED** | Complete producer seams and safe durable health schedule are specified. |
-| 11 | Refresh before POS open | **CLOSED** | Opening a shift requires an acknowledged current entitlement/snapshot revision. |
-| 12 | Durable outbox | **CLOSED** | SQLite and server states, retry, dead-letter, replay, and deduplication are explicit. |
-| 13 | L8/L9 completion | **CLOSED** | L8 and L9 have concrete acceptance tasks; oversell override remains deferred. |
-| 14 | Citation hygiene | **CLOSED** | Full current SHA, live migration, actual module paths, and current renderer paths are used. |
-| 15 | Oversized S5/S6 units | **CLOSED** | Work remains split into independently reviewable schema, writer, API/UI, device, recovery, and activation tasks. |
+### 0.2 New gate-r3 findings
+
+| Finding | Severity | Revision-3 closure |
+|---|---:|---|
+| Multi-lot obligation cardinality | BLOCKER | §§6.10 and 7.6 establish one obligation plus N ordered effects. Two-lot sale/refund, retry, and concurrent recovery are mandatory PostgreSQL tests. |
+| Canonical index versus `SMALLINT` | BLOCKER | Canonical indexes are `INTEGER` in server and device schemas; shared boundaries are pinned at `999999`/`1000000`. |
+| Recall authority and live bypass | BLOCKER | Exact permissions and roles are in §8; the direct endpoint at `routes.php:29` is removed, and only module-owned request/escalation endpoints remain. |
+| Recall durable operation identity | BLOCKER | Both request and recall transition carry tenant/company-scoped client operation UUID and SHA-256 request fingerprint. Retry after transition returns the same request; conflicting reuse is 409. |
+| Receipt/evidence transaction boundary | BLOCKER | Task 19 owns `receiptService.ts:558` and uses the same write transaction as `FiscalEventEngine.append()` at `FiscalEventEngine.ts:530`. Every insert boundary receives a crash test. |
+| Concrete company entitlement boundary | BLOCKER | §7.2 and Task 2 name the interface, decision DTO, tenant-bound adapter, provider binding, central revision, cache fencing, HTTP/worker/console consumers, product requests, and ProductForm gate. |
+| Executable five-push manifest | BLOCKER | §11 forwards flags, separates live compatibility refactors from guarded paths, defines all commands first, uses tenant-aware seeding, captures revision/cutover IDs, and verifies every tenant. |
+| Executable dispatch and CI | BLOCKER | Task 10 uses the real `SubmitCountRequest.php`; Task 12 uses exact controller/web paths; Task 23 modifies the live `backend-test-pgsql` filter in `.github/workflows/ci.yml:1116`. |
+| GL lock ownership and inversion | BLOCKER | §9 places GL advisory acquisition after inventory/obligation writes; recovery never retains an obligation row lock while acquiring `ProductCostLock`. |
+| Float API/UI surfaces | MAJOR | Task 6 contains every named backend/API/web/generated surface and exact-string boundary tests. |
+| Count as-of marker | MAJOR | §6.6 stores phase, observed instant, estimated server instant, and UUIDv7 movement marker per lot observation. Task 11 pins every required scenario. |
+| Used-lot freeze | MAJOR | Tasks 8–9 guard the live request/repository/entity path and provide correction-specific operation identity and optimistic versioning. |
+| L1 authorization census | MAJOR | §8 and Task 5 cover all batch routes and viewer/cashier/manager/general-manager/admin UI/API combinations. |
+| Active cart and pre-open path | MAJOR | Task 17 assigns active cart components and both `openShift()` branches. |
+| Generated types and enums | MAJOR | §7.1 names every enum/DTO and generated target; Task 6/23 run `typescript:transform`, drift, typecheck, and contract tests. |
+| Stale verified HEAD | MINOR | Corrected in the document header and verification checklist. |
 
 ---
 
-## 1. Non-negotiable outcome and scope
+## 1. Outcome, invariants, and exclusions
 
-W-LOT delivers:
+W-LOT delivers one coherent lot-management package:
 
-1. A branch request that immediately places the named lot under a branch-local hold.
-2. A general-manager action that escalates a request into a company-wide recall.
-3. Evidence-backed lot identity correction and DEFAULT/unknown-lot identification.
-4. Exact-decimal lot quantities through backend, API, web, reservation, and POS paths.
-5. Lot-grain physical counting reconciled to the existing flat aggregate count.
-6. Explicit provenance for all three allocation producer families.
-7. Durable aggregate-versus-lot health monitoring.
-8. POS FEFO guidance and captured lot evidence without changing sealed fiscal payload versions.
-9. An always-on POS aggregate stock effect plus an entitlement-gated, durable lot obligation linked to the exact aggregate movement.
-10. Complete tenant/company/location isolation, idempotency, and PostgreSQL concurrency proof.
+1. A branch recall request immediately holds that lot at the requesting location for sale and transfer.
+2. A general manager or administrator may escalate the request to a company-wide recall.
+3. Recall requests and their transitions are durable, append-only, scope-safe, and idempotent.
+4. Ordinary used-lot identity mutation is frozen; audited identity correction remains possible.
+5. DEFAULT/unknown holdings can be identified into physical lots without changing aggregate quantity, value, or WAC.
+6. Lot quantities are numeric strings across PHP, JSON, generated TypeScript, web, POS, and SQLite boundaries.
+7. Physical counting records explicit lot observations with observation-time movement markers.
+8. All document, transfer, and POS allocation producers record provenance.
+9. The lot-ledger census is durable, entitlement-aware, non-repairing, scheduled, and visible.
+10. POS displays FEFO guidance and captures editable lot evidence without changing sealed fiscal payloads.
+11. One accepted fiscal line creates exactly one aggregate stock effect and one durable lot obligation with one or more lot-effect legs.
+12. All relevant paths pass second-company, second-location, permission, rerun, crash, and PostgreSQL concurrency checks.
 
-Out of scope:
+The following remain outside this plan:
 
-- The separately approved oversell override.
+- Any oversell override.
 - A new standalone lot catalogue.
-- A fiscal-event version bump.
-- Treating FEFO estimates as captured physical evidence.
-- Q10 release/rejection behavior until the owner rules.
-- Q11–Q13 cash/drawer behavior.
+- Mutation of sealed fiscal payload versions.
+- Treating FEFO estimates as operator-captured evidence.
 - Automatic repair of lot-ledger drift.
-- Retroactive mutation of sealed fiscal payloads.
+- Any Q10 release/rejection branch.
+- Any Q11–Q13 cash/drawer implementation.
+- Independent company-level licensing beyond validating company ownership and applying inherited tenant configuration.
 
 ---
 
-## 2. Owner register
+## 2. Owner decisions still required
 
-All four rows are **OPEN verbatim; no task implements them**.
+The following block is reproduced verbatim from `docs/handoff/OWNER-RULINGS-parapharmacy-remediation-2026-09-05.md:138-143`. All four remain **OPEN**.
 
 | Q | Question | Odoo | ERPNext / domain norm | AutoERP today | Benchmark-derived default (owner rules) |
 |---|---|---|---|---|---|
@@ -93,93 +105,33 @@ All four rows are **OPEN verbatim; no task implements them**.
 | **Q12** Typed meaning of cash in/out | What do `CASH_IN`, `CASH_OUT`, v2 `DEPOSIT`, `PAYOUT` mean in money terms: safe transfer, bank deposit, petty-cash expense, other counterparty? | Cash in/out carries a **reason**; each reason maps to an account (OCA `pos_cash_move_reason`): bank-deposit moves go to a "cash awaiting bank deposit" intermediate account, small expenses to an expense account | Petty cash via Journal Entry to expense or transfer accounts; safe drop = transfer between cash accounts | Free-text reason on the device; no typed counterparty; only v3 `SAFE_DROP` is unambiguous | **Typed reason codes** on the device (`SAFE_DROP`, `BANK_DEPOSIT`, `PETTY_EXPENSE`, `FLOAT_TOP_UP`, `OTHER`), each mapped in configuration to a destination: transfer to safe/bank for the first three, expense document for petty cash, blocked for `OTHER` until classified. Recommend; v2 `DEPOSIT`/`PAYOUT` are mapped by a cutover table. |
 | **Q13** Historical alignment | How do we set the opening Treasury balance of a drawer/safe that has traded for months without float/drop booking, and what happens to the disabled variance window? | Cash journal "Opening with last closing balance"; discrepancies booked as cash-difference gain/loss at the next open/close; no retroactive rebooking | Opening balances via an Opening Entry / Journal Entry dated at cutover; prior history left as is | No alignment mechanism; variance GL disabled since 2026-08-08 | **One dated alignment per repository at cutover**: count the physical cash, book a single opening-balance adjustment (document + movement + JE to cash-difference gain/loss), no retroactive rebooking of past shifts; the disabled variance window is closed by that alignment and documented per tenant. Recommend. |
 
-Consequences:
+Binding consequence:
 
-- Implemented recall transitions are only `requested → recalled`.
-- A requested row continues imposing its branch-local hold until company recall.
-- No `released` or `rejected` endpoint, button, service method, transition, permission, or migration enum value is activated.
-- A future Q10-approved change may add `requested → released` exactly as ruled, but is conditional and is not part of the five pushes below.
-- Q11–Q13 remain W-CASH dependencies and do not alter W-LOT code, schema, or activation.
-- The oversell override remains OPEN/deferred and requires a separate approval.
-
----
-
-## 3. Canonical vocabulary — Convention 11
-
-`docs/glossary.md:41-43,58` already defines Lot (batch), Lot evidence, Lot identification, and Projection lot obligation. Task 1 reconciles them with these exact canonical additions or expansions:
-
-| Canonical term | Meaning | Canonical table/module | Primary writer | One operator surface | Forbidden ambiguity |
-|---|---|---|---|---|---|
-| **Branch lot hold** | A location-scoped issue prohibition created immediately by a branch recall request. | `batch_recall_requests` / BatchExpiry | `BatchRecallWorkflowService::request()` | Recall panel in existing batch detail | Never call this a company recall. |
-| **Company lot recall** | A company-wide prohibition created when a general manager executes a requested recall. | `batch_recall_transitions`; compatibility projection on `product_batches.is_recalled` | `BatchRecallWorkflowService::recall()` | Existing batch detail/worklist | Never call the branch-local state a recall. |
-| **Lot identity correction** | An audited metadata correction that does not change quantity, value, custody, or the physical lot represented. | `batch_identity_corrections` / BatchExpiry | `BatchIdentityCorrectionService::correct()` | Existing batch detail correction dialog | Not a lot identification/split. |
-| **Lot identification** | Evidence-backed reattribution of DEFAULT/unknown holding into identified lots while conserving aggregate quantity and value. | `lot_identifications`, `lot_identification_lines` | `LotIdentificationService::identify()` | Existing batch detail identify dialog | Not ordinary relabeling. |
-| **Lot count observation** | An explicit physical quantity for one lot in one counting phase; `0.0000` differs from missing. | `inventory_counting_item_lots` | `InventoryCountingService::submitLotObservations()` | Existing count detail | Not a second count document. |
-| **Lot eligibility snapshot** | Replace-all terminal/location cache used for FEFO guidance; never stock authority. | Server DTO and SQLite `branch_lot_snapshots`, `branch_lot_eligibility` | Server `PosLotEligibilityService`; device `replaceLotEligibilitySnapshot()` | Existing POS product/cart/detail surfaces | Not captured lot evidence. |
-| **Lot evidence** | Captured or inferred provenance for a specific allocation. | Existing allocation tables plus server/device sidecars | Declared producer or `LotEvidenceIngressService` | Existing trace/detail/export surfaces | `system_fefo_estimate` may never render as captured. |
-| **Projection lot obligation** | Durable pending/blocked/applied record for the lot arm of an accepted fiscal line, linked to its aggregate movement. | `fiscal_projection_lot_obligations` | `PosReceiptLotProjectionService` | Existing projection/receipt health surface | Not a second aggregate stock effect. |
-| **Lot-ledger census run** | Durable non-repairing comparison of aggregate stock and summed lots. | `lot_ledger_census_runs` | `LotLedgerDriftMonitorService` | Existing batches health banner | Not an inventory adjustment. |
-
-No second list, catalogue, import type, inventory authority, or recovery workflow is introduced.
+- No migration enum, nullable branch column, endpoint, permission, button, command, test expectation, rollout step, or deferred code path may encode `released`, `rejected`, shared-drawer attribution, typed cash-movement classification, or historical cash alignment.
+- Recall state contains only `requested` and `recalled`.
+- A requested branch hold remains until company recall. No W-LOT code releases it.
+- A future owner ruling requires a separate plan and additive migration.
+- Oversell override remains separately OPEN/deferred.
 
 ---
 
-## 4. Permissions, authority, and entitlement
+## 3. Canonical vocabulary and rollout flags
 
-### 4.1 Permissions
-
-| Permission | Default roles | Scope |
+| Term | Exact meaning | Writer |
 |---|---|---|
-| `batches.view` | Existing grants | Tenant/company/location policy unchanged. |
-| `batches.request-recall` | Branch manager and general manager | Requesting user must have active membership and custody of requesting location. |
-| `batches.recall` | General manager and admin | Company-wide recall; API rechecks company membership. |
-| `batches.identify` | **Admin only** | L9 identification/split. |
-| `batches.correct-identity` | **Admin only** | Identity-only correction. |
-| `batches.count-lots` | Existing inventory count authority | Location custody and count assignment required. |
-| `batches.traceability` | Existing grants | Provenance viewing/export. |
-| `batches.health` | Admin and general manager | Census health and unresolved obligations. |
-| `pos.capture-lot-evidence` | Cashier roles already authorized to sell | Bound to terminal, company, and location. |
+| Branch lot hold | Location-scoped sale and transfer prohibition created by a recall request. | `BatchRecallWorkflowService::request()` |
+| Company lot recall | Company-wide issue/transfer prohibition after escalation. | `BatchRecallWorkflowService::recall()` |
+| Lot identity correction | Audited metadata correction preserving the physical lot, quantity, value, and custody. | `BatchIdentityCorrectionService::correct()` |
+| Lot identification | Reattribution of DEFAULT/unknown holdings into identified lots while aggregate quantity and value remain unchanged. | `LotIdentificationService::identify()` |
+| Lot count observation | Explicit physical quantity for one lot in one count phase, including explicit zero. | `InventoryCountingService::submitCount()` |
+| Lot eligibility snapshot | Replace-all device cache for guidance; never stock authority. | `PosLotEligibilityService` and device repository |
+| Lot evidence | Operator-captured or system-estimated allocation provenance linked outside the fiscal hash chain. | Producer or `LotEvidenceIngressService` |
+| Projection lot obligation | Durable lot arm of an accepted fiscal line, linked to exactly one aggregate movement and N lot effects. | `PosReceiptLotProjectionService` |
+| Lot-ledger census run | Durable, non-repairing aggregate-versus-lot comparison. | `LotLedgerDriftMonitorService` |
+| W-LOT rollout revision | Immutable artifact SHA plus exact eight-flag JSON snapshot. | `WLotRolloutRevisionService` |
+| W-LOT company cutover | Per-company prepared/active/rolled-back activation record tied to one rollout revision. | `WLotCutoverService` |
 
-`apps/api/database/seeders/RolesAndPermissionsSeeder.php:403-409,547-561,631-632` remains the canonical role seed. The tenant permission migration grants `batches.identify` and `batches.correct-identity` only to `admin`. Additional staff may receive them only through existing role management; no `general_manager` default grant is added.
-
-### 4.2 Tri-state entitlement
-
-```php
-enum CompanyEntitlementState: string
-{
-    case Enabled = 'enabled';
-    case Disabled = 'disabled';
-    case Unresolved = 'unresolved';
-}
-
-interface CompanyEntitlementResolver
-{
-    public function resolve(string $tenantId, string $companyId, string $entitlement): CompanyEntitlementDecision;
-}
-```
-
-Exact file: `apps/api/app/Shared/Contracts/Company/CompanyEntitlementResolver.php`.
-
-Rules:
-
-- `Enabled`: W-LOT authoring and lot projection may run.
-- `Disabled`: no W-LOT authoring; always-on POS aggregate posting still runs.
-- `Unresolved`: fail closed for authoring and create a blocked lot obligation where an accepted fiscal event needs a lot effect.
-- No vertical fallback may silently convert `Unresolved` to `Disabled`.
-- Decisions include `revision`, `resolved_at`, and source.
-- A POS shift may open only after refresh and acknowledgement of the current revision.
-
-Existing configuration seams verified at HEAD:
-
-- `apps/api/app/Services/CompanyConfigService.php`
-- `apps/api/app/Services/VerticalConfigService.php`
-- `apps/api/app/Http/Controllers/Api/Admin/VerticalConfigController.php`
-- `apps/api/app/Observers/TenantObserver.php`
-- `apps/api/app/Modules/Fiscal/Domain/Models/FiscalEvent.php:31,110-111,185`
-
-### 4.3 Rollout switches
-
-Exact new file: `apps/api/config/lot_rollout.php`.
+Exact rollout variables in `apps/api/config/lot_rollout.php`, all default `false`:
 
 ```text
 LOT_ROLLOUT_RECALL_WORKFLOW
@@ -192,24 +144,39 @@ LOT_ROLLOUT_POS_EVIDENCE_AUTHORING
 LOT_ROLLOUT_POS_EVIDENCE_PROJECTION
 ```
 
-Every switch defaults to `false`. The POS aggregate receipt projection has no W-LOT switch and remains active.
+The POS aggregate receipt projection has no W-LOT switch and remains active.
 
 ---
 
-## 5. Versioned canonical receipt-line identity
+## 4. Benchmark-first guarantee matrix — Convention 10
 
-### 5.1 Grammar
+| ID | Guarantee | Odoo | ERPNext | Dolibarr (or NV with reason) | AutoERP today path:line | Gap | Decision |
+|---|---|---|---|---|---|---|---|
+| G-CREATE | Creating a lot is company-scoped and requires module plus permission. | Lot creation is inventory-authority controlled. | Batch creation is stock-role controlled. | NV — no pinned Dolibarr version/source fixture exists in the repository. | `apps/api/app/Modules/BatchExpiry/Presentation/routes.php:22-24` | Route has module middleware but lacks explicit create middleware and company-entitlement decision. | MATCH |
+| G-DUPLICATE | The same product/lot number may exist in a second company but not twice in one company/product/variant. | Company-scoped lot identity. | Company-scoped batch identity. | NV — no pinned source fixture. | `apps/api/database/migrations/tenant/2026_06_02_100008_add_variant_id_to_product_batches.php:27-31` | Effective partial uniqueness already separates variant and non-variant rows by company. | ALREADY |
+| G-EDIT | Identity fields freeze after first movement; correction is audited and versioned. | Used-lot identity changes require controlled correction. | Batch split/controlled correction is separate from ordinary edit. | NV — no pinned source fixture. | `apps/api/app/Modules/BatchExpiry/Presentation/Requests/UpdateBatchRequest.php:17-25` | Ordinary update accepts number and dates after use. | MATCH |
+| G-CANCEL | Deactivation never discards stock or history and requires zero quantity/reservation after explicit disposition. | Archival cannot erase stock history. | Disabled batch preserves ledger history. | NV — no pinned source fixture. | `apps/api/app/Modules/BatchExpiry/Presentation/routes.php:26` | Current destroy surface has no complete permission/disposition contract. | MATCH |
+| G-RERUN | Every recall, correction, identification, evidence, obligation, and cutover operation is exact-retry idempotent. | Operational retries must not duplicate stock moves. | Stock transactions use stable document identities. | NV — no pinned source fixture. | `apps/api/app/Modules/BatchExpiry/Presentation/Controllers/BatchController.php:193-210` | Direct recall has no stable operation UUID or fingerprint. | MATCH |
+| G-COMPANY | A route, worker, command, or retry cannot use a lot owned by a second company. | Company record rules. | Company permission boundary. | NV — no pinned source fixture. | `apps/api/app/Modules/Fiscal/Application/Services/DefaultModuleActivationResolver.php:50-54` | Current resolver discards company ID. | MATCH |
+| G-LOCATION | A branch user sees/holds/moves only authorized locations; recall escalation is separately company-wide. | Warehouse/location rules. | Warehouse User Permissions. | NV — no pinned source fixture. | `apps/api/app/Modules/BatchExpiry/Presentation/Controllers/BatchController.php:215-254` | Expiring input/scope differs from expired; branch hold does not exist. | MATCH |
+| G-PERMISSION | Read, trace, create, edit, deactivate, request, recall, write-off, identify, correct, count, capture, and health surfaces have explicit permissions. | Role/group authorization. | Role Permission Manager. | NV — no pinned source fixture. | `apps/api/app/Modules/BatchExpiry/Presentation/routes.php:14-48` | Most routes lack route-level permission middleware. | MATCH |
+| G-AUDIT | Every lifecycle or identity mutation has actor, operation identity, before/after state, reason, and timestamp. | Stock/quality history. | Stock Ledger and version history. | NV — no pinned source fixture. | `apps/api/app/Modules/BatchExpiry/Domain/Entities/Batch.php:134-141` | Current recall mutates booleans without a dedicated transition record. | MATCH |
+| G-COUNT | Count observations retain their physical instant and movement watermark. | Inventory adjustments preserve count context. | Stock reconciliation records counted quantity. | NV — no pinned source fixture. | `apps/api/app/Modules/Inventory/Application/Services/InventoryCountingService.php:1302-1318` | Aggregate count markers exist; lot observations do not. | MATCH |
+| G-MULTILOT | One fiscal line may map to N lot movements whose signed sum equals its aggregate movement. | Stock move lines split one order line across lots. | One invoice/stock line can allocate several batches. | NV — no pinned source fixture. | `apps/api/app/Modules/BatchExpiry/Domain/Services/FEFOInventoryService.php:260-307` | FEFO emits one batch movement per consumed lot; no durable N-leg obligation model exists. | MATCH |
+| G-CAPTURE | Captured evidence commits atomically with the offline receipt and outbox. | Lot selections are operational records linked to the order. | Batch is stored with stock/invoice detail. | NV — no pinned source fixture. | `apps/pos/src/lib/offline/receiptService.ts:558-759` | Current receipt transaction contains no evidence rows/outbox. | MATCH |
+| G-ESTIMATE | System FEFO remains visibly estimated and never becomes captured evidence. | Suggested/removal-strategy lot is distinct from operator confirmation. | Batch choice is explicit. | NV — no pinned source fixture. | `apps/api/app/Modules/POS/Application/Projections/PosCoreReceiptProjection.php:2016-2084` | Existing allocation lacks provenance. | MATCH |
+| G-OVERSELL | Oversell override behavior is not decided inside W-LOT. | Configuration-dependent. | Configuration-dependent. | NV — no pinned source fixture. | `docs/superpowers/specs/2026-09-05-parapharmacy-readiness-remediation-design.md:404-408` | Requires separate owner decision. | DEFER |
+| G-Q10 | Release/reject of a requested hold is not encoded until owner ruling. | Quality release exists in some installations. | Quality-authority disposition is domain-specific. | NV — no pinned source fixture. | `docs/handoff/OWNER-RULINGS-parapharmacy-remediation-2026-09-05.md:138-143` | OPEN owner question. | DEFER |
 
-Shared vector file:
+---
+
+## 5. Canonical receipt-line identity
+
+Shared vectors:
 
 `packages/shared/contracts/w-lot-canonical-line-key-v1.json`
 
 Implementations:
-
-- `apps/api/app/Modules/Fiscal/Domain/Services/CanonicalReceiptLineKey.php`
-- `apps/pos/src/lib/fiscal/canonicalReceiptLineKey.ts`
-
-Signature:
 
 ```php
 final class CanonicalReceiptLineKey
@@ -225,10 +192,10 @@ export function canonicalReceiptLineKey(
 ): string;
 ```
 
-ASCII output:
+Exact grammar:
 
 ```text
-sr-line:v1:event-v<event_version>:i<zero-based-index-padded-to-six-digits>
+sr-line:v1:event-v<event-version>:i<zero-based-index-padded-to-six-digits>
 ```
 
 Example:
@@ -237,213 +204,798 @@ Example:
 sr-line:v1:event-v5:i000003
 ```
 
-The index is the exact immutable position in the canonical signed `payload.line_items[]` array after canonical payload construction and before append. Current positional behavior is visible at `apps/api/app/Modules/POS/Application/Projections/PosCoreReceiptProjection.php:1175-1207`; `apps/pos/src/lib/fiscal/payloads/SaleReceiptV2Payload.ts:35-50` preserves positional line arrays.
+Rules:
 
-The key must never derive from:
-
-- product or variant ID;
-- mutable cart order before payload canonicalization;
-- database receipt-line order;
-- evidence batch order;
-- batch ID or number;
-- discounts;
-- server insertion order.
-
-Server ingress recomputes the key from `FiscalEvent.event_version` and `canonical_line_index`, verifies that the referenced signed line contains the submitted product/variant identity, and rejects mismatches. Evidence reordering does not change a line key. Reordering signed payload lines creates a different fiscal event/hash and therefore cannot mutate an existing event.
-
-Required vectors include:
-
-- two identical product lines at indexes 0 and 1;
-- the same evidence batches in reversed order;
-- an exact retry;
-- event versions 1 through 5;
-- index boundaries 0, 9, 99, 999999;
-- invalid negative and greater-than-999999 indexes.
+- `eventVersion` is a positive integer.
+- `zeroBasedIndex` is `0..999999`.
+- Server and SQLite persist the index as `INTEGER`.
+- The index is the immutable position in signed `payload.line_items[]`.
+- Product, variant, lot, evidence order, database line order, discounts, and server insertion order never contribute to the key.
+- Server ingress recomputes the key, verifies signed-line product/variant identity, and rejects mismatches.
+- Required vectors cover versions 1–5; indexes 0, 9, 99, 32767, 32768, and 999999; two identical product lines; reversed evidence order; retry; `-1`; and `1000000`.
 
 ---
 
-## 6. Schema contract
+## 6. Complete schema contract
 
-All tenant migrations are additive and ship together in push 2. The current effective product-batch uniqueness is:
+All PostgreSQL tenant uniques include `tenant_id` and `company_id` where the row is company-owned, even though database-per-tenant deployment already partitions tenants. All UUIDs are application-generated UUIDv7 unless a referenced existing row supplies them. All timestamps are `TIMESTAMPTZ`. Audit/history FKs use `ON DELETE RESTRICT`; disposable child/outbox rows use the explicitly stated action. No Q10–Q13 branch appears in any schema.
 
-- non-variant: `(company_id, product_id, batch_number)` where `variant_id IS NULL`;
-- variant: `(company_id, product_id, variant_id, batch_number)` where `variant_id IS NOT NULL`;
+### 6.1 Central migration: immutable rollout revisions
 
-as implemented by `apps/api/database/migrations/tenant/2026_06_02_100008_add_variant_id_to_product_batches.php:27-31`.
+**File:** `apps/api/database/migrations/2026_09_06_100000_create_w_lot_rollout_revisions.php`
 
-SQLite currently ends at v67 in `apps/pos/src/lib/db/migrations.ts:2163`; v68 and v69 are available.
+`w_lot_rollout_revisions`:
 
-### 6.1 Recall
+| Column | Contract |
+|---|---|
+| `id` | UUID PK, NOT NULL, no database default |
+| `artifact_sha` | CHAR(40), NOT NULL, no default, CHECK lowercase hexadecimal |
+| `flags` | JSONB, NOT NULL, no default |
+| `flags_fingerprint` | CHAR(64), NOT NULL, no default, CHECK lowercase hexadecimal |
+| `created_by` | VARCHAR(255), NOT NULL, no default |
+| `created_at` | TIMESTAMPTZ, NOT NULL, DEFAULT `CURRENT_TIMESTAMP` |
 
-`2026_09_06_100001_create_batch_recall_workflow_tables.php`
+Constraints and indexes:
 
-`batch_recall_requests`:
+- UNIQUE `(artifact_sha, flags_fingerprint)`.
+- CHECK `jsonb_typeof(flags) = 'object'`.
+- CHECK the JSON object has exactly the eight keys in §3 and every value has JSON type `boolean`.
+- `flags_fingerprint = sha256(canonical-json(flags))` is enforced by the service and PostgreSQL contract test.
+- A PostgreSQL trigger rejects UPDATE and DELETE, making revisions immutable.
+- Index `(created_at DESC)`.
 
-- `id UUID PK`
-- `tenant_id UUID NOT NULL`
-- `company_id UUID NOT NULL`
-- `batch_id BIGINT NOT NULL`
-- `requesting_location_id UUID NOT NULL`
-- `requested_by UUID NOT NULL`
-- `status VARCHAR(20) NOT NULL CHECK status IN ('requested','recalled')`
-- `reason TEXT NOT NULL`
-- timestamps
-- unique `(tenant_id, company_id, id)`
-- open-request uniqueness on `(tenant_id, company_id, batch_id, requesting_location_id)` where status is `requested`
-
-`batch_recall_transitions`:
-
-- append-only UUID PK
-- request/company/tenant/batch/location/actor IDs
-- `from_status`, `to_status`, `reason`, `occurred_at`
-- no update/delete production path
-
-Q10-conditional future schema is not included.
-
-### 6.2 Identity correction and identification
-
-`2026_09_06_100002_create_lot_identity_correction_and_identification_tables.php`
-
-- Add `identity_version BIGINT NOT NULL DEFAULT 1` to `product_batches`.
-- `batch_identity_corrections`: old/new batch number and dates, evidence, reason, actor, expected/applied identity versions.
-- `lot_identifications`: operation UUID, source batch/location, actor, evidence, status.
-- `lot_identification_lines`: target batch identity and exact `quantity DECIMAL(20,4)`.
-- Unique `(tenant_id, company_id, operation_uuid)`.
-- Quantity-changing identification movements retain the current mandatory aggregate movement FK established at `apps/api/database/migrations/tenant/2026_01_05_150002_create_inventory_batch_movements_table.php:21-25`.
-
-### 6.3 Counting
-
-`2026_09_06_100003_create_inventory_counting_item_lots.php`
-
-- counting/item/company/location/product/variant/batch identifiers;
-- `observed_quantity DECIMAL(20,4) NOT NULL`;
-- `submitted_by`, timestamps;
-- unique `(tenant_id, company_id, counting_item_id, batch_id)`;
-- explicit zero is stored; missing row remains unobserved.
-
-### 6.4 Provenance
-
-`2026_09_06_100004_add_lot_provenance_to_allocation_producers.php`
-
-Add nullable `provenance VARCHAR(32)` and nullable evidence actor/time/reference columns to:
-
-- `document_lines`;
-- `stock_transfer_line_batch_allocations`;
-- `pos_receipt_line_batch_allocations`.
-
-Allowed provenance:
-
-```text
-operator_captured
-system_fefo_estimate
-unknown
-```
-
-Conservative backfill maps only rows whose source facts prove FEFO to `system_fefo_estimate`; all others become `unknown`. No historical row is inferred as `operator_captured`.
-
-### 6.5 Census health
-
-`2026_09_06_100005_create_lot_ledger_census_runs.php`
-
-- tenant/company/run IDs;
-- started/finished/heartbeat times;
-- status `running|clean|drifted|failed|stale`;
-- tuple counts and exact decimal net/absolute drift;
-- error and notification metadata;
-- unique active run per tenant/company.
-
-### 6.6 POS evidence
-
-`2026_09_06_100006_create_pos_receipt_line_lot_evidence.php`
-
-- `id UUID PK`
-- tenant/company/location/terminal/fiscal event IDs;
-- `canonical_line_key VARCHAR(64)`
-- `canonical_line_index SMALLINT`
-- `canonical_key_version SMALLINT DEFAULT 1`
-- product/variant/batch IDs;
-- `quantity DECIMAL(20,4)`
-- `provenance='operator_captured'`
-- `client_operation_uuid`
-- captured/received timestamps
-- unique `(tenant_id, company_id, terminal_id, client_operation_uuid)`
-- unique `(tenant_id, company_id, fiscal_event_id, canonical_line_key, batch_id)`
-
-### 6.7 Lot obligation
-
-`2026_09_06_100007_create_fiscal_projection_lot_obligations.php`
-
-`fiscal_projection_lot_obligations` includes:
-
-- tenant/company/location/terminal/fiscal-event/receipt-line identifiers;
-- `canonical_line_key VARCHAR(64)`;
-- `canonical_line_index SMALLINT`;
-- `canonical_key_version SMALLINT DEFAULT 1`;
-- `lot_operation VARCHAR(16)` with `consume|restore|scrap`;
-- product/variant identifiers;
-- exact quantity;
-- entitlement state and revision;
-- `aggregate_stock_movement_id UUID NOT NULL`;
-- nullable `inventory_batch_movement_id BIGINT`;
-- state `pending_evidence|ready|applying|blocked|applied|dead_letter`;
-- reason, retry count, next attempt, lease owner/expiry, error, timestamps;
-- unique `(tenant_id, company_id, fiscal_event_id, canonical_line_key, lot_operation)`;
-- FK `aggregate_stock_movement_id → stock_movements.id ON DELETE RESTRICT`;
-- FK `inventory_batch_movement_id → inventory_batch_movements.id ON DELETE RESTRICT`;
-- unique non-null `inventory_batch_movement_id`.
-
-The obligation and its `aggregate_stock_movement_id` are inserted in the same transaction as the aggregate movement. An applied obligation must reference exactly one batch movement whose `movement_id` equals that exact aggregate movement.
-
-### 6.8 Permission migration
-
-`2026_09_06_100008_seed_w_lot_permissions.php`
-
-Creates all §4.1 permissions idempotently and grants identity correction/identification only to the tenant-scoped `admin` role.
-
-### 6.9 Device SQLite
-
-v68:
-
-- `branch_lot_snapshots`
-- `branch_lot_eligibility`
-- current entitlement revision/watermark
-- replace-all transactional refresh
-
-v69:
-
-- `receipt_line_lot_evidence`
-- `receipt_line_lot_evidence_outbox`
-- canonical key/index/version
-- states `pending|sending|acknowledged|retryable|dead_letter`
-- attempt/lease/error fields
-- unique client operation UUID
-
----
-
-## 7. Canonical service contracts
+JSONB is never exposed as an untyped array. Exact DTO:
 
 ```php
-interface BatchStockMutationService
+#[TypeScript]
+final class WLotRolloutFlagsData extends Data
 {
-    public function receive(BatchStockMutation $mutation): InventoryBatchMovement;
-    public function issue(BatchStockMutation $mutation): InventoryBatchMovement;
-    public function transfer(BatchStockTransferMutation $mutation): BatchStockTransferResult;
-    public function reserve(BatchReservationMutation $mutation): void;
-    public function releaseReservation(BatchReservationMutation $mutation): void;
+    public function __construct(
+        public bool $recallWorkflow,
+        public bool $identityCorrection,
+        public bool $lotCounting,
+        public bool $provenance,
+        public bool $censusScheduler,
+        public bool $posGuidance,
+        public bool $posEvidenceAuthoring,
+        public bool $posEvidenceProjection,
+    ) {}
 }
 ```
 
-All quantities are `numeric-string`; no public float parameters or float return values remain.
+File: `apps/api/app/Modules/Company/Application/DTOs/WLotRolloutFlagsData.php`.
+
+Rollback: leave the immutable table in place after any deployed revision. `down()` may drop it only in an offline development rollback after proving no company cutover references any revision ID.
+
+### 6.2 Central migration: entitlement revision
+
+**File:** `apps/api/database/migrations/2026_09_06_100001_add_module_entitlement_revision_to_tenants.php`
+
+Add to `tenants`:
+
+- `module_entitlement_revision BIGINT NOT NULL DEFAULT 1`.
+- CHECK `module_entitlement_revision >= 1`.
+- Index `idx_tenants_module_entitlement_revision`.
+
+Every `vertical`, `enabled_extras`, or applicable vertical-config mutation increments the revision atomically with the mutation. Rollback leaves the column in place while any W-LOT revision/cutover exists.
+
+### 6.3 Tenant migration: company cutovers
+
+**File:** `apps/api/database/migrations/tenant/2026_09_06_100000_create_w_lot_company_cutovers.php`
+
+`w_lot_company_cutovers`:
+
+| Column | Contract |
+|---|---|
+| `id` | UUID PK, NOT NULL, no default |
+| `tenant_id` | UUID, NOT NULL, no FK to central DB |
+| `company_id` | UUID, NOT NULL, FK `companies.id`, ON DELETE RESTRICT |
+| `rollout_revision_id` | UUID, NOT NULL, no cross-database FK |
+| `artifact_sha` | CHAR(40), NOT NULL, CHECK lowercase hexadecimal |
+| `flags_fingerprint` | CHAR(64), NOT NULL, CHECK lowercase hexadecimal |
+| `entitlement_revision` | BIGINT, NOT NULL, CHECK `>= 1` |
+| `state` | VARCHAR(16), NOT NULL, DEFAULT `'prepared'`, CHECK `prepared|active|rolled_back` |
+| `client_operation_uuid` | UUID, NOT NULL |
+| `prepared_by` | VARCHAR(255), NOT NULL |
+| `prepared_at` | TIMESTAMPTZ, NOT NULL |
+| `activated_at` | TIMESTAMPTZ, NULL, DEFAULT NULL |
+| `rolled_back_at` | TIMESTAMPTZ, NULL, DEFAULT NULL |
+| `created_at` | TIMESTAMPTZ, NOT NULL, DEFAULT `CURRENT_TIMESTAMP` |
+| `updated_at` | TIMESTAMPTZ, NOT NULL, DEFAULT `CURRENT_TIMESTAMP` |
+
+Constraints/indexes:
+
+- UNIQUE `(tenant_id, company_id, client_operation_uuid)`.
+- UNIQUE `(tenant_id, company_id, rollout_revision_id)`.
+- Partial UNIQUE `(tenant_id, company_id)` WHERE `state='active'`.
+- Index `(tenant_id, company_id, state)`.
+- CHECK timestamps match state:
+  - prepared: both terminal timestamps NULL;
+  - active: `activated_at` NOT NULL and `rolled_back_at` NULL;
+  - rolled_back: both NOT NULL.
+
+Rollback: active or referenced cutovers are never deleted. Behavioral rollback transitions `active → rolled_back`.
+
+### 6.4 Tenant migration: recall workflow
+
+**File:** `apps/api/database/migrations/tenant/2026_09_06_100001_create_batch_recall_workflow_tables.php`
+
+`batch_recall_requests`:
+
+| Column | Contract |
+|---|---|
+| `id` | UUID PK, NOT NULL |
+| `tenant_id` | UUID, NOT NULL |
+| `company_id` | UUID, NOT NULL, FK companies, RESTRICT |
+| `batch_id` | BIGINT, NOT NULL, FK product_batches, RESTRICT |
+| `requesting_location_id` | UUID, NOT NULL, FK locations, RESTRICT |
+| `requested_by` | UUID, NOT NULL, FK users, RESTRICT |
+| `client_operation_uuid` | UUID, NOT NULL |
+| `operation_fingerprint` | CHAR(64), NOT NULL, CHECK lowercase hexadecimal |
+| `status` | VARCHAR(16), NOT NULL, DEFAULT `'requested'`, CHECK `requested|recalled` |
+| `reason` | TEXT, NOT NULL, CHECK trimmed length `1..2000` |
+| `requested_at` | TIMESTAMPTZ, NOT NULL |
+| `recalled_at` | TIMESTAMPTZ, NULL |
+| `recalled_by` | UUID, NULL, FK users, RESTRICT |
+| `created_at` | TIMESTAMPTZ, NOT NULL, DEFAULT current timestamp |
+| `updated_at` | TIMESTAMPTZ, NOT NULL, DEFAULT current timestamp |
+
+Constraints/indexes:
+
+- UNIQUE `(tenant_id, company_id, client_operation_uuid)`.
+- Partial UNIQUE `(tenant_id, company_id, batch_id, requesting_location_id)` WHERE `status='requested'`.
+- Index `(tenant_id, company_id, status, requested_at)`.
+- Index `(tenant_id, company_id, batch_id, requesting_location_id, status)`.
+- CHECK requested has null recall fields; recalled has both non-null and `recalled_at >= requested_at`.
+
+`batch_recall_transitions`:
+
+| Column | Contract |
+|---|---|
+| `id` | UUID PK |
+| `tenant_id` | UUID NOT NULL |
+| `company_id` | UUID NOT NULL, FK companies, RESTRICT |
+| `request_id` | UUID NOT NULL, FK batch_recall_requests, RESTRICT |
+| `batch_id` | BIGINT NOT NULL, FK product_batches, RESTRICT |
+| `location_id` | UUID NOT NULL, FK locations, RESTRICT |
+| `actor_id` | UUID NOT NULL, FK users, RESTRICT |
+| `client_operation_uuid` | UUID NOT NULL |
+| `operation_fingerprint` | CHAR(64) NOT NULL, lowercase hexadecimal |
+| `from_status` | VARCHAR(16) NULL |
+| `to_status` | VARCHAR(16) NOT NULL, CHECK `requested|recalled` |
+| `reason` | TEXT NOT NULL, trimmed length `1..2000` |
+| `occurred_at` | TIMESTAMPTZ NOT NULL |
+| `created_at` | TIMESTAMPTZ NOT NULL DEFAULT current timestamp |
+
+Constraints/indexes:
+
+- UNIQUE `(tenant_id, company_id, client_operation_uuid)`.
+- UNIQUE `(tenant_id, company_id, request_id, to_status)`.
+- CHECK only `NULL → requested` or `requested → recalled`.
+- Index `(tenant_id, company_id, request_id, occurred_at)`.
+- PostgreSQL trigger rejects UPDATE/DELETE.
+
+Rollback: flags off, routes hidden, tables retained. No destructive down migration while rows exist.
+
+### 6.5 Tenant migration: identity correction and identification
+
+**File:** `apps/api/database/migrations/tenant/2026_09_06_100002_create_lot_identity_correction_and_identification_tables.php`
+
+Add to `product_batches`:
+
+- `identity_version BIGINT NOT NULL DEFAULT 1 CHECK identity_version >= 1`.
+- Index `(company_id, identity_version)`.
+
+`batch_identity_corrections`:
+
+- `id UUID PK NOT NULL`.
+- `tenant_id UUID NOT NULL`.
+- `company_id UUID NOT NULL FK companies RESTRICT`.
+- `batch_id BIGINT NOT NULL FK product_batches RESTRICT`.
+- `client_operation_uuid UUID NOT NULL`.
+- `operation_fingerprint CHAR(64) NOT NULL CHECK hex`.
+- `expected_identity_version BIGINT NOT NULL CHECK >=1`.
+- `applied_identity_version BIGINT NOT NULL CHECK = expected_identity_version + 1`.
+- `old_batch_number VARCHAR(100) NOT NULL`.
+- `new_batch_number VARCHAR(100) NOT NULL`.
+- `old_manufacturing_date DATE NULL`.
+- `new_manufacturing_date DATE NULL`.
+- `old_expiry_date DATE NULL`.
+- `new_expiry_date DATE NULL`.
+- `reason TEXT NOT NULL CHECK trimmed length 1..2000`.
+- `evidence_reference VARCHAR(255) NOT NULL CHECK trimmed non-empty`.
+- `actor_id UUID NOT NULL FK users RESTRICT`.
+- `occurred_at TIMESTAMPTZ NOT NULL`.
+- `created_at TIMESTAMPTZ NOT NULL DEFAULT current timestamp`.
+- UNIQUE `(tenant_id, company_id, client_operation_uuid)`.
+- UNIQUE `(tenant_id, company_id, batch_id, applied_identity_version)`.
+- CHECK at least one identity field changed.
+- Index `(tenant_id, company_id, batch_id, occurred_at)`.
+- UPDATE/DELETE rejected by trigger.
+
+`lot_identifications`:
+
+- `id UUID PK`.
+- `tenant_id UUID NOT NULL`.
+- `company_id UUID NOT NULL FK companies RESTRICT`.
+- `source_batch_id BIGINT NOT NULL FK product_batches RESTRICT`.
+- `product_id UUID NOT NULL FK products RESTRICT`.
+- `variant_id UUID NULL FK product_variants RESTRICT`.
+- `location_id UUID NOT NULL FK locations RESTRICT`.
+- `client_operation_uuid UUID NOT NULL`.
+- `operation_fingerprint CHAR(64) NOT NULL CHECK hex`.
+- `source_identity_version BIGINT NOT NULL CHECK >=1`.
+- `aggregate_stock_movement_id UUID NOT NULL FK stock_movements RESTRICT`.
+- `source_quantity_before DECIMAL(20,4) NOT NULL CHECK >=0`.
+- `source_quantity_after DECIMAL(20,4) NOT NULL CHECK >=0`.
+- `reason TEXT NOT NULL CHECK trimmed length 1..2000`.
+- `evidence_reference VARCHAR(255) NOT NULL`.
+- `actor_id UUID NOT NULL FK users RESTRICT`.
+- `applied_at TIMESTAMPTZ NOT NULL`.
+- `created_at TIMESTAMPTZ NOT NULL DEFAULT current timestamp`.
+- UNIQUE `(tenant_id, company_id, client_operation_uuid)`.
+- UNIQUE `(tenant_id, company_id, aggregate_stock_movement_id)`.
+- Index `(tenant_id, company_id, source_batch_id, location_id)`.
+
+`lot_identification_lines`:
+
+- `id UUID PK`.
+- `tenant_id UUID NOT NULL`.
+- `company_id UUID NOT NULL FK companies RESTRICT`.
+- `identification_id UUID NOT NULL FK lot_identifications RESTRICT`.
+- `ordinal INTEGER NOT NULL CHECK ordinal >= 0`.
+- `target_batch_id BIGINT NOT NULL FK product_batches RESTRICT`.
+- `quantity DECIMAL(20,4) NOT NULL CHECK quantity > 0`.
+- `inventory_batch_movement_id BIGINT NOT NULL FK inventory_batch_movements RESTRICT`.
+- `created_at TIMESTAMPTZ NOT NULL DEFAULT current timestamp`.
+- UNIQUE `(tenant_id, company_id, identification_id, ordinal)`.
+- UNIQUE `(tenant_id, company_id, identification_id, target_batch_id)`.
+- UNIQUE `(tenant_id, company_id, inventory_batch_movement_id)`.
+- Index `(tenant_id, company_id, target_batch_id)`.
+
+Application invariants verify source-negative plus target-positive lot movements sum to zero and all reference the one aggregate zero-value justification movement. Rollback retains lineage and disables authoring.
+
+### 6.6 Tenant migration: lot count observations
+
+**File:** `apps/api/database/migrations/tenant/2026_09_06_100003_create_inventory_counting_item_lots.php`
+
+`inventory_counting_item_lots`:
+
+- `id UUID PK`.
+- `tenant_id UUID NOT NULL`.
+- `company_id UUID NOT NULL FK companies RESTRICT`.
+- `counting_id UUID NOT NULL FK inventory_countings CASCADE`.
+- `counting_item_id UUID NOT NULL FK inventory_counting_items CASCADE`.
+- `count_number SMALLINT NOT NULL CHECK 1..3`.
+- `product_id UUID NOT NULL FK products RESTRICT`.
+- `variant_id UUID NULL FK product_variants RESTRICT`.
+- `location_id UUID NOT NULL FK locations RESTRICT`.
+- `batch_id BIGINT NOT NULL FK product_batches RESTRICT`.
+- `observed_quantity DECIMAL(20,4) NOT NULL CHECK >=0`.
+- `observed_at_device TIMESTAMPTZ NULL`.
+- `observed_at_estimate TIMESTAMPTZ NOT NULL`.
+- `observed_movement_marker UUID NULL`, deliberately not an FK so archival cannot destroy the ordering token.
+- `submitted_by UUID NOT NULL FK users RESTRICT`.
+- `created_at TIMESTAMPTZ NOT NULL DEFAULT current timestamp`.
+- `updated_at TIMESTAMPTZ NOT NULL DEFAULT current timestamp`.
+- UNIQUE `(tenant_id, company_id, counting_item_id, count_number, batch_id)`.
+- Index `(tenant_id, company_id, counting_id, count_number)`.
+- Index `(tenant_id, company_id, batch_id, location_id)`.
+- CHECK device instant, when supplied, is within the existing `SubmitCountRequest` drift envelope.
+
+Missing row means unobserved. `0.0000` means explicitly observed empty. No “DEFAULT remainder” is inferred.
+
+Rollback retains count evidence; authoring is disabled by flag.
+
+### 6.7 Tenant migration: provenance
+
+**File:** `apps/api/database/migrations/tenant/2026_09_06_100004_add_lot_provenance_to_allocation_producers.php`
+
+Add identically to `document_lines`, `stock_transfer_line_batch_allocations`, and `pos_receipt_line_batch_allocations`:
+
+- `lot_provenance VARCHAR(32) NOT NULL DEFAULT 'unknown' CHECK operator_captured|system_fefo_estimate|unknown`.
+- `lot_evidence_actor_id UUID NULL FK users RESTRICT`.
+- `lot_evidence_captured_at TIMESTAMPTZ NULL`.
+- `lot_evidence_reference VARCHAR(255) NULL`.
+- Index `lot_provenance`.
+- Compound index appropriate to each parent plus `lot_provenance`.
+
+Checks:
+
+- `operator_captured`: actor, captured time, and reference all non-null.
+- `system_fefo_estimate`: captured time and reference non-null; actor null.
+- `unknown`: all evidence fields null.
+
+Historical migration assigns only `unknown`. The backfill command may promote provable FEFO rows to `system_fefo_estimate`; it never produces `operator_captured`.
+
+Rollback leaves columns/data and turns presentation off.
+
+### 6.8 Tenant migration: durable census runs
+
+**File:** `apps/api/database/migrations/tenant/2026_09_06_100005_create_lot_ledger_census_runs.php`
+
+`lot_ledger_census_runs`:
+
+- `id UUID PK`.
+- `tenant_id UUID NOT NULL`.
+- `company_id UUID NOT NULL FK companies RESTRICT`.
+- `entitlement_state VARCHAR(24) NOT NULL CHECK enabled|disabled|unresolved`.
+- `entitlement_revision BIGINT NULL CHECK >=1 when non-null`.
+- `status VARCHAR(16) NOT NULL DEFAULT running CHECK running|clean|drifted|failed|stale`.
+- `started_at TIMESTAMPTZ NOT NULL`.
+- `heartbeat_at TIMESTAMPTZ NOT NULL`.
+- `finished_at TIMESTAMPTZ NULL`.
+- `cohort_tuple_count BIGINT NOT NULL DEFAULT 0 CHECK >=0`.
+- `compared_tuple_count BIGINT NOT NULL DEFAULT 0 CHECK >=0`.
+- `drift_tuple_count BIGINT NOT NULL DEFAULT 0 CHECK >=0`.
+- `net_drift DECIMAL(20,4) NOT NULL DEFAULT 0`.
+- `absolute_drift DECIMAL(20,4) NOT NULL DEFAULT 0 CHECK >=0`.
+- `last_error TEXT NULL`.
+- `notified_at TIMESTAMPTZ NULL`.
+- `created_at TIMESTAMPTZ NOT NULL DEFAULT current timestamp`.
+- `updated_at TIMESTAMPTZ NOT NULL DEFAULT current timestamp`.
+- Partial UNIQUE `(tenant_id, company_id)` WHERE status=`running`.
+- Index `(tenant_id, company_id, finished_at DESC)`.
+- Index `(tenant_id, status, heartbeat_at)`.
+- State/timestamp checks described in §7.4.
+
+No JSONB is added here; exact drift rows remain command output/log evidence rather than an unbounded JSON document.
+
+### 6.9 Tenant migration: POS evidence submissions
+
+**File:** `apps/api/database/migrations/tenant/2026_09_06_100006_create_pos_receipt_line_lot_evidence.php`
+
+`pos_receipt_lot_evidence_submissions`:
+
+- `id UUID PK`.
+- `tenant_id UUID NOT NULL`.
+- `company_id UUID NOT NULL FK companies RESTRICT`.
+- `location_id UUID NOT NULL FK locations RESTRICT`.
+- `terminal_id UUID NOT NULL FK pos_terminals RESTRICT`.
+- `fiscal_event_id UUID NOT NULL FK fiscal_events RESTRICT`.
+- `w_lot_cutover_id UUID NOT NULL FK w_lot_company_cutovers RESTRICT`.
+- `client_operation_uuid UUID NOT NULL`.
+- `operation_fingerprint CHAR(64) NOT NULL CHECK hex`.
+- `receipt_hash CHAR(64) NOT NULL CHECK hex`.
+- `canonical_key_version SMALLINT NOT NULL DEFAULT 1 CHECK =1`.
+- `entitlement_revision BIGINT NOT NULL CHECK >=1`.
+- `snapshot_revision BIGINT NOT NULL CHECK >=1`.
+- `snapshot_watermark VARCHAR(128) NOT NULL`.
+- `captured_by UUID NOT NULL FK users RESTRICT`.
+- `captured_at_device TIMESTAMPTZ NOT NULL`.
+- `received_at TIMESTAMPTZ NOT NULL DEFAULT current timestamp`.
+- `created_at TIMESTAMPTZ NOT NULL DEFAULT current timestamp`.
+- UNIQUE `(tenant_id, company_id, terminal_id, client_operation_uuid)`.
+- UNIQUE `(tenant_id, company_id, fiscal_event_id, id)`.
+- Index `(tenant_id, company_id, fiscal_event_id)`.
+- Index `(tenant_id, company_id, location_id, captured_at_device)`.
+
+`pos_receipt_line_lot_evidence`:
+
+- `id UUID PK`.
+- `tenant_id UUID NOT NULL`.
+- `company_id UUID NOT NULL FK companies RESTRICT`.
+- `submission_id UUID NOT NULL FK pos_receipt_lot_evidence_submissions RESTRICT`.
+- `fiscal_event_id UUID NOT NULL FK fiscal_events RESTRICT`.
+- `canonical_line_key VARCHAR(64) NOT NULL`.
+- `canonical_line_index INTEGER NOT NULL CHECK 0..999999`.
+- `product_id UUID NOT NULL FK products RESTRICT`.
+- `variant_id UUID NULL FK product_variants RESTRICT`.
+- `batch_id BIGINT NOT NULL FK product_batches RESTRICT`.
+- `quantity DECIMAL(20,4) NOT NULL CHECK >0`.
+- `provenance VARCHAR(32) NOT NULL DEFAULT 'operator_captured' CHECK = 'operator_captured'`.
+- `ordinal INTEGER NOT NULL CHECK >=0`.
+- `created_at TIMESTAMPTZ NOT NULL DEFAULT current timestamp`.
+- UNIQUE `(tenant_id, company_id, submission_id, ordinal)`.
+- UNIQUE `(tenant_id, company_id, fiscal_event_id, canonical_line_key, batch_id)`.
+- Index `(tenant_id, company_id, batch_id, fiscal_event_id)`.
+
+One operation UUID belongs to the submission header, allowing N evidence legs. The service validates hash, terminal/company/location, signed product/variant, positive quantities, and exact line totals.
+
+### 6.10 Tenant migration: aggregate obligations and N lot effects
+
+**File:** `apps/api/database/migrations/tenant/2026_09_06_100007_create_fiscal_projection_lot_obligations.php`
+
+`fiscal_projection_lot_obligations`:
+
+- `id UUID PK`.
+- `tenant_id UUID NOT NULL`.
+- `company_id UUID NOT NULL FK companies RESTRICT`.
+- `location_id UUID NOT NULL FK locations RESTRICT`.
+- `terminal_id UUID NOT NULL FK pos_terminals RESTRICT`.
+- `fiscal_event_id UUID NOT NULL FK fiscal_events RESTRICT`.
+- `receipt_line_id UUID NOT NULL FK pos_receipt_lines RESTRICT`.
+- `w_lot_cutover_id UUID NOT NULL FK w_lot_company_cutovers RESTRICT`.
+- `canonical_line_key VARCHAR(64) NOT NULL`.
+- `canonical_line_index INTEGER NOT NULL CHECK 0..999999`.
+- `canonical_key_version SMALLINT NOT NULL DEFAULT 1 CHECK =1`.
+- `lot_operation VARCHAR(16) NOT NULL CHECK consume|restore|scrap`.
+- `product_id UUID NOT NULL FK products RESTRICT`.
+- `variant_id UUID NULL FK product_variants RESTRICT`.
+- `expected_quantity DECIMAL(20,4) NOT NULL CHECK >0`.
+- `entitlement_state VARCHAR(24) NOT NULL CHECK enabled|disabled|unresolved`.
+- `entitlement_revision BIGINT NULL CHECK >=1 when non-null`.
+- `aggregate_stock_movement_id UUID NOT NULL FK stock_movements RESTRICT`.
+- `state VARCHAR(24) NOT NULL CHECK pending_evidence|ready|applying|blocked|applied|dead_letter`.
+- `block_reason VARCHAR(64) NULL`.
+- `attempt_count INTEGER NOT NULL DEFAULT 0 CHECK >=0`.
+- `next_attempt_at TIMESTAMPTZ NULL`.
+- `lease_token UUID NULL`.
+- `lease_owner VARCHAR(128) NULL`.
+- `lease_expires_at TIMESTAMPTZ NULL`.
+- `last_error TEXT NULL`.
+- `created_at TIMESTAMPTZ NOT NULL DEFAULT current timestamp`.
+- `updated_at TIMESTAMPTZ NOT NULL DEFAULT current timestamp`.
+- `applied_at TIMESTAMPTZ NULL`.
+- `dead_lettered_at TIMESTAMPTZ NULL`.
+- UNIQUE `(tenant_id, company_id, fiscal_event_id, canonical_line_key, lot_operation)`.
+- UNIQUE `(tenant_id, company_id, aggregate_stock_movement_id, canonical_line_key, lot_operation)`.
+- Index `(tenant_id, company_id, state, next_attempt_at)`.
+- Index `(tenant_id, lease_expires_at)`.
+- State/lease/timestamp checks follow §7.5.
+
+`fiscal_projection_lot_obligation_effects`:
+
+- `id UUID PK`.
+- `tenant_id UUID NOT NULL`.
+- `company_id UUID NOT NULL FK companies RESTRICT`.
+- `obligation_id UUID NOT NULL FK fiscal_projection_lot_obligations RESTRICT`.
+- `ordinal INTEGER NOT NULL CHECK >=0`.
+- `batch_id BIGINT NOT NULL FK product_batches RESTRICT`.
+- `evidence_id UUID NULL FK pos_receipt_line_lot_evidence RESTRICT`.
+- `signed_quantity DECIMAL(20,4) NOT NULL CHECK <>0`.
+- `state VARCHAR(16) NOT NULL DEFAULT planned CHECK planned|applied`.
+- `inventory_batch_movement_id BIGINT NULL FK inventory_batch_movements RESTRICT`.
+- `created_at TIMESTAMPTZ NOT NULL DEFAULT current timestamp`.
+- `applied_at TIMESTAMPTZ NULL`.
+- UNIQUE `(tenant_id, company_id, obligation_id, ordinal)`.
+- UNIQUE `(tenant_id, company_id, obligation_id, batch_id)`.
+- Partial UNIQUE `(tenant_id, company_id, inventory_batch_movement_id)` WHERE movement ID is not null.
+- Index `(tenant_id, company_id, obligation_id, state)`.
+- CHECK planned has no movement/applied time; applied has both.
+
+An obligation may reach `applied` only when:
+
+1. At least one effect exists.
+2. Every effect is applied.
+3. Every linked `inventory_batch_movement.movement_id` equals the obligation’s `aggregate_stock_movement_id`.
+4. Every linked movement quantity equals its effect’s `signed_quantity`.
+5. Sum of effect signed quantities equals the aggregate movement quantity.
+6. Absolute sum equals `expected_quantity`.
+7. Consume/scrap effects are negative; restore effects are positive.
+
+These invariants are checked under the same root transaction and by a PostgreSQL deferred constraint trigger. A two-lot FEFO consumption therefore creates two effect and two inventory-batch-movement rows under one obligation.
+
+### 6.11 Tenant permission migration
+
+**File:** `apps/api/database/migrations/tenant/2026_09_06_100008_seed_w_lot_permissions.php`
+
+Idempotently creates:
+
+```text
+batches.recall.request
+batches.identify
+batches.correct-identity
+batches.count-lots
+batches.health
+pos.capture-lot-evidence
+```
+
+It does not silently overwrite customized role grants. Canonical built-in-role reconciliation is owned by `RolesAndPermissionsSeeder` and the tenant-aware staging command. `down()` does not delete permissions that have assignments or audit history.
+
+### 6.12 Device SQLite v68
+
+**File:** `apps/pos/src/lib/db/migrations.ts`
+
+`branch_lot_snapshots`:
+
+- `id TEXT PRIMARY KEY`.
+- `tenant_id`, `company_id`, `location_id`, `terminal_id`, `cutover_id` TEXT NOT NULL.
+- `entitlement_state TEXT NOT NULL CHECK enabled|disabled|unresolved`.
+- `entitlement_revision INTEGER NOT NULL CHECK >=1`.
+- `snapshot_revision INTEGER NOT NULL CHECK >=1`.
+- `watermark TEXT NOT NULL`.
+- `captured_at TEXT NOT NULL`.
+- UNIQUE `(tenant_id, company_id, location_id, terminal_id)`.
+- Index `(company_id, location_id, snapshot_revision)`.
+
+`branch_lot_eligibility`:
+
+- `id TEXT PRIMARY KEY`.
+- `snapshot_id TEXT NOT NULL FK branch_lot_snapshots ON DELETE CASCADE`.
+- `tenant_id`, `company_id`, `location_id`, `product_id`, `batch_uuid`, `batch_number` TEXT NOT NULL.
+- `variant_id TEXT NULL`; `variant_key TEXT NOT NULL DEFAULT ''`.
+- `batch_id INTEGER NOT NULL`.
+- `expiry_date TEXT NULL`.
+- `available_quantity TEXT NOT NULL CHECK decimal-string grammar`.
+- `position INTEGER NOT NULL CHECK >=0`.
+- `is_active INTEGER NOT NULL CHECK 0|1`.
+- `is_recalled INTEGER NOT NULL CHECK 0|1`.
+- UNIQUE `(snapshot_id, product_id, variant_key, batch_id)`.
+- Index `(tenant_id, company_id, location_id, product_id, variant_key, position)`.
+
+Replacement deletes/inserts eligibility and updates the snapshot in one SQLite transaction.
+
+### 6.13 Device SQLite v69
+
+`receipt_lot_evidence_submissions`:
+
+- `id`, `tenant_id`, `company_id`, `location_id`, `terminal_id`, `fiscal_event_id`, `cutover_id`, `client_operation_uuid`, `operation_fingerprint`, `receipt_hash`, `snapshot_watermark`, `captured_by`, `captured_at_device`, `created_at` TEXT NOT NULL.
+- `canonical_key_version INTEGER NOT NULL DEFAULT 1`.
+- `entitlement_revision`, `snapshot_revision` INTEGER NOT NULL.
+- PK `id`.
+- UNIQUE `(tenant_id, company_id, terminal_id, client_operation_uuid)`.
+
+`receipt_line_lot_evidence`:
+
+- `id`, `submission_id`, `fiscal_event_id`, `canonical_line_key`, `product_id`, `batch_uuid`, `quantity`, `created_at` TEXT NOT NULL.
+- `variant_id TEXT NULL`.
+- `canonical_line_index INTEGER NOT NULL CHECK 0..999999`.
+- `batch_id INTEGER NOT NULL`.
+- `ordinal INTEGER NOT NULL CHECK >=0`.
+- `provenance TEXT NOT NULL CHECK = operator_captured`.
+- PK `id`.
+- FK submission ON DELETE RESTRICT.
+- UNIQUE `(submission_id, ordinal)`.
+- UNIQUE `(fiscal_event_id, canonical_line_key, batch_id)`.
+
+`receipt_lot_evidence_outbox`:
+
+- `id TEXT PRIMARY KEY`.
+- `submission_id TEXT NOT NULL FK receipt_lot_evidence_submissions RESTRICT`.
+- `state TEXT NOT NULL DEFAULT pending CHECK pending|sending|acknowledged|retryable|dead_letter`.
+- `attempt_count INTEGER NOT NULL DEFAULT 0 CHECK >=0`.
+- `lease_token TEXT NULL`.
+- `lease_owner TEXT NULL`.
+- `lease_expires_at TEXT NULL`.
+- `next_attempt_at TEXT NULL`.
+- `last_error TEXT NULL`.
+- `created_at`, `updated_at` TEXT NOT NULL.
+- `acknowledged_at`, `dead_lettered_at` TEXT NULL.
+- UNIQUE `(submission_id)`.
+- Index `(state, next_attempt_at)`.
+- State/lease checks mirror §7.5.
+
+---
+
+## 7. Enums, DTOs, state machines, and service contracts
+
+### 7.1 Typed enum and DTO inventory
+
+Create these backend enums and generate their TypeScript definitions into `packages/shared/types/generated.d.ts`:
+
+- `CompanyEntitlementState`: `enabled|disabled|unresolved`
+- `WLotCutoverState`: `prepared|active|rolled_back`
+- `BatchRecallRequestStatus`: `requested|recalled`
+- `LotProvenance`: `operator_captured|system_fefo_estimate|unknown`
+- `LotOperation`: `consume|restore|scrap`
+- `LotLedgerCensusStatus`: `running|clean|drifted|failed|stale`
+- `LotObligationState`: `pending_evidence|ready|applying|blocked|applied|dead_letter`
+- `LotObligationEffectState`: `planned|applied`
+- `LotEvidenceOutboxState`: `pending|sending|acknowledged|retryable|dead_letter`
+
+Exact DTO files:
+
+- `apps/api/app/Modules/Company/Application/DTOs/CompanyEntitlementDecisionData.php`
+- `apps/api/app/Modules/Company/Application/DTOs/WLotRolloutFlagsData.php`
+- `apps/api/app/Modules/BatchExpiry/Application/DTOs/BatchData.php`
+- `apps/api/app/Modules/BatchExpiry/Application/DTOs/BatchStockData.php`
+- `apps/api/app/Modules/BatchExpiry/Application/DTOs/BatchMovementData.php`
+- `apps/api/app/Modules/BatchExpiry/Application/DTOs/RequestBatchRecallData.php`
+- `apps/api/app/Modules/BatchExpiry/Application/DTOs/CorrectBatchIdentityData.php`
+- `apps/api/app/Modules/BatchExpiry/Application/DTOs/IdentifyLotData.php`
+- `apps/api/app/Modules/Inventory/Application/DTOs/LotCountObservationData.php`
+- `apps/api/app/Modules/BatchExpiry/Application/DTOs/LotEligibilitySnapshotData.php`
+- `apps/api/app/Modules/Fiscal/Application/DTOs/LotEvidenceSubmissionData.php`
+- `apps/api/app/Modules/Fiscal/Application/DTOs/LotObligationData.php`
+- `apps/api/app/Modules/BatchExpiry/Application/DTOs/LotLedgerCensusRunData.php`
+
+All quantity properties are `numeric-string` in PHPDoc and `string` in generated TypeScript. Hand-written batch-domain interfaces in `apps/web/src/features/batches/types.ts:14-83,235-281` are removed or reduced to UI-only view composition over generated DTOs.
+
+Generation command:
+
+```bash
+cd apps/api
+php artisan typescript:transform
+cd ../..
+pnpm typecheck
+```
+
+### 7.2 Company entitlement contract
+
+```php
+interface CompanyEntitlementResolver
+{
+    public function resolve(
+        string $tenantId,
+        string $companyId,
+        string $module,
+    ): CompanyEntitlementDecisionData;
+}
+```
+
+```php
+#[TypeScript]
+final class CompanyEntitlementDecisionData extends Data
+{
+    public function __construct(
+        public CompanyEntitlementState $state,
+        public string $tenantId,
+        public string $companyId,
+        public string $module,
+        public ?int $revision,
+        public ?string $cutoverId,
+        public string $source,
+        public CarbonImmutable $resolvedAt,
+        public ?string $reason,
+    ) {}
+}
+```
+
+Files:
+
+- Contract: `apps/api/app/Shared/Contracts/Company/CompanyEntitlementResolver.php`
+- Adapter: `apps/api/app/Modules/Company/Application/Services/TenantBoundCompanyEntitlementResolver.php`
+- Binding: `apps/api/app/Modules/Company/CompanyServiceProvider.php`
+- Legacy adapter update: `apps/api/app/Modules/Fiscal/Application/Services/DefaultModuleActivationResolver.php`
+- Cache owner: `apps/api/app/Services/CompanyConfigService.php`
+- Mutation owners: `apps/api/app/Http/Controllers/Api/Admin/VerticalConfigController.php`, `apps/api/app/Observers/TenantObserver.php`
+- Tenancy boundary: `apps/api/config/tenancy.php:38-43`
+
+Algorithm:
+
+1. Require or initialize the persisted tenant context.
+2. Query the tenant-local company by both `tenant_id` and `company_id`.
+3. Read the central tenant’s configuration and monotonic revision.
+4. Resolve the inherited `BatchExpiry` module state.
+5. Re-read revision before publishing/caching the result.
+6. Cache under `tenant_config:{tenant}:{revision}`. A stale computation can only populate an old, unreachable key.
+7. Missing company, failed central lookup, tenancy failure, or revision race after bounded retry produces `unresolved`.
+8. Product create/update, count, correction, identification, transfer, POS eligibility, evidence ingress, projection, recovery, census, HTTP, queue, and console consumers all use the same decision.
+9. A concurrent revision change causes the transactional lot write to block/retry; it never proceeds under an obsolete revision.
+
+`CreateProductRequest` and `UpdateProductRequest` may accept `requires_batch_tracking=true` only under `enabled`. Existing unentitled flagged data may be turned off or left untouched during unrelated updates but cannot authorize a lot write. `ProductForm.tsx:173` shows batch tracking only when both Inventory and `BatchExpiry` entitlement/read authority pass.
+
+### 7.3 Recall state machine and signatures
+
+```text
+create request: ∅ → requested
+escalate:       requested → recalled
+```
+
+Enforcing fields:
+
+- `status`
+- `requested_at`, `requested_by`
+- `recalled_at`, `recalled_by`
+- request and transition operation UUID/fingerprint
+- append-only transition rows
+- `product_batches.is_recalled` as compatibility projection for `recalled`
+
+No other state or transition exists.
 
 ```php
 interface BatchRecallWorkflowService
 {
-    public function request(RequestBatchRecallData $data, User $actor): BatchRecallRequest;
-    public function recall(string $requestId, string $reason, User $actor): BatchRecallRequest;
+    public function request(
+        RequestBatchRecallData $data,
+        User $actor,
+    ): BatchRecallRequest;
+
+    public function recall(
+        string $requestId,
+        string $clientOperationUuid,
+        string $reason,
+        User $actor,
+    ): BatchRecallRequest;
 }
 ```
 
-No release/reject signature exists while Q10 is OPEN.
+`RequestBatchRecallData` contains batch UUID, requesting location UUID, reason, and client operation UUID.
+
+Retry rules:
+
+- Same tenant/company/operation UUID and same canonical fingerprint: return the existing request in its current state, including after recall.
+- Same operation UUID with different payload: 409.
+- Concurrent identical requests: one insert; loser selects and returns it.
+- Concurrent distinct operations on the same open batch/location: one open request; the loser returns 409 with the winning request ID.
+- Both request and recall recheck membership/role/company/location within the write transaction.
+
+### 7.4 Census state machine
+
+```text
+∅ → running
+running → clean | drifted | failed | stale
+```
+
+- `running`: `finished_at` and terminal fields null.
+- `clean`: compared count equals cohort count, drift count zero, absolute/net zero.
+- `drifted`: drift count positive and `finished_at` non-null.
+- `failed`: `last_error` and `finished_at` non-null.
+- `stale`: heartbeat older than 180 minutes, `last_error` and `finished_at` non-null.
+- Disabled companies are recorded as `entitlement_state=disabled` but excluded from the entitled comparison.
+- Unresolved entitlement produces an actionable failed/unresolved run; it never reports clean.
+
+### 7.5 Evidence outbox and obligation machines
+
+Evidence outbox:
+
+```text
+pending → sending → acknowledged
+sending → retryable → sending
+sending|retryable → dead_letter
+expired sending lease → retryable
+```
+
+Obligation:
+
+```text
+pending_evidence → ready
+pending_evidence|ready|applying → blocked
+blocked → ready
+ready → applying → applied
+applying → ready             on retryable rollback
+blocked|applying → dead_letter
+expired applying lease → ready|blocked
+```
+
+Enforcing fields are state, attempt count, next attempt, lease token/owner/expiry, error, applied/dead-letter timestamps, entitlement revision/cutover, effect state, and linked movements.
+
+Lease claim is a short committed transaction. It sets lease fields with `FOR UPDATE SKIP LOCKED` and commits before inventory advisory locks are requested. The persisted lease, not a retained row lock, gives ownership.
+
+### 7.6 POS lot obligation contract
+
+```php
+interface PosReceiptLotProjectionService
+{
+    public function ensureObligation(
+        FiscalEvent $event,
+        ReceiptLine $receiptLine,
+        StockMovement $aggregateMovement,
+        string $canonicalLineKey,
+        int $canonicalLineIndex,
+        LotOperation $operation,
+        CompanyEntitlementDecisionData $entitlement,
+    ): FiscalProjectionLotObligation;
+
+    public function apply(
+        string $obligationId,
+        string $leaseToken,
+    ): FiscalProjectionLotObligation;
+}
+```
+
+```php
+interface LotEvidenceIngressService
+{
+    public function ingest(
+        FiscalEvent $event,
+        LotEvidenceSubmissionData $submission,
+        Terminal $terminal,
+    ): LotEvidenceIngressResultData;
+}
+```
+
+For captured evidence, effects derive from every submitted evidence leg. Without captured evidence, enabled projection may generate N FEFO-estimated effects. One obligation is never reduced to one movement. Parent `applied` is written only after the complete child set satisfies §6.10.
+
+### 7.7 Inventory mutation, correction, identification, and counting
+
+```php
+interface BatchStockMutationService
+{
+    public function receive(BatchStockMutationData $mutation): InventoryBatchMovement;
+
+    public function issue(BatchStockMutationData $mutation): InventoryBatchMovement;
+
+    public function transfer(
+        BatchStockTransferMutationData $mutation,
+    ): BatchStockTransferResultData;
+
+    public function reserve(BatchReservationMutationData $mutation): void;
+
+    public function releaseReservation(BatchReservationMutationData $mutation): void;
+}
+```
 
 ```php
 interface BatchIdentityCorrectionService
@@ -463,1052 +1015,1496 @@ interface LotIdentificationService
     public function identify(
         string $sourceBatchUuid,
         IdentifyLotData $data,
-        string $operationUuid,
+        string $clientOperationUuid,
         User $actor,
     ): LotIdentification;
 }
 ```
 
-```php
-interface PosReceiptLotProjectionService
-{
-    public function ensureObligation(
-        FiscalEvent $event,
-        ReceiptLine $receiptLine,
-        StockMovement $aggregateMovement,
-        string $canonicalLineKey,
-        int $canonicalLineIndex,
-        LotOperation $operation,
-    ): FiscalProjectionLotObligation;
+Existing counting signature becomes:
 
-    public function apply(FiscalProjectionLotObligation $obligation): FiscalProjectionLotObligation;
-}
+```php
+public function submitCount(
+    InventoryCountingItem $item,
+    int $countNumber,
+    string $quantity,
+    array $lotObservations,
+    ?string $notes,
+    User $user,
+    ?CarbonInterface $countedAtDevice = null,
+    ?CarbonInterface $deviceNow = null,
+): void;
 ```
 
-```php
-interface LotEvidenceIngressService
-{
-    public function ingest(
-        FiscalEvent $event,
-        LotEvidenceBatch $batch,
-        Terminal $terminal,
-    ): LotEvidenceIngressResult;
-}
+`$lotObservations` is `list<LotCountObservationData>`.
+
+Identity freeze:
+
+- Ordinary update may change notes and non-identity presentation fields.
+- Batch number, manufacturing date, and expiry date fail with 409 after any `inventory_batch_movements` history.
+- A correction requires `batches.correct-identity`, expected identity version, operation UUID, reason, evidence, company entitlement, and uniqueness under the live partial indexes.
+- Correction changes no stock, reservation, movement, cost, WAC, document allocation, evidence, or obligation ownership.
+- Identification requires source DEFAULT/unknown status, sufficient available source quantity, one aggregate zero-value justification movement, exact source-negative and target-positive lot legs, and no history merge.
+
+### 7.8 Full Artisan command signatures
+
+```text
+inventory:w-lot-preflight
+    {--tenant= : Restrict to one tenant UUID}
+    {--all-tenants : Deliberate fleet-wide execution}
+    {--company= : Restrict to one company UUID}
+    {--format=text : text|json}
+    {--expected-revision= : Required rollout revision UUID}
+    {--expected-cutover-manifest= : JSON file containing expected company cutover IDs}
+    {--fail-on-drift : Exit non-zero on quantitative drift}
+    {--fail-on-unresolved : Exit non-zero on entitlement, migration, permission, obligation, or manifest uncertainty}
+```
+
+```text
+wlot:create-rollout-revision
+    {--artifact-sha= : Exact 40-character Git SHA}
+    {--flags-json= : File containing the exact eight boolean flags}
+    {--actor= : Required deployment actor identifier}
+    {--format=text : text|json}
+```
+
+```text
+wlot:cutover
+    {action : prepare|activate|rollback}
+    {--tenant= : Restrict to one tenant UUID}
+    {--all-tenants : Deliberate fleet-wide execution}
+    {--company= : Restrict to one company UUID}
+    {--revision= : Rollout revision UUID; required for prepare}
+    {--manifest= : Prepare-output JSON; required for fleet activate/rollback}
+    {--cutover=* : Explicit cutover UUID; repeatable}
+    {--operation= : Stable operation UUID}
+    {--actor= : Required deployment actor identifier}
+    {--format=text : text|json}
+    {--force : Required for activate/rollback}
+```
+
+```text
+inventory:backfill-lot-provenance
+    {--tenant= : Restrict to one tenant UUID}
+    {--all-tenants : Deliberate fleet-wide execution}
+    {--company= : Restrict to one company UUID}
+    {--table=* : document_lines|stock_transfer_line_batch_allocations|pos_receipt_line_batch_allocations}
+    {--chunk=500 : Positive chunk size}
+    {--operation= : Stable operation UUID}
+    {--dry-run : Report only}
+    {--execute : Persist; mutually exclusive with dry-run}
+```
+
+```text
+inventory:lot-drift-monitor
+    {--tenant= : Restrict to one tenant UUID}
+    {--all-tenants : Deliberate fleet-wide execution}
+    {--company= : Restrict to one company UUID}
+    {--stale-after=180 : Minutes before a running record becomes stale}
+    {--fail-on-drift : Exit non-zero on drift}
+    {--fail-on-unresolved : Exit non-zero on unresolved entitlement/coverage}
+```
+
+```text
+fiscal:recover-lot-obligations
+    {--tenant= : Restrict to one tenant UUID}
+    {--all-tenants : Deliberate fleet-wide execution}
+    {--company= : Restrict to one company UUID}
+    {--obligation= : Restrict to one obligation UUID}
+    {--limit=100 : Maximum claims per tenant}
+    {--lease-seconds=60 : Positive lease duration}
+    {--max-attempts=12 : Dead-letter threshold}
+    {--dry-run : Report eligible rows without leasing}
+    {--execute : Claim/apply; mutually exclusive with dry-run}
+```
+
+Existing `tenants:migrate-rolling` remains exactly:
+
+```text
+tenants:migrate-rolling
+    {--tenant= : Restrict the rollout to a single tenant UUID (default: every tenant)}
+    {--force : Run migrations without the interactive confirmation prompt}
+    {--pretend : Dump the SQL queries that would be run without executing them}
 ```
 
 ---
 
-## 8. Complete writer and lock census
+## 8. Authorization and visibility contract
 
-### 8.1 Canonical order
+### 8.1 Built-in roles
 
-1. Lock lifecycle/document header when one exists.
-2. Acquire `ProductCostLock::acquire(tenant, company, sorted product IDs)`. Its name remains for compatibility; its contract expands beyond cost writers to all aggregate-plus-lot writers.
-3. Lock `stock_levels` ordered by product ID, null-variant ordering, variant ID, location ID.
-4. Lock `inventory_batch_stock` ordered by batch ID, location ID.
-5. Lock active reservations ordered by reservation ID.
-6. Lock `product_batches` identity row only after quantity rows unless the operation is identity-only and never enters the quantity path.
-7. Lock product last only for WAC/cost mutation.
-8. Buffer GL work inside the root transaction; publish events and perform external I/O only after commit.
+- `admin`: all permissions.
+- `manager`: current manager set, but remove `batches.recall`; add `batches.recall.request`. Its location constraints remain.
+- `general_manager`: exact manager set plus `batches.recall`, `batches.health`, and `treasury.manage_all_locations`; it is company-wide but still tenant/company scoped. Identity correction and identification are not granted.
+- `cashier`: retain `batches.view`; add `pos.capture-lot-evidence`; no recall, delete, traceability, health, correction, or identification.
+- `viewer`: add `batches.view`; no traceability/customer-history or mutations.
+- `operator`: add `batches.view`; no traceability or mutation.
+- `admin` only by default: `batches.identify`, `batches.correct-identity`.
+- Existing inventory-count roles receive `batches.count-lots`.
+- Custom roles are reported, never rewritten by the permission migration.
 
-`FEFOInventoryService` retains `FOR UPDATE OF inventory_batch_stock SKIP LOCKED` at `FEFOInventoryService.php:260-272`, but it must first own the same product advisory lock. Therefore an in-repository writer cannot make the earliest lot appear temporarily unavailable to FEFO.
+### 8.2 API route matrix
 
-Hold-time classes:
+All routes retain `api`, `auth:sanctum`, `SetPermissionsTeam`, `EnforceTokenTenantClaim`, and `module:BatchExpiry`.
 
-- **H1:** single-product interactive operation; locks end at root commit, no external I/O, PostgreSQL gate requires p95 under 5 seconds.
-- **H2:** multi-product document/projection; sorted product locks end at root commit, no external I/O, p95 under 10 seconds.
-- **H3:** maintenance/census mutation; one tenant/company/product/variant/location tuple per transaction, under 5 seconds; never one fleet-wide transaction.
-- **H4:** creation-only zero-row provisioning; transaction duration under 5 seconds and no lot quantity lock.
+- GET list/show/expiring/expired/stock/product-stock: `can:batches.view`.
+- GET traceability and partner batch history: `can:batches.traceability`.
+- POST create: `can:batches.create`.
+- PATCH update: `can:batches.update`.
+- DELETE/deactivate: `can:batches.delete`.
+- POST branch request: `can:batches.recall.request`.
+- POST company recall: `can:batches.recall`.
+- POST transfer: existing inventory-transfer authority plus company/location policy.
+- POST write-off/reversal/grouped write-off: `can:batches.write-off`.
+- POST correct identity: `can:batches.correct-identity`.
+- POST identify: `can:batches.identify`.
+- Count submission lot rows: existing count authority plus `batches.count-lots`.
+- POS evidence ingress: terminal authentication plus `pos.capture-lot-evidence`.
+- Health/census/obligation reads and retries: `can:batches.health`.
 
-### 8.2 Writer census
+The current direct route `POST /api/v1/batches/{uuid}/recall` at `BatchExpiry/Presentation/routes.php:29` is removed. Canonical routes are:
 
-| Writer path and method | Current write/predicate and transaction owner | Required order, scope, hold |
-|---|---|---|
-| `apps/api/app/Modules/Inventory/Application/Services/WeightedAverageCostService.php:149` `recordPurchase()` | Service transaction; stock predicate tenant/company/product/variant/location; updates/creates `stock_levels`, movement and product cost. | Advisory → stock row → product; company/product scope; H1. |
-| Same file `:384` `recordSale()` | Service transaction; locks aggregate stock and records movement. | For batch-tracked products advisory → aggregate → lot delegation; otherwise aggregate only; H1. |
-| Same file `:540` `recordReturn()` | Service transaction; may create stock row and update cost. | Advisory → aggregate → lot → product; H1. |
-| Same file `:745` `recordCostAdjustment()` | Service transaction; aggregate/cost writer. | Advisory → stock rows → product; H1/H2. |
-| `apps/api/app/Modules/Inventory/Domain/Services/StockAdjustmentService.php:104` `receive()` | Service transaction; aggregate row, movement; batch branch writes lot near `:2136-2152`. | Advisory → aggregate → lot through canonical mutation service; H1. |
-| Same file `:242` `issue()` | Service transaction; currently aggregate write at `:282`; batch shortage path locks lots at `:1551-1569`. | Change to advisory-first → aggregate → lots; H1. |
-| Same file `:372` `transfer()` | Service transaction; source/destination aggregate rows at `:413,436`, lot allocation when tracked. | Advisory → source/destination aggregate rows ordered by location → lots; H1. |
-| Same file `:551` `reserve()` and `:626` `releaseReservation()` | Service transaction; aggregate reserved updates at `:579,643`. | Advisory for tracked product → aggregate → lot → reservation; H1. |
-| Same file `:701` `adjust()`, `:788` `adjustByDelta()`, `:1297` `applyCountResult()` | Service transactions; aggregate and possible lot correction. | Count/document header → advisory → aggregate → lots; H1/H2. |
-| Same file `:2136-2152` lot helper | Direct `BatchStock::firstOrCreate()` and quantity update by batch/location. | Replace with `BatchStockMutationService`; no direct production write remains. |
-| `apps/api/app/Modules/BatchExpiry/Application/Services/BatchStockService.php:81` `ensureDefaultBatch()` and `:255` remainder helper | Direct lot creation/update; nested or service-owned transaction. | Advisory → aggregate existence → lot; zero creation H4, non-zero H1. |
-| Same file `:418` `receiveBatchStock()`, `:457` `issueBatchStock()`, `:499` `transferBatchStock()` | Service transaction at `:425,464,508`; direct lot writes. | Delegate canonical mutation service; advisory → aggregate → ordered lots; H1. |
-| Same file `:545` `recordBatchMovement()` | Batch movement insert currently admits conditional linkage. | Quantity-changing call requires non-null exact aggregate movement ID; H1. |
-| `apps/api/app/Modules/BatchExpiry/Domain/Entities/BatchStock.php:54` `reserve()` | Direct float increment at `:60`, no transaction ownership. | Remove public mutation; canonical service only. |
-| Same file `:63` `releaseReservation()` | Direct float decrement at `:69`. | Remove public mutation; canonical service only. |
-| Same file `:72` `adjustQuantity()` | Float arithmetic and direct update at `:84`. | Remove public mutation; numeric-string canonical service only. |
-| `apps/api/app/Modules/BatchExpiry/Domain/Services/FEFOInventoryService.php:234` `consumeBatchesAtomically()` | Service/nested transaction at `:243`; company/product/variant/location eligibility; lot locks `:260-272`, update `:307`. | Advisory → aggregate already owned by caller → FEFO lots → batch movement; H1. |
-| Same file `:460` `restoreBatchesForReturn()` and `:714` `creditLot()` | Service/nested transaction; batch/location lock around `:725`, update `:747`. | Advisory → aggregate → lot; exact movement link; H1. |
-| `apps/api/app/Modules/Inventory/Application/Services/StockReservationService.php:77` `reserve()` | Service transaction; aggregate predicate tenant/company/product/variant/location then lot predicate batch/location; updates at `:266,271`. | Advisory → aggregate → lot → reservation; H1. |
-| Same file `:482` `release()`/`releaseBySource()` | Service transaction; reservation, lot decrement at `:507`, aggregate decrement at `:515`. | Advisory → aggregate → lot → reservation state; replace floats; H1/H2. |
-| Same file `:609` `expireReservations()` | Per-reservation transaction; lot decrement at `:631`, aggregate at `:639`. | Advisory → aggregate → lot → reservation ordered by ID; H1 per reservation. |
-| Same file `:683` `recalculateAllReserved()` | Calls `StockLevel::recalculateReserved()`. | Replace with scoped service calculation under advisory and aggregate lock; H3. |
-| `apps/api/app/Modules/Inventory/Domain/StockLevel.php:196` `recalculateReserved()` | Direct aggregate save at `:204-205`; predicates omit tenant/company in inner query. | Remove public writer; scoped reservation service only. |
-| `apps/api/app/Modules/Inventory/Application/Services/GoodsReceiptService.php:83,133,221` | Outer transactions; delegates aggregate/WAC and batch receipt. | Root owns sorted advisories → aggregate → lots → product/GL; H2. |
-| `apps/api/app/Modules/Inventory/Application/Services/OpeningBalancePostingService.php:76` | Root transaction; direct aggregate write/create at `:143-145`, delegated lot/cost work. | Sorted advisories → aggregate → lot → product/GL; H2. |
-| `apps/api/app/Modules/Inventory/Application/Services/ResetOpeningBalanceService.php:68` | Root transaction; direct aggregate update at `:137`, reversal lot work. | Sorted advisories → aggregate → lots → product/GL; H2. |
-| `apps/api/app/Modules/Inventory/Application/Services/StockAdjustmentDocumentService.php:133,176,316,342` | Document-owned transactions; delegates adjustment/count writes. | Header → sorted advisories → aggregate → lots; H2. |
-| `apps/api/app/Modules/Inventory/Application/Services/SupplierGoodsReturnNoteService.php:331,415` | Root transaction; aggregate and FEFO lot issue through services. | Header → advisories → aggregate → lots → product/GL; H2. |
-| `apps/api/app/Modules/Inventory/Application/Services/StockTransferService.php:105,319,431` | Root transactions for create/complete/cancel; allocation rows at `:155-162`; delegates aggregate/lot changes. | Header → sorted advisories → source/destination aggregate → lots → allocation state; H2. |
-| `apps/api/app/Modules/Inventory/Application/Services/StockLevelMigrationService.php:56` | Migration transaction moving aggregate rows to default variant. | Advisory → source/destination aggregate → corresponding lots; H3. |
-| `apps/api/app/Modules/Inventory/Application/Services/StockThresholdService.php:42-49` | Creates zero aggregate row while setting thresholds. | Advisory before possible create; no lot mutation; H4. |
-| `apps/api/app/Console/Commands/FixOrphanedProducts.php:128` | Creation-only zero aggregate row. | Tenant/company/product advisory → create zero row; H4. |
-| `apps/api/app/Modules/BatchExpiry/Application/Services/GroupedWriteOffService.php:73-79` | Root transaction; stock then lot locks around `:250-271`; delegates movement. | Advisory → aggregate → sorted lots; H2. |
-| `apps/api/app/Modules/BatchExpiry/Domain/Services/BatchWriteOffService.php:44-59` | Root transaction; delegates adjustment and batch movement. | Advisory → aggregate → lot; H1. |
-| `apps/api/app/Modules/BatchExpiry/Domain/Services/ReverseWriteOffService.php:70,167` | Root transaction; delegates reverse aggregate/lot effect. | Advisory → aggregate → lot; H1. |
-| `apps/api/app/Console/Commands/RepairPhantomDefaultBatchesCommand.php:362` `repairLot()` | Per-row transaction at `:364`; direct batch lock/update `:367-453`. | Advisory → aggregate → lot; one tuple per transaction; H3. |
-| Same file `:580` `repointReservations()` | Reservation and lot locks/updates through `:623`. | Advisory → aggregate → source/target lots → reservations ordered by ID; H3. |
-| `apps/api/app/Modules/Document/Domain/Services/DeliveryNoteService.php:95,297` | Document root transaction; aggregate issue and lot consumption; reservation release at `:218-239`. | Header → sorted advisories → aggregate → lots → reservations → GL; H2. |
-| `apps/api/app/Modules/Document/Domain/Services/ReturnNoteService.php:507,709,890` | Document root transaction; aggregate receipt and lot restoration. | Header → sorted advisories → aggregate → lots → GL; H2. |
-| `apps/api/app/Modules/POS/Application/Services/ReceiptCreationService.php:122,142` | Receipt root transaction; direct aggregate decrement around `:927-995`, allocation writes `:1607-1634`. | Header → sorted advisories → aggregate → lots → allocations; H2. |
-| `apps/api/app/Modules/POS/Application/Services/ReceiptReturnService.php:194,208` | Return root transaction; aggregate restore `:1536-1569`, locks `:1629-1643`, lot restore later. | Header → sorted advisories → aggregate → lots; H2. |
-| `apps/api/app/Modules/POS/Application/Services/ReturnScrapWriteOffService.php:86-106` | Root transaction delegates adjustment/write-off. | Header → advisory → aggregate → lot; H1. |
-| `apps/api/app/Modules/POS/Application/Projections/PosCoreReceiptProjection.php:231-253` | Projection transaction; aggregate movement per line `:1909-1974`; existing lot consume `:2016-2084`; other aggregate return/scrap branches `:2280-2349,2440+,2944-2997`. | Always create aggregate effect and obligation atomically; lot service uses advisory → aggregate movement validation → lots; H2. |
-| New `BatchStockMutationService` | Sole direct lot quantity/reserved writer after migration. | Enforces canonical order and mandatory movement linkage; H1/H2. |
-| New `LotIdentificationService` | Flat aggregate justification plus source-negative/target-positive lot legs. | Identification header → advisory → aggregate → ordered lots → reservations; H1. |
-| New lot-count finalizer | One aggregate correction or flat justification plus lot deltas. | Count header → sorted advisories → aggregate → lots; H2. |
-| New `PosReceiptLotProjectionService` | Sole POS lot-obligation/apply writer. | Obligation lease → advisory → aggregate movement validation → lots → obligation; H1. |
-| Seeders and tenant provisioning | Zero-row/default identity creation only; no live quantity mutation permitted. | H4; architecture ratchet rejects non-zero direct writes. |
+```text
+POST /api/v1/batches/{uuid}/recall-requests
+POST /api/v1/batch-recall-requests/{request}/recall
+```
 
-### 8.3 Reservation consumers included in float retirement
+No release/reject route exists.
 
-- `apps/api/app/Modules/Marketplace/Application/Services/MarketplaceOrderService.php:66,195`
-- `apps/api/app/Modules/Document/Domain/Services/SalesOrderService.php:155`
-- `apps/api/app/Modules/Document/Domain/Services/DeliveryNoteService.php:239`
-- `apps/api/app/Modules/Cart/Application/Services/CartService.php:118`
-- `apps/api/app/Modules/Workshop/WorkOrder/Infrastructure/Adapters/InventoryReservationAdapter.php:40,76`
-- `apps/api/app/Modules/Inventory/Presentation/Controllers/StockReservationController.php`
-- `apps/api/app/Modules/Inventory/Infrastructure/Commands/ExpireStockReservationsCommand.php:25,47`
+### 8.3 Web visibility
 
-The architecture ratchet fails any production quantity/reserved write not listed above, any direct `BatchStock` mutation outside `BatchStockMutationService`, any float quantity contract, and any quantity-changing batch movement without an aggregate movement link.
+Exact files:
+
+- `apps/web/src/components/organisms/Sidebar/Sidebar.tsx`
+- `apps/web/src/routes/index.tsx`
+- `apps/web/src/features/batches/pages/BatchListPage.tsx`
+- `apps/web/src/features/batches/pages/BatchDetailPage.tsx`
+- `apps/web/src/features/batches/pages/CreateBatchPage.tsx`
+- `apps/web/src/features/batches/pages/EditBatchPage.tsx`
+- `apps/web/src/features/batches/pages/ExpiryWriteOffPage.tsx`
+- `apps/web/src/hooks/usePermissions.ts`
+- `apps/web/src/hooks/permissionsMap.generated.ts`
+
+The sidebar and route require `BatchExpiry` plus `batches.view`. Each action requires its exact mutation permission. A cashier/viewer sees quantity and expiry but no traceability or mutation. A manager sees branch request but not company recall. General manager sees company recall. Admin additionally sees correction/identification.
 
 ---
 
-## 9. Benchmark-first repository baseline — Convention 10
+## 9. Complete writer and lock census
 
-| Concern | Current AutoERP evidence at verified HEAD | Required delta |
+### 9.1 Canonical lock order
+
+1. Lifecycle/document/receipt/count header, if one exists.
+2. `ProductCostLock::acquire(tenant, company, sorted product IDs)`.
+3. `stock_levels`, ordered by product, null-variant ordering, variant, location.
+4. `inventory_batch_stock`, ordered by batch ID then location ID.
+5. Active reservations, ordered by reservation ID.
+6. `product_batches` identity rows.
+7. Product cost row if WAC changes.
+8. Lot evidence/identification/obligation rows and effects.
+9. Flush `InventoryGlPostingBuffer`.
+10. GL tenant-numbering advisory lock.
+11. GL company hash-chain advisory lock.
+12. Journal entry header and lines.
+13. Commit; only then publish events or perform external I/O.
+
+Recovery lease proof:
+
+- Claim transaction locks an eligible obligation only long enough to set lease token/owner/expiry, then commits.
+- Application transaction starts fresh, acquires `ProductCostLock` and inventory rows first, then locks the leased obligation/effects.
+- Therefore recovery never holds an obligation row while waiting for the advisory lock.
+- No GL path calls inventory/obligation writers after taking a GL advisory lock.
+- `InventoryGlPostingBuffer` performs its work after inventory and obligation changes are prepared but before the root commit.
+
+Hold classes:
+
+- H1 single product/location: under 5 seconds.
+- H2 multi-product document/projection: under 10 seconds, sorted products.
+- H3 maintenance: one company/product/variant/location tuple per transaction, under 5 seconds.
+- H4 zero-row provisioning: no non-zero quantity write.
+- No fleet-wide write transaction.
+
+### 9.2 Writer census
+
+| Writer | Current ownership | Required order/result |
 |---|---|---|
-| Batch identity uniqueness | `apps/api/database/migrations/tenant/2026_06_02_100008_add_variant_id_to_product_batches.php:27-31` | Preserve live partial uniqueness during corrections/identification. |
-| Batch movement linkage | `apps/api/database/migrations/tenant/2026_01_05_150002_create_inventory_batch_movements_table.php:21-25` | Every new quantity-changing lot movement supplies the exact aggregate movement ID. |
-| POS aggregate/lot posting | `apps/api/app/Modules/POS/Application/Projections/PosCoreReceiptProjection.php:1909-2084` | Separate always-on aggregate effect from recoverable lot obligation. |
-| Fiscal line identity | `PosCoreReceiptProjection.php:1175-1207`; `apps/pos/src/lib/fiscal/payloads/SaleReceiptV2Payload.ts:35-50` | Shared versioned canonical key from signed payload index. |
-| Lot arithmetic | `apps/api/app/Modules/BatchExpiry/Domain/Entities/BatchStock.php:44-84` | Replace float accessor/mutators with numeric-string service operations. |
-| Reservation arithmetic | `apps/api/app/Modules/Inventory/Application/Services/StockReservationService.php:266,271,507,515,631,639` | Exact decimal conservation and canonical lock order. |
-| Delivery-note provenance | `SalesOrderToDeliveryNoteConverter.php:363-379,501-517`; `DeliveryNoteFromDocumentFactory.php:137-153` | Explicit provenance at all creation seams. |
-| Active POS chooser | `apps/pos/src/pages/HomePage.tsx:1863`; `BarcodeChooserModal.tsx:146-152` | Same eligibility/guidance as other active renderers. |
-| Active POS grid | `apps/pos/src/components/organisms/ProductGrid/ProductGrid.tsx:759-773`; `ProductCard.tsx:566-567` | One eligibility pipeline through every active presentation. |
-| Scheduler | `apps/api/routes/console.php:118-120,250-259,277-280` | Add the daily monitor at non-colliding 03:20 with 180-minute expiry. |
+| `WeightedAverageCostService::recordPurchase()` | Service transaction | advisory → aggregate → lot → product → buffered GL |
+| `WeightedAverageCostService::recordSale()` | Service transaction | advisory → aggregate → lot; no float |
+| `WeightedAverageCostService::recordReturn()` | Service transaction | advisory → aggregate → lot → product → buffered GL |
+| `WeightedAverageCostService::recordCostAdjustment()` | Service transaction | sorted advisory → stock rows → product → buffered GL |
+| `StockAdjustmentService::receive()` | Service transaction | canonical mutation service only |
+| `StockAdjustmentService::issue()` | Service transaction | advisory → aggregate → lot; branch/company hold checked under lock |
+| `StockAdjustmentService::transfer()` | Service transaction | advisory → source/destination aggregate by location → lots; holds checked for both |
+| `StockAdjustmentService::reserve()` | Service transaction | advisory → aggregate → lot → reservation |
+| `StockAdjustmentService::releaseReservation()` | Service transaction | advisory → aggregate → lot → reservation |
+| `StockAdjustmentService::adjust()` | Service transaction | header → advisory → aggregate → lot |
+| `StockAdjustmentService::adjustByDelta()` | Service transaction | header → advisory → aggregate → lot |
+| `StockAdjustmentService::applyCountResult()` | Service transaction | count header → sorted advisory → aggregate → lots |
+| `BatchStockService::ensureDefaultBatch()` | Nested/service transaction | H4 for zero row; non-zero path delegates canonical service |
+| `BatchStockService::receiveBatchStock()` | Service transaction | delegates canonical service |
+| `BatchStockService::issueBatchStock()` | Service transaction | delegates canonical service |
+| `BatchStockService::transferBatchStock()` | Service transaction | delegates canonical service |
+| `BatchStockService::recordBatchMovement()` | Current movement insert | requires exact non-null aggregate movement ID |
+| `BatchStock::reserve()` | Direct entity writer | removed as public mutation |
+| `BatchStock::releaseReservation()` | Direct entity writer | removed as public mutation |
+| `BatchStock::adjustQuantity()` | Direct float writer | removed as public mutation |
+| `FEFOInventoryService::consumeBatchesAtomically()` | Nested transaction, `SKIP LOCKED` | caller already owns advisory/aggregate; emits N movements/effects |
+| `FEFOInventoryService::restoreBatchesForReturn()` | Nested transaction | advisory → aggregate → ordered lots |
+| `FEFOInventoryService::creditLot()` | Nested transaction | advisory → aggregate → lot |
+| `StockReservationService::reserve()` | Service transaction | advisory → aggregate → lot → reservation |
+| `StockReservationService::release()` | Service transaction | advisory → aggregate → lot → reservation state |
+| `StockReservationService::releaseBySource()` | Service transaction | sorted products; same order |
+| `StockReservationService::expireReservations()` | Per-reservation transaction | advisory → aggregate → lot → reservation |
+| `StockReservationService::recalculateAllReserved()` | Maintenance | one tuple per H3 transaction |
+| `StockLevel::recalculateReserved()` | Direct aggregate writer | made non-public/delegated |
+| `GoodsReceiptService` | Root transaction | header → sorted advisory → aggregate → lots → product → buffered GL |
+| `OpeningBalancePostingService` | Root transaction | header → sorted advisory → aggregate → lots → product → buffered GL |
+| `ResetOpeningBalanceService` | Root transaction | same order |
+| `StockAdjustmentDocumentService` | Document transaction | header → sorted advisory → aggregate → lots → buffered GL |
+| `SupplierGoodsReturnNoteService` | Root transaction | header → sorted advisory → aggregate → lots → product → buffered GL |
+| `StockTransferService` | Root transaction | header → sorted advisory → source/destination aggregate → lots → allocation |
+| `StockLevelMigrationService` | Maintenance | one tuple; advisory before source/destination rows |
+| `StockThresholdService` | Zero-row creation | advisory → create zero row, H4 |
+| `FixOrphanedProducts` | Zero-row creation | tenant/company/product advisory, H4 |
+| `GroupedWriteOffService` | Root transaction | advisory → aggregate → sorted lots → buffered GL |
+| `BatchWriteOffService` | Root transaction | advisory → aggregate → lot → buffered GL |
+| `ReverseWriteOffService` | Root transaction | advisory → aggregate → lot → buffered GL |
+| `RepairPhantomDefaultBatchesCommand::repairLot()` | Per-row maintenance | advisory → aggregate → source/target lots |
+| `RepairPhantomDefaultBatchesCommand::repointReservations()` | Maintenance | advisory → aggregate → source/target lots → ordered reservations |
+| `DeliveryNoteService` | Document root transaction | header → sorted advisory → aggregate → lots → reservations → buffered GL |
+| `ReturnNoteService` | Document root transaction | header → sorted advisory → aggregate → lots → buffered GL |
+| `ReceiptCreationService` | Receipt root transaction | header → sorted advisory → aggregate → lots → allocations |
+| `ReceiptReturnService` | Return root transaction | header → sorted advisory → aggregate → lots |
+| `ReturnScrapWriteOffService` | Root transaction | header → advisory → aggregate → lot → buffered GL |
+| `PosCoreReceiptProjection` | Projection transaction | receipt line → advisory → aggregate movement + obligation → lot effects |
+| `BatchStockMutationService` | New sole direct lot stock/reserved writer | enforces exact decimal and movement linkage |
+| `BatchIdentityCorrectionService` | Identity-only transaction | batch identity row only; never quantity/GL |
+| `LotIdentificationService` | Root transaction | header → advisory → aggregate justification → lots → lineage |
+| Lot-count finalizer | Count root transaction | count header → sorted advisory → aggregate → lots |
+| `PosReceiptLotProjectionService` live path | Existing projection root transaction | advisory/aggregate first → obligation/effects → buffered GL |
+| Obligation recovery | Two transactions | committed lease, then advisory → inventory → obligation/effects → GL |
+| Seeders/provisioning | Identity/permission writes | never non-zero quantity |
+| `InventoryGlPostingBuffer::flushIfOutermost()` | Root inventory transaction at `InventoryGlPostingBuffer.php:56-92` | executes only after inventory/obligation rows are prepared |
+| `InventoryGlPostingService` | Called by buffer | delegates to `GeneralLedgerService`; no reverse inventory call |
+| `GeneralLedgerService::createInventoryMovementEntry()` | Same root transaction | GL numbering advisory → company-chain advisory → entry/lines |
+| `GeneralLedgerService::createInventoryWriteOffEntry()` | Same root transaction | same GL order |
+| `GeneralLedgerService::postEntryNow()` | Root transaction required | never calls W-LOT writers after GL locks |
+| `GeneralLedgerService::generateEntryNumber()` | GL numbering owner | tenant-numbering advisory before company-chain advisory |
+
+### 9.3 Float retirement census
+
+The architecture ratchet rejects:
+
+- Public float quantity/reservation parameters or returns.
+- `(float)` casts on batch/lot quantity.
+- JavaScript `number` for domain quantity.
+- Arithmetic using `+`, `-`, or `reduce` over lot quantities.
+- Direct `BatchStock` writes outside `BatchStockMutationService`.
+- Quantity-changing batch movements without an aggregate movement.
+- Aggregate-plus-lot writers absent from §9.2.
+
+Mandatory consumers include:
+
+- `Batch.php:143-151`
+- `BatchStock.php:44-84`
+- `BatchResource.php:39-59`
+- `FEFOInventoryService.php:940-957`
+- `BatchController.php:264-323`
+- `StockReservationService.php:266,271,507,515,631,639`
+- Marketplace, SalesOrder, DeliveryNote, Cart, Workshop reservation adapters/controllers/expiry command
+- `apps/web/src/features/batches/types.ts`
+- `BatchListPage.tsx`
+- `BatchDetailPage.tsx`
+- `apps/pos/src/types/cart.ts`
 
 ---
 
 ## 10. Task dispatch packets
 
-### Task 1 — Land preflight, vocabulary, and architecture ratchets
+### Task 1 — Preflight, vocabulary, and writer ratchet
 
-**Production files**
+**Production files:** create `apps/api/app/Console/Commands/WLotPreflightCommand.php`, `apps/api/app/Modules/Inventory/Domain/Services/InventoryWriterLockManifest.php`, `docs/architecture/w-lot-lock-and-writer-census.md`; update `docs/glossary.md`.
 
-- `apps/api/app/Console/Commands/WLotPreflightCommand.php` — new
-- `apps/api/app/Modules/Inventory/Domain/Services/InventoryWriterLockManifest.php` — new
-- `docs/glossary.md`
-- `docs/architecture/w-lot-lock-and-writer-census.md` — new
+**Contract:** exact `inventory:w-lot-preflight` signature from §7.8. It is read-only.
 
-**Contract/schema:** `inventory:w-lot-preflight {--tenant=} {--all-tenants} {--format=text|json} {--fail-on-drift}`. Read-only; schema delta none.
-
-**Red first:** `apps/api/tests/Architecture/InventoryWriterLockManifestTest.php`, class `InventoryWriterLockManifestTest`, case `test_every_inventory_writer_is_classified`; first failure: `assertSame([], $unclassifiedWriters)` reports the current direct writers. Command/lane: `cd apps/api && php artisan test tests/Architecture/InventoryWriterLockManifestTest.php --filter=test_every_inventory_writer_is_classified` — **SQLite**.
-
-Also add `LotVocabularyContractTest::test_w_lot_terms_have_one_writer_and_surface` and `WLotPreflightCommandTest::test_preflight_is_read_only_and_fails_on_manifest_drift`.
-
-**Implementation**
-
-1. Encode §8 verbatim in the manifest.
-2. Scan production PHP for aggregate/lot quantity or reserved writes.
-3. Reject public float quantity contracts and missing movement linkage.
-4. Add §3 terms to the glossary.
-5. Make preflight report schema readiness, entitlement state, writer-manifest hash, drift, unresolved obligations, and permission state without mutation.
-
-**Convention 09:** `WLotPreflightCommandTest::test_second_company_is_reported_independently`, `::test_second_location_is_reported_independently`, `::test_rerun_is_identical`.
-
-**Reviewer gate:** No migration or writer task starts until the ratchet recognizes every §8 row and preflight is demonstrably read-only.
-
----
-
-### Task 2 — Add entitlement, revision fencing, and dormant rollout flags
-
-**Production files**
-
-- `apps/api/app/Shared/Contracts/Company/CompanyEntitlementResolver.php` — new
-- `apps/api/app/Services/CompanyConfigService.php`
-- `apps/api/app/Services/VerticalConfigService.php`
-- `apps/api/app/Http/Controllers/Api/Admin/VerticalConfigController.php`
-- `apps/api/app/Observers/TenantObserver.php`
-- `apps/api/config/lot_rollout.php` — new
-
-**Contract/schema:** §4.2 resolver and §4.3 flags; no schema in this task.
-
-**Red first:** `apps/api/tests/Feature/Company/WLotEntitlementResolutionTest.php`, class `WLotEntitlementResolutionTest`, case `test_missing_company_resolution_is_unresolved_not_disabled`; first failure: `assertSame(CompanyEntitlementState::Unresolved, $decision->state)`. Command/lane: `cd apps/api && php artisan test tests/Feature/Company/WLotEntitlementResolutionTest.php --filter=test_missing_company_resolution_is_unresolved_not_disabled` — **SQLite**.
-
-**Implementation:** centralize resolution; increment revision on effective changes; invalidate caches through `TenantObserver`; advertise state/revision; keep all flags false.
-
-**Convention 09:** `test_second_company_has_independent_revision`, `test_second_location_cannot_override_company_entitlement`, `test_rerun_returns_same_revision_without_change`.
-
-**Reviewer gate:** No boolean fallback or cross-company cache key; all switches remain false.
-
----
-
-### Task 3 — Make role/membership checks atomic
-
-**Production files**
-
-- `apps/api/app/Modules/Identity/Application/Services/RoleMembershipScopeService.php`
-- `apps/api/app/Modules/Identity/Presentation/Controllers/RoleController.php`
-- `apps/api/app/Modules/Identity/Presentation/Controllers/UserController.php`
-
-**Contract/schema:** `assign(User $user, Role $role, Company $company, User $actor): void`; no schema.
-
-**Red first:** `apps/api/tests/Feature/Identity/WLotRoleMembershipScopeTest.php`, class `WLotRoleMembershipScopeTest`, case `test_cross_company_permission_assignment_rolls_back`; first failure: `assertDatabaseMissing('model_has_roles', [...])`. Command/lane: `cd apps/api && php artisan test tests/Feature/Identity/WLotRoleMembershipScopeTest.php --filter=test_cross_company_permission_assignment_rolls_back` — **SQLite**.
-
-**Implementation:** one transaction; lock membership and role; validate tenant/company; assign only after validation; audit after commit.
-
-**Convention 09:** `test_second_company_membership_is_required`, `test_second_location_does_not_expand_company_role`, `test_assignment_rerun_is_idempotent`.
-
-**Reviewer gate:** Cross-company assignment leaves no role or audit residue.
-
----
-
-### Task 4 — Add recall schema and domain workflow
-
-**Production files**
-
-- `apps/api/database/migrations/tenant/2026_09_06_100001_create_batch_recall_workflow_tables.php`
-- `apps/api/app/Modules/BatchExpiry/Domain/Entities/BatchRecallRequest.php` — new
-- `apps/api/app/Modules/BatchExpiry/Domain/Entities/BatchRecallTransition.php` — new
-- `apps/api/app/Modules/BatchExpiry/Application/Services/BatchRecallWorkflowService.php` — new
-
-**Contract/schema:** §6.1 and §7 recall contract.
-
-**Red first:** `apps/api/tests/Feature/BatchExpiry/BatchRecallWorkflowTest.php`, class `BatchRecallWorkflowTest`, case `test_branch_request_holds_only_requesting_location`; first failure: `assertFalse($eligibility->mayIssue($batch, $requestingLocation))`. Command/lane: `cd apps/api && DB_CONNECTION=pgsql php artisan test -c phpunit-pgsql.xml tests/Feature/BatchExpiry/BatchRecallWorkflowTest.php --filter=test_branch_request_holds_only_requesting_location` — **PG**.
-
-**Implementation:** request creates append-only transition and local hold; recall requires general-manager/admin company authority and projects company recall; exact-operation retry returns existing result.
-
-**Convention 09:** `test_second_company_same_batch_cannot_be_held`, `test_second_location_remains_issuable_before_company_recall`, `test_request_and_recall_reruns_are_idempotent`.
-
-**Reviewer gate:** No release/reject code exists; requester cannot bypass company/location boundaries.
-
----
-
-### Task 5 — Expose recall API and existing batch-detail surface
-
-**Production files**
-
-- `apps/api/app/Modules/BatchExpiry/Presentation/Controllers/BatchController.php`
-- `apps/api/routes/api.php`
-- `apps/web/src/features/batches/api/batches.ts`
-- `apps/web/src/features/batches/types.ts`
-- `apps/web/src/features/batches/pages/BatchDetailPage.tsx`
-- `apps/api/database/seeders/RolesAndPermissionsSeeder.php`
-
-**Contract/schema:** `POST /api/batches/{uuid}/recall-requests`; `POST /api/batch-recall-requests/{uuid}/recall`; no schema beyond Task 4/8 migrations.
-
-**Red first:** `apps/api/tests/Feature/BatchExpiry/BatchRecallApiTest.php`, class `BatchRecallApiTest`, case `test_requester_without_location_custody_receives_403`; first failure: `assertForbidden()`. Command/lane: `cd apps/api && php artisan test tests/Feature/BatchExpiry/BatchRecallApiTest.php --filter=test_requester_without_location_custody_receives_403` — **SQLite**.
-
-**Implementation:** policy checks at API boundary and service; display Branch lot hold separately from Company lot recall; no release button; hide dormant feature when flag false.
-
-**Convention 09:** `test_second_company_batch_returns_404`, `test_second_location_hold_is_labelled_local`, `test_duplicate_request_returns_existing_request`.
-
-**Reviewer gate:** UX and API use canonical vocabulary and expose no Q10-dependent action.
-
----
-
-### Task 6 — Retire the float lot/reservation contract
-
-**Production files**
-
-- `apps/api/app/Modules/BatchExpiry/Domain/Entities/BatchStock.php`
-- `apps/api/app/Modules/BatchExpiry/Application/Services/BatchStockService.php`
-- `apps/api/app/Modules/Inventory/Application/Services/StockReservationService.php`
-- `apps/api/app/Modules/Inventory/Application/Contracts/InventoryReservationServiceInterface.php`
-- `apps/api/app/Modules/Inventory/Domain/StockLevel.php`
-- all reservation consumers listed in §8.3
-
-**Contract/schema:** all quantity parameters/returns become `numeric-string`; no schema.
-
-**Red first:** `apps/api/tests/Feature/Inventory/ReservationDecimalConservationTest.php`, class `ReservationDecimalConservationTest`, case `test_fractional_reserve_release_and_expiry_conserve_four_decimal_places`; first failure: `assertSame('0.0000', bcsub($before, $after, 4))`. Command/lane: `cd apps/api && DB_CONNECTION=pgsql php artisan test -c phpunit-pgsql.xml tests/Feature/Inventory/ReservationDecimalConservationTest.php --filter=test_fractional_reserve_release_and_expiry_conserve_four_decimal_places` — **PG**.
-
-**Implementation:** replace float arithmetic/casts at reservation lines `507,631`; remove entity write methods; update interfaces and all callers; use `bc*`/quantity value objects; add an architecture scan for floats.
-
-**Convention 09:** `test_fractional_reservation_is_company_scoped`, `test_fractional_release_is_location_scoped`, `test_fractional_release_rerun_does_not_double_decrement`.
-
-**Reviewer gate:** `rg` and architecture tests find no production float lot/reservation mutation.
-
----
-
-### Task 7 — Add identity correction, identification, and admin-only permission schema
-
-**Production files**
-
-- `apps/api/database/migrations/tenant/2026_09_06_100002_create_lot_identity_correction_and_identification_tables.php`
-- `apps/api/database/migrations/tenant/2026_09_06_100008_seed_w_lot_permissions.php`
-- `apps/api/database/seeders/RolesAndPermissionsSeeder.php`
-
-**Contract/schema:** §6.2 and §6.8.
-
-**Red first:** `apps/api/tests/Feature/BatchExpiry/WLotPermissionSeedTest.php`, class `WLotPermissionSeedTest`, case `test_identity_permissions_are_seeded_to_admin_only`; first failure: `assertFalse($generalManager->hasPermissionTo('batches.identify'))`. Command/lane: `cd apps/api && php artisan test tests/Feature/BatchExpiry/WLotPermissionSeedTest.php --filter=test_identity_permissions_are_seeded_to_admin_only` — **SQLite**.
-
-**Implementation:** additive tables/version column; idempotent permissions; preserve live batch uniqueness; no non-admin default grants.
-
-**Convention 09:** `test_permission_seed_covers_second_company_team`, `test_location_role_does_not_gain_identity_permission`, `test_permission_seed_rerun_is_idempotent`.
-
-**Reviewer gate:** migration rollback is schema-only; admin-only assertion passes for old and newly provisioned tenants.
-
----
-
-### Task 8 — Implement canonical mutation, identity correction, and L9 identification
-
-**Production files**
-
-- `apps/api/app/Modules/BatchExpiry/Application/Services/BatchStockMutationService.php` — new
-- `apps/api/app/Modules/BatchExpiry/Application/Services/BatchIdentityCorrectionService.php` — new
-- `apps/api/app/Modules/BatchExpiry/Application/Services/LotIdentificationService.php` — new
-- all direct writer files in §8
-- `apps/api/app/Modules/Inventory/Domain/Services/ProductCostLock.php`
-
-**Contract/schema:** §7 mutation/correction/identification contracts; no new schema.
-
-**Red first:** `apps/api/tests/Feature/BatchExpiry/LotIdentificationConcurrencyTest.php`, class `LotIdentificationConcurrencyTest`, case `test_two_identifications_cannot_consume_the_same_default_quantity`; first failure: `assertSame('0.0000', $sourceAfter)` and exactly one competing operation succeeds. Command/lane: `cd apps/api && DB_CONNECTION=pgsql php artisan test -c phpunit-pgsql.xml tests/Feature/BatchExpiry/LotIdentificationConcurrencyTest.php --filter=test_two_identifications_cannot_consume_the_same_default_quantity` — **PG**.
-
-**Implementation:** make canonical service the sole lot writer; apply §8 lock order; require movement linkage; correction uses optimistic `identity_version`; identification conserves aggregate quantity/value and rejects active-reservation conflicts.
-
-**Convention 09:** `test_identification_cannot_cross_company`, `test_identification_cannot_cross_location`, `test_operation_uuid_rerun_returns_same_identification`.
-
-**Reviewer gate:** writer ratchet passes; PG race proves conservation and no deadlock.
-
----
-
-### Task 9 — Expose identity correction/identification and activate freeze atomically
-
-**Production files**
-
-- `apps/api/app/Modules/BatchExpiry/Presentation/Controllers/BatchController.php`
-- `apps/api/routes/api.php`
-- `apps/web/src/features/batches/api/batches.ts`
-- `apps/web/src/features/batches/types.ts`
-- `apps/web/src/features/batches/pages/BatchDetailPage.tsx`
-
-**Contract/schema:** `POST /api/batches/{uuid}/correct-identity`; `POST /api/batches/{uuid}/identify`; no schema.
-
-**Red first:** `apps/api/tests/Feature/BatchExpiry/LotIdentificationApiTest.php`, class `LotIdentificationApiTest`, case `test_general_manager_without_explicit_permission_cannot_identify`; first failure: `assertForbidden()`. Command/lane: `cd apps/api && php artisan test tests/Feature/BatchExpiry/LotIdentificationApiTest.php --filter=test_general_manager_without_explicit_permission_cannot_identify` — **SQLite**.
-
-**Implementation:** exact-decimal request DTOs; expected identity version; operation UUID; evidence required; replace legacy mutation only after Task 8 passes.
-
-**Convention 09:** `test_second_company_batch_returns_404`, `test_target_location_must_equal_source_location`, `test_duplicate_operation_uuid_returns_original_response`.
-
-**Reviewer gate:** L9 works end-to-end for admin; stale version is 409; general manager defaults to 403.
-
----
-
-### Task 10 — Add lot-count schema and typed submission contract
-
-**Production files**
-
-- `apps/api/database/migrations/tenant/2026_09_06_100003_create_inventory_counting_item_lots.php`
-- `apps/api/app/Modules/Inventory/Application/DTOs/LotCountObservationData.php` — new
-- `apps/api/app/Modules/Inventory/Presentation/Requests/SubmitInventoryCountRequest.php`
-- `apps/api/app/Modules/Inventory/Application/Services/InventoryCountingService.php`
-
-**Contract/schema:** §6.3; `submitLotObservations(string $countId, string $itemId, array $observations, User $actor): void`.
-
-**Red first:** `apps/api/tests/Feature/Inventory/LotCountSubmissionTest.php`, class `LotCountSubmissionTest`, case `test_explicit_zero_lot_is_distinct_from_missing_observation`; first failure: `assertDatabaseHas('inventory_counting_item_lots', ['observed_quantity' => '0.0000'])`. Command/lane: `cd apps/api && php artisan test tests/Feature/Inventory/LotCountSubmissionTest.php --filter=test_explicit_zero_lot_is_distinct_from_missing_observation` — **SQLite**.
-
-**Implementation:** validate count phase, assignment, product/variant/location, uniqueness, exact decimals; retain aggregate count item as the parent authority.
-
-**Convention 09:** `test_second_company_lot_is_rejected`, `test_second_location_lot_is_rejected`, `test_submission_rerun_replaces_identical_observations`.
-
-**Reviewer gate:** no nested JSON stock authority and no silent zero-for-missing behavior.
-
----
-
-### Task 11 — Reconcile lot counts safely
-
-**Production files**
-
-- `apps/api/app/Modules/Inventory/Application/Listeners/ApplyStockAdjustmentsOnCountingCompleted.php`
-- `apps/api/app/Modules/Inventory/Application/Services/InventoryCountingService.php`
-- `apps/api/app/Modules/Inventory/Domain/Services/StockAdjustmentService.php`
-- `apps/api/app/Modules/BatchExpiry/Application/Services/BatchStockMutationService.php`
-
-**Contract/schema:** finalize aggregate once, then apply explicit lot deltas linked to that movement; no schema.
-
-**Red first:** `apps/api/tests/Feature/Inventory/LotCountReconciliationPostgresTest.php`, class `LotCountReconciliationPostgresTest`, case `test_concurrent_finalize_applies_one_aggregate_and_one_set_of_lot_legs`; first failure: `assertSame(1, $aggregateMovementCount)`. Command/lane: `cd apps/api && DB_CONNECTION=pgsql php artisan test -c phpunit-pgsql.xml tests/Feature/Inventory/LotCountReconciliationPostgresTest.php --filter=test_concurrent_finalize_applies_one_aggregate_and_one_set_of_lot_legs` — **PG**.
-
-**Implementation:** count header lock; sorted product locks; aggregate correction; known-lot deltas; DEFAULT remainder only where policy allows; idempotent replay.
-
-**Convention 09:** `test_finalize_does_not_touch_second_company`, `test_finalize_does_not_touch_second_location`, `test_finalize_rerun_has_no_second_movement`.
-
-**Reviewer gate:** aggregate equals sum of lots after finalize; concurrent finalize has one winner and no drift.
-
----
-
-### Task 12 — Add lot-count API and existing count UI
-
-**Production files**
-
-- `apps/api/app/Modules/Inventory/Presentation/Controllers/InventoryCountingController.php`
-- `apps/api/routes/api.php`
-- `apps/web/src/features/inventory-counting` existing feature files
-- `packages/shared/types` generated count DTO output
-
-**Contract/schema:** submit and read lot observations under existing count resource; no schema.
-
-**Red first:** `apps/web/src/features/inventory-counting/LotCountEditor.test.tsx`, case `LotCountEditor shows explicit zero and unsupplied separately`; first failure: `expect(screen.getByText('Not counted')).toBeInTheDocument()`. Command/lane: `pnpm --filter @autoerp/web test -- src/features/inventory-counting/LotCountEditor.test.tsx` — **vitest**.
-
-**Implementation:** add per-lot editor inside existing count detail; exact strings; permission and entitlement gating; regenerate shared types.
-
-**Convention 09:** backend `InventoryCountingApiTest::test_second_company_count_returns_404`, `::test_second_location_lots_are_not_listed`, `::test_identical_submission_rerun_is_stable`.
-
-**Reviewer gate:** API and UI distinguish `0.0000` from absent and introduce no new count catalogue.
-
----
-
-### Task 13 — Add provenance schema and every producer write
-
-**Production files**
-
-- `apps/api/database/migrations/tenant/2026_09_06_100004_add_lot_provenance_to_allocation_producers.php`
-- `apps/api/app/Modules/Document/Domain/Services/Conversion/Converters/SalesOrderToDeliveryNoteConverter.php`
-- `apps/api/app/Modules/Document/Domain/Services/DeliveryNoteFromDocumentFactory.php`
-- `apps/api/app/Modules/Document/Domain/Services/DeliveryNoteService.php`
-- `apps/api/app/Modules/Document/Domain/Services/ReturnNoteService.php`
-- `apps/api/app/Modules/Inventory/Application/Services/StockTransferService.php`
-- `apps/api/app/Modules/Inventory/Application/Services/GoodsReceiptService.php`
-- `apps/api/app/Modules/Inventory/Application/Services/StockReservationService.php`
-- `apps/api/app/Modules/POS/Application/Services/ReceiptCreationService.php`
-- `apps/api/app/Modules/POS/Application/Projections/PosCoreReceiptProjection.php`
-
-**Contract/schema:** §6.4; producer must supply provenance explicitly.
-
-**Red first:** `apps/api/tests/Architecture/LotProvenanceWriterContractTest.php`, class `LotProvenanceWriterContractTest`, case `test_every_allocation_producer_sets_provenance`; first failure: `assertSame([], $writersWithoutProvenance)` identifies both converter branches and factory. Command/lane: `cd apps/api && php artisan test tests/Architecture/LotProvenanceWriterContractTest.php --filter=test_every_allocation_producer_sets_provenance` — **SQLite**.
-
-Specific feature assertions cover converter lines `363-379`, `501-517`, factory `137-153`, reservation propagation, receipt, transfer, return, and POS projection.
-
-**Implementation:** add enum/value object; annotate each producer from source facts; propagate reservation provenance; conservative historical backfill is deferred to push 4.
-
-**Convention 09:** `LotProvenanceIsolationTest::test_second_company_provenance_is_not_read`, `::test_second_location_allocation_keeps_own_provenance`, `::test_projection_rerun_does_not_duplicate_provenance`.
-
-**Reviewer gate:** every producer passes the architecture scan; no historical row is labelled captured without evidence.
-
----
-
-### Task 14 — Expose provenance on trace, document, transfer, receipt, and CSV surfaces
-
-**Production files**
-
-- `apps/api/app/Modules/BatchExpiry/Presentation/Controllers/BatchTraceabilityController.php`
-- `apps/api/app/Modules/BatchExpiry/Application/Services/BatchTraceabilityCsvExporter.php` — new
-- `apps/api/app/Modules/POS/Application/DTOs/ReceiptDetailData.php`
-- `apps/api/app/Modules/POS/Presentation/Controllers/ReceiptController.php`
-- `apps/api/app/Modules/Document/Presentation/Controllers/DeliveryNoteController.php`
-- `apps/api/app/Modules/Inventory/Presentation/Controllers/StockTransferController.php`
-- `apps/web/src/features/batches/pages/BatchDetailPage.tsx`
-- `apps/web/src/features/pos/pages/ReceiptDetailPage/ReceiptDetailPage.tsx`
-- `apps/web/src/features/documents/delivery-notes/DeliveryNoteDetailPage.tsx`
-- `apps/web/src/features/stock-transfers/pages/StockTransferDetailPage.tsx`
-
-**Contract/schema:** response/export field `lot_provenance`; no schema.
-
-**Red first:** `apps/web/src/features/batches/pages/BatchDetailPage.provenance.test.tsx`, case `renders FEFO estimate without captured wording`; first failure: `expect(screen.getByText('System FEFO estimate')).toBeInTheDocument()`. Command/lane: `pnpm --filter @autoerp/web test -- src/features/batches/pages/BatchDetailPage.provenance.test.tsx` — **vitest**.
-
-**Implementation:** expose identical vocabulary on every surface and CSV; unknown remains visibly unknown; permission-check export.
-
-**Convention 09:** API `BatchTraceabilityProvenanceTest::test_second_company_rows_are_excluded`, `::test_second_location_is_explicit`, `::test_export_rerun_is_byte_stable`.
-
-**Reviewer gate:** no surface describes inferred evidence as scanned, captured, or operator-confirmed.
-
----
-
-### Task 15 — Add durable drift health and safe schedule
-
-**Production files**
-
-- `apps/api/database/migrations/tenant/2026_09_06_100005_create_lot_ledger_census_runs.php`
-- `apps/api/app/Console/Commands/LotLedgerDriftCensusCommand.php`
-- `apps/api/app/Modules/BatchExpiry/Application/Services/LotLedgerDriftCensus.php`
-- `apps/api/app/Modules/BatchExpiry/Application/Services/LotLedgerDriftMonitorService.php` — new
-- `apps/api/app/Notifications/LotLedgerDriftFailedNotification.php` — new
-- `apps/api/routes/console.php`
-
-**Contract/schema:** §6.5. Extend existing `inventory:lot-drift-census` with `--record-run`, `--recover-stale-run`, and `--stale-after=180`.
-
-**Red first:** `apps/api/tests/Feature/BatchExpiry/LotLedgerDriftScheduleTest.php`, class `LotLedgerDriftScheduleTest`, case `test_schedule_uses_0320_and_180_minute_overlap_expiry`; first failure checks the scheduled event expression and mutex expiry. Command/lane: `cd apps/api && php artisan test tests/Feature/BatchExpiry/LotLedgerDriftScheduleTest.php --filter=test_schedule_uses_0320_and_180_minute_overlap_expiry` — **SQLite**.
-
-**Implementation**
+**Red first:** `apps/api/tests/Architecture/InventoryWriterLockManifestTest.php`, class `InventoryWriterLockManifestTest`, method `test_every_inventory_writer_is_classified`; first failing assertion:
 
 ```php
-Schedule::command('inventory:lot-drift-census --all-tenants --record-run --fail-on-drift --recover-stale-run --stale-after=180')
-    ->dailyAt('03:20')
-    ->withoutOverlapping(180)
-    ->onOneServer()
-    ->onFailure(/* dispatch LotLedgerDriftFailedNotification */);
+self::assertSame([], $manifest->unclassifiedWriters());
 ```
 
-A run heartbeat older than 180 minutes becomes `stale` before a replacement run. Laravel’s overlap mutex expires after 180 minutes; no broad manual cache deletion is prescribed. Alert if no successful fleet run exists within 26 hours.
+Command/lane:
 
-**Convention 09:** `test_second_company_gets_separate_run`, `test_second_location_drift_is_separate_tuple`, `test_monitor_rerun_does_not_duplicate_active_run`.
+```bash
+cd apps/api
+php artisan test tests/Architecture/InventoryWriterLockManifestTest.php --filter=test_every_inventory_writer_is_classified
+```
 
-**Reviewer gate:** command never repairs stock; simulated crash recovers; schedule does not collide.
+Lane: SQLite architecture.
 
----
+Add `LotVocabularyContractTest::test_w_lot_terms_have_one_writer_and_surface`, `WLotPreflightCommandTest::test_preflight_is_read_only`, and second-company/location/rerun cases.
 
-### Task 16 — Add server lot eligibility and terminal capability contracts
+**Reviewer gate:** inventory architecture plus tenancy reviewers approve the census hash before writer work.
 
-**Production files**
+**Rollback:** remove command registration/ratchet only; no data change.
 
-- `apps/api/app/Modules/POS/Application/Services/PosLotEligibilityService.php` — new
-- `apps/api/app/Modules/POS/Application/DTOs/PosLotEligibilitySnapshotData.php` — new
-- `apps/api/app/Modules/POS/Presentation/Controllers/PosStockLevelController.php`
-- `apps/api/app/Modules/POS/Domain/Terminal.php`
-- `apps/api/routes/api.php`
+### Task 2 — Company entitlement, immutable revisions, cutovers, and environment forwarding
 
-**Contract/schema:** `snapshot(tenant, company, location, terminal, watermark): PosLotEligibilitySnapshotData`; terminal capabilities advertise guidance/evidence versions; no schema unless stored in existing terminal capability JSON.
+**Production files:** create the two central migrations, tenant cutover migration, config, DTOs, resolver contract/adapter, rollout services and commands; update `CompanyServiceProvider.php`, `DefaultModuleActivationResolver.php`, `CompanyConfigService.php`, `VerticalConfigController.php`, `TenantObserver.php`, `CreateProductRequest.php`, `UpdateProductRequest.php`, `ProductForm.tsx`, `docker-compose.staging.yml`, and `apps/api/docker/entrypoint.sh`.
 
-**Red first:** `apps/api/tests/Feature/POS/PosLotEligibilityApiTest.php`, class `PosLotEligibilityApiTest`, case `test_requested_recall_holds_only_requesting_location`; first failure: `assertFalse($row['issuable'])`. Command/lane: `cd apps/api && php artisan test tests/Feature/POS/PosLotEligibilityApiTest.php --filter=test_requested_recall_holds_only_requesting_location` — **SQLite**.
+**Contracts:** `CompanyEntitlementResolver::resolve()`, `CompanyEntitlementDecisionData`, `WLotRolloutFlagsData`, `wlot:create-rollout-revision`, and `wlot:cutover` exactly as §§6.1–6.3 and 7.2/7.8.
 
-**Implementation:** filter expiry, company recall, branch hold, available quantity, product/variant/location; include entitlement revision and watermark; enforce terminal binding.
+`docker-compose.staging.yml` forwards all eight variables to the shared `x-api-env`; `entrypoint.sh` validates each as literal `true|false`, prints them, and fails before migration if malformed.
 
-**Convention 09:** `test_second_company_lots_are_absent`, `test_second_location_has_independent_branch_hold`, `test_same_watermark_retry_is_stable`.
-
-**Reviewer gate:** snapshot is guidance only and cannot mutate inventory.
-
----
-
-### Task 17 — Add SQLite v68, mandatory pre-open refresh, and complete renderer integration
-
-**Production files**
-
-- `apps/pos/src/lib/db/migrations.ts`
-- `apps/pos/src/lib/db` repository files for lot snapshot persistence
-- `apps/pos/src/pages/HomePage.tsx`
-- `apps/pos/src/components/molecules/BarcodeChooserModal/BarcodeChooserModal.tsx`
-- `apps/pos/src/components/molecules/ProductCard/ProductCard.tsx`
-- `apps/pos/src/components/organisms/ProductGrid/ProductGrid.tsx`
-- `apps/pos/src/components/organisms/ProductGrid/ProductListRow.tsx`
-- `apps/pos/src/components/organisms/ProductGrid/ProductTable.tsx`
-- `apps/pos/src/components/organisms/ProductGrid/NearExpirySlot.tsx`
-- `apps/pos/src/components/pos/ProductDetailDrawer.tsx`
-- remove `apps/pos/src/components/pos/ProductGrid.tsx`
-- remove `apps/pos/src/components/pos/ProductCard.tsx`
-
-**Contract/schema:** SQLite v68; `replaceLotEligibilitySnapshot(snapshot): Promise<void>` is transactional and replace-all.
-
-**Red first:** `apps/pos/src/lib/db/__tests__/lotEligibilityMigration.test.ts`, case `v68 replaces location snapshot atomically and records revision`; first failure checks schema version 68 and revision. Command/lane: `pnpm --filter @autoerp/pos test -- src/lib/db/__tests__/lotEligibilityMigration.test.ts` — **vitest**.
-
-Renderer red tests include `BarcodeChooserModal.test.tsx`, `ProductCard.test.tsx`, `ProductListRow.test.tsx`, `ProductTable.test.tsx`, and `ProductDetailDrawer.test.tsx`. An import-census test fails while the legacy grid/card pair is referenced or duplicated.
-
-**Implementation:** refresh entitlement and snapshot before shift open; refuse opening on stale/failed acknowledgement; route all active renderers through one selector; delete dead legacy pair.
-
-**Convention 09:** device cases `uses_company_partition_in_snapshot_key`, `uses_location_partition_in_snapshot_key`, `identical_snapshot_rerun_is_atomic`.
-
-**Reviewer gate:** active-renderer census is complete, legacy imports are zero, and offline guidance never claims stock authority.
-
----
-
-### Task 18 — Add canonical keys and server evidence ingress
-
-**Production files**
-
-- `packages/shared/contracts/w-lot-canonical-line-key-v1.json`
-- `apps/api/app/Modules/Fiscal/Domain/Services/CanonicalReceiptLineKey.php`
-- `apps/pos/src/lib/fiscal/canonicalReceiptLineKey.ts`
-- `apps/api/database/migrations/tenant/2026_09_06_100006_create_pos_receipt_line_lot_evidence.php`
-- `apps/api/app/Modules/POS/Application/Services/LotEvidenceIngressService.php` — new
-- `apps/api/app/Modules/POS/Presentation/Controllers/ReceiptController.php`
-- `apps/api/app/Modules/Fiscal/Domain/Models/FiscalEvent.php`
-- `apps/api/routes/api.php`
-
-**Contract/schema:** §5, §6.6, and §7 ingress.
-
-**Red first:** `apps/api/tests/Unit/Fiscal/CanonicalReceiptLineKeyTest.php`, class `CanonicalReceiptLineKeyTest`, case `test_duplicate_products_receive_distinct_index_keys`; first failure: `assertNotSame($firstKey, $secondKey)`. Command/lane: `cd apps/api && php artisan test tests/Unit/Fiscal/CanonicalReceiptLineKeyTest.php --filter=test_duplicate_products_receive_distinct_index_keys` — **SQLite**.
-
-Cross-language vector command/lane: `pnpm --filter @autoerp/pos test -- src/lib/fiscal/canonicalReceiptLineKey.test.ts` — **vitest**.
-
-Required named cases:
-
-- `test_duplicate_products_receive_distinct_index_keys`
-- `test_evidence_batch_reordering_preserves_line_key`
-- `test_retry_reuses_identical_key`
-- `test_mixed_event_versions_match_shared_vectors`
-- `test_server_rejects_key_product_mismatch`
-
-**Implementation:** compute from event version/index only; verify signed payload row; accept evidence-before-projection and projection-before-evidence; deduplicate by client operation UUID.
-
-**Convention 09:** `LotEvidenceIngressIsolationTest::test_second_company_event_is_rejected`, `::test_second_location_terminal_is_rejected`, `::test_ingress_rerun_returns_existing_evidence`.
-
-**Reviewer gate:** PHP and TypeScript consume the same vectors byte-for-byte.
-
----
-
-### Task 19 — Add SQLite v69 and atomically author evidence
-
-**Production files**
-
-- `apps/pos/src/lib/db/migrations.ts`
-- `apps/pos/src/lib/db` evidence repository files
-- `apps/pos/src/lib/fiscal/canonicalReceiptLineKey.ts`
-- `apps/pos/src/lib/fiscal/payloads/SaleReceiptV2Payload.ts`
-- `apps/pos/src` cart/checkout lot-evidence authoring files selected by existing checkout imports
-
-**Contract/schema:** SQLite v69; `recordReceiptLotEvidence(input): Promise<OutboxRecord>` inserts evidence and outbox atomically.
-
-**Red first:** `apps/pos/src/lib/db/__tests__/lotEvidenceAtomicity.test.ts`, case `recordReceiptLotEvidence rolls back evidence when outbox insert fails`; first failure: `expect(await evidenceCount()).toBe(0)`. Command/lane: `pnpm --filter @autoerp/pos test -- src/lib/db/__tests__/lotEvidenceAtomicity.test.ts` — **vitest**.
-
-**Implementation:** author sidecar only; retain sealed fiscal payload; exact decimals; editable FEFO prefill defaults to `system_fefo_estimate` until cashier confirms captured evidence.
-
-**Convention 09:** `partitions_evidence_by_company`, `partitions_evidence_by_location`, `operation_uuid_rerun_creates_one_outbox_row`.
-
-**Reviewer gate:** no event-version change and no evidence without its outbox row.
-
----
-
-### Task 20 — Deliver evidence outbox with crash recovery
-
-**Production files**
-
-- `apps/pos/src/lib/sync` existing sync orchestration files
-- `apps/pos/src/lib/db` evidence outbox repository
-- `apps/pos/src` sync-status UI
-- `apps/api/app/Modules/POS/Presentation/Controllers/ReceiptController.php`
-
-**Contract/schema:** lease pending/retryable rows; acknowledge only server-confirmed operation UUID; exponential retry; dead-letter after configured attempts; no schema.
-
-**Red first:** `apps/pos/src/lib/sync/__tests__/lotEvidenceOutbox.test.ts`, case `crash_after_server_commit_retries_without_duplicate`; first failure: `expect(serverEvidenceCount).toBe(1)`. Command/lane: `pnpm --filter @autoerp/pos test -- src/lib/sync/__tests__/lotEvidenceOutbox.test.ts` — **vitest**.
-
-**Implementation:** transactional lease; reclaim expired sending rows; classify 4xx permanent versus network/5xx retryable; expose pending/dead-letter status.
-
-**Convention 09:** `does_not_send_other_company_rows`, `does_not_send_other_location_rows`, `retry_after_commit_is_idempotent`.
-
-**Reviewer gate:** forced crashes at every boundary yield one server evidence row.
-
----
-
-### Task 21 — Add child obligations and the sole POS lot writer
-
-**Production files**
-
-- `apps/api/database/migrations/tenant/2026_09_06_100007_create_fiscal_projection_lot_obligations.php`
-- `apps/api/app/Modules/POS/Application/Projections/PosCoreReceiptProjection.php`
-- `apps/api/app/Modules/POS/Application/Services/PosReceiptLotProjectionService.php` — new
-- `apps/api/app/Modules/BatchExpiry/Application/Services/BatchStockMutationService.php`
-
-**Contract/schema:** §6.7 and §7 obligation contract.
-
-**Red first:** `apps/api/tests/Feature/Fiscal/PosReceiptLotObligationTest.php`, class `PosReceiptLotObligationTest`, case `test_obligation_persists_exact_aggregate_movement_and_replay_links_one_batch_movement`; first failure:
+**Red first:** `apps/api/tests/Feature/Company/TenantBoundCompanyEntitlementResolverTest.php`, method `test_stale_inflight_cache_cannot_repopulate_revoked_entitlement`; first assertion:
 
 ```php
-$this->assertSame(
-    $aggregateMovement->id,
-    $obligation->aggregate_stock_movement_id,
-);
+self::assertSame(CompanyEntitlementState::Disabled, $afterRace->state);
 ```
 
-Command/lane: `cd apps/api && DB_CONNECTION=pgsql php artisan test -c phpunit-pgsql.xml tests/Feature/Fiscal/PosReceiptLotObligationTest.php --filter=test_obligation_persists_exact_aggregate_movement_and_replay_links_one_batch_movement` — **PG**.
+Command/lane:
 
-**Implementation**
+```bash
+cd apps/api
+DB_CONNECTION=pgsql php artisan test -c phpunit-pgsql.xml tests/Feature/Company/TenantBoundCompanyEntitlementResolverTest.php
+```
 
-1. Create aggregate movement exactly once.
-2. Insert obligation in the same transaction with exact movement ID and canonical key.
-3. If entitlement/evidence permits, apply lot work through the sole service.
-4. Otherwise commit aggregate plus pending/blocked obligation.
-5. Recovery leases the obligation and validates tenant/company/product/variant/quantity and aggregate movement.
-6. Applied state stores exactly one batch movement whose `movement_id` matches the obligation.
-7. Retry never recreates aggregate stock movement.
+Lane: live PostgreSQL CI.
 
-**Convention 09:** `test_second_company_cannot_claim_obligation`, `test_second_location_evidence_cannot_apply_obligation`, `test_projection_and_recovery_reruns_create_one_lot_effect`.
+Cover second tenant/company, module-off retail, missing company, tenancy failure, revision race, queue/scheduler initialization, product create/update, UI visibility, exact JSON fingerprint, cutover retry/conflict.
 
-**Reviewer gate:** PG duplicate-product, late-evidence, mixed-version, and concurrent-recovery tests all prove one aggregate and one linked eventual lot effect.
+**Reviewer gate:** tenancy/security reviewer approves adapter binding, revision fencing, compose, and entrypoint.
+
+**Rollback:** flags false; active cutovers transition to rolled_back; retain immutable revisions and additive schema.
+
+### Task 3 — Atomic membership and role enforcement
+
+**Production files:** update `apps/api/database/seeders/RolesAndPermissionsSeeder.php`, membership/policy services used by BatchExpiry, and `apps/api/app/Modules/BatchExpiry/Presentation/routes.php`.
+
+**Contract:**
+
+```php
+public function assertBatchMutationAuthority(
+    User $actor,
+    string $companyId,
+    ?string $locationId,
+    string $permission,
+): void;
+```
+
+The check runs inside the mutation transaction and locks the relevant active membership when necessary.
+
+**Red first:** `apps/api/tests/Feature/BatchExpiry/BatchAuthorityRaceTest.php`, method `test_revoked_membership_cannot_win_against_inflight_recall_request`; first assertion:
+
+```php
+$response->assertForbidden();
+```
+
+Command/lane: PostgreSQL using that file.
+
+**Reviewer gate:** tenancy/authz reviewer validates second-company, second-location, revoked membership, custom role, and permission-cache tests.
+
+**Rollback:** disable W-LOT mutation flags; retain safe route middleware and role correction.
+
+### Task 4 — Recall schema and workflow
+
+**Production files:** create recall migration, enums, models, DTO, `BatchRecallWorkflowService.php`, and repository; update `Batch.php`, issue and transfer services.
+
+**Contract:** exact `request()` and `recall()` signatures from §7.3.
+
+**Red first:** `apps/api/tests/Feature/BatchExpiry/BatchRecallWorkflowTest.php`, method `test_request_immediately_blocks_sale_and_transfer_only_at_requesting_location`; first assertion:
+
+```php
+self::assertThrows(BranchLotHeldException::class, $issueAtRequestingLocation);
+```
+
+Command/lane: PostgreSQL.
+
+Required cases: request retry before recall, retry after recall, conflicting operation reuse, concurrent duplicates, branch-local sale and transfer block, second location allowed, company recall blocks all company locations, second company unaffected, transition append-only, permission revocation race.
+
+**Reviewer gate:** inventory plus authz.
+
+**Rollback:** `LOT_ROLLOUT_RECALL_WORKFLOW=false`; retain requests/holds for audit and do not synthesize release.
+
+### Task 5 — Recall API, complete batch-route auth, and web visibility
+
+**Production files:** update BatchExpiry routes/controllers/requests/resources; create `RequestBatchRecallRequest.php`, `RecallBatchRequest.php`, `BatchRecallRequestController.php`; update sidebar, routes, batch list/detail pages, permission hooks/map, locale files.
+
+**HTTP contract:**
+
+```text
+POST /api/v1/batches/{uuid}/recall-requests
+POST /api/v1/batch-recall-requests/{request}/recall
+GET  /api/v1/batch-recall-requests
+```
+
+The old direct recall route is absent.
+
+**Red first:** `apps/api/tests/Feature/Security/BatchExpiryModuleAccessControlTest.php`, method `test_manager_cannot_company_recall_but_can_request_branch_hold`; first assertion:
+
+```php
+$recallResponse->assertForbidden();
+```
+
+Command/lane: PostgreSQL.
+
+Web red: `apps/web/src/features/batches/pages/BatchDetailPage.permissions.test.tsx`, method `manager sees request but not recall`; first assertion checks the recall button is absent.
+
+Cover viewer, cashier, manager, GM, admin, no-view role, malformed expiring location returning 422, foreign location/company, expired and expiring independently, direct removed route, trace permission.
+
+**Reviewer gate:** security and frontend.
+
+**Rollback:** hide new panels/requests by flag; route hardening and removed bypass remain.
+
+### Task 6 — Exact-decimal backend/API/web/device contract
+
+**Production files:** update `Batch.php`, `BatchStock.php`, `BatchResource.php`, `BatchController.php`, `BatchStockService.php`, `FEFOInventoryService.php`, `StockReservationService.php`, transitive reservation consumers, batch DTOs, generated output, `apps/web/src/features/batches/types.ts`, `BatchListPage.tsx`, `BatchDetailPage.tsx`, and POS cart types.
+
+**Contract:** every domain/API quantity is a scale-4 numeric string. Formatting parses only at final display and never feeds domain arithmetic.
+
+**Red first:** `apps/api/tests/Feature/BatchExpiry/BatchQuantityStringContractTest.php`, method `test_batch_resource_preserves_quantity_beyond_binary_float_precision`; first assertion:
+
+```php
+$response->assertJsonPath('data.stock.0.quantity', '900719925474.1234');
+```
+
+Command/lane: PostgreSQL.
+
+Add web test asserting exact string summation through decimal helper and architecture test rejecting float signatures/casts.
+
+**Reviewer gate:** inventory precision plus frontend.
+
+**Rollback:** compatibility parsing may accept legacy number input during one release, but output remains string; never reintroduce float writers.
+
+### Task 7 — Identity/identification schema and admin-only permissions
+
+**Production files:** create migration, enums/models/DTOs, permission migration; update seeder and generated permission map.
+
+**Contract:** schemas in §6.5 and default grants in §8.
+
+**Red first:** `apps/api/tests/Feature/BatchExpiry/LotIdentitySchemaTest.php`, method `test_identity_and_identification_uniques_are_company_scoped`; first assertion verifies the same operation UUID succeeds in a second company but conflicts inside the first.
+
+Command/lane: PostgreSQL.
+
+**Reviewer gate:** schema plus authz.
+
+**Rollback:** flag off; retain lineage tables and permissions.
+
+### Task 8 — Canonical mutation service and used-lot freeze
+
+**Production files:** create mutation DTOs/service; update `BatchStockService`, FEFO, stock adjustment/reservation writers, `Batch.php`, `UpdateBatchRequest.php`, `BatchRepositoryInterface.php`, and `BatchRepository.php`.
+
+**Contract:** §7.7; repository ordinary update becomes:
+
+```php
+public function updateMetadata(
+    Batch $batch,
+    UpdateBatchMetadataData $data,
+): Batch;
+```
+
+Identity fields are excluded after use.
+
+**Red first:** `apps/api/tests/Feature/BatchExpiry/UsedBatchIdentityFreezeTest.php`, method `test_ordinary_update_refuses_batch_number_or_expiry_after_first_movement`; first assertion:
+
+```php
+$response->assertConflict();
+```
+
+Command/lane: PostgreSQL.
+
+Cover unused edit, used notes edit, rename/expiry/manufacturing failures, second company, exact retry, direct repository guard, and movement-link requirement.
+
+**Reviewer gate:** inventory architecture.
+
+**Rollback:** retain canonical service; disable identity feature flag only.
+
+### Task 9 — Correction/identification services and UI
+
+**Production files:** create services/controllers/requests/resources; update BatchExpiry routes, `BatchDetailPage.tsx`, batch API/hooks, locales.
+
+**Contracts:** exact `correct()` and `identify()` signatures from §7.7.
+
+**Red first:** `apps/api/tests/Feature/BatchExpiry/LotIdentificationTest.php`, method `test_identification_preserves_aggregate_quantity_value_and_wac`; first assertion:
+
+```php
+self::assertSame('0.0000', $aggregateQuantityDelta);
+```
+
+Command/lane: PostgreSQL.
+
+Cases: operation retry, conflict, expected-version conflict, uniqueness conflict, insufficient source, reservation handling, no history merge, source/targets sum, no WAC/GL, second company/location, admin-only, ordinary edit remains frozen.
+
+**Reviewer gate:** inventory/accounting/authz.
+
+**Rollback:** flag off; retain completed lineage and movements.
+
+### Task 10 — Lot-count schema and typed submission
+
+**Production files:** create count migration and DTO; update the real `apps/api/app/Modules/Inventory/Presentation/Requests/SubmitCountRequest.php`, `InventoryCountingItem.php`, and `CountingItemController.php`.
+
+**Contract:** exact extended `InventoryCountingService::submitCount()` signature from §7.7. Request accepts:
+
+```text
+lots.*.batch_uuid
+lots.*.quantity
+lots.*.observed_at_device
+```
+
+The server stamps `observed_at_estimate` and current UUIDv7 movement marker.
+
+**Red first:** `apps/api/tests/Feature/Inventory/LotCountSubmissionTest.php`, method `test_lot_observation_records_as_of_marker_for_the_same_count_phase`; first assertion:
+
+```php
+self::assertSame($lastMovementId, $observation->observed_movement_marker);
+```
+
+Command/lane: PostgreSQL.
+
+**Reviewer gate:** inventory count specialist.
+
+**Rollback:** flag off; retain observations.
+
+### Task 11 — Lot-count reconciliation and replay
+
+**Production files:** update `InventoryCountingService.php`, `FinalQuantityAsOfResolver.php`, `MovementReplayService.php`, `CountingReplayPreviewService.php`, and `ApplyStockAdjustmentsOnCountingCompleted.php`.
+
+**Contract:**
+
+```php
+public function reconcileLotObservations(
+    InventoryCountingItem $item,
+    int $winningCountNumber,
+): LotCountReconciliationResultData;
+```
+
+Exactly one aggregate correction remains. Lot legs merely explain/reallocate that result.
+
+**Red first:** `apps/api/tests/Feature/Inventory/LotCountReconciliationTest.php`, method `test_twenty_aggregate_observed_as_ten_plus_five_creates_five_loss_without_default_remainder`; first assertion:
+
+```php
+self::assertSame('-5.0000', $result->aggregateDelta);
+```
+
+Command/lane: PostgreSQL.
+
+Mandatory scenarios:
+
+- 10+10 aggregate/lot becomes 10+5.
+- 15+5 is reattributed without aggregate change.
+- +5 identified surplus.
+- Sale during count.
+- Transfer during count.
+- Late receipt before observation.
+- Late receipt after observation.
+- Same-second marker ordering.
+- Explicit zero versus missing.
+- Replay/rerun.
+- No WAC or GL for pure reattribution.
+- Second company/location.
+
+**Reviewer gate:** inventory/accounting.
+
+**Rollback:** flag off; do not reverse completed count movements automatically.
+
+### Task 12 — Exact lot-count API and existing UI
+
+**Production files:** update `apps/api/app/Modules/Inventory/Presentation/Controllers/CountingItemController.php`, `apps/api/app/Modules/Inventory/Presentation/routes.php`, `apps/web/src/features/inventory-counting/pages/CountingDetailPage.tsx`, `CountingReviewPage.tsx`, `api/countingApi.ts`, and `types.ts`.
+
+**Contract:** existing count submission route accepts the Task 10 shape; responses use generated `LotCountObservationData[]`.
+
+**Red first:** `apps/web/src/features/inventory-counting/pages/CountingDetailPage.lots.test.tsx`, method `submits explicit zero lot and preserves missing lot`; first assertion:
+
+```ts
+expect(mockSubmit).toHaveBeenCalledWith(expect.objectContaining({
+  lots: [{ batch_uuid: 'batch-a', quantity: '0.0000' }],
+}))
+```
+
+Command/lane:
+
+```bash
+pnpm --filter @autoerp/web test --run src/features/inventory-counting/pages/CountingDetailPage.lots.test.tsx
+```
+
+Lane: Vitest.
+
+**Reviewer gate:** inventory UI/accessibility.
+
+**Rollback:** hide lot editor by flag; flat aggregate counting remains.
+
+### Task 13 — Provenance schema, every producer, and backfill command
+
+**Production files:** create provenance migration, enum, command; update delivery-note converter’s two branches, delivery-note factory, receipt/return, transfer, reservation, POS projection, and allocation models/resources.
+
+**Contract:** exact provenance values/checks from §6.7 and command signature from §7.8.
+
+**Red first:** `apps/api/tests/Feature/Inventory/LotProvenanceProducerTest.php`, method `test_every_fefo_producer_writes_system_estimate_with_reference`; first assertion:
+
+```php
+self::assertSame([], $this->allocationsMissingProvenance());
+```
+
+Command/lane: PostgreSQL.
+
+Backfill uses stable operation UUID, bounded chunks, per-table/per-company progress, exact retry, no captured inference, and no stock write.
+
+**Reviewer gate:** inventory/data migration.
+
+**Rollback:** flag presentation off; retain classifications.
+
+### Task 14 — Provenance read/export surfaces
+
+**Production files:** update `BatchTraceabilityController.php`, batch resource, document/transfer/receipt resources, CSV exporters, batch detail and related web pages.
+
+**Contract:** every displayed allocation returns:
+
+```text
+lot_provenance
+lot_evidence_actor_id
+lot_evidence_captured_at
+lot_evidence_reference
+```
+
+`system_fefo_estimate` is visibly labelled “System FEFO estimate”; `unknown` is not labelled captured.
+
+**Red first:** `apps/api/tests/Feature/BatchExpiry/LotProvenanceTraceabilityTest.php`, method `test_trace_never_presents_estimate_as_captured`; first assertion:
+
+```php
+$response->assertJsonPath('data.0.lot_provenance', 'system_fefo_estimate');
+```
+
+Command/lane: PostgreSQL.
+
+**Reviewer gate:** inventory UX/compliance.
+
+**Rollback:** hide columns, retain stored provenance.
+
+### Task 15 — Durable entitlement-aware census
+
+**Production files:** create census migration, monitor service/command/notification; update existing `LotLedgerDriftCensus.php`, existing `LotLedgerDriftCensusCommand.php`, `routes/console.php`, and BatchExpiry provider/health surface.
+
+**Contract:** existing read-only command remains read-only; new durable monitor uses §7.8. Schedule daily at 03:20 with `withoutOverlapping(180)`, failure notification, and stale recovery.
+
+**Red first:** `apps/api/tests/Feature/BatchExpiry/LotLedgerDriftCensusTest.php`, method `test_unresolved_entitlement_is_actionable_and_never_clean`; first assertion:
+
+```php
+self::assertSame(LotLedgerCensusStatus::Failed, $run->status);
+```
+
+Command/lane: PostgreSQL; add this exact class to live `backend-test-pgsql`.
+
+Cover clean, drift, disabled exclusion, unresolved, failure notification, stale run, overlap, second company, no repair, exact decimals.
+
+**Reviewer gate:** inventory/operations.
+
+**Rollback:** scheduler flag false; retain run history.
+
+### Task 16 — Server lot eligibility and terminal capability
+
+**Production files:** create eligibility DTO/service/controller/request/resource; update POS/product sync routes and terminal config/capability responses.
+
+**Contract:**
+
+```php
+public function snapshot(
+    string $tenantId,
+    string $companyId,
+    string $locationId,
+    string $terminalId,
+): LotEligibilitySnapshotData;
+```
+
+Only enabled, active, non-recalled, non-expired, available lots appear, ordered FEFO with deterministic tie-break.
+
+**Red first:** `apps/api/tests/Feature/POS/PosLotEligibilitySnapshotTest.php`, method `test_snapshot_is_company_location_and_revision_bound`; first assertion:
+
+```php
+self::assertSame(['batch-local'], $response->json('data.lots.*.batch_uuid'));
+```
+
+Command/lane: PostgreSQL.
+
+**Reviewer gate:** POS/inventory/tenancy.
+
+**Rollback:** guidance flag off; no device deletion required.
+
+### Task 17 — SQLite v68, blocking pre-open refresh, and active renderers
+
+**Production files:** update `apps/pos/src/lib/db/migrations.ts`, product store/types, `apps/pos/src/stores/terminalStore.ts`, `apps/pos/src/components/organisms/TransactionCart/TransactionCart.tsx`, `apps/pos/src/components/molecules/CartLineItem/CartLineItem.tsx`, ProductGrid/ProductCard/ProductListRow/ProductTable/ProductDetailDrawer/BarcodeChooser/NearExpirySlot owners; create lot snapshot repository.
+
+**Contract:**
+
+```ts
+export async function replaceLotEligibilitySnapshot(
+  tx: SqlSurface,
+  snapshot: LotEligibilitySnapshot,
+): Promise<void>;
+
+export async function requireCurrentLotSnapshotBeforeShiftOpen(
+  terminal: TerminalContext,
+): Promise<LotEligibilitySnapshot>;
+```
+
+Both v3 and legacy shift-open branches call the blocking function before creating the shift. Disabled omits lot behavior; unresolved, stale revision, wrong scope, or refresh failure refuses open with a recoverable message.
+
+**Red first:** `apps/pos/src/stores/__tests__/terminalStore.lotPreOpen.test.ts`, method `refuses both shift paths when lot snapshot acknowledgement fails`; first assertion:
+
+```ts
+expect(createShift).not.toHaveBeenCalled()
+```
+
+Command/lane:
+
+```bash
+pnpm --filter @autoerp/pos test --run src/stores/__tests__/terminalStore.lotPreOpen.test.ts
+```
+
+Lane: Vitest/SQLite.
+
+**Reviewer gate:** POS offline/accessibility.
+
+**Rollback:** guidance flag off; v68 tables remain.
+
+### Task 18 — Canonical keys and server evidence ingress
+
+**Production files:** create shared vectors, PHP/TS canonical-key implementations, evidence migration/models/DTO/service/controller/request/routes; update fiscal/receipt sync ingress.
+
+**Contract:** §5 and `LotEvidenceIngressService::ingest()`.
+
+**Red first:** `apps/api/tests/Feature/Fiscal/LotEvidenceIngressTest.php`, method `test_index_999999_persists_and_1000000_is_rejected`; first assertions verify 201 for maximum and 422 for maximum+1.
+
+Command/lane: PostgreSQL.
+
+Cover duplicate products, reversed evidence order, exact retry, operation conflict, hash mismatch, product/variant mismatch, terminal/company/location mismatch, stale cutover/revision, N evidence legs, second company.
+
+**Reviewer gate:** fiscal/inventory/security.
+
+**Rollback:** ingress flag off; retain evidence.
+
+### Task 19 — SQLite v69 and receipt-atomic evidence authoring
+
+**Production files:** update `migrations.ts`, `receiptService.ts`, `FiscalEventEngine.ts` only if signature threading is required, cart types/components; create `receiptLineLotEvidenceRepository.ts`.
+
+**Contracts:**
+
+```ts
+export async function insertLotEvidenceSubmission(
+  tx: SqlSurface,
+  submission: ReceiptLotEvidenceSubmission,
+): Promise<void>;
+
+export async function insertLotEvidenceLines(
+  tx: SqlSurface,
+  lines: readonly ReceiptLineLotEvidence[],
+): Promise<void>;
+
+export async function enqueueLotEvidence(
+  tx: SqlSurface,
+  submissionId: string,
+): Promise<void>;
+```
+
+Inside the existing `withWriteTransaction('fiscal', async tx => ...)`, order is:
+
+1. `FiscalEventEngine.append(tx, ...)`.
+2. Insert offline receipt and lines/payments.
+3. Insert evidence submission.
+4. Insert all evidence lines.
+5. Insert evidence outbox row.
+6. Apply voucher changes.
+7. Commit.
+
+Any failure rolls back all seven categories. Retry with the same operation UUID produces one complete set.
+
+**Red first:** `apps/pos/src/lib/offline/__tests__/receiptService.lotEvidenceAtomicity.test.ts`, method `rolls_back_receipt_when_evidence_outbox_insert_fails`; first assertion:
+
+```ts
+expect(await countOfflineReceipts(db)).toBe(0)
+```
+
+Command/lane: POS Vitest/SQLite.
+
+Inject failure after fiscal append, receipt insert, evidence header, first/middle/final evidence leg, outbox, and voucher update. Verify exact retry and two-lot line.
+
+**Reviewer gate:** POS offline/fiscal.
+
+**Rollback:** authoring flag off; retain acknowledged evidence and unsent outbox rows.
+
+### Task 20 — Durable evidence delivery and crash recovery
+
+**Production files:** create device outbox worker/API client; update POS sync coordinator, diagnostics UI, app startup/online listeners.
+
+**Contract:**
+
+```ts
+export async function claimLotEvidenceOutbox(
+  db: SqlSurface,
+  owner: string,
+  limit: number,
+  leaseSeconds: number,
+): Promise<readonly ClaimedLotEvidence[]>;
+
+export async function deliverClaimedLotEvidence(
+  claim: ClaimedLotEvidence,
+): Promise<void>;
+```
+
+**Red first:** `apps/pos/src/lib/offline/__tests__/lotEvidenceOutbox.test.ts`, method `recovers_crash_after_server_accept_before_local_ack`; first assertion:
+
+```ts
+expect(await countServerSubmissions(operationUuid)).toBe(1)
+```
+
+Command/lane: POS integration Vitest.
+
+Cover offline, retry/backoff, expired lease, duplicate worker, conflicting operation, 4xx dead letter, 5xx retry, crash before send/after accept/before ack, second terminal/company.
+
+**Reviewer gate:** POS sync/operations.
+
+**Rollback:** stop worker through authoring flag; do not delete queued evidence.
+
+### Task 21 — Aggregate obligation plus N lot-effect writer
+
+**Production files:** create obligation migration/models/enums/service; update `PosCoreReceiptProjection.php`, FEFO service, fiscal projection job/registry/dispatcher.
+
+**Contract:** exact `ensureObligation()` and `apply()` signatures in §7.6.
+
+**Red first:** `apps/api/tests/Feature/Fiscal/PosLotObligationMultiLotTest.php`, method `test_one_sale_obligation_links_two_fefo_batch_movements_to_one_aggregate_movement`; first assertion:
+
+```php
+self::assertCount(2, $obligation->effects);
+```
+
+Command/lane:
+
+```bash
+cd apps/api
+DB_CONNECTION=pgsql php artisan test -c phpunit-pgsql.xml tests/Feature/Fiscal/PosLotObligationMultiLotTest.php
+```
+
+Lane: live PostgreSQL CI.
+
+Cover two-lot consume, two-lot refund restore, scrap, captured evidence priority, FEFO estimate fallback/provenance, signed sum, common aggregate movement, contained failure, aggregate remains one, retry, concurrent delivery, second company/location, entitlement disabled/unresolved.
+
+**Reviewer gate:** fiscal/inventory/accounting.
+
+**Rollback:** projection flag off; aggregate posting remains active; obligations remain visible and unapplied.
+
+### Task 22 — Obligation recovery, leases, health UI, and no-inversion proof
+
+**Production files:** create recovery command/job/service/notification/controllers/resources; update routes/console, Horizon config if required, fiscal projection detail and batch health UI.
+
+**Contract:** exact recovery CLI in §7.8 and claim/application order in §§7.5 and 9.1.
+
+**Red first:** `apps/api/tests/Feature/Fiscal/LotObligationRecoveryDeadlockTest.php`, method `test_recovery_does_not_hold_obligation_lock_while_waiting_for_product_advisory`; first assertion:
+
+```php
+self::assertFalse($probe->deadlockDetected());
+```
+
+Command/lane: PostgreSQL.
+
+Cover duplicate workers, expired lease, retry before/after effect commit, crash before status update, max attempts, entitlement revision change, two-lot effects, GL flush, and reverse-direction concurrency with live projection.
+
+**Reviewer gate:** database concurrency/fiscal/accounting.
+
+**Rollback:** stop recovery scheduler/command invocation; retain obligations and leases until expiry.
+
+### Task 23 — Generated types, live CI, second-of-everything, and E2E
+
+**Production files:** update `.github/workflows/ci.yml`, generated types, test fixtures, and create `apps/web/e2e/smoke/w-lot.smoke.ts`.
+
+**Contract:** every PostgreSQL-only W-LOT class is explicitly added to the live `backend-test-pgsql` filter at `.github/workflows/ci.yml:1116`; the parked inventory feature lane is not cited as execution evidence.
+
+Required live classes include:
+
+```text
+TenantBoundCompanyEntitlementResolverTest
+BatchAuthorityRaceTest
+BatchRecallWorkflowTest
+BatchQuantityStringContractTest
+LotIdentitySchemaTest
+UsedBatchIdentityFreezeTest
+LotIdentificationTest
+LotCountSubmissionTest
+LotCountReconciliationTest
+LotProvenanceProducerTest
+LotProvenanceTraceabilityTest
+LotLedgerDriftCensusTest
+PosLotEligibilitySnapshotTest
+LotEvidenceIngressTest
+PosLotObligationMultiLotTest
+LotObligationRecoveryDeadlockTest
+WLotSecondOfEverythingPostgresTest
+```
+
+**Red first:** `apps/api/tests/Feature/WLot/WLotSecondOfEverythingPostgresTest.php`, method `test_complete_flow_is_isolated_across_two_companies_locations_lots_terminals_and_retries`; first assertion:
+
+```php
+self::assertSame('0.0000', $crossScopeMutation);
+```
+
+Command/lane: live PostgreSQL CI.
+
+Also run `php artisan typescript:transform`, fail on generated diff, web/pos typecheck, and Playwright.
+
+**Reviewer gate:** general integrator plus CI owner.
+
+**Rollback:** revert CI-only changes if malformed; no production rollback.
+
+### Task 24 — Rollout commands, activation evidence, and handback
+
+**Production files:** finalize rollout services/commands, preflight output, deploy note, `docs/PRODUCT-BIBLE.md`, and W-LOT handback evidence document.
+
+**Contract:** revision creation outputs `revision_id`; cutover prepare outputs every tenant/company `cutover_id`; activate/rollback consumes only captured output. No operator invents IDs.
+
+**Red first:** `apps/api/tests/Feature/Console/WLotCutoverCommandTest.php`, method `test_prepare_output_ids_are_required_for_activation_and_rerun_is_idempotent`; first assertion:
+
+```php
+self::assertSame($preparedIds, $retriedIds);
+```
+
+Command/lane: PostgreSQL.
+
+**Reviewer gate:** release/operations plus product owner for evidence only; Q10–Q13 remain OPEN.
+
+**Rollback:** execute `wlot:cutover rollback` for captured IDs and disable flags in reverse order; never reverse aggregate stock automatically.
 
 ---
 
-### Task 22 — Add obligation recovery and health UI
+## 11. Executable five-push staging manifest
 
-**Production files**
+Every push is independently deployable. Additive migrations are never destructively rolled back during an incident. The staging web application has `autoDeploy=false` at `docs/factory/WORKFLOW.md:206-209`; every push touching `apps/web` therefore performs the explicit Dokploy deployment below. Dokploy’s official API operation is `POST /api/application.redeploy`.
 
-- `apps/api/app/Modules/Fiscal/Presentation/Controllers/DeadLetteredProjectionsController.php`
-- `apps/api/app/Modules/POS/Presentation/Controllers/ReceiptController.php`
-- `apps/api/app/Modules/POS/Application/DTOs/ReceiptDetailData.php`
-- `apps/web/src/features/pos/pages/ReceiptDetailPage/ReceiptDetailPage.tsx`
-- `apps/web/src/features/pos/components/LotProjectionStatus.tsx` — new
+Common explicit web deployment:
 
-**Contract/schema:** receipt/projection DTO exposes obligation state, reason, age, aggregate movement ID, linked batch movement ID, and retry eligibility; no schema.
+```bash
+curl --fail-with-body --silent --show-error \
+  -X POST "${DOKPLOY_URL:?}/api/application.redeploy" \
+  -H "x-api-key: ${DOKPLOY_API_KEY:?}" \
+  -H "Content-Type: application/json" \
+  --data '{"applicationId":"mY6P_PHb4pw-2LdG1Y7Ml","title":"W-LOT staging verification"}'
+```
 
-**Red first:** `apps/web/src/features/pos/pages/ReceiptDetailPage/LotProjectionStatus.test.tsx`, case `blocked lot obligation displays reason and aggregate movement reference`; first failure: `expect(screen.getByText(/Blocked lot work/)).toBeInTheDocument()`. Command/lane: `pnpm --filter @autoerp/web test -- src/features/pos/pages/ReceiptDetailPage/LotProjectionStatus.test.tsx` — **vitest**.
+After deployment succeeds:
 
-**Implementation:** integrate into existing projection recovery; retry calls the sole lot service; no second stock writer or workflow; permission-gate operator retry.
+```bash
+WEB_INDEX="$(curl -fsS https://erp.otospex.dev/)"
+WEB_ASSET="$(printf '%s' "$WEB_INDEX" | rg -o 'assets/[^\" ]+\\.js' -m1)"
+curl -fsS "https://erp.otospex.dev/${WEB_ASSET}" | shasum -a 256
+curl -fsS "https://erp.otospex.dev/${WEB_ASSET}" | rg -F 'wlot-canonical-line-key-v1'
+BASE_URL=https://erp.otospex.dev \
+  pnpm --filter @autoerp/web exec playwright test \
+  e2e/smoke/w-lot.smoke.ts \
+  --config=playwright.smoke.config.ts
+```
 
-**Convention 09:** API `LotObligationRecoveryApiTest::test_second_company_obligation_returns_404`, `::test_second_location_is_not_retryable_by_branch_user`, `::test_recovery_rerun_returns_applied_result`.
+Record the prior asset hash, new asset hash, feature-fingerprint match, Dokploy deployment ID/status, and Playwright transcript.
 
-**Reviewer gate:** operator can distinguish missing evidence, unresolved entitlement, lock contention, and permanent dead letter without editing stock directly.
+### Push 1 — Preflight, rollout config, environment plumbing
 
----
+Contents:
 
-### Task 23 — Execute second-of-everything and end-to-end acceptance
+- Task 1.
+- Task 2 config/command scaffolding that tolerates missing additive schema.
+- `docker-compose.staging.yml`.
+- `apps/api/docker/entrypoint.sh`.
+- No migration and no business activation.
+- All eight flags false.
 
-**Production files:** none; verification-only.
-
-**Contract/schema:** no changes.
-
-**Red first:** `apps/api/tests/Feature/WLot/WLotSecondOfEverythingPostgresTest.php`, class `WLotSecondOfEverythingPostgresTest`, case `test_full_workflow_isolated_across_two_companies_and_two_locations`; first failure: second company/location state differs from expected untouched values. Command/lane: `cd apps/api && DB_CONNECTION=pgsql php artisan test -c phpunit-pgsql.xml tests/Feature/WLot/WLotSecondOfEverythingPostgresTest.php` — **PG**.
-
-**Implementation/verification:** execute recall, identification, correction, count, provenance, eligibility, evidence, projection, recovery, and census with two tenants, two companies per tenant, two locations per company, duplicate products, fractional quantities, and retries.
-
-**Convention 09:** the class contains named `test_second_company_*`, `test_second_location_*`, and `test_rerun_*` cases for every W-LOT lane.
-
-**Reviewer gate:** zero cross-boundary writes, exact decimal conservation, no deadlock, and one effect per operation.
-
----
-
-### Task 24 — Produce handback and activation evidence
-
-**Production files:** none; evidence/documentation only.
-
-**Documentation files**
-
-- `docs/handoff/HANDBACK-w-lot-batch-management-2026-09-06.md` — new
-- `docs/architecture/w-lot-lock-and-writer-census.md`
-- `docs/glossary.md`
-
-**Contract/schema:** handback must record deployed commit SHAs, migration status, flags, command transcripts, screenshots, test results, census result, rollback rehearsal, and Q10–Q13 as OPEN.
-
-**Red first:** `apps/api/tests/Architecture/WLotHandbackCompletenessTest.php`, class `WLotHandbackCompletenessTest`, case `test_handback_contains_every_activation_evidence_marker`; first failure: `assertSame([], $missingMarkers)`. Command/lane: `cd apps/api && php artisan test tests/Architecture/WLotHandbackCompletenessTest.php --filter=test_handback_contains_every_activation_evidence_marker` — **SQLite**.
-
-**Implementation:** populate evidence only after the relevant commands have run; include exact staging outputs, not templates.
-
-**Convention 09:** handback test requires named second-company, second-location, and rerun transcript markers.
-
-**Reviewer gate:** no flag activation is considered complete until the handback ratchet passes.
-
----
-
-## 11. Explicit five-push staging auto-deploy manifest
-
-Each push is independently deployable. No push combines its declared class with a later class.
-
-### Push 1 — Preflight command and contracts first
-
-**Contents**
-
-- Task 1 preflight command, writer manifest, architecture tests, glossary, and census document.
-- Task 2 rollout config with every flag defaulting to false.
-- No migrations and no business behavior activation.
-
-**Before push**
+Pre-push:
 
 ```bash
 git rev-parse HEAD
 pnpm lint
 pnpm typecheck
-cd apps/api && php artisan test tests/Architecture/InventoryWriterLockManifestTest.php
-cd apps/api && php artisan test tests/Architecture/LotVocabularyContractTest.php
+cd apps/api
+php artisan test tests/Architecture/InventoryWriterLockManifestTest.php
+php artisan test tests/Architecture/LotVocabularyContractTest.php
+php artisan test tests/Feature/Console/WLotPreflightCommandTest.php
 ```
 
-**After auto-deploy**
+Post-deploy:
 
 ```bash
-docker compose -f docker-compose.staging.yml exec -T api php artisan inventory:w-lot-preflight --all-tenants --format=json
-docker compose -f docker-compose.staging.yml exec -T api php artisan migrate:status
+docker compose -f docker-compose.staging.yml exec -T api \
+  php artisan inventory:w-lot-preflight \
+  --all-tenants --format=json --fail-on-unresolved
 ```
 
-**Acceptance:** preflight runs before any W-LOT migration, reports all flags false, and performs no writes.
+Verify each API/worker/scheduler container prints the same eight literal false values.
 
-**Rollback point P1:** redeploy the immediately preceding image. No database rollback is required.
+**Rollback point P1:** redeploy the preceding image. No DB action.
 
----
+### Push 2 — Additive central, tenant, and device schema
 
-### Push 2 — Schema-only additive migrations
+Contents only:
 
-**Contents only**
+- All central/tenant migrations in §6.
+- SQLite v68/v69 definitions with no callers.
+- Schema/model/enum declarations required for migration tests.
+- Flags remain false.
 
-- `2026_09_06_100001_create_batch_recall_workflow_tables.php`
-- `2026_09_06_100002_create_lot_identity_correction_and_identification_tables.php`
-- `2026_09_06_100003_create_inventory_counting_item_lots.php`
-- `2026_09_06_100004_add_lot_provenance_to_allocation_producers.php`
-- `2026_09_06_100005_create_lot_ledger_census_runs.php`
-- `2026_09_06_100006_create_pos_receipt_line_lot_evidence.php`
-- `2026_09_06_100007_create_fiscal_projection_lot_obligations.php`
-- `2026_09_06_100008_seed_w_lot_permissions.php`
-- SQLite v68/v69 table migrations, with no callers yet.
-
-**Migration commands**
-
-The staging API startup may run central migrations. Tenant rollout must use the repository’s rolling command at `apps/api/app/Modules/Tenant/Application/Commands/RollingTenantMigrationCommand.php:48`.
+Run central migration:
 
 ```bash
-docker compose -f docker-compose.staging.yml exec -T api php artisan migrate --force
-docker compose -f docker-compose.staging.yml exec -T api php artisan tenants:migrate-rolling --force
-docker compose -f docker-compose.staging.yml exec -T api php artisan migrate:status
-docker compose -f docker-compose.staging.yml exec -T api php artisan inventory:w-lot-preflight --all-tenants --format=json
+docker compose -f docker-compose.staging.yml exec -T api \
+  php artisan migrate --force
 ```
 
-**Acceptance:** every migration is additive; old application instances continue operating; all flags remain false.
+Run and capture tenant rolling migration:
 
-**Rollback point P2:** redeploy P1. Leave additive tables/columns in place; do not run destructive down migrations during incident rollback.
+```bash
+docker compose -f docker-compose.staging.yml exec -T api sh -c \
+  'php artisan tenants:migrate-rolling --force > /tmp/wlot-tenants-migrate.log 2>&1'
+docker compose -f docker-compose.staging.yml exec -T api \
+  cat /tmp/wlot-tenants-migrate.log
+```
 
----
+Verify:
 
-### Push 3 — Dormant implementation
+```bash
+docker compose -f docker-compose.staging.yml exec -T api sh -c \
+  "rg '^→ ' /tmp/wlot-tenants-migrate.log &&
+   rg '^Done\\. [0-9]+ tenant\\(s\\) migrated, 0 failed\\.$' /tmp/wlot-tenants-migrate.log &&
+   ! rg 'FAILED:|Done with errors' /tmp/wlot-tenants-migrate.log"
+```
 
-**Contents**
+The number of `→ tenant` lines must equal the declared `Rolling tenant migrations across N tenant(s).` count. In shared-database mode, accept only the command’s explicit documented no-op text.
 
-- Tasks 2–22 production code and tests.
-- Canonical mutation service and retired float writers.
-- APIs and UI compiled but guarded.
+Then:
+
+```bash
+docker compose -f docker-compose.staging.yml exec -T api \
+  php artisan migrate:status
+docker compose -f docker-compose.staging.yml exec -T api \
+  php artisan inventory:w-lot-preflight \
+  --all-tenants --format=json --fail-on-unresolved
+```
+
+**Rollback point P2:** redeploy P1 and leave additive schema installed.
+
+### Push 3 — Live compatibility refactor plus guarded W-LOT implementation
+
+Contents:
+
+- Task 3 membership/permission hardening.
+- Task 6 exact-decimal writer/API compatibility refactor, which is a live change and is explicitly tested as such.
+- Guarded Tasks 4–22 implementation.
+- Web and POS integration.
+- All feature flags false.
 - Existing POS aggregate posting remains active.
-- Scheduler registration is guarded by `LOT_ROLLOUT_CENSUS_SCHEDULER=false`.
-- All W-LOT flags remain false.
+- No provenance backfill, cutover, or scheduler activation.
 
-**Commands**
+Pre-push:
 
 ```bash
 pnpm build
 pnpm lint
 pnpm typecheck
 pnpm test
-cd apps/api && composer test
-cd apps/api && ./vendor/bin/phpstan analyse
-cd apps/api && ./vendor/bin/pint --test
-cd apps/api && DB_CONNECTION=pgsql php artisan test -c phpunit-pgsql.xml tests/Feature/BatchExpiry tests/Feature/Inventory tests/Feature/Fiscal tests/Feature/POS
-docker compose -f docker-compose.staging.yml exec -T api php artisan inventory:w-lot-preflight --all-tenants --format=json --fail-on-drift
+cd apps/api
+composer test
+./vendor/bin/phpstan analyse
+./vendor/bin/pint --test
+php artisan typescript:transform
+git diff --exit-code -- ../../packages/shared/types/generated.d.ts
+DB_CONNECTION=pgsql php artisan test -c phpunit-pgsql.xml \
+  tests/Feature/BatchExpiry \
+  tests/Feature/Inventory \
+  tests/Feature/Fiscal \
+  tests/Feature/POS \
+  tests/Feature/Company
 ```
 
-**Acceptance:** dormant paths pass tests; flags false; current staging behavior unchanged.
-
-**Rollback point P3:** redeploy P2. Additive schema stays.
-
----
-
-### Push 4 — Conservative backfill and verification
-
-**Contents**
-
-- Provenance backfill command.
-- Permission reseed invocation support.
-- No behavior flag change.
-- No historical `operator_captured` inference.
-- No stock repair.
-
-**Commands**
+Post-deploy:
 
 ```bash
-docker compose -f docker-compose.staging.yml exec -T api php artisan inventory:w-lot-preflight --all-tenants --format=json
-docker compose -f docker-compose.staging.yml exec -T api php artisan db:seed --class=RolesAndPermissionsSeeder --force
-docker compose -f docker-compose.staging.yml exec -T api php artisan inventory:backfill-lot-provenance --all-tenants --dry-run
-docker compose -f docker-compose.staging.yml exec -T api php artisan inventory:backfill-lot-provenance --all-tenants --execute
-docker compose -f docker-compose.staging.yml exec -T api php artisan inventory:lot-drift-census --all-tenants --record-run --fail-on-drift --recover-stale-run --stale-after=180
-docker compose -f docker-compose.staging.yml exec -T api php artisan inventory:w-lot-preflight --all-tenants --format=json --fail-on-drift
+docker compose -f docker-compose.staging.yml exec -T api \
+  php artisan inventory:w-lot-preflight \
+  --all-tenants --format=json --fail-on-drift --fail-on-unresolved
 ```
 
-**Verification queries/commands**
+This push touches `apps/web`: perform explicit Dokploy redeploy, asset-hash comparison, feature fingerprint, and Playwright smoke using the common commands.
 
-- zero `operator_captured` rows produced by historical backfill;
-- no non-admin default grant for identity permissions;
-- no unresolved tenant migration;
-- aggregate/lot census clean or every pre-existing drift tuple explicitly accepted as a rollout blocker;
-- obligation table empty before activation.
+**Rollback point P3:** redeploy P2. Additive schema stays. If the exact-decimal compatibility refactor itself fails, rollback the image; no stored quantity conversion is involved.
 
-**Acceptance:** clean preflight and signed backfill transcript.
+### Push 4 — Permission sync, immutable revision, conservative backfill, and clean evidence
 
-**Rollback point P4:** redeploy P3. Backfilled `unknown`/proven FEFO metadata may remain because it is additive and non-authoritative.
+Create the exact false-flags JSON file:
 
----
-
-### Push 5 — Activation
-
-Set flags in the staging deployment environment in this order:
-
-```text
-LOT_ROLLOUT_PROVENANCE=true
-LOT_ROLLOUT_CENSUS_SCHEDULER=true
-LOT_ROLLOUT_RECALL_WORKFLOW=true
-LOT_ROLLOUT_IDENTITY_CORRECTION=true
-LOT_ROLLOUT_LOT_COUNTING=true
-LOT_ROLLOUT_POS_GUIDANCE=true
-LOT_ROLLOUT_POS_EVIDENCE_AUTHORING=true
-LOT_ROLLOUT_POS_EVIDENCE_PROJECTION=true
+```json
+{
+  "recallWorkflow": false,
+  "identityCorrection": false,
+  "lotCounting": false,
+  "provenance": false,
+  "censusScheduler": false,
+  "posGuidance": false,
+  "posEvidenceAuthoring": false,
+  "posEvidenceProjection": false
+}
 ```
 
-After each logical group, rebuild configuration and restart the actual staging services verified in `docker-compose.staging.yml:178-263`:
+Create and capture the immutable rollout revision:
+
+```bash
+REVISION_JSON="$(
+  docker compose -f docker-compose.staging.yml exec -T api \
+    php artisan wlot:create-rollout-revision \
+    --artifact-sha="$(git rev-parse HEAD)" \
+    --flags-json=/run/wlot/flags-false.json \
+    --actor="${DEPLOY_ACTOR:?}" \
+    --format=json
+)"
+REVISION_ID="$(printf '%s' "$REVISION_JSON" | jq -er '.revision_id')"
+printf '%s\n' "$REVISION_JSON" > wlot-push4-revision.json
+```
+
+The captured `REVISION_ID`, never a hand-entered UUID, is used below.
+
+Sync permissions in every tenant:
+
+```bash
+docker compose -f docker-compose.staging.yml exec -T api \
+  php artisan tenants:seed \
+  --force \
+  --class='Database\Seeders\RolesAndPermissionsSeeder'
+docker compose -f docker-compose.staging.yml exec -T api \
+  php artisan permission:cache-reset
+```
+
+Capture and review provenance dry run:
+
+```bash
+PROVENANCE_OPERATION="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+docker compose -f docker-compose.staging.yml exec -T api \
+  php artisan inventory:backfill-lot-provenance \
+  --all-tenants --operation="$PROVENANCE_OPERATION" --dry-run
+```
+
+Execute using the same operation UUID:
+
+```bash
+docker compose -f docker-compose.staging.yml exec -T api \
+  php artisan inventory:backfill-lot-provenance \
+  --all-tenants --operation="$PROVENANCE_OPERATION" --execute
+```
+
+Run durable census:
+
+```bash
+docker compose -f docker-compose.staging.yml exec -T api \
+  php artisan inventory:lot-drift-monitor \
+  --all-tenants --stale-after=180 \
+  --fail-on-drift --fail-on-unresolved
+```
+
+Prepare cutovers and capture all generated IDs:
+
+```bash
+CUTOVER_OPERATION="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+CUTOVER_JSON="$(
+  docker compose -f docker-compose.staging.yml exec -T api \
+    php artisan wlot:cutover prepare \
+    --all-tenants \
+    --revision="$REVISION_ID" \
+    --operation="$CUTOVER_OPERATION" \
+    --actor="${DEPLOY_ACTOR:?}" \
+    --format=json
+)"
+printf '%s\n' "$CUTOVER_JSON" > wlot-push4-cutovers.json
+jq -e --arg revision "$REVISION_ID" \
+  '.revision_id == $revision and (.cutovers | length > 0) and all(.cutovers[]; .cutover_id and .tenant_id and .company_id)' \
+  wlot-push4-cutovers.json
+```
+
+Copy the captured manifest into the API container and verify it:
+
+```bash
+docker compose -f docker-compose.staging.yml cp \
+  wlot-push4-cutovers.json api:/tmp/wlot-push4-cutovers.json
+docker compose -f docker-compose.staging.yml exec -T api \
+  php artisan inventory:w-lot-preflight \
+  --all-tenants \
+  --format=json \
+  --expected-revision="$REVISION_ID" \
+  --expected-cutover-manifest=/tmp/wlot-push4-cutovers.json \
+  --fail-on-drift \
+  --fail-on-unresolved
+```
+
+Acceptance:
+
+- Every tenant migration and permission seed succeeded.
+- Manager lacks `batches.recall` and has `batches.recall.request`.
+- General manager has the exact delta.
+- Admin-only identity permissions remain admin-only.
+- Backfill created zero `operator_captured` rows.
+- Census is clean or deployment stops.
+- Obligation table is empty before activation.
+- Revision and every cutover ID are saved in the release evidence.
+
+**Rollback point P4:** redeploy P3. Prepared cutovers remain prepared; backfilled `unknown`/provable estimates remain. No stock reversal.
+
+### Push 5 — Ordered activation
+
+Create a new immutable revision whose flags reflect the intended final enabled state and capture its generated ID. Prepare a fresh cutover manifest for that revision exactly as in Push 4. Never reuse the false-flags revision.
+
+Activate in checkpoints by changing only the corresponding Dokploy environment variables:
+
+1. `LOT_ROLLOUT_PROVENANCE=true`
+2. `LOT_ROLLOUT_CENSUS_SCHEDULER=true`
+3. `LOT_ROLLOUT_RECALL_WORKFLOW=true`
+4. `LOT_ROLLOUT_IDENTITY_CORRECTION=true`
+5. `LOT_ROLLOUT_LOT_COUNTING=true`
+6. `LOT_ROLLOUT_POS_GUIDANCE=true`
+7. `LOT_ROLLOUT_POS_EVIDENCE_AUTHORING=true`
+8. `LOT_ROLLOUT_POS_EVIDENCE_PROJECTION=true`
+
+After every checkpoint:
 
 ```bash
 docker compose -f docker-compose.staging.yml exec -T api php artisan config:clear
 docker compose -f docker-compose.staging.yml exec -T api php artisan config:cache
 docker compose -f docker-compose.staging.yml exec -T api php artisan horizon:terminate
 docker compose -f docker-compose.staging.yml exec -T api php artisan queue:restart
-docker compose -f docker-compose.staging.yml restart api worker scheduler websocket web
-docker compose -f docker-compose.staging.yml exec -T api php artisan inventory:w-lot-preflight --all-tenants --format=json --fail-on-drift
+docker compose -f docker-compose.staging.yml restart api worker scheduler websocket
+docker compose -f docker-compose.staging.yml exec -T api \
+  php artisan inventory:w-lot-preflight \
+  --all-tenants \
+  --format=json \
+  --expected-revision="$ACTIVE_REVISION_ID" \
+  --expected-cutover-manifest=/tmp/wlot-push5-cutovers.json \
+  --fail-on-drift \
+  --fail-on-unresolved
 ```
 
-Activation checkpoints:
-
-1. Provenance and census.
-2. Recall.
-3. Identity correction/identification and counting.
-4. POS guidance.
-5. POS evidence authoring.
-6. POS evidence projection last.
-
-Run after the last checkpoint:
+Only after all eight flags report the captured revision does activation consume the captured cutover IDs:
 
 ```bash
-cd apps/api && DB_CONNECTION=pgsql php artisan test -c phpunit-pgsql.xml tests/Feature/WLot/WLotSecondOfEverythingPostgresTest.php
-pnpm --filter @autoerp/pos test
-pnpm --filter @autoerp/web test
-docker compose -f docker-compose.staging.yml exec -T api php artisan inventory:lot-drift-census --all-tenants --record-run --fail-on-drift --recover-stale-run --stale-after=180
+docker compose -f docker-compose.staging.yml exec -T api \
+  php artisan wlot:cutover activate \
+  --all-tenants \
+  --manifest=/tmp/wlot-push5-cutovers.json \
+  --operation="$ACTIVATE_OPERATION" \
+  --actor="${DEPLOY_ACTOR:?}" \
+  --format=json \
+  --force
 ```
 
-**Rollback point P5:** first set the affected flag back to `false`, then repeat `config:clear`, `config:cache`, Horizon/queue termination, and service restart. Roll back in reverse activation order. Never disable or roll back the always-on POS aggregate projection. Pending obligations remain durable for inspection/retry; do not delete them or reverse aggregate stock automatically.
+Run final verification:
+
+```bash
+cd apps/api
+DB_CONNECTION=pgsql php artisan test -c phpunit-pgsql.xml \
+  tests/Feature/WLot/WLotSecondOfEverythingPostgresTest.php
+cd ../..
+pnpm --filter @autoerp/pos test
+pnpm --filter @autoerp/web test
+docker compose -f docker-compose.staging.yml exec -T api \
+  php artisan inventory:lot-drift-monitor \
+  --all-tenants --stale-after=180 \
+  --fail-on-drift --fail-on-unresolved
+docker compose -f docker-compose.staging.yml exec -T api \
+  php artisan fiscal:recover-lot-obligations \
+  --all-tenants --dry-run
+```
+
+Push 5 changes web-visible behavior: perform explicit Dokploy web redeploy, verify asset hash and `wlot-canonical-line-key-v1` fingerprint, then run Playwright smoke.
+
+**Rollback point P5:**
+
+1. Disable flags in reverse order, projection first.
+2. Clear/cache config and restart API/workers/scheduler.
+3. Run:
+
+```bash
+docker compose -f docker-compose.staging.yml exec -T api \
+  php artisan wlot:cutover rollback \
+  --all-tenants \
+  --manifest=/tmp/wlot-push5-cutovers.json \
+  --operation="$ROLLBACK_OPERATION" \
+  --actor="${DEPLOY_ACTOR:?}" \
+  --format=json \
+  --force
+```
+
+4. Redeploy P4.
+5. Explicitly redeploy the web image for P4 and repeat asset/fingerprint/smoke checks.
+6. Keep additive tables, evidence, audit, and obligations.
+7. Never disable or reverse the always-on POS aggregate projection.
+8. Never automatically undo stock movements or delete pending obligations.
 
 ---
 
-## 12. L1–L9 completion map
+## 12. Completion map
 
-| Acceptance | Tasks | Proof |
-|---|---|---|
-| L1 — branch hold and company recall | 4–5 | Location-local request hold, GM/admin company recall, Q10 branches absent. |
-| L2 — exact quantity contracts | 6, 8 | No float lot/reservation mutation; fractional conservation. |
-| L3 — identity correction | 7–9 | Optimistic version, audit evidence, unchanged quantity/value. |
-| L4 — lot identification | 7–9 | Admin-only, evidence-backed split, aggregate conservation. |
-| L5 — provenance | 13–14 | All producer seams, conservative backfill, consistent UI/export. |
-| L6 — health and writer proof | 1, 8, 15, 23 | Complete census, lock ratchet, durable monitor, PG concurrency. |
-| L7 — lot counting | 10–12 | Flat parent count plus explicit lot observations and linked reconciliation. |
-| L8 — POS guidance/evidence/projection | 16–22 | Pre-open refresh, full renderer census, durable outbox/obligation, exact aggregate link. |
-| L9 — identify unknown holdings before correction workflows | 7–9 before L4 activation | Admin-only identification and canonical locking deployed before downstream reliance. |
+| Slice | Completion evidence |
+|---|---|
+| L1 authorization/recall | Tasks 3–5; exact roles, all routes, web visibility, branch sale+transfer hold, company escalation |
+| L2 used-lot identity freeze | Tasks 7–9 |
+| L3 exact decimal | Task 6 plus architecture/type-generation gate |
+| L4 lot counting | Tasks 10–12 and complete scenario matrix |
+| L5 provenance | Tasks 13–14 |
+| L6 durable health | Task 15 |
+| L7 POS display/guidance | Tasks 16–17 |
+| L8 captured evidence | Tasks 18–20, receipt-atomic crash matrix |
+| L9 identification/correction | Tasks 7–9 |
+| Durable POS projection | Tasks 21–22 |
+| Second of everything/live CI | Task 23 |
+| Activation/handback | Task 24 and five-push manifest |
 
-L9 is deployed and verified before L4-dependent operational activation.
+No slice is complete merely because its schema exists. W-LOT is complete only after Push 5 acceptance.
 
 ---
 
 ## 13. Dispatch order and reviewer stop points
 
-1. Task 1 — preflight, completed census ratchet, vocabulary.
-2. Task 2 — entitlement and dormant flags.
-3. Task 3 — atomic role/membership scope.
-4. **Push 1 and reviewer stop.**
-5. Tasks 4, 7, 10, 13, 15, 18, 21 migration portions plus SQLite v68/v69.
-6. **Push 2 and schema compatibility stop.**
-7. Task 6 — exact decimal retirement.
-8. Task 8 — canonical mutation and identification.
-9. Task 4 service behavior, then Task 5.
-10. Task 9.
-11. Tasks 10–12.
-12. Tasks 13–14.
-13. Task 15 behavior.
-14. Tasks 16–17.
-15. Tasks 18–20.
-16. Tasks 21–22.
-17. **Push 3 and dormant full-suite stop.**
-18. Task 23 dry-run fixtures and backfill verification.
-19. **Push 4 and data-readiness stop.**
-20. Activate in §11 Push-5 order.
-21. Task 23 full PG/vitest acceptance.
-22. Task 24 handback evidence.
-23. **Final reviewer sign-off.**
+1. Task 1 — architecture/tenancy stop.
+2. Task 2 — tenancy/security/operations stop.
+3. Task 3 — authorization stop.
+4. Tasks 4–5 — recall domain/API/web stop.
+5. Task 6 — precision stop.
+6. Task 7 — schema/authz stop.
+7. Tasks 8–9 — inventory/accounting stop.
+8. Tasks 10–12 — counting stop.
+9. Tasks 13–15 — provenance/operations stop.
+10. Tasks 16–17 — POS guidance/pre-open stop.
+11. Tasks 18–20 — fiscal evidence/offline durability stop.
+12. Tasks 21–22 — PostgreSQL projection/deadlock stop.
+13. Task 23 — general integration/CI stop.
+14. Pushes 1–4 — release stop; no activation before evidence is archived.
+15. Task 24 and Push 5 — activation and handback.
 
-No new lot writer is dispatched before Task 1 passes. No legacy writer is frozen before Task 8’s replacement and concurrency tests pass. POS evidence projection is the final flag activated.
+Produce-before-consume order is binding:
+
+```text
+entitlement/revision
+→ additive schema
+→ exact mutation and permissions
+→ correction/identification
+→ count/provenance/census
+→ eligibility cache
+→ captured evidence
+→ durable obligation effects
+→ recovery
+→ CI/E2E
+→ activation
+```
+
+The ordinary used-lot edit freeze is activated only after correction/identification replacement paths are green.
 
 ---
 
 ## 14. Verification checklist
 
-### Baseline and citations
+### Baseline and authority
 
-- [ ] Recorded implementation base is `6e17a76022c5ccd8864afdf98cd5302e5264176b` or a reviewer-approved descendant with refreshed citations.
-- [ ] Live batch uniqueness still matches `2026_06_02_100008_add_variant_id_to_product_batches.php:27-31`.
-- [ ] SQLite v68/v69 remain unused before migration implementation.
-- [ ] Every path in each task exists at dispatch or is the exact named new file under an existing verified parent.
+- [ ] Implementation is based on HEAD `11e13eccd746241fb7546d84185310ce490d4464`, or the plan is re-verified after rebase.
+- [ ] `CLAUDE.md`, conventions 09–11, spec v4, owner rulings, revision 2, and gate r3 remain represented.
+- [ ] Q10–Q13 remain verbatim OPEN.
+- [ ] No schema, enum, route, task, rollout flag, or test encodes a Q10–Q13 branch.
+- [ ] Oversell override remains deferred.
 
-### Owner and vocabulary
+### Schema and generated contracts
 
-- [ ] Q10–Q13 remain OPEN verbatim.
-- [ ] No release/reject recall code exists.
-- [ ] Branch lot hold and Company lot recall are distinct in schema, code, API, and UI.
-- [ ] Lot identity correction and Lot identification remain distinct.
-- [ ] `docs/glossary.md` names one writer and one operator surface per concept.
+- [ ] Every migration matches §6 exactly.
+- [ ] Every company-owned unique contains tenant and company scope.
+- [ ] Every FK and ON DELETE action matches §6.
+- [ ] Every check/index/partial unique is present on PostgreSQL.
+- [ ] Canonical line index is INTEGER everywhere.
+- [ ] JSONB rollout flags use `WLotRolloutFlagsData`; no untyped new JSONB exists.
+- [ ] `php artisan typescript:transform` produces no uncommitted drift.
+- [ ] Batch/status/quantity web code uses generated types and string quantities.
 
-### Permissions and tenancy
+### Entitlement and permissions
 
-- [ ] `batches.identify` and `batches.correct-identity` are admin-only defaults.
-- [ ] Additional grants flow through ordinary role management.
-- [ ] Tenant/company/location predicates are applied before every write.
-- [ ] Every relevant task passes named second-company, second-location, and rerun tests.
+- [ ] Company ownership is validated inside initialized tenant context.
+- [ ] Central tenant config is read only on the central connection.
+- [ ] Stale cache repopulation cannot revive an old revision.
+- [ ] HTTP, worker, scheduler, console, product form, POS, and recovery share one decision contract.
+- [ ] Manager lacks `batches.recall`.
+- [ ] Manager has `batches.recall.request`.
+- [ ] General manager equals manager set plus `batches.recall`, `batches.health`, and `treasury.manage_all_locations`.
+- [ ] Identity correction/identification default to admin only.
+- [ ] All batch routes have explicit permission middleware.
+- [ ] Old direct recall route is absent.
+- [ ] Viewer/cashier/manager/GM/admin UI and direct-HTTP cases pass.
 
-### Quantity, writers, and locking
+### Recall, correction, identification, and counting
 
-- [ ] No public float lot/reservation mutation remains.
-- [ ] `BatchStockMutationService` is the sole direct live lot quantity/reserved writer.
-- [ ] `StockReservationService.php:507,631` no longer perform float decrements.
-- [ ] `BatchStock.php:54-84` no longer exposes direct mutation.
-- [ ] Every §8 writer is present in `InventoryWriterLockManifest`.
-- [ ] Advisory locks precede aggregate and lot row locks for tracked products.
-- [ ] Product IDs and row keys are locked in deterministic order.
-- [ ] No lock is held over external I/O.
-- [ ] PG hold-time gates satisfy H1–H4.
-- [ ] Every quantity-changing batch movement has a mandatory aggregate movement link.
+- [ ] Recall retry before/after transition returns the same request.
+- [ ] Conflicting operation UUID reuse returns 409.
+- [ ] Branch hold blocks both sale and transfer only at that location.
+- [ ] Company recall blocks every company location but not a second company.
+- [ ] No release/reject path exists.
+- [ ] Used batch identity cannot change through ordinary update/repository calls.
+- [ ] Correction preserves quantity, reservation, value, WAC, and history ownership.
+- [ ] Identification conserves aggregate quantity/value and does not merge histories.
+- [ ] Lot observations retain phase, observation time, estimate, and movement marker.
+- [ ] All required count scenarios pass with no DEFAULT remainder heuristic.
 
-### Recall, identity, and count
+### Precision, writers, locks, and GL
 
-- [ ] Requested recall blocks only the requesting location.
-- [ ] Company recall blocks all company locations.
-- [ ] Identity correction changes no quantity or value.
-- [ ] Identification conserves source/target quantity and value.
-- [ ] Active reservations cannot be stranded by identification.
-- [ ] Explicit lot zero differs from missing count.
-- [ ] Count replay produces no duplicate movement.
+- [ ] No public lot quantity/reservation float remains.
+- [ ] Batch API/web/POS quantities are exact strings.
+- [ ] Only `BatchStockMutationService` directly changes lot quantity/reservation.
+- [ ] Every quantity-changing lot movement has the exact aggregate movement ID.
+- [ ] Every §9 writer is classified by the ratchet.
+- [ ] Recovery commits its lease claim before advisory acquisition.
+- [ ] Live projection and recovery use the same advisory-first order.
+- [ ] `InventoryGlPostingBuffer` flushes after inventory/obligation preparation.
+- [ ] GL numbering advisory precedes company-chain advisory.
+- [ ] No GL owner calls inventory/obligation writers after taking GL locks.
+- [ ] PostgreSQL deadlock probes pass.
 
-### Provenance and health
+### Provenance, census, and POS guidance
 
-- [ ] All converter, factory, reservation, receipt, transfer, return, and POS producers set provenance.
-- [ ] Historical backfill never invents captured evidence.
-- [ ] UI and CSV use the same provenance vocabulary.
-- [ ] Census remains non-repairing.
-- [ ] Scheduler is 03:20 with `withoutOverlapping(180)`.
-- [ ] Crash/stale-run recovery and failure notification are demonstrated.
-- [ ] No successful-run age exceeds 26 hours unnoticed.
-
-### POS canonical identity and renderer coverage
-
-- [ ] PHP and TypeScript pass the same canonical-key vectors.
-- [ ] Duplicate product lines receive distinct keys.
-- [ ] Reordered evidence preserves the line key.
-- [ ] Exact retries reuse the key.
-- [ ] Event versions 1–5 are distinguished deterministically.
-- [ ] ProductCard, ProductListRow, ProductTable, ProductDetailDrawer, BarcodeChooserModal, and NearExpirySlot share one guidance selector.
-- [ ] Legacy `components/pos/ProductGrid.tsx` and `ProductCard.tsx` have zero imports and are removed.
-- [ ] Shift open requires current entitlement/snapshot acknowledgement.
-- [ ] Sealed fiscal payload/version remains unchanged.
+- [ ] Every producer writes one valid provenance value and evidence tuple.
+- [ ] Backfill produces no historical `operator_captured`.
+- [ ] Estimate never renders as captured.
+- [ ] Census filters by enabled company entitlement and batch-tracked product.
+- [ ] Disabled and unresolved are distinct.
+- [ ] Missed/failed/stale census never appears clean.
+- [ ] Schedule is 03:20 with 180-minute overlap expiry.
+- [ ] Snapshot replacement is transactional and company/location/terminal/revision bound.
+- [ ] Both shift-open branches block until refresh acknowledgement.
+- [ ] Active `TransactionCart` and `CartLineItem` render/edit captured lot evidence.
+- [ ] Product detail, grid, list, table, barcode chooser, and near-expiry surfaces share the same eligibility pipeline.
 
 ### Evidence and obligation durability
 
-- [ ] Device evidence and outbox insert atomically.
-- [ ] Evidence-before-projection and projection-before-evidence both converge.
-- [ ] Crash after server commit produces one evidence row.
-- [ ] Aggregate posting remains active regardless of W-LOT entitlement.
-- [ ] Every obligation stores the exact `aggregate_stock_movement_id`.
-- [ ] Every applied obligation stores one linked batch movement.
-- [ ] Linked batch movement `movement_id` equals the obligation’s aggregate movement ID.
-- [ ] Retry never recreates aggregate movement.
-- [ ] Unresolved entitlement creates actionable blocked work.
-- [ ] Dead-letter recovery calls the sole lot writer.
+- [ ] Receipt, fiscal event, evidence header, all evidence legs, outbox, and voucher changes use one SQLite transaction.
+- [ ] Every insert boundary rolls back the complete receipt.
+- [ ] Exact retry produces one complete set.
+- [ ] Offline/outbox lease/crash/dead-letter cases pass.
+- [ ] One aggregate obligation supports N lot effects.
+- [ ] Two-lot sale and refund cases pass.
+- [ ] Every effect movement shares the aggregate movement ID.
+- [ ] Effect signed sum exactly equals aggregate movement quantity.
+- [ ] Aggregate stock is never posted twice.
+- [ ] Entitlement unresolved/contained failure remains visible and retryable.
+- [ ] Recovery never reruns the whole receipt projection.
 
-### Deployment and handback
+### CI and five-push rollout
 
-- [ ] Push 1 lands and runs preflight before any migration.
-- [ ] Push 2 contains additive schema only.
-- [ ] Push 3 contains dormant code with all flags false.
-- [ ] Push 4 records conservative backfill and clean verification.
-- [ ] Push 5 activates flags in the prescribed order.
-- [ ] Cache, Horizon, queues, API, worker, scheduler, websocket, and web are restarted.
-- [ ] Each push has a recorded rollback point.
-- [ ] Always-on POS aggregate posting is never disabled during rollback.
-- [ ] Task 23 passes on PostgreSQL and vitest.
-- [ ] Task 24 handback ratchet passes with exact command transcripts and Q10–Q13 still OPEN.
+- [ ] Every PostgreSQL-only W-LOT class is in live `backend-test-pgsql`.
+- [ ] No parked lane is cited as CI evidence.
+- [ ] Every task’s named red test fails first for the stated assertion.
+- [ ] Every reviewer stop is recorded.
+- [ ] All eight rollout env vars are forwarded to API, worker, and scheduler.
+- [ ] Entrypoint rejects malformed flag values.
+- [ ] `tenants:migrate-rolling --force` output has one successful entry per tenant and zero failures.
+- [ ] Existing-tenant permission sync uses `tenants:seed`, not central `db:seed`.
+- [ ] Rollout revision ID is captured from command JSON.
+- [ ] Every company cutover ID is captured from prepare-command JSON before activation.
+- [ ] Artifact SHA, flags fingerprint, entitlement revision, and cutover manifest agree.
+- [ ] Push 3 is treated as a live precision compatibility change, not falsely described as wholly dormant.
+- [ ] Every push touching `apps/web` has explicit Dokploy redeploy evidence.
+- [ ] Asset hash changed as expected.
+- [ ] Served bundle contains the W-LOT feature fingerprint.
+- [ ] Playwright staging smoke passes.
+- [ ] Every push has its recorded rollback point.
+- [ ] Push 5 rollback disables lot projection first and never reverses aggregate stock automatically.
+- [ ] Final handback includes SHA, CI URLs/transcripts, migration logs, revision/cutover JSON, census run IDs, asset hashes, feature fingerprint, Playwright results, known OPEN owner questions, and rollback evidence.
