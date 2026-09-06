@@ -25,6 +25,7 @@ use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Modules\Treasury\Domain\RepositoryMovement;
 use App\Modules\Treasury\Domain\Services\PaymentRefundService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -297,6 +298,7 @@ final class PaymentRefundRefusalTest extends TestCase
     ): void {
         $paymentsBefore = Payment::query()->count();
         $entriesBefore = JournalEntry::query()->where('company_id', $this->company->id)->count();
+        $movementsBefore = RepositoryMovement::query()->count();
 
         try {
             $act();
@@ -331,7 +333,38 @@ final class PaymentRefundRefusalTest extends TestCase
             JournalEntry::query()->where('company_id', $this->company->id)->count(),
             'no journal entry written at all — SupplierPayable(401) is untouched',
         );
-        $this->assertDatabaseCount('repository_movements', 0);
+        // A DELTA, not `assertDatabaseCount('repository_movements', 0)`.
+        //
+        // The absolute form asserts a GLOBAL, cross-company property this test
+        // does not own, and on the PG lane it is not even true: the CI step runs
+        // the whole directory in ONE process
+        // (`.github/workflows/ci.yml` "PG-only invariants — Treasury Feature
+        // suite": `./vendor/bin/phpunit tests/Feature/Treasury`), and
+        // `AdvanceReversalConcurrencyTest` — the only pcntl_fork test in it —
+        // COMMITS its fixture from the forked child
+        // (`AdvanceReversalConcurrencyTest.php:252`/`:269`), escaping
+        // RefreshDatabase's wrapping transaction. One `opening_balance` movement
+        // of a FOREIGN company then survives for the rest of the process, and
+        // `repository_movements` is append-only on PG (the Task 3 trigger in
+        // `database/migrations/tenant/2026_07_08_100200_create_repository_movements_immutability.php`
+        // rejects DELETE/TRUNCATE), so nothing can clear it. That ambient row —
+        // not the refusal path — is what turned this assertion red on run
+        // 33972668125; probing it showed the SAME row id before and after the
+        // refund call.
+        //
+        // The delta plus the company-scoped zero is strictly STRONGER than the
+        // global zero for what this test claims: the refusal writes no movement
+        // at all, and in particular none for the payment's own company.
+        self::assertSame(
+            0,
+            RepositoryMovement::query()->where('company_id', $this->company->id)->count(),
+            'no cash movement may exist for this payment\'s company',
+        );
+        self::assertSame(
+            $movementsBefore,
+            RepositoryMovement::query()->count(),
+            'the refusal wrote no repository movement anywhere',
+        );
     }
 
     private function paymentOfType(PaymentType $type): Payment
