@@ -1,121 +1,103 @@
-<!-- Rev 3, authored by Codex CLI (gpt-5.6-sol, high, read-only) on 2026-09-06 from rev 2 + plan gate r3; filed verbatim by the orchestrator. Status: awaiting plan gate r4. Rev 1 = 67c0805d4, rev 2 = 2d5268890. -->
-# W-CASH execution plan — revision 3
+<!-- Rev 4, authored by Codex CLI (gpt-5.6-sol, high, read-only) on 2026-09-06 from rev 3 + plan gate r4; filed verbatim by the orchestrator. Status: awaiting plan gate r5. Rev 1 = 67c0805d4, rev 2 = 2d5268890, rev 3 = 3f32ffdd8. -->
+# W-CASH float/drop execution plan — revision 4
 
-**Date:** 2026-09-06  
-**Replacement target:** `docs/superpowers/plans/2026-09-06-w-cash-float-drops-execution-plan.md`  
+**Plan date:** 2026-09-06  
 **Repository:** `/Users/houssamr/Projects/syneriva/apps/erp`  
-**Branch read:** `dev`  
-**HEAD read:** `11e13eccd746241fb7546d84185310ce490d4464`  
-**Mode:** read-only planning. No files changed, no tests run, no commits, migrations, pushes, or deployments performed.
+**Inspected branch:** `dev`  
+**Inspected HEAD:** `7e14006182a1d7e281bbdc4660af85a80a2ee9fd`  
+**Inspection mode:** read-only; no files, commits, branches, schema, or remote state changed.  
+**Worktree preserved:** the pre-existing untracked files `apps/api/docs/sessions/2026-08-04-cross-tenant-scheduled-jobs-plan.md` and `docs/handoff/HANDBACK-enforcement-p1-2026-08-19.md` remain outside W-CASH scope.
 
-The worktree contained two unrelated untracked files when inspected:
+All repository `path:line` citations below refer to the inspected SHA.
 
-- `apps/api/docs/sessions/2026-08-04-cross-tenant-scheduled-jobs-plan.md`
-- `docs/handoff/HANDBACK-enforcement-p1-2026-08-19.md`
+Vocabulary: `Fiscal projection policy record` (NEW — glossary row added in T1), `Fiscal projection cutover` (NEW — glossary row added in T1), `Cash repository configuration` (NEW — glossary row added in T1), `Repository transfer document` (NEW — glossary row added in T1), `Shift cash booking obligation` (NEW — glossary row added in T1), `Z close manifest` (NEW — glossary row added in T1), `Cash-count delivery obligation` (NEW — glossary row added in T1), `Session reconciliation` (existing concept; canonical store remains `pos_session_reconciliations`), `Reconciliation run` (NEW — glossary row added in T1), `Reconciliation supersession` (NEW — glossary row added in T1), `Mutation outcome` (NEW — glossary row added in T1).
 
-They are outside W-CASH and must remain untouched.
+## 1. Revision-4 change log and gate disposition
 
-Authority order:
+Plan-line identifiers such as `PL-070` are immutable references within this document.
 
-1. Owner rulings in `OWNER-RULINGS-parapharmacy-remediation-2026-09-05.md`.
-2. Parapharmacy remediation spec v4.
-3. W-CASH lane brief and RD4.
-4. Repository conventions and current production behavior.
-5. Gate-r3 review.
+### 1.1 Preserved gate-r3 closure set
 
-Q10–Q13 remain OPEN. This revision intentionally withholds every schema, command, task, push, or activation branch that would decide one of them.
+| # | Gate-r3 item | Revision-4 disposition |
+|---:|---|---|
+| 1 | B4 — v2/v3 fingerprint and cutover | **CLOSED** at PL-073 and PL-086: ordered half-open `(occurred_at, source_id)` bounds, overlap serialization, deterministic lookup, stable semantic fingerprint. |
+| 2 | B5 — shared drawer/opening semantics | **CLOSED BY WITHHOLDING** at PL-021 and PL-114: no custody session, membership, join/refusal, float-owner, or close-owner branch. |
+| 3 | B6 — W7 reconciliation | **CLOSED** at PL-079, PL-087, and PL-109: canonical head, immutable runs, one-current invariant, stable snapshots, and the complete spec-v4 matrix. |
+| 4 | B7 — migration/deployment safety | **CLOSED** at PL-121–PL-129: executable fail-fast manifest, fleet backup IDs, per-tenant migration proof, candidate identity, Dokploy deployment, asset hash, fingerprint, and smoke. |
+| 5 | M4 — convention-09 tests | **CLOSED** at PL-091–PL-112: every mutating lane has second-company, second-location, and explicit rerun outcome assertions. |
+| 6 | M9 — local type census | **CLOSED** at PL-052 and PL-106: backend DTO is created, generated types are regenerated, web shadows are removed, and POS retains only a validated SQLite row projection. |
+| 7 | No opening-interval algorithm | **REJECTED** at PL-021: implementing it would decide Q11. |
+| 8 | Durable cutover/config revisions | **CLOSED** at PL-072–PL-074: composite ownership constraints, immutable revisions, ordered bounds, and overlap rejection. |
+| 9 | Tasks lack dispatch contracts | **CLOSED** at PL-091–PL-112: exact files, signatures, tests, commands, lane, review, and rollback are specified. |
+| 10 | CashCountDispatcher durability | **CLOSED** at PL-078, PL-085, and PL-108: all three obligations are inserted in both producer transactions before dispatch. |
+| 11 | Manifest membership/atomicity | **CLOSED** at PL-077, PL-084, and PL-107: close/Z identities precede manifest construction in the same SQLite transaction. |
+| 12 | Cross-rail fingerprint | **CLOSED** at PL-086. |
+| 13 | POS/local type census | **CLOSED** at PL-052 and PL-106. |
+| 14 | Provisioning hooks/atomicity | **CLOSED WITHOUT REGRESSION** at PL-083 and PL-103: the shipped best-effort/failure-contained availability contract is retained. |
+| 15 | Promotion evidence | **CLOSED** at PL-121–PL-129; T12 lands in Push 3 and is first exercised by that promotion. |
+| 16 | Tenant-only uniqueness ratchet | **CLOSED** at PL-081 and PL-101. |
+| 17 | Convention 10 | **CLOSED** at PL-030: prescribed matrix shape, cited AutoERP cells, and valid decision vocabulary. |
+| 18 | Premature Q11 branch | **CLOSED BY WITHHOLDING** at PL-021 and PL-114. |
+| 19 | Task/schema contract | **CLOSED** at PL-070–PL-112. |
+| 20 | Staging manifest | **CLOSED** at PL-121–PL-129. |
+| 21 | Financial lock inversion | **CLOSED** at PL-060–PL-064. |
+| 22 | Impossible manifest order | **CLOSED** at PL-084 and PL-107. |
+| 23 | Stored-event consumer | **CLOSED** at PL-078, PL-085, and PL-108. |
+| 24 | Provisioning contradiction | **CLOSED** by preserving the existing failure-contained interfaces and callers at PL-083 and PL-103. |
+| 25 | Fingerprint custody boundary | **CLOSED** at PL-086: normalized shift/session identity is mandatory or explicitly absent. |
+| 26 | POS generated type ownership | **CLOSED** at PL-106. |
+| 27 | Explicit rerun outcomes | **CLOSED** at PL-080 and every task’s red-first contract. |
+| 28 | Nonexistent paths | **CLOSED** at PL-091–PL-112: every existing production path was resolved at HEAD; all other paths are explicitly marked `CREATE`. |
 
----
+### 1.2 Gate-r4 blockers
 
-## 1. Revision-3 change log and gate-r3 closure
-
-### 1.1 Carried PARTIAL/OPEN rows
-
-| Gate-r3 row | Rev-3 disposition |
+| Finding | Disposition |
 |---|---|
-| B4 — v2/v3 fingerprint and cutover incomplete | **CLOSED.** The canonical fingerprint now includes `company_id`, `location_id`, `terminal_id`, normalized `shift_id`, normalized `session_id`, source-fact time, amount/currency, raw fact kind, and policy/configuration revision identity. Cross-shift reuse is a `conflict`, never an idempotent hit. |
-| B5 — shared drawer/opening semantics | **CLOSED BY WITHHOLDING.** No custody interval, drawer-session, membership, predecessor, retained-balance, join/refusal, opening-transfer, or count-owner schema or behavior may land while Q11 is OPEN. Evidence may be collected, but processing returns `blocked/owner_ruling_required`. |
-| B6 — W7 reconciliation incomplete | **CLOSED.** The policy-neutral obligation/run/supersession schemas, transition fields, CLI signature, immutable run contract, and spec-v4 acceptance matrix are complete. Repository comparison, lot-release interpretation, and historical alignment remain blocked behind Q10–Q13. |
-| B7 — migration/deployment unsafe | **CLOSED.** The manifest uses `tenants:migrate-rolling --force`, verifies every tenant, forwards every flag through staging Compose and the API entrypoint, captures revision/cutover IDs from JSON output before use, deploys Dokploy web after each web-touching push, verifies asset hash and feature fingerprint, runs Playwright, and defines a rollback point per push. |
-| M4 — task-specific convention-09 tests | **CLOSED.** Every mutation task has a typed result containing `applied`, `already_exists`, `skipped`, `blocked`, or `conflict`; rerun tests assert that outcome and its meaning, not only row counts. |
-| M9 — local type census incomplete | **CLOSED.** The POS `PaymentRepository` entity and SQLite row projection are included. The generated DTO becomes the cross-boundary entity; only the SQLite row remains a local persistence projection, behind a validating decoder. |
+| Blocker 1 — migration contract cannot execute against HEAD | **CLOSED** at PL-071 and PL-075–PL-079. The plan uses `projection_status`, extends the real `ProjectionStatus` enum, does not invent `fiscal_event_projections.company_id`, and keys cash-count obligations to `pos_z_reports.id`. |
+| Blocker 2 — flag-true lost-obligation crash window | **CLOSED** at PL-085 and PL-108. `ReportGenerationService` and `ZReportSyncController` insert three obligations in the Z/count transaction; only delivery is queued after commit. |
+| Blocker 3 — staging cannot prove the candidate | **CLOSED** at PL-121–PL-129. The exact candidate SHA, fleet backup IDs, migration transcript, deployment ID/status, API fingerprint, served asset URL/hash, and Playwright result are captured. |
+| Blocker 4 — multiple current reconciliation runs | **CLOSED** at PL-079, PL-087, and PL-109. A partial unique index, locked head transition, dependency version, stable fingerprint, and ordered supersession transaction enforce one current run. |
 
-### 1.2 Gate-r2 findings still PARTIAL/OPEN in gate r3
+### 1.3 Gate-r4 majors and minors
 
-| Gate-r2 finding | Rev-3 disposition |
+| Finding | Disposition |
 |---|---|
-| Opening interval algorithm | **CLOSED BY WITHHOLDING.** The algorithm is removed from dispatch. Q11 must be decided before a separate owner supplement specifies drawer custody sessions, membership, count ownership, predecessor order, and intervening transfers. |
-| Durable cutover/config revision | **CLOSED.** Complete schemas, constraints, DTOs, immutable identifiers, commands, and output-capture steps appear below. W-CASH cutovers can only record `blocked` while relevant rulings remain OPEN. |
-| Tasks lack dispatch contracts | **CLOSED.** Every task names exact HEAD modification targets, exact new-file destinations, signatures, migrations, red-first tests, first assertion, exact command/lane, reviewer gate, and rollback. |
-| CashCountDispatcher durability | **CLOSED.** The three durable consumers are Treasury, Compliance, and stored-domain-event history. Flag-false behavior retains the current Laravel event dispatch. |
-| Manifest membership/atomicity | **CLOSED.** Close and Z events are appended first inside the existing SQLite transaction; returned identities/hashes are then used to build the manifest and outbox before commit. |
-| Cross-rail fingerprint | **CLOSED.** Shift/session identity is part of the semantic fingerprint; raw v2/v3 evidence hashes remain separate. |
-| Local type census | **CLOSED.** Web and POS local canonical aliases are both removed or reduced to persistence projections. |
-| Provisioning atomicity | **CLOSED.** The plan deliberately changes the current failure-contained contract to fail-closed atomic provisioning and requires repository/configuration fault-injection tests at company and location boundaries. |
-| Promotion evidence | **CLOSED.** The five-push manifest includes fleet migrations, web freshness, campaign, two-company/two-location/two-terminal evidence, physical Tauri/SQLite/offline/crash smoke, backup/restore, and rollback points. |
-| Tenant-only uniqueness ratchet | **CLOSED.** The actual HEAD scanner is `apps/api/tests/Architecture/Support/TenantOnlyUniqueIndexScanner.php`; every new tenant business unique includes `company_id`. |
+| Major 1 — cutover ranges | **CLOSED** at PL-073 and PL-086. |
+| Major 2 — money precision and enums | **CLOSED** at PL-070 and PL-072–PL-079. All new money uses `decimal(20,3)`; every state/type/code has a named backed enum and DB check. |
+| Major 3 — convention 11/generated types | **CLOSED** at the Vocabulary line, PL-052, PL-081, and PL-106. |
+| Major 4 — W7 matrix regression | **CLOSED** at PL-109. |
+| Major 5 — provisioning regression | **CLOSED** at PL-083 and PL-103 by retaining failure containment. |
+| Major 6 — entrypoint ownership | **CLOSED** at PL-111 and PL-120: one shared validator is invoked by API, worker, scheduler, and websocket before configuration caching. |
+| Independent minor findings | **REJECTED:** gate r4 reported none (`docs/superpowers/reviews/2026-09-06-w-cash-plan-codex-gate-r4.md:143-145`). |
 
-### 1.3 New gate-r3 blockers
+### 1.4 Rejected false positives retained
 
-| Finding | Rev-3 disposition |
-|---|---|
-| Blocker 1 — convention 10 mechanically unsatisfied | **CLOSED.** Section 4 has exactly the required columns, separate Odoo/ERPNext/Dolibarr comparisons, nine required guarantee rows, and only `MATCH`, `DEFER`, `DIVERGE`, or `ALREADY` in Decision. |
-| Blocker 2 — Q11 branch encoded prematurely | **CLOSED.** `treasury_drawer_custody_intervals` and all equivalent session/membership tables are absent. Q11 behavior is withheld, not conditionally shipped. |
-| Blocker 3 — incomplete task/schema contract | **CLOSED.** Sections 7–11 specify every migration column, type, nullability, default, FK/delete behavior, checks, indexes, JSONB DTO, transition field, service/CLI signature, test, lane, review, and rollback. |
-| Blocker 4 — staging manifest not executable | **CLOSED.** Section 12 fixes command order, output capture, rolling migration verification, web deployment/freshness, and entrypoint failure propagation. |
+- **REJECTED:** the prior inspection-SHA difference represented planning-document drift, not implementation drift.
+- **REJECTED:** Q10–Q13 were missing or paraphrased; they remain verbatim at PL-020.
+- **REJECTED:** revision 4 implements Q11 join/refusal; it does not.
+- **REJECTED:** `tenants:migrate-rolling --force` is invalid; HEAD defines it at `apps/api/app/Modules/Tenant/Application/Commands/RollingTenantMigrationCommand.php:48-53`.
+- **REJECTED:** the corrected financial lock order, close/Z order, and stored-event consumer are missing.
+- **REJECTED:** a safe drop needs three repository movements; the contract remains exactly two movements and zero-or-one journal entry.
+- **REJECTED:** expected cash needs a second opening-cash component; `ShiftExpectedCashService` already includes it (`apps/api/app/Modules/POS/Application/Services/ShiftExpectedCashService.php:27-59`, `:252-299`).
+- **REJECTED:** device migration order is ambiguous; v68 must finish before v69.
+- **REJECTED:** historical backbooking or automatic variance activation is allowed; both remain prohibited.
+- **REJECTED:** new queues are required; existing `default` and `fiscal-projections` queues suffice.
 
-### 1.4 New gate-r3 majors
+## 2. Authority, scope, and owner stops
 
-| Finding | Rev-3 disposition |
-|---|---|
-| Major 1 — financial lock inversion | **CLOSED.** The load-bearing order is tenant numbering → company GL chain → transfer document → sorted repositories. A cross-GL draft is minted before Treasury locks. All W-CASH paths share that order; opposite-transfer and unrelated-JE concurrency tests are mandatory. |
-| Major 2 — impossible manifest order | **CLOSED.** `appendZSessionCloseAndZReport()` runs before manifest construction, inside the same SQLite transaction. |
-| Major 3 — stored-event consumer dropped | **CLOSED.** Stored-event persistence is its own durable obligation. Flag false retains current `Event::dispatch()`. Flag true does not double-dispatch. |
-| Major 4 — provisioning behavior contradicted | **CLOSED.** Interfaces and callers are explicitly changed to fail-closed results/exceptions, with one outer transaction for company/location, repositories, and disabled configuration. |
-| Major 5 — fingerprint lacks custody boundary | **CLOSED.** `shift_id` and `session_id` are mandatory normalized semantic fields when present at source; absence is represented explicitly, never omitted from hashing. |
-| Major 6 — POS absent from type census | **CLOSED.** POS generated DTO consumption and a validated `PaymentRepositoryRow` adapter are mandatory. |
-| Major 7 — rerun outcome not explicit | **CLOSED.** Every mutator returns and tests a typed convention-09 outcome. |
-| Major 8 — nonexistent paths | **CLOSED.** The correct HEAD paths are used: `tests/Architecture/Support/TenantOnlyUniqueIndexScanner.php`, `app/Modules/POS/routes.php`, and `app/Modules/Compliance/Listeners/OpenFraudAlertForShiftVariance.php`. |
+**PL-010 — Repository contract.** Strict typing, no placeholders, JSONB through typed DTOs, generated cross-boundary types, and immutable events are mandatory (`CLAUDE.md:15-22`, `:30-40`). Money at rest is `decimal(N,3)`, never float, and transport amounts are strings (`CLAUDE.md:71-76`). POS SQLite timestamps, explicit queues, and company-context rules remain binding (`CLAUDE.md:81-87`).
 
-Gate r3 reported no independent new MINOR finding. Previously closed minor findings—optional-table probing, strict `payload.training_flag`, and single reconciliation writer—remain preserved.
+**PL-011 — Governing specification.** W-CASH implements W7 from spec v4, including run history, stable membership, explicit incompleteness, independent expected totals, and the acceptance cases at `docs/superpowers/specs/2026-09-05-parapharmacy-readiness-remediation-design.md:410-430`.
 
----
+**PL-012 — Existing disabled variance path.** `PostShiftCashVarianceAdjustment` stays disabled; no push removes its guard or auto-books the disabled interval (`apps/api/app/Modules/Treasury/Application/Jobs/PostShiftCashVarianceAdjustment.php:50-56`).
 
-## 2. Non-negotiable scope and stops
+**PL-013 — Default-off rule.** Every rollout flag defaults to the literal boolean `false`. No “truthy” parsing is permitted. Flags may expose dormant reads or workers but may not activate Q10–Q13 behavior.
 
-The lane may deliver dormant, policy-neutral infrastructure for:
+**PL-014 — Push 5 stop.** Push 5 is prohibited until Q10–Q13 are explicitly ruled and a separately reviewed T11 supplement exists. W2 tender classification, W4 source completeness, W-LOT dependency evidence, T7 manifests, T8 durable delivery, and T9 reconciliation must also be accepted.
 
-- Immutable event-time policy evidence.
-- Bounded legacy cutovers.
-- Disabled custody topology revisions.
-- Transfer documents over the existing transfer spine.
-- Cross-rail evidence obligations.
-- Device-authored close manifests.
-- Durable cash-count fan-out.
-- Immutable reconciliation obligations/runs/supersessions.
-- Generated repository DTO adoption.
-- Read-only census and blocked-status operator surfaces.
+### Owner rulings — verbatim and OPEN
 
-The lane must not deliver or activate:
-
-- A branch recall/release policy while Q10 is OPEN.
-- A drawer custody session, shared-drawer membership, second-terminal join/refusal rule, count owner, retained-balance algorithm, or opening transfer while Q11 is OPEN.
-- Typed meanings or destination mappings for `CASH_IN`, `CASH_OUT`, `DEPOSIT`, or `PAYOUT` while Q12 is OPEN.
-- Historical alignment documents, adjustments, commands, or variance activation while Q13 is OPEN.
-- Automatic historical shift back-booking.
-- A combined repository transfer/bank-settlement operation.
-- A second expected-cash opening component; `ShiftExpectedCashService` already includes opening cash.
-- A new queue. Existing `default` and `fiscal-projections` queues are sufficient.
-- Deletion or mutation of sealed fiscal evidence.
-- In-place mutation of reconciliation history.
-
-All rollout flags default to `false`. Push 5 is prohibited while any relevant owner ruling remains OPEN.
-
----
-
-## 3. Owner rulings — verbatim and OPEN
-
-**Status: Q10 OPEN, Q11 OPEN, Q12 OPEN, Q13 OPEN.** The following rows are reproduced verbatim from the owner ruling. Recommendations are not decisions.
+**PL-020 — The following rows are copied verbatim from `docs/handoff/OWNER-RULINGS-parapharmacy-remediation-2026-09-05.md:138-143`; every row remains OPEN.**
 
 | Q | Question | Odoo | ERPNext / domain norm | AutoERP today | Benchmark-derived default (owner rules) |
 |---|---|---|---|---|---|
@@ -124,736 +106,540 @@ All rollout flags default to `false`. Push 5 is prohibited while any relevant ow
 | **Q12** Typed meaning of cash in/out | What do `CASH_IN`, `CASH_OUT`, v2 `DEPOSIT`, `PAYOUT` mean in money terms: safe transfer, bank deposit, petty-cash expense, other counterparty? | Cash in/out carries a **reason**; each reason maps to an account (OCA `pos_cash_move_reason`): bank-deposit moves go to a "cash awaiting bank deposit" intermediate account, small expenses to an expense account | Petty cash via Journal Entry to expense or transfer accounts; safe drop = transfer between cash accounts | Free-text reason on the device; no typed counterparty; only v3 `SAFE_DROP` is unambiguous | **Typed reason codes** on the device (`SAFE_DROP`, `BANK_DEPOSIT`, `PETTY_EXPENSE`, `FLOAT_TOP_UP`, `OTHER`), each mapped in configuration to a destination: transfer to safe/bank for the first three, expense document for petty cash, blocked for `OTHER` until classified. Recommend; v2 `DEPOSIT`/`PAYOUT` are mapped by a cutover table. |
 | **Q13** Historical alignment | How do we set the opening Treasury balance of a drawer/safe that has traded for months without float/drop booking, and what happens to the disabled variance window? | Cash journal "Opening with last closing balance"; discrepancies booked as cash-difference gain/loss at the next open/close; no retroactive rebooking | Opening balances via an Opening Entry / Journal Entry dated at cutover; prior history left as is | No alignment mechanism; variance GL disabled since 2026-08-08 | **One dated alignment per repository at cutover**: count the physical cash, book a single opening-balance adjustment (document + movement + JE to cash-difference gain/loss), no retroactive rebooking of past shifts; the disabled variance window is closed by that alignment and documented per tenant. Recommend. |
 
-A later owner supplement must resolve a row explicitly before any dependent schema or activation is dispatched. Resolving one row does not implicitly resolve the others.
+**PL-021 — Policy-neutrality rule.** Until T11 is authorized:
 
----
+- No schema, enum, status, flag, endpoint, state transition, worker, UI, test fixture, seed, or command may represent or choose a recall-release outcome, drawer-session ownership, terminal join/refusal, opening-float ownership, typed `CASH_IN`/`CASH_OUT`/`DEPOSIT`/`PAYOUT` accounting destination, historical alignment, disabled-window closure, or variance activation.
+- Generic evidence may record immutable raw source facts.
+- A dependent reconciliation cell may say only `owner_ruling_required`.
+- The sole permissible configuration lifecycle state is `inactive`.
+- `SAFE_DROP` may be retained as an immutable source fact, but activation of financial interpretation remains behind Push 5/T11.
+- No historical operation is backbooked.
 
-## 4. Convention-10 benchmark matrix
+## Industry baseline (benchmark-first — convention 10)
 
-Reference sources: [Odoo POS workflow](https://www.odoo.com/documentation/19.0/applications/sales/point_of_sale/use.html), [Odoo POS employee permissions](https://www.odoo.com/documentation/19.0/applications/sales/point_of_sale/employee_login.html), [Odoo payment methods](https://www.odoo.com/documentation/19.0/applications/sales/point_of_sale/payment_methods.html), [ERPNext POS workflows](https://docs.frappe.io/erpnext/pos-workflows), [ERPNext Journal Entry Template](https://docs.frappe.io/erpnext/journal-entry-template), and [Dolibarr TakePOS](https://wiki.dolibarr.org/index.php/Module_Point_of_sale_(TakePOS)).
+Flow: W-CASH float, drop, close-manifest, delivery, and session reconciliation. Reference systems: Odoo 19, ERPNext current documentation, Dolibarr TakePOS current documentation. Sources: [Odoo POS payments](https://www.odoo.com/documentation/19.0/applications/sales/point_of_sale/payment_methods.html), [Odoo register close](https://www.odoo.com/documentation/19.0/applications/sales/point_of_sale/use.html), [ERPNext POS workflows](https://docs.frappe.io/erpnext/pos-workflows), [ERPNext Mode of Payment](https://docs.frappe.io/erpnext/mode-of-payment), [Dolibarr TakePOS](https://wiki.dolibarr.org/index.php/Module_Point_of_sale_(TakePOS)).
 
-| ID | Guarantee | Odoo | ERPNext | Dolibarr (or NV with reason) | AutoERP today path:line | Gap | Decision |
+**PL-030**
+
+| ID | Guarantee | Odoo | ERPNext | Dolibarr/NV | AutoERP today path:line | Gap | Decision |
 |---|---|---|---|---|---|---|---|
-| G01 | Create one auditable transfer document with balanced custody legs | Cash transfers are journal-backed operational facts | Payment/Journal Entry records the balanced transfer | NV — official TakePOS documentation does not establish an equivalent repository-transfer document contract | `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferService.php:33`; `TreasuryMovementService.php:225` | Transfer has a group and two legs but no first-class immutable document/source evidence | MATCH |
-| G02 | Duplicate create/replay returns the existing result without a second effect | Posted POS/accounting facts are not duplicated by reopening the UI | Named accounting documents are replayed/referenced rather than recreated | NV — no official idempotency contract found | `TreasuryMovementService.php:60`; idempotency handling before mutable policy | A W-CASH semantic identity/result contract is absent | MATCH |
-| G03 | Edit after financial use is prohibited | Posted accounting records are corrected through controlled reversal | Submitted accounting documents are amended/cancelled rather than silently edited | NV — TakePOS page does not specify immutable transfer editing | `repository_movements` immutability trigger at `apps/api/database/migrations/tenant/2026_07_23_100001_enforce_treasury_immutability.php:35` | Transfer metadata lacks the same explicit immutable-document boundary | ALREADY |
-| G04 | Cancel uses a compensating reversal, preserving the original | Accounting cancellation preserves reversal/audit history | Cancel/amend flows retain document lineage | NV — official TakePOS page does not specify transfer cancellation lineage | `TreasuryMovementService.php:225`; repository movements are immutable | No transfer-document `reversal_of_document_id` exists | MATCH |
-| G05 | Rerun returns explicit `already_exists` or `skipped` with unchanged meaning | Reopening does not reproduce posted movement | Submitted document identity gives visible existing state | NV — no official rerun result contract found | Current `RepositoryTransferResult::$idempotentReplay` in `RepositoryTransferService.php:100` | Several other W-CASH mutations lack typed replay outcomes | MATCH |
-| G06 | Second company is isolated in lookup, unique keys, locks, and audit | Companies have separate journals/configuration | Company is a standard document/accounting boundary | NV — multi-company guarantee not established by the cited TakePOS page | `TreasuryMovementService.php:238`; company-scoped repository resolution in `RepositoryTransferService.php:118` | All new business uniques and claims must repeat `company_id` | MATCH |
-| G07 | Second location cannot borrow another branch’s drawer/configuration | POS configuration/register is location-specific | POS Profile/opening entry scopes custody | NV — cited page does not prove cross-location repository isolation | `LocationCashRegisterProvisionerInterface.php:34`; location provisioning at `LocationController.php:195` | Disabled custody topology and read surfaces are missing | MATCH |
-| G08 | Permission and module gates protect every human mutation | Employee/POS permission controls restrict operations | Role permissions restrict submitted documents | TakePOS exposes user/terminal controls, but no equivalent AutoERP permission name | Treasury routes at `apps/api/app/Modules/Treasury/Presentation/routes.php:35`; transfer route at `:102` | Existing transfer route lacks the Treasury module gate required by this lane | MATCH |
-| G09 | Audit preserves actor, source identity, reason/evidence, time, and reversal lineage | POS/accounting journals retain operator and transaction evidence | Journal documents retain owner, posting date, reference, and remarks | NV — official TakePOS page is insufficient for full evidence semantics | Movement source/idempotency handling in `TreasuryMovementService.php:554`; fiscal source rows in `OutboxIngestor.php:980` | First-class transfer document, policy evidence, and immutable reconciliation run are absent | MATCH |
-| G10 | Shared drawer/second-terminal custody has one explicit ownership policy | One POS configuration/register per cash custody context | POS Opening Entry is per user/profile | NV — no authoritative shared-drawer policy found | `apps/api/database/migrations/tenant/2026_01_08_190641_create_pos_shifts_table.php:25`; device shifts are terminal-scoped | Owner Q11 is OPEN; no drawer custody session exists | DEFER |
-| G11 | Cash-in/out meaning maps to an explicit counterparty/account policy | Cash move reason can determine accounting destination | Journal Entry models expense or transfer counterparty | NV — cited TakePOS page does not specify typed mapping semantics | `CashDrawerOperation.php:21`; current device operation kinds are not a complete accounting classification | Owner Q12 is OPEN | DEFER |
-| G12 | Historical repository alignment has one approved cutover rule | Opening/closing cash differences are handled prospectively | Opening Entry/Journal Entry establishes opening balance | NV — no authoritative alignment workflow found | Variance writer remains disabled; no alignment mechanism exists | Owner Q13 is OPEN | DEFER |
-| G13 | Lot recall/release status is interpreted under an approved authority rule | Hold/release exists as a quality status | Quality disposition follows quality authority | NV — unrelated to TakePOS | W7 lot integration in spec v4; current `is_recalled` boolean is insufficient | Owner Q10 is OPEN | DEFER |
+| B1 | A register close preserves the counted cash and expected/difference evidence | Register close records counted cash and payment-method differences | POS Closing Entry records closing values against opening entry | TakePOS close exists; authoritative per-tender durability not established | Z counts exist in `apps/api/database/migrations/tenant/2026_04_25_000001_create_pos_z_report_counts_table.php:14-27` | Delivery to every downstream consumer is not crash-safe | MATCH — lane T8 |
+| B2 | Close evidence has stable, explicit membership rather than a time-window guess | Session close operates over the register’s session | Closing entry is tied to the opening/session workflow | NV — no authoritative immutable-member manifest found | Device close appends close/Z events in `apps/pos/src/services/zReportService.ts:541-576`, but no manifest exists | Missing immutable manifest | MATCH — lane T7 |
+| B3 | Reconciliation keeps run history and exposes one current result | Register reports retain close history | Closing entries retain submitted results | NV | Spec requires canonical `pos_session_reconciliations`; no current store exists | Missing canonical head/run store | MATCH — lane T9 |
+| B4 | Duplicate delivery and retry cannot double financial or compliance effects | Accounting entries are document-led and auditable | Payment and journal documents are named records | TakePOS movements are document-oriented | Treasury service has idempotency support in `apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:225-268` | Cash-count fan-out can be lost between commit and dispatch | MATCH — lane T8 |
+| B5 | Monetary transfer has an immutable document and balanced source/destination effects | Internal-transfer workflows preserve journal evidence | Internal Transfer uses paired accounts | NV | `RepositoryTransferService` creates GL then Treasury transfer at `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferService.php:33-101` | No canonical transfer document/group | MATCH — lane T4 |
+| B6 | Concurrent corrected inputs cannot expose two current reconciliations | Register session is a single close context | Closing entry is a named current document | NV | No reconciliation head or partial uniqueness exists | Missing lock/version/current invariant | MATCH — lane T9 |
+| B7 | A second company can use the same business code without data leakage | Companies are independent accounting contexts | Companies are independent accounting contexts | Multi-company capability varies | Catalogue ratchet exists at `apps/api/tests/Architecture/TenantOnlyUniqueOnCatalogueTablesRatchetTest.php:52-58` | Every new editable business unique must include `company_id` | MATCH — lanes T1/T3/T4 |
+| B8 | A second location binds terminals and repositories to the selected location | POS configuration is location/register specific | POS Profile and warehouse/location are explicit | TakePOS terminal setup is explicit | Terminals carry company/location at `apps/api/database/migrations/tenant/2026_01_08_190429_create_pos_terminals_table.php:20-65` | New configuration must enforce same-company ownership | MATCH — lane T3 |
+| B9 | Re-running the same mutation reports an explicit semantic outcome | Document identity prevents silent duplication | Named entries preserve duplicate meaning | NV | Existing idempotency is uneven; convention 09 requires explicit outcome (`docs/conventions/09-SECOND-OF-EVERYTHING.md:37-50`) | Typed outcome missing | MATCH — all mutation lanes |
+| B10 | Shared-drawer ownership is explicit before money is activated | One register/session per POS configuration | Opening entry is per user/profile | NV — no authoritative shared-drawer rule found | Shifts are terminal-bound at `apps/api/database/migrations/tenant/2026_01_08_190641_create_pos_shifts_table.php:20-64` | Q11 remains OPEN | DEFER — ticket OWNER-Q11 |
+| B11 | Cash-in/out accounting meaning is configured and auditable | Cash reason maps to accounting treatment | Petty cash/internal transfer uses explicit accounts | NV | Device operation type and free-text reason are stored at `apps/api/database/migrations/tenant/2026_01_08_190642_create_pos_cash_drawer_operations_table.php:20-69` | Q12 remains OPEN | DEFER — ticket OWNER-Q12 |
+| B12 | Historical opening alignment is deliberate and non-retroactive | Last closing/opening and cash differences are explicit | Opening Entry/Journal Entry establishes opening balance | NV | No alignment mechanism; variance booking is disabled at `apps/api/app/Modules/Treasury/Application/Jobs/PostShiftCashVarianceAdjustment.php:50-56` | Q13 remains OPEN | DEFER — ticket OWNER-Q13 |
+| B13 | Recall/hold interpretation cannot silently alter cash reconciliation | Quality status is explicitly lifted by authority | Quarantine/release is disposition-led | NV | W-CASH has no authorized recall lifecycle | Q10 remains OPEN | DEFER — ticket OWNER-Q10 |
+| B14 | Unknown or reclassified tender evidence fails closed | Payment methods are explicitly configured | Mode of Payment is explicitly classified | TakePOS payment modes are configured | `ShiftExpectedCashService` throws `UnknownTenderClassificationException` at `apps/api/app/Modules/POS/Application/Services/ShiftExpectedCashService.php:250` | Must remain part of W7 acceptance | ALREADY — retained and regression-tested in T9 |
 
----
+Second-of-everything (convention 09): T1/T3/T4/T5/T7/T8/T9/T10 add real-path second-company, second-`pos_enabled`-location, and rerun/idempotency journeys. T2 adds second-company cutover isolation and concurrent duplicate/overlap tests. No raw inserts may substitute for company or location creation.
 
-## 5. Verified HEAD census
+## 4. Verified HEAD census
 
-### 5.1 Device and server source facts
+**PL-050 — Existing durable facts.**
 
-- v3 opening authoring is in [zSessionAuthoring.ts](/Users/houssamr/Projects/syneriva/apps/erp/apps/pos/src/lib/fiscal/zSessionAuthoring.ts:507). The write transaction starts at line 523.
-- v3 closing appends `SESSION_CLOSE` and `Z_REPORT` and returns their IDs/hashes at [zSessionAuthoring.ts](/Users/houssamr/Projects/syneriva/apps/erp/apps/pos/src/lib/fiscal/zSessionAuthoring.ts:675).
-- Device cash movement authoring begins at [zSessionAuthoring.ts](/Users/houssamr/Projects/syneriva/apps/erp/apps/pos/src/lib/fiscal/zSessionAuthoring.ts:735).
-- Z close currently owns its SQLite write transaction at [zReportService.ts](/Users/houssamr/Projects/syneriva/apps/erp/apps/pos/src/lib/offline/zReportService.ts:541).
-- Server fiscal projection registration occurs in [OutboxIngestor.php](/Users/houssamr/Projects/syneriva/apps/erp/apps/api/app/Modules/Fiscal/Application/Services/OutboxIngestor.php:980).
-- Dispatch and claim behavior is in [FiscalEventProjectionDispatcher.php](/Users/houssamr/Projects/syneriva/apps/erp/apps/api/app/Modules/Fiscal/Application/Services/FiscalEventProjectionDispatcher.php:79) and [ApplyFiscalEventProjectionJob.php](/Users/houssamr/Projects/syneriva/apps/erp/apps/api/app/Modules/Fiscal/Application/Jobs/ApplyFiscalEventProjectionJob.php:226).
-- v2 source identity remains `pos_cash_drawer_operations.id`; v3 source identity remains `fiscal_events.id`.
-- `payload.training_flag` is valid only when present as a JSON boolean. Missing, `null`, string `"true"`, numeric values, or malformed payloads fail closed to `blocked/invalid_training_flag`. Only literal `true` produces `training_no_money`.
+- `CashDrawerOperation` uses UUID identity and stores operation type, amount, user, reason, receipt, and creation time (`apps/api/app/Modules/POS/Domain/CashDrawerOperation.php:20-43`, `:112-140`).
+- Its table is `pos_cash_drawer_operations`, not `cash_counts` (`apps/api/database/migrations/tenant/2026_01_08_190642_create_pos_cash_drawer_operations_table.php:20-69`).
+- Cash counts are rows in `pos_z_report_counts`, keyed to `z_report_id` (`apps/api/database/migrations/tenant/2026_04_25_000001_create_pos_z_report_counts_table.php:14-27`).
+- `CashCountRecorded` identifies the aggregate with `zReportId` (`apps/api/app/Modules/POS/Domain/Events/CashCountRecorded.php:13-37`).
+- Fiscal projection columns are `fiscal_event_id`, `projector_name`, `projection_status`, `attempts`, error/timing fields, and timestamps; no `company_id` exists (`apps/api/database/migrations/tenant/2026_05_14_100003_create_fiscal_event_projections_table.php:30-63`).
+- The current projection enum has `pending`, `running`, `applied`, and `dead_lettered` (`apps/api/app/Modules/Fiscal/Domain/Enums/ProjectionStatus.php:7-12`).
+- Server-generated Z/count facts are created inside `ReportGenerationService::generateZReport()` and currently dispatched after commit (`apps/api/app/Modules/POS/Application/Services/ReportGenerationService.php:188-205`, `:412-459`).
+- Device-synced Z/count facts are committed by `ZReportSyncController` before its current dispatch (`apps/api/app/Modules/POS/Presentation/Controllers/ZReportSyncController.php:222-278`).
 
-### 5.2 Canonical semantic fingerprint
+**PL-051 — Registration owners.** New Fiscal commands belong in `apps/api/app/Modules/Fiscal/Providers/FiscalServiceProvider.php:47-76`; Treasury commands belong in `apps/api/app/Modules/Treasury/Providers/TreasuryServiceProvider.php:236-245`; POS commands belong in `apps/api/app/Modules/POS/Providers/POSServiceProvider.php:82-96`. No task references a nonexistent `app/Console/Kernel.php`.
 
-`ShiftCashSemanticFingerprint::fromIntent()` hashes canonical JSON with these keys in this exact order:
+**PL-052 — Cross-boundary type census.**
 
-```text
-tenant_id
-company_id
-location_id
-terminal_id
-shift_id
-session_id
-source_fact_occurred_at_utc
-source_fact_kind
-amount_decimal
-currency
-policy_revision_key
-configuration_revision_id
-```
+- Backend `PaymentRepositoryData` does not exist and must be created.
+- Web shadows exist at `apps/web/src/features/treasury/hooks/usePaymentRepositories.ts:7-20` and `apps/web/src/features/pos/api/paymentRepositoryApi.ts:9-20`.
+- POS shadow exists at `apps/pos/src/types/payment.ts:27-37`.
+- POS SQLite projection exists at `apps/pos/src/lib/db/repositories/paymentRepository.ts:24-35`; its unchecked conversion is at `:58-69`.
+- Backend response shaping currently lives in `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentRepositoryController.php:420-441`.
+- Spatie TypeScript output is configured by `apps/api/config/typescript-transformer.php:17-20`, `:45-60`.
+- Exact consumers in scope are:
+  - `apps/web/src/features/treasury/hooks/usePaymentRepositories.ts`
+  - `apps/web/src/features/pos/api/paymentRepositoryApi.ts`
+  - `apps/web/src/features/pos/organisms/AdvancedPaymentsModal/AdvancedPaymentsModal.tsx`
+  - `apps/web/src/features/treasury/components/TransferCashModal.tsx`
+  - `apps/web/src/features/treasury/RepositoryListPage.tsx`
+  - `apps/web/src/features/treasury/RepositoryDetailPage.tsx`
+  - `apps/web/src/features/treasury/PaymentForm.tsx`
+  - `apps/web/src/features/treasury/SplitPaymentForm.tsx`
+  - `apps/pos/src/types/payment.ts`
+  - `apps/pos/src/lib/db/repositories/paymentRepository.ts`
+  - `apps/pos/src/api/paymentApi.ts`
+  - `apps/pos/src/components/organisms/TransactionCart/TransactionCart.tsx`
+  - `apps/pos/src/stores/paymentStore.ts`
+  - `apps/pos/src/lib/sync/syncService.ts`
+  - `apps/pos/src/components/organisms/AdvancedPaymentsModal/AdvancedPaymentsModal.tsx`
+  - `apps/pos/src/components/pos/PaymentSummary.tsx`
+  - `apps/pos/src/pages/ThemePreviewPage.tsx`
+  - `apps/pos/src/test/helpers.ts`
 
-Rules:
+## 5. Complete writer and lock census
 
-- UUIDs are lowercase canonical text.
-- Missing `shift_id`, `session_id`, `policy_revision_key`, or `configuration_revision_id` is encoded as JSON `null`, not omitted.
-- Amount is normalized through the company currency scale.
-- Time is UTC RFC3339 with microseconds.
-- `source_fact_kind` remains the raw authored fact kind; it is not mapped to a Q12 accounting meaning.
-- The semantic fingerprint is SHA-256 of canonical JSON.
-- Raw evidence hashes are separate:
-  - v2: SHA-256 of canonical persisted drawer-operation evidence.
-  - v3: authenticated fiscal event hash already carried by the event.
-- Same source identity and same semantic fingerprint returns `already_exists`.
-- Same source identity and a different semantic fingerprint returns `conflict`.
-- Same raw amount/time under another shift or session is a different obligation.
-- A legacy event without immutable policy/cutover evidence remains `blocked`; current configuration must never reinterpret it.
+**PL-060 — Single Treasury write port.** All W-CASH repository balance mutations must end at `TreasuryMovementServiceInterface::record()` or `::transfer()` (`apps/api/app/Shared/Contracts/Treasury/TreasuryMovementServiceInterface.php:16-29`, `:57`, `:96`). The only physical movement insert and balance updates are in `TreasuryMovementService.php:554-610`, specifically the insert at `:582` and repository saves at `:606-608`.
 
-### 5.3 Web and POS type census
+**PL-061 — Complete known caller census.**
 
-Canonical boundary type: generated `PaymentRepositoryData`.
+| Owner | Existing call |
+|---|---|
+| `IncomeService.php` | `record()` at line 175 |
+| `ExpenseService.php` | `record()` at lines 452, 488, 816, 998 |
+| `PaymentController.php` | `record()` at lines 1349, 2063 |
+| `VendorRefundService.php` | `record()` at line 211 |
+| `MultiPaymentService.php` | `record()` at line 602 |
+| `PaymentRefundService.php` | `record()` at lines 729, 1087 |
+| `OutboundInstrumentService.php` | `record()` at lines 140, 298, 452 |
+| `InstrumentLifecycleService.php` | `record()` at lines 277, 495 |
+| `RepositoryOpeningBalanceService.php` | `record()` at line 152 |
+| `RepositoryTransferService.php` | `transfer()` at line 89 |
+| `RepositoryAdjustmentService.php` | `record()` at line 234 |
+| `RefundCompensationService.php` | `record()` at line 308 |
+| `AcquirerFeeService.php` | `record()` at line 133 |
+| `TreasuryReceiptBridge.php` | `record()` at line 1560 |
+| `TreasuryDepositBridge.php` | `record()` at line 249 |
+| `TreasuryAccountPaymentBridge.php` | `record()` at line 267 |
 
-Web production consumers to migrate:
+T0 must regenerate this census with `rg`; any additional production writer is a stop until added here and reviewed.
 
-- `apps/web/src/features/treasury/pages/RepositoryListPage.tsx`
-- `apps/web/src/features/payments/components/PaymentForm.tsx`
-- `apps/web/src/features/treasury/hooks/useTransferCash.ts`
-- `apps/web/src/features/treasury/hooks/usePaymentRepositories.ts`
-- `apps/web/src/features/treasury/pages/RepositoryDetailPage.tsx`
-- `apps/web/src/features/payments/components/RecordPaymentModal.tsx`
-- `apps/web/src/features/treasury/components/AddRepositoryModal.tsx`
-- `apps/web/src/features/payments/components/SplitPaymentForm.tsx`
-- `apps/web/src/features/pos/api/paymentRepositoryApi.ts`
-- `apps/web/src/features/treasury/hooks/useRepositoryMovements.ts`
+**PL-062 — Mandatory financial lock order.**
 
-Projection/read-model shapes that may remain local because they are not repository entities:
+1. Tenant document/numbering lock.
+2. Company GL chain lock.
+3. Repository transfer document row.
+4. Payment repositories in ascending UUID-byte order.
+5. Movement/idempotency rows.
 
-- `apps/web/src/features/treasury/hooks/useCashPosition.ts`
-- `apps/web/src/features/treasury/hooks/useRemittances.ts`
-- `apps/web/src/features/treasury/statements/api.ts`
-- `apps/web/src/features/treasury/statements/StatementUploadWizard.tsx`
+`GeneralLedgerService` acquires numbering/chain locks at `apps/api/app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:3741`; `TreasuryMovementService` takes a company advisory lock and sorted repository locks at `apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:225-268`.
 
-POS:
+**PL-063 — Transfer cardinality.** One transfer document/group produces exactly two repository movements and zero-or-one journal entry. It never produces a third “clearing repository” movement. Corrections are reversals linked to the original immutable document; posted documents cannot be edited or deleted.
 
-- Remove the separate canonical entity from [payment.ts](/Users/houssamr/Projects/syneriva/apps/erp/apps/pos/src/types/payment.ts:27).
-- Retain only `PaymentRepositoryRow` from [paymentRepository.ts](/Users/houssamr/Projects/syneriva/apps/erp/apps/pos/src/lib/db/repositories/paymentRepository.ts:24) as a SQLite persistence projection.
-- Replace the unchecked row cast at line 58 with `decodePaymentRepositoryRow(row): PaymentRepositoryData`, validating UUIDs, repository type, currency, nullability, and configuration revision fields.
-- Test fixtures must instantiate the generated DTO shape rather than recreating a third local interface.
+**PL-064 — Inventory buffer ownership.** `InventoryGlPostingBuffer` belongs only to inventory posting. Its enqueue/flush behavior is at `apps/api/app/Modules/Inventory/Application/Services/InventoryGlPostingBuffer.php:13-17`, `:34`, `:56-92`. W-CASH must neither inject into it nor flush it. A regression test asserts that W-CASH transfer, delivery, and reconciliation do not call it.
 
----
+## 6. Complete migration and DTO contract
 
-## 6. Financial writer and lock census
+**PL-070 — Universal DDL rules.**
 
-### 6.1 Existing single write port
+- All migrations below are tenant migrations under `apps/api/database/migrations/tenant`.
+- IDs are UUIDs, non-null primary keys with no DB-generated default; application code supplies UUIDv7.
+- All `tenant_id`, `company_id`, terminal, location, shift, Z, repository, document, and parent-child identities are enforced by composite foreign keys where ownership matters.
+- All FKs use `ON DELETE RESTRICT` unless an explicitly ephemeral child says otherwise.
+- All timestamps are timezone-aware PostgreSQL `timestamptz`; Laravel `timestampsTz()` supplies non-null `created_at` and `updated_at`.
+- All money columns are `decimal(20,3)`, non-null, and transported as strings.
+- JSONB fields are non-null unless stated, use an explicit DTO, and default only to `'{}'::jsonb` or `'[]'::jsonb`.
+- Every status/type/code column has a PHP string-backed enum, Eloquent cast, and named DB check.
+- Every new catalogue/business unique includes `company_id`.
+- T1’s PostgreSQL test introspects every column, nullability, default, FK target/delete rule, check, index, and partial predicate.
 
-[TreasuryMovementService.php](/Users/houssamr/Projects/syneriva/apps/erp/apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:34) is the sole low-level writer of repository movements and cached balances. Its movement insert and balance update occur at lines 582 and 607.
+### PL-071 — Compatibility prelude
 
-Existing direct callers at HEAD:
+Migration `2026_09_06_090000_add_w_cash_ownership_keys.php` executes first:
 
-| Caller | HEAD line(s) | Transaction/lock obligation |
-|---|---:|---|
-| `IncomeService.php` | 175 | Caller owns root transaction and GL-before-repository order |
-| `ExpenseService.php` | 452, 488, 816, 998 | Same |
-| `RefundCompensationService.php` | 308 | Same |
-| `TreasuryAccountPaymentBridge.php` | 267 | Same |
-| `TreasuryDepositBridge.php` | 249 | Same |
-| `TreasuryReceiptBridge.php` | 1560 | Same |
-| `AcquirerFeeService.php` | 133 | Same |
-| `InstrumentLifecycleService.php` | 277, 495 | Same |
-| `OutboundInstrumentService.php` | 140, 298, 452 | Same |
-| `RepositoryAdjustmentService.php` | 234 | Same |
-| `RepositoryOpeningBalanceService.php` | 152 | Same |
-| `MultiPaymentService.php` | 602 | Same |
-| `PaymentRefundService.php` | 729, 1087 | Same |
-| `VendorRefundService.php` | 211 | Same |
-| `PaymentController.php` | 1349, 2063 | Same |
-| `RepositoryTransferService.php` | 89 | Uses `transfer()` and must preserve draft-before-repository ordering |
+- Add non-primary supporting unique indexes:
+  - `pos_terminals(id, tenant_id, company_id)`
+  - `pos_shifts(id, terminal_id)`
+  - `pos_z_reports(id, terminal_id)`
+  - `payment_repositories(id, company_id)`
+  - `locations(id, company_id)`
+- Add no duplicate column.
+- Verify before creation that HEAD tables and columns exist; otherwise throw and abort migration.
+- Add `blocked` to `ProjectionStatus`.
+- Add named check `chk_fiscal_event_projections_projection_status` allowing exactly `pending`, `running`, `applied`, `dead_lettered`, `blocked`.
+- Add to `fiscal_event_projections`:
+  - `policy_record_id uuid NULL`
+  - `claim_token uuid NULL`
+  - `lease_expires_at timestamptz NULL`
+  - `blocked_reason_code varchar(64) NULL`
+  - `blocked_evidence jsonb NULL`, DTO `ProjectionBlockedEvidenceData`
+- FK `policy_record_id → fiscal_projection_policy_records.id ON DELETE RESTRICT` is added after that table is created in the same migration.
+- Checks:
+  - running requires `claim_token` and `lease_expires_at`;
+  - non-running requires both null;
+  - blocked requires `blocked_reason_code`;
+  - non-blocked requires blocked fields null.
+- Index `idx_fep_delivery_scan(projection_status, lease_expires_at)` with predicate `projection_status IN ('pending','running','blocked')`.
+- Existing unique `(fiscal_event_id, projector_name)` remains unchanged.
 
-No W-CASH component may insert `repository_movements` or update repository balances directly.
+### PL-072 — Projection policy records
 
-### 6.2 Load-bearing lock order
-
-[GeneralLedgerService.php](/Users/houssamr/Projects/syneriva/apps/erp/apps/api/app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:3741) acquires tenant numbering before the company GL chain. Repository transfers lock the company and sorted repository IDs in [TreasuryMovementService.php](/Users/houssamr/Projects/syneriva/apps/erp/apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php:238).
-
-Required order for a cross-GL W-CASH transfer:
-
-1. A short, committed preclaim transaction inserts or reads the immutable source/document identity. It holds no lock when the financial transaction begins.
-2. Begin one root financial transaction.
-3. Mint the draft journal entry first. This obtains tenant numbering, then company GL-chain locks, and retains them until root commit.
-4. Lock the transfer-document row.
-5. Lock repository rows by lexicographically sorted repository UUID.
-6. Post exactly two repository movement legs.
-7. Seal/post the already-minted journal entry while the earlier tenant/company locks remain owned.
-8. Mark the transfer document posted and commit.
-
-The later seal may re-enter locks already held by the same transaction, but it must never introduce tenant numbering after a transaction first acquired company/repository locks.
-
-For a same-GL transfer, no JE is created; the document is locked before sorted repositories, and no tenant-numbering lock is subsequently requested.
-
-### 6.3 `InventoryGlPostingBuffer` ownership
-
-[InventoryGlPostingBuffer.php](/Users/houssamr/Projects/syneriva/apps/erp/apps/api/app/Modules/Inventory/Application/Services/InventoryGlPostingBuffer.php:17) remains the sole inventory GL buffer. Its `enqueue()` and `flushIfOutermost()` methods are at lines 34 and 56.
-
-W-CASH must:
-
-- Never enqueue through `InventoryGlPostingBuffer`.
-- Never flush it.
-- Never make it depend on a Treasury document/repository lock.
-- Preserve its route into `GeneralLedgerService`, and therefore the same tenant-numbering → company-chain order.
-- Add a PostgreSQL test running an unrelated buffered inventory JE concurrently with an opposite-direction W-CASH transfer. Neither transaction may emit SQLSTATE `40P01`, time out, or leave a partial movement/JE.
-
----
-
-## 7. Complete migration and DTO contract
-
-All migrations are additive and self-guarding. Tenant business unique constraints include `company_id`; primary-key uniqueness is exempt. `tenant_id` has no database FK because tenant databases do not contain the central `tenants` table; it remains non-null and is validated against active tenant context. All UUID FKs use `ON DELETE RESTRICT`.
-
-### 7.1 Migration `2026_09_06_090000_add_w_cash_event_time_policy.php`
-
-#### `fiscal_projection_policy_records`
+In `2026_09_06_090000_add_w_cash_ownership_keys.php`, create `fiscal_projection_policy_records`:
 
 | Column | Contract |
 |---|---|
-| `id` | UUID, PK, not null, no default |
-| `tenant_id` | UUID, not null, no FK |
-| `company_id` | UUID, not null, FK `companies.id`, RESTRICT |
-| `fiscal_event_id` | UUID, not null, FK `fiscal_events.id`, RESTRICT |
-| `projector_name` | varchar(128), not null |
-| `decision` | varchar(32), not null |
-| `policy_revision_key` | char(64), not null |
-| `policy_evidence` | jsonb, not null, default `'{}'::jsonb` |
-| `decided_at` | timestamptz, not null |
-| `created_at` | timestamptz, not null, default `CURRENT_TIMESTAMP` |
+| `id` | uuid PK, non-null |
+| `tenant_id` | uuid, non-null |
+| `company_id` | uuid, non-null, FK `companies.id`, RESTRICT |
+| `projector_name` | varchar(64), non-null |
+| `policy_code` | varchar(32), non-null, enum `FiscalProjectionPolicyCode`; allowed `observe_only`, `owner_ruling_required` |
+| `effective_at` | timestamptz, non-null |
+| `actor_id` | uuid, non-null, FK `users.id`, RESTRICT |
+| `reason` | text, non-null |
+| `evidence` | jsonb, non-null, default `{}`, DTO `FiscalProjectionPolicyEvidenceData` |
+| `created_at`, `updated_at` | timestamptz, non-null |
 
-Checks:
+Constraints/indexes:
 
-- `decision IN ('project','block','training_no_money')`.
-- `policy_revision_key ~ '^[0-9a-f]{64}$'`.
+- Check nonblank `projector_name` and `reason`.
+- Check `policy_code`.
+- Unique `(company_id, projector_name, effective_at, id)`.
+- Index `(company_id, projector_name, effective_at DESC, id DESC)`.
+- Rows are append-only; update/delete are rejected by service and trigger.
 
-Indexes/uniques:
+### PL-073 — Durable cutover ranges
 
-- Unique `(company_id, fiscal_event_id, projector_name)`.
-- Index `(company_id, decision, decided_at)`.
-- Index `(fiscal_event_id)`.
-
-JSONB DTO: `FiscalProjectionPolicyEvidenceData`.
-
-#### `fiscal_projection_cutovers`
+Create `fiscal_projection_cutovers`:
 
 | Column | Contract |
 |---|---|
-| `id` | UUID, PK, not null |
-| `tenant_id` | UUID, not null, no FK |
-| `company_id` | UUID, not null, FK `companies.id`, RESTRICT |
-| `location_id` | UUID, not null, FK `locations.id`, RESTRICT |
-| `terminal_id` | UUID, not null, FK `pos_terminals.id`, RESTRICT |
-| `projector_name` | varchar(128), not null |
-| `source_rail` | varchar(16), not null |
-| `lower_bound` | varchar(191), not null |
-| `upper_bound` | varchar(191), not null |
-| `decision` | varchar(32), not null |
-| `policy_revision_key` | char(64), not null |
-| `boundary_evidence` | jsonb, not null |
-| `created_by` | UUID, not null, FK `users.id`, RESTRICT |
-| `created_at` | timestamptz, not null, default `CURRENT_TIMESTAMP` |
+| `id` | uuid PK, non-null |
+| `tenant_id` | uuid, non-null |
+| `company_id` | uuid, non-null, FK `companies.id`, RESTRICT |
+| `location_id` | uuid, non-null |
+| `terminal_id` | uuid, non-null |
+| `projector_name` | varchar(64), non-null |
+| `source_rail` | varchar(8), non-null, enum `FiscalSourceRail`: `v2`, `v3` |
+| `lower_occurred_at` | timestamptz, non-null |
+| `lower_source_id` | uuid, non-null |
+| `upper_occurred_at` | timestamptz, non-null |
+| `upper_source_id` | uuid, non-null |
+| `policy_record_id` | uuid, non-null, FK policy record, RESTRICT |
+| `decision_code` | varchar(32), non-null, enum `FiscalCutoverDecisionCode`: `observe_only`, `owner_ruling_required` |
+| `boundary_evidence` | jsonb, non-null, default `{}`, DTO `FiscalCutoverBoundaryEvidenceData` |
+| `actor_id` | uuid, non-null, FK `users.id`, RESTRICT |
+| `created_at`, `updated_at` | timestamptz, non-null |
 
-Checks:
+Constraints/indexes:
 
-- `source_rail IN ('v2','v3')`.
-- `decision IN ('project','block','training_no_money')`.
-- SHA-256 format check on `policy_revision_key`.
-- Bounds non-empty and different. Command/service validates rail-specific ordering.
+- Composite FK `(terminal_id, tenant_id, company_id) → pos_terminals(id, tenant_id, company_id)`.
+- Composite FK `(location_id, company_id) → locations(id, company_id)`.
+- Check tuple `ROW(lower_occurred_at, lower_source_id) < ROW(upper_occurred_at, upper_source_id)`.
+- Half-open membership is exactly `lower <= (occurred_at,id) < upper`.
+- Unique `(company_id, location_id, terminal_id, projector_name, source_rail, lower_occurred_at, lower_source_id, upper_occurred_at, upper_source_id)`.
+- Lookup index `(company_id, terminal_id, projector_name, source_rail, lower_occurred_at, lower_source_id, upper_occurred_at, upper_source_id)`.
+- Creation takes a transaction-scoped advisory lock over tenant/company/location/terminal/projector/rail and rejects any row satisfying `existing.lower < requested.upper AND existing.upper > requested.lower`. A concurrent-overlap PG test is mandatory.
+- v2 ordering uses `(CashDrawerOperation.created_at, CashDrawerOperation.id)`.
+- v3 ordering uses `(FiscalEvent.event_time_device, FiscalEvent.id)`.
+- Current time, current configuration, or ingestion order never reinterprets an existing source fact.
 
-Indexes/uniques:
+### PL-074 — Inactive cash repository configuration
 
-- Unique `(company_id, location_id, terminal_id, projector_name, source_rail, lower_bound)`.
-- Index `(company_id, projector_name, source_rail, lower_bound, upper_bound)`.
+Migration `2026_09_06_090100_create_cash_repository_configurations.php` creates:
 
-JSONB DTO: `FiscalProjectionCutoverBoundaryData`.
+`cash_repository_configurations`:
 
-#### Additions to `fiscal_event_projections`
-
-| Column | Contract |
-|---|---|
-| `policy_record_id` | UUID, nullable, FK `fiscal_projection_policy_records.id`, RESTRICT |
-| `cutover_id` | UUID, nullable, FK `fiscal_projection_cutovers.id`, RESTRICT |
-| `blocked_reason_code` | varchar(64), nullable |
-| `blocked_detail` | jsonb, nullable |
-| `blocked_at` | timestamptz, nullable |
-| `claim_token` | UUID, nullable |
-| `lease_expires_at` | timestamptz, nullable |
-| `recovery_attempt_count` | integer, not null, default `0` |
-| `last_recovery_at` | timestamptz, nullable |
-
-Checks:
-
-- Not both `policy_record_id` and `cutover_id`.
-- `recovery_attempt_count >= 0`.
-- `claim_token` and `lease_expires_at` are both null or both non-null.
-- State `running` requires both claim fields.
-- State `blocked` requires `blocked_reason_code` and `blocked_at`.
-
-Indexes:
-
-- `(company_id, status, lease_expires_at)`.
-- `(policy_record_id)`.
-- `(cutover_id)`.
-
-JSONB DTO: `FiscalProjectionBlockedDetailData`.
-
-### 7.2 Migration `2026_09_06_090100_create_cash_custody_configuration.php`
-
-This is topology/evidence only. It contains no operation mapping, shared-drawer session, opening policy, alignment policy, or Q10 data.
-
-#### `cash_custody_configurations`
-
-| Column | Contract |
-|---|---|
-| `id` | UUID, PK, not null |
-| `tenant_id` | UUID, not null, no FK |
-| `company_id` | UUID, not null, FK `companies.id`, RESTRICT |
-| `location_id` | UUID, not null, FK `locations.id`, RESTRICT |
-| `state` | varchar(16), not null, default `'disabled'` |
-| `current_revision_id` | UUID, nullable; FK added after revision table to `cash_custody_configuration_revisions.id`, RESTRICT |
-| `lock_version` | bigint, not null, default `0` |
-| `created_by` | UUID, nullable, FK `users.id`, RESTRICT |
-| `updated_by` | UUID, nullable, FK `users.id`, RESTRICT |
-| `created_at` | timestamptz, not null, default `CURRENT_TIMESTAMP` |
-| `updated_at` | timestamptz, not null, default `CURRENT_TIMESTAMP` |
-
-Checks:
-
-- `state IN ('disabled','ready','active','suspended')`.
-- `lock_version >= 0`.
-- `ready` or `active` requires non-null `current_revision_id`.
-
-Indexes/uniques:
-
+- `id uuid PK NOT NULL`
+- `tenant_id uuid NOT NULL`
+- `company_id uuid NOT NULL`, FK companies RESTRICT
+- `location_id uuid NOT NULL`
+- `drawer_repository_id uuid NOT NULL`
+- `safe_repository_id uuid NOT NULL`
+- `state varchar(16) NOT NULL DEFAULT 'inactive'`, enum `CashRepositoryConfigurationState`, only `inactive`
+- `current_revision_id uuid NULL`
+- `created_by uuid NOT NULL`, FK users RESTRICT
+- `created_at`, `updated_at timestamptz NOT NULL`
+- Composite FKs for location and both repositories enforce the same company.
+- Check drawer and safe repository IDs differ.
+- Check state equals `inactive`.
 - Unique `(company_id, location_id)`.
 - Index `(company_id, state)`.
 
-#### `cash_custody_configuration_revisions`
+`cash_repository_configuration_revisions`:
 
-| Column | Contract |
-|---|---|
-| `id` | UUID, PK, not null |
-| `tenant_id` | UUID, not null, no FK |
-| `company_id` | UUID, not null, FK `companies.id`, RESTRICT |
-| `configuration_id` | UUID, not null, FK `cash_custody_configurations.id`, RESTRICT |
-| `revision_number` | bigint, not null |
-| `drawer_repository_id` | UUID, nullable, FK `payment_repositories.id`, RESTRICT |
-| `safe_repository_id` | UUID, nullable, FK `payment_repositories.id`, RESTRICT |
-| `bank_repository_id` | UUID, nullable, FK `payment_repositories.id`, RESTRICT |
-| `currency` | char(3), not null |
-| `topology_evidence` | jsonb, not null, default `'{}'::jsonb` |
-| `created_by` | UUID, nullable, FK `users.id`, RESTRICT |
-| `created_at` | timestamptz, not null, default `CURRENT_TIMESTAMP` |
-
-Checks:
-
-- `revision_number > 0`.
-- `currency ~ '^[A-Z]{3}$'`.
-- Repository IDs, when supplied, must be pairwise different.
-- Service validates every repository belongs to the same tenant/company/location and currency.
-
-Indexes/uniques:
-
+- `id uuid PK NOT NULL`
+- `tenant_id uuid NOT NULL`
+- `company_id uuid NOT NULL`
+- `configuration_id uuid NOT NULL`
+- `revision_number bigint NOT NULL`
+- `drawer_repository_id uuid NOT NULL`
+- `safe_repository_id uuid NOT NULL`
+- `state varchar(16) NOT NULL DEFAULT 'inactive'`, same enum/check
+- `evidence jsonb NOT NULL DEFAULT '{}'`, DTO `CashRepositoryConfigurationRevisionData`
+- `created_by uuid NOT NULL`, FK users RESTRICT
+- `created_at`, `updated_at timestamptz NOT NULL`
+- Composite FK `(configuration_id, company_id) → cash_repository_configurations(id, company_id)`.
+- Composite repository FKs enforce same company.
 - Unique `(company_id, configuration_id, revision_number)`.
-- Unique `(company_id, configuration_id, id)`, supporting the head FK scope.
-- Indexes on each repository ID.
+- Unique support `(id, company_id)`.
+- Index `(company_id, configuration_id, created_at DESC)`.
+- Revisions are append-only; configuration `current_revision_id` references a revision of the same configuration/company.
+- No terminal membership, drawer session, opening ownership, or activation state exists.
 
-JSONB DTO: `CashCustodyTopologyEvidenceData`.
+### PL-075 — Repository transfer documents
 
-While Q10–Q13 are OPEN, the command may publish only `state=disabled`.
+Migration `2026_09_06_090200_create_repository_transfer_documents.php` creates `repository_transfer_documents`:
 
-### 7.3 Migration `2026_09_06_090200_create_repository_transfer_documents.php`
+- `id uuid PK NOT NULL`
+- `tenant_id uuid NOT NULL`
+- `company_id uuid NOT NULL`, FK companies RESTRICT
+- `location_id uuid NOT NULL`
+- `source_repository_id uuid NOT NULL`
+- `destination_repository_id uuid NOT NULL`
+- `amount decimal(20,3) NOT NULL`
+- `currency_code char(3) NOT NULL`
+- `source_fact_type varchar(32) NOT NULL`, enum `RepositoryTransferSourceFactType`: `safe_drop`, `manual_transfer`, `reversal`
+- `source_fact_id uuid NOT NULL`
+- `effective_at timestamptz NOT NULL`
+- `idempotency_key varchar(128) NOT NULL`
+- `status varchar(16) NOT NULL DEFAULT 'draft'`, enum `RepositoryTransferStatus`: `draft`, `posted`, `reversed`, `conflict`
+- `journal_entry_id uuid NULL`, FK journal entries RESTRICT
+- `reverses_document_id uuid NULL`
+- `posted_at timestamptz NULL`
+- `reversed_at timestamptz NULL`
+- `created_by uuid NOT NULL`, FK users RESTRICT
+- `evidence jsonb NOT NULL DEFAULT '{}'`, DTO `RepositoryTransferEvidenceData`
+- `created_at`, `updated_at timestamptz NOT NULL`
 
-#### `repository_transfer_documents`
+Constraints/indexes:
 
-| Column | Contract |
-|---|---|
-| `id` | UUID, PK, not null |
-| `tenant_id` | UUID, not null, no FK |
-| `company_id` | UUID, not null, FK `companies.id`, RESTRICT |
-| `location_id` | UUID, nullable, FK `locations.id`, RESTRICT |
-| `transfer_group_id` | UUID, not null |
-| `source_repository_id` | UUID, not null, FK `payment_repositories.id`, RESTRICT |
-| `destination_repository_id` | UUID, not null, FK `payment_repositories.id`, RESTRICT |
-| `amount` | numeric(20,6), not null |
-| `currency` | char(3), not null |
-| `source_kind` | varchar(64), not null |
-| `source_key` | varchar(191), not null |
-| `source_evidence` | jsonb, not null |
-| `semantic_fingerprint` | char(64), not null |
-| `shift_id` | UUID, nullable, FK `pos_shifts.id`, RESTRICT |
-| `session_id` | UUID, nullable |
-| `journal_entry_id` | UUID, nullable, FK `journal_entries.id`, RESTRICT |
-| `reversal_of_document_id` | UUID, nullable, FK same table `id`, RESTRICT |
-| `status` | varchar(16), not null, default `'draft'` |
-| `authorized_by` | UUID, not null, FK `users.id`, RESTRICT |
-| `occurred_at` | timestamptz, not null |
-| `posted_at` | timestamptz, nullable |
-| `voided_at` | timestamptz, nullable |
-| `notes` | text, nullable |
-| `created_at` | timestamptz, not null, default `CURRENT_TIMESTAMP` |
-| `updated_at` | timestamptz, not null, default `CURRENT_TIMESTAMP` |
+- Composite FKs enforce company ownership for location and both repositories.
+- Composite self-FK `(reverses_document_id, company_id)`.
+- Check source and destination differ, amount `> 0`, uppercase ISO currency.
+- Draft requires no posted/reversed time; posted requires `posted_at`; reversed requires both times and reversal link.
+- Unique `(company_id, idempotency_key)`.
+- Unique `(company_id, source_fact_type, source_fact_id)`.
+- Unique support `(id, company_id)`.
+- Index `(company_id, status, effective_at, id)`.
 
-Checks:
+Create `repository_transfer_alerts`:
 
-- `amount > 0`.
-- Currency and hash formats.
-- Source and destination repositories differ.
-- `status IN ('draft','posted','voided')`.
-- Posted requires `posted_at`; voided requires `voided_at`.
-- A reversal cannot reference itself.
-- `session_id` is validated against v3 session evidence by the service because no policy-neutral server session table owns that identity.
+- `id uuid PK NOT NULL`
+- `tenant_id uuid NOT NULL`
+- `company_id uuid NOT NULL`
+- `transfer_document_id uuid NOT NULL`
+- `alert_kind varchar(32) NOT NULL`, enum `RepositoryTransferAlertKind`: `configuration_missing`, `currency_mismatch`, `source_conflict`, `posting_failed`
+- `state varchar(16) NOT NULL DEFAULT 'open'`, enum `RepositoryTransferAlertState`: `open`, `resolved`
+- `evidence jsonb NOT NULL DEFAULT '{}'`, DTO `RepositoryTransferAlertEvidenceData`
+- `resolved_by uuid NULL`, FK users RESTRICT
+- `resolved_at timestamptz NULL`
+- `created_at`, `updated_at timestamptz NOT NULL`
+- Composite FK document/company.
+- Resolution-state consistency check.
+- Unique `(company_id, transfer_document_id, alert_kind)`.
+- Index `(company_id, state, created_at)`.
 
-Indexes/uniques:
+Add to `repository_movements`:
 
-- Unique `(company_id, transfer_group_id)`.
-- Unique `(company_id, source_kind, source_key)`.
-- Index `(company_id, status, occurred_at)`.
-- Index `(company_id, shift_id, session_id)`.
-- Index `(reversal_of_document_id)`.
+- `transfer_document_id uuid NULL`
+- `transfer_leg varchar(16) NULL`, enum `RepositoryTransferLeg`: `source`, `destination`
+- Composite FK `(transfer_document_id, company_id)`.
+- Check both transfer fields are null or both non-null.
+- Unique partial `(company_id, transfer_document_id, transfer_leg) WHERE transfer_document_id IS NOT NULL`.
 
-JSONB DTO: `RepositoryTransferSourceEvidenceData`.
+### PL-076 — Shift cash booking obligations
 
-#### `repository_transfer_alerts`
+Migration `2026_09_06_090300_create_shift_cash_booking_obligations.php` creates:
 
-| Column | Contract |
-|---|---|
-| `id` | UUID, PK, not null |
-| `tenant_id` | UUID, not null, no FK |
-| `company_id` | UUID, not null, FK `companies.id`, RESTRICT |
-| `transfer_document_id` | UUID, not null, FK `repository_transfer_documents.id`, RESTRICT |
-| `repository_id` | UUID, not null, FK `payment_repositories.id`, RESTRICT |
-| `alert_kind` | varchar(32), not null |
-| `evidence` | jsonb, not null |
-| `created_at` | timestamptz, not null, default `CURRENT_TIMESTAMP` |
-| `acknowledged_by` | UUID, nullable, FK `users.id`, RESTRICT |
-| `acknowledged_at` | timestamptz, nullable |
+- `id uuid PK NOT NULL`
+- `tenant_id uuid NOT NULL`
+- `company_id uuid NOT NULL`
+- `location_id uuid NOT NULL`
+- `terminal_id uuid NOT NULL`
+- `shift_id uuid NOT NULL`
+- `source_rail varchar(8) NOT NULL`, enum `FiscalSourceRail`
+- `source_fact_id uuid NOT NULL`
+- `source_occurred_at timestamptz NOT NULL`
+- `source_kind varchar(32) NOT NULL`, enum `ShiftCashSourceKind`: existing raw `opening_float`, `cash_in`, `cash_out`, `safe_drop`, `deposit`, `payout`
+- `amount decimal(20,3) NOT NULL`
+- `currency_code char(3) NOT NULL`
+- `semantic_fingerprint char(64) NOT NULL`
+- `raw_evidence jsonb NOT NULL`, DTO `ShiftCashSourceEvidenceData`
+- `configuration_revision_id uuid NULL`
+- `cutover_id uuid NOT NULL`
+- `state varchar(24) NOT NULL DEFAULT 'pending'`, enum `ShiftCashBookingState`: `pending`, `blocked`, `applied`, `already_exists`, `conflict`
+- `block_reason_code varchar(64) NULL`, enum `ShiftCashBlockReasonCode`: `owner_ruling_required`, `configuration_unavailable`, `source_incomplete`
+- `transfer_document_id uuid NULL`
+- `attempts integer NOT NULL DEFAULT 0`
+- `claim_token uuid NULL`
+- `lease_expires_at timestamptz NULL`
+- `last_error jsonb NULL`, DTO `ShiftCashBookingErrorData`
+- `completed_at timestamptz NULL`
+- `created_at`, `updated_at timestamptz NOT NULL`
 
-Checks:
+Constraints/indexes:
 
-- `alert_kind IN ('frozen_override','checkpoint_override')`.
-- Acknowledgement fields are both null or both non-null.
-
-Indexes/uniques:
-
-- Unique `(company_id, transfer_document_id, repository_id, alert_kind)`.
-- Index `(company_id, acknowledged_at, created_at)`.
-
-JSONB DTO: `RepositoryTransferAlertEvidenceData`.
-
-#### Additions to `repository_movements`
-
-| Column | Contract |
-|---|---|
-| `transfer_document_id` | UUID, nullable, FK `repository_transfer_documents.id`, RESTRICT |
-| `shift_id` | UUID, nullable, FK `pos_shifts.id`, RESTRICT |
-| `session_id` | UUID, nullable |
-
-Indexes:
-
-- `(transfer_document_id)`.
-- `(company_id, shift_id, session_id)`.
-
-### 7.4 Migration `2026_09_06_090300_create_shift_cash_booking_obligations.php`
-
-#### `shift_cash_booking_obligations`
-
-| Column | Contract |
-|---|---|
-| `id` | UUID, PK, not null |
-| `tenant_id` | UUID, not null, no FK |
-| `company_id` | UUID, not null, FK `companies.id`, RESTRICT |
-| `location_id` | UUID, not null, FK `locations.id`, RESTRICT |
-| `terminal_id` | UUID, not null, FK `pos_terminals.id`, RESTRICT |
-| `shift_id` | UUID, nullable, FK `pos_shifts.id`, RESTRICT |
-| `session_id` | UUID, nullable |
-| `source_rail` | varchar(16), not null |
-| `source_kind` | varchar(64), not null |
-| `source_key` | varchar(191), not null |
-| `source_occurred_at` | timestamptz, not null |
-| `amount` | numeric(20,6), nullable |
-| `currency` | char(3), nullable |
-| `semantic_fingerprint` | char(64), not null |
-| `raw_evidence_hash` | char(64), not null |
-| `raw_evidence` | jsonb, not null |
-| `policy_record_id` | UUID, nullable, FK `fiscal_projection_policy_records.id`, RESTRICT |
-| `cutover_id` | UUID, nullable, FK `fiscal_projection_cutovers.id`, RESTRICT |
-| `configuration_revision_id` | UUID, nullable, FK `cash_custody_configuration_revisions.id`, RESTRICT |
-| `state` | varchar(24), not null, default `'pending'` |
-| `blocked_reason_code` | varchar(64), nullable |
-| `blocked_detail` | jsonb, nullable |
-| `claim_token` | UUID, nullable |
-| `lease_expires_at` | timestamptz, nullable |
-| `attempt_count` | integer, not null, default `0` |
-| `last_attempt_at` | timestamptz, nullable |
-| `transfer_document_id` | UUID, nullable, FK `repository_transfer_documents.id`, RESTRICT |
-| `applied_at` | timestamptz, nullable |
-| `created_at` | timestamptz, not null, default `CURRENT_TIMESTAMP` |
-| `updated_at` | timestamptz, not null, default `CURRENT_TIMESTAMP` |
-
-Checks:
-
-- Rail in `('v2','v3')`.
-- Hash and currency formats.
-- `attempt_count >= 0`.
-- Not both policy and cutover.
-- Claimed state requires claim token and lease; other terminal states have no live lease.
-- Applied requires `transfer_document_id` and `applied_at`.
-- Blocked/conflict requires `blocked_reason_code`.
-- `training_no_money` forbids `transfer_document_id`.
-
-Indexes/uniques:
-
-- Unique `(company_id, source_rail, source_key)`.
+- Composite terminal/company, shift/terminal, location/company, configuration/company, cutover/company, and transfer-document/company FKs.
+- Amount is nonnegative; currency/fingerprint format checks.
+- Unique `(company_id, source_rail, source_fact_id)`.
 - Unique `(company_id, semantic_fingerprint)`.
 - Index `(company_id, state, lease_expires_at)`.
-- Index `(company_id, shift_id, session_id)`.
-- Index `(policy_record_id)`, `(cutover_id)`, `(configuration_revision_id)`.
+- State/claim/block/result consistency checks.
+- At this revision all Q11–Q13-dependent facts terminate as `blocked/owner_ruling_required`; no financial posting is activated.
 
-JSONB DTOs:
+### PL-077 — Z close manifests
 
-- `ShiftCashRawEvidenceData`.
-- `ShiftCashBlockedDetailData`.
+Migration `2026_09_06_090400_create_pos_z_close_manifests.php` creates server `pos_z_close_manifests`:
 
-While Q11/Q12 are OPEN, non-training financial facts terminate as `blocked/owner_ruling_required`; no transfer document is created.
+- `id uuid PK NOT NULL`
+- `tenant_id uuid NOT NULL`
+- `company_id uuid NOT NULL`
+- `terminal_id uuid NOT NULL`
+- `shift_id uuid NOT NULL`
+- `z_report_id uuid NOT NULL`
+- `schema_version smallint NOT NULL DEFAULT 1`
+- `close_event_id uuid NOT NULL`
+- `close_event_hash char(64) NOT NULL`
+- `z_event_id uuid NOT NULL`
+- `z_event_hash char(64) NOT NULL`
+- `lower_occurred_at timestamptz NOT NULL`
+- `lower_member_id uuid NOT NULL`
+- `upper_occurred_at timestamptz NOT NULL`
+- `upper_member_id uuid NOT NULL`
+- `member_count integer NOT NULL`
+- `ordered_members jsonb NOT NULL`, DTO `ZCloseManifestMemberListData`
+- `canonical_payload jsonb NOT NULL`, DTO `ZCloseManifestData`
+- `manifest_hash char(64) NOT NULL`
+- `ingestion_state varchar(16) NOT NULL DEFAULT 'accepted'`, enum `ZCloseManifestIngestionState`: `accepted`, `duplicate`, `conflict`
+- `created_at`, `updated_at timestamptz NOT NULL`
 
-### 7.5 Migration `2026_09_06_090400_create_pos_z_close_manifests.php`
+Each ordered member contains exactly: `namespace`, `source_id`, `event_type`, `occurred_at`, `sequence`, `event_hash`, `economic_payload_hash`. Namespaces are `fiscal_event`, `receipt`, `payment`, `cash_operation`, `z_count`. Sorting is bytewise by namespace, occurred-at UTC string, sequence with explicit null sentinel, then UUID bytes. Hashing is SHA-256 over RFC 8785 canonical JSON, schema version included.
 
-#### Server `pos_z_close_manifests`
+Constraints/indexes:
 
-| Column | Contract |
-|---|---|
-| `id` | UUID, PK, not null |
-| `tenant_id` | UUID, not null, no FK |
-| `company_id` | UUID, not null, FK `companies.id`, RESTRICT |
-| `location_id` | UUID, not null, FK `locations.id`, RESTRICT |
-| `terminal_id` | UUID, not null, FK `pos_terminals.id`, RESTRICT |
-| `shift_id` | UUID, not null, FK `pos_shifts.id`, RESTRICT |
-| `session_id` | UUID, not null |
-| `z_report_id` | UUID, not null, FK `pos_z_reports.id`, RESTRICT |
-| `session_close_event_id` | UUID, not null, FK `fiscal_events.id`, RESTRICT |
-| `z_report_event_id` | UUID, not null, FK `fiscal_events.id`, RESTRICT |
-| `manifest_version` | smallint, not null, default `1` |
-| `member_count` | integer, not null |
-| `members` | jsonb, not null |
-| `manifest_hash` | char(64), not null |
-| `server_dependencies` | jsonb, not null, default `'{}'::jsonb` |
-| `received_at` | timestamptz, not null |
-| `created_at` | timestamptz, not null, default `CURRENT_TIMESTAMP` |
-
-Checks:
-
-- `manifest_version = 1`.
+- Composite terminal/company, shift/terminal, and Z/terminal FKs.
+- Half-open tuple bounds check.
 - `member_count >= 2`.
-- SHA-256 format.
-- Service verifies `member_count = jsonb_array_length(members)`.
-
-Indexes/uniques:
-
+- JSON arrays/objects and SHA-256 checks.
 - Unique `(company_id, z_report_id)`.
-- Unique `(company_id, terminal_id, session_id)`.
 - Unique `(company_id, manifest_hash)`.
-- Index `(company_id, shift_id)`.
+- Index `(company_id, terminal_id, lower_occurred_at, upper_occurred_at)`.
 
-JSONB DTOs:
+SQLite v68 in `apps/pos/src/lib/db/migrations.ts` creates `z_close_manifests` with TEXT UUID/hash/time/JSON columns mirroring all server fields, INTEGER version/count, `sync_state TEXT NOT NULL DEFAULT 'pending' CHECK IN ('pending','synced','conflict')`, unique `z_report_id`, unique `manifest_hash`, and scan index `(sync_state, created_at)`.
 
-- `PosZCloseManifestMembersData`.
-- `PosZServerDependencySnapshotData`.
+SQLite v69 creates `z_close_manifest_outbox`:
 
-Manifest membership is device-authored streams only. Server projections/dependencies go in `server_dependencies`, never in the signed device member set.
+- `id TEXT PRIMARY KEY NOT NULL`
+- `manifest_id TEXT NOT NULL REFERENCES z_close_manifests(id) ON DELETE RESTRICT`
+- `state TEXT NOT NULL DEFAULT 'pending' CHECK IN ('pending','sending','sent','failed')`
+- `attempts INTEGER NOT NULL DEFAULT 0`
+- `claim_token TEXT NULL`
+- `lease_expires_at TEXT NULL`
+- `last_error_json TEXT NULL`
+- `created_at TEXT NOT NULL`
+- `updated_at TEXT NOT NULL`
+- Unique `manifest_id`; index `(state, lease_expires_at)`.
 
-#### POS SQLite migration v68 in `apps/pos/src/lib/db/migrations.ts`
+v68 must commit successfully before v69 runs.
 
-Create `z_close_manifests`:
+### PL-078 — Cash-count delivery obligations
 
-| Column | Contract |
-|---|---|
-| `id` | TEXT PK, not null |
-| `company_id` | TEXT, not null |
-| `location_id` | TEXT, not null |
-| `terminal_id` | TEXT, not null |
-| `shift_id` | TEXT, not null |
-| `session_id` | TEXT, not null |
-| `z_report_id` | TEXT, not null |
-| `session_close_event_id` | TEXT, not null |
-| `z_report_event_id` | TEXT, not null |
-| `manifest_version` | INTEGER, not null, default `1` |
-| `member_count` | INTEGER, not null |
-| `members_json` | TEXT, not null |
-| `manifest_hash` | TEXT, not null |
-| `sync_status` | TEXT, not null, default `'pending'` |
-| `created_at` | TEXT, not null |
+Migration `2026_09_06_090500_create_cash_count_delivery_obligations.php` creates:
 
-Checks:
+- `id uuid PK NOT NULL`
+- `tenant_id uuid NOT NULL`
+- `company_id uuid NOT NULL`
+- `terminal_id uuid NOT NULL`
+- `z_report_id uuid NOT NULL`
+- `consumer varchar(24) NOT NULL`, enum `CashCountConsumer`: `treasury`, `compliance`, `stored_event`
+- `event_payload jsonb NOT NULL`, DTO `CashCountRecordedData`
+- `state varchar(16) NOT NULL DEFAULT 'pending'`, enum `CashCountDeliveryState`: `pending`, `running`, `applied`, `already_exists`, `blocked`, `failed`
+- `attempts integer NOT NULL DEFAULT 0`
+- `claim_token uuid NULL`
+- `lease_expires_at timestamptz NULL`
+- `last_error jsonb NULL`, DTO `CashCountDeliveryErrorData`
+- `outcome jsonb NULL`, DTO `CashCountConsumerOutcomeData`
+- `completed_at timestamptz NULL`
+- `created_at`, `updated_at timestamptz NOT NULL`
 
-- Version equals 1.
-- `member_count >= 2`.
-- `sync_status IN ('pending','syncing','synced','failed')`.
+Constraints/indexes:
 
-Uniques/indexes:
-
-- Unique `(company_id, z_report_id)`.
-- Unique `(company_id, terminal_id, session_id)`.
-- Index `(sync_status, created_at)`.
-
-#### POS SQLite migration v69
-
-Add to the existing repository cache table:
-
-| Column | Contract |
-|---|---|
-| `configuration_revision_id` | TEXT, nullable |
-| `configuration_state` | TEXT, not null, default `'disabled'` |
-| `topology_evidence_json` | TEXT, not null, default `'{}'` |
-
-Check in typed decoder: state is `disabled`, `ready`, `active`, or `suspended`; this revision only accepts server-authored `disabled`.
-
-### 7.6 Migration `2026_09_06_090500_create_cash_reconciliation_obligations.php`
-
-#### `cash_count_delivery_obligations`
-
-| Column | Contract |
-|---|---|
-| `id` | UUID, PK, not null |
-| `tenant_id` | UUID, not null, no FK |
-| `company_id` | UUID, not null, FK `companies.id`, RESTRICT |
-| `cash_count_id` | UUID, not null, FK `cash_counts.id`, RESTRICT |
-| `consumer` | varchar(32), not null |
-| `state` | varchar(16), not null, default `'pending'` |
-| `claim_token` | UUID, nullable |
-| `lease_expires_at` | timestamptz, nullable |
-| `attempt_count` | integer, not null, default `0` |
-| `last_error` | jsonb, nullable |
-| `completed_at` | timestamptz, nullable |
-| `created_at` | timestamptz, not null, default `CURRENT_TIMESTAMP` |
-| `updated_at` | timestamptz, not null, default `CURRENT_TIMESTAMP` |
-
-Checks:
-
-- Consumer in `('treasury','compliance','stored_event')`.
-- State in `('pending','claimed','applied','blocked','dead')`.
-- Attempt count non-negative.
-- Claimed requires token/lease.
-- Applied requires `completed_at`.
-
-Indexes/uniques:
-
-- Unique `(company_id, cash_count_id, consumer)`.
+- Composite FK `(z_report_id, terminal_id) → pos_z_reports(id, terminal_id)`.
+- Composite FK `(terminal_id, tenant_id, company_id)`.
+- Unique `(company_id, z_report_id, consumer)`.
 - Index `(company_id, consumer, state, lease_expires_at)`.
+- Running requires claim/lease; completed states require typed outcome/completed time; pending/failed cannot claim to be completed.
+- There is no `cash_count_id` and no reference to a nonexistent table.
 
-JSONB DTO: `CashCountDeliveryErrorData`.
+### PL-079 — Canonical session reconciliation
 
-#### `pos_session_reconciliation_obligations`
+Migration `2026_09_06_090600_create_pos_session_reconciliations.php` creates the canonical head `pos_session_reconciliations`:
 
-| Column | Contract |
-|---|---|
-| `id` | UUID, PK, not null |
-| `tenant_id` | UUID, not null, no FK |
-| `company_id` | UUID, not null, FK `companies.id`, RESTRICT |
-| `location_id` | UUID, not null, FK `locations.id`, RESTRICT |
-| `terminal_id` | UUID, not null, FK `pos_terminals.id`, RESTRICT |
-| `shift_id` | UUID, not null, FK `pos_shifts.id`, RESTRICT |
-| `session_id` | UUID, not null |
-| `z_report_id` | UUID, not null, FK `pos_z_reports.id`, RESTRICT |
-| `manifest_id` | UUID, not null, FK `pos_z_close_manifests.id`, RESTRICT |
-| `cutover_id` | UUID, nullable, FK `fiscal_projection_cutovers.id`, RESTRICT |
-| `state` | varchar(16), not null, default `'pending'` |
-| `claim_token` | UUID, nullable |
-| `lease_expires_at` | timestamptz, nullable |
-| `attempt_count` | integer, not null, default `0` |
-| `blocked_reason_code` | varchar(64), nullable |
-| `blocked_detail` | jsonb, nullable |
-| `current_run_id` | UUID, nullable; FK added after run table, RESTRICT |
-| `created_at` | timestamptz, not null, default `CURRENT_TIMESTAMP` |
-| `updated_at` | timestamptz, not null, default `CURRENT_TIMESTAMP` |
-
-Checks:
-
-- State in `('pending','claimed','completed','blocked','dead')`.
-- Claimed requires token/lease.
-- Completed requires `current_run_id`.
-- Blocked requires reason.
-- Attempt count non-negative.
-
-Indexes/uniques:
-
-- Unique `(company_id, z_report_id)`.
-- Unique `(company_id, terminal_id, session_id)`.
+- `id uuid PK NOT NULL`
+- `tenant_id uuid NOT NULL`
+- `company_id uuid NOT NULL`
+- `terminal_id uuid NOT NULL`
+- `shift_id uuid NOT NULL`
+- `state varchar(20) NOT NULL DEFAULT 'pending'`, enum `SessionReconciliationState`: `pending`, `running`, `current`, `blocked`, `failed`
+- `dependency_version bigint NOT NULL DEFAULT 0`
+- `current_run_id uuid NULL`
+- `claim_token uuid NULL`
+- `lease_expires_at timestamptz NULL`
+- `attempts integer NOT NULL DEFAULT 0`
+- `block_reason_code varchar(64) NULL`, enum `SessionReconciliationBlockReason`: `owner_ruling_required`, `manifest_incomplete`, `projection_incomplete`, `dependency_unavailable`
+- `last_error jsonb NULL`, DTO `SessionReconciliationErrorData`
+- `created_at`, `updated_at timestamptz NOT NULL`
+- Composite terminal/company and shift/terminal FKs.
+- Unique `(company_id, shift_id)`.
+- Unique support `(id, company_id)`.
+- State/claim/block/current-run consistency checks.
 - Index `(company_id, state, lease_expires_at)`.
 
-JSONB DTO: `PosSessionReconciliationBlockedDetailData`.
+Create `pos_session_reconciliation_runs`:
 
-#### `pos_session_reconciliation_runs`
+- `id uuid PK NOT NULL`
+- `tenant_id uuid NOT NULL`
+- `company_id uuid NOT NULL`
+- `reconciliation_id uuid NOT NULL`
+- `run_number bigint NOT NULL`
+- `captured_dependency_version bigint NOT NULL`
+- `input_fingerprint char(64) NOT NULL`
+- `input_snapshot jsonb NOT NULL`, DTO `SessionReconciliationInputData`
+- `result_code varchar(24) NOT NULL`, enum `SessionReconciliationResultCode`: `not_evaluated`, `incomplete`, `blocked`, `matched`, `mismatch`
+- `result_cells jsonb NOT NULL`, DTO `SessionReconciliationResultData`
+- `is_current boolean NOT NULL DEFAULT false`
+- `created_at`, `updated_at timestamptz NOT NULL`
+- Composite FK `(reconciliation_id, company_id)`.
+- Unique `(company_id, reconciliation_id, run_number)`.
+- Unique `(company_id, reconciliation_id, input_fingerprint)`.
+- Unique partial `(company_id, reconciliation_id) WHERE is_current = true`.
+- Result-code and JSON/hash checks.
+- Index `(company_id, reconciliation_id, created_at DESC)`.
 
-| Column | Contract |
-|---|---|
-| `id` | UUID, PK, not null |
-| `tenant_id` | UUID, not null, no FK |
-| `company_id` | UUID, not null, FK `companies.id`, RESTRICT |
-| `obligation_id` | UUID, not null, FK `pos_session_reconciliation_obligations.id`, RESTRICT |
-| `run_number` | bigint, not null |
-| `status` | varchar(24), not null |
-| `fiscal_result` | jsonb, not null |
-| `repository_result` | jsonb, not null |
-| `lot_result` | jsonb, not null |
-| `coverage_result` | jsonb, not null |
-| `input_fingerprint` | char(64), not null |
-| `created_by` | UUID, nullable, FK `users.id`, RESTRICT |
-| `created_at` | timestamptz, not null, default `CURRENT_TIMESTAMP` |
+Create `pos_session_reconciliation_supersessions`:
 
-Checks:
-
-- `run_number > 0`.
-- Status in `('matched','mismatch','incomplete','owner_ruling_required')`.
-- Hash format.
-
-Indexes/uniques:
-
-- Unique `(company_id, obligation_id, run_number)`.
-- Unique `(company_id, obligation_id, input_fingerprint)`.
-- Index `(company_id, status, created_at)`.
-
-JSONB DTOs:
-
-- `FiscalReconciliationResultData`.
-- `RepositoryReconciliationResultData`.
-- `LotReconciliationResultData`.
-- `ReconciliationCoverageResultData`.
-
-#### `pos_session_reconciliation_supersessions`
-
-| Column | Contract |
-|---|---|
-| `id` | UUID, PK, not null |
-| `tenant_id` | UUID, not null, no FK |
-| `company_id` | UUID, not null, FK `companies.id`, RESTRICT |
-| `obligation_id` | UUID, not null, FK `pos_session_reconciliation_obligations.id`, RESTRICT |
-| `superseded_run_id` | UUID, not null, FK `pos_session_reconciliation_runs.id`, RESTRICT |
-| `replacement_run_id` | UUID, not null, FK `pos_session_reconciliation_runs.id`, RESTRICT |
-| `reason` | text, not null |
-| `created_by` | UUID, not null, FK `users.id`, RESTRICT |
-| `created_at` | timestamptz, not null, default `CURRENT_TIMESTAMP` |
-
-Checks:
-
-- Superseded and replacement IDs differ.
-- Service validates both runs belong to the same company and obligation.
-
-Indexes/uniques:
-
+- `id uuid PK NOT NULL`
+- `tenant_id uuid NOT NULL`
+- `company_id uuid NOT NULL`
+- `reconciliation_id uuid NOT NULL`
+- `superseded_run_id uuid NOT NULL`
+- `replacement_run_id uuid NOT NULL`
+- `reason_code varchar(32) NOT NULL`, enum `ReconciliationSupersessionReason`: `dependency_changed`, `corrected_input`, `late_member`
+- `dependency_version bigint NOT NULL`
+- `created_at`, `updated_at timestamptz NOT NULL`
+- Composite FKs for reconciliation and both runs enforce the same company/parent.
+- Check old and replacement differ.
 - Unique `(company_id, superseded_run_id)`.
-- Unique `(company_id, obligation_id, replacement_run_id)`.
-- Index `(replacement_run_id)`.
+- Unique `(company_id, replacement_run_id)`.
+- Index `(company_id, reconciliation_id, created_at)`.
 
-The current reader selects a run only when no supersession row names it as `superseded_run_id`. Runs and supersessions are append-only.
+Create `pos_session_reconciliation_dependency_changes`:
 
-### 7.7 Explicitly withheld migrations
+- `id uuid PK NOT NULL`
+- `tenant_id uuid NOT NULL`
+- `company_id uuid NOT NULL`
+- `reconciliation_id uuid NOT NULL`
+- `dependency_version bigint NOT NULL`
+- `dependency_kind varchar(32) NOT NULL`, enum `ReconciliationDependencyKind`: `manifest`, `fiscal_projection`, `z_report`, `z_count`, `tender_classification`, `lot_evidence`, `repository_evidence`
+- `dependency_identity varchar(160) NOT NULL`
+- `dependency_hash char(64) NOT NULL`
+- `occurred_at timestamptz NOT NULL`
+- `created_at`, `updated_at timestamptz NOT NULL`
+- Composite reconciliation/company FK.
+- Unique `(company_id, reconciliation_id, dependency_version)`.
+- Index `(company_id, reconciliation_id, occurred_at, id)`.
 
-These files must not be created while owner rulings remain OPEN:
+After both tables exist, `pos_session_reconciliations.current_run_id` receives a composite FK to a run of the same company and reconciliation.
 
-- No custody interval/session/membership migration.
-- No typed cash-operation mapping migration.
-- No historical repository-alignment migration.
-- No recall-release workflow migration.
+## 7. State machines and service contracts
 
----
-
-## 8. State machines and public contracts
-
-### 8.1 Common mutation result
+**PL-080 — Common mutation outcome.**
 
 ```php
 enum MutationOutcome: string
@@ -866,1204 +652,1093 @@ enum MutationOutcome: string
 }
 ```
 
-Every mutator result carries:
-
 ```php
-public function __construct(
-    public readonly MutationOutcome $outcome,
-    public readonly ?string $resourceId,
-    public readonly ?string $reasonCode,
-    public readonly array $evidence,
-) {}
+final readonly class MutationResultData extends Data
+{
+    public function __construct(
+        public MutationOutcome $outcome,
+        public string $aggregateType,
+        public string $aggregateId,
+        public ?string $reasonCode,
+        public array $evidence,
+    ) {}
+}
 ```
 
-`already_exists` means the previous immutable effect has identical semantic meaning. `skipped` means no mutation was required for a declared reason. Neither may conceal compensating work.
+Every mutator returns this DTO or a more specific DTO containing the same outcome. A rerun may never return silent success.
 
-### 8.2 Projection policy
+**PL-081 — Convention-11 ownership.**
 
-Transitions:
+- Glossary updates occur in `docs/glossary.md`.
+- Each concept has one primary writer:
+  - policy/cutover: `FiscalProjectionPolicyService`
+  - inactive configuration: `CashRepositoryConfigurationService`
+  - transfer document: `RepositoryTransferDocumentService`
+  - booking obligation: `ShiftCashBookingService`
+  - Z manifest: device `ZCloseManifestBuilder`, server `ZCloseManifestIngestor`
+  - count delivery: `CashCountDispatcher`
+  - reconciliation: `SessionCashReconciliationService`
+- The canonical W7 surface/store is `pos_session_reconciliations`; runs, supersessions, and dependency changes are its append-only children.
+- `PaymentRepositoryData` is the sole cross-boundary repository type.
+- `TenantOnlyUniqueOnCatalogueTablesRatchetTest` and its scanner remain the mechanical company-scope guard.
 
-- `pending → running`: atomic claim sets `claim_token`, `lease_expires_at`, increments `attempt_count`.
-- `running → applied`: token match required; clears lease; sets immutable effect reference.
-- `running → blocked`: token match required; sets reason/detail/time; clears lease.
-- `running → pending`: recovery only when lease expired and claim token still matches.
-- `blocked → pending`: only an explicit resolution or persisted cutover; current registry state is forbidden.
-- Applied rows never return to pending.
+**PL-082 — Policy/cutover state.** Policy records and cutovers are immutable. Exact match returns `already_exists`; same identity with different evidence returns `conflict`; overlapping range returns `conflict`. Recovery may retry only expired projection leases.
 
-Signatures:
+**PL-083 — Provisioning.** Existing availability behavior is preserved:
 
-```php
-FiscalProjectionPolicyResolver::resolve(
-    FiscalEvent $event,
-    string $projectorName,
-): FiscalProjectionPolicyDecision;
+- `CompanyPaymentRepositoryProvisionerInterface::provisionForCompany(...): void` stays failure-contained (`apps/api/app/Shared/Contracts/Treasury/CompanyPaymentRepositoryProvisionerInterface.php:45-49`).
+- `LocationCashRegisterProvisionerInterface` keeps its nullable result (`apps/api/app/Shared/Contracts/Treasury/LocationCashRegisterProvisionerInterface.php:49-63`).
+- `PaymentRepositoryProvisioningService` continues to catch/log provisioning failures (`apps/api/app/Modules/Treasury/Application/Services/PaymentRepositoryProvisioningService.php:32-81`).
+- `LocationController` remains best-effort (`apps/api/app/Modules/Company/Presentation/Controllers/LocationController.php:227-250`).
+- When repository provisioning succeeds, creating the inactive W-CASH configuration is attempted through a separate savepoint. Failure is logged with company/location IDs and does not abort company/location creation.
+- No interface signature becomes fatal.
 
-FiscalProjectionClaimService::claim(
-    string $projectionId,
-    string $workerId,
-    CarbonImmutable $leaseExpiresAt,
-): FiscalProjectionClaimResult;
+**PL-084 — Manifest state.** Within one SQLite transaction: write local Z/counts; append close and Z fiscal events; receive their real IDs/hashes; assemble ordered membership; persist manifest; persist manifest outbox; advance chain/totals; commit. Any fault rolls back all steps. Server ingest returns `applied`, `already_exists`, or `conflict`.
 
-FiscalProjectionClaimService::recoverExpired(
-    string $tenantId,
-    string $companyId,
-    int $limit,
-    bool $dryRun,
-): FiscalProjectionRecoveryResult;
-```
-
-### 8.3 Custody configuration
-
-Transitions:
-
-- `disabled → disabled`: publish a new immutable topology revision; advance head by optimistic `lock_version`.
-- `disabled → ready/active`: prohibited in this revision.
-- `ready → active`, `active → suspended`, and `suspended → active`: defined structurally but prohibited until relevant owner supplement and activation review.
-- Revisions are never updated or deleted.
-
-Signatures:
+**PL-085 — Cash-count delivery.**
 
 ```php
-CashCustodyConfigurationService::publishDisabledRevision(
-    PublishCashCustodyConfigurationData $data,
-): CashCustodyConfigurationResult;
-
-CashCustodyConfigurationService::findForLocation(
-    string $tenantId,
-    string $companyId,
-    string $locationId,
-): ?CashCustodyConfigurationData;
+public function persistObligations(CashCountRecorded $event): CashCountDispatchSeedResultData;
+public function afterCommit(CashCountRecorded $event): CashCountDispatchResultData;
+public function deliver(string $obligationId, string $claimToken): CashCountConsumerOutcomeData;
+public function recoverExpired(int $limit, int $leaseSeconds): CashCountRecoveryResultData;
 ```
 
-### 8.4 Transfer document
+- With the flag false, `afterCommit()` retains existing `Event::dispatch()`.
+- With the flag true, each producer calls `persistObligations()` inside its Z/count transaction. It inserts `treasury`, `compliance`, and `stored_event` rows before commit.
+- `afterCommit()` only enqueues existing IDs; it never creates obligations.
+- Delivery locks one obligation, sets a lease, invokes exactly one typed consumer, and records the typed outcome in the same transaction.
+- Treasury and Compliance use their existing idempotent identities.
+- `stored_event` invokes Spatie `EventSubscriber::storeEvent()` inside the obligation transaction; a crash rolls back both stored-event persistence and `applied`.
+- A crash before commit leaves neither Z nor obligations; after commit leaves durable pending obligations; during delivery leaves rollback or a durable completed outcome.
+- Redelivery returns `already_exists` without repeating side effects.
 
-Transitions:
+**PL-086 — Cross-rail fingerprint.** SHA-256 over RFC 8785 canonical JSON containing: schema version, tenant, company, location, terminal, normalized shift identity or explicit `absent`, normalized session identity or explicit `absent`, source rail, source ID, source occurred-at, raw source kind, amount string, currency, policy-record ID, cutover ID, configuration-revision ID or explicit `absent`. Raw evidence is stored separately and cannot be substituted for the semantic fingerprint.
 
-- `draft → posted`: exactly two repository legs and zero-or-one JE must exist in the same root transaction.
-- `draft → voided`: allowed only before either leg exists.
-- Posted documents are immutable.
-- Cancellation of a posted document creates a new posted reversal referencing the original.
-- Replay returns `already_exists`; mismatched semantic input returns `conflict`.
+**PL-087 — Reconciliation concurrency algorithm.**
 
-Signature:
+1. Every dependency writer calls `ReconciliationDependencyVersionService::touch()` inside the same transaction as the dependency change.
+2. `touch()` locks the head `FOR UPDATE`, increments `dependency_version`, and appends exactly one dependency-change row.
+3. A worker locks the head `FOR UPDATE`, captures version `V`, and builds immutable input DTOs in deterministic order.
+4. It independently derives expected tax/tender/cash values; it does not trust sealed headline totals.
+5. Before publication it re-locks/re-reads the head. If the version differs from `V`, the attempt is discarded and retried.
+6. It canonicalizes the input DTO and calculates `input_fingerprint`.
+7. If that fingerprint already exists, return `already_exists` and make no new run.
+8. In one transaction: set the former current run `is_current=false`; insert the replacement with `is_current=true`; append its supersession; update `current_run_id` and state.
+9. The unique partial index makes a second current run impossible even if application locking regresses.
+10. No anti-join defines “current.”
+11. The snapshot includes manifest identity/hash/version and ordered members; fiscal member IDs/hashes/projection status; immutable Z/count identity and economic hashes; tender-classification revision or `dependency_unavailable`; lot-evidence hash/availability only; repository-evidence revision/availability only. It does not encode any Q10–Q13 decision.
 
-```php
-RepositoryTransferDocumentService::transfer(
-    RepositoryTransferData $data,
-): RepositoryTransferDocumentResult;
+## 8. Complete new CLI signatures
 
-RepositoryTransferDocumentService::reverse(
-    ReverseRepositoryTransferData $data,
-): RepositoryTransferDocumentResult;
-```
-
-The existing scalar `RepositoryTransferService::transfer()` remains as a compatibility façade and delegates to the document service.
-
-### 8.5 Shift cash booking obligation
-
-Transitions:
-
-- `pending → claimed`.
-- `claimed → applied`, `training_no_money`, `blocked`, or `conflict`.
-- `claimed → pending` only after lease expiry and token match.
-- `blocked → pending` only after explicit persisted policy resolution.
-- Applied and training terminal states are immutable.
-
-While Q11/Q12 are OPEN:
-
-- Opening and ambiguous operation facts become `blocked/owner_ruling_required`.
-- Literal training facts become `training_no_money`.
-- No transfer document, movement, balance update, or JE is created.
-
-Signatures:
-
-```php
-ShiftCashBookingService::recordEvidence(
-    ShiftCashBookingIntent $intent,
-): ShiftCashBookingResult;
-
-ShiftCashBookingService::claim(
-    string $obligationId,
-    string $workerId,
-    CarbonImmutable $leaseExpiresAt,
-): ShiftCashBookingClaimResult;
-
-ShiftCashBookingService::process(
-    ShiftCashBookingClaim $claim,
-): ShiftCashBookingResult;
-```
-
-### 8.6 Cash-count delivery
-
-Transitions:
-
-- `pending → claimed → applied`.
-- `claimed → pending` on expired lease and token match.
-- `claimed → blocked/dead` with structured error evidence.
-- One obligation exists per `(company, cash count, consumer)`.
-
-Signature:
-
-```php
-CashCountDispatcher::dispatch(
-    CashCountRecorded $event,
-): CashCountDispatchResult;
-```
-
-Flag false: retain current `Event::dispatch($event)` behavior, including Treasury, Compliance, and Spatie storage.
-
-Flag true:
-
-1. Insert all three obligations in the cash-count transaction.
-2. After commit, enqueue delivery jobs.
-3. Treasury consumer invokes the existing Treasury handler.
-4. Compliance consumer invokes `OpenFraudAlertForShiftVariance`.
-5. Stored-event consumer persists `CashCountRecorded` through the Spatie stored-event repository exactly once.
-6. Do not additionally dispatch the Laravel event.
-
-### 8.7 Reconciliation
-
-Transitions:
-
-- Obligation `pending → claimed → completed/blocked`.
-- Expired claim returns to pending by matching token.
-- Every execution appends a run.
-- A different input fingerprint appends a replacement run plus supersession; it never updates the previous run.
-- An identical fingerprint returns `already_exists`.
-- `RepositoryCashCoverageService` is pure.
-- `PosSessionReconciliationService` is the sole reconciliation writer.
-
-Signature:
-
-```php
-PosSessionReconciliationService::reconcile(
-    ReconcilePosSessionData $data,
-): PosSessionReconciliationResult;
-
-RepositoryCashCoverageService::calculate(
-    RepositoryCashCoverageInput $input,
-): RepositoryCashCoverageResult;
-```
-
----
-
-## 9. Complete Artisan command signatures
+**PL-090**
 
 ```text
-treasury:w-cash-audit
-    {--tenant=* : Tenant UUID or slug; repeatable}
-    {--company=* : Company UUID; repeatable}
-    {--format=json : json or table}
-    {--include-optional : Probe future tables only when present}
-    {--require-schema= : Required terminal migration name}
-    {--fail-on-drift : Exit non-zero on missing/ambiguous configuration or schema}
-
-fiscal:projection-cutover:create
-    {--tenant= : Required tenant UUID or slug}
-    {--company= : Required company UUID}
-    {--location= : Required location UUID}
-    {--terminal= : Required terminal UUID}
-    {--projector= : Required projector name}
-    {--rail= : Required v2 or v3}
-    {--lower-bound= : Required inclusive lower source identity}
-    {--upper-bound= : Required inclusive upper source identity}
-    {--decision=block : project, block, or training_no_money}
-    {--policy-revision-key= : Required SHA-256}
-    {--evidence-file= : Required JSON file}
-    {--created-by= : Required user UUID}
-    {--format=json : json or table}
-    {--dry-run : Validate without writing}
-
-treasury:w-cash-configure
-    {--tenant= : Required tenant UUID or slug}
-    {--company= : Required company UUID}
-    {--location= : Required location UUID}
-    {--drawer= : Nullable drawer repository UUID}
-    {--safe= : Nullable safe repository UUID}
-    {--bank= : Nullable bank repository UUID}
-    {--expected-head-revision= : Required current revision number, or 0 for create}
-    {--state=disabled : disabled only until owner supplement}
-    {--evidence-file= : Required JSON evidence file}
-    {--created-by= : Required user UUID}
-    {--format=json : json or table}
-    {--dry-run : Validate without writing}
-
-treasury:w-cash-catch-up-v2
-    {--tenant= : Required tenant UUID or slug}
-    {--company= : Required company UUID}
-    {--cutover= : Required cutover UUID}
-    {--from-id= : Required inclusive source ID}
-    {--to-id= : Required inclusive source ID}
-    {--limit=500 : Maximum rows in this invocation}
-    {--dry-run : Report without enqueueing}
-    {--enqueue : Create obligations and enqueue}
+w-cash:audit
+  {--company= : Optional company UUID}
+  {--format=table : table|json}
+  {--fail-on=error : none|warning|error}
 ```
-
-Exactly one of `--dry-run` or `--enqueue` is required.
 
 ```text
-pos:cash-count-recover
-    {--tenant= : Required tenant UUID or slug}
-    {--company= : Required company UUID}
-    {--consumer=* : treasury, compliance, or stored_event; repeatable}
-    {--state=pending : pending, claimed, blocked, or dead}
-    {--older-than= : Required ISO-8601 timestamp}
-    {--limit=500 : Maximum obligations}
-    {--dry-run : Report without mutation}
-    {--enqueue : Claim and enqueue}
+fiscal:projection-policy:record
+  {company : Company UUID}
+  {projector : Projector name}
+  {policy : observe_only|owner_ruling_required}
+  {--effective-at= : Required ISO-8601 timestamp}
+  {--actor= : Required user UUID}
+  {--reason= : Required append-only reason}
+  {--evidence-json={} : Typed evidence JSON}
+  {--format=table : table|json}
 ```
-
-Exactly one of `--dry-run` or `--enqueue` is required.
 
 ```text
-pos:reconcile-sessions
-    {--tenant= : Required tenant UUID or slug}
-    {--company= : Required company UUID}
-    {--z-report=* : Z report UUID; repeatable}
-    {--from= : Inclusive ISO-8601 close time}
-    {--to= : Inclusive ISO-8601 close time}
-    {--cutover= : Optional bounded cutover UUID}
-    {--limit=100 : Maximum sessions}
-    {--dry-run : Report without appending runs}
-    {--enqueue : Claim and enqueue}
+fiscal:projection-cutover:add
+  {company : Company UUID}
+  {location : Location UUID}
+  {terminal : Terminal UUID}
+  {projector : Projector name}
+  {rail : v2|v3}
+  {--lower-occurred-at= : Required inclusive ISO-8601 lower timestamp}
+  {--lower-source-id= : Required inclusive UUID lower tie-breaker}
+  {--upper-occurred-at= : Required exclusive ISO-8601 upper timestamp}
+  {--upper-source-id= : Required exclusive UUID upper tie-breaker}
+  {--policy-record= : Required policy-record UUID}
+  {--decision= : observe_only|owner_ruling_required}
+  {--actor= : Required user UUID}
+  {--evidence-json={} : Typed boundary evidence}
+  {--format=table : table|json}
 ```
 
-Require either at least one `--z-report` or both `--from` and `--to`; exactly one of `--dry-run` or `--enqueue`.
-
-No historical-alignment command may be added before Q13 is resolved.
-
----
-
-## 10. Task dispatch contracts
-
-Each task begins red-first, stops for the named reviewer, and may not absorb later tasks.
-
-### T0 — capability-aware census
-
-**HEAD files to modify/read**
-
-- `apps/api/app/Console/Kernel.php`
-- `apps/api/app/Modules/Treasury/Domain/PaymentRepository.php`
-- `apps/api/app/Modules/POS/Domain/CashDrawerOperation.php`
-- `apps/api/app/Modules/Fiscal/Domain/FiscalEvent.php`
-- `apps/api/tests/Architecture/Support/TenantOnlyUniqueIndexScanner.php`
-
-**New files to create**
-
-- `apps/api/app/Modules/Treasury/Presentation/Console/WCashAuditCommand.php`
-- `apps/api/tests/Feature/Treasury/WCashAuditCommandTest.php`
-
-**Contract**
-
-Implement `treasury:w-cash-audit` exactly as §9. Every optional table is guarded with `Schema::hasTable()`. JSON output includes tenant/company/location/terminal counts, v2/v3 fact counts by kind, repository topology, frozen/checkpoint state, unprojected ranges, missing schema names, and `dispatchable: false|true`.
-
-**Red-first**
-
-- Test: `WCashAuditCommandTest::test_pre_migration_schema_returns_capability_report_without_querying_future_tables`
-- First failing assertion: `assertSame(0, $this->artisan('treasury:w-cash-audit', ['--format' => 'json'])->run())`
-- Command/lane:
-
-```bash
-cd apps/api
-DB_CONNECTION=pgsql DB_DATABASE=autoerp_test_wcash php artisan test --filter=WCashAuditCommandTest
+```text
+treasury:cash-config:create
+  {company : Company UUID}
+  {location : Location UUID}
+  {drawer-repository : Repository UUID}
+  {safe-repository : Repository UUID}
+  {--actor= : Required user UUID}
+  {--evidence-json={} : Typed revision evidence}
+  {--format=table : table|json}
 ```
 
-Lane: PostgreSQL `treasury-spine-pgsql`.
+This command can create only `inactive`.
 
-Rerun test asserts the second execution returns `skipped` for absent optional probes and byte-equivalent facts.
+```text
+treasury:repository-transfer:replay
+  {document : Transfer document UUID}
+  {--actor= : Required user UUID}
+  {--format=table : table|json}
+```
 
-**Reviewer gate:** treasury + tenancy-authz accept census completeness before any migration.
+```text
+pos:cash-count-deliver
+  {--obligation= : Optional obligation UUID}
+  {--limit=100 : Maximum claims}
+  {--lease-seconds=120 : Positive lease duration}
+  {--format=table : table|json}
+```
 
-**Rollback:** command is read-only; remove only before promotion. No data rollback.
+```text
+pos:cash-reconcile
+  {company : Company UUID}
+  {shift : POS shift UUID}
+  {--expected-dependency-version= : Optional optimistic version}
+  {--format=table : table|json}
+```
 
-### T1 — additive schemas and device v68→v69
+```text
+w-cash:fingerprint
+  {company : Company UUID}
+  {shift : POS shift UUID}
+  {--format=json : json only}
+```
 
-**HEAD files to modify**
+Existing backup command is extended compatibly to:
 
-- `apps/pos/src/lib/db/migrations.ts`
-- `apps/pos/src/lib/db/__tests__/helpers/migrationTestHelpers.ts`
-- `apps/api/tests/Architecture/Support/TenantOnlyUniqueIndexScanner.php`
+```text
+tenant:backup
+  {slug? : The tenant slug to back up; omit with --all}
+  {--all : Back up every tenant}
+  {--format=table : table|json}
+```
 
-**New files to create**
+JSON returns every `tenant_id`, `tenant_slug`, `backup_id`, `status`, `file_path`, `size_bytes`, and `sha256`. Existing table output remains the default.
 
-- Six tenant migrations named exactly as §7.
+## 9. Task dispatch contracts
+
+### PL-091 — T0: capability-aware census
+
+**Production files**
+
+- MODIFY `apps/api/app/Modules/Treasury/Providers/TreasuryServiceProvider.php`
+- CREATE `apps/api/app/Modules/Treasury/Presentation/Console/WCashAuditCommand.php`
+- CREATE `apps/api/app/Modules/Treasury/Application/Services/WCashAuditService.php`
+- CREATE `apps/api/app/Modules/Treasury/Application/Data/WCashAuditResultData.php`
+
+**Signatures**
+
+```php
+public function audit(?string $companyId): WCashAuditResultData;
+public function handle(WCashAuditService $audit): int;
+```
+
+Audit output includes actual tables/columns/enums/indexes, writer census, direct balance writes, lock sites, DTO shadows, provider owners, rollout flags, active tenants, companies, locations, terminals, and repository topology.
+
+**Red first**
+
+- File: `apps/api/tests/Feature/Treasury/WCashAuditCommandTest.php`
+- `WCashAuditCommandTest::test_json_census_names_head_projection_and_z_count_contract`
+- First failing assertion: `assertSame('projection_status', $json['projection']['state_column'])`
+- `::test_second_company_and_location_are_reported_independently`
+- First failing assertion: company B contains its own selected location/terminal and no company-A ID.
+- `::test_rerun_returns_identical_fingerprint_and_explicit_already_exists`
+- First failing assertion: outcome equals `already_exists`.
+- Command/lane: `cd apps/api && DB_CONNECTION=pgsql ./vendor/bin/phpunit tests/Feature/Treasury/WCashAuditCommandTest.php` — **phpunit PG**.
+
+**Reviewer gate:** Treasury + tenancy architecture.  
+**Rollback:** remove command/service/provider registration; no data exists.
+
+### PL-101 — T1: schema, glossary, and SQLite v68→v69
+
+**Production files**
+
+- CREATE all seven tenant migrations named in PL-071–PL-079.
+- MODIFY `apps/pos/src/lib/db/migrations.ts`
+- MODIFY `docs/glossary.md`
+- MODIFY `apps/api/app/Modules/Fiscal/Domain/Enums/ProjectionStatus.php`
+- CREATE every enum and DTO named in PL-071–PL-079 under its owning module’s `Domain/Enums` or `Application/Data` directory.
+- MODIFY `apps/api/tests/Architecture/TenantOnlyUniqueOnCatalogueTablesRatchetTest.php` only if the canonical catalogue table constant must include the new editable configuration.
+- Existing scanner: `apps/api/tests/Architecture/Support/TenantOnlyUniqueIndexScanner.php`.
+
+**Red first**
+
 - `apps/api/tests/Feature/Treasury/WCashSchemaContractTest.php`
+- `WCashSchemaContractTest::test_every_w_cash_column_fk_check_index_enum_and_delete_rule_matches_contract`
+- First failing assertion: PostgreSQL catalog contains `fiscal_event_projections.projection_status` and does not contain proposed `status` or `company_id`.
+- `::test_every_business_unique_contains_company_id`
+- First failing assertion: scanner returns `[]`.
+- `::test_second_company_and_second_location_accept_same_configuration_shape_without_cross_visibility`
+- First failing assertion: company B query returns only B.
+- `::test_migrations_rerun_with_explicit_already_exists_schema_outcome`
+- First failing assertion: schema fingerprint before/after rerun is identical and result is `already_exists`.
+- Command/lane: `cd apps/api && DB_CONNECTION=pgsql ./vendor/bin/phpunit tests/Feature/Treasury/WCashSchemaContractTest.php` — **phpunit PG**.
+
 - `apps/pos/src/lib/db/__tests__/migrations.v68.test.ts`
+- First method: `MigrationV68Test::creates_complete_z_close_manifest_contract`
+- First failing assertion: `expect(columns).toContain('economic_payload_hash')`.
 - `apps/pos/src/lib/db/__tests__/migrations.v69.test.ts`
+- First method: `MigrationV69Test::requires_v68_and_is_idempotent`
+- First failing assertion: v69 before v68 rejects; v68→v69 twice yields one table/index set.
+- Command/lane: `pnpm --filter @autoerp/pos exec vitest run src/lib/db/__tests__/migrations.v68.test.ts src/lib/db/__tests__/migrations.v69.test.ts` — **vitest**.
 
-**Contract**
+**Reviewer gate:** database + Treasury + Fiscal/POS + convention-09/11.  
+**Rollback:** flags remain false; reverse only empty/unreferenced tables. Once evidence rows exist, retain tables and deploy compatibility readers.
 
-Implement §7 exactly, with v68 before v69. Add every new business unique to the actual tenant-only unique scanner fixture.
+### PL-102 — T2: immutable event-time policy and cutovers
 
-**Red-first**
+**Production files**
 
-- `WCashSchemaContractTest::test_every_w_cash_table_has_company_scoped_business_uniques`
-- First assertion: scanner result contains zero violations.
-- `migrations.v68.test.ts::creates manifest table before v69 repository columns`
-- First assertion: `expect(tableNames).toContain('z_close_manifests')`.
-- Commands:
+- MODIFY `apps/api/app/Modules/Fiscal/Domain/Models/FiscalEventProjectionRow.php`
+- MODIFY `apps/api/app/Modules/Fiscal/Providers/FiscalServiceProvider.php`
+- MODIFY `apps/api/app/Modules/Fiscal/Application/Services/OutboxIngestor.php`
+- MODIFY `apps/api/app/Modules/Fiscal/Application/Services/FiscalProjectionDispatcher.php`
+- MODIFY `apps/api/app/Modules/Fiscal/Application/Jobs/ApplyFiscalEventProjectionJob.php`
+- CREATE:
+  - `apps/api/app/Modules/Fiscal/Domain/Models/FiscalProjectionPolicyRecord.php`
+  - `apps/api/app/Modules/Fiscal/Domain/Models/FiscalProjectionCutover.php`
+  - `apps/api/app/Modules/Fiscal/Application/Services/FiscalProjectionPolicyService.php`
+  - `apps/api/app/Modules/Fiscal/Application/Services/FiscalCutoverRangeService.php`
+  - `apps/api/app/Modules/Fiscal/Presentation/Console/RecordFiscalProjectionPolicyCommand.php`
+  - `apps/api/app/Modules/Fiscal/Presentation/Console/AddFiscalProjectionCutoverCommand.php`
+  - `apps/api/app/Modules/Fiscal/Presentation/Console/RecoverFiscalProjectionLeasesCommand.php`
 
-```bash
-cd apps/api
-DB_CONNECTION=pgsql DB_DATABASE=autoerp_test_wcash php artisan test --filter=WCashSchemaContractTest
-pnpm --filter @autoerp/pos test -- src/lib/db/__tests__/migrations.v68.test.ts src/lib/db/__tests__/migrations.v69.test.ts
-```
-
-Lanes: PostgreSQL `treasury-spine-pgsql`; POS Vitest.
-
-Rerun assertion: migration second pass reports `already_exists`/no pending migration and schema hashes remain unchanged.
-
-**Reviewer gate:** treasury + tenancy-authz + fiscal-pos approve the exact DDL before T2.
-
-**Rollback:** before any tenant migration, migration files may be removed. After staging, schema is forward-only and retained with flags false; do not run destructive `down()` against tenant data.
-
-### T2 — immutable event-time policy and bounded cutovers
-
-**HEAD files to modify**
-
-- `apps/api/app/Modules/Fiscal/Application/Services/OutboxIngestor.php`
-- `apps/api/app/Modules/Fiscal/Application/Services/FiscalEventProjectionDispatcher.php`
-- `apps/api/app/Modules/Fiscal/Application/Jobs/ApplyFiscalEventProjectionJob.php`
-- `apps/api/app/Console/Kernel.php`
-
-**New files to create**
-
-- Policy/cutover DTOs and services under `apps/api/app/Modules/Fiscal/Application/`.
-- `apps/api/app/Modules/Fiscal/Presentation/Console/CreateProjectionCutoverCommand.php`
-- `apps/api/tests/Feature/Fiscal/WCashEventTimePolicyTest.php`
-
-**Contract**
-
-Implement §8.2 and the cutover command. Recovery must resolve from the immutable policy record or bounded cutover only. For W-CASH, the command rejects `decision=project` while Q11/Q12 remain OPEN and returns `blocked/owner_ruling_required`.
-
-**Red-first**
-
-- `WCashEventTimePolicyTest::test_recovery_does_not_reinterpret_legacy_event_from_current_registry`
-- First assertion: `assertSame('blocked', $projection->refresh()->status)`.
-- Rerun test asserts `MutationOutcome::AlreadyExists` and unchanged policy/cutover IDs.
-- Command:
-
-```bash
-cd apps/api
-DB_CONNECTION=pgsql DB_DATABASE=autoerp_test_wcash php artisan test --filter=WCashEventTimePolicyTest
-```
-
-Lane: PostgreSQL `fiscal-pos`.
-
-**Reviewer gate:** fiscal-pos + treasury verify current-state recovery is impossible.
-
-**Rollback:** disable recovery/catch-up invocation and return readers to the previous dispatcher; retain policy/cutover evidence.
-
-### T3 — disabled topology configuration and atomic provisioning
-
-**HEAD files to modify**
-
-- `apps/api/app/Shared/Contracts/Treasury/CompanyPaymentRepositoryProvisionerInterface.php`
-- `apps/api/app/Shared/Contracts/Treasury/LocationCashRegisterProvisionerInterface.php`
-- `apps/api/app/Modules/Treasury/Application/Services/PaymentRepositoryProvisioningService.php`
-- `apps/api/app/Modules/Treasury/Application/Services/LocationCashRegisterProvisioner.php`
-- `apps/api/app/Modules/Company/Presentation/Controllers/CompanyController.php`
-- `apps/api/app/Modules/Company/Presentation/Controllers/LocationController.php`
-- `apps/api/app/Modules/Tenant/Application/Services/TenantInitializationService.php`
-- `apps/api/app/Console/Kernel.php`
-
-**Changed shared signatures**
+**Signatures**
 
 ```php
-CompanyPaymentRepositoryProvisionerInterface::provisionForCompany(
-    string $tenantId,
+public function record(FiscalProjectionPolicyInputData $input): MutationResultData;
+public function add(FiscalCutoverInputData $input): MutationResultData;
+public function resolve(FiscalSourceCoordinateData $coordinate): FiscalCutoverResolutionData;
+public function recoverExpired(int $limit, int $leaseSeconds): FiscalProjectionRecoveryResultData;
+```
+
+**Red first**
+
+- `apps/api/tests/Feature/Fiscal/FiscalCutoverRangeTest.php`
+- `::test_uuid_sources_use_ordered_time_and_id_half_open_bounds`
+- First failing assertion: upper-bound coordinate does not match the preceding cutover.
+- `::test_concurrent_overlapping_cutovers_yield_one_applied_and_one_conflict`
+- First failing assertion: exactly one row commits.
+- `::test_second_company_and_location_do_not_share_cutovers`
+- First failing assertion: B resolves only B’s row.
+- `::test_exact_rerun_is_already_exists_but_changed_evidence_conflicts`
+- First failing assertion: second outcome is `already_exists`.
+- Command/lane: `cd apps/api && DB_CONNECTION=pgsql ./vendor/bin/phpunit tests/Feature/Fiscal/FiscalCutoverRangeTest.php` — **phpunit PG**.
+
+**Reviewer gate:** Fiscal + PostgreSQL concurrency + tenancy.  
+**Rollback:** disable flag; retain immutable policy/cutover evidence.
+
+### PL-103 — T3: inactive configuration and failure-contained provisioning
+
+**Production files**
+
+- MODIFY `apps/api/app/Modules/Treasury/Application/Services/PaymentRepositoryProvisioningService.php`
+- MODIFY `apps/api/app/Modules/Treasury/Application/Services/LocationCashRegisterProvisioner.php`
+- MODIFY `apps/api/app/Modules/Treasury/Providers/TreasuryServiceProvider.php`
+- CREATE:
+  - `apps/api/app/Modules/Treasury/Domain/Models/CashRepositoryConfiguration.php`
+  - `apps/api/app/Modules/Treasury/Domain/Models/CashRepositoryConfigurationRevision.php`
+  - `apps/api/app/Modules/Treasury/Application/Services/CashRepositoryConfigurationService.php`
+  - `apps/api/app/Modules/Treasury/Presentation/Console/CreateCashRepositoryConfigurationCommand.php`
+
+No change to either provisioning interface signature.
+
+**Signature**
+
+```php
+public function createInactive(CashRepositoryConfigurationInputData $input): MutationResultData;
+```
+
+**Red first**
+
+- `apps/api/tests/Feature/Treasury/CashRepositoryConfigurationProvisioningTest.php`
+- `::test_company_creation_survives_repository_or_inactive_configuration_failure`
+- First failing assertion: company persists despite injected W-CASH failure.
+- `::test_second_company_and_selected_second_location_receive_only_their_inactive_configuration`
+- First failing assertion: B/location-2 lookup excludes A/location-1.
+- `::test_rerun_returns_already_exists_without_duplicate_repositories_or_balance_change`
+- First failing assertion: outcome `already_exists` and balances unchanged.
+- `::test_only_inactive_state_is_accepted`
+- First failing assertion: `active` throws before write.
+- Command/lane: `cd apps/api && DB_CONNECTION=pgsql ./vendor/bin/phpunit tests/Feature/Treasury/CashRepositoryConfigurationProvisioningTest.php` — **phpunit PG**.
+
+**Reviewer gate:** Treasury + company/location owners + availability-contract reviewer.  
+**Rollback:** disable creation hook; retain inactive rows; company/location availability remains unchanged.
+
+### PL-104 — T4: immutable transfer documents and lock order
+
+**Production files**
+
+- MODIFY `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferService.php`
+- MODIFY `apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php`
+- CREATE:
+  - `apps/api/app/Modules/Treasury/Domain/Models/RepositoryTransferDocument.php`
+  - `apps/api/app/Modules/Treasury/Domain/Models/RepositoryTransferAlert.php`
+  - `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferDocumentService.php`
+  - `apps/api/app/Modules/Treasury/Application/Data/RepositoryTransferInputData.php`
+  - `apps/api/app/Modules/Treasury/Application/Data/RepositoryTransferResultData.php`
+  - `apps/api/app/Modules/Treasury/Presentation/Console/ReplayRepositoryTransferCommand.php`
+
+**Signatures**
+
+```php
+public function post(RepositoryTransferInputData $input): RepositoryTransferResultData;
+public function reverse(string $documentId, string $actorId, string $reason): RepositoryTransferResultData;
+public function replay(string $documentId, string $actorId): RepositoryTransferResultData;
+```
+
+**Red first**
+
+- `apps/api/tests/Feature/Treasury/RepositoryTransferDocumentTest.php`
+- `::test_post_creates_one_document_two_movements_and_zero_or_one_je`
+- First failing assertion: movement legs equal exactly `['source','destination']`.
+- `::test_opposite_direction_transfers_and_unrelated_je_do_not_deadlock`
+- First failing assertion: both PG workers complete within timeout.
+- `::test_posted_document_is_append_only_and_corrected_only_by_reversal`
+- First failing assertion: edit/delete throws domain exception.
+- `::test_second_company_and_second_location_are_isolated`
+- First failing assertion: B document cannot reference A repository.
+- `::test_rerun_returns_already_exists_without_balance_change`
+- First failing assertion: second outcome `already_exists`.
+- `::test_inventory_gl_posting_buffer_is_never_called`
+- First failing assertion: buffer mock has zero interactions.
+- Command/lane: `cd apps/api && DB_CONNECTION=pgsql ./vendor/bin/phpunit tests/Feature/Treasury/RepositoryTransferDocumentTest.php` — **phpunit PG**.
+
+**Reviewer gate:** Treasury + Accounting/GL + concurrency.  
+**Rollback:** turn off callers; retain/reverse posted documents, never delete them.
+
+### PL-105 — T5: policy-neutral v2/v3 evidence bridge
+
+**Production files**
+
+- MODIFY `apps/api/app/Modules/POS/Domain/CashDrawerOperation.php`
+- MODIFY `apps/api/app/Modules/Fiscal/Domain/Models/FiscalEvent.php`
+- MODIFY `apps/api/app/Modules/Fiscal/Application/Services/OutboxIngestor.php`
+- CREATE:
+  - `apps/api/app/Modules/Treasury/Domain/Models/ShiftCashBookingObligation.php`
+  - `apps/api/app/Modules/Treasury/Application/Services/ShiftCashBookingService.php`
+  - `apps/api/app/Modules/Treasury/Application/Services/ShiftCashSemanticFingerprint.php`
+  - `apps/api/app/Modules/Treasury/Application/Data/ShiftCashSourceFactData.php`
+  - `apps/api/app/Modules/Treasury/Application/Jobs/ProcessShiftCashBookingObligation.php`
+
+**Signatures**
+
+```php
+public function observeV2(CashDrawerOperation $operation): MutationResultData;
+public function observeV3(FiscalEvent $event): MutationResultData;
+public function fingerprint(ShiftCashSourceFactData $fact): string;
+public function process(string $obligationId, string $claimToken): MutationResultData;
+```
+
+**Red first**
+
+- `apps/api/tests/Feature/Treasury/ShiftCashEvidenceBridgeTest.php`
+- `::test_same_semantic_fact_on_v2_and_v3_is_not_double_applied`
+- First failing assertion: one outcome is `applied`, the other `already_exists`.
+- `::test_cross_shift_reuse_is_conflict`
+- First failing assertion: reused source identity produces `conflict`.
+- `::test_q11_q12_q13_dependent_facts_are_owner_ruling_required_without_posting`
+- First failing assertion: transfer-document count is zero.
+- `::test_crash_at_every_claim_stage_is_idempotently_recoverable`
+- First failing assertion: final obligation outcome is typed and balances remain unchanged.
+- `::test_second_company_and_location_are_isolated`
+- First failing assertion: B sees no A obligation.
+- Command/lane: `cd apps/api && DB_CONNECTION=pgsql ./vendor/bin/phpunit tests/Feature/Treasury/ShiftCashEvidenceBridgeTest.php` — **phpunit PG**.
+
+**Reviewer gate:** Treasury + Fiscal/POS + owner-policy guard.  
+**Rollback:** disable observers/workers; retain raw obligations.
+
+### PL-106 — T6: canonical repository DTO
+
+**Production files**
+
+- CREATE `apps/api/app/Modules/Treasury/Application/Data/PaymentRepositoryData.php`
+- MODIFY `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentRepositoryController.php`
+- MODIFY all exact web/POS consumers listed at PL-052.
+- Regenerate `packages/shared/types/generated.ts` using the configured transformer.
+
+**Signature**
+
+```php
+public static function fromModel(PaymentRepository $repository): self;
+```
+
+Fields are full backend repository identity, company/location, code/name/type, currency, balance as string, active state, and optional inactive W-CASH configuration evidence. No Q11 ownership field is added.
+
+**Red first**
+
+- `apps/api/tests/Feature/Treasury/PaymentRepositoryDataTest.php`
+- `::test_controller_returns_generated_dto_shape_and_decimal_strings`
+- First failing assertion: `balance` is the exact scale-3 string.
+- Command/lane: `cd apps/api && DB_CONNECTION=pgsql ./vendor/bin/phpunit tests/Feature/Treasury/PaymentRepositoryDataTest.php` — **phpunit PG**.
+- `apps/web/src/features/treasury/__tests__/paymentRepositoryGeneratedType.test.ts`
+- First method: `PaymentRepositoryGeneratedTypeTest::has_no_web_shadow_and_preserves_company_location`
+- First failing assertion: decoded B/location-2 repository cannot equal A.
+- Command/lane: `pnpm --filter @autoerp/web exec vitest run src/features/treasury/__tests__/paymentRepositoryGeneratedType.test.ts` — **vitest**.
+- `apps/pos/src/lib/db/__tests__/paymentRepositoryDecoder.test.ts`
+- First method: `PaymentRepositoryDecoderTest::rejects_invalid_row_and_round_trips_generated_dto`
+- First failing assertion: malformed balance rejects rather than casts.
+- Command/lane: `pnpm --filter @autoerp/pos exec vitest run src/lib/db/__tests__/paymentRepositoryDecoder.test.ts` — **vitest**.
+
+Production command: `cd apps/api && php artisan typescript:transform`.
+
+**Reviewer gate:** backend DTO + web + POS + convention 11.  
+**Rollback:** restore compatibility decoder behind false flag; do not reintroduce local cross-boundary interfaces.
+
+### PL-107 — T7: atomic close manifest
+
+**Production files**
+
+- MODIFY `apps/pos/src/services/zReportService.ts`
+- MODIFY `apps/pos/src/lib/fiscal/zSessionAuthoring.ts`
+- MODIFY `apps/pos/src/lib/sync/syncService.ts`
+- CREATE:
+  - `apps/pos/src/lib/fiscal/ZCloseManifestBuilder.ts`
+  - `apps/pos/src/lib/db/repositories/zCloseManifestRepository.ts`
+  - `apps/api/app/Modules/POS/Domain/Models/PosZCloseManifest.php`
+  - `apps/api/app/Modules/POS/Application/Data/ZCloseManifestData.php`
+  - `apps/api/app/Modules/POS/Application/Data/ZCloseManifestMemberData.php`
+  - `apps/api/app/Modules/POS/Application/Services/ZCloseManifestIngestor.php`
+- MODIFY `apps/api/app/Modules/POS/Presentation/Controllers/ZReportSyncController.php`
+
+**Signatures**
+
+```ts
+build(input: ZCloseManifestBuildInput): ZCloseManifestData;
+hash(manifest: ZCloseManifestData): Promise<string>;
+saveWithinTransaction(manifest: ZCloseManifestData): Promise<MutationResult>;
+```
+
+```php
+public function ingest(ZCloseManifestData $manifest): MutationResultData;
+```
+
+**Red first**
+
+- `apps/pos/src/lib/fiscal/__tests__/zCloseManifest.atomicity.test.ts`
+- `ZCloseManifestAtomicityTest::rolls_back_z_close_events_manifest_and_outbox_at_each_fault_point`
+- First failing assertion: after injected failure every involved table has zero new rows.
+- `::test_close_and_z_identities_exist_before_manifest_hashing`
+- First failing assertion: member payload contains the returned real event hashes.
+- `::test_rerun_is_already_exists_and_changed_payload_conflicts`
+- First failing assertion: second identical result `already_exists`.
+- Command/lane: `pnpm --filter @autoerp/pos exec vitest run src/lib/fiscal/__tests__/zCloseManifest.atomicity.test.ts` — **vitest**.
+
+- `apps/api/tests/Feature/POS/ZCloseManifestIngestorTest.php`
+- `::test_second_company_location_and_terminal_are_isolated`
+- First failing assertion: cross-company Z/terminal FK rejects.
+- `::test_member_order_hash_and_schema_version_are_verified`
+- First failing assertion: reordered members produce `conflict`.
+- Command/lane: `cd apps/api && DB_CONNECTION=pgsql ./vendor/bin/phpunit tests/Feature/POS/ZCloseManifestIngestorTest.php` — **phpunit PG**.
+
+**Reviewer gate:** POS SQLite/fiscal-chain + backend POS.  
+**Rollback:** false flag stops new manifests; retain and continue syncing already-authored manifests.
+
+### PL-108 — T8: transactionally seeded cash-count fan-out
+
+**Production files**
+
+- MODIFY `apps/api/app/Modules/POS/Application/Services/ReportGenerationService.php`
+- MODIFY `apps/api/app/Modules/POS/Presentation/Controllers/ZReportSyncController.php`
+- MODIFY `apps/api/app/Modules/POS/Application/Services/CashCountDispatcher.php`
+- MODIFY `apps/api/app/Modules/POS/Providers/POSServiceProvider.php`
+- CREATE:
+  - `apps/api/app/Modules/POS/Domain/Models/CashCountDeliveryObligation.php`
+  - `apps/api/app/Modules/POS/Application/Data/CashCountRecordedData.php`
+  - `apps/api/app/Modules/POS/Application/Data/CashCountDispatchSeedResultData.php`
+  - `apps/api/app/Modules/POS/Application/Data/CashCountDispatchResultData.php`
+  - `apps/api/app/Modules/POS/Application/Data/CashCountConsumerOutcomeData.php`
+  - `apps/api/app/Modules/POS/Application/Jobs/DeliverCashCountObligation.php`
+  - `apps/api/app/Modules/POS/Presentation/Console/DeliverCashCountObligationsCommand.php`
+
+**Red first**
+
+- `apps/api/tests/Feature/POS/CashCountFanOutDurabilityTest.php`
+- `::test_server_generated_z_and_three_obligations_commit_atomically`
+- First failing assertion: after a forced precommit failure, Z count and obligation counts are both zero.
+- `::test_device_synced_z_and_three_obligations_commit_atomically`
+- Same first assertion for the sync path.
+- `::test_crash_after_commit_before_queue_still_leaves_three_pending_obligations`
+- First failing assertion: consumers equal exactly Treasury, Compliance, stored event.
+- `::test_each_consumer_records_typed_outcome_and_redelivery_is_idempotent`
+- First failing assertion: each second delivery is `already_exists`.
+- `::test_stored_event_and_obligation_state_commit_atomically`
+- First failing assertion: fault injection leaves neither stored event nor applied state.
+- `::test_second_company_location_terminal_are_isolated`
+- First failing assertion: company B worker cannot claim A.
+- `::test_flag_false_retains_legacy_event_dispatch`
+- First failing assertion: one existing event is dispatched and no obligation is inserted.
+- Command/lane: `cd apps/api && DB_CONNECTION=pgsql ./vendor/bin/phpunit tests/Feature/POS/CashCountFanOutDurabilityTest.php` — **phpunit PG**.
+
+**Reviewer gate:** POS producer owners + Treasury + Compliance + event sourcing.  
+**Rollback:** false flag returns new producers to existing dispatch; already-created obligations remain deliverable until drained.
+
+### PL-109 — T9: canonical W7 reconciliation
+
+**Production files**
+
+- MODIFY:
+  - `apps/api/app/Modules/Fiscal/Application/Services/OutboxIngestor.php`
+  - `apps/api/app/Modules/Fiscal/Application/Jobs/ApplyFiscalEventProjectionJob.php`
+  - `apps/api/app/Modules/Fiscal/Application/Projectors/ZReportProjection.php`
+  - `apps/api/app/Modules/POS/Application/Services/ReportGenerationService.php`
+  - `apps/api/app/Modules/POS/Presentation/Controllers/ZReportSyncController.php`
+  - `apps/api/app/Modules/POS/Providers/POSServiceProvider.php`
+- CREATE:
+  - `apps/api/app/Modules/POS/Domain/Models/PosSessionReconciliation.php`
+  - `apps/api/app/Modules/POS/Domain/Models/PosSessionReconciliationRun.php`
+  - `apps/api/app/Modules/POS/Domain/Models/PosSessionReconciliationSupersession.php`
+  - `apps/api/app/Modules/POS/Domain/Models/PosSessionReconciliationDependencyChange.php`
+  - `apps/api/app/Modules/POS/Application/Services/ReconciliationDependencyVersionService.php`
+  - `apps/api/app/Modules/POS/Application/Services/SessionCashReconciliationService.php`
+  - `apps/api/app/Modules/POS/Application/Services/SessionReconciliationFingerprint.php`
+  - `apps/api/app/Modules/POS/Application/Jobs/ReconcilePosSession.php`
+  - `apps/api/app/Modules/POS/Presentation/Console/ReconcilePosSessionCommand.php`
+
+**Signatures**
+
+```php
+public function touch(
     string $companyId,
-    ?string $defaultLocationId = null,
-): CashCustodyProvisioningResult;
+    string $shiftId,
+    ReconciliationDependencyKind $kind,
+    string $identity,
+    string $hash,
+    CarbonImmutable $occurredAt,
+): ReconciliationDependencyVersionData;
 
-LocationCashRegisterProvisionerInterface::provision(
-    string $tenantId,
+public function reconcile(
     string $companyId,
-    string $locationId,
-    ?string $locationCode,
-): CashCustodyProvisioningResult;
+    string $shiftId,
+    ?int $expectedDependencyVersion = null,
+): SessionReconciliationMutationResultData;
 ```
 
-Both may throw `CashCustodyProvisioningException`. The current catch-and-swallow contract is removed.
+**Required red-first acceptance matrix**
 
-**Transaction contract**
+File for all cases: `apps/api/tests/Feature/POS/SessionCashReconciliationAcceptanceTest.php`.  
+Command/lane for all: `cd apps/api && DB_CONNECTION=pgsql ./vendor/bin/phpunit tests/Feature/POS/SessionCashReconciliationAcceptanceTest.php` — **phpunit PG**.
 
-- Company creation: the existing CompanyController outer transaction owns company, default location, repositories, and disabled configuration.
-- Location create/update: add one outer transaction owning the location write, drawer provisioning, and disabled configuration.
-- Any repository or configuration failure rolls back the whole company/location change.
-- Registration uses the same fail-closed contract.
-- Retry after a committed result returns `already_exists`.
-- Retry after a rolled-back failure applies once.
-
-**Red-first**
-
-- `WCashProvisioningAtomicityTest::test_company_rolls_back_when_disabled_configuration_write_fails`
-- First assertion: `assertDatabaseMissing('companies', ['id' => $companyId])`.
-- `WCashProvisioningAtomicityTest::test_location_rolls_back_when_drawer_write_fails`
-- First assertion: `assertDatabaseMissing('locations', ['id' => $locationId])`.
-- `WCashProvisioningAtomicityTest::test_retry_returns_already_exists_without_duplicate_repositories`
-- First assertion: `assertSame(MutationOutcome::AlreadyExists, $second->outcome)`.
-- Command:
-
-```bash
-cd apps/api
-DB_CONNECTION=pgsql DB_DATABASE=autoerp_test_wcash php artisan test --filter=WCashProvisioningAtomicityTest
-```
-
-Lane: PostgreSQL `treasury-spine-pgsql`.
-
-**Reviewer gate:** company/tenancy + treasury explicitly approve the deliberate fail-closed behavior change.
-
-**Rollback:** before activation, revert callers/interfaces together. Retain any committed disabled configuration revisions; never delete operator evidence.
-
-### T4 — immutable transfer documents and lock order
-
-**HEAD files to modify**
-
-- `apps/api/app/Modules/Treasury/Application/Services/RepositoryTransferService.php`
-- `apps/api/app/Modules/Treasury/Application/Services/TreasuryMovementService.php`
-- `apps/api/app/Modules/Treasury/Presentation/routes.php`
-- `apps/api/app/Modules/Accounting/Domain/Services/GeneralLedgerService.php`
-- `apps/api/app/Modules/Treasury/Domain/RepositoryMovement.php`
-
-**New files to create**
-
-- Transfer document/model/DTO/service/result/alert classes under existing Treasury tiers.
-- `apps/api/tests/Feature/Treasury/WCashTransferDocumentTest.php`
-- `apps/api/tests/Feature/Treasury/WCashLockOrderTest.php`
-- `apps/api/tests/Feature/Treasury/TreasuryModuleGateTest.php`
-
-**Contract**
-
-- Gate the existing transfer route with Treasury module middleware.
-- One transfer document/group.
-- Exactly two movement legs.
-- Zero JE for same-GL; exactly one JE for cross-GL.
-- Currency explicit on intent and document.
-- Optional shift/session evidence is company/location validated.
-- Frozen/checkpoint overrides create one durable alert, including replay.
-- Cancellation is reversal.
-- Lock order is §6.2.
-
-**Red-first**
-
-- `WCashTransferDocumentTest::test_replay_returns_already_exists_and_keeps_two_legs`
-- First assertion: `assertSame('already_exists', $second->outcome->value)`.
-- `WCashLockOrderTest::test_opposite_transfers_and_unrelated_journal_entry_do_not_deadlock`
-- First assertion: `assertNull($capturedSqlState40P01)`.
-- `WCashLockOrderTest::test_inventory_gl_buffer_and_w_cash_transfer_preserve_global_order`
-- First assertion: both worker results equal `applied`.
-- `TreasuryModuleGateTest::test_module_off_refuses_existing_transfer_and_configuration_routes`
-- First assertion: `assertSame(403, $response->status())`.
-- Command:
-
-```bash
-cd apps/api
-DB_CONNECTION=pgsql DB_DATABASE=autoerp_test_wcash php artisan test --filter='WCashTransferDocumentTest|WCashLockOrderTest|TreasuryModuleGateTest'
-```
-
-Lane: PostgreSQL `treasury-spine-pgsql`, with stock-gl-interaction review.
-
-**Reviewer gate:** treasury + accounting + stock-gl-interaction approve cardinality and concurrency.
-
-**Rollback:** set W-CASH flags false and route new callers back through the compatibility façade. Posted documents/movements/JEs stay immutable; correct financial effects only through reversal.
-
-### T5 — policy-neutral v2/v3 evidence bridge
-
-**HEAD files to modify**
-
-- `apps/api/app/Modules/Fiscal/Application/Services/OutboxIngestor.php`
-- `apps/api/app/Modules/Fiscal/Application/Services/FiscalEventProjectionDispatcher.php`
-- `apps/api/app/Modules/POS/Domain/CashDrawerOperation.php`
-- `apps/api/config/treasury.php`
-
-**New files to create**
-
-- `ShiftCashBookingService`, rail adapters, fingerprint class, DTOs, job, and catch-up command under existing POS/Fiscal/Treasury tiers.
-- `apps/api/tests/Feature/Treasury/ShiftCashBookingBridgeTest.php`
-
-**Contract**
-
-- Persist evidence and obligations only.
-- No money while Q11/Q12 are OPEN.
-- v2 and v3 equivalent facts produce equivalent normalized payloads, not necessarily the same source identity.
-- Same source replay returns `already_exists`.
-- Cross-shift or altered content under the same source key returns `conflict`.
-- Training true returns `skipped/training_no_money`.
-- Module-off returns `skipped/module_disabled`.
-- Worker crash after any committed stage converges through immutable IDs.
-
-**Red-first**
-
-- `ShiftCashBookingBridgeTest::test_cross_shift_source_reuse_is_conflict`
-- First assertion: `assertSame('conflict', $second->outcome->value)`.
-- `ShiftCashBookingBridgeTest::test_v2_and_v3_evidence_are_normalized_without_financial_effect`
-- First assertion: `assertSame('owner_ruling_required', $result->reasonCode)`.
-- `ShiftCashBookingBridgeTest::test_training_boolean_true_returns_skipped_no_money`
-- First assertion: `assertSame('skipped', $result->outcome->value)`.
-- Command:
-
-```bash
-cd apps/api
-DB_CONNECTION=pgsql DB_DATABASE=autoerp_test_wcash php artisan test --filter=ShiftCashBookingBridgeTest
-```
-
-Lane: PostgreSQL `fiscal-pos` + `treasury-spine-pgsql`.
-
-**Reviewer gate:** no movements exist for opening/ambiguous operations while Q11/Q12 remain OPEN.
-
-**Rollback:** set `TREASURY_W_CASH_BOOKING_ENABLED=false`; retain obligations and raw evidence.
-
-### T6 — POS repository DTO and disabled topology evidence
-
-**HEAD files to modify**
-
-- `apps/pos/src/types/payment.ts`
-- `apps/pos/src/lib/db/repositories/paymentRepository.ts`
-- `apps/pos/src/lib/db/migrations.ts`
-- `apps/pos/tsconfig.json`
-- Existing repository sync/terminal configuration consumers discovered by T0.
-
-**New files to create**
-
-- `apps/pos/src/lib/db/repositories/paymentRepositoryDecoder.ts`
-- `apps/pos/src/lib/db/repositories/__tests__/paymentRepositoryDecoder.test.ts`
-- Generated-type compatibility test under `apps/pos/src/types/__tests__/`.
-
-**Contract**
-
-- Use generated `PaymentRepositoryData` as the boundary entity.
-- Preserve `PaymentRepositoryRow` only for SQLite.
-- Cache server-authored disabled topology revision evidence.
-- Do not add typed cash operation choices or mappings.
-- Existing raw device operations remain unchanged.
-- A non-disabled configuration received before owner authorization is rejected and recorded as sync error.
-
-**Red-first**
-
-- `paymentRepositoryDecoder.test.ts::rejects row whose repository type diverges from generated DTO`
-- First assertion: `expect(() => decodePaymentRepositoryRow(row)).toThrow(RepositoryRowDecodeError)`.
-- `paymentRepositoryDecoder.test.ts::returns generated repository data`
-- First assertion: `expect(decoded).toSatisfyTypeOf<PaymentRepositoryData>()`.
-- Command:
-
-```bash
-pnpm --filter @autoerp/pos test -- src/lib/db/repositories/__tests__/paymentRepositoryDecoder.test.ts
-pnpm --filter @autoerp/pos typecheck
-```
-
-Lane: POS Vitest/typecheck.
-
-**Reviewer gate:** fiscal-pos + frontend conventions confirm there is one cross-boundary repository type.
-
-**Rollback:** ignore v69 columns in the old decoder; SQLite additive columns remain.
-
-### T7 — atomic close manifest
-
-**HEAD files to modify**
-
-- `apps/pos/src/lib/offline/zReportService.ts`
-- `apps/pos/src/lib/fiscal/zSessionAuthoring.ts`
-- `apps/api/app/Modules/POS/Application/Projections/ZReportProjection.php`
-- `apps/api/app/Modules/POS/routes.php`
-
-**New files to create**
-
-- Device manifest builder/repository and tests.
-- Server manifest DTO/model/ingestor.
-- `apps/api/tests/Feature/POS/ZCloseManifestIngestTest.php`.
-
-**Required order inside the existing SQLite transaction**
-
-1. Persist local Z/count material and advance relevant local sequence totals.
-2. Call `appendZSessionCloseAndZReport()`.
-3. Receive close and Z event IDs/hashes.
-4. Build canonical device-only manifest including those returned identities.
-5. Insert manifest.
-6. Insert/update local sync outbox for Z and manifest.
-7. Commit once.
-
-Any throw at steps 1–6 rolls back all local writes.
-
-**Red-first**
-
-- POS: `zReportService.manifest.test.ts::rolls_back close z manifest and outbox together`
-- First assertion: `expect(await manifestRepository.count()).toBe(0)`.
-- API: `ZCloseManifestIngestTest::test_duplicate_manifest_returns_already_exists`
-- First assertion: `assertSame('already_exists', $second->outcome->value)`.
-- Commands:
-
-```bash
-pnpm --filter @autoerp/pos test -- src/lib/offline/zReportService.manifest.test.ts
-cd apps/api
-DB_CONNECTION=pgsql DB_DATABASE=autoerp_test_wcash php artisan test --filter=ZCloseManifestIngestTest
-```
-
-Lanes: POS Vitest; PostgreSQL `fiscal-pos`.
-
-**Reviewer gate:** fiscal-pos approves membership, construction order, raw hashes, and server dependency separation.
-
-**Rollback:** old clients continue syncing Z without a manifest; server readers tolerate missing manifests and report `incomplete`. Never forge historical manifests.
-
-### T8 — durable cash-count fan-out
-
-**HEAD files to modify**
-
-- `apps/api/app/Modules/POS/Application/Services/CashCountDispatcher.php`
-- `apps/api/app/Modules/POS/Domain/Events/CashCountRecorded.php`
-- `apps/api/app/Modules/Compliance/Listeners/OpenFraudAlertForShiftVariance.php`
-- Existing POS event/provider registration.
-- `apps/api/config/treasury.php`
-
-**New files to create**
-
-- Delivery consumer interface and three consumers.
-- Delivery job/recovery command/result DTOs.
-- `apps/api/tests/Feature/POS/CashCountDurableDispatchTest.php`.
-
-**Contract**
-
-- Flag false: current `Event::dispatch()` and all three effects remain.
-- Flag true: transactionally create Treasury, Compliance, and `stored_event` obligations; jobs claim independently.
-- Stored-event consumer calls the Spatie stored-event repository once.
-- Partial success leaves only failed consumers retryable.
-- Re-enqueue returns `already_exists` for applied consumers.
-- Enqueue failure cannot lose the obligation.
-
-**Red-first**
-
-- `CashCountDurableDispatchTest::test_flag_true_persists_three_consumer_obligations`
-- First assertion: `assertDatabaseCount('cash_count_delivery_obligations', 3)`.
-- `CashCountDurableDispatchTest::test_stored_event_consumer_persists_pos_cash_count_recorded_once`
-- First assertion: stored-event count equals one.
-- `CashCountDurableDispatchTest::test_flag_false_preserves_current_treasury_compliance_and_storage_effects`
-- First assertion: all three current effects exist.
-- Command:
-
-```bash
-cd apps/api
-DB_CONNECTION=pgsql DB_DATABASE=autoerp_test_wcash php artisan test --filter=CashCountDurableDispatchTest
-```
-
-Lane: PostgreSQL `fiscal-pos` + `treasury-spine-pgsql`.
-
-**Reviewer gate:** POS + Treasury + Compliance approve all three consumers and false-flag parity.
-
-**Rollback:** set `TREASURY_CASH_COUNT_DISPATCH_ENABLED=false`; existing event path resumes. Retain pending obligations for later audited recovery; do not double-dispatch them.
-
-### T9 — policy-neutral W7 reconciliation
-
-**HEAD files to modify**
-
-- `apps/api/app/Modules/POS/Application/Services/ShiftExpectedCashService.php` only for integration, not expected-value arithmetic.
-- `apps/api/app/Modules/POS/Application/Projections/ZReportProjection.php`
-- `apps/api/app/Console/Kernel.php`
-
-**New files to create**
-
-- Reconciliation DTOs/services/readers/job/command under POS.
-- `apps/api/tests/Feature/POS/W7SessionReconciliationTest.php`.
-
-**Prerequisite stop**
-
-Do not begin until T2, T5, T7, T8, spec W2 classification, spec W4 source completeness, and the W-LOT status interface are present. Q10–Q13 may remain OPEN only because dependent result cells are explicitly `owner_ruling_required`; no branch is selected.
-
-**Acceptance matrix**
-
-| Case | Required result |
+| Exact method | First failing assertion |
 |---|---|
-| Tax totals independently derived | `matched` or exact mismatch evidence |
-| Refund inclusion/exclusion | Matches sealed manifest and current fiscal rules |
-| Tender totals | Derived from immutable authored classification only |
-| Account/customer-credit legs | Reported separately from money tenders |
-| Manifest missing/incomplete | `incomplete`, never inferred from time/count alone |
-| Legacy fact without policy/cutover | `owner_ruling_required` |
-| Lot-enabled result while Q10 OPEN | Lot cell `owner_ruling_required` |
-| Repository comparison while Q11/Q12 OPEN | Repository cell `owner_ruling_required` |
-| Historical alignment while Q13 OPEN | Coverage cell `owner_ruling_required` |
-| Second company | No result or run crosses company scope |
-| Second location | No repository/configuration is borrowed |
-| Rerun identical input | `already_exists`, same current run |
-| Corrected input | New immutable run plus supersession |
-| Variance GL flag | Remains false; no adjustment produced |
+| `test_taxed_sale_and_partial_refund_match_independently_derived_totals` | result is `matched` with independently calculated net/tax/refund strings |
+| `test_multiple_tax_rates_are_reconciled_per_rate` | rate cells equal independently expected scale-3 values |
+| `test_rounded_cash_and_card_split_matches` | cash/card totals include rounding exactly once |
+| `test_account_collection_is_included` | account collection cell equals source-derived value |
+| `test_opening_float_and_fiscal_drops_are_explicit_owner_ruling_required_cells` | result is `blocked`, not inferred or posted |
+| `test_sequence_gap_is_incomplete` | result code equals `incomplete` |
+| `test_missing_projection_is_incomplete` | projection cell names the missing member |
+| `test_late_valid_member_supersedes_the_current_run` | one old noncurrent run and one new current run exist |
+| `test_out_of_manifest_receipt_does_not_silently_enter_the_run` | result names the excluded receipt |
+| `test_refund_only_session_preserves_negative_vat` | VAT cell is a negative scale-3 string |
+| `test_duplicate_z_report_is_conflict` | no second current run is published |
+| `test_valid_hashes_with_wrong_economic_totals_are_mismatch` | result equals `mismatch` |
+| `test_lot_dependency_is_explicit_without_deciding_q10` | cell is evidence hash or `owner_ruling_required` |
+| `test_repository_dependency_unavailable_blocks_before_coverage` | result is `blocked` |
+| `test_repository_evidence_after_coverage_does_not_double_count_two_terminals` | each manifest member contributes once |
+| `test_unknown_tender_throws_unknown_tender_classification_exception` | exact exception class is thrown |
+| `test_reclassified_tender_invalidates_and_supersedes_the_run` | dependency version increases and old run becomes noncurrent |
+| `test_concurrent_corrected_inputs_leave_exactly_one_current_run` | SQL count where `is_current=true` equals one |
+| `test_dependency_change_during_snapshot_discards_mixed_version_run` | no run with stale captured version becomes current |
+| `test_same_fingerprint_returns_already_exists` | run count and current ID remain unchanged |
+| `test_second_company_and_second_location_do_not_cross_reconcile` | company B result contains no A identity |
+| `test_chain_verification_remains_complementary_not_replaced` | chain failure remains independently visible |
 
-**Red-first**
+The concurrent tests must use two PostgreSQL connections and barriers, not SQLite.
 
-- `W7SessionReconciliationTest::test_repository_comparison_is_owner_ruling_required_without_encoding_open_policy`
-- First assertion: `assertSame('owner_ruling_required', $run->repositoryResult->status)`.
-- `W7SessionReconciliationTest::test_identical_rerun_returns_already_exists`
-- First assertion: `assertSame('already_exists', $second->outcome->value)`.
-- `W7SessionReconciliationTest::test_changed_input_appends_run_and_supersession`
-- First assertion: `assertDatabaseCount('pos_session_reconciliation_runs', 2)`.
-- Command:
+**Reviewer gate:** POS/Fiscal + Treasury + Accounting + W-LOT dependency owner + PostgreSQL concurrency.  
+**Rollback:** false flag stops new runs; retain immutable run/supersession history and dependency changes.
 
-```bash
-cd apps/api
-DB_CONNECTION=pgsql DB_DATABASE=autoerp_test_wcash php artisan test --filter=W7SessionReconciliationTest
+### PL-110 — T10: operator read surfaces
+
+**Production files**
+
+- MODIFY:
+  - `apps/api/app/Modules/POS/routes.php`
+  - `apps/web/src/features/treasury/RepositoryDetailPage.tsx`
+  - `apps/web/src/features/treasury/RepositoryListPage.tsx`
+  - `apps/web/src/features/treasury/components/TransferCashModal.tsx`
+- CREATE:
+  - `apps/api/app/Modules/POS/Presentation/Controllers/SessionCashReconciliationController.php`
+  - `apps/api/app/Modules/POS/Presentation/Resources/SessionCashReconciliationResource.php`
+  - `apps/web/src/features/treasury/api/sessionCashReconciliationApi.ts`
+  - `apps/web/src/features/treasury/components/SessionCashReconciliationPanel.tsx`
+  - `apps/web/src/features/treasury/components/CashDeliveryObligationsPanel.tsx`
+
+**Signatures**
+
+```php
+public function show(Request $request, string $shift): JsonResponse;
+public function retry(Request $request, string $shift): JsonResponse;
 ```
 
-Lane: PostgreSQL `fiscal-pos` + `treasury-spine-pgsql`.
+Retry only enqueues existing durable work; it does not reinterpret policy.
 
-**Reviewer gate:** fiscal-pos + treasury + W-LOT reviewer accept every matrix row. No repository comparison or variance posting is accepted while its ruling is OPEN.
+**Red first**
 
-**Rollback:** stop the reconciliation job/command and retain immutable obligations, runs, and supersessions. Existing Z projection remains authoritative.
+- `apps/api/tests/Feature/POS/SessionCashReconciliationControllerTest.php`
+- `::test_company_and_location_scoped_authorized_read`
+- First failing assertion: company-B user receives 404 for A shift.
+- `::test_retry_returns_explicit_already_exists_for_same_current_fingerprint`
+- First failing assertion: response outcome is `already_exists`.
+- Command/lane: `cd apps/api && DB_CONNECTION=pgsql ./vendor/bin/phpunit tests/Feature/POS/SessionCashReconciliationControllerTest.php` — **phpunit PG**.
 
-### T10 — operator surfaces and generated web DTOs
+- `apps/web/src/features/treasury/components/__tests__/SessionCashReconciliationPanel.test.tsx`
+- `SessionCashReconciliationPanelTest::renders_current_run_history_and_owner_ruling_required_without_action`
+- First failing assertion: Q-dependent cell has no activation or classification control.
+- Command/lane: `pnpm --filter @autoerp/web exec vitest run src/features/treasury/components/__tests__/SessionCashReconciliationPanel.test.tsx` — **vitest**.
 
-**HEAD files to modify**
+**Reviewer gate:** API authz + Treasury UI + design/a11y.  
+**Rollback:** disable `VITE_W_CASH_READ_UI_ENABLED`; API/history remain read-only.
 
-- All web repository consumers listed in §5.3.
-- Existing Treasury repository list/detail/transfer UI and shift/Z detail surfaces.
-- Existing i18n namespaces used by those surfaces.
+### PL-111 — T12: rollout validation, candidate fingerprint, and promotion evidence
 
-**New tests**
+**Production files**
 
-- `apps/web/src/features/treasury/pages/RepositoryDetailPage.wCash.test.tsx`
-- `apps/web/src/features/pos/components/WCashCoverageStatus.test.tsx`
-- `apps/web/e2e/w-cash-coverage.spec.ts`
+- MODIFY:
+  - `docker-compose.staging.yml`
+  - `apps/api/docker/entrypoint.sh`
+  - `apps/api/docker/entrypoint-worker.sh`
+  - `apps/api/docker/entrypoint-scheduler.sh`
+  - `apps/api/docker/entrypoint-websocket.sh`
+  - `apps/api/app/Modules/Tenant/Application/Commands/BackupTenantCommand.php`
+  - `apps/api/routes/api.php`
+  - `apps/web/vite.config.ts`
+- CREATE:
+  - `apps/api/docker/verify-w-cash-flags.sh`
+  - `apps/api/app/Shared/Presentation/Http/Controllers/FeatureFingerprintController.php`
+  - `apps/api/app/Shared/Application/Data/FeatureFingerprintData.php`
+  - `apps/web/src/lib/buildFingerprint.ts`
+  - `apps/web/e2e/w-cash-staging-smoke.spec.ts`
 
-**Contract**
+**Signatures**
 
-Surfaces show:
-
-- Disabled topology revision ID and evidence status.
-- Transfer document/group, source evidence, shift/session attribution, two legs, JE link, reversal lineage.
-- Frozen/checkpoint alert.
-- Manifest status.
-- Reconciliation status with explicit `Owner ruling required`.
-- No UI to activate configuration, classify cash operations, manage shared drawers, align balances, or release recalls.
-- Bundle feature fingerprint string: `w-cash-r3-owner-ruling-required`.
-
-**Red-first**
-
-- `RepositoryDetailPage.wCash.test.tsx::renders transfer document and reversal lineage`
-- First assertion: `expect(screen.getByText(/transfer document/i)).toBeInTheDocument()`.
-- `WCashCoverageStatus.test.tsx::renders owner ruling required without an enable action`
-- First assertion: `expect(screen.queryByRole('button', { name: /enable/i })).not.toBeInTheDocument()`.
-- Playwright: `w-cash-coverage.spec.ts::manager sees blocked coverage and immutable evidence`
-- First assertion: blocked status is visible after navigation.
-- Commands:
-
-```bash
-pnpm --filter @autoerp/web test -- src/features/treasury/pages/RepositoryDetailPage.wCash.test.tsx src/features/pos/components/WCashCoverageStatus.test.tsx
-pnpm --filter @autoerp/web typecheck
-pnpm --filter @autoerp/web lint
-pnpm --filter @autoerp/web test:e2e -- e2e/w-cash-coverage.spec.ts
+```php
+public function __invoke(): JsonResponse;
+public function handle(TenantBackupService $service): int;
 ```
 
-Lanes: web Vitest/typecheck/lint and Playwright.
+Fingerprint response contains `build_sha`, migration set hash, feature-flag values, W-CASH schema version, generated-type hash, and web contract version. Vite emits `build-meta.json` containing the same candidate SHA and web asset manifest hash.
 
-**Reviewer gate:** frontend conventions + treasury + design/product approve explicit blocked language and absence of premature controls. Run the repository’s React diagnostic workflow before acceptance.
+**Red first**
 
-**Rollback:** deploy the prior web SHA. API readers remain backward compatible and flags remain false.
+- `apps/api/tests/Feature/Shared/FeatureFingerprintControllerTest.php`
+- `::test_fingerprint_is_candidate_specific_and_contains_literal_flags`
+- First failing assertion: `build_sha` equals injected candidate SHA.
+- `apps/api/tests/Feature/Tenant/BackupTenantCommandJsonTest.php`
+- `::test_all_json_returns_a_completed_backup_id_for_every_active_tenant`
+- First failing assertion: returned backup-ID count equals active tenant count.
+- Command/lane: `cd apps/api && DB_CONNECTION=pgsql ./vendor/bin/phpunit tests/Feature/Shared/FeatureFingerprintControllerTest.php tests/Feature/Tenant/BackupTenantCommandJsonTest.php` — **phpunit PG**.
 
-### T11 — owner supplement, withheld
+- Container test: `apps/api/tests/Container/WCashEntrypointFlagsTest.sh`
+- First case: invalid value causes API, worker, scheduler, and websocket `--check-only` to exit nonzero before `config:cache`.
+- Command/lane: `sh apps/api/tests/Container/WCashEntrypointFlagsTest.sh` — **container shell**.
 
-T11 is not dispatchable work. After explicit rulings, a separate reviewed supplement must define only the selected branches:
+- Playwright file above; first test asserts served `build-meta.json.build_sha`, API `build_sha`, and candidate SHA are equal.
+- Command/lane: `BASE_URL="$WEB_URL" API_BASE_URL="$API_URL" EXPECTED_BUILD_SHA="$CANDIDATE_SHA" pnpm --filter @autoerp/web exec playwright test e2e/w-cash-staging-smoke.spec.ts` — **Playwright**.
 
-- Q10 recall/release.
-- Q11 drawer custody session, membership, join/refusal, count owner, predecessor/intervening-transfer treatment, and opening transfer.
-- Q12 operation classification and destination accounting.
-- Q13 alignment and variance activation.
+**Reviewer gate:** platform/Dokploy + tenancy backup/migration + API + web release.  
+**Rollback:** redeploy prior recorded deployment IDs and restore prior flags; backup evidence is retained.
 
-That supplement must add its own benchmark delta, schema, state machine, tests, migration rollout, and rollback. It must not be inferred from the recommendations in §3.
+### PL-112 — T11: owner supplement
 
-### T12 — campaign and promotion evidence
+T11 is **WITHHELD and non-dispatchable**. After explicit Q10–Q13 rulings, create a separate benchmarked and gated supplement defining only the chosen behavior, schemas, migrations, states, tasks, migration/backfill policy, tests, activation, and rollback. Nothing in this plan may be treated as that supplement.
 
-**HEAD files to modify only if contract changes are required**
+## 10. Environment and entrypoint contract
 
-- `scripts/campaign-onboarding.sh`
-- `apps/api/app/Modules/Tenant/Application/Commands/DayOneCensusCommand.php`
-- `docs/factory/WORKFLOW.md`
-- `.env.example`
-- `docker-compose.staging.yml`
-- `apps/api/docker/entrypoint.sh`
+**PL-120 — Flags and process ownership.**
 
-**New tests**
+Add to `docker-compose.staging.yml`’s shared `x-api-env` block, inherited by API, worker, scheduler, and websocket at `docker-compose.staging.yml:17-57`, `:178-186`, `:206-214`, `:227-235`, `:242-250`:
 
-- `apps/api/tests/Feature/Tenant/WCashDayOneCensusTest.php`
-- `apps/web/e2e/w-cash-campaign.spec.ts`
-
-**Red-first**
-
-- `WCashDayOneCensusTest::test_two_companies_two_locations_two_terminals_are_reported_independently`
-- First assertion: JSON has four distinct company/location pairs and no borrowed repository.
-- `w-cash-campaign.spec.ts::fresh_bundle_exposes_w_cash_feature_fingerprint`
-- First assertion: served bundle contains `w-cash-r3-owner-ruling-required`.
-- Commands:
-
-```bash
-cd apps/api
-DB_CONNECTION=pgsql DB_DATABASE=autoerp_test_wcash php artisan test --filter=WCashDayOneCensusTest
-pnpm --filter @autoerp/web test:e2e -- e2e/w-cash-campaign.spec.ts
+```yaml
+DB_DIRECT_HOST: "${DB_DIRECT_HOST:-postgres}"
+APP_BUILD_SHA: "${APP_BUILD_SHA:?APP_BUILD_SHA is required}"
+W_CASH_EVENT_POLICY_ENABLED: "${W_CASH_EVENT_POLICY_ENABLED:-false}"
+W_CASH_TRANSFER_DOCUMENTS_ENABLED: "${W_CASH_TRANSFER_DOCUMENTS_ENABLED:-false}"
+W_CASH_BOOKING_BRIDGE_ENABLED: "${W_CASH_BOOKING_BRIDGE_ENABLED:-false}"
+W_CASH_Z_MANIFEST_ENABLED: "${W_CASH_Z_MANIFEST_ENABLED:-false}"
+W_CASH_COUNT_OBLIGATIONS_ENABLED: "${W_CASH_COUNT_OBLIGATIONS_ENABLED:-false}"
+W_CASH_RECONCILIATION_ENABLED: "${W_CASH_RECONCILIATION_ENABLED:-false}"
 ```
 
-Lane: PostgreSQL tenant campaign + Playwright.
+`verify-w-cash-flags.sh` accepts only literal `true` or `false`, requires `APP_BUILD_SHA` to be a 40-character lowercase SHA, and exits nonzero otherwise. It is sourced before `config:cache` by:
 
-Manual device evidence is a promotion check, not a red-first unit test:
+- API `apps/api/docker/entrypoint.sh`, whose current direct-host conversion is at `:103-117`.
+- Worker before `apps/api/docker/entrypoint-worker.sh:48-53`.
+- Scheduler before `apps/api/docker/entrypoint-scheduler.sh:38-43`.
+- Websocket before `apps/api/docker/entrypoint-websocket.sh:37-42`.
 
-- Build the actual Tauri artifact.
-- Use real SQLite.
-- Open/close offline, crash before close commit, restart, reconnect, sync.
-- Verify one close, one Z, one manifest, no partial outbox, and blocked/no-money W-CASH obligations.
-- Verify printer output remains unchanged.
-- Record artifact hash and SQLite evidence.
+API startup must stop swallowing central or tenant migration failure: the branches at `apps/api/docker/entrypoint.sh:131-154` must exit nonzero.
 
-**Reviewer gate:** release + treasury + fiscal-pos sign the campaign, census, backup/restore, and physical-device report.
-
-**Rollback:** flags false, previous web/API SHA redeployed, disabled configuration revision appended if necessary, immutable evidence retained.
-
----
-
-## 11. Environment and entrypoint contract
-
-Rollout variables:
+Web build environment:
 
 ```text
-TREASURY_W_CASH_BOOKING_ENABLED=false
-TREASURY_CASH_COUNT_DISPATCH_ENABLED=false
-TREASURY_SHIFT_VARIANCE_GL_ENABLED=false
+VITE_W_CASH_READ_UI_ENABLED=false
+VITE_APP_BUILD_SHA=<exact candidate SHA>
 ```
 
-Required changes:
+No Q10–Q13 branch flag exists.
 
-- Add all three to the shared `x-api-env` block in `docker-compose.staging.yml`.
-- Because API, worker, scheduler, and websocket inherit that block, verify each rendered service receives identical values.
-- Add the variables to `.env.example`.
-- Add validation near the start of `apps/api/docker/entrypoint.sh`, before configuration caching:
-  - Missing value defaults to `false`.
-  - Only literal `true` or `false` is accepted.
-  - Invalid value exits non-zero.
-  - Print names and normalized values, never secrets.
-- Change central and rolling migration failures in the entrypoint to exit non-zero. It may not continue serving after a failed tenant migration.
-- Worker/scheduler containers must fail the same validation before starting.
+## 11. Executable five-push staging manifest
 
-Configuration readers use `config('treasury.w_cash_booking_enabled')`, `config('treasury.cash_count_dispatch_enabled')`, and the existing variance key. Runtime code must not call `env()`.
+**PL-121 — Shared preflight.**
 
----
-
-## 12. Five-push staging manifest
-
-No push is authorized by this plan; this is the execution contract once implementation and reviews are accepted. Every promotion is a clean fast-forward to `origin/dev`; never force-push.
-
-### Shared preflight before every push
+Run from repository root before every push:
 
 ```bash
-git fetch origin dev
-git merge-base --is-ancestor origin/dev dev
-git status --short
-pnpm build
+set -euo pipefail
+
+test "$(git branch --show-current)" = "dev"
+test -z "$(git status --porcelain --untracked-files=no)"
+CANDIDATE_SHA="$(git rev-parse HEAD)"
+test "${#CANDIDATE_SHA}" -eq 40
+
+: "${DOKPLOY_URL:?}"
+: "${DOKPLOY_API_KEY:?}"
+: "${DOKPLOY_API_APPLICATION_ID:?}"
+: "${STAGING_SSH:?}"
+: "${WEB_URL:?}"
+: "${API_URL:?}"
+
 pnpm lint
-pnpm test
 pnpm typecheck
+pnpm test
+pnpm build
+(
+  cd apps/api
+  composer test
+  ./vendor/bin/phpstan analyse
+)
+```
+
+Push only the reviewed candidate:
+
+```bash
+git push origin "${CANDIDATE_SHA}:refs/heads/dev"
+REMOTE_SHA="$(git ls-remote origin refs/heads/dev | awk '{print $1}')"
+test "$REMOTE_SHA" = "$CANDIDATE_SHA"
+```
+
+**PL-122 — Fleet backup and captured IDs before schema promotion.**
+
+```bash
+BACKUP_JSON="$(
+  ssh "$STAGING_SSH" \
+    "cd /var/www/html && DB_HOST=\${DB_DIRECT_HOST:-postgres} php artisan tenant:backup --all --format=json"
+)"
+printf '%s\n' "$BACKUP_JSON" | jq -e '.outcome == "applied" or .outcome == "already_exists"'
+ACTIVE_TENANTS="$(printf '%s\n' "$BACKUP_JSON" | jq '.tenants | length')"
+test "$ACTIVE_TENANTS" -gt 0
+printf '%s\n' "$BACKUP_JSON" | jq -e '.tenants[] | select(.backup_id == null or .status != "completed" or .sha256 == null)' \
+  | (! read -r)
+printf '%s\n' "$BACKUP_JSON" | jq -r '.tenants[] | [.tenant_id,.backup_id,.sha256] | @tsv' \
+  > "/tmp/w-cash-backups-${CANDIDATE_SHA}.tsv"
+```
+
+No migration begins until every active tenant has a captured completed backup ID and SHA-256.
+
+**PL-123 — Dokploy deployment and candidate proof used for every push.**
+
+```bash
+DEPLOY_JSON="$(
+  curl --fail-with-body --silent --show-error \
+    -X POST "${DOKPLOY_URL}/api/application.redeploy" \
+    -H "x-api-key: ${DOKPLOY_API_KEY}" \
+    -H "content-type: application/json" \
+    --data "$(jq -nc \
+      --arg applicationId "$DOKPLOY_API_APPLICATION_ID" \
+      '{applicationId:$applicationId}')"
+)"
+DEPLOYMENT_ID="$(printf '%s\n' "$DEPLOY_JSON" | jq -er '.deploymentId')"
+test -n "$DEPLOYMENT_ID"
+```
+
+Poll Dokploy’s deployment status endpoint supported by the installed Dokploy version until that captured deployment ID reports `done/success`; `error/failed/cancelled`, missing ID, timeout, or a status belonging to another deployment aborts. T12’s preflight test must pin the endpoint and JSON path before the first push; operators may not guess them during rollout.
+
+After success:
+
+```bash
+API_FINGERPRINT="$(curl --fail-with-body --silent --show-error "${API_URL}/api/feature-fingerprint")"
+test "$(printf '%s\n' "$API_FINGERPRINT" | jq -r '.build_sha')" = "$CANDIDATE_SHA"
+
+WEB_META="$(curl --fail-with-body --silent --show-error "${WEB_URL}/build-meta.json")"
+test "$(printf '%s\n' "$WEB_META" | jq -r '.build_sha')" = "$CANDIDATE_SHA"
+
+ASSET_PATH="$(printf '%s\n' "$WEB_META" | jq -er '.entry_asset')"
+EXPECTED_ASSET_HASH="$(printf '%s\n' "$WEB_META" | jq -er '.entry_asset_sha256')"
+SERVED_ASSET_HASH="$(
+  curl --fail-with-body --silent --show-error "${WEB_URL}${ASSET_PATH}" | sha256sum | awk '{print $1}'
+)"
+test "$SERVED_ASSET_HASH" = "$EXPECTED_ASSET_HASH"
+
+BASE_URL="$WEB_URL" \
+API_BASE_URL="$API_URL" \
+EXPECTED_BUILD_SHA="$CANDIDATE_SHA" \
+pnpm --filter @autoerp/web exec playwright test e2e/w-cash-staging-smoke.spec.ts
+```
+
+This explicit web deployment/freshness sequence runs after **every** promotion, as required by `docs/factory/WORKFLOW.md:196-231`.
+
+**PL-124 — Migration proof.**
+
+```bash
+set -o pipefail
+MIGRATION_LOG="/tmp/w-cash-migrate-${CANDIDATE_SHA}.log"
+
+ssh "$STAGING_SSH" \
+  "cd /var/www/html && DB_HOST=\${DB_DIRECT_HOST:-postgres} php artisan migrate --force && DB_HOST=\${DB_DIRECT_HOST:-postgres} php artisan tenants:migrate-rolling --force" \
+  | tee "$MIGRATION_LOG"
+
+grep -F "0 failed" "$MIGRATION_LOG"
+TENANT_LINES="$(grep -c '^→ ' "$MIGRATION_LOG")"
+test "$TENANT_LINES" -eq "$ACTIVE_TENANTS"
+
+ssh "$STAGING_SSH" \
+  "cd /var/www/html && DB_HOST=\${DB_DIRECT_HOST:-postgres} php artisan w-cash:audit --format=json --fail-on=error" \
+  > "/tmp/w-cash-audit-${CANDIDATE_SHA}.json"
+
+jq -e '.outcome == "applied" or .outcome == "already_exists"' \
+  "/tmp/w-cash-audit-${CANDIDATE_SHA}.json"
+jq -e --argjson expected "$ACTIVE_TENANTS" '.tenant_count == $expected' \
+  "/tmp/w-cash-audit-${CANDIDATE_SHA}.json"
+```
+
+The rolling command’s HEAD implementation prints each tenant and returns failure if any tenant fails (`apps/api/app/Modules/Tenant/Application/Commands/RollingTenantMigrationCommand.php:73-103`, `:158-174`).
+
+### PL-125 — Push 1: T0 census
+
+Content: T0 only.
+
+```bash
+git commit -m "Phase <phase>: Add W-CASH capability census"
+```
+
+Run PL-121, push, deploy via PL-123, and capture the audit JSON. No schema or flags change.
+
+**Rollback point:** captured pre-Push-1 Dokploy deployment ID; redeploy it if command registration affects startup.
+
+### PL-126 — Push 2: schemas and migrations
+
+Content: T1 only; all flags false.
+
+```bash
+git commit -m "Phase <phase>: Add dormant W-CASH schemas"
+```
+
+Run PL-121, PL-122, push, PL-123, then PL-124. Re-run PL-124 once; the second result must be explicit `already_exists` with identical schema fingerprint.
+
+**Rollback point:** pre-Push-2 deployment ID plus every backup ID from PL-122. Prefer forward compatibility. Restore only a tenant explicitly selected from its captured backup if forward repair is impossible.
+
+### PL-127 — Push 3: dormant implementation and T12
+
+Content: T2–T10 and T12, including backend, device, generated types, UI, entrypoints, backup JSON, and fingerprint surfaces. All flags false.
+
+```bash
 cd apps/api
-composer test
-./vendor/bin/phpstan
+php artisan typescript:transform
+cd ../../
+git diff --exit-code packages/shared/types/generated.ts
+pnpm --filter @autoerp/pos tauri build
+git commit -m "Phase <phase>: Implement dormant W-CASH workflows"
 ```
 
-Record candidate SHA, test logs, reviewer acceptance, current API deployment ID, current Dokploy web deployment ID, served asset hash, and tenant backup IDs.
+Run PL-121, push, PL-123, and PL-124. The asset hash must differ from Push 2 because web code changed. Execute physical-device smoke:
 
-### Push 1 — T0 census only
+1. Online Z close.
+2. Offline close.
+3. Crash immediately before local manifest commit.
+4. Crash immediately after commit and before sync.
+5. Reconnect and verify one synced manifest.
+6. Replay and verify `already_exists`.
+7. Verify flag-false legacy cash-count dispatch.
+8. Verify no Treasury balance or GL entry changes.
+9. Verify two companies, two locations, and two terminals remain isolated.
 
-Content: read-only audit command and tests.
+**Rollback point:** Push-2 deployment ID. False flags permit redeploying it while retaining dormant evidence/schema.
 
-After promotion:
+### PL-128 — Push 4: inactive revisions, cutover evidence, and campaign
 
-```bash
-cd apps/api
-php artisan treasury:w-cash-audit --format=json --fail-on-drift
-```
+Content: no new production code; create only policy-neutral inactive records using already-promoted commands.
 
-Expected: command succeeds against pre-migration schema and reports optional tables absent.
-
-**Rollback point:** prior API SHA. No database change.
-
-### Push 2 — schemas only
-
-Content: T1 migrations and compatibility readers; all flags false.
-
-Before migration, capture backups:
+Capture IDs before use:
 
 ```bash
-php artisan tenant:backup "$WCASH_TENANT_SLUG"
-```
-
-Run central migration, then the supported rolling tenant command:
-
-```bash
-DB_HOST="$DIRECT_DB_HOST" php artisan migrate --force
-DB_HOST="$DIRECT_DB_HOST" php artisan tenants:migrate-rolling --force | tee /tmp/wcash-rolling-migrations.log
-```
-
-Verification is mandatory:
-
-- Exit code is zero.
-- Output contains one terminal success/no-op result for every active tenant.
-- Output contains no `FAILED`, `ERROR`, or incomplete tenant.
-- Final migrated + already-current count equals the active-tenant count from T0.
-- Run:
-
-```bash
-php artisan treasury:w-cash-audit \
-  --format=json \
-  --require-schema=2026_09_06_090500_create_cash_reconciliation_obligations \
-  --fail-on-drift
-```
-
-The staging entrypoint’s log alone is not proof.
-
-**Rollback point:** Push-1 code SHA with additive schema retained. Do not migrate down on staging.
-
-### Push 3 — dormant backend/device/web implementation
-
-Content: T2–T10 code, DTOs, routes, flags, UI, device v68/v69; flags remain false.
-
-Because this push touches web, explicitly deploy Dokploy application `mY6P_PHb4pw-2LdG1Y7Ml`. Record the returned deployment ID and wait for success.
-
-Web freshness:
-
-1. Fetch served HTML and resolve its current JS asset names.
-2. Record SHA-256 for each served entry asset.
-3. Assert at least one entry hash changed from Push 2.
-4. Fetch the served bundle and assert it contains `w-cash-r3-owner-ruling-required`.
-5. Run:
-
-```bash
-pnpm --filter @autoerp/web test:e2e -- e2e/w-cash-coverage.spec.ts
-```
-
-Also verify API/worker/scheduler/websocket see all three flags as false.
-
-**Rollback point:** disable flags, redeploy Push-2 API and web SHAs. Retain schema and evidence rows.
-
-### Push 4 — disabled revisions, bounded cutovers, campaign evidence
-
-Create only disabled configuration revisions. Capture output before using IDs:
-
-```bash
-WCASH_CONFIG_JSON="$(
-  php artisan treasury:w-cash-configure \
-    --tenant="$WCASH_TENANT_SLUG" \
-    --company="$WCASH_COMPANY_ID" \
-    --location="$WCASH_LOCATION_ID" \
-    --drawer="$WCASH_DRAWER_ID" \
-    --safe="$WCASH_SAFE_ID" \
-    --bank="$WCASH_BANK_ID" \
-    --expected-head-revision=0 \
-    --state=disabled \
-    --evidence-file="$WCASH_TOPOLOGY_EVIDENCE_FILE" \
-    --created-by="$WCASH_OPERATOR_ID" \
-    --format=json
+CONFIG_JSON="$(
+  ssh "$STAGING_SSH" \
+    "cd /var/www/html && php artisan treasury:cash-config:create '$COMPANY_ID' '$LOCATION_ID' '$DRAWER_REPOSITORY_ID' '$SAFE_REPOSITORY_ID' --actor='$ACTOR_ID' --format=json"
 )"
-WCASH_CONFIGURATION_REVISION_ID="$(
-  jq -er '.configuration_revision_id' <<<"$WCASH_CONFIG_JSON"
+CONFIGURATION_ID="$(printf '%s\n' "$CONFIG_JSON" | jq -er '.aggregate_id')"
+CONFIGURATION_REVISION_ID="$(printf '%s\n' "$CONFIG_JSON" | jq -er '.revision_id')"
+
+POLICY_JSON="$(
+  ssh "$STAGING_SSH" \
+    "cd /var/www/html && php artisan fiscal:projection-policy:record '$COMPANY_ID' '$PROJECTOR' owner_ruling_required --effective-at='$EFFECTIVE_AT' --actor='$ACTOR_ID' --reason='W-CASH observation only' --format=json"
 )"
-test -n "$WCASH_CONFIGURATION_REVISION_ID"
-```
+POLICY_RECORD_ID="$(printf '%s\n' "$POLICY_JSON" | jq -er '.aggregate_id')"
 
-Create only a blocking bounded cutover:
-
-```bash
-WCASH_CUTOVER_JSON="$(
-  php artisan fiscal:projection-cutover:create \
-    --tenant="$WCASH_TENANT_SLUG" \
-    --company="$WCASH_COMPANY_ID" \
-    --location="$WCASH_LOCATION_ID" \
-    --terminal="$WCASH_TERMINAL_ID" \
-    --projector=shift_cash_booking \
-    --rail=v2 \
-    --lower-bound="$WCASH_LOWER_SOURCE_ID" \
-    --upper-bound="$WCASH_UPPER_SOURCE_ID" \
-    --decision=block \
-    --policy-revision-key="$WCASH_POLICY_REVISION_KEY" \
-    --evidence-file="$WCASH_CUTOVER_EVIDENCE_FILE" \
-    --created-by="$WCASH_OPERATOR_ID" \
-    --format=json
+CUTOVER_JSON="$(
+  ssh "$STAGING_SSH" \
+    "cd /var/www/html && php artisan fiscal:projection-cutover:add '$COMPANY_ID' '$LOCATION_ID' '$TERMINAL_ID' '$PROJECTOR' '$RAIL' --lower-occurred-at='$LOWER_AT' --lower-source-id='$LOWER_ID' --upper-occurred-at='$UPPER_AT' --upper-source-id='$UPPER_ID' --policy-record='$POLICY_RECORD_ID' --decision=owner_ruling_required --actor='$ACTOR_ID' --format=json"
 )"
-WCASH_CUTOVER_ID="$(jq -er '.cutover_id' <<<"$WCASH_CUTOVER_JSON")"
-test -n "$WCASH_CUTOVER_ID"
+CUTOVER_ID="$(printf '%s\n' "$CUTOVER_JSON" | jq -er '.aggregate_id')"
+
+test -n "$CONFIGURATION_ID"
+test -n "$CONFIGURATION_REVISION_ID"
+test -n "$POLICY_RECORD_ID"
+test -n "$CUTOVER_ID"
 ```
 
-Only after capture:
+Repeat each command and assert `outcome == "already_exists"` and identical IDs.
+
+Run the valid campaign command:
 
 ```bash
-php artisan treasury:w-cash-catch-up-v2 \
-  --tenant="$WCASH_TENANT_SLUG" \
-  --company="$WCASH_COMPANY_ID" \
-  --cutover="$WCASH_CUTOVER_ID" \
-  --from-id="$WCASH_LOWER_SOURCE_ID" \
-  --to-id="$WCASH_UPPER_SOURCE_ID" \
-  --limit=500 \
-  --dry-run
+pnpm exec tsx scripts/campaign.ts --web --api --country=TN
 ```
 
-The dry run must report only `blocked` or `training_no_money`; expected financial effects are zero.
+Promote the unchanged candidate explicitly through Dokploy using PL-123, then run PL-124 and Playwright again. Record both-company, both-location, and both-terminal evidence.
 
-Run the campaign with the verified existing options:
+**Rollback point:** Push-3 deployment ID. Inactive records remain immutable; do not delete them.
 
-```bash
-scripts/campaign-onboarding.sh \
-  --web="$WCASH_WEB_URL" \
-  --api="$WCASH_API_URL" \
-  --country=TN
-```
+### PL-129 — Push 5: activation, prohibited pending rulings
 
-Run direct and fleet day-one census and capture JSON.
+Do not construct, commit, push, deploy, or set true flags until PL-014 is satisfied. When authorized by the separate T11 supplement:
 
-If Push 4 changes any `apps/web/**` file, repeat the explicit Dokploy deployment, asset-hash, fingerprint, and Playwright sequence from Push 3 before campaign testing.
+1. Capture new fleet backups and IDs using PL-122.
+2. Capture pre-activation deployment and flag snapshot.
+3. Run the supplement’s migrations with PL-124.
+4. Enable one flag/cohort at a time.
+5. Redeploy explicitly after each change using PL-123.
+6. Verify asset hash, API/web fingerprint, Playwright, obligation backlog, reconciliation current-run uniqueness, two-company/location/terminal isolation, and Treasury/GL cardinality.
+7. Stop and restore prior false flags on any mismatch.
+8. Roll back by redeploying the captured deployment and flags; reverse posted financial documents rather than deleting evidence.
 
-**Rollback point:** append a new disabled configuration revision if needed; never delete revision/cutover/evidence rows. Redeploy Push-3 code.
+## 12. Dispatch order
 
-### Push 5 — activation
+**PL-140**
 
-**CURRENT STATUS: PROHIBITED.**
+1. T0 — capability and writer census.
+2. T1 — exact PostgreSQL schemas, enums, DTO shells, glossary, SQLite v68→v69.
+3. Push 1.
+4. Push 2.
+5. T2 — projection policy and ordered cutovers.
+6. T3 — inactive configuration with preserved failure containment.
+7. T4 — transfer documents and shared lock order.
+8. T5 — policy-neutral v2/v3 evidence.
+9. T6 — backend generated repository DTO and shadow removal.
+10. T7 — atomic close manifest.
+11. T8 — producer-transaction cash-count obligations.
+12. T9 — canonical W7 reconciliation.
+13. T10 — read-only operator surfaces.
+14. T12 — environment, backup IDs, fingerprints, and executable promotion tooling.
+15. Push 3.
+16. Push 4.
+17. Stop. T11 and Push 5 remain prohibited until the owner rulings and prerequisites are complete.
 
-It may occur only after:
+Dependencies:
 
-- Relevant Q10–Q13 rows are explicitly resolved.
-- T11 owner supplement is separately reviewed and implemented.
-- W2, W4, W-LOT, T7, T8, and T9 prerequisites are accepted.
-- Two-company/two-location/two-terminal campaign passes.
-- Physical Tauri/SQLite/offline/crash/reconnect smoke passes.
-- Backup/restore rehearsal passes.
-- Every tenant completed rolling migrations.
-- No blocked/ambiguous W-CASH evidence remains in the activation range.
-- Variance coverage proves comparable intervals under the approved policy.
+- T2–T10 require T1.
+- T3 and T4 may proceed after T1.
+- T5 requires T2 and T3; posting activation also requires T4 and T11.
+- T6 requires the backend DTO created in its own lane and T3’s policy-neutral evidence shape.
+- T7 requires SQLite v68/v69 and server schema.
+- T8 requires its obligation schema and both producer modifications.
+- T9 requires T2, T5, T7, T8, W2, W4, and W-LOT evidence availability.
+- T10 requires T9 and T6.
+- T12 is implemented with T2–T10 and promoted in Push 3.
+- T11 is never inferred from another task.
 
-Activation order after those gates:
+## 13. Final verification checklist
 
-1. Enable booking for one canary tenant/company/location only.
-2. Keep cash-count durable dispatch and variance independently disabled.
-3. Observe obligations, movement cardinality, alerts, queue failures, GL balance, and replay.
-4. Enable durable cash-count dispatch.
-5. Enable reconciliation repository comparison only when coverage is complete.
-6. Enable variance GL last.
-7. Broaden tenant by tenant.
+**PL-150 — Authority and policy**
 
-If an activation release touches web, explicitly deploy Dokploy and repeat asset hash, feature fingerprint, and Playwright before enabling any flag.
+- [ ] Inspected base SHA is recorded as `7e14006182a1d7e281bbdc4660af85a80a2ee9fd`.
+- [ ] Q10–Q13 match owner-ruling rows verbatim and remain OPEN.
+- [ ] No Q10–Q13 branch exists in schema, enum, state, flag, command, task, worker, UI, seed, or fixture.
+- [ ] T11 and Push 5 remain prohibited.
+- [ ] Historical backbooking and automatic variance activation remain prohibited.
 
-**Rollback point:** set all three flags false; append disabled configuration revision; stop catch-up/reconciliation jobs; reverse financial effects through transfer reversals/approved compensation only; preserve all source, policy, document, alert, run, and supersession evidence.
+**PL-151 — Schema**
 
----
+- [ ] Every referenced HEAD table/column exists or is created earlier in the same migration.
+- [ ] Projection code uses `projection_status`; no invented projection `company_id`.
+- [ ] Cash-count delivery references `pos_z_reports`, not `cash_counts`.
+- [ ] Every new money column is `decimal(20,3)`.
+- [ ] Every state/type/code has a PHP enum, model cast, and DB check.
+- [ ] Every FK target/delete action and composite ownership constraint matches PL-071–PL-079.
+- [ ] Every editable business unique includes `company_id`.
+- [ ] PostgreSQL catalog tests inspect columns, nullability, defaults, checks, indexes, predicates, FKs, and delete rules.
+- [ ] SQLite v68 runs before v69 and both rerun safely.
 
-## 13. Dispatch order
+**PL-152 — Convention 09 and 11**
 
-1. T0 — census.
-2. T1 — schemas and POS v68→v69.
-3. T2 — event-time policy/cutover.
-4. T3 — disabled configuration and fail-closed provisioning.
-5. T4 — transfer document and global lock order.
-6. T5 — policy-neutral v2/v3 evidence obligations.
-7. T6 — POS generated repository DTO and disabled evidence cache.
-8. T7 — atomic close manifest.
-9. T8 — durable three-consumer cash-count fan-out.
-10. Confirm external prerequisites W2, W4, and W-LOT interface.
-11. T9 — policy-neutral W7 reconciliation.
-12. T10 — operator surfaces.
-13. T12 — campaign and promotion evidence.
-14. Stop. Do not dispatch T11 or Push 5 without explicit owner rulings.
+- [ ] Real company creation creates company B.
+- [ ] Real `pos_enabled` location creation creates location 2.
+- [ ] Queries never leak company/location A into B.
+- [ ] Every mutator returns `applied`, `already_exists`, `skipped`, `blocked`, or `conflict`.
+- [ ] Reruns assert data meaning, balances, IDs, and explicit outcome.
+- [ ] Glossary contains every Vocabulary noun.
+- [ ] Each concept has one documented writer and operator surface.
+- [ ] Backend `PaymentRepositoryData` is generated into shared types.
+- [ ] Web/POS cross-boundary shadows are removed.
+- [ ] POS SQLite row conversion is validating.
 
-T3 depends on T1. T4 depends on T1. T5 depends on T2–T4. T6 depends on T1/T3. T7 depends on T1. T8 depends on T1. T9 depends on T2, T5, T7, T8, W2, W4, and W-LOT. T10 depends on T3, T4, T7, and T9. T12 depends on all dispatchable tasks.
+**PL-153 — Financial correctness**
 
----
+- [ ] Every repository mutation reaches `TreasuryMovementService`.
+- [ ] Writer census is regenerated and reviewed.
+- [ ] Lock order is tenant numbering → company GL chain → transfer document → sorted repositories.
+- [ ] Opposite transfers and unrelated JEs pass PG concurrency tests.
+- [ ] One transfer document produces exactly two movements and zero-or-one JE.
+- [ ] Reversal is the only posted correction.
+- [ ] `InventoryGlPostingBuffer` has zero W-CASH calls.
 
-## 14. Final verification checklist
+**PL-154 — Manifest and delivery**
 
-### Authority and policy
+- [ ] Close/Z identities and hashes exist before manifest construction.
+- [ ] Z/counts, close/Z events, manifest, outbox, and chain changes share one SQLite transaction.
+- [ ] Manifest member fields, namespace, order, canonicalization, version, and hash match PL-077.
+- [ ] Both server-generation and device-sync transactions insert all three delivery obligations before commit.
+- [ ] After commit only delivery enqueue occurs.
+- [ ] Treasury, Compliance, and stored-event outcomes are typed and independently durable.
+- [ ] Crash/retry tests cover precommit, postcommit/prequeue, claim, consumer, and outcome boundaries.
+- [ ] Redelivery cannot duplicate effects.
 
-- [ ] Implementation base is exactly recorded and drift-reviewed.
-- [ ] Q10–Q13 are reproduced verbatim and remain OPEN.
-- [ ] No schema, task, command, UI control, push, or default encodes a Q10–Q13 branch.
-- [ ] No custody interval/session/membership or alignment table exists.
-- [ ] No typed v2 cash-operation mapping exists.
-- [ ] Push 5 remains prohibited.
+**PL-155 — Reconciliation**
 
-### Convention 09
+- [ ] Canonical head is `pos_session_reconciliations`.
+- [ ] Partial unique index permits one current run per company/reconciliation.
+- [ ] Head, old-current demotion, new run, supersession, and current pointer change atomically.
+- [ ] Dependency writers increment a locked version in their own transactions.
+- [ ] A changed dependency version discards a mixed snapshot.
+- [ ] Input fingerprint is RFC-8785 SHA-256 over immutable ordered dependencies.
+- [ ] Every spec-v4 acceptance method in PL-109 passes on PostgreSQL.
+- [ ] Unknown/reclassified tenders fail closed.
+- [ ] Chain verification remains complementary.
+- [ ] Q-dependent cells report `owner_ruling_required` without selecting a branch.
 
-- [ ] Create has a first-effect test.
-- [ ] Duplicate/replay returns explicit `already_exists` or `skipped`.
-- [ ] Edit-after-use is refused.
-- [ ] Cancel creates a reversal.
-- [ ] Rerun proves unchanged meaning, not only unchanged count.
-- [ ] Second company is isolated.
-- [ ] Second location cannot borrow custody.
-- [ ] Permissions and module gates are tested.
-- [ ] Audit actor/source/evidence/time/reversal lineage is present.
+**PL-156 — Promotion**
 
-### Schema and tenancy
-
-- [ ] All six migrations match §7 column-for-column.
-- [ ] Every FK/delete rule, check, index, and unique exists.
-- [ ] Every tenant business unique includes `company_id`.
-- [ ] Actual `TenantOnlyUniqueIndexScanner.php` passes.
-- [ ] Every JSONB field round-trips through its named DTO.
-- [ ] POS v68 runs before v69.
-- [ ] Optional-table census passes before and after migrations.
-
-### Money and concurrency
-
-- [ ] All repository writes converge on `TreasuryMovementService`.
-- [ ] One document/group produces exactly two legs and zero-or-one JE.
-- [ ] Cross-GL ordering is tenant numbering → company chain → document → sorted repositories.
-- [ ] Opposite transfers do not deadlock.
-- [ ] Concurrent unrelated JE does not deadlock.
-- [ ] Concurrent `InventoryGlPostingBuffer` flush does not invert locks.
-- [ ] W-CASH never uses or flushes the inventory buffer.
-- [ ] Frozen/checkpoint replay produces one durable alert.
-- [ ] Financial cancellation is reversal only.
-
-### Fiscal and replay
-
-- [ ] Recovery uses immutable event-time policy or bounded cutover.
-- [ ] Current configuration cannot reinterpret old events.
-- [ ] Semantic fingerprint includes shift and session.
-- [ ] Raw evidence hashes remain separate.
-- [ ] Cross-shift identity reuse is a conflict.
-- [ ] Training requires literal boolean `true`.
-- [ ] No opening or ambiguous cash operation writes money while Q11/Q12 are OPEN.
-- [ ] `ShiftExpectedCashService` opening arithmetic is unchanged.
-
-### Manifest and counts
-
-- [ ] Close and Z identities exist before manifest construction.
-- [ ] Z, close events, manifest, and outbox commit atomically.
-- [ ] Manifest contains only device-authored membership.
-- [ ] Server dependencies are a separate snapshot.
-- [ ] Cash-count flag false preserves Treasury, Compliance, and stored event.
-- [ ] Flag true creates exactly three durable obligations.
-- [ ] Partial consumer failure remains retryable without duplicate success effects.
-
-### W7
-
-- [ ] All spec-v4 fiscal cases are covered.
-- [ ] Identical rerun returns `already_exists`.
-- [ ] Changed input appends a run and supersession.
-- [ ] Current run is selected by anti-joining superseded runs.
-- [ ] Repository, lot, and alignment cells report `owner_ruling_required` as applicable.
-- [ ] Variance GL remains disabled.
-
-### Types and UI
-
-- [ ] Web uses generated `PaymentRepositoryData`.
-- [ ] POS uses generated `PaymentRepositoryData`.
-- [ ] Only SQLite `PaymentRepositoryRow` remains local.
-- [ ] The row decoder replaces the unchecked cast.
-- [ ] UI has no activation/classification/alignment/shared-drawer/recall-release control.
-- [ ] Feature fingerprint is `w-cash-r3-owner-ruling-required`.
-- [ ] React diagnostics, web lint, typecheck, Vitest, and Playwright pass.
-
-### Staging and rollback
-
-- [ ] All three rollout variables are forwarded to API, worker, scheduler, and websocket.
-- [ ] Entrypoint rejects invalid flags and failed central/tenant migrations.
-- [ ] `tenants:migrate-rolling --force` reports every tenant successful/current.
-- [ ] Configuration revision ID is captured before use.
-- [ ] Cutover ID is captured before use.
-- [ ] Every web-touching push triggers explicit Dokploy application `mY6P_PHb4pw-2LdG1Y7Ml`.
-- [ ] Deployment ID, served asset hashes, feature fingerprint, and Playwright result are recorded.
-- [ ] Two-company/two-location/two-terminal campaign passes.
-- [ ] Direct and fleet day-one census agree.
-- [ ] Physical Tauri/SQLite/offline/crash/reconnect/printer smoke passes.
-- [ ] Backup/restore rehearsal passes.
-- [ ] Every push has its recorded rollback SHA and non-destructive rollback procedure.
-- [ ] No migration down, evidence deletion, history rewrite, force push, or unapproved financial activation occurs.
+- [ ] Shared Compose forwards every API flag and `DB_DIRECT_HOST`.
+- [ ] API, worker, scheduler, and websocket invoke the same validator before config caching.
+- [ ] Central or tenant migration failure exits nonzero.
+- [ ] Fleet backup JSON captures one completed backup ID/SHA per active tenant.
+- [ ] `set -euo pipefail` and `set -o pipefail` protect every pipeline.
+- [ ] `tenants:migrate-rolling --force` prints and succeeds for every active tenant.
+- [ ] Candidate SHA equals `origin/dev`, API fingerprint, and web fingerprint.
+- [ ] Dokploy deployment ID and terminal success status are captured for every push.
+- [ ] Served entry asset SHA-256 equals `build-meta.json`.
+- [ ] Explicit web deployment and Playwright smoke run after every promotion.
+- [ ] Push 3 explicitly contains T12.
+- [ ] Physical Tauri build uses `pnpm --filter @autoerp/pos tauri build`.
+- [ ] Two-company/two-location/two-terminal, offline, crash, reconnect, replay, and no-financial-effect evidence is archived.
+- [ ] Every push has a recorded rollback deployment; schema rollback remains forward-compatible and immutable evidence is never deleted.
