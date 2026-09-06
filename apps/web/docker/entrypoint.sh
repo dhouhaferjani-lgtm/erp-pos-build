@@ -168,6 +168,17 @@ server {
         proxy_set_header X-Forwarded-Host \$host;
     }
 
+    # Build fingerprint - deploy freshness probe (staging push manifest §3).
+    # MUST be no-store: a cached copy would report a stale build as fresh, which is
+    # the exact failure this file exists to catch. Declared BEFORE location / so the
+    # SPA try_files fallback can never turn a missing file into index.html (a 200
+    # HTML body would silently break jq on the caller side); =404 instead.
+    location = /build-fingerprint.json {
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        default_type application/json;
+        try_files \$uri =404;
+    }
+
     # SPA fallback - serve index.html for all routes
     location / {
         try_files \$uri \$uri/ /index.html;

@@ -44,6 +44,14 @@ RUN pnpm install --frozen-lockfile
 # Copy web app source code
 COPY apps/web/ ./apps/web/
 
+# Checked-in route manifest — the ONLY input to build-fingerprint.json's
+# feature_fingerprint (apps/web/tools/write-build-fingerprint.mjs resolves it at
+# ../../scripts/factory/manifests/routes-web.yaml). Load-bearing: without it the image
+# would emit "feature_fingerprint": "unknown" and the staging push manifest §3 shape
+# check would silently pass on a stale bundle. The CI=true re-run after the build makes
+# its absence a hard build failure instead.
+COPY scripts/factory/manifests/ ./scripts/factory/manifests/
+
 # Build the application
 WORKDIR /app/apps/web
 
@@ -52,7 +60,27 @@ ARG VITE_REVERB_APP_KEY
 ARG VITE_API_URL
 ARG VITE_APP_PRODUCT=izipos
 
+# Commit sha stamped into dist/build-fingerprint.json by
+# tools/write-build-fingerprint.mjs (run by `pnpm build`). The builder stage copies
+# apps/web/ only — there is NO .git here — so the sha cannot be read from git and must
+# arrive as a build argument.
+#
+# DOKPLOY: the staging/production web application MUST pass `BUILD_SHA` as a build
+# argument (the deployed commit sha). Without it the served
+# /build-fingerprint.json reports "build_sha": "unknown" and the staging push
+# manifest §3 sha check cannot close — tracked as UNVERIFIED U-9 in
+# docs/superpowers/plans/2026-09-06-parapharmacy-staging-push-manifest.md §6.
+ARG BUILD_SHA
+ENV BUILD_SHA=$BUILD_SHA
+
 RUN pnpm build
+
+# Re-emit the fingerprint with CI=true so a missing route manifest FAILS the image
+# build (exit 1) rather than shipping "feature_fingerprint": "unknown" unnoticed.
+# `pnpm build` already wrote the file; this rewrites the identical payload (modulo
+# build_time) under the strict guard. Scoped to this command only — CI is deliberately
+# NOT set for the vite build itself.
+RUN CI=true node tools/write-build-fingerprint.mjs
 
 # -----------------------------------------------------------------------------
 # Stage 2: Production image with Nginx
