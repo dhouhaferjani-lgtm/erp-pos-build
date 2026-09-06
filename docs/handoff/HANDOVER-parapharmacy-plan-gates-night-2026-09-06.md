@@ -10,7 +10,7 @@ Orchestrator: Claude Fable 5.1. All artifacts committed on local `dev` (docs onl
 | Owner rulings D1–D9, RD2–RD4, Q1–Q9 | **All ruled** | `d1f628b91`, `e3ca1ba67` |
 | Owner questions Q10–Q13 (recall hold lifecycle, shared drawer, typed cash reasons, historical alignment) | **OPEN — benchmarked, awaiting owner** | `c36cc97ca` |
 | W-LOT brief → execution plan | rev 3 stalled (12 open) → split | `3f32ffdd8` |
-| W-LOT-A (server lot core) | rev 5 filed; **gate r2 running at handover** (r1 = 50/56 closed, 5 blockers) | `6bb1519ec` |
+| W-LOT-A (server lot core) | rev 5 filed; gate r2 **regressed** (23 closed / 39 not closed, 6 blockers incl. Q10 encoded again, push 2 not additive-compatible with live writers) → **LOOP STOPPED** | `6bb1519ec`, `98f2747fa` |
 | W-LOT-B (POS display/capture/consumption) | rev 4 filed; gate r1 = 13 closed / 34 open / 9 blockers → **PAUSED** | `b3623823d`, `9a069216b` |
 | W-CASH (float/drops/custody) | rev 5 filed; gate r6 **regressed** (4 closed / 10 not closed / 5 new blockers) → **LOOP STOPPED** | `0e3e63f12`, `1aa394379` |
 
