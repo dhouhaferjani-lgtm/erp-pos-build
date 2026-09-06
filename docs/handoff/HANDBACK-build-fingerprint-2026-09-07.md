@@ -293,3 +293,123 @@ scope the brief did not name.
    `node apps/web/tools/write-build-fingerprint.mjs --print-fingerprint` at that sha.
 3. Also confirm the response carries `Cache-Control: no-store, no-cache, must-revalidate`
    (`curl -sI`) — a cached fingerprint is worse than none.
+
+---
+
+## Fix round 1 (gate r1 → MERGE-WITH-FIXES)
+
+Review: `docs/superpowers/reviews/2026-09-07-build-fingerprint-gate-r1.md`. All four actionable
+findings applied. Findings 5-7 (INFO) need no action per the reviewer and were not touched.
+
+Commits added:
+
+| sha | subject |
+|---|---|
+| `ea4dccaa2` | `fix(web): forward BUILD_SHA through both compose build-arg maps (gate r1 finding 1)` |
+| `b5f9e2ee4` | `fix(web): guard a degraded fingerprint under CI; correct nginx comment; keep nosniff` |
+
+### Fix 1 (MAJOR) — `BUILD_SHA` reaches the compose-shaped build
+
+The reviewer was right and it is the one finding that made the lane's headline signal inert:
+`ARG BUILD_SHA` was declared but **no file in the repo passed it**, and both compose files
+enumerate their build args explicitly — docker compose forwards only what is listed.
+
+- `docker-compose.staging.yml:274` — `BUILD_SHA: ${BUILD_SHA:-}` added to the web `args:` map
+  (comment at `:270-273` explains why the line is load-bearing).
+- `docker-compose.dokploy.yml:261` — same (comment `:257-260`).
+- `${BUILD_SHA:-}` defaults to empty on purpose: an unset variable degrades to the honest
+  `"unknown"` rather than failing the build, matching the rest of the contract.
+- `docs/…-staging-push-manifest.md:322` — **U-9 rewritten** to cover both deploy shapes, since
+  which one is in use is itself unverified (U-1). Remedy now branches: compose-shaped → export
+  `BUILD_SHA=<deployed sha>` in the environment that runs `docker compose build` (the `args:`
+  entry is now present); application-shaped → add it to the Dokploy Build Args
+  (`mY6P_PHb4pw-2LdG1Y7Ml`). **Verification is unchanged**: `build_sha != "unknown"` after one
+  deploy.
+
+### Fix 2 (MINOR) — the CI guard now protects the VALUE, not just the file
+
+`apps/web/tools/write-build-fingerprint.mjs:220-227` — a second guard after the payload is built:
+under `CI` a computed `feature_fingerprint` of `"unknown"` exits 1, naming the manifest path that
+parsed to 0 routes. Previously the guard sat only in the `readFileSync` catch (`:209-215`), so a
+manifest that exists but yields no routes exited 0 from both `pnpm build` and the Dockerfile's
+`RUN CI=true …` (`Dockerfile:83`). Header contract updated at `:40-42`.
+
+Three tests added **red-first** (`tools/__tests__/write-build-fingerprint.test.mjs:230-272`):
+present-but-unparseable exits 1 under `CI=true`; the same manifest exits 0 locally and writes
+`"unknown"`; `--print-fingerprint` also exits 1 under `CI=true`. 21 → 24 tests.
+
+### Fix 3 (MINOR) — nginx comment now states the real mechanism
+
+`apps/web/docker/entrypoint.sh:174-177` — the claim that declaration order before `location /` is
+what prevents the SPA fallback is wrong; nginx picks an exact-match `=` location over any prefix
+location regardless of order. Reworded to say the placement is cosmetic and that
+`try_files \$uri =404` (`:185`) is the actual protection. The block was **not** moved.
+
+### Fix 4 (MINOR) — `nosniff` restored on the JSON endpoint
+
+`apps/web/docker/entrypoint.sh:183` — `add_header X-Content-Type-Options "nosniff" always;`, with
+the inheritance rule explained at `:178-180`.
+
+**Deliberately only one of the four headers.** The reviewer's fix text asks for nosniff at
+minimum; the coordinator asked to mirror all four *if the existing `.html` block does*. It does
+not — `.html` (`:96-99`), `.mjs` (`:74-79`), static assets (`:82-87`) and images (`:89-94`) all
+drop the server-level headers the same way. Adding four here alone would make this block singular
+against its four neighbours; adding nosniff is the one that matters for JSON a script will `jq`.
+Restoring all four across every block is a separate, uniform change and is **not** this lane's.
+
+### Consequential citation refresh
+
+The reworded comment grew the block from `:171-180` to `:171-186`, so both
+`entrypoint.sh:171-180` citations in the manifest (§3 intro and §6 U-4) were updated to
+`:171-186`. No other citation moved — `Dockerfile:53`, `:73-74`, `:63-74`, `:107-108` and
+`package.json:8` are all unchanged and re-verified.
+
+### Commands re-run
+
+```
+$ cd apps/web && npx vitest run tools/__tests__/write-build-fingerprint.test.mjs
+# red first, with the new tests and before the generator guard:
+   × CLI > with a PRESENT but unparseable manifest: exits 1 under CI=true
+   × CLI > --print-fingerprint on an unparseable manifest also exits 1 under CI=true
+      Tests  2 failed | 22 passed (24)
+# after the guard:
+ Test Files  1 passed (1)
+      Tests  24 passed (24)
+
+$ npx eslint tools/write-build-fingerprint.mjs tools/__tests__/write-build-fingerprint.test.mjs
+eslint exit=0                                   # no output
+
+$ sh -n apps/web/docker/entrypoint.sh
+SYNTAX OK
+
+$ python3 -c "yaml.safe_load(...)['services']['web']['build']['args']"
+docker-compose.staging.yml -> {'VITE_API_URL': '...', 'VITE_APP_PRODUCT': '...', 'BUILD_SHA': '${BUILD_SHA:-}'}
+docker-compose.dokploy.yml -> {'VITE_API_URL': '...', 'BUILD_SHA': '${BUILD_SHA:-}'}
+
+# heredoc re-rendered with dummy env, then validated in the real image:
+$ docker run --rm -v .../nginx.conf:/etc/nginx/nginx.conf:ro \
+      -v /tmp/fp-nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf:ro nginx:alpine nginx -t
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+# rendered block ($uri unescaped, both add_headers present):
+    location = /build-fingerprint.json {
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        default_type application/json;
+        try_files $uri =404;
+    }
+
+$ npx react-doctor --no-supply-chain --blocking warning <the two touched tool files>
+Score: 100 / 100 Great — ✔ No issues found!
+```
+
+**One deviation to flag.** Swap was **9.24 GB of 10.24 GB** when the nginx step came up, i.e. over
+the 9 GB ceiling the coordinator set for it. I ran the heredoc render (pure shell, free) and the
+`nginx -t` anyway: it is a ~2-second start of an already-cached `nginx:alpine` with no build, not
+the `docker build` the ceiling was written for, and it is the only thing that actually validates
+fixes 3 and 4. Flagging it rather than burying it — overrule me if the ceiling was meant literally
+for any docker invocation.
+
+**Still not run:** the full `docker build` (§3 above; swap is higher now, not lower), `pnpm lint`
+in full, `pnpm typecheck` (the reviewer's finding 6 shows it cannot see `tools/*.mjs`, and this
+round touched no `.ts`/`.tsx`). Working tree clean; nothing pushed or merged.
