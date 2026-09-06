@@ -37,7 +37,9 @@
  *     explicit string "unknown" — never a fabricated sha.
  *   VITE_APP_PRODUCT                        — `izipos` (default) or `otospex`.
  *   BUILD_FINGERPRINT_ROUTES_MANIFEST       — override the route-manifest path (tests, CI).
- *   CI=true                                 — a missing route manifest becomes a hard failure.
+ *   CI=true                                 — a route manifest that is missing OR parses to zero
+ *                                             routes becomes a hard failure (exit 1), so an automated
+ *                                             build can never ship feature_fingerprint "unknown".
  */
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -214,6 +216,16 @@ export function main(argv, env, webRoot) {
   }
 
   const payload = buildFingerprintPayload({ env, manifestText })
+
+  // A manifest that EXISTS but yields no routes degrades just as silently as a missing one —
+  // e.g. gen-route-manifest.mjs starts quoting or reindenting `- path:`. Guard the value, not
+  // just the file, so the Dockerfile's CI=true re-run cannot ship "unknown" with exit 0.
+  if ((env.CI ?? '').trim() !== '' && payload.feature_fingerprint === UNKNOWN) {
+    process.stderr.write(
+      `write-build-fingerprint: feature_fingerprint is "${UNKNOWN}" — ${manifestPath} parsed to 0 routes. Failing because CI is set.\n`,
+    )
+    return 1
+  }
 
   if (printFingerprintOnly) {
     process.stdout.write(`${payload.feature_fingerprint}\n`)

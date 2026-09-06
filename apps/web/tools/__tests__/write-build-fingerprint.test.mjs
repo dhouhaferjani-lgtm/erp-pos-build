@@ -1,6 +1,6 @@
 // @ts-check
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -234,6 +234,51 @@ describe('CLI', () => {
     })
     expect(status).toBe(0)
     expect(JSON.parse(readFileSync(out, 'utf8')).feature_fingerprint).toBe('unknown')
+  })
+
+  it('with a PRESENT but unparseable manifest: exits 1 under CI=true', () => {
+    // Gate r1 finding 2: the CI guard originally lived only in the readFileSync catch, so a
+    // manifest that exists but yields zero routes (e.g. gen-route-manifest.mjs starts quoting
+    // or reindenting paths) shipped feature_fingerprint "unknown" with exit 0.
+    const dir = makeTempDir()
+    const badManifest = join(dir, 'routes-web.yaml')
+    writeFileSync(badManifest, 'app: web\nroutes:\n  - "path": "/pos"\n', 'utf8')
+    const out = join(dir, 'build-fingerprint.json')
+
+    const { status, stderr } = run(
+      ['--out', out],
+      { CI: 'true', BUILD_SHA: 'deadbeef', BUILD_FINGERPRINT_ROUTES_MANIFEST: badManifest },
+      true,
+    )
+    expect(status).toBe(1)
+    expect(stderr).toContain('0 routes')
+  })
+
+  it('with a PRESENT but unparseable manifest: exits 0 locally (no CI)', () => {
+    const dir = makeTempDir()
+    const badManifest = join(dir, 'routes-web.yaml')
+    writeFileSync(badManifest, 'app: web\nroutes:\n  - "path": "/pos"\n', 'utf8')
+    const out = join(dir, 'build-fingerprint.json')
+
+    const { status } = run(['--out', out], {
+      BUILD_SHA: 'deadbeef',
+      BUILD_FINGERPRINT_ROUTES_MANIFEST: badManifest,
+    })
+    expect(status).toBe(0)
+    expect(JSON.parse(readFileSync(out, 'utf8')).feature_fingerprint).toBe('unknown')
+  })
+
+  it('--print-fingerprint on an unparseable manifest also exits 1 under CI=true', () => {
+    const dir = makeTempDir()
+    const badManifest = join(dir, 'routes-web.yaml')
+    writeFileSync(badManifest, 'routes: []\n', 'utf8')
+
+    const { status } = run(
+      ['--print-fingerprint'],
+      { CI: 'true', BUILD_FINGERPRINT_ROUTES_MANIFEST: badManifest },
+      true,
+    )
+    expect(status).toBe(1)
   })
 
   it('with a missing manifest: exits 1 under CI=true', () => {
