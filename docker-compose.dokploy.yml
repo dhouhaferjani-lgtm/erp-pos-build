@@ -254,6 +254,11 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         VITE_API_URL: https://api.riserpos.app
+        # Stamped into /build-fingerprint.json by apps/web/tools/write-build-fingerprint.mjs.
+        # docker compose forwards ONLY the args listed here, and the builder stage has no .git,
+        # so without this line build_sha reads "unknown" whatever the Dokploy UI is set to.
+        # Export BUILD_SHA in the deploy environment (the deployed commit sha) — manifest §6 U-9.
+        BUILD_SHA: ${BUILD_SHA:-}
     restart: unless-stopped
     environment:
       API_URL: https://api.riserpos.app
