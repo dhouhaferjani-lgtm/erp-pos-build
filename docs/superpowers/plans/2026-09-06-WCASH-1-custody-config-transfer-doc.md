@@ -1,7 +1,14 @@
-<!-- W-CASH-1 rev 5, Codex CLI fix round 4 (gpt-5.6-sol, read-only) on 2026-09-06, saved verbatim by the orchestrator (owner away). Rev 4 = 59e8c6c82. Status: awaiting gate r5. -->
-# Slice plan W-CASH-1 — per-location cash custody configuration and repository transfer document (rev 5)
+<!-- W-CASH-1 rev 7 (rev 5 by Codex CLI fix round 4; rev 6/7 orchestrator-applied gate r5/r6 corrections) (gpt-5.6-sol, read-only) on 2026-09-06, saved verbatim by the orchestrator (owner away). Rev 4 = 59e8c6c82. Status: awaiting gate r5. -->
+# Slice plan W-CASH-1 — per-location cash custody configuration and repository transfer document (rev 7)
 
 Evidence baseline: reviewed local `dev` HEAD `93e9ab12aaa27eca4dba19dd5c45bc4782d59201`, resolved with `git rev-parse HEAD` on 2026-09-06. Historical production-source baseline was `f13b923a5c150ceee8acb8165e98197207c88eff`; r2 reviewed `5fe262c84527d90a6124e467978b282806630d50`. Existing-code anchors below were re-read at the current reviewed HEAD; NEW files/contracts are proposals, not shipped behavior. This round edits only this plan. No code, tests, migrations or Git state were changed.
+
+## Round-6 change log (orchestrator-applied, gate r6 B1 + m1)
+
+| Item | Change |
+|---|---|
+| B1 | **Operational precision ceiling (temporary).** Until the movement ledger (`repository_movements.amount`, `balance_after`) is widened in a follow-up lane, `RepositoryTransferService` (and every typed caller of the transfer/document contract, including system-intent callers) REFUSES an amount with more than three fractional digits even when the company's country preset is four: validation error `TRANSFER_PRECISION_EXCEEDS_LEDGER_SCALE` (422 over HTTP; typed exception for service callers), evaluated BEFORE any document/movement/JE write. Red-first test (PG lane) `RepositoryTransferDocumentTest::test_scale_four_company_transfer_of_10005_is_refused_with_unchanged_snapshots(): void` — first failing assertion: `assertSame('TRANSFER_PRECISION_EXCEEDS_LEDGER_SCALE', $response->json('error.code'))`; then asserts zero new rows in `repository_transfer_documents`, `repository_movements`, `journal_entries` and unchanged `payment_repositories.balance` for both repositories. The ceiling constant lives in one place (`RepositoryTransferPrecisionPolicy::OPERATIONAL_SCALE_CEILING = 3`) and its removal is gated on the movement-ledger widening ticket (opened by the P0 census) plus its own PG round-trip test; the precision-contract doc notes the ceiling. |
+| m1 | Revision metadata corrected to rev 7 (rev 5 was the CLI output; rev 6 applied gate r5 B1; rev 7 applies gate r6). |
 
 ## Round-5 change log (orchestrator-applied, gate r5 B1)
 
