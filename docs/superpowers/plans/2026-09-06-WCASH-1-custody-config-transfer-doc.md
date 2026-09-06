@@ -1,7 +1,16 @@
-<!-- W-CASH-1 rev 10 (rev 5 by Codex CLI fix round 4; rev 6/7/8/9/10 orchestrator-applied gate r5/r6/r7/r8/r9 corrections) (gpt-5.6-sol, read-only) on 2026-09-06, saved verbatim by the orchestrator (owner away). Rev 4 = 59e8c6c82. Status: awaiting gate r10. -->
-# Slice plan W-CASH-1 — per-location cash custody configuration and repository transfer document (rev 10)
+<!-- W-CASH-1 rev 10 (rev 5 by Codex CLI fix round 4; rev 6/7/8/9/10/11 orchestrator-applied gate r5/r6/r7/r8/r9 corrections) (gpt-5.6-sol, read-only) on 2026-09-06, saved verbatim by the orchestrator (owner away). Rev 4 = 59e8c6c82. Status: awaiting gate r11. -->
+# Slice plan W-CASH-1 — per-location cash custody configuration and repository transfer document (rev 11)
 
 Evidence baseline: reviewed local `dev` HEAD `b8b2b8ed03cd1ef776ef3816fb8f2274939efbfd`, resolved with `git rev-parse HEAD` on 2026-09-06. Historical production-source baseline was `f13b923a5c150ceee8acb8165e98197207c88eff`; r2 reviewed `5fe262c84527d90a6124e467978b282806630d50`. Existing-code anchors below were re-read at the current reviewed HEAD; NEW files/contracts are proposals, not shipped behavior. This round edits only this plan. No code, tests, migrations or Git state were changed.
+
+## Round-10 change log (orchestrator-applied amendment A)
+
+| Item | Change |
+|---|---|
+| A.1 | Premise corrected: live scale is 3 (March 2026 migrations), widening is (15,3)→(15,4); accepted pre-widen tuples restated. |
+| A.2 | Owner ruling 2026-09-07: casts stay `decimal:3` provisionally; cast change + ceiling removal deferred to the 4-decimal benchmark and ruling. |
+| A.3 | P0 reuses the parallel session's brief (allowlist, deploy variables, lock profile, two tests) instead of re-deriving. |
+| A.4 | Dispatch order: P0-a/T1/T2 now; P0-b after the ruling; T3+ after P0-b. |
 
 ## Round-9 change log (orchestrator-applied, gate r9 B1 + m1)
 
@@ -157,6 +166,12 @@ Existing signatures, retained unless explicitly replaced below:
 All new PHP production types use strict types and constructor injection; DTOs extend Spatie Data and are exported by the existing TypeScript transform. All money is numeric-string, normalized with the explicit repository currency; reject nonpositive, excess precision, overflow, incompatible currencies, inactive/virtual repositories and self-transfer at the service boundary as well as HTTP.
 
 ## P0 prerequisite — P0 precision widening
+
+**Amendment A (rev 11, orchestrator, owner ruling 2026-09-07 relayed by the parallel session erp-4f):**
+1. **Premise:** the four target columns are already `decimal(15,3)` live (March 2026 widening `2026_03_11_200000_widen_monetary_columns_to_scale_3.php:27-30,113-116`; live tuples in `docs/superpowers/plans/2026-09-07-precision-widening-gl-repository-scale-4.md` §0). P0-b widens `(15,3) → (15,4)` only; the pre-widen accepted tuples are `(15,3,NO,0)` / `(15,3,YES,NULL)` (legacy) or `(15,4,…)` (already compliant); anything else aborts.
+2. **Casts:** Eloquent casts for `PaymentRepository` balance fields and `JournalLine` debit/credit **stay `decimal:3` provisionally**. Any statement in P0-b that changes casts to `decimal:4` is superseded by this amendment. The cast change (and the operational-ceiling removal in T3) is DEFERRED until the benchmark note `docs/superpowers/reviews/2026-09-07-benchmark-money-precision-4-decimals-casts.md` lands and the owner rules; P0-b's docblock records this.
+3. **Reuse, do not re-derive:** the P0-a census reuses the parallel brief's classification allowlist (49 scale-2 / 143 scale-3 numeric columns: Percent/Quantity/Money/Other) and its deploy variables; P0-b reuses its lock profile note (`ALTER TYPE` rewrites under `ACCESS EXCLUSIVE`; money writes stopped for the window) and its two tests (`test_repository_balance_round_trips_1_0005_raw_via_port_guc`, `test_legacy_scale_3_shape_is_widened_and_reported`).
+4. **Dispatch effect:** P0-a, T1 and T2 may start now; **P0-b is dispatchable only after the benchmark + owner cast ruling** (it is still required before T3/T4 because the new document amount column is created at scale 4 and must match the ledger columns).
 
 **Hard prerequisite for T3/T4 and money acceptance.** This is a separately accepted program-level engineering task, outside the six WCASH tasks. It is implemented and deployed as two ordered packages, P0-a then P0-b. P0-a acceptance evidence must exist before P0-b is promoted, and P0-b acceptance SHA + PG evidence must be recorded before T1–T6 start or money work is declared green.
 
