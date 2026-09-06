@@ -25,6 +25,10 @@ Hold (owned elsewhere): G-5 opening-correction fence, Session L PO-flow P0s (che
 
 Report format per item: what changed, gate verdicts with file paths, merge commit, what is owed. Update memory: one project file for this session, one index line.
 
+
+
+> **SUPERSEDED 2026-09-06 21:30 (orchestrator):** queue item 1 (precision widening lane) is now executed INSIDE slice W-CASH-1 as its P0-a/P0-b prerequisite (plan rev 10, DISPATCH-READY at gate r10; dispatch brief `docs/handoff/DISPATCH-W-CASH-1-implementation-2026-09-06.md`). The parallel session must NOT run its own widening; skip item 1 and start at item 2. If item 1 was already started, stop it, park the branch with a HANDBACK note, and report.
+
 ## Autonomous mode (owner away ~3–4 h from 2026-09-06 evening; same rules apply to any longer absence)
 
 Paste THIS block instead of the one above when starting the session unattended.
