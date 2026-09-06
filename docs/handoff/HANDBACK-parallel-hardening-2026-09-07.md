@@ -46,3 +46,19 @@ Session started from the main checkout on local `dev` (`db8fb1471` at start). Ru
 **Items 7/10/11:** doc lanes queued (Phase 2 brief: remove backfill arm per A6; impersonation runbook from `config/support_access.php` + SupportAccess routes; P0 roll-up `docs/handoff/PLAN-p0-fix-lanes-pre-production-2026-08-05.md` L1–L5 vs merged lanes).
 **Commits this block (local dev, unpushed):** `c65af2735`, `965931a32`, `d636d8328`, `16ac29aad`, `0c7bd49fb`, `d90fa8878`.
 **Restart:** not safe while the two agents run; will be announced.
+
+## Status block 4 — second swap stop condition; lanes committed, gates owed (2026-09-07 evening)
+
+**Stop condition:** swap 9.2–9.5 GB with none of this session's agents running (the orchestrator session runs two Codex read-only gates); the harness killed this session's swap-wait poll for low memory a second time → no launches, holding. **Safe to restart the laptop from this session's side** (everything committed, no agents); a restart kills the orchestrator's two Codex gates, which it must relaunch.
+
+**Merged to local dev this session:** build-fingerprint `45d39347f` (gate r1 MERGE-WITH-FIXES → fix round → r2 MERGE; `docs/superpowers/reviews/2026-09-07-build-fingerprint-gate-r1.md`). Owed after reboot: one real `docker build -f apps/web/Dockerfile --build-arg BUILD_SHA=$(git rev-parse HEAD) .` (skipped for swap); U-9 = Dokploy/compose must pass `BUILD_SHA`.
+
+**Committed on branches, gates owed (resume here):**
+1. **PR #210** — `gate/pr-210` tip `4d7dccbd3` (fix rounds 1+2). Gate r1 CHANGES (2026-09-05), r2 MERGE-WITH-FIXES (`docs/superpowers/reviews/2026-09-07-dhouha-pr-210-gate-r2.md`, committed `c708ebc42`). **Owed: targeted re-gate r3** by `tenancy-authz-reviewer` on the r2 findings (FE real permissions on the three supplier-invoice routes + sidebar, `Both`-arm test, replay re-authorization at `PaymentController.php:389,1512`, `Str::isUuid` guard in `DocumentAttachmentController::resolveDocument`), then merge into local dev from the main checkout. Handback: `.worktrees/pr-210/docs/superpowers/reviews/2026-09-07-dhouha-pr-210-fix-round-1-handback.md` (has the Fix round 2 section). Deploy row added to `PROMOTION-CHECKLIST-2026-08-26.md` §3 (roles seeder + `permission:cache-reset`; new permissions `supplier-invoices.manage`, `payments.pay-supplier`; `purchase-orders.confirm` reused for PO revert). Owner-visible defaults: operator AND accountant denied PO revert by default (grantable).
+2. **sales-extra (item 6)** — `lane/sales-extra` tip `51940810f`, 5 commits, conflict-free vs dev. **Owed: `tenancy-authz-reviewer` + `frontend-conventions-reviewer` gates**, then merge. Handback `.worktrees/sales-extra/docs/handoff/HANDBACK-sales-extra-2026-09-07.md` (route census 87 Document routes 44 gated / 43 left; 77 Treasury routes left with reasons; residuals: `documents.pdf.*`/`email.*`/`smart-payment.*` ungated, low exposure). Owner row **A11** (no facture draft on POS account charge when Sales OFF) awaits a ruling.
+
+**Briefs ready to dispatch (not started):** q9-overpay `docs/superpowers/plans/2026-09-07-q9-over-payment-advance-gate.md`; K-1 (brief in gitignored `docs/sessions/session-K-otospex-money-2026-08-30/LANE-K1-…-BRIEF.md`, copy into the worktree); doc lanes 7 (Session H Phase 2 brief: strip the backfill arm per A6, add the demo-seeder fix task), 10 (impersonation runbook from `config/support_access.php` + SupportAccess routes; B3 ruled allow+log), 11 (P0 roll-up `PLAN-p0-fix-lanes-pre-production-2026-08-05.md` L1–L5 vs merged lanes).
+
+**Owner rows added today:** A9 (#210, ruled (a) in chat), A10 (casts, benchmark attached, provisional (A)), A11 (facture draft with Sales OFF).
+
+**Commits this block (local dev, unpushed):** `a1c7e271e`, `45d39347f` (merge), `c708ebc42`, `44868d82c`, plus this handback.
