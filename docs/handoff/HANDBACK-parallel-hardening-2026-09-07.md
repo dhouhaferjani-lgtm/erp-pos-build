@@ -20,3 +20,15 @@ Session started from the main checkout on local `dev` (`db8fb1471` at start). Ru
 **Commits this block (local `dev`, unpushed):** `51dd84878` brief, `213b0bcc3` owner rows A9/A10.
 
 **Needs the owner:** A9 (#210), A10 (casts), then promotion of the precision-4 push per the brief §T5 (host backup, non-additive push, compatibility-mode command).
+
+## Status block 2 — STOP CONDITION: swap exhaustion (2026-09-07)
+
+- Swap 10.7 GB used / 0.6 GB free; `vm_stat` pageouts 1.3 M; the harness killed this session's own swap-wait poll "because the system is running low on memory". Other sessions still run a `phpunit` leg (`tests/Feature/Treasury/PaymentRefundRefusalTest`) and a Codex read-only gate.
+- Per the autonomous block: **no launches** (no Codex plan gate, no Opus implementer, no PG container). The precision-4 lane is fully briefed and staged; nothing implemented, nothing gated, nothing merged beyond docs.
+- **Resume recipe (any session, after swap < 9 GB or a reboot):**
+  1. `sysctl vm.swapusage` < 9 GB.
+  2. Plan gate: `codex exec --sandbox read-only -C /Users/houssamr/Projects/syneriva/apps/erp -m gpt-5.6-sol -c model_reasoning_effort=high -o docs/superpowers/reviews/2026-09-07-precision-4-brief-codex-gate-r1.md "$(cat <scratchpad>/gate-precision-4-prompt.md)"` launched detached (nohup + pid file). Prompt text is also reproducible from the brief §3 + the seven gate questions (premise, casts, migration/lock/trigger/marker, tests/fixtures, census shape + classification, deployment vs manifest, scope vs handover item 1).
+  3. On ACCEPT: Opus implementer agent in `.worktrees/precision-4` (branch `lane/precision-4`), TDD red-first, tasks T1–T6 of the brief, private PG on port 5453 (`pgh-test-pg-p4`, DB `autoerp_test_p`), handback `docs/handoff/HANDBACK-precision-4-2026-09-07.md`.
+  4. Code gate: `treasury-reviewer` + `stock-gl-interaction-reviewer` → merge to local `dev` from the main checkout with an absolute `cd` → tell the parapharmacy orchestrator session (W-CASH-1 P0 depends on it) → ledger.
+- Commits this session so far (local `dev`, unpushed): `51dd84878` brief, `213b0bcc3` owner rows A9/A10, `3641298ad` handback block 1.
+- Queue beyond item 1 untouched (owner cap: "do not start more than that"); #210 owner-gated (A9).
