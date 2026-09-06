@@ -143,3 +143,16 @@ Consequence for the testing session (owner of PR #214 and the treasury fix lanes
 | **Q13** Historical alignment | How do we set the opening Treasury balance of a drawer/safe that has traded for months without float/drop booking, and what happens to the disabled variance window? | Cash journal "Opening with last closing balance"; discrepancies booked as cash-difference gain/loss at the next open/close; no retroactive rebooking | Opening balances via an Opening Entry / Journal Entry dated at cutover; prior history left as is | No alignment mechanism; variance GL disabled since 2026-08-08 | **One dated alignment per repository at cutover**: count the physical cash, book a single opening-balance adjustment (document + movement + JE to cash-difference gain/loss), no retroactive rebooking of past shifts; the disabled variance window is closed by that alignment and documented per tenant. Recommend. |
 
 Sources: Odoo forum "multi POS register journals" and "same POS multiple sessions"; OCA `pos_cash_move_reason`; Odoo forum "POS cash out and transfer to bank"; OCA "Point Of Sale - Correct Opening Balance"; Odoo 16 cash register doc; SG Systems "Hold & Release", Cloudtheapp batch-release process; ERPNext POS Opening Entry docs.
+
+## Q10–Q13 RULED (owner, 2026-09-06 morning): all four recommended defaults ACCEPTED
+
+| ID | Ruling |
+|---|---|
+| **Q10** | Hold lifecycle `requested → recalled` or `requested → released`; only the general manager may release or reject; mandatory reason and append-only evidence; the requesting branch never lifts its own hold. |
+| **Q11** | One cash-bearing shift per drawer at a time; a second terminal joins the open drawer session without a second float, or is refused. The drawer session is the custody unit; terminal sessions attribute sales. |
+| **Q12** | Typed reason codes on the device: `SAFE_DROP`, `BANK_DEPOSIT`, `PETTY_EXPENSE`, `FLOAT_TOP_UP`, `OTHER`; each mapped in configuration to a destination (safe/bank transfers; petty expense = expense document); `OTHER` blocked until classified; v2 `DEPOSIT`/`PAYOUT` mapped by a cutover table. |
+| **Q13** | One counted, dated alignment per repository at cutover, booked as document + movement + JE to cash-difference gain/loss; no retroactive rebooking; the disabled variance window is closed by that alignment. |
+
+**Process confirmations (owner, same time):** slice-plan method (≤6 tasks, gated and accepted per slice); shared staging push manifest authored and verified by Fable, referenced by every slice; first two slices W-LOT-A-1 and W-CASH-1 in parallel, owner runs them as new Codex Desktop threads from `docs/handoff/CODEX-PROMPT-slice-plan-*.md`.
+
+**Consequence for slice prompts already issued:** they were written policy-neutral; that remains correct for W-LOT-A-1 and W-CASH-1. Later slices (hold release/reject, drawer session, reason codes, alignment) may now implement the ruled branches.
