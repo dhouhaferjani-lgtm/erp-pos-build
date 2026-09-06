@@ -1038,10 +1038,16 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
+          {/* F-W2-14 gate r1 finding 4 (both-layer gating, rule 12): the CREATE
+              surface must gate on the SAME permission the backend enforces on
+              POST /supplier-invoices (`can:supplier-invoices.manage`), not on
+              the `purchases.create` UI ROLE ALIAS — which denied accountants a
+              page whose API call they are explicitly authorised to make. The
+              module gate is kept alongside it. */}
           <Route
             path="supplier-invoices/new"
             element={
-              <RequirePermission permission="purchases.create">
+              <RequirePermission moduleKey="purchases" permission="supplier-invoices.manage">
                 <SuspenseWrapper>
                   <SupplierInvoiceCreatePage />
                 </SuspenseWrapper>

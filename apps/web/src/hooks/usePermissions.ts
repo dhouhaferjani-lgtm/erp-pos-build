@@ -7,6 +7,30 @@ export { UI_ALIAS_PERMISSIONS } from './uiAliasPermissions'
 
 export type Permission = GeneratedPermission | UiAliasPermission
 
+/**
+ * Permissions whose ONLY authority is the server's answer: when the server does
+ * not list one for this user, `hasPermission` returns false instead of falling
+ * back to the static role map.
+ *
+ * Two reasons a permission belongs here, both live for the F-W2-14 entries:
+ *
+ *  1. FAIL CLOSED ON A STALE TENANT (gate r1 finding 2). These are NEW
+ *     permissions. Under database-per-tenant they do not exist in an
+ *     already-provisioned tenant DB until `tenants:seed
+ *     --class=RolesAndPermissionsSeeder` has run there. Without this list a
+ *     manager would match the role map, render the Post / New / Pay controls,
+ *     and collect a 403 from the API.
+ *  2. GRANTABLE PER USER OR PER CUSTOM ROLE (owner ruling 2026-09-07). The
+ *     secure default stands — `operator` does NOT get
+ *     `supplier-invoices.manage` — but an administrator may grant it to a
+ *     specific user or a custom role through the permissions surface
+ *     (`GET /api/v1/permissions` lists the whole catalogue,
+ *     `PATCH /api/v1/roles/{id}` syncs a role's permissions). The role map
+ *     cannot express that, so the server list must be the only authority in
+ *     BOTH directions. `AuthUserData` builds it from
+ *     `User::getAllPermissions()`, which already unions role-derived and
+ *     directly-assigned permissions.
+ */
 const SERVER_AUTHORITATIVE_PERMISSIONS = new Set<Permission>([
   'pricing.view_cost_prices',
   'bank-statements.view',
@@ -15,6 +39,8 @@ const SERVER_AUTHORITATIVE_PERMISSIONS = new Set<Permission>([
   'bank-statements.reopen',
   'support-access.view',
   'support-access.manage',
+  'supplier-invoices.manage',
+  'payments.pay-supplier',
 ])
 
 /**

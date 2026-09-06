@@ -48,7 +48,12 @@ vi.mock('sonner', () => ({
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function setTenant(tenantId = 'tenant-1', companyId = 'company-1', roles: string[] = []) {
+function setTenant(
+  tenantId = 'tenant-1',
+  companyId = 'company-1',
+  roles: string[] = [],
+  permissions?: string[],
+) {
   useAuthStore.setState({
     user: {
       id: 'user-1',
@@ -56,6 +61,7 @@ function setTenant(tenantId = 'tenant-1', companyId = 'company-1', roles: string
       email: 'test@example.com',
       tenant_id: tenantId,
       roles,
+      ...(permissions ? { permissions } : {}),
       email_verified_at: null,
     },
     token: 'test-token',
@@ -303,6 +309,37 @@ describe('SupplierInvoiceListPage — scan entry point', () => {
 
     await waitFor(() => {
       expect(screen.queryByRole('link', { name: 'documentIngestions:actions.scanInvoice' })).not.toBeInTheDocument()
+    })
+  })
+})
+
+describe('SupplierInvoiceListPage — create entry point (F-W2-14 both-layer gating)', () => {
+  it('renders the "New supplier invoice" link for a user holding supplier-invoices.manage', async () => {
+    setTenant('tenant-1', 'company-1', ['manager'], ['supplier-invoices.manage'])
+    renderWithProviders(<SupplierInvoiceListPage />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /purchases:supplierInvoices.new/ })).toHaveAttribute(
+        'href',
+        '/purchases/supplier-invoices/new',
+      )
+    })
+  })
+
+  it('hides it from a cashier — the API refuses POST /supplier-invoices for them', async () => {
+    setTenant('tenant-1', 'company-1', ['cashier'], ['documents.update'])
+    renderWithProviders(<SupplierInvoiceListPage />)
+
+    await screen.findByRole('table')
+    expect(screen.queryByRole('link', { name: /purchases:supplierInvoices.new/ })).not.toBeInTheDocument()
+  })
+
+  it('honours a direct server grant to an operator (owner ruling: grantable)', async () => {
+    setTenant('tenant-1', 'company-1', ['operator'], ['supplier-invoices.manage'])
+    renderWithProviders(<SupplierInvoiceListPage />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /purchases:supplierInvoices.new/ })).toBeInTheDocument()
     })
   })
 })

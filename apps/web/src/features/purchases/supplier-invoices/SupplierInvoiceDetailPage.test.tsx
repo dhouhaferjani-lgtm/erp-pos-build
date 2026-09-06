@@ -575,6 +575,26 @@ describe('SupplierInvoiceDetailPage — Record Payment', () => {
     })).not.toBeInTheDocument()
   })
 
+  // F-W2-14 residual (a): POST /payments requires `payments.pay-supplier` on its
+  // supplier branch (SupplierPaymentAuthorizer). `payments.create` alone is held
+  // by cashier/operator so a till can take a CUSTOMER payment — it is not
+  // authority to send money to a supplier, so the FE must not offer the control.
+  it('hides supplier payment actions without payments.pay-supplier permission', async () => {
+    mockHasPermission.mockImplementation((permission: string) => permission !== 'payments.pay-supplier')
+    mockApiGet.mockResolvedValue(
+      makeDetail({ status: 'posted', match_status: 'matched', posted_at: '2026-06-01T10:00:00Z' })
+    )
+
+    renderWithProviders(<SupplierInvoiceDetailPage />)
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('btn-record-payment')).not.toBeInTheDocument()
+    })
+    expect(screen.queryByRole('link', {
+      name: 'purchases:supplierInvoices.actions.payInTreasury',
+    })).not.toBeInTheDocument()
+  })
+
   it('does not show Record Payment when invoice is draft', async () => {
     mockApiGet.mockResolvedValue(makeDetail({ status: 'draft' }))
     renderWithProviders(<SupplierInvoiceDetailPage />)

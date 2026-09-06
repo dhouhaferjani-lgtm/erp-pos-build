@@ -193,13 +193,19 @@ export function SupplierInvoiceListPage() {
                 {t('documentIngestions:actions.scanInvoice')}
               </Link>
             )}
-            <Link
-              to="/purchases/supplier-invoices/new"
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
-            >
-              <Plus className="me-2 h-4 w-4" />
-              {t('purchases:supplierInvoices.new')}
-            </Link>
+            {/* F-W2-14 gate r1 finding 4: the "New supplier invoice" link carried
+                no permission condition at all, so a role without
+                supplier-invoices.manage was offered a page whose only action the
+                API refuses. Same gate as the route and as POST /supplier-invoices. */}
+            {hasPermission('supplier-invoices.manage') && (
+              <Link
+                to="/purchases/supplier-invoices/new"
+                className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
+              >
+                <Plus className="me-2 h-4 w-4" />
+                {t('purchases:supplierInvoices.new')}
+              </Link>
+            )}
           </>
         }
         className="mb-0"

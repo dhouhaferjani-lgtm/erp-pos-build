@@ -1,6 +1,6 @@
 // This file is generated. Do not edit it by hand.
 // Source: apps/api/database/seeders/RolesAndPermissionsSeeder.php
-// Source hash: sha256:109bee610f3a444edf4a61b44ec02d6ea6e702f1367228b3756f1eceb906d4c2
+// Source hash: sha256:a00c4e9ddf1ba329a62305e233c386bda4120d120c4b0fc9b018f9502ed53f6b
 
 export const PERMISSIONS = {
   'accounts.manage': ['accountant', 'admin', 'manager'],
@@ -153,6 +153,7 @@ export const PERMISSIONS = {
   'partners.view': ['accountant', 'admin', 'cashier', 'manager', 'operator', 'technician', 'viewer'],
   'payments.allocate': ['accountant', 'admin', 'manager'],
   'payments.create': ['accountant', 'admin', 'cashier', 'manager', 'operator'],
+  'payments.pay-supplier': ['accountant', 'admin', 'manager'],
   'payments.refund': ['accountant', 'admin', 'manager'],
   'payments.reverse': ['admin'],
   'payments.view': ['accountant', 'admin', 'cashier', 'manager', 'operator', 'viewer'],

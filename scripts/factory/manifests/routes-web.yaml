@@ -709,8 +709,8 @@ routes:
     permission: null
   - path: /purchases/supplier-invoices/new
     component: SupplierInvoiceCreatePage
-    module_gate: null
-    permission: purchases.create
+    module_gate: purchases
+    permission: supplier-invoices.manage
   - path: /purchases/suppliers
     component: CustomerListPage
     module_gate: purchases
