@@ -61,7 +61,9 @@
       "count_3_completed": "اكتمل العدّ الثالث",
       "pending_review": "بانتظار المراجعة",
       "finalized": "مُعتمد",
-      "cancelled": "ملغى"
+      "cancelled": "ملغى",
+      "active": "قيد التنفيذ",
+      "overdue": "متأخر"
     },
     "scopeTypes": {
       "product_location": "المنتج + الموقع",

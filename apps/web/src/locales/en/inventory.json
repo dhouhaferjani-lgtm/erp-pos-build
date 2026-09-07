@@ -656,7 +656,9 @@
       "count_3_completed": "Count 3 Complete",
       "pending_review": "Pending Review",
       "finalized": "Finalized",
-      "cancelled": "Cancelled"
+      "cancelled": "Cancelled",
+      "active": "In Progress",
+      "overdue": "Overdue"
     },
     "scopeTypes": {
       "product_location": "Product + Location",

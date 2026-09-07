@@ -21,7 +21,13 @@ export const countingApi = {
   list: async (filters: CountingFilters): Promise<PaginatedResponse<InventoryCounting>> => {
     const params = new URLSearchParams()
 
-    if (filters.status && filters.status !== 'all') {
+    // `all` clears the filter; `overdue` is an aggregate alias the backend reads
+    // from a dedicated boolean param (active + past scheduled_end); every other
+    // value — including the `active` alias and the exact stored statuses — goes
+    // through `status` verbatim, where the backend resolves the vocabulary.
+    if (filters.status === 'overdue') {
+      params.append('overdue', 'true')
+    } else if (filters.status && filters.status !== 'all') {
       params.append('status', filters.status)
     }
     if (filters.warehouse_id) {
