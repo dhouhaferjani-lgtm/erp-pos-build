@@ -191,6 +191,7 @@
       "revertedToDraft": "تم إرجاع المستند إلى المسودة",
       "goodsReceivedWithReceipt": "تم استلام البضائع ضمن {{receiptNumber}}"
     },
+    "dueDateBeforeIssue": "لا يمكن أن يكون تاريخ الاستحقاق سابقاً لتاريخ الإصدار",
     "errors": {
       "unitPriceRequired": "أدخل سعر الوحدة في كل سطر قبل الحفظ.",
       "descriptionRequired": "أدخل وصفًا في كل سطر قبل الحفظ."
