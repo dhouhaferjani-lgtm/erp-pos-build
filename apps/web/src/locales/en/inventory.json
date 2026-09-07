@@ -728,6 +728,8 @@
       "locationSelectionHelper": "Search and select locations to include in the count",
       "zoneLocationLabel": "Location",
       "zoneLocationHelper": "Storage nodes belong to a single location — pick the location to count first",
+      "productLocationLabel": "Location",
+      "productLocationHelper": "Select the location where these products will be counted",
       "zoneSelectLabel": "Nodes / Zones",
       "zoneLoadingZones": "Loading storage nodes…",
       "noZonesForLocation": "This location has no storage nodes yet. Define its storage hierarchy before creating a node count.",

@@ -7,7 +7,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { toast } from 'sonner'
 
-import { useFinalizeCounting, useManualOverride } from '../queries'
+import { useCreateCounting, useFinalizeCounting, useManualOverride } from '../queries'
+import type { CreateCountingFormData } from '../../types'
 
 /**
  * LEDGER C-14(iv) — gate r1 IMPORTANT-1.
@@ -28,11 +29,13 @@ import { useFinalizeCounting, useManualOverride } from '../queries'
 
 const mockManualOverride = vi.hoisted(() => vi.fn())
 const mockFinalize = vi.hoisted(() => vi.fn())
+const mockCreate = vi.hoisted(() => vi.fn())
 
 vi.mock('../countingApi', () => ({
   countingApi: {
     manualOverride: mockManualOverride,
     finalize: mockFinalize,
+    create: mockCreate,
   },
 }))
 
@@ -50,6 +53,19 @@ vi.mock('react-i18next', () => ({
 
 const FRENCH_REFUSAL = 'Ce comptage est « Finalisé » et ne peut pas passer à « En attente de révision ».'
 const UNRESOLVED_REFUSAL = 'Cannot finalize: 1 item still pending resolution.'
+const LOCATION_REQUIRED = 'Location is required for this scope'
+
+const CREATE_PAYLOAD: CreateCountingFormData = {
+  scope_type: 'product_location',
+  scope_filters: { product_ids: ['p-1'], location_id: 'loc-1' },
+  execution_mode: 'parallel',
+  requires_count_2: true,
+  requires_count_3: false,
+  allow_unexpected_items: true,
+  block_sales: false,
+  ambiguity_window_minutes: 15,
+  count_1_user_id: 'u-1',
+}
 
 /**
  * A real AxiosError, built the way the interceptor re-rejects one
@@ -144,6 +160,29 @@ describe('inventory-counting mutations surface the BACKEND error message', () =>
 
     const message = lastErrorToast()
     expect(message).toContain(UNRESOLVED_REFUSAL)
+    expect(message).not.toContain('Request failed with status code 422')
+  })
+
+  it('useCreateCounting shows the BACKEND 422 message, not the axios string', async () => {
+    mockCreate.mockRejectedValue(
+      axios422({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: LOCATION_REQUIRED,
+        },
+      }),
+    )
+
+    const { result } = renderHook(() => useCreateCounting(), { wrapper: makeWrapper() })
+
+    result.current.mutate(CREATE_PAYLOAD)
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalled()
+    })
+
+    const message = lastErrorToast()
+    expect(message).toContain(LOCATION_REQUIRED)
     expect(message).not.toContain('Request failed with status code 422')
   })
 
