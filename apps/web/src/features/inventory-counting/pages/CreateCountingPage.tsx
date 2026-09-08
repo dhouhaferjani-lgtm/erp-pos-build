@@ -220,7 +220,9 @@ export function CreateCountingPage() {
         {currentStep === 'scope' && (
           <ScopeStep
             scopeType={formData.scope_type || 'full_inventory'}
-            onChange={(scope_type) => { setFormData({ ...formData, scope_type }); }}
+            // Reset the filters on scope change so a stale location_id / zone /
+            // category selection from a previous scope never leaks into the payload.
+            onChange={(scope_type) => { setFormData({ ...formData, scope_type, scope_filters: {} }); }}
           />
         )}
 

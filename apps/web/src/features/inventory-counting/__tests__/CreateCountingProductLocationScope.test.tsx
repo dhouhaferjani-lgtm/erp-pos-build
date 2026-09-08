@@ -229,4 +229,37 @@ describe('CreateCountingPage - product_location scope', () => {
     expect(payload.scope_type).toBe('product')
     expect(payload.scope_filters).toEqual({ product_ids: ['p-1'] })
   })
+  it('drops the stale location_id when the scope is switched from product_location to product before submit', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    // Step 1: scope = product_location, then pick a product AND a location
+    await user.click(screen.getByText('counting.scopeTypes.product_location'))
+    await user.click(screen.getByText('next'))
+    await user.click(screen.getByText('Add Product'))
+    await user.click(screen.getByText('Select Location'))
+    expect(screen.getByText('next').closest('button')).toBeEnabled()
+
+    // Go back and switch the scope to plain product
+    await user.click(screen.getByText('previous'))
+    await user.click(screen.getByText('counting.scopeTypes.product'))
+    await user.click(screen.getByText('next'))
+
+    // Selection step under product scope: no location selector, re-add the product
+    expect(screen.queryByTestId('location-selector-multi')).not.toBeInTheDocument()
+    await user.click(screen.getByText('Add Product'))
+    expect(screen.getByText('next').closest('button')).toBeEnabled()
+    await user.click(screen.getByText('next'))
+
+    await user.click(screen.getByText('next'))
+    await user.click(screen.getAllByText('Select User')[0])
+    await user.click(screen.getByText('next'))
+    await user.click(screen.getByText('counting.create.submit'))
+
+    expect(mockMutate).toHaveBeenCalledTimes(1)
+    const payload = mockMutate.mock.calls[0][0]
+    expect(payload.scope_type).toBe('product')
+    expect(payload.scope_filters).toEqual({ product_ids: ['p-1'] })
+    expect(payload.scope_filters).not.toHaveProperty('location_id')
+  })
 })
