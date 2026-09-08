@@ -359,7 +359,10 @@ final class CountingFinalizeLockTest extends TestCase
             'quantity' => '1.0000',
             'quantity_before' => '0.0000',
             'quantity_after' => '1.0000',
-            'reference' => 'COUNT_REPLAY',
+            // QA-BUG-09: a finalize now stamps the bare counting number, so the
+            // fixture seeds what the ledger actually holds. Cosmetic here — this
+            // class asserts on the unique index, never on the label.
+            'reference' => 'CNT-2026-0009',
             'reference_type' => $countingId === null
                 ? null
                 : StockMovementReferenceType::InventoryCounting->value,

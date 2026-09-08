@@ -81,6 +81,7 @@ function makeMovement(overrides: Partial<StockMovement>): StockMovement {
     quantity_after: '5.0000',
     reference: 'REF-0',
     reference_type: null,
+    reference_id: null,
     source_document_id: null,
     source_document_type: null,
     notes: null,

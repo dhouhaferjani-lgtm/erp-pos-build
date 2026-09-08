@@ -360,8 +360,16 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
         // double-apply. This is the fix for the finalize double-apply blocker.
         $countingId = $counting->id;
         $marker = $item->final_qty_movement_marker;
+        // QA-BUG-09: the movement's human label. The BARE counting number, the
+        // way a goods receipt stamps the purchase order's `document_number` —
+        // it is what the operator reads in the movements list and what the
+        // movements search filters on. NOT the legacy `COUNTING:{number}`
+        // shape: that string is the LEGACY path's idempotency key
+        // (applyLegacyDelta's existing-movement probe) and must stay
+        // byte-for-byte as it is.
+        $countingReference = (string) ($counting->counting_number ?? $counting->id);
 
-        return DB::transaction(function () use ($item, $window, $asOf, $onboarding, $openingUnitCost, $finalQty, $countingId, $completedBy, $currencyCode, $marker, $glWithheld): bool {
+        return DB::transaction(function () use ($item, $window, $asOf, $onboarding, $openingUnitCost, $finalQty, $countingId, $completedBy, $currencyCode, $marker, $glWithheld, $countingReference): bool {
             $audit = $this->stockAdjustmentService->applyCountResult(
                 productId: $item->product_id,
                 locationId: $item->location_id,
@@ -398,6 +406,7 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
                 // Same-second tie-break (gate r2 NEW-1) — see
                 // MovementReplayService::signedDelta().
                 finalQtyMovementMarker: $marker,
+                reference: $countingReference,
             );
 
             // Null return means the negative-at-apply guard tripped (basket window

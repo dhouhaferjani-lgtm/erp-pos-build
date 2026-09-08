@@ -379,6 +379,37 @@ final class StockMovementDocumentLinkageTest extends TestCase
         $this->assertNull($movement->reference_id);
     }
 
+    /**
+     * QA-BUG-09 fallback pin. `applyCountResult()` gained an optional
+     * `reference` label so the finalize listener can stamp the bare counting
+     * number (`CNT-2026-0010`). A caller that supplies NO label — every caller
+     * that is not the listener — must keep writing the documented
+     * `COUNT_REPLAY` constant, unchanged. Green before AND after the fix.
+     */
+    public function test_apply_count_result_without_a_reference_falls_back_to_the_count_replay_constant(): void
+    {
+        $t = CarbonImmutable::now()->subHours(3);
+        $this->setOnHand('10.0000');
+
+        $this->service->applyCountResult(
+            productId: $this->product->id,
+            locationId: $this->location->id,
+            variantId: null,
+            finalQty: '20.0000',
+            finalQtyAsOf: $t,
+            ambiguityWindowMinutes: 15,
+            onboarding: false,
+            openingUnitCost: null,
+        );
+
+        $movement = StockMovement::query()
+            ->where('product_id', $this->product->id)
+            ->where('reason', MovementReason::CountCorrection->value)
+            ->firstOrFail();
+
+        $this->assertSame('COUNT_REPLAY', $movement->reference);
+    }
+
     public function test_half_specified_linkage_is_rejected(): void
     {
         $this->expectException(InvalidArgumentException::class);
