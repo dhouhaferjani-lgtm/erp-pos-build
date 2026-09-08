@@ -262,4 +262,35 @@ describe('CreateCountingPage - product_location scope', () => {
     expect(payload.scope_filters).toEqual({ product_ids: ['p-1'] })
     expect(payload.scope_filters).not.toHaveProperty('location_id')
   })
+
+  it('keeps product_ids and location_id when the already-active scope tile is re-clicked', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    // Step 1: scope = product_location, then pick a product AND a location
+    await user.click(screen.getByText('counting.scopeTypes.product_location'))
+    await user.click(screen.getByText('next'))
+    await user.click(screen.getByText('Add Product'))
+    await user.click(screen.getByText('Select Location'))
+    expect(screen.getByText('next').closest('button')).toBeEnabled()
+
+    // Go back and re-click the SAME (already active) scope tile
+    await user.click(screen.getByText('previous'))
+    await user.click(screen.getByText('counting.scopeTypes.product_location'))
+    await user.click(screen.getByText('next'))
+
+    // The selection made before the re-click must still satisfy canProceed
+    expect(screen.getByText('next').closest('button')).toBeEnabled()
+    await user.click(screen.getByText('next'))
+
+    await user.click(screen.getByText('next'))
+    await user.click(screen.getAllByText('Select User')[0])
+    await user.click(screen.getByText('next'))
+    await user.click(screen.getByText('counting.create.submit'))
+
+    expect(mockMutate).toHaveBeenCalledTimes(1)
+    const payload = mockMutate.mock.calls[0][0]
+    expect(payload.scope_type).toBe('product_location')
+    expect(payload.scope_filters).toEqual({ product_ids: ['p-1'], location_id: 'loc-1' })
+  })
 })

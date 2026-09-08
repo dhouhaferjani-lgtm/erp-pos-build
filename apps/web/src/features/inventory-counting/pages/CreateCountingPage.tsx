@@ -222,7 +222,14 @@ export function CreateCountingPage() {
             scopeType={formData.scope_type || 'full_inventory'}
             // Reset the filters on scope change so a stale location_id / zone /
             // category selection from a previous scope never leaks into the payload.
-            onChange={(scope_type) => { setFormData({ ...formData, scope_type, scope_filters: {} }); }}
+            // Re-clicking the already-active tile is a no-op, not a scope change —
+            // it must not wipe the operator's in-progress selection.
+            onChange={(scope_type) => {
+              if (scope_type === formData.scope_type) {
+                return
+              }
+              setFormData({ ...formData, scope_type, scope_filters: {} })
+            }}
           />
         )}
 
