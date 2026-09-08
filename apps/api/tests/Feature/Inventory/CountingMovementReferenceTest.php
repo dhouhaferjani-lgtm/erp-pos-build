@@ -135,8 +135,18 @@ final class CountingMovementReferenceTest extends TestCase
         return $user;
     }
 
-    private function makeLocation(Company $company, string $code, bool $onboarding = false): Location
-    {
+    /**
+     * @param  bool  $isDefault  Only the FIRST location of a company is its
+     *                           default. A fixture that marks every location
+     *                           default describes a shape no company can have
+     *                           (gate r1 F-5).
+     */
+    private function makeLocation(
+        Company $company,
+        string $code,
+        bool $onboarding = false,
+        bool $isDefault = true,
+    ): Location {
         return Location::create([
             'company_id' => $company->id,
             // `locations.code` is varchar(20) — a longer value passes on sqlite
@@ -145,7 +155,7 @@ final class CountingMovementReferenceTest extends TestCase
             'name' => $code,
             'type' => 'warehouse',
             'is_active' => true,
-            'is_default' => true,
+            'is_default' => $isDefault,
             'onboarding_mode' => $onboarding,
         ]);
     }
@@ -268,7 +278,7 @@ final class CountingMovementReferenceTest extends TestCase
     public function test_an_onboarding_first_count_opening_movement_carries_the_counting_number(): void
     {
         $asOf = CarbonImmutable::now()->subHours(2);
-        $onboardingLocation = $this->makeLocation($this->company, 'A-ONB', onboarding: true);
+        $onboardingLocation = $this->makeLocation($this->company, 'A-ONB', onboarding: true, isDefault: false);
         $product = $this->makeProduct($this->company, 'ALPHA-ONB');
 
         $counting = $this->makeCounting($this->company, $onboardingLocation, 'CNT-2026-0011');
@@ -314,9 +324,21 @@ final class CountingMovementReferenceTest extends TestCase
     }
 
     /**
-     * (4) SECOND COMPANY, negative: company B's operator sees B's movements
-     * only, and nothing of company A's counting leaks into the payload — not
-     * the id, not the number.
+     * (4) SECOND COMPANY, negative — and it must fail on the predicate it claims
+     * to guard.
+     *
+     * Gate r1 F-1: the first version of this case only ever put company B's OWN
+     * counting id on B's movement, so `$countingA->id` never entered the
+     * prefetch and deleting the `company_id` (or `tenant_id`) predicate at
+     * StockMovementController::index() left every assertion green — a negative
+     * test that could not go red. So the linkage is FORCED cross-company here:
+     * B's movement is pointed at A's counting id, the exact row a forged or
+     * corrupted FK would produce. The endpoint must then surface the raw FK
+     * (it is what the column holds) and resolve NOTHING — no id, no type, and
+     * above all not A's counting number.
+     *
+     * Mutation-proven: removing `->where('company_id', $company->id)` from the
+     * counting prefetch turns this case RED.
      */
     public function test_a_second_company_never_sees_the_first_companys_counting_linkage(): void
     {
@@ -340,18 +362,43 @@ final class CountingMovementReferenceTest extends TestCase
 
         app(CompanyContext::class)->setCompanyId($companyB->id);
 
+        // Part 1 — the honest row: B resolves B's own counting, and A's counting
+        // is nowhere in the payload.
         $response = $this->actingAs($userB)->getJson('/api/v1/stock-movements');
 
         $response->assertOk();
         $response->assertJsonCount(1, 'data');
         $response->assertJsonPath('data.0.reference', 'CNT-2026-B001');
+        $response->assertJsonPath('data.0.reference_id', $countingB->id);
         $response->assertJsonPath('data.0.source_document_id', $countingB->id);
+        $response->assertJsonPath('data.0.source_document_type', StockMovementReferenceType::InventoryCounting->value);
 
         $payload = $response->getContent();
         self::assertIsString($payload);
         self::assertStringNotContainsString($countingA->id, $payload);
         self::assertStringNotContainsString(self::COUNTING_NUMBER, $payload);
         self::assertStringNotContainsString($this->product->id, $payload);
+
+        // Part 2 — the cross-company FK. This is the row the company predicate
+        // exists for: same tenant, another company's counting id.
+        StockMovement::query()
+            ->where('product_id', $productB->id)
+            ->update(['reference_id' => $countingA->id]);
+
+        $crossCompany = $this->actingAs($userB)->getJson('/api/v1/stock-movements');
+
+        $crossCompany->assertOk();
+        $crossCompany->assertJsonCount(1, 'data');
+        // The raw column is reported verbatim — hiding it would hide the
+        // corruption from the operator who has to explain it.
+        $crossCompany->assertJsonPath('data.0.reference_id', $countingA->id);
+        // ...but nothing of company A's counting is resolved onto B's payload.
+        $crossCompany->assertJsonPath('data.0.source_document_id', null);
+        $crossCompany->assertJsonPath('data.0.source_document_type', null);
+
+        $crossPayload = $crossCompany->getContent();
+        self::assertIsString($crossPayload);
+        self::assertStringNotContainsString(self::COUNTING_NUMBER, $crossPayload);
     }
 
     /**
@@ -362,7 +409,7 @@ final class CountingMovementReferenceTest extends TestCase
     {
         $asOf = CarbonImmutable::now()->subHours(2);
 
-        $secondLocation = $this->makeLocation($this->company, 'A-ANNEX');
+        $secondLocation = $this->makeLocation($this->company, 'A-ANNEX', isDefault: false);
         $secondProduct = $this->makeProduct($this->company, 'ALPHA-P2');
 
         $this->setOnHand($this->company, $this->product, $this->location, '70.0000');
