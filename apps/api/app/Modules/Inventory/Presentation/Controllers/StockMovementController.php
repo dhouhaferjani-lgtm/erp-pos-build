@@ -44,18 +44,6 @@ class StockMovementController extends Controller
      */
     private const DOCUMENT_REFERENCE_TYPES = ['Document', Document::class];
 
-    /**
-     * The `source_document_type` emitted for a movement whose reference_type is
-     * `inventory_counting`. NOT a DocumentType value — the counting is not a row
-     * in `documents` — but the same client-side contract: a type the movements
-     * surface can turn into a route (`/inventory/counting/{id}`).
-     *
-     * QA-BUG-09: before this, a count movement carried a correct `reference_id`
-     * FK that no read endpoint ever surfaced, so the operator had no way back
-     * from the movement line to the counting that produced it.
-     */
-    private const COUNTING_SOURCE_DOCUMENT_TYPE = 'inventory_counting';
-
     private const DEFAULT_PER_PAGE = 25;
 
     public function __construct(
@@ -164,13 +152,17 @@ class StockMovementController extends Controller
             ->unique()
             ->values();
 
+        // Most pages carry no counting row at all; `whereIn('id', [])` is a
+        // guaranteed-empty round-trip, so skip it entirely (gate r1 F-6).
         /** @var Collection<string, InventoryCounting> $countingsById */
-        $countingsById = InventoryCounting::query()
-            ->where('tenant_id', $company->tenant_id)
-            ->where('company_id', $company->id)
-            ->whereIn('id', $countingIds)
-            ->get()
-            ->keyBy('id');
+        $countingsById = $countingIds->isEmpty()
+            ? new Collection
+            : InventoryCounting::query()
+                ->where('tenant_id', $company->tenant_id)
+                ->where('company_id', $company->id)
+                ->whereIn('id', $countingIds)
+                ->get()
+                ->keyBy('id');
 
         return response()->json([
             'data' => $movements->getCollection()
@@ -239,9 +231,15 @@ class StockMovementController extends Controller
             // "linkage recorded but not resolvable to a route yet" (QA-BUG-09).
             'reference_id' => $movement->reference_id,
             'source_document_id' => $sourceDocument !== null ? $sourceDocument->id : $sourceCounting?->id,
+            // House rule 9: the counting's source-document type IS the enum's own
+            // value, emitted directly. A parallel `'inventory_counting'` literal
+            // here would be a second source of truth that drifts silently if the
+            // enum case is ever renamed (gate r1 F-2). It is NOT a DocumentType —
+            // a counting is not a row in `documents` — but it honours the same
+            // client contract: a type the movements surface turns into a route.
             'source_document_type' => $sourceDocument !== null
                 ? $sourceDocument->type->value
-                : ($sourceCounting !== null ? self::COUNTING_SOURCE_DOCUMENT_TYPE : null),
+                : ($sourceCounting !== null ? StockMovementReferenceType::InventoryCounting->value : null),
             'notes' => $movement->notes,
             'user_id' => $movement->user_id,
             'user_name' => $movement->user?->name,
