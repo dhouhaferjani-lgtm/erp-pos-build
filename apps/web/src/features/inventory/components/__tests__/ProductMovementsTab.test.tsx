@@ -358,6 +358,47 @@ describe('ProductMovementsTab', () => {
     expect(link).toHaveAttribute('href', '/inventory/counting/counting-1')
   })
 
+  // Mirrors StockMovementsPage.countingLink.test.tsx's "renders the reference as
+  // plain text when no source document is resolved" — the two movements surfaces
+  // drifted before this fix, so both must carry the same negative (gate r1 F-5).
+  it('renders a counting movement as plain text when no source document is resolved', async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: {
+        data: [
+          {
+            id: 'mov-count-unlinked',
+            product_id: 'prod-1',
+            product_name: 'Test Product',
+            location_id: 'loc-1',
+            location_name: 'Warehouse A',
+            movement_type: 'adjustment',
+            reason: 'count_correction',
+            quantity: '-2',
+            quantity_decimals: 3,
+            quantity_before: '70',
+            quantity_after: '68',
+            reference: 'COUNT_REPLAY',
+            reference_type: 'inventory_counting',
+            reference_id: null,
+            source_document_id: null,
+            source_document_type: null,
+            notes: null,
+            user_id: 'user-1',
+            user_name: 'John Doe',
+            reverses_movement_id: null,
+            is_reversed: false,
+            created_at: '2026-09-01T10:00:00Z',
+          },
+        ],
+      },
+    })
+
+    renderWithProviders(<ProductMovementsTab productId="prod-1" />)
+
+    expect(await screen.findByText('COUNT_REPLAY')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'COUNT_REPLAY' })).not.toBeInTheDocument()
+  })
+
   it('passes correct product_id to API', async () => {
     vi.mocked(api.get).mockResolvedValue({ data: { data: [] } })
 

@@ -26,11 +26,11 @@ import { movementSourceLinkTypeFromSource } from '@/lib/entityRoutes'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { useViewScope } from '../../locations/hooks/useViewScope'
 // House rule 22 (one surface per concept): this tab reads the SAME
-// `GET /api/v1/stock-movements` rows as StockMovementsPage, so it binds to that
-// page's exported row type instead of keeping a narrower hand-rolled copy — the
-// copy is how `reason` / `reference_type` / `reference_id` reached one surface
-// and not the other. Type-only import: nothing of the page module is bundled.
-import type { StockMovementsResponse } from '../StockMovementsPage'
+// `GET /api/v1/stock-movements` rows as StockMovementsPage, so it binds to the
+// module's declared wire type instead of keeping a narrower hand-rolled copy —
+// the copy is how `reason` / `reference_type` / `reference_id` reached one
+// surface and not the other. Type-only import: nothing else is bundled.
+import type { StockMovementsResponse } from '../types'
 
 interface ProductMovementsTabProps {
   productId: string
