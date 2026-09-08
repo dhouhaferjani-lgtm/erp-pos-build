@@ -18,3 +18,4 @@ rules 3/12/13/14/19 sweeps, no migrations, clean merge into local dev.
 🎫 Ticketed, NOT fixed here (pre-existing, rule 4): French `_many` plural backfill repo-wide
 — 19 remaining bases across 9 other namespaces.
 BRANCH IS MERGE-READY.
+2026-09-08 ~15:25 SESSION QA-BUGS: handover files written for the 14:52 session — docs/sessions/2026-09-08-qa-bugs/{README.md,root-cause-QA-BUG-08.md,root-cause-QA-BUG-09.md} (full phase-1 reports, decisions listed; key finding 08: reusing manualOverride() for a note moves final_qty_as_of → replay window corrupted, needs a note-only justify path; key finding 09: staging row will keep 'COUNT_REPLAY', link half self-heals, replay with fresh counting). Registry PR #220 (docs/dev-qa-registry-2026-09-08). Mobile lanes: 06 + 04 in phase 2 (TDD → PR), 01-03/05/07 phase 1 running.
