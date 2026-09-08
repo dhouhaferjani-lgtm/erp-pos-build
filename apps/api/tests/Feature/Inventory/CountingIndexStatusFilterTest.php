@@ -88,10 +88,13 @@ class CountingIndexStatusFilterTest extends TestCase
         app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
-    private function makeCounting(CountingStatus $status, ?string $scheduledEnd = null): InventoryCounting
-    {
+    private function makeCounting(
+        CountingStatus $status,
+        ?string $scheduledEnd = null,
+        ?Company $company = null,
+    ): InventoryCounting {
         return InventoryCounting::create([
-            'company_id' => $this->company->id,
+            'company_id' => ($company ?? $this->company)->id,
             'created_by_user_id' => $this->adminUser->id,
             'status' => $status,
             'scope_type' => CountingScopeType::Product,
@@ -241,5 +244,81 @@ class CountingIndexStatusFilterTest extends TestCase
 
         $this->assertContains($draft->id, $ids);
         $this->assertContains($finalized->id, $ids);
+    }
+
+    /**
+     * Second-of-everything (docs/conventions/09-SECOND-OF-EVERYTHING.md, rule 1):
+     * a list in company A never returns company B's row. The index now has three
+     * distinct query branches (overdue / active alias / exact status) plus the
+     * tolerated-unknown fall-through; every one of them must stay inside
+     * forCompany(). Company B lives in the SAME tenant and the acting user is a
+     * member of both, so the only thing keeping B's rows out is the company scope.
+     */
+    public function test_second_company_rows_never_leak_on_any_branch(): void
+    {
+        $companyB = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Counting Filter Co B',
+            'legal_name' => 'Counting Filter Co B LLC',
+            'tax_id' => 'TAXCFB',
+            'country_code' => 'TN',
+            'currency' => 'TND',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'status' => CompanyStatus::Active,
+        ]);
+
+        UserCompanyMembership::create([
+            'user_id' => $this->adminUser->id,
+            'company_id' => $companyB->id,
+            'role' => 'admin',
+        ]);
+
+        // Company A rows: one that matches `active` AND `overdue`, one finalized.
+        $aActiveOverdue = $this->makeCounting(
+            CountingStatus::Count1InProgress,
+            now()->subDay()->toDateTimeString(),
+        );
+        $aFinalized = $this->makeCounting(CountingStatus::Finalized);
+
+        // Company B rows shaped to match EVERY branch if the scope were missing.
+        $bActiveOverdue = $this->makeCounting(
+            CountingStatus::Count1InProgress,
+            now()->subDay()->toDateTimeString(),
+            $companyB,
+        );
+        $bFinalized = $this->makeCounting(CountingStatus::Finalized, null, $companyB);
+
+        // Context is company A (setUp). Every branch returns A's rows, never B's.
+        $queries = [
+            'status=active',
+            'overdue=true',
+            'status=overdue',
+            'status=finalized',
+            'status=bogus',
+            '',
+        ];
+
+        foreach ($queries as $query) {
+            $ids = $this->idsFor($query);
+
+            $this->assertNotContains($bActiveOverdue->id, $ids, "company B leaked on '{$query}'");
+            $this->assertNotContains($bFinalized->id, $ids, "company B leaked on '{$query}'");
+        }
+
+        // Positive control: company A's matching rows ARE present on each branch.
+        $this->assertContains($aActiveOverdue->id, $this->idsFor('status=active'));
+        $this->assertContains($aActiveOverdue->id, $this->idsFor('overdue=true'));
+        $this->assertContains($aActiveOverdue->id, $this->idsFor('status=overdue'));
+        $this->assertContains($aFinalized->id, $this->idsFor('status=finalized'));
+        $this->assertContains($aFinalized->id, $this->idsFor('status=bogus'));
+        $this->assertContains($aActiveOverdue->id, $this->idsFor(''));
+
+        // Sanity: company B's rows exist in the tenant DB — the scope, not a
+        // missing fixture, is what keeps them out of company A's list.
+        $this->assertSame(
+            2,
+            InventoryCounting::forCompany($companyB->id)->count(),
+        );
     }
 }
