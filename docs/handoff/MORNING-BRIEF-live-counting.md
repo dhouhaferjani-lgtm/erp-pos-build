@@ -39,7 +39,7 @@ The full spec (`docs/superpowers/specs/2026-07-06-live-inventory-counting-design
 ## Known cuts & follow-up tickets (full list in `.superpowers/sdd/progress.md`)
 
 - **Cuts (documented):** import `zone` column; persistent zone banner (toast only); worklist API has no UI yet; mobile app changes (handover doc instead — owner pushes erp-mobile).
-- **Top follow-ups:** unsynced-device status API (finalize dialog has static warning only); advisory lock on count activation (race is recoverable via cancel but exists); `COUNT_REPLAY` movement reference should embed counting number; multi-location full-count cartesian needs chunking; legacy counter routes lack `whereUuid`; `floatsEqual` float-casts (pre-existing rule-19 debt).
+- **Top follow-ups:** unsynced-device status API (finalize dialog has static warning only); advisory lock on count activation (race is recoverable via cancel but exists); ~~`COUNT_REPLAY` movement reference should embed counting number~~ (DONE — QA-BUG-09 / DEV-QA-077: replay count movements now carry the bare `CNT-…` number and link to the counting); multi-location full-count cartesian needs chunking; legacy counter routes lack `whereUuid`; `floatsEqual` float-casts (pre-existing rule-19 debt).
 
 ## Deploy notes (when promoting later)
 
