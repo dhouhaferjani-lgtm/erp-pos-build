@@ -238,7 +238,7 @@ class StockMovementController extends Controller
             // so a client can tell "no linkage recorded" (null) apart from
             // "linkage recorded but not resolvable to a route yet" (QA-BUG-09).
             'reference_id' => $movement->reference_id,
-            'source_document_id' => $sourceDocument?->id ?? $sourceCounting?->id,
+            'source_document_id' => $sourceDocument !== null ? $sourceDocument->id : $sourceCounting?->id,
             'source_document_type' => $sourceDocument !== null
                 ? $sourceDocument->type->value
                 : ($sourceCounting !== null ? self::COUNTING_SOURCE_DOCUMENT_TYPE : null),
