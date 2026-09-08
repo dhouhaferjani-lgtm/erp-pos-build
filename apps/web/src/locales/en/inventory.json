@@ -1226,5 +1226,7 @@
       "title": "Rebalancing suggestions",
       "empty": "No rebalancing suggestions"
     }
-  }
+  },
+  "allStatuses": "All statuses",
+  "actionsLabel": "Actions"
 }

@@ -1226,5 +1226,7 @@
       "title": "Suggestions de rééquilibrage",
       "empty": "Aucune suggestion de rééquilibrage"
     }
-  }
+  },
+  "allStatuses": "Tous les statuts",
+  "actionsLabel": "Actions"
 }
