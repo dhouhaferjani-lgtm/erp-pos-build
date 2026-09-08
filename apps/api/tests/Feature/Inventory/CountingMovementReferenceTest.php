@@ -139,7 +139,9 @@ final class CountingMovementReferenceTest extends TestCase
     {
         return Location::create([
             'company_id' => $company->id,
-            'code' => $code.'-'.uniqid(),
+            // `locations.code` is varchar(20) — a longer value passes on sqlite
+            // (no length enforcement) and fails on PostgreSQL with 22001.
+            'code' => substr($code, 0, 8).'-'.substr(uniqid(), -8),
             'name' => $code,
             'type' => 'warehouse',
             'is_active' => true,
@@ -153,7 +155,7 @@ final class CountingMovementReferenceTest extends TestCase
         return Product::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $company->id,
-            'sku' => substr($sku, 0, 6).'-'.uniqid(),
+            'sku' => substr($sku, 0, 8).'-'.substr(uniqid(), -8),
             'name' => $sku,
             'type' => ProductType::Part,
             'is_active' => true,

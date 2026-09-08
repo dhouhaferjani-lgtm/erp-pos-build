@@ -62,9 +62,20 @@ final class StockAdjustmentService
     private const COST_SCALE = 6;
 
     /**
-     * Reference stamped on replay-based count-finalize movements. The counting
-     * number is not threaded through the fixed applyCountResult() signature; the
-     * item's replay_audit + expected_qty_at_apply carry the per-line trail.
+     * FALLBACK reference for a replay-based count movement whose caller supplies
+     * no label.
+     *
+     * QA-BUG-09: this used to be the ONLY label such a movement could ever
+     * carry, because `applyCountResult()` had no reference parameter — so every
+     * count correction in the ledger read `COUNT_REPLAY` and the operator had no
+     * way back to the counting. `applyCountResult()` now accepts an optional
+     * `$reference`, and the finalize listener passes the bare counting number
+     * (`CNT-2026-0010`), matching how a goods receipt stamps the purchase
+     * order's `document_number`.
+     *
+     * The constant remains for callers with no counting in hand (direct domain
+     * use, tests) and is pinned by
+     * StockMovementDocumentLinkageTest::test_apply_count_result_without_a_reference_...
      */
     private const COUNT_REPLAY_REFERENCE = 'COUNT_REPLAY';
 
@@ -1293,6 +1304,10 @@ final class StockAdjustmentService
      *                                                                 this is a Domain service, and the hexagonal direction forbids it naming
      *                                                                 InventoryGlPostingBuffer / MovementGlContext. The Application-layer listener owns
      *                                                                 the context construction and the enqueue.
+     * @param  string|null  $reference  Human label stamped on the posted movement — the
+     *                                  finalize listener passes the bare counting number
+     *                                  (`CNT-2026-0010`). Null falls back to
+     *                                  self::COUNT_REPLAY_REFERENCE (QA-BUG-09).
      */
     public function applyCountResult(
         string $productId,
@@ -1307,19 +1322,21 @@ final class StockAdjustmentService
         ?string $referenceId = null,
         ?\Closure $onCountCorrection = null,
         ?string $finalQtyMovementMarker = null,
+        ?string $reference = null,
     ): ?ReplayAuditDto {
         $this->assertVariantConsistency($productId, $variantId);
         $this->assertReferenceLinkagePaired($referenceType, $referenceId);
         $scale = InventoryScale::QUANTITY_SCALE;
+        $movementReference = $reference ?? self::COUNT_REPLAY_REFERENCE;
 
-        return DB::transaction(function () use ($productId, $locationId, $variantId, $finalQty, $finalQtyAsOf, $onboarding, $openingUnitCost, $scale, $referenceType, $referenceId, $onCountCorrection, $finalQtyMovementMarker): ?ReplayAuditDto {
+        return DB::transaction(function () use ($productId, $locationId, $variantId, $finalQty, $finalQtyAsOf, $onboarding, $openingUnitCost, $scale, $referenceType, $referenceId, $onCountCorrection, $finalQtyMovementMarker, $movementReference): ?ReplayAuditDto {
             $companyId = $this->resolveCompanyId($locationId);
             $tenantId = $this->resolveTenantId($productId, $companyId);
 
             // ProductCostLock FIRST (advisory, product-grain), then the
             // stock_level row FOR UPDATE inside the closure. Never invert this —
             // adjust()/recordPurchase/recordSale rely on advisory -> row order.
-            return $this->costLock->acquire($tenantId, $companyId, [$productId], function () use ($productId, $locationId, $variantId, $finalQty, $finalQtyAsOf, $onboarding, $openingUnitCost, $companyId, $tenantId, $scale, $referenceType, $referenceId, $onCountCorrection, $finalQtyMovementMarker): ?ReplayAuditDto {
+            return $this->costLock->acquire($tenantId, $companyId, [$productId], function () use ($productId, $locationId, $variantId, $finalQty, $finalQtyAsOf, $onboarding, $openingUnitCost, $companyId, $tenantId, $scale, $referenceType, $referenceId, $onCountCorrection, $finalQtyMovementMarker, $movementReference): ?ReplayAuditDto {
                 $now = now();
                 $stockLevel = $this->lockStockLevel($productId, $locationId, $companyId, $variantId);
 
@@ -1355,9 +1372,9 @@ final class StockAdjustmentService
                     && $this->firstCountDetector->isFirstCount($productId, $locationId, $variantId);
 
                 if ($postOpening) {
-                    $this->postCountOpening($stockLevel, $productId, $locationId, $variantId, $tenantId, $companyId, $onHandNow, $expectedNow, $adjustment, $openingUnitCost, $now, $referenceType, $referenceId);
+                    $this->postCountOpening($stockLevel, $productId, $locationId, $variantId, $tenantId, $companyId, $onHandNow, $expectedNow, $adjustment, $openingUnitCost, $now, $referenceType, $referenceId, $movementReference);
                 } else {
-                    $this->postCountCorrection($stockLevel, $productId, $locationId, $variantId, $onHandNow, $expectedNow, $adjustment, $now, $referenceType, $referenceId, $onCountCorrection);
+                    $this->postCountCorrection($stockLevel, $productId, $locationId, $variantId, $onHandNow, $expectedNow, $adjustment, $now, $referenceType, $referenceId, $movementReference, $onCountCorrection);
                 }
 
                 return new ReplayAuditDto(
@@ -1402,6 +1419,10 @@ final class StockAdjustmentService
         // fully omitted one.
         ?StockMovementReferenceType $referenceType,
         ?string $referenceId,
+        // REQUIRED (no default), same reasoning: the human label is what the
+        // operator reads in the movements list, and a defaulted parameter would
+        // let a future call site silently fall back to COUNT_REPLAY (QA-BUG-09).
+        string $reference,
         ?\Closure $onCountCorrection = null,
     ): void {
         // Campaign W4-6 / document-per-action: a zero adjustment justifies
@@ -1425,7 +1446,7 @@ final class StockAdjustmentService
             quantity: $adjustment,
             quantityBefore: $onHandNow,
             quantityAfter: $expectedNow,
-            reference: self::COUNT_REPLAY_REFERENCE,
+            reference: $reference,
             userId: null,
             variantId: $variantId,
             reason: MovementReason::CountCorrection,
@@ -1655,6 +1676,7 @@ final class StockAdjustmentService
         // REQUIRED (no default) — see postCountCorrection.
         ?StockMovementReferenceType $referenceType,
         ?string $referenceId,
+        string $reference,
     ): void {
         $stockLevel->update(['quantity' => $expectedNow]);
 
@@ -1667,7 +1689,7 @@ final class StockAdjustmentService
             quantity: $adjustment,
             quantityBefore: $onHandNow,
             quantityAfter: $expectedNow,
-            reference: self::COUNT_REPLAY_REFERENCE,
+            reference: $reference,
             userId: null,
             variantId: $variantId,
             reason: MovementReason::OpeningBalance,
@@ -1778,7 +1800,7 @@ final class StockAdjustmentService
                 unitCost: (string) ($movementSnapshot->unit_cost ?? '0.00'),
                 totalCost: (string) ($movementSnapshot->total_cost ?? '0.00'),
                 newStockLevel: $newStockLevel,
-                reference: self::COUNT_REPLAY_REFERENCE,
+                reference: $movementSnapshot->reference,
                 referenceType: $movementSnapshot->reference_type,
                 referenceId: $movementSnapshot->reference_id,
                 occurredAt: now()->toIso8601String(),
@@ -1796,7 +1818,7 @@ final class StockAdjustmentService
                 totalCost: (string) ($movementSnapshot->total_cost ?? '0.00'),
                 newStockLevel: $newStockLevel,
                 variantId: $variantId,
-                reference: self::COUNT_REPLAY_REFERENCE,
+                reference: $movementSnapshot->reference,
                 referenceType: $movementSnapshot->reference_type,
                 referenceId: $movementSnapshot->reference_id,
                 occurredAt: now()->toIso8601String(),
