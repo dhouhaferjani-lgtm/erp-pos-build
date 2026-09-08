@@ -226,9 +226,27 @@ class InventoryCountingController extends Controller
         $query = InventoryCounting::forCompany($companyId)
             ->with(['count1User', 'count2User', 'count3User', 'createdBy']);
 
-        // Apply filters
-        if ($request->has('status')) {
-            $query->where('status', $request->input('status'));
+        // Status filtering speaks the SAME vocabulary the dashboard cards link
+        // with (CountingDashboardPage): `active` and `overdue` are aggregate
+        // aliases, not stored statuses, so they must be resolved through the
+        // domain scopes rather than a literal `where('status', …)`. An unknown
+        // value is tolerated (ignored → all) so no caller ever gets a silently
+        // empty list from a status the backend does not recognise.
+        // Precedence: when `overdue=true` AND `status=<x>` arrive together,
+        // overdue wins (the more specific intent). The FE never emits both, so
+        // this only guards a hand-crafted request; it mirrors the web
+        // resolveStatusFromParams tie-break where `overdue` is checked first.
+        $overdueRequested = $request->boolean('overdue');
+        $statusInput = $request->input('status');
+
+        if ($overdueRequested || $statusInput === 'overdue') {
+            // Overdue == active AND past its scheduled end (mirror of the
+            // dashboard's overdue count).
+            $query->active()->where('scheduled_end', '<', now());
+        } elseif ($statusInput === 'active') {
+            $query->active();
+        } elseif (is_string($statusInput) && CountingStatus::tryFrom($statusInput) !== null) {
+            $query->where('status', $statusInput);
         }
 
         if ($request->has('search')) {

@@ -656,7 +656,9 @@
       "count_3_completed": "Comptage 3 terminé",
       "pending_review": "En attente de révision",
       "finalized": "Finalisé",
-      "cancelled": "Annulé"
+      "cancelled": "Annulé",
+      "active": "En cours",
+      "overdue": "En retard"
     },
     "scopeTypes": {
       "product_location": "Produit + Emplacement",
@@ -1224,5 +1226,7 @@
       "title": "Suggestions de rééquilibrage",
       "empty": "Aucune suggestion de rééquilibrage"
     }
-  }
+  },
+  "allStatuses": "Tous les statuts",
+  "actionsLabel": "Actions"
 }

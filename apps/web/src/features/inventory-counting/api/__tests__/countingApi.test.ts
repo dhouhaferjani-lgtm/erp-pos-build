@@ -52,6 +52,37 @@ describe('countingApi.list', () => {
     expect(result.meta.total).toBe(41)
     expect(result.meta.last_page).toBe(3)
   })
+
+  function requestedUrl(): string {
+    const call = mockApi.get.mock.calls[0]
+    return call[0] as string
+  }
+
+  it('sends an exact status verbatim as ?status=', async () => {
+    mockApi.get.mockResolvedValue({ data: { data: [], meta: {} } })
+    await countingApi.list({ status: 'finalized' })
+    expect(requestedUrl()).toBe('/inventory/countings?status=finalized')
+  })
+
+  it('maps the "active" alias to ?status=active (backend resolves it to scopeActive)', async () => {
+    mockApi.get.mockResolvedValue({ data: { data: [], meta: {} } })
+    await countingApi.list({ status: 'active' })
+    expect(requestedUrl()).toBe('/inventory/countings?status=active')
+  })
+
+  it('maps the "overdue" filter to ?overdue=true (never a bogus ?status=overdue)', async () => {
+    mockApi.get.mockResolvedValue({ data: { data: [], meta: {} } })
+    await countingApi.list({ status: 'overdue' })
+    const url = requestedUrl()
+    expect(url).toContain('overdue=true')
+    expect(url).not.toContain('status=overdue')
+  })
+
+  it('omits the status param entirely for "all"', async () => {
+    mockApi.get.mockResolvedValue({ data: { data: [], meta: {} } })
+    await countingApi.list({ status: 'all' })
+    expect(requestedUrl()).toBe('/inventory/countings')
+  })
 })
 
 describe('countingApi.getReport', () => {

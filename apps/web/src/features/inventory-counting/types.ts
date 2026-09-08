@@ -26,6 +26,14 @@ export type CountingStatus =
   | 'finalized'
   | 'cancelled'
 
+// The vocabulary the LIST STATUS FILTER speaks. It is a superset of the stored
+// CountingStatus: `active` and `overdue` are aggregate aliases the dashboard
+// cards link with (CountingDashboardPage), resolved server-side through the
+// domain scopes, and `all` clears the filter. Keeping them in one union means
+// the <select> value and the value sent to the API are always the same thing —
+// the "displayed === applied" invariant that the lying-filter bug broke.
+export type CountingStatusFilter = CountingStatus | 'active' | 'overdue' | 'all'
+
 export type CountingExecutionMode = 'parallel' | 'sequential'
 
 export type ItemResolutionMethod =
@@ -412,7 +420,7 @@ export interface PaginatedResponse<T> {
 }
 
 export interface CountingFilters {
-  status?: CountingStatus | 'all'
+  status?: CountingStatusFilter
   warehouse_id?: number
   search?: string
   date_from?: string

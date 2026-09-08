@@ -6,13 +6,20 @@ import { Plus, Search, ChevronLeft, ChevronRight, Eye, Smartphone } from 'lucide
 import { CountingStatusBadge } from '../components/CountingStatusBadge'
 import { useCountingList } from '../api/queries'
 import { QueryError } from '@/components/QueryError'
-import type { CountingFilters, CountingStatus } from '../types'
+import type { CountingFilters, CountingStatusFilter } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
-const STATUS_OPTIONS: Array<CountingStatus | 'all'> = [
+// The complete, ordered vocabulary the status dropdown can show — including the
+// `active` and `overdue` aggregate aliases the dashboard cards link with. This
+// doubles as the whitelist that validates the incoming URL param, so a bogus
+// `?status=` can never make the dropdown show one thing while the request carries
+// another (the lying-filter bug).
+const STATUS_OPTIONS: readonly CountingStatusFilter[] = [
   'all',
+  'active',
+  'overdue',
   'draft',
   'scheduled',
   'count_1_in_progress',
@@ -26,12 +33,33 @@ const STATUS_OPTIONS: Array<CountingStatus | 'all'> = [
   'cancelled',
 ]
 
+// The i18n key for a filter option. Real stored statuses reuse
+// `counting.status.*`; the two aggregate aliases have their own labels under the
+// same namespace so they read naturally in every locale.
+function statusOptionLabelKey(status: CountingStatusFilter): string {
+  if (status === 'all') return 'allStatuses'
+  return `counting.status.${status}`
+}
+
+// Whitelist-resolve the initial filter from the URL. `?overdue=true` maps to the
+// `overdue` alias; `?status=<x>` is honoured only when `<x>` is in the
+// vocabulary; anything else falls back to `all`. No raw `as` cast on URL input.
+function resolveStatusFromParams(params: URLSearchParams): CountingStatusFilter {
+  if (params.get('overdue') === 'true') {
+    return 'overdue'
+  }
+  const raw = params.get('status')
+  // `.find` narrows to CountingStatusFilter without an unchecked cast, so an
+  // out-of-vocabulary param can never leak through as a phantom filter value.
+  return STATUS_OPTIONS.find((option) => option === raw) ?? 'all'
+}
+
 export function CountingListPage() {
   const { t } = useTranslation('inventory')
   const [searchParams, setSearchParams] = useSearchParams()
 
   const [filters, setFilters] = useState<CountingFilters>({
-    status: (searchParams.get('status') as CountingStatus | null) ?? 'all',
+    status: resolveStatusFromParams(searchParams),
     search: searchParams.get('search') || '',
     created_on_mobile:
       searchParams.get('mobile') === 'true'
@@ -49,9 +77,14 @@ export function CountingListPage() {
     const updated = { ...filters, ...newFilters, page: 1 }
     setFilters(updated)
 
-    // Update URL params
+    // Update URL params. `overdue` is written as its own boolean param (matching
+    // the dashboard card link and the API contract); every other non-`all` value
+    // — including the `active` alias — is written as `status` so a bookmarked URL
+    // reopens with the exact same filter selected.
     const params = new URLSearchParams()
-    if (updated.status && updated.status !== 'all') {
+    if (updated.status === 'overdue') {
+      params.set('overdue', 'true')
+    } else if (updated.status && updated.status !== 'all') {
       params.set('status', updated.status)
     }
     if (updated.search) {
@@ -61,6 +94,13 @@ export function CountingListPage() {
       params.set('mobile', String(updated.created_on_mobile))
     }
     setSearchParams(params)
+  }
+
+  // The selected value is always one of the rendered STATUS_OPTIONS, so the
+  // displayed selection and the applied filter can never diverge.
+  const handleStatusChange = (value: string) => {
+    const next = STATUS_OPTIONS.find((s) => s === value) ?? 'all'
+    updateFilters({ status: next })
   }
 
   const goToPage = (page: number) => {
@@ -100,17 +140,13 @@ export function CountingListPage() {
 
         {/* Status Filter */}
         <select
-          value={filters.status || 'all'}
-          onChange={(e) =>
-            { updateFilters({ status: e.target.value as CountingStatus | 'all' }); }
-          }
+          value={filters.status ?? 'all'}
+          onChange={(e) => { handleStatusChange(e.target.value); }}
           className={`px-3 py-2 border ${colorTokens.border.default} rounded-md focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} ${colorTokens.focus.primaryBorder}`}
         >
           {STATUS_OPTIONS.map((status) => (
             <option key={status} value={status}>
-              {status === 'all'
-                ? t('allStatuses')
-                : t(`counting.status.${status}`)}
+              {t(statusOptionLabelKey(status))}
             </option>
           ))}
         </select>
