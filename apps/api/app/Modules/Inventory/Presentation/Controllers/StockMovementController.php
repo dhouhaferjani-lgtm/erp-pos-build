@@ -10,8 +10,10 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
+use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Inventory\Presentation\Requests\ListStockMovementsRequest;
+use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
@@ -31,7 +33,8 @@ use Illuminate\Support\Collection;
  * 100), validates every accepted input through ListStockMovementsRequest,
  * filters `movement_type`/`reason`/`search` server-side, orders deterministically
  * by `created_at DESC, id DESC` so page boundaries neither duplicate nor omit a
- * row, and resolves source documents in ONE query per page instead of one per row.
+ * row, and resolves source documents in ONE query per source KIND per page
+ * (documents, then countings) instead of one query per row.
  */
 class StockMovementController extends Controller
 {
@@ -40,6 +43,18 @@ class StockMovementController extends Controller
      * pre-DPA rows carry the bare morph alias, newer ones the FQCN.
      */
     private const DOCUMENT_REFERENCE_TYPES = ['Document', Document::class];
+
+    /**
+     * The `source_document_type` emitted for a movement whose reference_type is
+     * `inventory_counting`. NOT a DocumentType value — the counting is not a row
+     * in `documents` — but the same client-side contract: a type the movements
+     * surface can turn into a route (`/inventory/counting/{id}`).
+     *
+     * QA-BUG-09: before this, a count movement carried a correct `reference_id`
+     * FK that no read endpoint ever surfaced, so the operator had no way back
+     * from the movement line to the counting that produced it.
+     */
+    private const COUNTING_SOURCE_DOCUMENT_TYPE = 'inventory_counting';
 
     private const DEFAULT_PER_PAGE = 25;
 
@@ -137,9 +152,29 @@ class StockMovementController extends Controller
             ->get()
             ->keyBy('id');
 
+        // Same shape as the Document prefetch above: ONE query per page, both
+        // tenant AND company predicates, so a movement whose reference_id points
+        // at another company's counting resolves to null instead of leaking that
+        // counting's identity into this company's payload.
+        $countingIds = $movements->getCollection()
+            ->filter(static fn (StockMovement $movement): bool => $movement->reference_id !== null
+                && $movement->reference_type === StockMovementReferenceType::InventoryCounting->value)
+            ->pluck('reference_id')
+            ->filter(static fn (mixed $id): bool => is_string($id))
+            ->unique()
+            ->values();
+
+        /** @var Collection<string, InventoryCounting> $countingsById */
+        $countingsById = InventoryCounting::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->whereIn('id', $countingIds)
+            ->get()
+            ->keyBy('id');
+
         return response()->json([
             'data' => $movements->getCollection()
-                ->map(fn (StockMovement $movement): array => $this->formatMovement($movement, $sourceDocumentsById))
+                ->map(fn (StockMovement $movement): array => $this->formatMovement($movement, $sourceDocumentsById, $countingsById))
                 ->values(),
             'meta' => [
                 'current_page' => $movements->currentPage(),
@@ -154,13 +189,28 @@ class StockMovementController extends Controller
 
     /**
      * @param  Collection<string, Document>  $sourceDocumentsById
+     * @param  Collection<string, InventoryCounting>  $countingsById
      * @return array<string, mixed>
      */
-    private function formatMovement(StockMovement $movement, Collection $sourceDocumentsById): array
-    {
+    private function formatMovement(
+        StockMovement $movement,
+        Collection $sourceDocumentsById,
+        Collection $countingsById,
+    ): array {
         $sourceDocument = $movement->reference_id !== null
             && in_array($movement->reference_type, self::DOCUMENT_REFERENCE_TYPES, true)
             ? $sourceDocumentsById->get($movement->reference_id)
+            : null;
+
+        // QA-BUG-09: the counting is the movement's source document even though
+        // it does not live in `documents`. Only `inventory_counting` is resolved
+        // here; the other non-Document reference types (pos_receipt_return_scrap,
+        // stock_adjustment, supplier_goods_return_note, batch_ledger_repair) keep
+        // emitting nulls and are a follow-up lane.
+        $sourceCounting = $sourceDocument === null
+            && $movement->reference_id !== null
+            && $movement->reference_type === StockMovementReferenceType::InventoryCounting->value
+            ? $countingsById->get($movement->reference_id)
             : null;
 
         return [
@@ -184,8 +234,14 @@ class StockMovementController extends Controller
             // carries reason=write_off but is NOT reversible through
             // ReverseWriteOffService (DPA V10 gate C3).
             'reference_type' => $movement->reference_type,
-            'source_document_id' => $sourceDocument?->id,
-            'source_document_type' => $sourceDocument?->type->value,
+            // The raw linkage FK. Exposed alongside the resolved source document
+            // so a client can tell "no linkage recorded" (null) apart from
+            // "linkage recorded but not resolvable to a route yet" (QA-BUG-09).
+            'reference_id' => $movement->reference_id,
+            'source_document_id' => $sourceDocument?->id ?? $sourceCounting?->id,
+            'source_document_type' => $sourceDocument !== null
+                ? $sourceDocument->type->value
+                : ($sourceCounting !== null ? self::COUNTING_SOURCE_DOCUMENT_TYPE : null),
             'notes' => $movement->notes,
             'user_id' => $movement->user_id,
             'user_name' => $movement->user?->name,
